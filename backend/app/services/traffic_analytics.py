@@ -16,7 +16,7 @@ from typing import Literal
 from app.config import get_settings
 from app.models.traffic_analytics import LegacyTrafficEvent, OriginFilter, TrafficEvent
 from app.services.cache import _get_redis
-from app.services.traffic_address import resolve_address
+from app.services.traffic_address import nonpublic_network, resolve_address
 from app.services.traffic_geo import country_lookup
 
 Source = Literal["backend", "frontend"]
@@ -102,6 +102,10 @@ redis.call('EXPIRE', KEYS[3], 300)
 local measures = cjson.decode(ARGV[5])
 local origin = 'o:' .. ARGV[9] .. ':'
 local dimensions = {'t', 'c:' .. ARGV[3], 'r:' .. ARGV[4], origin .. 't', origin .. 'c:' .. ARGV[3], origin .. 'r:' .. ARGV[4]}
+if ARGV[10] and ARGV[10] ~= '' then
+    table.insert(dimensions, ARGV[10])
+    table.insert(dimensions, origin .. ARGV[10])
+end
 for _, dimension in ipairs(dimensions) do
     for field, value in pairs(measures) do
         if field == 'latency_ms_total' then
@@ -218,9 +222,18 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
                 settings.cluster_cidrs,
             )
             address, origin, origin_reason = observation.address, observation.origin, observation.reason
+        network = nonpublic_network(address)
+        network_basis = "resolved_client"
+        if address is None and isinstance(event, TrafficEvent) and event.peer_verified:
+            # Original client resolution failed. Expose only the independently
+            # verified connection peer range, never an XFF hop or inferred client.
+            network = nonpublic_network(event.peer_ip)
+            network_basis = "socket_peer"
         country, geo_reason = country_lookup(settings.geoip_mmdb).lookup(address)
         if address is None:
             geo_reason = origin_reason
+        if network is not None:
+            country, geo_reason = "XX", "non_global" if address is not None else origin_reason
         digest = identity_digest(address, settings.hmac_key.get_secret_value())
         measures = {key: 0 for key in COUNTERS}
         measures.update(
@@ -266,6 +279,7 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
                 digest,
                 event.at,
                 origin,
+                f"n:{network_basis}:{network[1]}:{network[0]}" if network is not None else "",
             )
         if int(result) == 1:
             return True
@@ -361,6 +375,7 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
         },
         "totals": None,
         "countries": [],
+        "networks": [],
         "routes": [],
         "series": [],
     }
@@ -444,6 +459,15 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
             result["countries"] = sorted(
                 [{"country": key[2:], **_metrics(values)} for key, values in merged.items() if key.startswith("c:")],
                 key=lambda row: (-row["requests"], row["country"]),
+            )
+            networks = []
+            for key, values in merged.items():
+                if key.startswith("n:"):
+                    basis, kind, network = key[2:].split(":", 2)
+                    networks.append({"basis": basis, "kind": kind, "network": network, **_metrics(values)})
+            result["networks"] = sorted(
+                networks,
+                key=lambda row: (-row["requests"], row["network"], row["basis"], row["kind"]),
             )
             result["routes"] = sorted(
                 [

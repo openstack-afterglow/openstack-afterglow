@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import AfterglowOrbit from '$lib/components/ui/AfterglowOrbit.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
-	import RichText from '$lib/i18n/RichText.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import LandingScene from './LandingScene.svelte';
 	import LandingMotionGraphic from './LandingMotionGraphic.svelte';
@@ -23,16 +23,11 @@
 		{ label: t('landing.story.nav.onprem'), href: '#contact' },
 		{ label: t('landing.nav.docs'), href: '/docs' },
 	]);
-	const services = $derived([
-		{ label: t('landing.story.server.label'), href: '#capabilities' },
-		{ label: t('landing.story.gpu.label'), href: '#gpu' },
-		{ label: t('landing.story.chat.label'), href: '#workflow' },
-		{ label: t('landing.story.kubernetes.label'), href: '#work' },
-	]);
 	const sectionIds = ['overview', 'capabilities', 'workflow', 'work', 'contact'];
 	let root: HTMLElement;
 	let navLinksElement: HTMLDivElement;
 	let activeSection = $state('overview');
+	let heroMotion = $state(true);
 
 	$effect(() => {
 		if (!navLinksElement) return;
@@ -100,28 +95,22 @@
 	</header>
 
 	<div id="landing-content" tabindex="-1">
-		<section id="overview" class="hero">
-			<div class="container hero-layout">
-				<div class="hero-copy">
-					<h1><RichText segments={t.rich('landing.story.hero.title')} /></h1>
-					<p class="hero-lead">{t('landing.story.hero.body')}</p>
-					<div class="hero-actions">
-						<Button variant="primary" size="lg" href={consoleHref}>{t('landing.consoleAction')}</Button>
-						<Button variant="link" size="lg" href="#capabilities">{t('landing.story.hero.explore')}<span aria-hidden="true">↗</span></Button>
-					</div>
-				</div>
-				<LandingScene kind="hero" label={siteName} class="hero-stage">
-					{#snippet children(state)}
-						<figure class="hero-product">
-							<LandingMotionGraphic kind="hero" {state} />
-							<figcaption>{t('landing.story.hero.imageNote')}</figcaption>
-						</figure>
-					{/snippet}
-				</LandingScene>
-				<ul class="service-shortcuts" aria-label={t('landing.story.services.aria')}>
-					{#each services as service}<li><a href={service.href}>{service.label}<span aria-hidden="true">↗</span></a></li>{/each}
-				</ul>
+		<section id="overview" class="hero" aria-labelledby="landing-hero-title">
+			<AfterglowOrbit active={heroMotion} interactive />
+			<div class="hero-bar">
+				<span class="hero-signature" aria-hidden="true"><i></i>{t('landing.story.hero.signature')}</span>
+				<button type="button" class="hero-motion" onclick={() => { heroMotion = !heroMotion; }}>{heroMotion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}</button>
 			</div>
+			<div class="hero-caption">
+				<p class="hero-eyebrow" aria-hidden="true">{t('landing.story.hero.eyebrow')}</p>
+				<h1 id="landing-hero-title" class="hero-wordmark">{siteName.toLowerCase()}<span aria-hidden="true">.</span></h1>
+				<p class="hero-lead">{t('landing.story.hero.body')}</p>
+				<div class="hero-actions">
+					<Button variant="primary" size="lg" href={consoleHref}>{t('landing.consoleAction')}</Button>
+					<Button variant="link" size="lg" href="#capabilities">{t('landing.story.hero.explore')}<span aria-hidden="true">↗</span></Button>
+				</div>
+			</div>
+			<div class="hero-footer" aria-hidden="true"><span>{t('landing.story.hero.footerLabel')}</span><span>{t('landing.story.hero.footerTagline')}</span></div>
 		</section>
 
 		<section id="capabilities" class="feature server-feature">
@@ -219,7 +208,7 @@
 	.landing-page { --landing-nav-height: 6.5rem; --landing-gutter: 1rem; min-height: 100%; padding-top: var(--landing-nav-height); color: var(--color-ink-0); background: var(--color-surface-canvas); font-family: var(--font-sans); line-height: 1.65; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 	.landing-page:lang(ja), .landing-page:lang(zh-CN) { --landing-word-break: normal; }
 	.container { box-sizing: border-box; width: 100%; max-width: var(--app-content-max-width); margin-inline: auto; padding-inline: var(--landing-gutter); }
-	h1, h2, p, figure { margin: 0; }
+	h1, h2, p { margin: 0; }
 	h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.045em; word-break: var(--landing-word-break, keep-all); text-wrap: balance; }
 	.landing-page :global(a:focus-visible), .landing-page :global(button:focus-visible) { outline: none; box-shadow: var(--focus-ring); }
 	#landing-content, section[id] { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
@@ -235,20 +224,28 @@
 	.nav-links a:hover, .nav-links a.is-active { color: var(--color-ink-0); border-color: var(--color-warm); }
 	.landing-page :global(.nav-cta) { grid-area: cta; min-height: 2.75rem; }
 	.nav-locale { grid-area: locale; }
-	.hero { padding-block: 2rem 3rem; }
-	.hero-layout { display: grid; justify-items: center; gap: 1.25rem; }
-	.hero-copy { max-width: 64rem; text-align: center; }
-	h1 { font-size: clamp(2.25rem, 5.3vw, 4.5rem); line-height: 1.2; }
-	h1 :global(em) { color: var(--color-warm-text); font-style: normal; }
-	.hero-lead { max-width: 44rem; margin: 1rem auto 0; color: var(--color-ink-1); font-size: 1rem; word-break: var(--landing-word-break, keep-all); text-wrap: pretty; }
-	.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+	/* First screen: the approved authored Afterglow scene, live theme tokens, soft pointer light. */
+	.hero { position: relative; isolation: isolate; overflow: hidden; display: grid; min-height: max(calc(100svh - var(--landing-nav-height)), 32rem); background: var(--afterglow-artwork-base); color: var(--afterglow-artwork-ink); }
+	.hero-bar, .hero-footer { position: absolute; left: clamp(1.25rem, 4vw, 4rem); right: clamp(1.25rem, 4vw, 4rem); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+	.hero-bar { top: 1rem; }
+	.hero-signature, .hero-footer, .hero-eyebrow { font-family: var(--font-mono); letter-spacing: 0.15em; color: var(--color-ink-2); }
+	.hero-signature { display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; }
+	.hero-signature i { width: 0.75rem; height: 0.75rem; border: 1px solid var(--color-warm); border-radius: 50%; }
+	.hero-motion { min-height: 2.75rem; padding: 0.5rem 0.75rem; border: 1px solid transparent; border-radius: var(--radius-md); color: var(--color-ink-2); background: transparent; font: inherit; font-size: 0.75rem; cursor: pointer; }
+	.hero-motion:hover { border-color: var(--color-line-2); color: var(--color-ink-0); }
+	.hero-caption { position: relative; align-self: end; margin-bottom: clamp(5rem, 11svh, 8rem); padding: 0 1.25rem; text-align: center; }
+	.hero-eyebrow { margin-bottom: 0.8rem; font-size: 0.625rem; letter-spacing: 0.24em; }
+	.hero-wordmark { font-family: var(--font-mono); font-size: clamp(2.4rem, 4.5vw, 4.5rem); font-weight: 400; line-height: 1.1; letter-spacing: -0.065em; color: var(--color-ink-0); }
+	.hero-wordmark span { color: var(--color-warm); }
+	.hero-lead { max-width: 36rem; margin: 1rem auto 0; color: var(--color-ink-1); font-size: 0.9375rem; word-break: var(--landing-word-break, keep-all); text-wrap: pretty; }
+	.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-top: 1.25rem; }
 	.hero-actions :global(.btn), .onprem-actions :global(.btn) { min-height: 2.75rem; }
-	.landing-page :global(.hero-stage) { max-width: 42rem; }
-	figcaption { margin-top: 0.5rem; color: var(--color-ink-2); font-size: 0.75rem; text-align: center; }
-	.service-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 1rem; width: 100%; max-width: 54rem; margin: 0; padding: 0; list-style: none; }
-	.service-shortcuts li { min-width: 0; }
-	.service-shortcuts a { display: flex; justify-content: center; align-items: center; gap: 0.5rem; min-height: 2.75rem; padding: 0.375rem; border-bottom: 1px solid var(--color-line-2); color: var(--color-ink-0); font-size: 0.875rem; font-weight: 500; text-decoration: none; }
-	.service-shortcuts a span { color: var(--color-warm-text); }
+	.hero-footer { bottom: 1.5rem; font-size: 0.625rem; letter-spacing: 0.1em; flex-wrap: wrap; }
+	@media (max-width: 767px) {
+		.hero-eyebrow { font-size: 0.5rem; letter-spacing: 0.13em; }
+		.hero-footer { justify-content: center; }
+		.hero-footer span:first-child { display: none; }
+	}
 	.feature { padding-block: 4rem; }
 	.feature-split { display: grid; gap: 2rem; align-items: center; }
 	.feature-copy { min-width: 0; }
@@ -260,7 +257,7 @@
 	.centered-copy { text-align: center; margin-inline: auto; }
 	.centered-copy h2, .centered-copy p { margin-inline: auto; }
 	.centered-copy p { max-width: 48rem; }
-	.wide-scene { max-width: 42rem; margin: 1rem auto 0; }
+	.wide-scene { max-width: 60rem; margin: 1rem auto 0; }
 	.chat-layout { max-width: 64rem; }
 	.chat-heading { margin-bottom: 1.25rem; }
 	.chat-heading h2 { font-size: clamp(2rem, 3.4vw, 3rem); }
@@ -276,8 +273,6 @@
 	.footer-bottom { margin-top: 1.25rem; color: var(--color-ink-2); font-size: 0.75rem; }
 	@media (min-width: 768px) {
 		.landing-page { --landing-gutter: 1.5rem; }
-		.hero { padding-top: 2.5rem; }
-		.service-shortcuts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 		.feature { padding-block: 6rem; }
 		.gpu-feature { padding-block: 3rem; }
 		.chat-feature { padding-block: 2.5rem; }
@@ -287,8 +282,6 @@
 		.landing-page { --landing-nav-height: 4rem; }
 		.nav { grid-template-areas: 'brand links cta locale'; grid-template-columns: minmax(8rem, 1fr) auto auto auto; gap: 1rem; }
 		.nav-links { gap: 1.25rem; }
-		.hero { padding-bottom: 4rem; }
-		.hero-layout { gap: 1rem; }
 		.feature-split { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 3rem; }
 		.cluster-layout { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); }
 		.cluster-layout > .feature-copy { grid-column: 2; grid-row: 1; }

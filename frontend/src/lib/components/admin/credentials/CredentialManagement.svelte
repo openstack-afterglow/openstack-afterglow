@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onMount, untrack } from 'svelte';
   import { get } from 'svelte/store';
   import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -70,34 +71,46 @@
   </PageHeader>
   <Alert tone="info" class="mb-4">{t(kind === 'application' ? 'credentials.applicationNotice' : 'credentials.userNotice')}</Alert>
   <ResourceToolbar label={t('credentials.filters')} class="mb-4">
-    <TextInput type="search" bind:value={search} ariaLabel={t('credentials.search')} placeholder={t('credentials.search')} />
-    <TextInput type="search" bind:value={userSearch} ariaLabel={t('credentials.userSearch')} placeholder={t('credentials.userSearch')} />
-    <SelectInput value={ctrl.selectedUser} ariaLabel={t('credentials.user')} onchange={(event) => ctrl.selectUser((event.currentTarget as HTMLSelectElement).value)}>
-      <option value="">{kind === 'user' ? t('credentials.allUsers') : dt('credentials.chooseUser')}</option>
-      {#each filteredUsers as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
-    </SelectInput>
-    <SelectInput bind:value={projectFilter} ariaLabel={t('credentials.project')}>
-      <option value="">{dt('credentials.allProjects')}</option>
-      {#each projects as project}<option value={project}>{project}</option>{/each}
-    </SelectInput>
+    <Field label={t('credentials.search')} for="credential-search" class="min-w-0 w-full md:flex-1 md:basis-56">
+      <TextInput id="credential-search" type="search" bind:value={search} ariaLabel={t('credentials.search')} placeholder={t('credentials.search')} />
+    </Field>
+    <Field label={t('credentials.userSearch')} for="credential-user-search" class="min-w-0 w-full md:flex-1 md:basis-56">
+      <TextInput id="credential-user-search" type="search" bind:value={userSearch} ariaLabel={t('credentials.userSearch')} placeholder={t('credentials.userSearch')} />
+    </Field>
+    <Field label={t('credentials.user')} for="credential-user" class="min-w-0 w-full md:flex-1 md:basis-48">
+      <SelectInput id="credential-user" value={ctrl.selectedUser} ariaLabel={t('credentials.user')} onchange={(event) => ctrl.selectUser((event.currentTarget as HTMLSelectElement).value)}>
+        <option value="">{kind === 'user' ? t('credentials.allUsers') : dt('credentials.chooseUser')}</option>
+        {#each filteredUsers as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
+      </SelectInput>
+    </Field>
+    <Field label={t('credentials.project')} for="credential-project" class="min-w-0 w-full md:flex-1 md:basis-48">
+      <SelectInput id="credential-project" bind:value={projectFilter} ariaLabel={t('credentials.project')}>
+        <option value="">{dt('credentials.allProjects')}</option>
+        {#each projects as project}<option value={project}>{project}</option>{/each}
+      </SelectInput>
+    </Field>
     {#if kind === 'user'}
-      <SelectInput bind:value={typeFilter} ariaLabel={t('credentials.type')}>
-        <option value="">{dt('credentials.allTypes')}</option>
-        {#each types as type}<option value={type}>{type}</option>{/each}
-      </SelectInput>
+      <Field label={t('credentials.type')} for="credential-type" class="min-w-0 max-w-full w-full md:w-auto">
+        <SelectInput id="credential-type" bind:value={typeFilter} ariaLabel={t('credentials.type')}>
+          <option value="">{dt('credentials.allTypes')}</option>
+          {#each types as type}<option value={type}>{type}</option>{/each}
+        </SelectInput>
+      </Field>
     {:else}
-      <SelectInput bind:value={expiryFilter} ariaLabel={t('credentials.expiry')}>
-        <option value="">{dt('credentials.allExpiries')}</option>
-        <option value="expired">{dt('credentials.expired')}</option>
-        <option value="active">{dt('credentials.active')}</option>
-        <option value="never">{dt('credentials.neverExpires')}</option>
-      </SelectInput>
+      <Field label={t('credentials.expiry')} for="credential-expiry" class="min-w-0 max-w-full w-full md:w-auto">
+        <SelectInput id="credential-expiry" bind:value={expiryFilter} ariaLabel={t('credentials.expiry')}>
+          <option value="">{dt('credentials.allExpiries')}</option>
+          <option value="expired">{dt('credentials.expired')}</option>
+          <option value="active">{dt('credentials.active')}</option>
+          <option value="never">{dt('credentials.neverExpires')}</option>
+        </SelectInput>
+      </Field>
     {/if}
   </ResourceToolbar>
-  {#if ctrl.directoryLoading}<p class="text-sm text-ink-2 mb-3" role="status">{t('credentials.directoryLoading')}</p>{/if}
+  {#if ctrl.directoryLoading}<LoadingState variant="inline" label={t('credentials.directoryLoading')} />{/if}
   {#if ctrl.directoryError}<Alert class="mb-3">{ctrl.directoryError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{t('credentials.retryDirectory')}</Button></Alert>{/if}
   {#if ctrl.error}<Alert class="mb-4">{ctrl.error}</Alert>{/if}
-  {#if ctrl.loading}<p role="status" class="text-sm text-ink-2">{t('state.loading')}</p>
+  {#if ctrl.loading}<LoadingState variant="surface" label={t('state.loading')} />
   {:else if ctrl.allowed && !ctrl.error && kind === 'application' && !ctrl.selectedUser && !ctrl.directoryLoading && !ctrl.directoryError}<p class="text-sm text-ink-2 py-8 text-center">{dt('credentials.chooseUser')}</p>
   {:else if !ctrl.error && !ctrl.directoryLoading && !ctrl.directoryError && ctrl.allowed && filtered.length === 0}<p class="text-sm text-ink-2 py-8 text-center">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>
   {:else if ctrl.allowed && filtered.length}
@@ -131,7 +144,7 @@
   <Card surface="modal" padding="lg" class="w-[28rem] max-w-full">
   <h2 id={modalTitleId} class="text-lg font-semibold text-ink-0 mb-5">{modalTitle}</h2>
   <div class="space-y-4">
-    {#if ctrl.busy}<p role="status" class="text-sm text-ink-2">{t('state.loading')}</p>{/if}
+    {#if ctrl.busy}<LoadingState variant="inline" label={t('state.loading')} />{/if}
     {#if ctrl.modalError}<Alert>{ctrl.modalError}</Alert>{/if}
     {#if ctrl.mode === 'issued' && ctrl.issued}
       <Alert tone="warning">{t('credentials.onceOnly')}</Alert>

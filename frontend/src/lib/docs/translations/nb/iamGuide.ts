@@ -1,4 +1,9 @@
 const translations: Record<string, string> = {
+	'프로젝트 역할 포함 관계': 'Inkluderingsforhold mellom prosjektroller',
+	'서비스 등급의 기능 포함 관계': 'Inkluderingsforhold mellom funksjoner på tjenestenivåer',
+	'포함': 'inkluderer',
+	'화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.': 'Pilene peker på underordnede roller som den overordnede rollen inkluderer. De faktiske rollekoblingene i Keystone må være konfigurert, og manager og project_creator inngår ikke i dette hierarkiet.',
+	'화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.': 'Pilene peker på funksjoner på lavere nivåer som det høyere nivået inkluderer. Dette tildeler ikke detaljroller automatisk, og vilkårene for prosjekt, eierskap og kvalifikasjon gjelder uendret.',
 	'IAM · 서비스별 권한': 'IAM · Tillatelser per tjeneste',
 	'사용자별 역할과 서비스 이용 권한 이해하기': 'Forstå brukerroller og tilgang til tjenester',
 	'조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.': 'Lær om organisasjonens manager, prosjektroller og nivåer og detaljroller i Waygate, Drover, Lumen og Palimpsest, med tillatelseskombinasjonene hver funksjon krever.',

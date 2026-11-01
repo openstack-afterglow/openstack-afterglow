@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
@@ -99,6 +100,8 @@
 	let memories = $state<Memory[]>([]);
 	let memoryDocument = $state<MemoryDocument | null>(null);
 	let memLoading = $state(true);
+	let memorySnapshotScope = $state('');
+	const memoryScope = $derived(JSON.stringify([token, projectId]));
 	let editingId = $state<number | null>(null);
 	let draft = $state('');
 	let saving = $state(false);
@@ -107,12 +110,14 @@
 
 	async function loadMemories() {
 		if (!token) return;
+		const requestScope = memoryScope;
 		memLoading = true;
 		try {
 			[memories, memoryDocument] = await Promise.all([
 				api.get<Memory[]>('/api/v1/chat/memories', token, projectId),
 				api.get<MemoryDocument>('/api/v1/chat/memories/document', token, projectId)
 			]);
+			memorySnapshotScope = requestScope;
 		} catch {
 			toast.error(t('settings.memory.loadFailed'));
 		} finally {
@@ -271,10 +276,9 @@
 						<p class="sec-desc">
 							{t('settings.memory.description')}
 						</p>
-						{#if memLoading}
-							<div class="memory-document motion-skeleton" role="status" aria-label={t('settings.memory.documentLoading', { filename: 'memory.md' })}>
-								<span class="sr-only">{t('settings.memory.documentLoading', { filename: 'memory.md' })}</span>
-							</div>
+						{#if memLoading && memorySnapshotScope === memoryScope}<LoadingState variant="inline" label={t('settings.memory.loading')} />{/if}
+						{#if memLoading && memorySnapshotScope !== memoryScope}
+							<LoadingState label={t('settings.memory.documentLoading', { filename: 'memory.md' })} />
 						{:else if memoryDocument}
 							<div class="memory-document">
 								<div class="memory-document-head">
@@ -310,15 +314,15 @@
 									<Button variant="ghost" size="sm" type="button" onclick={cancelEdit}>{t('settings.memory.cancel')}</Button>
 								{/if}
 								<Button variant="accent" size="sm" type="submit" disabled={!canSubmit}>
-									{saving ? t('settings.memory.saving') : editingId !== null ? t('settings.memory.saveChanges') : t('settings.memory.add')}
+									{#if saving}<LoadingState variant="control" label={t('settings.memory.saving')} />{:else}{editingId !== null ? t('settings.memory.saveChanges') : t('settings.memory.add')}{/if}
 								</Button>
 							</div>
 						</form>
 
 						<div class="divider"></div>
 
-						{#if memLoading}
-							<p class="sec-desc">{t('settings.memory.loading')}</p>
+						{#if memLoading && memorySnapshotScope !== memoryScope}
+							<LoadingState label={t('settings.memory.loading')} />
 						{:else if memories.length === 0}
 							<p class="sec-desc">{t('settings.memory.empty')}</p>
 						{:else}
@@ -513,10 +517,6 @@
 		border: 1px solid var(--color-line);
 		border-radius: 0.65rem;
 		background: var(--color-surface-base);
-	}
-	.memory-document.motion-skeleton {
-		min-height: 10rem;
-		background: var(--color-surface-sunken);
 	}
 	.memory-document-head {
 		display: flex;

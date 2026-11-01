@@ -14,11 +14,12 @@ from app.models.compute import (
     FlavorCapacityInfo,
     FlavorDemandInfo,
     FlavorEligibility,
+    FlavorGpuPrimaryAlias,
     FlavorInfo,
     FlavorQuotaBlocker,
     FlavorRemainingInfo,
 )
-from app.services import gpu_quota, nova
+from app.services import compute_pools, gpu_quota, nova
 from app.services.gpu_inventory import is_gpu_flavor
 
 _logger = logging.getLogger(__name__)
@@ -227,6 +228,107 @@ def _with_eligibility(flavor: Any, eligibility: FlavorEligibility) -> Any:
     return flavor
 
 
+def _pool_remaining(snapshot: dict[str, Any], resource: str) -> int:
+    domain = snapshot["available"].get(resource, 0)
+    project = snapshot["project_available"].get(resource, -1)
+    finite = [value for value in (domain, project) if value != -1]
+    return min(finite) if finite else -1
+
+
+def _intersect_remaining(native, pool):
+    if native is None:
+        return None
+    finite = [value for value in (native, pool) if value != -1]
+    return min(finite) if finite else -1
+
+
+async def _with_pool_eligibility(
+    conn: Any,
+    project_id: str,
+    flavor: Any,
+    eligibility: FlavorEligibility,
+    snapshot: dict[str, Any] | None,
+    *,
+    count: int,
+    current_flavor: Any | None,
+    unavailable: bool,
+) -> FlavorEligibility:
+    if unavailable:
+        blockers = [*eligibility.blockers, FlavorQuotaBlocker(code="domain_pool_unavailable")]
+        return eligibility.model_copy(update={"selectable": False, "blockers": blockers})
+    if snapshot and snapshot.get("state") == "paused":
+        return eligibility.model_copy(
+            update={
+                "selectable": False,
+                "quota_scope": "domain",
+                "domain_id": snapshot["domain_id"],
+                "blockers": [*eligibility.blockers, FlavorQuotaBlocker(code="domain_pool_paused")],
+            }
+        )
+    if not snapshot or not snapshot["enabled"]:
+        return eligibility
+    # Stock Nova project quotas remain authoritative alongside Afterglow policy.
+    # Only the retired application GPU ledger is replaced by approved pool accounting.
+    blockers = [
+        blocker for blocker in eligibility.blockers if blocker.code not in {"gpu_insufficient", "gpu_quota_unavailable"}
+    ]
+    try:
+        requested = await compute_pools.flavor_pool_requirements(conn, flavor, count=count, snapshot=snapshot)
+        current = (
+            await compute_pools.flavor_pool_requirements(conn, current_flavor, snapshot=snapshot)
+            if current_flavor is not None
+            else None
+        )
+        result = compute_pools.evaluate_pool_snapshot(snapshot, requested, current_requirements=current)
+        blockers.extend(
+            FlavorQuotaBlocker(
+                code=item["code"],
+                resource=item.get("resource"),
+                required=item.get("required"),
+                remaining=item.get("available"),
+            )
+            for item in result["blockers"]
+        )
+        remaining = eligibility.remaining.model_copy(
+            update={
+                "cores": _intersect_remaining(eligibility.remaining.cores, _pool_remaining(snapshot, "CPU")),
+                "ram_mb": _intersect_remaining(eligibility.remaining.ram_mb, _pool_remaining(snapshot, "MEMORY_MB")),
+                "gpus": {
+                    resource: _pool_remaining(snapshot, resource)
+                    for resource in requested
+                    if resource.startswith("CUSTOM_PCI_")
+                },
+            }
+        )
+    except compute_pools.ComputePoolUnavailable:
+        blockers.append(FlavorQuotaBlocker(code="domain_pool_unavailable"))
+        remaining = eligibility.remaining
+    requirements = eligibility.requirements
+    if not any(blocker.code == "domain_pool_unavailable" for blocker in blockers):
+        current_demand = current or {}
+        requirements = requirements.model_copy(
+            update={
+                "cores": max(0, requested.get("CPU", 0) - current_demand.get("CPU", 0)),
+                "ram_mb": max(0, requested.get("MEMORY_MB", 0) - current_demand.get("MEMORY_MB", 0)),
+                "gpus": {
+                    key: value - current_demand.get(key, 0)
+                    for key, value in requested.items()
+                    if key.startswith("CUSTOM_PCI_") and value > current_demand.get(key, 0)
+                },
+            }
+        )
+    return eligibility.model_copy(
+        update={
+            "selectable": not blockers,
+            "blockers": blockers,
+            "remaining": remaining,
+            "requirements": requirements,
+            "quota_scope": "domain",
+            "domain_id": snapshot["domain_id"],
+        }
+    )
+
+
 async def evaluate_project_flavors(
     conn: Any,
     project_id: str,
@@ -237,6 +339,9 @@ async def evaluate_project_flavors(
     check_capacity: bool = False,
     availability_zone: str | None = None,
     fresh_capacity: bool = True,
+    include_gpu_projection: bool = False,
+    supported_hosts: list[dict] | None = None,
+    capacity_regions: dict[str, list[dict]] | None = None,
 ) -> list[FlavorInfo]:
     """Attach eligibility to project-visible flavors using one snapshot per authority.
 
@@ -244,7 +349,7 @@ async def evaluate_project_flavors(
     flavor, ``count == 1``). A confirmed shortage and an unverified capacity both block every
     flavor: an unresolved default zone, an operator or Placement failure, or an unrepresentable
     flavor constraint never admits a VM to Nova.
-    Discovery lists pass ``fresh_capacity=False`` to share a short-lived snapshot.
+    Discovery lists pass ``fresh_capacity=False`` to project a bounded background observation.
     """
     flavor_list = list(flavors)
     if not flavor_list:
@@ -253,13 +358,21 @@ async def evaluate_project_flavors(
     gpu_status: dict[str, dict[str, int]] | None = None
     compute_error = False
     gpu_error = False
+    pool_snapshot = None
+    pool_unavailable = False
+    try:
+        pool_snapshot = await compute_pools.project_pool_snapshot(conn, project_id)
+    except compute_pools.ComputePoolUnavailable:
+        pool_unavailable = True
     try:
         compute_quota = await asyncio.to_thread(nova.get_project_quota, conn, project_id, strict=True)
     except Exception:
         _logger.warning("compute quota lookup failed for project %s", project_id, exc_info=True)
         compute_error = True
 
-    if any(parse_gpu_demand(flavor) for flavor in flavor_list):
+    if not (pool_snapshot and (pool_snapshot["enabled"] or pool_snapshot.get("state") == "paused")) and any(
+        parse_gpu_demand(flavor) for flavor in flavor_list
+    ):
         try:
             statuses = await gpu_quota.get_effective_gpu_quota_status(conn, project_id)
             gpu_status = {item["gpu_type"]: item for item in statuses}
@@ -268,23 +381,50 @@ async def evaluate_project_flavors(
             gpu_error = True
     else:
         gpu_status = {}
+    # Presentation metadata is derived independently of admission. Failure to
+    # verify the current group leaves it unknown, never a guessed companion.
+    gpu_capabilities = None
+    if include_gpu_projection and any(
+        flavor.extra_specs.get("afterglow:managed_by") == "domain-compute-v1" for flavor in flavor_list
+    ):
+        from app.services import flavor_automation_policy
+
+        try:
+            gpu_capabilities = await flavor_automation_policy.capabilities()
+        except Exception:
+            _logger.warning("managed flavor GPU presentation policy unavailable")
 
     capacities: dict[str, FlavorCapacityInfo] = {}
     needs_capacity = check_capacity and current_flavor is None and count == 1
     capacity_checked_at = datetime.now(UTC).isoformat()
+    capacity_reason = None
     if needs_capacity:
-        try:
-            from app.services.flavor_capacity import evaluate_flavor_capacities
-            from app.services.resource_policy_store import resolve_policies
+        from app.services.flavor_capacity import evaluate_flavor_capacities
+        from app.services.resource_policy_store import resolve_policies
 
-            if not availability_zone:
+        if not availability_zone:
+            try:
                 policies = await resolve_policies(conn=conn, keys=("nova.default_compute_availability_zone",))
                 availability_zone = policies["nova.default_compute_availability_zone"]
-            capacities = await evaluate_flavor_capacities(
-                flavor_list, project_id=project_id, availability_zone=availability_zone, fresh=fresh_capacity
-            )
-        except Exception:
-            _logger.warning("flavor host capacity lookup failed", exc_info=True)
+            except Exception:
+                capacity_reason = "default_compute_zone_unavailable"
+                _logger.warning("default compute zone policy resolution failed", exc_info=True)
+        if capacity_reason is None:
+            try:
+                composer = (
+                    {"supported_hosts": supported_hosts, "region_results": capacity_regions}
+                    if capacity_regions is not None
+                    else {}
+                )
+                capacities = await evaluate_flavor_capacities(
+                    flavor_list,
+                    project_id=project_id,
+                    availability_zone=availability_zone,
+                    fresh=fresh_capacity,
+                    **composer,
+                )
+            except Exception:
+                _logger.warning("flavor host capacity lookup failed", exc_info=True)
 
     evaluated: list[FlavorInfo] = []
     for flavor in flavor_list:
@@ -297,9 +437,19 @@ async def evaluate_project_flavors(
             compute_error=compute_error,
             gpu_error=gpu_error,
         )
+        eligibility = await _with_pool_eligibility(
+            conn,
+            project_id,
+            flavor,
+            eligibility,
+            pool_snapshot,
+            count=count,
+            current_flavor=current_flavor,
+            unavailable=pool_unavailable,
+        )
         if needs_capacity:
             capacity = capacities.get(flavor.id) or FlavorCapacityInfo(
-                status="unavailable", checked_at=capacity_checked_at
+                status="unavailable", reason=capacity_reason, checked_at=capacity_checked_at
             )
             blockers = list(eligibility.blockers)
             if capacity.status in ("insufficient", "unavailable"):
@@ -307,7 +457,17 @@ async def evaluate_project_flavors(
             eligibility = eligibility.model_copy(
                 update={"capacity": capacity, "blockers": blockers, "selectable": not blockers}
             )
-        evaluated.append(_with_eligibility(flavor, eligibility))
+        flavor = _with_eligibility(flavor, eligibility)
+        if include_gpu_projection and flavor.extra_specs.get("afterglow:managed_by") == "domain-compute-v1":
+            aliases = None
+            if gpu_capabilities is not None:
+                try:
+                    projection = await compute_pools.approved_gpu_projection(flavor.extra_specs, gpu_capabilities)
+                    aliases = [FlavorGpuPrimaryAlias.model_validate(row) for row in projection["gpu_primary_aliases"]]
+                except compute_pools.ComputePoolUnavailable:
+                    pass
+            flavor = flavor.model_copy(update={"gpu_primary_aliases": aliases})
+        evaluated.append(flavor)
     return evaluated
 
 
@@ -353,10 +513,9 @@ async def admit_flavor(
     current_flavor: Any | None = None,
     availability_zone: str | None = None,
 ) -> FlavorAdmission:
-    """Require eligibility and reserve custom GPU headroom before mutation."""
+    """Check Afterglow policy plus native quota/capacity; Nova owns actual allocation."""
     from app.services.gpu_inventory import require_gpu_quota
 
-    gpu_available = await require_gpu_quota(conn, flavor, project_id=project_id)
     eligibility = await require_flavor_eligible(
         conn,
         project_id,
@@ -367,8 +526,15 @@ async def admit_flavor(
         check_capacity=current_flavor is None and count == 1,
         availability_zone=availability_zone,
     )
-    requested = eligibility.requirements.gpus if gpu_available else {}
-    reservation_id = await gpu_quota.reserve_gpu_quota(conn, project_id, requested) if requested else None
+    if eligibility.quota_scope == "domain":
+        # Pool admission already checked the exact approved resource classes.
+        # Preserve GPU initialization without writing a second, legacy quota reservation.
+        requested = eligibility.requirements.gpus
+        reservation_id = None
+    else:
+        gpu_available = await require_gpu_quota(conn, flavor, project_id=project_id)
+        requested = eligibility.requirements.gpus if gpu_available else {}
+        reservation_id = await gpu_quota.reserve_gpu_quota(conn, project_id, requested) if requested else None
     return FlavorAdmission(
         eligibility=eligibility,
         gpu_requested=requested,

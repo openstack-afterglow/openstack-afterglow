@@ -8,21 +8,13 @@ function createThemeStore() {
 		? ((localStorage.getItem('afterglow_theme') as ThemePreference) ?? 'system')
 		: 'system';
 
-	const { subscribe, set, update } = writable<ThemePreference>(initial);
+	const { subscribe, set } = writable<ThemePreference>(initial);
 
 	return {
 		subscribe,
 		set(value: ThemePreference) {
 			if (browser) localStorage.setItem('afterglow_theme', value);
 			set(value);
-		},
-		toggle() {
-			update(current => {
-				const order: ThemePreference[] = ['system', 'dark', 'light'];
-				const next = order[(order.indexOf(current) + 1) % order.length];
-				if (browser) localStorage.setItem('afterglow_theme', next);
-				return next;
-			});
 		},
 	};
 }

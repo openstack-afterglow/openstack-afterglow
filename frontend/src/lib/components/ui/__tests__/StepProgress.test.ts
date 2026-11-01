@@ -61,12 +61,10 @@ describe('StepProgress', () => {
 describe('ProvisionPipeline', () => {
 	const stages = steps.map(({ id, label }) => ({ id, label, icon: 'M4 4h16v16H4z' }));
 
-	it('fills conduits behind finished stations and flows only into the active one', () => {
+	it('fills conduits behind finished stations', () => {
 		const { container } = render(ProvisionPipeline, { stages, current: 'server', label: 'VM 배포 그래픽' });
 		const conduits = Array.from(container.querySelectorAll('.conduit'));
 		expect(conduits.map((conduit) => conduit.getAttribute('data-filled'))).toEqual(['true', null]);
-		expect(conduits[0].querySelector('.conduit-packet')).not.toBeNull();
-		expect(conduits[1].querySelector('.conduit-packet')).toBeNull();
 	});
 
 	it('is announced once: hidden from assistive technology beside a step list', () => {

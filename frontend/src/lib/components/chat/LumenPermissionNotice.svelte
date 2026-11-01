@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { projectPermissions, serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { permissionReason } from '$lib/api/lumenPermissions';
 	import { t } from '$lib/i18n/ns/chat-settings';
@@ -7,7 +8,7 @@
 </script>
 
 {#if $projectPermissions.loading}
-	<p class="text-sm text-[var(--color-ink-2)]" role="status">{t('permissions.loading')}</p>
+	<LoadingState variant="inline" label={t('permissions.loading')} />
 {:else if $projectPermissions.error}
 	<p class="text-sm text-[var(--color-state-danger)]" role="alert">{$projectPermissions.error}</p>
 {:else if $projectPermissions.permissions?.service_permission_errors?.lumen}

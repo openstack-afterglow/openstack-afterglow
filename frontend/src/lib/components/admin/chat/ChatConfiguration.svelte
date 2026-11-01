@@ -10,7 +10,7 @@
 	import { invalidateChatModels } from '$lib/stores/chatModels';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ChatExtensionsManager from '$lib/components/chat/ChatExtensionsManager.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -1770,13 +1770,13 @@
 			{#if providerCreateError}<Alert tone="danger" class="mt-3">{providerCreateError}</Alert>{/if}
 			<div class="mt-3 flex justify-end">
 				<Button onclick={addProvider} disabled={addingProvider} ariaBusy={addingProvider}>
-					{#if addingProvider}<ActivityIndicator size="xs" tone="ink" />{/if}{addingProvider ? t('configuration.adding') : t('configuration.addProvider')}
+					{#if addingProvider}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{addingProvider ? t('configuration.adding') : t('configuration.addProvider')}
 				</Button>
 			</div>
 		</div>
 
 		{#if loading}
-			<div class="{cardCls} h-20 motion-skeleton" role="status" aria-busy="true" aria-label={t('configuration.loadingProviders')}><span class="sr-only">{t('configuration.loadingProviders')}</span></div>
+			<LoadingState variant="section" label={t('configuration.loadingProviders')} />
 		{:else if providers.length === 0}
 			<EmptyState headline={t('configuration.noProvidersRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
@@ -1786,7 +1786,7 @@
 					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('configuration.theLumenLedgerIsShownSeparatelyFromOfficialProvider')}</p>
 				</div>
 				<Button variant="outline" size="sm" disabled={billingLoading} ariaBusy={billingLoading} onclick={() => void loadProviderBilling({ fresh: true })}>
-					{#if billingLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{billingLoading ? t('configuration.fetching') : t('configuration.refreshAll')}
+					{#if billingLoading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{billingLoading ? t('configuration.fetching') : t('configuration.refreshAll')}
 				</Button>
 			</div>
 			{#if billingError}
@@ -1839,7 +1839,7 @@
 							</div>
 
 							{#if billingLoading && !billing}
-								<ActivityIndicator size="xs" label={t('configuration.fetchingUsageAndBillingStatus')} class="mt-2 text-xs text-ink-2" />
+								<LoadingState variant="inline" label={t('configuration.fetchingUsageAndBillingStatus')} class="mt-2 text-xs text-ink-2" />
 							{:else if !billing}
 								<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.noBillingStatusToDisplayUseRefreshAllTo')}</p>
 							{:else}
@@ -1980,7 +1980,7 @@
 			</div>
 			{#snippet actions()}
 				<Button variant="secondary" disabled={providerSaving} onclick={() => (editingProvider = null)}>{t('configuration.cancel')}</Button>
-				<Button onclick={saveProviderMetadata} disabled={providerSaving} ariaBusy={providerSaving}>{#if providerSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{providerSaving ? t('configuration.saving') : t('configuration.save')}</Button>
+				<Button onclick={saveProviderMetadata} disabled={providerSaving} ariaBusy={providerSaving}>{#if providerSaving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{providerSaving ? t('configuration.saving') : t('configuration.save')}</Button>
 			{/snippet}
 		</FormModal>
 
@@ -2009,7 +2009,7 @@
 			</div>
 			{#snippet actions()}
 				<Button variant="secondary" disabled={billingKeyBusy} onclick={closeBillingKeyModal}>{t('configuration.cancel')}</Button>
-				<Button onclick={saveBillingAdminKey} disabled={billingKeyBusy} ariaBusy={billingKeyBusy}>{#if billingKeyBusy}<ActivityIndicator size="xs" tone="ink" />{/if}{billingKeyBusy ? t('configuration.saving') : billingKeyProvider?.has_billing_admin_key ? t('configuration.changeKey') : t('configuration.setKey')}</Button>
+				<Button onclick={saveBillingAdminKey} disabled={billingKeyBusy} ariaBusy={billingKeyBusy}>{#if billingKeyBusy}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{billingKeyBusy ? t('configuration.saving') : billingKeyProvider?.has_billing_admin_key ? t('configuration.changeKey') : t('configuration.setKey')}</Button>
 			{/snippet}
 		</FormModal>
 
@@ -2052,7 +2052,7 @@
 			{#if modelOrderSaveError}<Alert tone="danger" class="mt-2">{modelOrderSaveError}</Alert>{/if}
 		</div>
 		{#if loading}
-			<div class="{cardCls} h-20 motion-skeleton" role="status" aria-busy="true" aria-label={t('configuration.loadingModels')}><span class="sr-only">{t('configuration.loadingModels')}</span></div>
+			<LoadingState variant="section" label={t('configuration.loadingModels')} />
 		{:else if visibleModels.length === 0}
 			<EmptyState headline={registeredProviderId || registeredKind ? t('pricing.filteredEmpty') : t('configuration.noModelsRegistered')} class="py-4 [&_.motion-enter]:animate-none" />
 		{:else}
@@ -2068,7 +2068,7 @@
 				</label>
 				{#if selectedCount > 0}
 					<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk || modelOrderSaving} ariaBusy={deletingBulk}>
-						{#if deletingBulk}<ActivityIndicator size="xs" tone="ink" />{/if}{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
+						{#if deletingBulk}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
 					</Button>
 				{/if}
 			</div>
@@ -2207,7 +2207,7 @@
 									{:else if registrationOutcomes[entry.name] === 'unknown'}
 										<Alert tone="warning">{t('configuration.registrationOutcomeUnknown')}</Alert>
 									{:else}
-										{#if registrationOutcomes[entry.name] === 'pending'}<Pill tone="info" size="sm">{t('configuration.registering')}</Pill>{/if}
+										{#if registrationOutcomes[entry.name] === 'pending'}<LoadingState variant="inline" label={t('configuration.registering')} />{/if}
 										{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">{t('configuration.registrationFailedRetryThisModelOnly')}</Pill>{/if}
 										<div class="mt-3 grid gap-3 sm:grid-cols-2">
 											<Field label={t('configuration.modelNameEGGpt4o')} for="review-name-{index}"><TextInput id="review-name-{index}" bind:value={entry.modelName} disabled={registeringBulk} /></Field>
@@ -2240,7 +2240,7 @@
 						disabled={!mProviderId || discovering || creationBusy}
 						ariaBusy={discovering}
 					>
-						{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
+						{#if discovering}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{discovering ? t('configuration.fetching') : t('configuration.loadModels')}
 					</Button>
 			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.discoveryGuidance')}</p>
 			{#if discoverId === mProviderId && discoverId !== null}
@@ -2248,12 +2248,12 @@
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<p class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.discoveredCandidates', { v0: providerName(discoverId) })}</p>
 						<div class="flex gap-2">
-							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk} ariaBusy={discovering}>{#if discovering}<ActivityIndicator size="xs" tone="ink" />{/if}{discovering ? t('configuration.fetching') : t('configuration.fetchAgain')}</Button>
+							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk} ariaBusy={discovering}>{#if discovering}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{discovering ? t('configuration.fetching') : t('configuration.fetchAgain')}</Button>
 							<Button variant="ghost" size="sm" onclick={resetDiscovery}>{t('configuration.closeDiscovery')}</Button>
 						</div>
 					</div>
 					{#if discovering}
-						<ActivityIndicator label={t('configuration.loadingModelList')} class="text-sm text-ink-2" />
+						<LoadingState variant="section" label={t('configuration.loadingModelList')} class="text-sm text-ink-2" />
 					{:else if discoveryError}
 						<Alert tone="warning">{discoveryError}</Alert>
 					{:else if discovery}
@@ -2365,10 +2365,10 @@
 				<Button variant="secondary" onclick={closeCreation} disabled={creationBusy}>{t('configuration.close')}</Button>
 				{#if registrationReview}
 					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>{t('configuration.cancel')}</Button>
-					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name]) && Boolean(reviewPriceError(entry)))} ariaBusy={registeringBulk && registrationMode === 'inactive'}>{registeringBulk && registrationMode === 'inactive' ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
-					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || !reviewCanActivate(registrationReview)} ariaBusy={registeringBulk && registrationMode === 'active'}>{registeringBulk && registrationMode === 'active' ? t('configuration.registeringAndActivating') : t('configuration.confirmPricingRegisterAndActivate')}</Button>
+					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name]) && Boolean(reviewPriceError(entry)))} ariaBusy={registeringBulk && registrationMode === 'inactive'}>{#if registeringBulk && registrationMode === 'inactive'}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{registeringBulk && registrationMode === 'inactive' ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
+					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !registrationReview.entries.some((entry) => !['success', 'unknown'].includes(registrationOutcomes[entry.name])) || !reviewCanActivate(registrationReview)} ariaBusy={registeringBulk && registrationMode === 'active'}>{#if registeringBulk && registrationMode === 'active'}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{registeringBulk && registrationMode === 'active' ? t('configuration.registeringAndActivating') : t('configuration.confirmPricingRegisterAndActivate')}</Button>
 				{:else if creationMethod === 'manual'}
-					<Button onclick={addModel} disabled={addingModel || manualOutcomeUnknown || registrationUncertain(mProviderId, mName) || !mProviderId || !mName.trim() || (mKind !== 'text' && !mediaProviderSupported(mProviderId))} ariaBusy={addingModel}>{addingModel ? t('configuration.adding') : t('configuration.addModel')}</Button>
+					<Button onclick={addModel} disabled={addingModel || manualOutcomeUnknown || registrationUncertain(mProviderId, mName) || !mProviderId || !mName.trim() || (mKind !== 'text' && !mediaProviderSupported(mProviderId))} ariaBusy={addingModel}>{#if addingModel}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{addingModel ? t('configuration.adding') : t('configuration.addModel')}</Button>
 				{:else if discovery && discovery.live_status !== 'error'}
 					<Button onclick={reviewSelected} disabled={!Object.values(selectedAvail).some(Boolean)}>{t('configuration.reviewSelectedModels')}</Button>
 				{/if}
@@ -2419,7 +2419,7 @@
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" disabled={priceSaving} onclick={() => (editingPrice = null)}>{t('configuration.cancel')}</Button>
-				<Button onclick={savePrice} disabled={priceSaving} ariaBusy={priceSaving}>{#if priceSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{priceSaving ? t('configuration.saving') : t('configuration.save')}</Button>
+				<Button onclick={savePrice} disabled={priceSaving} ariaBusy={priceSaving}>{#if priceSaving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{priceSaving ? t('configuration.saving') : t('configuration.save')}</Button>
 			</div>
 		</div>
 	</Modal>
@@ -2451,7 +2451,7 @@
 				{#if capError}<Alert tone="warning" class="mt-3">{capError}</Alert>{/if}
 				<div class="mt-5 flex justify-end gap-2">
 					<Button variant="secondary" onclick={() => (editingCapabilities = null)} disabled={capSaving}>{t('configuration.cancel')}</Button>
-					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))} ariaBusy={capSaving}>{#if capSaving}<ActivityIndicator size="xs" tone="ink" />{/if}{capSaving ? t('configuration.saving') : t('configuration.saveCapabilities')}</Button>
+					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))} ariaBusy={capSaving}>{#if capSaving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{capSaving ? t('configuration.saving') : t('configuration.saveCapabilities')}</Button>
 				</div>
 			{/if}
 		</div>
@@ -2478,7 +2478,7 @@
 				<div aria-live="polite">
 					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider">{t('configuration.pricingProvider')}</label>
 					{#if modelsDevLoading && modelsDevProviders.length === 0}
-						<ActivityIndicator label={t('configuration.loadingPricingProviders')} />
+						<LoadingState variant="section" label={t('configuration.loadingPricingProviders')} />
 					{:else if filteredModelsDevProviders.length > 0}
 						<select id="models-dev-provider" class={inputCls} bind:value={selectedModelsDevProviderId} onchange={loadModelsDevProvider}>
 							<option value="" disabled>{t('configuration.selectPricingProvider')}</option>
@@ -2493,7 +2493,7 @@
 				<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.onlyPriceListsMatchingRegisteredProvidersAreShown')}</p>
 			</div>
 			{#if modelsDevLoading}
-				<ActivityIndicator label={t('configuration.loadingPriceList')} class="mt-4 text-sm text-ink-2" />
+				<LoadingState variant="section" label={t('configuration.loadingPriceList')} class="mt-4 text-sm text-ink-2" />
 			{:else}
 				<div class="mt-4 space-y-2">
 					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text') as model (model.id)}
@@ -2535,7 +2535,7 @@
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" onclick={() => (modelsDevOpen = false)}>{t('configuration.cancel')}</Button>
 				<Button onclick={importModelsDevPrices} disabled={modelsDevImporting || modelsDevLoading || !selectedModelsDevProviderId} ariaBusy={modelsDevImporting}>
-					{#if modelsDevImporting}<ActivityIndicator size="xs" tone="ink" />{/if}{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
+					{#if modelsDevImporting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
 				</Button>
 			</div>
 		</div>

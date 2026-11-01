@@ -274,6 +274,78 @@ async def test_password_shadow_filter_preserves_explicit_password_accounts(nativ
         account_identity.password_account("dev", operation=operation)
 
 
+@pytest.mark.parametrize("projection", ["core-names", "missing-names"])
+@pytest.mark.parametrize("state", ["local", "explicit-shadow-password", "disabled", "changed-home"])
+async def test_password_native_inventory_preserves_exact_candidate_authority(native_env, projection, state):
+    from app.services.native_operation import NativeOperation
+
+    fixture, ks = native_env, native_env.env.keystone
+    local = SimpleNamespace(
+        id="password-user", name="dev", email="local@example.invalid", enabled=True, domain_id="dom-accounts"
+    )
+    ks.user_rows[local.id] = local
+    rows = [
+        {"id": user.id, "domain_id": user.domain_id, **({"name": user.name} if projection == "core-names" else {})}
+        for user in (fixture.user, local)
+    ]
+    # Collection core names may narrow candidates; credential/federation extras
+    # belong only to exact GET. Both duplicate names must survive narrowing.
+    ks.users.client = SimpleNamespace(get=lambda _: (None, {"users": rows, "links": {"next": None}}))
+    if state == "explicit-shadow-password":
+        fixture.user.afterglow_local_password = True
+    elif state == "disabled":
+        local.enabled = False
+    elif state == "changed-home":
+        local.domain_id = "dom-b"
+    with NativeOperation() as operation:
+        operation._ks = ks
+        if state == "local":
+            assert account_identity.password_account("dev", operation=operation) == {
+                "id": local.id,
+                "name": local.name,
+                "domain_id": "dom-accounts",
+            }
+        else:
+            error = {
+                "explicit-shadow-password": svc.DomainAuthConflict,
+                "disabled": Unauthorized,
+                "changed-home": svc.DomainAuthUnavailable,
+            }[state]
+            with pytest.raises(error):
+                account_identity.password_account("dev", operation=operation)
+    assert ks.user_writes == []
+
+
+@pytest.mark.parametrize("local_password", [False, True])
+async def test_password_email_alias_hydrates_federation_and_casefold_collisions(native_env, local_password):
+    from app.services.native_operation import NativeOperation
+
+    fixture, ks = native_env, native_env.env.keystone
+    fixture.user.afterglow_local_password = local_password
+    local = SimpleNamespace(
+        id="password-user", name="local-name", email=fixture.user.email.upper(), enabled=True, domain_id="dom-accounts"
+    )
+    ks.user_rows[local.id] = local
+    ks.users.client = SimpleNamespace(
+        get=lambda _: (
+            None,
+            {
+                "users": [{"id": u.id, "domain_id": u.domain_id, "name": u.name} for u in (fixture.user, local)],
+                "links": {"next": None},
+            },
+        )
+    )
+    with NativeOperation() as operation:
+        operation._ks = ks
+        if local_password:
+            with pytest.raises(svc.DomainAuthConflict) as ambiguous:
+                account_identity.password_account(local.email.swapcase(), operation=operation)
+            assert ambiguous.value.code == "account_ambiguous"
+        else:
+            assert account_identity.password_account(local.email.swapcase(), operation=operation)["id"] == local.id
+    assert ks.user_writes == []
+
+
 @pytest.mark.parametrize(
     "failure", [None, "digest", "mapping", "remote", "duplicate", "truncated", "unavailable", "foreign-idp"]
 )

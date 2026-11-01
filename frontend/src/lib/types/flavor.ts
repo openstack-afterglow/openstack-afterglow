@@ -10,6 +10,7 @@ export type FlavorCapacityStatus = 'available' | 'insufficient' | 'unavailable';
 /** Advisory snapshot of one eligible compute host; Nova still performs the final allocation. */
 export interface FlavorCapacityInfo {
 	status: FlavorCapacityStatus;
+	reason?: 'default_compute_zone_unavailable' | null;
 	checked_at: string;
 	candidate_hosts: number;
 	cpu_resource_class: 'VCPU' | 'PCPU' | null;
@@ -23,6 +24,8 @@ export interface FlavorCapacityInfo {
 
 export interface FlavorEligibility {
 	selectable: boolean;
+	quota_scope?: 'project' | 'domain';
+	domain_id?: string | null;
 	requirements: {
 		instances: number;
 		cores: number;
@@ -55,6 +58,7 @@ export function flavorCreateBlock(flavor: { eligibility?: FlavorEligibility | nu
 	if (!eligibility) return 'unchecked';
 	const codes = (eligibility.blockers ?? []).map(blocker => blocker.code);
 	const quotaCodes = codes.filter(code => !code.startsWith('host_capacity_'));
+	if (quotaCodes.includes('domain_pool_paused')) return 'unchecked';
 	if (quotaCodes.some(code => code.endsWith('_unavailable'))) return 'unchecked';
 	if (quotaCodes.length > 0) return 'quota';
 	if (codes.includes('host_capacity_unavailable')) return 'unchecked';
@@ -66,23 +70,73 @@ export function flavorCreateBlock(flavor: { eligibility?: FlavorEligibility | nu
 	return null;
 }
 
+export interface FlavorGpuPrimaryAlias {
+	name: string;
+	count: number;
+	resource_class: string;
+	profile_name: string;
+}
+
 export interface Flavor {
 	id: string;
 	name: string;
+	display_name?: string | null;
+	cpu_automation_managed?: boolean;
 	vcpus: number;
 	ram: number;
 	disk: number;
 	is_public: boolean;
 	description: string | null;
 	extra_specs: Record<string, string>;
-	is_gpu: boolean;
-	gpu_count: number;
+	is_gpu: boolean | null;
+	gpu_count: number | null;
+	gpu_primary_aliases?: FlavorGpuPrimaryAlias[] | null;
 	frontend_visible?: boolean;
+	usage_schedule_required?: boolean;
 }
 
-export type FlavorOption = Pick<Flavor, 'id' | 'name' | 'vcpus' | 'ram' | 'disk' | 'is_public'> & {
+export interface FlavorComposition {
+	vcpus: number;
+	ram_mb: number;
+	gpu_profile_id: string | null;
+	gpu_count: number;
+}
+
+/** Complete owner-scoped advisory capacity, never persisted as admission authority. */
+export interface FlavorComposerSnapshot {
+	checked_at: string;
+	status: FlavorCapacityStatus;
+	gpu_profiles: { id: string; name: string }[];
+	variants: {
+		gpu_profile_id: string | null;
+		gpu_count: number;
+		status: FlavorCapacityStatus;
+		regions: {
+			vcpus: { min: number; max: number; step: number };
+			ram_mb: { min: number; max: number; step: number };
+		}[];
+		preview: FlavorOption | null;
+	}[];
+}
+
+export interface FlavorComposerOptions {
+	vcpus: number[];
+	ram_mb: number[];
+	gpu_profiles: { id: string; name: string; status: FlavorCapacityStatus }[];
+	gpu_counts: number[];
+	selection: FlavorOption | null;
+	checked_at: string;
+	status: FlavorCapacityStatus;
+}
+
+export type FlavorOption = Pick<Flavor, 'id' | 'name' | 'display_name' | 'cpu_automation_managed' | 'vcpus' | 'ram' | 'disk' | 'is_public'> & {
 	extra_specs?: Record<string, string>;
+	is_gpu?: boolean;
+	gpu_count?: number;
+	gpu_primary_aliases?: FlavorGpuPrimaryAlias[] | null;
+	usage_schedule_required?: boolean;
 	eligibility?: FlavorEligibility | null;
+	composition?: FlavorComposition | null;
 };
 
 export interface PagedResponse<T> {

@@ -44,6 +44,9 @@ afterglow_operator_config_source: "{{ afterglow_config_dir }}/backend/afterglow.
 afterglow_operator_frontend_config_source: "{{ afterglow_config_dir }}/frontend/afterglow.conf"
 afterglow_generated_config_name: "afterglow.generated.conf"
 afterglow_frontend_config_name: "afterglow.frontend.generated.conf"
+# Closed sanitized observation only; never bind controller Nova configuration.
+afterglow_nova_pci_alias_snapshot_dir: "{{ afterglow_runtime_config_dir }}/nova-pci-aliases"
+afterglow_nova_pci_alias_snapshot_path: "{{ afterglow_nova_pci_alias_snapshot_dir }}/aliases.json"
 
 # The ingestion key is server-only and must match the backend protected TOML
 # traffic_analytics.frontend_ingest_key. Keep it in a protected secrets override.
@@ -122,8 +125,8 @@ afterglow_openstack_cacert: "{{ openstack_cacert | default('') }}"
 # The dedicated project and its network, router, and security groups are
 # operator-owned. This role resolves and validates them but never creates or
 # deletes them. An empty network ID lets the backend select the dedicated
-# project's default external-connected network; the security group defaults
-# to that project's own "default" group and its existing rules.
+# project's default external-connected network; the selected security group must
+# have no ingress/remote-group rules (ordinary default ingress is rejected).
 afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
 afterglow_cloud_shell_project_id: ""
 afterglow_cloud_shell_network_id: ""
@@ -134,6 +137,8 @@ afterglow_cloud_shell_volume_type: ""
 afterglow_cloud_shell_home_size_gib: 5
 afterglow_cloud_shell_cpu: 1.0
 afterglow_cloud_shell_memory_mib: 1024
+# Keep identical to the native extension deny list on every eligible compute.
+afterglow_cloud_shell_blocked_cidrs: ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]
 afterglow_cloud_shell_idle_timeout_seconds: 1200
 afterglow_cloud_shell_max_session_seconds: 3600
 afterglow_cloud_shell_ticket_ttl_seconds: 60
@@ -226,6 +231,7 @@ afterglow_services:
       {{
         [
           afterglow_runtime_config_dir ~ '/' ~ afterglow_generated_config_name ~ ':/app/afterglow.conf:ro',
+          afterglow_nova_pci_alias_snapshot_dir ~ ':/app/nova-pci-aliases:ro',
           'kolla_logs:/var/log/kolla/'
         ] + (
           [
@@ -255,6 +261,7 @@ afterglow_services:
           - "option forwardfor"
         backend_http_extra:
           - "http-request set-log-level silent if { path_beg /api/v1/auth/ }"
+          - "http-request set-log-level silent if { path /api/v1/cloud-shell/ws }"
           - "option httpchk GET /api/v1/health"
           - "http-check expect status 200"
   afterglow-frontend:

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { untrack } from 'svelte';
@@ -8,9 +9,10 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { formatDate, formatSize } from '$lib/utils/format';
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tp } from '$lib/i18n/ns/compute-pools';
 	import { getLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import {
 		Alert,
 		CapacityBar,
@@ -29,7 +31,7 @@
 		ToggleGroup,
 	} from '$lib/components/ui';
 	import type { ChatUsage } from '$lib/api/chatTree';
-	import type { DashboardQuotas, QuotaItem } from '$lib/types/quotas';
+	import type { DashboardQuotas, QuotaItem, ComputePoolSummary } from '$lib/types/quotas';
 
 	interface FlavorHour {
 		flavor: string;
@@ -64,11 +66,7 @@
 		series: number[];
 	}
 
-	interface GpuQuotaRow {
-		gpu_type: string;
-		in_use: number;
-		limit: number;
-	}
+	interface GpuQuotaRow extends QuotaItem { gpu_type: string; }
 
 	interface UsageReport {
 		range: string;
@@ -88,12 +86,13 @@
 			compute_available: boolean;
 			storage_available: boolean;
 			instances: QuotaItem;
-			vcpus: QuotaItem;
-			ram_mb: QuotaItem;
+			vcpus: QuotaItem | null;
+			ram_mb: QuotaItem | null;
 			volume_gb: QuotaItem;
 			volumes: QuotaItem;
 			gpu: GpuQuotaRow[];
 			gpu_available: boolean;
+			compute_pool?: ComputePoolSummary;
 		};
 		forecast: {
 			window_days: number;
@@ -114,6 +113,7 @@
 		limit: number;
 		entry: ForecastEntry | null;
 		scale: number;
+		source?: QuotaItem;
 	}
 
 	interface InventoryRow {
@@ -250,18 +250,11 @@
 
 	const computeRows = $derived.by((): ForecastRow[] => {
 		if (!data) return [];
-		const { quota, forecast } = data;
+		const cpu = data.quota.vcpus, ram = data.quota.ram_mb;
+		if (!cpu || !ram) return [];
 		return [
-			{ label: 'vCPU', used: quota.vcpus.in_use, total: quota.vcpus.limit, unit: '', limit: quota.vcpus.limit, entry: forecast.vcpus, scale: 1 },
-			{
-				label: 'RAM',
-				used: quota.ram_mb.in_use / 1024,
-				total: quota.ram_mb.limit === -1 ? -1 : quota.ram_mb.limit / 1024,
-				unit: 'GB',
-				limit: quota.ram_mb.limit,
-				entry: forecast.ram_mb,
-				scale: 1024,
-			},
+			{ label: cpu.quota_scope === 'domain' ? tp('cpu') : 'vCPU', used: cpu.in_use, total: cpu.limit, unit: '', limit: cpu.limit, entry: data.forecast.vcpus, scale: 1, source: cpu },
+			{ label: 'RAM', used: ram.in_use / 1024, total: ram.limit === -1 ? -1 : ram.limit / 1024, unit: 'GB', limit: ram.limit, entry: data.forecast.ram_mb, scale: 1024, source: ram },
 		];
 	});
 
@@ -276,6 +269,7 @@
 			limit: row.limit,
 			entry: forecast.gpu[row.gpu_type] ?? null,
 			scale: 1,
+			source: row,
 		}));
 	});
 
@@ -377,6 +371,7 @@
 	function forecastText(row: ForecastRow, horizon: number): string {
 		const entry = row.entry;
 		if (!entry) return '';
+		if (row.source?.quota_scope === 'domain') return t('usageReport.forecast.noTrend');
 		if (row.limit === -1) return t('usageReport.forecast.unlimited');
 		if (!entry.trend_available || entry.slope_per_day == null) return t('usageReport.forecast.noTrend');
 		return t('usageReport.forecast.summary', {
@@ -396,9 +391,16 @@
 {#snippet forecastRow(row: ForecastRow, horizon: number)}
 	<div class="space-y-1.5">
 		<CapacityBar label={row.label} used={row.used} total={row.total} unit={row.unit} size="sm" />
+		{#if row.source?.quota_scope === 'domain'}
+			<p class="break-words text-xs text-ink-2">{tp('domainQuotaTitle')}</p>
+			<dl class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
+				<div><dt class="inline">{tp('remaining')}: </dt><dd class="inline tabular-nums">{row.source.available == null ? tp('unknown') : row.source.available === -1 ? tp('unlimited') : formatAmount(row.source.available, row.scale)} {row.unit}</dd></div>
+				{#if row.source.project_limit != null}<div><dt class="inline">{tp('projectCaps')}: </dt><dd class="inline tabular-nums">{row.source.project_in_use == null ? tp('unknown') : formatAmount(row.source.project_in_use, row.scale)} / {row.source.project_limit === -1 ? tp('unlimited') : formatAmount(row.source.project_limit, row.scale)} {row.unit}</dd></div>{/if}
+			</dl>
+		{/if}
 		{#if row.entry}
 			<p class="text-xs text-ink-2 tabular-nums">{forecastText(row, horizon)}</p>
-			{#if row.entry.series.length >= 2}
+			{#if row.entry.series.length >= 2 && row.source?.quota_scope !== 'domain'}
 				<div class="space-y-1">
 					<Spark data={row.entry.series} height={24} class="w-full" />
 					<p class="text-xs text-ink-2 tabular-nums">
@@ -440,7 +442,7 @@
 	</ResourceToolbar>
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={6} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('usageReport.title') })} />
 	{:else if error}
 		<Alert tone="danger">{error}</Alert>
 	{:else if data}
@@ -600,6 +602,7 @@
 
 			<Card padding="lg" class="flex min-w-0 flex-col gap-4">
 				<SectionHeader title={t('usageReport.forecast.title')} meta={t('usageReport.forecast.window', { days: data.forecast.window_days })} />
+				{#if data.quota.compute_pool?.state === 'paused' || data.quota.compute_pool?.state === 'unavailable'}<Alert tone="warning">{tp(data.quota.compute_pool.state === 'paused' ? 'pauseHelp' : 'domainUnavailable')}</Alert>{/if}
 
 				<div class="space-y-3">
 					<SectionLabel>{t('usageReport.resources.compute')}</SectionLabel>
@@ -697,7 +700,7 @@
 			<SectionHeader title={t('usageReport.inventory.title')} meta={t('usageReport.inventory.meta')} />
 			<div class="mt-4">
 				{#if inventoryState === 'loading'}
-					<LoadingSkeleton variant="table" rows={4} />
+					<LoadingState variant="section" label={tl('state.loadingNamed', { name: t('usageReport.inventory.title') })} />
 				{:else if inventoryState === 'error'}
 					<Alert tone="warning">{t('usageReport.inventory.loadFailed')}</Alert>
 				{:else}

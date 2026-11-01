@@ -15,7 +15,7 @@
 
 <style>
   .section-label {
-    font-size: 0.6875rem;
+    font-size: var(--type-support);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     font-weight: 500;

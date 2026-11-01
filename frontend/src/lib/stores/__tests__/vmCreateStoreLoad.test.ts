@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ClientModule from '$lib/api/client';
 import { ApiError } from '$lib/api/client';
-import { auth } from '../auth';
+import { auth, authReady } from '../auth';
 import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
@@ -78,6 +78,8 @@ describe('VM create option loading boundaries', () => {
 		resetWizard();
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
 		auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
+		auth.update(value => ({ ...value, canWrite: true, isSystemAdmin: true }));
+		authReady.set(true);
 		siteConfig.update(config => ({
 			...config,
 			services: { ...config.services, manila: true },
@@ -147,6 +149,33 @@ describe('VM create option loading boundaries', () => {
 		]));
 	});
 
+	it.each([
+		[404, 'Default 네트워크가 설정되지 않았습니다', 'default_network_not_configured', 'yes'],
+		[404, 'Default 네트워크가 설정되지 않았습니다', undefined, 'no'],
+		[404, 'Not Found', undefined, 'no'],
+		[401, 'Unauthorized', undefined, 'no'],
+		[503, 'Native network unavailable', undefined, 'no'],
+	])('distinguishes optional default absence from network failure (%s, %s, %s)', async (status, message, code, allowed) => {
+		api.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/networks/default') return Promise.reject(new ApiError(status, message, code));
+			if (path === '/api/v1/networks') return Promise.resolve([{ id: 'available-network', name: 'Available network' }]);
+			if (path === '/api/v1/keypairs') return Promise.resolve([{ name: 'existing-key' }]);
+			if (path === '/api/v1/images') return Promise.resolve([image]);
+			if (path === '/api/v1/flavors?capacity=create') return Promise.resolve([capacityFlavor('f1')]);
+			return Promise.resolve([]);
+		});
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('f1'));
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		await fireEvent.click(screen.getByTestId('select-image'));
+		await vi.waitFor(() => expect(screen.getByTestId('network').textContent).toBe('Available network'));
+		expect(screen.getByTestId('step').textContent).toBe('5');
+		expect(screen.queryByRole('alert') !== null).toBe(allowed === 'no');
+		if (allowed === 'yes') expect(screen.getByTestId('can-next').textContent).toBe('yes');
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
 	it('skips the file-storage catalog when Manila is disabled', async () => {
 		siteConfig.update(config => ({
 			...config,
@@ -172,21 +201,85 @@ describe('VM create option loading boundaries', () => {
 				return Promise.resolve([{ ...flavor, id: `flavor-${projectId}`, name: `${projectId}-flavor` }]);
 			}
 			if (path === '/api/v1/dashboard/quotas') {
-				return Promise.resolve({ compute: { cores: { limit: projectId === 'project-a' ? 4 : 8, in_use: 0 } } });
+				return Promise.resolve({
+					compute: { cores: { limit: 100, in_use: 60 }, ram: { limit: 262144, in_use: 196608 } },
+					native_compute: {
+						cores: { limit: projectId === 'project-a' ? 4 : -1, in_use: projectId === 'project-a' ? 2 : 8 },
+						ram: { limit: -1, in_use: projectId === 'project-a' ? 4096 : 16384 },
+					},
+					storage: { gigabytes: { limit: 500, in_use: 20 } },
+				});
 			}
 			return Promise.resolve([]);
 		});
 		render(VmCreateStoreLoadWrapper);
 		await fireEvent.click(screen.getByTestId('init'));
 		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('4'));
+		expect(JSON.parse(screen.getByTestId('quota-summary').textContent!)).toEqual({
+			cores: { limit: 4, in_use: 2 }, ram: { limit: -1, in_use: 4096 }, gigabytes: { limit: 500, in_use: 20 },
+		});
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('project-a-flavor'));
 
 		auth.update(state => ({ ...state, projectId: 'project-b', projectName: 'Project B', token: 'token-b' }));
 
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('project-b-flavor'));
-		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('8'));
+		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('-1'));
+		expect(JSON.parse(screen.getByTestId('quota-summary').textContent!)).toEqual({
+			cores: { limit: -1, in_use: 8 }, ram: { limit: -1, in_use: 16384 }, gigabytes: { limit: 500, in_use: 20 },
+		});
 		expect(api.get.mock.calls.filter(([path]) => path === '/api/v1/dashboard/quotas').map(([, , projectId]) => projectId))
 			.toEqual(['project-a', 'project-b']);
+	});
+
+	it('rejects an obsolete native quota response after the project changes A to B to A', async () => {
+		auth.update(state => ({ ...state, projectId: 'project-a', projectName: 'Project A' }));
+		const firstA = deferred<unknown>();
+		const secondA = deferred<unknown>();
+		let aCalls = 0;
+		api.get.mockImplementation((path: string, _token?: string, projectId?: string) => {
+			if (path === '/api/v1/dashboard/quotas') {
+				if (projectId === 'project-a') return ++aCalls === 1 ? firstA.promise : secondA.promise;
+				return Promise.resolve({ compute: { cores: { limit: 200, in_use: 120 } }, native_compute: { cores: { limit: 8, in_use: 3 } } });
+			}
+			return Promise.resolve([]);
+		});
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(aCalls).toBe(1));
+		auth.update(state => ({ ...state, projectId: 'project-b', projectName: 'Project B' }));
+		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('8'));
+		auth.update(state => ({ ...state, projectId: 'project-a', projectName: 'Project A' }));
+		await vi.waitFor(() => expect(aCalls).toBe(2));
+		secondA.resolve({ compute: { cores: { limit: 100, in_use: 60 } }, native_compute: { cores: { limit: -1, in_use: 6 }, ram: { limit: -1, in_use: 12288 } } });
+		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('-1'));
+		firstA.resolve({ compute: { cores: { limit: 100, in_use: 60 } }, native_compute: { cores: { limit: 4, in_use: 1 }, ram: { limit: 8192, in_use: 2048 } } });
+		await Promise.resolve(); await Promise.resolve();
+		expect(JSON.parse(screen.getByTestId('quota-summary').textContent!)).toEqual({
+			cores: { limit: -1, in_use: 6 }, ram: { limit: -1, in_use: 12288 },
+		});
+	});
+
+	it.each([
+		undefined, null, {}, { limit: -1 }, { in_use: 2 }, { limit: null, in_use: 2 },
+		{ limit: '-1', in_use: 2 }, { limit: -2, in_use: 2 }, { limit: -1, in_use: -1 },
+		{ limit: Infinity, in_use: 2 }, { limit: -1, in_use: NaN }, { limit: 4.5, in_use: 2 },
+	])('keeps malformed or missing native pairs unknown without domain fallback (%j)', async pair => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/dashboard/quotas'
+			? { compute: { cores: { limit: -1, in_use: 60 } }, native_compute: { cores: pair, ram: { limit: -1, in_use: 4096 } } }
+			: []));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('quota-summary').textContent).toBe('{"ram":{"limit":-1,"in_use":4096}}'));
+		expect(screen.getByTestId('quota').textContent).toBe('none');
+	});
+
+	it.each([undefined, null])('does not replace absent native compute with effective domain compute (%j)', async native_compute => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/dashboard/quotas'
+			? { compute: { cores: { limit: -1, in_use: 60 }, ram: { limit: -1, in_use: 196608 } }, native_compute }
+			: []));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(screen.getByTestId('quota-summary').textContent).toBe('{}'));
 	});
 
 	it('reloads target-project flavors when an administrator changes the selected project', async () => {

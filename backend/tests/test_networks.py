@@ -1,13 +1,17 @@
 """네트워크 및 Floating IP API 테스트."""
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.models.compute import InstanceInfo
 from app.models.storage import FloatingIpInfo, NetworkInfo, SubnetDetail, TopologyData
+from app.services import default_network
 
 
 def make_fip(project_id: str = "test-project-123") -> FloatingIpInfo:
@@ -151,6 +155,152 @@ async def test_create_subnet_rejects_foreign_network(client, mock_conn):
 
     assert resp.status_code == 404
     create.assert_not_called()
+
+
+@pytest.fixture
+def default_network_db(monkeypatch):
+    row = SimpleNamespace(
+        project_id="test-project-123",
+        network_id="net-default",
+        subnet_id="subnet-default",
+        router_id="router-default",
+        auto_created=True,
+        created_at=datetime(2026, 11, 1, tzinfo=UTC),
+        updated_at=None,
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = row
+    session = AsyncMock()
+    session.execute.return_value = result
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    factory = MagicMock(return_value=context)
+    available = MagicMock(return_value=True)
+    get_factory = MagicMock(return_value=factory)
+    monkeypatch.setattr(default_network, "is_db_available", available)
+    monkeypatch.setattr(default_network, "get_session_factory", get_factory)
+    return SimpleNamespace(
+        row=row,
+        result=result,
+        session=session,
+        factory=factory,
+        available=available,
+        get_factory=get_factory,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_default_network_confirmed_empty_has_stable_code(client, mock_conn, default_network_db):
+    default_network_db.result.scalar_one_or_none.return_value = None
+
+    response = await client.get("/api/v1/networks/default")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {
+            "code": "default_network_not_configured",
+            "message": "Default 네트워크가 설정되지 않았습니다",
+        }
+    }
+    default_network_db.result.scalar_one_or_none.assert_called_once_with()
+    mock_conn.network.assert_not_called()
+    assert mock_conn.network.mock_calls == []
+    default_network_db.session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_default_network_available_record_is_read_only(client, mock_conn, default_network_db):
+    response = await client.get("/api/v1/networks/default")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "project_id": "test-project-123",
+        "network_id": "net-default",
+        "subnet_id": "subnet-default",
+        "router_id": "router-default",
+        "auto_created": True,
+        "created_at": "2026-11-01T00:00:00+00:00",
+        "updated_at": None,
+    }
+    statement = default_network_db.session.execute.await_args.args[0]
+    assert statement.compile().params == {"project_id_1": "test-project-123"}
+    assert mock_conn.network.mock_calls == []
+    default_network_db.session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["unavailable", "factory_missing", "query_failure", "scalar_failure"])
+async def test_get_default_network_storage_failure_then_retry_recovers(client, mock_conn, default_network_db, failure):
+    if failure == "unavailable":
+        default_network_db.available.return_value = False
+    elif failure == "factory_missing":
+        default_network_db.get_factory.return_value = None
+    elif failure == "query_failure":
+        default_network_db.session.execute.side_effect = RuntimeError("private database endpoint and credentials")
+    else:
+        default_network_db.result.scalar_one_or_none.side_effect = RuntimeError("private query details")
+
+    failed = await client.get("/api/v1/networks/default")
+
+    assert failed.status_code == 503
+    assert failed.json() == {"detail": "default_network_storage_unavailable"}
+    if failure in {"unavailable", "factory_missing"}:
+        default_network_db.session.execute.assert_not_awaited()
+    default_network_db.available.return_value = True
+    default_network_db.get_factory.return_value = default_network_db.factory
+    default_network_db.session.execute.side_effect = None
+    default_network_db.result.scalar_one_or_none.side_effect = None
+
+    recovered = await client.get("/api/v1/networks/default")
+
+    assert recovered.status_code == 200
+    assert recovered.json()["network_id"] == "net-default"
+    assert mock_conn.network.mock_calls == []
+    default_network_db.session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["unavailable", "factory_missing", "query_failure"])
+async def test_ensure_default_network_does_not_provision_when_storage_is_unknown(
+    mock_conn, default_network_db, failure
+):
+    if failure == "unavailable":
+        default_network_db.available.return_value = False
+    elif failure == "factory_missing":
+        default_network_db.get_factory.return_value = None
+    else:
+        default_network_db.session.execute.side_effect = RuntimeError("database unavailable")
+
+    with patch("app.services.neutron.provision_default_network") as provision:
+        with pytest.raises(HTTPException) as error:
+            await default_network.ensure_default_network(mock_conn, "test-project-123", "net-external")
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "default_network_storage_unavailable"
+    provision.assert_not_called()
+    assert mock_conn.network.mock_calls == []
+    default_network_db.session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_network_route_preserves_storage_unavailable(client, mock_conn, default_network_db):
+    default_network_db.available.return_value = False
+    settings = SimpleNamespace(default_network_enabled=True, default_network_cidr="192.168.0.0/24")
+    with (
+        patch("app.api.network.networks.get_settings", return_value=settings),
+        patch(
+            "app.services.resource_policy_store.resolve_policies",
+            new=AsyncMock(return_value={"nova.default_external_network": "net-external"}),
+        ),
+        patch("app.services.neutron.provision_default_network") as provision,
+    ):
+        response = await client.post("/api/v1/networks/ensure-default")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "default_network_storage_unavailable"}
+    provision.assert_not_called()
+    assert mock_conn.network.mock_calls == []
 
 
 @pytest.mark.asyncio

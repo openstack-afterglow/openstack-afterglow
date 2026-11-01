@@ -4,7 +4,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
 	import type { SecurityGroupUnionGroup, SecurityGroupUnionRow } from '$lib/utils/securityGroupUnion';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	interface Props {
@@ -87,7 +87,7 @@
 	</p>
 
 	{#if loading}
-		<ActivityIndicator label={t('securityGroupUnion.loading')} />
+		<LoadingState variant="section" label={t('securityGroupUnion.loading')} />
 	{:else if error}
 		<p role="alert" class="text-xs leading-relaxed text-state-danger-text break-words">
 			{t('securityGroupUnion.error', { error })}

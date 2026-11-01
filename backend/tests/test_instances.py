@@ -24,12 +24,15 @@ def _resolve_default_placement_policies(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _ordinary_consume_dispatch(monkeypatch):
+def _ordinary_consume_dispatch(monkeypatch, mock_conn):
     """These ordinary-instance units do not provision the resource ledger.
 
     Real database/provider block dispatch coverage lives in test_layer_consume_resources.
     """
     monkeypatch.setattr("app.services.layer_consume_resources.lookup_for_server", AsyncMock(return_value=[]))
+    mock_conn.compute.get_server.return_value = SimpleNamespace(
+        id="inst-1", project_id="test-project-123", tenant_id=None, metadata={}, status="ACTIVE"
+    )
 
 
 def make_instance(instance_id: str = "inst-1", name: str = "test-vm", status: str = "ACTIVE") -> InstanceInfo:
@@ -254,6 +257,7 @@ def _own_server():
     s = MagicMock()
     s.id = "inst-1"
     s.project_id = "test-project-123"
+    s.metadata = {}
     return s
 
 
@@ -864,6 +868,7 @@ async def test_create_instance_gpu_attaches_both_sgs(client, mock_conn):
                 "image_id": "img-1",
                 "flavor_id": "flavor-gpu",
                 "network_id": "net-1",
+                "usage_schedule": {},
             },
         )
 
@@ -876,6 +881,52 @@ async def test_create_instance_gpu_attaches_both_sgs(client, mock_conn):
     assert "node_exporter" in attached_sgs
     assert "dcgm_exporter" in attached_sgs
     assert "default" in attached_sgs
+
+
+@pytest.mark.asyncio
+async def test_domain_pool_gpu_creation_keeps_gpu_initialization(client, mock_conn):
+    """A pooled GPU still needs GPU guest setup, without a legacy reservation."""
+    from unittest.mock import MagicMock
+
+    from tests.test_domain_pool_flavor_eligibility import flavor, legacy_quota, pool_snapshot
+
+    fake_vol = MagicMock(id="vol-boot")
+    attached_sgs = []
+
+    def create_server(conn, name, flavor_id, network_id, boot_volume_id, **kwargs):
+        attached_sgs.extend(kwargs.get("security_groups") or [])
+        return make_instance("srv-new")
+
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[flavor()]),
+        patch("app.services.compute_pools.project_pool_snapshot", new_callable=AsyncMock, return_value=pool_snapshot()),
+        patch("app.services.flavor_eligibility.nova.get_project_quota", return_value=legacy_quota()),
+        patch("app.services.instance_names.ensure_unique_instance_name", side_effect=lambda _conn, name: name),
+        patch("app.services.gpu_quota.reserve_gpu_quota", new_callable=AsyncMock) as reserve,
+        patch("app.api.compute.instances.cinder.create_volume_from_image", return_value=fake_vol),
+        patch("app.api.compute.instances.cinder.rename_volume"),
+        patch("app.api.compute.instances.cloudinit.generate_userdata", return_value="dXNlcmRhdGE=") as generate,
+        patch("app.api.compute.instances.neutron.ensure_node_exporter_sg", return_value="node_exporter"),
+        patch("app.api.compute.instances.neutron.ensure_dcgm_exporter_sg", return_value="dcgm_exporter"),
+        patch("app.api.compute.instances.nova.create_server", side_effect=create_server),
+        patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
+        patch("app.api.compute.instances.get_settings", return_value=_make_monitoring_settings()),
+    ):
+        response = await client.post(
+            "/api/v1/instances",
+            json={
+                "name": "pool-gpu",
+                "image_id": "img-1",
+                "flavor_id": "g1-c4",
+                "network_id": "net-1",
+                "usage_schedule": {},
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    assert generate.call_args.kwargs["gpu_available"] is True
+    assert "dcgm_exporter" in attached_sgs
+    reserve.assert_not_awaited()
 
 
 @pytest.mark.asyncio

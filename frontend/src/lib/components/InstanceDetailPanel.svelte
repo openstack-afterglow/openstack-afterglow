@@ -3,7 +3,7 @@
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { Alert, Button } from '$lib/components/ui';
@@ -16,12 +16,14 @@
 	import VolumesSection from '$lib/components/instance/VolumesSection.svelte';
 	import UnionInfoSection from '$lib/components/instance/UnionInfoSection.svelte';
 	import StorageAttachmentsSection from '$lib/components/instance/StorageAttachmentsSection.svelte';
+	import UsageScheduleSection from '$lib/components/instance/UsageScheduleSection.svelte';
 	import MigrateModal from '$lib/components/instance/MigrateModal.svelte';
 	import PasswordModal from '$lib/components/instance/PasswordModal.svelte';
 	import RenameModal from '$lib/components/instance/RenameModal.svelte';
 	import ResizeModal from '$lib/components/instance/ResizeModal.svelte';
 	import EvacuateModal from '$lib/components/admin/instances/EvacuateModal.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
@@ -86,7 +88,7 @@
 	});
 
 	// 리소스 사용량 권장 상태
-	interface FlavorSnippet { id: string; name: string; vcpus: number; ram: number; disk: number }
+	interface FlavorSnippet { id: string; name: string; display_name?: string | null; vcpus: number; ram: number; disk: number }
 	interface SummaryRec {
 		underutilized: boolean;
 		reason: string | null;
@@ -173,8 +175,9 @@
 	}
 </script>
 
-<div class="{onClose ? 'p-8' : ''} motion-fade" aria-busy={s.loading && !s.instance}>
-	<div class="mb-6 flex items-center justify-between">
+<!-- 최초 로딩은 패널 남은 높이 전체를 잔광 장면으로 채운다. SlidePanel 안에서는 흐름 배치된 닫기 버튼(mt-3 + size-9 = 3rem)을 뺀다. -->
+<div class="{onClose && !(s.loading && !s.instance) ? 'p-8' : ''} {s.loading && !s.instance ? `flex flex-col ${onClose ? 'min-h-[calc(100%-3rem)]' : 'min-h-full'}` : 'min-h-full'} motion-fade" aria-busy={s.loading && !s.instance}>
+	<div class="mb-6 flex items-center justify-between {onClose && s.loading && !s.instance ? 'px-8' : ''}">
 		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
 		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
 		{#if !onClose}
@@ -196,7 +199,7 @@
 			{s.error}
 		</div>
 	{:else if s.loading && !s.instance}
-		<LoadingSkeleton variant="card" rows={6} />
+		<LoadingState variant="surface" class={onClose ? undefined : 'min-h-[calc(100dvh-var(--app-header-height)-8rem)]'} />
 	{:else if s.instance}
 		<InstanceHeader
 			canMutate={$canWrite}
@@ -222,7 +225,7 @@
 					{/snippet}
 					<RichText segments={t.rich('panel.lowUsage', { cpu: summaryCpuAvg ?? '—', memory: summaryMemAvg ?? '—' })} tags={{ cpu: cpuUsage, memory: memoryUsage }} />
 					{#if recommendation.suggested_flavor}
-						<RichText segments={t.rich('panel.suggestedResize', { flavor: recommendation.suggested_flavor.name })} classes={{ strong: 'text-warm-text' }} />
+						<RichText segments={t.rich('panel.suggestedResize', { flavor: adminMode ? recommendation.suggested_flavor.display_name ?? recommendation.suggested_flavor.name : consumerFlavorLabel(recommendation.suggested_flavor) })} classes={{ strong: 'text-warm-text' }} />
 					{:else}
 						{t('panel.smallerResize')}
 					{/if}
@@ -235,8 +238,9 @@
 			</div>
 		{/if}
 
-		<InfoSection {showHost} />
-		{#if s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
+		<InfoSection {showHost} {adminMode} />
+		{#if effectiveProjectId && s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
+		<UsageScheduleSection {instanceId} projectId={effectiveProjectId} {adminMode} canWrite={$canWrite} {onUpdated} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
 			<MetricsPanel
@@ -265,7 +269,7 @@
 	<RenameModal />
 {/if}
 {#if showResizeModal && canShowResize}
-	<ResizeModal preselectFlavorId={resizePreselectFlavorId} onClose={() => { showResizeModal = false; }} />
+	<ResizeModal {adminMode} preselectFlavorId={resizePreselectFlavorId} onClose={() => { showResizeModal = false; }} />
 {/if}
 {#if showEvacuateModal && s.instance}
 	<EvacuateModal

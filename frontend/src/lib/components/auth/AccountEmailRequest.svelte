@@ -6,7 +6,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/domain-auth';
 
 	let { signup = false }: { signup?: boolean } = $props();
@@ -31,8 +31,11 @@
 		if (!ready || sending || !form?.reportValidity()) return;
 		sending = true; error = ''; sent = false;
 		try {
-			await api.post(signup ? '/api/v1/auth/registrations' : `/api/v1/auth/recovery/${kind}`, { email: email.trim() }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
-			if (live) { sent = true; email = ''; }
+			const result = await api.post<{ accepted: boolean }>(signup ? '/api/v1/auth/registrations' : `/api/v1/auth/recovery/${kind}`, { email: email.trim() }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
+			if (live) {
+				if (result?.accepted === true) { sent = true; email = ''; }
+				else error = t('login.signup.failed');
+			}
 		} catch (e) {
 			if (live) error = e instanceof ApiError && e.status === 429 ? t('login.signup.rateLimited') : t('login.signup.failed');
 		} finally { if (live) sending = false; }
@@ -40,7 +43,7 @@
 </script>
 
 {#if loading}
-	<ActivityIndicator label={t('onboarding.processing')} />
+	<LoadingState variant="section" label={t('onboarding.processing')}  />
 {:else}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if sent}<Alert tone="info">{signup ? t('login.signup.sent') : t('recovery.sent')}</Alert>{/if}
@@ -52,11 +55,12 @@
 					<label class="min-h-11 flex items-center gap-2"><input type="radio" bind:group={kind} value="username" />{t('recovery.username')}</label>
 					<label class="min-h-11 flex items-center gap-2"><input type="radio" bind:group={kind} value="password" />{t('recovery.password')}</label>
 				</fieldset>
+				{#if kind === 'password'}<p class="text-sm text-ink-1">{t('recovery.passwordHelp')}</p>{/if}
 			{/if}
 			<Field for="account-request-email" label={t('login.signup.email')} help={signup ? t('signup.description') : t('recovery.description')} required>
 				<TextInput id="account-request-email" type="email" autocomplete="email" inputmode="email" bind:value={email} disabled={sending} required />
 			</Field>
-			<Button type="submit" disabled={sending} ariaBusy={sending} class="w-full">{sending ? t('login.signup.sending') : t('login.signup.submit')}</Button>
+			<Button type="submit" disabled={sending} ariaBusy={sending} class="w-full">{#if sending}<LoadingState variant="control" label={t('login.signup.sending')} />{:else}{t('login.signup.submit')}{/if}</Button>
 		</form>
 	{/if}
 {/if}

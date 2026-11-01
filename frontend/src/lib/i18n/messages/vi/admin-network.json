@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "Số hàng mỗi trang",
+	"list.analytics": "Xu hướng mạng",
+	"list.details": "Xem chi tiết",
+	"list.actionsFor": "Thao tác cho mạng {name}",
+	"list.scopedHistory": "Không có lịch sử mạng toàn đám mây trong phạm vi dự án.",
+	"list.deleteImpact": "Không thể hoàn tác việc xóa mạng. Các cổng đang kết nối có thể ngăn việc xóa.",
 	"loadbalancersPage.loading": "Đang tải các bộ cân bằng tải...",
 	"adminNetworkCreateModal.title": "Tạo mạng",
 	"adminNetworkCreateModal.name": "Tên",

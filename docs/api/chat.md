@@ -158,6 +158,8 @@ Account-capable native provider의 **계정·인증 정보 관리**에서 같은
 
 모델 목록 실패는 HTTP 상태를 표시합니다. 채팅 `202` 이전의 비-2xx 응답은 BFF가 보존한 HTTP 상태와 응답의 제한된 `detail`(유효성 오류라면 제한된 필드·메시지)을 표시합니다. 대화 생성 등 다른 요청의 원문 오류를 신뢰할 수 없는 경우에는 상태만 표시합니다. 상위 서비스가 응답하지 않거나 detail이 없으면 상태에 기반한 오류를 표시하며 HTML·원본 오류 본문을 노출하지 않습니다. `202` 이후에는 새 HTTP 상태가 없으므로 `run.failed`의 `safe_message`, `error_code`, run ID를 표시하고 취소를 실패와 구분합니다. 추가 조사에는 실패 단계, 모델 ID, HTTP 상태/detail 또는 run ID·안전한 오류 코드를 사용합니다. 키, 토큰, 프롬프트, provider 예외 원문은 수집하거나 화면에 표시하지 않습니다.
 
+채팅 응답의 **TTFT**는 브라우저가 전송을 수락한 시점부터 첫 비어 있지 않은 **답변 텍스트를 수신**할 때까지의 시간입니다. 새 대화 생성, 최신 기록 조회, run 접수, 큐·네트워크 대기를 포함하며 추론(reasoning), 상태·도구 이벤트는 제외합니다. `part.delta` 없이 `part.completed`로 텍스트가 처음 도착해도 측정합니다. 첫 수신 뒤 값은 고정되고 기존 tok/s·생성 시간과 별도로 표시됩니다. 일반/임시 채팅·재생성·재시도는 각 요청에서 새로 측정합니다. 시작을 관측하지 않은 과거 기록·재접속 resume와 텍스트 없는 실패/취소에는 값을 만들지 않습니다. 이 값은 화면의 일시 계측이며 서버/DB에 저장되는 provider TTFT나 첫 화면 paint 시간은 아닙니다.
+
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws"}`만 반환합니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.

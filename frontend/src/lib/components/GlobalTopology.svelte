@@ -180,7 +180,7 @@
 
 	{#if ctrl.orderedNetworks.length > 0}
 		<div class="sticky top-0 z-30 overflow-hidden -mx-6 px-0 mb-1"
-		     style="background: {isLight ? '#f9fafb' : '#111827'}">
+		     style="background: var(--color-surface-base)">
 			<div class="flex" style="width: max-content; transform: translateX({-scrollLeft}px); will-change: transform">
 				<div style="width: {SIDEBAR_W + 24}px; flex-shrink: 0"></div>
 				<div class="flex-shrink-0" style="width: {ctrl.canvasContentW}px">
@@ -220,7 +220,7 @@
 			<!-- 사이드바: sticky left, sidebarEl 에 바인딩하여 anchor 측정 기준점 확보 -->
 			<div
 				class="sticky left-0 z-20 flex-shrink-0 flex flex-col gap-3 pr-4"
-				style="width: {SIDEBAR_W}px; background: {isLight ? '#f9fafb' : '#111827'}"
+				style="width: {SIDEBAR_W}px; background: var(--color-surface-base)"
 				bind:this={sidebarEl}
 			>
 				<TopologySidebar

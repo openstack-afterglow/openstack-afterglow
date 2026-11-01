@@ -66,6 +66,15 @@ function installInventory(rows: AdminNetwork[] = inventory) {
 	});
 }
 async function settle() { await tick(); await tick(); }
+async function expandHistory() {
+	const details = screen.getByText('list.analytics').closest('details')!;
+	details.open = true;
+	await fireEvent(details, new Event('toggle'));
+	await settle();
+}
+async function openRowActions(row: HTMLElement) {
+	await fireEvent.click(within(row).getByRole('button', { name: 'list.actionsFor' }));
+}
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -79,6 +88,29 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('administrator network inventory', () => {
+	it('starts with collapsed history, pages the complete inventory and restores focus after menu Escape', async () => {
+		const fleet = Array.from({ length: 21 }, (_, index) => network(`network-${index}`, `Network ${index}`, false, false));
+		installInventory(fleet);
+		render(Page);
+		await screen.findByRole('button', { name: 'Network 0' });
+		expect(screen.queryByLabelText('Network history')).toBeNull();
+		expect(rows().queryByRole('button', { name: 'Network 20' })).toBeNull();
+		const firstRow = rows().getByRole('button', { name: 'Network 0' }).closest('tr')!;
+		const trigger = within(firstRow).getByRole('button', { name: 'list.actionsFor' });
+		await fireEvent.click(trigger);
+		expect(screen.getByRole('button', { name: 'adminNetworkTable.edit' })).toBeTruthy();
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(document.activeElement).toBe(trigger);
+		expect(screen.queryByRole('button', { name: 'adminNetworkTable.edit' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
+		expect(rows().getByRole('button', { name: 'Network 20' })).toBeTruthy();
+		expect(rows().queryByRole('button', { name: 'Network 0' })).toBeNull();
+		await search('Network 0');
+		expect(rows().getByRole('button', { name: 'Network 0' })).toBeTruthy();
+		await expandHistory();
+		expect(screen.getByLabelText('Network history')).toBeTruthy();
+	});
+
 	it('intersects independent flags without classifying external/shared overlap as internal', async () => {
 		render(Page);
 		await screen.findByRole('button', { name: both.name });
@@ -107,14 +139,14 @@ describe('administrator network inventory', () => {
 		await search(`  ＰＲＯＤＵＣＴＩＯＮ   operations ${both.id.slice(-12)} ${ownerId.slice(-12)} 외부 공유 `);
 		expect(rows().getByRole('button', { name: both.name })).toBeTruthy();
 		expect(screen.getByText('1 of 4 networks')).toBeTruthy();
-		expect(rows().getByText(ownerId)).toBeTruthy();
+		expect(rows().getByTitle(ownerId)).toBeTruthy();
 		await search('private 내부');
 		expect(rows().getByRole('button', { name: internal.name })).toBeTruthy();
 		await search('production nonexistent');
 		expect(screen.getByText('networksPage.noMatches')).toBeTruthy();
 		expect(searchInput()).toHaveProperty('value', 'production nonexistent');
 		await fireEvent.click(resetButton());
-		expect(rows().getAllByText(ownerId)).toHaveLength(4);
+		expect(rows().getAllByTitle(ownerId)).toHaveLength(4);
 	});
 
 	it('retains controls on successful empty inventory and distinguishes first-load failure from zero', async () => {
@@ -141,6 +173,7 @@ describe('administrator network inventory', () => {
 	it('keeps full inventory, filter state and history on failed background refresh and only looks up owners once', async () => {
 		render(Page);
 		await screen.findByRole('button', { name: both.name });
+		await expandHistory();
 		await select('외부', 'yes');
 		await search('production');
 		const refresh = deferred<AdminNetwork[]>();
@@ -167,7 +200,7 @@ describe('administrator network inventory', () => {
 		});
 		render(Page);
 		await screen.findByText('networksPage.ownerWarningBody');
-		expect(rows().getAllByText(ownerId)).toHaveLength(4);
+		expect(rows().getAllByTitle(ownerId)).toHaveLength(4);
 		await search(ownerId.toUpperCase());
 		expect(screen.getByText('4 of 4 networks')).toBeTruthy();
 		expect(screen.queryByText('Platform Operations')).toBeNull();
@@ -190,6 +223,7 @@ describe('administrator network inventory', () => {
 		if (field === 'route') route.set({ url: new URL('https://example.test/admin/networks/other'), params: {} });
 		else auth.update((state) => ({ ...state, [field]: `new-${field}` }));
 		if (field !== 'route') await screen.findByRole('button', { name: internal.name });
+		if (field !== 'route') await expandHistory();
 		else await settle();
 		oldInventory.resolve([both]);
 		oldNames.resolve([{ id: ownerId, name: 'Old Owner' }]);
@@ -207,6 +241,7 @@ describe('administrator network inventory', () => {
 	it('keeps newest inventory generation and history range when earlier same-scope responses arrive late', async () => {
 		render(Page);
 		await screen.findByRole('button', { name: both.name });
+		await expandHistory();
 		const oldInventory = deferred<AdminNetwork[]>();
 		const oldHistory = deferred<TsPoint[]>();
 		mocks.get.mockImplementation((path: string) => path.includes('/timeseries/') ? oldHistory.promise : oldInventory.promise);
@@ -232,7 +267,8 @@ describe('administrator network inventory', () => {
 		expect(mocks.goto).toHaveBeenCalledWith(`/admin/networks/${both.id}`);
 		await search('production');
 		const row = rows().getByRole('button', { name: both.name }).closest('tr')!;
-		await fireEvent.click(within(row).getByRole('button', { name: 'adminNetworkTable.edit' }));
+		await openRowActions(row);
+		await fireEvent.click(screen.getByRole('button', { name: 'adminNetworkTable.edit' }));
 		const dialog = within(screen.getByRole('dialog'));
 		await fireEvent.input(dialog.getByLabelText('adminNetworkEditModal.name'), { target: { value: 'Production Renamed' } });
 		mocks.put.mockResolvedValue({});
@@ -274,7 +310,8 @@ describe('administrator network inventory', () => {
 		render(InventoryBoundary, { page: Page });
 		await screen.findByRole('button', { name: both.name });
 		const row = rows().getByRole('button', { name: both.name }).closest('tr')!;
-		await fireEvent.click(within(row).getByRole('button', { name: 'adminNetworkTable.edit' }));
+		await openRowActions(row);
+		await fireEvent.click(screen.getByRole('button', { name: 'adminNetworkTable.edit' }));
 		const pending = deferred<object>();
 		mocks.put.mockReturnValueOnce(pending.promise);
 		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'adminNetworkEditModal.save' }));
@@ -283,7 +320,8 @@ describe('administrator network inventory', () => {
 		await settle();
 		await screen.findByRole('button', { name: internal.name });
 		const newRow = rows().getByRole('button', { name: internal.name }).closest('tr')!;
-		await fireEvent.click(within(newRow).getByRole('button', { name: 'adminNetworkTable.edit' }));
+		await openRowActions(newRow);
+		await fireEvent.click(screen.getByRole('button', { name: 'adminNetworkTable.edit' }));
 		pending.resolve({});
 		await settle();
 		expect(within(screen.getByRole('dialog')).getByLabelText('adminNetworkEditModal.name')).toHaveProperty('value', internal.name);

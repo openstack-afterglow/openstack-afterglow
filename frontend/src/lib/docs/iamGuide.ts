@@ -1,4 +1,13 @@
-import type { DocGuide } from './types';
+import type { DocGuide, DocRoleHierarchy } from './types';
+
+function serviceHierarchy(service: 'waygate' | 'drover' | 'lumen' | 'palimpsest'): DocRoleHierarchy {
+	return {
+		title: '서비스 등급의 기능 포함 관계',
+		description: '화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.',
+		relation: '포함',
+		levels: ['admin', 'editor', 'user', 'reader'].map((grade) => ({ role: `${service}_${grade}` })),
+	};
+}
 
 export const iamGuide: DocGuide = {
 	slug: 'iam',
@@ -38,6 +47,17 @@ export const iamGuide: DocGuide = {
 		},
 		{
 			id: 'project-roles', title: '3. 프로젝트 역할: 접근·쓰기·멤버 관리를 구분합니다',
+			hierarchy: {
+				title: '프로젝트 역할 포함 관계',
+				description: '화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.',
+				relation: '포함',
+				levels: [
+					{ role: 'project_owner' },
+					{ role: 'project_admin' },
+					{ role: 'project_member', alsoIncludes: ['member'] },
+					{ role: 'project_reader', alsoIncludes: ['reader'] },
+				],
+			},
 			bullets: [
 				'project_reader: 프로젝트의 일반 읽기 접근입니다. native reader로 연결되지만 비밀 값·접속 자격이나 모든 서비스 데이터를 읽을 수 있다는 뜻은 아닙니다. 자원 생성·수정·삭제에는 부족합니다.',
 				'project_member: 프로젝트의 일반 작업자입니다. project_reader와 native member로 연결되어 통상적인 클라우드 쓰기 검사를 통과할 수 있습니다. 서비스별 정책·소유권·쿼터는 별도이며 멤버 권한을 관리하지는 못합니다.',
@@ -80,6 +100,7 @@ export const iamGuide: DocGuide = {
 		},
 		{
 			id: 'waygate', title: '6. Waygate: VPN 조회·접속·발급·회수',
+			hierarchy: serviceHierarchy('waygate'),
 			paragraphs: [
 				'Waygate는 프로젝트의 WireGuard 게이트웨이와 기기별 VPN 프로필을 관리합니다. 역할은 게이트웨이가 속한 프로젝트에 부여합니다.'
 			],
@@ -102,6 +123,7 @@ export const iamGuide: DocGuide = {
 		},
 		{
 			id: 'drover', title: '7. Drover: 클러스터 운영과 Kubernetes 접속',
+			hierarchy: serviceHierarchy('drover'),
 			bullets: [
 				'drover_reader: 프로젝트 클러스터 목록·상세·상태·이벤트·작업 조회와 허용된 템플릿 조회입니다. 접속 자격 다운로드는 포함하지 않습니다.',
 				'drover_user: reader 기능과 제한된 user 등급 kubeconfig·Pod 로그 접근입니다. 클러스터 생성·워크로드 변경·전체 클러스터 접속 권한은 아닙니다.',
@@ -120,6 +142,7 @@ export const iamGuide: DocGuide = {
 		},
 		{
 			id: 'lumen', title: '8. Lumen: 채팅·Studio·도구·키·기록',
+			hierarchy: serviceHierarchy('lumen'),
 			bullets: [
 				'lumen_reader: 허용된 모델·사용량·자산 정보와 해당 프로젝트에서 본인이 소유한 대화·실행 기록 조회입니다. 모델 실행은 포함하지 않습니다.',
 				'lumen_user: reader 기능과 텍스트 채팅·이미지 생성/편집·음성/전사·실시간 음성·허용된 도구/에이전트 사용입니다. 별도 asset/파일 업로드·설정 편집·키 발급은 추가 권한이 필요합니다. 호환 API의 이미지 편집·전사에 직접 첨부하는 입력은 해당 기능 권한으로 처리됩니다.',
@@ -146,6 +169,7 @@ export const iamGuide: DocGuide = {
 		},
 		{
 			id: 'palimpsest', title: '9. Palimpsest: 패키지 조회·다운로드·게시·키',
+			hierarchy: serviceHierarchy('palimpsest'),
 			bullets: [
 				'palimpsest_reader: 허용된 패키지·버전·레이어·묶음과 export 상태의 메타데이터 조회입니다. 실제 콘텐츠 다운로드는 포함하지 않습니다.',
 				'palimpsest_user: reader 기능과 허용된 패키지·레이어·묶음·완료된 export 다운로드 및 캐시 읽기입니다.',

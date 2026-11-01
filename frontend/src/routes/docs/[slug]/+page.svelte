@@ -4,6 +4,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import DocCodeBlock from '$lib/components/docs/DocCodeBlock.svelte';
 	import DocScreenshot from '$lib/components/docs/DocScreenshot.svelte';
+	import DocRoleHierarchy from '$lib/components/docs/DocRoleHierarchy.svelte';
 	import { siteConfig } from '$lib/config/site';
 	import { docsContentHref, docsHref, docsMessages } from '$lib/docs/locales';
 	import type { DocLink } from '$lib/docs/types';
@@ -54,6 +55,7 @@
 			<section id={section.id} aria-labelledby={`${section.id}-title`}>
 				<h2 id={`${section.id}-title`}>{section.title}</h2>
 				{#each section.paragraphs ?? [] as paragraph}<p>{paragraph}</p>{/each}
+				{#if section.hierarchy}<DocRoleHierarchy hierarchy={section.hierarchy} id={`${section.id}-hierarchy`} />{/if}
 				{#if section.bullets}<ul>{#each section.bullets as bullet}<li>{bullet}</li>{/each}</ul>{/if}
 				{#each section.screenshots ?? [] as screenshot}<DocScreenshot {screenshot} {locale} />{/each}
 				{#if section.steps}

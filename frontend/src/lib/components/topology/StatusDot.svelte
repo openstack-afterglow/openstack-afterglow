@@ -10,11 +10,12 @@
 </script>
 
 <script lang="ts">
-	// 토폴로지 리소스 상태 점. 색은 상태 토큰, 전이 중(warning)일 때만 status-pulse 로 숨쉰다.
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	// 실제 전이 중인 리소스만 공통 작업 표시를 사용한다. 안정 상태와 범례는 점으로 남긴다.
 	// 장식이므로 aria-hidden — 상태 글자는 옆에서 따로 보여준다.
 	interface Props {
 		status: string;
-		/** false 면 숨쉬지 않는다(범례처럼 실제 상태가 아닌 표본) */
+		/** false 면 실제 진행 표시 대신 정적인 범례 점을 표시한다. */
 		live?: boolean;
 	}
 
@@ -22,7 +23,11 @@
 	const tone = $derived(statusDotTone(status));
 </script>
 
-<span class="status-dot" data-tone={tone} class:is-live={live && tone === 'warning'} aria-hidden="true"></span>
+{#if live && tone === 'warning'}
+	<LoadingState variant="control" label="" aria-hidden="true" />
+{:else}
+	<span class="status-dot" data-tone={tone} aria-hidden="true"></span>
+{/if}
 
 <style>
 	.status-dot {
@@ -35,6 +40,4 @@
 	}
 	.status-dot[data-tone='success'] { background: var(--color-state-success); }
 	.status-dot[data-tone='danger'] { background: var(--color-state-danger); }
-	/* reduced-motion 이면 기본 모양(꽉 찬 점)에 멈춘다 */
-	.is-live { animation: motion-breathe var(--motion-duration-status-pulse) var(--motion-ease-in-out) infinite; }
 </style>

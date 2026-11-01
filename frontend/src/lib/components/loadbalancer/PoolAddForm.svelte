@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
   const s = useLoadbalancerDetailController();
@@ -33,7 +33,7 @@
         <option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
       {/each}
     </select>
-    <Button onclick={() => pending.run('create', () => s.createPool())} disabled={s.saving} ariaBusy={creatingPool} class="col-span-2" size="sm">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? t('lb.actions.creating') : t('lb.actions.create')}</Button>
+    <Button onclick={() => pending.run('create', () => s.createPool())} disabled={s.saving} ariaBusy={creatingPool} class="col-span-2" size="sm">{#if creatingPool}<LoadingState variant="control" label="" />{/if}{creatingPool ? t('lb.actions.creating') : t('lb.actions.create')}</Button>
     <button onclick={() => s.toggleAddPool()} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
   </div>
 {/if}

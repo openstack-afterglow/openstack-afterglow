@@ -42,6 +42,18 @@ describe('workspace quota API authority and mutation contracts', () => {
 		await expect(client.reconcile('op')).rejects.toMatchObject({ name: 'AbortError' });
 		expect(api.get).not.toHaveBeenCalled(); expect(api.put).not.toHaveBeenCalled(); expect(api.post).not.toHaveBeenCalled();
 	});
+	it.each(['defaults', 'project'] as const)('rechecks write authority immediately before dispatching native %s', async action => {
+		let allowed = true;
+		const client = workspaceIam(session({ canSubmit: () => allowed }));
+		api.put.mockImplementation(async (_path, _body, _token, _projectId, options) => {
+			allowed = false;
+			options.beforeDispatch();
+			throw new Error('native dispatch must not run');
+		});
+		await expect(action === 'defaults' ? client.defaults(1, { cores: 8, ram: 16384 }) : client.saveProject('project', { cores: 8, ram: 16384 })).rejects.toMatchObject({ name: 'AbortError' });
+		expect(api.put).toHaveBeenCalledOnce();
+		expect(api.put.mock.calls[0][4]).toEqual({ replayOnUnauthorized: false, beforeDispatch: expect.any(Function) });
+	});
 	it('honors durable blockers independently of recent operation history', () => {
 		const data = { allocation_blocked: true, operations: [] } as unknown as DomainBudgets;
 		expect(quotaBlocked(data)).toBe(true);

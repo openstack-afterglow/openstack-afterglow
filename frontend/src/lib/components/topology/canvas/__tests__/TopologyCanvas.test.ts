@@ -9,7 +9,7 @@ import { layoutStorageKey } from '../layoutStorage';
 import { K_MIN, autoLayout, computeGeometry } from '../topologyLayout';
 import { TOPOLOGY_ENTRANCE_MS } from '../../firstArrival.svelte';
 import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
-import { P, makeFixture, makeTraffic } from './fixtures';
+import { LABEL_COLLISION_POSITIONS, LABEL_COLLISION_PROJECT, P, makeFixture, makeLabelCollisionFixture, makeTraffic } from './fixtures';
 
 function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
 	const callbacks = {
@@ -340,6 +340,43 @@ describe('TopologyCanvas', () => {
 		const pubLabel = labels.find((l) => l.getAttribute('data-zone-label') === 'net-pub')!;
 		expect(within(pubLabel).getByText('VLAN 태그 120')).toBeTruthy();
 		expect(within(pubLabel).getByText('MTU 1500')).toBeTruthy();
+	});
+
+	it('네트워크 이름/CIDR는 실제 chip 크기로 카드의 이름/IP와 분리되고 zoom·키보드 이동 뒤에도 유지된다', async () => {
+		const original = HTMLElement.prototype.getBoundingClientRect;
+		const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+			if (this.hasAttribute('data-zone-label')) return { x: 0, y: 0, width: 280, height: 44, top: 0, left: 0, right: 280, bottom: 44, toJSON() {} };
+			return original.call(this);
+		});
+		try {
+			localStorage.setItem(layoutStorageKey('user', LABEL_COLLISION_PROJECT), JSON.stringify(LABEL_COLLISION_POSITIONS));
+			renderCanvas({ data: makeLabelCollisionFixture(), projectId: LABEL_COLLISION_PROJECT, traffic: null });
+			const assertSeparated = () => {
+				const { panX, panY, k } = viewOf();
+				const cards = nodeCards().map((el) => {
+					const xy = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(el.style.transform)!;
+					return { x: Number(xy[1]) * k + panX, y: Number(xy[2]) * k + panY, w: parseFloat(el.style.width) * k, h: parseFloat(el.style.height) * k };
+				});
+				const chips = [...document.querySelectorAll<HTMLElement>('[data-zone-label]')].map((el) => {
+					expect(el.classList.contains('lbl-min')).toBe(false);
+					return { x: parseFloat(el.style.getPropertyValue('--sx')), y: parseFloat(el.style.getPropertyValue('--sy')), w: 280, h: 44 };
+				});
+				expect(chips).toHaveLength(2);
+				for (let i = 0; i < chips.length; i++) for (const b of [...cards, ...chips.slice(i + 1)]) {
+					const a = chips[i];
+					expect(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h).toBe(false);
+				}
+			};
+			await waitFor(assertSeparated);
+			expect(document.querySelector('[data-zone-label="net-transit"] .zone-cidr')!.textContent).toBe('2001:db8:1234:5678::/64');
+			for (let i = 0; i < 3; i++) {
+				await fireEvent.keyDown(cardOf('vm-ci')!, { key: 'ArrowUp', shiftKey: true });
+				await waitFor(assertSeparated);
+				await fireWheel(screen.getByRole('application'), { deltaY: 100 });
+				await flushFrame();
+				await waitFor(assertSeparated);
+			}
+		} finally { measure.mockRestore(); }
 	});
 
 	it('Shift+화살표로 노드를 옮기면 수동 배치 칩이 나타나고 초기화하면 저장소까지 비운다', async () => {
@@ -702,12 +739,12 @@ describe('TopologyCanvas', () => {
 		expect(onSelectInstance.mock.calls.every((c) => c[0] === 'vm-web-01')).toBe(true);
 	});
 
-	it('패킷 흐름은 기본 on 이고 끌 수 있으며 경로 API 가 없는 환경에서는 점을 만들지 않는다', async () => {
+	it('connection animation defaults off and requires explicit opt-in; absent path API produces no dots', async () => {
 		renderCanvas();
-		const chk = screen.getByRole('checkbox', { name: /패킷 흐름/ });
-		expect((chk as HTMLInputElement).checked).toBe(true);
-		await fireEvent.click(chk);
+		const chk = screen.getByRole('checkbox');
 		expect((chk as HTMLInputElement).checked).toBe(false);
+		await fireEvent.click(chk);
+		expect((chk as HTMLInputElement).checked).toBe(true);
 		expect(document.querySelectorAll('.flow-dot')).toHaveLength(0);
 	});
 
@@ -870,7 +907,7 @@ describe('TopologyCanvas 모션', () => {
 		renderCanvas();
 		expect(entranceMarks()).toBe(0);
 		await fireEvent.click(screen.getByRole('button', { name: '확대' }));
-		expect(viewOf().k).toBeCloseTo(1.2);
+		await waitFor(() => expect(viewOf().k).toBeCloseTo(1.2));
 	});
 
 	it('확대 버튼은 프레임에 걸쳐 카메라를 옮기고, 직접 조작(포인터)이 시작되면 그 자리에서 멈춘다', async () => {

@@ -120,6 +120,28 @@ async def _resolve_jwt_token_info(
         subject = operation.subjects.get(principal.get("token"))
         if subject is not None:
             request.state._afterglow_native_access = subject[0]
+        if request.method == "GET" and getattr(getattr(request, "url", None), "path", "") == "/api/v1/auth/me":
+            from app.api.identity.auth import (
+                _AuthenticatedDomainMetadata,
+                _domain_metadata,
+                _domain_metadata_owner,
+            )
+
+            # Materialize only /me's directory while its validated native reads
+            # are still owned here. No operation/client escapes to the handler.
+            if principal.get("_live_system_admin") is True:
+                # require_admin owns a separate fresh guard; do not reuse reads
+                # from before that boundary for its returned principal.
+                operation.invalidate()
+            metadata = await _domain_metadata(
+                principal["user_id"],
+                principal["identity_domain_id"],
+                principal.get("is_system_admin") is True,
+                operation=operation,
+            )
+            principal["_authenticated_domain_metadata"] = _AuthenticatedDomainMetadata(
+                _domain_metadata_owner(principal), metadata
+            )
         return principal
 
 

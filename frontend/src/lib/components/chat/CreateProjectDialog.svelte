@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { tick } from 'svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -64,7 +65,7 @@
 			<div class="form-actions">
 				<Button variant="ghost" type="button" onclick={close}>{t('createProject.cancel')}</Button>
 				<Button variant="accent" type="submit" disabled={!canSubmit}>
-					{saving ? t('createProject.creating') : t('createProject.title')}
+					{#if saving}<LoadingState variant="control" label={t('createProject.creating')} />{:else}{t('createProject.title')}{/if}
 				</Button>
 			</div>
 		</form>

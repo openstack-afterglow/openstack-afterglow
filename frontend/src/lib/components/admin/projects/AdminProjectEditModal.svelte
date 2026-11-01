@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { projectNames } from '$lib/stores/projectNames';
@@ -125,7 +125,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button aria-busy={updating} onclick={updateProject} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.updating')}</span>{:else}{t('projectEdit.submit')}{/if}</button>
+				<button aria-busy={updating} onclick={updateProject} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.updating')}</span>{:else}{t('projectEdit.submit')}{/if}</button>
 			</div>
 		</div>
 	</div>

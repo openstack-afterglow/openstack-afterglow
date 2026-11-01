@@ -5,7 +5,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { DbFlavor, DbBackup } from '$lib/types/database';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	interface Props {
 		open: boolean;
@@ -110,6 +110,7 @@
 							{/each}
 						{/if}
 					</select>
+					{#if flavors.length === 0}<LoadingState variant="inline" label={tr('state.loading')} />{/if}
 				</label>
 
 				<label class="flex flex-col gap-1">
@@ -140,7 +141,7 @@
 					disabled={submitting}
 					class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>
-					{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? tr('state.restoring') : tr('actions.startRestore')}
+					{#if submitting}<LoadingState variant="control" label="" />{/if}{submitting ? tr('state.restoring') : tr('actions.startRestore')}
 				</button>
 			</div>
 		</div>

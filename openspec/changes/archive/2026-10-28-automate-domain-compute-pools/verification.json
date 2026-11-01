@@ -1,0 +1,185 @@
+{
+  "change": "automate-domain-compute-pools",
+  "date": "2026-10-28",
+  "scope": "source-only; no commit/push/release/deployment or operational native IAM/quota/config/VM/volume writes",
+  "source": {
+    "sha256": "15988e10f57caa30eb60f140f8b6dc5f597b0acdc14704399db7ec919f2760b0",
+    "isolated_entries": 3580,
+    "extant_shared_application_entries": 3579,
+    "snapshot_only_entry": "node_modules execution symlink",
+    "tracked_legacy_deletions_absent_on_both_sides": [
+      "frontend/src/lib/components/admin/quotas/GpuDefaultQuotaSection.svelte",
+      "frontend/src/lib/components/admin/quotas/GpuQuotaTable.svelte",
+      "frontend/src/lib/components/admin/quotas/__tests__/GpuQuotaActivity.test.ts",
+      "frontend/src/lib/stores/__tests__/adminQuotasController.catalog.test.ts"
+    ],
+    "application_bytes_match_shared": true,
+    "architecture_working_and_isolated_staged_guard": "passed; shared index and existing review marker untouched"
+  },
+  "canonical_gate": {
+    "command": "UV_NO_SYNC=1 npm run test:gate",
+    "exit_code": 0,
+    "artifact": "artifact://291",
+    "backend": {
+      "passed": 10408,
+      "skipped": 95
+    },
+    "frontend": {
+      "files": 463,
+      "passed": 5533,
+      "runner_passed": 9
+    },
+    "contracts_passed": 183,
+    "functional": {
+      "passed": 167,
+      "deselected": 33
+    },
+    "ruff_files": 762
+  },
+  "native": {
+    "actual_installed_nova_placement": true,
+    "nova_commit": "707063a9ee90bc06396591ff3f3b7c2998cd20fc",
+    "arm64_passed": 26,
+    "amd64_passed": 26,
+    "current_package_modules_hash_match_per_arch": 12,
+    "synthetic_boundaries": [
+      "Keystone authority",
+      "upstream fake hypervisor",
+      "hardware/fleet fixture"
+    ],
+    "actual_gpu_passthrough": false,
+    "production_fleet_qualification": false
+  },
+  "http": {
+    "transport": "actual Uvicorn/FastAPI and installed SDK over loopback TCP",
+    "identity_authority": "synthetic dependency-bound manager/system principal",
+    "native_cloud": "synthetic Keystone/Nova/Placement HTTP, synthetic fleet capability (NOT operational proof)",
+    "usage_cpu": 5,
+    "project_cap": {
+      "CUSTOM_PCI_10DE_2504": 0
+    },
+    "stale_revision_status": 409,
+    "managed_cpu_gpu_flavors": 16,
+    "gpu_flavors": 8,
+    "native_creates": 16,
+    "second_reconcile_no_new_flavors": true,
+    "pause_blocked": true
+  },
+  "browser": {
+    "environment": "Disposable synthetic tutorial/fixture authority only; no deployed fleet proof.",
+    "productionImages": {
+      "poolLocaleThemeWidthConditions": 54,
+      "automationLocaleThemeWidthConditions": 54,
+      "overflow": 0,
+      "amd64ManagedRow": true,
+      "amd64DeletionDisabled": true,
+      "managedSpecsAccessVisibilityReadonly": true,
+      "unqualifiedAutomationRejected": true
+    },
+    "compiledSourceFixture": {
+      "readerManagerConditions": 162,
+      "states": [
+        "active",
+        "paused",
+        "unavailable"
+      ],
+      "managerPoolCeilingEditors": 0,
+      "revocation": {
+        "retainedPrivateInputs": 0,
+        "refreshDisabled": true
+      }
+    },
+    "mutatingTutorialJourney": {
+      "qualifiedFixtureExplicitlySynthetic": true,
+      "poolCPU": 80,
+      "usageCPU": 12,
+      "projectCPUCap": 8,
+      "projectGPUCap": 0,
+      "capRemoved": true,
+      "pausePreservedUsage": true,
+      "staleRevisionRejected": true,
+      "staleCPUNotOverwritten": 80
+    }
+  },
+  "checks": {
+    "svelte_errors": 0,
+    "svelte_existing_warnings": 16,
+    "i18n_errors": 0,
+    "i18n_existing_key_order_warnings": 45,
+    "hardcoded_korean_lines": 0,
+    "native_speaker_review": false
+  },
+  "images": [
+    {
+      "tag": "afterglow-domain-compute-api:arm64",
+      "image_id": "sha256:01b24764aa302f84b2a27be7d69c5b8df0722c9106450eb4bf88e855556a21a5",
+      "architecture": "arm64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T13:27:17.574416134Z"
+    },
+    {
+      "tag": "afterglow-domain-compute-api:amd64",
+      "image_id": "sha256:85c1f2cf55a0ddd9d4d08d06731823b08e8ccb5043a9597e4bda81bd724d531a",
+      "architecture": "amd64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T13:27:17.975256134Z"
+    },
+    {
+      "tag": "afterglow-domain-compute-worker:arm64",
+      "image_id": "sha256:bdca62fcad2f09d04fef24d871b6f3e414a509ac9d46b47b1950ba1c88d93197",
+      "architecture": "arm64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T13:27:19.719347718Z"
+    },
+    {
+      "tag": "afterglow-domain-compute-worker:amd64",
+      "image_id": "sha256:2001d2c5f81ac0b77ecf2449d316e0f2353adc052ae47a19efca455f64d46cd5",
+      "architecture": "amd64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T13:27:21.439152094Z"
+    },
+    {
+      "tag": "afterglow-domain-compute-web:arm64",
+      "image_id": "sha256:39ca41775693e72286de85ff92fb296e3bae12e4c2a8b1ba8dd75374f39d07fa",
+      "architecture": "arm64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T12:58:59.760953376Z"
+    },
+    {
+      "tag": "afterglow-domain-compute-web:amd64",
+      "image_id": "sha256:57509af9479276061b93cc05641376be9dcba1e18b2ed612ca81bf70f557e585",
+      "architecture": "amd64",
+      "os": "linux",
+      "user": "appuser",
+      "created": "2026-10-28T13:00:08.308916296Z"
+    },
+    {
+      "tag": "afterglow-domain-pool-native:arm64",
+      "image_id": "sha256:ad8ca123e0fda8bd9d96436df0377e2354e4176874143456005b279bee95602d",
+      "architecture": "arm64",
+      "os": "linux",
+      "user": null,
+      "created": "2026-10-28T12:50:05.320880253Z"
+    },
+    {
+      "tag": "afterglow-domain-pool-native:amd64",
+      "image_id": "sha256:dfbc03705c53a9e191afd893bf22f5e5582e8d9ac5331f02e615d34804a7af6c",
+      "architecture": "amd64",
+      "os": "linux",
+      "user": null,
+      "created": "2026-10-28T12:50:12.213644715Z"
+    }
+  ],
+  "operational_prerequisites": [
+    "Approved all-writer pinned Nova rollout and complete API/operator roster plus native service census",
+    "Actual loaded-process, source/config/image and exhaustive physical GPU/audio evidence",
+    "Placement write policy restricted to integrated Nova principals; unrestricted privileged Placement writers are outside hooks",
+    "Approved real native/GPU workload acceptance, drain/backup/restore and incompatible-writer cutover evaluation"
+  ],
+  "failure_handling": "All nonempty writes postcheck; ABA/uncertain existing allocation never restores a nonempty preimage; safe new-consumer empty rollback only; safe peers released; all-empty releases not resurrected; unknown requires reconciliation."
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -7,7 +8,7 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import type { ZunContainerDetail } from '$lib/types/zunContainer';
   import ContainerDetailHeader from '$lib/components/dashboard/containers/instances/id/ContainerDetailHeader.svelte';
@@ -88,7 +89,7 @@
     <div class="flex items-center gap-3 mb-6">
       <button onclick={() => goto('/dashboard/containers/instances')} class="text-ink-2 hover:text-ink-0 transition-colors">{t('instances.detail.back')}</button>
     </div>
-    <LoadingSkeleton variant="detail" />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('instances.list.title') })} />
   {:else if container}
     <ContainerDetailHeader
       {container}

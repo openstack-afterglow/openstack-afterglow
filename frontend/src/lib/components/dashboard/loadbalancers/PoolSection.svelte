@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Pool, Member } from '$lib/types/loadbalancer';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
@@ -70,7 +70,7 @@
 					<option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
 				{/each}
 			</select>
-			<button onclick={handleCreatePool} disabled={saving} aria-busy={creatingPool} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
+			<button onclick={handleCreatePool} disabled={saving} aria-busy={creatingPool} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<LoadingState variant="control" label="" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -88,7 +88,7 @@
 						{#snippet details()}<p class="font-mono break-all">ID: {pool.id}</p>{/snippet}
 						{#snippet actions()}
 							<Button size="sm" variant="secondary" onclick={() => selectedPoolId = selectedPoolId === pool.id ? null : pool.id} ariaExpanded={selectedPoolId === pool.id}>{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</Button>
-							<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id))} disabled={saving} ariaBusy={deletingPool}>{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>
+							<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id))} disabled={saving} ariaBusy={deletingPool}>{#if deletingPool}<LoadingState variant="control" label="" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>
 						{/snippet}
 					</CompactResourceCard>
 
@@ -104,7 +104,7 @@
 									<input bind:value={memberForm.address} placeholder={t('lb.form.ipAddress')} class="min-w-0 bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1 sm:col-span-2" />
 									<input bind:value={memberForm.protocol_port} type="number" min="1" max="65535" placeholder={t('lb.form.port')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
 									<input bind:value={memberForm.weight} type="number" min="1" max="256" placeholder={t('lb.form.weight')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
-									<button onclick={handleAddMember} disabled={saving || !memberForm.address} aria-busy={addingMember} class="sm:col-span-2 md:col-span-3 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if addingMember}<ActivityIndicator size="xs" tone="ink" />{/if}{addingMember ? tc('state.processing') : t('lb.actions.add')}</button>
+									<button onclick={handleAddMember} disabled={saving || !memberForm.address} aria-busy={addingMember} class="sm:col-span-2 md:col-span-3 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if addingMember}<LoadingState variant="control" label="" />{/if}{addingMember ? tc('state.processing') : t('lb.actions.add')}</button>
 									<button onclick={() => showAddMember = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center rounded border border-line-2">{t('lb.actions.cancel')}</button>
 								</div>
 							{/if}
@@ -118,7 +118,7 @@
 										<CompactResourceCard>
 											<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{member.address}:{member.protocol_port}</strong><StatusChip status={member.status} /></div>
 											<p class="text-xs text-ink-2">{t('lb.members.weight', { weight: member.weight })}</p>
-											{#snippet actions()}<Button size="sm" variant="danger-outline" onclick={() => pending.run(`remove:${member.id}`, () => onRemoveMember(member.id))} disabled={saving} ariaBusy={removingMember}>{#if removingMember}<ActivityIndicator size="xs" tone="danger" />{/if}{removingMember ? tc('state.processing') : t('lb.actions.remove')}</Button>{/snippet}
+											{#snippet actions()}<Button size="sm" variant="danger-outline" onclick={() => pending.run(`remove:${member.id}`, () => onRemoveMember(member.id))} disabled={saving} ariaBusy={removingMember}>{#if removingMember}<LoadingState variant="control" label="" />{/if}{removingMember ? tc('state.processing') : t('lb.actions.remove')}</Button>{/snippet}
 										</CompactResourceCard>
 									{/each}
 								</div>

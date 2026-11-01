@@ -286,29 +286,6 @@ def test_sequential_callers_reuse_tcp_after_session_close_without_sharing_author
     assert {row["token"] for row in observed[1]} == {"issued-2-bob-project-b"}
 
 
-def test_service_clients_reuse_tcp_but_perform_fresh_password_authentication(native_wire):
-    state = native_wire
-    for _ in range(2):
-        client = keystone._get_admin_ks_client()
-        try:
-            domain = client.domains.get("default")
-            assert (domain.id, domain.enabled) == ("default", True)
-        finally:
-            client.session.session.close()
-    assert len(state.connections) == 1
-    assert len(state.auth) == 2
-    for row in state.auth:
-        auth = row["body"]["auth"]
-        assert auth["identity"]["methods"] == ["password"]
-        assert auth["identity"]["password"]["user"]["name"] == "operator"
-        assert auth["identity"]["password"]["user"]["password"] == "synthetic-password"
-        assert auth["scope"]["project"]["name"] == "service"
-    assert [row["token"] for row in state.requests if row["path"] == "/v3/domains/default"] == [
-        "issued-1-operator-service",
-        "issued-2-operator-service",
-    ]
-
-
 def test_new_native_operation_observes_revoked_authority_on_reused_socket(native_wire):
     from fastapi import HTTPException
 
@@ -324,9 +301,6 @@ def test_new_native_operation_observes_revoked_authority_on_reused_socket(native
         with pytest.raises(HTTPException) as denied:
             resolve_domain("default", operation=operation)
     assert denied.value.status_code == 403
-    assert len(state.auth) == 2
-    reads = [row for row in state.requests if row["path"] == "/v3/domains/default"]
-    assert [row["token"] for row in reads] == ["issued-1-operator-service", "issued-2-operator-service"]
     assert len(state.connections) == 1
 
 

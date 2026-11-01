@@ -386,7 +386,7 @@ async def test_expired_access_jwt_returns_401(_rate_limiter_off):
 
 @pytest.mark.asyncio
 async def test_refresh_rotates_tokens(_ks_authenticate, _ks_get_user, _ks_validate_ok, _rate_limiter_off):
-    """refresh 호출 시 새 토큰 쌍이 발급되고, 기존 refresh로 재호출 시 401."""
+    """refresh rotates once; a retry briefly replays the same committed response."""
     from httpx import ASGITransport, AsyncClient
 
     from app.main import app
@@ -407,9 +407,10 @@ async def test_refresh_rotates_tokens(_ks_authenticate, _ks_get_user, _ks_valida
         assert new_access != old_access
         assert new_refresh != old_refresh
 
-        # 같은 refresh 재사용 → 401 (토큰 회전)
+        # A lost rotation response can be recovered without issuing more tokens.
         r2 = await ac.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
-        assert r2.status_code == 401
+        assert r2.status_code == 200
+        assert r2.json() == r1.json()
 
 
 @pytest.mark.asyncio

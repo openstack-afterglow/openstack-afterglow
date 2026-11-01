@@ -1,116 +1,140 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { writable } from 'svelte/store';
+import { tick } from 'svelte';
+import { initLocale } from '$lib/i18n/runtime.svelte';
+import { t } from '$lib/i18n/ns/dashboard-home';
+import type { Instance } from '$lib/types/compute';
 
-// vi.hoisted는 vi.mock보다 먼저 실행되므로, factory 안에서 사용 가능한 변수를 여기서 정의
-const { mockAuth } = vi.hoisted(() => {
-	type AuthVal = {
-		token: string | null;
-		userId: string | null;
-		username: string | null;
-		projectId: string | null;
-		projectName: string | null;
-		availableProjects: { id: string; name: string }[];
-		roles: string[];
-		isSystemAdmin: boolean;
-		expiresAt: number | null;
-	};
-
-	let _val: AuthVal = {
-		token: null,
-		userId: null,
-		username: null,
-		projectId: null,
-		projectName: null,
-		availableProjects: [],
-		roles: [],
-		isSystemAdmin: false,
-		expiresAt: null,
-	};
-
-	const _subs: Array<(v: AuthVal) => void> = [];
-
-	const mockAuth = {
-		subscribe(fn: (v: AuthVal) => void) {
-			_subs.push(fn);
-			fn(_val);
-			return () => {
-				const i = _subs.indexOf(fn);
-				if (i >= 0) _subs.splice(i, 1);
-			};
-		},
-		set(v: AuthVal) {
-			_val = v;
-			_subs.forEach((fn) => fn(v));
-		},
-	};
-
-	return { mockAuth };
-});
-
+const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
 vi.mock('$lib/stores/auth', () => ({
-	auth: mockAuth,
-	isAdmin: { subscribe: (fn: (v: boolean) => void) => { fn(false); return () => {}; } },
+	auth: writable({ token: 'token-a' as string | null, projectId: 'project-a' as string | null, userId: 'user-a', sessionId: 'session-a', isSystemAdmin: false }),
+	authReady: writable(true),
+	projectSwitching: writable(false),
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	observedProjectPermissions: writable({ loading: false, error: null, permissions: null }),
+}));
+vi.mock('$lib/utils/autoRefresh.svelte', () => ({
+	createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }),
+}));
+vi.mock('$lib/components/charts/runtime', () => ({
+	mountChart: () => ({ update: vi.fn(), destroy: vi.fn() }),
 }));
 
-vi.mock('$lib/stores/grafana', () => ({
-	loadGrafanaContext: vi.fn().mockResolvedValue(null),
-	grafanaStore: { subscribe: (_fn: unknown) => () => {} },
-	resetGrafanaContext: vi.fn(),
-}));
-
+import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import Page from '../+page.svelte';
 
-const baseAuth = {
-	token: null as string | null,
-	userId: null as string | null,
-	username: null as string | null,
-	projectId: null as string | null,
-	projectName: null as string | null,
-	availableProjects: [] as { id: string; name: string }[],
-	roles: [] as string[],
-	isSystemAdmin: false,
-	expiresAt: null as number | null,
-};
+const instance = (id: string, project_id: string | null = 'project-a'): Instance => ({
+	id, name: id, project_id, status: 'ACTIVE', image_name: null, flavor_name: 'small',
+	ip_addresses: [], created_at: null, union_libraries: [], union_strategy: null,
+});
+const batch = { metrics: { cpu: {
+	series: [{ ts: 60, value: 0 }, { ts: 120, value: 5 }], source: 'gnocchi',
+	unit: '%', status: 'available', native_status: 'available', error: null,
+} } };
+function metricsResponse(path: string) {
+	return path.includes('/metrics-summary') ? { monitoring_available: true, stats: {} } : batch;
+}
 
-describe('observability page', () => {
-	beforeEach(() => {
-		mockAuth.set({ ...baseAuth });
+beforeEach(() => {
+	initLocale('ko');
+	auth.update(state => ({ ...state, token: 'token-a', projectId: 'project-a', userId: 'user-a', sessionId: 'session-a', isSystemAdmin: false }));
+	authReady.set(true);
+	projectSwitching.set(false);
+	mocks.get.mockReset().mockImplementation((path: string) => Promise.resolve(path === '/api/v1/instances'
+		? [instance('own-vm'), instance('foreign-vm', 'project-b'), instance('unknown-owner', null)] : metricsResponse(path)));
+});
+afterEach(cleanup);
+
+describe('project VM observability', () => {
+	it('requires current project and makes no inventory or metrics request without it', async () => {
+		auth.update(state => ({ ...state, projectId: null }));
+		render(Page);
+		expect(screen.getByText(t('observability.selectProject'))).toBeTruthy();
+		await tick();
+		expect(mocks.get).not.toHaveBeenCalled();
 	});
 
-	it('projectId가 없으면 empty state 텍스트 표시', () => {
-		render(Page);
-		expect(screen.getByText('프로젝트를 선택하면 VM 메트릭이 표시됩니다.')).toBeTruthy();
+	it.each([false, true])('selects only current-project Nova instances and uses real instance charts in user mode (admin=%s)', async (isSystemAdmin) => {
+		auth.update(state => ({ ...state, isSystemAdmin }));
+		const view = render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
+		expect(screen.queryByRole('button', { name: /foreign-vm|unknown-owner/ })).toBeNull();
+		expect(await screen.findByText(/gnocchi · 사용 가능/)).toBeTruthy();
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/instances', 'token-a', 'project-a', { refresh: false });
+		expect(mocks.get.mock.calls.some(([path, token, project]) => path.startsWith('/api/v1/instances/own-vm/metrics-batch?') && token === 'token-a' && project === 'project-a')).toBe(true);
+		expect(mocks.get.mock.calls.every(([path]) => !path.includes('grafana') && !path.includes('/admin/'))).toBe(true);
+		expect(screen.queryByRole('button', { name: 'Grafana' })).toBeNull();
+		expect(view.container.querySelector('iframe')).toBeNull();
 	});
 
-	it('projectId가 있으면 empty state 텍스트 미표시', () => {
-		mockAuth.set({
-			...baseAuth,
-			token: 'tok',
-			userId: 'user-1',
-			username: 'testuser',
-			projectId: 'proj-A',
-			projectName: 'Project A',
-		});
+	it('clears measurements when search hides the selected instance', async () => {
 		render(Page);
-		expect(screen.queryByText('프로젝트를 선택하면 VM 메트릭이 표시됩니다.')).toBeNull();
+		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
+		await screen.findByText(/gnocchi · 사용 가능/);
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'unmatched' } });
+		expect(screen.queryByText(/gnocchi · 사용 가능/)).toBeNull();
+		expect(screen.getByText(t('observability.noResults'))).toBeTruthy();
 	});
 
-	it('breadcrumb이 DASHBOARD / OBSERVABILITY로 표시', () => {
+	it('distinguishes failed lookup from verified empty inventory and permits explicit recovery', async () => {
+		mocks.get.mockRejectedValueOnce(new Error('provider offline')).mockResolvedValue([]);
 		render(Page);
-		expect(screen.getByText('DASHBOARD / OBSERVABILITY')).toBeTruthy();
+		expect((await screen.findByRole('alert')).textContent).toContain(t('observability.loadFailed'));
+		expect(screen.queryByText(t('observability.empty'))).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('observability.refresh') }));
+		expect(await screen.findByText(t('observability.empty'))).toBeTruthy();
+		expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/instances', 'token-a', 'project-a', { refresh: true });
 	});
 
-	it('vars.project_id는 store에서만 온다 — URL searchParams 미사용', () => {
-		// 페이지는 $page.url.searchParams를 읽지 않고 $auth.projectId만 사용.
-		// store가 null이면 GrafanaEmbed를 렌더링하지 않는다.
-		mockAuth.set({ ...baseAuth });
-		const { unmount } = render(Page);
-		expect(screen.getByText('프로젝트를 선택하면 VM 메트릭이 표시됩니다.')).toBeTruthy();
-		unmount();
-
-		// store를 업데이트하면 반영됨
-		mockAuth.set({ ...baseAuth, projectId: 'proj-A', token: 'tok', userId: 'u', username: 'u', projectName: 'P' });
+	it.each(['project', 'identity', 'projectAba'] as const)('discards late inventory after %s change', async (transition) => {
+		const stale = Promise.withResolvers<Instance[]>();
+		mocks.get.mockReturnValueOnce(stale.promise).mockImplementation((path: string) => Promise.resolve(path === '/api/v1/instances'
+			? [instance('fresh-vm', transition === 'project' ? 'project-b' : 'project-a')] : metricsResponse(path)));
 		render(Page);
-		expect(screen.queryByText('프로젝트를 선택하면 VM 메트릭이 표시됩니다.')).toBeNull();
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
+		if (transition === 'project' || transition === 'projectAba') {
+			auth.update(state => ({ ...state, projectId: 'project-b' }));
+			if (transition === 'projectAba') auth.update(state => ({ ...state, projectId: 'project-a' }));
+		} else if (transition === 'identity') auth.update(state => ({ ...state, userId: 'user-b', sessionId: 'session-b' }));
+		await screen.findByRole('button', { name: /fresh-vm/ });
+		stale.resolve([instance('stale-private-vm')]);
+		await stale.promise;
+		await tick();
+		expect(screen.queryByRole('button', { name: /stale-private-vm/ })).toBeNull();
+		expect(mocks.get.mock.calls.some(([path]) => path.includes('/metrics-'))).toBe(false);
+	});
+
+	it('waits for verified auth readiness before inventory dispatch', async () => {
+		authReady.set(false);
+		render(Page);
+		await tick();
+		expect(mocks.get).not.toHaveBeenCalled();
+		authReady.set(true);
+		await screen.findByRole('button', { name: /own-vm/ });
+		expect(mocks.get).toHaveBeenCalledTimes(1);
+	});
+
+	it('preserves picker selection and inventory across normal same-owner token rotation', async () => {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
+		await screen.findByText(/gnocchi · 사용 가능/);
+		auth.update(state => ({ ...state, token: 'rotated-token' }));
+		await tick();
+		expect(screen.getByRole('button', { name: /own-vm/ }).getAttribute('aria-pressed')).toBe('true');
+		expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/instances')).toHaveLength(1);
+	});
+
+	it('accepts an in-flight same-owner inventory during verified token rotation', async () => {
+		const pending = Promise.withResolvers<Instance[]>();
+		mocks.get.mockReturnValueOnce(pending.promise);
+		render(Page);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
+		auth.update(state => ({ ...state, token: 'rotated-token' }));
+		pending.resolve([instance('current-vm')]);
+		await screen.findByRole('button', { name: /current-vm/ });
+		expect(mocks.get).toHaveBeenCalledTimes(1);
 	});
 });

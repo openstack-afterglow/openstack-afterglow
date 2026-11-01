@@ -18,7 +18,7 @@ from app.utils.log import is_sensitive, mask_str
 
 logger = logging.getLogger(__name__)
 
-ActionStatus = Literal["started", "success", "failed"]
+ActionStatus = Literal["started", "success", "failed", "observed"]
 
 _SECRET_ASSIGNMENT = re.compile(
     r"\b(password|passwd|secret|token|api[_-]?key|authorization)\s*([=:])\s*([^\s&;,]+)", re.I
@@ -96,6 +96,8 @@ async def record(
         _h.setdefault("statuses", set()).add(status)
         _h["recorded_status"] = status
         _h["logged"] = True
+        if user_id:
+            _h["actor"] = {"project_id": project_id, "user_id": user_id, "username": username}
     if not is_db_available():
         _warn_db_unavailable("ActivityLog skipped: db unavailable (engine=None or circuit breaker open)")
         return
@@ -105,6 +107,17 @@ async def record(
         return
     try:
         context = _audit_ctx.get() or {}
+        # HTTP/request provenance is server-owned and cannot be replaced by a
+        # business record's legacy "method" or other extra metadata.
+        metadata = {**(extra or {}), **context.get("metadata", {})}
+        request = context.get("request")
+        if request is not None:
+            route = getattr(request.scope.get("route"), "path", None)
+            if isinstance(route, str):
+                metadata["route"] = route
+        if context.get("started") is not None:
+            metadata["duration_ms"] = round((time.perf_counter() - context["started"]) * 1000, 3)
+            metadata.setdefault("stage", "request")
         async with factory() as session:
             row = ActivityLog(
                 project_id=project_id,
@@ -116,7 +129,7 @@ async def record(
                 action=action,
                 status=status,
                 error_message=_mask_text(error_message) if error_message else None,
-                extra=_mask_extra(extra) if extra is not None else None,
+                extra=_mask_extra(metadata) if metadata else None,
                 request_id=(request_id if request_id is not None else context.get("request_id")),
                 service=(
                     service if service is not None else context.get("service") or service_for_resource(resource_type)
@@ -128,12 +141,8 @@ async def record(
             session.add(row)
             await session.commit()
     except Exception:
-        logger.warning(
-            "activity_log 기록 실패 (action=%s resource_type=%s)",
-            action,
-            resource_type,
-            exc_info=True,
-        )
+        # Database exceptions can embed bound JSON values; do not log them.
+        logger.warning("activity_log write failed (action=%s resource_type=%s)", action, resource_type)
 
 
 def _mask_extra(extra: dict) -> dict:
@@ -292,6 +301,46 @@ def _event_factory():
     return factory
 
 
+async def record_interactions(*, actor: dict, events: list[dict]) -> None:
+    """Persist a validated browser batch atomically; never claim a dropped batch."""
+    factory = _event_factory()
+    async with factory() as session:
+        for event in events:
+            session.add(
+                ActivityLog(
+                    project_id=actor.get("project_id", ""),
+                    user_id=actor.get("user_id", ""),
+                    username=actor.get("username", ""),
+                    resource_type="ui",
+                    action=f"ui.{event['kind']}",
+                    status="observed",
+                    service="afterglow",
+                    source="browser",
+                    page=event["page"],
+                    extra={
+                        key: event[key]
+                        for key in ("control", "ordinal", "destination", "interaction_id")
+                        if key in event
+                    },
+                )
+            )
+        await session.commit()
+
+
+async def record_request_observations(observations: list[dict]) -> None:
+    """One best-effort transaction for a bounded request's structural evidence."""
+    if not observations:
+        return
+    try:
+        factory = _event_factory()
+        async with factory() as session:
+            for observation in observations[:67]:
+                session.add(ActivityLog(**observation))
+            await session.commit()
+    except Exception:
+        _warn_db_unavailable("Activity request observations skipped: store unavailable")
+
+
 def _event_conditions(
     *,
     project_id: str | None = None,
@@ -305,6 +354,7 @@ def _event_conditions(
     service: str | None = None,
     source: str | None = None,
     request_id: str | None = None,
+    interaction_id: str | None = None,
     page: str | None = None,
     from_at: datetime | None = None,
     to_at: datetime | None = None,
@@ -331,6 +381,8 @@ def _event_conditions(
         conditions.append(or_(ActivityLog.source == "afterglow", ActivityLog.source.is_(None)))
     elif source is not None:
         conditions.append(ActivityLog.source == source)
+    if interaction_id is not None:
+        conditions.append(ActivityLog.extra["interaction_id"].as_string() == interaction_id)
     if from_at is not None:
         conditions.append(ActivityLog.created_at >= from_at.astimezone(UTC).replace(tzinfo=None))
     if to_at is not None:
@@ -347,7 +399,7 @@ async def list_events(*, limit: int = 50, **filters) -> list[dict]:
     async with factory() as session:
         stmt = select(ActivityLog).where(*conditions).order_by(desc(ActivityLog.id)).limit(limit)
         rows = (await session.execute(stmt)).scalars().all()
-        return [_row_to_dict(row) for row in rows]
+        return [_event_to_dict(row) for row in rows]
 
 
 async def get_event(event_id: int) -> dict | None:
@@ -355,7 +407,7 @@ async def get_event(event_id: int) -> dict | None:
     factory = _event_factory()
     async with factory() as session:
         row = await session.get(ActivityLog, event_id)
-        return _row_to_dict(row) if row is not None else None
+        return _event_to_dict(row) if row is not None else None
 
 
 async def event_stats(**filters) -> dict:
@@ -370,6 +422,7 @@ async def event_stats(**filters) -> dict:
                     func.count(case((ActivityLog.status == "success", 1))),
                     func.count(case((ActivityLog.status == "failed", 1))),
                     func.count(case((ActivityLog.status == "started", 1))),
+                    func.count(case((ActivityLog.status == "observed", 1))),
                 ).where(*conditions)
             )
         ).one()
@@ -394,7 +447,10 @@ async def event_stats(**filters) -> dict:
                 {"key": key if key is not None else "unknown", "total": total, "failed": failed}
                 for key, total, failed in (await session.execute(stmt)).all()
             ]
-    return dict(zip(("total", "success", "failed", "started"), counts, strict=True)) | groups
+    result = dict(zip(("total", "success", "failed", "started", "observed"), counts, strict=True)) | groups
+    if not result["observed"]:
+        result.pop("observed")
+    return result
 
 
 async def list_user_management_events(
@@ -450,3 +506,82 @@ def _row_to_dict(r: ActivityLog) -> dict:
         "http_status": r.http_status,
         "extra": r.extra,
     }
+
+
+def _event_to_dict(row: ActivityLog) -> dict:
+    """Admin detail is an allowlisted structural view, not an arbitrary JSON dump."""
+    from app.services.interaction_policy import canonical_page, interaction_id
+
+    result = _row_to_dict(row)
+    safe = {}
+    extra = row.extra if isinstance(row.extra, dict) else {}
+    for key in ("stage", "error_type", "error_code", "severity", "function"):
+        value = extra.get(key)
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value):
+            safe[key] = value
+    value = extra.get("method")
+    if isinstance(value, str) and value in {
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+        "TRACE",
+        "CONNECT",
+        "OTHER",
+    }:
+        safe["method"] = value
+    value = extra.get("auth_method")
+    if isinstance(value, str) and value in {"password", "federated"}:
+        safe["auth_method"] = value
+    value = extra.get("error_code")
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 999999:
+        safe["error_code"] = value
+    value = extra.get("logger")
+    if isinstance(value, str) and re.fullmatch(r"app\.[A-Za-z0-9_.]{1,100}", value):
+        safe["logger"] = value
+    value = extra.get("line")
+    if isinstance(value, int) and not isinstance(value, bool) and 0 < value <= 10000000:
+        safe["line"] = value
+    route = extra.get("route")
+    if route == "<unmatched>" or (
+        isinstance(route, str)
+        and route.startswith("/")
+        and len(route) <= 255
+        and re.fullmatch(r"/[A-Za-z0-9_/{}:.-]*", route)
+    ):
+        safe["route"] = route
+    value = interaction_id(extra.get("interaction_id"))
+    if value is not None:
+        safe["interaction_id"] = value
+    value = extra.get("duration_ms")
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 86400000:
+        safe["duration_ms"] = value
+    value = extra.get("ordinal")
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000:
+        safe["ordinal"] = value
+    value = extra.get("control")
+    if isinstance(value, str) and value in {
+        "button",
+        "link",
+        "form",
+        "summary",
+        "combobox",
+        "checkbox",
+        "switch",
+        "option",
+        "other",
+    }:
+        safe["control"] = value
+    value = extra.get("destination")
+    if value == "external":
+        safe["destination"] = value
+    elif isinstance(value, str):
+        try:
+            safe["destination"] = canonical_page(value)
+        except ValueError:
+            pass
+    result["extra"] = safe or None
+    return result

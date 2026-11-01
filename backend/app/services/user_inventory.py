@@ -127,6 +127,7 @@ def scoped_connection(token: str, user_id: str, project_id: str):
         conn._afterglow_project_id = project_id
         conn._afterglow_domain_id = domain_id
         conn._afterglow_identity_domain_id = identity_domain_id
+        conn._afterglow_roles = tuple(access.role_names or [])
         return conn, scoped_token
     except Exception:
         conn.close()
@@ -443,9 +444,19 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
             "identity_domain_id": conn._afterglow_identity_domain_id,
         }
         child = child_request(request, info)
+        # Reuse response data across credential renewal, never the live authorization above.
         fingerprint = hashlib.sha256(
             json.dumps(
-                [token, user_id, project_id, project_name, sorted(access["roles"])], separators=(",", ":")
+                [
+                    settings.os_auth_url,
+                    user_id,
+                    conn._afterglow_identity_domain_id,
+                    conn._afterglow_domain_id,
+                    project_id,
+                    project_name,
+                    sorted(conn._afterglow_roles),
+                ],
+                separators=(",", ":"),
             ).encode()
         ).hexdigest()
 
@@ -478,7 +489,7 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
                     return project_items(rows, category, project_id, project_name, user_id)
 
                 items = await cached_call(
-                    f"afterglow:user-inventory:{cache_fingerprint}:{category}",
+                    f"afterglow:user-inventory:v2:{cache_fingerprint}:{category}",
                     ttl_normal(),
                     fetch,
                     # Operator policy may change without any Keystone role change.

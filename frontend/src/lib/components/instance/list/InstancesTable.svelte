@@ -30,7 +30,7 @@
 		selectableIds.size > 0 && [...selectableIds].every((id) => selectedIds.has(id))
 	);
 	const hasSelection = $derived(selectedIds.size > 0);
-	const partiallySelected = $derived(hasSelection && !allSelected);
+	const partiallySelected = $derived(!allSelected && [...selectableIds].some((id) => selectedIds.has(id)));
 	let actingIds = $state<ReadonlySet<string>>(new Set());
 	async function act(kind: Parameters<typeof onAction>[0], instance: Instance) {
 		if (actingIds.has(instance.id)) return;
@@ -50,7 +50,7 @@
 			<InstanceRow instance={inst} compact acting={actingIds.has(inst.id)} isUnderutilized={underutilized[inst.id] ?? false} selected={selectedIds.has(inst.id)} selectable={selectableIds.has(inst.id)} {selectionDisabled} {onSelect} onAction={act} onToggleSelect={() => onToggleSelect(inst.id)} />
 		{/each}
 	{/snippet}
-<TableShell density="compact" class={hasSelection ? 'has-selection' : ''}>
+<TableShell class={hasSelection ? 'has-selection' : ''}>
 	<table class="min-w-[64rem]" aria-label={t('table.instanceList')}>
 		<colgroup>
 			<col class="w-10" />

@@ -41,6 +41,8 @@ class FakeSocket {
 
 const identity: CloudShellIdentity = {
 	token: 'token-a',
+	userId: 'user-a',
+	sessionId: 'login-a',
 	projectId: 'project-a',
 	projectName: 'Project A',
 };
@@ -136,6 +138,50 @@ describe('Cloud Shell singleton controller contract', () => {
 		expect(fixture.controller.phase).toBe('closed');
 		expect(fixture.controller.visible).toBe(false);
 		expect(fixture.controller.identity?.projectId).toBe('project-b');
+	});
+
+	it.each([
+		{ ...identity, userId: 'user-b' },
+		{ ...identity, sessionId: 'login-b' },
+	])('discards personal output when the owner/login changes in the same project', async (next) => {
+		const fixture = buildController();
+		const clear = vi.fn();
+		fixture.controller.bindIdentity(identity);
+		fixture.controller.setTerminalSink({ write: vi.fn(), clear, focus: vi.fn(), fit: vi.fn() });
+		fixture.controller.openConsent();
+		await fixture.controller.approve();
+		fixture.socket.open();
+		clear.mockClear();
+		fixture.controller.bindIdentity(next);
+		expect(fixture.socket.closed).toContainEqual({ code: 1000, reason: 'identity-lost' });
+		expect(clear).toHaveBeenCalledOnce();
+		expect(fixture.controller.visible).toBe(false);
+	});
+
+	it('preserves an active shell during ordinary access-token refresh', async () => {
+		const fixture = buildController();
+		fixture.controller.bindIdentity(identity);
+		fixture.controller.openConsent();
+		await fixture.controller.approve();
+		fixture.socket.open();
+		fixture.controller.bindIdentity({ ...identity, token: 'refreshed-token' });
+		expect(fixture.socket.closed).toEqual([]);
+		expect(fixture.controller.phase).toBe('provisioning');
+	});
+
+	it('never connects a late ticket from the previous logical login', async () => {
+		const fixture = buildController();
+		const pending = Promise.withResolvers<{ ticket: string; websocket_path: string; expires_at: number }>();
+		fixture.issueTicket.mockReturnValueOnce(pending.promise);
+		fixture.controller.bindIdentity(identity);
+		fixture.controller.openConsent();
+		const approval = fixture.controller.approve();
+		fixture.controller.bindIdentity({ ...identity, sessionId: 'login-b' });
+		fixture.controller.openConsent();
+		pending.resolve({ ticket: 'old-ticket', websocket_path: '/api/v1/cloud-shell/ws', expires_at: 2_000_000_000 });
+		await approval;
+		expect(fixture.createWebSocket).not.toHaveBeenCalled();
+		expect(fixture.controller.phase).toBe('consent');
 	});
 
 	it('enters the error phase when the server closes a displaced session', async () => {

@@ -7,6 +7,8 @@ interface AutoRefreshOptions {
 	defaultInterval?: number;
 	intervalOptions?: number[];
 	invokeOnMount?: boolean;
+	/** A mounted presentation-only consumer must not own a second polling timer. */
+	enabled?: () => boolean;
 }
 
 export interface AutoRefreshController {
@@ -81,7 +83,7 @@ export function createAutoRefresh(
 	// changes re-arm the timer without repeating the initial load.
 	let initialized = false;
 	$effect(() => {
-		const active = state.active;
+		const active = state.active && (options.enabled?.() ?? true);
 		const effectiveMs = (_boost ?? state.intervalSeconds) * 1000;
 		const initial = !initialized;
 		initialized = true;

@@ -1,6 +1,7 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-network';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { Alert, Button, Field, TextInput } from '$lib/components/ui';
 	import type { AdminNetwork } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -54,21 +55,16 @@
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('adminNetworkEditModal.title')}</h2>
-			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			<div class="space-y-4">
-				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminnetworkeditmodal-55">{t('adminNetworkEditModal.name')}</label>
-					<input id="field-adminnetworkeditmodal-55" bind:value={editName} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
-				</div>
+				<Field label={t('adminNetworkEditModal.name')} for="field-adminnetworkeditmodal-55"><TextInput id="field-adminnetworkeditmodal-55" bind:value={editName} disabled={saving} /></Field>
 				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
 					<input type="checkbox" bind:checked={editShared} class="rounded" /> {t('adminNetworkEditModal.shared')}
 				</label>
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminNetworkEditModal.cancel')}</button>
-				<button aria-busy={saving} onclick={save} disabled={saving} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-					{#if saving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('adminNetworkEditModal.saving')}</span>{:else}{t('adminNetworkEditModal.save')}{/if}
-				</button>
+				<Button variant="secondary" disabled={saving} onclick={onClose}>{t('adminNetworkEditModal.cancel')}</Button>
+				<Button variant="primary" ariaBusy={saving} onclick={save} disabled={saving}>{#if saving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving ? t('adminNetworkEditModal.saving') : t('adminNetworkEditModal.save')}</Button>
 			</div>
 		</div>
 	</div>

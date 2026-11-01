@@ -122,7 +122,7 @@ async def test_event_detail_not_found_and_legacy_metadata(admin_client, event_db
     async with event_db() as session:
         session.add(
             ActivityLog(
-                id=6,
+                id=1000,
                 project_id="old",
                 user_id="old",
                 username="old",
@@ -132,11 +132,11 @@ async def test_event_detail_not_found_and_legacy_metadata(admin_client, event_db
             )
         )
         await session.commit()
-    legacy = (await admin_client.get("/api/v1/admin/events/6")).json()
+    legacy = (await admin_client.get("/api/v1/admin/events/1000")).json()
     assert legacy["request_id"] is None and legacy["service"] is None and legacy["page"] is None
     assert legacy["source"] == "afterglow" and legacy["external_id"] is None
     source = await admin_client.get("/api/v1/admin/events?source=afterglow&project_id=old")
-    assert [row["id"] for row in source.json()] == [6]
+    assert [row["id"] for row in source.json()] == [1000]
 
 
 @pytest.mark.asyncio
@@ -194,10 +194,13 @@ async def test_record_masks_secrets_and_inherits_audit_metadata(event_db):
     assert "secretSecret1234" not in event["error_message"]
     assert event["http_status"] == 500
     assert "hunter2" not in event["error_message"]
-    assert event["extra"]["secret"] == "[redacted]"
-    assert event["extra"]["details"]["token"] == "[redacted]"
-    assert "abcdefghij" not in event["extra"]["details"]["reason"]
-    assert "xyz" not in event["extra"]["details"]["reason"]
+    assert event["extra"] is None  # admin event projection never dumps arbitrary stored JSON
+    async with event_db() as session:
+        stored = (await session.get(ActivityLog, event["id"])).extra
+    assert stored["secret"] == "[redacted]"
+    assert stored["details"]["token"] == "[redacted]"
+    assert "abcdefghij" not in stored["details"]["reason"]
+    assert "xyz" not in stored["details"]["reason"]
 
 
 @pytest.mark.asyncio
@@ -232,3 +235,42 @@ async def test_events_domain_directory_failure_is_explicit(admin_client, event_d
     result = await admin_client.get("/api/v1/admin/events?domain_id=domain-a")
     assert result.status_code == 503
     assert "private native message" not in result.text
+
+
+@pytest.mark.asyncio
+async def test_browser_observed_scope_correlation_and_private_projection(admin_client, event_db, mock_conn):
+    await activity.record_interactions(
+        actor={},
+        events=[
+            {
+                "kind": "click",
+                "page": "/login",
+                "interaction_id": "11111111-1111-4111-8111-111111111111",
+            }
+        ],
+    )
+    await activity.record_interactions(
+        actor={"project_id": "project-a", "user_id": "operator"},
+        events=[
+            {
+                "kind": "submit",
+                "page": "/dashboard",
+                "interaction_id": "11111111-1111-4111-8111-111111111111",
+            }
+        ],
+    )
+    global_rows = (await admin_client.get("/api/v1/admin/events?status=observed&source=browser")).json()
+    assert len(global_rows) == 2 and all(row["status"] == "observed" for row in global_rows)
+    anonymous = next(row for row in global_rows if not row["project_id"])
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="domain-a")
+    mock_conn.identity.projects.side_effect = lambda **_: iter([SimpleNamespace(id="project-a", domain_id="domain-a")])
+    rows = (
+        await admin_client.get(
+            "/api/v1/admin/events?domain_id=domain-a&interaction_id=11111111-1111-4111-8111-111111111111"
+        )
+    ).json()
+    assert len(rows) == 1 and rows[0]["project_id"] == "project-a"
+    stats = (await admin_client.get("/api/v1/admin/events/stats?domain_id=domain-a&status=observed")).json()
+    assert stats["observed"] == 1 and stats["success"] == 0
+    assert (await admin_client.get(f"/api/v1/admin/events/{anonymous['id']}?domain_id=domain-a")).status_code == 404
+    assert (await admin_client.get(f"/api/v1/admin/events/{anonymous['id']}")).status_code == 200

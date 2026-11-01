@@ -68,14 +68,17 @@ export function workspaceIam(session: IamSession) {
 			throw cause;
 		}
 	};
+	const beforeDispatch = () => {
+		if (!session.isCurrent() || !session.canSubmit()) throw new DOMException('', 'AbortError');
+	};
 	const root = '/api/v1/iam';
 	return {
 		budgets: () => dispatch(() => api.get<DomainBudgets>(root + '/quotas', session.token(), undefined, { cache: 'no-store' })),
 		resources: () => dispatch(() => api.get<IamResourceWorkspace>(root + '/monitoring', session.token(), undefined, { cache: 'no-store' })),
 		forecast: () => dispatch(() => api.get<DomainForecast>(root + '/monitoring/forecast', session.token(), undefined, { cache: 'no-store' })),
-		defaults: (revision: number, defaults: QuotaMap) => dispatch(() => api.put<DomainBudgets>(root + '/quotas/defaults', { revision, defaults }, session.token(), undefined, { replayOnUnauthorized: false }), true),
+		defaults: (revision: number, defaults: QuotaMap) => dispatch(() => api.put<DomainBudgets>(root + '/quotas/defaults', { revision, defaults }, session.token(), undefined, { replayOnUnauthorized: false, beforeDispatch }), true),
 		project: (projectId: string) => dispatch(() => api.get<ProjectQuotas>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, session.token(), undefined, { cache: 'no-store' })),
-		saveProject: (projectId: string, limits: QuotaMap) => dispatch(() => api.put<QuotaResult>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, limits, session.token(), undefined, { replayOnUnauthorized: false }), true)
+		saveProject: (projectId: string, limits: QuotaMap) => dispatch(() => api.put<QuotaResult>(`${root}/projects/${encodeURIComponent(projectId)}/quotas`, limits, session.token(), undefined, { replayOnUnauthorized: false, beforeDispatch }), true)
 	};
 }
 
@@ -93,9 +96,12 @@ export function adminDomainBudgets(domainId: string, authority: BudgetAuthority)
 			throw cause;
 		}
 	};
+	const beforeDispatch = () => {
+		if (!authority.isCurrent()) throw new DOMException('', 'AbortError');
+	};
 	return {
 		load: () => dispatch(() => api.get<DomainBudgets>(path, authority.token(), authority.projectId(), { refresh: true })),
-		save: (revision: number, ceilings: QuotaMap) => dispatch(() => api.put<DomainBudgets>(path, { revision, ceilings }, authority.token(), authority.projectId(), { replayOnUnauthorized: false })),
-		reconcile: (operationId: string) => dispatch(() => api.post<DomainBudgets>(`${path}/operations/${encodeURIComponent(operationId)}/reconcile`, { native_calls_settled: true }, authority.token(), authority.projectId(), { replayOnUnauthorized: false }))
+		save: (revision: number, ceilings: QuotaMap) => dispatch(() => api.put<DomainBudgets>(path, { revision, ceilings }, authority.token(), authority.projectId(), { replayOnUnauthorized: false, beforeDispatch })),
+		reconcile: (operationId: string) => dispatch(() => api.post<DomainBudgets>(`${path}/operations/${encodeURIComponent(operationId)}/reconcile`, { native_calls_settled: true }, authority.token(), authority.projectId(), { replayOnUnauthorized: false, beforeDispatch }))
 	};
 }

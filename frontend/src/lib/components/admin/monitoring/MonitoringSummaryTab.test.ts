@@ -55,6 +55,21 @@ describe('MonitoringSummaryTab', () => {
 		expect(screen.getByText(t('monitoring.summary.unavailable'))).toBeTruthy();
 	});
 
+	it('retains native samples and known sections while failed inventory counts remain unavailable', () => {
+		render(MonitoringSummaryTab, { summary: { ...summary,
+			unavailable_sections: ['instances', 'containers', 'file_storage'],
+			compute: { ...summary.compute, instance_stats: null, gpu_instances: null },
+			storage: { ...summary.storage, file_storage_count: null },
+			containers: { ...summary.containers, zun_count: null },
+			telemetry: telemetry({ resources: [{ id: 'known-host', name: 'Known host', type: 'compute_host', metrics: { 'hardware.cpu.util': meter([{ ts: 60, value: 25 }]) } }] }),
+		}, loading: false, refreshing: false });
+		expect(screen.getByText(t('overview.availability.partial'))).toBeTruthy();
+		expect(screen.getByText('Known host')).toBeTruthy();
+		expect(screen.getByText(`${t('monitoring.telemetry.latest')}: 25 %`)).toBeTruthy();
+		expect(screen.queryByText(t('overview.availability.disabled'))).toBeNull();
+		expect(screen.getAllByText(t('overview.availability.unknown')).length).toBeGreaterThan(1);
+	});
+
 	it.each(['not_configured', 'forbidden', 'unavailable', 'not_collected'] as const)('preserves allocation and inventory when native telemetry is %s', (status) => {
 		render(MonitoringSummaryTab, { summary: { ...summary, telemetry: telemetry({ status }) }, loading: false, refreshing: false });
 		const labelKeys = { not_configured: 'monitoring.telemetry.notConfigured', forbidden: 'monitoring.telemetry.forbidden', unavailable: 'monitoring.telemetry.unavailable', not_collected: 'monitoring.telemetry.notCollected' } as const;

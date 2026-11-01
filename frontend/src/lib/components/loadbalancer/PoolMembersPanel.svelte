@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, StatusChip } from '$lib/components/ui';
 
@@ -53,7 +53,7 @@
         placeholder={t('lb.form.weight')}
         class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1"
       />
-      <Button onclick={() => pending.run('add', () => s.addMember())} disabled={s.saving || !s.memberForm.address} ariaBusy={addingMember} size="sm">{#if addingMember}<ActivityIndicator size="xs" tone="ink" />{/if}{addingMember ? t('lb.actions.adding') : t('lb.actions.add')}</Button>
+      <Button onclick={() => pending.run('add', () => s.addMember())} disabled={s.saving || !s.memberForm.address} ariaBusy={addingMember} size="sm">{#if addingMember}<LoadingState variant="control" label="" />{/if}{addingMember ? t('lb.actions.adding') : t('lb.actions.add')}</Button>
       <button onclick={() => s.toggleAddMember()} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center rounded border border-line-2">{t('lb.actions.cancel')}</button>
     </div>
   {/if}
@@ -69,7 +69,7 @@
         <CompactResourceCard>
           <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{member.address}:{member.protocol_port}</strong><StatusChip status={member.status} /></div>
           <p class="text-xs text-ink-2">{t('lb.members.weight', { weight: member.weight })}</p>
-          {#snippet actions()}{#if s.canMutate}<Button size="sm" variant="danger-outline" onclick={() => pending.run(`remove:${member.id}`, () => s.removeMember(member.id))} disabled={s.saving} ariaBusy={removingMember}>{#if removingMember}<ActivityIndicator size="xs" tone="danger" />{/if}{removingMember ? t('lb.actions.removing') : t('lb.actions.remove')}</Button>{/if}{/snippet}
+          {#snippet actions()}{#if s.canMutate}<Button size="sm" variant="danger-outline" onclick={() => pending.run(`remove:${member.id}`, () => s.removeMember(member.id))} disabled={s.saving} ariaBusy={removingMember}>{#if removingMember}<LoadingState variant="control" label="" />{/if}{removingMember ? t('lb.actions.removing') : t('lb.actions.remove')}</Button>{/if}{/snippet}
         </CompactResourceCard>
       {/each}
     </div>

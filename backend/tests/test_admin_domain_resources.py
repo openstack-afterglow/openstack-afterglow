@@ -168,6 +168,57 @@ async def test_volume_summary_is_complete_but_filter_totals_match_full_filtered_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["all-instances", "all-volumes"])
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        (None, ["new", "same-a", "same-b", "old", "invalid", "missing"]),
+        ("created_desc", ["new", "same-a", "same-b", "old", "invalid", "missing"]),
+        ("created_asc", ["old", "same-a", "same-b", "new", "invalid", "missing"]),
+        ("name_asc", ["new", "old", "same-b", "same-a", "invalid", "missing"]),
+        ("name_desc", ["missing", "invalid", "same-a", "new", "old", "same-b"]),
+    ],
+)
+async def test_resource_sort_precedes_marker_and_domain_filter(admin_client, resource_directory, route, sort, expected):
+    values = [
+        ("old", "alpha", "2026-10-26T23:00:00Z"),
+        ("missing", "Zulu", None),
+        ("same-b", "ALPHA", "2026-10-28T00:00:00+09:00"),
+        ("new", "Alpha", "2026-10-28T01:00:00"),
+        ("invalid", "omega", "not-a-date"),
+        ("same-a", "beta", "2026-10-27T15:00:00Z"),
+    ]
+    servers = [server(sid, "a1", name=name, created=created) for sid, name, created in values]
+    servers.append(server("outside", "b1", created="2027-01-01T00:00:00Z"))
+    volumes = [volume(sid, name=name) for sid, name, _ in values]
+    for row, (_, _, created) in zip(volumes, values, strict=True):
+        row.created_at = created
+    volumes.append(volume("outside", "b1"))
+    resource_directory.block_storage.volumes.side_effect = lambda **_: iter(volumes)
+    query = "domain_id=a&limit=2" + (f"&sort={sort}" if sort else "")
+    seen = []
+    marker = None
+    with patch("app.services.openstack_inventory.list_servers_complete", return_value=servers):
+        for _ in range(3):
+            response = await admin_client.get(
+                f"/api/v1/admin/{route}?{query}" + (f"&marker={marker}" if marker else "")
+            )
+            assert response.status_code == 200
+            body = response.json()
+            seen.extend(row["id"] for row in body["items"])
+            marker = body["next_marker"]
+    assert seen == expected
+    assert marker is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["all-instances", "all-volumes"])
+async def test_unknown_resource_sort_is_rejected(admin_client, resource_directory, route):
+    response = await admin_client.get(f"/api/v1/admin/{route}?sort=unsupported")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_hypervisor_vm_uses_project_owner_and_native_flavor_uuid_fallback(admin_client, resource_directory):
     resource_directory.compute.get_endpoint.return_value = "http://nova"
     resource_directory.compute.flavors.return_value = []

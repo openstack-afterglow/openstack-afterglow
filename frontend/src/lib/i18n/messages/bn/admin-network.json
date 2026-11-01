@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "প্রতি পৃষ্ঠায় সারি",
+	"list.analytics": "নেটওয়ার্কের প্রবণতা",
+	"list.details": "বিস্তারিত দেখুন",
+	"list.actionsFor": "নেটওয়ার্ক {name}-এর কাজ",
+	"list.scopedHistory": "প্রকল্পের পরিসরে পুরো ক্লাউডের নেটওয়ার্ক ইতিহাস পাওয়া যায় না।",
+	"list.deleteImpact": "নেটওয়ার্ক মুছে ফেলা ফেরানো যায় না। সংযুক্ত পোর্ট থাকলে মুছে ফেলা আটকে যেতে পারে।",
 	"loadbalancersPage.loading": "লোড ব্যালান্সারগুলো লোড হচ্ছে...",
 	"adminNetworkCreateModal.title": "নেটওয়ার্ক তৈরি করুন",
 	"adminNetworkCreateModal.name": "নাম",

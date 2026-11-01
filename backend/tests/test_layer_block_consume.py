@@ -9,12 +9,13 @@ import asyncio
 import base64
 import copy
 import hashlib
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from keystoneauth1.exceptions import ClientException
 from openstack.exceptions import SDKException
 from sqlalchemy import select
@@ -60,7 +61,7 @@ async def prepare_row(ledger, monkeypatch, entries):
     return factory, consume_id
 
 
-async def run_consumer(conn, consume_id, entries):
+async def run_consumer(conn, consume_id, entries, *, usage_schedule=None):
     return await layer_build.run_layer_consume(
         consume_id,
         "proof",
@@ -70,6 +71,7 @@ async def run_consumer(conn, consume_id, entries):
         compute_conn=conn,
         resolved_artifacts=entries,
         transport="block",
+        usage_schedule=usage_schedule,
     )
 
 
@@ -336,3 +338,187 @@ async def test_completed_unclaimed_admission_cleanup_needs_no_cloud_connection(l
     assert first.status_code == repeated.status_code == 200
     assert first.json()["cleanup_state"] == repeated.json()["cleanup_state"] == "complete"
     assert first.json()["status"] == repeated.json()["status"] == "error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flavor_change,schedule_request",
+    [
+        ({"vcpus": 12}, None),
+        ({"ram": 65536}, None),
+        ({"extra_specs": {"resources:VGPU": "1"}}, None),
+        ({"extra_specs": {"afterglow:usage_schedule_required": "true"}}, None),
+        ({"vcpus": 12}, {"expires_at": "2001-01-01T00:00:00Z"}),
+        ({"vcpus": 12}, {"delete_volumes": True}),
+        ({"vcpus": 12}, {"expires_at": "2099-01-01T00:00:00Z"}),
+    ],
+)
+async def test_native_consumer_invalid_schedule_rejects_before_allocations(
+    ledger, block_provider, monkeypatch, flavor_change, schedule_request
+):
+    conn, state, entry = block_provider
+    state.flavor.update(flavor_change)
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+    with pytest.raises(HTTPException) as error:
+        await run_consumer(conn, consume_id, entries, usage_schedule=schedule_request)
+    assert error.value.status_code == 422
+    assert not any(call[0] == "POST" for call in state.calls)
+    assert state.servers == state.volumes == state.ports == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit,delete_volumes", [(False, False), (True, False), (True, True)])
+async def test_native_consumer_first_create_contains_calendar_schedule_and_lineage(
+    ledger, block_provider, monkeypatch, explicit, delete_volumes
+):
+    from app.services import instance_usage
+
+    conn, state, entry = block_provider
+    state.flavor["vcpus"] = 12
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+    created = datetime(2032, 1, 31, 10, 15, tzinfo=UTC)
+    monkeypatch.setattr(instance_usage, "_clock", lambda now=None: now or created)
+    request = (
+        {
+            "expires_at": "2032-03-31T10:15:00Z",
+            "reason": "Semester research",
+            "expiry_action": "delete",
+            "delete_volumes": delete_volumes,
+        }
+        if explicit
+        else {}
+    )
+    server_id = await run_consumer(conn, consume_id, entries, usage_schedule=request)
+    creates = [call for call in state.calls if call[0] == "POST" and call[1].endswith("/servers")]
+    assert len(creates) == 1
+    metadata = creates[0][2]["server"]["metadata"]
+    schedule = instance_usage.parse_schedule({"id": server_id, "metadata": metadata})
+    assert schedule.starts_at == created.isoformat()
+    assert schedule.expires_at == ("2032-03-31T10:15:00+00:00" if explicit else "2032-02-29T10:15:00+00:00")
+    assert schedule.reason == ("Semester research" if explicit else "")
+    assert schedule.delete_volumes is delete_volumes
+    assert schedule.expiry_action == ("delete" if explicit else "shelve")
+    assert metadata["afterglow_managed"] == "true"
+    assert metadata["afterglow_consume_id"] == str(consume_id)
+    assert metadata["layer_profile"] == "proof" and metadata["layer_transport"] == "block"
+    assert metadata["base_image_id"] == state.base_image["id"]
+
+
+@pytest.mark.asyncio
+async def test_native_consumer_expiry_elapsed_during_allocation_never_posts_server(ledger, block_provider, monkeypatch):
+    from app.services import instance_usage
+
+    conn, state, entry = block_provider
+    state.flavor["vcpus"] = 12
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+    clock = [datetime(2032, 1, 31, 10, 15, tzinfo=UTC)]
+    monkeypatch.setattr(instance_usage, "_clock", lambda now=None: now or clock[0])
+    render = layer_build.render_layer_consume_user_data
+
+    def delayed_render(*args, **kwargs):
+        clock[0] += timedelta(minutes=2)
+        return render(*args, **kwargs)
+
+    monkeypatch.setattr(layer_build, "render_layer_consume_user_data", delayed_render)
+    with pytest.raises(HTTPException) as error:
+        await run_consumer(conn, consume_id, entries, usage_schedule={"expires_at": "2032-01-31T10:16:00Z"})
+    assert error.value.status_code == 422
+    assert not any(call[0] == "POST" and call[1].endswith("/servers") for call in state.calls)
+    assert state.servers == state.volumes == state.ports == {}
+
+
+@pytest.mark.asyncio
+async def test_native_consumer_expiry_during_server_intent_never_posts_server(ledger, block_provider, monkeypatch):
+    from app.services import instance_usage
+
+    conn, state, entry = block_provider
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+    clock = [datetime(2032, 1, 31, 10, 15, tzinfo=UTC)]
+    monkeypatch.setattr(instance_usage, "_clock", lambda now=None: now or clock[0])
+    record = layer_consume_resources.record
+    server_intents = []
+
+    async def delayed_record(*args, **kwargs):
+        result = await record(*args, **kwargs)
+        if kwargs["kind"] == "server" and kwargs.get("resource_id") is None:
+            server_intents.append(True)
+            clock[0] += timedelta(minutes=2)
+        return result
+
+    monkeypatch.setattr(layer_consume_resources, "record", delayed_record)
+    with pytest.raises(HTTPException) as error:
+        await run_consumer(conn, consume_id, entries, usage_schedule={"expires_at": "2032-01-31T10:16:00Z"})
+    assert error.value.status_code == 422
+    assert server_intents == [True]
+    assert not any(call[0] == "POST" and call[1].endswith("/servers") for call in state.calls)
+    assert state.servers == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["catalog", "consumer"])
+@pytest.mark.parametrize(
+    "status,envelope,accepted",
+    [
+        (200, {}, False),
+        (200, {"extra_specs": None}, False),
+        (200, {"extra_specs": []}, False),
+        (200, {"extra_specs": {"resources:VGPU": 1}}, False),
+        (307, {"extra_specs": {}}, False),
+        (200, {"extra_specs": {}}, True),
+    ],
+)
+async def test_native_flavor_specs_missing_envelope_never_becomes_empty_authority(
+    ledger, block_provider, monkeypatch, path, status, envelope, accepted
+):
+    from app.services import nova
+
+    conn, state, entry = block_provider
+    state.flavor.pop("extra_specs")
+    state.flavor_specs_status = status
+    state.flavor_specs_response = envelope
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+
+    async def execute():
+        if path == "catalog":
+            flavors = await asyncio.to_thread(nova.list_flavors, conn)
+            assert len(flavors) == 1
+            assert flavors[0].extra_specs == {}
+            assert flavors[0].usage_schedule_required is False
+        else:
+            server_id = await run_consumer(conn, consume_id, entries)
+            assert server_id in state.servers
+
+    if accepted:
+        await execute()
+    else:
+        with pytest.raises(HTTPException) as error:
+            await execute()
+        assert error.value.status_code == 503
+        assert not any(call[0] == "POST" for call in state.calls)
+        assert state.servers == state.volumes == state.ports == {}
+    reads = [call for call in state.calls if call[0] == "GET" and "/os-extra_specs" in call[1]]
+    assert len(reads) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["catalog", "consumer"])
+async def test_native_flavor_explicit_empty_specs_need_no_fallback_get(ledger, block_provider, monkeypatch, path):
+    from app.services import nova
+
+    conn, state, entry = block_provider
+    state.flavor["extra_specs"] = {}
+    state.flavor_specs_response = {}
+    entries = [artifact_entry(state, entry)]
+    _, consume_id = await prepare_row(ledger, monkeypatch, entries)
+    if path == "catalog":
+        flavors = await asyncio.to_thread(nova.list_flavors, conn)
+        assert len(flavors) == 1 and flavors[0].extra_specs == {}
+    else:
+        server_id = await run_consumer(conn, consume_id, entries)
+        assert server_id in state.servers
+    assert not any(call[0] == "GET" and "/os-extra_specs" in call[1] for call in state.calls)

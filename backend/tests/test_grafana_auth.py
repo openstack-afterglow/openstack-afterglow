@@ -36,7 +36,7 @@ def grafana_config(tmp_path, monkeypatch):
         ("operator-proxysql", "environment-proxysql", "environment-proxysql"),
     ],
 )
-async def test_grafana_dashboard_config_precedence(client, grafana_config, toml_uid, env_uid, expected_uid):
+async def test_grafana_dashboard_config_precedence(admin_client, grafana_config, toml_uid, env_uid, expected_uid):
     config = (
         '[monitoring]\ngrafana_base_url = "https://grafana.example.com"\n'
         '[monitoring.dashboards]\nmysqld_uid = "existing-mysql"\n'
@@ -47,7 +47,7 @@ async def test_grafana_dashboard_config_precedence(client, grafana_config, toml_
     if env_uid is not None:
         os.environ["GRAFANA_DASHBOARD_PROXYSQL_UID"] = env_uid
 
-    response = await client.get("/api/v1/grafana/dashboards")
+    response = await admin_client.get("/api/v1/grafana/dashboards")
 
     assert response.status_code == 200
     data = response.json()
@@ -57,10 +57,10 @@ async def test_grafana_dashboard_config_precedence(client, grafana_config, toml_
 
 
 @pytest.mark.asyncio
-async def test_grafana_dashboards_without_url_remains_disabled(client, grafana_config):
+async def test_grafana_dashboards_without_url_remains_disabled(admin_client, grafana_config):
     grafana_config.write_text('[monitoring.dashboards]\nproxysql_uid = "operator-proxysql"\n', encoding="utf-8")
 
-    response = await client.get("/api/v1/grafana/dashboards")
+    response = await admin_client.get("/api/v1/grafana/dashboards")
 
     assert response.status_code == 200
     assert response.json()["grafana_url"] == ""

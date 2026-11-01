@@ -39,11 +39,10 @@ describe('VolumeSummaryCards', () => {
 		render(VolumeSummaryCards, { volumes, snapshots, quotas });
 
 		expect(screen.getByText('스냅샷')).toBeTruthy();
-		expect(screen.getByText('최근 24시간 1개')).toBeTruthy();
 	});
 
-	it('hides snapshot summary and switches to two columns when snapshot beta is off', () => {
-		const { container } = render(VolumeSummaryCards, {
+	it('hides snapshot summary when snapshot beta is off', () => {
+		render(VolumeSummaryCards, {
 			volumes,
 			snapshots,
 			quotas,
@@ -51,8 +50,11 @@ describe('VolumeSummaryCards', () => {
 		});
 
 		expect(screen.queryByText('스냅샷')).toBeNull();
-		expect(screen.queryByText('최근 24시간 1개')).toBeNull();
-		expect(container.firstElementChild?.classList.contains('grid-cols-2')).toBe(true);
-		expect(container.firstElementChild?.classList.contains('grid-cols-3')).toBe(false);
+	});
+
+	it('keeps unavailable snapshot counts and quotas distinct from measured zero', () => {
+		render(VolumeSummaryCards, { volumes, snapshots: [], quotas: null, snapshotsKnown: false });
+		expect(screen.getAllByText('—')).toHaveLength(2);
+		expect(screen.getByText('10 GiB')).toBeTruthy();
 	});
 });

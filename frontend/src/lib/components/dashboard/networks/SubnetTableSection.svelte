@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { NetworkDetail, RouterListItem } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -142,7 +142,7 @@
 					aria-busy={addingSubnet}
 					class="inline-flex items-center gap-1.5 text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{#if addingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
+					{#if addingSubnet}<LoadingState variant="control" label="" />{/if}{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
 				</button>
 			</div>
 		</div>
@@ -166,7 +166,7 @@
 						{#snippet details()}<dl><div><dt>{t('network.labels.id')}</dt><dd>{subnet.id}</dd></div><div><dt>{t('network.routers.title')}</dt><dd>{connected.map((router) => router.name || router.id.slice(0, 8)).join(', ') || '-'}</dd></div></dl>{/snippet}
 						{#snippet actions()}
 							{#if editingSubnetId === subnet.id}
-								<button class="text-ink-2" onclick={() => { editingSubnetId = null; }}>{t('network.actions.cancel')}</button><button class="text-warm-text" disabled={savingSubnet} aria-busy={savingSubnet} onclick={handleSave}>{#if savingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{savingSubnet ? t('network.actions.saving') : t('network.actions.save')}</button>
+								<button class="text-ink-2" onclick={() => { editingSubnetId = null; }}>{t('network.actions.cancel')}</button><button class="text-warm-text" disabled={savingSubnet} aria-busy={savingSubnet} onclick={handleSave}>{#if savingSubnet}<LoadingState variant="control" label="" />{/if}{savingSubnet ? t('network.actions.saving') : t('network.actions.save')}</button>
 							{:else if canManage}
 								<button class="text-warm-text" onclick={() => startEditSubnet(subnet)}>{t('network.actions.edit')}</button><button class="text-state-danger-text" onclick={() => onDelete(subnet.id, subnet.name)}>{t('network.actions.delete')}</button>
 							{/if}
@@ -235,7 +235,7 @@
 											disabled={savingSubnet}
 											aria-busy={savingSubnet}
 											class="inline-flex items-center gap-1.5 text-xs px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
-										>{#if savingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{savingSubnet ? t('network.actions.saving') : t('network.actions.save')}</button>
+										>{#if savingSubnet}<LoadingState variant="control" label="" />{/if}{savingSubnet ? t('network.actions.saving') : t('network.actions.save')}</button>
 									</div>
 								</div>
 							</td>

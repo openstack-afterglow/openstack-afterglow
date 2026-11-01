@@ -49,14 +49,14 @@ export function createAuthVerificationController(): AuthVerificationController {
 				try {
 					verified = meAuthState(me, state);
 				} catch {
-					clearAuth();
+					clearAuth({ broadcast: false });
 					return;
 				}
 				acceptAuthVerification(epoch, verified);
 			} catch (error) {
 				if (!current()) return;
 				if (error instanceof ApiError && error.status === 401) {
-					clearAuth();
+					clearAuth({ broadcast: false });
 					return;
 				}
 				authReady.set(false);

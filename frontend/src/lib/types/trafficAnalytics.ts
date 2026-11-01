@@ -6,6 +6,10 @@ export type TrafficOriginFilter = 'all' | TrafficOrigin;
 export type TrafficOrigins = Record<TrafficOrigin, number>;
 export const geoReasons = ['address_unavailable', 'invalid_address', 'non_global', 'database_unconfigured', 'database_unavailable', 'range_missing', 'country_invalid', 'lookup_failed', 'peer_unverified', 'forwarded_missing', 'forwarded_invalid', 'forwarded_all_trusted', 'legacy_unclassified'] as const;
 export const originReasons = ['peer_unverified', 'address_unavailable', 'invalid_address', 'forwarded_missing', 'forwarded_invalid', 'forwarded_all_trusted', 'non_global_noncluster', 'legacy_unclassified'] as const;
+export const trafficNetworkKinds = ['private', 'shared', 'loopback', 'link_local', 'documentation', 'benchmark', 'multicast', 'reserved', 'unspecified'] as const;
+export type TrafficNetworkKind = typeof trafficNetworkKinds[number];
+export const trafficNetworkBases = ['resolved_client', 'socket_peer'] as const;
+export type TrafficNetworkBasis = typeof trafficNetworkBases[number];
 export interface TrafficMetrics {
 	requests: number; success: number; errors: number;
 	status_1xx: number; status_2xx: number; status_3xx: number; status_4xx: number; status_5xx: number;
@@ -13,6 +17,11 @@ export interface TrafficMetrics {
 	request_bytes_known: number; response_bytes_known: number;
 	visitor_identity_known: number;
 	latency_ms_total: number; latency_ms_max: number; unique_visitors: number | null;
+}
+export interface TrafficNetwork extends TrafficMetrics {
+	network: string;
+	kind: TrafficNetworkKind;
+	basis: TrafficNetworkBasis;
 }
 export interface TrafficSnapshot {
 	state: 'available' | 'partial' | 'unavailable' | 'disabled'; source: TrafficSource; range: TrafficRange;
@@ -25,6 +34,7 @@ export interface TrafficSnapshot {
         dropped_events: number | null; reporter_dropped_events: number | null; observed_since: number | null; last_observed_at: number | null };
 	totals: TrafficMetrics | null;
 	countries: Array<TrafficMetrics & { country: string }>;
+	networks: TrafficNetwork[];
     routes: Array<TrafficMetrics & { route: string; origins: TrafficOrigins }>;
 	series: Array<{ at: number; metrics: TrafficMetrics | null }>;
 }
@@ -46,6 +56,32 @@ function origins(v: unknown): v is TrafficOrigins {
 function reasons(v: unknown, allowed: readonly string[]): boolean {
     return object(v) && Object.entries(v).every(([key, value]) => allowed.includes(key) && count(value));
 }
+// Match the collector's finite standard-purpose aggregates, never arbitrary host CIDRs.
+// RFC1918 is deliberately /16 aggregation, not discovery of an actual subnet.
+const standardNetworks: Readonly<Record<string, TrafficNetworkKind>> = {
+	'0.0.0.0/8': 'unspecified', '100.64.0.0/10': 'shared', '127.0.0.0/8': 'loopback',
+	'169.254.0.0/16': 'link_local', '192.0.0.0/24': 'reserved', '192.0.2.0/24': 'documentation',
+	'192.88.99.0/24': 'reserved', '198.18.0.0/15': 'benchmark', '198.51.100.0/24': 'documentation',
+	'203.0.113.0/24': 'documentation', '224.0.0.0/4': 'multicast', '240.0.0.0/4': 'reserved',
+	'::/128': 'unspecified', '::1/128': 'loopback', '64:ff9b:1::/48': 'reserved',
+	'100::/64': 'reserved', '100:0:0:1::/64': 'reserved', '2001:2::/48': 'benchmark',
+	'2001:db8::/32': 'documentation', '2001::/23': 'reserved', '2002::/16': 'reserved',
+	'3fff::/20': 'documentation', 'fc00::/7': 'private', 'fe80::/10': 'link_local', 'ff00::/8': 'multicast',
+	'::/8': 'reserved', '100::/8': 'reserved', '200::/7': 'reserved', '400::/6': 'reserved',
+	'800::/5': 'reserved', '1000::/4': 'reserved', '4000::/3': 'reserved', '6000::/3': 'reserved',
+	'8000::/3': 'reserved', 'a000::/3': 'reserved', 'c000::/3': 'reserved', 'e000::/4': 'reserved',
+	'f000::/5': 'reserved', 'f800::/6': 'reserved', 'fe00::/9': 'reserved', 'fec0::/10': 'reserved',
+};
+function networkRow(v: unknown): v is TrafficNetwork {
+	if (!metrics(v) || !object(v) || typeof v.network !== 'string' || v.network.length > 32 ||
+		typeof v.kind !== 'string' || !(trafficNetworkKinds as readonly string[]).includes(v.kind) ||
+		typeof v.basis !== 'string' || !(trafficNetworkBases as readonly string[]).includes(v.basis)) return false;
+	if (Object.hasOwn(standardNetworks, v.network)) return standardNetworks[v.network] === v.kind;
+	const match = /^(10|172|192)\.(0|[1-9]\d{0,2})\.0\.0\/16$/.exec(v.network);
+	if (!match || match[0] !== v.network || v.kind !== 'private') return false;
+	const second = Number(match[2]);
+	return match[1] === '10' ? second <= 255 : match[1] === '172' ? second >= 16 && second <= 31 : second === 168;
+}
 export function parseTrafficSnapshot(value: unknown, source: TrafficSource, range: TrafficRange, origin: TrafficOriginFilter = 'all'): TrafficSnapshot {
 	if (!object(value)) throw new Error('Invalid traffic schema');
 	const c = value.coverage;
@@ -59,11 +95,13 @@ export function parseTrafficSnapshot(value: unknown, source: TrafficSource, rang
 		!(c.site_country === null || (typeof c.site_country === 'string' && /^[A-Z]{2}$/.test(c.site_country) && c.site_country.length === 2 && c.site_country !== 'XX')) ||
 		!(value.totals === null || metrics(value.totals)) ||
 		!Array.isArray(value.countries) || !value.countries.every(v => metrics(v) && object(v) && typeof v.country === 'string' && /^[A-Z]{2}$/.test(v.country)) ||
+		!Array.isArray(value.networks) || !value.networks.every(networkRow) ||
         !Array.isArray(value.routes) || !value.routes.every(v => metrics(v) && object(v) && typeof v.route === 'string' && origins(v.origins) && trafficOrigins.reduce((sum, k) => sum + (v.origins as TrafficOrigins)[k], 0) === v.requests) ||
 		!Array.isArray(value.series) || !value.series.every(v => object(v) && nonnegative(v.at) && (v.metrics === null || metrics(v.metrics)))) throw new Error('Invalid traffic schema');
 	const snapshot = value as unknown as TrafficSnapshot;
 	if (new Set(snapshot.countries.map(v => v.country)).size !== snapshot.countries.length ||
         new Set(snapshot.routes.map(v => v.route)).size !== snapshot.routes.length ||
+		new Set(snapshot.networks.map(v => `${v.network}:${v.basis}`)).size !== snapshot.networks.length ||
         (snapshot.totals === null ? snapshot.origins !== null : snapshot.origins === null) ||
         (snapshot.origins !== null && trafficOrigins.reduce((sum, k) => sum + snapshot.origins![k], 0) !== (snapshot.totals?.requests ?? 0)) ||
         (snapshot.origins !== null && trafficOrigins.some(k => origin !== 'all' && origin !== k && snapshot.origins![k] !== 0)) ||

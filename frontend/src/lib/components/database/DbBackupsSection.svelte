@@ -2,7 +2,7 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
 	import type { DbBackup } from '$lib/types/database';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -119,7 +119,7 @@
 					{tr('auto.edit')}
 				</button>
 			{/if}
-			{#if s.savingAutoBackup && !showAutoForm}<ActivityIndicator size="xs" tone="ink" label={tr('state.saving')} />{/if}
+			{#if s.savingAutoBackup && !showAutoForm}<LoadingState variant="control" label={tr('state.saving')} />{/if}
 			<button
 				onclick={handleToggleAutoBackup}
 				disabled={s.savingAutoBackup}
@@ -152,7 +152,7 @@
 			<div class="flex gap-2">
 				<button onclick={handleSaveAutoBackup} disabled={s.savingAutoBackup}
 					class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-					{#if s.savingAutoBackup}<ActivityIndicator size="xs" tone="ink" />{/if}{s.savingAutoBackup ? tr('state.saving') : tr('actions.save')}
+					{#if s.savingAutoBackup}<LoadingState variant="control" label="" />{/if}{s.savingAutoBackup ? tr('state.saving') : tr('actions.save')}
 				</button>
 				<button onclick={() => { showAutoForm = false; }}
 					class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-3 py-1.5 rounded transition-colors">
@@ -181,7 +181,7 @@
 			{#if s.backupError}<p class="text-red-400 text-xs">{s.backupError}</p>{/if}
 			<button onclick={handleCreateBackup} disabled={s.creatingBackup}
 				class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{#if s.creatingBackup}<ActivityIndicator size="xs" tone="ink" />{/if}{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
+				{#if s.creatingBackup}<LoadingState variant="control" label="" />{/if}{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
 			</button>
 		</div>
 	{/if}
@@ -196,8 +196,8 @@
             <p class="text-xs text-ink-2">{tr('labels.size')}: {b.size == null ? '-' : `${b.size} GB`}</p>
             {#snippet details()}<p class="text-xs break-all">{b.id}</p><p class="text-xs">{tr('labels.created')}: {b.created_at ? b.created_at.slice(0, 10) : '-'}</p>{/snippet}
             {#snippet actions()}
-              <button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id} class="inline-flex items-center gap-1 text-warm-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm">{#if s.restoringBackup === b.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}</button>
-              <button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingBackup === b.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+              <button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id} class="inline-flex items-center gap-1 text-warm-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm">{#if s.restoringBackup === b.id}<LoadingState variant="control" label="" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}</button>
+              <button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingBackup === b.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             {/snippet}
           </CompactResourceCard>
         {/each}
@@ -230,11 +230,11 @@
 							<div class="flex justify-end gap-1">
 								<button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id}
 									class="inline-flex items-center gap-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{#if s.restoringBackup === b.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}
+									{#if s.restoringBackup === b.id}<LoadingState variant="control" label="" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}
 								</button>
 								<button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}
 									class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{#if s.deletingBackup === b.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
+									{#if s.deletingBackup === b.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
 								</button>
 							</div>
 						</td>

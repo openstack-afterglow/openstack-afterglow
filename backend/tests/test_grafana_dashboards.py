@@ -12,14 +12,46 @@ DASHBOARD_DIR = Path(__file__).parents[2] / "monitoring" / "grafana" / "provisio
 
 
 @pytest.mark.asyncio
-async def test_get_dashboards_allows_authenticated_member(non_admin_client):
-    """관리자뿐 아니라 인증된 일반 사용자도 VM 임베드 컨텍스트를 조회한다."""
+async def test_get_dashboards_denies_authenticated_member(non_admin_client):
+    """A project member cannot discover an unscoped infrastructure origin/catalog."""
     fake_settings = Settings(_env_file=None, grafana_base_url="https://grafana.example.com", secret_key="a" * 64)
 
     with patch("app.api.common.grafana_auth.get_settings", return_value=fake_settings):
         resp = await non_admin_client.get("/api/v1/grafana/dashboards")
 
-    assert resp.status_code == 200
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "system_admin_required"
+    assert "grafana_url" not in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_get_dashboards_retains_verified_administrator_catalog(admin_client):
+    fake_settings = Settings(_env_file=None, grafana_base_url="https://grafana.example.com", secret_key="a" * 64)
+    with patch("app.api.common.grafana_auth.get_settings", return_value=fake_settings):
+        response = await admin_client.get("/api/v1/grafana/dashboards")
+    assert response.status_code == 200
+    assert response.json()["grafana_url"] == "https://grafana.example.com"
+    assert response.json()["dashboards"]["node"] == "afterglow-node"
+    assert response.json()["dashboards"]["instance-cpu"] == fake_settings.grafana_dashboard_instance_cpu_uid
+
+
+@pytest.mark.asyncio
+async def test_grafana_catalog_rechecks_native_admin_grant(admin_client):
+    """A remembered admin flag cannot bypass the existing fresh native guard."""
+    from app.api.deps import require_admin
+    from app.main import app
+
+    app.dependency_overrides.pop(require_admin)
+    with (
+        patch("app.services.domain_scope.domain_context", return_value={}),
+        patch("app.services.domain_scope.assert_token_context"),
+        patch("app.services.keystone.validate_token", return_value={"roles": ["member"]}),
+        patch("app.services.keystone._is_system_admin", return_value=False) as live_grant,
+    ):
+        response = await admin_client.get("/api/v1/grafana/dashboards")
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "system_admin_required"
+    live_grant.assert_called_once()
 
 
 def test_ceph_dashboard_pool_storage_panel():

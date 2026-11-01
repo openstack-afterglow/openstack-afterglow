@@ -3,7 +3,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { formatNumber, formatStorage } from '$lib/utils/format';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -404,7 +404,7 @@
 	{#if removalNotice}<Alert tone="success" title={t('hypervisors.page.removal.verifiedTitle')}>{removalNotice}</Alert>{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if hypervisors.length === 0}
 		<div class="text-ink-2 text-sm">{t('hypervisors.page.empty')}</div>
 	{:else}

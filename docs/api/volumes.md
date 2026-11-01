@@ -63,6 +63,10 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
 
 프로젝트의 Cinder 볼륨 목록을 반환합니다. 응답은 약 15초간 캐시됩니다(`ttl_fast`). `?refresh=true`로 캐시를 무시할 수 있습니다.
 
+`VolumeInfo`는 native Cinder의 nullable `created_at`을 포함합니다. 생성 시각이 없으면 `null`이며 현재 시각이나 ID로 생성일을 추정하지 않습니다. 프로젝트 볼륨 화면은 전체 응답을 생성일 최신순으로 표시하고 정렬 기준에서 오래된순·이름 오름차순·이름 내림차순으로 바꿀 수 있습니다. 이 선택은 표시 정렬이며 프로젝트 API에 새 sort query를 추가하지 않습니다.
+
+생성 시각 필드를 포함하는 목록 cache는 `afterglow:cinder:{project_id}:volumes:v3`을 사용합니다. 이전 v2 응답은 재사용하지 않으므로 배포 직후에도 timestamp 없는 옛 캐시가 기본 정렬을 가리지 않습니다. 이름 변경·생성·확장·삭제·강제 삭제는 같은 v3 key를 무효화하고 이전/관리자 삭제의 기존 wildcard 무효화는 유지합니다. TTL은 변경하지 않습니다.
+
 목록 메뉴, 목록 SlidePanel, `/dashboard/volumes/{id}` 상세는 같은 작업 조건을 적용합니다. 상세에서 연결 가능한 볼륨은 `인스턴스에 연결`을 제공하고, 두 상세 화면의 작업 메뉴에서는 이름 변경, 부팅 가능한 `available` 볼륨의 VM 부팅, `available`/`in-use` 볼륨의 용량 확장·백업 생성, 설정에서 활성화한 스냅샷 생성, `available` 볼륨의 이전, 삭제를 사용할 수 있습니다. 연결된 볼륨의 일반 삭제는 비활성화하고, 시스템 관리자의 `error`/`error_deleting`/`deleting` 볼륨에서만 강제 삭제를 제공합니다. 작업은 기존 생성·이전 다이얼로그와 VM 생성 마법사를 사용하며, 용량 확장·스냅샷 생성·백업 요청 후 상세와 열린 목록을 새로고침합니다. 목록 메뉴의 `연결`은 상세를 열고, 상세의 `인스턴스에 연결`은 연결 대상을 선택합니다.
 
 자동 백업은 즉시 활성화·비활성화하는 토글 대신 `autoPolicy.settings` 카탈로그의 `자동 백업 설정` 링크(영어: `Auto Backup settings`)를 제공합니다. 데스크톱 목록 열과 모든 화면 폭의 공통 목록·상세 작업 메뉴는 `/dashboard/volumes/backups?auto-backup=${encodeURIComponent(volume.id)}`로 이동하며, 백업 화면에서 현재 프로젝트의 볼륨 목록·권한 확인 후 해당 볼륨을 미리 선택합니다. 링크에는 인증 토큰이나 프로젝트 전환 정보를 넣지 않습니다. 목록 controller는 자동 백업 설정을 조회하거나 변경하지 않으므로 설정 조회 실패를 비활성 상태로 표시하지 않습니다. 일정·보존 설정의 검토와 저장은 기존 백업 화면의 정책 편집기가 담당합니다.
@@ -86,7 +90,8 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
       }
     ],
     "bootable": false,
-    "volume_image_metadata": null
+    "volume_image_metadata": null,
+    "created_at": "2026-10-28T02:03:04Z"
   }
 ]
 ```
@@ -101,6 +106,7 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
 | `attachments` | array | 연결 정보 (`server_id`, `device` 등) |
 | `bootable` | boolean | 부팅 가능 볼륨 여부 |
 | `volume_image_metadata` | object\|null | 이미지에서 생성된 경우의 메타데이터 |
+| `created_at` | string\|null | Native 생성 시각. timezone 생략 시 UTC이며 누락 시 null |
 
 **오류**
 

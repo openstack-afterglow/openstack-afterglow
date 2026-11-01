@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -99,6 +100,27 @@ def _workspace_context(user_id: str, domain_id: str, *, operation: NativeOperati
     return context
 
 
+@dataclass(frozen=True)
+class _AuthenticatedDomainMetadata:
+    owner: tuple
+    metadata: dict
+
+
+def _domain_metadata_owner(principal: dict) -> tuple:
+    return tuple(
+        principal.get(key)
+        for key in (
+            "user_id",
+            "identity_domain_id",
+            "domain_id",
+            "project_id",
+            "refresh_jti",
+            "token",
+            "is_system_admin",
+        )
+    )
+
+
 async def _domain_metadata(user_id: str, identity_domain_id: str, is_system_admin: bool, *, operation=None) -> dict:
 
     if operation is None:
@@ -142,6 +164,8 @@ async def _build_token_response(
     connection_project_id: str | None = None,
     initial_workspace: dict | None = None,
     remember_workspace: bool = False,
+    refresh_replay: bool = False,
+    previous_refresh_exp: int | None = None,
     operation=None,
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
@@ -163,6 +187,8 @@ async def _build_token_response(
         can_write = has_project_write_permission({"project_id": project_id, "roles": roles, "is_system_admin": False})
         now = datetime.now(UTC).timestamp()
         deadline = int((now if started_at is None else started_at) + get_settings().session_timeout_seconds)
+        if previous_refresh_exp is not None:
+            deadline = min(deadline, previous_refresh_exp)
         if native_expires_at:
             try:
                 native_expiry = datetime.fromisoformat(native_expires_at)
@@ -181,6 +207,28 @@ async def _build_token_response(
             project_name=project_name if connection_project_id is None else "",
             refresh_jti=r_jti,
             expires_at=deadline,
+        )
+        exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
+        response = TokenResponse(
+            token=access_str,
+            refresh_token=refresh_str,
+            project_id=project_id,
+            project_name=project_name,
+            user_id=user_id,
+            username=username,
+            expires_at=exp_dt.isoformat(),
+            roles=public_roles,
+            default_project_id=default_project_id,
+            is_system_admin=is_system_admin,
+            domain_id=domain_id,
+            domain_name=domain_name,
+            is_domain_manager=is_domain_manager,
+            identity_domain_id=identity_domain_id,
+            identity_domain_name=identity_domain_name,
+            **metadata,
+            can_write=can_write,
+            auth_method=auth_method,
+            initial_workspace=initial_workspace,
         )
         try:
             stored = await session_store.store_session(
@@ -206,6 +254,8 @@ async def _build_token_response(
                 started_at=started_at,
                 previous_jti=previous_jti,
                 timeout_seconds=get_settings().session_timeout_seconds if previous_jti else None,
+                refresh_replay=response.model_dump(mode="json") if refresh_replay else None,
+                previous_refresh_exp=previous_refresh_exp,
             )
         except HTTPException:
             raise
@@ -217,28 +267,7 @@ async def _build_token_response(
             from app.services import login_preferences
 
             await login_preferences.record(user_id, identity_domain_id, domain_id, project_id)
-        exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
-        return TokenResponse(
-            token=access_str,
-            refresh_token=refresh_str,
-            project_id=project_id,
-            project_name=project_name,
-            user_id=user_id,
-            username=username,
-            expires_at=exp_dt.isoformat(),
-            roles=public_roles,
-            default_project_id=default_project_id,
-            is_system_admin=is_system_admin,
-            domain_id=domain_id,
-            domain_name=domain_name,
-            is_domain_manager=is_domain_manager,
-            identity_domain_id=identity_domain_id,
-            identity_domain_name=identity_domain_name,
-            **metadata,
-            can_write=can_write,
-            auth_method=auth_method,
-            initial_workspace=initial_workspace,
-        )
+        return response
 
 
 async def _enforce_session_policy(session: dict, identity: dict) -> None:
@@ -585,15 +614,20 @@ async def _login(request: Request, req: LoginRequest, background_tasks: Backgrou
         status="success",
         source="afterglow",
         service="keystone",
+        extra={"auth_method": "password"},
     )
     return response
 
 
 @router.get("/me", response_model=UserInfo)
 async def me(token_info: dict = Depends(get_token_info)):
-    metadata = await _domain_metadata(
-        token_info["user_id"], token_info["identity_domain_id"], token_info.get("is_system_admin") is True
-    )
+    observed = token_info.get("_authenticated_domain_metadata")
+    if isinstance(observed, _AuthenticatedDomainMetadata) and observed.owner == _domain_metadata_owner(token_info):
+        metadata = observed.metadata
+    else:
+        metadata = await _domain_metadata(
+            token_info["user_id"], token_info["identity_domain_id"], token_info.get("is_system_admin") is True
+        )
     return UserInfo(
         user_id=token_info["user_id"],
         username=token_info["username"],
@@ -619,6 +653,7 @@ async def logout(token_info: dict = Depends(get_token_info)):
     pid = token_info.get("project_id") or "noscope"
     refresh_jti = token_info.get("refresh_jti")
     keystone_token = token if not refresh_jti else None
+    shell_cleanup_pending = False
 
     if refresh_jti:
         try:
@@ -632,6 +667,7 @@ async def logout(token_info: dict = Depends(get_token_info)):
                 if removed.get("user_id") != token_info["user_id"]:
                     raise HTTPException(status_code=403, detail="세션 소유권이 일치하지 않습니다.")
                 keystone_token = removed.get("keystone_token") or keystone_token
+                shell_cleanup_pending = removed.get("cloud_shell_cleanup_pending") is True
         except HTTPException:
             raise
         except Exception as exc:
@@ -648,6 +684,10 @@ async def logout(token_info: dict = Depends(get_token_info)):
                 status_code=503, detail="인증 토큰 폐기를 확인할 수 없습니다. 다시 로그인해 주세요."
             ) from exc
     await invalidate_token_cache(token, pid)
+    if shell_cleanup_pending:
+        raise HTTPException(
+            status_code=503, detail="Cloud Shell 자격 증명 폐기가 대기 중입니다. 세션은 종료되었습니다."
+        )
     return {"message": "로그아웃 완료"}
 
 
@@ -658,10 +698,13 @@ async def refresh_token(request: Request, req: RefreshRequest):
         return await _refresh_token(request, req, operation=operation)
 
 
-async def _refresh_token(request: Request, req: RefreshRequest, *, operation: NativeOperation):
+async def _refresh_token(
+    request: Request, req: RefreshRequest, *, operation: NativeOperation, replay_only: bool = False
+):
     """refresh JWT로 새 access JWT + refresh JWT 발급 (토큰 회전).
 
-    기존 refresh JTI는 즉시 삭제되므로 같은 refresh 토큰으로 두 번 호출하면 두 번째는 401.
+    기존 JTI는 즉시 삭제하지만 30초 동안 새 세션의 수명·출처 검증을 통과하면
+    이미 발급한 동일 응답만 재전송한다. 새 세션 폐기·추가 회전 후에는 401이다.
     """
     try:
         r_payload = jwt_service.verify_refresh(req.refresh_token)
@@ -671,7 +714,53 @@ async def _refresh_token(request: Request, req: RefreshRequest, *, operation: Na
     r_jti = r_payload["jti"]
     with authentication_step("session_lookup"):
         try:
-            sess = await session_store.get_session(r_jti)
+            sess = None if replay_only else await session_store.get_session(r_jti)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="세션 저장소 연결 실패") from exc
+
+    replay_response = None
+    replay_old_jti = r_jti
+    if sess is None:
+        try:
+            replay = await session_store.get_refresh_replay(r_jti)
+            if replay and replay.get("user_id") == r_payload.get("sub"):
+                try:
+                    replay_response = TokenResponse.model_validate(replay.get("response"))
+                    new_payload = jwt_service.verify_refresh(replay_response.refresh_token)
+                    access_payload = jwt_service.verify_access(replay_response.token)
+                    expected = replay["session"]
+                    if (
+                        replay.get("old_jti") != r_jti
+                        or replay.get("old_exp") != r_payload["exp"]
+                        or new_payload["jti"] != replay.get("new_jti")
+                        or new_payload.get("sub") != r_payload.get("sub")
+                        or new_payload["exp"] != expected["exp"]
+                        or new_payload["exp"] > r_payload["exp"]
+                        or access_payload.get("sub") != r_payload.get("sub")
+                        or access_payload.get("rjti") != new_payload["jti"]
+                        or access_payload.get("project_id") != expected["project_id"]
+                        or access_payload["exp"] > new_payload["exp"]
+                        or replay_response.user_id != r_payload.get("sub")
+                        or replay_response.expires_at
+                        != datetime.fromtimestamp(access_payload["exp"], tz=UTC).isoformat()
+                        or replay_response.auth_method != expected["auth_method"]
+                        or replay_response.domain_id != expected["domain_id"]
+                        or replay_response.identity_domain_id != expected["identity_domain_id"]
+                        or replay_response.project_id
+                        != (
+                            expected["target_project_id"]
+                            if isinstance(expected.get("target_project_id"), str)
+                            else expected["project_id"]
+                        )
+                    ):
+                        replay_response = None
+                except Exception:
+                    replay_response = None
+                if replay_response is not None:
+                    sess = await session_store.get_session(new_payload["jti"])
+                    r_jti, r_payload = new_payload["jti"], new_payload
         except HTTPException:
             raise
         except Exception as exc:
@@ -692,13 +781,20 @@ async def _refresh_token(request: Request, req: RefreshRequest, *, operation: Na
     import hashlib as _hl
 
     _rjti_hash = _hl.sha256(r_jti.encode()).hexdigest()
-    started_at = await _check_session_timeout(
-        _rjti_hash,
-        sess.get("project_id", ""),
-        refresh_jti=r_jti,
-        session=sess,
-        issued_at=r_payload.get("iat", 0),
-    )
+    try:
+        started_at = await _check_session_timeout(
+            _rjti_hash,
+            sess.get("project_id", ""),
+            refresh_jti=r_jti,
+            session=sess,
+            issued_at=r_payload.get("iat", 0),
+        )
+    except HTTPException as exc:
+        if exc.status_code == 401 and sess.get("started_at") is None and replay_response is None and not replay_only:
+            # A legacy record may have been consumed while its one-time start
+            # migration was queued. Resolve only the winner's validated receipt.
+            return await _refresh_token(request, req, operation=operation, replay_only=True)
+        raise
 
     # A refresh credential must obey the same origin policy as access requests.
     from app.services.token_binding import check_binding, get_origin
@@ -775,6 +871,52 @@ async def _refresh_token(request: Request, req: RefreshRequest, *, operation: Na
             _administrator_workspace, kc_info, sess["domain_id"], sess["target_project_id"], operation=operation
         )
     await _enforce_session_policy(sess, kc_info)
+    if replay_response is not None:
+        # Replaying bytes is not an authority cache: all native/provider/domain
+        # checks above run again, and concurrent logout/rescope/rotation wins.
+        for native_identity in (root, kc_info):
+            native_expiry = native_identity.get("session_expires_at")
+            if native_expiry:
+                try:
+                    expiry = datetime.fromisoformat(native_expiry)
+                    if expiry.tzinfo is None:
+                        raise ValueError("Native expiry must include its timezone")
+                    expires_at = int(expiry.timestamp())
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise HTTPException(503, "Native session lifetime is unavailable") from exc
+                if r_payload["exp"] > expires_at:
+                    raise HTTPException(401, "Native session lifetime changed; log in again")
+        operation.invalidate()
+        metadata = await _domain_metadata(
+            kc_info["user_id"],
+            kc_info["identity_domain_id"],
+            kc_info.get("is_system_admin", False),
+            operation=operation,
+        )
+        if (
+            replay_response.project_id != kc_info["project_id"]
+            or replay_response.project_name != kc_info["project_name"]
+            or replay_response.username != kc_info["username"]
+            or replay_response.domain_id != kc_info["domain_id"]
+            or replay_response.domain_name != kc_info["domain_name"]
+            or replay_response.identity_domain_name != kc_info["identity_domain_name"]
+            or replay_response.is_system_admin != kc_info.get("is_system_admin", False)
+            or replay_response.is_domain_manager != kc_info["is_domain_manager"]
+            or replay_response.can_write != has_project_write_permission({**kc_info, "is_system_admin": False})
+            or replay_response.can_create_domain != metadata["can_create_domain"]
+            or replay_response.available_domains
+            != [DomainInfo.model_validate(domain) for domain in metadata["available_domains"]]
+            or replay_response.roles
+            != await visible_role_names(kc_info.get("roles", []), kc_info.get("is_system_admin", False))
+        ):
+            raise HTTPException(401, "Session authority changed; log in again")
+        try:
+            current_receipt = await session_store.get_refresh_replay(replay_old_jti)
+        except Exception as exc:
+            raise HTTPException(503, "Session replay verification is unavailable") from exc
+        if not current_receipt or current_receipt.get("response") != replay_response.model_dump(mode="json"):
+            raise HTTPException(401, "Session was revoked or replaced")
+        return replay_response
 
     # Redis consumes the old record and publishes its replacement atomically.
     try:
@@ -805,10 +947,16 @@ async def _refresh_token(request: Request, req: RefreshRequest, *, operation: Na
             native_expires_at=kc_info.get("session_expires_at", ""),
             previous_jti=r_jti,
             connection_project_id=connection_project_id if logical_workspace else None,
+            refresh_replay=True,
+            previous_refresh_exp=r_payload["exp"],
             operation=operation,
         )
         return token_resp
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == 401 and not replay_only:
+            # A concurrent request may have won the CAS after our initial read.
+            # Resolve only its receipt, never issue a second session.
+            return await _refresh_token(request, req, operation=operation, replay_only=True)
         raise
     except Exception as exc:
         raise HTTPException(
@@ -1316,6 +1464,6 @@ async def issue_federated_login(
                 status="success",
                 source="afterglow",
                 service="keystone",
-                extra={"method": "federated", "provider_kind": provider_kind},
+                extra={"auth_method": "federated", "provider_kind": provider_kind},
             )
             return response

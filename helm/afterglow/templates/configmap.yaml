@@ -22,6 +22,9 @@ data:
     [DEFAULT]
     debug = {{ .Values.debug | default false }}
 
+    [instance_usage]
+    scheduler_enabled = {{ .Values.instanceUsage.schedulerEnabled | default false }}
+
     [logging]
     log_directory = {{ .Values.logging.logDirectory | default "logs" | quote }}
     log_level = {{ .Values.logging.logLevel | default "INFO" | quote }}
@@ -177,6 +180,7 @@ data:
     home_size_gib = {{ .Values.cloudShell.homeSizeGib }}
     cpu = {{ .Values.cloudShell.cpu }}
     memory_mib = {{ .Values.cloudShell.memoryMib }}
+    blocked_cidrs = {{ .Values.cloudShell.blockedCidrs | toJson }}
     idle_timeout_seconds = {{ .Values.cloudShell.idleTimeoutSeconds }}
     max_session_seconds = {{ .Values.cloudShell.maxSessionSeconds }}
     ticket_ttl_seconds = {{ .Values.cloudShell.ticketTtlSeconds }}

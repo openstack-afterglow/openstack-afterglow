@@ -2,14 +2,14 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const s = useObjectBrowser();
 </script>
 
 {#if s.loadingMeta}
-	<div class="w-72 shrink-0 bg-surface-base border border-line rounded-xl p-4">
-		<LoadingSkeleton variant="detail" rows={6} />
+	<div class="w-72 shrink-0">
+		<LoadingState variant="section" />
 	</div>
 {:else if s.selectedMeta}
 	<div class="w-72 shrink-0 bg-surface-base border border-line rounded-xl p-4 text-sm">

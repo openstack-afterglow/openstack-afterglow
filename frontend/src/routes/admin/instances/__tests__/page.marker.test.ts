@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t } from '$lib/i18n/ns/admin-compute';
 
 const { mockGet, mockPrefetch } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPrefetch: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({ api: { get: mockGet, prefetch: mockPrefetch, post: vi.fn() } }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
-vi.mock('$lib/stores/projectNames', async () => {
-	const names = writable(new Map<string, string>());
-	return { projectNames: Object.assign(names, { load: vi.fn().mockResolvedValue(new Map<string, string>()) }) };
-});
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({
 		active: false,
@@ -49,7 +47,7 @@ describe('admin instance marker generation', () => {
 
 		render(Page);
 		await vi.waitFor(() => expect(mockGet.mock.calls.some((call) => String(call[0]).includes('limit=20'))).toBe(true));
-		await fireEvent.click(screen.getByRole('button', { name: '10' }));
+		await fireEvent.change(screen.getByLabelText(t('instances.page.pageSize')), { target: { value: '10' } });
 		await vi.waitFor(() => expect(mockGet.mock.calls.some((call) => String(call[0]).includes('limit=10'))).toBe(true));
 
 		newRequest.resolve({
@@ -65,6 +63,55 @@ describe('admin instance marker generation', () => {
 
 		expect(screen.queryByText('Stale instance')).toBeNull();
 		expect(mockPrefetch).toHaveBeenCalledOnce();
-		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/all-instances?limit=10&marker=new-marker');
+		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/all-instances?limit=10&sort=created_desc&marker=new-marker');
+	});
+
+	it('resets the marker on sort changes and discards stale sorted pages and prefetches', async () => {
+		const oldSort = Promise.withResolvers<{ items: Array<Record<string, unknown>>; next_marker: string }>();
+		const latestSort = Promise.withResolvers<{ items: Array<Record<string, unknown>>; next_marker: string }>();
+		mockGet.mockImplementation((path: string) => {
+			if (path.startsWith('/api/v1/admin/all-instances')) {
+				const params = new URL(path, 'https://example.test').searchParams;
+				if (params.get('sort') === 'name_asc') return oldSort.promise;
+				if (params.get('sort') === 'name_desc') return latestSort.promise;
+				return Promise.resolve({
+					items: [{ id: 'vm', name: params.has('marker') ? 'Second page instance' : 'First page instance' }],
+					next_marker: params.has('marker') ? 'third-page' : 'second-page',
+				});
+			}
+			if (path.endsWith('/health')) return Promise.resolve(null);
+			return Promise.resolve([]);
+		});
+
+		const { container } = render(Page);
+		expect(await screen.findByText('First page instance')).toBeTruthy();
+		const selector = container.querySelector<HTMLSelectElement>('#admin-instance-sort')!;
+		expect(selector.value).toBe('created_desc');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.next') }));
+		expect(await screen.findByText('Second page instance')).toBeTruthy();
+		expect(screen.getByText(commonT('pagination.page', { page: 2 }))).toBeTruthy();
+		await vi.advanceTimersByTimeAsync(200);
+		const prefetched = mockPrefetch.mock.calls.at(-1)!;
+		expect(prefetched[0]).toBe('/api/v1/admin/all-instances?limit=20&sort=created_desc&marker=third-page');
+		const signal = prefetched[3].signal as AbortSignal;
+		expect(signal.aborted).toBe(false);
+
+		await fireEvent.change(selector, { target: { value: 'name_asc' } });
+		expect(signal.aborted).toBe(true);
+		expect(mockGet.mock.calls.at(-1)![0]).toBe('/api/v1/admin/all-instances?limit=20&sort=name_asc');
+		await fireEvent.change(selector, { target: { value: 'name_desc' } });
+		latestSort.resolve({ items: [{ id: 'new', name: 'Latest sorted instance' }], next_marker: 'latest-marker' });
+		expect(await screen.findByText('Latest sorted instance')).toBeTruthy();
+		expect(screen.getByText(commonT('pagination.page', { page: 1 }))).toBeTruthy();
+		oldSort.resolve({ items: [{ id: 'stale', name: 'Stale sorted instance' }], next_marker: 'stale-marker' });
+		await vi.advanceTimersByTimeAsync(200);
+		expect(screen.queryByText('Stale sorted instance')).toBeNull();
+		expect(mockPrefetch.mock.calls.at(-1)![0]).toBe('/api/v1/admin/all-instances?limit=20&sort=name_desc&marker=latest-marker');
+		const listRequests = () => mockGet.mock.calls.filter(([path]) => String(path).startsWith('/api/v1/admin/all-instances'));
+		const beforeRefresh = listRequests().length;
+		await fireEvent.click(screen.getByTitle(commonT('autoRefresh.refreshNow')));
+		await vi.waitFor(() => expect(listRequests()).toHaveLength(beforeRefresh + 1));
+		expect(listRequests().at(-1)![0]).toBe('/api/v1/admin/all-instances?limit=20&sort=name_desc');
+		expect(selector.value).toBe('name_desc');
 	});
 });

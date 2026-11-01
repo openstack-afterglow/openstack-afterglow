@@ -29,8 +29,6 @@
 					<span class="px-2 py-0.5 rounded text-xs font-medium text-[var(--color-state-warning)] bg-[var(--color-state-warning)]/15">{t('detailHeader.protected')}</span>
 				{/if}
 			</div>
-		{:else if s.loading}
-			<div class="h-6 w-48 rounded motion-skeleton"></div>
 		{/if}
 	</div>
 	<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->

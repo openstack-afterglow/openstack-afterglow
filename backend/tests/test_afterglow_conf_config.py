@@ -211,6 +211,61 @@ def isolated_debug_config_dir(isolated_config_dir, monkeypatch):
         yield isolated_config_dir
 
 
+@pytest.mark.parametrize("toml_enabled", [None, False, True])
+@pytest.mark.parametrize("environment_enabled", [None, "false", "true"])
+def test_instance_usage_scheduler_opt_in_precedence(isolated_debug_config_dir, toml_enabled, environment_enabled):
+    if toml_enabled is not None:
+        (isolated_debug_config_dir / "afterglow.conf").write_text(
+            f"[instance_usage]\nscheduler_enabled = {str(toml_enabled).lower()}\n", encoding="utf-8"
+        )
+    if environment_enabled is not None:
+        os.environ["INSTANCE_USAGE_SCHEDULER_ENABLED"] = environment_enabled
+    expected = environment_enabled == "true" if environment_enabled is not None else bool(toml_enabled)
+    assert app_config.get_settings().instance_usage_scheduler_enabled is expected
+
+
+def test_dev_compose_blocks_scheduler_from_shared_production_config(isolated_debug_config_dir):
+    compose = yaml.safe_load((ROOT / "docker-compose.dev.yml").read_text())
+    environment = compose["services"]["backend"]["environment"]
+    assert environment["INSTANCE_USAGE_SCHEDULER_ENABLED"] == "false"
+    assert environment["REDIS_URL"] == "redis://redis:6379/0"
+    (isolated_debug_config_dir / "afterglow.conf").write_text(
+        "[instance_usage]\nscheduler_enabled = true\n", encoding="utf-8"
+    )
+    os.environ["INSTANCE_USAGE_SCHEDULER_ENABLED"] = environment["INSTANCE_USAGE_SCHEDULER_ENABLED"]
+    assert app_config.get_settings().instance_usage_scheduler_enabled is False
+
+
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_instance_usage_scheduler_generator_round_trip(enabled):
+    config = {} if enabled is None else {"instance_usage": {"scheduler_enabled": enabled}}
+    expected = bool(enabled)
+    generated = tomllib.loads(generate_k8s._render_toml_for_k8s(config))
+    assert generated["instance_usage"]["scheduler_enabled"] is expected
+    assert config2helm.convert(config, False)["instanceUsage"]["schedulerEnabled"] is expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_instance_usage_scheduler_actual_helm_round_trip(tmp_path, enabled):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the scheduler opt-in contract")
+    override = tmp_path / "values.yaml"
+    override.write_text(config2helm.render_values({"instance_usage": {"scheduler_enabled": enabled}}, False))
+    rendered = subprocess.run(
+        [helm, "template", "afterglow", str(ROOT / "helm/afterglow"), "-f", str(override)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    configmap = next(
+        doc
+        for doc in yaml.safe_load_all(rendered.stdout)
+        if doc and doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "afterglow-config"
+    )
+    assert tomllib.loads(configmap["data"]["afterglow.conf"])["instance_usage"]["scheduler_enabled"] is enabled
+
+
 @pytest.mark.parametrize(
     ("config_text", "expected"),
     [
@@ -939,6 +994,9 @@ def test_kolla_country_startup_fails_closed_and_tracks_source_identity(tmp_path)
     ):
         variables["afterglow_" + key] = key + ".conf"
         (tmp_path / variables["afterglow_" + key]).write_text("# configuration layer\n")
+    aliases = tmp_path / "aliases.json"
+    aliases.write_text(json.dumps({"aliases": []}) + "\n")
+    variables["afterglow_nova_pci_alias_snapshot_path"] = str(aliases)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("ANSIBLE_", "KOLLA_"))}
     environment.update(ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-tmp"), OBJC_DISABLE_INITIALIZE_FORK_SAFETY="YES")
 

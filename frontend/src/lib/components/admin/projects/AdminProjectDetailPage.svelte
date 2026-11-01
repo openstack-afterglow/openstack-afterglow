@@ -1,10 +1,9 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ActivityLogTable from '$lib/components/admin/ActivityLogTable.svelte';
 
@@ -71,7 +70,7 @@
 
 {#if loading}
 	<PageShell>
-		<LoadingSkeleton rows={4} />
+		<LoadingState variant="surface" />
 	</PageShell>
 {:else if error}
 	<PageShell class="text-state-danger-text text-sm">{error}</PageShell>
@@ -139,7 +138,7 @@
 		{#if tab === 'members'}
 			<div class="bg-surface-base border border-line rounded-lg overflow-hidden">
 				{#if membersLoading}
-					<div class="text-ink-2 text-sm py-8 text-center"><ActivityIndicator size="sm" label={t('projectDetail.membersLoading')} /></div>
+					<div class="text-ink-2 text-sm py-8 text-center"><LoadingState variant="section" label={t('projectDetail.membersLoading')} /></div>
 				{:else if membersError}
 					<div class="text-[var(--color-state-danger)] text-sm py-8 text-center">{membersError}</div>
 				{:else if members.length === 0}

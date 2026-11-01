@@ -314,7 +314,7 @@ def directory(monkeypatch):
     conn = SimpleNamespace(close=lambda: None)
 
     @asynccontextmanager
-    async def graph_lock(connection):
+    async def graph_lock(connection, *, wait=False):
         async with state.lock:
             yield SimpleNamespace(assert_owned=AsyncMock())
 

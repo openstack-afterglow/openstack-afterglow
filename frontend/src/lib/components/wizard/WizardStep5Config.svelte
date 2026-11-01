@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
@@ -9,6 +10,8 @@
 	import { CLOUD_INIT_PRESETS } from '$lib/config/cloudInitPresets';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tu } from '$lib/i18n/ns/usage-schedule';
+	import UsageScheduleFields from '$lib/components/instance/UsageScheduleFields.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	import {
@@ -259,6 +262,14 @@ function applyCloudInitPreset(event: Event) {
 
 <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('config.title')}</h2>
 
+{#if s.usageScheduleRequired && $wizard.usageSchedule}
+	<section class="mb-6 space-y-4 border-b border-line pb-6" aria-labelledby="create-usage-title">
+		<h3 id="create-usage-title" class="text-sm font-semibold text-ink-0">{tu('title')}</h3>
+		<p class="text-sm leading-relaxed text-ink-2">{tu('required')}</p>
+		<UsageScheduleFields value={$wizard.usageSchedule} onchange={(usageSchedule) => wizard.update(w => ({ ...w, usageSchedule }))} idPrefix="create-usage" />
+	</section>
+{/if}
+
 <!-- VM 이름 -->
 <div class="mb-4">
 	<label for="vm-name" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
@@ -393,7 +404,7 @@ function applyCloudInitPreset(event: Event) {
 				</div>
 			{/if}
 			<div class="mt-2 text-xs" aria-live="polite">
-				{#if githubLookupStatus === 'loading'}<span class="text-ink-2">{t('config.github.loading')}</span>
+				{#if githubLookupStatus === 'loading'}<LoadingState variant="inline" label={t('config.github.loading')} />
 				{:else if githubLookupStatus === 'valid' && $wizard.githubProfile}
 					<span class="text-positive">
 						{$wizard.githubProfile.name
@@ -599,7 +610,7 @@ function applyCloudInitPreset(event: Event) {
 					<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder={t('config.cloudInit.namePlaceholder')} />
 				</Field>
 				<Button type="button" variant="secondary" size="sm" onclick={saveCloudInitPreset} disabled={cloudInitPresetSaving}>
-					{cloudInitPresetSaving ? t('config.cloudInit.saving') : t('config.cloudInit.saveCurrent')}
+					{#if cloudInitPresetSaving}<LoadingState variant="control" label={t('config.cloudInit.saving')} />{:else}{t('config.cloudInit.saveCurrent')}{/if}
 				</Button>
 			</div>
 		</div>

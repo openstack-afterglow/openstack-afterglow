@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -61,7 +61,7 @@
         <p class="break-all text-sm text-ink-2">{admin.email || '-'}</p>
         {#snippet actions()}
           <Button variant="danger" size="sm" disabled={admins.length <= 1 || revoking === admin.user_id} title={admins.length <= 1 ? t('systemTable.lastAdminHelp') : undefined} onclick={() => revoke(admin)}>
-            {#if revoking === admin.user_id}<ActivityIndicator size="xs" />{t('systemTable.revoking')}{:else}{t('systemTable.revoke')}{/if}
+            {#if revoking === admin.user_id}<LoadingState variant="control" label="" aria-hidden="true" />{t('systemTable.revoking')}{:else}{t('systemTable.revoke')}{/if}
           </Button>
         {/snippet}
         {#snippet details()}<dl class="text-xs"><dt class="text-ink-2">{t('systemTable.userId')}</dt><dd class="break-all font-mono">{admin.user_id}</dd></dl>{/snippet}
@@ -99,7 +99,7 @@
 								disabled={revoking === admin.user_id}
 								class="px-3 py-1 text-xs rounded bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] disabled:opacity-30"
 							>
-								{#if revoking === admin.user_id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('systemTable.revoking')}</span>{:else}{t('systemTable.revoke')}{/if}
+								{#if revoking === admin.user_id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('systemTable.revoking')}</span>{:else}{t('systemTable.revoke')}{/if}
 							</button>
 						{/if}
 					</td>

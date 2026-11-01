@@ -645,5 +645,17 @@
 	"rolePresets.previewHelp": "Pratonton tidak mengubah awan. Setiap perkhidmatan menilai kebenaran melalui policy.yaml sendiri. Peranan sedia ada digunakan semula dan hanya pautan pewarisan perkhidmatan lama yang disenaraikan dibuang.",
 	"rolePresets.directImplications": "Pautan pewarisan langsung untuk ditambahkan",
 	"rolePresets.retiredImplications": "Pautan pewarisan perkhidmatan lama untuk dibuang",
-	"quotaController.saveFailed": "Gagal menyimpan"
+	"quotaController.saveFailed": "Gagal menyimpan",
+	"userEdit.resetEmailTitle": "Tetapkan semula kata laluan rawak dan e-melkannya",
+	"userEdit.resetEmailHelp": "Hantar kata laluan rawak baharu itu sendiri ke e-mel berdaftar semasa. Perubahan nama atau e-mel yang belum disimpan tidak digunakan.",
+	"userEdit.resetEmailTarget": "Sasaran: {name} · UUID: {id} · E-mel berdaftar semasa: {email}",
+	"userEdit.resetEmailWarning": "Ini menggantikan kata laluan lama. Kata laluan baharu sebenar kekal dalam e-mel dan mungkin terdedah kepada sesiapa yang boleh mengakses peti mel. Nasihatkan pengguna menukarnya segera selepas log masuk.",
+	"userEdit.resetEmailSuccess": "Kata laluan telah ditukar dan dihantar ke e-mel berdaftar. Nasihatkan pengguna menukarnya segera.",
+	"userEdit.resetEmailDeliveryFailed": "Kata laluan ditukar tetapi penghantaran e-mel gagal. Kata laluan lama tidak lagi sah. Tiada cubaan semula automatik. Pentadbir perlu menyemak keadaan dan melakukan penetapan semula berasingan.",
+	"userEdit.resetEmailSessionsFailed": "Kata laluan ditukar tetapi sesetengah sesi tidak dapat dibatalkan dan mungkin masih aktif. Penghantaran e-mel juga mungkin gagal. Pentadbir perlu mengesahkan penghantaran dan membatalkan baki sesi. Tiada penetapan semula automatik.",
+	"userEdit.resetEmailAuditFailed": "Rekod audit operasi tidak dapat disahkan. Perubahan kata laluan atau penghantaran e-mel mungkin sudah selesai. Pentadbir perlu mengesahkan hasil sebenar, penghantaran, pembatalan sesi dan rekod audit. Tiada cubaan semula automatik.",
+	"userEdit.resetEmailUnknown": "Hasil perubahan kata laluan tidak diketahui. Kata laluan lama mungkin telah berubah. Tiada cubaan semula automatik. Pentadbir perlu menyemak hasil dan pembatalan sesi.",
+	"userEdit.resetEmailRejected": "Permintaan ditolak. Kejayaan perubahan dan penghantaran tidak disahkan. Semak kebenaran dan keadaan akaun berdaftar. Tiada cubaan semula automatik.",
+	"userEdit.resetEmailUnavailable": "Akaun yang didayakan dengan e-mel berdaftar diperlukan.",
+	"userEdit.resetEmailSending": "Menetapkan semula kata laluan dan menghantar e-mel…"
 }

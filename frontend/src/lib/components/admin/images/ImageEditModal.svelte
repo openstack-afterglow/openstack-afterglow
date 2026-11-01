@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { AdminImage } from '$lib/types/adminImage';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -72,7 +72,7 @@
 			<div class="flex justify-end gap-3 mt-6">
 				<Button variant="ghost" size="md" onclick={() => { target = null; }}>{t('images.cancel')}</Button>
 				<Button variant="accent" size="md" onclick={onSave} disabled={editing}>
-					{#if editing}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.edit.saving')}</span></span>{:else}{t('images.edit.save')}{/if}
+					{#if editing}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('images.edit.saving')}</span></span>{:else}{t('images.edit.save')}{/if}
 				</Button>
 			</div>
 		</div>

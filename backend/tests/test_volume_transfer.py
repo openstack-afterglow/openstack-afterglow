@@ -57,6 +57,7 @@ def transfer_provider(monkeypatch, auth_directory, mock_conn, client):
         project_id=DESTINATION,
         user_domain_id="destination-domain",
         project_domain_id="destination-domain",
+        role_names=["member"],
     )
     caller.session.get_token.return_value = "genuinely-destination-scoped-token"
     caller.block_storage.connect_retries = 1

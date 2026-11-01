@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { ApiError } from '$lib/api/client';
 	import { adminDomainBudgets, quotaBlocked, type DomainBudgets, type QuotaMap } from '$lib/api/workspaceIam';
@@ -7,7 +7,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import BudgetSummary from '$lib/components/iam/BudgetSummary.svelte';
 	import QuotaEditor from '$lib/components/iam/QuotaEditor.svelte';
 	let { domainId }: { domainId: string } = $props();
@@ -21,11 +21,13 @@
 	let revision = $state(0);
 	const authority = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.domainId, $auth.projectId, $auth.isSystemAdmin, $authReady, $projectSwitching, domainId]));
 	let verified = $state('');
+	let live = true;
+	onDestroy(() => { live = false; });
 	function client() {
 		const owner = authority; const target = domainId;
 		return adminDomainBudgets(target, {
 			token: () => $auth.token ?? '', projectId: () => $auth.projectId ?? undefined,
-			isCurrent: () => authority === owner && domainId === target && $authReady && !$projectSwitching && $auth.isSystemAdmin === true && !!$auth.token
+			isCurrent: () => live && authority === owner && domainId === target && $authReady && !$projectSwitching && $auth.isSystemAdmin === true && !!$auth.token
 		});
 	}
 	function accept(snapshot: DomainBudgets) {
@@ -69,7 +71,7 @@
 		{#if error}<Alert tone="danger">{error}</Alert>{/if}
 		{#if outcome}<Alert tone="warning">{outcome}</Alert>{/if}
 		{#if reloadRequired}<Alert tone="warning">{t('reloadRequired')}</Alert>{/if}
-		{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+		{#if loading}<LoadingState variant="section" label={t('loading')} />{/if}
 		{#if data && verified === authority}
 			<BudgetSummary {data} />
 			{#each data.operations.filter(row => ['applying', 'unknown', 'partial'].includes(row.status)) as operation (operation.id)}

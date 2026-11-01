@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/volume';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -91,7 +92,7 @@
 	});
 </script>
 
-<div class={onClose ? 'p-6' : ''}>
+<div class="flex min-h-full flex-col {onClose && !(s.loading && !s.volume) ? 'p-6' : ''}">
 	<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다. 단독 라우트에서만 목록 백링크를 둔다. -->
 	{#if !onClose}
 		<a href="/dashboard/volumes" class="mb-4 inline-block text-ink-2 hover:text-ink-1 text-sm transition-colors">{t('detailPanel.backToList')}</a>
@@ -99,11 +100,7 @@
 	<VolumeDetailHeader {ar} />
 
 	{#if s.loading && !s.volume}
-		<div class="space-y-3" role="status" aria-busy="true" aria-label={t('detailPanel.loading')}>
-			{#each [1, 2, 3] as _}
-				<div class="motion-skeleton h-12 rounded-lg"></div>
-			{/each}
-		</div>
+		<LoadingState variant="surface" label={t('detailPanel.loading')} />
 	{:else}
 		{#if s.error}
 			<div class="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-4 py-3 mb-4">{s.error}</div>

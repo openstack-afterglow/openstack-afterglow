@@ -122,5 +122,9 @@
 	"yaml.parseError": "YAML পার্সিং ত্রুটি: {error}",
 	"yaml.configMapKind": "kind অবশ্যই ConfigMap হতে হবে",
 	"yaml.secretKind": "kind অবশ্যই Secret হতে হবে",
-	"yaml.stringDataRequired": "Secret সম্পাদনার জন্য data-র পরিবর্তে stringData ব্যবহার করুন (প্লেইন টেক্সট ইনপুট)"
+	"yaml.stringDataRequired": "Secret সম্পাদনার জন্য data-র পরিবর্তে stringData ব্যবহার করুন (প্লেইন টেক্সট ইনপুট)",
+	"clusterError.details": "ত্রুটির বিবরণ",
+	"clusterError.recovery": "ক্লাস্টারের বিবরণে ব্যর্থ ধাপ ও সংশ্লিষ্ট রিসোর্স দেখুন। নিরাপত্তা গ্রুপ, নেটওয়ার্ক বা কোটার সমস্যা সমাধান করে অবস্থা রিফ্রেশ করুন।",
+	"clusterError.loadFailed": "ক্লাস্টার লোড করা যায়নি",
+	"clusterError.reload": "আবার লোড করুন"
 }

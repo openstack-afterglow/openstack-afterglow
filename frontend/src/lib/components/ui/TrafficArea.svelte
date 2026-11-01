@@ -50,11 +50,12 @@
 	.traffic-area { min-width: 0; overflow: hidden; }
 	.plot { position: relative; isolation: isolate; min-height: 5rem; }
 	.foreground { position: relative; z-index: 1; padding-block: 0.75rem; }
-	.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.75rem; }
-	.rx-label { color: var(--color-chart-1); }
-	.tx-label { color: var(--color-chart-2); }
-	.background { position: absolute; inset: 0; opacity: 0.24; pointer-events: none; }
-	.scale, .empty { margin: 0.5rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+	.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: var(--type-support); }
+	.rx-label, .tx-label { color: var(--color-ink-1); }
+	.rx-label::before, .tx-label::before { content: ''; display: inline-block; width: 1rem; margin-right: 0.375rem; vertical-align: middle; border-top: 2px solid var(--color-chart-1); }
+	.tx-label::before { border-top-color: var(--color-chart-2); border-top-style: dashed; }
+	.background { position: absolute; inset: 0; pointer-events: none; }
+	.scale, .empty { margin: 0.5rem 0 0; color: var(--color-ink-2); font-size: var(--type-support); font-variant-numeric: tabular-nums; }
 	.empty { padding-block: 0.5rem; }
 	.arrival { animation: report-arrival var(--motion-duration-data) var(--motion-ease-out); }
 	@keyframes report-arrival { from { opacity: 0.65; transform: translateX(0.5rem); } to { opacity: 1; transform: translateX(0); } }

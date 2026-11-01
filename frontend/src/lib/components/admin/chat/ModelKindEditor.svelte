@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -89,6 +90,6 @@
 	{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 	{#snippet actions()}
 		<Button variant="secondary" disabled={busy} onclick={onclose}>{t('configuration.cancel')}</Button>
-		<Button disabled={busy || kind === originalKind || unavailable} ariaBusy={busy} onclick={save}>{busy ? t('configuration.saving') : t('pricing.saveKind')}</Button>
+		<Button disabled={busy || kind === originalKind || unavailable} ariaBusy={busy} onclick={save}>{#if busy}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{busy ? t('configuration.saving') : t('pricing.saveKind')}</Button>
 	{/snippet}
 </FormModal>

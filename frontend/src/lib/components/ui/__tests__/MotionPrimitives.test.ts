@@ -1,7 +1,6 @@
 import { flushSync } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ActivityIndicator from '../ActivityIndicator.svelte';
 import AnimatedNumber from '../AnimatedNumber.svelte';
 import ProgressTrack from '../ProgressTrack.svelte';
 
@@ -16,7 +15,8 @@ describe('ProgressTrack', () => {
 		const { container, rerender } = render(ProgressTrack, { value: 140, label: '업로드' });
 		const bar = screen.getByRole('progressbar', { name: '업로드' });
 		expect(bar.getAttribute('aria-valuenow')).toBe('100');
-		expect((container.querySelector('.progress-fill') as HTMLElement).style.transform).toBe('scaleX(1)');
+		expect((container.querySelector('.progress-fill') as HTMLElement).style.clipPath).toBe('inset(0 0% 0 0)');
+		expect(container.querySelector('.progress-fill')?.textContent).toContain('#');
 		rerender({ value: -8, label: '업로드' });
 		expect(bar.getAttribute('aria-valuenow')).toBe('0');
 	});
@@ -29,24 +29,34 @@ describe('ProgressTrack', () => {
 		expect(container.querySelector('.progress-fill')).toBeNull();
 	});
 
+	it('shows a decorative character signal for active unknown work without a numeric value', () => {
+		const { container } = render(ProgressTrack, { value: null, label: '동기화', active: true, tone: 'danger' });
+		const bar = screen.getByRole('progressbar', { name: '동기화' });
+		expect(bar.hasAttribute('aria-valuenow')).toBe(false);
+		expect(bar.getAttribute('data-tone')).toBe('danger');
+		expect(container.querySelector('.progress-indeterminate')?.getAttribute('aria-hidden')).toBe('true');
+		expect(bar.textContent).not.toMatch(/\d/);
+	});
+
+	it('renders a circular glyph track while preserving observed and unknown ARIA values', async () => {
+		const view = render(ProgressTrack, { value: 42, shape: 'circular', label: '원형 진행' });
+		const bar = screen.getByRole('progressbar', { name: '원형 진행' });
+		expect(bar.getAttribute('aria-valuenow')).toBe('42');
+		expect(bar.getAttribute('data-shape')).toBe('circular');
+		expect(view.container.querySelector('pre')?.getAttribute('aria-hidden')).toBe('true');
+		expect(view.container.querySelector('pre')?.textContent).toContain('42%');
+		expect(view.container.querySelector('svg,canvas')).toBeNull();
+		await view.rerender({ value: null, shape: 'circular', active: true, label: '원형 진행' });
+		expect(bar.hasAttribute('aria-valuenow')).toBe(false);
+		expect(view.container.querySelector('pre')?.textContent).not.toMatch(/[0-9%]/);
+	});
+
 	it('treats a non-finite value as indeterminate', () => {
 		render(ProgressTrack, { value: Number.NaN, label: '빌드' });
 		expect(screen.getByRole('progressbar', { name: '빌드' }).hasAttribute('aria-valuenow')).toBe(false);
 	});
 });
 
-describe('ActivityIndicator', () => {
-	it('announces its visible label as a status', () => {
-		render(ActivityIndicator, { variant: 'orbit', label: '응답을 생성하는 중' });
-		expect(screen.getByRole('status').textContent).toContain('응답을 생성하는 중');
-	});
-
-	it('stays silent and decorative when adjacent text names the activity', () => {
-		const { container } = render(ActivityIndicator, { variant: 'spinner' });
-		expect(screen.queryByRole('status')).toBeNull();
-		expect(container.querySelector('.glyph')?.getAttribute('aria-hidden')).toBe('true');
-	});
-});
 
 describe('AnimatedNumber', () => {
 	it('renders the exact value once when counting cannot be seen', () => {

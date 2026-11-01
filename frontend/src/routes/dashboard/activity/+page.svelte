@@ -1,14 +1,16 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tEvents } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import { Alert, PageHeader, PageShell, Pill, ResourceToolbar, SectionHeader, StatTile, ToggleGroup } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, PageHeader, PageShell, StatusChip, ResourceToolbar, SectionHeader, StatTile, ToggleGroup } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { ChartSpec } from '$lib/components/charts/types';
 
@@ -78,9 +80,13 @@
 
 	// Derived KPI values
 	const kpi = $derived(data?.kpi ?? { total: 0, success: 0, failed: 0, last_24h: 0, unique_users: 0 });
-	const successRate = $derived(kpi.total > 0 ? Math.round((kpi.success / kpi.total) * 100) : '—');
+	const terminalTotal = $derived(kpi.success + kpi.failed);
+	const successRate = $derived(terminalTotal > 0 ? Math.round((kpi.success / terminalTotal) * 100) : '—');
 	const hourDist = $derived(data?.hour_distribution ?? []);
 	const recentActions = $derived(data?.recent_actions ?? []);
+	function resultLabel(status: string): string {
+		return status === 'success' ? t('activity.success') : status === 'failed' ? t('activity.failure') : status === 'started' ? tEvents('events.started') : status === 'observed' ? tEvents('events.observed') : status;
+	}
 
 	const hourSpec = $derived<ChartSpec>({
 		kind: 'bar',
@@ -143,7 +149,7 @@
 	</ResourceToolbar>
 
 	{#if loading && !data}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('activity.title') })} />
 	{:else if error && !data}
 		<Alert tone="danger">{error}</Alert>
 	{:else}
@@ -153,7 +159,7 @@
 		<!-- KPI Tiles -->
 		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
 			<StatTile label={t('activity.today')} value={kpi.total} accent="blue" flat />
-			<StatTile label={t('activity.failed')} value={kpi.failed} unit="/ {kpi.total}" accent="rose" flat />
+			<StatTile label={t('activity.failed')} value={kpi.failed} unit="/ {terminalTotal}" accent="rose" flat />
 			<StatTile label={t('activity.last24Hours')} value={kpi.last_24h} unit={t('activity.events', { count: kpi.last_24h })} accent="amber" flat />
 			<StatTile label={t('activity.activeUsers')} value={kpi.unique_users} accent="emerald" flat />
 			<StatTile label={t('activity.successRate')} value={successRate} unit="%" accent="cyan" flat />
@@ -172,7 +178,7 @@
 				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">{t('activity.empty')}</div>
 			{:else}
 				<ResponsiveTable class="mt-4">{#snippet cards()}{#each recentActions as action (action.id)}<CompactResourceCard>
-					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{action.resource_name}</h3><Pill tone={action.status === 'success' ? 'success' : 'danger'}>{t(action.status === 'success' ? 'activity.success' : 'activity.failure')}</Pill></div><p class="text-xs font-mono">{action.action}</p><p class="text-xs text-ink-2">{formatHour(action.created_at)}</p>
+					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{action.resource_name}</h3><StatusChip status={action.status} label={resultLabel(action.status)} /></div><p class="text-xs font-mono">{action.action}</p><p class="text-xs text-ink-2">{formatHour(action.created_at)}</p>
 					{#snippet details()}<p class="text-xs">{t('activity.resource')}: {action.resource_type}</p>{/snippet}
 				</CompactResourceCard>{/each}{/snippet}
 				<div class="mt-4 overflow-x-auto">
@@ -202,11 +208,7 @@
 									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs">{action.resource_type}</td>
 									<td class="py-2.5 pr-4 text-[var(--color-ink-0)] text-xs">{action.resource_name}</td>
 									<td class="py-2.5">
-										{#if action.status === 'success'}
-											<Pill tone="success">{t('activity.success')}</Pill>
-										{:else}
-											<Pill tone="danger">{t('activity.failure')}</Pill>
-										{/if}
+										<StatusChip status={action.status} label={resultLabel(action.status)} />
 									</td>
 								</tr>
 							{/each}

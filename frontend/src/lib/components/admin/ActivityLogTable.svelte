@@ -1,5 +1,7 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
+	import { t as events } from '$lib/i18n/ns/admin-ops';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -31,7 +33,7 @@
 		resource_id: string | null;
 		resource_name: string | null;
 		action: string;
-		status: 'success' | 'failed' | 'started';
+		status: 'success' | 'failed' | 'started' | 'observed';
 		error_message: string | null;
 		extra: Record<string, unknown> | null;
 	}
@@ -224,7 +226,7 @@
 
 	<!-- 테이블 -->
 	{#if loading}
-		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.loading')}</div>
+		<LoadingState variant="table" columns={5} label={t('activity.loading')} />
 	{:else if loadError}
 		<Alert tone="danger">{loadError}</Alert>
 	{:else if logs.length === 0}
@@ -242,7 +244,7 @@
 					<CompactResourceCard actions={log.status === 'failed' && log.error_message ? errorAction : undefined}>
 						<div class="flex min-w-0 items-start justify-between gap-2">
 							<span class="min-w-0 font-medium break-words">{log.resource_name || log.resource_id || log.resource_type}</span>
-							<StatusChip status={log.status} />
+							<StatusChip status={log.status} label={log.status === 'observed' ? events('events.observed') : log.status === 'started' ? events('events.started') : undefined} />
 						</div>
 						<dl>
 							<div><dt>{t('activity.action')}</dt><dd class="font-mono">{log.action}</dd></div>
@@ -290,7 +292,7 @@
 							<td class="px-4 py-3 font-mono text-xs text-ink-2">{log.action}</td>
 							<td class="px-4 py-3">
 								<div class="flex items-center gap-2">
-									<StatusChip status={log.status} />
+									<StatusChip status={log.status} label={log.status === 'observed' ? events('events.observed') : log.status === 'started' ? events('events.started') : undefined} />
 									{#if log.status === 'failed' && log.error_message}
 										<button
 											onclick={() => expandedId = expandedId === log.id ? null : log.id}

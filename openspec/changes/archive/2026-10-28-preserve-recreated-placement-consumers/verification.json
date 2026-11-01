@@ -1,0 +1,74 @@
+{
+  "change": "preserve-recreated-placement-consumers",
+  "scope": "source-only correction; no commit/push/deploy or live IAM/quota/config/VM/volume/shared datastore changes",
+  "source_sha256": "ec0f503bb9bac419d61d4851aee4b29dc8c95eb2cb18ba0bee6ec1aa357bf1ed",
+  "isolated_source_entries": 3580,
+  "extant_shared_application_entries": 3579,
+  "source_byte_parity": true,
+  "architecture_working_and_isolated_staged": "passed; shared index/review marker untouched",
+  "failure_before": {
+    "artifact": "artifact://304",
+    "installed_placement_tests": 2,
+    "errors": "Both replacement resource lookups fail with KeyError after old handlers erased real independently recreated allocations"
+  },
+  "native_after": {
+    "hook_revision": "domain-pool-v2",
+    "arm64_passed": 28,
+    "amd64_passed": 28,
+    "artifacts": [
+      "artifact://306",
+      "artifact://307"
+    ],
+    "source_module_hash_parity_per_arch": 12,
+    "synthetic": [
+      "Keystone authority",
+      "upstream fake hypervisor",
+      "hardware/fleet fixtures"
+    ],
+    "production_gpu_fleet_qualification": false
+  },
+  "backend_focused_passed": 115,
+  "canonical_gate": {
+    "command": "UV_NO_SYNC=1 npm run test:gate",
+    "exit_code": 0,
+    "artifact": "artifact://318",
+    "backend_passed": 10409,
+    "backend_skipped": 95,
+    "frontend_files": 463,
+    "frontend_passed": 5533,
+    "frontend_runner_passed": 9,
+    "contracts_passed": 183,
+    "functional_passed": 167,
+    "functional_deselected": 33,
+    "ruff_files": 762
+  },
+  "images": [
+    {
+      "tag": "afterglow-domain-pool-native-v2:arm64",
+      "id": "sha256:ef402943c3d1d3f3f828a563c0cf600b114867d2e64a0151d1c00fc23b299e5a",
+      "arch": "arm64",
+      "user": null
+    },
+    {
+      "tag": "afterglow-domain-pool-native-v2:amd64",
+      "id": "sha256:d2b9e856eed004c624ba031afee7a3942e9981a575f732890f576d1029ac84d0",
+      "arch": "amd64",
+      "user": null
+    },
+    {
+      "tag": "afterglow-domain-compute-api-v2:arm64",
+      "id": "sha256:38970d7f42360c83ecce54fef4377e6b6840a3c52952b2456be7a52f64881124",
+      "arch": "arm64",
+      "user": "appuser"
+    },
+    {
+      "tag": "afterglow-domain-compute-api-v2:amd64",
+      "id": "sha256:32e57dd055cc5e53a8c18c1a08dd018b805752c38a04648541824563790e05ca",
+      "arch": "amd64",
+      "user": "appuser"
+    }
+  ],
+  "corrected_contract": "Neither handler clears any nonempty uncertain allocation or restores an old snapshot. Resolve already-empty claims without writes; retain/report exact unresolved UUIDs. Same generation/shape/owner and initially empty snapshot are not incarnation proof. Raw reservations can exceed ceilings until explicit operator reconciliation, blocking capacity; failed rechecks do not acknowledge admission.",
+  "historical_evidence": "Original source receipt and 26-pass result preserved; its new-consumer rollback safety conclusion is invalidated by this correction and archive safety-correction.json.",
+  "ui": "No UI code change or new browser acceptance claimed."
+}

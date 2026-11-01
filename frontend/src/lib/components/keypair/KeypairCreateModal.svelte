@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { ActivityIndicator, Alert, Button, Card, Field, Modal, TextareaInput, TextInput } from '$lib/components/ui';
+	import { Alert, Button, Card, Field, Modal, TextareaInput, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/images-keys';
 	let {
 		open = $bindable(),
@@ -97,7 +98,7 @@
 				{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 				<div class="mt-6 flex justify-end gap-3">
 					<Button onclick={() => (open = false)} variant="secondary" disabled={creating}>{t('keypairCreate.actions.cancel')}</Button>
-					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{#if creating}<ActivityIndicator size="xs" label={t('keypairCreate.actions.creating')} />{:else}{t('keypairCreate.actions.create')}{/if}</Button>
+					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{#if creating}<LoadingState variant="control" label={t('keypairCreate.actions.creating')}  />{:else}{t('keypairCreate.actions.create')}{/if}</Button>
 				</div>
 			{/if}
 		</Card>

@@ -179,6 +179,8 @@ async def ensure_default_network(
         await invalidate(f"afterglow:neutron:{project_id}:networks")
         await rec(token_info, conn, resource_type="network", action="ensure_default", resource_id=net_info.id)
         return net_info
+    except HTTPException:
+        raise
     except Exception:
         _logger.exception("Default 네트워크 ensure 실패")
         raise HTTPException(status_code=500, detail="Default 네트워크 처리 실패")
@@ -191,8 +193,14 @@ async def get_default_network(conn: openstack.connection.Connection = Depends(ge
     from app.services.default_network import get_default_network_record
 
     record = await get_default_network_record(project_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Default 네트워크가 설정되지 않았습니다")
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "default_network_not_configured",
+                "message": "Default 네트워크가 설정되지 않았습니다",
+            },
+        )
     return record
 
 

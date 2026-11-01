@@ -42,6 +42,13 @@ def project_authority(monkeypatch):
         ),
     )
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
+
+    # These tests exercise current project-role authority. Native service action
+    # capabilities are a separate boundary and must not contact the real cloud.
+    async def unavailable_capabilities(service, token_info):
+        raise HTTPException(503, "synthetic native policy unavailable")
+
+    monkeypatch.setattr("app.services.service_proxy.get_policy_capabilities", unavailable_capabilities)
     return state
 
 

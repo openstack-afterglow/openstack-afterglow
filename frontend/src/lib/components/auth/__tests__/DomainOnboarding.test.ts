@@ -258,11 +258,12 @@ describe('public registration approval decisions', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 		expect((await screen.findByRole('link', { name: 'Start a new email verification' })).getAttribute('href')).toBe('/signup');
 		blocked.unmount();
+		mocks.post.mockResolvedValueOnce({ accepted: true });
 		mocks.get.mockResolvedValueOnce({ signup_enabled: true, signup_button_visible: false, smtp_configured: true, recovery_enabled: true });
 		const request = render(Request, { signup: true });
 		await fireEvent.input(await screen.findByLabelText(/^Email/), { target: { value: 'alice@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Send verification link' }));
-		await screen.findByText('If this address can sign up, a verification link has been sent. Check your inbox.');
+		await waitFor(() => expect((screen.getByLabelText(/^Email/) as HTMLInputElement).value).toBe(''));
 		expect(mocks.post).toHaveBeenNthCalledWith(2, '/api/v1/auth/registrations', { email: 'alice@example.com' }, undefined, undefined, expect.objectContaining({ replayOnUnauthorized: false }));
 		request.unmount();
 		const freshToken = 'approved_new_email_token_1234567890';

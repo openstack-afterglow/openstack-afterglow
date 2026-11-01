@@ -23,7 +23,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 from app.config import get_settings
+from app.models.instance_usage import UsageScheduleRequest
 from app.services import cinder, cloudinit, layer_consume_ssh, manila, neutron, nova
 from app.services.cloud_init_builder import render_user_data
 from app.services.layer_base_images import legacy_snapshot_for_ubuntu_base
@@ -2050,11 +2054,30 @@ async def run_layer_build(build_db_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _consume_creation_metadata(conn, flavor, request) -> dict[str, str]:
+    from app.services import instance_usage
+
+    if request is not None and not isinstance(request, UsageScheduleRequest):
+        try:
+            request = UsageScheduleRequest.model_validate(request)
+        except ValidationError as exc:
+            raise HTTPException(422, "Invalid usage schedule") from exc
+    specs = await _consume_sdk(nova.flavor_extra_specs, conn.compute, flavor)
+    actual = {
+        "name": flavor.name,
+        "vcpus": flavor.vcpus,
+        "ram": flavor.ram,
+        "extra_specs": dict(specs),
+    }
+    return instance_usage.creation_metadata(actual, request)
+
+
 async def resolve_layer_consume_resource_snapshot(
     conn,
     *,
     flavor_ref: str,
     network_id: str | None,
+    usage_schedule: dict | UsageScheduleRequest | None = None,
 ) -> dict[str, dict[str, str]]:
     """Validate and freeze consumer placement before creating its DB row."""
     from app.services.resource_policies import ResourcePolicyValidationError, validate_existing_selection
@@ -2068,6 +2091,9 @@ async def resolve_layer_consume_resource_snapshot(
         flavor = await _consume_sdk(lambda: conn.compute.find_flavor(flavor_ref))
         if flavor is None:
             raise ResourcePolicyValidationError(f"플레이버를 찾을 수 없습니다: {flavor_ref!r}")
+        # Admission validates the request, but delayed imports start their default
+        # month only when the actual consumer allocates, never at job enqueue.
+        await _consume_creation_metadata(conn, flavor, usage_schedule)
         service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
         if service_project is None:
             raise ResourcePolicyValidationError("required resource policy is not configured: openstack.service_project")
@@ -2250,6 +2276,7 @@ async def run_layer_consume(
     artifact_ids: list[int] | None = None,
     resolved_artifacts: list[dict] | None = None,
     transport: str = "nfs",
+    usage_schedule: dict | UsageScheduleRequest | None = None,
 ) -> str:
     """Create a layer consumer VM.
 
@@ -2502,6 +2529,12 @@ async def run_layer_consume(
                 await _wait_for_consume_health(owned_compute_conn, server_id, consumer_state["health_token"])
                 await _update_consume_db(consume_db_id, status="active", completed=True)
                 return server_id
+        # Only Nova metadata becomes live policy. Neither a SQL placement snapshot
+        # nor an import request can substitute for this fresh native flavor read.
+        actual_flavor = await _consume_sdk(compute_proxy.get_flavor, resolved_flavor_id)
+        if actual_flavor is None or str(actual_flavor.id) != str(resolved_flavor_id):
+            raise HTTPException(422, "Consumer flavor is unavailable")
+        usage_metadata = await _consume_creation_metadata(owned_compute_conn, actual_flavor, usage_schedule)
         if transport == "block":
             block_proxy = await _consume_sdk(lambda: owned_compute_conn.block_storage)
             project_id = await _consume_sdk(
@@ -2829,14 +2862,25 @@ async def run_layer_consume(
                 **run_metadata,
                 **({"union_upper_volume_id": upper_volume_id} if root_mode else {}),
                 **github_ssh_metadata(github_username),
+                **usage_metadata,
             },
         }
+        from app.services.instance_usage import require_creation_schedule_current
+
+        require_creation_schedule_current(usage_metadata)
+
+        def create_consumer(**kwargs):
+            # SQL/Redis intent persistence and lease checks above the native send
+            # can cross expiry. Recheck in the sending thread after those waits.
+            require_creation_schedule_current(kwargs["metadata"])
+            return consume_resources._create_once(compute_proxy.create_server, **kwargs)
+
         if run_id:
             server = await _await_consume_stage(
                 consume_resources.allocate(
                     consume_db_id,
                     run_id,
-                    compute_proxy.create_server,
+                    create_consumer,
                     resource_kind="server",
                     resource_name=server_name,
                     owner_metadata=run_metadata,
@@ -2847,7 +2891,7 @@ async def run_layer_consume(
         elif shared_nfs:
             server = await _layer_create(
                 f"consumer:{consume_db_id}:server",
-                compute_proxy.create_server,
+                create_consumer,
                 partial(
                     _layer_resource,
                     owned_compute_conn,
@@ -2859,7 +2903,7 @@ async def run_layer_consume(
                 **server_kwargs,
             )
         else:
-            server = await _consume_sdk(compute_proxy.create_server, **server_kwargs)
+            server = await _consume_sdk(create_consumer, **server_kwargs)
         server_id = server.id
         if run_id:
             await consume_resources.update_allocation(consume_db_id, run_id, server_id=server_id)

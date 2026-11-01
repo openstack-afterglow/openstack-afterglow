@@ -3,8 +3,7 @@
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { messageEntrance, type MessageEntrance } from './messageMotion';
 	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
@@ -38,7 +37,7 @@
 		actionsDisabled?: boolean;
 		loading?: boolean;
 		modelLocked?: boolean;
-		/** 메시지 id → 생성 속도 계측(런타임, 미저장). 낙관적 draft 는 message.metrics 로 직접 전달. */
+		/** 메시지 id → TTFT/생성 속도 계측(런타임, 미저장). draft는 message.metrics로 전달. */
 		metricsById?: Map<string, StreamMetrics>;
 		toolActivity?: string | null;
 		agentActivity?: AgentActivity | null;
@@ -237,11 +236,13 @@
 </script>
 
 <div class="window">
-	{#if loading}
-		<div class="load-bar" role="status" aria-label={t('window.loading')}><span>{t('window.loading')}</span><ProgressTrack value={null} label={t('window.loading')} size="xs" /></div>
+	{#if loading && !empty}
+		<div class="load-bar"><LoadingState variant="inline" label={t('window.loading')} /></div>
 	{/if}
-	<div class="scroll" bind:this={scrollEl} onscroll={onScroll}>
-		{#if empty}
+	<div class="scroll" class:initial-loading={empty && (loading || loadingHistory)} bind:this={scrollEl} onscroll={onScroll}>
+		{#if empty && (loading || loadingHistory)}
+			<LoadingState variant="surface" label={t('window.loading')} />
+		{:else if empty}
 			<div class="welcome">
 				<div class="welcome-mark">
 					<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -261,7 +262,7 @@
 		{:else}
 			<div class="stream">
 				{#if loadingHistory}
-					<div class="history-loading"><ActivityIndicator label={t('window.historyLoading')} /></div>
+					<div class="history-loading"><LoadingState variant="inline" label={t('window.historyLoading')} /></div>
 				{/if}
 				{#if newHistoryActivity}
 					<div class="history-activity motion-enter" role="status">
@@ -296,18 +297,18 @@
 				{/each}
 				{#if externalProgress && manualCompactionActivity}
 					<div class="context-activity" role="status" aria-live="polite" aria-atomic="true">
-						<ActivityIndicator variant="orbit" />
+						<LoadingState variant="inline" label="" aria-hidden="true" />
 						<span>{manualCompactionActivity}</span>
 					</div>
 				{:else if externalProgress && agentActivity}
 					<div class="agent-activity" role="status" aria-live="polite" aria-atomic="true">
-						<ActivityIndicator variant="orbit" />
+						<LoadingState variant="inline" label="" aria-hidden="true" />
 						<span>{agentActivity.label}</span>
 						<span class="activity-elapsed" aria-hidden="true">· {activityElapsed(agentActivity.startedAt)}</span>
 					</div>
 				{:else if externalProgress && toolActivity}
 					<div class="tool-activity" role="status" aria-live="polite">
-						<ActivityIndicator />
+						<LoadingState variant="inline" label="" aria-hidden="true" />
 						{t('window.toolInProgress', { tool: toolActivity })}
 					</div>
 				{/if}
@@ -355,6 +356,7 @@
 		scrollbar-gutter: stable both-edges;
 		padding: 1.5rem 0;
 	}
+	.initial-loading { display: flex; padding: 0; }
 	.stream {
 		display: flex;
 		flex-direction: column;

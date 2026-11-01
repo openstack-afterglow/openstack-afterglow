@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n/ns/volume';
   import { useVolumeDetailController, statusColor } from '$lib/stores/volumeDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { formatStorage } from '$lib/utils/format';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -38,7 +38,7 @@
       <div class="flex gap-2 justify-end">
         <button onclick={() => s.cancelSnapshot()} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('snapshotsSection.cancel')}</button>
         <Button onclick={() => s.createSnapshot()} disabled={s.creatingSnapshot || !s.snapshotName.trim()} size="sm">
-          {#if s.creatingSnapshot}<ActivityIndicator size="xs" tone="ink" />{/if}{s.creatingSnapshot ? t('snapshotsSection.creating') : t('snapshotsSection.create')}
+          {#if s.creatingSnapshot}<LoadingState variant="control" label="" />{/if}{s.creatingSnapshot ? t('snapshotsSection.creating') : t('snapshotsSection.create')}
         </Button>
       </div>
     </div>
@@ -59,7 +59,7 @@
             {#snippet details()}<p class="font-mono break-all">{snap.id}</p>{/snippet}
             {#snippet actions()}
               <Button variant="danger-outline" size="sm" onclick={() => s.deleteSnapshot(snap.id, snap.name)} disabled={s.deletingSnapshot === snap.id}>
-                {#if s.deletingSnapshot === snap.id}<ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}{:else}{t('snapshotsSection.delete')}{/if}
+                {#if s.deletingSnapshot === snap.id}<LoadingState variant="control" label="" />{t('snapshotListTable.deleting')}{:else}{t('snapshotsSection.delete')}{/if}
               </Button>
             {/snippet}
           </CompactResourceCard>
@@ -77,7 +77,7 @@
             onclick={() => s.deleteSnapshot(snap.id, snap.name)}
             disabled={s.deletingSnapshot === snap.id}
             class="inline-flex items-center gap-1.5 text-state-danger-text hover:opacity-80 disabled:text-ink-3 transition-colors ml-2"
-          >{#if s.deletingSnapshot === snap.id}<ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}{:else}{t('snapshotsSection.delete')}{/if}</button>
+          >{#if s.deletingSnapshot === snap.id}<LoadingState variant="control" label="" />{t('snapshotListTable.deleting')}{:else}{t('snapshotsSection.delete')}{/if}</button>
         </div>
       {/each}
     </div>

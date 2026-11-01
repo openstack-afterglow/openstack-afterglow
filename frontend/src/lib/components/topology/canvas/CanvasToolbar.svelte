@@ -5,7 +5,7 @@
 <script lang="ts">
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t } from '$lib/i18n/ns/topology';
-	// 캔버스 상단 툴바: 검색, 패킷 흐름(기본 on 시뮬레이션), 화면 맞춤, 배치 초기화.
+	// 검색·화면 조작·범례는 고정 그룹으로 유지하고 구조 애니메이션은 명시적으로 켠다.
 	import Button from '$lib/components/ui/Button.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 
@@ -22,6 +22,12 @@
 		createContextName?: string | null;
 		onfit: () => void;
 		onreset: () => void;
+		onzoomin?: () => void;
+		onzoomout?: () => void;
+		onoverview?: () => void;
+		ownershipOverview?: boolean;
+		onlegend?: () => void;
+		legendOpen?: boolean;
 		oncreatenetwork?: () => void;
 		oncreaterouter?: () => void;
 		oncreateinstance?: () => void;
@@ -32,7 +38,7 @@
 	}
 	let {
 		query = $bindable(''),
-		flowOn = $bindable(true),
+		flowOn = $bindable(false),
 		reducedMotion = false,
 		matchCount = null,
 		searchElement = $bindable(null),
@@ -41,6 +47,12 @@
 		createContextName = null,
 		onfit,
 		onreset,
+		onzoomin,
+		onzoomout,
+		onoverview,
+		ownershipOverview = false,
+		onlegend,
+		legendOpen = false,
 		oncreatenetwork,
 		oncreaterouter,
 		oncreateinstance,
@@ -52,7 +64,6 @@
 	const flowHintId = 'topology-canvas-flow-hint';
 </script>
 
-{#snippet flowHint(text: string)}<span class="hint">{text}</span>{/snippet}
 
 <div class="toolbar">
 	<div class="search">
@@ -69,18 +80,25 @@
 			<span class="search-count" aria-hidden="true">{t('toolbar.matchCount', { count: matchCount })}</span>
 		{/if}
 	</div>
-	<label class="check" class:is-disabled={reducedMotion}>
-		<input type="checkbox" bind:checked={flowOn} disabled={reducedMotion} aria-describedby={reducedMotion ? flowHintId : undefined} />
-		<RichText segments={t.rich('toolbar.packetFlow')} tags={{ hint: flowHint }} />
-	</label>
-	{#if reducedMotion}
-		<span class="hint" id={flowHintId}>{t('toolbar.reducedMotion')}</span>
-	{/if}
+	<div class="view-actions" role="group" aria-label={t('toolbar.viewControls')}>
+		{#if onoverview}<Button variant="secondary" size="sm" ariaPressed={ownershipOverview} onclick={onoverview}>{t('overview.title')}</Button>{/if}
+		{#if onzoomin}<Button variant="secondary" size="sm" ariaLabel={t('canvas.zoomIn')} onclick={onzoomin}>+</Button>{/if}
+		{#if onzoomout}<Button variant="secondary" size="sm" ariaLabel={t('canvas.zoomOut')} onclick={onzoomout}>−</Button>{/if}
+		<Button variant="secondary" size="sm" onclick={onfit}>{t('toolbar.fit')}</Button>
+		{#if onlegend}<Button variant="secondary" size="sm" dataTour="topology-legend-toggle" ariaExpanded={legendOpen} onclick={onlegend}>{t('canvasLegend.label')}</Button>{/if}
+	</div>
+	<div class="animation">
+		<label class="check" class:is-disabled={reducedMotion}>
+			<input type="checkbox" bind:checked={flowOn} disabled={reducedMotion} aria-describedby={flowHintId} />
+			{t('toolbar.packetFlow')}
+		</label>
+		<span class="hint" id={flowHintId}>{t(reducedMotion ? 'toolbar.reducedMotion' : 'toolbar.animationNote')}</span>
+	</div>
 	<div class="actions">
 		{#if oncreate}
 			<div class="create" role="group" aria-label={t('toolbar.createLabel')}>
 				<span class="hint">{t('toolbar.create')}</span>
-				<Button variant="accent" size="sm" onclick={() => oncreate?.('network')}>{t('toolbar.network')}</Button>
+				<Button variant="primary" size="sm" onclick={() => oncreate?.('network')}>{t('toolbar.network')}</Button>
 				<Button variant="secondary" size="sm" onclick={() => oncreate?.('router')}>{t('toolbar.router')}</Button>
 				<Button variant="secondary" size="sm" onclick={() => oncreate?.('instance')}>{t('toolbar.instance')}</Button>
 				<Button variant="secondary" size="sm" onclick={() => oncreate?.('loadbalancer')}>{t('toolbar.loadBalancer')}</Button>
@@ -90,21 +108,20 @@
 				{/if}
 			</div>
 		{:else if editable}
-			<Button variant="accent" size="sm" onclick={oncreatenetwork}>{t('toolbar.network')}</Button>
+			<Button variant="primary" size="sm" onclick={oncreatenetwork}>{t('toolbar.network')}</Button>
 			<Button variant="secondary" size="sm" onclick={oncreaterouter}>{t('toolbar.router')}</Button>
 			<Button variant="secondary" size="sm" onclick={oncreateinstance}>{t('toolbar.instance')}</Button>
 			<Button variant="secondary" size="sm" onclick={oncreateloadbalancer}>{t('toolbar.loadBalancer')}</Button>
 			<Button variant="secondary" size="sm" onclick={oncreatedatabase}>{t('toolbar.database')}</Button>
 		{/if}
-		<Button variant="secondary" size="sm" onclick={onfit}>{t('toolbar.fit')}</Button>
 		<Button variant="secondary" size="sm" onclick={onreset}>{t('toolbar.reset')}</Button>
 	</div>
 </div>
 
 <style>
 	.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
-	.search { position: relative; flex: 1 1 16rem; min-width: 12rem; }
-	.search :global(.search-input) { padding-right: 3.5rem; font-size: 0.8125rem; }
+	.search { position: relative; flex: 1 1 16rem; min-width: min(12rem, 100%); }
+	.search :global(.search-input) { padding-right: 3.5rem; font-size: 0.875rem; }
 	.search-count {
 		position: absolute;
 		right: 0.625rem;
@@ -118,19 +135,25 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
-		font-size: 0.75rem;
+		font-size: 0.8125rem;
 		color: var(--color-ink-1);
 		cursor: pointer;
 		user-select: none;
+		min-height: 36px;
 	}
 	.check input { accent-color: var(--color-accent); width: 0.875rem; height: 0.875rem; margin: 0; }
 	.check input:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 2px; }
 	.check.is-disabled { opacity: 0.5; cursor: not-allowed; }
-	.hint { font-size: 0.75rem; color: var(--color-ink-2); }
-	.actions { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; }
+	.hint { font-size: 0.8125rem; color: var(--color-ink-2); }
+	.view-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+	.toolbar :global(.btn) { min-height: 36px; }
+	.animation { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; flex-basis: 100%; }
+	.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; width: 100%; }
 	.create { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
 	@media (max-width: 767px) {
 		.search { flex-basis: 100%; }
+		.check { min-height: 44px; }
+		.toolbar :global(.btn) { min-height: 44px; }
 		.actions { margin-left: 0; }
 		.create { flex-basis: 100%; }
 	}

@@ -91,10 +91,8 @@ it('shows full identity, recorded relations and honest unrecorded origin without
   expect(within(inspector).getAllByText(parentDigest)).toHaveLength(2);
   expect(within(inspector).getByText(childDigest)).toBeTruthy();
   expect(within(inspector).getByText(/More direct children exist/)).toBeTruthy();
-  const bundle = within(inspector).getByRole('link', { name: 'published-torch' });
-  expect(bundle.getAttribute('href')).toBe('#palimpsest-managed-profiles');
-  await fireEvent.click(bundle);
-  expect(onbundle).toHaveBeenCalledWith('published-torch');
+  await fireEvent.click(within(inspector).getByRole('button', { name: 'published-torch' }));
+  expect(onbundle).toHaveBeenCalledExactlyOnceWith('published-torch');
   await fireEvent.click(within(inspector).getByRole('button', { name: 'child-layer' }));
   await within(inspector).findByRole('heading', { name: 'child-layer' });
   expect(catalogApi.detail).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'managed', '43');

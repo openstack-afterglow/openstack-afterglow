@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "Safu kwa ukurasa",
+	"list.analytics": "Mwenendo wa mitandao",
+	"list.details": "Angalia maelezo",
+	"list.actionsFor": "Vitendo vya mtandao {name}",
+	"list.scopedHistory": "Historia ya mitandao ya wingu lote haipatikani ndani ya mradi.",
+	"list.deleteImpact": "Kufuta mtandao hakuwezi kutenduliwa. Milango iliyounganishwa inaweza kuzuia ufutaji.",
 	"loadbalancersPage.loading": "Inapakia visawazisha mzigo...",
 	"adminNetworkCreateModal.title": "Unda mtandao",
 	"adminNetworkCreateModal.name": "Jina",

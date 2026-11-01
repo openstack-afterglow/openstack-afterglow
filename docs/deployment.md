@@ -6,6 +6,80 @@ Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(
 
 Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
 
+## 리소스 정책 자동 초기화·갱신
+
+DB가 설정된 API는 기존 dispatcher에 `resource-policy-reconciliation`을 등록합니다. 역할 획득 직후 및 매60초마다 native 권위를 읽고 DB의11개 local 정책을 재검증합니다. 올바른 ID는 그대로 두고 표시 이름만 갱신합니다. 행이 없거나 저장된 canonical AZ가 완전한 목록에서 사라진 경우에만 Compute/Cinder 각각의 유일한 사용 가능 AZ를 자동 저장합니다. 여러 후보·불완전 응답·조회 실패 또는 아직 존재하지만 일시 중단된 AZ는 기존 선택을 보존합니다. 명시적으로 지운NULL 행은 새 DB의 부재와 구분하여 다시 채우지 않습니다.
+
+Project/network/builder flavor/share 정책의 ID는 자동 추정·교체하지 않습니다. Waygate/Drover의 remote 정책도 쓰지 않습니다. Native 조회 중 SQL session/lock을 유지하지 않고, 저장 직전 전체 row/timestamp와 service-project scope를 대조합니다. 내용이 바뀐 row는 구형 writer가 썼더라도 거부됩니다. 같은 버전 writer는 같은 값을 다시 저장해도 whole-second 후속 timestamp를 남기므로(DATETIME(0)/(6) 공통, 빠른 연속 저장의 updated_at은 실제 시각보다 앞설 수 있음) reconciler가 그 재확인을 감지합니다. **구형 writer의 동일 값 재저장은 UPDATE·timestamp를 남기지 않아 감지할 수 없습니다.** 그러면 AZ catalog가 흔들리는 동안 관리자가 방금 다시 확인한 AZ를 reconciler가 교체할 수 있습니다. 따라서 이 역할은 같은 DB의 모든 API·관리자 policy writer를 새 버전으로 전환하고 구형 writer를 drain한 뒤에만 실행하세요. 외부 직접 SQL 변경은 동기화 계약이 아닙니다. Schema migration이나 별도 환경 설정은 추가하지 않습니다.
+
+Kolla의 기존 `seed_runtime_policies` importer도 실행 중 API와 같은 빈 정책 key를 경쟁할 수 있습니다. Importer는 정책별 SAVEPOINT 뒤 duplicate key일 때만 현재 locking read로 실제 승자를 확인하고 그 값을 보존하며 나머지 seed를 계속합니다. 다른 integrity 오류는 전체 import를 rollback합니다. Importer와 관리자 service-project 변경을 동시에 수행하지 마세요. 이 기존 parent-scope 경합은 이번 변경으로 해결하지 않았습니다.
+
+이 갱신은 Nova/Cinder 조회와 기존 SQL 정책 갱신만 수행합니다. Flavor/VM 생성·삭제, IAM 부여, quota 변경 또는 자동 flavor 활성화를 실행하지 않습니다. 자동 flavor의 관리자 host/GPU 정책·명시 enable은 아래 별도 절을 따릅니다. 현재 대상DB를 확인하고 기존 올바른 정책과 키를 보존하며 빈 DB 문제를 이유로 다른DB 내용을 통째로 복사하지 마세요.
+
+## Afterglow 도메인 정책·표준 flavor 자동화 (source only)
+
+Nova 소스 수정·custom quota driver·전용 capability API·fleet qualification 파일은 필요하지 않습니다. Afterglow의 configured administrator executor가 표준 Nova flavor/spec/access·compute service/hypervisor와 Placement provider/inventory/usage API를 읽고 필요한 flavor·ACL만 변경합니다. 실제 배치는 stock Nova scheduler가 결정하며 기존 프로젝트 quota는 계속 적용됩니다. PCI passthrough/Placement reporting 등 기존 native 설정은 배포자가 유지해야 하고 이 기능이 잘못된 alias 설정을 자동 생성·수정하지 않습니다.
+
+1. 기존 이미지·설정/키·RuntimeSetting·Keystone 정책과 복구 지점을 보존합니다. 같은 DB의 automation writer를 모두 새 버전으로 전환하고 구형 writer를 drain하기 전에는 자동화를 켜지 마세요. SQL DDL·새 migration은 없고 `compute.flavor_automation_policy` JSON key를 추가합니다. 운영 반영·정책 변경·자동 활성화는 별도 승인입니다.
+2. 관리자 Flavor의 **호스트 검색**을 실행하여 실제 Nova compute/service와 Placement tree의 지원 사양을 저장합니다. 이후 down/maintenance·연결 끊김·목록 누락·축소된 관측에서도 마지막 사양을 보존합니다. 관리자가 **호스트 제거**를 확인할 때만 제외하며 존재하는 Nova compute service는 표준 disable/readback을 수행합니다. VM·service·provider를 삭제하거나 force-down하지 않습니다. 다시 포함은 카탈로그 복원이며 native maintenance enable은 운영자가 별도 판단합니다.
+3. 관리자 Flavor의 **Nova PCI alias와 Placement 관측**에서 정제된 controller 설정과 사용/미매핑 provider를 따로 확인합니다. Kolla는 controller `nova-api/nova.conf`의 alias 공개 필드만 읽어 Afterglow backend에 read-only snapshot으로 제공하며, 전용 디렉터리 마운트로 config-only snapshot 교체도 실행 중 backend에 반영합니다. Nova 원본 설정·비밀은 mount하지 않습니다. 설정 변경 후 snapshot을 새로 생성하기 전에는 이전 관측일 수 있고 실행 중 Nova reload·모든 compute의 설정 일치는 별도 확인해야 합니다. Controller 불일치/누락은 그룹 작성에 사용할 수 없으며 Kolla 외 설치는 `/app/nova-pci-aliases/aliases.json`에 같은 정제 snapshot이 필요합니다. 장치 종류 추정은 관리자가 확인하고 신규 장치를 자동 승인하지 않습니다. GPU alias와 오디오 alias를 하나의 그룹으로 묶어도 Nova가 같은 물리 카드의 두 기능을 선택한다는 보장은 없습니다. Placement 관측은 모든 물리 PCI 장치의 완전한 목록이 아닙니다.
+4. 관리자 domain pool에 승인 GPU 모델의 한도를 설정합니다(0/누락=사용 불가, -1=무제한). 해당 모델/장 수를 허용하는 도메인의 모든 enabled 프로젝트에 private flavor access가 동기화되고 새 프로젝트도 다음 pass에 반영됩니다. GPU 접근을 위해 별도 project opt-in이나 CPU/RAM domain 한도 입력은 필요하지 않습니다. 프로젝트별 추가 cap은 생성 admission용이며 flavor 공개 범위를 줄이지 않습니다.
+5. 모든 automation writer를 같은 새 버전으로 전환하고 구형 writer를 중지한 뒤 자동화 상태·기존 CPU flavor/spec/ACL과 복구 지점을 검토합니다. 명시 enable/save·지금 동기화 또는 이미 활성화된60초 loop는 기존과 신규 수동 CPU flavor를 확인 후 자동 편입하고 알려진 domain 프로젝트의 private 접근을 변경할 수 있습니다. Public은 native에서 계속 공개되며 직접 Nova 요청은 Afterglow 정책을 우회합니다. GPU·PCI 또는 ownership이 불명인 수동 flavor와 확인되지 않은 ACL은 건드리지 않습니다. CPU 표준 이름 점유·baseline drift·불완전 native 응답은 conflict이며 기존 flavor를 대체하지 않습니다. 응답 불명은 자동 replay하지 말고 fresh policy/status/native readback으로 확인합니다.
+
+자동 편입 전에 별도 Nova 관리자·외부 자동화의 같은 flavor/spec/ACL 쓰기를 중지하거나 직렬화하세요. Graph lease는 Afterglow writer만 조정하며 stock Nova에는 token/spec/ACL 조건부 CAS가 없습니다. 전송 직전·직후 재조회는 관측된 변경과 결과 불명을 식별하지만 직접 Nova 쓰기와의 원자적 경쟁 차단을 보장하지 않습니다. 구형 writer 혼용은 새 CPU claim을 이해하지 못하고 중복 flavor 생성이나 소유정보 노출을 유발할 수 있습니다.
+
+Memory 자동 사양 확장은 GPU 없는CPU당4/8/16GiB와 신규 `mem.*` 이름을 사용하며 기존4/8GiB의 UUID/spec·`cpu.*`/`cpu.ag.*` native 이름·VM 참조를 보존합니다. 새 DDL/config는 없지만 새 writer가 지원되는16GiB-per-vCPU flavor를 추가 생성·ACL 공개할 수 있으므로 기존 automation이 enabled이면 배포 직후 쓰기가 발생할 수 있습니다. 구형 writer는16GiB shape를 모르는 탓에 publication을 회수하거나 새 `mem.*` native 이름을 drift로 판단할 수 있어 mixed-version 실행은 지원하지 않습니다. 승인된 전환은 기존 writer drain·이미지/RuntimeSetting/native snapshot 보존 뒤 같은 버전으로 수행하며 자동 enable·quota 변경·현재 source 작업의 운영 배포는 포함하지 않습니다.
+
+직접 자원 구성은 `composer-options` 읽기와 `compositions` 명시 저장을 분리합니다. 새 frontend·API·automation writer를 같은 버전으로 전환해야 하며 구형 writer가 durable custom shape intent를 모르면 비표준 조합의 ACL/publication을 회수할 수 있습니다. 운영 적용 전 기존 native flavor/spec/ACL·RuntimeSetting·이미지·키 복구 지점과 같은 DB를 사용하는 전체 writer를 확인하고 drain하세요. 기존 RuntimeSetting JSON을 재사용하며 새 DDL/migration·자동화 자동 enable·quota 변경은 없습니다. 자동화가 이미 enabled라면 주기적 표준 생성/ACL 조정은 계속되며 사용자 명시 저장도 새 native flavor/정책상 ACL을 만들 수 있습니다.
+
+저장 이력과 native flavor는 같은 원자적 transaction이 아닙니다. Native 요청 이후 오류·응답 불명은 생성 실패의 증거가 아니며 exact UUID·claim·native spec/ACL을 먼저 읽어 확인하고 blind replay/삭제로 복구하지 마세요. Graph lease는 협조하는 Afterglow writer만 조정하며 외부 Nova writer와 SQL/Redis/native 사이의 원자적 commit은 제공하지 않습니다. Browser 자원 초안은 이 브라우저의 actor/home/target/surface에 속하고 권한·비밀·사용 일정 동의는 저장하지 않습니다. 이 source 변경은 운영 서비스 교체·공유 DB/native 쓰기·실제 GPU guest scheduling qualification을 수행하지 않습니다.
+
+Placement는 보고된 PCI resource provider의 사용량만 보여줍니다. 미보고 장치·조회 실패는0이 아니며, 별도 GPU/audio alias 요청은 Nova가 같은 물리 카드의 두 기능을 함께 선택한다는 보장이 아닙니다. 실제 동반 부착과 guest 드라이버는 운영 환경에서 검증해야 합니다.
+
+Keystone `afterglow_compute_pool`은 Afterglow 정책 권위입니다. CPU/RAM 한도 부재는 추가 domain 제한 없음이며 native project quota는 여전히 검사합니다. Explicit disabled pool은 Afterglow 신규 요청을 차단하지만 직접 CLI/API나 다른 서비스를 전역 집행하지 않습니다. 동시 외부 요청까지 원자적 domain quota를 보장하지 않으며 Placement allocations를 직접 쓰거나 실패 작업의 allocation을 추정 삭제하지 않습니다. 일시적인 가용량 부족은 카탈로그 삭제/ACL 회수 근거가 아닙니다.
+
+Native CPU/RAM quota가 부족한 GPU 프로젝트는 native quota 화면에서 명시 조정해야 합니다. Pool 한도/project cap PATCH는 Nova quota를 바꾸지 않습니다. Native allocation ceiling·프로젝트 quota·새 프로젝트 CPU/RAM defaults는 pool 활성/중지와 독립적으로 편집하며, 신규 프로젝트는 disabled 상태에서 defaults 적용/readback 뒤 enable합니다. 예전 writer가 pool을 이유로 CPU/RAM을 제거하던 동작은 폐기했습니다. 저장되어 있던 native ceilings/defaults도 다시 적용되므로 rollout 전 실제 값·drift를 확인하고 자동 초기화하거나 지우지 마세요.
+
+GPU 추가 요청 기능은 별도의 additive `104_gpu_quota_requests.sql`과 manifest checksum이 필요합니다. 승인된 대상 DB의 기존 ledger·backup/restore와 선행 migration을 확인하고 요청 API를 제공하는 새 backend 전에 적용해야 합니다. SQL table은 요청·결정 이력일 뿐 quota 권위가 아닙니다. 기존 schema에서 새 queue API의 DB 오류는 실패로 표시하며 Redis/빈 목록으로 대체하지 않습니다. 현재 source 작업은 공유 또는 운영 DB에 migration을 실행하거나 API/worker를 재시작한 것이 아니며 기존 writer cutover·배포에도 별도 승인이 필요합니다.
+
+요청 저장·검토의 SQL 응답이 끊기거나 timeout되면 기록이 없다고 가정하지 않습니다. 새 목록에서 정확한 요청과 결정을 확인하고 필요한 경우 DB 소유자가 원래 transaction 종료를 확인합니다. 자동으로 같은 요청을 재전송하거나 요청 이력을 삭제해 복구하지 않습니다. 외부 Keystone 변경은 같은 lease로 직렬화되지 않으므로 수동 quota 검토 중 해당 정책을 동시에 변경하지 않는 운영 절차가 필요합니다.
+
+Rollback은 먼저 automation을 비활성화하고 진행 중 작업·exact flavor/spec/ACL과 두 RuntimeSetting key를 보존·대조해야 합니다. 새 정책을 이해하지 못하는 old writer를 enabled automation과 혼용하지 마세요. 실제 GPU passthrough·운영 cloud 수용은 격리 HTTP/브라우저 증거와 별도입니다.
+### 로컬 Compose PCI snapshot 연결
+
+개발 backend는 `.local-services/nova-pci-aliases/`를 `/app/nova-pci-aliases/`에 read-only로 mount합니다. 원본 Nova 설정을 복사하지 말고 `deploy/kolla/ansible/roles/afterglow/files/snapshot_nova_pci_aliases.py`의 collect/aggregate 절차로 모든 authoritative controller의 공개 alias만 정제하여 `aliases.json`으로 저장하세요. Controller 전체의 동일한 관측이어야 ready이며, 빈 디렉터리·불완전 snapshot은 그대로 unavailable입니다. Directory mount이므로 이후 snapshot의 원자적 교체는 backend 재기동 없이 읽힙니다.
+
+Snapshot의 `observed_at`은 수집 시각이 아니라 controller `nova.conf`의 수정 시각입니다. 설정이 바뀌지 않으면 새로 수집해도 같은 값이므로 최신 수집 여부와 혼동하지 마세요. 로컬 backend의 enabled 60초 자동화 loop는 공유 Nova에 flavor를 계속 기록하며, 이후 도메인 GPU 한도를 설정하면 해당 도메인 프로젝트에 private ACL이 부여됩니다.
+
+최초 mount 적용은 개발 Compose의 backend만 `--no-deps`로 재생성합니다. 먼저 실제 container의 DB URL·key·image·mount·port를 보존하고 **같은 실행기 환경**에서 render/apply하며 기존의 명시 DB override를 유지하세요. 준비된 env-file만 재사용해도 현재 container와 DB 목적지가 달라질 수 있습니다. 이 작업을 이유로 migration/bootstrap·형제 worker 또는 Kolla 배포를 실행하지 않습니다.
+
+`compute_pool_gpu_accounting_unqualified`는 도메인 프로젝트의 기존 PCI 사용량에 승인된 GPU/companion 분류가 없다는 뜻입니다. Snapshot 연결만으로 승인이 되지 않습니다. 기존 native flavor의 정확한 alias·per-GPU 수량·extra specs와 controller 관측을 대조하여 GPU 그룹을 승인한 뒤 풀을 다시 조회하세요. Enabled 자동화는 승인 직후 다음 pass에서 GPU flavor/ACL을 변경할 수 있으므로 기존 native snapshot과 writer 상태를 먼저 확인합니다. 도메인 GPU 숫자·활성화는 별도 관리 결정이며 복구 과정에서 임의로 설정하지 않습니다.
+
+
+## 생성용 flavor 사전 관측
+
+DB가 설정된 새 backend는 기존 dispatcher에 read-only `flavor-discovery` 역할을 등록합니다. 역할 소유자는 각 pass 완료 후10초를 기다리며 configured administrator의 Nova 카탈로그·호스트/AZ/aggregate와 Placement shape를 한 번씩 관측해 Redis에 저장합니다. 이 역할은 flavor·ACL·quota·VM·SQL 정책을 변경하지 않으며 `managed-flavor-reconciliation`과 다른 역할입니다. 새 SQL migration이나 환경 설정 필드는 없습니다.
+
+생성용 목록은 metadata90초·capacity30초의 최대 나이를 적용하고 현재 native target visibility/ACL·프로젝트 quota/domain pool을 다시 확인합니다. 관측이 없거나 만료되면 동기 전체 수집으로 요청을 붙잡지 않고 capacity를 미확인으로 표시합니다. 새로 native에 보이는 flavor가 metadata에 없으면 카탈로그만 fresh fallback하며, 해당 shape도 관측되지 않았다면 capacity는 미확인입니다. 여러 backend는 동일 cloud/region/interface/operator scope와 Redis를 사용해야 합니다. 원문 host 관측은 내부 저장소에만 있고 API에 노출되지 않습니다. Redis를 비워도 quota 권위는 달라지지 않지만 다음 수집까지 생성용 목록이 미확인일 수 있습니다.
+
+기존 wildcard catalog invalidation은 새 metadata key도 지우지만 외부 native 쓰기나 다른 프로세스의 수집 완료까지 원자적으로 직렬화하지는 않습니다. 목록은 예약이 아니고 실제 create는 항상 fresh 권한·native flavor·quota·host admission으로 다시 검증합니다. 운영 rollout과 기존 writer의 같은 버전 전환·DB/키 보존은 여전히 별도 승인·검증 사항입니다.
+
+## 인스턴스 사용 일정 운영 (source-only)
+
+현재 source의 background scheduler는 **기본 비활성**입니다. 운영자가 `[instance_usage] scheduler_enabled = true`(Settings의 `instance_usage_scheduler_enabled`, 환경 변수 `INSTANCE_USAGE_SCHEDULER_ENABLED`)로 명시할 때만 API lifecycle에 `instance-usage-dispatch` loop를 등록합니다. False이면 background all-project census·기존 VM enrollment·만료 조치가 시작되지 않으며 metadata API/UI는 계속 사용 가능합니다. 개발 Compose는 `INSTANCE_USAGE_SCHEDULER_ENABLED: "false"`를 명시하여 공유 TOML의 true보다 우선합니다. Live admin 자격을 쓸 수 있는 local stack을 켰다는 이유로 global writer를 시작해서는 안 됩니다.
+
+Enable은 **승인된 동일 cloud writer cohort**에서만 수행하세요. 모든 API/scheduler가 같은 Redis primary·logical DB·dispatcher namespace 및 cloud/project/server lease를 공유하고 old writer를 drain했는지 확인해야 합니다. 설정 true는 운영자의 assertion이지 runtime cohort proof가 아닙니다. 별도 schedule worker·설정 epoch·SQL schedule table·새 DDL/migration은 없습니다. 일정·만료 동의·revision·operation state는 `afterglow_usage_*` **Nova server metadata만 정본**입니다. Redis WorkDispatcher/renewable per-instance lease는 coordination일 뿐입니다. Metadata 자체에는 CAS가 없으므로 서로 다른 Redis 환경이나 비협조 native writer를 섞으면 안전한 동시성 제어가 아닙니다. Redis를 비우는 것으로 일정이 삭제되지는 않지만 진행 중 작업의 coordination을 잃을 수 있으므로 무조건 flush/restart를 복구 절차로 사용하지 않습니다.
+
+도입 전 운영자 자격의 all-project native server census·실제 flavor/extra_specs 읽기와 각 exact-project executor의 scope·native 쓰기 정책을 확인해야 합니다. 모든 GPU,12 vCPU 이상 **또는** RAM65536 MiB 이상, 추가 지정 플레이버의 **기존 VM도 자동 enrollment 대상**입니다. 첫 성공적인 metadata 등록부터 한 calendar month 유예를 부여하며 생성일·배포일로 소급하지 않습니다. Partial/손상 metadata는 자동 재등록하지 않습니다. Native metadata 쓰기 권한자는 날짜를 바꾸거나 모든 prefix key를 지워 새 유예를 유발할 수 있으므로 이를 막아야 하는 환경은 native writer/policy를 별도로 제한해야 합니다. 이 기능을 CLI까지 강제하는 Nova extension으로 소개하지 않습니다.
+
+활성화한 scheduler의 주기는 약60초이며 재시작 뒤 native metadata에서 연체/진행 중 작업을 다시 관찰합니다. 정확한 종료 시각 실행·즉시 compute 반환·알림 전달 SLA가 아닙니다. 기본 shelve→offload의 완료는 `SHELVED_OFFLOADED` readback으로 판단합니다. 선택 delete는 실행 중인 VM을 stop한 뒤 정지·소유권·attachment를 확인하고 일반 Nova DELETE를 제출합니다. **Nova microversion2.85 attachment flag 지원**과 exact-project Cinder 소유권·단독 attachment 읽기가 필요합니다. 기본 keep은 root/data 모두 `delete_on_termination=false`로 확인하므로 기존 true flag도 재설정합니다. 명시 동의는 검증된 연결 볼륨(소비자 소유의 단독 lower clone 포함)에만 적용하며 backups/snapshots/Manila/published source images·snapshots/보호된 source artifact는 지우지 않습니다. Unknown/multiattach/foreign attachment면 fail-closed합니다.
+
+관리형 Palimpsest/Union 삭제는 기존 resource/consume ledger·정확한 grant/health/server/port receipt로 전용 credential·접근 규칙·네트워크 자원을 정리하고 보존 disk tombstone을 유지합니다. 보존 lower 및 overlay upper 모두 immutable source 참조를 pin하므로 모든 kept managed disk가 native 부재로 확인되기 전에는 source 참조를 해제하지 않습니다. SQL에 날짜나 schedule authority를 복제하지 않습니다. Metadata-only 전용 grant/health는 quiescent delete-requested 단계에서 DELETE 전에 회수하고, 기존 resource ledger 정리는 native server404 뒤 관찰합니다. Old reclaimer가 retained disk/진행 중 cleanup receipt를 무시하지 않도록 **matching API·scheduler·managed cleanup/reclaimer source를 함께 전환하고 old writer를 drain**해야 합니다. Legacy name-only CephX/정확한 server binding 없는 health receipt는 stop 전 오류로 차단합니다. 과거 receipt를 임의 생성하거나 resource ledger를 지워 차단을 우회하지 마세요.
+
+Native mutation은 redirect/reauth/connect/status retry 없이 호출하며 force·추정 rollback·불명 POST/DELETE replay를 하지 않습니다. Native403/409·502·응답 유실·`*_requested`/`unknown`에서는 metadata의 revision/state/last_error, exact native status/task, attachment flags와 managed resource receipt를 대조해 수동 조정합니다. 요청 거부처럼 보이는 응답도 이미 기록한 intent를 자동 해제할 근거가 아닙니다. Schedule 연장은 미래 날짜·사유·최신 revision을 요구하고 **자동 start/unshelve하지 않습니다**. 알림 inventory 오류는0건이 아니며 in-app7/3/1일 경고·bell 외 email/push를 약속하지 않습니다.
+
+이 절은 local source 계약이며 운영 적용·실제 cloud acceptance를 기록하지 않습니다. 승인된 DMSLab 배포는 아래 기존 **compute 전체 → control 전체**의 두 native Kolla reconfigure 명령과 사전 복구/공유 writer 조건을 그대로 따릅니다. 개별 controller 제한·임의 option/timeout·명령 성공만으로 대체하지 않고 대상별 image digest/health/readiness·인증 경로와 실제 schedule/volume 안전 동작을 별도 확인해야 합니다. 이 문서 갱신은 배포나 cloud 작업을 수행하지 않습니다.
+
 ## Domain manager workspace cutover (source only)
 
 다중 프로젝트 invitation은 새 요청 `{email,projects:[{project_id,role_ids}]}`와 `kind=invitation_multi`의 기존 JSON column을 사용한다. DDL/migration은 없고 기존 `invitation` row·grant journal은 보존하지만 구형 exact-kind reader는 새 링크를 처리하지 못한다. Old/new API·worker·frontend를 섞은 rollout을 호환 완료로 간주하지 않는다. 승인된 배포에서는 먼저 현재 cohort/source·schema·원래 key와 SQL/Redis 복구 지점을 확인하고 old writers를 drain한 뒤 matching reader/frontend를 함께 전환한다. 운영 snapshot 기반 양방향 writer/복구 qualification은 이 로컬 source 검증에서 수행하지 않았다. 기존 row를 새 kind로 일괄 backfill하거나 old writer에 새 JSON을 읽히도록 marker를 제거하지 않는다.
@@ -292,9 +366,26 @@ afterglow.openstack.conf  ← OpenStack 자격증명 오버라이드 (선택)
 
 파일명 예시 처럼 알파벳순(`g` < `o`)으로 적용되며 뒤 파일이 앞 파일을 이깁니다.
 
-### 브라우저 세션의 하루 유지 선행 조건
+### 브라우저 세션의 7일 유지 선행 조건
 
-Source 기본 `[session] timeout_seconds=86400`은 최초 로그인부터의 절대 수명이며 refresh·scope 전환으로 연장하지 않습니다. 배포된 private TOML/환경의 명시3600초는 기본값 변경으로 대체되지 않으므로 운영자가 effective 설정과 native Keystone unscoped token 만료를 각각 확인해야 합니다. Native token exchange는 원래 만료를 보존합니다. Native 수명·실제 회수·더 짧은 운영 정책이 하루보다 먼저 끝나면 Afterglow는 재로그인을 요구하며 JWT/Redis TTL만 늘려 우회하지 않습니다. 새 로그인 수용은 실제 password/IdP callback과23시간 내 갱신·원래 deadline/회수 종료를 별도로 검증합니다. 이 source 변경은 기존 세션·정책·Keystone 만료·운영 배포를 자동 변경하지 않습니다.
+Source 기본 `[session] jwt_access_ttl=3600`, `jwt_refresh_ttl=604800`, `timeout_seconds=604800`은 access1시간·refresh 및 최초 로그인부터 최대7일입니다. Refresh·scope 전환은 원래 deadline을 연장하지 않습니다. 더 짧은 명시 정책은 유지하며 backend는 절대 수명을7일로 제한합니다. 기존 private TOML/환경의3600초 override는 새 기본값으로 자동 대체되지 않습니다.
+
+2026-10-31 사용자는 다음 배포에서 native 정책도 함께 적용하기로 승인했습니다. **현재 source 수정은 운영 적용 완료가 아닙니다.** Protected `/etc/kolla/config/afterglow/backend/afterglow.conf`의 관련 값만 조정하고 나머지 설정·비밀을 보존합니다.
+
+```toml
+[session]
+timeout_seconds = 604800
+jwt_access_ttl = 3600
+jwt_refresh_ttl = 604800
+```
+
+Keystone token-auth exchange는 원래 `expires_at`을 보존하므로 native token이1일이면 Afterglow JWT만7일로 바꿔도1일 뒤 로그인이 끝납니다. Stock Kolla `/etc/kolla/globals.yml`의 지원 변수 `fernet_token_expiry: 604800`을 함께 반영해야 합니다. 이 설정은 다른 OpenStack native token에도 영향을 줍니다. 기존 `fernet_token_allow_expired_window`와 `fernet_key_rotation_interval`을 보존하면서 stock 계산 `max_active_keys = ceil((expiry + allow_expired_window) / rotation_interval) + 2`를 만족하는지 확인합니다. Expired window172800초·매일 회전이면11개,3일 회전이면5개입니다. `[token] expiration`만 직접 override하면 retention 계산 입력이 달라질 수 있으므로 이 방법을 쓰지 않습니다.
+
+Native 설정·키 repository를 먼저 보존하고 controller 전체의 key retention·동기화와 실제 token 만료를 검증합니다. Key 재생성/삭제, 서명키 교체, 세션 flush는 하지 않습니다. 기존 token에는 수명이 소급 적용되지 않으므로 새 로그인으로 검증합니다. 짧은 정책으로 rollback해도 이미 발급된 native token 만료를 자동 축소하지 않으며 별도 회수 정책이 필요합니다. 표준 배포 절차·검증 게이트를 따르고 Keystone이 포함된 승인된 native rollout을 app-only tag 성공으로 대신하지 않습니다.
+
+Refresh receipt는 rotation과 같은 Redis Lua commit에 최대30초 보관하며 exact successor·원래 수명·current native/provider authority를 다시 확인한 뒤만 같은 응답을 돌려줍니다. 구형 writer는 receipt를 발행하지 않으므로 mixed-version에서는 복구가 완전하지 않습니다. 동일 backend cohort로 전환하고 기존 Redis primary/DB·namespace·signing/encryption keys를 유지합니다. 새 SQL migration은 없습니다. 비동기 replica가 commit을 잃는 failover는 receipt로 보장하지 않습니다.
+
+근거: [Keystone 원래 만료 보존](https://docs.openstack.org/keystone/2025.2/_modules/keystone/auth/plugins/token.html), [Kolla Keystone 변수](https://docs.openstack.org/kolla-ansible/2025.2/reference/shared-services/keystone-guide.html), [stock retention 계산](https://opendev.org/openstack/kolla-ansible/raw/branch/stable/2025.2/ansible/roles/keystone/templates/keystone.conf.j2).
 
 ### 공통·도메인별 로그인 공급자
 
@@ -422,6 +513,26 @@ SQL/GitHub password/authenticated 연결의200은 `ProviderLinkResponse`이며 �
 4. Native stable-sub mapping/full tuple PATCH·canonical 소유권 검토와 설정을 준비한 후 새 API/worker/frontend를 일관되게 cutover합니다. Provider-origin 없는 legacy federated 세션은 재로그인이 필요합니다. Public signup은 readiness와 native role/quota baseline 준비 후 명시적으로 opt-in하며 옵션 flag/SMTP 접수만으로 실제 전달·native 로그인 수용을 선언하지 않습니다.
 5. Recovery `dispatching/outcome_unknown/sessions_failed`와 enrollment native journal은 재시작·image rollback 후에도 보존합니다. Recovery token은1시간·1회용이고 dispatch 전 소비를 commit하므로 실패했다고 다시 pending으로 돌리거나 password write를 replay하지 않습니다. Afterglow session family는 Redis에서 원자적으로 제거·native token을 캡처한 뒤 각 exact token을 operator 인증으로 revoke합니다. 정확한 native token404 `Failed to validate token`/`Could not recognize Fernet token`만 이미 무효로 인정하고 proxy/directory404·권한·연결 오류는 회수 실패로 조사합니다. Native 쓰기 불명502와 회수 불완전503을 성공으로 닫지 않습니다.
 6. 096 rollback은 **새 writer도 drain**하고 nullable global registration row를 검토·해소한 뒤에만 NOT NULL 복원을 계획합니다. Pending NULL row를 정리하더라도 interrupted journal을 임의 삭제하지 않습니다. Image-only rollback으로 과거 공개 target-domain 링크를 복원하거나 global 링크를 그 의미로 재해석할 수 없습니다. 097 journal을 삭제하거나 구형 profile writer를 다시 열어 rollback을 대신하지 않습니다. 새 writer/이전 schema 및 이전 writer/새 schema·mixed-version 수용 증거가 없으면 지원한다고 주장하지 않습니다.
+
+#### 프로필 password·native first-password guard (source-only)
+
+현재 source의 기존 password 변경과 외부 계정의 **최초 local password 생성**은 별도 경로입니다. 기존 password 변경은 현재 password로 exact user/home의 새 **unscoped** native proof를 얻은 뒤 `POST /v3/users/{exact-user-id}/password`에 `original_password`와 새 password를 한 번 전달합니다. 일반 user PATCH나 service-admin password reset으로 대체하지 않습니다. 이 경로는 아래 extension·SMTP에 의존하지 않으며 native self-service 정책을 별도 검증해야 합니다. Credential POST는 redirect·401 reauthentication·connection/status retry와 HTTP body logging을 비활성화합니다. 응답 유실의502는 실패 확정이 아니므로 새 password를 자동 재전송하지 않습니다. Native password 변경은 user-wide token revocation을 일으킬 수 있으므로 새 로그인을 요구하며 기존 세션이 유지된다고 가정하지 않습니다.
+
+최초 생성과 **모든 password 메일 복구**는 `services/keystone-first-password`의 **Keystone28.1.0 전용 API revision `first-password-galera-v2`**를 요구합니다. Native DB schema/trigger revision은 기존 v1이고 새 migration은 없습니다(기존 Afterglow103·native v1 필수). Snapshot은 actual valid history의 existing/현재-history-absent만 관측하며 malformed/NULL을 거부합니다. 생성은 ANY retained history를 거부하고 `/users/{id}/OS-AFTERGLOW/password-reset`은 existing history만 exact home/email/revision CAS transaction에서 reset합니다. Native manager/setter·정책/hash/history·감사/회수를 보존하고 retry wrapper 밖에서 한 번 dispatch합니다. Privileged SQL로 모든 history가 제거된 과거의 영구 ever-set 증명은 없습니다. Extension 불가 시 password 메일 요청은202/no-mail이며 현재-password self-service 변경과 관리자 명시 난수 reset은 별개 경로로 유지합니다.
+
+**배포 전 요구사항이며 완료 증거가 아닙니다:** 아래는 source에서 확인한 설치·안전 경계입니다. 이 문서는 extension의 native qualification 통과, 운영 image/DB/config 반영, 실제 mailbox 전달 또는 실제 사용자 인증 수용을 주장하지 않습니다. Capability의 `supported:true`도 해당 요청의 source/schema/membership 검사 결과이지 모든 native writer의 실전 qualification이나 IdP MFA proof가 아닙니다.
+
+1. **승인된 offline build·전면 writer 중지:** 정확한 Keystone28.1.0 source/wheel과 extension package를 immutable image로 준비합니다. `install.py`는 positional `keystone_root`와 선택 `--upstream-wheel`을 받으며, wheel 경로는 pinned SHA-256 및 추출 native bytes를, checkout 경로는 pinned commit·clean tracked tree를 검사합니다. 양쪽 모두 pinned native 파일 digest·hook anchor를 검증한 뒤 build manifest를 생성합니다. 설치된 process를 수정·reload하는 도구가 아니며 package 설치나 native DDL을 대신하지 않습니다. Source commit/wheel digest·native/extension manifest·image digest를 보존하고, 모든 API node·worker·CLI/admin/password/federation writer와 직접 DB writer를 inventory·drain한 뒤 native schema 작업을 시작합니다. 자동 Kolla 통합이나 rolling mixed-version 지원을 추정하지 않습니다. 기존의 승인된 전체-group 배포 절차를 대체하지 않습니다.
+2. **두 DB의 schema-before-writer:** 실제 Afterglow migration ledger의 모든 선행 항목을 대조하고 `103_password_creation_revision.sql`을 **새 `AccountRecovery` 모델을 포함한 backend/worker image를 하나라도 시작하기 전에** 적용합니다. 새 ORM은 first-password 기능 활성화 여부와 무관하게 모든 recovery SELECT에 `native_identity_revision`을 포함하므로 proof 발급 직전까지 migration을 미루면 기존 recovery 조회도 실패합니다. 이 migration은097의 `account_recoveries`에 nullable `native_identity_revision VARCHAR(128)`만 추가합니다. Legacy NULL proof는 새 first-password 권한으로 승격하지 않고 거부합니다. Native Keystone DB는 정식 `db_sync` 이후 별도의 extension `schema.sql`이 필요합니다. 영구 `afterglow_password_guard`와 password/local-user/user/federation·IdP/protocol/mapping/remote-ID trigger를 설치하고 기존 user key를 seed합니다. Guard는 FK 없이 user 삭제·같은 UUID 재생성 후에도 남아 revision이 되돌아가지 않으며 email을 담은 extras 변경·되돌림도 이전 mailed proof를 무효화합니다. Afterglow103만으로 native guard가 설치되지는 않습니다.
+3. **잠긴 Galera 전제:** 현재 validator의 지원 범위는 MariaDB **10.11.19**, 모든 대상 table의 InnoDB 및 pinned Keystone의 exact column/PK/unique/FK/cascade shape입니다. 모든 설정 member가 Primary/ready/connected/Synced이고 동일 state UUID·configuration ID·cluster size를 보여야 합니다. Native writer와 각 member의 별도 auditor는 같은 exact DB를 보며 auditor의 `CURRENT_USER()`는 writer와 달라야 합니다. `[afterglow_initial_password]`의 `enabled`·exact `service_user_id`·명시 `peer_connections`·중복 없는 exact `cluster_members`를 준비합니다. DSN은 secret이며 로그/명령 인수/문서에 넣지 않습니다. Validator는 writer의 SELECT/INSERT/UPDATE/DELETE/USAGE, auditor의 SELECT/TRIGGER/USAGE만 허용하고 grant-option·role grant·더 넓은 privilege를 거부합니다. 별도 offline DDL principal과 신뢰된 trigger definer를 관리하고 runtime writer에 DDL/TRIGGER/SUPER/동등 우회 권한을 주지 않습니다. Session은 REPEATABLE-READ, `wsrep_on=ON`, `foreign_key_checks=ON`, TOI, `wsrep_retry_autocommit=0`이어야 하며 guard는 causal barrier `wsrep_sync_wait=15`를 설정하고 pool 반환 시 기존 값을 복원합니다. Peer metadata lock과 transaction 전후 membership 검사는 유지해야 하며 read replica·부분 census·임의 engine/version·RSU·권한 완화 fallback은 없습니다.
+4. **offline schema CLI를 검토한 적용:** package entrypoint는 `afterglow-keystone-password-schema`이며 source의 `migrate.py`가 정본입니다. 필수 `--all-writers-stopped`와 exact `--database`를 받아 기본은 검증만 수행하고 `--apply`가 있을 때만 DDL을 실행합니다. 연결 정보는 `AFTERGLOW_PASSWORD_SCHEMA_URL`(DDL), `AFTERGLOW_PASSWORD_WRITER_URL`, `AFTERGLOW_PASSWORD_AUDIT_URLS`(member별 auditor DSN JSON 배열), `AFTERGLOW_PASSWORD_CLUSTER_MEMBERS`(exact node-name JSON 배열) 환경 변수로 받습니다. Flag는 실제 writer 중지의 자동 증명이 아닙니다. DDL은 AUTOCOMMIT/TOI이며 transactional rollback·`IF NOT EXISTS` 재실행을 제공하지 않습니다. 부분 실패 시 **모든 writer를 계속 중지**하고 실제 각 node schema·trigger bytes·권한·ledger를 승인된 snapshot/복구 절차로 대조합니다. Blind rerun이나 일부 member만 재개하지 않습니다. 여기의 인수/환경 계약은 source inspection이며 이 문서에서 실행한 설치 명령이나 성공 receipt가 아닙니다.
+5. **재개 전 qualification·정책 승인:** 동일 immutable artifact로 각 native process·전 member schema/trigger·restricted grants·정확한 service authorization을 확인해야 합니다. 다중 node 동시 first-create/일반 native password writer 경합, email/identity·federation/IdP 변경과 ABA, user/local-user/cascade 삭제·재생성, certification/commit 실패·응답 유실·회수 실패, member churn·schema tamper·원래 pool session 복원과 기존 self-service 변경을 격리 환경에서 qualification해야 합니다. 합성 backend/UI 성공이나 test source의 존재를 이 증거로 대체하지 않습니다. 외부 사용자에게 local password를 허용하면 **IdP MFA와 IdP account disablement를 우회하는 별도 native 로그인 경로**가 생깁니다. 조직 보안 정책의 명시적 수용과 실제 native password/MFA/차단 정책·운영 recovery owner 확인 없이는 활성화를 수용하지 않습니다.
+6. **proof·unknown outcome·rollback 보존:** 최초 생성은 global unique 현재 email의1시간·1회용 mailed proof, 발급 시 native revision, 발급 이후 시작되고15분 이내인 **동일 외부 계정의 새 Afterglow/provider session**을 요구합니다. 이는 provider roundtrip의 시각이며 IdP password 재입력/MFA 수행 증거가 아닙니다. Native POST 전에 journal `dispatching`을 commit하며 그 proof는 native 거부·timeout·crash에도 재사용하지 않습니다. `dispatching/outcome_unknown/sessions_failed`가 있으면 새 발급/완료를 차단합니다. 원 native 호출이 실제 종료했는지 확인한 fresh system-admin만 exact user/home/operation의 근거와 strict `native_calls_settled:true`로 명시 정산할 수 있습니다. `existing` 정산의 marker true는 제출 password의 효력 증거가 아니고 `retry`의 false는 password history 부재 증거가 아닙니다. 정산은 세션 회수·감사를 수행할 뿐 credential을 쓰지 않으며 retry도 **새 mailed proof·새 session·native atomic guard**를 요구합니다. Rollback은 양방향 writer를 drain하고 journal·103 column·영구 native guard/history·기존 password/federation을 보존한 상태에서만 계획합니다. Trigger 제거·revision reset·journal 삭제·consumed proof 재활성화나 구형 unguarded create writer 재개로 rollback하지 않습니다. Native/image/schema downgrade는 전체 writer census·원 schema/trigger/definer/grant backup·검증된 cold restore 및 양방향 호환성/실제 password 변경 영향 평가가 없는 한 지원된 것으로 취급하지 않습니다.
+
+**API v2/메일 복구 후속 cutover:** 새 revision을 처리하지 않는 Keystone/API cohort와 혼용하지 않습니다. 기존 pending recovery/creation proof를 drain·만료 또는 검토한 뒤 동일 cohort로 전환합니다. Local을 포함한 password proof의 legacy NULL revision은 새 reader가410으로 거부하며 구형 writer가 다시 unconditional PATCH를 실행하게 두지 않습니다. DB additive는 mixed writer 수용 증거가 아닙니다. Password-login 현재-password 폼은 관리자 directory·SMTP·extension 가용성과 분리되며 외부 상태 불명은 현재-password 경로만 제공하고 최초 생성으로 fallback하지 않습니다.
+
+**관리자 난수 메일:** 기존097/103 journal과 ActivityLog를 사용하고 새 schema/config를 만들지 않습니다. 원 관리자 token의 native `identity:update_user`, 등록 메일의 유일한 canonical addr-spec, SMTP `smtp_use_tls=true`·검증된 STARTTLS/인증/relay 권한·Redis 회수 store를 준비해야 변경할 수 있습니다. SMTP disabled/평문/연결 실패는 변경 전에 차단합니다. Native 성공 뒤 delivery failure는 password 미변경이 아니며 `changed/delivered` 효과·감사·회수 상태를 대조해야 합니다. Unknown 요청은 실제 native 종료/계정을 확인하지 않고 재실행하지 않습니다. 메일함에 password가 남고 강제 만료는 없으므로 사용자 즉시 변경을 안내하며, 공개 분실 요청은 기본 일회용 폼 링크를 유지합니다. Source/local TLS fixture 성공을 운영 mailbox 수신 증거로 대체하지 않습니다.
+
 
 #### 기존 중복·legacy 연결의 검토된 이관
 
@@ -806,6 +917,17 @@ DNS alias를 보존했고, 실제 dev container의 controller/VIP TCP와 SELECT-
 snapshot·키·양방향 호환성과 기존 운영 실행 승인을 먼저 충족합니다. 기존 DB·volume을
 삭제하거나 전체 network prune, 타 project 중지, 인증/에러 우회로 복구하지 않습니다.
 
+#### MariaDB1047: Galera WSREP 미준비
+
+이미지 빌드가 성공해도 선택된 외부 DB가 `WSREP has not yet prepared node for application use`(1047)를 반환하면 migration/bootstrap과 그 뒤 API·worker 시작은 실패합니다. 로컬 `service-mariadb`의 healthy는 **명시한 외부 DB**의 readiness가 아닙니다. 실제 실패 container의 DB 목적지와 현재 render를 비밀 출력 없이 비교하고 기존 로그를 먼저 보존합니다. SQLAlchemy dialect 초기화 자체가1047에 막힐 수 있으므로 승인된 read-only DB 관리 연결에서 `SHOW GLOBAL STATUS`의 `wsrep_ready`, `wsrep_connected`, `wsrep_cluster_status`, `wsrep_local_state_comment`를 확인합니다.
+
+`OFF / OFF / Disconnected / Initialized`이면 DB 소유자가 quorum·primary component와 노드 연결을 복구해야 합니다. 임의 cluster bootstrap/restart, `wsrep_on=OFF`, 오류 우회나 local fallback으로 바꾸지 않습니다. `.local-services/compose.env`와 직접 Compose의 실제 목적지가 다를 수 있으므로 env-file을 추가하는 것만으로 복구하지 마세요. DB의 `ON / ON / Primary / Synced` 및 기존 migration/backup·호환성 승인이 확인된 뒤 원래 목적지를 보존한 정본 startup을 재개합니다. Frontend 단독 health 성공은 전체 스택·실제 채팅 복구와 구분합니다.
+
+먼저 **모든 member**를 읽어 Primary 유무를 구분합니다. 다른 두 member가 같은 UUID의 `Primary/Synced`라면 뒤처진 노드에서 새 cluster bootstrap·`pc.bootstrap`·`safe_to_bootstrap` 강제를 실행하지 않습니다. 명시 승인과 현재 정상 donor/cold recovery 자료를 확보한 뒤 분리된 노드만 기존 Primary로 정상 재합류시킵니다. 이 환경의 MariaDB는 Kolla container가 아니라 native `mariadb.service`일 수 있으므로 실제 process owner를 먼저 확인합니다. `SELECT 1`은 WSREP 미준비에서도 성공할 수 있어 **실제 application table SELECT**와3-member readiness를 함께 검증합니다. 2026-10-30의 승인된 controller1 재합류·원래5DB read 성공은 [검증 기록](testing.md#2026-10-30-원래-db-목적지-복구와-앱-기동-차단)을 따릅니다.
+
+같은 날 현재 운영 Lumen은0.6.12(`9d94d0b51f2dcee9d47fdb05004de4c7558fa661`)였으며, 위2026-10-22의0.6.9 고정은 **그 당시의 호환성 복구**입니다. 현재 `credential_id NOT NULL PRIMARY KEY`와028 ledger를 가진 공유 DB에 옛0.6.9 writer를 시작하지 않습니다. 승인된 local build source만 정확한0.6.12로 바꾸고 API/worker arm64·amd64를 빌드·실행했지만 앱 writer는 시작하지 않았습니다. Afterglow/Waygate/Drover local master key가 기존 운영 key와 다르고 SQL103 column도 없었으며, 사용자가 key·운영 앱 변경을 거부했으므로 live DDL·전체 Compose 재시도·인증 smoke는 차단 상태입니다. DB readiness 복구를 전체 application compatibility나 운영 upgrade 완료로 확대하지 않습니다.
+
+
 #### 운영 데이터와 양방향 호환성 평가
 
 외부 DB를 허용하는 이 정책은 과거의 무조건 local-only 정책을 대체합니다. 기존
@@ -1102,9 +1224,15 @@ Lumen의 Nova managed guest에 사용자 정책을 적용하려면 운영자가 
 
 ## kolla-ansible 배포
 
-Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 배포합니다.
+DMSLab 정식 배포는 배포서버 `172.30.0.50`의 `/etc/kolla`에서 다음 두 표준 명령을 순서대로 실행합니다. `control`과 `compute`는 반드시 전체 그룹으로 선택하고 controller를 개별 분할하지 않습니다. 추가 옵션은 `--limit`와 `--tag`/`--tags`만 허용하며, 긴 실행에 임의의 3600초 제한을 두지 않습니다.
 
-정식 배포는 **배포서버172.30.0.50의 `/etc/kolla`에서 승인된 서비스 전체 inventory 대상에 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 --limit 없이 실행**하는 것입니다. 별도 승인 없는 controller별 순회·wrapper 실행으로 대신하지 않습니다.1.30.22 Afterglow 반영에서는 `--tags afterglow --skip-tags haproxy`를 사용했습니다. 형제 서비스는 기존 release를 유지하고, 별도 승인 범위가 아닌 shared HAProxy/ProxySQL/keepalived의 image drift 재시작을 피하기 위한 선택입니다. 실제 전체 recap과 fleet revision/readiness는 `docs/testing.md`의1.30.22 receipt를 따릅니다.
+```bash
+cd /etc/kolla
+kolla-ansible reconfigure -i multinode --limit compute
+kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,waygate,drover,palimpsest
+```
+
+각 명령의 전체 recap과 대상별 이미지 digest·health를 확인하고, 공개 readiness와 실제 사용자 경로를 별도로 검증합니다. 두 명령의 inventory/tag에 포함되지 않는 별도 plugin 호스트는 성공으로 간주하지 않고 별도 확인·승인합니다. 실행 전에는 공유 DB writer, migration 및 복구 조건을 확인하고 기존 설정·키·데이터를 보존합니다. 과거 1.30.22의 `--limit` 없는 실행과 `--skip-tags haproxy`는 당시 배포 receipt이며 현재 기본 명령이 아닙니다.
 
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
@@ -1215,10 +1343,11 @@ Cloud Shell은 Afterglow backend Pod/container 안에서 shell을 실행하지 �
 
 1. `afterglow-cloud-shell` 같은 전용 프로젝트를 하나 만들고 UUID를 고정합니다. 이름이 중복되면 활성화하지 않습니다.
 2. Afterglow service user가 이 전용 프로젝트에서 Zun·Cinder·Neutron 자원을 관리할 역할을 받아야 합니다. 세션 정리는 owner 권한의 `stop=true` 삭제를 사용하므로 기본 policy에서는 `member`로 충분하며, Kolla Keystone setup은 기존대로 전용 프로젝트 `admin`을 부여합니다. 사용자 Keystone token으로 Zun/Cinder lifecycle을 관리하지 않습니다.
-3. `network_id`는 선택 사항입니다. 비우면 전용 프로젝트의 DB default → 기존 자동 생성 정책 → 자동 생성 비활성 시 검증된 shared default-network 정책을 따릅니다. 선택 네트워크는 subnet과 external network/router gateway 연결이 필요하며, 명시적 override는 전용 프로젝트 소유여야 합니다. `security_group`은 전용 프로젝트의 `default`를 기본으로 사용하고 기존 규칙을 유지합니다. Egress-only가 필요하면 별도 그룹을 명시합니다. Kolla 역할은 project/network/router/group을 만들거나 삭제하지 않으며, backend는 세션 승인 시 기존 default-network 정책에 따라 network/router를 자동 준비할 수 있습니다.
+3. `network_id`는 선택 사항입니다. 비우면 전용 프로젝트의 기존 default-network 정책을 따릅니다. 선택 네트워크는 subnet과 external 연결이 필요하며 명시적 override는 전용 프로젝트 소유여야 합니다. `security_group`은 exact project-owned ID로 확정하고 실제 규칙이 모두 egress이며 ingress·remote-group/address-group이 없어야 합니다. Self-ingress가 있는 `default`는 거부되므로 별도 egress-only 그룹을 준비합니다. Kolla가 기존 규칙을 자동 변경하지 않으며 backend default-network 준비 정책은 유지합니다.
 4. Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mount와 하나 이상의 `zun-compute`를 준비합니다. Backend에서 Keystone/Cinder/Zun API와 Zun exec WebSocket endpoint에 접근할 수 있어야 합니다. Zun API는 container microversion 1.36 이상을 지원해야 하고, zun-compute는 Cinder volume을 attach해 처음 mount할 때 ext4로 format할 수 있어야 합니다.
 5. Image 정본은 [openstack-afterglow/openstack-client](https://github.com/openstack-afterglow/openstack-client)이며 GitLab 최신화 소스와 Afterglow의 보안 bootstrap을 함께 빌드합니다. 기본은 `ghcr.io/openstack-afterglow/openstack-client:slim`(Debian), 대안은 `:alpine`입니다. 운영 설정에는 `linux/amd64`와 `linux/arm64` manifest의 실제 `@sha256:<manifest-digest>`를 사용하고 이동 태그나 bare image는 사용하지 않습니다. Afterglow monorepo는 별도 Cloud Shell image를 빌드하지 않습니다.
 6. Cinder volume count/gigabytes와 Zun container/CPU/RAM quota는 **전용 프로젝트**에 적용합니다. 사용자 tenant quota를 Cloud Shell 용량으로 사용하거나 늘리지 않습니다. 최대 동시 세션은 전역 사용자당 1개지만 영구 홈은 사용자×논리 프로젝트마다 하나이므로 예상 project 수를 volume quota에 반영합니다.
+7. **모든 eligible compute**에 `services/zun-cloud-shell`의 pinned native integration을 설치·qualification한 다음 strict backend를 활성화합니다. Stock Zun의 CPU shares는 quota가 아니고 container1.36에 임의 PID/rootfs/I/O 제어 옵션을 보내지 않습니다. Native proof가 없거나 불일치하면 셸은 `ready`에 도달하지 않습니다. 이 변경은 compute 이미지·rootwrap·네트워크를 자동 배포하지 않습니다.
 
 기본 runtime 설정 예시:
 
@@ -1233,13 +1362,15 @@ image = "ghcr.io/openstack-afterglow/openstack-client@sha256:<64-hex-digest>"
 image_pull_policy = "" # Zun 기본값; always / ifnotpresent / never 선택 가능
 registry_id = "" # 비공개 registry는 전용 프로젝트의 Zun registry UUID
 network_id = "" # 전용 프로젝트 default 네트워크
-security_group = "default"
+security_group = "cloud-shell-egress-only"
 auth_url = "https://keystone.example.com:5000/v3"
 interface = "public"
 volume_type = "ceph"
 home_size_gib = 5
 cpu = 1.0
 memory_mib = 1024
+# 세 mandatory metadata 주소 + 실제 operator 관리망. Native compute와 exact 일치.
+blocked_cidrs = ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]
 idle_timeout_seconds = 1200
 max_session_seconds = 3600
 ticket_ttl_seconds = 60
@@ -1248,6 +1379,29 @@ zun_websocket_origin = "wss://zun.example.com"
 ```
 
 `auth_url`과 `zun_websocket_origin`은 backend가 신뢰하는 고정 HTTPS/WSS endpoint입니다. 브라우저에 공개되는 값이 아니며 redirect나 untrusted HTTP fallback을 허용하지 않습니다. `SECRET_KEY`는 관리 volume/container metadata HMAC에도 쓰이므로 홈을 유지하는 동안 회전하면 기존 리소스를 자동 채택하지 않습니다.
+
+#### Native build·host qualification
+
+`services/zun-cloud-shell`은 Zun commit `17a8a03d19ac0a063ff7bb7e54e8503bd60536cd`만 설치 대상으로 받습니다. `prepare_build.py`는 requirements commit·constraints/source digest·전체 입력 manifest를 검증하고 binary wheel만 다운로드합니다. 각 `linux/arm64`, `linux/amd64`용 Python3.12 builder에서 architecture-matching 승인 wheelhouse를 준비합니다. Wheel 없는 sdist를 networked install로 우회하지 말고 별도 offline builder에서 준비한 wheel을 제공합니다. 빌드는 network 없이 수행하며 approved digest-pinned base에 git·cc/static libc·nsenter·iproute2와 wheel의 native library가 필요합니다.
+
+```bash
+# 저장소 root. 각 architecture builder에서 TARGET_ARCH와 승인 base digest를 설정한다.
+python services/zun-cloud-shell/prepare_build.py --prepare "services/zun-cloud-shell/build-inputs/${TARGET_ARCH:?}" --wheelhouse "${APPROVED_WHEELHOUSE:?}"
+docker build --network none --platform "linux/${TARGET_ARCH}" --build-arg PYTHON_IMAGE="${APPROVED_NATIVE_BASE:?}" -f services/zun-cloud-shell/Dockerfile -t "afterglow-cloud-shell-native:${TARGET_ARCH}" services/zun-cloud-shell
+docker build --network none --platform "linux/${TARGET_ARCH}" --build-arg COMPILER_IMAGE="${APPROVED_NATIVE_BASE}" -f services/zun-cloud-shell/sandbox/Dockerfile -t "afterglow-cloud-shell-holder:${TARGET_ARCH}" services/zun-cloud-shell
+```
+
+첫 Dockerfile은 installed-native 검증 image입니다. 운영 Kolla Zun image 자체를 자동 생성·승격하지 않습니다. 운영 builder도 같은 pinned pristine Zun source에 `install.py`를 실행하고 extension package를 설치해야 합니다. Installer는 index의 assume-unchanged/skip-worktree나 replace object를 신뢰하지 않고 전체 실제 bytes/mode·고정 anchor를 쓰기 전에 검증하며 이미 patch된 tree 재적용도 거부합니다. 기존 실행 중 파일을 덮어쓰지 말고 새 image의 loaded-driver/module 경로와 receipt digest를 확인합니다.
+
+운영 Zun 설정의 `[afterglow_cloud_shell]`에는 `enabled=true`, 정확한 `service_project_id`/`service_user_id`, backend와 동일한 `blocked_cidrs`, 게시·확인한 holder의 digest-pinned `sandbox_image`, host-local worker들이 공유하는 `lock_path=/var/lib/zun/cloud-shell-locks`를 둡니다. Default는 disabled이며 사용자 label로 enforcement를 우회하지 않습니다. Root-owned effective rootwrap filter에 installer의 `afterglow-cloud-shell` registration(`afterglow_zun_cloud_shell.namespace.context`)을 반영하고 host `/proc/<pid>/ns/net` 및 `/var/run/docker/netns/*`가 실제 Docker daemon의 namespace와 동일하게 보여야 합니다. Remote Docker·다른 VM의 PID·필요한 host visibility/capability가 없는 topology는 지원하는 척하지 않고 거부합니다.
+
+Native holder가 Kuryr network를 먼저 확보하고 host privsep가 **사용자 container 생성/시작 전** metadata/관리망 policy denial을 설치·readback합니다. Holder는 static `/pause`, UID65534·cap-drop-ALL·no-new-privileges·RO·CPU0.1/RAM32MiB/PID8/log없음이며 user container는 그 network namespace에 들어갑니다. Session당 holder overhead도 호스트 capacity에 포함합니다. User runtime은 CFS CPU0.01..1.0, RAM256..1024MiB/swap동일, PID512, RO rootfs, tmpfs128MiB/shm64MiB, json-file8m×3, private runc/no-restart를 확인합니다. 최초 setuid bootstrap을 깨는 container-wide no-new-privileges/cap-drop-ALL/nosuid를 user workload에 임의 추가하지 않습니다.
+
+Mandatory deny는 IPv4 metadata와 두 IPv6 metadata 경로뿐이며 실제 관리망은 운영자가 추가해야 합니다. CLI가 필요한 catalog endpoint까지 차단하지 않도록 positive control과 함께 검증합니다. Lifecycle/show/sync/exec·동시 reboot/readback, 정확한 user-before-holder/own-port cleanup, Cinder attach/detach·보존, 두 architecture holder 실행을 staging에서 검증합니다. 공유 kernel·user namespace remapping·RBD I/O QoS는 이 profile의 보장이 아니며 별도 host/storage 정책입니다. Local fake Docker/Kuryr tests나 별도 Linux namespace smoke는 실제 compute fleet 수용 증거가 아닙니다.
+
+롤아웃 순서는 신규 승인을 비활성화하고 활성 lease/기존 stock container를 보존 정리 → 전체 eligible native compute image/config/privsep/Kuryr qualification → backend/frontend strict admission 전환 → disposable identity live smoke입니다. Native hook을 먼저 활성화하면서 이전 stock 관리 세션을 채택하지 않습니다. DMSLab의 승인된 실제 재설정은 `/etc/kolla`에서 `kolla-ansible reconfigure -i multinode --limit compute`, 이어서 `kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,waygate,drover,palimpsest` 순서와 전체 group 범위를 유지하며 실행 전 별도 운영 승인이 필요합니다.
+
+Resource-owner fence/strict receipt reader를 모르는 구형 API와 혼용하지 않습니다. 기존 승인/lease/receipt를 drain하고 matching API cohort를 전환합니다. No-TTL owner는 liveness TTL 만료만으로 지우지 않으며 receipt 유실·손상·unknown CREATE/home은 exact native inventory/소유권/완료 증거를 복구하는 운영자 reconciliation 대상입니다. Redis `resource-owner` key 삭제를 자동 복구나 재접속 요령으로 사용하지 않습니다.
 
 #### 이미지 소스와 가져오기 정책 선택
 
@@ -1268,7 +1422,7 @@ kolla-ansible prechecks -i multinode --tags afterglow
 kolla-ansible deploy -i multinode --tags afterglow
 ```
 
-Precheck는 전용 project 분리, network/security-group 소유권, ingress 0건, project-scoped Zun/Cinder list, 선택 volume type, 모든 `zun-compute`의 image manifest 접근을 fail-closed 확인합니다. Keystone 단계는 미리 만든 project를 정확히 하나만 찾고 Afterglow service user의 `admin` role assignment만 보장합니다.
+Kolla precheck는 static CPU/RAM/CIDR bounds, 전용 project 분리, network/security-group 소유권, project-scoped Zun/Cinder list, 선택 volume type과 compute image 접근을 확인합니다. **실제 SG 규칙/namespace/runtime proof/fleet qualification은 이 precheck의 보장이 아닙니다.** Backend가 홈 생성 전에 실제 SG 규칙을 검증합니다. Keystone 단계는 미리 만든 project와 기존 service-user grant만 처리하며 이 source 변경을 운영 권한 변경으로 간주하지 않습니다.
 
 비공개 image는 각 compute의 Docker client가 manifest를 검사할 credential도 준비해야 합니다. Zun registry credential과 호스트 Docker login은 별개이며 `registry_id`를 설정했다고 Kolla precheck 인증이 자동으로 이전되지 않습니다.
 

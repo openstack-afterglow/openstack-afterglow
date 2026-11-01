@@ -11,11 +11,16 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from redis.asyncio import ConnectionPool, Redis
 
+from app.api.common import traffic_analytics as api
+from app.api.deps import get_token_info, require_admin
 from app.models.traffic_analytics import TrafficAnalyticsSettings, TrafficEvent
 from app.services import traffic_analytics as service
 from app.services.cache import _get_redis
+from tests.admin_gate import synthetic_verified_admin
 
 pytestmark = [
     pytest.mark.db,
@@ -104,6 +109,7 @@ async def test_atomic_concurrent_count_dedupe_country_hll_and_privacy(analytics)
     assert totals["latency_ms_total"] == 59 and totals["latency_ms_max"] == 35
     assert totals["unlocated"] == 1
     assert {row["country"] for row in data["countries"]} == {"KR", "US", "XX"}
+    assert data["networks"] == []
     assert data["routes"][0]["route"] == "/dashboard"
     assert sum(point["metrics"]["requests"] for point in data["series"] if point["metrics"]) == 3
     assert len(data["series"]) == 24 and sum(point["metrics"] is None for point in data["series"]) == 23
@@ -131,24 +137,32 @@ async def test_hourly_ranges_distinguish_empty_from_measured_zero(analytics):
     # Service can backfill trusted local measurements; network ingest separately
     # enforces +/-120 seconds. No untrusted API accepts historical timestamps.
     for days in (0, 2, 10, 31):
-        await service.record_event(observation(at=time.time() - days * 86400, status=201), "backend")
+        await service.record_event(
+            observation(at=time.time() - days * 86400, status=201, peer_ip="10.8.4.5"), "backend"
+        )
     daily = await service.snapshot("backend", "24h")
     weekly = await service.snapshot("backend", "7d")
     monthly = await service.snapshot("backend", "30d")
     assert daily["totals"]["requests"] == 1
     assert weekly["totals"]["requests"] == 2
     assert monthly["totals"]["requests"] == 3
+    for data, expected in ((daily, 1), (weekly, 2), (monthly, 3)):
+        assert len(data["networks"]) == 1
+        assert data["networks"][0]["network"] == "10.8.0.0/16"
+        assert data["networks"][0]["requests"] == expected
+        assert data["networks"][0]["unique_visitors"] is None
     assert daily["totals"]["errors"] == 0  # Genuine observed absence of errors.
     assert daily["totals"]["pageviews"] == 0  # Backend never counts frontend pageviews.
     assert (await service.snapshot("frontend", "24h"))["state"] == "partial"
     assert (await service.snapshot("frontend", "24h"))["totals"] is None
     settings.traffic_analytics.retention_days = 1
+    assert (await service.snapshot("backend", "30d"))["networks"][0]["requests"] == 1
     assert len((await service.snapshot("backend", "30d"))["series"]) == 24
 
 
 async def test_bounded_minute_capacity_rejects_without_partial_aggregation(analytics):
     redis, _ = analytics
-    value = observation()
+    value = observation(peer_ip="10.8.4.5")
     dedupe = f"{service.KEY_PREFIX}:frontend:dedupe:{int(value.at) // 60}"
     await redis.hset(dedupe, mapping={str(uuid4()): "1" for _ in range(10000)})
     await redis.expire(dedupe, 300)
@@ -162,6 +176,8 @@ async def test_bounded_minute_capacity_rejects_without_partial_aggregation(analy
     data = await service.snapshot("frontend", "24h")
     assert data["state"] == "partial"
     assert data["totals"]["requests"] == 1
+    assert data["networks"][0]["requests"] == 1
+    assert data["networks"][0]["network"] == "10.8.0.0/16"
     assert data["coverage"]["dropped_events"] == 1
     external = await service.snapshot("frontend", "24h", "external")
     internal = await service.snapshot("frontend", "24h", "internal")
@@ -171,17 +187,34 @@ async def test_bounded_minute_capacity_rejects_without_partial_aggregation(analy
 
 async def test_no_high_cardinality_paths_or_country_spoofing(analytics):
     redis, _ = analytics
-    for index in range(25):
-        await service.record_event(
-            observation(route=f"/secret/{index}?token=DO-NOT-STORE", peer_ip="192.0.2.1"), "frontend"
+    counts, _ = service.bucket_keys("frontend", int(time.time()) // 3600)
+    initial_fields = None
+    for index in range(1, 65):
+        assert await service.record_event(
+            observation(route=f"/secret/{index}?token=DO-NOT-STORE", peer_ip=f"192.0.2.{index}"), "frontend"
         )
+        if initial_fields is None:
+            initial_fields = set(await redis.hkeys(counts))
+        else:
+            # New paths and hosts inside the same standard range add no fields.
+            assert set(await redis.hkeys(counts)) == initial_fields
     data = await service.snapshot("frontend", "24h")
     assert [row["route"] for row in data["routes"]] == ["/other"]
     assert [row["country"] for row in data["countries"]] == ["XX"]
-    counts, _ = service.bucket_keys("frontend", int(time.time()) // 3600)
+    assert [(row["network"], row["requests"]) for row in data["networks"]] == [("192.0.2.0/24", 64)]
     raw = repr(await redis.hgetall(counts))
-    assert "DO-NOT-STORE" not in raw and "secret" not in raw and "192.0.2.1" not in raw
-    assert await redis.hlen(counts) <= 6 * (len(service.COUNTERS) + 3)
+    assert "DO-NOT-STORE" not in raw and "secret" not in raw
+    assert all(f"192.0.2.{index}" not in raw for index in range(1, 65))
+    assert {key.rsplit("|", 1)[0] for key in initial_fields} == {
+        "t",
+        "c:XX",
+        "r:/other",
+        "o:unknown:t",
+        "o:unknown:c:XX",
+        "o:unknown:r:/other",
+        "n:resolved_client:documentation:192.0.2.0/24",
+        "o:unknown:n:resolved_client:documentation:192.0.2.0/24",
+    }
 
 
 async def test_origin_filter_is_atomic_across_totals_routes_countries_series_hll_and_dedupe(analytics):
@@ -201,6 +234,9 @@ async def test_origin_filter_is_atomic_across_totals_routes_countries_series_hll
         assert sum(point["metrics"]["requests"] for point in data["series"] if point["metrics"]) == total
         assert sum(data["origins"].values()) == total
         assert data["routes"][0]["origins"][selected] == total
+        expected_network = {"internal": "172.30.0.0/16", "unknown": "192.168.0.0/16"}.get(selected)
+        assert [row["network"] for row in data["networks"]] == ([expected_network] if expected_network else [])
+        assert all(row["requests"] == 1 and row["unique_visitors"] is None for row in data["networks"])
     assert all_data["coverage"]["origin_unknown_reasons"] == {"address_unavailable": 1, "non_global_noncluster": 1}
     assert all_data["coverage"]["geo_unknown_reasons"] == {"address_unavailable": 1, "non_global": 2}
 
@@ -223,7 +259,7 @@ async def test_existing_v1_buckets_and_old_reporters_remain_legacy_without_reset
     await redis.pfadd(old_visitors, "old-opaque-digest")
     await redis.expire(old_visitors, 3600)
     old_report = LegacyTrafficEvent(
-        id=uuid4(), at=time.time(), status=200, route="/dashboard", client_ip="8.8.8.8", latency_ms=2
+        id=uuid4(), at=time.time(), status=200, route="/dashboard", client_ip="172.30.4.5", latency_ms=2
     )
     assert await service.record_event(old_report, "frontend")
     modern = observation()
@@ -243,6 +279,100 @@ async def test_existing_v1_buckets_and_old_reporters_remain_legacy_without_reset
     assert legacy["coverage"]["origin_unknown_reasons"] == {"legacy_unclassified": 3}
     assert external["totals"]["requests"] == 1 and external["coverage"]["legacy_unclassified_requests"] == 0
     assert int(await redis.hget(old_counts, "t|requests")) == 2
+    assert all_data["networks"] == legacy["networks"] == external["networks"] == []
+
+
+async def test_networks_atomic_metrics_origin_source_dedupe_and_http(analytics):
+    redis, settings = analytics
+    settings.traffic_analytics.frontend_trusted_proxy_cidrs = ["172.30.0.11/32"]
+    values = [
+        observation(peer_ip="172.30.5.7"),
+        observation(peer_ip="172.31.5.7", status=503, request_bytes=7, latency_ms=35),
+        observation(peer_ip="10.8.5.7", forwarded_for="172.30.5.7"),
+        observation(peer_ip="::ffff:10.8.6.8"),
+        observation(peer_ip="fd12:3456:789a::12"),
+        observation(peer_ip="fd98:7654:3210::34"),
+        observation(peer_ip="172.30.0.11", forwarded_for="bad, 10.8.9.9"),
+        observation(peer_ip="172.30.0.11", forwarded_for=None),
+        observation(peer_ip="172.30.0.11", forwarded_for="172.30.0.11"),
+        observation(peer_ip="172.31.9.9", peer_verified=False, forwarded_for="10.8.9.9"),
+        observation(peer_ip="1.1.1.1", forwarded_for="10.8.9.9"),
+        observation(peer_ip="239.1.2.3"),
+    ]
+    for value in values:
+        assert all(await asyncio.gather(*(service.record_event(value, "frontend") for _ in range(3))))
+    # The same UUID is independently accepted in the other source.
+    assert await service.record_event(values[0], "backend")
+    all_data = await service.snapshot("frontend", "24h")
+    rows = {(row["network"], row["basis"]): row for row in all_data["networks"]}
+    assert [(row["network"], row["basis"]) for row in all_data["networks"]] == [
+        ("172.30.0.0/16", "socket_peer"),
+        ("10.8.0.0/16", "resolved_client"),
+        ("fc00::/7", "resolved_client"),
+        ("172.30.0.0/16", "resolved_client"),
+        ("172.31.0.0/16", "resolved_client"),
+        ("224.0.0.0/4", "resolved_client"),
+    ]
+    assert rows[("172.30.0.0/16", "socket_peer")]["requests"] == 3
+    assert rows[("10.8.0.0/16", "resolved_client")]["requests"] == 2
+    assert rows[("fc00::/7", "resolved_client")]["requests"] == 2
+    failed = rows[("172.31.0.0/16", "resolved_client")]
+    assert failed["errors"] == failed["status_5xx"] == 1 and failed["success"] == 0
+    assert failed["request_bytes"] == 7 and failed["request_bytes_known"] == 1
+    assert failed["response_bytes"] == 42 and failed["response_bytes_known"] == 1
+    assert failed["latency_ms_max"] == failed["latency_ms_total"] == 35
+    assert all(row["unique_visitors"] is None and row["unlocated"] == row["requests"] for row in rows.values())
+    assert all_data["totals"]["requests"] == 12
+    assert all_data["origins"] == {"internal": 1, "external": 1, "unknown": 10, "legacy_unclassified": 0}
+    xx = next(row for row in all_data["countries"] if row["country"] == "XX")
+    assert sum(row["requests"] for row in rows.values()) == 10 < xx["requests"] == 12
+    assert (await service.snapshot("backend", "24h"))["networks"][0]["requests"] == 1
+    internal = await service.snapshot("frontend", "24h", "internal")
+    unknown = await service.snapshot("frontend", "24h", "unknown")
+    external = await service.snapshot("frontend", "24h", "external")
+    assert [(row["network"], row["basis"]) for row in internal["networks"]] == [("172.30.0.0/16", "resolved_client")]
+    assert rows[("172.30.0.0/16", "socket_peer")] in unknown["networks"]
+    assert external["networks"] == []
+    app = FastAPI()
+    app.include_router(api.admin_router, prefix="/traffic")
+    app.dependency_overrides[get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/traffic?source=frontend&range=24h&origin=unknown")
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.json()["networks"] == unknown["networks"]
+    counts, visitors = service.bucket_keys("frontend", int(time.time()) // 3600)
+    raw = repr(await redis.hgetall(counts))
+    assert all(value.peer_ip not in raw for value in values)
+    assert "bad, 10.8.9.9" not in raw
+    keys = [key async for key in redis.scan_iter(match=service.KEY_PREFIX + ":*")]
+    assert not any(":n:" in key for key in keys)  # No per-network HLL or host keys.
+    assert 0 < await redis.ttl(counts) <= settings.traffic_analytics.retention_days * 86400
+    assert await redis.exists(visitors)
+
+
+async def test_old_v2_unlocated_history_is_not_reconstructed_from_new_ranges(analytics):
+    redis, _ = analytics
+    hour = int(time.time()) // 3600
+    counts, _ = service.bucket_keys("frontend", hour)
+    old = {key: 0 for key in service.COUNTERS}
+    old.update(requests=4, success=4, status_2xx=4, unlocated=4)
+    await redis.hset(
+        counts,
+        mapping={
+            dimension + "|" + key: value
+            for dimension in ("t", "c:XX", "r:/dashboard", "o:unknown:t", "o:unknown:c:XX", "o:unknown:r:/dashboard")
+            for key, value in old.items()
+        },
+    )
+    await redis.expire(counts, 3600)
+    before = await service.snapshot("frontend", "24h", "unknown")
+    assert before["totals"]["requests"] == 4 and before["networks"] == []
+    assert await service.record_event(observation(peer_ip="10.8.4.5"), "frontend")
+    after = await service.snapshot("frontend", "24h", "unknown")
+    assert after["totals"]["requests"] == after["countries"][0]["requests"] == 5
+    assert after["networks"][0]["requests"] == 1
+    assert after["networks"][0]["network"] == "10.8.0.0/16"
 
 
 def domain_request(token_info, headers=None):
@@ -277,3 +407,19 @@ async def test_domain_requests_use_validated_token_domain_only(analytics):
     assert foreign["total"] is None and foreign["state"] != "ready"
     raw = repr([await redis.hgetall(key) async for key in redis.scan_iter(match=service.KEY_PREFIX + ":domain:*")])
     assert "tenant-a" not in raw and "u1" not in raw and "{id}" not in raw
+
+
+async def test_same_private_aggregation_range_does_not_expand_cluster_authority(analytics):
+    _, settings = analytics
+    settings.traffic_analytics.cluster_cidrs = ["172.30.1.0/24"]
+    for address in ("172.30.1.7", "172.30.2.7"):
+        assert await service.record_event(observation(peer_ip=address), "frontend")
+    data = await service.snapshot("frontend", "24h")
+    assert data["origins"] == {"internal": 1, "external": 0, "unknown": 1, "legacy_unclassified": 0}
+    assert len(data["networks"]) == 1
+    assert data["networks"][0]["network"] == "172.30.0.0/16"
+    assert data["networks"][0]["requests"] == 2
+    for origin in ("internal", "unknown"):
+        selected = await service.snapshot("frontend", "24h", origin)
+        assert selected["networks"][0]["network"] == "172.30.0.0/16"
+        assert selected["networks"][0]["requests"] == 1

@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -28,14 +29,9 @@
 <PageHeader breadcrumb={t('header.breadcrumb')} title={t('cluster.title')}>
 	{#snippet actions()}
 		<TutorialStartButton tour="drover" />
-		<button
-			onclick={onToggleDeleted}
-			class="hidden sm:inline-flex text-xs px-3 py-1.5 rounded border transition-colors {showDeleted
-				? 'border-line-2 text-ink-2 bg-surface-sunken'
-				: 'border-line-2 text-ink-2 hover:border-line-2 hover:text-ink-2'}"
-		>
+		<Button variant="secondary" size="sm" onclick={onToggleDeleted} ariaPressed={showDeleted}>
 			{showDeleted ? t('header.hideDeleted') : t('header.showDeleted')}
-		</button>
+		</Button>
 		<AutoRefreshControl
 			bind:active={ar.active}
 			bind:intervalSeconds={ar.intervalSeconds}
@@ -43,15 +39,14 @@
 			{refreshing}
 			onManualRefresh={onForceRefresh}
 		/>
-		<button
-			data-tour="drover-create-open"
+		<Button
+			dataTour="drover-create-open"
+			variant="primary"
 			disabled={!$k3sPermissions.editClusters}
 			onclick={onOpenCreate}
-			onpointerenter={onOpenCreateIntent}
-			onfocus={onOpenCreateIntent}
-			class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+			onintent={onOpenCreateIntent}
 		>
 			{t('header.create')}
-		</button>
+		</Button>
 	{/snippet}
 </PageHeader>

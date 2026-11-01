@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { uploadQueue, type UploadJob } from '$lib/stores/uploadQueue';
-	import { ActivityIndicator, AnimatedNumber, Pill, ProgressTrack } from '$lib/components/ui';
+	import { AnimatedNumber, Pill, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { enter, reflow } from '$lib/utils/motion';
 
@@ -79,7 +80,7 @@
 		>
 			<span class="text-sm font-medium text-ink-0">
 				{#if activeCount > 0}
-					<ActivityIndicator variant="upload" size="xs" label={t('uploadDock.uploadingCount', { count: activeCount })} />
+					<LoadingState variant="control" label={t('uploadDock.uploadingCount', { count: activeCount })}  />
 					<span class="block mt-1 text-xs text-ink-2">{formatBytes(totalLoaded)} / {formatBytes(totalBytes)} · <AnimatedNumber value={aggregatePercent} format={(n) => `${Math.round(n)}%`} /></span>
 				{:else}
 					{t('uploadDock.results')}

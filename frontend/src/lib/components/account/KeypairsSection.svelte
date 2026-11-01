@@ -10,7 +10,7 @@
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { dialogFocus } from '$lib/utils/dialogFocus';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   interface Keypair {
     name: string;
@@ -146,7 +146,7 @@
         {#if createError}<div class="mt-3 text-red-400 text-xs">{createError}</div>{/if}
         <div class="flex justify-end gap-3 mt-6">
           <button onclick={() => showModal = false} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('keypairs.cancel')}</button>
-          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<ActivityIndicator size="xs" label={t('keypairs.creating')} />{:else}{t('keypairs.createAction')}{/if}</button>
+          <button onclick={createKeypair} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label={t('keypairs.creating')}  />{:else}{t('keypairs.createAction')}{/if}</button>
         </div>
       {/if}
     </div>
@@ -164,12 +164,7 @@
   {/if}
 
   {#if loading}
-    <ActivityIndicator label={tc('state.loading')} />
-    <div class="space-y-2 mt-2" aria-hidden="true">
-      {#each [1, 2] as _}
-        <div class="h-10 motion-skeleton rounded"></div>
-      {/each}
-    </div>
+    <LoadingState variant="section" label={tc('state.loading')}  />
   {:else if keypairs.length === 0}
     <div class="text-ink-2 text-xs text-center py-6">{t('keypairs.empty')}</div>
   {:else}
@@ -202,7 +197,7 @@
               onclick={() => deleteKeypair(kp.name)}
               disabled={deleting === kp.name}
               class="text-xs px-1.5 py-1 rounded text-state-danger-text border border-line-2 hover:bg-surface-selected disabled:text-ink-3 transition-colors"
-            >{#if deleting === kp.name}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('keypairs.delete')}{/if}</button>
+            >{#if deleting === kp.name}<LoadingState variant="control" label={tc('state.processing')}  />{:else}{t('keypairs.delete')}{/if}</button>
           </div>
         </div>
       {/each}

@@ -44,7 +44,7 @@
   }
   .page-header-breadcrumb {
     margin-bottom: 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--type-support);
     letter-spacing: -0.01em;
     font-weight: 500;
     color: var(--color-ink-2);
@@ -52,9 +52,9 @@
   .page-header-title {
     margin: 0;
     color: var(--color-ink-0);
-    font-size: 1.25rem;
+    font-size: var(--type-console-title);
     font-weight: 600;
-    line-height: 1.75rem;
+    line-height: 2rem;
     letter-spacing: -0.015em;
     text-wrap: balance;
   }

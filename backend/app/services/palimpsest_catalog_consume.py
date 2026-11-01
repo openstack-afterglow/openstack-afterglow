@@ -98,6 +98,11 @@ async def admit(request, info, profile_id, spec):
         flavor = next((row for row in flavors if row.id == spec.flavor_id), None)
         if flavor is None:
             raise HTTPException(422, "Flavor is unavailable in the current project")
+        from app.services.instance_usage import creation_metadata
+
+        # Validate before capacity admission or durable allocation. This is only
+        # request admission; the launcher recomputes a null default at execution.
+        creation_metadata(flavor, spec.usage_schedule)
         await layer_build.validate_consume_image_identity(conn, snapshot["artifacts"])
         public_key = spec.ssh_public_key
         if spec.key_name and not public_key:
@@ -120,6 +125,9 @@ async def admit(request, info, profile_id, spec):
             "consumer_project": {"id": info["project_id"]},
             "catalog_revision": spec.revision,
             "catalog_profile_id": profile_id,
+            "usage_schedule_request": (
+                spec.usage_schedule.model_dump(mode="json") if spec.usage_schedule is not None else None
+            ),
             "catalog_artifact_sources": [
                 {"id": entry["id"], "share_id": entry["share_id"], "blob_digest": entry["blob_digest"]}
                 for entry in snapshot["artifacts"]
@@ -250,6 +258,7 @@ async def _execute(
                     artifact_ids=[x["id"] for x in artifacts],
                     resolved_artifacts=artifacts,
                     transport="nfs",
+                    usage_schedule=spec.usage_schedule,
                 ),
                 assignment,
             )

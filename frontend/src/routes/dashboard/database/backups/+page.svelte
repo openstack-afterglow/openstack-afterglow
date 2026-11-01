@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -9,7 +10,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { Alert, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 	import DbBackupsTable from '$lib/components/database/DbBackupsTable.svelte';
@@ -178,7 +179,7 @@
 	{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={4} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tr('backups.title') })} />
 	{:else if backups.length === 0}
 		<EmptyState headline={tr('backups.listEmpty')} description={tr('backups.emptyHelp')} />
 	{:else}

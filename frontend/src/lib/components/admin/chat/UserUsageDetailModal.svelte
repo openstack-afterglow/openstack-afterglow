@@ -5,7 +5,7 @@
 	import type { UserUsageDetail } from '$lib/api/chatQuotas';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -13,7 +13,6 @@
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { t } from '$lib/i18n/ns/admin-chat-usage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -158,7 +157,7 @@
 			{/if}
 
 			{#if loading}
-				<div class="mt-5"><LoadingSkeleton variant="table" rows={5} /></div>
+				<div class="mt-5"><LoadingState variant="section" /></div>
 			{:else if detail}
 				{@const usageDetail = detail}
 				<div class="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -253,7 +252,7 @@
 						</TableShell>
 					</ResponsiveTable>
 					{#if detail.next_before_id}
-						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} ariaBusy={loadingMore} onclick={() => void load(false)}>{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
+						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} ariaBusy={loadingMore} onclick={() => void load(false)}>{#if loadingMore}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
 					{/if}
 				</section>
 			{/if}

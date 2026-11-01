@@ -606,3 +606,160 @@ test("Palimpsest effective guard blocks an unsafe later host without authorizing
 	assert.notEqual(result.status, 0, result.output)
 	assert.deepEqual(result.accepted_by_host, { "controller-a": true, "controller-b": false }, result.output)
 })
+
+function runPciSnapshotFixture({ limited = false, missingGroup = false, malformed = false, repeat = false, missingNodePath = false, replaceObservation = false } = {}) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kolla-pci-runtime-"))
+	const script = `import hashlib, json, os, pathlib, shutil, subprocess, sys, yaml
+root, scratch = map(pathlib.Path, sys.argv[1:3])
+options = json.loads(sys.argv[3])
+source_role = root / 'deploy/kolla/ansible/roles/afterglow'
+role = scratch / 'roles/afterglow'
+(role / 'tasks').mkdir(parents=True)
+(role / 'files').mkdir()
+shutil.copyfile(source_role / 'files/snapshot_nova_pci_aliases.py', role / 'files/snapshot_nova_pci_aliases.py')
+tasks = yaml.safe_load((source_role / 'tasks/nova_pci_aliases.yml').read_text())
+# Keep production task behavior and mode; map root ownership only to this
+# unprivileged fixture's uid/gid instead of requiring sudo on developer machines.
+tasks[-1]['ansible.builtin.copy'].update(owner=str(os.getuid()), group=str(os.getgid()))
+for task in tasks:
+    if 'ansible.builtin.file' in task:
+        task['ansible.builtin.file'].update(owner=str(os.getuid()), group=str(os.getgid()))
+if options['replaceObservation']:
+    defaults = yaml.safe_load((source_role / 'defaults/main.yml').read_text())
+    tasks += [
+        {'ansible.builtin.set_fact': {'fixture_volumes': defaults['afterglow_services']['afterglow-backend']['volumes']}},
+        {'ansible.builtin.copy': {'content': '{{ fixture_volumes | to_json }}', 'dest': '{{ node_config_directory }}/volumes.json'}},
+    ]
+(role / 'tasks/main.yml').write_text(yaml.safe_dump(tasks))
+hosts = ['controller-a', 'controller-b', 'controller-c']
+raw = {}
+for host in hosts:
+    config = scratch / host / 'nova-api/nova.conf'
+    config.parent.mkdir(parents=True)
+    alias = {'name': 'RTX-3090', 'vendor_id': '10DE', 'product_id': '2204'}
+    text = '[DEFAULT]\\ntransport_url=rabbit://SECRET@private\\n[pci]\\nalias=' + json.dumps(alias) + '\\n'
+    if host == 'controller-c' and options['malformed']:
+        text = '[pci]\\nalias={SECRET malformed}\\n'
+    config.write_text(text)
+    raw[host] = text
+    (scratch / host / 'generated').mkdir()
+    variables = {'ansible_connection': 'local', 'ansible_python_interpreter': sys.executable,
+        'ansible_become': False, 'node_config_directory': str(scratch / host),
+        'afterglow_runtime_config_dir': str(scratch / host / 'generated'),
+        'afterglow_generated_config_name': 'afterglow.conf',
+        'afterglow_rbd_conf_source': '', 'afterglow_rbd_keyring_source': '',
+        'afterglow_traffic_analytics_geoip_mmdb_source': '',
+        'afterglow_nova_pci_alias_snapshot_dir': str(scratch / host / 'generated/nova-pci-aliases'),
+        'afterglow_nova_pci_alias_snapshot_path': str(scratch / host / 'generated/nova-pci-aliases/aliases.json')}
+    if host == 'controller-c' and options['missingNodePath']:
+        variables.pop('node_config_directory')
+    if host == 'controller-c' and options['limited']:
+        variables['ansible_python_interpreter'] = '/must-not-contact-limited-controller/python'
+    (scratch / 'host_vars').mkdir(exist_ok=True)
+    (scratch / 'host_vars' / (host + '.yml')).write_text(yaml.safe_dump(variables))
+inventory = '[afterglow]\\n' + '\\n'.join(hosts[:2]) + '\\n'
+if not options['missingGroup']:
+    inventory += '[nova-api]\\ncontroller-a\\ncontroller-c\\n'
+(scratch / 'inventory').write_text(inventory)
+play = [{'hosts': 'afterglow', 'serial': 1, 'gather_facts': False, 'roles': ['afterglow']}]
+(scratch / 'play.yml').write_text(yaml.safe_dump(play))
+(scratch / 'ansible.cfg').write_text('[defaults]\\nretry_files_enabled=False\\nhost_key_checking=False\\n')
+command = [str(pathlib.Path(sys.executable).parent / 'ansible-playbook'), '-i', str(scratch / 'inventory'), str(scratch / 'play.yml')]
+if options['limited']:
+    command += ['--limit', 'controller-a,controller-b']
+env = {key: value for key, value in os.environ.items() if not key.startswith(('ANSIBLE_', 'KOLLA_'))}
+env.update(ANSIBLE_CONFIG=str(scratch / 'ansible.cfg'), ANSIBLE_LOCAL_TEMP=str(scratch / 'tmp'),
+    OBJC_DISABLE_INITIALIZE_FORK_SAFETY='YES')
+history = []
+mount_history = []
+logs = []
+for invocation in range(2 if options['repeat'] or options['replaceObservation'] else 1):
+    if invocation and options['replaceObservation']:
+        (scratch / 'controller-c/nova-api/nova.conf').write_text('[pci]\\nalias={malformed}\\n')
+    result = subprocess.run(command, text=True, capture_output=True, env=env, cwd=scratch)
+    logs.append(result.stdout + result.stderr)
+    history.append({host: {'checksum': hashlib.sha1(output.read_bytes()).hexdigest(),
+        'inode': output.stat().st_ino} for host in hosts[:2]
+        if (output := scratch / host / 'generated/nova-pci-aliases/aliases.json').exists()})
+    if options['replaceObservation'] and result.returncode == 0:
+        visible = {}
+        for host in hosts[:2]:
+            volumes = json.loads((scratch / host / 'volumes.json').read_text())
+            target = '/app/nova-pci-aliases/aliases.json'
+            for volume in volumes:
+                parts = volume.rsplit(':', 2)
+                if len(parts) != 3:
+                    continue
+                source, destination, mode = parts
+                if mode == 'ro' and target.startswith(destination + '/'):
+                    candidate = pathlib.Path(source) / target.removeprefix(destination + '/')
+                    if candidate.is_file():
+                        visible[host] = json.loads(candidate.read_text())
+        mount_history.append(visible)
+    if result.returncode:
+        break
+snapshots = {}
+modes = {}
+for host in hosts[:2]:
+    output = scratch / host / 'generated/nova-pci-aliases/aliases.json'
+    if output.exists():
+        snapshots[host] = output.read_text()
+        modes[host] = output.stat().st_mode & 0o777
+print(json.dumps({'status': result.returncode, 'output': '\\n'.join(logs),
+    'snapshots': snapshots, 'modes': modes, 'history': history, 'mount_history': mount_history,
+    'sources_unchanged': all((scratch / host / 'nova-api/nova.conf').read_text() == text for host, text in raw.items())}))
+`
+	try {
+		const result = spawnSync(path.join(runtime, "python"), ["-c", script, root, dir, JSON.stringify({ limited, missingGroup, malformed, repeat, missingNodePath, replaceObservation })], {
+			encoding: "utf8", timeout: 90000, maxBuffer: 4 * 1024 * 1024,
+		})
+		assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}\n${result.error || ""}`)
+		return JSON.parse(result.stdout)
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true })
+	}
+}
+
+for (const [scenario, options] of [
+	["serial batches share all Nova controllers without non-Nova Afterglow false failures", {}],
+	["malformed controller config remains unavailable without blocking Afterglow", { malformed: true }],
+	["explicit limit never contacts an excluded Nova controller", { limited: true }],
+	["missing authoritative Nova group cannot claim an empty ready source", { missingGroup: true }],
+	["missing delegated config path becomes unavailable without template failure", { missingNodePath: true }],
+	["limited controllers with absent config path remain uncontacted", { limited: true, missingNodePath: true }],
+]) {
+	test(`Kolla PCI snapshot ${scenario}`, () => {
+		const result = runPciSnapshotFixture(options)
+		assert.equal(result.status, 0, result.output)
+		assert.doesNotMatch(result.output, /SECRET|must-not-contact/)
+		assert.equal(result.sources_unchanged, true)
+		assert.equal(result.snapshots["controller-a"], result.snapshots["controller-b"])
+		assert.deepEqual(result.modes, { "controller-a": 0o640, "controller-b": 0o640 })
+		const snapshot = JSON.parse(result.snapshots["controller-a"])
+		assert.equal(snapshot.schema_version, 1)
+		assert.deepEqual(snapshot.controllers.map(item => item.host), options.missingGroup
+			? ["controller-a", "controller-b"] : ["controller-a", "controller-c"])
+		assert.deepEqual(snapshot.controllers.map(item => item.state), options.missingGroup
+			? ["unavailable", "unavailable"] : ["ready", options.limited || options.malformed || options.missingNodePath ? "unavailable" : "ready"])
+		assert.ok(snapshot.controllers.filter(item => item.state === "unavailable").every(item => item.aliases.length === 0))
+	})
+}
+
+test("Kolla PCI snapshot repeated reconfigure preserves checksum and bound file inode", () => {
+	const result = runPciSnapshotFixture({ repeat: true })
+	assert.equal(result.status, 0, result.output)
+	assert.equal(result.history.length, 2)
+	assert.deepEqual(result.history[1], result.history[0])
+	assert.equal(Object.keys(result.history[0]).length, 2)
+	assert.equal(result.sources_unchanged, true)
+})
+
+test("config-only snapshot replacement reaches the mounted backend without restarting it", () => {
+	const result = runPciSnapshotFixture({ replaceObservation: true })
+	assert.equal(result.status, 0, result.output)
+	for (const host of ["controller-a", "controller-b"]) {
+		assert.notEqual(result.history[0][host].checksum, result.history[1][host].checksum)
+		assert.deepEqual(result.mount_history[0][host].controllers.map(item => item.state), ["ready", "ready"])
+		assert.deepEqual(result.mount_history[1][host].controllers.map(item => item.state), ["ready", "unavailable"])
+	}
+})

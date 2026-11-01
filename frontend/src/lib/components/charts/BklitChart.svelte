@@ -6,6 +6,7 @@
 	import type { ChartMount, ChartSpec } from './types';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableShell from '$lib/components/ui/TableShell.svelte';
 
 	interface Props {
 		spec: ChartSpec;
@@ -14,9 +15,10 @@
 		label?: string;
 		decorative?: boolean;
 		showData?: boolean;
+		xLabel?: string;
 		class?: string;
 	}
-	let { spec, height, width, label, decorative = false, showData, class: className = '' }: Props = $props();
+	let { spec, height, width, label, decorative = false, showData, xLabel, class: className = '' }: Props = $props();
 	let element: HTMLDivElement;
 	let chart = $state.raw<ChartMount>();
 	let reducedMotion = $state(false);
@@ -95,9 +97,9 @@
 	data-bklit-kind={spec.kind}
 >
 	<div class="bklit-chart-plot" style:height={`${height}px`} bind:this={element}></div>
-	{#if failed && !decorative}<p class="mt-2 text-xs text-state-danger-text" role="status">{t('chart.error')}</p>{/if}
+	{#if failed && !decorative}<p class="mt-2 text-[length:var(--type-support)] text-state-danger-text" role="status">{t('chart.error')}</p>{/if}
 	{#if canShowData && seriesSpec}
-		<details class="mt-2 text-xs text-ink-2" bind:open={dataOpen}>
+		<details class="mt-2 text-[length:var(--type-support)] text-ink-2" bind:open={dataOpen}>
 			<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('chart.data')}</summary>
 			{#if dataOpen}
 				<ResponsiveTable>
@@ -113,10 +115,10 @@
 				<!-- The overflow region remains keyboard-scrollable when the data table is wide. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label={label ?? t('chart.data')}>
-					<table class="w-full text-left tabular-nums">
-						<thead><tr><th class="p-2" scope="col">{seriesSpec.kind === 'time-series' ? t('chart.time') : t('chart.category')}</th>{#each seriesSpec.series as series}<th class="p-2" scope="col">{series.label}</th>{/each}</tr></thead>
-						<tbody>{#each seriesSpec.data as row}<tr class="border-t border-line"><th class="p-2 font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td class="p-2">{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
-					</table>
+					<TableShell density="compact" class="min-w-max"><table>
+						<thead><tr><th scope="col">{xLabel ?? (seriesSpec.kind === 'time-series' ? t('chart.time') : t('chart.category'))}</th>{#each seriesSpec.series as series}<th scope="col">{series.label}</th>{/each}</tr></thead>
+						<tbody>{#each seriesSpec.data as row}<tr><th class="font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td>{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
+					</table></TableShell>
 				</div>
 				</ResponsiveTable>
 			{/if}

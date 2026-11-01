@@ -4,6 +4,8 @@ _ROUTERS = {
     "admin_router": ".admin",
     "auth_router": ".auth",
     "mcp_access_router": ".mcp_access",
+    "compute_pools_router": ".compute_pools",
+    "managed_flavors_router": ".managed_flavors",
 }
 
 

@@ -318,7 +318,7 @@ def create_cloud_shell_container(
         "image_driver": "docker",
         "cpu": cpu,
         "memory": memory_mib,
-        "command": ["/bin/sh", "-lc", "trap : TERM INT; sleep infinity & wait"],
+        "command": ["/bin/sleep", "infinity"],
         "interactive": False,
         "tty": False,
         # "privileged" is omitted: Zun defaults to unprivileged and its default policy denies any explicit value.

@@ -6,6 +6,7 @@ import { auth } from '$lib/stores/auth';
 import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 import { projectNames } from '$lib/stores/projectNames';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { t as nav } from '$lib/i18n/ns/nav';
 import { ApiError } from '$lib/api/errors';
 import Harness from './_AdminSubnetScopeHarness.svelte';
 import { page } from '$app/stores';
@@ -112,7 +113,7 @@ describe('administrator independent inventory scope', () => {
 		render(Harness); await screen.findByText('initial-row');
 		await choose('Domain', /Domain Alpha/);
 		await choose('Project', /Project Alpha/);
-		const refresh = screen.getAllByRole('button', { name: 'Refresh' })[0];
+		const refresh = screen.getByRole('button', { name: nav('actions.refreshDirectory') });
 		await fireEvent.click(refresh);
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/projects/names', 'operator-token', 'operator-project', { refresh: true }));
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/domains', 'operator-token', 'operator-project', { refresh: true });

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { SubnetDetail } from '$lib/types/networks';
 	import { Button } from '$lib/components/ui';
 	import SubnetIpInventory from './SubnetIpInventory.svelte';
@@ -123,7 +123,7 @@
 					disabled={addingSubnet}
 					class="text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{#if addingSubnet}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.adding')}</span>{:else}{t('subnetSection.add')}{/if}
+					{#if addingSubnet}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('subnetSection.adding')}</span>{:else}{t('subnetSection.add')}{/if}
 				</button>
 			</div>
 		</div>
@@ -173,7 +173,7 @@
 								onclick={handleSave}
 								disabled={savingSubnet}
 								class="text-xs px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
-							>{#if savingSubnet}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.saving')}</span>{:else}{t('subnetSection.save')}{/if}</button>
+							>{#if savingSubnet}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('subnetSection.saving')}</span>{:else}{t('subnetSection.save')}{/if}</button>
 						</div>
 					</div>
 				{:else}
@@ -199,7 +199,7 @@
 									onclick={() => onDelete(subnet.id, subnet.name)}
 									disabled={deletingSubnetId === subnet.id}
 									class="min-h-11 lg:min-h-0 text-xs text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 px-2 py-1 border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 rounded transition-colors"
-								>{#if deletingSubnetId === subnet.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.deleting')}</span>{:else}{t('subnetSection.delete')}{/if}</button>
+								>{#if deletingSubnetId === subnet.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('subnetSection.deleting')}</span>{:else}{t('subnetSection.delete')}{/if}</button>
 							</div>
 						</div>
 						<dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2">

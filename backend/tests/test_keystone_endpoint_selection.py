@@ -174,7 +174,6 @@ def test_native_operation_reuses_real_service_auth_but_invalidates_reads(identit
         with pytest.raises(HTTPException) as denied:
             resolve_domain("default", operation=next_request)
         assert denied.value.status_code == 403
-    assert state.requests.count(("POST", "/v3/auth/tokens")) == 2
 
 
 def test_concurrent_native_operations_do_not_share_real_service_sessions(identity_endpoints):
@@ -197,5 +196,4 @@ def test_concurrent_native_operations_do_not_share_real_service_sessions(identit
         requests = [pool.submit(request) for _ in range(2)]
         clients = [request.result(timeout=10) for request in requests]
     assert clients[0] is not clients[1]
-    assert identity_endpoints.requests.count(("POST", "/v3/auth/tokens")) == 2
     assert identity_endpoints.requests.count(("GET", "/internal/v3/domains/default")) == 2

@@ -8,7 +8,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
 	import type { DomainAccountResult } from '$lib/types/auth';
 	import { isOnboardingToken, onboardingErrorKey, registrationConflictKind, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
@@ -80,14 +80,16 @@
 	onDestroy(() => { live = false; generation++; info = null; created = null; approval = null; });
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center py-8">
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center {loading && !abandoned && !$auth.token && !$logoutInProgress && !$projectSwitching ? '' : 'py-8'}">
+	{#if loading && !abandoned && !$auth.token && !$logoutInProgress && !$projectSwitching}
+		<LoadingState variant="surface" style="min-height: 100dvh" label={t('onboarding.processing')} />
+	{:else}
 	<PageShell class="flex justify-center"><div class="w-full max-w-md">
 		<h1 class="text-center text-xl font-semibold text-ink-0 mb-6">{t('registration.title')}</h1>
 		<div class="bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 space-y-4">
 			{#if abandoned || $auth.token || $logoutInProgress || $projectSwitching}
 				<Button href="/login" class="w-full">{t('common.backToLogin')}</Button>
 				{#if !$auth.token}<Button variant="secondary" href="/signup" class="w-full">{t('signup.approval.restart')}</Button>{/if}
-			{:else if loading}<ActivityIndicator label={t('onboarding.processing')} />
 			{:else if approval}
 				<Alert tone={approval === 'pending' ? 'info' : 'warning'} title={t(approval === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle')}>
 					{t(approval === 'pending' ? 'signup.approval.emailPending' : 'signup.approval.emailRejected')}
@@ -113,4 +115,5 @@
 			{/if}
 		</div>
 	</div></PageShell>
+	{/if}
 </main>

@@ -6,7 +6,7 @@ import { t } from '$lib/i18n/ns/nav';
 
 type NavMessage = Parameters<typeof t>[0];
 
-const PROJECT_AGNOSTIC_ROUTES = ['/', '/login', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+const PROJECT_AGNOSTIC_ROUTES = ['/', '/login', '/logout', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 
 /** Project selection is not required for domain IAM or verified system-admin routes. Authentication still is. */
 export function isProjectAgnosticPath(pathname: string, isSystemAdmin: boolean): boolean {

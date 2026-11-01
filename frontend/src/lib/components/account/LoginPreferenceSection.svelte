@@ -5,7 +5,8 @@
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { t } from '$lib/i18n/ns/account';
-	import { Alert, Button, Card, ActivityIndicator } from '$lib/components/ui';
+	import { Alert, Button, Card } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let mounted = false;
 	let epoch = 0;
 	let loaded = $state(false);
@@ -56,7 +57,7 @@
 <Card class="p-5 space-y-4">
 	<h3 class="text-sm font-semibold text-ink-0">{t('loginPreference.title')}</h3>
 	<p class="text-sm text-ink-2">{t('loginPreference.help')}</p>
-	{#if busy}<ActivityIndicator label={t('loginPreference.loading')} />{/if}
+	{#if busy}<LoadingState variant={loaded ? 'inline' : 'section'} label={t('loginPreference.loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error} <Button variant="secondary" disabled={busy || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('loginPreference.reload')}</Button></Alert>{/if}
 	{#if saved}<Alert tone="success">{t('loginPreference.saved')}</Alert>{/if}
 	<label class="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" bind:checked={enabled} disabled={blocked} />{t('loginPreference.remember')}</label>

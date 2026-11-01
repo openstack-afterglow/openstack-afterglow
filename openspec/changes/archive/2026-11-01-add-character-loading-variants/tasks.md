@@ -1,0 +1,3 @@
+- [x] Implement four character-art loading examples with manual controls and explicit hooks.
+- [x] Browser appearance, responsive and state/motion checks.
+- [x] Independent review, docs, screenshots, package and archive.

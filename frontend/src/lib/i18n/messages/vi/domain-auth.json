@@ -158,7 +158,7 @@
 	"recovery.username": "Tìm tên người dùng",
 	"recovery.password": "Đặt lại mật khẩu",
 	"recovery.description": "Yêu cầu liên kết dùng một lần gửi đến email của tài khoản. Bạn không cần biết tên miền của mình.",
-	"recovery.sent": "Nếu địa chỉ này đủ điều kiện, email đã được gửi. Hãy kiểm tra hộp thư đến.",
+	"recovery.sent": "Đã tiếp nhận yêu cầu. Nếu địa chỉ đủ điều kiện, email sẽ được gửi. Tiếp nhận không xác nhận đã giao thư. Hãy kiểm tra hộp thư; nếu không nhận được hoặc không truy cập được, hãy liên hệ quản trị viên.",
 	"recovery.notAvailable": "Hiện không thể gửi yêu cầu qua email. Hãy liên hệ quản trị viên hoặc thử lại sau.",
 	"recovery.usernameResult": "Liên kết xác minh này đã được sử dụng. Hãy đăng nhập bằng tên người dùng và miền gốc được hiển thị bên dưới. Mở lại liên kết sẽ không hiển thị lại những thông tin này.",
 	"recovery.reset": "Lưu mật khẩu mới",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "Đăng nhập lại",
 	"recovery.failed": "Không thể xác nhận kết quả. Tài khoản này có thể không hỗ trợ phương thức khôi phục này hoặc liên kết có thể đã được sử dụng. Yêu cầu sẽ không tự động được lặp lại. Hãy yêu cầu liên kết mới hoặc liên hệ quản trị viên.",
 	"link.authenticatedHelp": "Với tài khoản chỉ đăng nhập qua nhà cung cấp bên ngoài, hãy phê duyệt bằng phiên đã đăng nhập của tài khoản gốc. Máy chủ xác minh rằng đó là cùng một tài khoản.",
-	"link.authenticated": "Phê duyệt liên kết với tư cách {username} đang đăng nhập"
+	"link.authenticated": "Phê duyệt liên kết với tư cách {username} đang đăng nhập",
+	"recovery.passwordHelp": "Liên kết gửi đến email đã đăng ký mở biểu mẫu đặt mật khẩu mới; không gửi chính mật khẩu. Nếu không nhận được email hoặc không truy cập được hộp thư, hãy liên hệ quản trị viên."
 }

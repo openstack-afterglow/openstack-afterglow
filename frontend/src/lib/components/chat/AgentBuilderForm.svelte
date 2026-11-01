@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { AgentForm, AgentExtension } from '$lib/api/chatAgents';
 	import { isAvatarUrl } from '$lib/api/chatAgents';
 	import type { AvailableModel } from '$lib/api/chatTree';
@@ -13,6 +14,7 @@
 		tools: AgentExtension[];
 		editing?: boolean;
 		saving?: boolean;
+		disabled?: boolean;
 		onSubmit: () => void;
 		onCancel: () => void;
 	}
@@ -23,11 +25,12 @@
 		tools,
 		editing = false,
 		saving = false,
+		disabled = false,
 		onSubmit,
 		onCancel
 	}: Props = $props();
 
-	const canSubmit = $derived(form.name.trim().length > 0 && !saving);
+	const canSubmit = $derived(form.name.trim().length > 0 && !saving && !disabled);
 </script>
 
 <form
@@ -150,7 +153,7 @@
 	<div class="actions">
 		<Button variant="ghost" type="button" onclick={onCancel}>{t('agentBuilder.actions.cancel')}</Button>
 		<Button variant="accent" type="submit" disabled={!canSubmit}>
-			{saving ? t('agentBuilder.actions.saving') : editing ? t('agentBuilder.actions.saveChanges') : t('agentBuilder.actions.create')}
+			{#if saving}<LoadingState variant="control" label={t('agentBuilder.actions.saving')} />{:else}{editing ? t('agentBuilder.actions.saveChanges') : t('agentBuilder.actions.create')}{/if}
 		</Button>
 	</div>
 </form>

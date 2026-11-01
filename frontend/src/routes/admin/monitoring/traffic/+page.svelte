@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { api } from '$lib/api/client';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { ActivityIndicator, Alert, Button, Card, PageHeader, PageShell, SelectInput, TableShell } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, PageHeader, PageShell, SelectInput, TableShell } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import TrafficCountryMap from '$lib/components/admin/traffic/TrafficCountryMap.svelte';
@@ -73,9 +74,9 @@
         </label>
 	</div>
 	<div class="space-y-4" aria-busy={loading}>
-		{#if !ready}<ActivityIndicator label={t('loading')} />
+		{#if !ready}<LoadingState variant="surface" label={t('loading')} />
 		{:else if !allowed}<Alert tone="warning">{t('adminRequired')}</Alert>
-		{:else if loading}<ActivityIndicator label={t('loading')} />
+		{:else if loading}<LoadingState variant="surface" label={t('loading')} />
 		{:else if failed}<Alert tone="danger">{t('loadFailed')}</Alert>
 		{/if}
 		{#if snapshot}
@@ -89,7 +90,7 @@
 			<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
 				{#each metrics as metric (metric)}<TrafficTrend {snapshot} {metric} />{/each}
 			</div>
-			<TrafficCountryMap countries={snapshot.countries} siteCountry={snapshot.coverage.site_country} />
+			<TrafficCountryMap countries={snapshot.countries} networks={snapshot.networks} siteCountry={snapshot.coverage.site_country} />
 			<Card surface="base">
 				<h2 class="text-sm font-semibold">{t('routes.title')}</h2>
 				<p class="mt-2 text-xs text-ink-2">{t('routes.note')}</p>

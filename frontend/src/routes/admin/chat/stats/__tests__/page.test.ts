@@ -1,17 +1,21 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/stores/auth', () => {
 	return { auth: writable({ token: 'token', projectId: 'project', userId: 'admin', sessionId: 'session', identityDomainId: 'home', domainId: 'working', isSystemAdmin: true }), authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false) };
 });
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class extends Error {
+	constructor(public status: number, message: string) { super(message); }
+} }));
 
 import StatsPage from '$lib/components/admin/chat/AdminChatStatsPage.svelte';
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 import { t } from '$lib/i18n/ns/chat-studio';
+import { t as usageT } from '$lib/i18n/ns/admin-chat-usage';
+import { ApiError } from '$lib/api/client';
 import { tick } from 'svelte';
 
 const usage = {
@@ -167,11 +171,51 @@ describe('chat admin statistics activity', () => {
 		expect(mocks.get.mock.calls).toHaveLength(count);
 	});
 
-	it('shows upstream stats failure without painting successful empty usage', async () => {
-		mocks.get.mockRejectedValue(new Error('failure'));
+	it.each([403, 503])('keeps native HTTP %s separate from platform authority and verified empty usage', async status => {
+		const detail = 'native policy detail <script>not executable</script>\nsecond line';
+		mocks.get.mockRejectedValue(new ApiError(status, detail));
 		render(StatsPage);
-		await screen.findByText(t('adminStats.loadFailed'));
+		const notice = await screen.findByTestId('lumen-stats-failure');
+		expect(notice.dataset.status).toBe(String(status));
+		expect(notice.textContent).toContain(usageT(status === 403 ? 'stats.deniedTitle' : 'stats.unavailableTitle'));
+		if (status === 403) expect(notice.textContent).toContain('system:admin');
+		else {
+			expect(notice.textContent).not.toContain('system:admin');
+			expect(notice.textContent).not.toContain(usageT('stats.scopeRecovery'));
+		}
+		expect(notice.querySelector('pre')?.textContent).toBe(`HTTP ${status}\n${detail}`);
+		expect(notice.querySelector('script')).toBeNull();
 		expect(screen.queryByText(t('adminStats.emptyTitle'))).toBeNull();
+		expect(get(auth).isSystemAdmin).toBe(true);
+		expect(get(auth).token).toBe('token');
+		expect(screen.getByTestId('lumen-stats-scope').textContent).toContain('project');
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/timeseries?') ? { series: [] } : response));
+		await fireEvent.click(screen.getByRole('button', { name: usageT('stats.refresh') }));
+		await screen.findByText('User 0 (user-0)');
+		expect(screen.queryByTestId('lumen-stats-failure')).toBeNull();
+	});
+
+
+	it('retains successful overview, charts and user rows when the next user page fails and retries only that page', async () => {
+		render(StatsPage);
+		await screen.findByText('User 0 (user-0)');
+		mocks.get.mockImplementation((path: string) => path.includes('/stats/users?')
+			? Promise.reject(new ApiError(503, 'user page unavailable')) : Promise.resolve(response));
+		await fireEvent.click(screen.getByRole('button', { name: t('adminStats.loadMore') }));
+		await screen.findByTestId('lumen-stats-user-page-error');
+		expect(screen.getByText('User 0 (user-0)')).toBeTruthy();
+		expect(screen.getByRole('meter', { name: 'model-a 상대 토큰 사용량' })).toBeTruthy();
+		const overviewCalls = mocks.get.mock.calls.filter(([path]) => path.includes('/stats?')).length;
+		mocks.get.mockImplementation((path: string) => path.includes('/stats/users?')
+			? Promise.resolve({ users: [{ ...usage, user_id: 'next-user', user_name: 'Next User' }] }) : Promise.resolve(response));
+		await fireEvent.click(screen.getByRole('button', { name: usageT('stats.refresh') }));
+		await screen.findByText('Next User (next-use)');
+		expect(screen.getByText('User 0 (user-0)')).toBeTruthy();
+		expect(screen.queryByTestId('lumen-stats-user-page-error')).toBeNull();
+		expect(mocks.get.mock.calls.filter(([path]) => path.includes('/stats?'))).toHaveLength(overviewCalls);
+		const pages = mocks.get.mock.calls.filter(([path]) => path.includes('/stats/users?'));
+		expect(pages).toHaveLength(2);
+		expect(pages.every(([path]) => new URL(path, 'https://test.invalid').searchParams.get('offset') === '20')).toBe(true);
 	});
 
 	it('keeps a newer model chart when the earlier chart finishes late', async () => {

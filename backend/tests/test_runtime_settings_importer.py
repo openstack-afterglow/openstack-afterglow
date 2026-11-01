@@ -6,8 +6,11 @@ import asyncio
 import importlib.util
 import os
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+import pytest_asyncio
 
 _SPEC = importlib.util.spec_from_file_location(
     "runtime_settings_importer",
@@ -162,3 +165,150 @@ def test_apply_seeds_once_and_rolls_back_on_write_failure(importer_database):
         {"nova.default_network": "network-1"},
         {"notion.sync_enabled": True},
     )
+
+
+@pytest_asyncio.fixture
+async def isolated_policy_importer(tmp_path, monkeypatch):
+    from sqlalchemy import event
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import ResourcePolicy, RuntimeSetting
+
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'policy-import.sqlite'}"
+    engine = create_async_engine(database_url)
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def sqlite_transaction_control(dbapi_connection, _record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def physical_outer_transaction(connection):
+        # sqlite's legacy driver otherwise releases an initial SAVEPOINT as a
+        # top-level commit, which cannot exercise importer atomic rollback.
+        connection.exec_driver_sql("BEGIN")
+
+    async with engine.begin() as connection:
+        await connection.run_sync(ResourcePolicy.__table__.create)
+        await connection.run_sync(RuntimeSetting.__table__.create)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(importer, "create_async_engine", lambda *_args, **_kwargs: engine)
+    monkeypatch.setattr(importer, "_inflight_snapshot_blockers", AsyncMock(return_value=[]))
+    yield database_url, engine, factory
+    await engine.dispose()
+
+
+@pytest.mark.parametrize("winner_id", [None, "native-reconciler-zone"])
+@pytest.mark.asyncio
+async def test_policy_insert_race_keeps_current_winner_and_continues_import(
+    isolated_policy_importer, monkeypatch, winner_id
+):
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.models.db import ResourcePolicy, RuntimeSetting
+
+    database_url, engine, factory = isolated_policy_importer
+    compute = "nova.default_compute_availability_zone"
+    volume = "cinder.default_volume_availability_zone"
+    async with factory() as session, session.begin():
+        session.add(
+            ResourcePolicy(
+                policy_key=compute,
+                resource_kind="compute_availability_zone",
+                resource_id=winner_id,
+                resource_name="current administrator decision",
+                constraints={"manual": True},
+                updated_by_user_id="administrator",
+            )
+        )
+    async with factory() as session:
+        winner = await session.get(ResourcePolicy, compute)
+        before = {column.name: getattr(winner, column.name) for column in ResourcePolicy.__table__.columns}
+    current_reads = []
+
+    class StaleSnapshotSession(AsyncSession):
+        async def execute(self, statement, *args, **kwargs):
+            if str(statement) == str(select(ResourcePolicy.policy_key)):
+                # Synthetic old RR observation; the competing committed row and
+                # duplicate-key exception below come from actual SQL storage.
+                return SimpleNamespace(scalars=lambda: iter(()))
+            return await super().execute(statement, *args, **kwargs)
+
+        async def scalar(self, statement, *args, **kwargs):
+            if statement._for_update_arg is not None:
+                current_reads.append(statement)
+            return await super().scalar(statement, *args, **kwargs)
+
+    stale_factory = async_sessionmaker(engine, class_=StaleSnapshotSession, expire_on_commit=False)
+    monkeypatch.setattr(importer, "async_sessionmaker", lambda *_args, **_kwargs: stale_factory)
+    assert await importer._apply(
+        database_url,
+        {compute: {"id": "legacy-zone", "name": "Legacy"}, volume: {"id": "storage", "name": "Storage"}},
+        {"notion.sync_enabled": True},
+        {},
+    ) == (1, 1, 0)
+    assert len(current_reads) == 1, "duplicate winner requires a current locking read, not the stale snapshot"
+    async with factory() as session:
+        winner = await session.get(ResourcePolicy, compute)
+        assert {column.name: getattr(winner, column.name) for column in ResourcePolicy.__table__.columns} == before
+        assert (await session.get(ResourcePolicy, volume)).resource_id == "storage"
+        assert (await session.get(RuntimeSetting, "notion.sync_enabled")).value_json is True
+
+
+@pytest.mark.asyncio
+async def test_non_duplicate_policy_integrity_error_rolls_back_all_new_seeds(isolated_policy_importer):
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.db import ResourcePolicy, RuntimeSetting
+
+    database_url, engine, factory = isolated_policy_importer
+    async with engine.begin() as connection:
+        await connection.exec_driver_sql(
+            """CREATE TRIGGER reject_policy_integrity BEFORE INSERT ON resource_policies
+            WHEN NEW.policy_key = 'nova.default_compute_availability_zone'
+            BEGIN SELECT RAISE(ABORT, 'unrelated policy integrity failure'); END"""
+        )
+    with pytest.raises(IntegrityError, match="unrelated policy integrity failure"):
+        await importer._apply(
+            database_url,
+            {
+                "cinder.default_volume_availability_zone": {"id": "storage", "name": "Storage"},
+                "nova.default_compute_availability_zone": {"id": "compute", "name": "Compute"},
+            },
+            {"notion.sync_enabled": True},
+            {},
+        )
+    async with factory() as session:
+        assert (await session.execute(select(ResourcePolicy))).scalars().all() == []
+        assert (await session.execute(select(RuntimeSetting))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_without_current_key_winner_is_not_swallowed():
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy.exc import IntegrityError
+
+    class DuplicateKey(Exception):
+        pass
+
+    failure = IntegrityError("INSERT", {}, DuplicateKey(1062, "duplicate key"))
+
+    @asynccontextmanager
+    async def savepoint():
+        yield
+
+    session = SimpleNamespace(
+        begin_nested=savepoint,
+        add=lambda _row: None,
+        flush=AsyncMock(side_effect=failure),
+        scalar=AsyncMock(return_value=None),
+    )
+    with pytest.raises(IntegrityError) as caught:
+        await importer._insert_policy_if_absent(
+            session, "nova.default_compute_availability_zone", {"id": "compute", "name": "Compute"}
+        )
+    assert caught.value is failure
+    session.scalar.assert_awaited_once()
+    assert session.scalar.call_args.args[0]._for_update_arg is not None

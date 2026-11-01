@@ -10,10 +10,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import redis.asyncio as aioredis
 from redis.asyncio.connection import parse_url
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ReadOnlyError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.config import get_settings
 from app.services.cache import metrics
@@ -23,6 +29,49 @@ logger = logging.getLogger(__name__)
 
 
 TAG_SET_TTL = 86400  # 태그 SET 자체의 TTL (1일) — 고아 태그 자동 정리
+
+
+_SAFE_READ_COMMANDS = frozenset({"GET", "MGET", "EXISTS", "TTL", "PTTL"})
+_READ_RETRY_DELAYS = (0.1, 0.2)
+
+
+def _no_replay_options() -> dict:
+    # redis-py executes pipelines through the connection's Retry too. Keep it
+    # disabled for every connection, even when a URL enables retry_on_timeout.
+    # Including READONLY ensures direct connections disconnect on demotion;
+    # Sentinel already disconnects and translates READONLY to ConnectionError.
+    return {
+        "retry": Retry(NoBackoff(), 0, supported_errors=(RedisConnectionError, RedisTimeoutError, ReadOnlyError)),
+        "retry_on_error": [],
+        "retry_on_timeout": False,
+    }
+
+
+class _ReadRetryRedis(aioredis.Redis):
+    """Retry only explicit, side-effect-free reads after a master change.
+
+    A connection error/timeout can follow a committed write and lost reply.
+    Mutations, EVAL and pipelines therefore never replay, including READONLY
+    failures. Raw callers propagate failure (authentication returns 503);
+    the cache ABC retains its existing silent-failure behavior.
+    """
+
+    async def execute_command(self, *args, **options):
+        command = args[0]
+        if isinstance(command, bytes):
+            command = command.decode("ascii", errors="replace")
+        if command.upper() not in _SAFE_READ_COMMANDS:
+            return await super().execute_command(*args, **options)
+
+        for attempt in range(len(_READ_RETRY_DELAYS) + 1):
+            try:
+                return await super().execute_command(*args, **options)
+            except (RedisConnectionError, RedisTimeoutError, ReadOnlyError):
+                if attempt == len(_READ_RETRY_DELAYS):
+                    raise
+                # redis-py has disconnected/released the failed connection.
+                # Sentinel re-discovers its master when it next reconnects.
+                await asyncio.sleep(_READ_RETRY_DELAYS[attempt])
 
 
 class RedisBackend(Cache):
@@ -38,7 +87,7 @@ class RedisBackend(Cache):
             if settings.sentinel_enabled:
                 self._client = self._build_sentinel_client(settings)
             else:
-                self._client = aioredis.from_url(
+                self._client = _ReadRetryRedis.from_url(
                     settings.redis_url,
                     encoding="utf-8",
                     decode_responses=True,
@@ -46,6 +95,7 @@ class RedisBackend(Cache):
                     socket_timeout=5,
                     socket_keepalive=True,
                     health_check_interval=30,
+                    **_no_replay_options(),
                 )
         return self._client
 
@@ -78,10 +128,12 @@ class RedisBackend(Cache):
         master_options = {key: redis_options[key] for key in ("username", "password", "db") if key in redis_options}
         return sentinel.master_for(
             settings.sentinel_master_name,
+            redis_class=_ReadRetryRedis,
             **master_options,
             decode_responses=True,
             socket_keepalive=True,
             health_check_interval=30,
+            **_no_replay_options(),
         )
 
     # ── 기본 ABC 구현 ────────────────────────────────────────────────────────

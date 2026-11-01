@@ -67,22 +67,6 @@ describe('theme store', () => {
 		expect(storage['afterglow_theme']).toBe('light');
 	});
 
-	it('toggle() system → dark → light → system 순환', async () => {
-		const { theme } = await import('../theme');
-		expect(get(theme)).toBe('system');
-		theme.toggle();
-		expect(get(theme)).toBe('dark');
-		theme.toggle();
-		expect(get(theme)).toBe('light');
-		theme.toggle();
-		expect(get(theme)).toBe('system');
-	});
-
-	it('toggle() localStorage에 새 값 저장', async () => {
-		const { theme } = await import('../theme');
-		theme.toggle();
-		expect(storage['afterglow_theme']).toBe('dark');
-	});
 });
 
 describe('resolvedTheme', () => {

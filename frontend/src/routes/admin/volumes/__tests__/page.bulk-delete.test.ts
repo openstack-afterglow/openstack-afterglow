@@ -91,8 +91,9 @@ describe('admin volume bulk deletion', () => {
 		);
 		mocks.post.mockResolvedValue({ results: [{ id: 'vol-1', ok: true, error: null }] });
 
-		render(Page);
-		await fireEvent.click(await screen.findByRole('button', { name: 'available 1' }));
+		const view = render(Page);
+		await vi.waitFor(() => expect(view.container.querySelector('[data-volume-status="available"]')).toBeTruthy());
+		await fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-volume-status="available"]')!);
 		await vi.waitFor(() => expect(mocks.get.mock.calls.some((call) => String(call[0]).includes('status=available'))).toBe(true));
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'first-volume 선택' }));
 		await fireEvent.click(within(screen.getByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' })).getByRole('button', { name: '삭제' }));
@@ -101,8 +102,8 @@ describe('admin volume bulk deletion', () => {
 			const listPaths = mocks.get.mock.calls.map((call) => String(call[0])).filter((path) => path.startsWith('/api/v1/admin/all-volumes'));
 			expect(listPaths.at(-1)).not.toContain('status=available');
 		});
-		expect(screen.queryByRole('button', { name: 'available 0' })).toBeNull();
-		expect(screen.queryByRole('option', { name: 'available' })).toBeNull();
+		expect(view.container.querySelector('[data-volume-status="available"]')).toBeNull();
+		expect(view.container.querySelector('option[value="available"]')).toBeNull();
 	});
 
 	it('does not offer stale-row selection while a replacement boundary loads', async () => {

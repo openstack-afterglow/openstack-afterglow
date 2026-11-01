@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
@@ -135,7 +136,7 @@
 
 <div class="mt-2">
 	{#if loading}
-		<div class="text-ink-2 text-xs py-8 text-center">{t('dialogs.trash.loading')}</div>
+		<LoadingState variant="section" label={t('dialogs.trash.loading')} />
 	{:else if items.length === 0}
 		<div class="text-ink-2 text-xs py-12 text-center">{t('dialogs.trash.empty')}</div>
 	{:else}
@@ -159,7 +160,7 @@
      <CompactResourceCard selected={selectionEnabled && selection.has(item.trash_key)}>
       <div class="flex items-start gap-2">{#if selectionEnabled}<SelectionCheckbox checked={selection.has(item.trash_key)} disabled={busy} ariaLabel={t('dialogs.trash.selectObject', { name: item.original_name })} onclick={() => selection.toggle(item.trash_key)} />{/if}<strong class="min-w-0 text-sm font-mono break-all">{item.original_name}</strong></div>
       <p class="text-xs text-ink-2">{t('dialogs.trash.columns.size')}: {formatStorage(item.bytes / 1_073_741_824)}</p><p class="text-xs text-ink-2">{t('dialogs.trash.columns.deletedAt')}: {item.deleted_at ? new Date(item.deleted_at * 1000).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—'}</p>
-      {#snippet actions()}<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-xs text-state-success-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button><button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-xs text-state-danger-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>{/snippet}
+      {#snippet actions()}<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-xs text-state-success-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{#if restoring === item.trash_key}<LoadingState variant="control" label="" />{/if}{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button><button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-xs text-state-danger-text disabled:text-ink-3 px-2 py-1 rounded border border-line-2">{#if purging === item.trash_key}<LoadingState variant="control" label="" />{/if}{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>{/snippet}
      </CompactResourceCard>
     {/each}
    {/snippet}
@@ -199,8 +200,8 @@
 						<td class="py-2 px-3 text-ink-2 text-right">{item.bytes ? formatStorage(item.bytes / 1_073_741_824) : '—'}</td>
 						<td class="py-2 px-3 text-right">
 							<div class="flex gap-1.5 justify-end">
-								<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button>
-								<button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>
+								<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{#if restoring === item.trash_key}<LoadingState variant="control" label="" />{/if}{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button>
+								<button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{#if purging === item.trash_key}<LoadingState variant="control" label="" />{/if}{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>
 							</div>
 						</td>
 					</tr>

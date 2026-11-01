@@ -10,7 +10,7 @@
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import ContainerDetailPanel from '$lib/components/ContainerDetailPanel.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -85,7 +85,7 @@
 	<div data-tour="admin-containers-list">
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">{t('containers.empty')}</div>
 	{:else}

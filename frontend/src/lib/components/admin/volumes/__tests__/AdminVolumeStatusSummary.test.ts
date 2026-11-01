@@ -19,7 +19,7 @@ const mixedSummary: Summary = {
 
 describe('AdminVolumeStatusSummary', () => {
 	it('renders total and positive status counts while hiding zero-count states', () => {
-		render(AdminVolumeStatusSummary, {
+		const view = render(AdminVolumeStatusSummary, {
 			props: {
 				summary: mixedSummary,
 				activeStatus: 'in-use',
@@ -28,17 +28,17 @@ describe('AdminVolumeStatusSummary', () => {
 		});
 
 		expect(screen.getByRole('button', { name: '전체 12' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'available 5' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'in-use 3' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'error 2' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'maintenance 2' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'reserved 0' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'creating 0' })).toBeNull();
+		expect(view.container.querySelector('[data-volume-status="available"]')?.textContent).toContain('5');
+		expect(view.container.querySelector('[data-volume-status="in-use"]')?.textContent).toContain('3');
+		expect(view.container.querySelector('[data-volume-status="error"]')?.textContent).toContain('2');
+		expect(view.container.querySelector('[data-volume-status="maintenance"]')?.textContent).toContain('2');
+		expect(view.container.querySelector('[data-volume-status="reserved"]')).toBeNull();
+		expect(view.container.querySelector('[data-volume-status="creating"]')).toBeNull();
 	});
 
 	it('calls onSelect with the clicked status and clears the filter from the total card', async () => {
 		const onSelect = vi.fn();
-		render(AdminVolumeStatusSummary, {
+		const view = render(AdminVolumeStatusSummary, {
 			props: {
 				summary: mixedSummary,
 				activeStatus: 'available',
@@ -46,7 +46,7 @@ describe('AdminVolumeStatusSummary', () => {
 			},
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'error 2' }));
+		await fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-volume-status="error"]')!);
 		expect(onSelect).toHaveBeenCalledWith('error');
 
 		await fireEvent.click(screen.getByRole('button', { name: '전체 12' }));

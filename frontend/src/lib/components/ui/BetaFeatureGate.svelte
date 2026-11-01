@@ -11,7 +11,7 @@
 	let {
 		title,
 		description,
-		accountHref = '/dashboard/account',
+		accountHref = '/dashboard/account/beta',
 	}: Props = $props();
 </script>
 

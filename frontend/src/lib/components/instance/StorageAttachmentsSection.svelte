@@ -5,7 +5,8 @@
 	import { get } from 'svelte/store';
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/instance';
-	import { ActivityIndicator, Alert, Button, StatusChip } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
 
@@ -356,7 +357,7 @@
 						<option value="">{t('storageAttachments.selectPlaceholder')}</option>
 						{#each availableStorages as fs}<option value={fs.id}>{fs.name || fs.id.slice(0, 12)} ({fs.share_proto})</option>{/each}
 					</select>
-					{#if catalogStatus === 'loading'}<ActivityIndicator class="mt-1" label={t('storageAttachments.catalogLoading')} />
+					{#if catalogStatus === 'loading'}<LoadingState variant="inline" class="mt-1" label={t('storageAttachments.catalogLoading')} />
 					{:else if catalogStatus === 'error'}<Alert class="mt-2">{catalogError} {t('storageAttachments.catalogRetry')}</Alert>
 					{:else if catalogStatus === 'loaded' && availableStorages.length === 0}<p class="text-xs text-ink-2 mt-1">{t('storageAttachments.noAvailableStorage')}</p>{/if}
 				</div>
@@ -375,7 +376,7 @@
 				<label class="flex items-center gap-2 text-sm text-ink-2"><input type="checkbox" bind:checked={readOnly} disabled={busy} />{t('storageAttachments.readOnly')}</label>
 			</div>
 			<Button onclick={handleGrant} disabled={!canGrant || busy} ariaBusy={granting} size="sm">
-				{#if granting}<ActivityIndicator size="xs" label={t('storageAttachments.granting')} />{:else}{t('storageAttachments.grant')}{/if}
+				{#if granting}<LoadingState variant="control" label={t('storageAttachments.granting')} />{:else}{t('storageAttachments.grant')}{/if}
 			</Button>
 		</div>
 	{/if}
@@ -390,7 +391,7 @@
 			{/if}
 		</div>
 	{/if}
-	{#if loading}<ActivityIndicator label={t('storageAttachments.loading')} />
+	{#if loading}<LoadingState variant="section" label={t('storageAttachments.loading')} />
 	{:else if attachmentError}<Alert>{attachmentError}</Alert>
 	{:else if attachments.length === 0}<p class="text-sm text-ink-2">{t('storageAttachments.empty')}</p>
 	{:else}
@@ -402,10 +403,10 @@
 						{#if $canWrite && att.managed && att.association_state === 'tracked'}
 							<div class="flex flex-wrap gap-2">
 								{#if att.share_proto === 'CEPHFS'}<Button variant="secondary" size="xs" onclick={() => handleConnectionInfo(att.file_storage_id)} disabled={busy || !targetIsCurrent} ariaBusy={retrieving === att.file_storage_id}>
-									{#if retrieving === att.file_storage_id}<ActivityIndicator size="xs" label={t('storageAttachments.connectionLoading')} />{:else}{t('storageAttachments.connectionInfo')}{/if}
+									{#if retrieving === att.file_storage_id}<LoadingState variant="control" label={t('storageAttachments.connectionLoading')} />{:else}{t('storageAttachments.connectionInfo')}{/if}
 								</Button>{/if}
 								<Button variant="danger-outline" size="xs" onclick={() => handleRevoke(att.file_storage_id)} disabled={busy || !targetIsCurrent} ariaBusy={revoking === att.file_storage_id}>
-									{#if revoking === att.file_storage_id}<ActivityIndicator size="xs" label={t('storageAttachments.revoking')} />{:else}{t('storageAttachments.revoke')}{/if}
+									{#if revoking === att.file_storage_id}<LoadingState variant="control" label={t('storageAttachments.revoking')} />{:else}{t('storageAttachments.revoke')}{/if}
 								</Button>
 							</div>
 						{/if}

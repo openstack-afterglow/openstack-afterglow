@@ -15,8 +15,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -1092,7 +1091,7 @@
 	<div data-tour="waygate-list">
 	<div data-tour={!loading && !error ? 'waygate-ready' : undefined}>
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if servers.length === 0}
 		<div class="text-center py-20 text-[var(--color-ink-3)]">
 			<div class="text-5xl mb-4">{t('project.empty.icon')}</div>
@@ -1279,7 +1278,7 @@
 			{/if}
 
 			{#if clientsLoading && clients.length === 0}
-				<LoadingSkeleton variant="table" rows={3} />
+				<LoadingState variant="surface" />
 			{:else if clients.length === 0}
 				<div class="text-center py-10 text-[var(--color-ink-3)] bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl">
 					<div class="text-sm">{t('project.empty.clients')}</div>
@@ -1327,9 +1326,9 @@
 								</div>
 								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={t('project.client.actions', { name: client.name })}>
 									{#if canAccessConfig(client)}
-									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} ariaBusy={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
+									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} ariaBusy={downloadingClientId === client.id} variant="ghost" size={downloadingClientId === client.id ? 'sm' : 'icon'} class={downloadingClientId === client.id ? 'min-h-11 md:min-h-8' : '!size-11 md:!size-8'} ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
 										{#if downloadingClientId === client.id}
-											<ActivityIndicator variant="download" size="md" />
+											<LoadingState variant="control"  label={t('project.client.downloading')} />
 										{:else}
 											<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg>
 										{/if}
@@ -1382,7 +1381,7 @@
 			{/if}
 
 			{#if attachmentsLoading && attachments.length === 0}
-				<LoadingSkeleton variant="table" rows={2} />
+				<LoadingState variant="surface" />
 			{:else if attachments.length === 0}
 				<div class="text-center py-8 text-[var(--color-ink-3)] bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl text-sm">
 					{t('project.empty.networks')}
@@ -1514,7 +1513,7 @@
 			<button onclick={closeQr} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] text-sm">{t('project.actions.closeSymbol')}</button>
 		</div>
 		{#if qrLoading}
-			<div class="flex justify-center py-16"><ActivityIndicator label={t('project.qr.loading')} /></div>
+			<LoadingState variant="surface" label={t('project.qr.loading')}  />
 		{:else if qrError}
 			<Alert tone="danger">{qrError}</Alert>
 		{:else if qrDataUrl}
@@ -1583,7 +1582,7 @@
 			variant="primary"
 			disabled={!can.route || attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
 			ariaBusy={attaching}
-		>{attaching ? t('project.actions.processing') : t('project.actions.attach')}</Button>
+		>{#if attaching}<LoadingState variant="control" label={t('project.actions.processing')} />{:else}{t('project.actions.attach')}{/if}</Button>
 	{/snippet}
 </FormModal>
 

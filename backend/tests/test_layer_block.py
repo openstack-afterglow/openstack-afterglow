@@ -67,6 +67,16 @@ def block_provider():
     source = entry["block_source"]
     state = SimpleNamespace(
         project_id="caller",
+        flavor={
+            "id": "flavor",
+            "name": "cpu-small",
+            "vcpus": 2,
+            "ram": 4096,
+            "disk": 0,
+            "extra_specs": {"hw:cpu_policy": "shared"},
+        },
+        flavor_specs_response=None,
+        flavor_specs_status=200,
         image={
             "id": source["image_id"],
             "owner": "service",
@@ -131,6 +141,17 @@ def block_provider():
                             "links": [{"rel": "self", "href": base + path + "/"}],
                         }
                     }
+                )
+            elif path.endswith("/flavors/flavor"):
+                self.send({"flavor": state.flavor})
+            elif path.endswith("/flavors/detail"):
+                self.send({"flavors": [state.flavor]})
+            elif path.endswith("/flavors/flavor/os-extra_specs"):
+                self.send(
+                    {"extra_specs": state.flavor["extra_specs"]}
+                    if state.flavor_specs_response is None
+                    else state.flavor_specs_response,
+                    state.flavor_specs_status,
                 )
             elif "/os-quota-sets/" in path:
                 self.send({"quota_set": state.quotas})

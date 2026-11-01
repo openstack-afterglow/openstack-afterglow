@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Listener, Pool } from '$lib/types/loadbalancer';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
@@ -51,7 +51,7 @@
 				{/each}
 			</select>
 			<input bind:value={listenerForm.protocol_port} type="number" min="1" max="65535" placeholder={t('lb.form.port')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
-			<button onclick={handleAdd} disabled={saving} aria-busy={creatingListener} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingListener}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingListener ? tc('state.processing') : t('lb.actions.create')}</button>
+			<button onclick={handleAdd} disabled={saving} aria-busy={creatingListener} class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingListener}<LoadingState variant="control" label="" />{/if}{creatingListener ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddListener = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -66,7 +66,7 @@
 					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{l.name || l.id.slice(0, 10)}</strong><StatusChip status={l.status} /></div>
 					<p class="font-mono text-xs text-ink-2">{l.protocol}:{l.protocol_port}</p>
 					{#snippet details()}<p class="font-mono break-all">ID: {l.id}</p>{/snippet}
-					{#snippet actions()}<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${l.id}`, () => onDelete(l.id))} disabled={saving} ariaBusy={deletingListener}>{#if deletingListener}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingListener ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>{/snippet}
+					{#snippet actions()}<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${l.id}`, () => onDelete(l.id))} disabled={saving} ariaBusy={deletingListener}>{#if deletingListener}<LoadingState variant="control" label="" />{/if}{deletingListener ? t('network.actions.deleting') : t('lb.actions.delete')}</Button>{/snippet}
 				</CompactResourceCard>
 			{/each}
 		</div>

@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Pill from '$lib/components/ui/Pill.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import type { User } from '$lib/types/common';
-  import { auth } from '$lib/stores/auth';
+  import { get } from 'svelte/store';
+  import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+  import { sessionScopeKey } from '$lib/utils/authSession';
   import { api, ApiError } from '$lib/api/client';
   import { dialogFocus } from '$lib/utils/dialogFocus';
   import { t } from '$lib/i18n/ns/admin-identity';
@@ -28,6 +30,7 @@
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
+  const ownerKey = $derived(sessionScopeKey($auth));
 
   interface AdminSession {
     jti: string;
@@ -51,8 +54,9 @@
   interface UserScope {
     userId: string;
     domainId: string;
-    token: string | undefined;
+    ownerKey: string;
     projectId: string | undefined;
+    ownerEpoch: number;
   }
 
   const scopeLabels = {
@@ -76,7 +80,26 @@
   let permissions = $state<UserPermission[]>([]);
   let permissionsStatus = $state<'loading' | 'ready' | 'error'>('loading');
   let permissionsError = $state('');
-  let scope: UserScope | null = null;
+  let scope = $state<UserScope | null>(null);
+  let ownerEpoch = $state(0);
+  let resettingPassword = $state(false);
+  let resetAttempted = $state(false);
+  let showResetConfirm = $state(false);
+  let resetMessage = $state('');
+  let resetSucceeded = $state(false);
+  const writeBusy = $derived(updating || revoking || resettingPassword);
+  const resetAvailable = $derived(!!scope && !!user?.email && !!user?.enabled && !writeBusy && !resetAttempted && !!token && $authReady && !$logoutInProgress && !$projectSwitching);
+
+  onMount(() => {
+    const snapshot = () => JSON.stringify([sessionScopeKey(get(auth)), !!get(auth).token, get(logoutInProgress), get(projectSwitching)]);
+    let previous = snapshot();
+    const changed = () => {
+      const next = snapshot();
+      if (next !== previous) { previous = next; ownerEpoch++; }
+    };
+    const unsubscribe = [auth.subscribe(changed), authReady.subscribe(changed), logoutInProgress.subscribe(changed), projectSwitching.subscribe(changed)];
+    return () => { ownerEpoch++; scope = null; unsubscribe.forEach(fn => fn()); };
+  });
 
   function formatSessionTime(unixTs: number): string {
     if (!unixTs) return '—';
@@ -96,7 +119,8 @@
 
   function current(requestScope: UserScope): boolean {
     return scope === requestScope && user?.id === requestScope.userId
-      && domainId === requestScope.domainId && token === requestScope.token && projectId === requestScope.projectId;
+      && domainId === requestScope.domainId && sessionScopeKey(get(auth)) === requestScope.ownerKey && projectId === requestScope.projectId
+      && ownerEpoch === requestScope.ownerEpoch && get(authReady) && !get(logoutInProgress) && !get(projectSwitching);
   }
 
   async function loadUserSessions(requestScope: UserScope) {
@@ -107,7 +131,7 @@
     try {
       const data = await api.get<{ sessions: AdminSession[]; count: number }>(
         domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/sessions`, domainId),
-        requestScope.token, requestScope.projectId,
+        get(auth).token ?? undefined, requestScope.projectId,
       );
       if (current(requestScope)) sessions = data.sessions;
     } catch (e) {
@@ -125,7 +149,7 @@
     try {
       const data = await api.get<{ items: UserPermission[]; count: number }>(
         domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/permissions`, domainId),
-        requestScope.token, requestScope.projectId,
+        get(auth).token ?? undefined, requestScope.projectId,
       );
       if (!current(requestScope)) return;
       permissions = data.items;
@@ -143,11 +167,12 @@
     const selectedName = user?.name ?? '';
     const selectedEmail = user?.email ?? '';
     const selectedEnabled = user?.enabled ?? true;
-    const accessToken = token;
+    const callerOwner = ownerKey;
     const callerProject = projectId;
     const selectedDomain = domainId;
+    const callerEpoch = ownerEpoch;
     untrack(() => {
-      scope = selectedId && user?.domain_id === selectedDomain ? { userId: selectedId, domainId: selectedDomain, token: accessToken, projectId: callerProject } : null;
+      scope = selectedId && user?.domain_id === selectedDomain ? { userId: selectedId, domainId: selectedDomain, ownerKey: callerOwner, projectId: callerProject, ownerEpoch: callerEpoch } : null;
       name = selectedName;
       email = selectedEmail;
       enabled = selectedEnabled;
@@ -157,6 +182,11 @@
       showRevokeConfirm = false;
       updating = false;
       revoking = false;
+      resettingPassword = false;
+      resetAttempted = false;
+      showResetConfirm = false;
+      resetMessage = '';
+      resetSucceeded = false;
       sessions = [];
       sessionsError = '';
       loadingSessions = false;
@@ -172,7 +202,7 @@
   });
 
   async function submit() {
-    if (!scope || !current(scope) || updating) return;
+    if (!scope || !current(scope) || writeBusy || resetAttempted) return;
     const requestScope = scope;
     updating = true;
     error = '';
@@ -187,7 +217,7 @@
   }
 
   async function revokeAllSessions() {
-    if (!scope || !current(scope) || revoking) return;
+    if (!scope || !current(scope) || writeBusy || resetAttempted) return;
     const requestScope = scope;
     showRevokeConfirm = false;
     revoking = true;
@@ -195,7 +225,7 @@
     revokeSuccess = '';
     try {
       const res = await api.post<{ revoked_count: number }>(
-        domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/revoke-sessions`, domainId), {}, requestScope.token, requestScope.projectId,
+        domainPath(`/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/revoke-sessions`, domainId), {}, get(auth).token ?? undefined, requestScope.projectId,
       );
       if (!current(requestScope)) return;
       revokeSuccess = t('userEdit.sessionsRevoked', { count: res.revoked_count });
@@ -205,6 +235,33 @@
       if (current(requestScope)) revoking = false;
     }
   }
+
+  async function resetPasswordAndEmail() {
+    if (!scope || !current(scope) || !resetAvailable || !showResetConfirm) return;
+    const requestScope = scope;
+    resettingPassword = true; resetAttempted = true; resetMessage = ''; resetSucceeded = false; password = '';
+    try {
+      const result = await api.post<{ status: string; delivered: boolean }>(
+        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/password/reset-email`, {}, get(auth).token ?? undefined, requestScope.projectId,
+        { cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false },
+      );
+      if (!current(requestScope)) return;
+      resetSucceeded = result?.status === 'changed' && result?.delivered === true;
+      resetMessage = t(resetSucceeded ? 'userEdit.resetEmailSuccess' : 'userEdit.resetEmailUnknown');
+      sessions = [];
+      void loadUserSessions(requestScope);
+    } catch (e) {
+      if (!current(requestScope)) return;
+      const code = e instanceof ApiError ? e.code : undefined;
+      resetMessage = t(code === 'admin_password_reset_email_failed' ? 'userEdit.resetEmailDeliveryFailed'
+        : code === 'admin_password_reset_sessions_failed' ? 'userEdit.resetEmailSessionsFailed'
+        : code === 'admin_password_reset_audit_failed' ? 'userEdit.resetEmailAuditFailed'
+        : code === 'admin_password_reset_outcome_unknown' || !(e instanceof ApiError) || e.status >= 500 ? 'userEdit.resetEmailUnknown'
+        : 'userEdit.resetEmailRejected');
+    } finally { if (current(requestScope)) resettingPassword = false; }
+  }
+
+  function close() { if (!resettingPassword) user = null; }
 </script>
 
 {#snippet passwordHint(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
@@ -213,9 +270,9 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    use:dialogFocus={{ enabled: true, onEscape: () => (user = null) }}
+    use:dialogFocus={{ enabled: true, onEscape: close }}
     class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
-    onclick={(event) => { if (event.target === event.currentTarget) (() => { user = null; })(); }}
+    onclick={(event) => { if (event.target === event.currentTarget) close(); }}
     role="dialog" aria-modal="true" aria-labelledby="admin-user-edit-title"
     tabindex="-1"
   >
@@ -223,7 +280,7 @@
       <h2 id="admin-user-edit-title" class="text-lg font-semibold text-ink-0 mb-5">{t('userEdit.title')}</h2>
       {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
       {#if revokeSuccess}<div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{revokeSuccess}</div>{/if}
-      <div class="space-y-4">
+      <fieldset disabled={writeBusy || resetAttempted} class="space-y-4 min-w-0">
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-132">{t('userEdit.name')}</label><input id="field-adminusereditmodal-132" bind:value={name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-133">{t('userEdit.email')}</label><input id="field-adminusereditmodal-133" bind:value={email} type="email" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-134"><RichText segments={t.rich('userEdit.passwordLabel')} tags={{ hint: passwordHint }} /></label><input id="field-adminusereditmodal-134" bind:value={password} type="password" placeholder={t('userEdit.passwordPlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
@@ -234,14 +291,34 @@
           <span class="text-sm text-ink-2">{enabled ? t('userEdit.enabled') : t('userEdit.disabled')}</span>
         </div>
         <div class="text-xs text-ink-2 [overflow-wrap:anywhere]">{t('userEdit.userId', { id: user.id })}</div>
-      </div>
+      </fieldset>
+
+      <section class="mt-5 pt-4 border-t border-line space-y-3" aria-labelledby="admin-user-reset-title" aria-busy={resettingPassword}>
+        <h3 id="admin-user-reset-title" class="text-sm font-medium text-ink-0">{t('userEdit.resetEmailTitle')}</h3>
+        <p class="text-sm text-ink-1">{t('userEdit.resetEmailHelp')}</p>
+        {#if resetMessage}<Alert tone={resetSucceeded ? 'success' : 'danger'}>{resetMessage}</Alert>{/if}
+        {#if showResetConfirm && !resetAttempted}
+          <div class="space-y-3">
+            <p class="text-sm text-ink-0 [overflow-wrap:anywhere]">{t('userEdit.resetEmailTarget', { name: user.name, id: user.id, email: user.email ?? '—' })}</p>
+            <Alert tone="warning">{t('userEdit.resetEmailWarning')}</Alert>
+            <div class="flex flex-wrap gap-2">
+              <Button variant="danger" onclick={resetPasswordAndEmail} disabled={!resetAvailable}>{t('userEdit.resetEmailTitle')}</Button>
+              <Button variant="secondary" onclick={() => { showResetConfirm = false; }}>{t('userEdit.cancel')}</Button>
+            </div>
+          </div>
+        {:else if !resetAttempted}
+          <Button variant="danger-outline" class="w-full whitespace-normal" onclick={() => { showResetConfirm = true; }} disabled={!resetAvailable}>{t('userEdit.resetEmailTitle')}</Button>
+          {#if !user.email || !user.enabled}<p class="text-sm text-ink-2">{t('userEdit.resetEmailUnavailable')}</p>{/if}
+        {/if}
+        {#if resettingPassword}<LoadingState variant="inline" label={t('userEdit.resetEmailSending')} />{/if}
+      </section>
 
       <div data-testid="admin-user-access-grid" class="mt-5 pt-4 border-t border-line grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section aria-labelledby="admin-user-permissions-title" aria-busy={permissionsStatus === 'loading'} class="min-w-0">
           <h3 id="admin-user-permissions-title" class="text-sm font-medium text-ink-0 mb-2">{t('userEdit.permissionsTitle')}</h3>
           <p class="text-xs text-ink-2 mb-3">{t('userEdit.permissionsHelp')}</p>
           {#if permissionsStatus === 'loading'}
-            <ActivityIndicator size="xs" label={t('userEdit.permissionsLoading')} />
+            <LoadingState variant="inline" label={t('userEdit.permissionsLoading')} />
           {:else if permissionsStatus === 'error'}
             <Alert>{permissionsError}</Alert>
             <Button variant="secondary" size="sm" class="mt-2" onclick={() => { if (scope) void loadUserPermissions(scope); }}>{t('userEdit.retryPermissions')}</Button>
@@ -273,7 +350,7 @@
             {/if}
           </div>
           {#if loadingSessions}
-            <ActivityIndicator size="xs" label={t('userEdit.loading')} />
+            <LoadingState variant="inline" label={t('userEdit.loading')} />
           {:else if sessionsError}
             <Alert>{sessionsError}</Alert>
             <Button variant="secondary" size="sm" class="mt-2" onclick={() => { if (scope) void loadUserSessions(scope); }}>{t('userEdit.retrySessions')}</Button>
@@ -336,7 +413,7 @@
             <div class="flex gap-2">
               <button
                 onclick={revokeAllSessions}
-                disabled={revoking}
+                disabled={writeBusy || resetAttempted}
                 class="px-3 py-1.5 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 disabled:opacity-50 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors"
               >{revoking ? t('userEdit.revoking') : t('userEdit.confirm')}</button>
               <button
@@ -348,15 +425,15 @@
         {:else}
           <button aria-busy={revoking}
             onclick={() => { showRevokeConfirm = true; }}
-            disabled={revoking}
+            disabled={writeBusy || resetAttempted}
             class="w-full px-3 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 border border-[var(--color-state-danger)]/30 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors disabled:opacity-50"
-          >{#if revoking}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('userEdit.revoking')}</span>{:else}{t('userEdit.revokeAll')}{/if}</button>
+          >{#if revoking}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('userEdit.revoking')}</span>{:else}{t('userEdit.revokeAll')}{/if}</button>
         {/if}
       </div>
 
       <div class="flex justify-end gap-3 mt-4">
-        <button onclick={() => { user = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('userEdit.cancel')}</button>
-        <button aria-busy={updating} onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('userEdit.updating')}</span>{:else}{t('userEdit.update')}{/if}</button>
+        <button onclick={close} disabled={resettingPassword} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{t('userEdit.cancel')}</button>
+        <button aria-busy={updating} onclick={submit} disabled={writeBusy || resetAttempted} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('userEdit.updating')}</span>{:else}{t('userEdit.update')}{/if}</button>
       </div>
     </div>
   </div>

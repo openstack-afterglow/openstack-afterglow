@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy } from 'svelte';
 	import { Alert, Button, Field, FormModal, TextInput } from '$lib/components/ui';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
@@ -31,7 +32,7 @@
 	{#snippet actions()}
 		<Button onclick={s.closeRename} variant="secondary" disabled={s.renameLoading}>{t('rename.cancel')}</Button>
 		<Button onclick={s.submitRename} disabled={s.renameLoading || !s.canRename || !s.renameDraft.trim()} ariaBusy={s.renameLoading}>
-			{s.renameLoading ? t('rename.saving') : t('rename.submit')}
+			{#if s.renameLoading}<LoadingState variant="control" label="" />{/if}{s.renameLoading ? t('rename.saving') : t('rename.submit')}
 		</Button>
 	{/snippet}
 </FormModal>

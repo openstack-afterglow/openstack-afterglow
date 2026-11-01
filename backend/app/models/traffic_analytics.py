@@ -124,6 +124,22 @@ class TrafficCountry(TrafficMetrics):
     country: str
 
 
+class TrafficNetwork(TrafficMetrics):
+    network: str
+    kind: Literal[
+        "private",
+        "shared",
+        "loopback",
+        "link_local",
+        "documentation",
+        "benchmark",
+        "multicast",
+        "reserved",
+        "unspecified",
+    ]
+    basis: Literal["resolved_client", "socket_peer"]
+
+
 class TrafficRoute(TrafficMetrics):
     route: str
     origins: OriginCounts
@@ -164,5 +180,6 @@ class TrafficSnapshot(BaseModel):
     coverage: TrafficCoverage
     totals: TrafficMetrics | None
     countries: list[TrafficCountry]
+    networks: list[TrafficNetwork]
     routes: list[TrafficRoute]
     series: list[TrafficPoint]

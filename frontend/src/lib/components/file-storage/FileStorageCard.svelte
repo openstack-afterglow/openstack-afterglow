@@ -5,7 +5,7 @@
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { ResponsiveTable, CompactResourceCard, Button } from '$lib/components/ui';
 
@@ -40,7 +40,7 @@
 			{/snippet}
 			{#snippet actions()}
 				<Button variant="secondary" size="sm" onclick={() => onOpenDetail(fs.id)}>{t('storageCard.details')}</Button>
-				<Button variant="danger-outline" size="sm" onclick={() => onDelete(fs.id, fs.name)} disabled={deleting === fs.id}>{#if deleting === fs.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</Button>
+				<Button variant="danger-outline" size="sm" onclick={() => onDelete(fs.id, fs.name)} disabled={deleting === fs.id}>{#if deleting === fs.id}<LoadingState variant="control" label="" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</Button>
 			{/snippet}
 		</CompactResourceCard>
 	{/snippet}
@@ -99,7 +99,7 @@
 			onclick={(e) => { e.stopPropagation(); onDelete(fs.id, fs.name); }}
 			disabled={deleting === fs.id}
 			class="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 text-red-400 hover:text-red-300 disabled:text-ink-3 disabled:border-line-2 transition-colors"
-		>{#if deleting === fs.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</button>
+		>{#if deleting === fs.id}<LoadingState variant="control" label="" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</button>
 	</div>
 </article>
 </ResponsiveTable>

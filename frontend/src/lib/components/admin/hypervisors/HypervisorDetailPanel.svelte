@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { formatNumber, formatStorage } from '$lib/utils/format';
 	import type { GpuDevice } from '$lib/types/gpu';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -57,6 +57,7 @@
 		flavor: string;
 		flavor_id?: string | null;
 		flavor_name?: string | null;
+		flavor_display_name?: string | null;
 	}
 
 	export interface HostRelocationItem {
@@ -150,21 +151,21 @@
 	<dl class="space-y-1 break-all text-xs text-ink-2">
 		<div><dt class="inline">{t('hypervisors.detail.domain')}: </dt><dd class="inline">{server.domain_name || server.domain_id || t('hypervisors.detail.unknownDomain')}{#if server.domain_name && server.domain_id} <span class="font-mono">({server.domain_id})</span>{/if}</dd></div>
 		<div><dt class="inline">{t('hypervisors.detail.project')}: </dt><dd class="inline">{server.project_name || server.project_id || t('hypervisors.detail.unknownOwner')}{#if server.project_name && server.project_id} <span class="font-mono">({server.project_id})</span>{/if}</dd></div>
-		<div><dt class="inline">{t('hypervisors.detail.flavor')}: </dt><dd class="inline">{server.flavor_name || server.flavor_id || server.flavor || t('hypervisors.detail.unavailable')}{#if server.flavor_name && server.flavor_id} <span class="font-mono">({server.flavor_id})</span>{/if}</dd></div>
+		<div><dt class="inline">{t('hypervisors.detail.flavor')}: </dt><dd class="inline">{server.flavor_display_name ?? (server.flavor_name || server.flavor_id || server.flavor || t('hypervisors.detail.unavailable'))}{#if server.flavor_name && server.flavor_id} <span class="font-mono">({server.flavor_id})</span>{/if}</dd></div>
 	</dl>
 	{#if server.owner_status && server.owner_status !== 'known'}
 		<p class="text-xs text-ink-2">{t(server.owner_status === 'deleted_project' ? 'hypervisors.detail.deletedProject' : server.owner_status === 'deleted_domain' ? 'hypervisors.detail.deletedDomain' : 'hypervisors.detail.unknownOwner')}</p>
 	{/if}
 {/snippet}
 
-<div class="w-full min-w-0 bg-surface-canvas flex flex-col">
+<div class="w-full min-w-0 min-h-full bg-surface-canvas flex flex-col">
 	<div class="flex items-center justify-between px-4 py-3 border-b border-line">
 		<h2 class="text-sm font-semibold text-ink-0 truncate">{detail?.hypervisor_hostname ?? (loading ? t('hypervisors.loading') : t('hypervisors.detail.title'))}</h2>
 	</div>
 	{#if detailError}<div class="p-4"><Alert tone="danger">{detailError} {t('hypervisors.detail.retryHelp')}</Alert></div>{/if}
 
 	{#if loading}
-		<div class="p-4"><LoadingSkeleton variant="table" rows={4} /></div>
+		<LoadingState variant="surface" label={t('hypervisors.loading')} />
 	{:else if detail}
 		<div class="min-w-0 p-4 space-y-4">
 			<!-- 기본 정보 -->
@@ -266,7 +267,7 @@
 							<label class="flex gap-2 items-start"><input type="checkbox" bind:checked={fenced} disabled={pending} /> {t('hypervisors.operations.fencedConfirm')}</label>
 						{/if}
 						<div class="flex gap-2">
-							<Button variant={intent === 'evacuate' ? 'danger' : 'accent'} size="sm" disabled={pending || (intent === 'disable' && !reason.trim()) || (intent === 'evacuate' && !fenced)} onclick={submitIntent}>{t(pending ? 'hypervisors.operations.requesting' : intent === 'enable' ? 'hypervisors.operations.confirmEnable' : intent === 'disable' ? 'hypervisors.operations.confirmDisable' : intent === 'migrate' ? 'hypervisors.operations.requestMigrate' : 'hypervisors.operations.requestEvacuate')}</Button>
+							<Button variant={intent === 'evacuate' ? 'danger' : 'accent'} size="sm" disabled={pending || (intent === 'disable' && !reason.trim()) || (intent === 'evacuate' && !fenced)} onclick={submitIntent}>{#if pending}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{t(pending ? 'hypervisors.operations.requesting' : intent === 'enable' ? 'hypervisors.operations.confirmEnable' : intent === 'disable' ? 'hypervisors.operations.confirmDisable' : intent === 'migrate' ? 'hypervisors.operations.requestMigrate' : 'hypervisors.operations.requestEvacuate')}</Button>
 							<Button variant="ghost" size="sm" disabled={pending} onclick={() => choose(null)}>{t('hypervisors.cancel')}</Button>
 						</div>
 					</div>

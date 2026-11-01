@@ -224,7 +224,8 @@ async def test_failed_mutation_is_searchable_by_actor_and_failure():
     assert resp.headers["X-Request-Id"] == mock_rec.call_args.kwargs["request_id"]
     assert mock_rec.call_args.kwargs["status"] == "failed"
     assert mock_rec.call_args.kwargs["http_status"] == 409
-    assert mock_rec.call_args.kwargs["error_message"] == "최대 시도 횟수 초과"
+    assert mock_rec.call_args.kwargs["error_message"] is None
+    assert mock_rec.call_args.kwargs["extra"]["error_code"] == "http_409"
     assert mock_rec.call_args.kwargs["project_id"] == "proj-test"
 
 
@@ -269,17 +270,20 @@ async def test_auto_log_skipped_for_get_request():
 
 
 @pytest.mark.asyncio
-async def test_auto_log_skipped_for_unregistered_path():
-    """allowlist 에 없는 경로는 자동 로그를 생성하지 않는다."""
+async def test_auto_log_records_authentication_outside_resource_allowlist():
+    """Authentication lifecycles are collected without reading credential bodies."""
     req = _make_request("POST", "/api/v1/auth/login", _DEFAULT_TOKEN_INFO)
 
     async def call_next(r):
         return JSONResponse({"token": "x"}, status_code=200)
 
-    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
+    with patch.object(_main_module, "_record_request_observations", new=AsyncMock()) as mock_batch:
         await activity_audit_middleware(req, call_next)
 
-    mock_rec.assert_not_awaited()
+    mock_batch.assert_awaited_once()
+    observations = mock_batch.call_args.args[0]
+    assert [row["status"] for row in observations] == ["started", "success"]
+    assert all(row["resource_type"] == "auth" for row in observations)
 
 
 @pytest.mark.asyncio

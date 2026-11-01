@@ -14,6 +14,7 @@ vi.mock('$lib/stores/auth', () => ({
 import { auth } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/client';
 import { t } from '$lib/i18n/ns/workspace-iam';
+import { t as tp } from '$lib/i18n/ns/compute-pools';
 import DomainIamConsole from '../DomainIamConsole.svelte';
 import IamResources from '../IamResources.svelte';
 import IamQuotas from '../IamQuotas.svelte';
@@ -32,7 +33,9 @@ const resources: IamResourceWorkspace = {
 };
 const budgets: DomainBudgets = { domain_id: 'domain-a', revision: 1, ceilings: {}, defaults: {}, enforcement_scope: 'afterglow_project_allocations', defaults_future_only: true, drift: false, allocations: {}, projects: [{ id: 'project-a', name: 'Project A', enabled: true }], operations: [], allocation_blocked: false, blocking_operation_id: null };
 const forecast: DomainForecast = { domain_id: 'domain-a', observed_at: '2026-10-26T00:00:00Z', window_days: 7, horizon_days: 30, source: 'nova_simple_tenant_usage', entries: [{ metric: 'vcpus', unit: 'vcpu', status: 'unavailable', error: 'history_unavailable', current: null, limit: null, trend: null }] };
+const pool = { domain_id: 'domain-a', state: 'unmanaged', revision: 0, enabled: false, limits: {}, project_limits: {}, usage: {}, available: {}, projects: [], policy_ready: false, control_scope: 'afterglow', gpu_profiles: [] };
 function fixture(path: string) {
+	if (path.endsWith('/compute-pool')) return pool;
 	if (path.endsWith('/context')) return { domain_id: 'domain-a', domain_name: 'Domain A', is_domain_manager: true };
 	if (path.endsWith('/users')) return { items: [] };
 	if (path.endsWith('/monitoring/forecast')) return forecast;
@@ -89,8 +92,8 @@ describe('unified current-domain monitoring', () => {
 		const view = render(component, { session, blocked: true, onDenied });
 		expect(api.get).not.toHaveBeenCalled();
 		await view.rerender({ session, blocked: false, onDenied });
-		await waitFor(() => expect(api.get).toHaveBeenCalledOnce());
-		await waitFor(() => expect((screen.getByRole('button', { name: t('reload') }) as HTMLButtonElement).disabled).toBe(false));
+		await waitFor(() => expect(api.get).toHaveBeenCalledTimes(component === IamQuotas ? 2 : 1));
+		await waitFor(() => expect(screen.getAllByRole('button', { name: t('reload') }).every(button => !(button as HTMLButtonElement).disabled)).toBe(true));
 	});
 	it('shows unavailable history explicitly without projecting missing inputs', async () => {
 		render(IamForecast, { session, onDenied: vi.fn() });
@@ -123,6 +126,40 @@ describe('unified current-domain monitoring', () => {
 		expect(document.getElementById('iam-monitoring-allocation')).toBeTruthy();
 		expect(screen.getAllByText('7 count').length).toBeGreaterThan(0);
 		expect(screen.getByRole('button', { name: t('editDefaults') })).toBeTruthy();
+	});
+	it.each(['defaults', 'project'] as const)('keeps pool-only 403 local while verified native %s remains editable and still revokes lost manager authority', async mode => {
+		let manager = true;
+		const defaults = { cores: 8, ram: 16384 };
+		api.get.mockImplementation((path: string) => {
+			if (path.endsWith('/compute-pool')) return Promise.reject(new ApiError(403, 'pool_policy_denied'));
+			if (path.endsWith('/context')) return Promise.resolve({ domain_id: 'domain-a', domain_name: 'Domain A', is_domain_manager: manager });
+			if (path.endsWith('/projects/project-a/quotas')) return Promise.resolve({ ...quota, compute: { cores: { limit: 8, in_use: 2, reserved: 1 }, ram: { limit: 16384, in_use: 2048, reserved: 1024 } } });
+			if (path.endsWith('/quotas')) return Promise.resolve({ ...budgets, defaults });
+			return Promise.resolve(fixture(path));
+		});
+		api.put.mockResolvedValue(mode === 'defaults' ? { ...budgets, defaults: { cores: 12, ram: 24576 } } : { domain_id: 'domain-a', project_id: 'project-a', operation_id: 'op-native', status: 'updated', updated: ['compute'], errors: {} });
+		render(DomainIamConsole);
+		await fireEvent.click(await screen.findByRole('button', { name: t('monitoringTitle') }));
+		await screen.findByText('pool_policy_denied');
+		if (mode === 'project') await fireEvent.click(screen.getByRole('button', { name: t('editProject') }));
+		const cores = await screen.findByLabelText(t('field.cores')) as HTMLInputElement;
+		expect(cores.value).toBe('8');
+		await nextTurn(); await tick();
+		expect(api.get.mock.calls.filter(([path]) => path.endsWith('/context'))).toHaveLength(1);
+		expect(api.get.mock.calls.filter(([path]) => path.endsWith('/compute-pool'))).toHaveLength(1);
+		expect((screen.getByRole('button', { name: t('save') }) as HTMLButtonElement).disabled).toBe(false);
+		await fireEvent.input(cores, { target: { value: '12' } });
+		await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '24576' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		const path = mode === 'defaults' ? '/api/v1/iam/quotas/defaults' : '/api/v1/iam/projects/project-a/quotas';
+		const payload = mode === 'defaults' ? { revision: 1, defaults: { cores: 12, ram: 24576 } } : { cores: 12, ram: 24576 };
+		await waitFor(() => expect(api.put).toHaveBeenCalledExactlyOnceWith(path, payload, 'token', undefined, { replayOnUnauthorized: false, beforeDispatch: expect.any(Function) }));
+		await screen.findByText(t('reloadRequired'));
+		manager = false;
+		await fireEvent(window, new Event('focus'));
+		await waitFor(() => expect(screen.queryByRole('button', { name: t('editDefaults') })).toBeNull());
+		expect(api.get.mock.calls.filter(([path]) => path.endsWith('/context'))).toHaveLength(2);
+		expect(api.put).toHaveBeenCalledOnce();
 	});
 	it('retires original monitoring and forecast payloads across real domain A→B→A transitions', async () => {
 		const oldResources = Promise.withResolvers<IamResourceWorkspace>();
@@ -177,5 +214,57 @@ describe('unified current-domain monitoring', () => {
 		render(IamForecast, { session, onDenied: vi.fn() });
 		await screen.findByText(`${t('monitoringDailyChange')}: -1 vcpu`);
 		expect(screen.queryByText(t('unlimited'))).toBeNull();
+	});
+	it.each(['active', 'paused', 'failed', 'pending'] as const)('saves native CPU/RAM defaults independently of %s pool lookup', async state => {
+		const defaults = { instances: 3, cores: 8, ram: 16384 };
+		api.get.mockImplementation((path: string) => {
+			if (!path.endsWith('/compute-pool')) return Promise.resolve({ ...budgets, defaults });
+			return state === 'failed' ? Promise.reject(new ApiError(503, 'pool lookup failed')) : state === 'pending' ? new Promise(() => {}) : Promise.resolve({ ...pool, state, enabled: state === 'active', limits: { CPU: 100, MEMORY_MB: 999999 } });
+		});
+		api.put.mockResolvedValue({ ...budgets, defaults: { ...defaults, cores: 12, ram: 24576 } });
+		render(IamQuotas, { session, onDenied: vi.fn() });
+		const cores = await screen.findByLabelText(t('field.cores')) as HTMLInputElement;
+		expect(cores.value).toBe('8');
+		expect((screen.getByLabelText(t('field.ram')) as HTMLInputElement).value).toBe('16384');
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/iam/compute-pool', 'token', undefined, { cache: 'no-store' }));
+		if (state === 'active' || state === 'paused') await screen.findByText(tp(`poolState.${state}`));
+		if (state === 'failed') await screen.findByText('pool lookup failed');
+		await fireEvent.input(cores, { target: { value: '12' } });
+		await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '24576' } });
+		await waitFor(() => expect((screen.getByRole('button', { name: t('save') }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		await waitFor(() => expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/quotas/defaults', { revision: 1, defaults: { instances: 3, cores: 12, ram: 24576 } }, 'token', undefined, { replayOnUnauthorized: false, beforeDispatch: expect.any(Function) }));
+		await screen.findByText(t('reloadRequired'));
+		expect(screen.queryByRole('button', { name: t('save') })).toBeNull();
+	});
+	it.each(['active', 'paused', 'failed', 'pending'] as const)('corrects exact native project CPU/RAM independently of %s pool lookup', async state => {
+		const native = { ...quota, compute: { ...quota.compute, cores: { limit: 4, in_use: 2, reserved: 1 }, ram: { limit: 8192, in_use: 2048, reserved: 1024 } } };
+		api.get.mockImplementation((path: string) => {
+			if (path.endsWith('/compute-pool')) return state === 'failed' ? Promise.reject(new ApiError(503, 'pool lookup failed')) : state === 'pending' ? new Promise(() => {}) : Promise.resolve({ ...pool, state, enabled: state === 'active', limits: { CPU: 100, MEMORY_MB: 999999 } });
+			return Promise.resolve(path.endsWith('/projects/project-a/quotas') ? native : budgets);
+		});
+		api.put.mockResolvedValue({ domain_id: 'domain-a', project_id: 'project-a', operation_id: 'op-native', status: 'updated', updated: ['compute'], errors: {} });
+		render(IamQuotas, { session, onDenied: vi.fn() });
+		await fireEvent.click(await screen.findByRole('button', { name: t('editProject') }));
+		const cores = await screen.findByLabelText(t('field.cores')) as HTMLInputElement;
+		expect(cores.value).toBe('4');
+		expect((screen.getByLabelText(t('field.ram')) as HTMLInputElement).value).toBe('8192');
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/iam/compute-pool', 'token', undefined, { cache: 'no-store' }));
+		if (state === 'active' || state === 'paused') await screen.findByText(tp(`poolState.${state}`));
+		if (state === 'failed') await screen.findByText('pool lookup failed');
+		await fireEvent.input(cores, { target: { value: '8' } });
+		await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '16384' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+		await waitFor(() => expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/projects/project-a/quotas', { cores: 8, ram: 16384 }, 'token', undefined, { replayOnUnauthorized: false, beforeDispatch: expect.any(Function) }));
+		await screen.findByText(t('reloadRequired'));
+		expect(screen.queryByRole('button', { name: t('save') })).toBeNull();
+	});
+	it('retains the native unknown-operation fence even if the pool lookup fails', async () => {
+		api.get.mockImplementation((path: string) => path.endsWith('/compute-pool') ? Promise.reject(new ApiError(503, 'pool lookup failed')) : Promise.resolve({ ...budgets, defaults: { cores: 8, ram: 16384 }, allocation_blocked: true, blocking_operation_id: 'unknown-native' }));
+		render(IamQuotas, { session, onDenied: vi.fn() });
+		const save = await screen.findByRole('button', { name: t('save') });
+		expect((save as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(save);
+		expect(api.put).not.toHaveBeenCalled();
 	});
 });

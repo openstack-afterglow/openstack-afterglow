@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import type { AdminDomain } from '$lib/api/domains';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
@@ -8,6 +8,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface Props {
@@ -63,6 +64,8 @@
 	}: Props = $props();
 
 	let addMemberSearchText = $state('');
+	let selectedIds = $state<string[]>([]);
+	let batchSaving = $state(false);
 	let removingMemberId = $state<string | null>(null);
 	const sourceOptions = $derived([
 		{ value: '', label: t('groupCard.sourceDefault'), description: group.domain_id ?? undefined },
@@ -77,6 +80,7 @@
 		searchDomain = userDomainId;
 		searchExpanded = expanded;
 		addMemberSearchText = '';
+		selectedIds = [];
 	});
 	const searchQuery = $derived(addMemberSearchText.trim().toLowerCase());
 	const candidateUsers = $derived.by(() => {
@@ -84,6 +88,37 @@
 		return allUsers.filter((user) => user.enabled && !existingIds.has(user.id)
 			&& [user.name, user.email, user.id, user.domain_id].some((value) => value?.toLowerCase().includes(searchQuery)));
 	});
+	const allVisibleSelected = $derived(candidateUsers.length > 0 && candidateUsers.every((user) => selectedIds.includes(user.id)));
+
+	function selectCandidate(id: string, checked: boolean) {
+		selectedIds = checked ? [...selectedIds, id] : selectedIds.filter((selected) => selected !== id);
+	}
+
+	function selectVisible(checked: boolean) {
+		const visible = new Set(candidateUsers.map((user) => user.id));
+		selectedIds = checked
+			? [...new Set([...selectedIds, ...visible])]
+			: selectedIds.filter((id) => !visible.has(id));
+	}
+
+	async function addSelected() {
+		if (batchSaving || addSaving || usersLoading || usersError) return;
+		const generation = sourceGeneration;
+		const source = userDomainId;
+		const eligible = new Set(allUsers.filter((user) => user.enabled && !members.some((member) => member.id === user.id)).map((user) => user.id));
+		const pending = selectedIds.filter((id) => eligible.has(id));
+		batchSaving = true;
+		try {
+			for (const id of pending) {
+				if (!expanded || generation !== sourceGeneration || source !== userDomainId) break;
+				const ok = await onAddMember(id);
+				if (!expanded || generation !== sourceGeneration || source !== userDomainId || !ok) break;
+				selectedIds = selectedIds.filter((selected) => selected !== id);
+			}
+		} finally {
+			batchSaving = false;
+		}
+	}
 
 	async function handleRemoveMember(userId: string) {
 		if (removingMemberId) return;
@@ -100,6 +135,7 @@
 		const source = userDomainId;
 		const ok = await onAddMember(userId);
 		if (ok && expanded && generation === sourceGeneration && source === userDomainId) {
+			selectedIds = selectedIds.filter((selected) => selected !== userId);
 			addMemberSearchText = '';
 		}
 	}
@@ -139,7 +175,7 @@
 	{#if expanded}
 		<div class="border-t border-line bg-surface-base/50 px-4 py-4">
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('state.loading')} /></div>
+				<div class="text-xs text-ink-2 py-2"><LoadingState variant="inline" label={t('state.loading')} /></div>
 			{:else if membersError}
 				<Alert tone="danger">{membersError}</Alert>
 			{:else}
@@ -151,7 +187,7 @@
 						{#each members as m (m.id)}
 							<li data-group-member-id={m.id} class="flex flex-wrap items-start justify-between gap-2 bg-surface-sunken/50 rounded px-3 py-2">
 								{@render userIdentity(m)}
-								<Button variant="danger-outline" size="xs" class="min-h-11 shrink-0 lg:min-h-0" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
+								<Button variant="danger-outline" size="xs" class="min-h-11 shrink-0 lg:min-h-0" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null || batchSaving || addSaving} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 							</li>
 						{/each}
 					</ul>
@@ -161,7 +197,7 @@
 					<div class="mb-3 min-w-0 space-y-2">
 						<Field for={`group-user-domain-${group.id}`} label={t('groupCard.sourceDomain')} help={t('groupCard.sourceHelp')}>
 							<SearchSelect id={`group-user-domain-${group.id}`} ariaLabel={t('groupCard.sourceDomain')}
-								value={userDomainId} options={sourceOptions} loading={sourceDomainsLoading} disabled={addSaving}
+								value={userDomainId} options={sourceOptions} loading={sourceDomainsLoading} disabled={addSaving || batchSaving}
 								searchPlaceholder={t('groupCard.sourceSearch')} onchange={(id) => { void onSelectUserDomain?.(id); }} />
 						</Field>
 						{#if userDomainId}<p class="break-all font-mono text-xs text-ink-2">{userDomainId}</p>{/if}
@@ -177,9 +213,9 @@
 					<Field for={`group-user-search-${group.id}`} label={t('groupCard.userSearch')}>
 						<TextInput id={`group-user-search-${group.id}`} type="search" placeholder={t('groupCard.searchPlaceholder')} bind:value={addMemberSearchText} />
 					</Field>
-					{#if addSaving}<div class="mt-2"><ActivityIndicator size="xs" label={t('groupCard.addingMember')} /></div>{/if}
+					{#if addSaving}<div class="mt-2"><LoadingState variant="inline" label={t('groupCard.addingMember')} /></div>{/if}
 					{#if usersLoading}
-						<div class="mt-2" role="status"><ActivityIndicator size="xs" label={t('groupCard.usersLoading')} /></div>
+						<div class="mt-2" role="status"><LoadingState variant="inline" label={t('groupCard.usersLoading')} /></div>
 					{:else if usersError}
 						<Alert tone="danger" class="mt-2">
 							<p>{t('groupCard.usersFailed')}</p>
@@ -188,14 +224,25 @@
 								<Button variant="secondary" size="sm" onclick={onRetryUsers}>{t('groupCard.retryUsers')}</Button>
 							{/snippet}
 						</Alert>
-					{:else if searchQuery}
+					{:else}
+						{#if candidateUsers.length > 0 || selectedIds.length > 0}
+							<div class="mt-2 flex flex-wrap items-center gap-3">
+								<label class="inline-flex min-h-11 items-center gap-2 text-sm text-ink-1">
+									<input type="checkbox" checked={allVisibleSelected} disabled={candidateUsers.length === 0 || addSaving || batchSaving} onchange={(event) => selectVisible(event.currentTarget.checked)} />
+									{tc('selection.selectAllOf', { label: t('groupCard.candidates') })}
+								</label>
+								<span class="text-xs text-ink-2" aria-live="polite">{tc('selection.count', { count: selectedIds.length })}</span>
+								<Button size="sm" ariaLabel={`${tc('selection.count', { count: selectedIds.length })} · ${t('actions.add')}`} disabled={selectedIds.length === 0 || addSaving || batchSaving} ariaBusy={batchSaving} onclick={addSelected}>{tc('selection.count', { count: selectedIds.length })} · {t('actions.add')}</Button>
+							</div>
+						{/if}
 						{#if candidateUsers.length > 0}
 							<div class="mt-2 max-h-72 overflow-y-auto rounded-lg border border-line" role="region" aria-label={t('groupCard.candidates')}>
 								<ul>
 									{#each candidateUsers as user (user.id)}
-										<li data-group-candidate-id={user.id} class="flex flex-wrap items-start justify-between gap-2 border-b border-line px-3 py-2 last:border-0">
+										<li data-group-candidate-id={user.id} class="flex flex-wrap items-start gap-2 border-b border-line px-3 py-2 last:border-0">
+											<input type="checkbox" class="mt-1" aria-label={`${user.name || '-'} · ${user.id}`} checked={selectedIds.includes(user.id)} disabled={addSaving || batchSaving} onchange={(event) => selectCandidate(user.id, event.currentTarget.checked)} />
 											{@render userIdentity(user)}
-											<Button size="sm" onclick={() => handleAddMember(user.id)} disabled={addSaving} ariaBusy={addSaving} class="min-h-11 shrink-0 lg:min-h-0">{t('actions.add')}</Button>
+											<Button size="sm" onclick={() => handleAddMember(user.id)} disabled={addSaving || batchSaving} ariaBusy={addSaving} class="min-h-11 shrink-0 lg:min-h-0">{t('actions.add')}</Button>
 										</li>
 									{/each}
 								</ul>

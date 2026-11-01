@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import QuotaBar from '$lib/components/ui/QuotaBar.svelte';
 	import SummaryStatCard from './SummaryStatCard.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { ChartSpec } from '$lib/components/charts/types';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	export type TelemetryStatus = 'available' | 'partial' | 'not_configured' | 'forbidden' | 'unavailable' | 'not_collected';
 	export interface NativeMeter {
@@ -26,6 +27,7 @@
 	}
 
 	export interface MonitoringSummary {
+		unavailable_sections?: string[];
 		telemetry?: SystemTelemetry;
 		compute: {
 			hypervisors_total: number;
@@ -35,14 +37,14 @@
 			memory_used_mb: number;
 			memory_total_mb: number;
 			running_vms: number;
-			gpu_instances: number;
-			instance_stats: { total: number; active: number; shutoff: number; error: number; other: number };
+			gpu_instances: number | null;
+			instance_stats: { total: number; active: number; shutoff: number; error: number; other: number } | null;
 		};
 		storage: {
 			volume_count: number;
 			volume_by_status: Record<string, number>;
 			total_gb: number;
-			file_storage_count: number;
+			file_storage_count: number | null;
 			volume_snapshot_count?: number;
 			volume_backup_count?: number;
 			share_snapshot_count?: number;
@@ -61,7 +63,7 @@
 			load_balancer_active?: number;
 		};
 		containers: {
-			zun_count: number;
+			zun_count: number | null;
 			k3s_count: number;
 			k3s_active?: number;
 			k3s_available?: boolean;
@@ -126,11 +128,12 @@
 </script>
 
 {#if loading}
-	<LoadingSkeleton variant="table" rows={6} />
+	<LoadingState variant="surface" label={t('monitoring.loading')} />
 {:else if !summary}
 	<div class="text-red-400 text-sm">{t('monitoring.summary.loadFailed')}</div>
 {:else}
 	<div class="motion-stagger grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="admin-monitoring-summary">
+		{#if summary.unavailable_sections?.length}<Alert tone="warning" class="lg:col-span-2">{t('overview.availability.partial')} <span class="font-mono text-xs">{summary.unavailable_sections.join(', ')}</span></Alert>{/if}
 		<span class="sr-only" data-tour="admin-monitoring-summary-ready">{t('monitoring.summary.ready')}</span>
 		<section class="native-telemetry min-w-0 bg-surface-base border border-line rounded-xl p-5 lg:col-span-2" aria-labelledby="native-telemetry-title" aria-busy={refreshing}>
 			<div class="flex min-w-0 flex-wrap items-center justify-between gap-3 mb-3">
@@ -190,21 +193,21 @@
 
 			<p class="text-xs text-ink-2 mb-3">{t('monitoring.summary.allocationNotice')}</p>
 			<div class="mb-4">
-				<QuotaBar label={t('monitoring.summary.vcpuAllocation')} used={summary.compute.vcpus_used} limit={summary.compute.vcpus_total} size="md" />
+				<QuotaBar label={t('monitoring.summary.vcpuAllocation')} used={summary.compute.vcpus_used} limit={summary.compute.vcpus_total} tone="info" size="md" />
 			</div>
 			<div class="mb-4">
-				<QuotaBar label={t('monitoring.summary.ramAllocation')} used={gb(summary.compute.memory_used_mb)} limit={gb(summary.compute.memory_total_mb)} size="md" />
+				<QuotaBar label={t('monitoring.summary.ramAllocation')} used={gb(summary.compute.memory_used_mb)} limit={gb(summary.compute.memory_total_mb)} tone="info" size="md" />
 			</div>
 
 			<div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-				<SummaryStatCard value={summary.compute.instance_stats?.active ?? 0} label={t('monitoring.summary.activeStatus')} valueClass="text-green-400" size="sm" />
-				<SummaryStatCard value={summary.compute.instance_stats?.shutoff ?? 0} label={t('monitoring.summary.shutoffStatus')} valueClass="text-ink-2" size="sm" />
-				<SummaryStatCard value={summary.compute.instance_stats?.error ?? 0} label={t('monitoring.summary.errorStatus')} valueClass="text-red-400" size="sm" />
-				<SummaryStatCard value={summary.compute.gpu_instances} label={t('monitoring.summary.gpuVm')} valueClass="text-purple-400" size="sm" />
+				<SummaryStatCard value={summary.compute.instance_stats?.active ?? t('overview.availability.unknown')} label={t('monitoring.summary.activeStatus')} valueClass="text-state-success-text" size="sm" />
+				<SummaryStatCard value={summary.compute.instance_stats?.shutoff ?? t('overview.availability.unknown')} label={t('monitoring.summary.shutoffStatus')} valueClass="text-ink-2" size="sm" />
+				<SummaryStatCard value={summary.compute.instance_stats?.error ?? t('overview.availability.unknown')} label={t('monitoring.summary.errorStatus')} valueClass="text-state-danger-text" size="sm" />
+				<SummaryStatCard value={summary.compute.gpu_instances ?? t('overview.availability.unknown')} label={t('monitoring.summary.gpuVm')} valueClass="text-ink-1" size="sm" />
 			</div>
 
 			<div class="mt-3 text-xs text-ink-2 text-right">
-				{t('monitoring.summary.instanceTotal', { count: summary.compute.instance_stats?.total ?? 0 })}
+				{summary.compute.instance_stats ? t('monitoring.summary.instanceTotal', { count: summary.compute.instance_stats.total }) : t('overview.availability.unknown')}
 			</div>
 		</div>
 
@@ -236,7 +239,7 @@
 			<div class="mt-4 pt-4 border-t border-line space-y-1.5 text-xs">
 				<div class="flex items-center justify-between">
 					<span class="text-ink-2">{t('monitoring.summary.fileStorage')}</span>
-					<span class="text-ink-2">{t('monitoring.summary.count', { count: summary.storage.file_storage_count })}</span>
+					<span class="text-ink-2">{summary.storage.file_storage_count === null ? t(summary.unavailable_sections?.includes('file_storage') ? 'overview.availability.unknown' : 'overview.availability.disabled') : t('monitoring.summary.count', { count: summary.storage.file_storage_count })}</span>
 				</div>
 				<div class="flex items-center justify-between">
 					<span class="text-ink-2">{t('monitoring.summary.volumeSnapshots')}</span>
@@ -302,7 +305,7 @@
 			<h2 class="text-sm font-semibold text-ink-0 mb-4">{t('monitoring.summary.containers')}</h2>
 
 			<div class="grid grid-cols-2 gap-3">
-				<SummaryStatCard value={summary.containers.zun_count} label={t('monitoring.summary.zunContainers')} size="lg" />
+				<SummaryStatCard value={summary.containers.zun_count ?? t(summary.unavailable_sections?.includes('containers') ? 'overview.availability.unknown' : 'overview.availability.disabled')} label={t('monitoring.summary.zunContainers')} size="lg" />
 				<SummaryStatCard
 					value={summary.containers.k3s_available === false ? t('monitoring.summary.unavailable') : summary.containers.k3s_count}
 					label={t('monitoring.summary.droverClusters')}

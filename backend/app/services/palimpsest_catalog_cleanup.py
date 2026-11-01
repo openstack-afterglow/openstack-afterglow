@@ -57,6 +57,12 @@ class McpCleanupAuthority:
     project_id: str
 
 
+@dataclass(frozen=True)
+class ScheduledCleanupAuthority:
+    connection: object
+    lease: object
+
+
 def _catalog_id(server):
     from app.services.layer_consume_resources import value
 
@@ -122,6 +128,17 @@ async def lookup_catalog_consume(instance_id, server, info):
 
 
 async def _authority(info, owner):
+    if isinstance(info, ScheduledCleanupAuthority):
+        from app.services import instance_usage
+
+        if not await info.lease.current():
+            raise HTTPException(409, "Scheduled cleanup lease was lost")
+        if getattr(info.connection, "_afterglow_project_id", None) != owner:
+            raise HTTPException(403, "Scheduled cleanup project differs from catalog owner")
+        access = await instance_usage.sdk_call(info.connection.session.auth.get_access, info.connection.session)
+        if access.project_id != owner or access.project_scoped is not True or access.system_scoped is not False:
+            raise HTTPException(403, "Scheduled cleanup native project proof differs")
+        return
     if isinstance(info, McpCleanupAuthority):
         from app.api.deps import require_project_write
         from app.services.mcp_control_plane.sdk import check_mutation_dispatch
@@ -511,8 +528,31 @@ async def finish_instance_delete(conn, instance_id, server, info):
 
 
 async def cleanup_consume(conn, consume_id, info, *, delete_server=True, instance_id=None):
+    from app.services import instance_usage_cleanup
+
+    async with catalog.factory()() as receipt_session:
+        existing = await receipt_session.get(LayerConsume, consume_id, with_for_update=True)
+        if existing is not None and (existing.resource_snapshot or {}).get(instance_usage_cleanup.RECEIPT):
+            await _authority(info, existing.project_id)
+        owned = await instance_usage_cleanup.receipt_owns_cleanup(conn, existing) if existing else False
+        if owned:
+            if (existing.resource_snapshot or {})[instance_usage_cleanup.RECEIPT].get("complete"):
+                return catalog.consume_dto(existing)
+            raise HTTPException(
+                409, "Scheduled resource cleanup owns this consume; native absence reconciliation is pending"
+            )
+        if existing is not None:
+            await receipt_session.commit()
     async with _cleanup_session() as session:
         row, snapshot, redis, state, consumer, marker, sources = await _context(session, consume_id, info)
+        # Preparation can arm between the initial fast-path read and this
+        # native cleanup transaction; recheck under the actual owner lock.
+        if await instance_usage_cleanup.receipt_owns_cleanup(conn, row):
+            if (row.resource_snapshot or {})[instance_usage_cleanup.RECEIPT].get("complete"):
+                return catalog.consume_dto(row)
+            raise HTTPException(
+                409, "Scheduled resource cleanup owns this consume; native absence reconciliation is pending"
+            )
         current = await _server(conn, row, redis, state, consumer, marker, instance_id=instance_id)
         port = await _resource(conn, "port", row, redis, state, consumer, marker)
         if port is not None and getattr(port, "device_id", None) not in {"", row.server_id}:

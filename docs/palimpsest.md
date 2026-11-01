@@ -121,7 +121,12 @@ NFS의 마운트 옵션 교체가 아니라 **다른 스토리지 토폴로지**
 
 ## 4.4. Dockerfile 로 레이어 빌드
 
-Dockerfile 한 편은 Glance 이미지 전체 루트(`dockerfile-root` squashfs)에서 시작하는 레이어 체인이다. FROM만 있어도 전체 루트 artifact와 profile을 만든다. 이후 지원하는 명령 하나마다 변경분(`dockerfile` squashfs) 한 개를 봉인한다. 임시 builder 자체의 `/usr`나 부팅 후 변경된 root를 FROM의 대체물로 사용하지 않는다.
+관리자 `/admin/libraries`는 레이어 탐색을 기본으로 열며 `tab=catalog|studio|profiles|artifacts|builds|instances`로 작업을 구분한다. **빌드 생성**은 실제 active 기반 이미지, 정확한 봉인 profile/digest, 또는 기존 Dockerfile의 명시 선택에서 시작한다. 새 이미지 선택은 해당 UUID를 FROM에 넣어 기존 lint가 같은 이미지를 해석했는지 확인한다. Profile 선택은 실제 child-first leaf와 완전한 artifact 계보/digest를 확인한 뒤 digest-pinned FROM을 사용하며 legacy/불명 profile을 임의 기반으로 바꾸지 않는다. 선택 전에는 기본 FROM 오류를 표시하지 않지만 선택·편집한 문서의 실제 lint 오류는 보존한다.
+
+Studio의 `step=editor`는 검증된 in-memory source 선택 이후에만 열린다. 기반을 다시 고르면 첫 FROM만 교체/추가하고 기존 RUN·ENV·WORKDIR 본문은 유지한다. URL·파일·직접 작성·고정 GitHub 입력과 기존 빌드/VM 생성 API는 그대로다. 뒤로/앞으로·작업 탭 전환은 자동 저장·빌드·VM 생성이 아니며 레이어 검색과 과거 작업/프로필/아티팩트/실행 기록의 기존 권한·불변 ID·오류·정리 경계를 유지한다.
+
+
+Glance 이미지 기반 Dockerfile은 전체 루트(`dockerfile-root` squashfs)에서 시작하는 레이어 체인이고, 이후 지원하는 명령마다 변경분(`dockerfile` squashfs) 한 개를 봉인한다. 현재 native lint와 Studio의 plan/build 입장에는 FROM 외에 RUN·COPY·ADD·ENV·WORKDIR 같은 레이어 생성 명령이 최소 하나 필요하다. FROM-only도 정확한 기반 이미지를 해석할 수 있지만 문서 전체는 valid=false이며, source 선택 뒤 editor에서 실제 진단을 유지한 채 본문을 작성한다. FROM 해결 성공을 빌드 가능으로 바꾸지 않는다. 임시 builder 자체의 `/usr`나 부팅 후 변경된 root를 FROM의 대체물로 사용하지 않는다.
 
 | 소스 | 엔드포인트 | 빌드 컨텍스트 |
 |---|---|---|

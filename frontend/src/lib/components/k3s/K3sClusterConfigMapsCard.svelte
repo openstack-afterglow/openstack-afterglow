@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { t as commonT } from '$lib/i18n/ns/common';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -16,12 +17,18 @@
   let saving = $state(false);
   let createError = $state('');
   let loadError = $state('');
+  let loading = $state(false);
 
   $effect(() => {
     const ns = s.selectedNamespace;
-    if (!ns || !$k3sPermissions.workloads) return;
+    if (!ns || !$k3sPermissions.workloads) { loading = false; return; }
+    let current = true;
+    loading = true;
     loadError = '';
-    untrack(() => s.loadConfigMaps()).catch(() => { loadError = t('configMaps.loadFailed'); });
+    untrack(() => s.loadConfigMaps())
+      .catch(() => { if (current) loadError = t('configMaps.loadFailed'); })
+      .finally(() => { if (current) loading = false; });
+    return () => { current = false; };
   });
 
   async function handleCreate(data: Record<string, string>) {
@@ -89,9 +96,12 @@
     </div>
   {/if}
 
+  {#if loading}
+    <LoadingState variant="inline" label={commonT('state.loadingNamed', { name: 'ConfigMaps' })} />
+  {/if}
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
-  {:else if s.configMaps.length === 0}
+  {:else if s.configMaps.length === 0 && !loading}
     <p class="text-xs text-ink-2">{t('configMaps.empty')}</p>
   {:else}
     <div class="space-y-2">
@@ -110,7 +120,7 @@
                 onclick={() => handleDelete(cm.name)}
                 disabled={!$k3sPermissions.workloads || !s.selectedNamespace || s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
-              >{#if s.cmActioning === actionKey}<ActivityIndicator size="xs" label={t('configMaps.deleting')} />{:else}{t('configMaps.delete')}{/if}</button>
+              >{#if s.cmActioning === actionKey}<LoadingState variant="control" label={t('configMaps.deleting')} />{:else}{t('configMaps.delete')}{/if}</button>
             </div>
           </div>
           <K3sYamlView

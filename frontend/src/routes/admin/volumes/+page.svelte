@@ -9,14 +9,15 @@
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
-	import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
+	import { adminInventoryScope } from '$lib/stores/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
 	import type { PagedResponse, TsPoint } from '$lib/types/common';
 	import type { AdminVolume, AdminVolumeStatusSummary as VolumeStatusSummary } from '$lib/types/volume';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createIntentPrefetchScheduler } from '$lib/utils/intentPrefetch';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -41,6 +42,19 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import type { ResourceSort } from '$lib/utils/resourceSort';
+	import Tabs from '$lib/components/ui/Tabs.svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	let view = $state<'volumes' | 'capacity'>('volumes');
+	$effect(() => { view = page.url.searchParams.get('tab') === 'capacity' ? 'capacity' : 'volumes'; });
+	function changeView(next: string) {
+		view = next === 'capacity' ? 'capacity' : 'volumes';
+		const url = new URL(page.url);
+		if (next === 'capacity') url.searchParams.set('tab', 'capacity');
+		else url.searchParams.delete('tab');
+		void goto(url, { noScroll: true, keepFocus: true });
+	}
 
 	let allVolumes = $state<AdminVolume[]>([]);
 	let loading = $state(true);
@@ -51,10 +65,10 @@
 	let tsData = $state<TsPoint[]>([]);
 	let tsRange = $state('7d');
 	let tsLoading = $state(true);
+	let tsError = $state('');
 	let statusSummary = $state<VolumeStatusSummary | null>(null);
 	let statusSummaryLoading = $state(true);
 
-	let copiedProjectId = $state<string | null>(null);
 	let openActionMenu = $state<string | null>(null);
 	let selectedVolumeId = $state<string | null>(null);
 
@@ -63,6 +77,7 @@
 	let volumeType = $state('');
 	let minSize = $state('');
 	let maxSize = $state('');
+	let sort = $state<ResourceSort>('created_desc');
 
 	let editVolume = $state<AdminVolume | null>(null);
 	let deleteVolume = $state<AdminVolume | null>(null);
@@ -103,7 +118,7 @@
 		return `/api/v1/admin/volumes/status-summary${query ? `?${query}` : ''}`;
 	}
 	function listPath(marker?: string): string {
-		const params = new URLSearchParams({ limit: String(pageSize) });
+		const params = new URLSearchParams({ limit: String(pageSize), sort });
 		if (marker) params.set('marker', marker);
 		for (const [key, value] of filterParams()) params.set(key, value);
 		return `/api/v1/admin/all-volumes?${params}`;
@@ -115,12 +130,6 @@
 		nextPrefetch.intent(key, (signal) => api.prefetch(path, token, projectId, { signal }));
 	}
 
-	function copyProjectId(id: string) {
-		navigator.clipboard.writeText(id).then(() => {
-			copiedProjectId = id;
-			setTimeout(() => { copiedProjectId = null; }, 1500);
-		});
-	}
 
 	async function loadTimeseries(range: string, opts?: { background?: boolean }) {
 		const generation = ++timeseriesGeneration;
@@ -129,8 +138,9 @@
 		try {
 			const result = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/volumes?range=${range}`, token, projectId);
 			if (owns()) tsData = result;
+			if (owns()) tsError = '';
 		} catch {
-			if (owns() && !opts?.background) tsData = [];
+			if (owns()) tsError = t('volumeList.chartFailed');
 		} finally {
 			if (owns() && !opts?.background) tsLoading = false;
 		}
@@ -182,12 +192,12 @@
 		selection.clear();
 		selectedVolumeId = null;
 		openActionMenu = null;
-		copiedProjectId = null;
 		editVolume = deleteVolume = extendVolume = resetVolume = forceDeleteVolume = null;
 	}
 
 	function applyStatusFilter(status: string) {
 		statusFilter = status;
+		if (view !== 'volumes') changeView('volumes');
 		onFilterChange();
 	}
 
@@ -198,10 +208,16 @@
 	}
 
 	function drillIntoDomain(domainId: string) {
+		const url = new URL(page.url);
+		url.searchParams.set('domain_id', domainId);
+		url.searchParams.delete('project_id');
+		url.searchParams.delete('tab');
 		if (api.filter.domainId === domainId && !api.filter.projectId) {
 			statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
 			onFilterChange();
-		} else setAdminInventoryScope(domainId, '');
+		}
+		view = 'volumes';
+		void goto(url, { noScroll: true, keepFocus: true });
 	}
 
 	function invalidateSearch() {
@@ -356,39 +372,13 @@
 
 <PageShell class="bulk-selection-page">
 	<div data-tour="admin-storage-header">
-	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={t('volumeList.title')}>
+	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={statusSummaryLoading || !statusSummary ? t('volumeList.title') : t('volumeList.titleWithCount', { title: t('volumeList.title'), count: statusSummary.total })}>
 		{#snippet actions()}
 			<Button variant="outline" onclick={() => { receiveTransfer = true; }}>{volumeT('transferModal.receiveTitle')}</Button>
-			<TutorialStartButton tour="admin-storage" compactOnMobile />
-			<AutoRefreshControl
-				bind:active={ar.active}
-				bind:intervalSeconds={ar.intervalSeconds}
-				intervalOptions={ar.intervalOptions}
-				refreshing={loading || refreshing}
-				onManualRefresh={() => {
-					statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
-					resetResultBoundary(); void load(undefined, { clearSelection: true, refresh: true });
-					void loadTimeseries(tsRange);
-				}}
-			/>
-			<AdminVolumePageSizeToggle
-				value={pageSize}
-				onChange={(n) => { pageSize = n; resetResultBoundary(); void load(undefined, { clearSelection: true }); }}
-			/>
 		{/snippet}
 	</PageHeader>
 	</div>
 
-	{#if !api.scoped}
-	<div data-tour="admin-storage-timeseries">
-	<AdminVolumeTimeseries
-		data={tsData}
-		loading={tsLoading}
-		range={tsRange}
-		onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }}
-	/>
-	</div>
-	{/if}
 
 	<div data-tour="admin-storage-status">
 	<AdminVolumeStatusSummary
@@ -398,37 +388,42 @@
 		onSelect={applyStatusFilter}
 	/>
 	</div>
-	<AdminVolumeDomainSummary
-		summary={statusSummary}
-		loading={statusSummaryLoading}
-		scoped={api.scoped}
-		onDomain={drillIntoDomain}
-	/>
 
+	<Tabs id="admin-volume-tabs" value={view} items={[{ value: 'volumes', label: t('volumeList.resourceTab'), panelId: 'admin-volume-list-panel' }, { value: 'capacity', label: t('volumeList.capacityTab'), panelId: 'admin-volume-capacity-panel' }]} onchange={changeView} ariaLabel={t('volumeList.views')} />
 	<div data-tour="admin-storage-filters">
-	<AdminVolumeFilters
-		bind:statusFilter
-		bind:nameSearch
-		bind:volumeType
-		bind:minSize
-		bind:maxSize
-		statusOptions={statusOptions}
-		onChange={onFilterChange}
-		onInvalidate={invalidateSearch}
-	/>
+	{#snippet volumeFilters()}
+		<AdminVolumeFilters
+			bind:statusFilter
+			bind:nameSearch
+			bind:volumeType
+			bind:minSize
+			bind:maxSize
+			bind:sort
+			statusOptions={statusOptions}
+			onChange={onFilterChange}
+			onInvalidate={invalidateSearch}
+		/>
+	{/snippet}
+	<ResourceToolbar label={volumeT('page.toolbar')} class="mb-4" filters={volumeFilters} controlsHidden={view !== 'volumes'}>
+	{#snippet actions()}
+		<TutorialStartButton tour="admin-storage" compactOnMobile />
+		<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing} onManualRefresh={() => { void load(markerStack[markerStack.length - 1], { refresh: true }); void loadStatusSummary(); void loadTimeseries(tsRange); }} />
+	{/snippet}
+	</ResourceToolbar>
 	</div>
+	<div id="admin-volume-list-panel" role="tabpanel" aria-labelledby="admin-volume-tabs-volumes" tabindex="0" hidden={view !== 'volumes'}>
 
 	<div data-tour="admin-storage-list">
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else}
 		<div data-tour="admin-storage-ready">
+		{#if allVolumes.length === 0}<p class="py-6 text-sm text-ink-2" role="status">{t('volumeList.empty')}</p>{/if}
 			<AdminVolumeTable
 				volumes={allVolumes}
 				{selectedVolumeId}
 				{openActionMenu}
-				{copiedProjectId}
 				selectedIds={selection.ids}
 				{selectableIds}
 				selectionDisabled={bulkDeleting}
@@ -437,7 +432,6 @@
 				onToggleAll={() => selection.toggleAll(selectableIds)}
 				onActionMenuOpen={(id) => (openActionMenu = id)}
 				onActionMenuClose={() => (openActionMenu = null)}
-				onCopyProjectId={copyProjectId}
 				onEdit={(v) => (editVolume = v)}
 				onExtend={(v) => (extendVolume = v)}
 				onTransfer={(v) => (transferVolume = v)}
@@ -450,10 +444,17 @@
 						prefill: { bootSource: 'volume', bootVolumeId: v.id, bootVolumeName: v.name },
 					})}
 			/>
+		</div>
+	{/if}
+	</div>
+		<footer class="flex flex-wrap items-end justify-between gap-3" data-testid="admin-volume-footer">
+			<AdminVolumePageSizeToggle value={pageSize} onChange={(n) => { pageSize = n; resetResultBoundary(); void load(undefined, { clearSelection: true }); }} />
+			<p class="text-sm tabular-nums text-ink-2" role="status" data-testid="admin-volume-filtered-total">{t('volumeList.summary.filtered')}: {statusSummaryLoading || !statusSummary ? '—' : t('volumeList.summary.capacity', { count: statusSummary.filtered_total, size: statusSummary.filtered_gb })} · {loading || inventoryError ? '—' : t('volumeList.pageCount', { count: allVolumes.length })}</p>
 		<Pagination
+			class="!mt-0"
 			page={markerStack.length + 1}
-			hasPrev={markerStack.length > 0}
-			hasNext={!!nextMarker}
+			hasPrev={!loading && !inventoryError && markerStack.length > 0}
+			hasNext={!loading && !inventoryError && !!nextMarker}
 			onPrev={() => {
 				const prev = markerStack.slice(0, -1);
 				const marker = prev[prev.length - 1];
@@ -469,9 +470,7 @@
 			}}
 			onintent={prefetchNext}
 		/>
-		</div>
-	{/if}
-	</div>
+		</footer>
 
 	<BulkSelectionOverlay
 		count={selection.count}
@@ -480,6 +479,19 @@
 		busy={bulkDeleting}
 		onClear={() => selection.clear()}
 	/>
+	</div>
+	{#if view === 'capacity'}
+	<div id="admin-volume-capacity-panel" role="tabpanel" aria-labelledby="admin-volume-tabs-capacity" tabindex="0" class="space-y-4">
+		{#if !statusSummaryLoading && !statusSummary}<Button variant="outline" onclick={() => { void loadStatusSummary(); }}>{volumeT('page.retry')}</Button>{/if}
+		<AdminVolumeDomainSummary summary={statusSummary} loading={statusSummaryLoading} scoped={api.scoped} onDomain={drillIntoDomain} />
+		{#if !api.scoped}
+			<details class="rounded-lg border border-line bg-surface-base" data-tour="admin-storage-timeseries">
+				<summary class="cursor-pointer px-4 py-3 text-sm font-medium text-ink-0">{t('volumeList.chartTitle')}</summary>
+				<div class="px-4 pb-4"><AdminVolumeTimeseries data={tsData} loading={tsLoading} error={tsError} range={tsRange} onRetry={() => { void loadTimeseries(tsRange); }} onRangeChange={(r) => { tsRange = r; void loadTimeseries(r); }} /></div>
+			</details>
+		{/if}
+	</div>
+	{/if}
 </PageShell>
 
 {#if selectedVolumeId}

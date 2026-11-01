@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { getNetworkStatusClass } from '$lib/utils/networkStatus';
 	import type { NetworkDetail } from '$lib/types/networks';
 
@@ -35,6 +35,6 @@
 		disabled={deleting}
 		class="text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 transition-colors"
 	>
-		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('networkHeader.deleting')}</span>{:else}{t('networkHeader.delete')}{/if}
+		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('networkHeader.deleting')}</span>{:else}{t('networkHeader.delete')}{/if}
 	</button>
 </div>

@@ -6,7 +6,7 @@
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
 	import { wizardOpen } from '$lib/stores/wizard';
 	import { loadTutorialStatuses } from '$lib/tutorial/status';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { t as td } from '$lib/i18n/ns/domain-auth';
@@ -41,7 +41,7 @@
 	<!-- 로딩 중: 빈 화면 -->
 {:else if checking}
 	<div class="flex min-h-screen items-center justify-center bg-surface-canvas">
-		<ActivityIndicator label={td('adminGuard.checking')} />
+		<LoadingState variant="surface" label={td('adminGuard.checking')} />
 	</div>
 {:else if !allowed}
 	<div class="flex flex-col items-center justify-center min-h-screen bg-surface-canvas text-ink-2">

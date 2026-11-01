@@ -86,7 +86,7 @@ def test_used_disk_includes_volumes_and_images():
 
 
 def test_infinite_pool_not_counted():
-    """total_capacity_gb='infinite' 인 풀은 0으로 정규화되어 합산에 포함되지 않는다."""
+    """Unknown/infinite pool capacity must not become a trustworthy numeric total."""
     from app.api.identity.admin import _fetch_overview_disk
 
     conn = _make_conn(
@@ -114,7 +114,8 @@ def test_infinite_pool_not_counted():
         image_bytes=0,
     )
     result = _fetch_overview_disk(conn)
-    assert result["total_disk"] == 200.0
+    assert result["total_disk"] is None
+    assert result["used_disk"] == 0
 
 
 def test_no_pools_returns_zero_total():

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afterglow-keystone-first-password"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["keystone==28.1.0", "PyMySQL>=1.1", "SQLAlchemy>=2.0,<2.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+afterglow-keystone-password-schema = "afterglow_keystone_first_password.migrate:main"
+
+[tool.setuptools.package-data]
+afterglow_keystone_first_password = ["schema.sql"]

@@ -30,6 +30,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Page from '../+page.svelte';
 import { auth } from '$lib/stores/auth';
+import { t as commonT } from '$lib/i18n/ns/common';
 import type { Service } from '$lib/types/adminServices';
 
 beforeEach(() => {
@@ -82,7 +83,7 @@ describe('admin services loading graph', () => {
 		expect(mockGet.mock.calls[2][0]).toBe('/api/v1/admin/services?category=network');
 		expect(mockGet.mock.calls[2][3]).toEqual({ refresh: true });
 
-		await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(4));
 		expect(mockGet.mock.calls[3][0]).toBe('/api/v1/admin/services?category=network');
 	});

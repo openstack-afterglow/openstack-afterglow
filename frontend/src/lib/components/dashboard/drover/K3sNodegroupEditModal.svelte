@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
@@ -117,7 +117,7 @@
 				>
 					<option value="">{t('nodegroup.notSelected')}</option>
 					{#each flavors as f}
-						<option value={f.id}>{t('nodegroup.flavorOption', { name: f.name, cpus: f.vcpus, ram: Math.round(f.ram / 1024), gpu: flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : '' })}</option>
+						<option value={f.id}>{t('nodegroup.flavorOption', { name: f.display_name ? `${f.display_name} (${f.name} · ${f.id})` : f.name, cpus: f.vcpus, ram: f.ram / 1024, gpu: flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : '' })}</option>
 					{/each}
 				</select>
 			</label>
@@ -176,7 +176,7 @@
 				disabled={!$k3sPermissions.editClusters || saving}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{#if saving}<ActivityIndicator size="xs" label={t('state.saving')} />{:else}{t('actions.save')}{/if}
+				{#if saving}<LoadingState variant="control" label={t('state.saving')} />{:else}{t('actions.save')}{/if}
 			</button>
 		</div>
 	</div>

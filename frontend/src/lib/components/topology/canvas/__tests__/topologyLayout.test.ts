@@ -20,7 +20,7 @@ import {
 	zoomAt,
 } from '../topologyLayout';
 import type { TopologyData, TopologyInstance, TopologyIpAddress, TopologyNetwork, TopologyRouter } from '$lib/types/topology';
-import type { CanvasGraph, LayoutResult, Rect } from '../types';
+import type { CanvasGraph, EdgeGeometry, LayoutResult, Rect } from '../types';
 import { makeFixture, mkInst, mkLb, mkNet, OTHER, P } from './fixtures';
 
 const inside = (inner: Rect, outer: Rect) =>
@@ -33,6 +33,14 @@ const build = (data = makeFixture()) => {
 };
 
 const sortedPos = (pos: Map<string, Rect>) => [...pos.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+const routePoints = (route: EdgeGeometry) => [...route.d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+
+const cableData = (nics: number): TopologyData => ({
+	networks: [mkNet('net-cables', 'cables', '10.30.0.0/24', '10.30.0.1', { project: P })],
+	instances: [mkInst('vm-cables', 'cables', 'ACTIVE', Array.from({ length: nics }, (_, i) => ['net-cables', `10.30.0.${10 + i}`, `00:30:${i}`] as [string, string, string]))],
+	routers: [], floating_ips: [], load_balancers: [],
+});
 
 describe('autoLayout 결정론', () => {
 	it('같은 입력이면 같은 출력이고 입력 배열 순서를 바꿔도 위치가 같다', () => {
@@ -425,6 +433,110 @@ describe('computeGeometry', () => {
 		expect([...g2.geom.entries()]).toEqual([...g1.geom.entries()]);
 	});
 
+	it('switch-to-resource space uses a compact shared fanout band', () => {
+		const sparse = build(cableData(1));
+		const dense = build(cableData(5));
+		const gap = (layout: LayoutResult) => layout.pos.get('vm-cables')!.y - layout.pos.get('sw:net-cables')!.y - L.SW_H;
+		expect(gap(sparse.layout)).toBeLessThanOrEqual(104);
+		expect(gap(dense.layout) - gap(sparse.layout)).toBe(4 * 6);
+	});
+
+	it('VM upstream routes ignore other networks while a switch retains all downstream cables', () => {
+		const data = cableData(3);
+		data.networks.push(mkNet('net-other', 'other', '10.31.0.0/24', '10.31.0.1', { project: P }));
+		data.instances.push(mkInst('vm-other', 'other', 'ACTIVE', [['net-cables', '10.30.0.20', '00:30:20']]));
+		const { graph, layout } = build(data);
+		layout.pos.get('vm-cables')!.x += 300;
+		const baseline = computeGeometry(graph, layout);
+		const original = graph.edges.filter((edge) => edge.kind === 'cable' && edge.from === 'vm-cables');
+		const extra = Array.from({ length: 4 }, (_, i) => ({ ...original[0], key: `other-${i}`, nic: { ...original[0].nic!, key: `other-nic-${i}` }, netId: 'net-other', to: 'sw:net-other' }));
+		graph.edges.push(...extra);
+		const expanded = computeGeometry(graph, layout, [], baseline.slotOrder);
+		const expandedLayout = autoLayout(graph);
+		expect(expandedLayout.pos.get('vm-cables')!.y - expandedLayout.pos.get('sw:net-cables')!.y).toBe(layout.pos.get('vm-cables')!.y - layout.pos.get('sw:net-cables')!.y);
+		for (const edge of original) expect(expanded.geom.get(edge.key)).toEqual(baseline.geom.get(edge.key));
+		graph.edges = graph.edges.filter((edge) => edge.from !== 'vm-other');
+		const fewerSwitchPeers = computeGeometry(graph, layout, [], expanded.slotOrder);
+		expect(original.some((edge) => fewerSwitchPeers.geom.get(edge.key)!.d !== expanded.geom.get(edge.key)!.d)).toBe(true);
+	});
+
+	it('parallel NIC routes stay monotone without crossing for either horizontal direction', () => {
+		for (const count of [2, 3, 4, 5, 6]) for (const shift of [-400, -75, -50, 0, 400]) {
+			const { graph, layout } = build(cableData(count));
+			layout.pos.get('vm-cables')!.x += shift;
+			const geometry = computeGeometry(graph, layout);
+			const routes = graph.edges.filter((edge) => edge.kind === 'cable').map((edge) => routePoints(geometry.geom.get(edge.key)!));
+			for (const points of routes) {
+				const length = points.slice(1).reduce((sum, end, i) => sum + Math.abs(end.x - points[i].x) + Math.abs(end.y - points[i].y), 0);
+				expect(length).toBeCloseTo(Math.abs(points[0].x - points.at(-1)!.x) + Math.abs(points[0].y - points.at(-1)!.y));
+			}
+			for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
+				for (let a = 1; a < routes[i].length; a++) for (let b = 1; b < routes[j].length; b++) {
+					let p = routes[i][a - 1], q = routes[i][a], r = routes[j][b - 1], s = routes[j][b];
+					if (p.y !== q.y) [p, q, r, s] = [r, s, p, q];
+					if (p.y === q.y && r.x === s.x) expect(r.x > Math.min(p.x, q.x) && r.x < Math.max(p.x, q.x) && p.y > Math.min(r.y, s.y) && p.y < Math.max(r.y, s.y)).toBe(false);
+				}
+			}
+		}
+	});
+
+	it('shared switch and VM bends are six pixels apart, left lanes longer, above the network header', () => {
+		const { graph, layout } = build(cableData(3));
+		layout.pos.get('vm-cables')!.x += 300;
+		const first = computeGeometry(graph, layout);
+		const routes = graph.edges.filter((edge) => edge.kind === 'cable').map((edge) => first.geom.get(edge.key)!).sort((a, b) => a.b.x - b.b.x);
+		const bends = routes.map((route) => {
+			const points = routePoints(route);
+			const horizontal = points.slice(1).find((end, i) => end.y === points[i].y && end.x !== points[i].x)!;
+			expect(horizontal.y).toBeLessThan(first.zones.get('net-cables')!.y - 12 / K_MIN);
+			expect(points[0]).toEqual(route.a);
+			expect(points.at(-1)).toEqual(route.b);
+			return points.at(-2)!.y - route.b.y;
+		});
+		expect(bends[0] - bends[1]).toBe(6);
+		expect(bends[1] - bends[2]).toBe(6);
+		graph.edges.reverse();
+		const reordered = computeGeometry(graph, layout, [], first.slotOrder);
+		for (const edge of graph.edges) expect(reordered.geom.get(edge.key)).toEqual(first.geom.get(edge.key));
+	});
+
+	it('obstacle fallback retains separate six-pixel endpoint and detour lanes after manual placement', () => {
+		const data = cableData(3);
+		data.instances.push(mkInst('vm-blocker', 'blocker', 'ACTIVE', []));
+		const { graph, layout } = build(data);
+		Object.assign(layout.pos.get('sw:net-cables')!, { x: 0, y: 0 });
+		Object.assign(layout.pos.get('vm-cables')!, { x: 500, y: 320 });
+		const blocker = layout.pos.get('vm-blocker')!;
+		Object.assign(blocker, { x: 500, y: 120 });
+		const geometry = computeGeometry(graph, layout);
+		const routes = graph.edges.filter((edge) => edge.kind === 'cable').map((edge) => geometry.geom.get(edge.key)!).sort((a, b) => a.b.x - b.b.x);
+		const sourceBends: number[] = [], switchBends: number[] = [], detours: number[] = [];
+		for (const route of routes) {
+			const points = routePoints(route);
+			expect(points[0]).toEqual(route.a);
+			expect(points.at(-1)).toEqual(route.b);
+			expect(points[1].y).toBeLessThan(route.a.y);
+			expect(points.at(-2)!.y).toBeGreaterThan(route.b.y);
+			const horizontal = points.slice(1).flatMap((end, i) => end.y === points[i].y && end.x !== points[i].x ? [end.y] : []);
+			sourceBends.push(Math.max(...horizontal)); switchBends.push(Math.min(...horizontal));
+			const detour = points.slice(1).find((end, i) => end.x === points[i].x && Math.max(end.y, points[i].y) > blocker.y && Math.min(end.y, points[i].y) < blocker.y + blocker.h)!;
+			detours.push(detour.x);
+			for (let i = 1; i < points.length; i++) {
+				const a = points[i - 1], b = points[i];
+				expect(a.x === b.x || a.y === b.y).toBe(true);
+				const intersects = a.x === b.x
+					? a.x > blocker.x && a.x < blocker.x + blocker.w && Math.max(a.y, b.y) > blocker.y && Math.min(a.y, b.y) < blocker.y + blocker.h
+					: a.y > blocker.y && a.y < blocker.y + blocker.h && Math.max(a.x, b.x) > blocker.x && Math.min(a.x, b.x) < blocker.x + blocker.w;
+				expect(intersects).toBe(false);
+				if (a.y === b.y) expect(a.y).toBeLessThan(geometry.zones.get('net-cables')!.y - 12 / K_MIN);
+			}
+		}
+		for (const values of [sourceBends, switchBends, detours]) {
+			expect(Math.abs(values[0] - values[1])).toBe(6);
+			expect(Math.abs(values[1] - values[2])).toBe(6);
+		}
+	});
+
 	it('VM ingress is on top and switch egress is on the bottom, independent of horizontal separation', () => {
 		const { graph, layout } = build();
 		const { geom } = computeGeometry(graph, layout);
@@ -492,7 +604,8 @@ describe('computeGeometry', () => {
 		expect(route.a.y).toBe(layout.pos.get(edge.from)!.y);
 		expect(route.b.y).toBe(sw.y + sw.h);
 		const direct = orthogonal({ x: 50, y: 100 }, 'TOP', { x: 50, y: 300 }, 'BOTTOM', { x: 0, y: 100, w: 100, h: 200 });
-		expect(direct.d).toMatch(/L(?:-24|124) /);
+		const points = routePoints(direct);
+		expect(points.some((point) => point.x < 0 || point.x > 100)).toBe(true);
 		expect(direct.d).not.toMatch(/[CQAST]/i);
 	});
 

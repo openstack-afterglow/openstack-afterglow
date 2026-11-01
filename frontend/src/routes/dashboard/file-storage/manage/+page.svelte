@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/file-storage';
   import { untrack } from 'svelte';
@@ -9,7 +10,7 @@
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import PrebuiltLibraryGrid from '$lib/components/file-storage/manage/PrebuiltLibraryGrid.svelte';
@@ -27,12 +28,13 @@
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
 
+  let inventoryLoaded = $state(false);
   async function loadData(opts?: { refresh?: boolean }) {
-    if (fileStorages.length === 0) loading = true;
+    if (!inventoryLoaded) loading = true;
     else refreshing = true;
     await Promise.allSettled([
       api.get<FileStorage[]>('/api/v1/admin/file-storage', token, projectId, opts)
-        .then(v => { fileStorages = v; loading = false; })
+        .then(v => { fileStorages = v; inventoryLoaded = true; loading = false; })
         .catch(e => {
           error = e instanceof ApiError ? t('manage.loadFailed', { message: e.message }) : t('errors.server');
           fileStorages = [];
@@ -75,6 +77,7 @@
   $effect(() => {
     if (!$auth.projectId) return;
     fileStorages = [];
+    inventoryLoaded = false;
     untrack(() => void refresh.run(false));
   });
 
@@ -112,7 +115,7 @@
   {/if}
 
   {#if loading}
-    <LoadingSkeleton variant="list" rows={4} />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('manage.title') })} />
   {:else}
       <div class="mb-8">
         <h2 class="text-base font-semibold text-ink-0 mb-3">{t('manage.prebuiltStatus')}</h2>

@@ -18,7 +18,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ProjectMemberRolesModal from '$lib/components/account/ProjectMemberRolesModal.svelte';
 	import ProjectLifecycleSection from '$lib/components/account/ProjectLifecycleSection.svelte';
 	import IamProjectCreators from './IamProjectCreators.svelte';
@@ -115,7 +115,7 @@
 		<Field label={t('project')} for={`${uid}-project`}><SelectInput id={`${uid}-project`} bind:value={project} disabled={busy || !projects.length} onchange={() => { user = ''; void load(); }}><option value="">{t('selectProject')}</option>{#each projects as row (row.id)}<option value={row.id}>{row.name}</option>{/each}</SelectInput></Field>
 		<div class="flex items-end"><Button variant="secondary" disabled={busy || loading} onclick={() => { void (projects.length ? load() : initialize()); }}>{t('refresh')}</Button></div>
 	</div>
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={projects.length ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error && !editing}<Alert tone="danger">{error}</Alert>{/if}
 	{#if !loading && !error && !projects.length}<Alert tone="info">{t('emptyProjects')}</Alert>{/if}
 	{#if project && !selectedCurrent}<Alert tone="info">{t('switchProjectHelp')}</Alert><ProjectSelector />{/if}

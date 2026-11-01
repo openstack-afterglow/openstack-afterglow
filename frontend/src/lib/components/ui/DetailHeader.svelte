@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import StatusChip from './StatusChip.svelte';
+  import type { StatusKind } from '$lib/config/statusColors';
 
   interface Props {
     title: string;
     subtitle?: string;
     status?: string | null;
     secondaryStatus?: string | null;
+    statusKind?: StatusKind;
     meta?: Snippet;
     actions?: Snippet;
     size?: 'lg' | 'md' | 'sm';
@@ -18,20 +20,21 @@
     subtitle,
     status,
     secondaryStatus,
+    statusKind = 'resource',
     meta,
     actions,
     size = 'md',
     class: className = ''
   }: Props = $props();
 
-  const titleClass = $derived(size === 'lg' ? 'text-xl' : size === 'sm' ? 'text-sm' : 'text-lg');
+  const titleClass = $derived(size === 'lg' ? 'text-[length:var(--type-console-title)]' : size === 'sm' ? 'text-sm' : 'text-lg');
 </script>
 
 <div class="flex items-start justify-between mb-6 gap-4 {className}">
   <div class="min-w-0 flex-1">
     <div class="flex items-center gap-2 flex-wrap">
       <h2 class="{titleClass} font-bold text-ink-0 truncate">{title}</h2>
-      {#if status}<StatusChip {status} />{/if}
+      {#if status}<StatusChip {status} kind={statusKind} />{/if}
       {#if secondaryStatus}<StatusChip status={secondaryStatus} />{/if}
     </div>
     {#if subtitle}

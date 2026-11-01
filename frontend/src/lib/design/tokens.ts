@@ -26,6 +26,8 @@ export const SURFACE_CSS_VAR = {
 	raised: 'var(--color-surface-raised)',
 	sunken: 'var(--color-surface-sunken)',
 	selected: 'var(--color-surface-selected)',
+	input: 'var(--color-surface-input)',
+	inputDisabled: 'var(--color-surface-input-disabled)',
 	scrim: 'var(--color-surface-scrim)',
 	scrimSoft: 'var(--color-surface-scrim-soft)',
 } as const;
@@ -34,6 +36,20 @@ export const FONT_CSS_VAR = {
 	sans: 'var(--font-sans)',
 	display: 'var(--font-display)',
 	mono: 'var(--font-mono)',
+} as const;
+
+export const TYPE_CSS_VAR = {
+	consoleTitle: 'var(--type-console-title)',
+	body: 'var(--type-body)',
+	support: 'var(--type-support)',
+	identifier: 'var(--type-identifier)',
+} as const;
+
+export const CONTROL_CSS_VAR = {
+	height: 'var(--control-height)',
+	touchHeight: 'var(--control-touch-height)',
+	rowHeight: 'var(--table-row-height)',
+	compactRowHeight: 'var(--table-row-compact-height)',
 } as const;
 
 export const LAYOUT_CSS_VAR = {
@@ -89,17 +105,14 @@ export const MOTION_CSS_VAR = {
 	durationBase: 'var(--motion-duration-base)',
 	durationPanel: 'var(--motion-duration-panel)',
 	durationData: 'var(--motion-duration-data)',
-	durationStatusPulse: 'var(--motion-duration-status-pulse)',
 	easeStandard: 'var(--motion-ease-standard)',
 	easeOut: 'var(--motion-ease-out)',
 	easeInOut: 'var(--motion-ease-in-out)',
-	durationSpin: 'var(--motion-duration-spin)',
 	durationShimmer: 'var(--motion-duration-shimmer)',
 	durationStagger: 'var(--motion-duration-stagger)',
 	easeEmphasized: 'var(--motion-ease-emphasized)',
 	easeOvershoot: 'var(--motion-ease-overshoot)',
 	sheen: 'var(--motion-sheen)',
-	skeletonHighlight: 'var(--motion-skeleton-highlight)',
 } as const;
 
 export const MOTION_DURATION_MS = {
@@ -107,8 +120,6 @@ export const MOTION_DURATION_MS = {
 	base: 160,
 	panel: 200,
 	data: 500,
-	statusPulse: 1400,
-	spin: 800,
 	shimmer: 1600,
 	stagger: 40,
 } as const;
@@ -123,6 +134,15 @@ export const MOTION_EASING = {
 export const MOTION_STAGGER_LIMIT = 8;
 
 export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)' as const;
+
+/** Live warm Afterglow CSS colors shared by decorative character artwork; progress keeps semantic tones. */
+export const AFTERGLOW_CSS_VAR = {
+	base: 'var(--afterglow-artwork-base)',
+	warm: 'var(--afterglow-artwork-warm)',
+	light: 'var(--afterglow-artwork-light)',
+	ink: 'var(--afterglow-artwork-ink)',
+	muted: 'var(--afterglow-artwork-muted)',
+} as const;
 
 export const EDITORIAL_CSS_VAR = {
 	canvas: 'var(--gradient-editorial-canvas)',

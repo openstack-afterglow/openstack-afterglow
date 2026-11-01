@@ -20,9 +20,10 @@ describe('AdminVolumeFilters status options', () => {
 		});
 
 		expect(screen.getByRole('option', { name: '모든 상태' })).toBeTruthy();
-		expect(screen.getByRole('option', { name: 'available' })).toBeTruthy();
-		expect(screen.getByRole('option', { name: 'in-use' })).toBeTruthy();
-		expect(screen.queryByRole('option', { name: 'error' })).toBeNull();
+		const values = screen.getAllByRole('option').map(option => (option as HTMLOptionElement).value);
+		expect(values).toContain('available');
+		expect(values).toContain('in-use');
+		expect(values).not.toContain('error');
 	});
 
 	it('invalidates immediately, debounces text/type/capacity together and cancels pending work on unmount', async () => {
@@ -54,5 +55,24 @@ describe('AdminVolumeFilters status options', () => {
 		expect(onChange).toHaveBeenCalledOnce();
 		await vi.advanceTimersByTimeAsync(300);
 		expect(onChange).toHaveBeenCalledOnce();
+	});
+
+	it('defaults to newest first and immediately applies each sort while cancelling pending search work', async () => {
+		vi.useFakeTimers();
+		const onChange = vi.fn();
+		const onInvalidate = vi.fn();
+		const view = render(AdminVolumeFilters, { statusFilter: '', nameSearch: '', statusOptions: ['available'], onChange, onInvalidate });
+		const sort = view.container.querySelector<HTMLSelectElement>('#admin-volume-sort')!;
+		expect(sort.value).toBe('created_desc');
+		expect(Array.from(sort.options, option => option.value)).toEqual(['created_desc', 'created_asc', 'name_asc', 'name_desc']);
+		await fireEvent.input(screen.getByLabelText('이름 또는 ID'), { target: { value: 'pending' } });
+		for (const value of ['created_asc', 'name_asc', 'name_desc', 'created_desc']) {
+			await fireEvent.change(sort, { target: { value } });
+			expect(sort.value).toBe(value);
+		}
+		expect(onInvalidate).toHaveBeenCalledTimes(5);
+		expect(onChange).toHaveBeenCalledTimes(4);
+		await vi.advanceTimersByTimeAsync(300);
+		expect(onChange).toHaveBeenCalledTimes(4);
 	});
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import AssetGlyph from './AssetGlyph.svelte';
 
   interface Props {
     icon?: string;
@@ -13,12 +14,11 @@
 </script>
 
 <div class="empty-state flex flex-col items-center justify-center py-16 px-4 text-center {className}">
+  <div class="empty-art mb-4"><AssetGlyph variant="empty" /></div>
   {#if icon}
-    <div class="empty-icon-wrap mb-4">
-      <svg class="w-10 h-10 empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path class="motion-draw" pathLength="1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon}/>
-      </svg>
-    </div>
+    <svg class="empty-icon mb-2" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon}/>
+    </svg>
   {/if}
   <div class="motion-enter text-[15px] font-semibold text-ink-0 mb-1" style="--motion-index: 1">{headline}</div>
   {#if description}
@@ -30,17 +30,6 @@
 </div>
 
 <style>
-  .empty-icon-wrap {
-    width: 3rem;
-    height: 3rem;
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-sunken);
-    border: 1px solid var(--color-line);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .empty-icon {
-    color: var(--color-ink-2);
-  }
+  .empty-art { max-width: 100%; }
+  .empty-icon { width: 1.25rem; height: 1.25rem; color: var(--color-ink-2); }
 </style>

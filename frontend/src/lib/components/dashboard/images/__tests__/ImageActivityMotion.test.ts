@@ -32,7 +32,7 @@ describe('image catalog activity feedback', () => {
 		expect(card.getAttribute('aria-busy')).toBe('true');
 		expect(within(activation).getByRole('status').textContent?.trim()).toBe(t('imageCard.toggling'));
 		expect(within(card).getAllByRole('status')).toHaveLength(1);
-		expect(within(card).getByText('active')).toBeTruthy();
+		expect(within(card).getByTitle(image.status)).toBeTruthy();
 		expect(deletion.disabled).toBe(false);
 		expect(within(deletion).queryByRole('status')).toBeNull();
 
@@ -41,14 +41,14 @@ describe('image catalog activity feedback', () => {
 		expect(activation.disabled).toBe(false);
 		expect(card.getAttribute('aria-busy')).toBe('false');
 		expect(within(card).queryByRole('status')).toBeNull();
-		expect(within(card).getByText('deactivated')).toBeTruthy();
+		expect(within(card).getByTitle('deactivated')).toBeTruthy();
 		expect(onToggleActivation).toHaveBeenCalledOnce();
 
 		await view.rerender(props);
 		expect(card.getAttribute('aria-busy')).not.toBe('true');
 		expect(activation.disabled).toBe(false);
 		expect(within(card).queryByRole('status')).toBeNull();
-		expect(within(card).getByText(image.status)).toBeTruthy();
+		expect(within(card).getByTitle(image.status)).toBeTruthy();
 	});
 
 	it('shows edit-save feedback until the real metadata request resolves', async () => {

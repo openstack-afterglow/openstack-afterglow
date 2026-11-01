@@ -78,7 +78,8 @@ describe('volume transfer inventory lifecycle', () => {
 		await fireEvent.input(within(dialog).getByLabelText('인증 키'), { target: { value: 'sender-key' } });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '볼륨 수신' }));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '볼륨 수신' })).toBeNull());
-		expect(await screen.findByRole('button', { name: /Transfer data\s*disk-a/ })).toBeTruthy();
+		expect(await screen.findByRole('button', { name: disk.name })).toBeTruthy();
+		expect(screen.getByTitle(disk.id)).toBeTruthy();
 	});
 
 	it.each([['list', ListPage], ['direct detail', DetailRoute]])('retains issued credentials across source inventory refresh from the %s entry', async (_entry, Component) => {
@@ -90,7 +91,7 @@ describe('volume transfer inventory lifecycle', () => {
 		const dialog = screen.getByRole('dialog', { name: '이전 생성' });
 		await fireEvent.click(within(dialog).getByRole('button', { name: '이전 생성' }));
 		expect(await screen.findByText('one-time-key')).toBeTruthy();
-		expect(await screen.findByText('awaiting-transfer')).toBeTruthy();
+		await waitFor(() => expect(document.querySelector('.chip[title="awaiting-transfer"]')).not.toBeNull());
 		expect(screen.getByRole('dialog', { name: '이전 생성 완료' })).toBeTruthy();
 		expect(screen.getByText('one-time-key')).toBeTruthy();
 		expect(screen.getByRole('button', { name: '이전 ID 복사' })).toBeTruthy();
@@ -105,7 +106,8 @@ describe('volume transfer inventory lifecycle', () => {
 		await fireEvent.click(await within(dialog).findByRole('button', { name: `이전 ${transferId} 취소` }));
 		await within(dialog).findByText('이 프로젝트에 대기 중인 이전이 없습니다.');
 		await fireEvent.click(within(dialog).getByRole('button', { name: '닫기' }));
-		expect(await screen.findByRole('button', { name: /Transfer data\s*disk-a/ })).toBeTruthy();
+		expect(await screen.findByRole('button', { name: disk.name })).toBeTruthy();
+		expect(screen.getByTitle(disk.id)).toBeTruthy();
 	});
 
 	it.each(['in-use', 'available'])('never offers transfer creation for an attached %s volume after inventory publication', async (status) => {

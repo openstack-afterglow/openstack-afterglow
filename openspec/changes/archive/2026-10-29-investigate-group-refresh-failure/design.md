@@ -1,0 +1,2 @@
+## Design
+The real client rejects same-scope pending GETs when a mutation invalidates their cache family, even when the transport returns 200. The group controller replaces a current-generation AbortError once with a fresh scoped read; all other errors and any failure of that replacement are reported normally. Generation and actor/domain fences remain unchanged. This local reproduction is not proof of the observed production 401 or of the reported Svelte warning's cause.

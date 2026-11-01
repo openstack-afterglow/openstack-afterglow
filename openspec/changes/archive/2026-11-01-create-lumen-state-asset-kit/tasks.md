@@ -1,0 +1,4 @@
+- [x] Create four text-art cards and26 named state variants.
+- [x] Validate all state labels/kinds, responsive bounds, error/blocked distinction and pause/resume.
+- [x] Inspect desktop/mobile and obtain independent source approval.
+- [x] Package assets, screenshots and state/adapter documentation.

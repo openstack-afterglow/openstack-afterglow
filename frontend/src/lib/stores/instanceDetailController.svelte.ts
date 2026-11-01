@@ -710,8 +710,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!context || context.status !== 'SHUTOFF' || !ownsMutationContext(context)
 			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;
 		const flavor = resizeFlavors.find(f => f.id === flavorId)!;
-		const ramLabel = flavor.ram >= 1024 ? `${(flavor.ram / 1024).toFixed(0)} GB` : `${flavor.ram} MB`;
-		const flavorLabel = t('resize.flavorLabel', { name: flavor.name, vcpus: flavor.vcpus, ram: ramLabel });
+		const ramLabel = flavor.ram >= 1024 ? `${flavor.ram / 1024} GB` : `${flavor.ram} MB`;
+		const flavorLabel = t('resize.flavorLabel', { name: flavor.display_name ? `${flavor.display_name} (${flavor.name} · ${flavor.id})` : flavor.name, vcpus: flavor.vcpus, ram: ramLabel });
 		if (!(await confirmDialog(t('resize.confirmMessage', { flavorLabel })))) return false;
 		if (resizeFlavorContext !== context || !ownsMutationContext(context)
 			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;

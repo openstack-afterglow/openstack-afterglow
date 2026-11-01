@@ -78,6 +78,7 @@ function warnOnce(id: string, detail: string): void {
 export function defineMessages<Source extends Record<string, string>>(
 	namespace: string,
 	modules: Record<string, Record<string, string>>,
+	locale?: () => Locale,
 ): Translator<Extract<keyof Source, string>> {
 	const catalogs = new Map<string, Record<string, string>>();
 	for (const [path, messages] of Object.entries(modules)) {
@@ -85,9 +86,10 @@ export function defineMessages<Source extends Record<string, string>>(
 		if (locale) catalogs.set(locale, messages);
 	}
 	const parsed = new Map<string, MessageNode[] | typeof INVALID>();
+	const localeForMessages = locale;
 
 	const resolve = (key: string): { intl: string; nodes: MessageNode[] } | null => {
-		for (const locale of FALLBACK_CHAIN[current]) {
+		for (const locale of FALLBACK_CHAIN[localeForMessages?.() ?? current]) {
 			const source = catalogs.get(locale)?.[key];
 			if (typeof source !== 'string') continue;
 			const cacheKey = `${locale}\u0000${key}`;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { api, ApiError } from '$lib/api/client';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -139,7 +140,7 @@
 					<option value="">{t('nodegroup.notSelected')}</option>
 					{#each flavors as f}
 						<option value={f.id} disabled={f.eligibility ? !f.eligibility.selectable : false}>
-							{t(f.eligibility && !f.eligibility.selectable ? 'nodegroup.flavorExceeded' : 'nodegroup.flavorOption', { name: f.name, cpus: f.vcpus, ram: Math.round(f.ram / 1024), gpu: flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : '' })}
+							{t(f.eligibility && !f.eligibility.selectable ? 'nodegroup.flavorExceeded' : 'nodegroup.flavorOption', { name: f.display_name ? `${f.display_name} (${f.name} · ${f.id})` : f.name, cpus: f.vcpus, ram: f.ram / 1024, gpu: flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : '' })}
 						</option>
 					{/each}
 				</select>
@@ -197,7 +198,7 @@
 				disabled={!$k3sPermissions.editClusters || saving || !form.name}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{saving ? t('state.creating') : Number(form.node_count) > 0 ? t('nodegroupCreate.startProvisioning') : t('actions.create')}
+				{#if saving}<LoadingState variant="control" label="" />{/if}{saving ? t('state.creating') : Number(form.node_count) > 0 ? t('nodegroupCreate.startProvisioning') : t('actions.create')}
 			</button>
 		</div>
 	</div>

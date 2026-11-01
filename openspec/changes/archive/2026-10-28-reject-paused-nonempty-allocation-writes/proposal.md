@@ -1,0 +1,5 @@
+## Why
+Paused native authority currently rejects only positive snapshot deltas. Delete/recreate ABA can turn a nominally zero-delta stale PUT into growth while the full postcheck remains below a pool ceiling. A native net-zero move can recreate the target at the same generation and expose this missing pause guarantee.
+
+## What Changes
+Treat paused authority as a hard rejection for all nonempty allocation admissions/rechecks: apparent zero/decreasing deltas are not trustworthy non-growth evidence. Keep explicit all-empty native release on its existing hook bypass. Advance required native hook revision to domain-pool-v3 and reject older capabilities. Add installed-Placement reproduction with actual report-client move_allocations plus unchanged-nonempty rejection and allowed empty-release coverage. No new allocator/lock/auth cache, UI changes, or operational mutation. Document that paused migration/resize/heal/revert with nonempty allocation writes must wait for explicit reactivation; no silent maintenance bypass.

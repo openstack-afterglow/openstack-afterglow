@@ -5,7 +5,7 @@
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { auth } from '$lib/stores/auth';
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ChatUserMenu from './ChatUserMenu.svelte';
 	import { t } from '$lib/i18n/ns/chat-panel';
 
@@ -312,7 +312,7 @@
 			{:else}
 				{#each searchResults as conversation (conversation.id)}
 					<button type="button" role="option" aria-selected={conversation.id === activeConvId} onclick={() => selectSearchResult(conversation)}>
-						<span class="truncate">{conversationLabel(conversation)}</span>
+						<span class="truncate">{#if !conversation.title && conversation.title_status === 'pending'}<LoadingState variant="control" label={conversationLabel(conversation)} />{:else}{conversationLabel(conversation)}{/if}</span>
 						{#if conversation.model_name}
 							<small>{conversation.model_name}</small>
 						{/if}
@@ -386,10 +386,10 @@
 		}}
 	>
 		<button type="button" class="item" onclick={() => onSelect(conv)}>
-			<span class="item-title">{conversationLabel(conv)}</span>
+			<span class="item-title">{#if !conv.title && conv.title_status === 'pending'}<LoadingState variant="control" label={conversationLabel(conv)} />{:else}{conversationLabel(conv)}{/if}</span>
 			{#if runningConversationIds.has(conv.id)}
 				<span class="run-indicator" title={t('sidebar.generatingResponse')} aria-label={t('sidebar.generatingResponse')}>
-					<ActivityIndicator size="xs" label={t('sidebar.generatingResponse')} />
+					<LoadingState variant="control" label="">{#snippet children()}<span class="sr-only">{t('sidebar.generatingResponse')}</span>{/snippet}</LoadingState>
 					{#if conv.id !== activeConvId}
 						<span class="unread-dot motion-pop" aria-label={t('sidebar.unreadRunningConversation')}></span>
 					{/if}

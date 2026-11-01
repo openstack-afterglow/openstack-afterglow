@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/containers-shell';
 	import { onDestroy } from 'svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -108,16 +109,12 @@
 		></button>
 
 		<header class="cloud-shell-header">
-			<div class="min-w-0 flex-1">
-				<div class="flex min-w-0 items-center gap-2">
-					<h2 class="shrink-0 font-display text-sm font-semibold text-ink-0">Cloud Shell</h2>
-					<span class="truncate text-xs text-ink-2">{cloudShell.identity?.projectName || t('shell.noProject')}</span>
-					<StatusChip status={statusKey} class="hidden sm:inline-flex" />
-				</div>
-				{#if cloudShell.view !== 'minimized'}
-					<p class="mt-0.5 truncate text-xs text-ink-3" aria-live="polite">
-						{cloudShell.statusStep || t('shell.homeSummary', { size: cloudShell.homeSizeGiB })}
-					</p>
+			<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1" aria-live="polite">
+				<h2 class="shrink-0 text-sm font-semibold text-ink-0">Cloud Shell</h2>
+				<span class="min-w-0 flex-1 truncate text-xs text-ink-2" title={cloudShell.identity?.projectName || t('shell.noProject')}>{cloudShell.identity?.projectName || t('shell.noProject')}</span>
+				<StatusChip status={statusKey} />
+				{#if cloudShell.view !== 'minimized' && cloudShell.statusStep && cloudShell.statusStep !== cloudShell.phaseLabel && cloudShell.phase !== 'ready' && cloudShell.phase !== 'closed' && cloudShell.phase !== 'error'}
+					<LoadingState variant="inline" label={cloudShell.statusStep} />
 				{/if}
 			</div>
 
@@ -172,7 +169,7 @@
 								onclick={() => void resetHome()}
 								class="w-full px-3 py-2.5 text-left text-xs text-state-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
 							>
-								{cloudShell.resetting ? t('shell.resettingHome') : t('shell.resetHome')}
+								{#if cloudShell.resetting}<LoadingState variant="control" label={t('shell.resettingHome')} />{:else}{t('shell.resetHome')}{/if}
 							</button>
 						</div>
 					{/if}
@@ -210,7 +207,17 @@
 					</Alert>
 				</div>
 			{/if}
-			<div class="min-h-0 flex-1"><CloudShellTerminal /></div>
+			<div class="relative min-h-0 flex-1"><CloudShellTerminal />
+				{#if ['ticketing', 'authorizing', 'provisioning'].includes(cloudShell.phase)}
+					<div class="absolute inset-0"><LoadingState variant="surface" label={cloudShell.statusStep || cloudShell.phaseLabel} /></div>
+				{/if}
+			</div>
 		</div>
 	</section>
 {/if}
+
+<style>
+	section.cloud-shell-dock--minimized { min-height: calc(2.75rem + 1px); height: calc(2.75rem + 1px); }
+	:global(.cloud-shell-dock--minimized) .cloud-shell-header { min-height: 2.75rem; }
+	:global(.cloud-shell-dock--minimized) .cloud-shell-header > div:first-child { flex-wrap: nowrap; }
+</style>

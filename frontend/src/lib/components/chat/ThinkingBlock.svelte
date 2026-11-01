@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	interface Props {
 		text: string;
 		/** 추론이 진행 중(본문 시작 전)이면 자동 펼침 + "추론 중…" 라벨. 본문이 시작되거나 완료되면 false. */
@@ -22,7 +22,7 @@
 		aria-expanded={open}
 	>
 		{#if active}
-			<ActivityIndicator variant="orbit" size="xs" label={t('thinkingBlock.active')} />
+			<LoadingState variant="inline" label={t('thinkingBlock.active')} />
 		{:else}
 			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
 				<path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" />

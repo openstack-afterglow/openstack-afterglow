@@ -135,12 +135,8 @@ def resolve_alias_to_device_name(alias: str, alias_map: dict[str, str] | None = 
 PCI_DEVICE_MAP = _load_device_map()
 
 
-def apply_db_overlay(db_entries: list[dict]) -> None:
-    """DB 카탈로그 항목을 base map(내장 기본값 + afterglow.conf) 위에 overlay.
-
-    PCI_DEVICE_MAP을 in-place로 갱신하므로 이 dict를 import한 모듈
-    (admin_gpu, gpu_quota, openstack_inventory, notion_worker)에 즉시 반영된다.
-    """
+def _device_map_with_db_overlay(db_entries: list[dict]) -> dict[str, dict[str, dict]]:
+    """Build an independent configured+builtin+DB catalog snapshot."""
     merged = _load_device_map()
     for entry in db_entries:
         vendor = str(entry.get("vendor_id", "")).upper()
@@ -152,6 +148,12 @@ def apply_db_overlay(db_entries: list[dict]) -> None:
             "is_audio": bool(entry.get("is_audio", False)),
             "aliases": [str(a) for a in entry.get("aliases", [])],
         }
+    return merged
+
+
+def apply_db_overlay(db_entries: list[dict]) -> None:
+    """Overlay DB entries on the process map while preserving existing references."""
+    merged = _device_map_with_db_overlay(db_entries)
     PCI_DEVICE_MAP.clear()
     PCI_DEVICE_MAP.update(merged)
 
@@ -351,6 +353,7 @@ def _collect_gpu_hosts(conn) -> dict:
             if key not in type_map:
                 type_map[key] = {
                     "device_name": gpu["device_name"] or gpu["device_id"],
+                    "resource_class": gpu["resource_class"],
                     "vendor": gpu["vendor_name"],
                     "total": 0,
                     "used": 0,
@@ -617,10 +620,26 @@ GpuQuotaUnavailable = gpu_quota.GpuQuotaUnavailable
 
 
 async def require_gpu_quota(conn: Any, flavor: Any, *, project_id: str) -> bool:
-    """Require quota for the explicit target project, independently of auth scope."""
-    if not is_gpu_flavor(flavor):
-        return False
+    """Use target Afterglow domain admission policy, or its legacy GPU ledger."""
+    from app.services import compute_pools
 
+    gpu_required = is_gpu_flavor(flavor)
+    try:
+        snapshot = await compute_pools.project_pool_snapshot(conn, project_id)
+        if snapshot.get("state") == "paused":
+            raise GpuQuotaDenied("Domain compute pool is paused")
+        if snapshot["enabled"]:
+            requirements = await compute_pools.flavor_pool_requirements(conn, flavor, snapshot=snapshot)
+            result = compute_pools.evaluate_pool_snapshot(snapshot, requirements)
+            if not result["selectable"]:
+                raise GpuQuotaDenied("Domain compute pool quota exceeded")
+            return gpu_required
+    except compute_pools.ComputePoolDenied as exc:
+        raise GpuQuotaDenied(str(exc)) from exc
+    except compute_pools.ComputePoolUnavailable as exc:
+        raise GpuQuotaUnavailable(str(exc)) from exc
+    if not gpu_required:
+        return False
     from app.services.flavor_eligibility import parse_gpu_demand
 
     await gpu_quota.check_gpu_quota(conn, project_id, parse_gpu_demand(flavor))

@@ -157,22 +157,3 @@ describe('object download preparation', () => {
 	});
 });
 
-describe('object table entrances', () => {
-	it.each(['tree', 'flat'] as const)('%s view fades rows in on first arrival only', async (view) => {
-		render(ObjectDownloadBusyHarness, { view });
-		const first = rowOf(await screen.findByRole('button', { name: 'photo.png' }));
-		expect(first.classList.contains('motion-fade')).toBe(true);
-
-		await fireEvent.click(screen.getByRole('button', { name: 'harness refresh' }));
-		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-		const refreshed = rowOf(await screen.findByRole('button', { name: 'photo.png' }));
-		expect(refreshed).not.toBe(first);
-		expect(refreshed.classList.contains('motion-fade')).toBe(false);
-
-		listing[''].push({ name: 'notes.txt', bytes: 12, content_type: 'text/plain', last_modified: '2026-09-03T00:00:00Z', etag: 'e-txt' });
-		await fireEvent.click(screen.getByRole('button', { name: 'harness poll' }));
-		const added = rowOf(await screen.findByRole('button', { name: 'notes.txt' }));
-		expect(added.classList.contains('motion-fade')).toBe(true);
-		expect(rowOf(screen.getByRole('button', { name: 'photo.png' })).classList.contains('motion-fade')).toBe(false);
-	});
-});

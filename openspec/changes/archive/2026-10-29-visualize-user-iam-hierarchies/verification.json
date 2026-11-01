@@ -1,0 +1,116 @@
+{
+  "change": "visualize-user-iam-hierarchies",
+  "route": "/docs/iam",
+  "graphs": 5,
+  "nodes": 22,
+  "edges": 17,
+  "semantics": {
+    "project": "Keystone role implications, conditional on actual configured links",
+    "service": "native default action capability inclusion, not token-role expansion",
+    "unchanged": "granular role/owner/credential restrictions and actual authorization"
+  },
+  "tests": {
+    "files": 5,
+    "passed": 91,
+    "scoped_types": "passed with project alias configuration",
+    "i18n_errors": 0,
+    "i18n_warnings": 45,
+    "i18n_scan_findings": 0,
+    "i18n_scan_files": 1259,
+    "design_detector": []
+  },
+  "browser": {
+    "cases": 72,
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN",
+      "sw",
+      "nb",
+      "ms",
+      "vi",
+      "bn"
+    ],
+    "widths": [
+      320,
+      390,
+      834,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "page_overflow": 0,
+    "clipped_nodes": 0,
+    "min_font_px": 13,
+    "native_accessible_edges": 17,
+    "text_enlargement_percent": 200,
+    "text_enlargement_is_native_zoom": false,
+    "without_javascript": {
+      "figures": 5,
+      "nodes": 22,
+      "edges": 17
+    },
+    "search": "graph-only Korean term resolves IAM once",
+    "language_switch": "hydrated English to Japanese retains #waygate",
+    "page_exceptions": 0
+  },
+  "architecture": {
+    "base": "8f5d2a6ea4f8018702a9290e07c5204cde3a9064",
+    "source_files": [
+      "frontend/src/lib/docs/types.ts",
+      "frontend/src/lib/docs/translate.ts",
+      "frontend/src/lib/docs/catalog.ts",
+      "frontend/src/lib/docs/catalog.test.ts",
+      "frontend/src/lib/docs/iamGuide.ts",
+      "frontend/src/lib/components/docs/DocRoleHierarchy.svelte",
+      "frontend/src/lib/components/docs/DocRoleHierarchy.test.ts",
+      "frontend/src/routes/docs/[slug]/+page.svelte",
+      "frontend/src/lib/docs/translations/en/iamGuide.ts",
+      "frontend/src/lib/docs/translations/ja/iamGuide.ts",
+      "frontend/src/lib/docs/translations/zh-CN/iamGuide.ts",
+      "frontend/src/lib/docs/translations/sw/iamGuide.ts",
+      "frontend/src/lib/docs/translations/nb/iamGuide.ts",
+      "frontend/src/lib/docs/translations/ms/iamGuide.ts",
+      "frontend/src/lib/docs/translations/vi/iamGuide.ts",
+      "frontend/src/lib/docs/translations/bn/iamGuide.ts",
+      "frontend/src/lib/i18n/hardcoded-text-allowlist.json"
+    ],
+    "source_sha256": "9133f9ea33e69d92ed75ebbabe4e10d718d94bd34952702bdb32abb814a6389d",
+    "guard": "checked staged source_sha256=9133f9ea33e69d92ed75ebbabe4e10d718d94bd34952702bdb32abb814a6389d files=3538",
+    "scope": "HEAD plus 17 hierarchy source files; only IAM allowlist entries; no shared index/stamp change"
+  },
+  "limits": [
+    "Local source rendering only; no native authorization requests",
+    "No full gate/build, new commit/push or deployment",
+    "External Google Fonts blocked; translations not native-speaker reviewed"
+  ],
+  "proof_directory": "/Users/pieroot/.local/share/afterglow-proofs/iam-role-hierarchies-20261030",
+  "screenshots": [
+    "waygate-desktop-light.webp",
+    "waygate-desktop-dark.webp",
+    "project-mobile-light.webp",
+    "waygate-mobile-light.webp"
+  ],
+  "current_source_sha256": {
+    "frontend/src/lib/docs/types.ts": "56ada1d24763bb1ab8e64050f481355ee77e59e783c08208bd8e36c5ae7fcb58",
+    "frontend/src/lib/docs/translate.ts": "78f3005b237b81783dcd3ebe9808b112833cbb0c582cd7b7b48d6e9d2ced4862",
+    "frontend/src/lib/docs/catalog.ts": "dbffedaae430613a8ed2d82757a85a5f1a2f101399cbbb390b4fa890adec5872",
+    "frontend/src/lib/docs/catalog.test.ts": "a86deb09690f635850949518b9ccaf49d500e5cedd56c6567984ff151d88a4f5",
+    "frontend/src/lib/docs/iamGuide.ts": "9a5460d802285f95dcd383a704cf10c3d0ec5ee878a12ac9fc042da8b031952f",
+    "frontend/src/lib/components/docs/DocRoleHierarchy.svelte": "81535f12f84a51b22d0487cfeb32a0f6d9125385c84e13558d1496c78079eca4",
+    "frontend/src/lib/components/docs/DocRoleHierarchy.test.ts": "d72fa15c47eb16f5b56cbe8aba7f74ec041c31a5a2b0e5fad6ee5a384a6c8d68",
+    "frontend/src/routes/docs/[slug]/+page.svelte": "9d2996f50e6b961ff2a9f18522d03d0d91f130298a20e9a391a3c3e8dcbbb062",
+    "frontend/src/lib/docs/translations/en/iamGuide.ts": "68705f5de7b7710d140c0e8f5757d8968399102b966f676d6510fa2f97824028",
+    "frontend/src/lib/docs/translations/ja/iamGuide.ts": "699cf0febd7371c9955f6a5a2d827ddba0c080ebaae494c8dc1b936e2bea861f",
+    "frontend/src/lib/docs/translations/zh-CN/iamGuide.ts": "94e8155f301d196e97fffa02747c6394892591b8df8fdd80be6404c5b77c2657",
+    "frontend/src/lib/docs/translations/sw/iamGuide.ts": "4051b927da9322bf96b55bbf9692972ac9727e2e8cf36672a16985cbbda8875f",
+    "frontend/src/lib/docs/translations/nb/iamGuide.ts": "61b0f3b30a133fd6aecce37d98865e82f44c205788fc232b9da8660fe1cacacc",
+    "frontend/src/lib/docs/translations/ms/iamGuide.ts": "51547a1537d35238d6d550279d7b67f8974ef9033ecfe91aec6ec5eeecd3149b",
+    "frontend/src/lib/docs/translations/vi/iamGuide.ts": "935ba77719b0baa71c66b66e5e9c48829fe6c2bf019de250446d085535050f6b",
+    "frontend/src/lib/docs/translations/bn/iamGuide.ts": "9208c664635c439190f02454df5356a5b7788e4092655e5735f3aa53e063a3f5",
+    "frontend/src/lib/i18n/hardcoded-text-allowlist.json": "494a0e0fab9e25de41be58d23a1a0c84d7b5627959545de38c4c4f50d353cb12"
+  }
+}

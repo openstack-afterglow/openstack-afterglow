@@ -67,7 +67,7 @@ describe('mockup fixture privacy', () => {
 		expect(admin.containers.map(({ status }) => status)).toEqual(['Running', 'Stopped']);
 		expect(Object.keys(admin.containerDetails)).toEqual(admin.containers.map(({ uuid }) => uuid));
 		expect(admin.keyManagerQuotas).toHaveLength(2);
-		expect(admin.monitoringSummary.compute.instance_stats.total).toBeGreaterThan(0);
+		expect(admin.monitoringSummary.compute.instance_stats!.total).toBeGreaterThan(0);
 		expect(Object.keys(admin.services)).toHaveLength(9);
 		expect(admin.services.compute[0]).toMatchObject({ binary: 'nova-compute', state: 'up' });
 		expect(admin.services.network[0]).toMatchObject({ agent_type: 'Open vSwitch agent', alive: true });

@@ -12,13 +12,15 @@ import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from app.config import Settings, get_settings
-from app.services import activity, instance_orchestration, keystone, neutron, zun
+from app.services import activity, cloud_shell_authority, instance_orchestration, keystone, neutron, zun
 from app.services.cache import _get_redis
+from app.services.cloud_shell_security import CloudShellSecurityError, validate_security_group, verify_runtime_profile
+from app.services.identity_roles import _to_completion
 from app.services.ws_ticket import (
     WebSocketTicketError,
     compare_delete,
@@ -34,12 +36,26 @@ HEARTBEAT_TTL_SECONDS = 90
 HEARTBEAT_INTERVAL_SECONDS = 30
 CREATION_GRACE_SECONDS = 120
 PROVISION_TIMEOUT_SECONDS = 120
-WORKSPACE_LOCK_TTL_SECONDS = 240
+WORKSPACE_LOCK_TTL_SECONDS = 360
 RECONCILE_LOCK_TTL_SECONDS = 55
 BOOTSTRAP_READY_MARKER = b"AFTERGLOW_CLOUD_SHELL_READY_V1\r\n"
 BOOTSTRAP_OK_MARKER = b"AFTERGLOW_CLOUD_SHELL_OK_V1\r\n"
 BOOTSTRAP_ERROR_MARKER = b"AFTERGLOW_CLOUD_SHELL_ERROR_V1\r\n"
 BOOTSTRAP_MAX_BYTES = 16 * 1024
+_REFRESH_HEARTBEAT = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] or redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end
+if redis.call('GET', KEYS[4]) ~= ARGV[1] then return 0 end
+local raw = redis.call('GET', KEYS[3])
+if not raw then return 0 end
+local data = cjson.decode(raw)
+if data['cleanup_requested'] == true or data['token_revoked'] == true or data['active'] ~= true then return 0 end
+local ttl = redis.call('PTTL', KEYS[3])
+if ttl <= 0 then return 0 end
+data['version'] = data['version'] + 1
+redis.call('SET', KEYS[3], cjson.encode(data), 'PX', ttl)
+redis.call('EXPIRE', KEYS[2], ARGV[2])
+return 1
+"""
 
 _VOLUME_METADATA = {
     "afterglow_managed_by": "afterglow",
@@ -87,6 +103,17 @@ class CloudShellLease:
     user_fingerprint: str
     workspace_fingerprint: str
     active_value: str
+    family_id: str
+    domain_id: str
+    identity_domain_id: str
+    scope_revision: int
+
+    @property
+    def authority_binding(self) -> dict[str, Any]:
+        return {
+            key: getattr(self, key)
+            for key in ("family_id", "user_id", "project_id", "domain_id", "identity_domain_id", "scope_revision")
+        }
 
     @property
     def active_key(self) -> str:
@@ -95,6 +122,10 @@ class CloudShellLease:
     @property
     def heartbeat_key(self) -> str:
         return _heartbeat_key(self.session_id)
+
+    @property
+    def ownership_key(self) -> str:
+        return cloud_shell_authority.OWNER_PREFIX + self.user_fingerprint
 
 
 @dataclass
@@ -193,11 +224,16 @@ def _ticket_payload_to_lease(payload: dict[str, Any]) -> CloudShellLease:
         "user_fingerprint",
         "workspace_fingerprint",
         "active_value",
+        "family_id",
+        "domain_id",
+        "identity_domain_id",
     )
     if any(not isinstance(payload.get(field), str) for field in fields):
         raise CloudShellUnauthorized("ticket_invalid", "Cloud Shell ticket is invalid")
     expires_at = payload.get("token_expires_at")
     if not isinstance(expires_at, int):
+        raise CloudShellUnauthorized("ticket_invalid", "Cloud Shell ticket is invalid")
+    if type(payload.get("scope_revision")) is not int or payload["scope_revision"] < 0:
         raise CloudShellUnauthorized("ticket_invalid", "Cloud Shell ticket is invalid")
     lease = CloudShellLease(
         session_id=payload["session_id"],
@@ -210,6 +246,10 @@ def _ticket_payload_to_lease(payload: dict[str, Any]) -> CloudShellLease:
         user_fingerprint=payload["user_fingerprint"],
         workspace_fingerprint=payload["workspace_fingerprint"],
         active_value=payload["active_value"],
+        family_id=payload["family_id"],
+        domain_id=payload["domain_id"],
+        identity_domain_id=payload["identity_domain_id"],
+        scope_revision=payload["scope_revision"],
     )
     expected_user = user_fingerprint(lease.user_id)
     expected_workspace = workspace_fingerprint(lease.user_id, lease.project_id)
@@ -223,7 +263,142 @@ def _ticket_payload_to_lease(payload: dict[str, Any]) -> CloudShellLease:
     return lease
 
 
+async def assert_session_authority(lease: CloudShellLease, *, native: bool = False) -> None:
+    """Gate ticket use and every input on current family authority, not browser cooperation."""
+    try:
+        record = await cloud_shell_authority.receipt(lease.session_id)
+        if (
+            record is None
+            or record.get("lease") != asdict(lease)
+            or record.get("cleanup_requested")
+            or record.get("token_revoked")
+        ):
+            raise cloud_shell_authority.ShellAuthorityError("Cloud Shell credentials are no longer active")
+        if record.get("active"):
+            await cloud_shell_authority.require_active_owner(
+                lease.session_id, lease.active_key, lease.heartbeat_key, lease.active_value
+            )
+        await cloud_shell_authority.require_authority(lease.authority_binding, lease.token, native=native)
+    except cloud_shell_authority.ShellAuthorityError:
+        raise CloudShellUnauthorized("session_revoked", "Cloud Shell login or project authority was revoked") from None
+    except Exception:
+        raise CloudShellUnavailable("authority_unavailable", "Cloud Shell authority is unavailable") from None
+
+
+async def _retire_credential(lease: CloudShellLease, *, resources_cleaned: bool) -> bool:
+    try:
+        revoked = await cloud_shell_authority.revoke_credential(lease.session_id)
+        if revoked and resources_cleaned:
+            return await cloud_shell_authority.finish_receipt(lease.session_id)
+        return revoked
+    except Exception:
+        logger.warning("Cloud Shell credential cleanup remains pending (session=%s)", lease.session_id)
+        return False
+
+
+async def _reconcile_credentials(conn: Any, containers: list[dict[str, Any]], settings: Settings) -> int:
+    redis = await _get_redis()
+    now = int(time.time())
+    due = await redis.zrangebyscore(cloud_shell_authority.INDEX, "-inf", now, start=0, num=16)
+    cleaned = 0
+    for raw in due:
+        session_id = _decode_redis(raw)
+        try:
+            record = await cloud_shell_authority.receipt(session_id)
+            if record is None:
+                await redis.zrem(cloud_shell_authority.INDEX, session_id)
+                continue
+            lease = _ticket_payload_to_lease(record["lease"])
+            retiring = record.get("cleanup_requested") or lease.token_expires_at <= now
+            deadline = record.get("labels", {}).get("afterglow.expires_at")
+            if isinstance(deadline, str) and deadline.isdecimal() and int(deadline) <= now:
+                retiring = True
+            if not record.get("active") and record["ticket_deadline"] <= now:
+                retiring = True
+            if not retiring:
+                try:
+                    await assert_session_authority(lease)
+                    if record.get("active"):
+                        heartbeat = _decode_redis(await redis.get(lease.heartbeat_key))
+                        retiring = heartbeat != lease.active_value
+                except CloudShellError:
+                    retiring = True
+            if retiring:
+                if not await cloud_shell_authority.update_receipt(
+                    session_id, expected_version=record["version"], cleanup_requested=True
+                ):
+                    await redis.zadd(
+                        cloud_shell_authority.INDEX, {session_id: now + settings.cloud_shell_reconcile_interval_seconds}
+                    )
+                    continue
+                record = await cloud_shell_authority.receipt(session_id)
+                if record is None:
+                    continue
+                revoked = await _retire_credential(lease, resources_cleaned=False)
+                if record.get("home_creation_attempted") and not record.get("home_resolved"):
+                    home = await _to_completion(
+                        asyncio.to_thread(_discover_workspace_sync, conn, lease.workspace_fingerprint, settings)
+                    )
+                    if home is None or home.status != "available" or home.attachments:
+                        await redis.zadd(
+                            cloud_shell_authority.INDEX,
+                            {session_id: now + settings.cloud_shell_reconcile_interval_seconds},
+                        )
+                        continue
+                    await cloud_shell_authority.update_receipt(session_id, home_resolved=True)
+                matches = [
+                    row
+                    for row in containers
+                    if _normalize_labels(row.get("labels")).get("afterglow.session") == session_id
+                ]
+                container_id = record.get("container_id")
+                if len(matches) > 1:
+                    await redis.zadd(
+                        cloud_shell_authority.INDEX, {session_id: now + settings.cloud_shell_reconcile_interval_seconds}
+                    )
+                    continue
+                if not container_id and matches:
+                    container_id = matches[0].get("uuid") or matches[0].get("id")
+                if not container_id and record.get("creation_attempted"):
+                    # A lost CREATE response is not proof no container can appear.
+                    await redis.zadd(
+                        cloud_shell_authority.INDEX, {session_id: now + settings.cloud_shell_reconcile_interval_seconds}
+                    )
+                    continue
+                if container_id:
+                    await _to_completion(
+                        asyncio.to_thread(_delete_exact_container_sync, conn, container_id, record["labels"], settings)
+                    )
+                    await _to_completion(asyncio.to_thread(_wait_workspace_available_sync, conn, record["volume_id"]))
+                if revoked and await cloud_shell_authority.finish_receipt(session_id, container_id=container_id or ""):
+                    cleaned += 1
+                    continue
+        except Exception:
+            # Keep uncertain ownership; never let one corrupt receipt starve peers.
+            logger.warning("Cloud Shell receipt cleanup remains pending (session=%s)", session_id)
+        await redis.zadd(
+            cloud_shell_authority.INDEX, {session_id: now + settings.cloud_shell_reconcile_interval_seconds}
+        )
+    return cleaned
+
+
 async def issue_cloud_shell_ticket(token_info: dict[str, Any]) -> dict[str, Any]:
+    operation = asyncio.create_task(_issue_cloud_shell_ticket(token_info))
+    try:
+        response, _ = await asyncio.shield(operation)
+        return response
+    except asyncio.CancelledError:
+        try:
+            await _to_completion(operation)
+        except Exception:
+            pass
+        if operation.done() and not operation.cancelled() and operation.exception() is None:
+            _, lease = operation.result()
+            await _retire_credential(lease, resources_cleaned=True)
+        raise
+
+
+async def _issue_cloud_shell_ticket(token_info: dict[str, Any]) -> tuple[dict[str, Any], CloudShellLease]:
     """Re-scope the caller token and reserve the user's singleton shell slot."""
     settings = get_settings()
     if not settings.service_cloud_shell_enabled:
@@ -234,15 +409,39 @@ async def issue_cloud_shell_ticket(token_info: dict[str, Any]) -> dict[str, Any]
     if not user_id or not project_id or not token:
         raise CloudShellUnauthorized("identity_missing", "Authenticated project identity is required")
     try:
-        scoped = await asyncio.to_thread(keystone.validate_token, token, project_id)
+        session = await cloud_shell_authority.bind_login(token_info)
+    except cloud_shell_authority.ShellAuthorityError:
+        raise CloudShellUnauthorized("session_revoked", "A current browser login and workspace are required") from None
+    except Exception:
+        raise CloudShellUnavailable("authority_unavailable", "Cloud Shell authority is unavailable") from None
+    binding = cloud_shell_authority.binding_for(session, project_id)
+    try:
+        scoped = await asyncio.to_thread(keystone.validate_token, session["keystone_token"], project_id)
     except Exception:
         raise CloudShellUnavailable("keystone_unavailable", "Keystone token validation failed") from None
-    if scoped.get("user_id") != user_id or scoped.get("project_id") != project_id:
-        raise CloudShellUnauthorized("scope_mismatch", "Keystone project scope does not match the session")
-    expires_at = _parse_expiry(str(scoped.get("expires_at") or ""))
-    now = int(time.time())
-    if expires_at - now < 120:
-        raise CloudShellUnauthorized("token_expiring", "Keystone token expires too soon for Cloud Shell")
+    try:
+        if scoped.get("user_id") != user_id or scoped.get("project_id") != project_id:
+            raise CloudShellUnauthorized("scope_mismatch", "Keystone project scope does not match the session")
+        if (
+            not isinstance(scoped.get("token"), str)
+            or not scoped["token"]
+            or scoped["token"] == session["keystone_token"]
+        ):
+            raise CloudShellUnauthorized("token_invalid", "Keystone did not issue a distinct shell credential")
+        expires_at = _parse_expiry(str(scoped.get("expires_at") or ""))
+        now = int(time.time())
+        if expires_at - now < 120:
+            raise CloudShellUnauthorized("token_expiring", "Keystone token expires too soon for Cloud Shell")
+    except CloudShellError:
+        derived = scoped.get("token")
+        if (
+            scoped.get("user_id") == user_id
+            and isinstance(derived, str)
+            and derived
+            and derived != session["keystone_token"]
+        ):
+            await _to_completion(asyncio.to_thread(keystone.revoke_token, derived))
+        raise
 
     session_id = secrets.token_hex(24)
     user_fp = user_fingerprint(user_id)
@@ -259,24 +458,41 @@ async def issue_cloud_shell_ticket(token_info: dict[str, Any]) -> dict[str, Any]
         "user_fingerprint": user_fp,
         "workspace_fingerprint": workspace_fp,
         "active_value": active_value,
+        **binding,
     }
+    lease = _ticket_payload_to_lease(payload)
     try:
+        await cloud_shell_authority.store_receipt(payload, now + settings.cloud_shell_ticket_ttl_seconds)
+    except Exception:
+        try:
+            await asyncio.to_thread(keystone.revoke_token, lease.token)
+        except Exception:
+            logger.warning("Cloud Shell unexposed credential cleanup is uncertain (session=%s)", session_id)
+        raise CloudShellUnavailable("redis_unavailable", "Cloud Shell credential tracking is unavailable") from None
+    try:
+        await assert_session_authority(lease, native=True)
         ticket = await issue_reserved_ticket(
             TICKET_KIND,
             payload,
             ttl_seconds=settings.cloud_shell_ticket_ttl_seconds,
             reservation_key=_reservation_key(user_fp),
             active_key=_active_key(user_fp),
+            ownership_key=lease.ownership_key,
+            ownership_value=lease.active_value,
         )
-    except WebSocketTicketError:
-        raise CloudShellUnavailable("redis_unavailable", "Cloud Shell coordination is unavailable") from None
-    if ticket is None:
-        raise CloudShellConflict("active_session", "A Cloud Shell session is already active or pending")
+        if ticket is None:
+            raise CloudShellConflict("active_session", "A Cloud Shell session is already active or pending")
+        if not await cloud_shell_authority.update_receipt(lease.session_id, ticket=ticket):
+            raise CloudShellUnavailable("receipt_unavailable", "Cloud Shell ticket tracking is unavailable")
+        await assert_session_authority(lease)
+    except BaseException:
+        await _retire_credential(lease, resources_cleaned=True)
+        raise
     return {
         "ticket": ticket,
         "websocket_path": "/api/v1/cloud-shell/ws",
         "expires_at": now + settings.cloud_shell_ticket_ttl_seconds,
-    }
+    }, lease
 
 
 async def consume_cloud_shell_ticket(ticket: str) -> CloudShellLease:
@@ -292,6 +508,11 @@ async def consume_cloud_shell_ticket(ticket: str) -> CloudShellLease:
     if lease.token_expires_at - int(time.time()) < 60:
         raise CloudShellUnauthorized("token_expiring", "Keystone token expires too soon for Cloud Shell")
     try:
+        await assert_session_authority(lease, native=True)
+    except CloudShellError:
+        await _retire_credential(lease, resources_cleaned=True)
+        raise
+    try:
         result = await consume_reserved_ticket(
             ticket,
             expected_kind=TICKET_KIND,
@@ -299,6 +520,7 @@ async def consume_cloud_shell_ticket(ticket: str) -> CloudShellLease:
             active_key=lease.active_key,
             active_value=lease.active_value,
             active_ttl_seconds=settings.cloud_shell_max_session_seconds + CREATION_GRACE_SECONDS,
+            ownership_key=lease.ownership_key,
         )
     except WebSocketTicketError:
         raise CloudShellUnavailable("redis_unavailable", "Cloud Shell coordination is unavailable") from None
@@ -313,8 +535,14 @@ async def consume_cloud_shell_ticket(ticket: str) -> CloudShellLease:
     try:
         redis = await _get_redis()
         await redis.set(lease.heartbeat_key, lease.active_value, ex=HEARTBEAT_TTL_SECONDS)
+        if not await cloud_shell_authority.update_receipt(lease.session_id, active=True):
+            raise CloudShellUnauthorized("session_revoked", "Cloud Shell credential tracking expired")
+        await assert_session_authority(lease)
+    except CloudShellError:
+        await _retire_credential(lease, resources_cleaned=True)
+        raise
     except Exception:
-        await _release_coordination(lease)
+        await _retire_credential(lease, resources_cleaned=True)
         raise CloudShellUnavailable("redis_unavailable", "Cloud Shell coordination is unavailable") from None
     return lease
 
@@ -323,13 +551,29 @@ async def refresh_heartbeat(lease: CloudShellLease) -> bool:
     """Refresh liveness only while the active key still belongs to this session."""
     try:
         redis = await _get_redis()
-        owner = _decode_redis(await redis.get(lease.active_key))
-        if owner is None or not hmac.compare_digest(owner, lease.active_value):
-            return False
-        await redis.set(lease.heartbeat_key, lease.active_value, ex=HEARTBEAT_TTL_SECONDS)
-        return True
+        return bool(
+            await redis.eval(
+                _REFRESH_HEARTBEAT,
+                4,
+                lease.active_key,
+                lease.heartbeat_key,
+                cloud_shell_authority.PREFIX + lease.session_id,
+                lease.ownership_key,
+                lease.active_value,
+                HEARTBEAT_TTL_SECONDS,
+            )
+        )
     except Exception:
         return False
+
+
+async def renew_preparation_liveness(lease: CloudShellLease) -> None:
+    """Keep the consumed singleton live throughout slow native preparation."""
+    while True:
+        await assert_session_authority(lease)
+        if not await refresh_heartbeat(lease):
+            raise CloudShellUnavailable("coordination_lost", "Cloud Shell preparation ownership was lost")
+        await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS / 2)
 
 
 async def _release_coordination(lease: CloudShellLease) -> None:
@@ -458,9 +702,24 @@ async def _ensure_workspace(conn: Any, lease: CloudShellLease, status: StatusCal
     async with _redis_lock(_workspace_lock_key(lease.workspace_fingerprint), ttl_seconds=WORKSPACE_LOCK_TTL_SECONDS):
         await status("workspace")
         try:
-            record = await asyncio.to_thread(_discover_workspace_sync, conn, lease.workspace_fingerprint, settings)
+            record = await _to_completion(
+                asyncio.to_thread(_discover_workspace_sync, conn, lease.workspace_fingerprint, settings)
+            )
             if record is None:
-                record = await asyncio.to_thread(_create_workspace_sync, conn, lease.workspace_fingerprint, settings)
+                if not await cloud_shell_authority.update_receipt(lease.session_id, home_creation_attempted=True):
+                    raise CloudShellUnauthorized("session_revoked", "Cloud Shell credential tracking expired")
+                created_record: WorkspaceRecord | None = None
+
+                def create_home() -> WorkspaceRecord:
+                    nonlocal created_record
+                    created_record = _create_workspace_sync(conn, lease.workspace_fingerprint, settings)
+                    return created_record
+
+                try:
+                    record = await _to_completion(asyncio.to_thread(create_home))
+                finally:
+                    if created_record is not None:
+                        await _to_completion(cloud_shell_authority.update_receipt(lease.session_id, home_resolved=True))
         except CloudShellError:
             raise
         except Exception:
@@ -592,6 +851,12 @@ def _resolve_networking_sync(conn: Any, network_id: str, settings: Settings, *, 
         raise CloudShellUnavailable(
             "security_group_unavailable", "Cloud Shell security group is unavailable or ambiguous"
         )
+    try:
+        validate_security_group(matches[0])
+    except CloudShellSecurityError:
+        raise CloudShellUnavailable(
+            "security_group_unavailable", "Cloud Shell requires an isolated egress-only group"
+        ) from None
     return network.id, matches[0].id
 
 
@@ -615,6 +880,7 @@ async def _resolve_networking(conn: Any, settings: Settings) -> tuple[str, str]:
 async def provision_session(lease: CloudShellLease, status: StatusCallback) -> CloudShellRuntime:
     """Create one ephemeral container and validated bootstrap exec in the service project."""
     settings = get_settings()
+    await assert_session_authority(lease, native=True)
     expires_at = min(
         int(time.time()) + settings.cloud_shell_max_session_seconds,
         lease.token_expires_at - 60,
@@ -632,25 +898,38 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
     try:
         network_id, security_group_id = await _resolve_networking(conn, settings)
         workspace = await _ensure_workspace(conn, lease, status)
+        await assert_session_authority(lease)
         await status("container")
-        created = await asyncio.to_thread(
-            zun.create_cloud_shell_container,
-            conn,
-            name=_container_name(lease.session_id),
-            image=settings.cloud_shell_image,
-            image_pull_policy=settings.cloud_shell_image_pull_policy,
-            registry_id=settings.cloud_shell_registry_id,
-            cpu=settings.cloud_shell_cpu,
-            memory_mib=settings.cloud_shell_memory_mib,
-            network_id=network_id,
-            security_group=security_group_id,
-            volume_id=workspace.volume_id,
-            labels=labels,
-        )
+        if not await cloud_shell_authority.update_receipt(
+            lease.session_id, labels=labels, volume_id=workspace.volume_id, creation_attempted=True
+        ):
+            raise CloudShellUnauthorized("session_revoked", "Cloud Shell credential tracking expired")
+
+        def create_container() -> dict[str, Any]:
+            nonlocal container_id
+            result = zun.create_cloud_shell_container(
+                conn,
+                name=_container_name(lease.session_id),
+                image=settings.cloud_shell_image,
+                image_pull_policy=settings.cloud_shell_image_pull_policy,
+                registry_id=settings.cloud_shell_registry_id,
+                cpu=settings.cloud_shell_cpu,
+                memory_mib=settings.cloud_shell_memory_mib,
+                network_id=network_id,
+                security_group=security_group_id,
+                volume_id=workspace.volume_id,
+                labels=labels,
+            )
+            container_id = str(result.get("uuid") or "")
+            return result
+
+        created = await _to_completion(asyncio.to_thread(create_container))
         container_id = str(created.get("uuid") or "")
         if not container_id:
             raise CloudShellUnavailable("zun_invalid", "Zun omitted the Cloud Shell container ID")
-        await asyncio.to_thread(
+        if not await cloud_shell_authority.update_receipt(lease.session_id, container_id=container_id):
+            raise CloudShellUnavailable("receipt_unavailable", "Cloud Shell resource tracking is unavailable")
+        container = await asyncio.to_thread(
             zun.wait_for_container_status,
             conn,
             container_id,
@@ -658,6 +937,8 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
             failed={"ERROR", "DEAD", "FAILED"},
             timeout_seconds=PROVISION_TIMEOUT_SECONDS,
         )
+        verify_runtime_profile(container, settings)
+        await assert_session_authority(lease, native=True)
         await status("terminal")
         exec_session = await asyncio.to_thread(
             zun.create_exec_session,
@@ -675,35 +956,27 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
             exec_session=exec_session,
             expires_at=expires_at,
         )
-    except CloudShellError:
-        failure: CloudShellError | None = None
-        if container_id:
-            try:
-                await asyncio.to_thread(_delete_exact_container_sync, conn, container_id, labels, settings)
-            except Exception:
-                failure = CloudShellUnavailable(
-                    "cleanup_pending",
-                    "Cloud Shell provisioning failed and container cleanup is pending",
-                    retain_active=True,
-                )
-        await asyncio.to_thread(conn.close)
-        if failure is not None:
-            raise failure from None
-        raise
-    except Exception:
+    except BaseException as exc:
+        revoked = await _retire_credential(lease, resources_cleaned=False)
         cleanup_failed = False
         if container_id:
             try:
                 await asyncio.to_thread(_delete_exact_container_sync, conn, container_id, labels, settings)
+                if workspace is not None:
+                    await asyncio.to_thread(_wait_workspace_available_sync, conn, workspace.volume_id)
+                if revoked:
+                    await cloud_shell_authority.finish_receipt(lease.session_id, container_id=container_id)
             except Exception:
                 cleanup_failed = True
         await asyncio.to_thread(conn.close)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         if cleanup_failed:
             raise CloudShellUnavailable(
-                "cleanup_pending",
-                "Cloud Shell provisioning failed and container cleanup is pending",
-                retain_active=True,
+                "cleanup_pending", "Cloud Shell provisioning cleanup is pending", retain_active=True
             ) from None
+        if isinstance(exc, CloudShellError):
+            raise
         raise CloudShellUnavailable("provision_failed", "Cloud Shell provisioning failed") from None
 
 
@@ -711,6 +984,7 @@ async def cleanup_session(runtime: CloudShellRuntime) -> bool:
     """Delete the exact session container, verify home detach, then release Redis ownership."""
     settings = get_settings()
     cleaned = False
+    revoked = await _retire_credential(runtime.lease, resources_cleaned=False)
     try:
         await asyncio.to_thread(
             _delete_exact_container_sync,
@@ -728,14 +1002,17 @@ async def cleanup_session(runtime: CloudShellRuntime) -> bool:
         )
     finally:
         await asyncio.to_thread(runtime.connection.close)
-    if cleaned:
-        await _release_coordination(runtime.lease)
-    return cleaned
+    if cleaned and revoked:
+        return await cloud_shell_authority.finish_receipt(runtime.lease.session_id, container_id=runtime.container_id)
+    return False
 
 
 async def abandon_lease(lease: CloudShellLease) -> None:
     """Release an active lease only before a managed container needs reconciliation."""
-    await _release_coordination(lease)
+    revoked = await _retire_credential(lease, resources_cleaned=False)
+    record = await cloud_shell_authority.receipt(lease.session_id)
+    if revoked and record is not None and not record.get("creation_attempted"):
+        await cloud_shell_authority.finish_receipt(lease.session_id)
 
 
 def bootstrap_payload(lease: CloudShellLease) -> bytes:
@@ -773,7 +1050,9 @@ async def workspace_status(token_info: dict[str, Any]) -> dict[str, Any]:
     workspace_fp = workspace_fingerprint(user_id, project_id)
     try:
         redis = await _get_redis()
-        active_raw = _decode_redis(await redis.get(_active_key(user_fp)))
+        active_raw = _decode_redis(
+            await redis.get(cloud_shell_authority.OWNER_PREFIX + user_fp) or await redis.get(_active_key(user_fp))
+        )
     except Exception:
         raise CloudShellUnavailable("redis_unavailable", "Cloud Shell coordination is unavailable") from None
     try:
@@ -825,7 +1104,9 @@ async def reset_workspace(token_info: dict[str, Any]) -> bool:
     workspace_fp = workspace_fingerprint(user_id, project_id)
     try:
         redis = await _get_redis()
-        if await redis.exists(_active_key(user_fp)) or await redis.exists(_reservation_key(user_fp)):
+        if await redis.exists(
+            _active_key(user_fp), _reservation_key(user_fp), cloud_shell_authority.OWNER_PREFIX + user_fp
+        ):
             raise CloudShellConflict("active_session", "Close the active Cloud Shell before resetting its home")
     except CloudShellError:
         raise
@@ -833,7 +1114,9 @@ async def reset_workspace(token_info: dict[str, Any]) -> bool:
         raise CloudShellUnavailable("redis_unavailable", "Cloud Shell coordination is unavailable") from None
     async with _redis_lock(_workspace_lock_key(workspace_fp), ttl_seconds=WORKSPACE_LOCK_TTL_SECONDS):
         try:
-            if await redis.exists(_active_key(user_fp)) or await redis.exists(_reservation_key(user_fp)):
+            if await redis.exists(
+                _active_key(user_fp), _reservation_key(user_fp), cloud_shell_authority.OWNER_PREFIX + user_fp
+            ):
                 raise CloudShellConflict("active_session", "Close the active Cloud Shell before resetting its home")
             conn = await asyncio.to_thread(keystone.get_cloud_shell_project_connection)
             try:
@@ -906,6 +1189,7 @@ async def reconcile_once() -> dict[str, int]:
             try:
                 try:
                     containers = await run_sync(zun.list_containers_raw, conn)
+                    await _reconcile_credentials(conn, containers, settings)
                     candidates = _reconcile_candidates(containers, settings)
                     states: list[tuple[dict[str, Any], dict[str, str], str | None, str | None]] = []
                     for container, labels in candidates:
@@ -930,6 +1214,26 @@ async def reconcile_once() -> dict[str, int]:
                     expected_active = _active_value(labels["afterglow.session"], labels["afterglow.workspace"])
                     heartbeat_valid = bool(heartbeat and hmac.compare_digest(heartbeat, expected_active))
                     orphaned = expires_at <= now or (not heartbeat_valid and created_at + CREATION_GRACE_SECONDS <= now)
+                    try:
+                        current = await cloud_shell_authority.receipt(labels["afterglow.session"])
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "Cloud Shell reconciliation retained malformed receipt (session=%s)",
+                            labels["afterglow.session"],
+                        )
+                        continue
+                    if current is not None and not isinstance(current, dict):
+                        logger.warning(
+                            "Cloud Shell reconciliation retained malformed receipt (session=%s)",
+                            labels["afterglow.session"],
+                        )
+                        continue
+                    if current is not None:
+                        # Receipt-backed resources use only the versioned cleanup
+                        # protocol, never cached fallback heartbeat observations.
+                        if orphaned and not current.get("cleanup_requested"):
+                            await redis.zadd(cloud_shell_authority.INDEX, {labels["afterglow.session"]: 0})
+                        continue
                     if not orphaned:
                         continue
                     container_id = container.get("uuid") or container.get("id")
@@ -937,6 +1241,12 @@ async def reconcile_once() -> dict[str, int]:
                         continue
                     try:
                         await run_sync(_delete_exact_container_sync, conn, container_id, labels, settings)
+                        if await redis.get(cloud_shell_authority.OWNER_PREFIX + labels["afterglow.user"]):
+                            home = await run_sync(
+                                _discover_workspace_sync, conn, labels["afterglow.workspace"], settings
+                            )
+                            if home is not None and (home.status != "available" or home.attachments):
+                                continue
                     except DispatcherUnavailable:
                         raise
                     except Exception:
@@ -948,6 +1258,7 @@ async def reconcile_once() -> dict[str, int]:
                     await checkpoint()
                     await compare_delete(_heartbeat_key(labels["afterglow.session"]), expected_active)
                     await compare_delete(_active_key(labels["afterglow.user"]), expected_active)
+                    await compare_delete(cloud_shell_authority.OWNER_PREFIX + labels["afterglow.user"], expected_active)
                     deleted += 1
                 return {"examined": len(states), "deleted": deleted}
             finally:

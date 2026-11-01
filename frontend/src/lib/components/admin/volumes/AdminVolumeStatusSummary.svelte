@@ -1,28 +1,9 @@
-<script lang="ts" module>
-	import { t } from '$lib/i18n/ns/admin-storage';
-
-	const statusKeys: Record<string, Parameters<typeof t>[0]> = {
-		available: 'volumeList.status.available',
-		'in-use': 'volumeList.status.inUse',
-		error: 'volumeList.status.error',
-		error_deleting: 'volumeList.status.errorDeleting',
-		creating: 'volumeList.status.creating',
-		deleting: 'volumeList.status.deleting',
-		attaching: 'volumeList.status.attaching',
-		detaching: 'volumeList.status.detaching',
-		reserved: 'volumeList.status.reserved',
-	};
-
-	export function volumeStatusLabel(status: string): string {
-		const key = Object.hasOwn(statusKeys, status) ? statusKeys[status] : undefined;
-		return key ? t(key) : status;
-	}
-</script>
-
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { AdminVolumeStatusSummary as Summary } from '$lib/types/volume';
-	import { getStatusStyle } from '$lib/config/statusColors';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import { formatNumber } from '$lib/utils/format';
 
 	interface Props {
 		summary: Summary | null;
@@ -44,17 +25,17 @@
 			.map((item) => ({ status: item.status, count: item.count })),
 	]);
 
-	function toneFor(status: string): string {
-		return getStatusStyle(status).tone;
-	}
 </script>
 
 {#if loading}
-	<ActivityIndicator size="sm" label={t('volumeList.statusLoading')} class="mb-2" />
+	<LoadingState variant="inline" label={t('volumeList.statusLoading')} class="mb-2" />
 {/if}
 <section class="volume-status-summary" aria-label={t('volumeList.statusCounts')} aria-busy={loading}>
+	<p class="text-sm text-ink-2" data-testid="admin-volume-inline-capacity">{t('volumeList.summary.provisioned')}: <strong class="font-medium tabular-nums text-ink-0" data-testid="admin-volume-complete-total">{loading || !summary ? '—' : t('volumeList.summary.capacity', { count: formatNumber(summary.total), size: formatNumber(summary.total_gb) })}</strong></p>
+	{#if !loading && !summary}<p class="text-sm text-ink-2" role="status">{t('volumeList.summaryUnavailable')}</p>{/if}
 	<button
 		type="button"
+		data-volume-status=""
 		class="status-card status-card-total"
 		class:status-card-active={activeStatus === ''}
 		aria-pressed={activeStatus === ''}
@@ -62,25 +43,25 @@
 	>
 		<span class="status-card-label">{t('volumeList.all')}</span>
 		{#if loading}
-			<span class="motion-skeleton h-5 w-8 rounded" aria-hidden="true"></span>
+			<LoadingState variant="control" label="" aria-hidden="true" />
 		{:else}
 			<span class="status-card-count">{summary?.total ?? '—'}</span>
 		{/if}
 	</button>
 
 	{#each statusRows as row}
-		{@const tone = toneFor(row.status)}
 		<button
 			type="button"
-			class="status-card status-card-{tone}"
+			data-volume-status={row.status}
+			class="status-card"
 			class:status-card-active={activeStatus === row.status}
 			aria-pressed={activeStatus === row.status}
 			data-tour={row.status === 'available' ? 'admin-storage-status-available' : undefined}
 			onclick={() => onSelect(row.status)}
 		>
-			<span class="status-card-label">{volumeStatusLabel(row.status)}</span>
+			<StatusChip status={row.status} kind="volume" />
 			{#if loading}
-				<span class="motion-skeleton h-5 w-8 rounded" aria-hidden="true"></span>
+				<LoadingState variant="control" label="" aria-hidden="true" />
 			{:else}
 				<span class="status-card-count">{row.count}</span>
 			{/if}
@@ -90,31 +71,29 @@
 
 <style>
 	.volume-status-summary {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
-		gap: 0.75rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 1rem;
 	}
-
 	.status-card {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.75rem;
-		border: 1px solid var(--status-line, var(--color-line));
-		border-radius: 0.875rem;
-		background: color-mix(in oklab, var(--status-tone, var(--color-surface-raised)) 10%, var(--color-surface-raised));
-		padding: 0.875rem 1rem;
+		gap: 0.5rem;
+		min-height: 2.25rem;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-base);
+		padding: 0.375rem 0.75rem;
 		color: var(--color-ink-1);
 		text-align: left;
-		transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s, background 0.15s;
 	}
-
 	.status-card:hover,
 	.status-card-active {
-		border-color: var(--status-tone, var(--color-accent));
-		box-shadow: 0 8px 24px color-mix(in oklab, var(--status-tone, var(--color-accent)) 18%, transparent);
-		transform: translateY(-1px);
+		border-color: var(--color-line-2);
+		background: var(--color-surface-sunken);
 	}
 
 	.status-card:focus-visible {
@@ -133,16 +112,12 @@
 	}
 
 	.status-card-count {
-		font-size: 1.25rem;
-		font-weight: 700;
-		line-height: 1;
-		color: var(--status-tone, var(--color-ink-0));
+		font-size: 0.875rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		line-height: 1.4;
+		color: var(--color-ink-0);
 	}
 
-	.status-card-total { --status-tone: var(--color-accent); --status-line: var(--accent-ring); }
-	.status-card-success { --status-tone: var(--color-state-success); --status-line: color-mix(in oklab, var(--color-state-success) 30%, transparent); }
-	.status-card-warning { --status-tone: var(--color-state-warning); --status-line: color-mix(in oklab, var(--color-state-warning) 30%, transparent); }
-	.status-card-danger { --status-tone: var(--color-state-danger); --status-line: color-mix(in oklab, var(--color-state-danger) 30%, transparent); }
-	.status-card-info { --status-tone: var(--color-state-info); --status-line: color-mix(in oklab, var(--color-state-info) 30%, transparent); }
-	.status-card-neutral { --status-tone: var(--color-state-neutral); --status-line: color-mix(in oklab, var(--color-state-neutral) 30%, transparent); }
+	@media (max-width: 1023px) { .status-card { min-height: 2.75rem; } }
 </style>

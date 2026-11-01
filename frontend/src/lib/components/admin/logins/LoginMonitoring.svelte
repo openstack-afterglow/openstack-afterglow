@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -59,12 +60,12 @@
     <div class="mt-3 flex flex-wrap items-center gap-3">
       <Button variant="ghost" disabled={!ctrl.allowed || ctrl.directoryLoading} onclick={() => ctrl.loadUsers()}>{t('refresh')}</Button>
       {#if ctrl.nextMarker}<Button variant="secondary" disabled={ctrl.directoryLoading} onclick={() => ctrl.loadUsers(true)}>{t('more')}</Button>{/if}
-      {#if ctrl.directoryLoading}<p role="status" class="text-sm text-ink-2">{t('directoryLoading')}</p>{/if}
+      {#if ctrl.directoryLoading}<LoadingState variant="inline" label={t('directoryLoading')} />{/if}
       {#if search && !filtered.length && !ctrl.directoryLoading}<p class="text-sm text-ink-2">{t('noMatches')}</p>{/if}
     </div>
     {#if ctrl.directoryError}<Alert class="mt-3">{errorMessage(ctrl.directoryError)}<Button variant="ghost" onclick={() => ctrl.loadUsers(!!ctrl.nextMarker)}>{t('retry')}</Button></Alert>{/if}
   </Card>
-  {#if ctrl.loading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+  {#if ctrl.loading}<LoadingState variant={ctrl.data ? 'inline' : 'surface'} label={t('loading')} />{/if}
   {#if ctrl.error}<Alert>{errorMessage(ctrl.error)}<Button variant="ghost" onclick={ctrl.load}>{t('retry')}</Button></Alert>{/if}
   {#if ctrl.allowed && ctrl.data}
     {@const data = ctrl.data}

@@ -2,6 +2,11 @@
 	"src/lib/docs/iamGuide.ts": {
 		"reason": "Typed IAM guide canonical Korean source; all reader-facing strings are rendered through the nine-locale documentation catalog. Exact data lines only.",
 		"lines": [
+			"title: '서비스 등급의 기능 포함 관계',",
+			"description: '화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.',",
+			"relation: '포함',",
+			"title: '프로젝트 역할 포함 관계',",
+			"description: '화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.',",
 			"name: 'IAM · 서비스별 권한',",
 			"title: '사용자별 역할과 서비스 이용 권한 이해하기',",
 			"summary: '조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.',",
@@ -137,8 +142,13 @@
 		]
 	},
 	"src/lib/docs/translations/en/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"Project role inclusion relationships\",",
+			"\"서비스 등급의 기능 포함 관계\": \"Capability inclusion relationships between service grades\",",
+			"\"포함\": \"includes\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"Arrows point to the lower-level roles included by a higher-level role. The actual Keystone role implications must be configured; manager and project_creator are not part of this hierarchy.\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"Arrows point to the capabilities of lower grades included by a higher grade. Granular roles are not granted automatically, and project, ownership and eligibility requirements still apply.\",",
 			"\"IAM · 서비스별 권한\": \"IAM · Permissions by service\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"Understanding user roles and service permissions\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"Learn what organization manager, project roles, and Waygate, Drover, Lumen and Palimpsest grades and granular roles allow, and which permission combinations each task requires.\",",
@@ -288,8 +298,13 @@
 		]
 	},
 	"src/lib/docs/translations/ja/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"プロジェクトロールの包含関係\",",
+			"\"서비스 등급의 기능 포함 관계\": \"サービス権限レベル間の機能の包含関係\",",
+			"\"포함\": \"が包含する対象：\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"矢印は、上位ロールに含まれる下位ロールを指します。Keystone で実際のロール包含関係が設定されている必要があります。manager と project_creator はこの階層に属しません。\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"矢印は、上位の権限レベルに含まれる下位の権限レベルの機能を指します。個別ロールは自動付与されず、プロジェクト・所有権・資格の条件は引き続き適用されます。\",",
 			"\"IAM · 서비스별 권한\": \"IAM · サービス別の権限\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"ユーザーのロールとサービス利用権限を理解する\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"組織の manager、プロジェクトロール、Waygate・Drover・Lumen・Palimpsest の権限レベルと個別ロールについて、機能ごとの権限と必要な組み合わせを説明します。\",",
@@ -439,8 +454,13 @@
 		]
 	},
 	"src/lib/docs/translations/zh-CN/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"项目角色包含关系\",",
+			"\"서비스 등급의 기능 포함 관계\": \"服务等级的功能包含关系\",",
+			"\"포함\": \"包含\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"箭头指向上级角色所包含的下级角色。必须已在 Keystone 中配置实际的角色包含关系；manager 和 project_creator 不属于此层级。\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"箭头指向上级等级所包含的下级等级功能。不会自动授予细分角色，项目、所有权和资格条件仍然适用。\",",
 			"\"IAM · 서비스별 권한\": \"IAM · 服务权限\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"了解用户角色与服务使用权限\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"按功能说明组织 manager、项目角色以及 Waygate、Drover、Lumen、Palimpsest 的权限等级和细分角色，并介绍所需的权限组合。\",",
@@ -590,8 +610,13 @@
 		]
 	},
 	"src/lib/docs/translations/sw/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"'프로젝트 역할 포함 관계': 'Uhusiano wa ujumuishaji wa majukumu ya mradi',",
+			"'서비스 등급의 기능 포함 관계': 'Uhusiano wa ujumuishaji wa vipengele vya viwango vya huduma',",
+			"'포함': 'inajumuisha',",
+			"'화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.': 'Mishale inaelekeza kwenye majukumu ya ngazi ya chini yanayojumuishwa na jukumu la ngazi ya juu. Viungo halisi vya majukumu katika Keystone lazima viwe vimesanidiwa, na manager na project_creator si sehemu ya mpangilio huu wa ngazi.',",
+			"'화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.': 'Mishale inaelekeza kwenye vipengele vya ngazi ya chini vinavyojumuishwa na ngazi ya juu. Hii haigawi majukumu mahususi kiotomatiki, na masharti ya mradi, umiliki na ustahiki yanaendelea kutumika bila kubadilika.',",
 			"'IAM · 서비스별 권한': 'IAM · Ruhusa kwa kila huduma',",
 			"'사용자별 역할과 서비스 이용 권한 이해하기': 'Kuelewa majukumu ya watumiaji na ruhusa za kutumia huduma',",
 			"'조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.': 'Mwongozo wa manager wa shirika, majukumu ya mradi, na viwango na majukumu mahususi ya Waygate, Drover, Lumen na Palimpsest kwa kila kipengele, pamoja na michanganyiko ya ruhusa inayohitajika.',",
@@ -741,8 +766,13 @@
 		]
 	},
 	"src/lib/docs/translations/nb/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"'프로젝트 역할 포함 관계': 'Inkluderingsforhold mellom prosjektroller',",
+			"'서비스 등급의 기능 포함 관계': 'Inkluderingsforhold mellom funksjoner på tjenestenivåer',",
+			"'포함': 'inkluderer',",
+			"'화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.': 'Pilene peker på underordnede roller som den overordnede rollen inkluderer. De faktiske rollekoblingene i Keystone må være konfigurert, og manager og project_creator inngår ikke i dette hierarkiet.',",
+			"'화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.': 'Pilene peker på funksjoner på lavere nivåer som det høyere nivået inkluderer. Dette tildeler ikke detaljroller automatisk, og vilkårene for prosjekt, eierskap og kvalifikasjon gjelder uendret.',",
 			"'IAM · 서비스별 권한': 'IAM · Tillatelser per tjeneste',",
 			"'사용자별 역할과 서비스 이용 권한 이해하기': 'Forstå brukerroller og tilgang til tjenester',",
 			"'조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.': 'Lær om organisasjonens manager, prosjektroller og nivåer og detaljroller i Waygate, Drover, Lumen og Palimpsest, med tillatelseskombinasjonene hver funksjon krever.',",
@@ -892,8 +922,13 @@
 		]
 	},
 	"src/lib/docs/translations/ms/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"Hubungan rangkuman peranan projek\",",
+			"\"서비스 등급의 기능 포함 관계\": \"Hubungan rangkuman fungsi peringkat perkhidmatan\",",
+			"\"포함\": \"merangkumi\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"Anak panah menunjuk kepada peranan bawahan yang dirangkumi oleh peranan atasan. Hubungan peranan sebenar mesti dikonfigurasikan dalam Keystone, dan manager serta project_creator tidak termasuk dalam hierarki ini.\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"Anak panah menunjuk kepada fungsi peringkat bawahan yang dirangkumi oleh peringkat atasan. Peranan terperinci tidak diberikan secara automatik, dan syarat projek, pemilikan serta kelayakan tetap terpakai.\",",
 			"\"IAM · 서비스별 권한\": \"IAM · Kebenaran mengikut perkhidmatan\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"Fahami peranan pengguna dan kebenaran menggunakan perkhidmatan\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"Panduan fungsi bagi manager organisasi, peranan projek serta peringkat dan peranan terperinci Waygate, Drover, Lumen dan Palimpsest, termasuk gabungan kebenaran yang diperlukan.\",",
@@ -1043,8 +1078,13 @@
 		]
 	},
 	"src/lib/docs/translations/vi/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"Quan hệ bao hàm giữa các vai trò dự án\",",
+			"\"서비스 등급의 기능 포함 관계\": \"Quan hệ bao hàm chức năng giữa các cấp dịch vụ\",",
+			"\"포함\": \"bao gồm\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"Mũi tên chỉ đến vai trò cấp dưới được vai trò cấp trên bao hàm. Các quan hệ vai trò thực tế phải được cấu hình trong Keystone; manager và project_creator không thuộc hệ phân cấp này.\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"Mũi tên chỉ đến chức năng của cấp dưới được cấp trên bao hàm. Các vai trò chi tiết không được tự động gán; các điều kiện về dự án, quyền sở hữu và tư cách vẫn áp dụng như cũ.\",",
 			"\"IAM · 서비스별 권한\": \"IAM · Quyền theo từng dịch vụ\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"Hiểu vai trò người dùng và quyền sử dụng dịch vụ\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"Giải thích theo chức năng về manager của tổ chức, vai trò dự án, các cấp và vai trò chi tiết của Waygate, Drover, Lumen và Palimpsest, cùng các tổ hợp quyền cần thiết.\",",
@@ -1194,8 +1234,13 @@
 		]
 	},
 	"src/lib/docs/translations/bn/iamGuide.ts": {
-		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; all 155 translated values are checked through translateDocGuide. Exact data lines only.",
+		"reason": "IAM documentation dictionary uses canonical Korean lookup keys; translated values are checked through translateDocGuide. Exact data lines only.",
 		"lines": [
+			"\"프로젝트 역할 포함 관계\": \"প্রকল্পের ভূমিকাগুলোর অন্তর্ভুক্তির সম্পর্ক\",",
+			"\"서비스 등급의 기능 포함 관계\": \"সেবার স্তরগুলোর কার্যক্ষমতা অন্তর্ভুক্তির সম্পর্ক\",",
+			"\"포함\": \"অন্তর্ভুক্ত করে\",",
+			"\"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.\": \"তীরচিহ্ন উচ্চতর ভূমিকার অন্তর্ভুক্ত নিম্নতর ভূমিকাকে নির্দেশ করে। Keystone-এ প্রকৃত ভূমিকা-সংযোগ কনফিগার করা থাকতে হবে; manager ও project_creator এই স্তরবিন্যাসের অন্তর্ভুক্ত নয়।\",",
+			"\"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.\": \"তীরচিহ্ন উচ্চতর স্তরের অন্তর্ভুক্ত নিম্নতর স্তরের কার্যক্ষমতাকে নির্দেশ করে। নির্দিষ্ট ভূমিকা স্বয়ংক্রিয়ভাবে বরাদ্দ করা হয় না; প্রকল্প, মালিকানা ও যোগ্যতার শর্ত আগের মতোই প্রযোজ্য থাকে।\",",
 			"\"IAM · 서비스별 권한\": \"IAM · সেবাভিত্তিক অনুমতি\",",
 			"\"사용자별 역할과 서비스 이용 권한 이해하기\": \"ব্যবহারকারীর ভূমিকা ও সেবা ব্যবহারের অনুমতি বোঝা\",",
 			"\"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.\": \"সাংগঠনিক manager, প্রকল্পের ভূমিকা এবং Waygate, Drover, Lumen ও Palimpsest-এর স্তর ও নির্দিষ্ট ভূমিকা কাজ অনুযায়ী ব্যাখ্যা করে এবং প্রয়োজনীয় অনুমতির সমন্বয় নির্দেশ করে।\",",
@@ -1591,7 +1636,7 @@
 			"title: '1. 연결 방향과 권한 이해하기',",
 			"'이 가이드는 외부 AI 클라이언트 → Afterglow MCP 서버의 인바운드 연결입니다. /dashboard/account의 외부 AI 접근에서 발급한 개인 키는 발급 사용자와 당시 선택한 프로젝트에 묶입니다. 브라우저 로그인 토큰, Keystone 비밀번호, Lumen 추론 API 키를 대신 넣지 마세요.',",
 			"'Afterglow는 제한된 Keystone application credential로 위임 권한을 실행합니다. 개인 키는 다른 사용자·프로젝트나 관리자 전체 클라우드 접근을 허용하지 않습니다. 클라이언트 설정에 프로젝트 ID를 추가하거나 대시보드 프로젝트를 바꿔도 기존 키의 프로젝트는 바뀌지 않습니다.'",
-			"links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account' }]",
+			"links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account/mcp' }]",
 			"title: '2. 최소 권한 개인 키 발급·회수하기',",
 			"title: '프로젝트와 권한을 선택합니다',",
 			"text: ['계정 → 외부 AI 접근에서 OAuth와 API 키 중 API 키를 선택하고 용도를 알아볼 수 있는 이름을 입력하세요. 기본 read는 조회 권한이며 manage는 조회와 허용된 변경 권한을 포함합니다. 연결 확인과 조회에는 read를 사용하고 실제 변경이 필요한 경우에만 manage를 명시적으로 선택하세요. 클라이언트의 도구 승인도 켜 두세요.'],",
@@ -1635,7 +1680,7 @@
 			"'400·405·406·415 또는 도구 0개: MCP 엔드포인트는 POST만 받으므로 브라우저 주소창이나 GET 요청은 405입니다. Streamable HTTP 클라이언트와 JSON 요청·Accept 협상을 확인하고 활성 서비스·권한을 검토하세요. 확인 성공 뒤 실제 조회가 실패하면 해당 OpenStack 서비스 상태와 사용자 역할을 따로 점검하세요. 도구 목록은 클라우드 응답이 아닙니다.',",
 			"'도구 오류: read 키로 변경 도구를 호출하거나 사용자 역할·서비스 상태가 맞지 않으면 HTTP 403이 아니라 MCP 도구 오류로 표시됩니다. 변경이 꼭 필요한 경우에만 manage 키를 새로 발급하고 무조건 권한을 올리지 마세요.',",
 			"'지원 요청에는 비밀을 제거한 엔드포인트, 클라이언트·버전, 실패 단계, 상태 코드와 발생 시각만 전달하세요. 개인 키·Authorization·복사한 인증 JSON은 첨부하지 말고 노출됐다면 즉시 폐기하세요.'",
-			"{ label: '계정의 외부 AI 접근', href: '/dashboard/account' },",
+			"{ label: '계정의 외부 AI 접근', href: '/dashboard/account/mcp' },",
 			"{ label: 'Claude Code 공식 MCP 문서', href: 'https://code.claude.com/docs/en/mcp' },",
 			"{ label: 'Cursor 공식 MCP 문서', href: 'https://cursor.com/docs/mcp' },",
 			"{ label: 'VS Code 공식 MCP 문서', href: 'https://code.visualstudio.com/docs/agent-customization/mcp-servers' },",

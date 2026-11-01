@@ -370,7 +370,7 @@ async def _save_resources(consume_id, run_id, resources):
                 saved["id"] is not None and proposed["id"] not in (None, saved["id"])
             ):
                 raise RuntimeError("consumer cleanup resource identity changed")
-            if saved["state"] in {"rejected", "deleted"}:
+            if saved["state"] in {"rejected", "deleted", "retained"}:
                 if saved["state"] == "rejected" and proposed["id"] is not None:
                     raise RuntimeError("consumer cleanup conflicts with CREATE rejection")
                 combined = saved
@@ -409,6 +409,15 @@ async def cleanup(conn, consume_id: int, *, project_id: str, automatic: bool = F
         ).scalar_one_or_none()
         if row is None or row.transport != "block" or row.project_id != project_id:
             raise RuntimeError("consumer cleanup owner mismatch")
+        from app.services.instance_usage_cleanup import receipt_owns_cleanup
+
+        if await receipt_owns_cleanup(conn, row):
+            # The schedule worker alone submits Nova DELETE. Its resource-only
+            # receipt already records retention before native metadata vanishes;
+            # ordinary/orphan cleanup must neither replay DELETE nor erase data.
+            if row.cleanup_state == "complete":
+                return
+            raise RuntimeError("scheduled resource cleanup awaits exact native absence reconciliation")
         from app.services.layer_block import project_id as connection_project_id
 
         connection_project_id(conn, expected=row.project_id)
@@ -464,7 +473,7 @@ async def cleanup(conn, consume_id: int, *, project_id: str, automatic: bool = F
         await session.commit()
     try:
         for item in sorted(resources, key=lambda item: {"server": 0, "layer": 1, "upper": 1, "port": 2}[item["kind"]]):
-            if item["state"] == "deleted":
+            if item["state"] in {"deleted", "retained"}:
                 continue
             if item["state"] == "rejected":
                 if item["id"] is not None or item.get("response_status") not in REJECTED_CREATE_STATUSES:

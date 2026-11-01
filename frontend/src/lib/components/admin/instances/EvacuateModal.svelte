@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -126,7 +126,7 @@
 			<!-- 실행 중 -->
 			{#if phase === 'executing'}
 				<div class="flex items-center gap-3 text-ink-2 text-sm py-4 justify-center">
-					<ActivityIndicator size="sm" label={t('instances.evacuate.requesting')} />
+					<LoadingState variant="section" label={t('instances.evacuate.requesting')} />
 				</div>
 			{/if}
 		</div>

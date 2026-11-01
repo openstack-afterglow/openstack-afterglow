@@ -4,7 +4,7 @@ import { projectNames, type AdminProjectName } from '$lib/stores/projectNames';
 import { domainsApi, type AdminDomain } from '$lib/api/domains';
 import { t as td } from '$lib/i18n/ns/domain-admin';
 import { api, ApiError } from '$lib/api/client';
-import type { Quotas, QuotaUpdateResponse, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
+import type { Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
 import { t } from '$lib/i18n/ns/admin-identity';
 
 export interface AdminQuotasControllerOpts {
@@ -33,24 +33,8 @@ export interface AdminQuotasController {
   readonly saveSuccess: string;
   readonly sectionErrors: Record<string, string>;
   readonly sectionSuccesses: Record<string, string>;
-  readonly gpuQuotaMap: Record<string, GpuQuota>;
-  readonly gpuDefaultMap: Record<string, number>;
-  readonly allGpuTypes: string[];
-  readonly gpuQuotaRows: GpuQuota[];
-  readonly gpuQuotaLoading: boolean;
-  readonly gpuQuotaError: string;
-  readonly gpuDefaultLoading: boolean;
-  readonly gpuDefaultError: string;
-  readonly gpuDefaultSuccess: string;
-  readonly gpuQuotas: GpuQuota[];
   loadProjects: () => Promise<void>;
-  loadGpuAliases: () => Promise<void>;
-  loadGpuDefaults: (opts?: { background?: boolean }) => Promise<void>;
   loadQuotas: (opts?: { preserveStatus?: boolean; background?: boolean }) => Promise<boolean>;
-  loadGpuQuotas: (opts?: { background?: boolean }) => Promise<void>;
-  setGpuDefault: (gpuType: string, limit: number) => Promise<void>;
-  setGpuQuota: (gpuType: string, limit: number) => Promise<void>;
-  deleteGpuQuota: (gpuType: string) => Promise<void>;
   saveSectionQuotas: (
     section: 'compute' | 'volume' | 'network' | 'file_storage',
     changes: Record<string, number>,
@@ -77,54 +61,23 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
   let saveSuccess = $state('');
   let sectionErrors = $state<Record<string, string>>({});
   let sectionSuccesses = $state<Record<string, string>>({});
-  let gpuAliases = $state<string[]>([]);
-  let gpuQuotas = $state<GpuQuota[]>([]);
-  let gpuDefaults = $state<GpuDefaultQuota[]>([]);
-  let gpuQuotaLoading = $state(false);
-  let gpuQuotaError = $state('');
-  let gpuDefaultLoading = $state(false);
-  let gpuDefaultError = $state('');
-  let gpuDefaultSuccess = $state('');
-  let gpuQuotaGeneration = 0;
   let quotaGeneration = 0;
   let saveGeneration = 0;
   let directoryGeneration = 0;
   let domainsGeneration = 0;
-  let defaultsGeneration = 0;
-  let aliasesGeneration = 0;
   let authorityEpoch = 0;
   let disposed = false;
 
-  const gpuQuotaMap = $derived(Object.fromEntries(gpuQuotas.map(q => [q.gpu_type, q])));
-  const gpuDefaultMap = $derived(Object.fromEntries(gpuDefaults.map(q => [q.gpu_type, q.limit])));
-  const allGpuTypes = $derived(
-    [...new Set([...gpuAliases, ...gpuDefaults.map(d => d.gpu_type), ...gpuQuotas.map(q => q.gpu_type)])].sort()
-  );
-  const gpuQuotaRows = $derived(
-    allGpuTypes.map((gpuType): GpuQuota => {
-      const current = gpuQuotaMap[gpuType];
-      if (current) return current;
-      const limit = gpuDefaultMap[gpuType] ?? 0;
-      return {
-        gpu_type: gpuType,
-        limit,
-        in_use: 0,
-        available: limit === -1 ? -1 : limit,
-      };
-    }),
-  );
 
   const tok = opts.token;
   const pid = opts.projectId;
 
   function clearProjectResults() {
     ++scopeRevision;
-    ++quotaGeneration; ++gpuQuotaGeneration; ++saveGeneration;
+    ++quotaGeneration; ++saveGeneration;
     quotas = null; quotaLoading = false;
     saving = false; savingSection = null;
     saveError = ''; saveSuccess = ''; sectionErrors = {}; sectionSuccesses = {};
-    gpuQuotas = []; gpuQuotaLoading = false; gpuQuotaError = '';
-    gpuDefaultSuccess = '';
   }
 
   function captureContext(projectScoped = true) {
@@ -151,7 +104,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     ++authorityEpoch;
     clearProjectResults();
     directory = []; domains = []; selectedDomainId = ''; selectedProjectId = '';
-    gpuAliases = []; gpuDefaults = []; gpuDefaultError = ''; gpuDefaultLoading = false;
     projectsError = ''; domainsError = ''; domainsLoading = false; loading = false; refreshing = false;
   }
   onDestroy(() => {
@@ -190,45 +142,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 
-  async function loadGpuAliases() {
-    const context = captureContext(false), generation = ++aliasesGeneration;
-    const owns = () => context.owns() && generation === aliasesGeneration;
-    try {
-      const res = await api.get<{ aliases: string[] }>('/api/v1/admin/gpu-aliases', context.token, context.projectId);
-      if (owns()) gpuAliases = res.aliases ?? [];
-    } catch {
-      if (owns()) gpuAliases = [];
-    }
-  }
-
-  async function loadGpuDefaults(opts?: { background?: boolean }) {
-    const context = captureContext(false), generation = ++defaultsGeneration;
-    const owns = () => context.owns() && generation === defaultsGeneration;
-    if (!opts?.background) { gpuDefaultLoading = true; }
-    gpuDefaultError = '';
-    try {
-      const loaded = await api.get<GpuDefaultQuota[]>('/api/v1/admin/gpu-quotas/defaults', context.token, context.projectId);
-      if (owns()) gpuDefaults = loaded;
-    } catch (e) {
-      if (!owns()) return;
-      gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsLoadFailed');
-      gpuDefaults = [];
-    } finally { if (owns()) gpuDefaultLoading = false; }
-  }
-
-  async function setGpuDefault(gpuType: string, limit: number) {
-    const context = captureContext(false), projectContext = captureContext();
-    gpuDefaultError = ''; gpuDefaultSuccess = '';
-    try {
-      await api.put('/api/v1/admin/gpu-quotas/defaults', { gpu_type: gpuType, limit }, context.token, context.projectId);
-      if (!context.owns()) return;
-      gpuDefaultSuccess = t('quotaController.defaultsSaved');
-      await loadGpuDefaults({ background: true });
-      if (projectContext.owns() && selectedProjectId) await loadGpuQuotas({ background: true });
-    } catch (e) {
-      if (context.owns()) gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsSetFailed');
-    }
-  }
 
   async function loadQuotas(opts?: { preserveStatus?: boolean; background?: boolean }): Promise<boolean> {
     const targetProjectId = selectedProjectId;
@@ -246,7 +159,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       sectionSuccesses = {};
     }
     const quotaPromise = api.get<Quotas>(`/api/v1/admin/quotas/${targetProjectId}`, requestToken, requestProjectId);
-    if (!opts?.background) void loadGpuQuotas();
     try {
       const loadedQuotas = await quotaPromise;
       if (!owns()) return false;
@@ -260,50 +172,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     }
   }
 
-  async function loadGpuQuotas(opts?: { background?: boolean }) {
-    const targetProjectId = selectedProjectId;
-    const context = captureContext();
-    const requestToken = tok();
-    const requestProjectId = pid();
-    const generation = ++gpuQuotaGeneration;
-    const owns = () => generation === gpuQuotaGeneration && context.owns() && selectedProjectId === targetProjectId;
-    if (!targetProjectId) { gpuQuotas = []; gpuQuotaLoading = false; return; }
-    if (!opts?.background) { gpuQuotaLoading = true; }
-    gpuQuotaError = '';
-    try {
-      const loaded = await api.get<GpuQuota[]>(`/api/v1/admin/gpu-quotas/${targetProjectId}`, requestToken, requestProjectId);
-      if (owns()) gpuQuotas = loaded;
-    } catch (e) {
-      if (!owns()) return;
-      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuLoadFailed');
-      gpuQuotas = [];
-    } finally {
-      if (owns()) gpuQuotaLoading = false;
-    }
-  }
-
-  async function setGpuQuota(gpuType: string, limit: number) {
-    const targetProjectId = selectedProjectId, context = captureContext();
-    if (!targetProjectId) return;
-    gpuQuotaError = '';
-    try {
-      await api.put(`/api/v1/admin/gpu-quotas/${targetProjectId}`, { gpu_type: gpuType, limit }, context.token, context.projectId);
-      if (context.owns()) await loadGpuQuotas({ background: true });
-    } catch (e) {
-      if (context.owns()) gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuSetFailed');
-    }
-  }
-
-  async function deleteGpuQuota(gpuType: string) {
-    const targetProjectId = selectedProjectId, context = captureContext();
-    if (!targetProjectId) return;
-    try {
-      await api.delete(`/api/v1/admin/gpu-quotas/${targetProjectId}/${encodeURIComponent(gpuType)}`, context.token, context.projectId);
-      if (context.owns()) await loadGpuQuotas({ background: true });
-    } catch (e) {
-      if (context.owns()) gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuDeleteFailed');
-    }
-  }
 
   async function saveSectionQuotas(
     section: 'compute' | 'volume' | 'network' | 'file_storage',
@@ -409,7 +277,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
         selectedProjectId = next;
         clearProjectResults();
         quotaLoading = !!next;
-        gpuQuotaLoading = !!next;
       }
     },
     get quotas() { return quotas; },
@@ -422,24 +289,8 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     get saveSuccess() { return saveSuccess; },
     get sectionErrors() { return sectionErrors; },
     get sectionSuccesses() { return sectionSuccesses; },
-    get gpuQuotaMap() { return gpuQuotaMap; },
-    get gpuDefaultMap() { return gpuDefaultMap; },
-    get allGpuTypes() { return allGpuTypes; },
-    get gpuQuotaRows() { return gpuQuotaRows; },
-    get gpuQuotaLoading() { return gpuQuotaLoading; },
-    get gpuQuotaError() { return gpuQuotaError; },
-    get gpuDefaultLoading() { return gpuDefaultLoading; },
-    get gpuDefaultError() { return gpuDefaultError; },
-    get gpuDefaultSuccess() { return gpuDefaultSuccess; },
-    get gpuQuotas() { return gpuQuotas; },
     loadProjects,
-    loadGpuAliases,
-    loadGpuDefaults,
     loadQuotas,
-    loadGpuQuotas,
-    setGpuDefault,
-    setGpuQuota,
-    deleteGpuQuota,
     saveSectionQuotas,
   };
 }

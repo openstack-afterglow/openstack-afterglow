@@ -2,7 +2,7 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createImageDetailController, provideImageDetailController } from '$lib/stores/imageDetailController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ImageDetailHeader from '$lib/components/image/ImageDetailHeader.svelte';
 	import ImageInfoSection from '$lib/components/image/ImageInfoSection.svelte';
 	import ImageSizeSection from '$lib/components/image/ImageSizeSection.svelte';
@@ -48,9 +48,9 @@
 <div class="flex flex-col h-full motion-fade" aria-busy={s.loading}>
 	<ImageDetailHeader {onClose} />
 
-	<div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-		{#if s.loading}
-			<LoadingSkeleton variant="card" rows={5} />
+	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto {s.loading && !s.image ? '' : 'p-5 space-y-4'}">
+		{#if s.loading && !s.image}
+			<LoadingState variant="surface" />
 		{:else if s.error}
 			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 		{:else if s.image}

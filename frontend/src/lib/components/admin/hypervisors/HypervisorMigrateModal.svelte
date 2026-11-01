@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -120,7 +121,7 @@
 		<div class="flex justify-end gap-3 mt-6">
 			<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('hypervisors.cancel')}</button>
 			<button onclick={doMigrate} disabled={loading} class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-				{t(loading ? 'hypervisors.migrate.pending' : 'hypervisors.migrate.action')}
+				{#if loading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{t(loading ? 'hypervisors.migrate.pending' : 'hypervisors.migrate.action')}
 			</button>
 		</div>
 	</div>

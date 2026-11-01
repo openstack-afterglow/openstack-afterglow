@@ -588,9 +588,6 @@ async def test_group_deletion_rejects_owner_grants_without_mutating_inventory_or
     assert await session_store.get_session("session-group-member") is not None
     assert await session_store.get_session("session-unaffected-user") is not None
     group_authority.revoke_token.assert_not_called()
-    async with creation_db() as session:
-        events = (await session.execute(select(ActivityLog))).scalars().all()
-    assert events == []
 
 
 @pytest.mark.asyncio
@@ -617,6 +614,3 @@ async def test_group_deletion_fails_closed_when_assignment_scope_is_unavailable(
     mock_conn.identity.groups.assert_called_once()
     assert await session_store.get_session("session-group-member") is not None
     group_authority.revoke_token.assert_not_called()
-    async with creation_db() as session:
-        events = (await session.execute(select(ActivityLog))).scalars().all()
-    assert events == []

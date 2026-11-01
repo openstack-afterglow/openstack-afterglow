@@ -18,7 +18,7 @@ from sqlalchemy import and_, func, select
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.database import get_session_factory, is_db_available
-from app.services import cinder, native_telemetry, nova, prom_query
+from app.services import cinder, compute_pools, flavor_automation_policy, native_telemetry, nova, prom_query
 from app.services import manila as manila_svc
 from app.services import neutron as neutron_svc
 from app.services import swift as swift_svc
@@ -35,6 +35,9 @@ from app.services.quota_forecast import (
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+# Display inventory survives the default 30-second poll. Native quota,
+# compute-pool accounting and admission keep their own fresh read contracts.
+_INVENTORY_TTL_SECONDS = 45
 
 
 def _dashboard_service_unavailable(detail: str) -> HTTPException:
@@ -70,6 +73,7 @@ def _list_servers_as_dicts(conn):
             "status": getattr(s, "status", "") or "",
             "flavor_id": getattr(s, "flavor_id", None),
             "flavor_name": getattr(s, "flavor_name", None),
+            "flavor_display_name": getattr(s, "flavor_display_name", None),
             "ip_addresses": [_serialize_ip_address(ip) for ip in (getattr(s, "ip_addresses", None) or [])],
             "created_at": getattr(s, "created_at", None),
         }
@@ -114,6 +118,7 @@ def _recent_instances(servers: list[dict], limit: int = 5) -> list[dict]:
                     "name": row.get("name", "") or "",
                     "status": row.get("status", "") or "",
                     "flavor_name": row.get("flavor_name"),
+                    "flavor_display_name": row.get("flavor_display_name"),
                     "ip_addresses": row.get("ip_addresses") or [],
                     "created_at": row.get("created_at"),
                 },
@@ -141,33 +146,43 @@ def _usage_hours(created_at: str | None) -> float:
         return 0.0
 
 
-def _gpu_count_from_flavor(name: str, extra_specs: dict) -> int:
-    # 1차: pci_passthrough:alias 에서 GPU 디바이스 카운트 (audio 제외)
-    alias = extra_specs.get("pci_passthrough:alias", "")
-    if alias:
-        count = 0
-        for entry in alias.split(","):
-            entry = entry.strip()
-            if ":" not in entry:
-                continue
-            dev, num = entry.rsplit(":", 1)
-            if "audio" in dev.lower():
-                continue
-            try:
-                count += int(num)
-            except ValueError:
-                count += 1
-        if count > 0:
-            return count
-    # 2차: :category 키에 gpu 포함 여부
-    cat = extra_specs.get(":category", "")
-    if "gpu" in cat.lower():
-        return 1
-    # 3차: 이름 기반 fallback
-    m = re.match(r"^gpu[._]\w+?(?:x(\d+))?[._]", name)
-    if m:
-        return int(m.group(1)) if m.group(1) else 1
-    return 0
+async def _gpu_policy_for_flavors(flavors):
+    if any(
+        isinstance(flavor, dict)
+        and (flavor.get("extra_specs") or {}).get("afterglow:managed_by") == "domain-compute-v1"
+        for flavor in flavors
+    ):
+        return await flavor_automation_policy.capabilities()
+    return None
+
+
+async def _gpu_demand_from_flavor(flavor, capabilities):
+    specs = flavor.get("extra_specs") or {}
+    if specs.get("afterglow:managed_by") != "domain-compute-v1":
+        return parse_gpu_demand(flavor)
+    if capabilities is None:
+        raise HTTPException(503, "compute_pool_gpu_accounting_unqualified")
+    try:
+        return await compute_pools.approved_gpu_requirements(specs, capabilities)
+    except compute_pools.ComputePoolUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+async def _gpu_count_from_flavor(name: str, extra_specs: dict, capabilities=None) -> int:
+    return sum((await _gpu_demand_from_flavor({"name": name, "extra_specs": extra_specs}, capabilities)).values())
+
+
+def _gpu_count_from_missing_flavor(name: str | None) -> int:
+    """Infer legacy display counts only when no native flavor record is available."""
+    name = name or ""
+    for pattern in (
+        r"gpu\..+x([1-9]\d*)_\d+c_\d+g(?:\.[0-9a-f]{12}(?:[0-9a-f]{20})?)?",
+        r"gpu\..+\.([1-9]\d*)gpu\.\d+c\.\d+g(?:\.[0-9a-f]{12}(?:[0-9a-f]{20})?)?",
+    ):
+        match = re.fullmatch(pattern, name, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return sum(parse_gpu_demand({"name": name, "extra_specs": {}}).values())
 
 
 def _usage_quota_entry(source: object, key: str) -> dict:
@@ -175,10 +190,103 @@ def _usage_quota_entry(source: object, key: str) -> dict:
     entry = source.get(key) if isinstance(source, dict) else None
     if isinstance(entry, dict) and "limit" in entry and "in_use" in entry:
         try:
-            return {"in_use": int(entry["in_use"]), "limit": int(entry["limit"])}
+            values = {"in_use": int(entry["in_use"]), "limit": int(entry["limit"])}
+            if entry.get("quota_scope") == "domain":
+                values.update(
+                    {
+                        key: entry[key]
+                        for key in ("quota_scope", "domain_id", "available", "project_limit", "project_in_use")
+                        if key in entry
+                    }
+                )
+            return values
         except (TypeError, ValueError):
             pass
     return {"in_use": 0, "limit": 0}
+
+
+def _shared_pool_quota(snapshot: dict, resource: str) -> dict:
+    headroom = [snapshot["available"].get(resource, 0), snapshot["project_available"].get(resource, -1)]
+    finite = [value for value in headroom if value != -1]
+    return {
+        "limit": snapshot["limits"].get(resource, -1 if resource in {"CPU", "MEMORY_MB"} else 0),
+        "in_use": snapshot["usage"].get(resource, 0),
+        "reserved": 0,
+        "available": min(finite) if finite else -1,
+        "quota_scope": "domain",
+        "control_scope": "afterglow",
+        "domain_id": snapshot["domain_id"],
+        "project_limit": snapshot["project_limits"].get(resource),
+        "project_in_use": snapshot["project_usage"].get(resource, 0),
+    }
+
+
+async def _with_compute_pool(conn, project_id: str, quota: dict, *, snapshot=None) -> tuple[dict, dict | None]:
+    try:
+        if isinstance(snapshot, BaseException):
+            raise compute_pools.ComputePoolUnavailable("compute_pool_native_unavailable") from snapshot
+        snapshot = snapshot if snapshot is not None else await compute_pools.project_pool_snapshot(conn, project_id)
+    except compute_pools.ComputePoolUnavailable:
+        return {**quota, "cores": None, "ram": None}, {
+            "state": "unavailable",
+            "policy_ready": False,
+            "control_scope": "afterglow",
+            "domain_id": None,
+            "limits": {},
+            "usage": {},
+            "available": {},
+            "project_limits": {},
+            "project_usage": {},
+            "project_available": {},
+            "error": "compute_pool_native_unavailable",
+        }
+    if snapshot["state"] == "unmanaged":
+        return quota, None
+    summary = {
+        key: snapshot[key]
+        for key in (
+            "state",
+            "domain_id",
+            "policy_ready",
+            "control_scope",
+            "limits",
+            "usage",
+            "available",
+            "project_limits",
+            "project_usage",
+            "project_available",
+        )
+    }
+    if snapshot["state"] == "active" and snapshot.get("policy_ready") is not True:
+        summary.update(state="unavailable", error="compute_pool_policy_unavailable")
+        return {**quota, "cores": None, "ram": None}, summary
+    if snapshot["state"] != "active":
+        return {**quota, "cores": None, "ram": None}, summary
+    effective = dict(quota)
+    for key, resource in (("cores", "CPU"), ("ram", "MEMORY_MB")):
+        native = quota.get(key)
+        if not isinstance(native, dict):
+            effective[key] = None
+            continue
+        shared = _shared_pool_quota(snapshot, resource)
+        native_available = native.get("available")
+        if native_available is None:
+            limit, used, reserved = native.get("limit"), native.get("in_use"), native.get("reserved", 0)
+            if all(type(value) is int for value in (limit, used, reserved)):
+                native_available = -1 if limit == -1 else max(0, limit - used - reserved)
+        if type(native_available) is not int:
+            effective[key] = None
+            continue
+        finite = [value for value in (native_available, shared["available"]) if value != -1]
+        effective[key] = {
+            **shared,
+            "available": min(finite) if finite else -1,
+            "pool_available": shared["available"],
+            "native_project_limit": native.get("limit"),
+            "native_project_in_use": native.get("in_use"),
+            "native_project_available": native_available,
+        }
+    return effective, summary
 
 
 @router.get("/summary")
@@ -194,7 +302,7 @@ async def get_dashboard_summary(
         try:
             servers = await cached_call(
                 f"afterglow:nova:{project_id}:servers",
-                ttl_fast(),
+                _INVENTORY_TTL_SECONDS,
                 lambda: _list_servers_as_dicts(conn),
                 enabled=cm.enabled,
                 refresh=cm.refresh,
@@ -218,7 +326,7 @@ async def get_dashboard_summary(
         servers, all_flavors = await asyncio.gather(
             cached_call(
                 f"afterglow:nova:{project_id}:servers",
-                ttl_fast(),
+                _INVENTORY_TTL_SECONDS,
                 lambda: _list_servers_as_dicts(conn),
                 enabled=cm.enabled,
                 refresh=cm.refresh,
@@ -236,6 +344,7 @@ async def get_dashboard_summary(
 
     flavors_by_id: dict = {f["id"]: f for f in all_flavors}
     flavors_by_name: dict = {f["name"]: f for f in all_flavors}
+    gpu_policy = await _gpu_policy_for_flavors(all_flavors)
 
     gpu_used = 0
     for s in servers:
@@ -244,7 +353,11 @@ async def get_dashboard_summary(
         fl = flavors_by_id.get(s.get("flavor_id") or "", {})
         if not fl and s.get("flavor_name"):
             fl = flavors_by_name.get(s["flavor_name"], {})
-        gpu_used += _gpu_count_from_flavor(fl.get("name", ""), fl.get("extra_specs", {}))
+        gpu_used += (
+            await _gpu_count_from_flavor(fl.get("name", ""), fl.get("extra_specs", {}), gpu_policy)
+            if fl
+            else _gpu_count_from_missing_flavor(s.get("flavor_name"))
+        )
 
     return {
         "instances": {
@@ -495,6 +608,8 @@ async def get_project_quotas(
                 overview.get("network"),
                 overview.get("file_storage"),
             )
+            compute, pool = await _with_compute_pool(conn, project_id, overview["compute"])
+            overview = {**overview, "compute": compute, **({"compute_pool": pool} if pool else {})}
             return {**overview, "alerts": _overview_quota_alerts(overview)}
         except HTTPException:
             raise
@@ -504,7 +619,7 @@ async def get_project_quotas(
 
     async def _fetch_quotas():
         tasks: list = [
-            asyncio.to_thread(nova.get_project_quota, conn, project_id),
+            asyncio.to_thread(nova.get_project_quota, conn, project_id, include_native=True),
             asyncio.to_thread(cinder.get_volume_quota, conn, project_id),
             asyncio.to_thread(neutron_svc.get_network_quota, conn, project_id),
         ]
@@ -518,13 +633,15 @@ async def get_project_quotas(
 
     try:
         results = await cached_call(
-            f"afterglow:dashboard:{project_id}:quotas",
+            f"afterglow:dashboard:{project_id}:quotas:native-v1",
             ttl_normal(),
             _fetch_quotas,
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-        compute_q, volume_q, network_q = results[0], results[1], results[2]
+        compute_projection, volume_q, network_q = results[0], results[1], results[2]
+        compute_q = compute_projection["compute"]
+        native_compute_q = compute_projection["native_compute"]
         idx = 3
         file_storage_q = results[idx] if settings.service_manila_enabled else {"limit": 0, "in_use": 0, "reserved": 0}
         if settings.service_manila_enabled:
@@ -539,6 +656,11 @@ async def get_project_quotas(
         )
     except Exception:
         raise HTTPException(status_code=500, detail="작업 실패")
+    try:
+        pool_snapshot = await compute_pools.project_pool_snapshot(conn, project_id)
+    except compute_pools.ComputePoolUnavailable as exc:
+        pool_snapshot = exc
+    compute_q, pool = await _with_compute_pool(conn, project_id, compute_q, snapshot=pool_snapshot)
 
     # Afterglow local GPU quota authority.
     gpu_quota: list[dict] = []
@@ -547,21 +669,27 @@ async def get_project_quotas(
         from app.services.gpu_quota import get_effective_gpu_quota_status
 
         pid = conn._afterglow_project_id
-        status_list = await get_effective_gpu_quota_status(conn, pid)
+        if isinstance(pool_snapshot, BaseException):
+            raise pool_snapshot
+        status_list = await get_effective_gpu_quota_status(conn, pid, pool_snapshot=pool_snapshot)
         if not isinstance(status_list, list):
             raise ValueError("get_effective_gpu_quota_status response is not a list")
         gpu_quota = status_list
     except Exception:
         gpu_quota_available = False
         _logger.warning("GPU quota 조회 실패", exc_info=True)
+    if pool and pool["state"] != "active":
+        gpu_quota, gpu_quota_available = [], False
 
     return {
         "compute": compute_q,
+        "native_compute": native_compute_q,
         "storage": volume_q,
         "network": network_q,
         "file_storage": file_storage_q,
         "gpu": gpu_quota,
         "gpu_available": gpu_quota_available,
+        **({"compute_pool": pool} if pool else {}),
         "database": {"instances_count": trove_count},
         "object_storage": swift_meta,
     }
@@ -632,6 +760,7 @@ async def get_gpu_available(
             "gpu_types": [
                 {
                     "device_name": t["device_name"],
+                    "resource_class": t["resource_class"],
                     "vendor": t["vendor"],
                     "total": t["total"],
                     "used": t["used"],
@@ -659,29 +788,28 @@ async def get_gpu_available(
         status_list = await get_effective_gpu_quota_status(conn, pid)
         if not isinstance(status_list, list):
             raise ValueError("get_effective_gpu_quota_status response is not a list")
+        pooled = any(isinstance(item, dict) and item.get("quota_scope") == "domain" for item in status_list)
+        key_field = "resource_class" if pooled else "gpu_type"
         quotas = {
-            item["gpu_type"]: item["limit"]
+            item[key_field]: item
             for item in status_list
-            if isinstance(item, dict) and isinstance(item.get("gpu_type"), str) and type(item.get("limit")) is int
+            if isinstance(item, dict) and isinstance(item.get(key_field), str) and type(item.get("limit")) is int
         }
-        usage = {
-            item["gpu_type"]: item["in_use"]
-            for item in status_list
-            if isinstance(item, dict) and isinstance(item.get("gpu_type"), str) and type(item.get("in_use")) is int
-        }
-        name_to_alias = build_device_name_to_alias_map()
+        name_to_alias = {} if pooled else build_device_name_to_alias_map()
 
         filtered = []
         for t in data["gpu_types"]:
-            alias = name_to_alias.get(t["device_name"], "")
-            limit = quotas.get(alias, 0)
+            key = t.get("resource_class") if pooled else name_to_alias.get(t["device_name"], "")
+            quota = quotas.get(key, {})
+            limit = quota.get("limit", 0)
             if limit == 0:
                 continue
-            in_use = usage.get(alias, 0)
+            in_use = quota.get("in_use", 0)
             if limit == -1:
-                filtered.append(t)
+                remaining = quota.get("available", -1)
+                filtered.append(t if remaining == -1 else {**t, "available": min(remaining, t["available"])})
             else:
-                quota_remaining = max(limit - in_use, 0)
+                quota_remaining = quota.get("available", max(limit - in_use, 0))
                 filtered.append(
                     {
                         **t,
@@ -757,7 +885,7 @@ async def get_dashboard_overview(
         servers, compute_lim, volume_lim, fips = await asyncio.gather(
             cached_call(
                 f"afterglow:nova:{project_id}:servers",
-                ttl_fast(),
+                _INVENTORY_TTL_SECONDS,
                 lambda: _list_servers_as_dicts(conn),
                 enabled=cm.enabled,
                 refresh=cm.refresh,
@@ -858,7 +986,7 @@ async def get_dashboard_usage_stats(
         servers, flavors, volumes, nova_usage = await asyncio.gather(
             cached_call(
                 f"afterglow:nova:{project_id}:servers",
-                ttl_fast(),
+                _INVENTORY_TTL_SECONDS,
                 lambda: _list_servers_as_dicts(conn),
                 enabled=cm.enabled,
                 refresh=cm.refresh,
@@ -901,6 +1029,7 @@ async def get_dashboard_usage_stats(
 
     flavors_by_id = {f["id"]: f for f in flavors}
     flavors_by_name = {f["name"]: f for f in flavors}
+    gpu_policy = await _gpu_policy_for_flavors(flavors)
 
     # 인스턴스별 vCPU/RAM (모든 상태 포함, vCPU 내림차순)
     top_instances = []
@@ -916,12 +1045,17 @@ async def get_dashboard_usage_stats(
                 "id": s.get("id"),
                 "name": s.get("name", ""),
                 "flavor_name": fl_name,
+                "flavor_display_name": s.get("flavor_display_name"),
                 "vcpus": fl_vcpus,
                 "ram_mb": fl_ram,
                 "disk_gb": fl_disk,
                 "status": s.get("status", "ACTIVE"),
                 "usage_hours": _usage_hours(s.get("created_at")),
-                "gpu": _gpu_count_from_flavor(fl_name, fl_extra),
+                "gpu": (
+                    await _gpu_count_from_flavor(fl_name, fl_extra, gpu_policy)
+                    if fl
+                    else _gpu_count_from_missing_flavor(fl_name)
+                ),
             }
         )
     top_instances.sort(key=lambda x: x["vcpus"], reverse=True)
@@ -1037,7 +1171,7 @@ async def get_dashboard_usage_report(
     end_dt = today.isoformat()
 
     try:
-        nova_usage, compute_q, volume_q, flavor_list, gpu_status = await asyncio.gather(
+        nova_usage, compute_q, volume_q, flavor_list, pool_snapshot = await asyncio.gather(
             cached_call(
                 f"afterglow:dashboard:{project_id}:nova_usage:{start_dt}:{end_dt}",
                 ttl_fast(),
@@ -1066,7 +1200,7 @@ async def get_dashboard_usage_report(
                 enabled=cm.enabled,
                 refresh=cm.refresh,
             ),
-            get_effective_gpu_quota_status(conn, project_id),
+            compute_pools.project_pool_snapshot(conn, project_id),
             return_exceptions=True,
         )
     except Exception:
@@ -1075,6 +1209,13 @@ async def get_dashboard_usage_report(
     usage = nova_usage if isinstance(nova_usage, dict) else {}
     quota = compute_q if isinstance(compute_q, dict) else {}
     volume_quota = volume_q if isinstance(volume_q, dict) else {}
+    quota, pool = await _with_compute_pool(conn, project_id, quota, snapshot=pool_snapshot)
+    try:
+        if isinstance(pool_snapshot, BaseException):
+            raise pool_snapshot
+        gpu_status = await get_effective_gpu_quota_status(conn, project_id, pool_snapshot=pool_snapshot)
+    except Exception as exc:
+        gpu_status = exc
     flavors = flavor_list if isinstance(flavor_list, list) else []
     gpu_available = isinstance(gpu_status, list)
     if not gpu_available:
@@ -1083,14 +1224,19 @@ async def get_dashboard_usage_report(
             exc_info=gpu_status if isinstance(gpu_status, BaseException) else None,
         )
     gpu_rows = gpu_status if gpu_available else []
+    if pool and pool["state"] != "active":
+        gpu_rows, gpu_available = [], False
 
     flavors_by_name = {f["name"]: f for f in flavors if isinstance(f, dict) and isinstance(f.get("name"), str)}
+    gpu_policy = await _gpu_policy_for_flavors(flavors)
     rows: list[dict] = []
     for su in usage.get("server_usages") or []:
         if not isinstance(su, dict):
             continue
         flavor_name = su.get("flavor") or "unknown"
-        gpu_map = parse_gpu_demand(flavors_by_name.get(flavor_name) or {"name": flavor_name, "extra_specs": {}})
+        gpu_map = await _gpu_demand_from_flavor(
+            flavors_by_name.get(flavor_name) or {"name": flavor_name, "extra_specs": {}}, gpu_policy
+        )
         rows.append(
             {
                 "su": su,
@@ -1158,7 +1304,27 @@ async def get_dashboard_usage_report(
     ram_quota = _usage_quota_entry(quota, "ram")
     volume_gb_quota = _usage_quota_entry(volume_quota, "gigabytes")
     gpu_quota = [
-        {"gpu_type": r["gpu_type"], "in_use": int(r.get("in_use") or 0), "limit": int(r.get("limit") or 0)}
+        {
+            "gpu_type": r["gpu_type"],
+            "in_use": int(r.get("in_use") or 0),
+            "limit": int(r.get("limit") or 0),
+            **(
+                {
+                    key: r[key]
+                    for key in (
+                        "quota_scope",
+                        "domain_id",
+                        "available",
+                        "project_limit",
+                        "project_in_use",
+                        "resource_class",
+                    )
+                    if key in r
+                }
+                if r.get("quota_scope") == "domain"
+                else {}
+            ),
+        }
         for r in gpu_rows
         if isinstance(r, dict) and isinstance(r.get("gpu_type"), str) and (r.get("limit") != 0 or r.get("in_use"))
     ]
@@ -1169,6 +1335,17 @@ async def get_dashboard_usage_report(
     has_rows = any(row["started"] is not None for row in rows)
 
     def _resource_forecast(weight: Callable[[dict], float], entry: dict) -> dict:
+        if pool and pool["state"] != "active":
+            return _linear_forecast([], in_use=0, limit=0, has_rows=False)
+        if entry.get("quota_scope") == "domain":
+            return {
+                **_linear_forecast([], in_use=entry["in_use"], limit=entry["limit"], has_rows=False),
+                **{
+                    key: entry[key]
+                    for key in ("quota_scope", "domain_id", "available", "project_limit", "project_in_use")
+                    if key in entry
+                },
+            }
         return _linear_forecast(
             _allocation_series(rows, samples, weight),
             in_use=entry["in_use"],
@@ -1176,7 +1353,7 @@ async def get_dashboard_usage_report(
             has_rows=has_rows,
         )
 
-    response.headers["Cache-Control"] = "private, max-age=60"
+    response.headers["Cache-Control"] = "no-store, private" if pool else "private, max-age=60"
     return {
         "range": period,
         "start": start_dt,
@@ -1194,6 +1371,7 @@ async def get_dashboard_usage_report(
             "volumes": _usage_quota_entry(volume_quota, "volumes"),
             "gpu": gpu_quota,
             "gpu_available": gpu_available,
+            **({"compute_pool": pool} if pool else {}),
         },
         "forecast": {
             "window_days": _FORECAST_WINDOW_DAYS,
@@ -1484,7 +1662,9 @@ async def get_dashboard_notifications(
     notifications: list[dict] = []
 
     servers, compute_limits, volume_limits = await asyncio.gather(
-        cached_call(f"afterglow:nova:{project_id}:servers", ttl_fast(), lambda: _list_servers_as_dicts(conn)),
+        cached_call(
+            f"afterglow:nova:{project_id}:servers", _INVENTORY_TTL_SECONDS, lambda: _list_servers_as_dicts(conn)
+        ),
         cached_call(f"afterglow:nova:{project_id}:limits", ttl_normal(), lambda: nova.get_project_limits(conn)),
         cached_call(f"afterglow:cinder:{project_id}:limits", ttl_normal(), lambda: cinder.get_volume_limits(conn)),
         return_exceptions=True,

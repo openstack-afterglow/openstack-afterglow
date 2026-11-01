@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import RichText from '$lib/i18n/RichText.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { prefersReducedMotion } from '$lib/utils/motion';
   import { onDestroy, onMount, tick } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
@@ -224,9 +224,9 @@
         <RichText segments={t.rich('cloudShell.title', { name: s.cluster?.name ?? '' })} tags={{ name: clusterName }} />
       </span>
       {#if connected}
-        <ActivityIndicator variant="pulse" tone="success" size="xs" label={t('cloudShell.connected')} class="text-xs" />
+        <span class="text-xs text-state-success-text">{t('cloudShell.connected')}</span>
       {:else if connecting}
-        <ActivityIndicator size="xs" label={t('cloudShell.connecting')} class="text-xs" />
+        <LoadingState variant="control" label={t('cloudShell.connecting')} class="text-xs" />
       {:else}
         <span class="text-xs text-ink-2">{t('cloudShell.disconnected')}</span>
       {/if}

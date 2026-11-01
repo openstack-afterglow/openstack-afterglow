@@ -10,7 +10,7 @@
 		pendingClaudeGatewayUserCode,
 		storeClaudeGatewayUserCode,
 	} from '$lib/utils/mcpConsent';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -147,7 +147,7 @@
 					</Field>
 					<div class="actions">
 						{#if deciding}
-							<ActivityIndicator label={t('claudeConsent.actions.processing')} class="decision-activity motion-fade" />
+							<LoadingState variant="inline" label={t('claudeConsent.actions.processing')} class="decision-activity motion-fade" />
 						{/if}
 						<Button variant="danger-outline" type="button" onclick={() => decide('deny')} disabled={deciding || !code.trim()}>{t('claudeConsent.actions.deny')}</Button>
 						<Button type="submit" disabled={deciding || !code.trim()}>{t('claudeConsent.actions.approve')}</Button>

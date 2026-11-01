@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { allocateFlowDots, assignTenantColors, buildGraph, buildMemberEdges, edgeRate, edgeStyle, FLOW_DOT_BUDGET, FLOW_MIN_BPS, flowStreams, matchesQuery, relatedSet, switchThroughput, trunkIntensityBps } from '../topologyGraph';
+import { allocateFlowDots, assignTenantColors, buildGraph, buildMemberEdges, edgeRate, edgeStyle, FLOW_DOT_BUDGET, flowStreams, matchesQuery, relatedSet, switchThroughput, trunkIntensityBps } from '../topologyGraph';
 import { edgeIntensity, flowDotCount } from '../canvasHelpers';
 import { NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { autoLayout } from '../topologyLayout';
@@ -255,6 +255,7 @@ describe('edgeRate / edgeStyle', () => {
 		const trunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-web')!;
 		expect(edgeRate(trunk, t, g)).toEqual(t.networks['net-web']);
 		expect(edgeRate(g.edges.find((e) => e.kind === 'fip')!, t, g)).toBeNull();
+		expect(edgeRate(buildMemberEdges(g, 'lb-web')[0], t, g)).toBeNull();
 		expect(edgeRate(g.edges.find((e) => e.kind === 'lbvip')!, t, g)).toEqual({ rx_bps: 2.9e6, tx_bps: 2.7e6 });
 	});
 
@@ -407,38 +408,47 @@ describe('assignTenantColors / relatedSet', () => {
 });
 
 
-describe('flowStreams — 내부 통신 vs 게이트웨이 방향', () => {
+describe('flowStreams — independent measured NIC directions', () => {
 	const g = buildGraph(makeFixture(), { projectId: P, showAll: false });
 	const cableTo = (netId: string) => ({ kind: 'cable' as const, netId });
 
-	it('격리 네트워크(라우터 없음)의 케이블은 tx·rx 를 양방향으로 흘린다', () => {
-		// net-lab 은 라우터가 붙지 않아 isolated 다 → 그 망 트래픽은 정의상 전부 내부 통신
+	it.each([false, true])('TX-only traffic moves instance → switch (isolated=%s)', (isolated) => {
+		expect(flowStreams(cableTo('net-web'), { rx_bps: 0, tx_bps: 9e6 }, isolated)).toEqual([
+			{ bps: 9e6, dir: true, internal: isolated },
+		]);
+	});
+
+	it.each([false, true])('RX-only traffic moves switch → instance (isolated=%s)', (isolated) => {
+		expect(flowStreams(cableTo('net-web'), { rx_bps: 4e6, tx_bps: 0 }, isolated)).toEqual([
+			{ bps: 4e6, dir: false, internal: isolated },
+		]);
+	});
+
+	it.each([false, true])('bidirectional traffic keeps each measured rate rather than a dominant direction (isolated=%s)', (isolated) => {
+		for (const rate of [{ rx_bps: 4e6, tx_bps: 9e6 }, { rx_bps: 9e6, tx_bps: 4e6 }]) {
+			expect(flowStreams(cableTo('net-web'), rate, isolated)).toEqual([
+				{ bps: rate.tx_bps, dir: true, internal: isolated },
+				{ bps: rate.rx_bps, dir: false, internal: isolated },
+			]);
+		}
+	});
+
+	it('router presence changes neither directions nor measured rates', () => {
 		expect(g.netById.get('net-lab')!.isolated).toBe(true);
-		const st = flowStreams(cableTo('net-lab'), { rx_bps: 4e6, tx_bps: 9e6 }, true);
-		expect(st).toHaveLength(2);
-		expect(st.every((x) => x.internal)).toBe(true);
-		expect(st.find((x) => x.dir)).toMatchObject({ bps: 9e6 });   // 인스턴스 → 스위치
-		expect(st.find((x) => !x.dir)).toMatchObject({ bps: 4e6 });  // 스위치 → 인스턴스
-	});
-
-	it('라우터가 있는 네트워크는 게이트웨이 방향 한 줄만 흘린다', () => {
 		expect(g.netById.get('net-web')!.isolated).toBe(false);
-		const st = flowStreams(cableTo('net-web'), { rx_bps: 4e6, tx_bps: 9e6 }, false);
-		expect(st).toHaveLength(1);
-		expect(st[0]).toMatchObject({ bps: 13e6, dir: true, internal: false });
-		// rx 가 더 크면 방향이 반대다
-		expect(flowStreams(cableTo('net-web'), { rx_bps: 9e6, tx_bps: 4e6 }, false)[0].dir).toBe(false);
+		const rate = { rx_bps: 12, tx_bps: 34 };
+		const isolated = flowStreams(cableTo('net-lab'), rate, g.netById.get('net-lab')!.isolated)
+			.map(({ bps, dir }) => ({ bps, dir }));
+		const routed = flowStreams(cableTo('net-web'), rate, g.netById.get('net-web')!.isolated)
+			.map(({ bps, dir }) => ({ bps, dir }));
+		expect(isolated).toEqual(routed);
+		expect(routed).toEqual([{ bps: 34, dir: true }, { bps: 12, dir: false }]);
 	});
 
-	it('트렁크는 격리 여부와 무관하게 항상 단일 방향이다(라우터↔스위치는 north-south)', () => {
-		const st = flowStreams({ kind: 'trunk', netId: 'net-lab' }, { rx_bps: 4e6, tx_bps: 9e6 }, true);
-		expect(st).toHaveLength(1);
-		expect(st[0].internal).toBe(false);
-		// 트렁크는 edgeStyle 과 같은 스칼라(switchThroughput)를 쓴다 — 합(13e6)이 아니다
-		expect(st[0].bps).toBe(switchThroughput({ rx_bps: 4e6, tx_bps: 9e6 }));
-		expect(st[0].bps).toBe(11e6);
-		// 상위 호출자가 계산한 값을 넘기면 그것을 쓴다(uplink 는 망별 합이라 다르다)
-		expect(flowStreams({ kind: 'trunk', netId: 'net-lab' }, { rx_bps: 4e6, tx_bps: 9e6 }, true, 20e6)[0].bps).toBe(20e6);
+	it.each(['trunk', 'fip', 'lbmember', 'lbvip'] as const)('%s does not animate NIC aggregates as measured link traffic', (kind) => {
+		for (const isolated of [false, true]) {
+			expect(flowStreams({ kind, netId: 'net-web' }, { rx_bps: 4e6, tx_bps: 9e6 }, isolated)).toEqual([]);
+		}
 	});
 
 	it('예산이 모자라면 잘라 그리지 않고 통째로 건너뛴다 — 잘린 개수는 빈도를 거짓으로 낮춘다', () => {
@@ -472,16 +482,45 @@ describe('flowStreams — 내부 통신 vs 게이트웨이 방향', () => {
 		for (const [i, a] of alloc.entries()) expect(a.n).toBe(flowDotCount(5e6, cands[i].len));
 	});
 
-	it('FLOW_MIN_BPS 미만 스트림은 버린다 — 한쪽만 미달이면 그쪽만 사라진다', () => {
-		expect(flowStreams(cableTo('net-lab'), { rx_bps: 10, tx_bps: 9e6 }, true)).toHaveLength(1);
-		expect(flowStreams(cableTo('net-lab'), { rx_bps: 10, tx_bps: 9e6 }, true)[0].dir).toBe(true);
-		expect(flowStreams(cableTo('net-lab'), { rx_bps: 10, tx_bps: 20 }, true)).toEqual([]);
-		// 합산이 문턱을 넘으면 게이트웨이 방향은 남는다
-		expect(flowStreams(cableTo('net-web'), { rx_bps: 6e4, tx_bps: 6e4 }, false)).toHaveLength(1);
-		expect(flowStreams(cableTo('net-web'), { rx_bps: 10, tx_bps: 20 }, false)).toEqual([]);
-		// 실환경 중간대(1e4~1e5)는 흐름이 **보여야** 한다 — 예전 문턱(1e5)에서는 NIC 43개 중 4개만 남았다
-		expect(flowStreams(cableTo('net-web'), { rx_bps: 1.5e4, tx_bps: 1e4 }, false)).toHaveLength(1);
-		expect(flowStreams(cableTo('net-lab'), { rx_bps: 5e4, tx_bps: 2e4 }, true)).toHaveLength(2);
-		expect(FLOW_MIN_BPS).toBe(1e4);
+	it.each([false, true])('low positive traffic remains eligible in both directions (isolated=%s)', (isolated) => {
+		expect(flowStreams(cableTo('net-web'), { rx_bps: 0.01, tx_bps: 1 }, isolated)).toEqual([
+			{ bps: 1, dir: true, internal: isolated },
+			{ bps: 0.01, dir: false, internal: isolated },
+		]);
+	});
+
+	it.each([false, true])('measured zero remains static (isolated=%s)', (isolated) => {
+		expect(flowStreams(cableTo('net-web'), { rx_bps: 0, tx_bps: 0 }, isolated)).toEqual([]);
+	});
+
+	it.each([NaN, Infinity, -Infinity, -1])('invalid rate %s never animates or suppresses the other measured direction', (invalid) => {
+		for (const isolated of [false, true]) {
+			expect(flowStreams(cableTo('net-web'), { rx_bps: invalid, tx_bps: invalid }, isolated)).toEqual([]);
+			expect(flowStreams(cableTo('net-web'), { rx_bps: invalid, tx_bps: 1 }, isolated)).toEqual([
+				{ bps: 1, dir: true, internal: isolated },
+			]);
+			expect(flowStreams(cableTo('net-web'), { rx_bps: 1, tx_bps: invalid }, isolated)).toEqual([
+				{ bps: 1, dir: false, internal: isolated },
+			]);
+		}
+	});
+
+	it('unknown native NIC telemetry stays static even when its network has an aggregate rate', () => {
+		const edge = g.edges.find((e) => e.kind === 'cable' && e.from === 'vm-web-03')!;
+		const traffic = makeTraffic();
+		expect(traffic.networks[edge.netId]).toBeDefined();
+		const rate = edgeRate(edge, traffic, g);
+		expect(rate).toBeNull();
+		expect(rate ? flowStreams(edge, rate, false) : []).toEqual([]);
+	});
+
+	it('both directions share the existing 60-dot global budget', () => {
+		const cands = Array.from({ length: 30 }, (_, i) => ({
+			key: `cable${i}`, netId: 'net-web', len: 400,
+			streams: flowStreams(cableTo('net-web'), { rx_bps: 2e6, tx_bps: 5e6 }, false),
+		}));
+		const alloc = allocateFlowDots(cands);
+		expect(alloc.reduce((n, a) => n + a.n, 0)).toBeLessThanOrEqual(60);
+		expect(alloc.filter((a) => a.key === 'cable0').map((a) => a.dir)).toEqual([true, false]);
 	});
 });

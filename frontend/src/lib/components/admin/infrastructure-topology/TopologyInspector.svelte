@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { InfrastructureTopologySnapshot, SwitchPort, TopologySelection } from '$lib/types/infrastructureTopology';
 	import type { InfrastructureTopologyController } from '$lib/stores/infrastructureTopologyController.svelte';
 	import { t } from '$lib/i18n/ns/infra-topology';
@@ -98,7 +99,7 @@
 			<section aria-label={t('trace')} class="space-y-3"><h3 class="font-semibold">{t('trace')}</h3><p class="text-xs text-ink-2">{t('traceNotice')}</p>
 				{#if !host.observer_configured}<Alert tone="warning">{t('observerNotConfigured')}</Alert>{/if}
 				{#if ctrl.traceError}<Alert>{t(ctrl.traceError === 'unavailable' ? 'traceUnavailable' : ctrl.traceError)}</Alert>{/if}
-				{#if snapshot.trace_targets.length}<form class="space-y-3" onsubmit={(event) => { event.preventDefault(); void ctrl.submitTrace(); }}><Field label={t('target')} for="infra-target"><SelectInput id="infra-target" bind:value={ctrl.target} disabled={ctrl.busy || !ctrl.verified || !host.observer_configured}>{#each snapshot.trace_targets as target}<option value={target}>{target}</option>{/each}</SelectInput></Field><Button type="submit" variant="primary" disabled={!ctrl.verified || ctrl.busy || activeTrace || !ctrl.target || !host.observer_configured}>{t(ctrl.busy ? 'submitting' : 'submit')}</Button></form>{:else}<p class="text-sm text-ink-2">{t('noTargets')}</p>{/if}
+				{#if snapshot.trace_targets.length}<form class="space-y-3" onsubmit={(event) => { event.preventDefault(); void ctrl.submitTrace(); }}><Field label={t('target')} for="infra-target"><SelectInput id="infra-target" bind:value={ctrl.target} disabled={ctrl.busy || !ctrl.verified || !host.observer_configured}>{#each snapshot.trace_targets as target}<option value={target}>{target}</option>{/each}</SelectInput></Field><Button type="submit" variant="primary" disabled={!ctrl.verified || ctrl.busy || activeTrace || !ctrl.target || !host.observer_configured}>{#if ctrl.busy}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{t(ctrl.busy ? 'submitting' : 'submit')}</Button></form>{:else}<p class="text-sm text-ink-2">{t('noTargets')}</p>{/if}
 				<TraceDetails {host} verified={ctrl.verified} onselectnic={(nic) => { ctrl.selectedNic = nic; }} />
 			</section>
 		</section>

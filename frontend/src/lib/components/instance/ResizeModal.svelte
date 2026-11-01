@@ -4,14 +4,16 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 
 	interface Props {
 		onClose: () => void;
 		preselectFlavorId?: string;
+		adminMode?: boolean;
 	}
 
-	let { onClose, preselectFlavorId = '' }: Props = $props();
+	let { onClose, preselectFlavorId = '', adminMode = false }: Props = $props();
 
 	const s = useInstanceDetailController();
 
@@ -26,9 +28,12 @@
 		initialized = true;
 	});
 
-	function formatFlavorLabel(f: { name: string; vcpus: number; ram: number }) {
-		const ramLabel = f.ram >= 1024 ? `${(f.ram / 1024).toFixed(0)} GB` : `${f.ram} MB`;
-		return t('resize.flavorLabel', { name: f.name, vcpus: f.vcpus, ram: ramLabel });
+	function formatFlavorLabel(f: (typeof s.resizeFlavors)[number]) {
+		if (!adminMode) return consumerFlavorLabel(f);
+		const ramLabel = f.ram >= 1024 ? `${f.ram / 1024} GB` : `${f.ram} MB`;
+		const label = f.display_name ?? f.name;
+		const duplicate = s.resizeFlavors.some(other => other.id !== f.id && (other.display_name ?? other.name) === label);
+		return t('resize.flavorLabel', { name: duplicate ? `${label} (${f.name} · ${f.id})` : label, vcpus: f.vcpus, ram: ramLabel });
 	}
 	function blockerLabel(code: string) {
 		switch (code) {
@@ -79,14 +84,14 @@
 				<label for="resize-flavor" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('resize.newFlavor')}</label>
 				<select id="resize-flavor" bind:value={resizeFlavorId} disabled={s.resizeFlavorsLoading} class="w-full min-w-0 max-w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
 					<option value="">{t('resize.selectFlavor')}</option>
-					{#each s.resizeFlavors as f}
+					{#each s.resizeFlavors as f (f.id)}
 						{@const reason = unavailableReason(f)}
 						<option value={f.id} disabled={!!reason}>
 							{reason ? t('resize.unavailableFlavorLabel', { flavorLabel: formatFlavorLabel(f), reason }) : formatFlavorLabel(f)}
 						</option>
 					{/each}
 				</select>
-				{#if s.resizeFlavorsLoading}<ActivityIndicator class="mt-2" label={`${t('resize.newFlavor')} · ${tc('state.loading')}`} />{/if}
+				{#if s.resizeFlavorsLoading}<LoadingState variant="section" class="mt-2" label={`${t('resize.newFlavor')} · ${tc('state.loading')}`} />{/if}
 			</div>
 		</div>
 		<div class="flex flex-wrap justify-end gap-3 mt-6">
@@ -96,7 +101,7 @@
 				disabled={s.resizeLoading || s.resizeFlavorsLoading || resizeConfirming || !selectionAllowed}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30"
 			>
-				{#if s.resizeLoading}<ActivityIndicator size="xs" label={t('resize.resizing')} />{:else if resizeConfirming}<ActivityIndicator size="xs" variant="dots" label={t('resize.awaitingConfirmation')} />{:else}{t('resize.submit')}{/if}
+				{#if s.resizeLoading}<LoadingState variant="control" label={t('resize.resizing')} />{:else if resizeConfirming}<LoadingState variant="control" label={t('resize.awaitingConfirmation')} />{:else}{t('resize.submit')}{/if}
 			</button>
 		</div>
 	</div>

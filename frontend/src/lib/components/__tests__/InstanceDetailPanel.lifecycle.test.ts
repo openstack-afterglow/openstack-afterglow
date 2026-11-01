@@ -21,7 +21,7 @@ vi.mock('$lib/stores/auth', () => ({
 	canWrite: writable(true),
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/instanceDetailController.svelte', () => ({
 	createInstanceDetailController: (...args: unknown[]) => { mocks.createController(...args); return mocks.controller; },
 	provideInstanceDetailController: vi.fn(),
@@ -92,7 +92,7 @@ async function openHeaderResize() {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	mocks.get.mockResolvedValue(summary);
+	mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage-schedule') ? null : summary);
 	mocks.loadResizeFlavors.mockResolvedValue(undefined);
 	identity.set({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false });
 	permission.set(true);
@@ -246,19 +246,48 @@ describe('Instance detail stopped lifecycle presentation', () => {
 	});
 
 	it('discards a previous-scope recommendation instead of preselecting its flavor', async () => {
-		let resolveOld!: (value: typeof summary) => void;
-		mocks.get.mockReturnValueOnce(new Promise<typeof summary>(done => { resolveOld = done; }));
-		mocks.get.mockResolvedValueOnce({ ...summary, recommendation: { ...summary.recommendation, suggested_flavor: { ...suggested, id: 'flavor-new', name: 'm1.new' } } });
+		const oldSummary = Promise.withResolvers<typeof summary>();
+		let summaryReads = 0;
+		mocks.get.mockImplementation((path: string) => {
+			if (path.endsWith('/usage-schedule')) return Promise.resolve(null);
+			summaryReads += 1;
+			return summaryReads === 1 ? oldSummary.promise : Promise.resolve({ ...summary, recommendation: {
+				...summary.recommendation, suggested_flavor: { ...suggested, id: 'flavor-new', name: 'm1.new' },
+			} });
+		});
 		setup({ instance: { ...instance, status: 'SHUTOFF' } });
 		const view = render(InstanceDetailPanel, { instanceId: instance.id });
-		await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(summaryReads).toBe(1));
 		controllerState.update(s => ({ ...s, instance: { ...instance, id: 'instance-b', status: 'SHUTOFF' }, resizeFlavors: [{ ...suggested, id: 'flavor-new', name: 'm1.new' }] }));
 		await view.rerender({ instanceId: 'instance-b' });
 		await waitFor(() => expect(resizeButtons()).toHaveLength(2));
-		resolveOld(summary);
+		oldSummary.resolve(summary);
 		await tick();
 		await fireEvent.click(resizeButtons()[1]);
 		const dialog = await screen.findByRole('dialog', { name: t('resize.title') });
 		expect(within(dialog).getByRole<HTMLSelectElement>('combobox', { name: t('resize.newFlavor') }).value).toBe('flavor-new');
+	});
+
+	it.each([
+		{ label: 'wrong native instance', loaded: { ...instance, id: 'other-instance' }, adminMode: false, adminProjectId: null },
+		{ label: 'wrong ordinary native owner', loaded: { ...instance, project_id: 'other-project' }, adminMode: false, adminProjectId: null },
+		{ label: 'wrong administrator target owner', loaded: instance, adminMode: true, adminProjectId: 'other-project' },
+	])('does not mount usage details for $label', async ({ loaded, adminMode, adminProjectId }) => {
+		setup({ instance: loaded });
+		render(InstanceDetailPanel, { instanceId: instance.id, adminMode, adminProjectId });
+		await tick();
+		expect(document.querySelector('#usage-schedule')).toBeNull();
+		expect(mocks.get.mock.calls.some(([path]) => path.endsWith('/usage-schedule'))).toBe(false);
+	});
+
+	it('mounts administrator usage details only after exact native ownership with authenticated header scope', async () => {
+		identity.update(value => ({ ...value, projectId: 'admin-personal', isSystemAdmin: true }));
+		setup({ instance: { ...instance, project_id: 'foreign-project' } });
+		render(InstanceDetailPanel, { instanceId: instance.id, adminMode: true, adminProjectId: null });
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+			`/api/v1/admin/instances/${instance.id}/usage-schedule`, 'token-a', 'admin-personal',
+			expect.objectContaining({ cache: 'no-store' }),
+		));
+		expect(document.querySelector('#usage-schedule')).toBeTruthy();
 	});
 });

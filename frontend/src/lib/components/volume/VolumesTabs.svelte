@@ -6,11 +6,13 @@
 		volumeCount,
 		snapshotCount,
 		showSnapshots = true,
+		onChange,
 	}: {
 		tab: 'volumes' | 'snapshots';
-		volumeCount: number;
-		snapshotCount: number;
+		volumeCount: number | null;
+		snapshotCount: number | null;
 		showSnapshots?: boolean;
+		onChange?: (tab: 'volumes' | 'snapshots') => void;
 	} = $props();
 </script>
 
@@ -18,11 +20,11 @@
 	id="volume-resource-tabs"
 	value={tab}
 	items={[
-		{ value: 'volumes', label: t('tabs.volumes', { count: volumeCount }), panelId: 'volume-resource-panel' },
+		{ value: 'volumes', label: volumeCount === null ? t('tabs.volumesUnknown') : t('tabs.volumes', { count: volumeCount }), panelId: 'volume-resource-panel' },
 		...(showSnapshots
-			? [{ value: 'snapshots', label: t('tabs.snapshots', { count: snapshotCount }), panelId: 'snapshot-resource-panel' }]
+			? [{ value: 'snapshots', label: snapshotCount === null ? t('tabs.snapshotsUnknown') : t('tabs.snapshots', { count: snapshotCount }), panelId: 'snapshot-resource-panel' }]
 			: []),
 	]}
-	onchange={(next) => { tab = next as typeof tab; }}
+	onchange={(next) => { if (onChange) onChange(next as typeof tab); else tab = next as typeof tab; }}
 	ariaLabel={t('tabs.resources')}
 />

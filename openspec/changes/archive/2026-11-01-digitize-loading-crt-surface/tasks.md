@@ -1,0 +1,3 @@
+- [x] Implement edge-to-edge water, pixel ring and full-surface CRT effects.
+- [x] Browser appearance, pause/resume and responsive checks.
+- [x] Independent review, docs, package, previews and archive.

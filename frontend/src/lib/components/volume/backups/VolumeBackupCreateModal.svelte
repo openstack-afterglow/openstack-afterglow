@@ -3,7 +3,8 @@
 	import { formatStorage } from '$lib/utils/format';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 
 	let {
 		open = $bindable(),
@@ -102,10 +103,10 @@
 				{/if}
 			</div>
 			{#if error}<Alert tone="danger" class="mt-4">{error}</Alert>{/if}
-			{#if creating}<ProgressTrack value={null} active label={t('backupCreateModal.title')} class="mt-4" />{/if}
+			{#if creating}<LoadingState variant="inline" label={t('backupCreateModal.title')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('backupCreateModal.cancel')}</button>
-				<Button onclick={submit} disabled={creating || !selectedVolume || !form.name.trim() || (forceRequired && !form.force)} ariaBusy={creating}>{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('backupCreateModal.creating')}{:else}{t('backupCreateModal.create')}{/if}</Button>
+				<Button onclick={submit} disabled={creating || !selectedVolume || !form.name.trim() || (forceRequired && !form.force)} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label="" />{t('backupCreateModal.creating')}{:else}{t('backupCreateModal.create')}{/if}</Button>
 			</div>
 		</div>
 	</div>

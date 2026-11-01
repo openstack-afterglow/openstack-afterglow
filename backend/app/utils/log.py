@@ -101,6 +101,7 @@ _SENSITIVE_EXACT: frozenset[str] = frozenset(
         "report_token",
         "monitoring_sd_token",
         "x_auth_token",
+        "ticket",
         "key",
         "cephx_key",
         "private_key",
@@ -124,6 +125,7 @@ _SENSITIVE_SUBSTR: tuple[str, ...] = (
     "passwd",
     "secret",
     "token",
+    "ticket",
     "private_key",
     "kubeconfig",
     "credential",
@@ -152,6 +154,12 @@ _SECRET_ASSIGNMENT_RE = re.compile(
 )
 _URL_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^\s/]+@", re.IGNORECASE)
 _PRIVATE_KEY_RE = re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", re.DOTALL)
+# URL-encoded query keys also occur in HTTP/WebSocket exception diagnostics.
+_QUERY_TICKET_RE = re.compile(
+    r"((?:[?&]|%3f|%26)(?:amp;)?(?:t|%74)(?:i|%69)(?:c|%63)"
+    r"(?:k|%6b)(?:e|%65)(?:t|%74)(?:=|%3d)).*",
+    re.IGNORECASE | re.DOTALL,
+)
 
 # Ancestor logger levels do not constrain explicitly configured descendants.
 # Clamp these namespaces at both root output handlers as well as logger setup.
@@ -219,6 +227,7 @@ def mask_str(msg: str) -> str:
     msg = _BASIC_RE.sub(lambda m: m.group(1) + "***", msg)
     msg = _JWT_RE.sub("***", msg)
     msg = _URL_USERINFO_RE.sub(lambda m: m.group(1) + "***@", msg)
+    msg = _QUERY_TICKET_RE.sub(lambda m: m.group(1) + "***", msg)
     return _SECRET_ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "***", msg)
 
 

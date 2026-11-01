@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -6,7 +7,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { FileStorage, ShareSnapshot } from '$lib/types/fileStorage';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -172,7 +173,7 @@
 		</PageHeader>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
-			<LoadingSkeleton variant="table" rows={4} />
+			<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshots.title') })} />
 		{:else if snapshots.length === 0}
 			<SnapshotsEmptyState onCreate={openCreateModal} />
 		{:else}

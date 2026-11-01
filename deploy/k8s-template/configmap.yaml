@@ -20,6 +20,10 @@ data:
     [DEFAULT]
     debug = false
 
+    # Global native writer requires explicit verified shared-cloud Redis opt-in.
+    [instance_usage]
+    scheduler_enabled = false
+
     [openstack]
     auth_url = "https://keystone.example.com/v3"
     project_name = "admin"
@@ -99,8 +103,10 @@ data:
     ttl_static = 300   # 이미지, 플레이버, 토큰 검증
 
     [session]
-    timeout_seconds = 3600
+    timeout_seconds = 604800
     warning_before_seconds = 300
+    jwt_access_ttl = 3600
+    jwt_refresh_ttl = 604800
 
     [nova]
     default_network_id = ""

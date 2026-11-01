@@ -3,7 +3,7 @@
   import type { DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -52,8 +52,8 @@
         <p class="text-xs text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {tr('labels.sizeGb')}: {inst.size ?? '-'}</p>
         {#snippet details()}<p class="text-xs break-all">{inst.id}</p><p class="text-xs">{tr('labels.created')}: {inst.created_at ? inst.created_at.slice(0, 10) : '-'}</p>{/snippet}
         {#snippet actions()}
-          <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
-          <button onclick={() => onDelete(inst.id, inst.name)} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+          <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<LoadingState variant="control" label="" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
+          <button onclick={() => onDelete(inst.id, inst.name)} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
         {/snippet}
       </CompactResourceCard>
     {/each}
@@ -82,8 +82,8 @@
           <td class="db-instances-table__selection-count py-3 px-4 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
           <td class="py-3 px-4 text-right">
             <div class="flex justify-end gap-1">
-              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
-              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<LoadingState variant="control" label="" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
+              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             </div>
           </td>
         </tr>

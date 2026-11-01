@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { untrack } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
@@ -95,7 +95,7 @@
 	<details class="execution-timeline" bind:open>
 		<summary aria-label={t('executionTimeline.openHistory')}>
 			{#if active && !open && taskItems.some((item) => isLive(item))}
-				<ActivityIndicator variant="orbit" size="xs" label={t('executionTimeline.inProgress')} />
+				<LoadingState variant="inline" label={t('executionTimeline.inProgress')} />
 			{:else}
 				<span class="summary-mark" aria-hidden="true"></span>
 			{/if}
@@ -122,9 +122,9 @@
 								{animate}
 							/>
 						{:else if entry.item.kind === 'context'}
-							<p class="stage-label">{#if isLive(entry.item)}<ActivityIndicator variant="orbit" size="xs" /> {/if}{contextLabel(entry.item)}</p>
+							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{contextLabel(entry.item)}</p>
 						{:else if entry.item.kind === 'stage'}
-							<p class="stage-label">{#if isLive(entry.item)}<ActivityIndicator size="xs" /> {/if}{stageLabel(entry.item)}</p>
+							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{stageLabel(entry.item)}</p>
 						{:else}
 							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} {animate} />
 						{/if}

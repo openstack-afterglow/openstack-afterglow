@@ -1,13 +1,12 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import type { User } from '$lib/types/common';
 	import type { DomainAccountResult } from '$lib/types/auth';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -343,7 +342,7 @@
 	{#if activityError}<Alert class="mb-4">{activityError}</Alert>{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={t('userPage.loading')} />
 	{:else if !loadError}
 		<!-- 통계 카드 + 최근 변경 로그 카드 -->
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5" data-tour="admin-identity-overview">
@@ -371,7 +370,7 @@
 			<div class="bg-surface-base border border-line rounded-lg p-4">
 				<p class="text-xs font-semibold text-ink-2 mb-2">{t('userPage.recentChanges')}</p>
 				{#if loadingActivity}
-					<p class="text-xs text-ink-2"><ActivityIndicator size="xs" label={t('userPage.loading')} /></p>
+					<p class="text-xs text-ink-2"><LoadingState variant="inline" label={t('userPage.loading')} /></p>
 				{:else if activityLog.length === 0}
 					<p class="text-xs text-ink-2">{t('userPage.noChanges')}</p>
 				{:else}

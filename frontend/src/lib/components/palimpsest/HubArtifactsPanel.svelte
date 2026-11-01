@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import { onMount, untrack } from 'svelte';
@@ -125,7 +126,7 @@
     <Alert>{hub.errors.me}</Alert>
     <Button variant="secondary" size="sm" disabled={anyBusy} onclick={() => hub.refresh(true)}>{t('retry')}</Button>
   {:else if hub.busy.me || !hub.me}
-    <p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+    <LoadingState variant="section" label={t('loading')} />
   {:else}
     <section class="space-y-3 min-w-0" aria-label={t('inventory')}>
       <h3 class="text-sm font-semibold">{t('inventory')}</h3>
@@ -147,7 +148,7 @@
         </Card>
         <p class="text-xs text-ink-2">{hub.observed.inventory ? t('observed', { time: timestamp(hub.observed.inventory) }) : t('neverObserved')}</p>
         {#if hub.errors.inventory}<Alert>{hub.errors.inventory}</Alert><Button variant="secondary" size="sm" disabled={hub.busy.inventory} onclick={() => hub.loadInventory()}>{t('retry')}</Button>{/if}
-        {#if hub.busy.inventory}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+        {#if hub.busy.inventory}<LoadingState variant={hub.inventory ? 'inline' : 'section'} label={t('loading')} />{/if}
         {#if hub.inventory}
           <p class="text-xs text-ink-2">{t('page', { start: hub.offset, count: hub.inventory.length })}</p>
           {#if hub.inventory.length === 0}<Alert tone="neutral">{t('empty')}</Alert>{:else}
@@ -166,14 +167,14 @@
         {#if hub.selected}
           <Card surface="base">
             <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold">{t('details')}</h3><Button variant="ghost" size="sm" onclick={() => hub.closeDetail()}>{t('close')}</Button></div>
-            {#if hub.busy.detail}<p role="status" class="mt-3 text-sm text-ink-2">{t('loading')}</p>{/if}
+            {#if hub.busy.detail}<LoadingState variant={hub.detail ? 'inline' : 'section'} label={t('loading')} />{/if}
             {#if hub.errors.detail}<Alert class="mt-3">{hub.errors.detail}</Alert><Button variant="secondary" size="sm" onclick={() => hub.openDetail(hub.selected!)}>{t('retry')}</Button>{/if}
             {#if hub.detail}
               {@const item = hub.detail}
               <div class="space-y-3 mt-3">
                 <h4 class="text-sm font-semibold break-all">{item.name}</h4>
                 <code class="block text-xs break-all select-all">{item.blob_digest}</code>
-                <div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onclick={copyDigest}>{t('copy')}</Button><Button variant="secondary" size="sm" disabled={!hub.canDownload || hub.busy.download || item.size_bytes > MAX_HUB_DOWNLOAD_BYTES} onclick={saveDownload}>{hub.busy.download ? t('download.busy') : t('download')}</Button></div>
+                <div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" onclick={copyDigest}>{t('copy')}</Button><Button variant="secondary" size="sm" disabled={!hub.canDownload || hub.busy.download || item.size_bytes > MAX_HUB_DOWNLOAD_BYTES} onclick={saveDownload}>{#if hub.busy.download}<LoadingState variant="control" label={t('download.busy')} />{:else}{t('download')}{/if}</Button></div>
                 {#if copyNotice}<p role="status" class="text-xs text-ink-2">{t(copyNotice)}</p>{/if}
                 {#if !hub.canDownload}<Alert tone="warning">{t('denied')}</Alert>{/if}
                 {#if hub.errors.download}<Alert>{hub.errors.download}</Alert>{/if}
@@ -202,7 +203,7 @@
           <p class="text-xs text-ink-2">{hub.observed.builds ? t('observed', { time: timestamp(hub.observed.builds) }) : t('neverObserved')}</p>
           {#if !hub.canBuilds}<Alert tone="warning">{t('denied')}</Alert>{:else}
             {#if hub.errors.builds}<Alert>{hub.errors.builds}</Alert>{/if}
-            {#if hub.busy.builds}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+            {#if hub.busy.builds}<LoadingState variant={hub.builds ? 'inline' : 'section'} label={t('loading')} />{/if}
             {#if hub.builds?.length === 0}<p class="text-xs text-ink-2">{t('jobs.empty')}</p>{/if}
             {#if hub.builds}<ul class="space-y-3">{#each hub.builds as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
               <div class="flex flex-wrap justify-between gap-2"><span class="text-sm break-all">{job.name}</span><StatusChip status={job.status} /></div>
@@ -218,7 +219,7 @@
           <p class="text-xs text-ink-2">{hub.observed.exports ? t('observed', { time: timestamp(hub.observed.exports) }) : t('neverObserved')}</p>
           {#if !hub.canInventory}<Alert tone="warning">{t('denied')}</Alert>{:else}
             {#if hub.errors.exports}<Alert>{hub.errors.exports}</Alert>{/if}
-            {#if hub.busy.exports}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+            {#if hub.busy.exports}<LoadingState variant={hub.exports ? 'inline' : 'section'} label={t('loading')} />{/if}
             {#if hub.exports?.length === 0}<p class="text-xs text-ink-2">{t('jobs.empty')}</p>{/if}
             {#if hub.exports}<ul class="space-y-3">{#each hub.exports as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
               <div class="flex flex-wrap justify-between gap-2"><span class="text-sm break-all">{job.source_name}</span><StatusChip status={job.status} /></div>

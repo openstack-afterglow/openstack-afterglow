@@ -235,6 +235,7 @@ async def _assert_settled(session, domain_id, *, project_id=None):
 async def _invalidate(project_id):
     for suffix in (
         f"afterglow:dashboard:{project_id}:quotas",
+        f"afterglow:dashboard:{project_id}:quotas:native-v1",
         f"afterglow:dashboard:{project_id}:quotas:overview",
         f"afterglow:nova:{project_id}:quota:strict",
         f"afterglow:cinder:{project_id}:quota:strict",
@@ -425,6 +426,9 @@ async def assert_project_allocation(conn, domain_id: str, project_id: str, *, le
 
 async def snapshot(conn, domain_id):
     projects = await _call(_directory, conn, domain_id)
+    domain = await _call(conn.identity.get_domain, domain_id)
+    if identity_roles._field(domain, "id") != domain_id:
+        raise public_service_error(503, "quota_domain_unverified")
     async with _session() as session:
         row = await _policy(session, domain_id)
         ceilings, defaults = (validate_limits(row.ceilings), validate_limits(row.defaults)) if row else ({}, {})
@@ -474,6 +478,9 @@ async def update_policy(conn, domain_id, revision, values, *, defaults=False, to
             if context["domain_id"] != domain_id:
                 raise HTTPException(403, "quota_domain_mismatch")
         projects = await _call(_directory, conn, domain_id)
+        domain = await _call(conn.identity.get_domain, domain_id)
+        if identity_roles._field(domain, "id") != domain_id:
+            raise public_service_error(503, "quota_domain_unverified")
         async with _session() as session:
             row = await _policy(session, domain_id, create=True)
             if row.revision != revision:

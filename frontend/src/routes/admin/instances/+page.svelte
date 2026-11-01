@@ -5,19 +5,17 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { t as instanceT } from '$lib/i18n/ns/instance';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
 	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
-	import { projectNames } from '$lib/stores/projectNames';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createIntentPrefetchScheduler } from '$lib/utils/intentPrefetch';
@@ -31,20 +29,24 @@
 	import { isTransitional } from '$lib/utils/instanceStatus';
 	import RecoveryModal from '$lib/components/admin/instances/RecoveryModal.svelte';
 	import type { AdminInstance, PagedResponse, TsPoint } from '$lib/types/adminInstance';
-	import { Button, StatTile, ToggleGroup } from '$lib/components/ui';
+	import { Button, EmptyState, Pagination, SelectInput } from '$lib/components/ui';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
+	import type { ResourceSort } from '$lib/utils/resourceSort';
 
 	let allInstances = $state<AdminInstance[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let pageSize = $state(20);
+	let pageSizeInput = $state('20');
+	$effect(() => { pageSizeInput = String(pageSize); });
 	let markerStack = $state<string[]>([]);
 	let nextMarker = $state<string | null>(null);
 	let availableHosts = $state<string[]>([]);
 	let hostFilter = $state('');
 	let statusFilter = $state('');
 	let nameSearch = $state('');
+	let sort = $state<ResourceSort>('created_desc');
 	let tsData = $state<TsPoint[]>([]);
 	let tsRange = $state('7d');
 	let tsLoading = $state(true);
@@ -86,7 +88,7 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 	const nextPrefetch = createIntentPrefetchScheduler();
 	function listPath(marker?: string): string {
-		const params = new URLSearchParams({ limit: String(pageSize) });
+		const params = new URLSearchParams({ limit: String(pageSize), sort });
 		if (marker) params.set('marker', marker);
 		if (hostFilter) params.set('host', hostFilter);
 		if (statusFilter) params.set('status', statusFilter);
@@ -211,7 +213,6 @@
 		void loadTimeseries(tsRange);
 		void loadHosts();
 		void loadHealth();
-		projectNames.load($auth.token ?? undefined, currentProjectId);
 	});
 
 	async function bulkAction(action: 'start' | 'stop' | 'delete') {
@@ -275,50 +276,26 @@
 		void loadTimeseries(tsRange);
 		void loadHosts();
 		void loadHealth();
-		projectNames.load($auth.token ?? undefined, $auth.projectId ?? undefined);
 	});
 	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; loadGeneration += 1; nextPrefetch.cancel(); invalidateInstanceDetailSelection(); });
 </script>
 
-<PageShell class="bulk-selection-page">
+<PageShell class="bulk-selection-page space-y-4">
 	<div data-tour="admin-compute-header">
-	<PageHeader breadcrumb={t('instances.page.breadcrumb')} title={t('instances.page.title')}>
+	<PageHeader breadcrumb={t('instances.page.breadcrumb')} title={health ? t('instances.page.titleWithCount', { count: health.total }) : t('instances.page.title')}>
 		{#snippet actions()}
-			<TutorialStartButton tour="admin-compute" compactOnMobile />
-			<Button onclick={() => openWizard()} variant="accent" size="sm">
+			<Button onclick={() => openWizard()} variant="primary" size="sm">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
 				</svg>
 				{t('instances.page.createVm')}
 			</Button>
-			<AutoRefreshControl
-				bind:active={ar.active}
-				bind:intervalSeconds={ar.intervalSeconds}
-				intervalOptions={ar.intervalOptions}
-				refreshing={loading || refreshing}
-				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true, refresh: true }); void loadHosts(); }}
-			/>
-			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				{t('instances.page.display')}
-				<ToggleGroup
-					value={String(pageSize)}
-					options={[10, 20, 30].map((n) => ({ value: String(n), label: String(n) }))}
-					onchange={(value) => { pageSize = parseInt(value, 10); markerStack = []; nextMarker = null; void load(undefined, { clearSelection: true }); }}
-					size="xs"
-				/>
-			</div>
 		{/snippet}
 	</PageHeader>
 	</div>
 
 	{#if health}
-		<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
-			<StatTile label={t('instances.page.totalVm')} value={health.total} unit={t('instances.page.instanceUnit')} accent="blue" />
-			<StatTile label={t('instances.page.active')} value={health.active} unit="/ {health.total}" accent="emerald" />
-			<StatTile label={t('instances.page.error')} value={health.error} unit={t('instances.page.instanceUnit')} accent="rose" />
-			<StatTile label={t('instances.page.withAlerts')} value={health.with_alerts} unit={t('instances.page.instanceUnit')} accent="amber" class="max-md:hidden" />
-			<StatTile label={t('instances.page.gpuVm')} value={health.gpu_count} unit={t('instances.page.accelerated')} accent="violet" class="max-md:hidden" />
-		</div>
+		<p class="text-sm tabular-nums text-ink-2" data-testid="admin-instance-summary">{t('instances.page.summary', { total: health.total, active: health.active, errors: health.error, alerts: health.with_alerts, gpu: health.gpu_count })}</p>
 	{/if}
 
 	<div data-tour="admin-compute-filters">
@@ -327,16 +304,22 @@
 		bind:hostFilter
 		bind:statusFilter
 		bind:nameSearch
+		bind:sort
 		onChange={onFilterChange}
-	/>
+	>
+		{#snippet actions()}
+			<TutorialStartButton tour="admin-compute" compactOnMobile />
+			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing} onManualRefresh={() => { void load(markerStack.at(-1), { refresh: true }); void loadHealth(); void loadHosts(); }} />
+		{/snippet}
+	</AdminInstanceFilters>
 	</div>
 
 	{#if !api.scoped}
-	<div class="mb-6" data-tour="admin-compute-timeseries">
+	<details class="rounded-lg border border-line bg-surface-base" data-tour="admin-compute-timeseries">
+		<summary class="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-ink-1">{t('instances.page.showUsageTrend')}</summary>
+		<div class="px-4 pb-4">
 		{#if tsLoading}
-			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-				<ActivityIndicator size="sm" label={t('instances.page.chartLoading')} />
-			</div>
+			<LoadingState variant="section" label={t('instances.page.chartLoading')} />
 		{:else}
 			<TimeSeriesChart
 				data={tsData}
@@ -347,28 +330,28 @@
 				onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }}
 			/>
 		{/if}
-	</div>
+		</div>
+	</details>
 	{/if}
 
 
 	<div data-tour="admin-compute-list">
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else}
+		{#if allInstances.length === 0}
+			<EmptyState headline={t(hostFilter || statusFilter || nameSearch ? 'instances.page.filteredEmpty' : 'instances.page.empty')} description={t(hostFilter || statusFilter || nameSearch ? 'instances.page.filteredEmptyDescription' : 'instances.page.emptyDescription')}>
+				{#snippet cta()}{#if hostFilter || statusFilter || nameSearch}<Button variant="secondary" onclick={() => { hostFilter = ''; statusFilter = ''; nameSearch = ''; onFilterChange(); }}>{t('instances.page.clearFilters')}</Button>{/if}{/snippet}
+			</EmptyState>
+		{/if}
 		<div data-tour="admin-compute-ready">
 		<AdminInstanceTable
 			instances={allInstances}
-			{markerStack}
-			{nextMarker}
-			{refreshing}
 			selectedIds={selection.ids}
 			{selectableIds}
 			selectionDisabled={bulkActioning}
 			onOpen={openDetail}
-			{onPrev}
-			{onNext}
-			onintent={prefetchNext}
 			onRecover={openRecovery}
 			onToggleSelect={(id) => selection.toggle(id)}
 			onToggleAll={() => selection.toggleAll(selectableIds)}
@@ -376,6 +359,11 @@
 		</div>
 	{/if}
 	</div>
+	<footer class="flex flex-wrap items-end justify-between gap-3 pt-3" data-testid="admin-instance-list-footer">
+		{#if !loading && !inventoryError}<p class="text-sm tabular-nums text-ink-2">{t('instances.page.loadedCount', { count: allInstances.length })}</p>{/if}
+		<div class="flex items-center gap-2"><label for="admin-instance-page-size" class="text-xs text-ink-2">{t('instances.page.pageSize')}</label><SelectInput id="admin-instance-page-size" bind:value={pageSizeInput} onchange={(event) => { pageSizeInput = (event.currentTarget as HTMLSelectElement).value; pageSize = Number(pageSizeInput); onFilterChange(); }}>{#each [10, 20, 30] as size}<option value={String(size)}>{size}</option>{/each}</SelectInput></div>
+		<Pagination class="!mt-0" page={markerStack.length + 1} hasPrev={!loading && markerStack.length > 0} hasNext={!loading && !inventoryError && !!nextMarker} {onPrev} {onNext} onintent={prefetchNext} />
+	</footer>
 
 	<BulkSelectionOverlay
 		count={selection.count}

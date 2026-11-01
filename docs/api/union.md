@@ -127,6 +127,8 @@ stateDiagram-v2
 
 관리자 UI(`/admin/libraries`)의 **새 빌드/VM 생성은 Dockerfile 작업** 한곳에서 시작한다. URL·파일·직접 작성은 inline 경로를, 커밋 SHA로 고정한 GitHub context는 `/imports/dockerfile`을 사용한다. 기존 `/build`, `/consume`, `/profiles` API는 이미 만들어진 artifact/공개 프로필과 외부 호출자를 위해 남아 있지만 별도 관리자 생성 폼은 없다. 과거 build/artifact/profile/consume 기록은 계속 조회·공개 설정·삭제할 수 있다.
 
+화면은 기본 레이어 탐색과 `catalog/studio/profiles/artifacts/builds/instances` URL 탭으로 분리한다. Studio는 실제 active Glance UUID 또는 검증된 봉인 profile leaf/digest를 기존 FROM/lint 계약으로 확정하거나 사용자가 기존 Dockerfile을 명시적으로 입력한 뒤 열린다. 새로운 backend 입력 필드·fallback base·권한 우회는 없다. 기반을 바꿀 때 기존 Dockerfile 본문을 보존하며 실제 잘못된 FROM은 계속 lint 오류다. 새 탭 구조는 위 API의 불변 artifact/import 계보와 정리 정책을 변경하지 않는다.
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/admin/libraries/base-images` | 빌더/소비 VM 부팅용 Ubuntu Glance 이미지 목록 |

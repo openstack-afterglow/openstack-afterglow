@@ -2,7 +2,8 @@
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { ActivityIndicator, Alert, Button, Card, SearchSelect, SelectInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, SearchSelect, SelectInput, TextInput } from '$lib/components/ui';
 	import type { SearchSelectOption } from '$lib/components/ui';
 
 	interface ResourceOption {
@@ -289,7 +290,7 @@
 			const current = selections[policy.key] ?? '';
 			if (!current && catalog.options.length === 1) {
 				setPolicySelection(policy.key, catalog.options[0].id);
-				notice = t('policies.onlyOption', { title: policy.title });
+				notice = t('policies.onlyOption', { title: policyCopy(policy).title });
 			}
 		} catch (cause) {
 			error = cause instanceof ApiError ? t('policies.catalogFailedDetail', { message: cause.message }) : t('policies.catalogFailed');
@@ -336,7 +337,7 @@
 			);
 			policies = policies.map((item) => (item.key === updated.key ? { ...item, ...updated } : item));
 			clearDraft('policies', policy.key);
-			notice = t('policies.saved', { title: policy.title });
+			notice = t('policies.saved', { title: policyCopy(policy).title });
 		} catch (cause) {
 			error = cause instanceof ApiError ? t('policies.saveFailedDetail', { message: cause.message }) : t('policies.saveFailed');
 		} finally {
@@ -357,7 +358,7 @@
 			);
 			runtimeSettings = runtimeSettings.map((item) => (item.key === updated.key ? updated : item));
 			clearDraft('runtime', setting.key);
-			notice = t('policies.runtimeSaved', { title: setting.title });
+			notice = t('policies.runtimeSaved', { title: runtimeCopy(setting).title });
 		} catch (cause) {
 			error = cause instanceof ApiError ? t('policies.runtimeSaveFailedDetail', { message: cause.message }) : t('policies.runtimeSaveFailed');
 		} finally {
@@ -365,6 +366,12 @@
 		}
 	}
 
+	function policyCopy(policy: ResourcePolicy) {
+		return policyDefinitions.find(definition => definition.key === policy.key) ?? policy;
+	}
+	function runtimeCopy(setting: RuntimeSetting) {
+		return runtimeDefinitions.find(definition => definition.key === setting.key) ?? setting;
+	}
 	function groupedPolicies() {
 		return Object.entries(
 			policies.reduce<Record<string, ResourcePolicy[]>>((groups, policy) => {
@@ -380,7 +387,6 @@
 <Card padding="lg" surface="subtle">
 	<div class="heading">
 		<div>
-			<p class="eyebrow">{t('policies.eyebrow')}</p>
 			<h2>{t('policies.title')}</h2>
 			<p>{t('policies.description')}</p>
 		</div>
@@ -388,7 +394,7 @@
 
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-	{#if loadingValues}<div class="loading-note"><ActivityIndicator label={t('policies.loading')} /></div>{/if}
+	{#if loadingValues}<div class="loading-note"><LoadingState variant="inline" label={t('policies.loading')} /></div>{/if}
 
 	<section class="runtime-settings" aria-labelledby="runtime-settings-title">
 		<div class="section-heading">
@@ -398,28 +404,28 @@
 		{#each runtimeSettings as setting (setting.key)}
 			<div class="runtime-row">
 				<div class="policy-copy">
-					<strong>{setting.title}</strong>
-					<span>{setting.help_text}</span>
+					<strong>{runtimeCopy(setting).title}</strong>
+					<span>{runtimeCopy(setting).help_text}</span>
+					<code class="selection-id">{setting.key}</code>
 				</div>
 				{#if setting.key === 'notion.sync_enabled'}
 					<SelectInput
 						value={runtimeValues[setting.key] ?? 'false'}
 						onchange={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLSelectElement).value)}
-						ariaLabel={t('policies.selectLabel', { title: setting.title })}
+						ariaLabel={t('policies.selectLabel', { title: runtimeCopy(setting).title })}
 					>
 						<option value="true">{t('policies.enabled')}</option>
 						<option value="false">{t('policies.disabled')}</option>
 					</SelectInput>
 				{:else}
-					<input
-						class="runtime-input"
+					<TextInput
 						value={runtimeValues[setting.key] ?? ''}
 						oninput={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLInputElement).value)}
-						aria-label={t('policies.valueLabel', { title: setting.title })}
+						ariaLabel={t('policies.valueLabel', { title: runtimeCopy(setting).title })}
 					/>
 				{/if}
 				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={saving === setting.key} ariaBusy={saving === setting.key}>
-					{#if saving === setting.key}<ActivityIndicator size="xs" tone="ink" />{/if}{saving === setting.key ? t('policies.saving') : t('policies.save')}
+					{#if saving === setting.key}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving === setting.key ? t('policies.saving') : t('policies.save')}
 				</Button>
 			</div>
 		{/each}
@@ -432,8 +438,10 @@
 				{#each groupPolicies as policy (policy.key)}
 					<section class="policy-row">
 						<div class="policy-copy">
-							<strong>{policy.title}</strong>
-							<span>{policy.help_text} · {policy.execution_scope} · {policy.state}</span>
+							<strong>{policyCopy(policy).title}</strong>
+							<span>{policyCopy(policy).help_text}</span>
+							<span>{t(`policies.scope.${policy.execution_scope}`)} · {t(`policies.state.${policy.state}`)}</span>
+							<code class="selection-id">{policy.key}</code>
 						</div>
 						<div class="catalog-selection">
 							<SearchSelect
@@ -444,7 +452,7 @@
 								searchPlaceholder={t('policies.searchPlaceholder')}
 								emptyText={t('policies.empty')}
 								loading={Boolean(catalogLoading[policy.key])}
-								ariaLabel={t('policies.searchLabel', { title: policy.title })}
+								ariaLabel={t('policies.searchLabel', { title: policyCopy(policy).title })}
 								onopen={() => void loadOptions(policy)}
 								onchange={(value) => setPolicySelection(policy.key, value === CLEAR_OPTION_ID ? '' : value)}
 							/>
@@ -452,7 +460,7 @@
 						</div>
 						<div class="actions">
 							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={saving === policy.key} ariaBusy={saving === policy.key}>
-								{#if saving === policy.key}<ActivityIndicator size="xs" tone="ink" />{/if}{saving === policy.key ? t('policies.saving') : t('policies.save')}
+								{#if saving === policy.key}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving === policy.key ? t('policies.saving') : t('policies.save')}
 							</Button>
 						</div>
 					</section>
@@ -465,19 +473,16 @@
 <style>
 	.heading, .policy-copy, .policy-list, .policy-group, .section-heading, .catalog-selection { display: grid; gap: 0.5rem; }
 	.heading { margin-bottom: 1rem; }
-	.eyebrow { margin: 0; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--admin-tone, var(--color-warm)); }
 	h2, h3 { margin: 0; color: var(--color-ink-0); }
 	h2 { font-size: 1rem; }
 	h3 { font-size: 0.88rem; }
-	p, .policy-copy span, .selection-id { margin: 0; color: var(--color-ink-2); font-size: 0.82rem; line-height: 1.5; }
+	p, .policy-copy span, .selection-id { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
 	.loading-note { padding: 0.5rem 0; }
 	.runtime-settings, .policy-group { border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }
 	.runtime-row, .policy-row { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(13rem, 1.2fr) auto; align-items: center; gap: 0.75rem; border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }
 	.runtime-settings .runtime-row:first-of-type { border-top: 0; }
 	.policy-copy strong { color: var(--color-ink-0); font-size: 0.86rem; }
-	.runtime-input { min-width: 0; width: 100%; border: 1px solid var(--color-line); border-radius: 0.375rem; background: var(--color-surface-sunken); color: var(--color-ink-0); padding: 0.5rem 0.75rem; }
-	.runtime-input:focus { outline: none; border-color: var(--color-accent); box-shadow: var(--focus-ring); }
-	.selection-id { font-family: var(--font-mono); font-size: 0.7rem; }
+	.selection-id { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
 	.actions { display: flex; gap: 0.4rem; }
-	@media (max-width: 720px) { .runtime-row, .policy-row { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
+	@media (max-width: 767px) { .runtime-row, .policy-row { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
 </style>

@@ -11,7 +11,6 @@ import ImageMembersSection from '../ImageMembersSection.svelte';
 import ImageVisibilitySection from '../ImageVisibilitySection.svelte';
 import ImagePropertiesSection from '../ImagePropertiesSection.svelte';
 import ImageDeleteAction from '../ImageDeleteAction.svelte';
-import ImageDetailHeader from '../ImageDetailHeader.svelte';
 
 beforeEach(() => {
 	controller.current = {
@@ -61,11 +60,9 @@ describe('image operation feedback', () => {
 		expect(screen.getByRole('button', { name: '저장 중...' }).hasAttribute('disabled')).toBe(true);
 	});
 
-	it('labels delete activity without replacing image operational status', () => {
+	it('labels delete activity while the request is pending', () => {
 		controller.current.deleting = true;
-		render(ImageDetailHeader);
 		render(ImageDeleteAction);
-		expect(screen.getByText('active')).toBeTruthy();
 		expect(screen.getByRole('status').textContent?.trim()).toBe('삭제 중...');
 		expect(screen.getByRole('button', { name: '삭제 중...' }).hasAttribute('disabled')).toBe(true);
 	});

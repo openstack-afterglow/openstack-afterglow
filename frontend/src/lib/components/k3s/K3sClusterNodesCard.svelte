@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
   import { useK3sClusterDetailController, healthColor } from '$lib/stores/k3sClusterDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -68,7 +68,7 @@
           class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
         {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
           <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-            {#if s.scaling}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
+            {#if s.scaling}<LoadingState variant="control" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
           </Button>
         {/if}
       </div>
@@ -97,7 +97,7 @@
               class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
             {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
               <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-                {#if s.scaling}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
+                {#if s.scaling}<LoadingState variant="control" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
               </Button>
             {/if}
           {:else}
@@ -115,7 +115,7 @@
       </div>
     </dl>
     {#if s.health === null && s.cluster!.status === 'ACTIVE'}
-      <p class="text-xs text-ink-2 mt-2">{t('nodes.loadingHealth')}</p>
+      <LoadingState variant="inline" label={t('nodes.loadingHealth')} class="mt-2 text-xs" />
     {/if}
     {#if s.scaleError}
       <p class="text-red-400 text-xs mt-2">{s.scaleError}</p>

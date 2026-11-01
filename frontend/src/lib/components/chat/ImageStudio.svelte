@@ -4,7 +4,8 @@
 	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
 	import { isChatImageMime } from '$lib/api/chatAttachments';
 	import { ApiError } from '$lib/api/client';
-	import { ActivityIndicator, Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { IMAGE_STUDIO_STYLES, composeImagePrompt, imageRequestAspectRatio, type ImageStudioStyleId } from './imageStudioStyles';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
@@ -465,7 +466,7 @@
 					<img src={inputPreviewUrl} alt={t('imageStudio.inputPreview')} />
 					<div class="attachment-meta">
 						<p class="attachment-name">{inputFileName}</p>
-						{#if uploading}<ActivityIndicator variant="upload" label={t('imageStudio.uploading')} />{:else if inputAssetId}<p role="status" class="muted">{t('imageStudio.uploadComplete', { name: inputFileName })}</p>{/if}
+						{#if uploading}<LoadingState variant="inline" label={t('imageStudio.uploading')} />{:else if inputAssetId}<p role="status" class="muted">{t('imageStudio.uploadComplete', { name: inputFileName })}</p>{/if}
 					</div>
 					<Button variant="ghost" size="sm" ariaLabel={t('imageStudio.removeAttachment')} onclick={clearInput} disabled={submitting}>{t('imageStudio.remove')}</Button>
 				</div>
@@ -482,13 +483,13 @@
 				<div class="composer-actions">
 					<Button variant="secondary" onclick={() => assetsAllowed && fileInput?.click()} disabled={busy || !assetsAllowed}>{inputPreviewUrl ? t('imageStudio.replaceImage') : t('imageStudio.attachImage')}</Button>
 					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label={t('imageStudio.inputImage')} onchange={selectFile} disabled={busy || !assetsAllowed} />
-					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{submitting ? t('imageStudio.submitting') : t('imageStudio.createImage')}</Button>
+					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{#if submitting}<LoadingState variant="control" label={t('imageStudio.submitting')} />{:else}{t('imageStudio.createImage')}{/if}</Button>
 				</div>
 			</div>
 			<div class="composer-status">
 				{#if !scope}<p role="status" class="muted">{t('imageStudio.signInHelp')}</p>
 				{:else if imagesAllowed}
-					{#if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">{t('imageStudio.checkingOptions')}</p>
+					{#if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<LoadingState variant="inline" label={t('imageStudio.checkingOptions')} />
 					{:else if modelsError}<p class="muted">{t('imageStudio.modelsRequired')}</p>
 					{:else if models.length === 0}<Alert tone="warning" title={t('imageStudio.noModelsTitle')}>{t('imageStudio.noModels')}</Alert>
 					{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
@@ -521,11 +522,12 @@
 					{#if currentRun}<span role="status" class="run-status">{displayStatus(currentRun.status)}</span>{/if}
 				</div>
 				{#if selectedRunId}
-					{#if loadingRun && !currentRun}<p role="status" class="muted">{t('imageStudio.checkingJob')}</p>{/if}
+					{#if loadingRun && !currentRun}<LoadingState label={t('imageStudio.checkingJob')} />{/if}
 					{#if currentRun && !currentRun.terminal}
-						<div class="developing motion-skeleton" style:aspect-ratio={developingRatio} aria-busy="true" aria-label={t('imageStudio.developing')}>
+						<div class="developing" style:aspect-ratio={developingRatio} aria-label={t('imageStudio.developing')}>
+							<span class="sr-only" aria-busy="true">{t('imageStudio.developing')}</span>
 							<div class="developing-status">
-								<ActivityIndicator variant={currentRun.status === 'running' ? 'orbit' : 'dots'} label={displayStatus(currentRun.status)} size="lg" />
+								<LoadingState variant="section" label={displayStatus(currentRun.status)} />
 								<p class="muted">{runContext?.submitted ? t('imageStudio.elapsedSinceRequest', { seconds: elapsedSeconds }) : t('imageStudio.elapsedSinceView', { seconds: elapsedSeconds })}</p>
 								<p class="muted">{runContext?.size === 'auto' ? t('imageStudio.requestedAutoSize') : runContext?.size ? t('imageStudio.requestedSize', { size: runContext.size.replace('x', ' × ') }) : t('imageStudio.requestedSizeUnknown')}</p>
 							</div>
@@ -542,7 +544,7 @@
 										<div class="image-frame">
 											{#if previewUrls[asset.asset_id]}
 												<img src={previewUrls[asset.asset_id]} alt={t('imageStudio.generatedImage')} use:revealLiveResult={asset.asset_id} />
-											{:else}<span>{t('imageStudio.loadingImage')}</span>{/if}
+											{:else}<LoadingState variant="section" label={t('imageStudio.loadingImage')} />{/if}
 										</div>
 										<figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>{t('imageStudio.download')}</Button></figcaption>
 									</figure>
@@ -603,8 +605,8 @@
 	.result-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
 	.run-status { font-size: 0.75rem; font-weight: 500; color: var(--color-ink-1); }
 	.run-progress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
-	.developing { width: 100%; max-width: 36rem; margin-inline: auto; display: grid; place-items: center; border: 1px solid var(--color-line); border-radius: var(--radius-xl); }
-	.developing-status { position: relative; z-index: 1; display: grid; justify-items: center; gap: 0.5rem; padding: 1rem; text-align: center; }
+	.developing { width: 100%; max-width: 36rem; margin-inline: auto; display: grid; place-items: stretch; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-xl); }
+	.developing-status { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; justify-items: stretch; gap: 0.5rem; text-align: center; }
 	.gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
 	.gallery figure { margin: 0; min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-xl); overflow: hidden; background: var(--color-surface-raised); }
 	.image-frame { min-height: 16rem; display: grid; place-items: center; color: var(--color-ink-2); background: var(--color-surface-sunken); font-size: 0.8125rem; }

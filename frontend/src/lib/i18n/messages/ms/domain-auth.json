@@ -158,7 +158,7 @@
 	"recovery.username": "Cari nama pengguna",
 	"recovery.password": "Tetapkan semula kata laluan",
 	"recovery.description": "Minta pautan sekali guna dihantar ke e-mel akaun anda. Anda tidak perlu mengetahui nama domain anda.",
-	"recovery.sent": "Jika alamat ini layak, e-mel telah dihantar. Semak peti masuk anda.",
+	"recovery.sent": "Permintaan diterima. Jika alamat ini layak, e-mel akan dihantar. Penerimaan tidak mengesahkan penghantaran. Semak peti masuk; jika e-mel tidak tiba atau tidak boleh diakses, hubungi pentadbir.",
 	"recovery.notAvailable": "Permintaan melalui e-mel tidak tersedia buat masa ini. Hubungi pentadbir anda atau cuba lagi kemudian.",
 	"recovery.usernameResult": "Pautan pengesahan ini telah digunakan. Log masuk dengan nama pengguna asal dan domain anda di bawah. Membuka semula pautan tidak akan memaparkannya lagi.",
 	"recovery.reset": "Simpan kata laluan baharu",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "Log masuk semula",
 	"recovery.failed": "Hasilnya tidak dapat disahkan. Akaun ini mungkin tidak menyokong kaedah pemulihan ini, atau pautan mungkin sudah digunakan. Permintaan tidak akan diulangi secara automatik. Minta pautan baharu atau hubungi pentadbir anda.",
 	"link.authenticatedHelp": "Bagi akaun yang hanya menggunakan log masuk luaran, luluskan sambungan dengan sesi akaun asal yang sudah dilog masuk. Pelayan mengesahkan bahawa akaun itu ialah akaun yang sama.",
-	"link.authenticated": "Luluskan sambungan sebagai {username} yang telah log masuk"
+	"link.authenticated": "Luluskan sambungan sebagai {username} yang telah log masuk",
+	"recovery.passwordHelp": "Pautan yang dihantar ke e-mel berdaftar membuka borang untuk kata laluan baharu; kata laluan itu sendiri tidak dihantar. Jika e-mel tidak tiba atau peti mel tidak boleh diakses, hubungi pentadbir."
 }

@@ -40,7 +40,7 @@ Cloud Shell 안의 CLI는 사용자의 현재 프로젝트 token으로 실행합
 - `network_id`가 비어 있으면 전용 프로젝트의 DB default 네트워크를 먼저 사용한다. 없으면 기존 default-network 자동 생성 정책의 관리자 지정 external network로 routed network를 준비하며, 자동 생성이 꺼져 있으면 검증된 shared default-network 정책을 사용한다. 오래되거나 사용할 수 없는 선택을 다른 네트워크로 바꾸지 않는다.
 - 선택한 네트워크에는 사용 가능한 subnet과 external network 또는 router external gateway 연결이 있어야 한다. 명시적 `network_id`는 전용 프로젝트 소유여야 하며, 다른 프로젝트의 private network를 사용하지 않는다. 기본 정책으로 선택된 접근 가능한 shared/external network는 기존 정책 계약을 따른다.
 - `security_group`의 기본값은 `default`이며 빈 값도 같은 의미다. 전용 프로젝트 안에서 ID를 먼저, 이름을 다음으로 정확히 대조해 하나의 그룹 ID를 확정한다. 다른 프로젝트의 같은 이름이나 모호한 그룹을 채택하지 않는다.
-- 그룹의 기존 규칙을 수정하지 않는다. `default`는 egress-only를 보장하지 않으며 같은 그룹의 컨테이너 사이 ingress가 허용될 수 있다. 더 엄격한 정책이 필요하면 전용 프로젝트 소유 그룹을 명시한다.
+- 그룹의 기존 규칙을 수정하지 않는다. 실제 응답의 규칙이 모두 확인된 egress 규칙이고 ingress·remote-group/address-group 규칙이 없어야 한다. 기본 `default`에 self-ingress가 있으면 거부하므로 운영자가 별도 egress-only 그룹을 준비한다. 그룹 소유권 precheck만으로 이 검사가 완료된 것은 아니다.
 
 네트워크·그룹 선택 실패는 홈 볼륨/컨테이너 생성 전에 안전한 오류로 종료한다. 프로젝트·그룹을 임의로 만들거나 floating IP를 생성하지 않는다. Default-network 자동 생성은 기존 정책과 명시적 세션 승인 흐름을 따른다.
 
@@ -54,6 +54,8 @@ X-Project-Id: <current-project-uuid>
 ```
 
 `GET /workspace`는 인증된 사용자에게 허용됩니다. 티켓 발급과 영구 홈 초기화는 현재 프로젝트의 write 권한이 필요하므로 `reader`는 `403`을 받습니다. 한 사용자는 브라우저 탭과 프로젝트 전체에서 활성 또는 준비 중인 세션을 하나만 가질 수 있습니다.
+
+티켓과 실행 lease는 현재 로그인 family·사용자·identity home·작업 도메인·프로젝트·scope revision에 묶인다. 정상 refresh는 유지하지만 로그아웃·세션 폐기/blacklist·프로젝트/도메인 전환과 A→B→A 복귀는 이전 셸 권위를 복원하지 않는다. 각 입력 전과1초 주기에서 현재 family/ownership을 확인한다. Native token/현재 project write 역할은 consume·준비·bootstrap/ready와 실행 중30초 주기에서 재검사하며 새 token 발급이 아닌 exact-token GET을 사용한다. Native role 변경의 즉시 반영이나 검증 직후 native write와의 분산 원자성까지 보장하지 않는다.
 
 ## `GET /api/v1/cloud-shell/workspace`
 
@@ -93,9 +95,17 @@ X-Project-Id: <current-project-uuid>
 
 티켓은 Redis에서 원자적으로 한 번만 소비되고 짧게 만료됩니다. 응답에는 Keystone 토큰, 서비스 프로젝트 자격, Zun exec URL이 포함되지 않습니다.
 
+로그인 원본과 셸 파생 토큰은 서로 다르다. 서버는 티켓을 반환하기 전에 파생 토큰의 cleanup receipt를 Redis에 기록하고, 티켓 미소비 만료·세션 회수·연결 종료·준비 실패 시 그 토큰을 명시적으로 폐기한다. 폐기/자원 정리가 불확실하면 receipt와 singleton 소유권을 보존하고 reconciler가 재처리한다. Keystone의 로그인 원본 DELETE가 파생 토큰까지 연쇄 회수한다고 가정하지 않는다.
+
+Resource ownership은 만료되는 ticket/active/heartbeat와 분리된 `resource-owner` fence로 보존한다. Native CREATE/home 결과가 불명확하면 liveness와 credential receipt TTL이 끝나도 새 셸과 홈 reset을 거부하며, exact cleanup만 matching owner를 해제한다. Receipt가 유실/손상되어 안전한 결과를 재구성할 수 없으면 자동 unlock 대신 운영자 reconciliation이 필요하다. 정상 admission 전 token 폐기만 남았고 native resource write가 없다고 증명되는 경우에는 폐기 성공 뒤 즉시 해제한다.
+
+파생 token 폐기 실패는 이미 원자 commit한 로그인 scope 회전·blacklist·단일/전체 세션 회수를 되돌리거나 새 refresh 응답을 숨기지 않는다. Best-effort caller는 pending receipt를 남기고 완료된 세션 변경을 유지하며 strict revocation caller와 logout의 cleanup-pending 응답은 실패를 명시한다. 티켓 승격 중 회수는401/4401을 유지하고 해당 credential 정리를 시도한다. 손상 receipt 하나가 다른 세션·signed orphan 정리를 중단시키지 않는다.
+
 ## `WS /api/v1/cloud-shell/ws?ticket=...`
 
 브라우저는 HTTP 응답의 `websocket_path`를 같은 Afterglow origin의 `ws:`/`wss:` URL로 바꿔 연결합니다. 서버는 handshake 후에도 `Origin`을 CORS/frontend allowlist와 대조하고 누락되거나 다른 origin이면 닫습니다.
+
+Source-owned Compose/Kolla proxy는 이 exact WS 경로의 access log를 억제하고 application/Uvicorn 로그 필터는 query ticket을 마스킹한다. 별도 외부 ingress·WAF·관측 agent의 로그 정책은 운영자가 같은 경계로 검증해야 한다.
 
 ### 프로비저닝 흐름
 
@@ -111,6 +121,8 @@ X-Project-Id: <current-project-uuid>
 ```
 
 정확한 중간 단계 수는 리소스 재사용 여부에 따라 달라집니다. `ready` 전에는 terminal input을 보내지 않습니다. 서버는 사용자의 현재 프로젝트로 별도 검증한 단기 Keystone 토큰을 컨테이너 안의 tmpfs에 주입한 뒤에만 `ready`를 보냅니다.
+
+`ready` 전에는 `services/zun-cloud-shell`의 native `cloud-shell-v1` profile readback이 현재 CPU/RAM·고정 PID/rootfs/tmpfs/log 정책과 `blocked_cidrs`에 정확히 일치해야 한다. Stock Zun의 `cpu`가 Docker CPU shares로만 전달되는 것으로는 수용하지 않는다. Native extension/holder/privsep namespace 검증이 없거나 불명확하면 terminal 권한을 주지 않는다. Mandatory metadata 경로와 실제 관리망 CIDR을 포함한 native 설정은 [배포 계약](../deployment.md#전역-cloud-shell-선택-배포)을 따른다.
 
 ### Terminal frame
 
@@ -143,7 +155,7 @@ X-Project-Id: <current-project-uuid>
 | `4419` | 최대 세션 시간이 끝남 | 다시 승인합니다. 홈은 유지됩니다. |
 | `4500` | Zun/Cinder/Redis/relay 실패 | 운영 상태를 확인하고 재시도합니다. |
 
-정상 close, 브라우저 종료, timeout, relay 실패 모두 일회성 컨테이너 정리를 시도합니다. 정리가 완료되기 전에는 사용자 lease를 성공으로 해제하지 않으며 background reconciler가 만료/고아 컨테이너를 다시 처리합니다.
+정상 close, 브라우저 종료, timeout, relay 실패 모두 exact 파생 토큰 폐기와 일회성 컨테이너 정리를 시도한다. 준비 중에도 heartbeat를 유지하고 native home/container 쓰기는 취소 뒤 실제 호출이 끝날 때까지 drain한다. Receipt version/CAS가 promotion·CREATE·retirement를 직렬화하며, token 폐기·정확한 container 삭제·home detach가 확인된 뒤 matching singleton/heartbeat를 원자적으로 해제한다. Lost CREATE 응답이나 불명 home 생성은 부재로 축소하지 않고 재처리 대상으로 남긴다.
 
 ## `DELETE /api/v1/cloud-shell/workspace`
 
@@ -168,4 +180,4 @@ Cloud Shell 도메인 오류는 FastAPI `detail` 안에 안전한 code/message�
 }
 ```
 
-대표 code는 `active_session`, `workspace_busy`, `ticket_expired`, `token_expired`, `cloud_shell_unavailable`입니다. Upstream endpoint, service credential, Keystone token, exec URL은 오류에 노출하지 않습니다.
+대표 code는 `active_session`, `workspace_busy`, `ticket_invalid`, `session_revoked`, `authority_unavailable`, `security_group_unavailable`, `provision_failed`, `cleanup_pending`이다. Upstream endpoint, service credential, Keystone token, exec URL은 오류에 노출하지 않는다. 현재 로그인 문맥이 회수되면401/4401이고, provider/coordination 불명은503/4500으로 fail-closed한다.

@@ -31,6 +31,8 @@
 		width: 100%;
 		min-width: max-content;
 		border-collapse: collapse;
+		font-family: var(--font-sans);
+		font-variant-numeric: tabular-nums;
 	}
 	.table-shell :global(thead) {
 		background: var(--color-surface-sunken);
@@ -42,16 +44,16 @@
 		text-align: left;
 	}
 	.table-shell :global(th) {
-		font-size: 0.75rem;
+		font-size: var(--type-support);
 		font-weight: 500;
 	}
 	.table-shell :global(td) {
-		font-size: 0.8125rem;
+		font-size: var(--type-body);
 	}
 	.table-density-normal :global(th),
-	.table-density-normal :global(td) { min-height: 2.75rem; padding: 0.75rem 1rem; }
+	.table-density-normal :global(td) { height: var(--table-row-height); padding: 0.1875rem 1rem; }
 	.table-density-compact :global(th),
-	.table-density-compact :global(td) { height: 2.5rem; padding: 0.5rem 0.75rem; }
+	.table-density-compact :global(td) { height: var(--table-row-compact-height); padding: 0 0.75rem; }
 	.table-shell :global(tbody tr:hover) { background: var(--color-surface-sunken); }
 	.table-shell :global(tbody tr[data-selected='true']) { background: var(--color-surface-selected); }
 	.table-sticky :global(thead) {

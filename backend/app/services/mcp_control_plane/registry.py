@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
 from app.database import get_session_factory
+from app.models.instance_usage import UsageScheduleRequest
 from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant, resolve_principal_target
 from app.services.mcp_control_plane.authority import approved_project_metadata
 from app.services.mcp_control_plane.compute import (
@@ -418,6 +419,23 @@ class VmCreateArguments(McpDomainArguments):
     delete_boot_volume_on_termination: bool = False
     key_name: str | None = Field(default=None, min_length=1, max_length=255)
     availability_zone: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^:]+$")
+    usage_schedule: UsageScheduleRequest | None = Field(
+        default=None,
+        description=(
+            "Required for scheduled flavors. Supply an explicit timezone-aware expires_at; "
+            "use one calendar month by default."
+        ),
+    )
+
+    @field_validator("usage_schedule")
+    @classmethod
+    def require_schedule_expiry(cls, value: UsageScheduleRequest | None) -> UsageScheduleRequest | None:
+        if value is not None and value.expires_at is None:
+            raise ValueError(
+                "usage_schedule.expires_at is required; use an explicit timezone-aware date "
+                "one calendar month from now by default"
+            )
+        return value
 
     @field_validator("key_name", "availability_zone")
     @classmethod
@@ -438,7 +456,7 @@ async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateA
                 conn,
                 project_id=context.project_id,
                 user_id=context.user_id,
-                **arguments.model_dump(exclude={"project_id", "image_id", "network_id"}),
+                **arguments.model_dump(mode="json", exclude={"project_id", "image_id", "network_id"}),
                 image_id=str(arguments.image_id),
                 network_id=str(arguments.network_id),
             )
@@ -447,6 +465,17 @@ async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateA
     fingerprint = sha256(
         json.dumps({"project_id": context.project_id, **plan}, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+    effect = f"create one VM with a {plan['boot_volume_size_gb']} GiB boot volume"
+    schedule = plan["usage_schedule"]
+    if schedule is not None:
+        if schedule["expiry_action"] == "delete":
+            volumes = "delete all attached volumes" if schedule["delete_volumes"] else "retain attached volumes"
+            action = f"stop then delete the VM; {volumes}; ephemeral local disk is lost"
+        else:
+            action = "shelve and offload the VM; retain attached volumes"
+        effect += f"; at {schedule['expires_at']}: {action}"
+        if schedule["reason"]:
+            effect += f"; reason: {schedule['reason']}"
     return McpMutationPreview(
         resource_identity=f"nova-server:new:{context.project_id}:{plan['name']}",
         current_state=None,
@@ -456,8 +485,8 @@ async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateA
             f"nova-flavor:{plan['flavor_id']}",
             f"neutron-network:{plan['network_id']}",
         ],
-        destructive=False,
-        estimated_effect=f"create one VM with a {plan['boot_volume_size_gb']} GiB boot volume",
+        destructive=schedule is not None and schedule["expiry_action"] == "delete",
+        estimated_effect=effect,
         fingerprint=fingerprint,
     )
 
@@ -469,7 +498,7 @@ async def _vm_create(context: ConsumerCloudContext, arguments: VmCreateArguments
                 conn,
                 project_id=context.project_id,
                 user_id=context.user_id,
-                **arguments.model_dump(exclude={"project_id", "image_id", "network_id"}),
+                **arguments.model_dump(mode="json", exclude={"project_id", "image_id", "network_id"}),
                 image_id=str(arguments.image_id),
                 network_id=str(arguments.network_id),
             )

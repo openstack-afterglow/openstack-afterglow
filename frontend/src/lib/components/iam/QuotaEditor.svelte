@@ -12,6 +12,7 @@
 	let draft = $state<Record<QuotaField, string>>(untrack(() => Object.fromEntries(Object.values(quotaFields).flat().map(field => [field, values[field] == null ? '' : String(values[field])])) as Record<QuotaField, string>));
 	let error = $state('');
 	const uid = $props.id();
+	const sections = Object.entries(quotaFields);
 	function save() {
 		if (disabled) return;
 		const next: QuotaMap = {};
@@ -29,7 +30,7 @@
 <div class="space-y-3">
 	<p class="text-sm text-ink-2">{t(projectMode ? 'projectHelp' : 'policyHelp')}</p>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#each Object.entries(quotaFields) as [section, fields]}
+	{#each sections as [section, fields]}
 		<section class="space-y-2">
 			<h3 class="text-sm font-semibold text-ink-0">{t(`service.${section as QuotaSection}`)}</h3>
 			{#if projectMode && !native?.availability[section as QuotaSection]}<Alert tone="warning">{native?.errors[section as QuotaSection] === 'service_disabled' ? t('disabledService') : t('unknownService')}</Alert>{/if}

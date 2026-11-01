@@ -7,7 +7,8 @@
 	import DbCreateStep4Init from './wizard/DbCreateStep4Init.svelte';
 	import DbCreateStep5Advanced from './wizard/DbCreateStep5Advanced.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 
 	let {
 		open = $bindable(false),
@@ -74,9 +75,9 @@
 			</div>
 
 			<!-- 탭 콘텐츠 -->
-			<div class="flex-1 overflow-y-auto px-6 py-5">
+			<div class="flex min-h-0 flex-1 flex-col overflow-y-auto {s.loading ? '' : 'px-6 py-5'}">
 				{#if s.loading}
-					<ActivityIndicator label={tr('wizard.loading')} />
+					<LoadingState variant="surface" label={tr('wizard.loading')} />
 				{:else if s.error}
 					<Alert tone="danger">{s.error}</Alert>
 				{:else if s.activeTab === 0}
@@ -94,7 +95,7 @@
 
 			<!-- 에러 + 액션 -->
 			<div class="px-6 py-4 border-t border-line space-y-3">
-				{#if s.creating}<ProgressTrack value={null} active label={tr('wizard.title')} />{/if}
+				{#if s.creating}<LoadingState variant="inline" label={tr('wizard.title')} />{/if}
 				{#if s.createError}
 					<Alert tone="danger" class="whitespace-pre-wrap break-all">{s.createError}</Alert>
 				{:else if s.step1Error && s.activeTab !== 0}
@@ -133,7 +134,7 @@
 							ariaBusy={s.creating}
 							title={s.step1Error || ''}
 						>
-							{#if s.creating}<ActivityIndicator size="xs" tone="ink" />{tr('state.creating')}{:else}{tr('actions.create')}{/if}
+							{#if s.creating}<LoadingState variant="control" label="" />{tr('state.creating')}{:else}{tr('actions.create')}{/if}
 						</Button>
 					</div>
 				</div>

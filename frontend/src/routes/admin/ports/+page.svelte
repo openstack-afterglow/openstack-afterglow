@@ -3,7 +3,7 @@
 	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
 	let inventoryError = $state('');
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -198,7 +198,7 @@
 
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<div class="text-ink-2 text-sm"><ActivityIndicator size="sm" label={t('portsPage.loading')} /></div>
+		<LoadingState variant="surface" label={t('portsPage.loading')} />
 	{:else}
 		<PortsTable
 			ports={filtered}

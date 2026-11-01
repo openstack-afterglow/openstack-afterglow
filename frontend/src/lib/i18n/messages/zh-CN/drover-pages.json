@@ -122,5 +122,9 @@
 	"yaml.parseError": "YAML 解析错误：{error}",
 	"yaml.configMapKind": "kind 必须为 ConfigMap",
 	"yaml.secretKind": "kind 必须为 Secret",
-	"yaml.stringDataRequired": "编辑 Secret 时请使用 stringData 而不是 data（纯文本输入）"
+	"yaml.stringDataRequired": "编辑 Secret 时请使用 stringData 而不是 data（纯文本输入）",
+	"clusterError.details": "错误详情",
+	"clusterError.recovery": "在集群详情中检查失败步骤及相关资源。解决安全组、网络或配额问题后刷新状态。",
+	"clusterError.loadFailed": "无法加载集群列表",
+	"clusterError.reload": "重新加载"
 }

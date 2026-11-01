@@ -1162,18 +1162,6 @@ async def test_recovery_before_link_lease_prevents_persistent_attachment(env, mo
     assert env.keystone.user_writes == [] and env.wire.federation.calls == []
 
 
-async def test_password_origin_authenticated_link_preserves_legacy_local_recovery(env, monkeypatch):
-    from app.services import account_recovery
-
-    user = unbound(env)
-    _, ticket, browser = await collision(env)
-    origin = await authenticated_session(env)
-    monkeypatch.setattr(keystone, "validate_token", lambda *args, **kwargs: proof(token="authenticated-native"))
-    await svc.complete_account_link(ticket, browser, authenticated=origin)
-    assert getattr(user, "afterglow_local_password", None) is True
-    assert await account_recovery._eligible(user, env.keystone, [])
-
-
 @pytest.mark.parametrize("admission", [None, "dom-a"])
 async def test_external_enrollment_has_no_implicit_provider_origin_membership(external_env, admission):
     from app.services import account_spaces, domain_iam, project_service

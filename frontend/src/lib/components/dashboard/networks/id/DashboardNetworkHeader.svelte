@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { NetworkDetail } from '$lib/types/networks';
 	import { networkStatusColor } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let { network, deleting, canManage = false, onDelete }: {
 		network: NetworkDetail;
@@ -34,7 +34,7 @@
 			aria-busy={deleting}
 			class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 		>
-			{#if deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting ? t('network.actions.deleting') : t('network.actions.delete')}
+			{#if deleting}<LoadingState variant="control" label="" />{/if}{deleting ? t('network.actions.deleting') : t('network.actions.delete')}
 		</button>
 	{/if}
 </div>

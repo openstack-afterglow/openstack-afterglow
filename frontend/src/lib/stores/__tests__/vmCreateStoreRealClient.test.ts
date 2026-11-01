@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth } from '../auth';
+import { auth, authReady } from '../auth';
 import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
@@ -33,10 +33,13 @@ describe('VM create real API-client scope races', () => {
 		resetWizard();
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
 		auth.set({ token: 'same-token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
+		auth.update(value => ({ ...value, canWrite: true }));
+		authReady.set(true);
 		siteConfig.update(config => ({ ...config, runtime: { ...config.runtime, api_base: 'https://afterglow.test' }, services: { ...config.services, manila: false } }));
 	});
 
 	it.each([false, true])('does not use a warm catalog for create capacity or request server refresh except manually (admin=%s)', async (adminMode) => {
+		if (adminMode) { auth.update(value => ({ ...value, isSystemAdmin: true })); authReady.set(true); }
 		const targetProjectId = 'project/a?x=1';
 		const catalogPath = adminMode
 			? `/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}`
@@ -112,7 +115,10 @@ describe('VM create real API-client scope races', () => {
 				return Promise.resolve(jsonResponse([{ id: 'flavor-b', name: 'project-b-flavor', vcpus: 1, ram: 1024, disk: 20 }]));
 			}
 			if (url.pathname === '/api/v1/dashboard/quotas') {
-				return Promise.resolve(jsonResponse({ compute: { cores: { limit: projectId === 'project-b' ? 8 : 4, in_use: 0 } } }));
+				return Promise.resolve(jsonResponse({
+					compute: { cores: { limit: 100, in_use: 60 } },
+					native_compute: { cores: { limit: projectId === 'project-b' ? 8 : -1, in_use: projectId === 'project-b' ? 3 : 2 } },
+				}));
 			}
 			return Promise.resolve(jsonResponse([]));
 		}));
@@ -122,6 +128,7 @@ describe('VM create real API-client scope races', () => {
 		await vi.waitFor(() => expect(aFlavorCalls).toBe(1));
 		auth.update(state => ({ ...state, projectId: 'project-b', projectName: 'Project B' }));
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('project-b-flavor'));
+		await vi.waitFor(() => expect(screen.getByTestId('quota').textContent).toBe('8'));
 		auth.update(state => ({ ...state, projectId: 'project-a', projectName: 'Project A' }));
 		await vi.waitFor(() => expect(aFlavorCalls).toBe(2));
 		secondA.resolve(jsonResponse([{ id: 'flavor-a-new', name: 'project-a-new-flavor', vcpus: 2, ram: 2048, disk: 20 }]));
@@ -129,5 +136,6 @@ describe('VM create real API-client scope races', () => {
 		firstA.resolve(jsonResponse([{ id: 'flavor-a-old', name: 'obsolete-project-a-flavor', vcpus: 1, ram: 1024, disk: 20 }]));
 		await Promise.resolve(); await Promise.resolve();
 		expect(screen.getByTestId('flavor').textContent).toBe('project-a-new-flavor');
+		expect(JSON.parse(screen.getByTestId('quota-summary').textContent!)).toEqual({ cores: { limit: -1, in_use: 2 } });
 	});
 });

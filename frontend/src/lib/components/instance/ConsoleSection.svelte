@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const s = useInstanceDetailController();
 
@@ -47,7 +47,7 @@
 					disabled={s.logLoading}
 					class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors disabled:text-ink-3"
 				>
-					{#if s.logLoading}<ActivityIndicator size="xs" label={t('console.loading')} />{:else}{t('console.refresh')}{/if}
+					{#if s.logLoading}<LoadingState variant="control" label={t('console.loading')} />{:else}{t('console.refresh')}{/if}
 				</button>
 			{/if}
 			<button
@@ -59,7 +59,7 @@
 		</div>
 	</div>
 	{#if showLog}
-		{#if s.logLoading && !s.consoleLog}<ActivityIndicator label={t('console.loadingContent')} />{/if}
+		{#if s.logLoading && !s.consoleLog}<LoadingState variant="section" label={t('console.loadingContent')} />{/if}
 		<pre
 			bind:this={logPreEl}
 			aria-busy={s.logLoading}

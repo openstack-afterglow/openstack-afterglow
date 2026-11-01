@@ -26,6 +26,7 @@ from app.models.auth_settings import AuthSettings
 from app.models.infrastructure_fabric import FabricSettings
 from app.models.infrastructure_topology import HostObserverIdentity, HostPeerProbeTarget, validate_topology_settings
 from app.models.traffic_analytics import TrafficAnalyticsSettings
+from app.services.cloud_shell_security import MANDATORY_BLOCKED_CIDRS, canonical_blocked_cidrs
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"K3S_GPU_ADMISSION_TOKEN"})
@@ -129,6 +130,9 @@ def _load_toml() -> dict:
         if key in notifications:
             flat[f"openstack_notifications_{key}"] = notifications[key]
 
+    instance_usage = data.get("instance_usage", {})
+    flat["instance_usage_scheduler_enabled"] = instance_usage.get("scheduler_enabled", False)
+
     ceph = data.get("ceph", {})
     flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
     flat["ceph_rbd_keyring_path"] = ceph.get("rbd_keyring_path", "")
@@ -203,6 +207,7 @@ def _load_toml() -> dict:
     flat["cloud_shell_home_size_gib"] = cloud_shell.get("home_size_gib", 5)
     flat["cloud_shell_cpu"] = cloud_shell.get("cpu", 1.0)
     flat["cloud_shell_memory_mib"] = cloud_shell.get("memory_mib", 1024)
+    flat["cloud_shell_blocked_cidrs"] = cloud_shell.get("blocked_cidrs", list(MANDATORY_BLOCKED_CIDRS))
     flat["cloud_shell_idle_timeout_seconds"] = cloud_shell.get("idle_timeout_seconds", 1200)
     flat["cloud_shell_max_session_seconds"] = cloud_shell.get("max_session_seconds", 3600)
     flat["cloud_shell_ticket_ttl_seconds"] = cloud_shell.get("ticket_ttl_seconds", 60)
@@ -277,8 +282,8 @@ def _load_toml() -> dict:
     flat["gpu_available_visible"] = gpu.get("available_visible", False)
 
     sess = data.get("session", {})
-    flat["session_timeout_seconds"] = sess.get("timeout_seconds", 86400)
-    flat["jwt_access_ttl"] = sess.get("jwt_access_ttl", 900)
+    flat["session_timeout_seconds"] = sess.get("timeout_seconds", 604800)
+    flat["jwt_access_ttl"] = sess.get("jwt_access_ttl", 3600)
     flat["jwt_refresh_ttl"] = sess.get("jwt_refresh_ttl", 604800)
     flat["token_ip_binding_mode"] = sess.get("token_ip_binding_mode", "subnet")
 
@@ -475,6 +480,9 @@ class Settings(BaseSettings):
     os_insecure: bool = False
     os_cacert: str = ""
 
+    # Global native census/expiry writer: opt in only for the shared cloud Redis cohort.
+    instance_usage_scheduler_enabled: bool = False
+
     # Optional native RabbitMQ/oslo notification consumer; never uses Keystone credentials.
     openstack_notifications_enabled: bool = False
     openstack_notifications_amqp_url: SecretStr = SecretStr("")
@@ -627,13 +635,19 @@ class Settings(BaseSettings):
     cloud_shell_interface: Literal["public", "internal", "admin"] = "public"
     cloud_shell_volume_type: str = ""
     cloud_shell_home_size_gib: int = 5
-    cloud_shell_cpu: float = 1.0
-    cloud_shell_memory_mib: int = 1024
+    cloud_shell_cpu: float = Field(default=1.0, ge=0.01, le=1.0, allow_inf_nan=False)
+    cloud_shell_memory_mib: int = Field(default=1024, ge=256, le=1024)
+    cloud_shell_blocked_cidrs: list[str] = Field(default_factory=lambda: list(MANDATORY_BLOCKED_CIDRS))
     cloud_shell_idle_timeout_seconds: int = 1200
     cloud_shell_max_session_seconds: int = 3600
     cloud_shell_ticket_ttl_seconds: int = 60
     cloud_shell_reconcile_interval_seconds: int = 60
     cloud_shell_zun_websocket_origin: str = ""
+
+    @field_validator("cloud_shell_blocked_cidrs", mode="before")
+    @classmethod
+    def validate_cloud_shell_blocked_cidrs(cls, value: object) -> list[str]:
+        return canonical_blocked_cidrs(value)
 
     @field_validator("cloud_shell_registry_id")
     @classmethod
@@ -764,10 +778,16 @@ class Settings(BaseSettings):
     gpu_available_visible: bool = False  # true 시 사용자에게 GPU 가용량 API 노출
 
     # 세션 관리
-    session_timeout_seconds: int = 86400
-    jwt_access_ttl: int = 900  # access JWT 수명 (초), 기본 15분
+    session_timeout_seconds: int = 604800  # 최초 로그인부터 최대 7일
+    jwt_access_ttl: int = 3600  # access JWT 수명 (초), 기본 1시간
     jwt_refresh_ttl: int = 604800  # refresh JWT 수명 (초), 기본 7일
     token_ip_binding_mode: str = "subnet"  # off | log | subnet | strict
+
+    @field_validator("session_timeout_seconds")
+    @classmethod
+    def clamp_browser_session_lifetime(cls, value: int) -> int:
+        """Keep shorter operator policies; never extend the original login past seven days."""
+        return min(value, 604800)
 
     @field_validator("token_ip_binding_mode")
     @classmethod
@@ -897,8 +917,7 @@ class Settings(BaseSettings):
                     raise ValueError(f"[ceph] 유효하지 않은 RBD pool 이름: {pool!r}")
         cloud_shell_bounds = (
             ("home_size_gib", self.cloud_shell_home_size_gib, 1, 100),
-            ("cpu", self.cloud_shell_cpu, 0.1, 8.0),
-            ("memory_mib", self.cloud_shell_memory_mib, 256, 32768),
+            ("memory_mib", self.cloud_shell_memory_mib, 256, 1024),
             ("idle_timeout_seconds", self.cloud_shell_idle_timeout_seconds, 60, 3600),
             ("max_session_seconds", self.cloud_shell_max_session_seconds, 300, 14400),
             ("ticket_ttl_seconds", self.cloud_shell_ticket_ttl_seconds, 10, 120),

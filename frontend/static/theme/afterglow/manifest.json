@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "theme": "afterglow",
+  "categories": {
+    "state": "상태",
+    "infrastructure": "인프라",
+    "experience": "AI · 미디어",
+    "workspace": "워크스페이스",
+    "transfer": "전송 · 작업"
+  },
+  "assets": {
+    "empty": {
+      "category": "state",
+      "label": "빈 상태",
+      "art": "      . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :      ",
+      "txt": "empty.txt",
+      "svg": "empty.svg"
+    },
+    "search": {
+      "category": "state",
+      "label": "검색",
+      "art": "     . : : .       \n   :         :     \n  :    ? ?    :    \n   :         :     \n     : : : :  : .  \n                : :",
+      "txt": "search.txt",
+      "svg": "search.svg"
+    },
+    "error": {
+      "category": "state",
+      "label": "오류",
+      "art": "        : :        \n      :  !  :      \n    :    !    :    \n  :      ·      :  \n : : : : : : : : : ",
+      "txt": "error.txt",
+      "svg": "error.svg"
+    },
+    "offline": {
+      "category": "state",
+      "label": "오프라인",
+      "art": "  . : :     : : .  \n :    :     :    : \n      :  /  :      \n :    : /   :    : \n  : : :     : : :  ",
+      "txt": "offline.txt",
+      "svg": "offline.svg"
+    },
+    "success": {
+      "category": "state",
+      "label": "완료",
+      "art": "     . : : : .     \n   :           :   \n  :        /    :  \n  :    \\  /     :  \n   :    \\/     :   \n     : : : : :     ",
+      "txt": "success.txt",
+      "svg": "success.svg"
+    },
+    "upload": {
+      "category": "transfer",
+      "label": "업로드",
+      "art": "        : :        \n      : : : :      \n    :   : :   :    \n        : :        \n        : :        \n  : : : : : : : :  ",
+      "txt": "upload.txt",
+      "svg": "upload.svg"
+    },
+    "locked": {
+      "category": "state",
+      "label": "권한 잠금",
+      "art": "      : : : :      \n    :         :    \n    :         :    \n  [ : : : : : : ]  \n  [     : :     ]  \n  [ : : : : : : ]  ",
+      "txt": "locked.txt",
+      "svg": "locked.svg"
+    },
+    "compute": {
+      "category": "infrastructure",
+      "label": "컴퓨트",
+      "art": "    : : : : : : : :\n  [  CPU  ::  RAM  ]\n  [  ::   ::   ::  ]\n  [  VM   ::  VM   ]\n    : : : : : : : :\n        : : : :\n     .:: NOVA ::.",
+      "txt": "compute.txt",
+      "svg": "compute.svg"
+    },
+    "network": {
+      "category": "infrastructure",
+      "label": "네트워크",
+      "art": "  [ :: ]       [ :: ]\n     :             :\n     : : : : : : : :\n           :\n       [ :: :: ]\n           :\n     .:: NEUTRON ::.",
+      "txt": "network.txt",
+      "svg": "network.svg"
+    },
+    "storage": {
+      "category": "infrastructure",
+      "label": "스토리지",
+      "art": "     . : : : : : .\n   :               :\n   : : : : : : : : :\n   :    ::    ::   :\n   : : : : : : : : :\n   :    ::    ::   :\n     : : CINDER : :",
+      "txt": "storage.txt",
+      "svg": "storage.svg"
+    },
+    "database": {
+      "category": "infrastructure",
+      "label": "데이터베이스",
+      "art": "      . : : : : .\n    :   : : :   :\n    : : : : : : :\n    :  ROW ::   :\n    : : : : : : :\n    :  SQL ::   :\n      : : : : :",
+      "txt": "database.txt",
+      "svg": "database.svg"
+    },
+    "security": {
+      "category": "infrastructure",
+      "label": "보안",
+      "art": "   : : : : : : : :\n   :      :      :\n    :    : :    :\n     :   : :   :\n      :   :   :\n        : : :\n          :",
+      "txt": "security.txt",
+      "svg": "security.svg"
+    },
+    "cloud": {
+      "category": "infrastructure",
+      "label": "클라우드",
+      "art": "       . : : : .\n   . :           : .\n  :    OPENSTACK    :\n   : : : : : : : : :\n       :   :   :\n     [VM] [VM] [VM]\n       : : : : :",
+      "txt": "cloud.txt",
+      "svg": "cloud.svg"
+    },
+    "kubernetes": {
+      "category": "infrastructure",
+      "label": "Kubernetes",
+      "art": "       [ CONTROL ]\n             :\n     : : : : : : : :\n     :       :     :\n   [POD]   [POD] [POD]\n     :       :     :\n       :: DROVER ::",
+      "txt": "kubernetes.txt",
+      "svg": "kubernetes.svg"
+    },
+    "container": {
+      "category": "infrastructure",
+      "label": "컨테이너",
+      "art": "     . : : : : : .\n   :    :    :    :\n   : :: : :: : :: :\n   : : : : : : : : :\n    : :: : :: : :: :\n     : : : : : : : :\n        CONTAINER",
+      "txt": "container.txt",
+      "svg": "container.svg"
+    },
+    "ai": {
+      "category": "experience",
+      "label": "AI 모델",
+      "art": "     : .   .   . :\n       : : : : :\n   . : : : : : : : .\n   :    MODEL      :\n   :  :: :: :: ::  :\n     : : : : : : :\n       : LUMEN :",
+      "txt": "ai.txt",
+      "svg": "ai.svg"
+    },
+    "chat": {
+      "category": "experience",
+      "label": "채팅",
+      "art": "   . : : : : : : : .\n :                   :\n :  . . .   : : :    :\n :                   :\n   : : : : : : : : :\n        : :\n       :",
+      "txt": "chat.txt",
+      "svg": "chat.svg"
+    },
+    "image": {
+      "category": "experience",
+      "label": "이미지",
+      "art": "   : : : : : : : : :\n   :   . : .       :\n   :  :     :      :\n   :   : : :       :\n   :      : :      :\n   :  : :     : :  :\n   : : : : : : : : :",
+      "txt": "image.txt",
+      "svg": "image.svg"
+    },
+    "audio": {
+      "category": "experience",
+      "label": "오디오",
+      "art": "           :\n     :     :     :\n  :  :  :  :  :  :  :\n  :  :  :  :  :  :  :\n  :  :  :  :  :  :  :\n     :     :     :\n           :",
+      "txt": "audio.txt",
+      "svg": "audio.svg"
+    },
+    "download": {
+      "category": "transfer",
+      "label": "다운로드",
+      "art": "         : :\n         : :\n         : :\n     :   : :   :\n       : : : :\n         : :\n   : : : : : : : :",
+      "txt": "download.txt",
+      "svg": "download.svg"
+    },
+    "connecting": {
+      "category": "state",
+      "label": "연결 준비",
+      "art": "  . : :         : : .\n :      :     :      :\n :   : : : : : : :   :\n :      :     :      :\n  : : :         : : :\n        : : :\n         : :",
+      "txt": "connecting.txt",
+      "svg": "connecting.svg"
+    },
+    "processing": {
+      "category": "state",
+      "label": "처리 중",
+      "art": "       . : : : .\n     :     :     :\n    :      :      :\n    :      : :    :\n     :           :\n       : : : : :\n         : : :",
+      "txt": "processing.txt",
+      "svg": "processing.svg"
+    },
+    "queued": {
+      "category": "state",
+      "label": "작업 대기",
+      "art": "   [ :: :: :: :: ]\n          :\n     [ :: :: :: ]\n          :\n       [ :: :: ]\n          :\n         [ :: ]",
+      "txt": "queued.txt",
+      "svg": "queued.svg"
+    },
+    "canceled": {
+      "category": "state",
+      "label": "취소됨",
+      "art": "      . : : : .\n    :   :   :   :\n   :     : :     :\n   :      :      :\n    :    : :    :\n      : : : : :\n        :   :",
+      "txt": "canceled.txt",
+      "svg": "canceled.svg"
+    },
+    "document": {
+      "category": "workspace",
+      "label": "문서",
+      "art": "   : : : : : : : :\n   :  :: :: ::   :\n   :             :\n   :  :: :: ::   :\n   :  :: ::      :\n   :             :\n   : : : : : : : :",
+      "txt": "document.txt",
+      "svg": "document.svg"
+    },
+    "project": {
+      "category": "workspace",
+      "label": "프로젝트",
+      "art": "        . : : : .\n   : : :         : : :\n   :                 :\n   :    PROJECT      :\n   :    :: :: ::     :\n   :                 :\n   : : : : : : : : : :",
+      "txt": "project.txt",
+      "svg": "project.svg"
+    },
+    "user": {
+      "category": "workspace",
+      "label": "사용자",
+      "art": "        . : : .\n       :       :\n        : : : :\n           :\n       . : : : .\n     :           :\n    : : : : : : : :",
+      "txt": "user.txt",
+      "svg": "user.svg"
+    },
+    "terminal": {
+      "category": "workspace",
+      "label": "터미널",
+      "art": "   : : : : : : : : :\n   :               :\n   :  > ::         :\n   :     ::        :\n   :  > :: ::      :\n   :               :\n   : : : : : : : : :",
+      "txt": "terminal.txt",
+      "svg": "terminal.svg"
+    },
+    "backup": {
+      "category": "transfer",
+      "label": "백업·복원",
+      "art": "       . : : : .\n     :    : :    :\n    :    :   :    :\n    :   : : : :   :\n     :    : :    :\n       : : : : :\n     [ :: :: :: ]",
+      "txt": "backup.txt",
+      "svg": "backup.svg"
+    },
+    "monitoring": {
+      "category": "infrastructure",
+      "label": "모니터링",
+      "art": "   : : : : : : : : :\n   :               :\n   :   :     : :   :\n   :  : :   :   :  :\n   : :   : :     : :\n   :               :\n   : : : : : : : : :",
+      "txt": "monitoring.txt",
+      "svg": "monitoring.svg"
+    },
+    "table": {
+      "category": "workspace",
+      "label": "표·목록",
+      "art": "   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::",
+      "txt": "table.txt",
+      "svg": "table.svg"
+    },
+    "progress": {
+      "category": "state",
+      "label": "진행률",
+      "art": "      : : : : : :\n   :               :\n  :                 :\n  :   [####....]    :\n   :               :\n      : : : : : :\n          : :",
+      "txt": "progress.txt",
+      "svg": "progress.svg"
+    },
+    "notification": {
+      "category": "workspace",
+      "label": "알림",
+      "art": "        . : : .\n       :       :\n      :         :\n      :         :\n     : : : : : : :\n         : :\n          :",
+      "txt": "notification.txt",
+      "svg": "notification.svg"
+    },
+    "calendar": {
+      "category": "workspace",
+      "label": "일정",
+      "art": "     :         :\n   : : : : : : : :\n   :             :\n   : :: :: :: :: :\n   : :: :: :: :: :\n   : :: :: :: :: :\n   : : : : : : : :",
+      "txt": "calendar.txt",
+      "svg": "calendar.svg"
+    },
+    "progress-linear": {
+      "category": "state",
+      "label": "진행률 · 일직선",
+      "art": "[###########···············]",
+      "txt": "progress-linear.txt",
+      "svg": "progress-linear.svg"
+    },
+    "progress-circular": {
+      "category": "state",
+      "label": "진행률 · 원형",
+      "art": "                         \n       ·····######       \n    ···           ###    \n  ···               ##   \n  ·                   #  \n ·                     # \n ·         42%         # \n ·                     # \n  ·                   #  \n  ···               ###  \n    ···           ###    \n       ··········#       \n                         ",
+      "txt": "progress-circular.txt",
+      "svg": "progress-circular.svg"
+    },
+    "status-dots": {
+      "category": "state",
+      "label": "상태 표시 · 점 이동",
+      "art": "[  ·]",
+      "txt": "status-dots.txt",
+      "svg": "status-dots.svg"
+    },
+    "status-bars": {
+      "category": "state",
+      "label": "상태 표시 · 세로 막대",
+      "art": "[  |]",
+      "txt": "status-bars.txt",
+      "svg": "status-bars.svg"
+    },
+    "status-brackets": {
+      "category": "state",
+      "label": "상태 표시 · 대괄호 채움",
+      "art": "[  :]",
+      "txt": "status-brackets.txt",
+      "svg": "status-brackets.svg"
+    },
+    "status-spinner": {
+      "category": "state",
+      "label": "상태 표시 · 문자 회전",
+      "art": "[-]",
+      "txt": "status-spinner.txt",
+      "svg": "status-spinner.svg"
+    }
+  }
+}

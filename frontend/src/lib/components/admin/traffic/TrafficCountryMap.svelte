@@ -7,12 +7,13 @@
 	import { createTrafficMapSpec, trafficCountryAnchors, trafficGeography } from '$lib/utils/trafficMap';
 	import type { TrafficSnapshot } from '$lib/types/trafficAnalytics';
 	import { formatTrafficValue, trafficCountryName } from '$lib/utils/trafficFormat';
-	let { countries, siteCountry = null }: { countries: TrafficSnapshot['countries']; siteCountry?: string | null } = $props();
+	let { countries, networks = [], siteCountry = null }: { countries: TrafficSnapshot['countries']; networks?: TrafficSnapshot['networks']; siteCountry?: string | null } = $props();
 	let selected = $state('');
 	let hovered = $state<string | null>(null);
 	let mapWidth = $state(720);
 	const byCountry = $derived(Object.fromEntries(countries.map(row => [row.country, row])));
 	const ranking = $derived([...countries].sort((a, b) => b.requests - a.requests || a.country.localeCompare(b.country)));
+	const networkRanking = $derived([...networks].sort((a, b) => b.requests - a.requests || a.network.localeCompare(b.network) || a.basis.localeCompare(b.basis) || a.kind.localeCompare(b.kind)));
 	const options = $derived([...new Set([...trafficGeography.features.map(feature => feature.properties.country).filter((code): code is string => typeof code === 'string'), ...countries.map(row => row.country)])].sort((a, b) => trafficCountryName(a).localeCompare(trafficCountryName(b))));
 	const detailMetrics = ['success', 'errors', 'unique_visitors', 'visitor_identity_known', 'request_bytes', 'response_bytes', 'latency_ms_max'] as const;
 	const max = $derived(Math.max(0, ...countries.filter(row => row.country !== 'XX').map(row => row.requests)));
@@ -93,6 +94,35 @@
 		</table>
 	</TableShell>
 	</ResponsiveTable>
+	<section class="mt-4 border-t border-line pt-4" aria-label={t('networks.title')}>
+		<h3 class="text-sm font-medium">{t('networks.title')}</h3>
+		<p class="mt-2 text-xs text-ink-2">{t('networks.subset')}</p>
+		<p class="mt-2 text-xs text-ink-2">{t('networks.aggregation')}</p>
+		<p class="mt-2 text-xs text-ink-2">{t('networks.history')}</p>
+		{#if networkRanking.length === 0}
+			<p class="mt-3 text-xs text-ink-2">{t('networks.empty')}</p>
+		{:else}
+			<ResponsiveTable class="mt-3">
+				{#snippet cards()}
+					{#each networkRanking as row (`${row.network}:${row.basis}:${row.kind}`)}
+						<CompactResourceCard>
+							<p class="font-mono font-medium break-all">{row.network}</p>
+							<p class="text-xs text-ink-2">{t(`networks.kinds.${row.kind}`)}</p>
+							<p class="text-xs text-ink-2">{t(`networks.bases.${row.basis}`)}</p>
+							<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('metrics.requests')}</dt><dd>{formatTrafficValue(row.requests)}</dd></div><div><dt>{t('metrics.errors')}</dt><dd>{formatTrafficValue(row.errors)}</dd></div></dl>
+						</CompactResourceCard>
+					{/each}
+				{/snippet}
+				<TableShell>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<table tabindex="0" aria-label={t('networks.title')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+						<thead><tr><th class="p-2 text-left">{t('networks.range')}</th><th class="p-2 text-left">{t('networks.kind')}</th><th class="p-2 text-left">{t('networks.basis')}</th><th class="p-2 text-right">{t('metrics.requests')}</th><th class="p-2 text-right">{t('metrics.errors')}</th></tr></thead>
+						<tbody>{#each networkRanking as row (`${row.network}:${row.basis}:${row.kind}`)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.network}</td><td class="p-2">{t(`networks.kinds.${row.kind}`)}</td><td class="p-2">{t(`networks.bases.${row.basis}`)}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td></tr>{/each}</tbody>
+					</table>
+				</TableShell>
+			</ResponsiveTable>
+		{/if}
+	</section>
 </Card>
 
 <style>

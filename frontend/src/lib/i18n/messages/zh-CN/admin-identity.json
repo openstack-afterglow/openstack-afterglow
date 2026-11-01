@@ -646,5 +646,17 @@
 	"rolePresets.previewHelp": "预览不会更改云环境。各服务通过自己的 policy.yaml 评估权限。应用时复用现有角色，仅移除列出的旧服务继承关联。",
 	"rolePresets.directImplications": "要添加的直接继承关联",
 	"rolePresets.retiredImplications": "要移除的旧服务继承关联",
-	"quotaController.saveFailed": "保存失败"
+	"quotaController.saveFailed": "保存失败",
+	"userEdit.resetEmailTitle": "重置随机密码并发送邮件",
+	"userEdit.resetEmailHelp": "将新的随机密码本身发送到当前注册邮箱。此表单中未保存的名称和邮箱修改不会应用。",
+	"userEdit.resetEmailTarget": "目标：{name} · UUID：{id} · 当前注册邮箱：{email}",
+	"userEdit.resetEmailWarning": "此操作将替换原密码。实际新密码将保留在邮件中，可能暴露给能访问邮箱的人。请提醒用户登录后立即修改。",
+	"userEdit.resetEmailSuccess": "密码已修改并发送到注册邮箱。请提醒用户立即修改。",
+	"userEdit.resetEmailDeliveryFailed": "密码已修改，但邮件发送失败。原密码已无效。不会自动重试。管理员须检查状态后另行重置。",
+	"userEdit.resetEmailSessionsFailed": "密码已修改，但部分会话无法撤销，可能仍有效。邮件发送也可能失败。管理员须确认送达状态并撤销剩余会话。不会自动再次重置。",
+	"userEdit.resetEmailAuditFailed": "无法确认操作审计记录。密码修改或邮件发送可能已完成。管理员须核实实际结果、邮件送达、会话撤销及审计记录。不会自动重试。",
+	"userEdit.resetEmailUnknown": "无法确认密码修改结果。原密码可能已更改。不会自动重试。管理员须检查结果和会话撤销情况。",
+	"userEdit.resetEmailRejected": "请求被拒绝。尚未确认修改和送达成功。请检查权限和注册账户状态。不会自动重试。",
+	"userEdit.resetEmailUnavailable": "需要已启用且有注册邮箱的账户。",
+	"userEdit.resetEmailSending": "正在重置密码并发送邮件…"
 }

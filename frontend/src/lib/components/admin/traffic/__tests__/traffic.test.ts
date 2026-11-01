@@ -18,9 +18,19 @@ import ms from '$lib/i18n/messages/ms/traffic-analytics.json';
 import nb from '$lib/i18n/messages/nb/traffic-analytics.json';
 import sw from '$lib/i18n/messages/sw/traffic-analytics.json';
 import viLocale from '$lib/i18n/messages/vi/traffic-analytics.json';
-import { metrics, observations } from './observations';
+import { metrics, networkObservations, observations } from './observations';
+import type * as SvelteReactivity from 'svelte/reactivity';
+import * as trafficMapModule from '$lib/utils/trafficMap';
+import type { ChoroplethSpec } from '$lib/components/charts/mapTypes';
+
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('svelte/reactivity', async importOriginal => ({
+	...await importOriginal<typeof SvelteReactivity>(),
+	MediaQuery: class { get current() { return viewport.desktop; } },
+}));
 
 beforeEach(() => {
+	viewport.desktop = true;
 	initLocale('en');
 	vi.stubGlobal('ResizeObserver', class {
 		observe() {}
@@ -28,7 +38,7 @@ beforeEach(() => {
 		disconnect() {}
 	});
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); initLocale('ko'); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); initLocale('ko'); });
 
 describe('service country schema and map geometry', () => {
 	it.each([null, 'KR', 'US'])('accepts service country %s', (site_country) => {
@@ -153,6 +163,41 @@ describe('country map observations and equivalent controls', () => {
 		initLocale(locale);
 		render(TrafficCountryMap, { countries: observations().countries, siteCountry: 'KR' });
 		for (const key of ['map.flows.note', 'map.flows.failure', 'map.flows.width'] as const) expect(screen.getByText(t(key))).toBeTruthy();
+	});
+});
+
+describe('non-country address range observations', () => {
+	it.each([true, false])('shows separate ranges, kinds, evidence and request/error values in desktop=%s without country promotion', (desktop) => {
+		viewport.desktop = desktop;
+		const networks = networkObservations();
+		const snapshot = observations({ networks });
+		const map = vi.spyOn(trafficMapModule, 'createTrafficMapSpec');
+		render(TrafficCountryMap, { countries: snapshot.countries, networks, siteCountry: 'KR' });
+		const section = screen.getByRole('region', { name: t('networks.title') });
+		for (const row of networks) {
+			const candidates = within(section).getAllByText(row.network).map(label => label.closest(desktop ? 'tr' : 'article')!);
+			const container = candidates.find(candidate => within(candidate).queryByText(t(`networks.bases.${row.basis}`)))!;
+			expect(container).toBeTruthy();
+			expect(within(container).getByText(t('networks.kinds.private'))).toBeTruthy();
+			if (desktop) expect(within(container).getAllByRole('cell').slice(-2).map(cell => cell.textContent)).toEqual([String(row.requests), String(row.errors)]);
+			else for (const [key, value] of [['requests', row.requests], ['errors', row.errors]] as const) {
+				expect(within(container).getByText(t(`metrics.${key}`), { selector: 'dt' }).nextElementSibling?.textContent).toBe(String(value));
+			}
+			expect(within(section).queryByRole('button')).toBeNull();
+			expect(Array.from((screen.getByLabelText(t('map.select')) as HTMLSelectElement).options).map(option => option.value)).not.toContain(row.network);
+		}
+		expect(within(section).queryByRole('table') !== null).toBe(desktop);
+		expect(screen.getByRole('button', { name: `${t('map.unknown')} (XX)` })).toBeTruthy();
+		const spec = map.mock.results.at(-1)!.value as ChoroplethSpec;
+		for (const row of networks) { expect(spec.features[row.network]).toBeUndefined(); expect(spec.flows?.some(flow => flow.key === row.network)).toBe(false); }
+		for (const key of ['networks.subset', 'networks.aggregation', 'networks.history'] as const) expect(within(section).getByText(t(key))).toBeTruthy();
+	});
+	it.each(LOCALES)('keeps the empty range section and honest scope disclosures in %s', (locale) => {
+		initLocale(locale);
+		render(TrafficCountryMap, { countries: observations().countries });
+		const section = within(screen.getByRole('region', { name: t('networks.title') }));
+		for (const key of ['networks.empty', 'networks.subset', 'networks.aggregation', 'networks.history'] as const) expect(section.getByText(t(key))).toBeTruthy();
+		expect(section.queryByRole('table')).toBeNull();
 	});
 });
 

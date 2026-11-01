@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onMount, untrack } from 'svelte';
@@ -13,13 +14,16 @@
 	import ServiceCountCards from '$lib/components/admin/overview/ServiceCountCards.svelte';
 	import VersionInfoPanel from '$lib/components/admin/overview/VersionInfoPanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { Alert, PageHeader, PageShell, StatTile } from '$lib/components/ui';
+	import { Alert, Button, PageHeader, PageShell } from '$lib/components/ui';
 
 	interface Notification {
 		severity: string;
 		message: string;
-		target: string;
-		href: string;
+		target?: string;
+		href?: string;
+		type?: string;
+		count?: number;
+		available?: boolean;
 	}
 
 	interface IdentitySummary {
@@ -33,6 +37,12 @@
 		recent_projects?: { id: string; name: string }[];
 	}
 
+	interface RecentEvent { id: number; created_at: string; username: string; action: string; resource_name: string | null; resource_id: string | null; status: string }
+	let recentEvents = $state<RecentEvent[] | null>(null);
+	let eventsError = $state(false);
+	let notificationsError = $state(false);
+	let identityError = $state(false);
+
 	let overview = $state<Overview | null>(null);
 	let overviewLoading = $state(true);
 	let error = $state('');
@@ -43,16 +53,40 @@
 	let versionOpen = $state(false);
 	let notifications = $state<Notification[]>([]);
 	let identitySummary = $state<IdentitySummary | null>(null);
+	function identityCount(section: string, value: number): string {
+		return identitySummary?.partial_reasons?.some(reason => reason.startsWith(`${section}:`))
+			? t('overview.availability.unknown') : value.toLocaleString(intlLocale());
+	}
+	function notificationText(notification: Notification): string {
+		const count = notification.count;
+		if (notification.type === 'k3s' && notification.available === false) return t('overview.notices.clustersUnavailable');
+		if (typeof count !== 'number' || !Number.isFinite(count)) return notification.message;
+		if (notification.type === 'error') return t('overview.notices.instances', { count: count >= 50 ? `${count}+` : String(count) });
+		if (notification.type === 'resource') return t('overview.notices.memory', { count });
+		if (notification.type === 'k3s') return t('overview.notices.clusters', { count });
+		if (notification.type === 'network') return t('overview.notices.network', { count });
+		return notification.message;
+	}
+	function notificationHref(notification: Notification): string {
+		if (notification.type === 'error') return '/admin/instances';
+		if (notification.type === 'resource') return '/admin/hypervisors';
+		if (notification.type === 'k3s') return '/admin/drover';
+		if (notification.type === 'network') return '/admin/floating-ips';
+		return notification.href || '/admin/monitoring';
+	}
 
 	let mounted = $state(false);
 	let authorityRevision = $state(0);
 	let domainRequest = 0;
+	let overviewRequest = 0;
 	function clearPublished() {
 		authorityRevision += 1;
 		domainRequest += 1;
+		overviewRequest += 1;
 		overview = null; overviewLoading = true; error = '';
 		domainUsage = []; domainUsageLoading = true; domainUsageError = '';
 		versionInfo = null; versionOpen = false; notifications = []; identitySummary = null;
+		recentEvents = null; eventsError = false; notificationsError = false; identityError = false;
 	}
 	function capture() {
 		const state = get(auth);
@@ -78,21 +112,26 @@
 	function loadOverview() {
 		const owner = capture();
 		if (!owner) return;
+		const request = ++overviewRequest;
+		const current = () => owner.current() && request === overviewRequest;
+		overviewLoading = true;
 		api.get<Overview>('/api/v1/admin/overview', owner.token, owner.projectId)
-			.then(result => { if (owner.current()) overview = result; })
+			.then(result => { if (current()) { overview = result; error = ''; } })
 			.catch(reason => {
-				if (!owner.current()) return;
+				if (!current()) return;
 				if (reason instanceof ApiError && reason.status === 403) { void goto('/dashboard'); return; }
 				error = reason instanceof ApiError ? t('overview.page.queryFailed', { message: reason.message }) : t('overview.page.serverError');
 			})
-			.finally(() => { if (owner.current()) overviewLoading = false; });
+			.finally(() => { if (current()) overviewLoading = false; });
 		loadDomainUsage();
 		api.get<VersionInfo>('/api/v1/admin/version', owner.token, owner.projectId)
-			.then(result => { if (owner.current()) versionInfo = result; }).catch(() => {});
-		api.get<Notification[]>('/api/v1/admin/notifications', owner.token, owner.projectId)
-			.then(result => { if (owner.current()) notifications = result; }).catch(() => {});
+			.then(result => { if (current()) versionInfo = result; }).catch(() => {});
+		api.get<{ notifications: Notification[] }>('/api/v1/admin/notifications', owner.token, owner.projectId)
+			.then(result => { if (current()) { notifications = result.notifications; notificationsError = false; } }).catch(() => { if (current()) notificationsError = true; });
 		api.get<IdentitySummary>('/api/v1/admin/identity/summary', owner.token, owner.projectId)
-			.then(result => { if (owner.current()) identitySummary = result; }).catch(() => {});
+			.then(result => { if (current()) { identitySummary = result; identityError = false; } }).catch(() => { if (current()) identityError = true; });
+		api.get<RecentEvent[]>('/api/v1/admin/events?limit=5', owner.token, owner.projectId)
+			.then(result => { if (current()) { recentEvents = result; eventsError = false; } }).catch(() => { if (current()) eventsError = true; });
 	}
 
 	onMount(() => {
@@ -110,139 +149,48 @@
 </script>
 
 <PageShell class="flex flex-col gap-5">
-	<PageHeader
-		breadcrumb={t('overview.page.breadcrumb')}
-		title={t('overview.page.title')}
-		subtitle={t('overview.page.subtitle')}
-	/>
-
-	{#if notifications.length > 0}
-		{@const critCount = notifications.filter(n => n.severity === 'critical').length}
-		{@const warnCount = notifications.filter(n => n.severity === 'warning').length}
-		<Alert tone={critCount > 0 ? 'danger' : 'warning'} class="notification-alert">
-			<span class="text-sm" style="color: var(--color-ink-1);">
-				{#if critCount > 0}
-					<span class="font-semibold" style="color: var(--color-state-danger);">{t('overview.notifications.critical', { count: critCount.toLocaleString(intlLocale(), { useGrouping: false }) })}</span> ·
-				{/if}
-				{#if warnCount > 0}
-					<span class="font-semibold" style="color: var(--color-state-warning);">{t('overview.notifications.warning', { count: warnCount.toLocaleString(intlLocale(), { useGrouping: false }) })}</span> ·
-				{/if}
-				{t('overview.notifications.info', { count: (notifications.length - critCount - warnCount).toLocaleString(intlLocale(), { useGrouping: false }) })}
-				<a href="/admin/monitoring" class="underline" style="color: var(--admin-tone);">{t('overview.notifications.monitoringDetails')}</a>
-			</span>
-		</Alert>
-	{/if}
-
-	{#if error}
-		<Alert tone="danger">{error}</Alert>
-	{/if}
-
-
-	{#if overviewLoading}
-		<div class="flex flex-col gap-5" role="status" aria-busy="true" aria-label={t('overview.loading')}>
-			<div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
-				{#each Array(3) as _}
-					<div class="h-[82px] motion-skeleton"></div>
-				{/each}
+	<PageHeader breadcrumb={t('overview.page.breadcrumb')} title={t('overview.page.title')} subtitle={t('overview.page.subtitle')} />
+	<section class="rounded-lg border border-line bg-surface-base p-5" aria-labelledby="overview-attention-title">
+		<div class="flex flex-wrap items-center justify-between gap-2"><h2 id="overview-attention-title" class="text-[15px] font-semibold text-ink-0">{t('overview.attention.title')}</h2><div class="flex flex-wrap items-center gap-2"><Button variant="secondary" disabled={overviewLoading} onclick={loadOverview}>{t('monitoring.refresh')}</Button><Button variant="link" href="/admin/monitoring">{t('overview.notifications.monitoringDetails')}</Button></div></div>
+		{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
+		{#if notificationsError}<Alert tone="danger" class="mt-3">{t('overview.attention.notificationsFailed')}</Alert>{/if}
+		{#if overview?.unavailable_sections?.length}<Alert tone="warning" class="mt-3">{t('overview.availability.partial')} <span class="font-mono text-xs">{overview.unavailable_sections.join(', ')}</span></Alert>{/if}
+		{#if overview?.instance_stats}
+			<div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm tabular-nums">
+				<a href="/admin/instances" class={overview.instance_stats.error > 0 ? 'font-semibold text-state-danger-text underline underline-offset-2' : 'text-ink-2'}>{t('overview.kpi.errorCount', { count: overview.instance_stats.error })}</a>
+				<span class="text-ink-2">{t('overview.attention.instanceStates', { active: overview.instance_stats.active, shutoff: overview.instance_stats.shutoff, other: overview.instance_stats.other })}</span>
+				{#if overview.running_vms !== null}<span class="text-ink-2">{t('overview.attention.running', { count: overview.running_vms })}</span>{/if}
 			</div>
-			<div class="motion-skeleton border border-line rounded-lg h-[260px]"></div>
-		</div>
+		{:else if !overviewLoading}<p class="mt-3 text-sm text-ink-2">{t('overview.availability.unknown')}</p>{/if}
+		{#if overviewLoading}<LoadingState variant="inline" label={t('overview.loading')} />{/if}
+		{#if notifications.length > 0}<ul class="mt-3 divide-y divide-line">{#each notifications as notification}<li class="py-2 text-sm"><a href={notificationHref(notification)} class="flex flex-wrap justify-between gap-2 hover:underline"><span class={notification.severity === 'critical' || notification.severity === 'high' ? 'text-state-danger-text' : notification.severity === 'warning' ? 'text-state-warning-text' : 'text-ink-1'}>{notificationText(notification)}</span>{#if notification.target}<span class="text-ink-2">{notification.target}</span>{/if}</a></li>{/each}</ul>{/if}
+	</section>
+	{#if overviewLoading && !overview}<LoadingState variant="section" label={t('overview.loading')} />
 	{:else if overview}
-		<KpiCardRow {overview} />
-
-		<!-- Identity 통계: 사용자/프로젝트/역할/그룹 -->
-		{#if identitySummary}
-			<div class="motion-enter grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
-				<a href="/admin/users" class="block">
-					<StatTile label={t('overview.identity.users')} value={identitySummary.user_count} unit={t('overview.identity.peopleUnit', { count: identitySummary.user_count })} accent="amber" flat class="h-full">
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
-							</svg>
-						{/snippet}
-						{#if identitySummary.recent_users && identitySummary.recent_users.length > 0}
-							{#snippet footer()}
-								<span class="flex items-center gap-1 text-xs text-state-success-text">
-									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
-									{t('overview.identity.recentUsers', { count: identitySummary?.recent_users?.length ?? 0 })}
-								</span>
-							{/snippet}
-						{/if}
-					</StatTile>
-				</a>
-				<a href="/admin/projects" class="block">
-					<StatTile label={t('overview.identity.projects')} value={identitySummary.project_count} unit={t('overview.identity.active')} accent="blue" flat class="h-full">
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-							</svg>
-						{/snippet}
-						{#if identitySummary.recent_projects && identitySummary.recent_projects.length > 0}
-							{#snippet footer()}
-								<span class="flex items-center gap-1 text-xs text-state-success-text">
-									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
-									{t('overview.identity.recentProjects', { count: identitySummary?.recent_projects?.length ?? 0 })}
-								</span>
-							{/snippet}
-						{/if}
-					</StatTile>
-				</a>
-				<a href="/admin/roles" class="block">
-					<StatTile label={t('overview.identity.roles')} value={identitySummary.role_count} unit={t('overview.identity.defined')} accent="violet" flat class="h-full">
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-							</svg>
-						{/snippet}
-					</StatTile>
-				</a>
-				<a href="/admin/groups" class="block">
-					<StatTile label={t('overview.identity.groups')} value={identitySummary.group_count} unit={t('overview.identity.groupsUnit', { count: identitySummary.group_count })} accent="cyan" flat class="h-full">
-						{#snippet icon()}
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-								<circle cx="9" cy="7" r="4"/>
-								<path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-							</svg>
-						{/snippet}
-					</StatTile>
-				</a>
-			</div>
-
-			{#if identitySummary.partial && identitySummary.partial_reasons && identitySummary.partial_reasons.length > 0}
-				<div class="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs"
-				     style="background: color-mix(in oklab, var(--color-state-warning) 10%, transparent); border-color: color-mix(in oklab, var(--color-state-warning) 30%, transparent); color: var(--color-state-warning);">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0">
-						<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-						<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-					</svg>
-					<span>{t('overview.identity.partial', { reasons: identitySummary.partial_reasons.map(r => r.includes('insufficient_privileges') ? t('overview.identity.insufficientPrivileges', { target: r.split(':')[0] }) : r).join(', ') })}</span>
-				</div>
-			{/if}
-		{/if}
-
 		<ResourceDonutsCard {overview} />
-
-		<div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
-			<DomainUsageTable domains={domainUsage} loading={domainUsageLoading} error={domainUsageError} />
-			<ServiceCountCards {overview} />
-		</div>
-
-		<!-- 퀵 링크 -->
-		<div class="flex gap-3 flex-wrap text-sm">
-			<a href="/admin/hypervisors" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.hypervisors')}</a>
-			<a href="/admin/instances" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.instances')}</a>
-			<a href="/admin/containers" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.containers')}</a>
-			<a href="/admin/file-storage" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.fileStorage')}</a>
-			<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.database')}</a>
-			<a href="/admin/object-storage" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.objectStorage')}</a>
-			<a href="/admin/topology" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.topology')}</a>
-			<a href="/admin/networks" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.networks')}</a>
-		</div>
-
-		<VersionInfoPanel {versionInfo} bind:open={versionOpen} />
-	{:else}
-		<div class="text-ink-2 text-sm">{t('overview.page.unavailable')}</div>
+		<KpiCardRow {overview} />
 	{/if}
+	<section class="rounded-lg border border-line bg-surface-base p-5" aria-labelledby="overview-events-title">
+		<div class="flex items-center justify-between gap-2"><h2 id="overview-events-title" class="text-[15px] font-semibold text-ink-0">{t('overview.events.title')}</h2><Button variant="link" href="/admin/events">{t('overview.kpi.viewAll')}</Button></div>
+		{#if eventsError}<Alert tone="danger" class="mt-3">{t('overview.events.failed')}</Alert>{:else if recentEvents === null}<LoadingState variant="table" columns={3} rows={4} label={t('overview.loading')} />{:else if recentEvents.length === 0}<p class="mt-3 text-sm text-ink-2">{t('overview.events.empty')}</p>{:else}
+			<ul class="mt-2 divide-y divide-line">{#each recentEvents as event}<li class="py-2"><a href="/admin/events" class="grid gap-x-4 gap-y-1 text-sm hover:underline sm:grid-cols-[minmax(0,1fr)_auto]"><span class="break-words text-ink-1">{event.action} · {event.resource_name || event.resource_id || '—'} · {event.username}</span><time datetime={event.created_at} class="text-xs tabular-nums text-ink-2">{new Date(event.created_at).toLocaleString(intlLocale())}</time><span class={event.status === 'failed' || event.status === 'error' ? 'text-state-danger-text' : 'text-ink-2'}>{event.status}</span></a></li>{/each}</ul>
+		{/if}
+	</section>
+	<DomainUsageTable domains={domainUsage} loading={domainUsageLoading} error={domainUsageError} />
+	{#if overview}<ServiceCountCards {overview} />{/if}
+	{#if identityError}<Alert tone="danger">{t('overview.identity.failed')}</Alert>{/if}
+	{#if identitySummary}
+		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+			{#each [{ href: '/admin/users', label: t('overview.identity.users'), value: identitySummary.user_count }, { href: '/admin/projects', label: t('overview.identity.projects'), value: identitySummary.project_count }, { href: '/admin/roles', label: t('overview.identity.roles'), value: identitySummary.role_count }, { href: '/admin/groups', label: t('overview.identity.groups'), value: identitySummary.group_count }] as item}
+				<a href={item.href} class="flex items-baseline justify-between gap-2 bg-surface-base px-4 py-3 text-sm hover:bg-surface-selected"><span class="text-ink-2">{item.label}</span><span class="font-semibold tabular-nums text-ink-0">{identityCount(item.href.split('/').at(-1)!, item.value)}</span></a>
+			{/each}
+		</div>
+		{#if identitySummary.partial && identitySummary.partial_reasons?.length}<Alert tone="warning">{t('overview.identity.partial', { reasons: identitySummary.partial_reasons.map(r => r.includes('insufficient_privileges') ? t('overview.identity.insufficientPrivileges', { target: r.split(':')[0] }) : r).join(', ') })}</Alert>{/if}
+		{#if identitySummary.recent_users?.length || identitySummary.recent_projects?.length}<details class="text-sm text-ink-2"><summary class="cursor-pointer">{t('overview.identity.recentUsers', { count: identitySummary.recent_users?.length ?? 0 })} · {t('overview.identity.recentProjects', { count: identitySummary.recent_projects?.length ?? 0 })}</summary><ul class="mt-2 flex flex-wrap gap-x-5 gap-y-2">{#each identitySummary.recent_users ?? [] as user}<li><a href="/admin/users" class="hover:underline">{user.name}</a></li>{/each}{#each identitySummary.recent_projects ?? [] as project}<li><a href="/admin/projects" class="hover:underline">{project.name}</a></li>{/each}</ul></details>{/if}
+	{/if}
+	<nav class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-2" aria-label={t('overview.kpi.details')}>
+		{#each [{ href: '/admin/hypervisors', label: t('overview.links.hypervisors') }, { href: '/admin/instances', label: t('overview.links.instances') }, { href: '/admin/containers', label: t('overview.links.containers') }, { href: '/admin/file-storage', label: t('overview.links.fileStorage') }, { href: '/admin/database-instances', label: t('overview.links.database') }, { href: '/admin/object-storage', label: t('overview.links.objectStorage') }, { href: '/admin/topology', label: t('overview.links.topology') }, { href: '/admin/networks', label: t('overview.links.networks') }] as link}<Button variant="link" href={link.href}>{link.label}</Button>{/each}
+	</nav>
+	<VersionInfoPanel {versionInfo} bind:open={versionOpen} />
 </PageShell>
 

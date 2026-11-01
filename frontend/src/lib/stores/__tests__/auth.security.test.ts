@@ -84,6 +84,21 @@ describe('tab-local credential persistence', () => {
 		expect(JSON.stringify(localStorage)).not.toMatch(/secret-|private-user/);
 	});
 
+	it('clears rejected tab credentials without changing shared logout or SSR markers', async () => {
+		// Reload the module after isolated storage setup to exercise real tab persistence.
+		const mod = await import('../auth');
+		mod.setLoginAuth({ token: 'stale-access', refreshToken: 'stale-refresh', domainId: 'home', identityDomainId: 'home' });
+		mod.authReady.set(true);
+		const marker = localStorage.getItem(mod.AUTH_LOGOUT_EVENT_KEY);
+		expect(document.cookie).toContain('afterglow_session=1');
+		mod.clearAuth({ broadcast: false });
+		expect(get(mod.auth).token).toBeNull();
+		expect(get(mod.authReady)).toBe(false);
+		expect(sessionStorage.getItem(mod.AUTH_STORAGE_KEY)).toBeNull();
+		expect(localStorage.getItem(mod.AUTH_LOGOUT_EVENT_KEY)).toBe(marker);
+		expect(document.cookie).toContain('afterglow_session=1');
+	});
+
 	it('does not clear another logged-in tab SSR marker when a fresh tab initializes', async () => {
 		document.cookie = 'afterglow_session=1; path=/';
 		const mod = await import('../auth');

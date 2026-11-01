@@ -6,9 +6,10 @@
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import VolumeOperationItems from '$lib/components/volume/VolumeOperationItems.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { ResourceIdentifier } from '$lib/components/ui';
 	let {
 		volumes,
 		selectedVolumeId,
@@ -57,7 +58,7 @@
 		onDelete: (id: string, name: string) => void;
 	} = $props();
 
-	const volumeGridClass = 'grid grid-cols-[32px_1fr_60px_0px_32px_0px_0px_0px_0px] sm:grid-cols-[32px_1.6fr_70px_90px_100px_0px_0px_0px_0px] lg:grid-cols-[32px_1.6fr_70px_90px_100px_1fr_80px_80px_56px]';
+	const volumeGridClass = 'grid min-w-[880px] grid-cols-[32px_minmax(180px,1.6fr)_70px_80px_110px_minmax(90px,1fr)_60px_80px_44px] gap-2';
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
@@ -100,16 +101,16 @@
 				<div class="flex items-start gap-2 min-w-0">
 					<SelectionCheckbox checked={selectedIds.has(vol.id)} disabled={selectionDisabled || !selectableIds.has(vol.id)} unavailable={!selectableIds.has(vol.id)} ariaLabel={t('listTable.selectVolume', { name: vol.name || vol.id.slice(0, 8) })} title={vol.attachments.length > 0 ? t('listTable.attachedDeleteUnavailable') : undefined} onclick={() => onToggleSelect(vol.id)} />
 					<button type="button" onclick={() => onOpenDetail(vol.id)} class="min-w-0 flex-1 min-h-11 text-left font-medium text-ink-0 hover:text-warm-text-hover break-all">{vol.name || vol.id}</button>
-					<StatusChip status={vol.status} />
+					<StatusChip status={vol.status} kind="volume" />
 				</div>
-				{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('operationItems.deleting')}</span>{/if}
+				{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><LoadingState variant="control" label="" />{t('operationItems.deleting')}</span>{/if}
+				<ResourceIdentifier id={vol.id} />
 				<dl>
 					<div><dt>{t('listTable.size')}</dt><dd>{formatStorage(vol.size)}</dd></div>
 					<div><dt>{t('listTable.type')}</dt><dd>{vol.volume_type ?? t('listTable.defaultType')}</dd></div>
 					<div><dt>{t('listTable.attachments')}</dt><dd>{vol.attachments.length > 0 ? t('listTable.attachmentCount', { count: vol.attachments.length }) : t('listTable.unattached')}</dd></div>
 				</dl>
 				{#snippet details()}
-					<p class="font-mono break-all">{vol.id}</p>
 					{#if vol.bootable}
 						<p>{t('listTable.boot')}{#if vol.volume_image_metadata?.os_distro} · {vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}{/if}</p>
 					{/if}
@@ -121,11 +122,11 @@
 			</CompactResourceCard>
 		{/each}
 	{/snippet}
-<div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
+<div class="bg-surface-base border border-line rounded-lg overflow-x-auto">
+	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-[13px] text-ink-2 font-medium">
 		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} /></div>
 		<div>{t('listTable.name')}</div>
-		<div>{t('listTable.size')}</div>
+		<div class="text-right">{t('listTable.size')}</div>
 		<div class="hidden sm:block">{t('listTable.type')}</div>
 		<div class="whitespace-nowrap">{t('listTable.status')}</div>
 		<div class="hidden lg:block">{t('listTable.attachments')}</div>
@@ -135,7 +136,7 @@
 	</div>
 	{#each volumes as vol (vol.id)}
 		<div
-			class="resource-selection-surface {volumeGridClass} px-4 py-3 text-[13px] items-center border-b border-line transition-colors last:border-b-0 {selectedVolumeId === vol.id ? 'bg-surface-sunken/30' : ''}"
+			class="resource-selection-surface {volumeGridClass} min-h-11 px-4 py-1 text-sm items-center border-b border-line transition-colors last:border-b-0 {selectedVolumeId === vol.id ? 'bg-surface-sunken/30' : ''}"
 			data-selected={selectedIds.has(vol.id)}
 		>
 			<SelectionCheckbox
@@ -147,36 +148,21 @@
 				onclick={() => onToggleSelect(vol.id)}
 			/>
 			<!-- 이름 -->
-			<button
-				type="button"
-				onclick={() => onOpenDetail(vol.id)}
-				class="flex items-center gap-2.5 min-w-0 w-full text-left text-ink-0 hover:text-warm-text-hover transition-colors cursor-pointer"
-			>
-				<div class="hidden sm:flex shrink-0 w-7 h-7 rounded-md bg-cyan-500/15 border border-cyan-500/30 items-center justify-center">
-					<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
-					</svg>
-				</div>
-				<div class="min-w-0 flex-1">
-					{#if vol.name}
-						<span class="block font-medium truncate">{vol.name}</span>
-					{:else}
-						<span class="block font-mono text-xs truncate">{vol.id}</span>
-					{/if}
-					<div class="text-xs text-ink-2 font-mono truncate">{vol.id.slice(0, 8)}…</div>
-					{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('operationItems.deleting')}</span>{/if}
-				</div>
-			</button>
+			<div class="min-w-0 flex items-center gap-2">
+				<button type="button" onclick={() => onOpenDetail(vol.id)} class="min-w-0 flex-1 text-left font-medium text-ink-0 hover:text-warm-text-hover truncate" title={vol.name || vol.id}>{vol.name || vol.id.slice(0, 8)}</button>
+				<ResourceIdentifier id={vol.id} class="shrink-0" />
+				{#if deleting === vol.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><LoadingState variant="control" label="" />{t('operationItems.deleting')}</span>{/if}
+			</div>
 			<!-- 크기 -->
-			<div class="text-ink-2 font-mono text-xs">{formatStorage(vol.size)}</div>
+			<div class="text-right text-ink-1 tabular-nums">{formatStorage(vol.size)}</div>
 			<!-- 유형 -->
 			<div class="hidden sm:block">
-				<span class="text-xs px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2 font-mono">
+				<span class="text-[13px] text-ink-2">
 					{vol.volume_type ?? t('listTable.defaultType')}
 				</span>
 			</div>
 			<!-- 상태 -->
-			<div><StatusChip status={vol.status} /></div>
+			<div><StatusChip status={vol.status} kind="volume" /></div>
 			<!-- 연결 -->
 			<div class="hidden lg:block text-xs">
 				{#if vol.attachments.length > 0}

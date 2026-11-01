@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+import threading
+from concurrent.futures import Future
 from typing import TYPE_CHECKING
 
 from drover_sdk.proxy import Proxy as DroverProxy
 from fastapi import HTTPException
 from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
+from keystoneauth1.identity.base import BaseIdentityPlugin
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
 from app.config import get_settings
@@ -26,23 +29,119 @@ def list_all_project_ids() -> set[str]:
     return {p.id for p in ks.projects.list()}
 
 
+class _ServiceTokenCache:
+    """Process-shared service-account token (never caller authority).
+
+    Password authentication costs hundreds of milliseconds at Keystone. Callers
+    still get independent Sessions/Clients; only this service AccessInfo is
+    shared. Renewal is single-flight: concurrent callers wait for the one login
+    in flight and share its result or its failure (no serial per-waiter retries).
+    Renewal starts well before the keystoneauth stale window.
+    """
+
+    RENEW_BEFORE_SECONDS = 300
+
+    def __init__(self, identity: tuple):
+        self.identity = identity
+        self._lock = threading.Lock()
+        self._access = None
+        self._pending: Future | None = None
+
+    def _login(self):
+        auth_url, username, password, project_name, user_domain, project_domain, verify = self.identity
+        plugin = v3.Password(
+            auth_url=auth_url,
+            username=username,
+            password=password,
+            project_name=project_name,
+            user_domain_name=user_domain,
+            project_domain_name=project_domain,
+        )
+        session = native_transport.create_session(auth=plugin, timeout=15, verify=verify)
+        try:
+            return plugin.get_access(session)
+        finally:
+            session.session.close()
+
+    def access(self):
+        with self._lock:
+            access = self._access
+            if access is not None and not access.will_expire_soon(self.RENEW_BEFORE_SECONDS):
+                return access
+            pending = self._pending
+            leader = pending is None
+            if leader:
+                pending = self._pending = Future()
+        if not leader:
+            return pending.result()
+        try:
+            access = self._login()
+        except BaseException as exc:
+            with self._lock:
+                self._pending = None
+            pending.set_exception(exc)
+            raise
+        with self._lock:
+            self._access = access
+            self._pending = None
+        pending.set_result(access)
+        return access
+
+    def invalidate(self, access) -> None:
+        """Drop only the token a caller saw rejected; a newer one stays shared."""
+        with self._lock:
+            if self._access is access:
+                self._access = None
+
+
+class _SharedServiceAuth(BaseIdentityPlugin):
+    """Per-caller plugin whose service AccessInfo comes from the shared cache."""
+
+    def __init__(self, cache: _ServiceTokenCache):
+        super().__init__(auth_url=cache.identity[0], reauthenticate=True)
+        self._cache = cache
+
+    def get_auth_ref(self, session, **kwargs):
+        return self._cache.access()
+
+    def invalidate(self):
+        if self.auth_ref is not None:
+            self._cache.invalidate(self.auth_ref)
+        return super().invalidate()
+
+
+_service_cache_lock = threading.Lock()
+_service_cache: _ServiceTokenCache | None = None
+
+
+def _service_token_cache(settings) -> _ServiceTokenCache:
+    global _service_cache
+    identity = (
+        settings.os_auth_url,
+        settings.os_username,
+        settings.os_password,
+        settings.os_project_name,
+        settings.os_user_domain_name,
+        settings.os_project_domain_name,
+        settings.ssl_verify,
+    )
+    with _service_cache_lock:
+        if _service_cache is None or _service_cache.identity != identity:
+            _service_cache = _ServiceTokenCache(identity)
+        return _service_cache
+
+
 def _get_admin_ks_client():
     """서비스 admin 크리덴셜로 Keystone v3 Client 생성.
 
     사용자 세션은 OpenStack policy 때문에 role_assignments 조회가 제한될 수 있으므로,
-    시스템 admin 판별은 서비스 크리덴셜로 수행한다.
+    시스템 admin 판별은 서비스 크리덴셜로 수행한다. Client/Session은 호출자 소유이고
+    서비스 토큰만 프로세스 안에서 재사용한다. 사용자 권한 관측은 매번 live로 읽는다.
     """
     from keystoneclient.v3 import client as ks_client
 
     settings = get_settings()
-    admin_auth = v3.Password(
-        auth_url=settings.os_auth_url,
-        username=settings.os_username,
-        password=settings.os_password,
-        project_name=settings.os_project_name,
-        user_domain_name=settings.os_user_domain_name,
-        project_domain_name=settings.os_project_domain_name,
-    )
+    admin_auth = _SharedServiceAuth(_service_token_cache(settings))
     admin_sess = native_transport.create_session(auth=admin_auth, timeout=15, verify=settings.ssl_verify)
     return ks_client.Client(session=admin_sess, interface=settings.os_interface, region_name=settings.os_region_name)
 

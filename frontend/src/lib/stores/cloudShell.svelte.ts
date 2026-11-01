@@ -18,6 +18,8 @@ export type CloudShellCloseReason = 'user' | 'project-switch' | 'logout' | 'iden
 
 export interface CloudShellIdentity {
 	token: string;
+	userId: string;
+	sessionId: string;
 	projectId: string;
 	projectName: string;
 }
@@ -223,6 +225,8 @@ export function createCloudShellController(
 			(identity !== null &&
 				next !== null &&
 				identity.token === next.token &&
+				identity.userId === next.userId &&
+				identity.sessionId === next.sessionId &&
 				identity.projectId === next.projectId &&
 				identity.projectName === next.projectName)
 		) {
@@ -230,7 +234,8 @@ export function createCloudShellController(
 		}
 		const projectChanged = identity && next && identity.projectId !== next.projectId;
 		const lost = identity && !next;
-		if ((projectChanged || lost) && (visible || phase !== 'closed')) {
+		const loginChanged = identity && next && (identity.userId !== next.userId || identity.sessionId !== next.sessionId);
+		if ((projectChanged || lost || loginChanged) && (visible || phase !== 'closed')) {
 			void close(projectChanged ? 'project-switch' : 'identity-lost', { keepDock: false });
 		}
 		identity = next;
@@ -319,6 +324,7 @@ export function createCloudShellController(
 	async function approve() {
 		if (phase !== 'consent' || !identity) return;
 		const approvedIdentity = { ...identity };
+		const approvalSerial = ++connectionSerial;
 		phase = 'ticketing';
 		visible = true;
 		view = 'normal';
@@ -330,7 +336,7 @@ export function createCloudShellController(
 		terminalSink?.clear();
 		try {
 			const ticket = await dependencies.issueTicket(approvedIdentity);
-			if (!identity || identity.projectId !== approvedIdentity.projectId || phase !== 'ticketing') return;
+			if (!identity || identity.userId !== approvedIdentity.userId || identity.sessionId !== approvedIdentity.sessionId || identity.projectId !== approvedIdentity.projectId || approvalSerial !== connectionSerial || phase !== 'ticketing') return;
 			const separator = ticket.websocket_path.includes('?') ? '&' : '?';
 			const url = dependencies.webSocketUrl(
 				`${ticket.websocket_path}${separator}ticket=${encodeURIComponent(ticket.ticket)}`,
@@ -372,6 +378,7 @@ export function createCloudShellController(
 				setError(CLOSE_ERROR[event.code] ?? 'shell.error.unexpectedClose', errorCode);
 			};
 		} catch (caught) {
+			if (approvalSerial !== connectionSerial || phase !== 'ticketing') return;
 			setError(apiErrorKey(caught, 'shell.error.approval'), extractApiCode(caught) ?? '');
 		}
 	}

@@ -10,7 +10,7 @@
 	import FileStorageExportLocationsSection from '$lib/components/file-storage/FileStorageExportLocationsSection.svelte';
 	import FileStorageAccessRulesSection from '$lib/components/file-storage/FileStorageAccessRulesSection.svelte';
 	import FileStorageMetadataSection from '$lib/components/file-storage/FileStorageMetadataSection.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	interface Props {
 		fileStorageId: string;
@@ -54,15 +54,13 @@
 	});
 </script>
 
-<div class="p-6">
+<div class="flex min-h-full flex-col {s.loading && !s.fileStorage ? '' : 'p-6'}">
 	<FileStorageDetailHeader {onClose} {ar} {refreshing} onManualRefresh={() => refresh.run(true)} />
 
 	{#if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
-	{:else if s.loading}
-		<div class="space-y-4" role="status" aria-busy="true" aria-label={t('detail.loading')}>
-			{#each [1, 2, 3] as _}<div class="motion-skeleton h-16 rounded-lg"></div>{/each}
-		</div>
+	{:else if s.loading && !s.fileStorage}
+		<LoadingState variant="surface" label={t('detail.loading')} />
 	{:else if s.fileStorage}
 		<div class="motion-stagger">
 			<DetailHeader title={s.fileStorage.name || s.fileStorage.id} status={s.fileStorage.status}>
@@ -75,7 +73,7 @@
 						disabled={s.deleting}
 						class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 					>
-						{#if s.deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{s.deleting ? t('actions.deleting') : t('actions.delete')}
+						{#if s.deleting}<LoadingState variant="control" label="" />{/if}{s.deleting ? t('actions.deleting') : t('actions.delete')}
 					</button>
 				{/snippet}
 			</DetailHeader>

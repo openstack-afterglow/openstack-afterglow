@@ -10,6 +10,8 @@ import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
 import { RESOURCE_CATEGORIES, type ProjectResourceInventory, type ResourceCategory, type ResourceInventory, type ResourceItem, type ResourceTotal, type UserDashboardSummary } from '$lib/types/userDashboard';
 import { isTourId } from '$lib/tutorial/tours';
 import { t } from '$lib/i18n/ns/tutorial';
+import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
+import { mockComputePolicy } from '$lib/mockup/computePools';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
@@ -325,6 +327,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const state = getMockupState();
 	const [pathname, query = ''] = normalized.split('?');
 	const params = new URLSearchParams(query);
+	const computePolicy = mockComputePolicy(method, pathname, params, body, profile);
+	if (computePolicy !== undefined) return computePolicy;
 
 	if (method === 'GET' && pathname === '/api/v1/site-config') {
 		return { ...get(siteConfig), services: { ...get(siteConfig).services, ...MOCKUP_SERVICE_OVERRIDES } };
@@ -528,7 +532,9 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		if (project) items = items.filter((item) => item.project_id === project);
 		if (params.get('domain_id') && params.get('domain_id') !== 'mock-domain') items = [];
 		if (host) items = items.filter((item) => item.host?.toLowerCase() === host);
-		items.sort((a, b) => a.id.localeCompare(b.id));
+		const sort = params.get('sort') ?? 'created_desc';
+		if (!['created_desc', 'created_asc', 'name_asc', 'name_desc'].includes(sort)) throw new ApiError(422, 'invalid_sort');
+		items = sortResources(items, sort as ResourceSort);
 		const marker = params.get('marker');
 		const index = marker ? items.findIndex(item => item.id === marker) : -1;
 		if (marker && index < 0) throw new ApiError(400, 'inventory_marker_outside_scope');
@@ -551,9 +557,9 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const min = params.has('min_size') ? Number(params.get('min_size')) : 0;
 		const max = params.has('max_size') ? Number(params.get('max_size')) : Infinity;
 		if (min > max) throw new ApiError(422, 'inventory_size_range_invalid');
-		const items = scoped.filter(item => (!name || item.name.toLowerCase().includes(name) || item.id.toLowerCase().includes(name))
+		let items = scoped.filter(item => (!name || item.name.toLowerCase().includes(name) || item.id.toLowerCase().includes(name))
 			&& (!status || item.status.toLowerCase() === status) && (!type || item.volume_type?.toLowerCase() === type)
-			&& item.size >= min && item.size <= max).sort((a, b) => a.id.localeCompare(b.id));
+			&& item.size >= min && item.size <= max);
 		if (pathname.endsWith('/status-summary')) {
 			const counts = new Map<string, number>();
 			for (const item of scoped) counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
@@ -567,6 +573,9 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 				domains: [{ domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', project_ids: [...new Set(scoped.map(item => item.project_id))], volumes: scoped.length, volume_gb: total(scoped), attached_volumes: attached.length, attached_gb: total(attached), available_volumes: available.length, available_gb: total(available) }],
 			};
 		}
+		const sort = params.get('sort') ?? 'created_desc';
+		if (!['created_desc', 'created_asc', 'name_asc', 'name_desc'].includes(sort)) throw new ApiError(422, 'invalid_sort');
+		items = sortResources(items, sort as ResourceSort);
 		const marker = params.get('marker');
 		const index = marker ? items.findIndex(item => item.id === marker) : -1;
 		if (marker && index < 0) throw new ApiError(400, 'inventory_marker_outside_scope');
@@ -1220,6 +1229,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview/domains') return state.admin.domains;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/version') return state.admin.version;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/notifications') return state.admin.notifications;
+	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/events' && params.get('limit') === '5' && [...params.keys()].every(key => key === 'limit')) return state.admin.recentEvents.slice(0, 5);
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/identity/summary') return state.admin.identitySummary;
 
 	return symbolNoMatch;

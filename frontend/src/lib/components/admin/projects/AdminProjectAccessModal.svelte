@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -228,9 +228,9 @@
 				<Alert tone="warning" class="mx-5 mt-3">{t('projectAccess.readerMissing')}</Alert>
 			{/if}
 
-			{#if addSaving}<div class="px-5 py-2"><ActivityIndicator size="xs" label={t('projectAccess.addingMember')} /></div>{/if}
+			{#if addSaving}<div class="px-5 py-2"><LoadingState variant="inline" label={t('projectAccess.addingMember')} /></div>{/if}
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-8 text-center"><ActivityIndicator size="xs" label={t('state.loading')} /></div>
+				<div class="text-xs text-ink-2 py-8 text-center"><LoadingState variant="inline" label={t('state.loading')} /></div>
 			{:else}
 				<div class="flex flex-col md:flex-row flex-1 min-h-0">
 					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none border-b md:border-b-0 md:border-r border-line">
@@ -295,7 +295,7 @@
 										</div>
 										<div class="flex shrink-0 items-center gap-1">
 											<Button variant="subtle" size="xs" ariaLabel={t('projectAccess.permissionsLabel', { name: principal.name })} onclick={() => { detailPrincipal = principal; detailError = ''; }}>{t('projectAccess.permissions')}</Button>
-											<Button ariaBusy={removingKey === principal.key} variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{#if removingKey === principal.key}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
+											<Button ariaBusy={removingKey === principal.key} variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{#if removingKey === principal.key}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 										</div>
 									</div>
 								{/each}
@@ -337,7 +337,7 @@
 							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
 							<span>{role.name}</span>
 						</label>
-						{#if roleBusy === role.id}<ActivityIndicator size="xs" label={t('state.saving')} />{:else if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{/if}
+						{#if roleBusy === role.id}<LoadingState variant="inline" label={t('state.saving')} />{:else if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{/if}
 					</li>
 				{/each}
 			</ul>

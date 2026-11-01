@@ -3,18 +3,23 @@
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import FlavorAccessTab from './FlavorAccessTab.svelte';
 	import FlavorExtraSpecsTab from './FlavorExtraSpecsTab.svelte';
+	import { isManagedFlavor } from '$lib/api/computePools';
+	import { t as tp } from '$lib/i18n/ns/compute-pools';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	interface Flavor {
 		id: string;
 		name: string;
+		display_name?: string | null;
+		cpu_automation_managed?: boolean;
 		vcpus: number;
 		ram: number;
 		disk: number;
 		is_public: boolean;
 		description: string | null;
 		extra_specs: Record<string, string>;
-		is_gpu: boolean;
-		gpu_count: number;
+		is_gpu: boolean | null;
+		gpu_count: number | null;
 		frontend_visible?: boolean;
 	}
 
@@ -45,7 +50,8 @@
 			</div>
 			<div class="mb-4">
 				<div class="text-sm text-ink-2">{t('flavors.title')}</div>
-				<div class="text-ink-0 font-medium">{flavor.name}</div>
+				<div class="break-all text-ink-0 font-medium">{flavor.display_name ?? flavor.name}</div>
+				{#if flavor.display_name}<div class="break-all text-xs text-ink-2">{flavor.name}</div>{/if}
 				<div class="text-xs text-ink-2">{flavor.vcpus} VCPU / {formatRam(flavor.ram)} / {flavor.disk} GB</div>
 				<button
 					onclick={() => navigator.clipboard.writeText(flavor!.id)}
@@ -53,6 +59,7 @@
 					title={t('flavors.manage.copyId')}
 				>{flavor.id}</button>
 			</div>
+			{#if isManagedFlavor(flavor)}<Alert tone="info" class="mb-4">{tp('managedReadonly')}</Alert>{/if}
 
 			<div class="flex border-b border-line mb-4">
 				<button

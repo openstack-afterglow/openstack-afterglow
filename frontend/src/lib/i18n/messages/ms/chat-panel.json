@@ -310,6 +310,8 @@
 	"message.forkHere": "Cabangkan dari sini",
 	"message.fork": "Cabangkan",
 	"message.generationSpeed": "Kelajuan penjanaan",
+	"message.ttft": "TTFT {seconds}s",
+	"message.ttftExplanation": "Dari penghantaran hingga menerima teks jawapan pertama: {seconds} saat",
 	"window.elapsedMinutesSeconds": "{minutes, plural, one {# minit} other {# minit}} {seconds, plural, one {# saat} other {# saat}}",
 	"window.elapsedSeconds": "{seconds, plural, one {# saat} other {# saat}}",
 	"window.skillFallback": "kemahiran #{id}",

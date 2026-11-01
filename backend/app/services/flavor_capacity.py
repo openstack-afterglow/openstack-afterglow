@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import threading
 import time
@@ -33,7 +34,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.models.compute import FlavorCapacityInfo, FlavorInfo
-from app.services import gpu_inventory, keystone
+from app.services import flavor_automation_policy, gpu_inventory, keystone
 
 _logger = logging.getLogger(__name__)
 
@@ -42,10 +43,9 @@ _PLACEMENT_VERSION = "placement 1.36"
 _HYPERVISOR_PAGE_LIMIT = 1000
 _MAX_HYPERVISOR_PAGES = 100
 _MAX_PCI_DEVICES = 16
-# One evaluation never outlives these bounds; discovery lists reuse a snapshot for the TTL.
+# One native admission/observation pass never outlives these bounds.
 _REQUEST_TIMEOUT_SECONDS = 5.0
 _DEADLINE_SECONDS = 15.0
-_SNAPSHOT_TTL_SECONDS = 10.0
 
 _MEMORY = "MEMORY_MB"
 _VCPU = "VCPU"
@@ -118,17 +118,29 @@ class _Shape:
     forbidden: tuple[str, ...]
     pci_groups: tuple[str, ...]
     group_policy: str | None
+    resource_groups: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
+    group_traits: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    same_subtree: tuple[str, ...] = ()
 
     def expected(self) -> dict[str, int]:
         totals = {self.cpu_class: 1, _MEMORY: 1}
         for resource_class, amount in self.extra:
             totals[resource_class] = totals.get(resource_class, 0) + amount
+        for _, resources in self.resource_groups:
+            for resource_class, amount in resources:
+                totals[resource_class] = totals.get(resource_class, 0) + amount
         for resource_class in self.pci_groups:
             totals[resource_class] = totals.get(resource_class, 0) + 1
         return totals
 
     def custom_classes(self) -> frozenset[str]:
-        return frozenset([*self.pci_groups, *(rc for rc, _ in self.extra if rc.startswith("CUSTOM_"))])
+        return frozenset(
+            [
+                *self.pci_groups,
+                *(rc for rc, _ in self.extra if rc.startswith("CUSTOM_")),
+                *(rc for _, resources in self.resource_groups for rc, _ in resources if rc.startswith("CUSTOM_")),
+            ]
+        )
 
     def query(self) -> list[tuple[str, str]]:
         """Nova-equivalent allocation candidate query: one numbered group per PCI device."""
@@ -139,7 +151,14 @@ class _Shape:
             params.append(("required", ",".join(traits)))
         for index, resource_class in enumerate(self.pci_groups):
             params.append((f"resources_PCI{index}", f"{resource_class}:1"))
-        if self.pci_groups:
+        groups = {name: f"_APP{index}" for index, (name, _) in enumerate(self.resource_groups)}
+        for name, resources in self.resource_groups:
+            params.append((f"resources{groups[name]}", ",".join(f"{rc}:{amount}" for rc, amount in resources)))
+        for name, traits in self.group_traits:
+            params.append((f"required{groups[name]}", ",".join(traits)))
+        if self.same_subtree:
+            params.append(("same_subtree", ",".join(groups[name] for name in self.same_subtree)))
+        if self.pci_groups or self.resource_groups:
             params.append(("group_policy", self.group_policy or "none"))
         params.append(("root_required", f"!{_DISABLED_TRAIT}"))
         return params
@@ -209,6 +228,26 @@ class _AliasCatalog:
         return f"CUSTOM_PCI_{vendor_id}_{device_id}"
 
 
+class _ApprovedAliasCatalog:
+    """Exact administrator scheduling intent; never a builtin name/classification guess."""
+
+    def __init__(self, profiles):
+        self.aliases = {}
+        self.resources = set()
+        for profile in profiles:
+            if profile["enabled"]:
+                self.resources.update(profile["resource_requirements"])
+                for alias, resource in profile.get("alias_resource_classes", {}).items():
+                    if alias in self.aliases and self.aliases[alias] != resource:
+                        raise _Unsupported("approved PCI alias identity conflict")
+                    self.aliases[alias] = resource
+
+    def resource_class(self, alias):
+        if alias not in self.aliases:
+            raise _Unsupported(f"PCI alias {alias!r} is not explicitly approved")
+        return self.aliases[alias]
+
+
 def _parse_pci_aliases(value: str, catalog: _AliasCatalog) -> list[str]:
     groups: list[str] = []
     seen: set[str] = set()
@@ -241,6 +280,9 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
     aggregate_specs: dict[str, str] = {}
     capability_specs: dict[str, str] = {}
     pci_groups: list[str] = []
+    resource_groups: dict[str, dict[str, int]] = {}
+    group_traits: dict[str, list[str]] = {}
+    same_subtree: tuple[str, ...] = ()
     group_policy: str | None = None
     cpu_policy = thread_policy = emulator_policy = None
     numa = False
@@ -249,17 +291,35 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
         key = str(raw_key)
         value = str(raw_value).strip()
         if _GROUPED_KEY_RE.match(key):
-            raise _Unsupported(f"granular request group {key!r}")
+            group = re.fullmatch(r"(resources|trait)([A-Za-z0-9_-]{1,64}):([A-Z0-9_]+)", key)
+            if not isinstance(catalog, _ApprovedAliasCatalog) or not group:
+                raise _Unsupported(f"granular request group {key!r}")
+            if group[1] == "resources":
+                if group[3] not in catalog.resources or not _COUNT_RE.fullmatch(value) or int(value) < 1:
+                    raise _Unsupported(f"unapproved granular request {key!r}")
+                resource_groups.setdefault(group[2], {})[group[3]] = int(value)
+            else:
+                if value not in {"required", "forbidden"}:
+                    raise _Unsupported(f"malformed granular trait {key!r}")
+                group_traits.setdefault(group[2], []).append(("!" if value == "forbidden" else "") + group[3])
+            continue
         scope, separator, name = key.partition(":")
         if not separator:
-            if key != "group_policy" or value not in ("none", "isolate"):
+            if key == "same_subtree" and isinstance(catalog, _ApprovedAliasCatalog):
+                same_subtree = tuple(value.split(","))
+                if len(same_subtree) < 2 or len(set(same_subtree)) != len(same_subtree):
+                    raise _Unsupported("malformed same_subtree constraint")
+            elif key == "group_policy" and value in ("none", "isolate"):
+                group_policy = value
+            else:
                 raise _Unsupported(f"unscoped scheduler spec {key!r}")
-            group_policy = value
         elif scope == "resources":
             if not _NAME_RE.match(name) or not _COUNT_RE.match(value):
                 raise _Unsupported(f"malformed resource request {key!r}")
-            if name.startswith("CUSTOM_PCI_"):
-                raise _Unsupported("explicit PCI resource classes bypass Nova PCI tracking")
+            if name.startswith("CUSTOM_PCI_") and (
+                not isinstance(catalog, _ApprovedAliasCatalog) or name not in catalog.resources
+            ):
+                raise _Unsupported("unapproved explicit PCI resource class")
             explicit[name] = int(value)
         elif scope == "trait":
             if not _NAME_RE.match(name) or value not in ("required", "forbidden"):
@@ -304,7 +364,22 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
         elif scope not in _IGNORED_SCOPES:
             raise _Unsupported(f"unsupported spec scope {key!r}")
 
-    if gpu_inventory.is_gpu_flavor(flavor) and not pci_groups and not (_EXPLICIT_GPU_CLASSES & explicit.keys()):
+    physical = {rc for rc in explicit if rc.startswith("CUSTOM_PCI_")} | {
+        rc for resources in resource_groups.values() for rc in resources
+    }
+    if isinstance(catalog, _ApprovedAliasCatalog):
+        if any(rc.startswith("CUSTOM_") and rc not in catalog.resources for rc in explicit):
+            raise _Unsupported("unapproved custom resource class")
+        if set(pci_groups) & (set(explicit) | physical):
+            # Stock Nova adds independent alias request groups, so no deduplication
+            # between PCI aliases and flavor resources is valid, even at equal counts.
+            raise _Unsupported("overlapping approved PCI and resource requests")
+    if (
+        gpu_inventory.is_gpu_flavor(flavor)
+        and not pci_groups
+        and not physical
+        and not (_EXPLICIT_GPU_CLASSES & explicit.keys())
+    ):
         raise _Unsupported("GPU flavor without a representable GPU request")
 
     vcpus = flavor.vcpus
@@ -339,6 +414,8 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
         raise _Unsupported("flavor requests no memory")
     if required & forbidden:
         raise _Unsupported("trait both required and forbidden")
+    if (set(group_traits) | set(same_subtree)) - set(resource_groups):
+        raise _Unsupported("granular constraint without a resource request")
 
     # Boot-from-volume callers: flavor root disk is not local DISK_GB; explicit resources:* still apply.
     return _Demand(
@@ -349,6 +426,11 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
             forbidden=tuple(sorted(forbidden)),
             pci_groups=tuple(sorted(pci_groups)),
             group_policy=group_policy,
+            resource_groups=tuple(
+                (name, tuple(sorted(resources.items()))) for name, resources in sorted(resource_groups.items())
+            ),
+            group_traits=tuple((name, tuple(sorted(traits))) for name, traits in sorted(group_traits.items())),
+            same_subtree=same_subtree,
         ),
         cpu=cpu_amount,
         ram=memory,
@@ -358,13 +440,15 @@ def _parse_demand(flavor: FlavorInfo, catalog: _AliasCatalog) -> _Demand:
     )
 
 
-def _parse_all(flavors: list[FlavorInfo]) -> tuple[dict[str, _Demand | None], bool]:
+def _parse_all(flavors: list[FlavorInfo], profiles=None) -> tuple[dict[str, _Demand | None], bool]:
     catalog = _AliasCatalog()
+    approved = _ApprovedAliasCatalog(profiles or [])
     demands: dict[str, _Demand | None] = {}
     unknown_alias = False
     for flavor in flavors:
         try:
-            demands[flavor.id] = _parse_demand(flavor, catalog)
+            managed = (flavor.extra_specs or {}).get("afterglow:managed_by") == "domain-compute-v1"
+            demands[flavor.id] = _parse_demand(flavor, approved if managed else catalog)
         except _Unsupported as exc:
             unknown_alias = unknown_alias or isinstance(exc, _UnknownAlias)
             _logger.info("flavor %s capacity unrepresentable: %s", flavor.id, exc)
@@ -646,10 +730,9 @@ def _now() -> str:
 
 
 class _Snapshot:
-    """Lazily filled Nova/Placement reads; discovery callers share one for _SNAPSHOT_TTL_SECONDS."""
+    """One native pass or an offline projection of a stored observation."""
 
     def __init__(self) -> None:
-        self.created = time.monotonic()
         self._facts: _HostFacts | None = None
         self._roots: dict[str, str] | None = None
         self._max_units: dict[str, dict[str, int]] = {}
@@ -657,9 +740,6 @@ class _Snapshot:
         # A failed shape stays failed for this snapshot: polls during an outage do not hammer Placement.
         self._shape_failures: dict[_Shape, str] = {}
         self._classes: dict[str, bool] = {}
-
-    def is_fresh(self) -> bool:
-        return time.monotonic() - self.created < _SNAPSHOT_TTL_SECONDS
 
     def facts(self, client: _Client, deadline: float) -> _HostFacts:
         if self._facts is None:
@@ -708,7 +788,7 @@ class _Snapshot:
 
     def _fetch_shape(self, client: _Client, deadline: float, shape: _Shape) -> _ShapeView:
         roots_of = self.provider_roots(client, deadline)
-        fetched_at = _now()
+        fetched_at = getattr(client, "observed_at", None) or _now()
         body = client.placement("/allocation_candidates", shape.query(), deadline)
         assert body is not None
         expected = shape.expected()
@@ -774,6 +854,9 @@ def _verdict(
     snapshot: _Snapshot,
     client: _Client,
     deadline: float,
+    *,
+    supported_hosts: dict[str, dict] | None = None,
+    regions: list[dict] | None = None,
 ) -> FlavorCapacityInfo:
     cpu_class = demand.shape.cpu_class
 
@@ -803,26 +886,60 @@ def _verdict(
         return True
 
     fitting: list[tuple[int, int]] = []
+    fitting_roots = 0
     compatible: list[tuple[int, int]] = []
     unknown = view.unexplained
+    region_keys = set()
     for root, candidates in view.roots.items():
         verdict = _admits(hosts.get(root), demand)
         if verdict != "eligible":
             unknown = unknown or verdict == "unknown"
             continue
-        best_fit: tuple[int, int] | None = None
-        best_any: tuple[int, int] | None = None
+        root_fits = False
         for amounts in candidates:
             cpu_supplier = next(provider for provider, rc in amounts if rc == cpu_class)
             ram_supplier = next(provider for provider, rc in amounts if rc == _MEMORY)
             bound = (per_vm(cpu_supplier, cpu_class), per_vm(ram_supplier, _MEMORY))
-            best_any = bound if best_any is None else max(best_any, bound)
+            compatible.append(bound)
             if fits(amounts):
-                best_fit = bound if best_fit is None else max(best_fit, bound)
-        if best_fit is not None:
-            fitting.append(best_fit)
-        if best_any is not None:
-            compatible.append(best_any)
+                fitting.append(bound)
+                root_fits = True
+            if regions is not None and supported_hosts is not None:
+                retained = supported_hosts.get(root)
+                # Hardware approval and current headroom must describe this exact root.
+                if retained is None or any(
+                    retained["gpu"].get(rc, 0) < amount
+                    for rc, amount in demand.shape.expected().items()
+                    if rc.startswith("CUSTOM_PCI_")
+                ):
+                    continue
+                if any(
+                    used + amount > capacity
+                    for (provider, rc), amount in amounts.items()
+                    if rc not in (cpu_class, _MEMORY)
+                    for capacity, used in [summary(provider, rc)]
+                ):
+                    continue
+                cpu = retained.get("pcpu" if cpu_class == _PCPU else "cpu", {"capacity": 0, "min": 1, "step": 1})
+                region = {}
+                for key, inventory, available, floor, ceiling, step in (
+                    ("vcpus", cpu, bound[0], 2, 128, 2),
+                    ("ram_mb", retained["ram"], bound[1], 1024, 2097152, 1024),
+                ):
+                    stride = math.lcm(step, inventory["step"])
+                    minimum = ((max(floor, inventory["min"]) + stride - 1) // stride) * stride
+                    maximum = (min(ceiling, inventory["capacity"], available) // stride) * stride
+                    if minimum > maximum:
+                        break
+                    region[key] = {"min": minimum, "max": maximum, "step": stride}
+                if len(region) == 2:
+                    key = tuple(region[axis][field] for axis in ("vcpus", "ram_mb") for field in ("min", "max", "step"))
+                    if key not in region_keys:
+                        regions.append(region)
+                        region_keys.add(key)
+        # candidate_hosts counts roots, not allocation alternatives.
+        if root_fits:
+            fitting_roots += 1
 
     def info(status: str, hosts_count: int = 0, pair: tuple[int, int] | None = None) -> FlavorCapacityInfo:
         return FlavorCapacityInfo(
@@ -836,7 +953,7 @@ def _verdict(
         )
 
     if fitting:
-        return info("available", len(fitting), max(fitting))
+        return info("available", fitting_roots, max(fitting))
     if unknown or view.missing_class:
         return info("unavailable")
     return info("insufficient", 0, max(compatible) if compatible else None)
@@ -850,9 +967,6 @@ class _Operator:
 
 _operator_lock = threading.Lock()
 _operator: _Operator | None = None
-_shared_snapshot_lock = threading.Lock()
-_shared_snapshot: _Snapshot | None = None
-_discovery_locks: dict[int, tuple[asyncio.AbstractEventLoop, asyncio.Lock]] = {}
 
 
 def _close(conn: Any) -> None:
@@ -884,32 +998,15 @@ def _discard_operator(operator: _Operator) -> None:
     _close(operator.conn)
 
 
-def _discovery_snapshot() -> _Snapshot:
-    global _shared_snapshot
-    with _shared_snapshot_lock:
-        if _shared_snapshot is None or not _shared_snapshot.is_fresh():
-            _shared_snapshot = _Snapshot()
-        return _shared_snapshot
-
-
-def _discovery_lock() -> asyncio.Lock:
-    """Single-flight lock for the running loop (uvloop loops are not weak-referenceable)."""
-    loop = asyncio.get_running_loop()
-    for key, (other, _) in list(_discovery_locks.items()):
-        if other.is_closed():
-            del _discovery_locks[key]
-    entry = _discovery_locks.get(id(loop))
-    if entry is None or entry[0] is not loop:
-        entry = _discovery_locks[id(loop)] = (loop, asyncio.Lock())
-    return entry[1]
-
-
 def _project(
     demands: dict[str, _Demand | None],
     *,
     project_id: str,
     availability_zone: str | None,
     snapshot: _Snapshot,
+    client: _Client | None = None,
+    supported_hosts: dict[str, dict] | None = None,
+    region_results: dict[str, list[dict]] | None = None,
 ) -> dict[str, FlavorCapacityInfo]:
     deadline = time.monotonic() + _DEADLINE_SECONDS
     checked_at = _now()
@@ -919,8 +1016,9 @@ def _project(
         return results
     operator: _Operator | None = None
     try:
-        operator = _operator_session()
-        client = operator.client
+        if client is None:
+            operator = _operator_session()
+            client = operator.client
         hosts = snapshot.facts(client, deadline).classify(project_id=project_id, availability_zone=availability_zone)
         snapshot.provider_roots(client, deadline)
         verdicts: dict[_Demand, FlavorCapacityInfo] = {}
@@ -928,7 +1026,19 @@ def _project(
             if demand not in verdicts:
                 try:
                     view = snapshot.shape(client, deadline, demand.shape)
-                    verdicts[demand] = _verdict(demand, hosts, view, snapshot, client, deadline)
+                    regions: list[dict] = []
+                    verdicts[demand] = _verdict(
+                        demand,
+                        hosts,
+                        view,
+                        snapshot,
+                        client,
+                        deadline,
+                        supported_hosts=supported_hosts,
+                        regions=regions if region_results is not None else None,
+                    )
+                    if region_results is not None:
+                        region_results[flavor_id] = regions
                 except _CachedShapeFailure:
                     # Logged when the shape first failed; polls sharing the snapshot must not repeat it per flavor.
                     verdicts[demand] = _unavailable(demand, checked_at)
@@ -969,32 +1079,62 @@ async def evaluate_flavor_capacities(
     project_id: str,
     availability_zone: str | None,
     fresh: bool = True,
+    supported_hosts: list[dict] | None = None,
+    region_results: dict[str, list[dict]] | None = None,
 ) -> dict[str, FlavorCapacityInfo]:
     """Project one VM of each flavor onto read-only Nova/Placement state.
 
-    ``fresh`` (create admission) reads now. Discovery lists pass ``fresh=False`` and may
-    reuse a snapshot up to ``_SNAPSHOT_TTL_SECONDS`` old, built single-flight per process.
+    ``fresh`` (create admission) reads now. Discovery lists use a bounded persisted
+    observation and never initiate operator reads when it is missing or expired.
     """
     flavor_list = list(flavors)
     if not flavor_list:
         return {}
-    demands, unknown_alias = _parse_all(flavor_list)
+    profiles = []
+    policy = None
+    if not fresh or any(
+        (flavor.extra_specs or {}).get("afterglow:managed_by") == "domain-compute-v1" for flavor in flavor_list
+    ):
+        try:
+            policy = await flavor_automation_policy.load_policy()
+            profiles = policy["gpu_profiles"]
+        except Exception:
+            checked_at = _now()
+            return {flavor.id: _unavailable(None, checked_at) for flavor in flavor_list}
+    demands, unknown_alias = _parse_all(flavor_list, profiles)
     if unknown_alias and await _refresh_gpu_catalog():
-        demands, _ = _parse_all(flavor_list)
+        demands, _ = _parse_all(flavor_list, profiles)
     zone = availability_zone or None
+    # A cancelled to_thread keeps running. Never expose its partial/late writes
+    # to the caller: regions become authority only after the whole pass returns.
+    staged_regions: dict[str, list[dict]] = {}
 
     async def run() -> dict[str, FlavorCapacityInfo]:
         if fresh:
             return await asyncio.to_thread(
-                _project, demands, project_id=project_id, availability_zone=zone, snapshot=_Snapshot()
+                _project,
+                demands,
+                project_id=project_id,
+                availability_zone=zone,
+                snapshot=_Snapshot(),
+                supported_hosts={host["id"]: host for host in supported_hosts} if supported_hosts is not None else None,
+                region_results=staged_regions if region_results is not None else None,
             )
-        async with _discovery_lock():
-            return await asyncio.to_thread(
-                _project, demands, project_id=project_id, availability_zone=zone, snapshot=_discovery_snapshot()
-            )
+        from app.services.flavor_discovery import capacity_client
+
+        client = await capacity_client(policy)
+        if client is None:
+            checked_at = _now()
+            return {flavor_id: _unavailable(demand, checked_at) for flavor_id, demand in demands.items()}
+        return await asyncio.to_thread(
+            _project, demands, project_id=project_id, availability_zone=zone, snapshot=_Snapshot(), client=client
+        )
 
     try:
-        return await asyncio.wait_for(run(), timeout=_DEADLINE_SECONDS + _REQUEST_TIMEOUT_SECONDS)
+        capacities = await asyncio.wait_for(run(), timeout=_DEADLINE_SECONDS + _REQUEST_TIMEOUT_SECONDS)
+        if region_results is not None:
+            region_results.update(staged_regions)
+        return capacities
     except TimeoutError:
         _logger.warning("flavor host capacity evaluation exceeded its deadline")
         checked_at = _now()

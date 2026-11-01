@@ -14,9 +14,8 @@ from requests.adapters import BaseAdapter
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.cloud_shell import router as cloud_shell_router
-from app.api.deps import get_token_info
 from app.config import Settings
-from app.services import cloud_shell, zun
+from app.services import cloud_shell, cloud_shell_authority, keystone, session_store, zun
 
 PROJECT_ID = "11111111-1111-4111-8111-111111111111"
 SERVICE_PROJECT_ID = "22222222-2222-4222-8222-222222222222"
@@ -47,6 +46,9 @@ def token_info() -> dict:
         "project_id": PROJECT_ID,
         "project_name": "project-a",
         "roles": ["member"],
+        "refresh_jti": "browser-session-a",
+        "domain_id": "working-domain",
+        "identity_domain_id": "identity-home",
     }
 
 
@@ -60,6 +62,36 @@ def scoped_token() -> dict:
         "expires_at": "2099-01-01T00:00:00+00:00",
         "roles": ["member"],
     }
+
+
+@pytest.fixture(autouse=True)
+async def browser_login(monkeypatch):
+    await session_store.store_session(
+        "browser-session-a",
+        "native-login-root",
+        PROJECT_ID,
+        "user-a",
+        int(time.time()) + 600,
+        domain_id="working-domain",
+        identity_domain_id="identity-home",
+    )
+    monkeypatch.setattr(
+        cloud_shell_authority,
+        "inspect_native_token",
+        lambda token, binding: {
+            "user_id": binding["user_id"],
+            "domain_id": binding["domain_id"],
+            "identity_domain_id": binding["identity_domain_id"],
+            "email": "alice@example.test",
+        },
+    )
+    monkeypatch.setattr("app.api.identity.auth._enforce_session_policy", AsyncMock())
+    monkeypatch.setattr(keystone, "revoke_token", lambda token: None)
+
+
+async def approved_lease():
+    issued = await cloud_shell.issue_cloud_shell_ticket(token_info())
+    return await cloud_shell.consume_cloud_shell_ticket(issued["ticket"])
 
 
 def test_enabled_cloud_shell_requires_dedicated_service_project():
@@ -120,7 +152,21 @@ async def test_ticket_reservation_blocks_same_user_in_another_project():
         return {**scoped_token(), "project_id": project_id, "project_name": project_id}
 
     first = token_info()
-    second = {**token_info(), "project_id": other_project, "project_name": "project-b"}
+    second = {
+        **token_info(),
+        "project_id": other_project,
+        "project_name": "project-b",
+        "refresh_jti": "browser-session-b",
+    }
+    await session_store.store_session(
+        "browser-session-b",
+        "native-root-b",
+        other_project,
+        "user-a",
+        int(time.time()) + 600,
+        domain_id="working-domain",
+        identity_domain_id="identity-home",
+    )
     with (
         patch("app.services.cloud_shell.get_settings", return_value=cloud_settings()),
         patch("app.services.cloud_shell.keystone.validate_token", side_effect=validate),
@@ -368,6 +414,10 @@ def test_cloud_shell_zun_lifecycle_passes_stock_member_api_gates():
         user_fingerprint=cloud_shell.user_fingerprint("user-a"),
         workspace_fingerprint=cloud_shell.workspace_fingerprint("user-a", PROJECT_ID),
         active_value="active",
+        family_id="browser-session-a",
+        domain_id="working-domain",
+        identity_domain_id="identity-home",
+        scope_revision=0,
     )
     labels = cloud_shell._container_labels(lease, int(time.time()) + 600, settings)
 
@@ -402,19 +452,15 @@ async def test_image_acquisition_failure_never_falls_back_or_removes_home(failur
     session = ks_session.Session(auth=NoAuth(endpoint="http://zun.test"), session=http)
     conn = SimpleNamespace(config=None, session=session, close=http.close)
     settings = cloud_settings(cloud_shell_image_pull_policy="always" if failure == "pull-policy-denied" else "")
-    lease = cloud_shell.CloudShellLease(
-        session_id="image-failure",
-        user_id="user-a",
-        username="alice",
-        project_id=PROJECT_ID,
-        project_name="project-a",
-        token="caller-token",
-        token_expires_at=int(time.time()) + 600,
-        user_fingerprint="user-fingerprint",
-        workspace_fingerprint="workspace-fingerprint",
-        active_value="active",
-    )
+    with (
+        patch("app.services.cloud_shell.get_settings", return_value=settings),
+        patch("app.services.cloud_shell.keystone.validate_token", return_value=scoped_token()),
+    ):
+        lease = await approved_lease()
     home = cloud_shell.WorkspaceRecord(volume_id="retained-home", status="available", size_gib=5, attachments=())
+    conn.block_storage = FakeBlockStorage(
+        [managed_volume(lease.workspace_fingerprint, volume_id="retained-home", settings=settings)]
+    )
     status = AsyncMock()
     with (
         patch("app.services.cloud_shell.get_settings", return_value=settings),
@@ -446,6 +492,10 @@ def test_container_cleanup_refuses_tampered_managed_labels():
         user_fingerprint=cloud_shell.user_fingerprint("user-a"),
         workspace_fingerprint=cloud_shell.workspace_fingerprint("user-a", PROJECT_ID),
         active_value="active",
+        family_id="browser-session-a",
+        domain_id="working-domain",
+        identity_domain_id="identity-home",
+        scope_revision=0,
     )
     labels = cloud_shell._container_labels(lease, int(time.time()) + 600, settings)
     tampered = {**labels, "afterglow.signature": "0" * 64}
@@ -514,26 +564,6 @@ async def test_reconciler_does_not_delete_when_redis_is_uncertain():
     delete.assert_not_called()
 
 
-def test_ticket_endpoint_returns_only_opaque_transport_fields():
-    app = FastAPI()
-    app.include_router(cloud_shell_router, prefix="/api/v1/cloud-shell")
-    app.dependency_overrides[get_token_info] = token_info
-    issued = {
-        "ticket": "opaque-ticket-value",
-        "websocket_path": "/api/v1/cloud-shell/ws",
-        "expires_at": int(time.time()) + 60,
-    }
-    with (
-        patch("app.api.cloud_shell.cloud_shell.issue_cloud_shell_ticket", new=AsyncMock(return_value=issued)),
-        patch("app.api.cloud_shell.cloud_shell.record_audit", new=AsyncMock()),
-        TestClient(app) as client,
-    ):
-        result = client.post("/api/v1/cloud-shell/tickets")
-    assert result.status_code == 201
-    assert result.json() == issued
-    assert "token" not in json.dumps(result.json())
-
-
 def test_websocket_rejects_untrusted_origin_before_ticket_consumption():
     app = FastAPI()
     app.include_router(cloud_shell_router, prefix="/api/v1/cloud-shell")
@@ -592,7 +622,19 @@ class _CloudNetworkAdapter(BaseAdapter):
                     "id": "service-default",
                     "project_id": SERVICE_PROJECT_ID,
                     "name": "default",
-                    "security_group_rules": [{"direction": "ingress", "remote_group_id": "service-default"}],
+                    "security_group_rules": [
+                        {
+                            "id": "egress-v4",
+                            "security_group_id": "service-default",
+                            "direction": "egress",
+                            "ethertype": "IPv4",
+                            "protocol": None,
+                            "port_range_min": None,
+                            "port_range_max": None,
+                            "remote_ip_prefix": "0.0.0.0/0",
+                            "remote_group_id": None,
+                        }
+                    ],
                 }
             ]
         )
@@ -690,8 +732,8 @@ async def test_cloud_network_defaults_use_service_scope_and_own_default_group_ru
 async def test_cloud_security_group_id_wins_over_same_named_group():
     conn, _ = _network_connection(
         groups=[
-            {"id": "sg-id", "project_id": SERVICE_PROJECT_ID, "name": "custom"},
-            {"id": "other-id", "project_id": SERVICE_PROJECT_ID, "name": "sg-id"},
+            {"id": "sg-id", "project_id": SERVICE_PROJECT_ID, "name": "custom", "security_group_rules": []},
+            {"id": "other-id", "project_id": SERVICE_PROJECT_ID, "name": "sg-id", "security_group_rules": []},
         ]
     )
     settings = cloud_settings(cloud_shell_security_group="sg-id")
@@ -723,18 +765,11 @@ async def test_cloud_security_group_rejects_foreign_or_ambiguous_default(groups)
 async def test_cloud_network_failure_precedes_home_creation(owner, gateway):
     conn, _ = _network_connection(owner=owner, gateway=gateway)
     settings = cloud_settings(cloud_shell_security_group="default")
-    lease = cloud_shell.CloudShellLease(
-        session_id="session-a",
-        user_id="user-a",
-        username="alice",
-        project_id=PROJECT_ID,
-        project_name="project-a",
-        token="caller-token",
-        token_expires_at=int(time.time()) + 600,
-        user_fingerprint="user-fingerprint",
-        workspace_fingerprint="workspace-fingerprint",
-        active_value="active",
-    )
+    with (
+        patch("app.services.cloud_shell.get_settings", return_value=settings),
+        patch("app.services.cloud_shell.keystone.validate_token", return_value=scoped_token()),
+    ):
+        lease = await approved_lease()
     with (
         patch("app.services.cloud_shell.get_settings", return_value=settings),
         patch("app.services.cloud_shell.keystone.get_cloud_shell_project_connection", return_value=conn),

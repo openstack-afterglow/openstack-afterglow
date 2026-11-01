@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
-	import { ActivityIndicator, Alert, Button, CompactResourceCard, ResponsiveTable, StatusChip } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, CompactResourceCard, ResponsiveTable, StatusChip } from '$lib/components/ui';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
@@ -182,7 +183,7 @@
 							disabled={!selectedVolumeId || s.actioning === 'attach-vol'}
 							class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 						>
-							{#if s.actioning === 'attach-vol'}<ActivityIndicator size="xs" label={t('volumes.attaching')} />{:else}{t('volumes.attach')}{/if}
+							{#if s.actioning === 'attach-vol'}<LoadingState variant="control" label={t('volumes.attaching')} />{:else}{t('volumes.attach')}{/if}
 						</button>
 					</div>
 				{/if}
@@ -207,7 +208,7 @@
 							disabled={!newVolName.trim() || newVolSize < 1 || s.actioning === 'create-vol'}
 							class="text-xs text-green-400 hover:text-green-300 px-3 py-1.5 border border-green-900 hover:border-green-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 whitespace-nowrap"
 						>
-							{#if s.actioning === 'create-vol'}<ActivityIndicator size="xs" label={t('volumes.creating')} />{:else}{t('volumes.createAndAttach')}{/if}
+							{#if s.actioning === 'create-vol'}<LoadingState variant="control" label={t('volumes.creating')} />{:else}{t('volumes.createAndAttach')}{/if}
 						</button>
 					</div>
 				</div>
@@ -223,12 +224,12 @@
 				{#each s.volumes as vol (vol.volume_id)}
 					{@const reason = expansionReason(vol.volume_id)}
 					<CompactResourceCard>
-						<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><a class="min-h-11 min-w-0 break-all text-sm font-medium text-warm-text hover:text-warm-text-hover" title={vol.name || vol.volume_id} href="/dashboard/volumes/{vol.volume_id}"><span class="line-clamp-2">{vol.name || vol.volume_id.slice(0, 12) + '...'}</span></a>{#if vol.status}<StatusChip status={vol.status} />{/if}</div>
+						<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><a class="min-h-11 min-w-0 break-all text-sm font-medium text-warm-text hover:text-warm-text-hover" title={vol.name || vol.volume_id} href="/dashboard/volumes/{vol.volume_id}"><span class="line-clamp-2">{vol.name || vol.volume_id.slice(0, 12) + '...'}</span></a>{#if vol.status}<StatusChip status={vol.status} kind="volume" />{/if}</div>
 						<p class="break-all text-xs text-ink-2">{#if vol.size}{vol.size}GB · {/if}{vol.device}</p>
 						{#snippet actions()}
-							<Button variant="secondary" size="sm" onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)} disabled={s.actioning === 'dot-' + vol.volume_id} title={t('volumes.toggleTitle')}>{#if s.actioning === 'dot-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.updating')} />{:else}{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}{/if}</Button>
-							<Button variant="secondary" size="sm" onclick={() => openExpansion(vol.volume_id)} disabled={!!reason || !!extendLoading || !!s.actioning} ariaBusy={extendLoading === vol.volume_id} title={reason ? t(reason) : t('volumes.extend')}>{#if extendLoading === vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.extendLoading')} />{:else}{t('volumes.extend')}{/if}</Button>
-							<Button variant="secondary" size="sm" onclick={() => s.detachVolume(vol.volume_id)} disabled={s.actioning === 'detach-' + vol.volume_id}>{#if s.actioning === 'detach-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)} disabled={s.actioning === 'dot-' + vol.volume_id} title={t('volumes.toggleTitle')}>{#if s.actioning === 'dot-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.updating')} />{:else}{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => openExpansion(vol.volume_id)} disabled={!!reason || !!extendLoading || !!s.actioning} ariaBusy={extendLoading === vol.volume_id} title={reason ? t(reason) : t('volumes.extend')}>{#if extendLoading === vol.volume_id}<LoadingState variant="control" label={t('volumes.extendLoading')} />{:else}{t('volumes.extend')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => s.detachVolume(vol.volume_id)} disabled={s.actioning === 'detach-' + vol.volume_id}>{#if s.actioning === 'detach-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}</Button>
 						{/snippet}
 						{#snippet details()}<p class="break-all font-mono text-xs">{vol.volume_id}</p>{/snippet}
 					</CompactResourceCard>
@@ -247,7 +248,7 @@
 						{/if}
 						<span class="text-xs font-mono text-ink-2">{vol.device}</span>
 						{#if vol.status}
-							<StatusChip status={vol.status} />
+							<StatusChip status={vol.status} kind="volume" />
 						{/if}
 						<button
 							type="button"
@@ -260,7 +261,7 @@
 									: 'text-ink-2 bg-surface-sunken hover:bg-surface-selected border border-line-2'}"
 						>
 							{#if s.actioning === 'dot-' + vol.volume_id}
-								<ActivityIndicator size="xs" label={t('volumes.updating')} />
+								<LoadingState variant="control" label={t('volumes.updating')} />
 							{:else}
 								{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}
 							{/if}
@@ -276,7 +277,7 @@
 							title={reason ? t(reason) : t('volumes.extend')}
 						>
 							{#if extendLoading === vol.volume_id}
-								<ActivityIndicator size="xs" label={t('volumes.extendLoading')} />
+								<LoadingState variant="control" label={t('volumes.extendLoading')} />
 							{:else}
 								{t('volumes.extend')}
 							{/if}
@@ -286,7 +287,7 @@
 						disabled={s.actioning === 'detach-' + vol.volume_id}
 						class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 					>
-						{#if s.actioning === 'detach-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}
+						{#if s.actioning === 'detach-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}
 					</button>
 					</div>
 				</div>

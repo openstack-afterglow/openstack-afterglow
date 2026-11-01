@@ -62,15 +62,19 @@ function renderTable(overrides: Partial<{
 }
 
 describe('InstancesTable selection', () => {
-	it('exposes resource columns through native table semantics', () => {
-		renderTable();
-		expect(screen.getByRole('table', { name: '인스턴스 목록' })).toBeTruthy();
-		for (const heading of ['이름', '상태', '이미지 / 플레이버', 'IP', '라이브러리', '전략', '작업']) {
-			expect(screen.getByRole('columnheader', { name: heading })).toBeTruthy();
-		}
-		expect(screen.getAllByRole('row')).toHaveLength(instances.length + 1);
+	it.each([true, false])('renders verified specs and historical names without changing row identity in desktop=%s', async desktop => {
+		const onSelect = vi.fn();
+		const cpu = { ...instances[0], flavor_name: 'm1.small', flavor_display_name: 'cpu.2c_1.5g' };
+		const gpu = { ...instances[1], flavor_name: 'gpu.render', flavor_display_name: null };
+		renderTable({ instances: [cpu, gpu], onSelect });
+		await setDesktop(desktop);
+		expect(screen.getByText('2 vCPU · 1.5 GiB RAM')).toBeTruthy();
+		expect(screen.getByText('gpu.render')).toBeTruthy();
+		expect(screen.queryByText('m1.small')).toBeNull();
+		expect(screen.queryByTitle('m1.small')).toBeNull();
+		await fireEvent.click(screen.getByText('first-instance'));
+		expect(onSelect).toHaveBeenCalledWith(cpu.id);
 	});
-
 	it('shows selectable row checkboxes and forwards select-all state', async () => {
 		const onToggleAll = vi.fn();
 		renderTable({ selectedIds: new Set(['instance-1']), onToggleAll });

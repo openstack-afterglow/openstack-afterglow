@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afterglow-zun-cloud-shell"
+version = "1.0.0"
+description = "Pinned native Zun Cloud Shell runtime enforcement"
+requires-python = ">=3.10"
+dependencies = ["oslo.config", "oslo.privsep", "oslo.concurrency"]
+
+[tool.setuptools.packages.find]
+include = ["afterglow_zun_cloud_shell*"]

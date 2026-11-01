@@ -92,11 +92,13 @@ class InventoryState:
         self.system_grants = []
         self.assignment_errors = {}
         self.settings = SimpleNamespace(
-            **{f"service_{gate}_enabled": True for _, gate in inventory.CATALOG.values() if gate}
+            os_auth_url="https://keystone.test/v3",
+            **{f"service_{gate}_enabled": True for _, gate in inventory.CATALOG.values() if gate},
         )
         self.data, self.errors, self.pages, self.package_pages = {}, {}, {}, {}
         self.calls, self.events, self.mutations, self.connections = Counter(), [], [], []
         self.identity_override = {}
+        self.native_roles = {}
         self.contexts = {}
         self.membership_error = None
 
@@ -138,7 +140,9 @@ class InventoryState:
             project_name=native_project["name"],
             project_domain_id=native_project["domain_id"],
             auth_token=token,
-            role_names=[role["name"] for role in self.directory.roles if role["id"] in role_ids],
+            role_names=self.native_roles.get(
+                project, [role["name"] for role in self.directory.roles if role["id"] in role_ids]
+            ),
             expires=None,
         )
 
@@ -599,11 +603,14 @@ async def test_summary_fresh_membership_before_cache_and_system_admin_not_global
     # Missing membership denies packages; the source administrator flag alone does not.
     assert first.json()["projects"][-1]["resources"]["packages"]["state"] == "denied"
     state.roles["p-a"] = []
+    state.subject["token"] = "renewed-after-revocation"
+    event_start = len(state.events)
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
     assert second.json()["projects"][0]["resources"]["networks"]["state"] == "denied"
     assert second.json()["projects"][0]["resources"]["packages"]["state"] == "denied"
     assert state.calls["p-a", "networks"] == 1
+    assert ("membership", "p-a", "user-a") in state.events[event_start:]
     assert not any(project == "not-member" for project, _ in state.calls)
     assert not any(event[:2] == ("package", "not-member") for event in state.events)
     state.memberships = [{"id": "p-b", "name": "Beta", "domain_id": "tenant-a"}]
@@ -638,7 +645,7 @@ async def test_summary_native_policy_revocation_cannot_serve_prior_inventory(inv
 
 
 @pytest.mark.asyncio
-async def test_summary_cache_token_user_project_partition_refresh_and_bypass(inventory_http):
+async def test_summary_cache_identity_partition_refresh_and_bypass(inventory_http):
     state, client = inventory_http
     state.data["p-a", "networks"] = [{"id": "first", "project_id": "p-a"}]
     first = await client.get(URL + "?cache=true")
@@ -652,9 +659,18 @@ async def test_summary_cache_token_user_project_partition_refresh_and_bypass(inv
     assert bypass.json()["projects"][0]["resources"]["networks"]["count"] == 0
     after = await client.get(URL + "?cache=true")
     assert after.json() == refresh.json()
+    reads = state.calls["p-a", "networks"]
     state.subject["token"] = "source-b"
+    state.native_roles["p-a"] = list(reversed(state.native_access("unused", "p-a").role_names))
+    event_start = len(state.events)
     changed_token = await client.get(URL + "?cache=true")
-    assert changed_token.json()["projects"][0]["resources"]["networks"]["count"] == 0
+    assert changed_token.json() == refresh.json()
+    assert state.calls["p-a", "networks"] == reads
+    assert ("connection", "source-b", "p-a") in state.events
+    renewed_events = state.events[event_start:]
+    assert ("membership", "p-a", "user-a") in renewed_events
+    assert ("identity", "p-a") in renewed_events
+    assert all(event[1].startswith("afterglow:user-inventory:v2:") for event in state.events if event[0] == "cache")
     state.data["p-a", "networks"] = [{"id": "other-context", "project_id": "p-a"}]
     state.subject["user_id"] = "user-b"
     changed_user = await client.get(URL + "?cache=true")
@@ -665,6 +681,53 @@ async def test_summary_cache_token_user_project_partition_refresh_and_bypass(inv
     switched = await client.get(URL + "?cache=true")
     assert switched.json()["current_project_id"] == "p-b"
     assert_contract(switched.json())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", ["native_roles", "assignment_roles", "identity_domain", "target_domain", "project", "authority"]
+)
+async def test_summary_cache_partitions_current_native_scope(inventory_http, change):
+    state, client = inventory_http
+    state.memberships = state.memberships[:1]
+    state.data["p-a", "networks"] = [{"id": "earlier-response", "project_id": "p-a"}]
+    first = await client.get(URL + "?cache=true")
+    assert first.status_code == 200
+    assert first.json()["projects"][0]["resources"]["networks"]["items"][0]["id"] == "earlier-response"
+    prior_keys = {event[1] for event in state.events if event[0] == "cache"}
+    event_start = len(state.events)
+    state.subject["token"] = "renewed-native-token"
+    project_id = "p-a"
+    if change == "native_roles":
+        # Native token visibility can differ even while the live assignment graph permits membership.
+        state.native_roles["p-a"] = ["reader"]
+    elif change == "assignment_roles":
+        state.roles["p-a"] = ["reader"]
+    elif change == "identity_domain":
+        state.subject["identity_domain_id"] = "tenant-b"
+    elif change == "target_domain":
+        state.subject["domain_id"] = "tenant-b"
+        state.memberships[0]["domain_id"] = "tenant-b"
+    elif change == "project":
+        project_id = "p-c"
+        state.subject["project_id"] = project_id
+        state.memberships[0]["id"] = project_id
+        state.roles[project_id] = list(state.roles["p-a"])
+    elif change == "authority":
+        state.settings.os_auth_url = "https://other-keystone.test/v3"
+    state.data[project_id, "networks"] = [{"id": "current-response", "project_id": project_id}]
+    second = await client.get(URL + "?cache=true")
+    assert second.status_code == 200
+    resource = second.json()["projects"][0]["resources"]["networks"]
+    assert resource["state"] == "ready"
+    assert [item["id"] for item in resource["items"]] == ["current-response"]
+    assert "earlier-response" not in second.text
+    new_events = state.events[event_start:]
+    new_keys = {event[1] for event in new_events if event[0] == "cache"}
+    assert new_keys and prior_keys.isdisjoint(new_keys)
+    assert ("membership", project_id, "user-a") in new_events
+    assert ("identity", project_id) in new_events
+    assert state.calls[project_id, "networks"] == (1 if change == "project" else 2)
 
 
 @pytest.mark.asyncio
@@ -890,6 +953,7 @@ async def test_summary_rechecks_rescoped_identity_even_with_warm_cache(inventory
     assert first.status_code == 200
     reads = {key: count for key, count in state.calls.items() if key[0] == "p-a"}
     state.identity_override["p-a"] = ("user-a", "foreign")
+    state.subject["token"] = "renewed-after-identity-change"
     second = await client.get(URL + "?cache=true")
     assert second.status_code == 200
     assert all(value["state"] == "denied" for value in second.json()["projects"][0]["resources"].values())

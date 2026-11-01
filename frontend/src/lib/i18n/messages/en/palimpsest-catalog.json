@@ -20,7 +20,7 @@
   "previous": "Previous page",
   "next": "Next page",
   "empty.title": "No layers recorded in this source.",
-  "empty.help": "Switch source or use the existing build controls below.",
+  "empty.help": "Switch sources or start a new build in Build studio.",
   "empty.search": "No search results.",
   "empty.searchHelp": "Clear the search or choose another source.",
   "error.denied": "The current caller cannot read this inventory. Check administrator authority.",
@@ -76,6 +76,6 @@
   "children.more": "More direct children exist. This response is bounded.",
   "relations.none": "No relationships returned",
   "bundles": "Referencing bundles / profiles",
-  "bundles.help": "Only recorded references; links open the managed profiles below.",
+  "bundles.help": "Only recorded references are shown; links open the Profiles tab.",
   "bundles.none": "No recorded bundle / profile references (not proof of no use)"
 }

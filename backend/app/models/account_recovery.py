@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import VARCHAR, DateTime, Index
+from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -17,11 +18,18 @@ class AccountRecovery(Base):
     identity_domain_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
     original_email: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
     email: Mapped[str] = mapped_column(VARCHAR(255), nullable=False)
+    native_identity_revision: Mapped[str | None] = mapped_column(VARCHAR(128), nullable=True)
     status: Mapped[str] = mapped_column(VARCHAR(24), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql", "mariadb"), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql", "mariadb"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql", "mariadb"),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
     )
 
     __table_args__ = (Index("idx_account_recovery_user", "user_id", "status"),)

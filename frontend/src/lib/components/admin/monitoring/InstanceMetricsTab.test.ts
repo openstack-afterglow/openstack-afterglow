@@ -9,6 +9,12 @@ const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', projectId: 'admin-project', userId: 'admin-a', sessionId: 'session-a', isSystemAdmin: true }),
+	authReady: writable(true),
+	projectSwitching: writable(false),
+	getAuthVerificationEpoch: () => 0,
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	observedProjectPermissions: writable({ loading: false, error: null, permissions: null }),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60], setBoost: vi.fn() }),
@@ -51,7 +57,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setLocale('ko'); });
 
 describe('administrator instance telemetry context', () => {
-	it('requests each selected instance in its owning project and discards a previous instance response', async () => {
+	it('uses explicit administrator metrics in caller context and discards a previous instance response', async () => {
 		const oldMetrics = Promise.withResolvers<MetricBatchFixture>();
 		mocks.get.mockImplementation((path: string) => {
 			if (path.startsWith('/api/v1/admin/all-instances')) return Promise.resolve(list([instance('vm-a'), instance('vm-b', 'tenant-b')]));
@@ -62,9 +68,9 @@ describe('administrator instance telemetry context', () => {
 		});
 		render(InstanceMetricsTab, { token: 'token-a', projectId: 'admin-project' });
 		await fireEvent.click(await screen.findByRole('button', { name: /vm-a/ }));
-		await waitFor(() => expect(mocks.get.mock.calls.some(([path, token, project]) => path.includes('/instances/vm-a/metrics-batch') && token === 'token-a' && project === 'tenant-a')).toBe(true));
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path, token, project]) => path.includes('/admin/instances/vm-a/metrics-batch') && token === 'token-a' && project === 'admin-project')).toBe(true));
 		await fireEvent.click(screen.getByRole('button', { name: /vm-b/ }));
-		await waitFor(() => expect(mocks.get.mock.calls.some(([path, token, project]) => path.includes('/instances/vm-b/metrics-batch') && token === 'token-a' && project === 'tenant-b')).toBe(true));
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path, token, project]) => path.includes('/admin/instances/vm-b/metrics-batch') && token === 'token-a' && project === 'admin-project')).toBe(true));
 		oldMetrics.resolve(metrics(97.345));
 		await oldMetrics.promise;
 		await tick();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
@@ -215,7 +216,7 @@
 					{@render fields()}
 					<div class="form-actions">
 						<Button variant="accent" type="submit" disabled={!canSubmit}>
-							{saving ? t('projects.saving') : t('projects.saveChanges')}
+							{#if saving}<LoadingState variant="control" label={t('projects.saving')} />{:else}{t('projects.saveChanges')}{/if}
 						</Button>
 					</div>
 				</form>

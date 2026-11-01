@@ -1,15 +1,18 @@
 export interface Overview {
-	hypervisor_count: number;
-	running_vms: number;
-	gpu_instances: number;
-	instance_stats?: { total: number; active: number; shutoff: number; error: number; other: number };
-	vcpus: { total: number; allowed: number; used: number };
-	ram_gb: { total: number; used: number };
-	disk_gb: { total: number; used: number };
-	containers_count: number;
-	file_storage_count: number;
-	database_instances_count: number;
-	object_storage_containers_count: number;
+	collected_at: string;
+	unavailable_sections: string[];
+	disabled_sections: string[];
+	hypervisor_count: number | null;
+	running_vms: number | null;
+	gpu_instances: number | null;
+	instance_stats?: { total: number; active: number; shutoff: number; error: number; other: number } | null;
+	vcpus: { total: number | null; allowed: number | null; used: number | null };
+	ram_gb: { total: number | null; used: number | null };
+	disk_gb: { total: number | null; used: number | null; volumes: number | null; images: number | null };
+	containers_count: number | null;
+	file_storage_count: number | null;
+	database_instances_count: number | null;
+	object_storage_containers_count: number | null;
 }
 
 export interface VersionInfo {

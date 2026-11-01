@@ -3,7 +3,7 @@
   import type { DbBackup, DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -75,7 +75,7 @@
         {#snippet details()}<p class="text-xs break-all">{backup.id}</p><p class="text-xs">{tr('labels.created')}: {formatDate(backup.created_at)}</p>{/snippet}
         {#snippet actions()}
           <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-1 rounded">{tr('actions.restore')}</button>
-          <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === backup.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+          <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === backup.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
         {/snippet}
       </CompactResourceCard>
     {/each}
@@ -121,7 +121,7 @@
           <td class="px-4 py-3">
             <div class="flex justify-end gap-1">
               <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-0.5 rounded transition-colors">{tr('actions.restore')}</button>
-              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors">{#if deleting === backup.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors">{#if deleting === backup.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             </div>
           </td>
         </tr>

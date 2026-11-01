@@ -3,8 +3,7 @@
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import FileIcon from '$lib/components/ui/FileIcon.svelte';
 	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -31,10 +30,27 @@
 		arrivalContainer = name;
 		arrivals.reset();
 	});
+
+	// Retain a settled directory only while refreshing that exact listing.
+	let completedListing = $state<string | null>(null);
+	let completedObjects = $state.raw<typeof s.objects | null>(null);
+	let pendingListing = '';
+	let listingWasLoading = true;
+	$effect.pre(() => {
+		const owner = JSON.stringify([s.containerName, s.prefix]);
+		if (s.loading) pendingListing = owner;
+		else if (listingWasLoading) {
+			completedListing = pendingListing || owner;
+			completedObjects = s.objects;
+		}
+		listingWasLoading = s.loading;
+	});
+	const retainedListing = $derived(completedObjects === s.objects && completedListing === JSON.stringify([s.containerName, s.prefix]));
 </script>
 
-{#if s.loading}
-	<LoadingSkeleton variant="table" rows={5} />
+{#if s.loading && retainedListing}<LoadingState variant="inline" />{/if}
+{#if s.loading && !retainedListing}
+	<LoadingState variant="surface" />
 {:else if s.treeRows.length === 0}
 	<div class="text-ink-2 text-sm py-8 text-center">
 		<svg class="w-12 h-12 mx-auto text-ink-2 mb-3" viewBox="0 0 20 20" fill="currentColor">
@@ -58,7 +74,7 @@
    {#each s.treeRows as row (row.obj.name)}
     <div class="min-w-0 space-y-1">
      {#if row.isDir}
-      {#if !row.fullPath && (!s.filterText.trim() || s.searchScope === 'expanded')}<button onclick={() => s.toggleExpand(row.obj.name)} aria-busy={row.isLoading} class="min-h-11 px-2 text-xs text-ink-2">{#if row.isLoading}<ActivityIndicator size="xs" label={commonT('state.loading')} />{:else}{row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}{/if} · {s.baseName(row.obj.name)}</button>{/if}
+      {#if !row.fullPath && (!s.filterText.trim() || s.searchScope === 'expanded')}<button onclick={() => s.toggleExpand(row.obj.name)} aria-busy={row.isLoading} class="min-h-11 px-2 text-xs text-ink-2">{#if row.isLoading}<LoadingState variant="control" label={commonT('state.loading')} />{:else}{row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}{/if} · {s.baseName(row.obj.name)}</button>{/if}
       <ObjectFolderCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} />
      {:else}<ObjectFileCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} compact />{/if}
     </div>
@@ -141,7 +157,7 @@
 										class="w-4 h-4 shrink-0 flex items-center justify-center text-ink-2 hover:text-ink-1 transition-colors"
 									>
 										{#if row.isLoading}
-											<ActivityIndicator variant="spinner" size="xs" />
+											<LoadingState variant="control" label="" />
 										{:else}
 											<svg class="w-3 h-3 transition-transform {row.isExpanded ? 'rotate-90' : ''}" viewBox="0 0 20 20" fill="currentColor">
 												<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
@@ -183,7 +199,7 @@
 										class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors disabled:cursor-default"
 									>
 										{#if downloadPreparing}
-											<ActivityIndicator variant="download" size="sm" />
+											<LoadingState variant="control" label="" />
 										{:else}
 											<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 										{/if}

@@ -22,8 +22,12 @@
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import FormModal from '$lib/components/ui/FormModal.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
+  import UsageScheduleFields from '$lib/components/instance/UsageScheduleFields.svelte';
+  import { t as usageText } from '$lib/i18n/ns/usage-schedule';
+  import { defaultUsageDraft, requiresUsageSchedule, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   let { identity, onGuide }: { identity: AssetIdentity | null; onGuide: () => void } = $props();
   const permissionReady = $derived(!!$projectPermissions.permissions && !$projectPermissions.loading && !$projectPermissions.error);
@@ -35,6 +39,14 @@
   let notice = $state<'copied' | 'copyFailed' | ''>('');
   let cloudOpen = $state(false);
   let flavor = $state(''), network = $state(''), key = $state(''), serverName = $state('');
+  let usageSchedule = $state(defaultUsageDraft());
+  const selectedFlavor = $derived(assets.resources?.flavors.find(item => item.id === flavor));
+  const scheduleRequired = $derived(requiresUsageSchedule(selectedFlavor));
+  const scheduleReady = $derived(!scheduleRequired || !usageDraftError(usageSchedule));
+  function selectFlavor(value: string) {
+    if (flavor !== value) usageSchedule = defaultUsageDraft();
+    flavor = value;
+  }
   let localMethod = $state('cli');
   let unpackConfirmed = $state(false);
   const requiresUnpack = $derived(!!assets.selection && assets.selection.source !== 'environments'
@@ -64,12 +76,12 @@
     untrack(() => assets.bind());
     if (!allowed || !identity) cloudOpen = false;
   });
-  $effect(() => { selectionKey; untrack(() => { notice = ''; cloudOpen = false; flavor = ''; network = ''; key = ''; serverName = ''; unpackConfirmed = false; }); });
+  $effect(() => { selectionKey; untrack(() => { notice = ''; cloudOpen = false; flavor = ''; network = ''; key = ''; serverName = ''; usageSchedule = defaultUsageDraft(); unpackConfirmed = false; }); });
   onMount(() => {
     let active = true, lastOwner: string | null = null;
     const stopOwner = auth.subscribe((state) => {
-      const owner = JSON.stringify([state.userId, state.projectId, state.sessionId]);
-      if (lastOwner !== null && owner !== lastOwner) { assets.invalidateActor(); query = ''; }
+      const owner = sessionScopeKey(state);
+      if (lastOwner !== null && owner !== lastOwner) { assets.invalidateActor(); query = ''; cloudOpen = false; flavor = ''; network = ''; key = ''; serverName = ''; usageSchedule = defaultUsageDraft(); }
       lastOwner = owner;
       queueMicrotask(() => { if (active) assets.bind(); });
     });
@@ -114,9 +126,18 @@
   }
   async function create() {
     const selected = assets.selection;
-    if (!writable || assets.consumeLocked || selected?.source !== 'environments' || !flavor || !network || !key || !serverName.trim()) return;
-    await assets.create({ revision: selected.asset.revision, flavor_id: flavor, network_id: network, key_name: key, server_name: serverName.trim(), ssh_username: 'ubuntu' });
-    if (assets.consume) cloudOpen = false;
+    if (!writable || assets.consumeLocked || selected?.source !== 'environments' || !selectedFlavor || !scheduleReady || !network || !key || !serverName.trim() || assets.busy.consume || assets.busy.resources || assets.errors.resources) return;
+    if (scheduleRequired && usageDraftError(usageSchedule)) {
+      // Refresh the shared field error after an idle form's deadline passes.
+      usageSchedule = { ...usageSchedule };
+      return;
+    }
+    const submittedDraft = usageSchedule, actor = identity;
+    await assets.create({ revision: selected.asset.revision, flavor_id: flavor, network_id: network, key_name: key, server_name: serverName.trim(), ssh_username: 'ubuntu', ...(scheduleRequired ? { usage_schedule: usagePayload(usageSchedule) } : {}) });
+    if (assets.consume && assets.selection === selected && sameAssetActor(actor, identity)) {
+      if (usageSchedule === submittedDraft) usageSchedule = defaultUsageDraft();
+      cloudOpen = false;
+    }
   }
   async function cleanupOperation() {
     const actor = identity, operation = assets.consume;
@@ -137,13 +158,14 @@
   </div>
   {#if !identity}<Alert tone="info">{t('identity')}</Alert>
   {:else if $projectPermissions.error}<Alert tone="danger">{$projectPermissions.error}</Alert>
-  {:else if !permissionReady}<LoadingSkeleton rows={3} />
+  {:else if !permissionReady}<LoadingState variant="section" />
   {:else if !allowed}<Alert tone="warning">{t('denied')}</Alert>
   {:else}
     <section class="space-y-3" aria-labelledby="asset-shared-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-shared-heading" class="text-sm font-semibold">{t('source.hub')}</h3><p class="text-xs text-ink-2">{t('source.hubHelp')}</p></div>
-      {#if assets.errors.hub}{@render failure('hub')}{:else if assets.busy.hub}<LoadingSkeleton rows={3} />
+      {#if assets.errors.hub}{@render failure('hub')}{:else if assets.busy.hub && !assets.hub}<LoadingState variant="section" />
       {:else if assets.hub}
+        {#if assets.busy.hub}<LoadingState variant="inline" />{/if}
         {#if !assets.hub.items.length}{@render empty(assets.hub.has_more)}{:else}
           <ResponsiveTable>{#snippet cards()}{#each assets.hub?.items ?? [] as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.arch ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.chain_complete ? t('dependencies.ready') : t('dependencies.incomplete')}</p>{#snippet details()}<p class="text-xs">{t(`visibility.${asset.visibility}`)} · {asset.ubuntu_base ?? t('unknown')}</p>{/snippet}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}{/snippet}
             <TableShell><table><thead><tr><th>{t('name')}</th><th>{t('platform')}</th><th>{t('access')}</th><th>{t('size')}</th><th>{t('actions')}</th></tr></thead><tbody>{#each assets.hub.items as asset (asset.id)}<tr><td><span class="font-medium">{asset.name}</span><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')}</p></td><td>{asset.arch ?? t('unknown')}</td><td>{t(`visibility.${asset.visibility}`)}</td><td>{bytes(asset.size_bytes)}</td><td><Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button></td></tr>{/each}</tbody></table></TableShell>
@@ -153,8 +175,9 @@
     </section>
     <section class="space-y-3" aria-labelledby="asset-packages-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-packages-heading" class="text-sm font-semibold">{t('source.packages')}</h3><p class="text-xs text-ink-2">{t('source.packagesHelp')}</p></div>
-      {#if assets.errors.packages}{@render failure('packages')}{:else if assets.busy.packages}<LoadingSkeleton rows={3} />
+      {#if assets.errors.packages}{@render failure('packages')}{:else if assets.busy.packages && !assets.packages}<LoadingState variant="section" />
       {:else if assets.packages}
+        {#if assets.busy.packages}<LoadingState variant="inline" />{/if}
         {#if !assets.context?.namespace}<Alert tone="info">{t('packages.unregistered')}</Alert>
         {:else if !assets.packages.items.length}{@render empty()}
         {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each assets.packages.items as asset (asset.package_id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.namespace} · {t(asset.package_type === 'runtime-bundle' ? 'type.bundle' : 'type.oci')}</p><p class="break-words text-xs">{asset.tags.map((tag) => tag.tag).join(', ') || t('version.untagged')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectPackage(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
@@ -163,8 +186,9 @@
     </section>
     <section class="space-y-3" aria-labelledby="asset-cloud-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-cloud-heading" class="text-sm font-semibold">{t('source.environments')}</h3><p class="text-xs text-ink-2">{t('source.environmentsHelp')}</p></div>
-      {#if assets.errors.environments}{@render failure('environments')}{:else if assets.busy.environments}<LoadingSkeleton rows={3} />
+      {#if assets.errors.environments}{@render failure('environments')}{:else if assets.busy.environments && !assets.environments}<LoadingState variant="section" />
       {:else if assets.environments}
+        {#if assets.busy.environments}<LoadingState variant="inline" />{/if}
         {#if !assets.environments.items.length}{@render empty(assets.environments.has_more)}
         {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each assets.environments.items as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.cloud_supported ? t('cloud.supported') : t('cloud.unsupported')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectEnvironment(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
         {@render paging('environments', assets.environments.offset, assets.environments.next_offset, assets.environments.items.length)}
@@ -180,7 +204,7 @@
         <p class="text-xs text-ink-2">{t('local.managed')}</p><Button variant="link" onclick={onGuide}>{t('local.guide')}</Button>
       {:else}
         {#if assets.selection.source === 'packages'}
-          {#if assets.busy.versions}<LoadingSkeleton rows={2} />{/if}
+          {#if assets.busy.versions}<LoadingState variant={assets.versions ? 'inline' : 'section'} />{/if}
           {#if assets.errors.versions}<Alert tone="danger">{assets.errors.versions}</Alert>{/if}
           {#if assets.versions?.items.length}<Field label={t('version.label')} for="asset-package-version"><SelectInput id="asset-package-version" value={assets.version?.root_digest ?? ''} onchange={(event) => { assets.version = assets.versions!.items.find((item) => item.root_digest === (event.target as HTMLSelectElement).value) ?? null; }}>
             {#each assets.versions.items as version}<option value={version.root_digest}>{assets.selection.asset.tags.filter((tag) => tag.digest === version.root_digest).map((tag) => tag.tag).join(', ') || t('version.untagged')} · {version.root_digest.slice(7, 19)} · {bytes(version.total_bytes)}</option>{/each}
@@ -195,7 +219,7 @@
           <Alert tone="warning">{t('local.unpackPrerequisite')}</Alert>
           <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" bind:checked={unpackConfirmed} />{t('local.unpackConfirmed')}</label>
         {/if}
-        <div class="flex flex-wrap gap-2">{#if localMethod === 'browser'}<Button variant="secondary" disabled={!canDownloadSelection || !!assets.busy.download} onclick={save}>{assets.busy.download ? t('downloading') : t('download')}</Button>{/if}<Button variant="link" onclick={onGuide}>{t('local.guide')}</Button></div>
+        <div class="flex flex-wrap gap-2">{#if localMethod === 'browser'}<Button variant="secondary" disabled={!canDownloadSelection || !!assets.busy.download} onclick={save}>{#if assets.busy.download}<LoadingState variant="control" label={t('downloading')} />{:else}{t('download')}{/if}</Button>{/if}<Button variant="link" onclick={onGuide}>{t('local.guide')}</Button></div>
         {#if assets.errors.download}<Alert tone="danger">{assets.errors.download}</Alert>{/if}
         {#if localMethod === 'browser'}<p class="text-sm text-ink-2">{t('local.help')}</p>{/if}
         {#if localCommand}
@@ -235,13 +259,20 @@
   <form onsubmit={(event) => { event.preventDefault(); void create(); }} class="space-y-4">
     <p class="text-sm text-ink-2">{t('cloud.project', { project: $auth.projectName ?? identity?.projectId ?? '' })}</p>
     <p class="break-words text-sm font-medium">{assets.selection?.asset.name}</p>
-    {#if assets.busy.resources}<LoadingSkeleton rows={3} />{/if}
+    {#if assets.busy.resources}<LoadingState variant={assets.resources ? 'inline' : 'section'} />{/if}
     {#if assets.errors.resources}<Alert tone="danger">{assets.errors.resources}</Alert><Button variant="secondary" size="sm" onclick={() => assets.loadResources()}>{t('retry')}</Button>{/if}
     <Field label={t('cloud.name')} for="asset-vm-name"><TextInput id="asset-vm-name" bind:value={serverName} maxlength={64} required disabled={!!assets.busy.consume} /></Field>
-    <Field label={t('cloud.flavor')} for="asset-vm-flavor"><SearchSelect id="asset-vm-flavor" value={flavor} options={(assets.resources?.flavors ?? []).map((item) => ({ value: item.id, label: item.name, description: `${item.vcpus} vCPU · ${item.ram} MiB` }))} onchange={(value) => flavor = value} disabled={!!assets.busy.consume || !writable} /></Field>
+    <Field label={t('cloud.flavor')} for="asset-vm-flavor"><SearchSelect id="asset-vm-flavor" value={flavor} options={(assets.resources?.flavors ?? []).map((item) => ({ value: item.id, label: item.display_name ?? item.name, description: `${item.name} · ${item.id} · ${item.vcpus} vCPU · ${item.ram} MiB` }))} onchange={selectFlavor} disabled={!!assets.busy.consume || !writable} /></Field>
+    {#if scheduleRequired}
+      <section class="min-w-0 space-y-3" aria-label={usageText('title')}>
+        <h3 class="text-sm font-semibold">{usageText('title')}</h3>
+        <p class="text-sm text-ink-2">{usageText('required')}</p>
+        <UsageScheduleFields value={usageSchedule} onchange={(value) => usageSchedule = value} disabled={!!assets.busy.consume || !writable} idPrefix="asset-usage" />
+      </section>
+    {/if}
     <Field label={t('cloud.network')} for="asset-vm-network"><SearchSelect id="asset-vm-network" value={network} options={(assets.resources?.networks ?? []).filter((item) => !item.external).map((item) => ({ value: item.id, label: item.name }))} onchange={(value) => network = value} disabled={!!assets.busy.consume || !writable} /></Field>
     <Field label={t('cloud.key')} for="asset-vm-key"><SearchSelect id="asset-vm-key" value={key} options={(assets.resources?.keys ?? []).map((item) => ({ value: item.name, label: item.name }))} onchange={(value) => key = value} disabled={!!assets.busy.consume || !writable} /></Field>
     <p class="text-xs text-ink-2">{t('cloud.consent')}</p>
   </form>
-  {#snippet actions()}<Button variant="secondary" disabled={!!assets.busy.consume} onclick={() => cloudOpen = false}>{t('close')}</Button><Button variant="primary" disabled={!writable || assets.consumeLocked || !flavor || !network || !key || !serverName.trim() || !!assets.busy.consume || !!assets.busy.resources || !!assets.errors.resources} onclick={create}>{t('cloud.create')}</Button>{/snippet}
+  {#snippet actions()}<Button variant="secondary" disabled={!!assets.busy.consume} onclick={() => cloudOpen = false}>{t('close')}</Button><Button variant="primary" disabled={!writable || assets.consumeLocked || !selectedFlavor || !scheduleReady || !network || !key || !serverName.trim() || !!assets.busy.consume || !!assets.busy.resources || !!assets.errors.resources} onclick={create}>{t('cloud.create')}</Button>{/snippet}
 </FormModal>

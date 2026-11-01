@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
@@ -112,21 +113,7 @@
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
-    <div class="flex flex-col gap-3.5" role="status" aria-busy="true">
-      <span class="sr-only">{t('loadBalancers.loading')}</span>
-      {#each [1, 2, 3] as _}
-        <div class="bg-surface-base border border-line rounded-lg p-5" aria-hidden="true">
-          <div class="flex items-center gap-4">
-            <div class="motion-skeleton w-10 h-10 rounded-lg"></div>
-            <div class="flex-1">
-              <div class="motion-skeleton h-4 w-32 rounded mb-2"></div>
-              <div class="motion-skeleton h-3 w-48 rounded"></div>
-            </div>
-            <div class="motion-skeleton h-6 w-16 rounded-full"></div>
-          </div>
-        </div>
-      {/each}
-    </div>
+    <LoadingState variant="surface" label={t('loadBalancers.loading')} />
   {:else if loadbalancers.length === 0}
     <div class="text-center py-20 text-ink-2">
       <div class="text-5xl mb-4">⚖️</div>

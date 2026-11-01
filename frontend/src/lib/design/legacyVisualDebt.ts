@@ -17,10 +17,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 49,
 		tokens: ["bg-[#0B1220]","bg-blue-500","bg-blue-600","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-800/30","bg-gray-900","bg-red-950/40","bg-violet-900/25","border-blue-500","border-gray-600","border-gray-700","border-gray-800","border-red-900","border-violet-800","text-blue-300","text-blue-400","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-300","text-red-400","text-violet-400","text-yellow-300"],
 	},
-	"frontend/src/lib/components/account/PasswordSection.svelte": {
-		count: 22,
-		tokens: ["bg-blue-500","bg-blue-600","bg-gray-800","bg-gray-900","bg-green-900/40","bg-red-900/40","border-blue-500","border-gray-700","border-gray-800","border-green-700","border-red-700","text-gray-400","text-green-300","text-red-300"],
-	},
 	"frontend/src/lib/components/account/ProfileSection.svelte": {
 		count: 26,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-800","bg-gray-800/50","bg-gray-900","bg-green-900/40","bg-red-900/40","border-blue-500","border-gray-700","border-gray-800","border-green-700","border-red-700","text-gray-400","text-gray-500","text-green-300","text-red-300"],
@@ -328,14 +324,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/admin/projects/AdminProjectTable.svelte": {
 		count: 22,
 		tokens: ["bg-blue-800/40","bg-blue-900/40","bg-gray-600","bg-gray-700","bg-gray-800/50","bg-green-900/30","bg-red-900/30","bg-red-900/50","border-gray-800","border-gray-800/50","text-blue-400","text-gray-300","text-gray-400","text-gray-500","text-green-400","text-red-400"],
-	},
-	"frontend/src/lib/components/admin/quotas/GpuDefaultQuotaSection.svelte": {
-		count: 13,
-		tokens: ["bg-gray-700","bg-gray-800/60","bg-gray-900","border-blue-500","border-gray-600","border-gray-800","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],
-	},
-	"frontend/src/lib/components/admin/quotas/GpuQuotaTable.svelte": {
-		count: 21,
-		tokens: ["bg-gray-700","bg-gray-900","border-blue-500","border-gray-600","border-gray-800","border-gray-800/50","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],
 	},
 	"frontend/src/lib/components/admin/quotas/ProjectQuotaForm.svelte": {
 		count: 39,
@@ -1177,14 +1165,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 4,
 		tokens: ["bg-gray-800","bg-red-900/40","border-red-700","text-red-300"],
 	},
-	"frontend/src/lib/components/LoadingSkeleton.svelte": {
-		count: 37,
-		tokens: ["bg-gray-800","bg-gray-900","border-gray-800","border-gray-800/50","text-gray-400"],
-	},
-	"frontend/src/lib/components/LoadingSpinner.svelte": {
-		count: 2,
-		tokens: ["text-blue-400","text-gray-400"],
-	},
 	"frontend/src/lib/components/monitoring/GrafanaEmbed.svelte": {
 		count: 8,
 		tokens: ["bg-gray-900","border-blue-500","border-gray-800","text-gray-400","text-gray-500","text-gray-600","text-gray-700"],
@@ -1232,10 +1212,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/object-storage/BucketCardGrid.svelte": {
 		count: 14,
 		tokens: ["bg-gray-900","bg-violet-500/15","border-gray-800","border-violet-500/30","text-blue-300","text-blue-400","text-gray-500","text-gray-600","text-red-300","text-red-400","text-violet-400"],
-	},
-	"frontend/src/lib/components/object-storage/BucketCardSkeleton.svelte": {
-		count: 2,
-		tokens: ["bg-gray-900","border-gray-800"],
 	},
 	"frontend/src/lib/components/object-storage/BucketCreateDialog.svelte": {
 		count: 13,

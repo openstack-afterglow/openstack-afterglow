@@ -237,7 +237,7 @@
 	}
 	.node:hover { z-index: 2; border-color: var(--color-line-2); }
 	.node:focus-visible { outline: none; box-shadow: var(--focus-ring); z-index: 3; }
-	.node.is-selected { z-index: 3; border-color: var(--color-line-2); box-shadow: 0 0 0 4px var(--accent-ring); }
+	.node.is-selected { z-index: 3; border-color: var(--color-ink-1); box-shadow: 0 0 0 2px var(--color-ink-1); }
 	.node.is-armed { box-shadow: 0 0 0 4px var(--accent-ring); }
 	.node.is-dragging { cursor: grabbing; z-index: 4; }
 	.node.is-dim { opacity: 0.15; }
@@ -256,13 +256,13 @@
 		gap: 0.375rem;
 		height: 40px;
 		padding: 0 0.5rem;
-		border-left: 3px solid var(--net);
+		border-left: 1px solid var(--net);
 		min-width: 0;
 	}
 	.node-glyph { display: inline-flex; color: var(--net); flex-shrink: 0; }
 	.node-glyph svg { width: 16px; height: 16px; }
 	.node-name {
-		font-size: 0.8125rem;
+		font-size: 0.875rem;
 		font-weight: 600;
 		color: var(--color-ink-0);
 		white-space: nowrap;
@@ -378,6 +378,7 @@
 	:global(.topology-world[data-lod='noip']) .nic-ip { display: none; }
 	:global(.topology-world[data-lod='compact']) .nic-list,
 	:global(.topology-world[data-lod='compact']) .node-sub { visibility: hidden; }
+	:global(.topology-world[data-lod='compact']) .node-vm:not(.is-selected):not(:focus-visible):not(:hover) .node-name { visibility: hidden; }
 	@media (forced-colors: active) {
 		.node:focus-visible { outline: 2px solid CanvasText; }
 	}

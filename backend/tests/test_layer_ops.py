@@ -1003,7 +1003,11 @@ async def test_trigger_consume_selects_and_persists_transport(admin_client, tran
     session.add = MagicMock()
     context = AsyncMock()
     context.__aenter__.return_value = session
-    body = {"profile_name": "default", "flavor_id": "m1.small"}
+    body = {
+        "profile_name": "default",
+        "flavor_id": "m1.small",
+        "usage_schedule": {"expiry_action": "delete", "delete_volumes": True, "reason": "Temporary import review"},
+    }
     if transport is not None:
         body["transport"] = transport
     with (
@@ -1018,6 +1022,12 @@ async def test_trigger_consume_selects_and_persists_transport(admin_client, tran
     assert response.status_code == 200
     assert response.json()["server_id"] == "vm-1"
     assert run.await_args.kwargs["transport"] == (transport or "nfs")
+    assert run.await_args.kwargs["usage_schedule"].model_dump(mode="json") == {
+        "expires_at": None,
+        "expiry_action": "delete",
+        "delete_volumes": True,
+        "reason": "Temporary import review",
+    }
     row = session.add.call_args.args[0]
     assert row.transport == (transport or "nfs")
     assert row.project_id == "service-project"
@@ -1025,6 +1035,82 @@ async def test_trigger_consume_selects_and_persists_transport(admin_client, tran
     assert row.resources is None
     assert row.run_id is None
     assert row.cleanup_state is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flavor_values",
+    [
+        {"vcpus": 12, "ram": 8192, "extra_specs": {}},
+        {"vcpus": 2, "ram": 65536, "extra_specs": {}},
+        {"vcpus": 2, "ram": 8192, "extra_specs": {"resources:VGPU": "1"}},
+        {"vcpus": 2, "ram": 8192, "extra_specs": {"afterglow:usage_schedule_required": "true"}},
+    ],
+)
+async def test_consume_requires_usage_schedule_before_db_or_native_allocation(admin_client, mock_conn, flavor_values):
+    flavor = SimpleNamespace(id="required-flavor", name="required", **flavor_values)
+    mock_conn.compute.find_flavor.return_value = flavor
+    mock_conn.compute.fetch_flavor_extra_specs.return_value = flavor
+    with (
+        patch(
+            "app.services.resource_policy_store.resolve_policy_snapshot",
+            AsyncMock(return_value={"nova.default_network": {"id": "net-1", "name": "network"}}),
+        ),
+        patch(
+            "app.services.resource_policy_store.get_policy_snapshot",
+            AsyncMock(return_value={"openstack.service_project": {"id": "service-project"}}),
+        ),
+        patch("app.database.get_session_factory") as factory,
+        patch("app.services.layer_build.run_layer_consume", AsyncMock()) as run,
+    ):
+        response = await admin_client.post(
+            f"{BASE}/consume", json={"profile_name": "default", "flavor_id": "required-flavor"}
+        )
+    assert response.status_code == 422
+    assert "explicit usage schedule" in response.json()["detail"]
+    factory.assert_not_called()
+    run.assert_not_awaited()
+    mock_conn.compute.create_server.assert_not_called()
+    mock_conn.network.create_port.assert_not_called()
+    mock_conn.block_storage.create_volume.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule",
+    [
+        {"expires_at": "2000-01-01T00:00:00Z"},
+        {"expires_at": "2099-01-01T00:00:00Z"},
+        {"delete_volumes": True},
+        {"expiry_action": "delete", "delete_volumes": "true"},
+    ],
+)
+async def test_consume_rejects_invalid_usage_policy_before_creation(admin_client, mock_conn, schedule):
+    flavor = SimpleNamespace(id="flavor-a", name="cpu", vcpus=12, ram=8192, extra_specs={})
+    mock_conn.compute.find_flavor.return_value = flavor
+    mock_conn.compute.fetch_flavor_extra_specs.return_value = flavor
+    with (
+        patch(
+            "app.services.resource_policy_store.resolve_policy_snapshot",
+            AsyncMock(return_value={"nova.default_network": {"id": "net-1", "name": "network"}}),
+        ),
+        patch(
+            "app.services.resource_policy_store.get_policy_snapshot",
+            AsyncMock(return_value={"openstack.service_project": {"id": "service-project"}}),
+        ),
+        patch("app.database.get_session_factory") as factory,
+        patch("app.services.layer_build.run_layer_consume", AsyncMock()) as run,
+    ):
+        response = await admin_client.post(
+            f"{BASE}/consume",
+            json={"profile_name": "default", "flavor_id": "flavor-a", "usage_schedule": schedule},
+        )
+    assert response.status_code == 422
+    factory.assert_not_called()
+    run.assert_not_awaited()
+    mock_conn.compute.create_server.assert_not_called()
+    mock_conn.network.create_port.assert_not_called()
+    mock_conn.block_storage.create_volume.assert_not_called()
 
 
 @pytest.mark.asyncio

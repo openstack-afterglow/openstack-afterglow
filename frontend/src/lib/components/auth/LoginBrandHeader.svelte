@@ -27,6 +27,7 @@
   </div>
   <h1 class="text-4xl font-bold text-ink-0 mb-2">{$siteConfig.site_name}</h1>
   <p class="text-ink-2 text-sm">{$siteConfig.site_description}</p>
+  {#if $siteConfig.site_name !== 'Afterglow'}<p class="mt-2 text-xs text-ink-2">Powered by Afterglow</p>{/if}
   <a class="login-home-link" href="/" aria-label={t('loginBrand.home')}>
     <span aria-hidden="true">←</span>
     <span>{t('loginBrand.home')}</span>

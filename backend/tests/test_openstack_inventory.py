@@ -100,7 +100,6 @@ async def test_collect_instance_data_resolves_named_server_flavor_with_detailed_
         ram=32768,
         disk=100,
         is_public=True,
-        extra_specs={},
     )
     detailed_flavor = SimpleNamespace(
         extra_specs={"pci_passthrough:alias": "RTX-3060:2,GA104-audio:2"},
@@ -119,7 +118,9 @@ async def test_collect_instance_data_resolves_named_server_flavor_with_detailed_
     conn = SimpleNamespace(
         compute=SimpleNamespace(
             flavors=MagicMock(return_value=[listed_flavor]),
-            fetch_flavor_extra_specs=MagicMock(return_value=detailed_flavor),
+            get=MagicMock(
+                return_value=SimpleNamespace(status_code=200, json=lambda: {"extra_specs": detailed_flavor.extra_specs})
+            ),
             servers=MagicMock(return_value=[server]),
         ),
         identity=SimpleNamespace(

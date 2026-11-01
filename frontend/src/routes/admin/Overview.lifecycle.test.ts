@@ -23,7 +23,8 @@ function serve(domains: unknown = [row('Current domain')]) {
 	mocks.get.mockImplementation((path: string) => {
 		if (path === '/api/v1/admin/overview/domains') return domains;
 		if (path === '/api/v1/admin/overview') return Promise.resolve({});
-		if (path === '/api/v1/admin/notifications') return Promise.resolve([]);
+		if (path === '/api/v1/admin/notifications') return Promise.resolve({ notifications: [], total: 0 });
+		if (path === '/api/v1/admin/events?limit=5') return Promise.resolve([]);
 		return Promise.resolve(null);
 	});
 }
@@ -108,7 +109,7 @@ describe('administrator overview response ownership', () => {
 		authReady.set(true);
 		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/admin/overview/domains')).toHaveLength(2));
 		await screen.findByText('Current session domain');
-		notifications.resolve([{ severity: 'critical', message: 'private', href: '/admin/users', target: 'old-user' }]);
+		notifications.resolve({ notifications: [{ severity: 'critical', message: 'private', href: '/admin/users', target: 'old-user' }], total: 1 });
 		identity.resolve({ user_count: 9876, project_count: 8765, role_count: 7654, group_count: 6543 });
 		await flush();
 		expect(screen.queryByRole('alert')).toBeNull();
@@ -134,5 +135,24 @@ describe('administrator overview response ownership', () => {
 		serve(Promise.resolve([row('New page')])); render(Page); await screen.findByText('New page');
 		old.reject(new ApiError(403, 'Old page denied')); await flush();
 		expect(mocks.goto).not.toHaveBeenCalled(); expect(screen.getByText('New page')).toBeTruthy();
+	});
+
+	it('distinguishes a failed recent event read from a successfully empty history', async () => {
+		serve(Promise.resolve([]));
+		const implementation = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string) => path.includes('/admin/events?') ? Promise.reject(new Error('database unavailable')) : implementation(path));
+		render(Page);
+		expect(await screen.findByRole('alert')).toBeTruthy();
+		expect(screen.queryByText('No recorded events')).toBeNull();
+	});
+
+	it('localizes supported notification types and keeps a capped native count a lower bound', async () => {
+		serve(Promise.resolve([]));
+		const implementation = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string) => path.endsWith('/notifications') ? Promise.resolve({ notifications: [{ type: 'error', severity: 'high', count: 50, message: '원본 서버 메시지' }], total: 1 }) : implementation(path));
+		render(Page);
+		const alertLink = await screen.findByRole('link', { name: 'Error instances: 50+' });
+		expect(alertLink.getAttribute('href')).toBe('/admin/instances');
+		expect(screen.queryByText('원본 서버 메시지')).toBeNull();
 	});
 });

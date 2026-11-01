@@ -4,6 +4,7 @@
 모든 limit 이 -1 로 나오던 버그를, raw REST 호출로 우회한다.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -216,3 +217,82 @@ def test_strict_quota_mode_rejects_malformed_top_level_payloads(payload):
         get_project_quota(nova_conn, "proj-1", strict=True)
     with pytest.raises(ValueError):
         get_volume_quota(cinder_conn, "proj-1", strict=True)
+
+
+def test_nova_native_projection_preserves_usage_without_changing_legacy_result():
+    raw = {
+        "instances": {"limit": -1, "in_use": 3},
+        "cores": {"limit": -1, "in_use": 12, "reserved": 2},
+        "ram": {"limit": -1, "in_use": 24576, "reserved": 4096},
+    }
+    conn = _nova_conn(raw)
+
+    result = get_project_quota(conn, "proj-1", include_native=True)
+
+    assert result["native_compute"] == raw
+    assert result["compute"]["cores"] == {"limit": -1, "in_use": 12}
+    assert result["compute"]["key_pairs"] == {"limit": -1, "in_use": 0}
+    conn.session.get.assert_called_once_with("http://nova:8774/v2.1/os-quota-sets/proj-1/detail")
+    conn.compute.get_limits.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [None, 4, {}, {"limit": -1}, {"in_use": 4}, {"limit": True, "in_use": 0}, {"limit": -2, "in_use": 0}],
+)
+def test_nova_native_projection_does_not_observe_missing_or_invalid_raw_usage(entry):
+    conn = _nova_conn({"cores": entry, "ram": {"limit": -1, "in_use": 8192}})
+
+    result = get_project_quota(conn, "proj-1", include_native=True)
+
+    assert "cores" not in result["native_compute"]
+    assert "instances" not in result["native_compute"]
+    assert result["native_compute"]["ram"] == {"limit": -1, "in_use": 8192}
+    conn.session.get.assert_called_once()
+    conn.compute.get_limits.assert_not_called()
+
+
+@pytest.mark.parametrize("payload", [None, [], {"quota_set": None}, {"quota_set": {"cores": {"limit": "invalid"}}}])
+def test_nova_native_projection_rejects_malformed_raw_and_unobserved_limits_fallback(payload):
+    conn = _nova_conn({})
+    conn._afterglow_authenticated_project_id = "proj-1"
+    conn.session.get.return_value.json.return_value = payload
+    conn.compute.get_limits.return_value = SimpleNamespace(absolute=SimpleNamespace())
+
+    result = get_project_quota(conn, "proj-1", include_native=True)
+
+    assert result["compute"]["cores"] == result["compute"]["ram"] == {"limit": -1, "in_use": 0}
+    assert result["native_compute"] == {}
+    conn.session.get.assert_called_once()
+    conn.compute.get_limits.assert_called_once()
+
+
+def test_nova_native_projection_never_observes_a_failed_http_response():
+    conn = _nova_conn({"cores": {"limit": -1, "in_use": 7}})
+    conn.session.get.return_value.raise_for_status.side_effect = RuntimeError("HTTP 503")
+
+    result = get_project_quota(conn, "proj-1", include_native=True)
+
+    assert result["compute"]["cores"] == {"limit": -1, "in_use": 7}
+    assert result["native_compute"] is None
+    conn.session.get.assert_called_once()
+    conn.compute.get_limits.assert_not_called()
+
+
+@pytest.mark.parametrize("authenticated_project", ["proj-1", "other-project", None, 7])
+def test_nova_native_projection_validates_existing_limits_fallback_and_project(authenticated_project):
+    conn = _nova_conn({})
+    conn._afterglow_authenticated_project_id = authenticated_project
+    conn.session.get.side_effect = RuntimeError("detail unavailable")
+    conn.compute.get_limits.return_value = SimpleNamespace(
+        absolute=SimpleNamespace(max_total_cores=-1, max_total_ram_size=-1, total_ram_used=12288)
+    )
+
+    result = get_project_quota(conn, "proj-1", include_native=True)
+
+    assert result["compute"]["cores"] == {"limit": -1, "in_use": 0}
+    assert result["native_compute"] == (
+        {"ram": {"limit": -1, "in_use": 12288}} if authenticated_project == "proj-1" else None
+    )
+    conn.session.get.assert_called_once()
+    conn.compute.get_limits.assert_called_once()

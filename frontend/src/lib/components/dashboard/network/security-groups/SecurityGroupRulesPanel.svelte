@@ -2,7 +2,7 @@
 	import type { SecurityGroup, SecurityGroupInstance, SecurityGroupRule, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import AddRuleForm from './AddRuleForm.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -78,7 +78,7 @@
 	<section class="border border-line rounded-lg p-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
 		<h2 class="text-sm font-medium text-ink-0 mb-2">{instancesError || instancesLoading ? t('securityGroupRules.instancesTitle') : t('securityGroupRules.instancesCount', { count: instances.length })}</h2>
 		{#if instancesLoading}
-			<ActivityIndicator size="xs" label={t('securityGroupRules.instancesLoading')} />
+			<LoadingState variant="control" label={t('securityGroupRules.instancesLoading')} />
 		{:else if instancesError}
 			<p role="alert" class="text-xs text-state-danger-text">{instancesError} <button type="button" onclick={onRetryInstances} class="underline">{t('securityGroupRules.retryInstances')}</button></p>
 		{:else if instances.length === 0}

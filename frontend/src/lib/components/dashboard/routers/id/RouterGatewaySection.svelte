@@ -4,7 +4,7 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import type { RouterDetail } from '$lib/types/router';
 	import type { Network } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
@@ -48,7 +48,7 @@
 						disabled={saving}
 						aria-busy={removingGateway}
 						class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-					>{#if removingGateway}<ActivityIndicator size="xs" tone="danger" />{/if}{removingGateway ? tc('state.processing') : t('router.gateway.remove')}</button>
+					>{#if removingGateway}<LoadingState variant="control" label="" />{/if}{removingGateway ? tc('state.processing') : t('router.gateway.remove')}</button>
 				{:else}
 					<button
 						onclick={() => showSetGateway = !showSetGateway}
@@ -81,7 +81,7 @@
 				disabled={!selectedExtNetId || saving}
 				aria-busy={settingGateway}
 				class="inline-flex items-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-sm px-3 py-2 rounded transition-colors"
-			>{#if settingGateway}<ActivityIndicator size="xs" tone="ink" />{/if}{settingGateway ? tc('state.processing') : t('router.actions.set')}</button>
+			>{#if settingGateway}<LoadingState variant="control" label="" />{/if}{settingGateway ? tc('state.processing') : t('router.actions.set')}</button>
 			<button onclick={() => showSetGateway = false} class="text-ink-2 hover:text-ink-1 text-sm px-2">{t('router.actions.cancel')}</button>
 		</div>
 	{/if}

@@ -100,7 +100,8 @@
 		justify-content: center;
 		gap: 0.375rem;
 		border-radius: var(--radius-md);
-		font-size: 0.8125rem;
+		min-height: var(--control-height);
+		font-size: var(--type-body);
 		font-weight: 500;
 		line-height: 1.2;
 		transition:
@@ -132,11 +133,15 @@
 		filter: none;
 	}
 
-	.btn-xs { padding: 0.1875rem 0.5rem; font-size: 0.6875rem; }
-	.btn-sm { padding: 0.25rem 0.625rem; font-size: 0.75rem; }
-	.btn-md { padding: 0.4375rem 0.875rem; font-size: 0.8125rem; }
-	.btn-lg { padding: 0.625rem 1.25rem; font-size: 0.875rem; }
-	.btn-icon { width: 2rem; height: 2rem; padding: 0; font-size: 0.8125rem; }
+	.btn-xs { padding: 0.25rem 0.5rem; font-size: var(--type-support); }
+	.btn-sm { padding: 0.375rem 0.625rem; font-size: var(--type-support); }
+	.btn-md { padding: 0.4375rem 0.875rem; }
+	.btn-lg { padding: 0.625rem 1.25rem; }
+	.btn-icon { width: var(--control-height); height: var(--control-height); padding: 0; }
+	@media (max-width: 767px), (pointer: coarse) {
+		.btn { min-height: var(--control-touch-height); }
+		.btn-icon { width: var(--control-touch-height); height: var(--control-touch-height); }
+	}
 
 	.btn-primary {
 		background: var(--color-warm);

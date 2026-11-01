@@ -172,7 +172,7 @@
 							<option value="">{t('create.defaultFlavor')}</option>
 							{#each flavors as f}
 								<option value={f.id} disabled={f.eligibility ? !f.eligibility.selectable : false}>
-									{t(f.eligibility && !f.eligibility.selectable ? 'create.flavorExceeded' : 'create.flavorOption', { name: f.name, cpus: f.vcpus, ram: Math.round(f.ram/1024) })}
+									{t(f.eligibility && !f.eligibility.selectable ? 'create.flavorExceeded' : 'create.flavorOption', { name: f.display_name ? `${f.display_name} (${f.name} · ${f.id})` : f.name, cpus: f.vcpus, ram: f.ram / 1024 })}
 								</option>
 							{/each}
 						</select>

@@ -8,7 +8,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import NetworkHeader from '$lib/components/admin/networks/NetworkHeader.svelte';
 	import NetworkInfoCard from '$lib/components/admin/networks/NetworkInfoCard.svelte';
 	import SubnetSection from '$lib/components/admin/networks/SubnetSection.svelte';
@@ -210,7 +210,7 @@
 		</Alert>
 	{/if}
 	{#if loading && !network}
-		<LoadingSkeleton variant="card" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if network}
 		<NetworkHeader {network} {deleting} onDelete={deleteNetwork} />
 		{#if ownerWarning}<Alert tone="warning" class="mb-4" title={t('networksPage.ownerWarning')}>{t('networksPage.ownerWarningBody')}</Alert>{/if}

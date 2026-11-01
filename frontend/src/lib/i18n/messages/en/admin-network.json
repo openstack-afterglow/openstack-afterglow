@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "Rows per page",
+	"list.analytics": "Network trends",
+	"list.details": "View details",
+	"list.actionsFor": "Actions for network {name}",
+	"list.scopedHistory": "Fleet network history is unavailable in project scope.",
+	"list.deleteImpact": "Deleting a network cannot be undone. Attached ports may prevent deletion.",
 	"loadbalancersPage.loading": "Loading load balancers...",
 	"adminNetworkCreateModal.title": "Create network",
 	"adminNetworkCreateModal.name": "Name",

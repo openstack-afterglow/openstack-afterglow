@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -172,11 +173,7 @@
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
-    <div class="grid grid-cols-2 gap-3.5" role="status" aria-busy="true" aria-label={`${t('list.title')} · ${tc('state.loading')}`}>
-      {#each [1, 2, 3, 4] as _}
-        <div class="motion-skeleton border border-line rounded-lg h-40"></div>
-      {/each}
-    </div>
+    <LoadingState variant="surface" label={tc('state.loadingNamed', { name: t('list.title') })} />
   {:else if fileStorages.length === 0}
     <EmptyState headline={t('list.empty')} description={t('list.emptyDescription')}>
       {#snippet cta()}<Button onclick={() => (showWizard = true)} variant="primary">{t('list.createCta')}</Button>{/snippet}

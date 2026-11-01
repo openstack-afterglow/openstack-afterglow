@@ -481,7 +481,7 @@ Set `afterglow_public_endpoint_url` to the browser-facing HTTP(S) origin without
 
 ### Global Cloud Shell
 
-Cloud Shell is a Zun workload in an operator-owned dedicated project; it is not a long-running Kolla container. Before enabling it, create exactly one project. `afterglow_cloud_shell_network_id` is optional: leave it empty to use the dedicated project's default network (database default, then the existing automatic default-network policy, or the validated shared policy when automatic provisioning is disabled); the selected network needs a subnet and external network/router gateway connectivity, and explicit IDs must belong to the dedicated project. The security group defaults to that project's `default` group, resolved to one exact project-owned ID with its existing rules unchanged, so it is not egress-only; set an explicit project-owned group when stricter isolation is required. The role never creates or deletes the project, network, router, or security group. Set dedicated Cinder and Zun quotas on that project rather than changing tenant quotas.
+Cloud Shell is a Zun workload in an operator-owned dedicated project, not a long-running Kolla container. Prepare one exact project. Empty `afterglow_cloud_shell_network_id` reuses the dedicated project's existing default-network policy; explicit IDs must be owned and the selected network needs subnet/external connectivity. Resolve one exact project-owned security group whose **observed rules are egress-only, without remote-group/address-group grants**. A self-ingress `default` group is rejected; the role does not rewrite its rules. The backend performs this rule admission before home creation.
 
 Required plugin globals:
 
@@ -494,10 +494,11 @@ afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/openstack-client@sha25
 afterglow_cloud_shell_image_pull_policy: "" # Zun default, or admin-only always/ifnotpresent/never
 afterglow_cloud_shell_registry_id: "" # Private registry UUID in the dedicated project
 afterglow_cloud_shell_network_id: ""  # optional: empty uses the dedicated project's default network
-afterglow_cloud_shell_security_group: "default"
+afterglow_cloud_shell_security_group: "cloud-shell-egress-only"
 afterglow_cloud_shell_auth_url: "https://keystone.example.com:5000/v3"
 afterglow_cloud_shell_zun_websocket_origin: "wss://zun.example.com"
 afterglow_cloud_shell_volume_type: "ceph"
+afterglow_cloud_shell_blocked_cidrs: ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"] # add actual management networks; match every native compute
 ```
 
 Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`, with at least one host in `zun-compute`. The Cloud Shell image must be an immutable multi-architecture manifest digest accessible from every Zun compute host. The Zun API must support container microversion 1.36, and zun-compute must be able to attach Cinder (Ceph RBD) volumes and format them as ext4 on first mount.
@@ -506,6 +507,10 @@ The source image and its CLI/bootstrap validation are owned by [openstack-client
 
 
 `kolla-ansible prechecks -i multinode --tags afterglow` verifies that the dedicated project differs from the general Afterglow service project, that an explicit network belongs to it, that the security group resolves uniquely inside it by ID then name and belongs to it, that scoped Zun/Cinder calls succeed, and that every Zun compute can inspect the image. Keystone setup grants the existing Afterglow service user `admin` in the pre-created project; it does not provision the project or networking.
+
+Static prechecks do not prove SG rules, Docker enforcement or fleet namespace isolation. Before enabling the stricter backend, qualify the pinned `services/zun-cloud-shell` build on **every eligible Zun compute** with the exact dedicated service project/user, digest-pinned static holder, host-shared lock path, effective root-owned privsep/rootwrap registration, and real Docker PID/sandbox visibility. The native driver owns pre-user CFS/memory/swap/PID/rootfs/tmpfs/log enforcement and metadata/operator-CIDR denial; the backend requires its exact runtime readback. An unpatched/unknown runtime cannot authorize a terminal. The monorepo verification Dockerfile is not a production Kolla Zun image, and this role does not install the native hook automatically. See the [native build and qualification contract](../../docs/deployment.md#native-buildhost-qualification).
+
+Plan a coordinated cutover with new approvals disabled and existing sessions drained, then native compute qualification before backend/frontend admission. Preserve home volumes. The user runtime must retain the initial setuid bootstrap; do not apply holder-style cap-drop-ALL/no-new-privileges/nosuid container-wide to it. Storage I/O QoS, user namespace remapping, externally issued credentials and external ingress/WAF ticket logs remain separate operational boundaries.
 
 Disable `afterglow_service_cloud_shell_enabled` before rollback. Wait through the maximum session/reconciliation window and verify no managed Zun containers remain. Persistent home volumes are deliberately retained until the operator applies an explicit backup/deletion policy; remove the role assignment and dedicated project only after that decision. See [`docs/deployment.md`](../../docs/deployment.md#전역-cloud-shell-선택-배포) for runtime settings, verification, and rollback order.
 

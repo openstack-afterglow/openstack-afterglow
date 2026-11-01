@@ -7,7 +7,7 @@
 	import LoadBalancerHeader from '$lib/components/dashboard/loadbalancers/id/LoadBalancerHeader.svelte';
 	import LbListenerSection from '$lib/components/dashboard/loadbalancers/id/LbListenerSection.svelte';
 	import LbPoolSection from '$lib/components/dashboard/loadbalancers/id/LbPoolSection.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const ctrl = createLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -19,11 +19,12 @@
 </script>
 
 <PageShell class="text-ink-1">
-	{#if ctrl.loading}
-		<ActivityIndicator label={t('lb.state.loading')} />
+	{#if ctrl.loading && ctrl.lb?.id !== $page.params.id}
+		<LoadingState variant="surface" label={t('lb.state.loadingInfo')} />
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}
+		{#if ctrl.loading}<LoadingState variant="inline" label={t('lb.state.loadingInfo')} />{/if}
 		<LoadBalancerHeader
 			lb={ctrl.lb}
 			deleting={ctrl.saving}

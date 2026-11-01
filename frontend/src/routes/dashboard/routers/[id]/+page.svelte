@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -12,7 +13,7 @@
 	import RouterGatewaySection from '$lib/components/dashboard/routers/id/RouterGatewaySection.svelte';
 	import RouterInterfacesSection from '$lib/components/dashboard/routers/id/RouterInterfacesSection.svelte';
 	import { toast } from '$lib/stores/toast';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const id = $derived($page.params.id);
 
@@ -121,7 +122,7 @@
 <!-- loading은 첫 조회에만 켜지므로 섹션 진입은 최초 도착에서만 재생된다. -->
 <PageShell class="motion-stagger text-ink-1">
 	{#if loading}
-		<ActivityIndicator label={t('router.loading')} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('router.header.title') })}  />
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if router}

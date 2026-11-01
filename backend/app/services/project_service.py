@@ -1128,15 +1128,26 @@ async def delete_empty_project(project_id, token_info):
             raise HTTPException(503, "Project resource inventory is unavailable; nothing was deleted")
         if not check["can_delete"]:
             raise HTTPException(409, "Project still owns resources or child projects")
-        from app.services import domain_projects
+        from app.services import compute_pools, domain_projects
 
         project = await _provider_call(ks.projects.get, project_id)
         await _provider_call(domain_projects.assert_default_immutable, project_id, delete=True, project=project, ks=ks)
+        domain_id = identity_roles._field(project, "domain_id")
+        try:
+            await compute_pools.assert_project_pool_deletion_ready(domain_id, project_id, lease=lease)
+        except compute_pools.ComputePoolUnavailable as exc:
+            raise HTTPException(503, "compute_pool_project_deletion_unavailable") from exc
         # Re-read live actor authority immediately before the destructive write.
         if not (await project_ownership(project_id, token_info))["can_delete"]:
             raise HTTPException(403, "Project deletion authority changed")
         try:
             await identity_roles._write(lease, ks.projects.delete, project_id)
+            # Never relax a project cap before DELETE positively returns. Unknown
+            # DELETE outcomes preserve it until explicit exact-absence recovery.
+            try:
+                await compute_pools.cleanup_deleted_project_limits(domain_id, project_id, lease=lease)
+            except compute_pools.ComputePoolUnavailable as exc:
+                raise HTTPException(503, "compute_pool_project_cleanup_unavailable") from exc
         finally:
             from app.services.domain_scope import invalidate_authority
 

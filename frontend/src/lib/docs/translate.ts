@@ -26,6 +26,12 @@ export function translateDocGuide(guide: DocGuide, translations: Readonly<Record
 		title: text(item.title),
 		paragraphs: item.paragraphs?.map(text),
 		bullets: item.bullets?.map(text),
+		hierarchy: item.hierarchy && {
+			...item.hierarchy,
+			title: text(item.hierarchy.title),
+			description: text(item.hierarchy.description),
+			relation: text(item.hierarchy.relation),
+		},
 		steps: item.steps?.map((step) => ({
 			...step,
 			title: text(step.title),

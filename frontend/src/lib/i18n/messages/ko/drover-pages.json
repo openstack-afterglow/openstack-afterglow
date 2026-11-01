@@ -85,7 +85,7 @@
 	"nodegroupEdit.scaleHelp": "Pending pod 발생 시 {min}~{max}개 범위로 자동 스케일합니다.",
 	"clusterCard.nodes": "노드 (M+A)",
 	"clusterCard.deleted": "삭제됨",
-	"header.breadcrumb": "CONTAINERS / K3S",
+	"header.breadcrumb": "컨테이너 / Kubernetes",
 	"header.hideDeleted": "삭제 이력 숨기기",
 	"header.showDeleted": "삭제 이력 보기",
 	"header.create": "+ 클러스터 생성",
@@ -122,5 +122,9 @@
 	"yaml.parseError": "YAML 파싱 오류: {error}",
 	"yaml.configMapKind": "kind가 ConfigMap이어야 합니다",
 	"yaml.secretKind": "kind가 Secret이어야 합니다",
-	"yaml.stringDataRequired": "Secret 편집은 data 대신 stringData를 사용하세요 (plain text 입력)"
+	"yaml.stringDataRequired": "Secret 편집은 data 대신 stringData를 사용하세요 (plain text 입력)",
+	"clusterError.details": "오류 상세",
+	"clusterError.recovery": "클러스터 상세에서 실패 단계와 관련 리소스를 확인하세요. 보안 그룹·네트워크·할당량 문제를 해결한 뒤 상태를 다시 조회하세요.",
+	"clusterError.loadFailed": "클러스터 목록을 불러오지 못했습니다",
+	"clusterError.reload": "다시 불러오기"
 }

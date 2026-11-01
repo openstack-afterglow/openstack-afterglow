@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { AdminRouter } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-network';
@@ -49,7 +49,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { router = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminRouterEditModal.cancel')}</button>
-				<button aria-busy={updating} onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('adminRouterEditModal.updating')}</span>{:else}{t('adminRouterEditModal.update')}{/if}</button>
+				<button aria-busy={updating} onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('adminRouterEditModal.updating')}</span>{:else}{t('adminRouterEditModal.update')}{/if}</button>
 			</div>
 		</div>
 	</div>

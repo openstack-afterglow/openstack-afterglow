@@ -452,7 +452,7 @@ def test_absent_public_origins_do_not_invent_chart_domain():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("override", [None, 600])
+@pytest.mark.parametrize("override", [600, 3600, 604800])
 async def test_rendered_session_accepts_until_original_deadline_and_preserves_shorter_override(
     tmp_path, monkeypatch, override
 ):
@@ -463,7 +463,7 @@ async def test_rendered_session_accepts_until_original_deadline_and_preserves_sh
     helm = shutil.which("helm")
     if helm is None:
         pytest.skip("Helm is required to exercise the rendered session policy")
-    cfg = {} if override is None else {"session": {"timeout_seconds": override}}
+    cfg = {"session": {"timeout_seconds": override}}
     values_path = tmp_path / "values.yaml"
     values_path.write_text(config2helm.render_values(cfg, False), encoding="utf-8")
     rendered = subprocess.run(
@@ -488,8 +488,7 @@ async def test_rendered_session_accepts_until_original_deadline_and_preserves_sh
     deleted = AsyncMock()
     monkeypatch.setattr("app.services.session_store.delete_session", deleted)
     original_start = 1_000_000.0
-    expected_limit = 86400 if override is None else override
-    clock = original_start + expected_limit - 1
+    clock = original_start + override - 1
     monkeypatch.setattr(deps.time, "time", lambda: clock)
     assert (
         await deps._check_session_timeout(

@@ -11,7 +11,7 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
@@ -179,7 +179,7 @@
 	{#if ready}
 		{#if notice}<Alert tone="warning">{t(`resourceMonitor.${notice}`)}</Alert>{/if}
 		{#if error}<Alert tone="danger">{error}</Alert>{/if}
-		{#if loading}<div role="status"><ActivityIndicator label={t('resourceMonitor.loading')} /></div>
+		{#if loading}<LoadingState variant="section" label={t('resourceMonitor.loading')} />
 		{:else if inventory && scope && current(scope)}
 			{#if inventory.status !== 'ok'}
 				<Alert tone="warning">{inventory.status === 'skipped' && inventory.reason === 'service_not_present' ? t('projectDelete.notPresent') : t('resourceMonitor.unavailable')}</Alert>

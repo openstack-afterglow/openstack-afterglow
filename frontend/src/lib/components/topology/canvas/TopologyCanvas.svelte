@@ -3,7 +3,7 @@
 	import { t } from '$lib/i18n/ns/topology';
 	// 캔버스형 토폴로지 뷰. 순수 모듈(topologyGraph/topologyLayout)에 파생을 맡기고 이 컴포넌트는
 	// 상호작용(팬/줌/드래그/검색/선택)과 DOM 배선만 담당한다. 콜백 계약은 GlobalTopology 와 동일하며 onSelectNetwork 만 추가된다.
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, tick } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
@@ -14,6 +14,8 @@
 	import CanvasHud, { type HudBadgeItem, type HudLabelItem } from './CanvasHud.svelte';
 	import CanvasNodeCard from './CanvasNodeCard.svelte';
 	import CanvasToolbar from './CanvasToolbar.svelte';
+	import CanvasOwnershipOverview from './CanvasOwnershipOverview.svelte';
+	import CanvasLegend from './CanvasLegend.svelte';
 	import CanvasZoneLayer, { type ZoneRenderItem } from './CanvasZoneLayer.svelte';
 	import CanvasDomainLayer from './CanvasDomainLayer.svelte';
 	import { domainGroupLabel } from '../domainGroups';
@@ -26,7 +28,6 @@
 		edgeRate,
 		edgeStyle,
 		allocateFlowDots,
-		FLOW_MIN_BPS,
 		flowStreams,
 		isUplinkTrunk,
 		matchesQuery,
@@ -113,6 +114,36 @@
 	const storageKey = $derived(layoutStorageKey(storageScope, projectId));
 
 	let query = $state('');
+	let ownershipOverview = $state(false);
+	let legendOpen = $state(false);
+	$effect(() => {
+		void storageScope; void arrivalScope; void projectId;
+		ownershipOverview = adminView && showAll;
+	});
+	async function leaveOverview(): Promise<boolean> {
+		const scope = storageKey;
+		ownershipOverview = false;
+		await tick();
+		if (scope !== storageKey || ownershipOverview) return false;
+		const { w, h } = measure();
+		vw = w;
+		vh = h;
+		if (needsInitialFit && w > 0 && h > 0) {
+			needsInitialFit = false;
+			fitAll(false);
+		}
+		return true;
+	}
+	function withVisibleGraph(action: () => void) {
+		if (!ownershipOverview) { action(); return; }
+		void leaveOverview().then((ready) => { if (ready) action(); });
+	}
+	async function openResource(id: string) {
+		if (!await leaveOverview() || !graph.nodes.has(id)) return;
+		if (selectedId !== id) select(id);
+		focusNode(id, 0.65, 1.2);
+		viewportEl?.focus({ preventScroll: true });
+	}
 	// ───────── 진입 모션: 스코프(저장 범위·프로젝트·전체 보기)별 첫 그래프 도착에만. 자동 갱신·드래그·검색·카메라 이동은 다시 켜지 않는다.
 	const arrival = createFirstArrival({
 		scope: () => `${storageScope}|${arrivalScope}`,
@@ -386,7 +417,7 @@
 			let op = base.opacity, w = base.width;
 			const incident = Boolean(active) && (e.from === active || e.to === active);
 			const hovered = hoveredEdgeKey === e.key || (hoveredNicKey != null && e.nic?.key === hoveredNicKey);
-			if (active) op = incident ? Math.min(1, op * 1.4) : selectedId ? 0.12 : 0.2;
+			if (active) { op = incident ? Math.max(0.8, Math.min(1, op * 1.4)) : selectedId ? 0.12 : 0.2; if (incident) w = Math.max(w, 1.75); }
 			else if (q && !(q.nodes.has(e.from) || q.nodes.has(e.to))) op = 0.15;
 			if (hovered) { op = 1; w = base.width + 0.5; }
 			const net = graph.netById.get(e.netId);
@@ -436,21 +467,25 @@
 		return t(r.provider_network_type === 'vlan' ? 'canvas.segmentVlan' : 'canvas.segmentVxlan', { id: r.provider_segmentation_id });
 	}
 
+	const networkInstanceCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const node of graph.nodes.values()) if (node.kind === 'vm') {
+			for (const netId of node.netIds) counts.set(netId, (counts.get(netId) ?? 0) + 1);
+		}
+		return counts;
+	});
 	const hudLabels = $derived.by((): HudLabelItem[] => {
 		const { panX, panY, k } = vp;
 		const out: HudLabelItem[] = [];
-		// 행(밴드)마다 따로 돌아야 한다 — 아래 prev 밀기는 "같은 줄에서 왼쪽 존과 겹치면 오른쪽으로" 규칙이라
-		// 여러 행을 flatten 한 배열로 돌리면 행 경계를 넘어 이어져 라벨이 자기 존 밖으로 밀린다.
+		// Anchors belong to their own zones. CanvasHud packs measured screen-space
+		// text against every card/header and HUD item, not the previous world zone.
 		for (const list of [layout.order.provider, ...layout.bands.rows.map((r) => r.netIds)]) {
-			let prev: Rect | null = null;
 			for (const nid of list) {
 				const z = geometry.zones.get(nid);
 				const n = graph.netById.get(nid);
 				if (!z || !n) continue;
-				let lx = z.x + 12;
-				if (!adminView && prev && prev.x + prev.w > z.x) lx = prev.x + prev.w + 12;
-				const sx = lx * k + panX, sy = z.y * k + panY;
-				const avail = Math.max(56, (z.x + z.w) * k + panX - sx - 8);
+				const sx = (z.x + 12) * k + panX, sy = z.y * k + panY;
+				const avail = Math.max(160, z.w * k - 20);
 				const adminPills: string[] = [];
 				if (adminView) {
 					const seg = segmentLabel(n);
@@ -462,7 +497,8 @@
 				out.push({
 					netId: nid,
 					name: n.name,
-					cidrText: n.cidrs.length > 1 ? t('canvas.moreCidrs', { cidr: n.cidrs[0], count: n.cidrs.length - 1 }) : (n.cidrs[0] ?? ''),
+					cidrText: k < 0.5 ? t('summary.instances', { count: networkInstanceCounts.get(nid) ?? 0 }) : n.cidrs.length > 1 ? t('canvas.moreCidrs', { cidr: n.cidrs[0], count: n.cidrs.length - 1 }) : (n.cidrs[0] ?? ''),
+					summary: k < 0.5,
 					kindLabel: NET_KIND_LABEL[n.kind],
 					isolated: n.isolated,
 					statusText: n.status !== 'ACTIVE' ? n.status : null,
@@ -471,14 +507,18 @@
 					sx,
 					sy,
 					avail,
-					size: avail >= 240 ? 'full' : avail >= 120 ? 'mid' : 'min',
 					active: activeNets.has(nid),
 					dim: dimBySearch || dimByActive,
 				});
-				prev = z;
 			}
 		}
 		return out;
+	});
+	const hudObstacles = $derived.by((): Rect[] => {
+		const { panX, panY, k } = vp;
+		const rects = [...pos.values()].map((r) => ({ x: r.x * k + panX, y: r.y * k + panY, w: r.w * k, h: r.h * k }));
+		for (const r of geometry.domains.values()) rects.push({ x: r.x * k + panX + 10, y: r.y * k + panY + 4, w: Math.max(1, r.w * k - 20), h: 24 });
+		return rects;
 	});
 
 	const hudBadges = $derived.by((): HudBadgeItem[] => {
@@ -493,10 +533,8 @@
 			// tenant 트렁크는 `trunkNetIds` 가 항상 `[e.netId]` 한 개이므로 여기서 전부 걸러지고,
 			// 살아남는 배지는 정의상 언제나 uplink 다(`CanvasHud` 가 캡션 분기를 두지 않는 이유).
 			// 실측(2026-09-13, Neutron 라우터 30개 전수): tenant 망을 2개 이상 무는 라우터는 0개.
-			//
-			// 별개의 기존 결함 — 배지는 라우터↔스위치 중점에 놓이는데 라우터 x 는 intNetIds 로만
-			// 정해지므로(topologyLayout `routerHome`) 그 중점이 남의 존 안에 떨어져 카드를 덮을 수
-			// 있다. 남기는 배지도 이 결함을 그대로 가진다. 이 게이트가 고치는 것이 아니다.
+			// The midpoint is only an anchor; CanvasHud moves the measured badge
+			// away from cards, network labels and other badges.
 			if (trunkNetIds(e, graph).length < 2) continue;
 			// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
 			// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
@@ -667,14 +705,22 @@
 		if (e.key === 'Escape') {
 			query = '';
 			matchIdx = -1;
+			if (ownershipOverview) {
+				e.preventDefault();
+				(e.target as HTMLInputElement | null)?.focus({ preventScroll: true });
+				return;
+			}
 			(e.target as HTMLInputElement | null)?.blur();
 			viewportEl?.focus({ preventScroll: true });
 		} else if (e.key === 'Enter' && matchList.length) {
 			e.preventDefault();
 			matchIdx = (matchIdx + 1) % matchList.length;
 			const id = matchList[matchIdx];
-			focusNode(id);
-			announce(`${matchIdx + 1}/${matchList.length} ${graph.nodes.get(id)?.name ?? id}`);
+			withVisibleGraph(() => {
+				if (!graph.nodes.has(id)) return;
+				focusNode(id);
+				announce(`${matchIdx + 1}/${matchList.length} ${graph.nodes.get(id)?.name ?? id}`);
+			});
 		}
 	}
 
@@ -1077,15 +1123,15 @@
 		};
 	});
 
-	// ───────── 패킷 흐름 시뮬레이션(기본 on · 토글로 끌 수 있음 · reduced-motion 하드 off · DESIGN.md named motion exception)
-	let flowOn = $state(true);
+	// 구조 애니메이션은 명시적으로 켠 경우에만 재생하며 reduced-motion 에서는 완전히 중지한다.
+	let flowOn = $state(false);
 	let reducedMotion = $state(prefersReducedMotion());
 	type FlowDot = { el: SVGCircleElement; key: string; t: number; dir: boolean; speed: number };
 	type FlowPath = { path: SVGPathElement; d: string; len: number };
 	const flow = { dots: [] as FlowDot[], paths: new Map<string, FlowPath>(), raf: 0, last: 0 };
 	const hasPathApi = typeof SVGPathElement !== 'undefined' && 'getPointAtLength' in SVGPathElement.prototype && 'getTotalLength' in SVGPathElement.prototype;
 	/** 실제 애니메이션 게이트: 토글 on 이고 reduced-motion 이 아닐 때만. flowOn 자체는 effect 에서 쓰지 않는다(체크박스는 툴바가 disabled 처리). */
-	const flowActive = $derived(flowOn && !reducedMotion);
+	const flowActive = $derived(flowOn && !reducedMotion && !ownershipOverview);
 	const flowAllowed = () =>
 		hasPathApi && flowActive && !pinching && (typeof document === 'undefined' || document.visibilityState === 'visible');
 
@@ -1126,16 +1172,16 @@
 			const key = p.getAttribute('data-key');
 			if (key) flow.paths.set(key, { path: p, d: p.getAttribute('d') ?? '', len: p.getTotalLength() || 1 });
 		}
-		const cands: { e: CanvasEdge; bps: number; rate: { rx_bps: number; tx_bps: number } }[] = [];
+		const cands: { e: CanvasEdge; bps: number; streams: ReturnType<typeof flowStreams> }[] = [];
 		for (const e of graph.edges) {
-			if (e.kind !== 'cable' && e.kind !== 'trunk') continue;
-			const st = baseStyles.get(e.key);
-			if (!st?.bps || !st.rate) continue;
+			if (e.kind !== 'cable') continue;
+			const rate = baseStyles.get(e.key)?.rate;
+			if (!rate) continue;
 			const from = graph.nodes.get(e.from);
 			if (from?.kind === 'vm' && from.status === 'SHUTOFF') continue;
-			if (from?.kind === 'router' && from.status === 'DOWN') continue;
-			if (st.bps < FLOW_MIN_BPS) continue;
-			cands.push({ e, bps: st.bps, rate: st.rate });
+			const streams = flowStreams(e, rate, graph.netById.get(e.netId)?.isolated === true);
+			if (!streams.length) continue;
+			cands.push({ e, bps: streams.reduce((sum, stream) => sum + stream.bps, 0), streams });
 		}
 		cands.sort((a, b) => b.bps - a.bps);
 		const r = (2.5 / Math.max(vp.k, K_MIN)).toFixed(2);
@@ -1143,6 +1189,8 @@
 			for (let i = 0; i < n; i++) {
 				const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
 				el.setAttribute('class', internal ? 'flow-dot is-internal' : 'flow-dot');
+				el.setAttribute('data-edge-key', key);
+				el.setAttribute('data-flow-direction', dir ? 'tx' : 'rx');
 				el.setAttribute('r', r);
 				el.style.setProperty('--net', colorOfNet(graph, netId));
 				g.append(el);
@@ -1155,8 +1203,7 @@
 			cands.flatMap((c) => {
 				const p = flow.paths.get(c.e.key);
 				if (!p) return [];
-				const isolatedNet = graph.netById.get(c.e.netId)?.isolated === true;
-				return [{ key: c.e.key, netId: c.e.netId, len: p.len, streams: flowStreams(c.e, c.rate, isolatedNet, c.bps) }];
+				return [{ key: c.e.key, netId: c.e.netId, len: p.len, streams: c.streams }];
 			}),
 		);
 		for (const a of alloc) emit(a.key, a.netId, a.n, a.dir, a.speed, a.internal);
@@ -1196,16 +1243,25 @@
 		{reducedMotion}
 		editable={editable || Boolean(onCreate)}
 		matchCount={match ? matchList.length : null}
-		onfit={() => fitAll()}
-		onreset={resetLayout}
+		onfit={() => withVisibleGraph(fitAll)}
+		onzoomin={() => withVisibleGraph(() => zoomBy(1.2))}
+		onzoomout={() => withVisibleGraph(() => zoomBy(1 / 1.2))}
+		onoverview={adminView && showAll ? () => { ownershipOverview = true; } : undefined}
+		{ownershipOverview}
+		{legendOpen}
+		onlegend={() => { legendOpen = !legendOpen; }}
+		onreset={() => withVisibleGraph(resetLayout)}
 	/>
+	{#if legendOpen}<CanvasLegend />{/if}
 
 	<div class="stage">
+		{#if ownershipOverview}<CanvasOwnershipOverview {graph} {query} onopen={openResource} />{/if}
 		<!-- role=application 은 WAI-ARIA 위젯 컨테이너이며 포커스를 받아 키보드 조작을 위임한다. aria-query 분류 때문에 svelte 가 오탐한다. -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<div
 			bind:this={viewportEl}
 			class="viewport"
+			hidden={ownershipOverview}
 			class:is-panning={panning}
 			class:is-linking={Boolean(link)}
 			role="application"
@@ -1260,13 +1316,8 @@
 				</div>
 			</div>
 			<CanvasDomainLayer groups={graph.domainGroups ?? []} rects={geometry.domains} {query} {domainGroupLabel} panX={vp.panX} panY={vp.panY} k={vp.k} />
-			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} entering={arrival.active} />
+			<CanvasHud labels={hudLabels} badges={hudBadges} obstacles={hudObstacles} viewportWidth={vw} viewportHeight={vh} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} entering={arrival.active} />
 
-			<div class="corner" data-hud-control>
-				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomIn')} title={t('canvas.zoomInHint')} onclick={() => zoomBy(1.2)}>+</Button>
-				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomOut')} title={t('canvas.zoomOutHint')} onclick={() => zoomBy(1 / 1.2)}>−</Button>
-				<Button variant="secondary" size="icon" ariaLabel={t('toolbar.fit')} title={t('canvas.fitHint')} onclick={() => fitAll()}>⤢</Button>
-			</div>
 
 			{#if offscreen}
 				<div class="offscreen-hint" data-hud-control>
@@ -1279,9 +1330,11 @@
 				</div>
 			{/if}
 		</div>
-		<p class="stage-help" id={helpId}>
-			<RichText segments={t.rich('canvas.help')} tags={{ key: keyboardKey }} />
-		</p>
+		{#if selectedId && !ownershipOverview}<p class="selection-note">{t('canvas.directConnections')}</p>{/if}
+		<details class="stage-help">
+			<summary>{t('canvas.helpTitle')}</summary>
+			<p id={helpId}><RichText segments={t.rich('canvas.help')} tags={{ key: keyboardKey }} /></p>
+		</details>
 	</div>
 
 	<div class="sr-only" aria-live="polite" aria-atomic="true">{liveText}</div>
@@ -1289,8 +1342,10 @@
 
 <style>
 	.canvas-root { display: grid; gap: 0.75rem; }
+	.selection-note { margin: 0; font-size: 0.8125rem; color: var(--color-ink-2); }
 	.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 	.stage { position: relative; }
+	:global(.light) .viewport { background-color: var(--color-surface-base); }
 	.viewport {
 		position: relative;
 		overflow: hidden;
@@ -1327,14 +1382,16 @@
 	.edge-link.is-snapped { stroke-dasharray: none; stroke-width: 2.5; }
 	.edge-pending { fill: none; stroke: var(--color-topology-link); stroke-width: 2; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
 	.link-endpoint { fill: var(--color-accent); stroke: var(--color-surface-base); stroke-width: 1; }
-	/* 내부 통신(라우터 없는 망) 점은 테두리를 없애 게이트웨이 방향 점과 구분한다 — 색만으로 구분하지 않도록 범례에 설명이 있다 */
+	/* 라우터 없는 격리 망의 기존 점 표시를 유지한다. 방향은 모든 NIC에서 각각의 TX/RX 측정값을 따른다. */
 	.layer-flow :global(.flow-dot.is-internal) { stroke: none; }
 	.layer-nodes { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-	.corner { position: absolute; right: 0.75rem; bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; }
-	@media (max-width: 767px) { .corner :global(.btn-icon) { width: 44px; height: 44px; } }
 	.offscreen-hint { position: absolute; left: 50%; top: 0.75rem; transform: translateX(-50%); }
 	.manual-chip { position: absolute; left: 0.75rem; bottom: 0.75rem; }
-	.stage-help { margin: 0.375rem 0.25rem 0; font-size: 0.75rem; color: var(--color-ink-2); }
+	.stage-help { margin: 0.375rem 0.25rem 0; font-size: 0.8125rem; color: var(--color-ink-2); }
+	.stage-help summary { cursor: pointer; min-height: 36px; display: list-item; align-content: center; }
+	.stage-help summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+	.stage-help p { max-width: 75ch; margin: 0.375rem 0; }
+	.viewport[hidden] { display: none; }
 	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 	@media (forced-colors: active) {
 		.viewport:focus-visible { outline: 2px solid CanvasText; }

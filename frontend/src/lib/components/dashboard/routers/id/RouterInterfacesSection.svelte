@@ -4,7 +4,7 @@
 	import { api } from '$lib/api/client';
 	import type { RouterDetail, RouterSubnet } from '$lib/types/router';
 	import type { Network } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -89,7 +89,7 @@
 					disabled={!selectedSubnetId || saving}
 					aria-busy={addingInterface}
 					class="inline-flex items-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-sm px-3 py-2 rounded transition-colors"
-				>{#if addingInterface}<ActivityIndicator size="xs" tone="ink" />{/if}{addingInterface ? tc('state.processing') : t('router.interfaces.add')}</button>
+				>{#if addingInterface}<LoadingState variant="control" label="" />{/if}{addingInterface ? tc('state.processing') : t('router.interfaces.add')}</button>
 				<button onclick={() => { showAddInterface = false; selectedNetId = ''; }} class="text-ink-2 hover:text-ink-1 text-sm px-2">{t('router.actions.cancel')}</button>
 			</div>
 		</div>
@@ -105,7 +105,7 @@
 					<CompactResourceCard>
 						<p class="font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</p><p class="font-mono text-xs">{iface.ip_address}</p>
 						{#snippet details()}<p class="font-mono">{iface.subnet_id}</p>{/snippet}
-						{#snippet actions()}{#if canManage}<button onclick={() => pending.run(`remove:${iface.subnet_id}`, () => onRemove(iface.subnet_id))} disabled={saving} aria-busy={removing} class="inline-flex items-center gap-1.5 text-state-danger-text">{#if removing}<ActivityIndicator size="xs" tone="danger" />{/if}{removing ? tc('state.processing') : t('router.interfaces.remove')}</button>{/if}{/snippet}
+						{#snippet actions()}{#if canManage}<button onclick={() => pending.run(`remove:${iface.subnet_id}`, () => onRemove(iface.subnet_id))} disabled={saving} aria-busy={removing} class="inline-flex items-center gap-1.5 text-state-danger-text">{#if removing}<LoadingState variant="control" label="" />{/if}{removing ? tc('state.processing') : t('router.interfaces.remove')}</button>{/if}{/snippet}
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
@@ -123,7 +123,7 @@
 							disabled={saving}
 							aria-busy={removing}
 							class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-						>{#if removing}<ActivityIndicator size="xs" tone="danger" />{/if}{removing ? tc('state.processing') : t('router.interfaces.remove')}</button>
+						>{#if removing}<LoadingState variant="control" label="" />{/if}{removing ? tc('state.processing') : t('router.interfaces.remove')}</button>
 					{/if}
 				</div>
 			{/each}

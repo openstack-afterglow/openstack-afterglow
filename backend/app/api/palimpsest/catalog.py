@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app.api.deps import require_admin
 from app.api.palimpsest.packages import package_browser_identity, package_browser_request
+from app.models.instance_usage import UsageScheduleRequest
 from app.services import palimpsest_catalog as service
 from app.services import palimpsest_catalog_consume as consumption
 
@@ -96,6 +97,7 @@ class ConsumeRequest(BaseModel):
     ssh_public_key: str | None = None
     server_name: str = Field(min_length=1, max_length=128)
     ssh_username: str | None = None
+    usage_schedule: UsageScheduleRequest | None = None
 
     @model_validator(mode="after")
     def validate_existing_consume_fields(self):

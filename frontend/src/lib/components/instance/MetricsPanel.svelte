@@ -7,7 +7,8 @@
 	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import { ActivityIndicator, AnimatedNumber, Button } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { AnimatedNumber, Button } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import type { ChartDatum, ChartSpec as BklitSpec } from '$lib/components/charts/types';
 
@@ -36,7 +37,9 @@
 	onDestroy(() => { unsubscribeAuth(); generation += 1; });
 
 	type TabKey = 'chart' | 'grafana';
-	let activeTab: TabKey = $state('chart');
+	let activeTab = $state<TabKey>('chart');
+	const allowGrafana = $derived(adminMode && $auth.isSystemAdmin === true);
+	const showingGrafana = $derived.by(() => allowGrafana && activeTab === 'grafana');
 
 	let range: RangeKey = $state('1h');
 	const context = $derived(`${authEpoch}:${adminMode}:${projectId}:${instanceId}:${range}:${isGpu}`);
@@ -64,7 +67,7 @@
 		const current = () => request.generation === generation && request.token === token
 			&& request.projectId === projectId && request.instanceId === instanceId && request.range === range
 			&& request.isGpu === isGpu && request.adminMode === adminMode && request.epoch === authEpoch;
-		if (!request.token || !request.projectId || !request.instanceId) return;
+		if (!request.token || !request.instanceId || (!request.adminMode && !request.projectId)) return;
 		const keys = [...baseMetrics, ...nativeMetrics, ...(request.isGpu ? gpuMetrics : [])];
 		void api.get<{ monitoring_available: boolean; stats: Record<string, StatInfo> }>(
 			`/api/v1/${request.adminMode ? 'admin/' : ''}instances/${request.instanceId}/metrics-summary?range=${request.range}`,
@@ -201,6 +204,7 @@
 <div>
 	<!-- 탭 헤더 -->
 	<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+		{#if allowGrafana}
 		<div class="flex gap-1">
 			<button
 				onclick={() => { activeTab = 'chart'; }}
@@ -211,8 +215,9 @@
 				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
 			>Grafana</button>
 		</div>
+		{/if}
 
-		{#if activeTab === 'chart'}
+		{#if !showingGrafana}
 		<div class="flex flex-wrap items-center gap-2">
 			<!-- range 토글 -->
 			<div class="flex flex-wrap gap-1">
@@ -233,7 +238,7 @@
 		{/if}
 	</div>
 
-	{#if activeTab === 'grafana'}
+	{#if showingGrafana}
 		{#key context}
 		<GrafanaEmbed
 			dashboardKey={isGpu ? 'instance-gpu' : 'instance-cpu'}
@@ -243,7 +248,7 @@
 		/>
 		{/key}
 	{:else if metricsContext !== context}
-		<ActivityIndicator label={t('metrics.loading')} />
+		<LoadingState variant="section" label={t('metrics.loading')} />
 	{:else}
 	<div class="mb-4 space-y-2">
 		<Button variant="secondary" size="sm" ariaExpanded={showNative} onclick={() => { showNative = !showNative; }}>{t('metrics.nativeMeasurements')}</Button>
@@ -253,8 +258,8 @@
 		{#each activeCharts as chart (chart.key)}
 			{@const m = metrics[chart.key]}
 			{@const ex = chart.extraKey ? metrics[chart.extraKey] : null}
-			<div class="bg-surface-sunken border border-line-2 rounded-lg p-4">
-				<div class="flex items-center justify-between mb-2">
+			<div data-instance-metric={chart.key} class="bg-surface-base border border-line rounded-lg p-4">
+				<div class="flex min-h-6 items-center justify-between mb-2">
 					<span class="text-xs font-semibold text-ink-2">{chart.title}</span>
 					{#if m.data && m.data.length > 0}
 						{@const latest = m.data[m.data.length - 1].value}
@@ -265,15 +270,16 @@
 						</span>
 					{/if}
 				</div>
-				<div class="mb-2 space-y-1 text-xs text-ink-2 break-words" aria-live="polite">
+				<div class="mb-2 min-h-10 space-y-1 text-xs text-ink-2 break-words" aria-live="polite">
 					<p>{chart.extraKey ? `${t('metrics.readLegend')}: ` : ''}{metricDescription(m, chart.unit)}</p>
 					{#if ex}<p>{t('metrics.writeLegend')}: {metricDescription(ex, chart.unit)}</p>{/if}
 				</div>
 
+				<div class="min-h-48">
 				{#if m.data === null}
-					<div class="flex items-center justify-center h-20"><ActivityIndicator label={t('metrics.loading')} /></div>
+					<div class="flex items-center justify-center h-30"><LoadingState variant="inline" label={t('metrics.loading')} /></div>
 				{:else if !hasValues(m.data) && !hasValues(ex?.data)}
-					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">{m.status === 'not_collected' ? t('metrics.empty') : m.error ?? t('metrics.empty')}</div>
+					<div class="flex items-center justify-center h-30 text-ink-2 text-xs">{m.status === 'not_collected' ? t('metrics.empty') : m.error ?? t('metrics.empty')}</div>
 				{:else}
 					<BklitChart spec={metricChart(chart, m.data, ex?.data ?? [])} height={120} label={chart.title} />
 
@@ -291,11 +297,13 @@
 						</div>
 					{/if}
 				{/if}
+				</div>
 
 				<!-- 통계 요약 행 (min / avg / max) -->
+				<div class="flow-root min-h-16">
 				{#if summaryStats[chart.key]}
 					{@const s = summaryStats[chart.key]}
-					<div class="flex flex-wrap gap-4 mt-2 pt-2 border-t border-line-2/60 text-xs text-ink-2">
+					<div class="flex flex-wrap gap-4 mt-2 pt-2 border-t border-line text-xs text-ink-2">
 						{#snippet statValue(value: number | null)}<strong class="text-ink-2 font-medium">{#if value != null && Number.isFinite(value)}<AnimatedNumber {value} format={(v) => formatMetric(chart, s, v)} />{:else}—{/if}</strong>{/snippet}
 						{#snippet statMin(_text: string)}{@render statValue(s.min)}{/snippet}
 						{#snippet statAvg(_text: string)}{@render statValue(s.avg)}{/snippet}
@@ -306,6 +314,7 @@
 						<span>{metricDescription(s, chart.unit)}</span>
 					</div>
 				{/if}
+				</div>
 			</div>
 		{/each}
 	</div>

@@ -3,7 +3,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	interface Props {
 		type: 'live' | 'cold';
@@ -71,7 +71,7 @@
 		<div class="flex justify-end gap-3 mt-6">
 			<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('migrate.cancel')}</button>
 			<button onclick={handleMigrate} disabled={s.migrateLoading} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30">
-				{#if s.migrateLoading}<ActivityIndicator size="xs" label={t('migrate.migrating')} />{:else}{t('migrate.submit')}{/if}
+				{#if s.migrateLoading}<LoadingState variant="control" label={t('migrate.migrating')} />{:else}{t('migrate.submit')}{/if}
 			</button>
 		</div>
 	</div>

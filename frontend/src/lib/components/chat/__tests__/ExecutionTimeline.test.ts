@@ -9,13 +9,11 @@ it('enters streamed steps and pops live completion without replaying stored hist
 	const view = render(ExecutionTimeline, { items: [], active: true });
 	await view.rerender({ items: [running] });
 	expect(view.container.querySelector('li.motion-enter')).toBeTruthy();
-	expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
 	await view.rerender({ items: [running, done] });
-	expect(view.container.querySelectorAll('.activity')).toHaveLength(0);
 	expect(view.container.querySelector('.timeline-check.motion-pop')).toBeTruthy();
 	view.unmount();
 	const stored = render(ExecutionTimeline, { items: [running, done], active: false });
-	expect(stored.container.querySelector('.motion-enter, .motion-pop, .activity')).toBeNull();
+	expect(stored.container.querySelector('.motion-enter, .motion-pop')).toBeNull();
 });
 
 it('shows user-facing tasks while hiding backend lifecycle stages', async () => {

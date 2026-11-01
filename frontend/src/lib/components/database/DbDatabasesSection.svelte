@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -35,7 +35,7 @@
 			{#if s.dbError}<p class="text-red-400 text-xs">{s.dbError}</p>{/if}
 			<button onclick={handleCreateDb} disabled={s.creatingDb || !newDbName.trim()}
 				class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{#if s.creatingDb}<ActivityIndicator size="xs" tone="ink" />{/if}{s.creatingDb ? tr('state.creating') : tr('actions.create')}
+				{#if s.creatingDb}<LoadingState variant="control" label="" />{/if}{s.creatingDb ? tr('state.creating') : tr('actions.create')}
 			</button>
 		</div>
 	{/if}
@@ -43,14 +43,14 @@
 		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
 	{:else}
   <ResponsiveTable>
-   {#snippet cards()}{#each s.databases as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
+   {#snippet cards()}{#each s.databases as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
 			{#each s.databases as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
 					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
 					<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name}
 						class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{#if s.deletingDb === db.name}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
+						{#if s.deletingDb === db.name}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
 					</button>
 				</div>
 			{/each}

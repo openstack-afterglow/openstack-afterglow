@@ -78,6 +78,17 @@ def layer_provider(monkeypatch):
         "deletes": [],
         "connections": [],
         "unexpected": [],
+        "flavors": {
+            identity: {
+                "id": identity,
+                "name": identity,
+                "vcpus": 2,
+                "ram": 4096,
+                "disk": 0,
+                "extra_specs": {"hw:cpu_policy": "shared"},
+            }
+            for identity in (FLAVOR, "catalog-flavor")
+        },
         "lose": None,
         "reject": None,
         "fail_port_delete": False,
@@ -172,6 +183,14 @@ def layer_provider(monkeypatch):
                         ]
                     },
                 )
+                return
+            if "/flavors/" in path:
+                identity = path.split("/flavors/", 1)[1].split("/", 1)[0]
+                flavor = state["flavors"].get(identity)
+                if path.endswith("/os-extra_specs") and flavor:
+                    self.reply(200, {"extra_specs": flavor["extra_specs"]})
+                else:
+                    self.reply(200 if flavor else 404, {"flavor": flavor} if flavor else {})
                 return
             if path == f"/glance/v2/images/{IMAGE}":
                 self.reply(
@@ -702,7 +721,7 @@ async def admit_consumer(factory, state):
         return job.id, consumer.id, artifact.id, snapshot
 
 
-async def execute_consumer(redis, admitted, worker):
+async def execute_consumer(redis, admitted, worker, *, usage_schedule=None):
     from app.services.layer_build import run_layer_consume
 
     import_id, consume_id, artifact_id, snapshot = admitted
@@ -719,6 +738,7 @@ async def execute_consumer(redis, admitted, worker):
                 resource_snapshot=snapshot,
                 artifact_ids=[artifact_id],
                 transport="nfs",
+                usage_schedule=usage_schedule,
             )
 
 
@@ -813,3 +833,54 @@ async def test_definitively_rejected_share_create_fails_build_and_disposes_port(
         row = await session.get(LayerBuild, admitted["build_id"])
         assert row.status == "error" and "400" in row.error_message
     assert state["shares"] == {}
+
+
+@pytest.mark.asyncio
+async def test_shared_consumer_expiry_during_server_intent_never_posts_or_replays(
+    layer_database, layer_provider, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    from fastapi import HTTPException
+
+    from app.services import instance_usage
+
+    factory, redis = layer_database
+    state, _ = layer_provider
+    admitted = await admit_consumer(factory, state)
+    clock = [datetime(2032, 1, 31, 10, 15, tzinfo=UTC)]
+    monkeypatch.setattr(instance_usage, "_clock", lambda now=None: now or clock[0])
+    redis_call = build_work._redis_call
+    server_intents = []
+
+    async def delayed_intent(fn, *args, **kwargs):
+        result = await redis_call(fn, *args, **kwargs)
+        if (
+            len(args) >= 2
+            and str(args[0]).endswith(f":submit:consumer:{admitted[1]}:server")
+            and args[1] == json.dumps({"state": "submitting"})
+            and kwargs.get("nx") is True
+            and result
+        ):
+            server_intents.append(True)
+            clock[0] += timedelta(minutes=2)
+        return result
+
+    monkeypatch.setattr(build_work, "_redis_call", delayed_intent)
+    request = {"expires_at": "2032-01-31T10:16:00Z"}
+    with pytest.raises(HTTPException) as error:
+        await execute_consumer(redis, admitted, "expiry-owner", usage_schedule=request)
+    assert error.value.status_code == 422
+    assert server_intents == [True]
+    assert not any(kind == "server" for kind, _ in state["creates"])
+    assert state["servers"] == {}
+    key = f"afterglow:builds:journal:import:{admitted[0]}:submit:consumer:{admitted[1]}:server"
+    submission = await redis.get(key)
+    assert json.loads(submission) == {"state": "rejected", "response_status": 422}
+    creates = list(state["creates"])
+    with pytest.raises(RuntimeError):
+        await execute_consumer(redis, admitted, "expiry-successor", usage_schedule=request)
+    assert server_intents == [True]
+    assert not any(kind == "server" for kind, _ in state["creates"])
+    assert await redis.get(key) == submission
+    assert state["creates"] == creates

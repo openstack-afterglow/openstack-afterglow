@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -100,10 +101,7 @@
 		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">{t('volumeDetail.back')}</a>
 	</div>
 	{#if loading}
-		<div class="space-y-4" role="status" aria-busy="true" aria-label={t('volumeDetail.loadingInfo')}>
-			<div class="h-8 motion-skeleton rounded w-64"></div>
-			<div class="h-40 motion-skeleton rounded"></div>
-		</div>
+		<LoadingState variant="surface" label={t('volumeDetail.loadingInfo')} />
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if volume}

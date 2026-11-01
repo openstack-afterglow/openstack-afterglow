@@ -6,7 +6,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -151,7 +151,7 @@
 			</div>
 		</div>
 		<footer class="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-line p-4">
-			{#if busy}<ActivityIndicator size="xs" label={tc('state.processing')} />{/if}
+			{#if busy}<LoadingState variant="control" label={tc('state.processing')}  />{/if}
 			<Button variant="secondary" disabled={busy} onclick={onClose}>{tc('actions.cancel')}</Button>
 			<Button variant="primary" disabled={busy || submitDisabled || !directEditable} ariaBusy={busy} onclick={save}>{t('projectMemberRoles.save')}</Button>
 		</footer>

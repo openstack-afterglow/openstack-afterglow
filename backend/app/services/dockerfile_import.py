@@ -1457,7 +1457,7 @@ async def _save_import_profile(session, job: LayerImportJob, artifact_ids: list[
 
 
 async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
-    """Freeze public SSH key and placement while the authenticated admin request is alive."""
+    """Freeze immutable CREATE inputs, not the consumer's future native schedule."""
     from app.api.union.layer_ops import LayerConsumeRequest
     from app.services.layer_build import resolve_layer_consume_resource_snapshot
 
@@ -1474,7 +1474,10 @@ async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
     if not ssh_public_key:
         raise DockerfileImportError("SSH public key or existing keypair is required to launch a consumer VM")
     snapshot = await resolve_layer_consume_resource_snapshot(
-        conn, flavor_ref=validated.flavor_id, network_id=validated.network_id
+        conn,
+        flavor_ref=validated.flavor_id,
+        network_id=validated.network_id,
+        usage_schedule=validated.usage_schedule,
     )
     return {
         "server_name": validated.server_name,
@@ -1482,6 +1485,9 @@ async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
         "transport": validated.transport,
         "ssh_public_key": ssh_public_key,
         "ssh_username": validated.ssh_username,
+        # Keep a null expiry: the default month starts at the first Nova CREATE,
+        # not while an arbitrarily long Dockerfile import is still building.
+        "usage_schedule": validated.usage_schedule.model_dump(mode="json") if validated.usage_schedule else None,
         "resource_snapshot": snapshot,
     }
 
@@ -1562,6 +1568,7 @@ async def _launch_import_consumer(import_id: int) -> None:
                 ssh_username=spec["ssh_username"],
                 resource_snapshot=spec["resource_snapshot"],
                 artifact_ids=artifact_ids,
+                usage_schedule=spec.get("usage_schedule"),
             )
         except (build_work.DispatcherUnavailable, build_work.SubmissionUnknown, SQLAlchemyError):
             raise

@@ -85,6 +85,7 @@ def make_mock_conn(project_id: str = "test-project-123") -> MagicMock:
     conn = MagicMock()
     conn._afterglow_token = "test-token"
     conn._afterglow_project_id = project_id
+    conn._afterglow_authenticated_project_id = project_id
     conn._afterglow_user_id = "test-user-123"
     conn._afterglow_domain_id = "default"
     conn._afterglow_domain_name = "Default"
@@ -92,6 +93,7 @@ def make_mock_conn(project_id: str = "test-project-123") -> MagicMock:
     conn.session.auth.get_access.return_value.user_domain_id = "default"
     conn.session.auth.get_access.return_value.project_domain_id = "default"
     conn.close = MagicMock()
+    conn.endpoint_for.return_value = "http://synthetic-native.test/identity/v3"
 
     def _owned():
         m = MagicMock()
@@ -389,6 +391,17 @@ def native_auth(monkeypatch, auth_directory):
     monkeypatch.setattr(keystone.v3, "Token", Token)
     monkeypatch.setattr("keystoneclient.v3.client.Client", lambda **kwargs: SimpleNamespace(projects=ks.projects))
     return state
+
+
+@pytest.fixture(autouse=True)
+def _unmanaged_compute_pool_native(monkeypatch):
+    """Give pre-pool consumer fixtures an explicit native unmanaged domain."""
+    from app.services import compute_pools
+    from tests.compute_pool_provider import unmanaged_pool_operator
+
+    domain_policies = {}
+    monkeypatch.setattr(compute_pools, "_operator", lambda: unmanaged_pool_operator(domain_policies))
+    return domain_policies
 
 
 @pytest.fixture(autouse=True)

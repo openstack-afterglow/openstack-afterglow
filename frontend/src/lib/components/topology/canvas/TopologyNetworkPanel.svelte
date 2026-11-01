@@ -4,7 +4,7 @@
 	import { t } from '$lib/i18n/ns/topology';
 	// 토폴로지 네트워크(스위치) 읽기 전용 상세. 페이지가 SlidePanel 안에 렌더링한다.
 	// 조작 컨트롤은 두지 않으며, provider 세그먼트·MTU 등 관리자 행은 showProvider 일 때만 렌더링한다.
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
@@ -213,8 +213,9 @@
 					onchange={(v) => (historyRange = v)}
 				/>
 				{#if historyLoading}
-					<ActivityIndicator label={t('panel.loading')} />
-				{:else if historyError}
+					<LoadingState variant={history ? 'inline' : 'section'} label={t('panel.loading')}  />
+				{/if}
+				{#if historyError}
 					<p class="text-sm text-ink-2">{historyError}</p>
 				{:else if history?.series.length}
 					<TrafficSparkline series={history.series} rangeLabel={sampledAt ? t('panel.sampleIntervalAt', { seconds: history.step_s, sampledAt }) : t('panel.sampleInterval', { seconds: history.step_s })} />

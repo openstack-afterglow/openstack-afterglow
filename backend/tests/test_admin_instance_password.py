@@ -236,7 +236,7 @@ async def test_admin_windows_password_conflicts_reject_before_side_effects(admin
         "data_mounts": {"data_mounts": [{"file_storage_id": "share-1", "mount_point": "/data/share"}]},
     }[conflict]
     boundary.flavor.extra_specs = {"pci_passthrough:alias": "nvidia_gpu:1"}
-    response = await admin_client.post(PATH, json=payload(source, **extras))
+    response = await admin_client.post(PATH, json=payload(source, usage_schedule={}, **extras))
     assert response.status_code == 400, response.text
     no_mutation(boundary)
 
@@ -550,18 +550,18 @@ async def test_admin_windows_gpu_password_skips_linux_bootstrap(
 ):
     boundary.flavor.extra_specs = extra_specs
     boundary.admission.return_value = SimpleNamespace(gpu_requested={"nvidia_gpu": 1})
-    response = await admin_client.post(PATH, json=payload(source))
+    response = await admin_client.post(PATH, json=payload(source, usage_schedule={}))
     stream = events(response)
     assert stream[-1]["step"] == "completed"
     assert stream[-1]["instance_id"] == SERVER
     body = boundary.target.compute.create_server.call_args.kwargs
     assert "user_data" not in body
+    assert not {"afterglow_ssh_access_mode", "afterglow_github_login"} & body["metadata"].keys()
     boundary.generate_userdata.assert_not_called()
     boundary.compose_userdata.assert_not_called()
     assert not any(event["step"] == "userdata_generating" for event in stream)
     assert body["config_drive"] is True
     assert body["adminPass"] == PASSWORD
-    assert "metadata" not in body
     boundary.admission.assert_awaited_once()
     boundary.release.assert_awaited_once()
     boundary.history.assert_not_awaited()

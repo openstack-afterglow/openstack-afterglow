@@ -1,48 +1,21 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
-	import { formatNumber } from '$lib/utils/format';
-	import { AnimatedNumber } from '$lib/components/ui';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { Overview } from '$lib/types/adminOverview';
-
 	let { overview }: { overview: Overview } = $props();
-	const count = (n: number) => formatNumber(Math.round(n));
+	const services = $derived([
+		{ label: t('overview.services.containers'), href: '/admin/containers', value: overview.containers_count, disabled: overview.disabled_sections?.includes('containers') },
+		{ label: t('overview.services.fileStorage'), href: '/admin/file-storage', value: overview.file_storage_count, disabled: overview.disabled_sections?.includes('file_storage') },
+		{ label: t('overview.services.database'), href: '/admin/database-instances', value: overview.database_instances_count, disabled: overview.disabled_sections?.includes('database') },
+		{ label: t('overview.services.objectStorage'), href: '/admin/object-storage', value: overview.object_storage_containers_count, disabled: overview.disabled_sections?.includes('object_storage') },
+	]);
 </script>
 
-<div class="motion-enter flex flex-col gap-px overflow-hidden rounded-lg border border-line bg-line">
-	<a href="/admin/containers" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
-		<div class="flex size-8 shrink-0 items-center justify-center text-warm-text">
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-		</div>
-		<div>
-			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.containers')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.containers_count ?? 0} format={count} /></div>
-		</div>
-	</a>
-	<a href="/admin/file-storage" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
-		<div class="flex size-8 shrink-0 items-center justify-center text-teal-400">
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-		</div>
-		<div>
-			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.fileStorage')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.file_storage_count ?? 0} format={count} /></div>
-		</div>
-	</a>
-	<a href="/admin/database-instances" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
-		<div class="flex size-8 shrink-0 items-center justify-center text-cyan-400">
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3M4 7v5c0 1.657 3.582 3 8 3s8-1.343 8-3V7M4 7c0 1.657 3.582 3 8 3s8-1.343 8-3M4 12v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5"/></svg>
-		</div>
-		<div>
-			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.database')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.database_instances_count ?? 0} format={count} /></div>
-		</div>
-	</a>
-	<a href="/admin/object-storage" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
-		<div class="flex size-8 shrink-0 items-center justify-center text-indigo-400">
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
-		</div>
-		<div>
-			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.services.objectStorage')}</div>
-			<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.object_storage_containers_count ?? 0} format={count} /></div>
-		</div>
-	</a>
+<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
+	{#each services as service}
+		<a href={service.href} class="flex min-w-0 flex-wrap items-baseline justify-between gap-2 bg-surface-base px-4 py-3 text-sm transition-colors hover:bg-surface-selected">
+			<span class="text-ink-2">{service.label}</span>
+			<span class="font-semibold tabular-nums text-ink-0">{service.disabled ? t('overview.availability.disabled') : service.value == null ? t('overview.availability.unknown') : service.value.toLocaleString(intlLocale())}</span>
+		</a>
+	{/each}
 </div>

@@ -122,5 +122,9 @@
 	"yaml.parseError": "Ralat penghuraian YAML: {error}",
 	"yaml.configMapKind": "kind mestilah ConfigMap",
 	"yaml.secretKind": "kind mestilah Secret",
-	"yaml.stringDataRequired": "Gunakan stringData dan bukannya data untuk menyunting Secret (input teks biasa)"
+	"yaml.stringDataRequired": "Gunakan stringData dan bukannya data untuk menyunting Secret (input teks biasa)",
+	"clusterError.details": "Butiran ralat",
+	"clusterError.recovery": "Periksa langkah gagal dan sumber berkaitan dalam butiran kluster. Selesaikan isu kumpulan keselamatan, rangkaian atau kuota, kemudian muat semula status.",
+	"clusterError.loadFailed": "Tidak dapat memuatkan kluster",
+	"clusterError.reload": "Muat semula"
 }

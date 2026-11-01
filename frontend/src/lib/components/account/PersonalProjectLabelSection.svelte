@@ -6,7 +6,8 @@
 	import { invalidateWorkspaceDisplaySnapshots } from '$lib/stores/workspaceController.svelte';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { t } from '$lib/i18n/ns/account';
-	import { ActivityIndicator, Alert, Button, Card, Field, TextInput } from '$lib/components/ui';
+	import { Alert, Button, Card, Field, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	interface ProjectDisplayName {
 		project_id: string;
@@ -114,7 +115,7 @@
 	<Card class="p-5 space-y-4 min-w-0">
 		<h3 class="text-sm font-semibold text-ink-0">{t('personalLabel.title')}</h3>
 		<p class="text-sm text-ink-2">{t('personalLabel.help')}</p>
-		{#if busy}<ActivityIndicator label={t('personalLabel.loading')} />{/if}
+		{#if busy}<LoadingState variant={metadata ? 'inline' : 'section'} label={t('personalLabel.loading')}  />{/if}
 		{#if error}
 			<Alert tone="danger">{error}</Alert>
 			{#if !metadata}<Button variant="secondary" disabled={busy || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('personalLabel.reload')}</Button>{/if}

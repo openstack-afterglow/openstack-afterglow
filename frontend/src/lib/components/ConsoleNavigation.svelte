@@ -10,6 +10,10 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/nav';
+	import { auth } from '$lib/stores/auth';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import { emptyNavigationPreferences, navigationPreferenceKey, readNavigationPreferences, saveNavigationPreferences, type NavigationPreferences } from '$lib/stores/navigationPreferences';
+	import { adminInventoryScope } from '$lib/stores/adminInventoryScope';
 
 	interface Props {
 		rootHref: string;
@@ -18,17 +22,43 @@
 		sections: NavSection[];
 		isItemVisible: (item: NavItem) => boolean;
 		isSectionVisible: (section: NavSection) => boolean;
-		topActions?: Snippet;
 		footer?: Snippet;
 	}
 
 	type CurrentContext = { item: NavItem; key: string; label: string; icon?: string; items: NavItem[] };
-	let { rootHref, rootLabel, overviewItems, sections, isItemVisible, isSectionVisible, topActions, footer }: Props = $props();
+	let { rootHref, rootLabel, overviewItems, sections, isItemVisible, isSectionVisible, footer }: Props = $props();
 	let expanded = $state<Record<string, boolean>>({});
 	let previousPath = untrack(() => $page.url.pathname);
-	let previousOwner = '';
 	const visibleOverview = $derived(overviewItems.filter(isItemVisible));
 	const visibleSections = $derived(sections.filter(isSectionVisible).map(section => ({ ...section, items: section.items.filter(isItemVisible) })));
+	let serviceQuery = $state('');
+	let allServicesExpanded = $state(true);
+	let preferences = $state<NavigationPreferences>(emptyNavigationPreferences());
+	let preferenceOwner = $state('');
+	const preferenceKey = $derived($auth.userId && $auth.identityDomainId
+		? navigationPreferenceKey($auth.identityDomainId, $auth.userId, rootHref === '/admin' ? 'admin' : 'user') : '');
+	const serviceDestinations = $derived(visibleSections.flatMap(section => section.items).filter(item => !visibleOverview.some(hub => hub.href === item.href)));
+	const catalogSections = $derived(visibleSections.map(section => ({ ...section, items: section.items.filter(item => !visibleOverview.some(hub => hub.href === item.href)) })).filter(section => section.items.length));
+	const matchedDestinations = $derived(serviceDestinations.filter(item => `${item.label} ${visibleSections.find(section => section.items.some(row => row.href === item.href))?.label ?? ''}`.toLocaleLowerCase().includes(serviceQuery.trim().toLocaleLowerCase())));
+	const pinned = $derived(preferenceOwner === preferenceKey ? preferences.pinned.flatMap(href => serviceDestinations.find(item => item.href === href) ?? []) : []);
+	$effect(() => {
+		const key = preferenceKey;
+		untrack(() => {
+			if (preferenceOwner !== key) {
+				preferenceOwner = key;
+				preferences = key ? readNavigationPreferences(key) : emptyNavigationPreferences();
+				serviceQuery = '';
+				allServicesExpanded = true;
+				expanded = {};
+			}
+		});
+	});
+	function togglePinned(href: string) {
+		if (!preferenceKey || preferenceOwner !== preferenceKey || !serviceDestinations.some(item => item.href === href)) return;
+		const paths = preferences.pinned.includes(href) ? preferences.pinned.filter(path => path !== href) : [...preferences.pinned, href].slice(-20);
+		preferences = { ...preferences, pinned: paths };
+		saveNavigationPreferences(preferenceKey, preferences);
+	}
 
 	const current = $derived.by((): CurrentContext | null => {
 		const pathname = $page.url.pathname;
@@ -53,12 +83,11 @@
 	const contextItems = $derived(current?.items ?? []);
 
 	$effect(() => {
-		const key = current?.key;
-		const owner = `${$page.url.pathname}:${key ?? ''}`;
-		if (owner !== previousOwner) {
-			previousOwner = owner;
-			if (key) untrack(() => { expanded[key] = true; });
-		}
+		if (!$sidebarOpen) untrack(() => {
+			serviceQuery = '';
+			allServicesExpanded = true;
+			expanded = {};
+		});
 	});
 	$effect(() => {
 		const pathname = $page.url.pathname;
@@ -71,6 +100,7 @@
 	function selectPage() {
 		sidebarExpanded.open();
 		sidebarOpen.close();
+		serviceQuery = '';
 	}
 	function openSearch() {
 		sidebarOpen.close();
@@ -93,7 +123,12 @@
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={$sidebarExpanded ? 'M9 4v16M14 8l-4 4 4 4M4 4h16v16H4z' : 'M9 4v16M12 8l4 4-4 4M4 4h16v16H4z'} /></svg>
 			</button>
 		</div>
-		{#if $sidebarExpanded && topActions && !$sidebarOpen}<div class="px-3 pb-3">{@render topActions()}</div>{/if}
+		<div class="mb-2 shrink-0 border-b border-line pb-2" class:px-3={$sidebarExpanded}>
+			<button type="button" onclick={sidebarOpen.open} aria-haspopup="dialog" aria-controls="app-navigation-menu" aria-expanded={$sidebarOpen} title={t('accessibility.allServices')} class="nav-item service-nav-item w-full gap-3 text-left" class:nav-compact={!$sidebarExpanded}>
+				<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m10 6-6 6 6 6M4 12h16" /></svg>
+				<span class:sr-only={!$sidebarExpanded}>{t('accessibility.allServices')}</span>
+			</button>
+		</div>
 		<nav id="app-service-navigation" aria-label={t('accessibility.currentService')} class="min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-4 pt-1" class:px-3={$sidebarExpanded} class:overflow-x-hidden={!$sidebarExpanded}>
 			{#each contextItems as item (item.href)}
 				<a href={item.href} title={item.label} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item service-nav-item gap-3" class:nav-active={current?.item.href === item.href} class:nav-compact={!$sidebarExpanded}>
@@ -108,16 +143,29 @@
 
 {#if $sidebarOpen}
 	<div use:dialogFocus={{ enabled: true, onEscape: () => sidebarOpen.close(), initialFocus: '#app-navigation-close' }} role="dialog" aria-modal="true" aria-label={t('accessibility.allMenu')} tabindex="-1" class="fixed inset-0 z-[var(--z-modal)]">
-		<button type="button" onclick={() => sidebarOpen.close()} tabindex="-1" aria-hidden="true" data-navigation-backdrop class="motion-fade absolute inset-0 cursor-default bg-surface-scrim-soft"></button>
+		<div onclick={() => sidebarOpen.close()} aria-hidden="true" data-navigation-backdrop class="motion-fade absolute inset-0 cursor-default bg-surface-scrim-soft"></div>
 		<aside id="app-navigation-menu" aria-label={rootHref === '/admin' ? t('accessibility.adminNavigation') : t('accessibility.userNavigation')} class="motion-enter relative flex h-[100dvh] w-[min(var(--app-sidebar-width),100vw)] flex-col bg-surface-base shadow-[var(--shadow-restraint)]">
 			<div class="flex h-[var(--app-header-height)] shrink-0 items-center gap-2 border-b border-line px-3 sm:gap-3 md:px-6">
-				<button id="app-navigation-close" type="button" onclick={() => sidebarOpen.close()} aria-label={t('accessibility.closeAllMenu')} class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8">
+				<button id="app-navigation-close" type="button" onclick={() => sidebarOpen.close()} aria-label={t('accessibility.closeAllMenu')} class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-9">
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 6 12 12M6 18 18 6" /></svg>
 				</button>
 				<a href={rootHref} onclick={selectPage} class="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-ink-0 transition-colors hover:text-ink-1" title={$siteConfig.site_name}>
 					<img src="/afterglow-symbol.svg" alt="" width="24" height="24" class="shrink-0" />
 					<span class="max-w-36 truncate">{$siteConfig.site_name}</span>
 				</a>
+			</div>
+			<div class="flex min-h-0 flex-1 flex-col">
+			<div data-navigation-shortcuts class="min-h-0 max-h-[60%] shrink-0 overflow-y-auto border-b border-line px-3 py-3">
+				<nav aria-label={t('sections.hub')} class="space-y-0.5">
+					<h2 class="px-3 pb-1 text-xs font-medium text-ink-2">{t('sections.hub')}</h2>
+					{#each visibleOverview as item (item.href)}{@render destinationRow(item, false)}{/each}
+				</nav>
+				{#if pinned.length}
+					<section class="mt-3 space-y-0.5" aria-label={t('sections.favorites')}>
+						<h2 class="px-3 pb-1 text-xs font-medium text-ink-2">{t('sections.favorites')}</h2>
+						{#each pinned as item (item.href)}{@render destinationRow(item)}{/each}
+					</section>
+				{/if}
 			</div>
 			<div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
 				<div class="mb-3 lg:hidden">
@@ -126,17 +174,24 @@
 						{t('actions.searchResources')}
 					</Button>
 				</div>
-				{#if topActions}<div class="mb-3">{@render topActions()}</div>{/if}
-				<nav aria-label={t('accessibility.allServices')} class="space-y-0.5">
-					{#each visibleOverview as item (item.href)}
-						<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item" class:nav-active={current?.item.href === item.href}>{item.label}</a>
-					{/each}
-					{#each visibleSections as section (section.prefix)}
+				<label for="console-service-search" class="mb-1 block text-xs text-ink-2">{t('actions.searchServices')}</label>
+				<TextInput id="console-service-search" type="search" bind:value={serviceQuery} class="mb-3 w-full" />
+				<p class="mb-3 break-words text-xs text-ink-2">{rootHref === '/admin' ? ($adminInventoryScope.projectId || $adminInventoryScope.domainId ? t('scope.filtered', { id: $adminInventoryScope.projectId || $adminInventoryScope.domainId }) : t('scope.allProjects')) : t('scope.currentProject', { name: $auth.projectName || '—' })}</p>
+				{#if serviceQuery.trim()}
+					<nav aria-label={t('actions.searchServices')} class="mb-3 space-y-0.5">
+						{#each matchedDestinations as item (item.href)}{@render destinationRow(item)}{/each}
+						{#if matchedDestinations.length === 0}<p class="px-3 py-2 text-sm text-ink-2">{t('search.noMatches')}</p>{/if}
+					</nav>
+				{:else}
+				<button type="button" onclick={() => allServicesExpanded = !allServicesExpanded} aria-expanded={allServicesExpanded} aria-controls="console-service-catalog" class="nav-item w-full justify-between gap-2 text-left">
+					<span>{t('accessibility.allServices')}</span>
+					<svg class="nav-chevron size-3.5 shrink-0" class:rotate-90={allServicesExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" /></svg>
+				</button>
+				{#if allServicesExpanded}
+				<nav id="console-service-catalog" aria-label={t('accessibility.allServices')} class="mt-1 space-y-0.5">
+					{#each catalogSections as section (section.prefix)}
 						{#if section.items.length === 1 && section.items[0].topLevel}
-							<a href={section.items[0].href} onclick={selectPage} aria-current={current?.item.href === section.items[0].href ? 'page' : undefined} class="nav-item gap-2" class:nav-active={current?.item.href === section.items[0].href}>
-								<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={section.icon} /></svg>
-								{section.items[0].label}
-							</a>
+							{@render destinationRow(section.items[0])}
 						{:else}
 							<div>
 								<button type="button" onclick={() => expanded[section.prefix] = !expanded[section.prefix]} aria-expanded={!!expanded[section.prefix]} class="nav-item w-full justify-between gap-2 text-left">
@@ -149,7 +204,7 @@
 								{#if expanded[section.prefix]}
 									<div class="motion-fade ml-4 space-y-0.5">
 										{#each section.items as item (item.href)}
-											<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item" class:nav-active={current?.item.href === item.href}>{item.label}</a>
+											{@render destinationRow(item)}
 										{/each}
 									</div>
 								{/if}
@@ -157,16 +212,31 @@
 						{/if}
 					{/each}
 				</nav>
+				{/if}
+				{/if}
 			</div>
-			{#if footer}<div class="shrink-0 border-t border-line">{@render footer()}</div>{/if}
+			</div>
+			<p class="shrink-0 px-6 pb-3 text-xs text-ink-2">{$siteConfig.site_name === 'Afterglow' ? 'Afterglow' : `${$siteConfig.site_name} · Powered by Afterglow`}</p>
+			{#if footer}<div class="min-h-0 max-h-[35%] shrink-0 overflow-y-auto border-t border-line">{@render footer()}</div>{/if}
 		</aside>
 	</div>
 {/if}
 
+{#snippet destinationRow(item: NavItem, pinnable = true)}
+	<div class="flex min-w-0 items-center gap-1">
+		<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item min-w-0 flex-1 gap-2" class:nav-active={current?.item.href === item.href}>
+			<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d={item.icon} /></svg><span class="min-w-0 break-words">{item.label}</span>
+		</a>
+		{#if pinnable && preferenceKey}<Button variant="ghost" size="icon" class="shrink-0" ariaPressed={preferences.pinned.includes(item.href)} ariaLabel={t(preferences.pinned.includes(item.href) ? 'actions.unpin' : 'actions.pin', { name: item.label })} onclick={() => togglePinned(item.href)}>
+			<svg class="size-3.5" fill={preferences.pinned.includes(item.href) ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linejoin="round" stroke-width="1.8" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" /></svg>
+		</Button>{/if}
+	</div>
+{/snippet}
+
 <style>
 	.nav-item {
 		display: flex;
-		min-height: 2rem;
+		min-height: 2.25rem;
 		align-items: center;
 		border-radius: var(--radius-md);
 		padding: 0.375rem 0.75rem;
@@ -200,9 +270,12 @@
 	.nav-chevron {
 		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	@media (pointer: coarse) {
+	@media (max-width: 767px), (pointer: coarse) {
 		.nav-item, #app-navigation-close {
 			min-height: 2.75rem;
+		}
+		#app-navigation-close {
+			min-width: 2.75rem;
 		}
 	}
 </style>

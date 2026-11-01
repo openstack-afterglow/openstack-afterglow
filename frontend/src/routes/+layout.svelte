@@ -1,16 +1,23 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
-	import { auth, authReady, authRecovery, isLoggedIn, isAdmin, clearAuth, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
+	import { auth, authReady, authRecovery, isLoggedIn, isAdmin, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
 	import { createAuthVerificationController } from '$lib/utils/authVerification';
-	import { theme, resolvedTheme } from '$lib/stores/theme';
-	import { api, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { installInteractionAudit, type InteractionAuditController } from '$lib/utils/interactionAudit';
+	import { isTourActive } from '$lib/tutorial/engine';
+	import { resolvedTheme } from '$lib/stores/theme';
+	import { api, getBaseUrl, refreshSession } from '$lib/api/client';
+	import { startLogout } from '$lib/utils/logout';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import ProfileImage from '$lib/components/account/ProfileImage.svelte';
 	import { t as tAccount } from '$lib/i18n/ns/account';
 	import AnnouncementBellButton from '$lib/components/notifications/AnnouncementBellButton.svelte';
+	import { createUsageScheduleBell } from '$lib/stores/usageScheduleBell.svelte';
+	import { t as usage } from '$lib/i18n/ns/usage-schedule';
 	import { siteConfig, initSiteConfig, qualifyBackendAssetPaths, replaceSiteConfig } from '$lib/config/site';
 	import { resolveFaviconPath } from '$lib/config/brandAssets';
 	import type { PublicSiteConfig } from '$lib/types/siteConfig';
@@ -27,9 +34,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-	import { confirmDialog } from '$lib/stores/confirm.svelte';
-	import { toast } from '$lib/stores/toast';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import MockupBanner from '$lib/components/mockup/MockupBanner.svelte';
 	import TutorialController from '$lib/tutorial/TutorialController.svelte';
 	import { buildMockAuth } from '$lib/mockup/auth';
@@ -43,6 +48,7 @@
 	import { t as tn } from '$lib/i18n/ns/nav';
 	import { getLocale, initLocale, restoreKeyDebugMode, setLocale } from '$lib/i18n/runtime.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
+	import ThemeSelect from '$lib/components/ThemeSelect.svelte';
 	import { isDocsPath } from '$lib/docs/paths';
 	import { documentationNavItem } from '$lib/config/nav';
 	import { isProjectAgnosticPath } from '$lib/config/routes';
@@ -55,7 +61,6 @@
 	const initialSiteConfig = untrack(() => data.siteConfig);
 	const initialMockup = untrack(() => data.mockup);
 	let themeReady = $state(false);
-	let logoutConfirming = $state(false);
 	let unreadAnnouncementCount = $state(0);
 	let mockupClientReady = $state(false);
 	let clientMockProfile = $state<MockupProfileId | null>(null);
@@ -66,10 +71,11 @@
 	const faviconPath = $derived(resolveFaviconPath($siteConfig));
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
-	const publicRoutes = ['/', '/login', '/signup', '/recover', '/auth/callback', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+	const publicRoutes = ['/', '/login', '/logout', '/signup', '/recover', '/auth/callback', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 	const isDocumentationRoute = $derived(isDocsPath($page.url.pathname));
 	const authVerification = createAuthVerificationController();
 	let unreadFetchSerial = 0;
+	let unreadOwnerRevision = $state(0);
 	let recoveryBusy = $state(false);
 	let recoveryClock = $state(Date.now());
 	const authenticationUnavailable = $derived(
@@ -109,18 +115,18 @@
 		}
 	}
 
-	async function refreshUnreadAnnouncementCount(
-		token = $auth.token,
-		projectId = $auth.projectId,
-	) {
+	async function refreshUnreadAnnouncementCount() {
+		const state = get(auth);
+		const { token, projectId } = state;
+		const owner = sessionScopeKey(state);
 		const serial = ++unreadFetchSerial;
-		if (isDocumentationRoute || mockup.active || isMockAuthActive() || !token) {
+		if (isDocumentationRoute || mockup.active || isMockAuthActive() || !get(authReady) || !token) {
 			unreadAnnouncementCount = 0;
 			return;
 		}
 		try {
 			const res = await api.get<UnreadCountResponse>('/api/v1/announcements/unread-count', token, projectId ?? undefined);
-			if (serial !== unreadFetchSerial || $auth.token !== token || $auth.projectId !== projectId) return;
+			if (serial !== unreadFetchSerial || sessionScopeKey(get(auth)) !== owner || !get(auth).token || !get(authReady)) return;
 			unreadAnnouncementCount = res.unread_count;
 		} catch {
 			// 표시는 best-effort다. 기존 미읽음 상태는 일시적인 조회 실패로 지우지 않는다.
@@ -134,6 +140,29 @@
 	let bellContainer = $state<HTMLDivElement | null>(null);
 	let bellButton = $state<HTMLButtonElement | null>(null);
 	let bellFetchSerial = 0;
+	const usageBell = createUsageScheduleBell({ enabled: () => !isDocumentationRoute && !mockup.active && !isMockAuthActive() });
+	// Fence same-tick scope/logout ABA before effects can batch it away. Token
+	// rotation keeps display state and already pending display reads.
+	let previousAnnouncementOwner = '';
+	const unsubscribeAnnouncementOwner = auth.subscribe(state => {
+		const owner = JSON.stringify([!!state.token, sessionScopeKey(state)]);
+		if (owner === previousAnnouncementOwner) return;
+		previousAnnouncementOwner = owner;
+		unreadOwnerRevision++;
+		unreadFetchSerial++;
+		bellFetchSerial++;
+		unreadAnnouncementCount = 0;
+		bellOpen = false;
+		bellItems = null;
+	});
+	onDestroy(unsubscribeAnnouncementOwner);
+	const unsubscribeAnnouncementReady = authReady.subscribe(ready => {
+		if (ready) return;
+		unreadOwnerRevision++;
+		unreadFetchSerial++;
+		unreadAnnouncementCount = 0;
+	});
+	onDestroy(unsubscribeAnnouncementReady);
 
 	function bellDotColor(severity: AnnouncementUser['severity']): string {
 		if (severity === 'danger') return 'var(--color-state-danger)';
@@ -144,6 +173,7 @@
 	async function toggleBellDropdown() {
 		bellOpen = !bellOpen;
 		if (!bellOpen) return;
+		void usageBell.refresh();
 		bellError = false;
 		bellItems = null;
 		const serial = ++bellFetchSerial;
@@ -169,17 +199,11 @@
 		void goto(id != null ? `/dashboard/notifications?focus=${id}` : '/dashboard/notifications');
 	}
 
+	const unreadDisplayOwner = $derived(JSON.stringify([unreadOwnerRevision, sessionScopeKey($auth), !!$auth.token, $authReady,
+		isDocumentationRoute, mockup.active, isMockAuthActive()]));
 	$effect(() => {
-		const ready = $authReady;
-		const token = $auth.token;
-		const projectId = $auth.projectId;
-		const inactive = isDocumentationRoute || mockup.active || isMockAuthActive() || !ready || !token;
-		if (inactive) {
-			unreadFetchSerial += 1;
-			unreadAnnouncementCount = 0;
-			return;
-		}
-		untrack(() => void refreshUnreadAnnouncementCount(token, projectId));
+		unreadDisplayOwner;
+		untrack(() => void refreshUnreadAnnouncementCount());
 	});
 	createAutoRefresh(() => refreshUnreadAnnouncementCount(), {
 		storageKey: 'announcement-unread-count', defaultInterval: 60, invokeOnMount: false,
@@ -221,6 +245,7 @@
 			enteredMockProfile = null;
 			explicitMockupOff = false;
 		} else if (
+			$page.url.pathname !== '/logout' &&
 			mockupClientReady &&
 			clientMockProfile &&
 			isMockAuthActive() &&
@@ -253,7 +278,7 @@
 			return;
 		}
 		const profile = clientMockProfile;
-		if (!profile) return;
+		if (!profile || to.url.pathname === '/logout') return;
 		const next = new URL(to.url);
 		next.searchParams.set(MOCKUP_QUERY_KEY, profile);
 		cancel();
@@ -267,18 +292,22 @@
 
 	// Token-bearing onboarding links are public and render without console chrome.
 	const isOnboardingRoute = $derived($page.url.pathname.startsWith('/invitations/') || $page.url.pathname.startsWith('/registrations/') || $page.url.pathname.startsWith('/recover/'));
-	const shelllessRoutes = ['/', '/login', '/signup', '/recover', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
-	const showAppChrome = $derived($isLoggedIn && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isOnboardingRoute);
+	const shelllessRoutes = ['/', '/login', '/logout', '/signup', '/recover', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
+	const showAppChrome = $derived($isLoggedIn && !$logoutInProgress && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isOnboardingRoute);
 	$effect(() => {
 		const token = $auth.token;
 		const projectId = $auth.projectId;
+		const userId = $auth.userId;
+		const sessionId = $auth.sessionId;
 		const enabled = $siteConfig.services.cloud_shell && !mockup.active && !isMockAuthActive();
-		if (!enabled || !token || !projectId) {
+		if (!enabled || !token || !projectId || !userId || !sessionId) {
 			cloudShell.bindIdentity(null);
 			return;
 		}
 		cloudShell.bindIdentity({
 			token,
+			userId,
+			sessionId,
 			projectId,
 			projectName: $auth.projectName || projectId,
 		});
@@ -296,20 +325,29 @@
 	});
 
 	$effect(() => {
-		if ($authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnostic && !isOnboardingRoute) {
+		if (!$logoutInProgress && $page.url.pathname !== '/logout' && $authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnostic && !isOnboardingRoute) {
 			goto('/select-project');
 		}
 	});
 
 	// Only restored/unverified sessions need /me; fresh mapped logins are ready.
 	$effect(() => {
-		authVerification.setEnabled(!isDocumentationRoute && !mockup.active);
+		authVerification.setEnabled($page.url.pathname !== '/logout' && !isDocumentationRoute && !mockup.active);
+	});
+
+	let interactionAudit: InteractionAuditController | undefined;
+	beforeNavigate(({ from, willUnload }) => {
+		interactionAudit?.prepareNavigation();
+		if (willUnload) interactionAudit?.navigate(from?.route.id ?? null, 'external');
+	});
+	afterNavigate(({ from, to }) => {
+		if (from) interactionAudit?.navigate(from.route.id, to?.route.id ?? null);
 	});
 
 	onMount(() => {
 		themeReady = true;
 		restoreKeyDebugMode();
-		const requested = $page.url.searchParams.get(MOCKUP_QUERY_KEY);
+		const requested = location.pathname === '/logout' ? 'off' : $page.url.searchParams.get(MOCKUP_QUERY_KEY);
 		let bootstrapUrl: string | null = null;
 		if (isMockupProfileId(requested)) {
 			clientMockProfile = requested;
@@ -338,6 +376,14 @@
 			enteredMockProfile = clientMockProfile;
 		}
 		mockupClientReady = true;
+		interactionAudit = installInteractionAudit({
+			getOwner: () => get(auth),
+			getRoute: () => get(page).route.id,
+			getBaseUrl,
+			isSuppressed: () => mockup.active || isMockAuthActive() || isTourActive(),
+			subscribeOwner: (changed) => auth.subscribe(changed),
+		});
+		interactionAudit.navigate(get(page).route.id);
 		if (bootstrapUrl) void goto(bootstrapUrl, { replaceState: true });
 		if (!mockup.active && !bootstrapUrl) void refreshPublicSiteConfig();
 
@@ -355,6 +401,8 @@
 
 		return () => {
 			stopSessionRefresh();
+			interactionAudit?.destroy();
+			interactionAudit = undefined;
 		};
 	});
 
@@ -369,49 +417,17 @@
 		document.documentElement.classList.toggle('light', themeReady && $resolvedTheme === 'light');
 	});
 
-	async function logout(confirmed = false) {
+	let logoutConfirming = false;
+	async function logout() {
 		if ($logoutInProgress || logoutConfirming) return;
-		if (!confirmed) {
-			logoutConfirming = true;
-			try {
-				confirmed = await confirmDialog(t('logout.confirm'));
-			} finally {
-				logoutConfirming = false;
-			}
-			if (!confirmed) return;
-		}
-
-		await cloudShell.close('logout', { keepDock: false });
-
-		logoutInProgress.set(true);
-		let revocationFailed = false;
+		const owner = sessionScopeKey(get(auth));
+		logoutConfirming = true;
 		try {
-			const pendingRefresh = beginSessionRevocation();
-			try {
-				await pendingRefresh;
-			} catch {
-				// A failed refresh must never prevent explicit local logout.
-				revocationFailed = true;
-			}
-			const logoutToken = $auth.token;
-			if (logoutToken) {
-				try {
-					await api.post('/api/v1/auth/logout', {}, logoutToken, $auth.projectId ?? undefined);
-				} catch { revocationFailed = true; }
-			}
-			const mockLogout = isMockAuthActive();
-			if (mockLogout) {
-				exitMockAuth();
-				clientMockProfile = null;
-				enteredMockProfile = null;
-			}
-			clearAuth();
-			await goto(mockLogout ? '/login?tutorial=off' : '/login', { replaceState: true });
-			if (revocationFailed) toast.warning(t('logout.partial'));
-			else toast.success(t('logout.done'));
+			if (!await confirmDialog(t('logout.confirm'))) return;
+			if ($logoutInProgress || sessionScopeKey(get(auth)) !== owner) return;
+			void startLogout();
 		} finally {
-			endSessionRevocation();
-			logoutInProgress.set(false);
+			logoutConfirming = false;
 		}
 	}
 </script>
@@ -488,32 +504,22 @@
 			{/if}
 
 			<LocaleSelect id="app-header-locale" />
-			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="hidden sm:flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
+			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={documentationNavItem.icon} /></svg>
 				<span class="hidden text-xs font-medium sm:inline">Docs</span>
 			</a>
 
-			<!-- 테마 토글 -->
-			<button
-				onclick={() => theme.toggle()}
-				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				title={$theme === 'system' ? t('theme.system') : $theme === 'dark' ? t('theme.dark') : t('theme.light')}
-				aria-label={$theme === 'system' ? t('theme.system') : $theme === 'dark' ? t('theme.dark') : t('theme.light')}
-			>
-				{#if $theme === 'system'}
-					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-				{:else if $theme === 'dark'}
-					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-				{:else}
-					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 7a5 5 0 110 10A5 5 0 0112 7z"></path></svg>
-				{/if}
-			</button>
+			<ThemeSelect id="app-header-theme" />
 
 			<!-- 알림 아이콘 + 드롭다운 -->
 			<div class="relative" bind:this={bellContainer}>
 				<AnnouncementBellButton
 					bind:element={bellButton}
 					count={unreadAnnouncementCount}
+					usageCount={usageBell.count}
+					usageOverdue={usageBell.overdue}
+					usageUnavailable={usageBell.failed}
+					usageLoading={usageBell.loading}
 					open={bellOpen}
 					onclick={toggleBellDropdown}
 				/>
@@ -524,8 +530,18 @@
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
 						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{t('bell.title')}</p>
+						<div class="mx-4 mb-3 min-w-0 rounded-md border border-line p-3 text-sm">
+							<p class="font-medium text-ink-0">{usage('reminders')}</p>
+							{#if usageBell.loading}<LoadingState variant="inline" class="mt-1" label={usage('loading')} />{/if}
+							{#if usageBell.failed}<p class="mt-1 text-xs text-state-danger-text" role="alert">{usage('loadFailed')}</p>{/if}
+							{#if usageBell.count !== null}
+								<p class="mt-1 text-xs text-ink-1">{usage('bellCount', { count: usageBell.count })}</p>
+								{#if usageBell.overdue > 0}<p class="mt-1 text-xs text-state-danger-text">{usage('bellOverdue', { count: usageBell.overdue })}</p>{/if}
+							{/if}
+							<button onclick={() => closeBellAndGo()} class="mt-2 min-h-11 text-left text-xs text-accent underline underline-offset-4">{usage('manage')}</button>
+						</div>
 						{#if bellItems === null}
-							<div class="px-4 pb-3"><ActivityIndicator variant="dots" size="xs" label={t('bell.loading')} /></div>
+							<div class="px-4 pb-3"><LoadingState variant="inline" label={t('bell.loading')} /></div>
 						{:else if bellError}
 							<p class="px-4 pb-3 text-xs text-[var(--color-state-danger)]">{t('bell.failed')}</p>
 						{:else if bellItems.length === 0}
@@ -589,7 +605,7 @@
 	{/if}
 {/if}
 
-{#if $isLoggedIn && $siteConfig.services.cloud_shell && !mockup.active}
+{#if $isLoggedIn && !$logoutInProgress && $page.url.pathname !== '/logout' && $siteConfig.services.cloud_shell && !mockup.active}
 	<CloudShellAuthorizeDialog />
 	<CloudShellDock />
 {/if}
@@ -600,7 +616,7 @@
 {#if mockup.active && !isDocumentationRoute}
 	<MockupBanner profile={mockup.profile} />
 {/if}
-{#if $isLoggedIn && !isDocumentationRoute}
+{#if $isLoggedIn && !$logoutInProgress && $page.url.pathname !== '/logout' && !isDocumentationRoute}
 	<TutorialController />
 {/if}
 <Toast />
@@ -626,9 +642,9 @@
 				<p role="alert" class="text-sm leading-relaxed text-ink-1">{t('authRecovery.body')}</p>
 				<p class="text-xs text-ink-2">{t('authRecovery.hint')}</p>
 				<div class="flex flex-wrap justify-end gap-3">
-					<Button variant="secondary" disabled={$logoutInProgress} onclick={() => logout(true)}>{t('logout.action')}</Button>
+					<Button variant="secondary" disabled={$logoutInProgress} onclick={logout}>{t('logout.action')}</Button>
 					<Button disabled={recoveryBusy || $logoutInProgress || recoveryWait > 0} onclick={retryAuthentication}>
-						{recoveryBusy ? t('authRecovery.checking') : recoveryWait > 0 ? t('authRecovery.retryIn', { seconds: recoveryWait }) : t('authRecovery.retry')}
+						{#if recoveryBusy}<LoadingState variant="control" label={t('authRecovery.checking')} />{:else}{recoveryWait > 0 ? t('authRecovery.retryIn', { seconds: recoveryWait }) : t('authRecovery.retry')}{/if}
 					</Button>
 				</div>
 			</div>

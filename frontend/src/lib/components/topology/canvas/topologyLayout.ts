@@ -26,7 +26,7 @@ export const L = {
 	INTERNET_W: 232, INTERNET_H: 64, INTERNET_GAP: 48,
 	RT_W: 200, RT_H: 68,
 	LB_W: 264, LB_H: 68,
-	COL_GAP: 24, ROW_GAP: 24, SW_TO_ROW: 48,
+	COL_GAP: 24, ROW_GAP: 24, SW_TO_ROW: 100,
 	PAD_X: 28, PAD_T: 36, PAD_B: 24, ZONE_GAP: 56, RT_GAP: 40,
 	/** Internet starts at PROV_Y; provider switches reserve an upstream Internet row when needed. */
 	PROV_Y: 36, ROUTER_GAP: 80, LOWER_GAP: 96,
@@ -263,6 +263,21 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		const hm = home.get(vm.id) ?? [];
 		return hm.length === ids.length && hm.every((v, i) => v === ids[i]);
 	};
+	// Endpoint fanouts share one six-pixel routing band instead of doubling its height.
+	const fanout = new Map<string, number>();
+	for (const edge of graph.edges) for (const id of [edge.from, edge.to]) fanout.set(id, (fanout.get(id) ?? 0) + 1);
+	const vmNetworkFanout = new Map<string, Map<string, number>>();
+	for (const edge of graph.edges) for (const id of [edge.from, edge.to]) {
+		if (graph.nodes.get(id)?.kind !== 'vm') continue;
+		const byNetwork = vmNetworkFanout.get(id) ?? new Map<string, number>();
+		byNetwork.set(edge.netId, (byNetwork.get(edge.netId) ?? 0) + 1);
+		vmNetworkFanout.set(id, byNetwork);
+	}
+	const switchFanout = new Map(fanout);
+	for (const edge of graph.edges) for (const [id, peer] of [[edge.from, edge.to], [edge.to, edge.from]]) {
+		if (graph.nodes.get(id)?.kind === 'switch') switchFanout.set(id, Math.max(switchFanout.get(id) ?? 0, vmNetworkFanout.get(peer)?.get(edge.netId) ?? fanout.get(peer) ?? 0));
+	}
+	const downstreamGap = (netId: string) => L.SW_TO_ROW + Math.max(0, (switchFanout.get('sw:' + netId) ?? 0) - 1) * 6;
 	const gridCols = (n: number) => (n <= 1 ? 1 : clamp(Math.ceil(Math.sqrt(n * 1.5)), 1, 6));
 	const gridWidth = (n: number) => (n ? gridCols(n) * L.VM_W + (gridCols(n) - 1) * L.COL_GAP : 0);
 	/**
@@ -276,7 +291,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 		const dbs = singles.filter((v) => v.isDatabase);
 		const innerW = Math.max(L.SW_W, gridWidth(plain.length), gridWidth(dbs.length), netLbs.length ? L.LB_W : 0);
 		setPos(swId, x + innerW / 2 - L.SW_W / 2, topY); domOrder.push(swId); sink.push(swId);
-		let rowY = topY + L.SW_H + L.SW_TO_ROW;
+		let rowY = topY + L.SW_H + downstreamGap(net.id);
 		// VM 격자의 x 는 LB 개수와 무관하다(LB 는 세로로만 밀어낸다) → LB 보다 먼저 계산해 LB 정렬 기준으로 쓴다.
 		const vmX = new Map<string, number>();
 		for (const tier of [plain, dbs]) {
@@ -371,7 +386,7 @@ export function autoLayout(graph: CanvasGraph): LayoutResult {
 					const known = vmTierY.get(netId);
 					if (known != null) return known;
 					const cnt = lbs.filter((lb) => lb.vipNetId === netId).length;
-					return topY + L.SW_H + L.SW_TO_ROW + cnt * (L.LB_H + L.ROW_GAP);
+					return topY + L.SW_H + downstreamGap(netId) + cnt * (L.LB_H + L.ROW_GAP);
 				};
 				let by = Math.max(tierYOf(net.id), next ? tierYOf(next.id) : 0);
 				for (const vm of border) { setPos(vm.id, bx, by); domOrder.push(vm.id); sink.push(vm.id); by += vmH(vm.rows) + L.ROW_GAP; }
@@ -782,18 +797,46 @@ export function stableOrder<T>(prevKeys: readonly string[] | undefined, items: r
 	return arr;
 }
 
-/** Right-angle route with outward endpoint stubs. Reversed/moved nodes detour outside their bounds. */
-export function orthogonal(a: Pt, sa: Side, b: Pt, sb: Side, endpointBounds?: Rect, obstacles: readonly Rect[] = []): EdgeGeometry {
+/** Right-angle routes keep endpoint stubs and obstacle detours in the same six-pixel fanout lanes. */
+export function orthogonal(a: Pt, sa: Side, b: Pt, sb: Side, endpointBounds?: Rect, obstacles: readonly Rect[] = [], lanes?: { from: number; to: number; bend: number; headers?: readonly Rect[] }): EdgeGeometry {
 	const verticalA = sa === 'TOP' || sa === 'BOTTOM';
 	const verticalB = sb === 'TOP' || sb === 'BOTTOM';
 	const gap = verticalA === verticalB ? Math.abs(verticalA ? b.y - a.y : b.x - a.x) : 48;
 	const stub = Math.min(12, Math.max(8, gap / 3));
-	const p = { x: a.x + TAN[sa][0] * stub, y: a.y + TAN[sa][1] * stub };
-	const q = { x: b.x + TAN[sb][0] * stub, y: b.y + TAN[sb][1] * stub };
+	const fromOffset = lanes?.from ?? 0, toOffset = lanes?.to ?? 0;
+	let fromStub = stub + fromOffset, toStub = stub + toOffset;
+	// Vertical ingress may cross a zone label row; horizontal bends must stay above its text.
+	for (const header of lanes?.headers ?? []) {
+		if (sa === 'TOP' && a.x > header.x && a.x < header.x + header.w && a.y >= header.y && a.y <= header.y + header.h) fromStub = Math.max(fromStub, a.y - header.y + 6 + fromOffset);
+		if (sb === 'TOP' && b.x > header.x && b.x < header.x + header.w && b.y >= header.y && b.y <= header.y + header.h) toStub = Math.max(toStub, b.y - header.y + 6 + toOffset);
+	}
+	const facing = verticalA === verticalB && sa !== sb && ((verticalA ? b.y - a.y : b.x - a.x) * (verticalA ? TAN[sa][1] : TAN[sa][0]) > 0);
+	// Geometry-owned fanout lanes detour when the HUD leaves too little room;
+	// proportionally shrinking those stubs would merge their six-pixel separation.
+	if (!lanes && facing && fromStub + toStub > gap - 12) {
+		const scale = Math.max(0, gap - 12) / (fromStub + toStub);
+		fromStub *= scale; toStub *= scale;
+	}
+	// Manual moves can leave a narrow gutter: shorten the stub before entering any card face.
+	for (const [point, side, end] of [[a, sa, 'from'], [b, sb, 'to']] as const) for (const rect of obstacles) {
+		let distance = Infinity;
+		if (point.x > rect.x && point.x < rect.x + rect.w) {
+			if (side === 'TOP' && rect.y + rect.h <= point.y) distance = point.y - rect.y - rect.h;
+			if (side === 'BOTTOM' && rect.y >= point.y) distance = rect.y - point.y;
+		}
+		if (point.y > rect.y && point.y < rect.y + rect.h) {
+			if (side === 'LEFT' && rect.x + rect.w <= point.x) distance = point.x - rect.x - rect.w;
+			if (side === 'RIGHT' && rect.x >= point.x) distance = rect.x - point.x;
+		}
+		if (end === 'from') fromStub = Math.min(fromStub, Math.max(0, distance - 6));
+		else toStub = Math.min(toStub, Math.max(0, distance - 6));
+	}
+	const p = { x: a.x + TAN[sa][0] * fromStub, y: a.y + TAN[sa][1] * fromStub };
+	const q = { x: b.x + TAN[sb][0] * toStub, y: b.y + TAN[sb][1] * toStub };
 	const points: Pt[] = [a, p];
 	if (verticalA && verticalB) {
 		if (sa !== sb && (q.y - p.y) * TAN[sa][1] >= 0) {
-			const y = (p.y + q.y) / 2;
+			const y = lanes ? clamp(Math.min(a.y, b.y) + 24 + lanes.bend, Math.min(p.y, q.y), Math.max(p.y, q.y)) : (p.y + q.y) / 2;
 			points.push({ x: p.x, y }, { x: q.x, y });
 		} else if (sa === sb) {
 			const y = sa === 'TOP' ? Math.min(p.y, q.y) : Math.max(p.y, q.y);
@@ -801,18 +844,18 @@ export function orthogonal(a: Pt, sa: Side, b: Pt, sb: Side, endpointBounds?: Re
 		} else {
 			const left = endpointBounds?.x ?? Math.min(a.x, b.x);
 			const right = endpointBounds ? endpointBounds.x + endpointBounds.w : Math.max(a.x, b.x);
-			const x = a.x + b.x < left + right ? left - 24 : right + 24;
+			const x = a.x + b.x < left + right ? left - 24 - (lanes?.bend ?? 0) : right + 24 + (lanes?.bend ?? 0);
 			points.push({ x, y: p.y }, { x, y: q.y });
 		}
 	} else if (!verticalA && !verticalB) {
 		if (sa !== sb && (q.x - p.x) * TAN[sa][0] >= 0) {
-			const x = (p.x + q.x) / 2;
+			const x = lanes ? clamp(Math.min(a.x, b.x) + 24 + lanes.bend, Math.min(p.x, q.x), Math.max(p.x, q.x)) : (p.x + q.x) / 2;
 			points.push({ x, y: p.y }, { x, y: q.y });
 		} else if (sa === sb) {
 			const x = sa === 'LEFT' ? Math.min(p.x, q.x) : Math.max(p.x, q.x);
 			points.push({ x, y: p.y }, { x, y: q.y });
 		} else {
-			const y = (endpointBounds?.y ?? Math.min(a.y, b.y)) - 24;
+			const y = (endpointBounds?.y ?? Math.min(a.y, b.y)) - 24 - (lanes?.bend ?? 0);
 			points.push({ x: p.x, y }, { x: q.x, y });
 		}
 	} else {
@@ -822,24 +865,39 @@ export function orthogonal(a: Pt, sa: Side, b: Pt, sb: Side, endpointBounds?: Re
 	// Dense grids reserve their row/column gaps for cables, not unrelated card faces.
 	const blocked = (candidate: readonly Pt[]): boolean => candidate.slice(1).some((end, i) => {
 		const start = candidate[i];
-		return obstacles.some((rect) => start.x === end.x
+		if (obstacles.some((rect) => start.x === end.x
 			? start.x > rect.x && start.x < rect.x + rect.w && Math.max(start.y, end.y) > rect.y && Math.min(start.y, end.y) < rect.y + rect.h
-			: start.y > rect.y && start.y < rect.y + rect.h && Math.max(start.x, end.x) > rect.x && Math.min(start.x, end.x) < rect.x + rect.w);
+			: start.y > rect.y && start.y < rect.y + rect.h && Math.max(start.x, end.x) > rect.x && Math.min(start.x, end.x) < rect.x + rect.w)) return true;
+		return (lanes?.headers ?? []).some((rect) => start.y === end.y && start.y > rect.y && start.y < rect.y + rect.h && Math.max(start.x, end.x) > rect.x && Math.min(start.x, end.x) < rect.x + rect.w);
 	});
-	if (obstacles.length && blocked(points)) {
-		let shortest: Pt[] | null = null;
-		let bestLength = Infinity;
-		const xs = new Set(obstacles.flatMap((rect) => [rect.x - 12, rect.x + rect.w + 12]));
-		const ys = new Set(obstacles.flatMap((rect) => [rect.y - 12, rect.y + rect.h + 12]));
-		for (const axis of ['x', 'y'] as const) for (const value of axis === 'x' ? xs : ys) {
-			const candidate = axis === 'x'
-				? [a, p, { x: value, y: p.y }, { x: value, y: q.y }, q, b]
-				: [a, p, { x: p.x, y: value }, { x: q.x, y: value }, q, b];
-			const length = candidate.slice(1).reduce((sum, end, i) => sum + Math.abs(end.x - candidate[i].x) + Math.abs(end.y - candidate[i].y), 0);
-			if (length >= bestLength || blocked(candidate)) continue;
-			shortest = candidate; bestLength = length;
+	// A clear facing route needs only one shelf. Independent endpoint stubs can
+	// overshoot each other in compact gutters and manufacture a loop around cards.
+	if (facing && lanes && verticalA) {
+		let shelf = Math.min(a.y, b.y) + 12 + lanes.bend;
+		for (const header of lanes.headers ?? []) {
+			if (Math.max(a.x, b.x) > header.x && Math.min(a.x, b.x) < header.x + header.w && shelf > header.y - 6 && shelf < header.y + header.h) shelf = header.y - 6;
 		}
-		if (shortest) points.splice(0, points.length, ...shortest);
+		const direct = [a, { x: a.x, y: shelf }, { x: b.x, y: shelf }, b];
+		if (shelf >= Math.min(a.y, b.y) + 6 && shelf <= Math.max(a.y, b.y) - 6 && !blocked(direct)) points.splice(0, points.length, ...direct);
+	}
+	if (blocked(points)) {
+		let shortest: Pt[] = [];
+		let bestLength = Infinity;
+		// Prefer six-pixel-separated detours; use a shared narrow gutter only if none fit.
+		for (const clearance of new Set([12 + (lanes?.bend ?? 0), 12])) {
+			const xs = new Set(obstacles.flatMap((rect) => [rect.x - clearance, rect.x + rect.w + clearance]));
+			const ys = new Set([...obstacles, ...(lanes?.headers ?? [])].flatMap((rect) => [rect.y - clearance, rect.y + rect.h + clearance]));
+			for (const axis of ['x', 'y'] as const) for (const value of axis === 'x' ? xs : ys) {
+				const candidate = axis === 'x'
+					? [a, p, { x: value, y: p.y }, { x: value, y: q.y }, q, b]
+					: [a, p, { x: p.x, y: value }, { x: q.x, y: value }, q, b];
+				const length = candidate.slice(1).reduce((sum, end, i) => sum + Math.abs(end.x - candidate[i].x) + Math.abs(end.y - candidate[i].y), 0);
+				if (length >= bestLength || blocked(candidate)) continue;
+				shortest = candidate; bestLength = length;
+			}
+			if (shortest.length) break;
+		}
+		if (shortest.length) points.splice(0, points.length, ...shortest);
 	}
 	const route: Pt[] = [];
 	for (const point of points) {
@@ -896,11 +954,15 @@ export function computeGeometry(
 		if (e.kind === 'uplink' || e.kind === 'lbmember') { sa = 'BOTTOM'; sb = 'TOP'; }
 		else if (e.kind === 'trunk' && cb.y >= ca.y) { sa = 'BOTTOM'; sb = 'TOP'; }
 		sides.set(e.key, { sa, sb });
-		push(`${e.from}|${sa}`, { edge: e, end: 'from', key: sa === 'TOP' || sa === 'BOTTOM' ? cb.x : cb.y });
-		push(`${e.to}|${sb}`, { edge: e, end: 'to', key: sb === 'TOP' || sb === 'BOTTOM' ? ca.x : ca.y });
+		const na = graph.nodes.get(e.from), nb = graph.nodes.get(e.to);
+		const aa = na?.kind === 'vm' ? vmAnchor(na, pa, e.nic, sa) : ca;
+		const ab = nb?.kind === 'vm' ? vmAnchor(nb, pb, e.toNic, sb) : cb;
+		push(`${e.from}|${sa}`, { edge: e, end: 'from', key: sa === 'TOP' || sa === 'BOTTOM' ? ab.x : ab.y });
+		push(`${e.to}|${sb}`, { edge: e, end: 'to', key: sb === 'TOP' || sb === 'BOTTOM' ? aa.x : aa.y });
 	}
 	const slotOrder = new Map<string, string[]>();
 	const slotPt = new Map<string, Pt>();
+	const slotLane = new Map<string, { offset: number; count: number }>();
 	for (const [nk, items] of perSlot) {
 		const bar = nk.lastIndexOf('|');
 		const nodeId = nk.slice(0, bar), side = nk.slice(bar + 1) as Side;
@@ -909,6 +971,21 @@ export function computeGeometry(
 		const ordered = stableOrder(prevSlotOrder?.get(nk), items, (it) => it.edge.key, (it) => it.key);
 		slotOrder.set(nk, ordered.map((it) => it.edge.key));
 		const node = graph.nodes.get(nodeId);
+		// Preserve global physical slot order, but VM ingress lengths are network-local.
+		if (node?.kind === 'vm' && side === 'TOP') {
+			const byNetwork = new Map<string, SlotItem[]>();
+			for (const item of ordered) {
+				const group = byNetwork.get(item.edge.netId) ?? [];
+				group.push(item); byNetwork.set(item.edge.netId, group);
+			}
+			for (const group of byNetwork.values()) group.forEach((it, k) => slotLane.set(`${it.edge.key}|${it.end}`, { offset: (group.length - 1 - k) * 6, count: group.length }));
+		} else {
+			// Left-going shelves ascend left-to-right; right-going shelves descend.
+			const lanes = node?.kind === 'switch' && side === 'BOTTOM'
+				? [...ordered.filter((it, k) => it.key < slotAnchor(p, side, k, ordered.length).x).reverse(), ...ordered.filter((it, k) => it.key >= slotAnchor(p, side, k, ordered.length).x)]
+				: ordered;
+			lanes.forEach((it, k) => slotLane.set(`${it.edge.key}|${it.end}`, { offset: (lanes.length - 1 - k) * 6, count: lanes.length }));
+		}
 		if (node?.kind === 'vm') {
 			const groups = new Map<string, SlotItem[]>();
 			for (const item of ordered) {
@@ -925,6 +1002,11 @@ export function computeGeometry(
 		} else ordered.forEach((it, k) => slotPt.set(`${it.edge.key}|${it.end}`, slotAnchor(p, side, k, ordered.length)));
 	}
 	const obstacles = [...pos.values()];
+	// CanvasHud labels are 24 screen px centered on zone.y, not inside the zone.
+	// Reserve their half-height plus stroke clearance at the minimum zoom so zooming
+	// cannot put a horizontal cable under the HUD or make routes jump on each frame.
+	const headerExtent = 16 / K_MIN;
+	const headers = [...zones.values()].map((zone) => ({ ...zone, y: zone.y - headerExtent, h: headerExtent + Math.max(L.PAD_T, headerExtent) }));
 	const geom = new Map<string, EdgeGeometry>();
 	for (const e of edges) {
 		const pa = pos.get(e.from), pb = pos.get(e.to);
@@ -933,7 +1015,10 @@ export function computeGeometry(
 		const a = slotPt.get(`${e.key}|from`);
 		const b = slotPt.get(`${e.key}|to`);
 		if (!a || !b) continue;
-		geom.set(e.key, orthogonal(a, sd.sa, b, sd.sb, rectUnion([pa, pb]) ?? undefined, obstacles));
+		const fromLane = slotLane.get(`${e.key}|from`)!;
+		const toLane = slotLane.get(`${e.key}|to`)!;
+		const dominant = fromLane.count === toLane.count ? (a.y < b.y || (a.y === b.y && a.x < b.x) ? fromLane : toLane) : fromLane.count > toLane.count ? fromLane : toLane;
+		geom.set(e.key, orthogonal(a, sd.sa, b, sd.sb, rectUnion([pa, pb]) ?? undefined, obstacles, { from: fromLane.offset, to: toLane.offset, bend: dominant.offset, headers }));
 	}
 	return { geom, slotOrder, zones, domains: domainRects(graph, zones, pos, layout.zoneMembers) };
 }

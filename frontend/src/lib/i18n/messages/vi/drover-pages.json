@@ -122,5 +122,9 @@
 	"yaml.parseError": "Lỗi phân tích cú pháp YAML: {error}",
 	"yaml.configMapKind": "kind phải là ConfigMap",
 	"yaml.secretKind": "kind phải là Secret",
-	"yaml.stringDataRequired": "Sử dụng stringData thay cho data để chỉnh sửa Secret (nhập văn bản thuần túy)"
+	"yaml.stringDataRequired": "Sử dụng stringData thay cho data để chỉnh sửa Secret (nhập văn bản thuần túy)",
+	"clusterError.details": "Chi tiết lỗi",
+	"clusterError.recovery": "Kiểm tra bước thất bại và tài nguyên liên quan trong chi tiết cụm. Khắc phục vấn đề nhóm bảo mật, mạng hoặc hạn ngạch rồi làm mới trạng thái.",
+	"clusterError.loadFailed": "Không thể tải danh sách cụm",
+	"clusterError.reload": "Tải lại"
 }

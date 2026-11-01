@@ -82,6 +82,19 @@ async def _execute_db_op(op_func, session_override: AsyncSession | None = None):
         raise GpuQuotaUnavailable("GPU quota database operation failed") from exc
 
 
+async def _require_legacy_project_authority(conn: Any, project_id: str) -> None:
+    if project_id == DEFAULT_PROJECT_ID or conn is None:
+        return
+    from app.services import compute_pools
+
+    try:
+        snapshot = await compute_pools.project_pool_snapshot(conn, project_id)
+    except compute_pools.ComputePoolUnavailable as exc:
+        raise GpuQuotaUnavailable(str(exc)) from exc
+    if snapshot["enabled"] or snapshot.get("state") == "paused":
+        raise ValueError("This project uses a domain compute pool; edit its domain pool project cap")
+
+
 async def get_project_gpu_quotas(
     conn: Any, project_id: str, *, session: AsyncSession | None = None
 ) -> list[dict[str, Any]]:
@@ -136,6 +149,7 @@ async def set_project_gpu_quota(
         raise ValueError("project_id must be a non-empty string <= 64 chars")
     if not isinstance(limit, int) or limit < -1:
         raise ValueError("limit must be an integer >= -1")
+    await _require_legacy_project_authority(conn, project_id)
     norm_type = normalize_gpu_alias(gpu_type)
     if not norm_type or len(norm_type) > 64:
         raise ValueError(f"Invalid GPU type alias: {gpu_type}")
@@ -182,6 +196,7 @@ async def delete_project_gpu_quota(
     conn: Any, project_id: str, gpu_type: str, *, session: AsyncSession | None = None
 ) -> bool:
     """Delete a project GPU quota entry."""
+    await _require_legacy_project_authority(conn, project_id)
     norm_type = normalize_gpu_alias(gpu_type)
     if not norm_type:
         return False
@@ -220,11 +235,49 @@ async def get_effective_gpu_quotas(
 
 
 async def get_effective_gpu_quota_status(
-    conn: Any, project_id: str, *, session: AsyncSession | None = None
+    conn: Any, project_id: str, *, session: AsyncSession | None = None, pool_snapshot: dict | None = None
 ) -> list[dict[str, Any]]:
     """Return effective limits and current use for a project's GPU aliases."""
     if conn is None:
         raise GpuQuotaUnavailable("GPU quota usage inventory is unavailable")
+    from app.services import compute_pools
+
+    try:
+        snapshot = (
+            pool_snapshot if pool_snapshot is not None else await compute_pools.project_pool_snapshot(conn, project_id)
+        )
+    except compute_pools.ComputePoolUnavailable as exc:
+        raise GpuQuotaUnavailable(str(exc)) from exc
+    if snapshot.get("state") == "paused":
+        raise GpuQuotaUnavailable("Domain compute pool is paused")
+    if snapshot["enabled"]:
+        if snapshot.get("policy_ready") is not True:
+            raise GpuQuotaUnavailable("Afterglow compute pool policy is unavailable")
+        rows = []
+        seen = set()
+        for alias in snapshot["_aliases"]:
+            resource = alias["resource_class"]
+            if resource in seen:
+                continue
+            seen.add(resource)
+            remaining = [snapshot["available"].get(resource, 0), snapshot["project_available"].get(resource, -1)]
+            finite_remaining = [value for value in remaining if value != -1]
+            rows.append(
+                {
+                    "project_id": project_id,
+                    "domain_id": snapshot["domain_id"],
+                    "quota_scope": "domain",
+                    "control_scope": "afterglow",
+                    "gpu_type": alias.get("profile_name", alias["name"]),
+                    "resource_class": resource,
+                    "limit": snapshot["limits"].get(resource, 0),
+                    "in_use": snapshot["usage"].get(resource, 0),
+                    "available": min(finite_remaining) if finite_remaining else -1,
+                    "project_in_use": snapshot["project_usage"].get(resource, 0),
+                    "project_limit": snapshot["project_limits"].get(resource),
+                }
+            )
+        return rows
 
     effective = await get_effective_gpu_quotas(conn, project_id, session=session)
     usage = await get_project_gpu_usage(conn, project_id)

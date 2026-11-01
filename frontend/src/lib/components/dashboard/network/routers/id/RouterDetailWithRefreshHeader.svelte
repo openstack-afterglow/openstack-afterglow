@@ -5,7 +5,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
@@ -51,7 +51,7 @@
 			onManualRefresh={onManualRefresh}
 		/>
 		{#if canManage}
-			<Button variant="danger-outline" size="sm" disabled={saving} ariaBusy={deletingRouter} onclick={() => pending.run('delete', onDelete)}>{#if deletingRouter}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingRouter ? t('networksTable.deleting') : t('routerHeader.delete')}</Button>
+			<Button variant="danger-outline" size="sm" disabled={saving} ariaBusy={deletingRouter} onclick={() => pending.run('delete', onDelete)}>{#if deletingRouter}<LoadingState variant="control" label="" />{/if}{deletingRouter ? t('networksTable.deleting') : t('routerHeader.delete')}</Button>
 		{/if}
 	</div>
 </div>

@@ -176,7 +176,6 @@ function installApiResponses() {
 async function openServerPanel() {
 	render(Page);
 	expect(await screen.findByText('tenant-gateway')).toBeTruthy();
-	expect(screen.getByText('ACTIVE')).toBeTruthy();
 	await fireEvent.click(screen.getByText('tenant-gateway'));
 	expect(await screen.findByText('operator-laptop')).toBeTruthy();
 }
@@ -206,7 +205,7 @@ beforeEach(() => {
 });
 
 describe('Waygate dashboard', () => {
-	it('shows servers and status, then attaches an explicit tenant subnet', async () => {
+	it('opens a server and attaches an explicit tenant subnet', async () => {
 		await openServerPanel();
 
 		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));

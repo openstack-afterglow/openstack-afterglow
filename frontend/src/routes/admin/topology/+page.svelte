@@ -5,7 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createAdminTopologyController } from '$lib/stores/adminTopologyController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
@@ -20,7 +20,6 @@
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
-	import CanvasLegend from '$lib/components/topology/canvas/CanvasLegend.svelte';
 	import TopologyNetworkPanel from '$lib/components/topology/canvas/TopologyNetworkPanel.svelte';
 	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
 
@@ -134,9 +133,9 @@
 		{/if}
 	{/if}
 	{#if ctrl.loading}
-		<LoadingSkeleton variant="card" rows={8} />
+		<LoadingState variant="surface" />
 	{:else if ctrl.data}
-		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4" data-tour="admin-network-canvas">
+		<div class="bg-surface-base border border-line rounded-lg p-3 md:p-6 mb-4" data-tour="admin-network-canvas">
 			<div data-tour="admin-network-ready">
 			<p class="mb-3 text-xs text-ink-2">{t('domain.ownershipOnly')}</p>
 			{#if view === 'canvas'}
@@ -172,9 +171,7 @@
 		</div>
 
 		<div data-tour="admin-network-legend">
-		{#if view === 'canvas'}
-			<CanvasLegend />
-		{:else}
+		{#if view === 'lane'}
 			<TopologyLegend {isLight} />
 		{/if}
 

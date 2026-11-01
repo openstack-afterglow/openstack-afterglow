@@ -4,7 +4,7 @@
 	import type { Volume } from '$lib/types/volume';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let { volume, onclose, onsuccess }: {
 		volume: Volume | null;
@@ -120,7 +120,7 @@
 				onclick={createSnapshot}
 				disabled={creating || !name.trim()}
 				class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>{#if creating}<ActivityIndicator size="xs" tone="ink" />{/if}{creating ? t('snapshotModal.creating') : t('snapshotModal.create')}</button>
+			>{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('snapshotModal.creating') : t('snapshotModal.create')}</button>
 		</div>
 	</div>
 </div>

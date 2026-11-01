@@ -1,5 +1,6 @@
 import type { Flavor } from '$lib/types/flavor';
 import { t } from '$lib/i18n/ns/admin-compute';
+import { isManagedFlavor } from '$lib/api/computePools';
 
 export type GpuFilterValue = string;
 
@@ -34,9 +35,25 @@ export function parseGpuAliasSpecs(extraSpecs: Record<string, string> | undefine
 		.filter(Boolean);
 }
 
+function hasManagedGpuProjection(flavor: Flavor): boolean {
+	return isManagedFlavor(flavor) || 'gpu_primary_aliases' in flavor ||
+		flavor.description?.startsWith('afterglow:domain-compute-v1:') === true;
+}
+
+function gpuAliases(flavor: Flavor): string[] {
+	return hasManagedGpuProjection(flavor)
+		? (flavor.gpu_primary_aliases ?? []).map(alias => alias.name)
+		: parseGpuAliasSpecs(flavor.extra_specs);
+}
+
 export function buildGpuFilterOptions(flavors: Flavor[]): GpuFilterOption[] {
 	const aliasesByNormalized = new Map<string, string>();
+	const managedAliases = new Set<string>();
 	for (const flavor of flavors) {
+		if (hasManagedGpuProjection(flavor)) {
+			for (const alias of gpuAliases(flavor)) managedAliases.add(alias);
+			continue;
+		}
 		for (const alias of parseGpuAliasSpecs(flavor.extra_specs)) {
 			const normalized = normalizeGpuAlias(alias);
 			if (normalized && !aliasesByNormalized.has(normalized)) {
@@ -45,7 +62,7 @@ export function buildGpuFilterOptions(flavors: Flavor[]): GpuFilterOption[] {
 		}
 	}
 
-	const aliasOptions = [...aliasesByNormalized.values()]
+	const aliasOptions = [...new Set([...aliasesByNormalized.values(), ...managedAliases])]
 		.sort((a, b) => a.localeCompare(b))
 		.map((alias) => ({ value: alias, label: alias }));
 
@@ -54,8 +71,9 @@ export function buildGpuFilterOptions(flavors: Flavor[]): GpuFilterOption[] {
 
 export function matchesGpuFilter(flavor: Flavor, filter: GpuFilterValue): boolean {
 	if (filter === GPU_FILTER_ALL) return true;
-	if (filter === GPU_FILTER_HAS_GPU) return flavor.is_gpu;
-	if (filter === GPU_FILTER_NO_GPU) return !flavor.is_gpu;
+	if (filter === GPU_FILTER_HAS_GPU) return flavor.is_gpu === true;
+	if (filter === GPU_FILTER_NO_GPU) return flavor.is_gpu === false;
+	if (hasManagedGpuProjection(flavor)) return gpuAliases(flavor).includes(filter);
 
 	const normalizedFilter = normalizeGpuAlias(filter);
 	return parseGpuAliasSpecs(flavor.extra_specs).some(

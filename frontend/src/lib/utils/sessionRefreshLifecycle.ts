@@ -8,7 +8,7 @@ export interface SessionRefreshState {
 
 interface SessionRefreshLifecycleOptions {
 	getSession: () => SessionRefreshState;
-	refreshSession: () => Promise<string | null>;
+	refreshSession: (options: { proactive: true }) => Promise<string | null>;
 }
 
 const REFRESH_LEEWAY_SECONDS = 120;
@@ -36,7 +36,7 @@ export function startSessionRefreshLifecycle({
 			return;
 		}
 
-		void refreshSession().catch(() => {
+		void refreshSession({ proactive: true }).catch(() => {
 			// The shared refresh coordinator publishes recovery UI or clears terminal auth.
 		});
 	};

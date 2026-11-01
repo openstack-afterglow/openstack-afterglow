@@ -1103,11 +1103,20 @@ async def _delete_project_under_lease(
                 "check": check,
             },
         )
+    from app.services import compute_pools
+
+    domain_id = identity_roles._field(project, "domain_id")
+    try:
+        await compute_pools.assert_project_pool_deletion_ready(domain_id, project_id, lease=lease)
+    except compute_pools.ComputePoolUnavailable as exc:
+        raise public_service_error(503, "compute_pool_project_deletion_unavailable") from exc
     try:
         if expected_parent is None:
             await identity_roles._write(lease, conn.identity.delete_project, project_id, ignore_missing=False)
         else:
             await identity_roles._write(lease, project_cleanup.delete_project_native, conn.identity, project_id)
+        # Cap removal follows positively returned DELETE, never precedes it.
+        await compute_pools.cleanup_deleted_project_limits(domain_id, project_id, lease=lease)
     except Exception as exc:
         raise (project_cleanup._error(exc) if expected_parent is not None else _identity_error(exc)) from exc
     finally:
@@ -1300,6 +1309,7 @@ async def update_project_compute_policy(
 
     await invalidate(f"afterglow:nova:{project_id}:flavors")
     await invalidate(f"afterglow:dashboard:{project_id}:quotas")
+    await invalidate(f"afterglow:dashboard:{project_id}:quotas:native-v1")
     return {
         "project_id": project_id,
         "status": "partial" if errors else "ok",
@@ -1962,13 +1972,15 @@ async def get_identity_summary(
         groups: list = []
         try:
             groups = list(conn.identity.groups(limit=500))
-        except Exception:
-            pass
+        except Exception as exc:
+            partial = True
+            partial_reasons.append(f"groups:{_classify_exc(exc)}")
         domains: list = []
         try:
             domains = list(conn.identity.domains(limit=50))
-        except Exception:
-            pass
+        except Exception as exc:
+            partial = True
+            partial_reasons.append(f"domains:{_classify_exc(exc)}")
 
         recent_enabled = sum(1 for u in users if getattr(u, "is_enabled", True))
 

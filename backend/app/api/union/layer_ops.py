@@ -19,6 +19,7 @@ from sqlalchemy import desc, select
 from app.api.deps import get_os_conn, require_admin
 from app.api.union.layer_block_sources import router as block_sources_router
 from app.database import get_session_factory
+from app.models.instance_usage import UsageScheduleRequest
 from app.services.cache import invalidate
 from app.services.layer_base_images import (
     legacy_snapshot_for_ubuntu_base,
@@ -300,6 +301,7 @@ class LayerConsumeRequest(BaseModel):
     key_name: str | None = None
     ssh_public_key: str | None = None
     ssh_username: str | None = None
+    usage_schedule: UsageScheduleRequest | None = None
 
     @field_validator("profile_name")
     @classmethod
@@ -400,6 +402,7 @@ class DockerfileConsumerRequest(BaseModel):
     key_name: str | None = None
     ssh_public_key: str | None = None
     ssh_username: str | None = None
+    usage_schedule: UsageScheduleRequest | None = None
 
     def require_immediate_transport(self) -> None:
         """Call after admin authorization, before planning or any provider I/O."""
@@ -867,6 +870,7 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
             conn,
             flavor_ref=req.flavor_id,
             network_id=req.network_id,
+            usage_schedule=req.usage_schedule,
         )
         if (
             req.expected_project_id is not None
@@ -922,6 +926,7 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
                 ssh_username=req.ssh_username,
                 resource_snapshot=resource_snapshot,
                 resolved_artifacts=resolved_artifacts,
+                usage_schedule=req.usage_schedule,
             )
         except Exception as exc:
             if req.transport != "block" or consume_db_id is None:
@@ -1472,6 +1477,9 @@ def _profile_layers(row) -> list[str]:
 
 
 def _is_blocking_consume(row) -> bool:
+    receipt = (getattr(row, "resource_snapshot", None) or {}).get("usage_resource_cleanup")
+    if receipt:
+        return not receipt.get("complete") or bool(receipt.get("retained_source_volume_ids"))
     if (getattr(row, "resource_snapshot", None) or {}).get("catalog_revision"):
         # Caller-project work is not observable through default service Nova.
         # Unknown journal outcomes remain blockers, never absence-by-age proof.
@@ -1556,6 +1564,7 @@ async def _sync_consume_rows_with_nova(session, rows: list[object]) -> None:
         for row in rows
         if getattr(row, "transport", "nfs") != "block"
         and not (getattr(row, "resource_snapshot", None) or {}).get("catalog_revision")
+        and not (getattr(row, "resource_snapshot", None) or {}).get("usage_resource_cleanup")
     ]
     now = datetime.now(UTC)
     changed = False

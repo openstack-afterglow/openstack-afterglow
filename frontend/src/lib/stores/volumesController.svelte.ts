@@ -36,6 +36,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   let refreshing = $state(false);
   let error = $state('');
   let deleting = $state<string | null>(null);
+  let snapshotsLoading = $state(true);
+  let snapshotsError = $state('');
+  let quotasError = $state('');
   let showModal = $state(false);
   let showTransferModal = $state(false);
   let transferVolumeId = $state('');
@@ -56,6 +59,8 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   // Only the newest list request may write state, so a slow pre-rename or
   // previous-project response cannot overwrite fresher data.
   let volumesRequestSeq = 0;
+  let snapshotsRequestSeq = 0;
+  let quotasRequestSeq = 0;
 
   async function fetchVolumes(manual = false) {
     const path = '/api/v1/volumes';
@@ -81,19 +86,41 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   }
 
   async function fetchSnapshots(manual = false) {
+    const seq = ++snapshotsRequestSeq;
+    const project = opts.projectId();
+    const token = opts.token();
+    const owns = () => seq === snapshotsRequestSeq && project === opts.projectId() && token === opts.token();
     if (!volumeSnapshotsOn()) {
       snapshots = [];
+      snapshotsError = '';
+      snapshotsLoading = false;
       return;
     }
     try {
-      snapshots = await api.get<Snapshot[]>('/api/v1/volume-snapshots', opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
-    } catch { /* 오류 무시 */ }
+      const result = await api.get<Snapshot[]>('/api/v1/volume-snapshots', token, project, manual ? { refresh: true } : undefined);
+      if (!owns()) return;
+      snapshots = result;
+      snapshotsError = '';
+    } catch {
+      if (owns()) snapshotsError = t('page.snapshotsUnavailable');
+    } finally {
+      if (owns()) snapshotsLoading = false;
+    }
   }
 
   async function fetchQuotas(manual = false) {
+    const seq = ++quotasRequestSeq;
+    const project = opts.projectId();
+    const token = opts.token();
+    const owns = () => seq === quotasRequestSeq && project === opts.projectId() && token === opts.token();
     try {
-      quotas = await api.get<VolumeQuotas>('/api/v1/dashboard/quotas', opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
-    } catch { /* 오류 무시 */ }
+      const result = await api.get<VolumeQuotas>('/api/v1/dashboard/quotas', token, project, manual ? { refresh: true } : undefined);
+      if (!owns()) return;
+      quotas = result;
+      quotasError = '';
+    } catch {
+      if (owns()) { quotas = null; quotasError = t('page.quotasUnavailable'); }
+    }
   }
 
   async function fetchAll(manual = false) {
@@ -174,6 +201,13 @@ export function createVolumesController(opts: VolumesControllerOpts) {
 
   /** Drop per-project UI targets so a project switch never acts on the previous tenant's volume. */
   function resetProjectScope() {
+    snapshotsRequestSeq += 1;
+    quotasRequestSeq += 1;
+    snapshotsLoading = true;
+    snapshotsError = '';
+    quotasError = '';
+    snapshots = [];
+    quotas = null;
     renameTargetVol = null;
     extendTargetVol = null;
     backupTargetVol = null;
@@ -191,6 +225,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     set loading(v: boolean) { loading = v; },
     get refreshing() { return refreshing; },
     get error() { return error; },
+    get snapshotsLoading() { return snapshotsLoading; },
+    get snapshotsError() { return snapshotsError; },
+    get quotasError() { return quotasError; },
     get deleting() { return deleting; },
     get showModal() { return showModal; },
     set showModal(v: boolean) { showModal = v; },

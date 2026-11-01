@@ -22,6 +22,7 @@ end
 return value
 """
 _ATOMIC_RESERVED_ISSUE = """
+if redis.call('GET', KEYS[4]) ~= ARGV[4] then return -1 end
 if redis.call('EXISTS', KEYS[2]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then
   return 0
 end
@@ -32,6 +33,7 @@ redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[2])
 return 1
 """
 _ATOMIC_RESERVED_CONSUME = """
+if redis.call('GET', KEYS[4]) ~= ARGV[3] then return {2, ''} end
 local raw = redis.call('GET', KEYS[1])
 if not raw then
   return {0, ''}
@@ -151,10 +153,13 @@ async def issue_reserved_ticket(
     ttl_seconds: int,
     reservation_key: str,
     active_key: str,
+    ownership_key: str,
+    ownership_value: str,
 ) -> str | None:
     """Atomically issue a ticket and reserve a caller-wide singleton slot."""
     reservation_key = _coordination_key(reservation_key)
     active_key = _coordination_key(active_key)
+    ownership_key = _coordination_key(ownership_key)
     if not kind or ":" in kind or ttl_seconds <= 0:
         raise WebSocketTicketError("invalid WebSocket ticket parameters")
     envelope = json.dumps(
@@ -168,16 +173,20 @@ async def issue_reserved_ticket(
             ticket = secrets.token_urlsafe(32)
             created = await redis.eval(
                 _ATOMIC_RESERVED_ISSUE,
-                3,
+                4,
                 _ticket_key(ticket),
                 reservation_key,
                 active_key,
+                ownership_key,
                 envelope,
                 ttl_seconds,
                 ticket,
+                ownership_value,
             )
             if int(created or 0) == 1:
                 return ticket
+            if int(created or 0) == -1:
+                return None
             if await redis.exists(reservation_key) or await redis.exists(active_key):
                 return None
     except WebSocketTicketError:
@@ -207,20 +216,23 @@ async def consume_reserved_ticket(
     active_key: str,
     active_value: str,
     active_ttl_seconds: int,
+    ownership_key: str,
 ) -> ReservedTicketResult:
     """Atomically consume a reserved ticket and promote its slot to active."""
     reservation_key = _coordination_key(reservation_key)
     active_key = _coordination_key(active_key)
+    ownership_key = _coordination_key(ownership_key)
     if active_ttl_seconds <= 0:
         raise WebSocketTicketError("invalid active ticket TTL")
     try:
         redis = await _get_redis()
         result = await redis.eval(
             _ATOMIC_RESERVED_CONSUME,
-            3,
+            4,
             _ticket_key(ticket),
             reservation_key,
             active_key,
+            ownership_key,
             expected_kind,
             ticket,
             active_value,

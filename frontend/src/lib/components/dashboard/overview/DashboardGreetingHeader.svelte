@@ -4,7 +4,6 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import GradientText from '$lib/components/ui/GradientText.svelte';
 
 	let {
 		username,
@@ -41,11 +40,10 @@
 	);
 </script>
 
-{#snippet userName(text: string)}<GradientText>{text}</GradientText>{/snippet}
+{#snippet userName(text: string)}<span>{text}</span>{/snippet}
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 	<div class="min-w-0">
-		<div class="text-xs text-[var(--color-ink-3)] uppercase tracking-widest font-medium mb-1">{t('greeting.eyebrow')}</div>
 		<h1 class="text-2xl font-bold text-[var(--color-ink-0)] mb-1 break-words"><RichText segments={t.rich('greeting.hello', { username })} tags={{ user: userName }} /></h1>
 		<div class="text-[var(--color-ink-2)] text-[13px] break-words">
 			{projectName} · {syncLabel}

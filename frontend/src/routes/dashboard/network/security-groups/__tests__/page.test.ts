@@ -13,6 +13,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 
 import { auth } from '$lib/stores/auth';
+import { t as commonT } from '$lib/i18n/ns/common';
 import Page from '../+page.svelte';
 
 const groups: SecurityGroup[] = [
@@ -291,7 +292,7 @@ describe('project security-group management', () => {
 		await fireEvent.input(screen.getByLabelText('끝 포트'), { target: { value: '443' } });
 		await mocks.delete('/api/v1/security-groups/sg-web/rules/rule-1');
 		mocks.delete.mockClear();
-		await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		await vi.waitFor(() => expect(within(screen.getByRole('region', { name: '보안 그룹 규칙' })).queryByText('22')).toBeNull());
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 		expect(await within(screen.getByRole('region', { name: '보안 그룹 규칙' })).findByText('443')).toBeTruthy();

@@ -310,6 +310,8 @@
 	"message.forkHere": "この地点から分岐",
 	"message.fork": "分岐",
 	"message.generationSpeed": "生成速度",
+	"message.ttft": "TTFT {seconds}秒",
+	"message.ttftExplanation": "送信から最初の回答テキストを受信するまで: {seconds}秒",
 	"window.elapsedMinutesSeconds": "{minutes}分{seconds}秒",
 	"window.elapsedSeconds": "{seconds}秒",
 	"window.skillFallback": "スキル#{id}",

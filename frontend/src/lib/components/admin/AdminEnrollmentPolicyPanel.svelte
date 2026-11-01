@@ -6,10 +6,12 @@
 	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as tq } from '$lib/i18n/ns/workspace-iam';
-	import { ActivityIndicator, Alert, Button, Card, Field, SelectInput, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, Field, SelectInput, TextInput } from '$lib/components/ui';
 	import type { EnrollmentPolicy, EnrollmentPolicyWrite, SignupRequest, SignupRequestFilter, SignupRequestPage } from '$lib/types/enrollmentPolicy';
 	import PersonalQuotaConvergence from './PersonalQuotaConvergence.svelte';
 
+	let { section = 'all' }: { section?: 'all' | 'policy' | 'quotas' | 'requests' } = $props();
 	const uid = $props.id();
 	const policyPath = '/api/v1/admin/enrollment-policy';
 	const queuePath = '/api/v1/admin/signup-requests';
@@ -123,7 +125,7 @@
 			const value = (quotas[key] ?? '').trim();
 			if (!value) { delete personalQuotas[key]; continue; }
 			if (!/^(?:-1|\d+)$/.test(value) || !Number.isSafeInteger(Number(value))) {
-				policyError = t('enrollment.invalidQuota'); return;
+				policyError = t(section === 'policy' ? 'enrollment.invalidQuotaOtherTab' : 'enrollment.invalidQuota'); return;
 			}
 			personalQuotas[key] = Number(value);
 		}
@@ -193,20 +195,21 @@
 </script>
 
 <section aria-label={t('enrollment.title')} data-testid="admin-enrollment-policy">
+	<div hidden={section === 'requests'}>
 	<Card padding="lg">
 		<div class="panel-header">
-			<div><h2>{t('enrollment.title')}</h2><p>{t('enrollment.summary')}</p></div>
+			<div><h2>{t(section === 'quotas' ? 'enrollment.quotas' : 'enrollment.title')}</h2><p>{t('enrollment.summary')}</p></div>
 			<Button variant="subtle" onclick={loadPolicy} disabled={!authorized || policyLoading || saving}>{t('enrollment.reloadPolicy')}</Button>
 		</div>
 		{#if policyError}<Alert tone="danger">{policyError}</Alert>{/if}
 		{#if policyNotice}<Alert tone="success">{policyNotice}</Alert>{/if}
-		{#if policyLoading}<ActivityIndicator label={t('enrollment.loading')} />{/if}
+		{#if policyLoading}<LoadingState variant="section" label={t('enrollment.loading')} />{/if}
 		{#if policy && authorized}
 			<form onsubmit={savePolicy} aria-label={t('enrollment.policyForm')}>
 				<p>{t('enrollment.futureOnly')}</p>
 				<Alert tone={policy.smtp_configured ? 'info' : 'warning'}>{t(policy.smtp_configured ? 'enrollment.smtpReady' : 'enrollment.smtpMissing')}</Alert>
 				<fieldset disabled={saving || reloadRequired || policyLoading}>
-					<div class="controls">
+					<div class="controls" hidden={section === 'quotas'}>
 						<label class="toggle"><input id={`${uid}-public-email`} type="checkbox" bind:checked={publicSignup} />{t('enrollment.publicEmail')}</label>
 						<p>{t('enrollment.emailHelp')}</p>
 						<label class="toggle"><input id={`${uid}-signup-visible`} type="checkbox" bind:checked={signupButtonVisible} aria-describedby={`${uid}-signup-visible-help`} />{t('enrollment.signupButtonVisible')}</label>
@@ -217,6 +220,7 @@
 							</SelectInput>
 						</Field>
 					</div>
+					<div class="quota-task" hidden={section === 'policy'}>
 					<h3>{t('enrollment.quotas')}</h3><p id={`${uid}-quota-help`}>{t('enrollment.quotaHelp')}</p>
 					<Button variant="secondary" disabled={!policy.source_default_personal_quotas} onclick={() => {
 						if (!policy?.source_default_personal_quotas) return;
@@ -233,18 +237,23 @@
 							</fieldset>
 						{/each}
 					</div>
-					<Button type="submit" variant="primary" disabled={saving || reloadRequired} ariaBusy={saving}>{t(saving ? 'enrollment.saving' : 'enrollment.save')}</Button>
+					</div>
+					<Button type="submit" variant="primary" disabled={saving || reloadRequired} ariaBusy={saving}>{#if saving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{t(saving ? 'enrollment.saving' : 'enrollment.save')}</Button>
 				</fieldset>
 			</form>
 		{:else if !policyLoading && !policyError}<p>{t('enrollment.authorityRequired')}</p>{/if}
+		<div hidden={section === 'policy'}>
 		{#if policy && authorized}
 			{@const owner = capture()}
 			{#key `${epoch}:${policy.revision}`}
 				{#if owner}<PersonalQuotaConvergence token={owner.token} projectId={owner.projectId} current={owner.current} />{/if}
 			{/key}
 		{/if}
+		</div>
 	</Card>
+	</div>
 
+	<div hidden={section === 'policy' || section === 'quotas'}>
 	<Card padding="lg">
 		<section aria-label={t('enrollment.queue')}>
 			<div class="panel-header"><div><h2>{t('enrollment.queue')}</h2><p>{t('enrollment.reviewHelp')}</p></div>
@@ -258,7 +267,7 @@
 			</Field>
 			{#if queueError}<Alert tone="danger">{queueError}</Alert>{/if}
 			{#if queueNotice}<Alert tone="success">{queueNotice}</Alert>{/if}
-			{#if queueLoading}<ActivityIndicator label={t('enrollment.queueLoading')} />{/if}
+			{#if queueLoading}<LoadingState variant="section" label={t('enrollment.queueLoading')} />{/if}
 			{#if page && authorized}
 				<p>{t('enrollment.loadedCount', { count: page.items.length })}</p>
 				{#if page.items.length === 0}<p>{t('enrollment.empty')}</p>{/if}
@@ -294,10 +303,13 @@
 			{/if}
 		</section>
 	</Card>
+	</div>
 </section>
 
 <style>
 	section, form, .quota-sections, .controls { display: grid; gap: 1rem; min-width: 0; }
+	[hidden] { display: none !important; }
+	.quota-task { display: grid; gap: 1rem; min-width: 0; }
 	.panel-header, .actions { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
 	.panel-header > div { flex: 1 1 20rem; min-width: 0; }
 	h2 { margin: 0; color: var(--color-ink-0); font-size: 1rem; font-weight: 600; }

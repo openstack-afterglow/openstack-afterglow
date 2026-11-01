@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -43,7 +43,7 @@
 					disabled={!s.selectedRouterId || !s.selectedSubnetId || s.connectingRouter}
 					aria-busy={s.connectingRouter}
 					class="inline-flex items-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-xs px-3 py-1.5 rounded transition-colors"
-				>{#if s.connectingRouter}<ActivityIndicator size="xs" tone="ink" />{/if}{s.connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</button>
+				>{#if s.connectingRouter}<LoadingState variant="control" label="" />{/if}{s.connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</button>
 				<button onclick={() => s.showRouterConnect = false} class="text-ink-2 hover:text-ink-1 text-xs px-2">{t('network.actions.cancel')}</button>
 			</div>
 		</div>

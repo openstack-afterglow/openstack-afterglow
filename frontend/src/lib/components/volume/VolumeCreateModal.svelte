@@ -4,7 +4,8 @@
 	import { apiMut } from '$lib/api/mutations';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 
 	let {
 		open = $bindable(false),
@@ -74,7 +75,7 @@
 			{#if createError}
 				<Alert tone="danger" class="mt-4">{createError}</Alert>
 			{/if}
-			{#if creating}<ProgressTrack value={null} active label={t('createModal.mutationLabel')} class="mt-4" />{/if}
+			{#if creating}<LoadingState variant="inline" label={t('createModal.mutationLabel')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('createModal.cancel')}</button>
 				<Button
@@ -82,7 +83,7 @@
 					onclick={createVolume}
 					disabled={creating || !form.name.trim() || form.size_gb < 1}
 					ariaBusy={creating}
-				>{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('createModal.creating')}{:else}{t('createModal.create')}{/if}</Button>
+				>{#if creating}<LoadingState variant="control" label="" />{t('createModal.creating')}{:else}{t('createModal.create')}{/if}</Button>
 			</div>
 		</div>
 	</div>

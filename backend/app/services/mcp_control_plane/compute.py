@@ -6,9 +6,13 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
+from fastapi import HTTPException
+
 from app.models.compute import FlavorInfo
+from app.models.instance_usage import UsageScheduleRequest
 from app.services import flavor_eligibility
 from app.services.instance_names import ensure_unique_instance_name, normalize_requested_instance_name
+from app.services.instance_usage import creation_metadata, require_resume_schedule
 from app.services.mcp_control_plane.sdk import _drain, check_mutation_dispatch, run_sdk
 
 
@@ -100,6 +104,11 @@ def _prepare_server_action(conn: Any, *, project_id: str, server_id: str, action
     if server is None:
         raise McpComputeError("Nova server was not found")
     safe_server = _safe_server(server, project_id=project_id)
+    if action in {"start", "unshelve"}:
+        try:
+            require_resume_schedule(server)
+        except HTTPException as exc:
+            raise McpComputeError(str(exc.detail)) from exc
     action_spec = _SERVER_ACTIONS.get(action)
     if action_spec is None:
         raise McpComputeError("Nova server action is invalid")
@@ -327,6 +336,22 @@ def _create_zone(value: Any) -> str | None:
     return zone
 
 
+def _creation_schedule(
+    request: UsageScheduleRequest | Mapping[str, Any] | None,
+) -> UsageScheduleRequest | None:
+    if request is None:
+        return None
+    schedule = UsageScheduleRequest.model_validate(
+        request.model_dump() if isinstance(request, UsageScheduleRequest) else request
+    )
+    if schedule.expires_at is None:
+        raise McpComputeError(
+            "usage_schedule.expires_at is required; use an explicit timezone-aware date "
+            "one calendar month from now by default"
+        )
+    return schedule
+
+
 def _prepare_server_create(
     conn: Any,
     *,
@@ -340,7 +365,8 @@ def _prepare_server_create(
     delete_boot_volume_on_termination: bool,
     key_name: str | None,
     availability_zone: str | None,
-) -> tuple[dict[str, Any], FlavorInfo]:
+    usage_schedule: UsageScheduleRequest | None = None,
+) -> tuple[dict[str, Any], FlavorInfo, dict[str, str]]:
     from app.services.mcp_control_plane.network import validate_project_attachment_network
 
     _create_text(name, name="name", maximum=63)
@@ -382,6 +408,7 @@ def _prepare_server_create(
         value = _field(native_flavor, field_name)
         if type(value) is not int or value < (0 if field_name == "disk" else 1):
             raise McpComputeError("Nova flavor capacity is malformed")
+    metadata = creation_metadata(flavor, usage_schedule)
     for field_name, available in (("min_disk", boot_volume_size_gb), ("min_ram", flavor.ram)):
         required = _field(image, field_name)
         if type(required) is not int or required < 0 or required > available:
@@ -396,17 +423,22 @@ def _prepare_server_create(
         if keypair is None or _field(keypair, "name") != key_name or _field(keypair, "user_id") != user_id:
             raise McpComputeError("Nova keypair ownership cannot be proven")
     ensure_unique_instance_name(conn, name)
-    return {
-        "name": name,
-        "image_id": image_id,
-        "flavor_id": flavor_id,
-        "network_id": network_id,
-        "boot_volume_size_gb": boot_volume_size_gb,
-        "delete_boot_volume_on_termination": delete_boot_volume_on_termination,
-        "key_name": key_name,
-        "availability_zone": availability_zone,
-        "network_visibility": network["visibility"],
-    }, flavor
+    return (
+        {
+            "name": name,
+            "image_id": image_id,
+            "flavor_id": flavor_id,
+            "network_id": network_id,
+            "boot_volume_size_gb": boot_volume_size_gb,
+            "delete_boot_volume_on_termination": delete_boot_volume_on_termination,
+            "key_name": key_name,
+            "availability_zone": availability_zone,
+            "network_visibility": network["visibility"],
+            "usage_schedule": usage_schedule.model_dump(mode="json") if usage_schedule is not None else None,
+        },
+        flavor,
+        metadata,
+    )
 
 
 async def _owned_policy_result(task: asyncio.Task[Any]) -> Any:
@@ -445,11 +477,13 @@ async def preview_project_server_create(
     delete_boot_volume_on_termination: bool = False,
     key_name: str | None = None,
     availability_zone: str | None = None,
+    usage_schedule: UsageScheduleRequest | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Read native dependencies and existing quota/capacity policy without reservations."""
     try:
+        schedule = _creation_schedule(usage_schedule)
         zone = await _server_create_zone(conn, availability_zone)
-        plan, flavor = await run_sdk(
+        plan, flavor, _ = await run_sdk(
             _prepare_server_create,
             conn,
             project_id=project_id,
@@ -462,6 +496,7 @@ async def preview_project_server_create(
             key_name=key_name,
             availability_zone=zone,
             delete_boot_volume_on_termination=delete_boot_volume_on_termination,
+            usage_schedule=schedule,
         )
         await _owned_policy_result(
             asyncio.create_task(
@@ -482,7 +517,7 @@ async def preview_project_server_create(
 
 
 def _create_server(conn: Any, *, project_id: str, expected_flavor: FlavorInfo, **arguments: Any) -> dict[str, Any]:
-    plan, flavor = _prepare_server_create(conn, project_id=project_id, **arguments)
+    plan, flavor, metadata = _prepare_server_create(conn, project_id=project_id, **arguments)
     if flavor != expected_flavor:
         raise McpComputeError("Nova flavor changed after creation admission")
     body = {
@@ -490,6 +525,7 @@ def _create_server(conn: Any, *, project_id: str, expected_flavor: FlavorInfo, *
         "flavor_id": plan["flavor_id"],
         "networks": [{"uuid": plan["network_id"]}],
         "availability_zone": plan["availability_zone"],
+        "metadata": metadata,
         "block_device_mapping": [
             {
                 "uuid": plan["image_id"],
@@ -537,10 +573,12 @@ async def request_project_server_create(
     delete_boot_volume_on_termination: bool = False,
     key_name: str | None = None,
     availability_zone: str | None = None,
+    usage_schedule: UsageScheduleRequest | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Admit one VM and send one asynchronous Nova image-to-volume boot request."""
     admission_task = None
     try:
+        schedule = _creation_schedule(usage_schedule)
         zone = await _server_create_zone(conn, availability_zone)
         arguments = dict(
             user_id=user_id,
@@ -551,9 +589,10 @@ async def request_project_server_create(
             boot_volume_size_gb=boot_volume_size_gb,
             key_name=key_name,
             availability_zone=zone,
+            usage_schedule=schedule,
         )
         arguments["delete_boot_volume_on_termination"] = delete_boot_volume_on_termination
-        _, flavor = await run_sdk(_prepare_server_create, conn, project_id=project_id, **arguments)
+        _, flavor, _ = await run_sdk(_prepare_server_create, conn, project_id=project_id, **arguments)
         admission_task = asyncio.create_task(
             flavor_eligibility.admit_flavor(
                 conn,

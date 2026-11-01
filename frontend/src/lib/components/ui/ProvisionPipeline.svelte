@@ -9,6 +9,7 @@
 
 <script lang="ts">
 	import { STEP_STATE_TEXT, stepVisualState, type StepProgressStatus } from './StepProgress.svelte';
+	import LoadingState from './LoadingState.svelte';
 
 	interface Props {
 		stages: PipelineStage[];
@@ -40,21 +41,20 @@
 		{@const state = states[index]}
 		<li class="station" data-state={state}>
 			{#if index > 0}
-				<!-- Conduit from the previous station: filled once that station is done, flowing into an active one. -->
+				<!-- Conduit records the previous station's observed completion. -->
 				<span class="conduit" data-filled={states[index - 1] === 'done' ? 'true' : undefined} aria-hidden="true">
 					<span class="conduit-fill"></span>
-					{#if state === 'active'}
-						<span class="conduit-packet"></span>
-						<span class="conduit-packet conduit-packet-late"></span>
-					{/if}
 				</span>
 			{/if}
 			<span class="station-body">
 				<span class="tile" aria-hidden="true">
-					{#if state === 'active'}<span class="tile-ripple"></span><span class="tile-arc"></span>{/if}
+					{#if state === 'active'}
+						<LoadingState variant="control" label="" aria-hidden="true" />
+					{:else}
 					<svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-						<path d={stage.icon} pathLength="1" class:motion-draw={state === 'active'} />
+						<path d={stage.icon} pathLength="1" />
 					</svg>
+					{/if}
 					{#if state === 'done' || state === 'failed'}
 						<span class="badge motion-pop">
 							<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -120,24 +120,6 @@
 		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
 	}
 	[data-filled='true'] > .conduit-fill { transform: scaleX(1); }
-	/* Work flowing into the active station; the packet rests hidden when motion is reduced. */
-	.conduit-packet {
-		position: absolute;
-		inset: 0;
-		opacity: 0;
-		animation: motion-travel-x calc(var(--motion-duration-shimmer) * 0.75) var(--motion-ease-in-out) infinite;
-	}
-	.conduit-packet-late { animation-delay: calc(var(--motion-duration-shimmer) * -0.375); }
-	.conduit-packet::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: -1rem;
-		width: 1rem;
-		height: 2px;
-		border-radius: 999px;
-		background: linear-gradient(90deg, transparent, var(--pipeline-active));
-	}
 
 	.tile {
 		position: relative;
@@ -171,22 +153,6 @@
 		border-style: solid;
 		border-color: var(--color-state-danger);
 		color: var(--color-state-danger-text);
-	}
-	.tile-ripple {
-		position: absolute;
-		inset: -1.5px;
-		border: 1.5px solid var(--pipeline-active);
-		border-radius: inherit;
-		opacity: 0;
-		animation: motion-ripple var(--motion-duration-status-pulse) var(--motion-ease-out) infinite;
-	}
-	.tile-arc {
-		position: absolute;
-		inset: -5px;
-		border: 2px solid transparent;
-		border-top-color: var(--pipeline-active);
-		border-radius: calc(var(--radius-lg) + 5px);
-		animation: motion-spin var(--motion-duration-spin) linear infinite;
 	}
 	.badge {
 		position: absolute;

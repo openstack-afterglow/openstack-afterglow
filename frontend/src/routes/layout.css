@@ -78,6 +78,8 @@
   --color-surface-raised: #1c1d20;
   --color-surface-sunken: #242529;
   --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 7%, var(--color-surface-base));
+  --color-surface-input: var(--color-surface-sunken);
+  --color-surface-input-disabled: var(--color-surface-base);
   --color-surface-scrim: rgb(0 0 0 / 60%);
   --color-surface-scrim-soft: rgb(0 0 0 / 50%);
   /* Ink */
@@ -147,6 +149,14 @@
 
 /* Runtime design variables */
 :root {
+  --type-console-title: 1.5rem;
+  --type-body: 0.875rem;
+  --type-support: 0.8125rem;
+  --type-identifier: 0.75rem;
+  --control-height: 2.25rem;
+  --control-touch-height: 2.75rem;
+  --table-row-height: 2.75rem;
+  --table-row-compact-height: 2.25rem;
   --admin-tone: var(--color-state-warning);
   --admin-tone-soft: color-mix(in oklab, var(--color-state-warning) 14%, transparent);
   --admin-tone-ring: color-mix(in oklab, var(--color-state-warning) 30%, transparent);
@@ -234,20 +244,22 @@
   --motion-duration-base: 160ms;
   --motion-duration-panel: 200ms;
   --motion-duration-data: 500ms;
-  --motion-duration-status-pulse: 1400ms;
   --motion-ease-standard: ease;
   --motion-ease-out: ease-out;
   --motion-ease-in-out: ease-in-out;
-  --motion-duration-spin: 800ms;
   --motion-duration-shimmer: 1600ms;
   --motion-duration-stagger: 40ms;
   --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --motion-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
   /* Highlight swept across an in-flight fill; light on both themes because fills are saturated. */
   --motion-sheen: rgb(255 255 255 / 32%);
-  /* Band swept across a skeleton block. The sunken placeholder is lighter than raised surfaces in
-     dark mode, so the band is a faint white there and a strong white on the light theme. */
-  --motion-skeleton-highlight: rgb(255 255 255 / 6%);
+  /* Authored glyph artwork follows the selected console palette and appearance.
+     The canvas caches resolved colors until the root theme/style changes. */
+  --afterglow-artwork-base: var(--color-surface-canvas);
+  --afterglow-artwork-warm: var(--color-warm-text);
+  --afterglow-artwork-light: var(--color-warm-2);
+  --afterglow-artwork-ink: var(--color-ink-0);
+  --afterglow-artwork-muted: var(--color-ink-2);
 }
 
 :root[data-console-sidebar="hidden"] {
@@ -507,14 +519,15 @@ body {
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12);
   --material-chrome-alpha: 85%;
   --material-overlay-alpha: 90%;
-  --motion-skeleton-highlight: rgb(255 255 255 / 75%);
   /* 포커스 링의 바깥 테두리는 line-2(3.72:1)가 아니라 ink-2 로 올려 6.40:1 을 확보한다.
      링은 표면 위 2px 스페이서를 건너뛰므로 경계선보다 높은 대비가 필요하다. 다크 정의는 건드리지 않는다. */
   --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-ink-2);
   --color-surface-canvas: #f2f3f6;
-  --color-surface-base: #f7f8fa;
-  --color-surface-raised: #fefeff;
+  --color-surface-base: #ffffff;
+  --color-surface-raised: #ffffff;
   --color-surface-sunken: #eeeff3;
+  --color-surface-input: #ffffff;
+  --color-surface-input-disabled: var(--color-surface-sunken);
   --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 5%, var(--color-surface-base));
   --color-line: #dcdee2;
   --color-line-2: #7c8089;
@@ -556,14 +569,14 @@ body {
   --color-topology-link: #868b94;
   --color-topology-gateway: #8a5a2b;
   --color-topology-internal-2: #6b3fc4;
-  --topology-zone-fill-alpha: 6%;
-  --topology-zone-fill-alpha-active: 12%;
+  --topology-zone-fill-alpha: 4%;
+  --topology-zone-fill-alpha-active: 8%;
   --color-topology-grid-minor: #f0f1f4;
   --color-topology-grid-major: #e4e6ea;
   /* Public editorial media remaps to the active light surface. */
   --color-surface-editorial-media: #eef0f4;
   /* 배경 색상 오버라이드 */
-  --tw-bg-base: #f7f8fa;
+  --tw-bg-base: var(--color-surface-base);
 }
 
 /* Legacy light-mode compatibility overrides — do not add new rules here unless paired with visual debt baseline update */
@@ -598,7 +611,7 @@ body {
 
 /* 입력 필드 */
 :root.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
-  background-color: var(--color-surface-sunken);
+  background-color: var(--color-surface-input);
   border-color: var(--color-line-2);
   color: var(--color-ink-0);
 }
@@ -606,14 +619,28 @@ body {
   color: var(--color-ink-2);
 }
 :root.light textarea {
-  background-color: var(--color-surface-sunken);
+  background-color: var(--color-surface-input);
   border-color: var(--color-line-2);
   color: var(--color-ink-0);
 }
 :root.light select {
-  background-color: var(--color-surface-sunken);
+  background-color: var(--color-surface-input);
   border-color: var(--color-line-2);
   color: var(--color-ink-0);
+}
+
+:root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):is(:disabled, [readonly]),
+:root textarea:is(:disabled, [readonly]),
+:root select:disabled {
+  background-color: var(--color-surface-input-disabled);
+  color: var(--color-ink-2);
+  border-color: var(--color-line);
+  opacity: 1;
+}
+
+:root.light :is(input, textarea, select):not(.control):not(.search-select-input):focus-visible {
+  outline: 2px solid var(--color-ink-2);
+  outline-offset: 2px;
 }
 
 /* 코드/pre 블록 */
@@ -998,48 +1025,9 @@ body {
 @keyframes motion-grow-y {
   from { transform: scaleY(0); }
 }
-@keyframes motion-spin {
-  to { transform: rotate(360deg); }
-}
 @keyframes motion-sweep {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
-}
-@keyframes motion-indeterminate {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(340%); }
-}
-@keyframes motion-breathe {
-  0%, 100% { opacity: 0.35; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1); }
-}
-@keyframes motion-ripple {
-  from { opacity: 0.55; transform: scale(1); }
-  to { opacity: 0; transform: scale(2.2); }
-}
-@keyframes motion-travel-x {
-  from { opacity: 0; transform: translateX(0); }
-  15%, 85% { opacity: 1; }
-  to { opacity: 0; transform: translateX(100%); }
-}
-@keyframes motion-travel-y {
-  from { opacity: 0; transform: translateY(0); }
-  15%, 85% { opacity: 1; }
-  to { opacity: 0; transform: translateY(100%); }
-}
-@keyframes motion-rise {
-  from { opacity: 0; transform: translateY(30%); }
-  35%, 65% { opacity: 1; }
-  to { opacity: 0; transform: translateY(-30%); }
-}
-@keyframes motion-sink {
-  from { opacity: 0; transform: translateY(-30%); }
-  35%, 65% { opacity: 1; }
-  to { opacity: 0; transform: translateY(30%); }
-}
-@keyframes motion-bars {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
 }
 /* SVG paint, never geometry: draw-in needs pathLength="1"; flow marches one 2+8 dash period. */
 @keyframes motion-draw {
@@ -1084,24 +1072,6 @@ body {
   stroke-dasharray: 2 8;
   animation: motion-flow var(--motion-duration-shimmer) linear infinite;
 }
-.motion-spin {
-  animation: motion-spin var(--motion-duration-spin) linear infinite;
-}
-.motion-skeleton {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  background-color: var(--color-surface-sunken);
-}
-.motion-skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, var(--motion-skeleton-highlight), transparent);
-  animation: motion-sweep var(--motion-duration-shimmer) var(--motion-ease-in-out) infinite;
-  pointer-events: none;
-}
 
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -1109,8 +1079,6 @@ body {
     --motion-duration-base: 0.01ms;
     --motion-duration-panel: 0.01ms;
     --motion-duration-data: 0.01ms;
-    --motion-duration-status-pulse: 0.01ms;
-    --motion-duration-spin: 0.01ms;
     --motion-duration-shimmer: 0.01ms;
     --motion-duration-stagger: 0ms;
     --default-transition-duration: 0.01ms;

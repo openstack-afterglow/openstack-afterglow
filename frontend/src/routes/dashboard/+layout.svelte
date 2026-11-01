@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { afterNavigate } from '$app/navigation';
 	import { isRouteChange, playRouteEntrance } from '$lib/utils/motion';
@@ -6,6 +8,7 @@
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { projectList } from '$lib/stores/projectList';
 	import { wizardOpen } from '$lib/stores/wizard';
 	import { loadTutorialStatuses } from '$lib/tutorial/status';
@@ -26,15 +29,23 @@
 		if (isRouteChange(nav)) playRouteEntrance(mainEl);
 	});
 
-	// 로그인 사용자의 튜토리얼 이력을 조회해, 미체험 투어 버튼 강조 판정에 사용한다.
-	// 하드 새로고침 시 auth 토큰 복원은 비동기이므로 onMount 일회성이 아니라 토큰이
-	// 준비된 뒤 반응해 조회한다(loadTutorialStatuses 는 멱등 → 최초 1회만 실제 로드).
-	// (status 모듈 import 로 'afterglow:tour-complete' 완료 리스너도 등록된다.)
+	// Display snapshots belong to a logical login/scope, not rotating credentials.
+	const displayOwner = $derived(JSON.stringify([!!$auth.token, sessionScopeKey($auth)]));
 	$effect(() => {
-		if ($auth.token) {
+		$privateViewScope;
+		displayOwner;
+		if (!$authReady) return;
+		untrack(() => {
+			const state = get(auth);
+			if (!state.token) return;
 			void loadTutorialStatuses();
-			if ($auth.userId) projectList.prefetch($auth.token, $auth.userId);
-		}
+			if (state.userId) projectList.prefetch(state.token, state.userId);
+		});
+	});
+	// Successful logical-owner history is reused; a failed read can retry on renewal.
+	$effect(() => {
+		if (!$authReady || !$auth.token) return;
+		untrack(() => void loadTutorialStatuses());
 	});
 </script>
 

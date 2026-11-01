@@ -33,7 +33,6 @@ describe('domain resource monitor', () => {
 			expect(row.getByRole('link', { name: 'View volumes' }).getAttribute('href')).toBe(`/admin/volumes?domain_id=${id}`);
 			expect(row.getByText('1,024 GiB')).toBeTruthy();
 		}
-		expect(screen.queryByRole('button')).toBeNull();
 		expect(screen.queryByRole('meter')).toBeNull();
 	});
 
@@ -46,8 +45,8 @@ describe('domain resource monitor', () => {
 		] });
 		const rows = screen.getAllByRole('row').slice(1);
 		expect(rows).toHaveLength(4);
-		expect(within(rows[0]).getByText('deleted-project-a')).toBeTruthy();
-		expect(within(rows[1]).getByText('deleted-project-b')).toBeTruthy();
+		expect(within(rows[0]).getByTitle('deleted-project-a')).toBeTruthy();
+		expect(within(rows[1]).getByTitle('deleted-project-b')).toBeTruthy();
 		for (const row of rows.slice(0, 3)) expect(within(row).queryByRole('link')).toBeNull();
 		expect(within(rows[2]).getAllByText('Unavailable')).toHaveLength(3);
 		expect(within(rows[3]).getByRole('link', { name: 'View instances' }).getAttribute('href')).toBe('/admin/instances?domain_id=deleted-domain-id');

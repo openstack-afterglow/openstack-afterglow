@@ -28,7 +28,7 @@ vi.mock('$lib/api/client', () => {
 
 import Wrapper from './_WizardConsumerWrapper.svelte';
 import type { VmCreateStore } from '$lib/stores/vmCreateStore.svelte';
-import { auth } from '$lib/stores/auth';
+import { auth, authReady } from '$lib/stores/auth';
 import { wizard } from '$lib/stores/wizard';
 
 import { prepareWizardConsumer, wizardResource } from './wizardConsumerFixtures';
@@ -73,7 +73,6 @@ function deferredProfile() {
 describe('WizardStep5Config ordinary root disk', () => {
 	beforeEach(() => {
 		prepareWizardConsumer(5);
-		auth.update(a => ({ ...a, token: null }));
 		wizard.update(w => ({ ...w, bootVolumeSizeGb: 32, deleteBootVolumeOnTermination: false }));
 	});
 
@@ -148,8 +147,10 @@ describe('WizardStep5Config cloud-init library', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
+			canWrite: true,
 			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
+		authReady.set(true);
 		mocks.apiGet.mockReset();
 		mocks.apiPost.mockReset();
 		mocks.apiDelete.mockReset();
@@ -212,8 +213,10 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 			availableProjects: [],
 			roles: [],
 			isSystemAdmin: false,
+			canWrite: true,
 			federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false,
 		});
+		authReady.set(true);
 		mocks.apiGet.mockReset();
 		mocks.apiPost.mockReset();
 		mocks.apiDelete.mockReset();

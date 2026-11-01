@@ -6,6 +6,7 @@ const { spawnSync } = require("node:child_process")
 const test = require("node:test")
 
 const rootDir = path.resolve(__dirname, "..")
+require("./kolla-pci-aliases.test.js")
 
 function readRepoFile(relativePath) {
 	return fs.readFileSync(path.join(rootDir, relativePath), "utf8")

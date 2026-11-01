@@ -35,19 +35,24 @@ async def test_admin_access_not_forbidden(admin_client, mock_conn):
     with patch("app.api.identity.admin.cached_call") as mc:
         mc.side_effect = AsyncMock(
             return_value={
+                "collected_at": "2026-10-30T00:00:00Z",
+                "unavailable_sections": [],
+                "disabled_sections": [],
                 "hypervisor_count": 0,
                 "running_vms": 0,
                 "gpu_instances": 0,
                 "instance_stats": {},
                 "vcpus": {"total": 0, "allowed": 0, "used": 0},
                 "ram_gb": {"total": 0, "used": 0},
-                "disk_gb": {"total": 0, "used": 0},
+                "disk_gb": {"total": 0, "used": 0, "volumes": 0, "images": 0},
                 "containers_count": 0,
                 "file_storage_count": 0,
+                "database_instances_count": 0,
+                "object_storage_containers_count": 0,
             }
         )
         resp = await admin_client.get("/api/v1/admin/overview")
-    assert resp.status_code != 403
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

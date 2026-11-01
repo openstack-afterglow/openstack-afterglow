@@ -1,4 +1,5 @@
 import type { AuthState } from '$lib/stores/auth';
+import { getAuthVerificationEpoch } from '$lib/stores/auth';
 import type { AuthMeResponse, AvailableDomain, DomainSessionFields, LoginResponse, SessionTokenResponse } from '$lib/types/auth';
 import { resolvePostLoginProject, type PostLoginTarget } from './authFlow';
 
@@ -98,22 +99,30 @@ export function consumeMappedLogin(state: SessionStateUpdate): boolean {
 	return mappedLogins.delete(state);
 }
 
-// Native refresh/rescope already checks the existing owner. Keep an established
-// consumer mounted during that continuation, but do not grant fresh-login proof.
-const mappedContinuations = new WeakMap<SessionStateUpdate, string>();
+// Only a complete refresh can replace /me proof. Other native continuations
+// preserve mounted consumers, but still require verification of their new scope.
+const mappedContinuations = new WeakMap<SessionStateUpdate, { owner: string; epoch: number | null; source: BoundSession; verifiedRefresh: boolean }>();
 function continuationOwner(current: BoundSession): string {
 	return JSON.stringify([current.token ?? null, current.sessionId ?? null, current.userId ?? null,
 		current.identityDomainId, current.domainId, current.projectId ?? null]);
 }
-function mappedContinuation(state: SessionStateUpdate, current: BoundSession): SessionStateUpdate {
+function mappedContinuation(state: SessionStateUpdate, current: BoundSession, verifiedRefresh = false): SessionStateUpdate {
+	if (verifiedRefresh) {
+		state.roles = [...state.roles!];
+		Object.freeze(state.roles);
+		state.availableDomains = state.availableDomains!.map(domain => Object.freeze({ ...domain }));
+		Object.freeze(state.availableDomains);
+	}
 	Object.freeze(state);
-	mappedContinuations.set(state, continuationOwner(current));
+	mappedContinuations.set(state, { owner: continuationOwner(current), epoch: verifiedRefresh ? getAuthVerificationEpoch() : null, source: current, verifiedRefresh });
 	return state;
 }
-export function consumeMappedContinuation(state: SessionStateUpdate, current: AuthState): boolean {
-	const owner = mappedContinuations.get(state);
+export function consumeMappedContinuation(state: SessionStateUpdate, current: AuthState): 'refresh' | 'continuation' | null {
+	const proof = mappedContinuations.get(state);
 	mappedContinuations.delete(state);
-	return owner !== undefined && owner === continuationOwner(current);
+	if (!proof || proof.owner !== continuationOwner(current)
+		|| (proof.epoch !== null && proof.epoch !== getAuthVerificationEpoch())) return null;
+	return proof.verifiedRefresh && proof.source === current ? 'refresh' : 'continuation';
 }
 
 /** Fresh humans use personal or an exact server-verified opt-in workspace. */
@@ -187,9 +196,23 @@ export function domainAuthState(resp: SessionTokenResponse, current: AuthState, 
 	}, current);
 }
 
+/** Older/partial DTOs may continue, but cannot substitute for authoritative /me. */
+function completeRefresh(data: SessionTokenResponse): boolean {
+	return !!nonEmpty(data.token) && !!nonEmpty(data.refresh_token) && !!nonEmpty(data.user_id)
+		&& !!nonEmpty(data.username) && !!nonEmpty(data.domain_name)
+		&& typeof data.project_id === 'string' && typeof data.project_name === 'string'
+		&& typeof data.expires_at === 'string' && Number.isFinite(Date.parse(data.expires_at))
+		&& Date.parse(data.expires_at) > Date.now()
+		&& Array.isArray(data.roles) && data.roles.every(role => typeof role === 'string' && !!nonEmpty(role))
+		&& typeof data.is_system_admin === 'boolean' && typeof data.can_write === 'boolean'
+		&& typeof data.is_domain_manager === 'boolean' && typeof data.can_create_domain === 'boolean'
+		&& Array.isArray(data.available_domains) && ['password', 'federated'].includes(data.auth_method ?? '');
+}
+
 /** Refresh retains omitted state, but consumes authoritative project revocation. */
 export function refreshAuthState(data: SessionTokenResponse, current: BoundSession & Pick<AuthState, 'refreshToken' | 'roles' | 'isSystemAdmin'>): SessionStateUpdate {
 	const domain = boundSessionDomain(data, current);
+	const complete = !!nonEmpty(current.userId) && completeRefresh(data);
 	return mappedContinuation({
 		token: data.token,
 		refreshToken: data.refresh_token ?? current.refreshToken,
@@ -197,9 +220,10 @@ export function refreshAuthState(data: SessionTokenResponse, current: BoundSessi
 		roles: data.roles ?? current.roles,
 		isSystemAdmin: data.is_system_admin ?? current.isSystemAdmin,
 		canWrite: data.can_write,
+		...(complete ? { federated: data.auth_method === 'federated' } : {}),
 		...boundSessionProject(data, current),
 		...domain,
-	}, current);
+	}, current, complete);
 }
 
 /** Verified metadata is shared by all authentication response paths. */

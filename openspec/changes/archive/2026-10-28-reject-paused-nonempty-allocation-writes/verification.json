@@ -1,0 +1,79 @@
+{
+  "change": "reject-paused-nonempty-allocation-writes",
+  "scope": "source only; no commit/push/deploy or operational IAM/quota/config/VM/volume/shared datastore mutation",
+  "source_sha256": "8c5ee523150b209aa9752c0c11f0e4969498a58a22177f2a53d7c424e7e1a34b",
+  "isolated_entries": 3580,
+  "extant_shared_application_entries": 3579,
+  "source_byte_parity": true,
+  "architecture_working_and_isolated_staged": "passed; shared index/stamp untouched",
+  "before": {
+    "artifact": "artifact://325",
+    "installed_placement_failures": 2,
+    "outcomes": "Both paused ABA zero-delta stale PUT and unchanged paused PUT returned204 instead of denial; actual native move recreated smaller target at same generation below ceiling"
+  },
+  "after": {
+    "required_hook_revision": "domain-pool-v3",
+    "native_arm64_passed": 30,
+    "native_amd64_passed": 30,
+    "native_artifacts": [
+      "artifact://326",
+      "artifact://327"
+    ],
+    "installed_module_source_hash_parity_per_arch": 12,
+    "backend_focused_passed": 116,
+    "older_v1_v2_capabilities": "read/admission/policy changes denied; native PATCH0",
+    "all_empty_native_release": "allowed and observed204",
+    "nonempty_unchanged_decreasing_admission": "denied"
+  },
+  "canonical_gate": {
+    "command": "UV_NO_SYNC=1 npm run test:gate",
+    "exit_code": 0,
+    "artifact": "artifact://339",
+    "backend_passed": 10410,
+    "backend_skipped": 95,
+    "frontend_files": 463,
+    "frontend_passed": 5533,
+    "frontend_runner_passed": 9,
+    "contracts_passed": 183,
+    "functional_passed": 167,
+    "functional_deselected": 33,
+    "ruff_files": 762
+  },
+  "images": [
+    {
+      "tag": "afterglow-domain-pool-native-v3:arm64",
+      "id": "sha256:abb4688b156ae63593ee3890223c7a2f80e48c3012d1ce6ef36e1f4a6d393bbb",
+      "arch": "arm64",
+      "user": null
+    },
+    {
+      "tag": "afterglow-domain-pool-native-v3:amd64",
+      "id": "sha256:aa0f434a01bc2c606987a03beb1282ae792ea92edee130d3d827b7da533042e5",
+      "arch": "amd64",
+      "user": null
+    },
+    {
+      "tag": "afterglow-domain-compute-api-v3:arm64",
+      "id": "sha256:122b1cc78b712a70ec0886130d4bd3578684145718aa844baca8509cb9818b70",
+      "arch": "arm64",
+      "user": "appuser"
+    },
+    {
+      "tag": "afterglow-domain-compute-api-v3:amd64",
+      "id": "sha256:30ce46659b7678bddc22aa097272ca15c82653248709e7921b8f40e2bb6da68e",
+      "arch": "amd64",
+      "user": "appuser"
+    }
+  ],
+  "operational_contract": "All paused nonempty admission/recheck is rejected because zero/decreasing snapshots are not trustworthy non-growth evidence. Nonempty migration/resize/heal/revert must wait for explicit reactivation. Ordinary all-empty native release remains allowed. Prior non-destructive uncertain-consumer reconciliation remains intact; no new allocator/lock/auth cache.",
+  "verification_boundaries": {
+    "keystone_authority": "synthetic",
+    "hypervisor": "upstream fake",
+    "hardware_fleet": "synthetic fixtures",
+    "real_gpu_passthrough": false,
+    "production_fleet_qualification": false,
+    "ui_changed": false,
+    "new_browser_acceptance_claimed": false
+  },
+  "historical_receipts": "v2 cleanup result preserved but pause coverage superseded; archived pause-safety-correction.json records missing property"
+}

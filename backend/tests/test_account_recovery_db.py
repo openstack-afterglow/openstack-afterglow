@@ -35,6 +35,8 @@ async def recovery_db(directory):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     uid = "recovery-" + uuid4().hex
     directory.users["local"].id = uid
+    directory.password_states[uid] = directory.password_states.pop("local")
+    directory.password_revisions[uid] = directory.password_revisions.pop("local")
     yield factory
     async with factory() as session:
         await session.execute(delete(AccountRecovery).where(AccountRecovery.user_id == uid))

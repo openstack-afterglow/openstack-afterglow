@@ -646,5 +646,17 @@
 	"rolePresets.previewHelp": "미리보기는 클라우드를 변경하지 않습니다. 서비스 권한은 각 서비스의 policy.yaml에서 평가합니다. 적용은 기존 역할을 재사용하며 아래 기존 서비스 상속 연결만 제거합니다.",
 	"rolePresets.directImplications": "추가할 직접 상속 연결",
 	"rolePresets.retiredImplications": "제거 대상 기존 서비스 상속 연결",
-	"quotaController.saveFailed": "저장 실패"
+	"quotaController.saveFailed": "저장 실패",
+	"userEdit.resetEmailTitle": "난수 비밀번호 재설정 및 메일 전송",
+	"userEdit.resetEmailHelp": "저장된 현재 등록 이메일로 새 난수 비밀번호 자체를 보냅니다. 이 폼에서 수정 중인 이름·이메일은 적용하지 않습니다.",
+	"userEdit.resetEmailTarget": "대상: {name} · UUID: {id} · 현재 등록 이메일: {email}",
+	"userEdit.resetEmailWarning": "기존 비밀번호가 교체됩니다. 실제 새 비밀번호가 이메일에 남아 받은편지함에 접근하는 사람에게 노출될 수 있습니다. 사용자에게 로그인 후 즉시 변경하도록 안내하세요.",
+	"userEdit.resetEmailSuccess": "비밀번호를 변경하고 등록된 이메일로 전달했습니다. 사용자에게 즉시 변경하도록 안내하세요.",
+	"userEdit.resetEmailDeliveryFailed": "비밀번호는 변경되었지만 이메일 전달에 실패했습니다. 기존 비밀번호는 더 이상 유효하지 않습니다. 자동 재시도하지 않습니다. 관리자가 상태 확인 후 별도로 다시 재설정해야 합니다.",
+	"userEdit.resetEmailSessionsFailed": "비밀번호는 변경되었지만 일부 세션을 폐기하지 못했습니다. 이메일 전달도 실패했을 수 있습니다. 관리자가 전달 상태를 확인하고 남은 세션을 폐기해야 합니다. 자동 재설정하지 않습니다.",
+	"userEdit.resetEmailAuditFailed": "작업의 감사 기록을 확인하지 못했습니다. 비밀번호 변경이나 이메일 전달이 이미 완료되었을 수 있습니다. 관리자가 실제 결과·전달·세션 폐기와 감사 기록을 확인해야 합니다. 자동 재시도하지 않습니다.",
+	"userEdit.resetEmailUnknown": "비밀번호 변경 결과를 확인할 수 없습니다. 이전 비밀번호가 바뀌었을 수 있습니다. 자동 재시도하지 않습니다. 관리자가 상태와 세션 폐기를 확인해야 합니다.",
+	"userEdit.resetEmailRejected": "요청이 거부되었습니다. 변경·전달 성공으로 확인되지 않았습니다. 권한과 등록 계정 상태를 확인하세요. 자동 재시도하지 않습니다.",
+	"userEdit.resetEmailUnavailable": "사용 가능한 등록 이메일과 활성 계정이 필요합니다.",
+	"userEdit.resetEmailSending": "비밀번호 재설정 및 이메일 전달 처리 중…"
 }

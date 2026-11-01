@@ -11,7 +11,7 @@
 	onDestroy(api.dispose);
 	import type { TsPoint } from '$lib/types/common';
 	import type { AdminFileStorage } from '$lib/types/fileStorage';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
@@ -141,7 +141,7 @@
 
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if fileStorages.length === 0}
 		<div class="text-ink-2 text-sm">{t('filePage.empty')}</div>
 	{:else}

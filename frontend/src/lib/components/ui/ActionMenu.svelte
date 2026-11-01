@@ -159,8 +159,8 @@
 
 <style>
   .action-trigger {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: var(--control-height);
+    height: var(--control-height);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -189,7 +189,7 @@
     background: var(--color-surface-raised);
     box-shadow: var(--shadow-popover);
   }
-  @media (pointer: coarse) {
+  @media (max-width: 767px), (pointer: coarse) {
     .action-trigger {
       width: 2.75rem;
       height: 2.75rem;

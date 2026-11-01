@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/containers-shell';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { prefersReducedMotion } from '$lib/utils/motion';
   import { onDestroy } from 'svelte';
   import { api, getWebSocketUrl } from '$lib/api/client';
@@ -145,10 +145,9 @@
     <div class="flex items-center gap-2">
       <span class="text-sm text-ink-0 font-medium">{t('instances.terminal.title')}</span>
       {#if wsConnecting}
-        <ActivityIndicator size="xs" label={t('instances.terminal.connecting')} class="text-xs" />
+        <LoadingState variant="control" label={t('instances.terminal.connecting')} class="text-xs" />
       {:else if wsConnected}
-        <!-- The pulse glyph replaces the catalog's leading status dot. -->
-        <ActivityIndicator variant="pulse" tone="success" size="xs" label={t('instances.terminal.connected').replace(/^●\s*/u, '')} class="text-xs" />
+        <span class="text-xs text-state-success-text">{t('instances.terminal.connected').replace(/^●\s*/u, '')}</span>
       {:else}
         <span class="text-xs text-ink-2">{t('instances.terminal.disconnected')}</span>
       {/if}

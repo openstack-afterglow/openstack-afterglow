@@ -10,7 +10,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import IamUsers from './IamUsers.svelte';
 	import IamInvitations from './IamInvitations.svelte';
 	import IamLogin from './IamLogin.svelte';
@@ -75,7 +75,7 @@
 	<PageHeader breadcrumb={t('title')} title={t('usersTitle')} subtitle={t('usersSubtitle')}>
 		{#snippet actions()}<Button variant="secondary" disabled={checking || !session} onclick={focus}>{t('refresh')}</Button>{/snippet}
 	</PageHeader>
-	{#if checking}<ActivityIndicator label={t('verifying')} />
+	{#if checking}<LoadingState variant={context && verifiedSession ? 'inline' : 'surface'} label={t('verifying')}  />
 	{:else if error}<Alert tone="danger">{error}</Alert>
 	{:else if !session}<Alert tone="warning">{t('denied')}</Alert>{/if}
 	{#if session && context && verifiedSession}

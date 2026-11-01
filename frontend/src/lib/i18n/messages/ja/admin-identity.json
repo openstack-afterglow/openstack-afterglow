@@ -646,5 +646,17 @@
 	"rolePresets.previewHelp": "プレビューはクラウドを変更しません。各サービスは自身のpolicy.yamlで権限を評価します。適用時には既存ロールを再利用し、表示された旧サービス継承リンクのみ削除します。",
 	"rolePresets.directImplications": "追加する直接継承リンク",
 	"rolePresets.retiredImplications": "削除対象の旧サービス継承リンク",
-	"quotaController.saveFailed": "保存に失敗しました"
+	"quotaController.saveFailed": "保存に失敗しました",
+	"userEdit.resetEmailTitle": "ランダムパスワードに再設定してメール送信",
+	"userEdit.resetEmailHelp": "新しいランダムパスワード自体を現在の登録メールに送ります。このフォームの未保存の名前・メール変更は適用しません。",
+	"userEdit.resetEmailTarget": "対象: {name} · UUID: {id} · 現在の登録メール: {email}",
+	"userEdit.resetEmailWarning": "以前のパスワードを置き換えます。実際の新しいパスワードがメールに残り、受信箱にアクセスできる人に漏れる可能性があります。サインイン後すぐに変更するよう案内してください。",
+	"userEdit.resetEmailSuccess": "パスワードを変更し、登録メールに配信しました。すぐに変更するよう案内してください。",
+	"userEdit.resetEmailDeliveryFailed": "パスワードは変更されましたがメール配信に失敗しました。以前のパスワードは無効です。自動再試行しません。管理者が状態を確認し、別途再設定してください。",
+	"userEdit.resetEmailSessionsFailed": "パスワードは変更されましたが、一部のセッションを無効化できず有効な可能性があります。メール配信も失敗した可能性があります。管理者が配信状況を確認し、残りのセッションを無効化してください。自動再設定しません。",
+	"userEdit.resetEmailAuditFailed": "操作の監査記録を確認できませんでした。パスワード変更やメール配信が既に完了した可能性があります。管理者が実際の結果・配信・セッション無効化と監査記録を確認してください。自動再試行しません。",
+	"userEdit.resetEmailUnknown": "パスワード変更の結果は不明です。以前のパスワードが変わった可能性があります。自動再試行しません。管理者が結果とセッション無効化を確認してください。",
+	"userEdit.resetEmailRejected": "リクエストは拒否されました。変更と配信の成功は確認されていません。権限と登録アカウントの状態を確認してください。自動再試行しません。",
+	"userEdit.resetEmailUnavailable": "登録メールがある有効なアカウントが必要です。",
+	"userEdit.resetEmailSending": "パスワード再設定とメール配信を処理中…"
 }

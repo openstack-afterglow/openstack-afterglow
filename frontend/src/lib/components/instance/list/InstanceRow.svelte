@@ -5,8 +5,10 @@
 	import InstanceIpCell from './InstanceIpCell.svelte';
 	import InstanceRowActions from './InstanceRowActions.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { ResourceIdentifier } from '$lib/components/ui';
+	import { consumerInstanceFlavorLabel } from '$lib/utils/flavorDisplay';
 
 	const strategyKeys: Record<string, 'row.strategy.prebuilt' | 'row.strategy.dynamic'> = {
 		prebuilt: 'row.strategy.prebuilt',
@@ -42,17 +44,18 @@
 	<CompactResourceCard {selected}>
 		<div class="flex min-w-0 items-start gap-2">
 			<SelectionCheckbox checked={selected} disabled={!selectable || selectionDisabled} unavailable={!selectable} title={!selectable ? t('row.selectionUnavailable') : undefined} onclick={onToggleSelect} ariaLabel={t('row.select', { name: instance.name || instance.id })} />
-			<button type="button" onclick={() => onSelect(instance.id)} title={instance.name || instance.id} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 hover:text-warm-text-hover"><span class="line-clamp-2 break-words">{instance.name || instance.id}</span></button>
-			<StatusChip status={instance.status} />
+			<button type="button" onclick={() => onSelect(instance.id)} title={instance.name || instance.id} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 underline-offset-4 hover:text-warm-text-hover hover:underline"><span class="line-clamp-2 break-words">{instance.name || instance.id.slice(0, 8)}</span></button>
+			<StatusChip status={instance.status} kind="server" />
 		</div>
-		{#if acting}<ActivityIndicator size="xs" label={t('rowActions.processing')} />{/if}
+		<ResourceIdentifier id={instance.id} />
+		{#if acting}<LoadingState variant="control" label={t('rowActions.processing')} />{/if}
 		<div class="line-clamp-2 text-xs text-ink-2 break-words" title={instance.image_name ?? t('row.bootFromVolume')}>{instance.image_name ?? t('row.bootFromVolume')}</div>
-		{#if instance.flavor_name}<div class="text-xs text-ink-2 break-words"><span class="line-clamp-2" title={instance.flavor_name}>{instance.flavor_name}</span>{#if isUnderutilized}<span class="text-warm-text">{t('row.resizeRecommended')}</span>{/if}</div>{/if}
+		<div class="text-xs text-ink-2 break-words"><span class="line-clamp-2">{consumerInstanceFlavorLabel(instance)}</span>{#if isUnderutilized}<span class="text-warm-text">{t('row.resizeRecommended')}</span>{/if}</div>
 		<p class="break-all font-mono text-xs text-ink-2">{instance.ip_addresses.find((ip) => ip.type === 'floating')?.addr ?? instance.ip_addresses[0]?.addr ?? '—'}</p>
 		{#snippet actions()}<InstanceRowActions {instance} {onAction} bind:acting />{/snippet}
 		{#snippet details()}
 			<dl class="space-y-2 text-xs">
-				<div><dt class="text-ink-2">ID</dt><dd class="break-all font-mono">{instance.id}</dd></div>
+				<div><dt class="text-ink-2">ID</dt><dd><ResourceIdentifier id={instance.id} compact={false} /></dd></div>
 				<div><dt class="text-ink-2">IP</dt><dd class="space-y-1 break-all font-mono">{#each instance.ip_addresses as ip}<p>{ip.addr} · {ip.network_name} · {ip.type}</p>{:else}—{/each}</dd></div>
 				<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-words">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
 				<div><dt class="text-ink-2">{t('table.strategy')}</dt><dd>{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</dd></div>
@@ -75,30 +78,24 @@
 		<button
 			type="button"
 			onclick={() => onSelect(instance.id)}
-			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 transition-colors hover:text-warm-text-hover"
+			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 underline-offset-4 transition-colors hover:text-warm-text-hover hover:underline"
 		>
-			<span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface-sunken">
-				<svg class="size-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
-				</svg>
-			</span>
-			<span class="max-w-56 truncate font-medium">{instance.name}</span>
+			<span class="max-w-56 truncate font-medium" title={instance.name || instance.id}>{instance.name || instance.id.slice(0, 8)}</span>
 		</button>
+		<ResourceIdentifier id={instance.id} />
 	</td>
 	<td>
-		<StatusChip status={instance.status} class="max-w-full truncate" />
-		{#if acting}<div class="mt-1"><ActivityIndicator size="xs" label={t('rowActions.processing')} /></div>{/if}
+		<StatusChip status={instance.status} kind="server" class="max-w-full truncate" />
+		{#if acting}<div class="mt-1"><LoadingState variant="control" label={t('rowActions.processing')} /></div>{/if}
 	</td>
 	<td class="text-xs">
 		<div class="truncate text-ink-2">{instance.image_name ?? t('row.bootFromVolume')}</div>
-		{#if instance.flavor_name}
 			<div class="mt-0.5 flex items-center gap-1.5 text-ink-2">
-				<span class="truncate">{instance.flavor_name}</span>
+				<span class="truncate">{consumerInstanceFlavorLabel(instance)}</span>
 				{#if isUnderutilized}
 					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-warm-text">{t('row.resizeRecommended')}</span>
 				{/if}
 			</div>
-		{/if}
 	</td>
 	<td class="text-xs"><InstanceIpCell addresses={instance.ip_addresses} /></td>
 	<td>

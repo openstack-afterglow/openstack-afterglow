@@ -56,3 +56,14 @@ it('preserves unavailable project limits and mutation locks in compact cards', (
 	expect((screen.getByRole('button', { name: t('save') }) as HTMLButtonElement).disabled).toBe(true);
 	expect(screen.getAllByText(t('unknown')).length).toBeGreaterThan(0);
 });
+
+it('shows and submits native CPU/RAM policy limits without a pool projection', async () => {
+	const onSave = vi.fn();
+	render(QuotaEditor, { values: { instances: 3, cores: 8, ram: 16384 }, onSave });
+	expect((screen.getByLabelText(t('field.cores')) as HTMLInputElement).value).toBe('8');
+	expect((screen.getByLabelText(t('field.ram')) as HTMLInputElement).value).toBe('16384');
+	await fireEvent.input(screen.getByLabelText(t('field.cores')), { target: { value: '12' } });
+	await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '24576' } });
+	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+	expect(onSave).toHaveBeenCalledExactlyOnceWith({ instances: 3, cores: 12, ram: 24576 });
+});

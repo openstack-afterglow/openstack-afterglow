@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
@@ -7,7 +8,7 @@
   import { createSwr } from '$lib/utils/swr.svelte';
   import { apiMut } from '$lib/api/mutations';
   import type { Network, FloatingIp } from '$lib/types/networks';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
@@ -20,13 +21,14 @@
   import { toast } from '$lib/stores/toast';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
-  import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
+  import { Alert, Button, EmptyState, Field, Pagination, PageHeader, PageShell, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
 
   let networks = $state<Network[]>([]);
   let floatingIps = $state<FloatingIp[]>([]);
   let loading = $state(true);
   let refreshing = $state(false);
   let error = $state('');
+  let hasInventory = $state(false);
   let deleting = $state<string | null>(null);
   let selectedNetworkId = $state<string | null>(null);
   let defaultNetworkId = $state<string | null>(null);
@@ -38,7 +40,22 @@
   let activeDomain = $state<'networks' | 'floating-ips' | null>(null);
   let selection = createResourceSelection();
   let busy = $state(false);
+  let search = $state('');
+  let typeFilter = $state('all');
+  let displayPage = $state(1);
+  let pageSize = $state(20);
+  const filteredNetworks = $derived(networks.filter((network) => {
+    const matchesSearch = `${network.name} ${network.id} ${network.cidrs?.join(' ') ?? ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+    return matchesSearch && (typeFilter === 'all' || (typeFilter === 'external' ? network.is_external : typeFilter === 'shared' ? network.is_shared : !network.is_external && !network.is_shared));
+  }));
+  const pageCount = $derived(Math.max(1, Math.ceil(filteredNetworks.length / pageSize)));
+  const visibleNetworks = $derived(filteredNetworks.slice((Math.min(displayPage, pageCount) - 1) * pageSize, Math.min(displayPage, pageCount) * pageSize));
+  $effect(() => { search; typeFilter; pageSize; displayPage = 1; });
+  $effect(() => { if (displayPage > pageCount) displayPage = pageCount; });
   let selectableNetworkIds = $derived(new Set(networks.filter((network) => network.project_id === $auth.projectId && !network.is_external).map((network) => network.id)));
+  const visibleSelectableIds = $derived(new Set(visibleNetworks.filter((network) => selectableNetworkIds.has(network.id)).map((network) => network.id)));
+  $effect(() => { search; typeFilter; displayPage; pageSize; untrack(() => { if (activeDomain === 'networks') selection.clear(); }); });
+  $effect(() => { const ids = visibleSelectableIds; untrack(() => { if (activeDomain === 'networks') selection.retain(ids); }); });
   let selectableFloatingIpIds = $derived(new Set(floatingIps.map((fip) => fip.id)));
 
   function toggleSelect(domain: 'networks' | 'floating-ips', id: string) {
@@ -53,7 +70,7 @@
       selection.clear();
       activeDomain = domain;
     }
-    selection.toggleAll(domain === 'networks' ? selectableNetworkIds : selectableFloatingIpIds);
+    selection.toggleAll(domain === 'networks' ? visibleSelectableIds : selectableFloatingIpIds);
   }
 
 
@@ -69,8 +86,9 @@
     if (cached && networks.length === 0) networks = cached;
     try {
       networks = await api.get<Network[]>(path, tok(), pid(), opts);
+      hasInventory = true;
       swrSet(path, networks);
-      if (activeDomain === 'networks') selection.retain(networks.map((network) => network.id));
+      if (activeDomain === 'networks') selection.retain(visibleSelectableIds);
       error = '';
     } catch (e) {
       error = e instanceof ApiError ? t('networks.loadFailed', { status: e.status }) : t('networks.serverError');
@@ -172,7 +190,7 @@
   async function deleteNetwork(id: string, name: string, isExternal: boolean) {
     if (!selectableNetworkIds.has(id)) { toast.warning(t('networks.onlyOwnedDelete')); return; }
     if (isExternal) { toast.warning(t('networks.externalDelete')); return; }
-    if (!await confirmDialog(t('networks.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
+    if (!await confirmDialog(`${t('networks.deleteConfirm', { name: name ? `${name} (${id})` : id })}\n${t('list.deleteImpact')}`)) return;
     deleting = id;
     try {
       await apiMut(t('networks.deleteAction'), () => api.delete(`/api/v1/networks/${id}`, tok(), pid()));
@@ -200,6 +218,8 @@
     untrack(() => {
       selection.clear();
       activeDomain = null;
+      hasInventory = false;
+      displayPage = 1;
       if (!projectId) return;
       loading = true;
       void fetchNetworks();
@@ -212,12 +232,16 @@
 <NetworkCreateModal bind:open={showModal} {creating} error={createError} onCreate={createNetwork} />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb={t('networks.breadcrumb')} title={t('networks.title')}>
+  <PageHeader breadcrumb={t('networks.breadcrumb')} title={hasInventory ? `${t('networks.title')} (${networks.length})` : t('networks.title')}>
     {#snippet actions()}
       <Button onclick={() => showModal = true} variant="primary">{t('networks.createButton')}</Button>
     {/snippet}
   </PageHeader>
+  <p class="text-[13px] text-ink-2" aria-live="polite">{$auth.domainName ? `${$auth.domainName} / ` : ''}{$auth.projectName || $auth.projectId || '—'} · {#if hasInventory}{t('list.results', { shown: filteredNetworks.length, total: networks.length })}{:else if loading}<LoadingState variant="inline" label={t('list.loading')} />{:else}{t('list.unavailable')}{/if}</p>
   <ResourceToolbar label={t('networks.toolbar')}>
+    <Field label={t('list.search')} for="user-network-search" class="min-w-0 w-full md:flex-1 md:basis-48"><TextInput id="user-network-search" type="search" bind:value={search} placeholder={t('list.searchPlaceholder')} /></Field>
+    <Field label={t('networksTable.type')} for="user-network-type" class="min-w-0 max-w-full w-full md:w-auto"><SelectInput id="user-network-type" bind:value={typeFilter}><option value="all">{t('list.all')}</option><option value="external">{t('networksTable.external')}</option><option value="shared">{t('networksTable.shared')}</option><option value="internal">{t('networksTable.internal')}</option></SelectInput></Field>
+    <Button variant="ghost" disabled={!search && typeFilter === 'all'} onclick={() => { search = ''; typeFilter = 'all'; }}>{t('list.reset')}</Button>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -232,20 +256,25 @@
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
-    <LoadingSkeleton variant="table" rows={5} />
-  {:else if networks.length === 0 && floatingIps.length === 0}
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('networks.title') })} />
+  {:else if networks.length === 0 && floatingIps.length === 0 && !error}
     <EmptyState headline={t('networks.empty')} description={t('networks.emptyDescription')} />
   {:else}
     <div class="flex flex-col gap-4">
+      {#if filteredNetworks.length === 0 && networks.length > 0}<EmptyState headline={t('list.noMatches')} />{/if}
       <NetworksTableCard
-        {networks} {defaultNetworkId} {deleting} {settingDefault}
+        networks={visibleNetworks} {defaultNetworkId} {deleting} {settingDefault}
         selectedIds={selection.ids}
-        selectableIds={selectableNetworkIds}
+        selectableIds={visibleSelectableIds}
         selectionDisabled={busy}
         onToggleSelect={(id) => toggleSelect('networks', id)}
         onToggleAll={() => toggleAll('networks')}
         onOpenPanel={openNetworkPanel} onSetDefault={setAsDefault} onDelete={deleteNetwork}
       />
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <Field label={t('list.pageSize')} for="user-networks-page-size"><SelectInput id="user-networks-page-size" bind:value={() => String(pageSize), (value) => pageSize = Number(value)}>{#each [20, 50, 100] as size}<option value={size}>{size}</option>{/each}</SelectInput></Field>
+        <Pagination class="!mt-0" page={displayPage} totalPages={pageCount} hasPrev={displayPage > 1} hasNext={displayPage < pageCount} onPrev={() => displayPage--} onNext={() => displayPage++} />
+      </div>
       <FloatingIpCard
         {floatingIps}
         hasExternalNetwork={networks.some((n) => n.is_external)}

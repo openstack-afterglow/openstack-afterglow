@@ -1,0 +1,9 @@
+{
+  "superseded_claim": "An initially empty new consumer can be safely cleared using matching generation/shape/owner",
+  "status": "invalidated by installed-Placement reproduction",
+  "correction_change": "preserve-recreated-placement-consumers",
+  "before_evidence": "artifact://304: two real installed-Placement regressions lose independently recreated same-generation allocations",
+  "decision": "Never clear nonempty uncertain allocation without independent incarnation/serialization proof; report exact UUID for reconciliation",
+  "required_native_hook_revision": "domain-pool-v2",
+  "historical_receipts": "Preserved unchanged; prior passing counts are not evidence of this missing safety property or qualification of corrected source"
+}

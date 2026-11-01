@@ -1,0 +1,2 @@
+## Design
+The existing overview Spark already delegates to Bklit but disables interaction. Use the same Bklit host with native tooltips and an accessible disclosure, preserving its compact scale and measured values. The existing endpoint returns ordered values without timestamps; show only sequence numbers rather than inventing dates. Keep all fetch, scope and error state in the page. Remove only the user sidebar documentation entry; expose the existing header link at mobile widths as well.

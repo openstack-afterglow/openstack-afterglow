@@ -17,6 +17,7 @@
   title={s.volume ? s.volume.name || s.volume.id : t('detailHeader.title')}
   subtitle={s.volume?.name ? s.volume.id : undefined}
   status={s.volume?.status ?? null}
+  statusKind="volume"
 >
   {#snippet actions()}
     <AutoRefreshControl

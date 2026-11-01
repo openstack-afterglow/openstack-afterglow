@@ -3,7 +3,7 @@
 	import { t as tc } from '$lib/i18n/ns/common';
 	import type { NetworkRouterInfo, RouterListItem } from '$lib/types/networks';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -109,7 +109,7 @@
 					onclick={handleConnect}
 					disabled={!selectedRouterId || !selectedSubnetId || connecting}
 					ariaBusy={connectingRouter}
-				>{#if connectingRouter}<ActivityIndicator size="xs" tone="ink" />{/if}{connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</Button>
+				>{#if connectingRouter}<LoadingState variant="control" label="" />{/if}{connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</Button>
 			</div>
 		</div>
 	{/if}
@@ -126,7 +126,7 @@
 							{#if canManage && onDisconnect && (isSystemAdmin || (router.project_id && router.project_id === projectId))}
 								{#each router.connected_subnet_ids as sid}
 									{@const disconnecting = pending.isActive(`disconnect:${router.id}:${sid}`, connecting)}
-									<Button variant="danger-outline" size="xs" onclick={() => pending.run(`disconnect:${router.id}:${sid}`, () => onDisconnect?.(router.id, sid))} disabled={connecting} ariaBusy={disconnecting}>{#if disconnecting}<ActivityIndicator size="xs" tone="danger" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((subnet) => subnet.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}</Button>
+									<Button variant="danger-outline" size="xs" onclick={() => pending.run(`disconnect:${router.id}:${sid}`, () => onDisconnect?.(router.id, sid))} disabled={connecting} ariaBusy={disconnecting}>{#if disconnecting}<LoadingState variant="control" label="" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((subnet) => subnet.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}</Button>
 								{/each}
 							{/if}
 						{/snippet}
@@ -183,7 +183,7 @@
 												disabled={connecting}
 												ariaBusy={disconnecting}
 											>
-												{#if disconnecting}<ActivityIndicator size="xs" tone="danger" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}
+												{#if disconnecting}<LoadingState variant="control" label="" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}
 											</Button>
 										{/each}
 									</div>

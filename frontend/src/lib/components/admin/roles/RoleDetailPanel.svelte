@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -32,7 +33,7 @@
 		</header>
 		{#if error}<Alert tone="danger">{error}</Alert>{/if}
 		{#if stale}<Alert tone="warning">{t('roleDetail.stale')}</Alert>{/if}
-		{#if busy}<p role="status" class="text-xs text-ink-2">{t('roleDetail.busy')}</p>{/if}
+		{#if busy}<LoadingState variant="inline" label={t('roleDetail.busy')} />{/if}
 		<div class="flex flex-wrap gap-2">
 			<Button variant="secondary" disabled={busy || stale} onclick={onEdit}>{t('roleDetail.edit')}</Button>
 			<Button variant="danger-outline" disabled={busy || stale || !!deleteReason} onclick={onDelete}>{t('roleDetail.delete')}</Button>

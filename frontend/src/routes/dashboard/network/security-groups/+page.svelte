@@ -1,15 +1,15 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import QuotaBar from '$lib/components/ui/QuotaBar.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import type { SecurityGroup, SecurityGroupInstance, SecurityGroupQuota, SecurityGroupRule, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import SecurityGroupList from '$lib/components/dashboard/network/security-groups/SecurityGroupList.svelte';
@@ -393,12 +393,12 @@
 		{:else if quotaError}
 			<p role="alert" class="text-sm text-ink-2 sm:col-span-2">{t('securityGroups.quotaError', { message: quotaError })}</p>
 		{:else}
-			<div class="sm:col-span-2"><ActivityIndicator label={t('securityGroups.quotaLoading')} /></div>
+			<div class="sm:col-span-2"><LoadingState variant="section" label={t('securityGroups.quotaLoading')}  /></div>
 		{/if}
 	</div>
 	{#if sgError}<p role="alert" class="text-sm text-state-danger-text mb-4">{sgError}</p>{/if}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('securityGroups.title') })} />
 	{:else if securityGroups.length === 0}
 		<div class="text-center py-20 text-ink-2"><div class="text-lg">{t('securityGroups.empty')}</div></div>
 	{:else}

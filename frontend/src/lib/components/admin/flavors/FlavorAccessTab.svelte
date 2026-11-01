@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
@@ -8,18 +8,20 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
+	import { isManagedFlavor } from '$lib/api/computePools';
 
 	interface Flavor {
 		id: string;
 		name: string;
+		cpu_automation_managed?: boolean;
 		vcpus: number;
 		ram: number;
 		disk: number;
 		is_public: boolean;
 		description: string | null;
 		extra_specs: Record<string, string>;
-		is_gpu: boolean;
-		gpu_count: number;
+		is_gpu: boolean | null;
+		gpu_count: number | null;
 		frontend_visible?: boolean;
 	}
 	interface FlavorAccess {
@@ -83,6 +85,7 @@
 	}
 
 	async function addAccess(pid: string) {
+		if (isManagedFlavor(flavor)) return;
 		if (!pid || addingId || pid !== selectedProject || accessedProjectIds.includes(pid) || !$auth.token || !$auth.isSystemAdmin) return;
 		const owner = capture();
 		accessError = '';
@@ -109,6 +112,7 @@
 	}
 
 	async function removeAccess(pid: string) {
+		if (isManagedFlavor(flavor) || !$auth.token || !$auth.isSystemAdmin) return;
 		if (removingId || !accessedProjectIds.includes(pid)) return;
 		const owner = capture();
 		removingId = pid;
@@ -128,6 +132,7 @@
 	}
 
 	async function setFrontendVisibility(visible: boolean) {
+		if (isManagedFlavor(flavor) || !$auth.token || !$auth.isSystemAdmin) return;
 		if (frontendVisible === visible) return;
 		const owner = capture();
 		visibilitySaving = true;
@@ -155,6 +160,7 @@
 	}
 </script>
 
+{#if !isManagedFlavor(flavor)}
 <div class="mb-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<div class="min-w-0">
@@ -178,11 +184,12 @@
 				fullWidth
 			/>
 			{#if visibilitySaving}
-				<ActivityIndicator size="xs" label={t('flavors.access.visibilitySaving')} class="mt-2" />
+				<LoadingState variant="inline" label={t('flavors.access.visibilitySaving')} class="mt-2" />
 			{/if}
 		</div>
 	</div>
 </div>
+{/if}
 
 {#if flavor.is_public}
 	<div class="bg-surface-sunken/50 border border-line-2 text-ink-2 rounded-lg px-4 py-6 text-sm text-center">
@@ -193,17 +200,19 @@
 		<Alert tone="danger" class="mb-3">{accessError}</Alert>
 	{/if}
 
+	{#if !isManagedFlavor(flavor)}
 	<p class="mb-3 text-xs text-ink-2">{t('flavors.access.manualHelp')}</p>
 	<div class="mb-4 space-y-3">
 		{#key `${authorityRevision}:${flavor.id}`}
 			<AdminProjectPicker domainId={domainFilter} projectId={selectedProject} excludedProjectIds={accessedProjectIds} emptyProjectLabel={t('flavors.access.addProject')} disabled={!!addingId || accessLoading} onchange={(domainId, projectId) => { domainFilter = domainId; selectedProject = projectId; }} />
 		{/key}
-		<Button variant="secondary" disabled={!selectedProject || !!addingId || accessLoading} onclick={() => addAccess(selectedProject)}>{addingId ? t('flavors.access.adding') : t('flavors.access.add')}</Button>
+		<Button variant="secondary" disabled={!selectedProject || !!addingId || accessLoading} onclick={() => addAccess(selectedProject)}>{#if addingId}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{addingId ? t('flavors.access.adding') : t('flavors.access.add')}</Button>
 	</div>
+	{/if}
 
 	<div class="text-sm text-ink-2 mb-2">{t('flavors.access.projects')}</div>
 	{#if accessLoading}
-		<ActivityIndicator size="sm" label={t('flavors.loading')} />
+		<LoadingState variant="section" label={t('flavors.loading')} />
 	{:else if accessList.length === 0 && !accessError}
 		<div class="text-ink-2 text-sm">{t('flavors.access.empty')}</div>
 	{:else}
@@ -214,11 +223,13 @@
 						<div class="text-xs text-ink-1">{a.domain_name || a.domain_id || '—'} / {a.project_name || a.project_id}</div>
 						<div class="text-xs text-ink-2 font-mono">{a.domain_id || '—'} / {a.project_id}</div>
 					</div>
+					{#if !isManagedFlavor(flavor)}
 					<button onclick={() => removeAccess(a.project_id)} disabled={removingId === a.project_id} class="min-h-11 lg:min-h-0 text-state-danger-text hover:text-state-danger-text/90 text-xs">
 						{#if removingId === a.project_id}
-							<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.access.removing')}</span></span>
+							<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('flavors.access.removing')}</span></span>
 						{:else}{t('flavors.access.remove')}{/if}
 					</button>
+					{/if}
 				</div>
 			{/each}
 		</div>

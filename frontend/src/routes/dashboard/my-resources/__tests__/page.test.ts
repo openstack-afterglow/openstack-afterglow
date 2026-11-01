@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 import { auth, projectSwitching } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/dashboard-home';
-import { t as shared } from '$lib/i18n/ns/shared';
+import { t as common } from '$lib/i18n/ns/common';
 import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 import type { ProjectResourceInventory, ResourceCategory, ResourceItem, UserDashboardSummary } from '$lib/types/userDashboard';
 const mocks = vi.hoisted(() => ({
@@ -271,7 +271,7 @@ describe('my resources inventory consumer', () => {
 		await snapshot(container);
 		const pending = deferred();
 		mocks.apiGet.mockReturnValueOnce(pending.promise);
-		await fireEvent.click(screen.getByRole('button', { name: shared('autoRefresh.refresh') }));
+		await fireEvent.click(screen.getByRole('button', { name: common('autoRefresh.refreshNow') }));
 		expect(mocks.apiGet).toHaveBeenLastCalledWith('/api/v1/user-dashboard/summary', 'token', 'project', expect.objectContaining({ refresh: true }));
 		expect(container.querySelector('[data-resource-snapshot]')).not.toBeNull();
 		pending.reject(new Error('offline'));

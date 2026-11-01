@@ -3,6 +3,7 @@
   import BklitChart from '$lib/components/charts/BklitChart.svelte';
   import type { ChartSpec, ChartSeries } from '$lib/components/charts/types';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 
   interface DataPoint {
     ts: number;
@@ -38,7 +39,16 @@
     in_use:    'var(--color-chart-1)',
     available: 'var(--color-chart-2)',
     other:     'var(--color-chart-4)',
+    routers:   'var(--color-chart-3)',
+    floating_ips_used: 'var(--color-chart-4)',
   };
+
+  const SERIES_LABELS: Record<string, Parameters<typeof t>[0]> = {
+    total: 'timeSeries.total', active: 'timeSeries.active', shutoff: 'timeSeries.shutoff', error: 'timeSeries.error',
+    shelved: 'timeSeries.shelved', in_use: 'timeSeries.inUse', available: 'timeSeries.available',
+    other: 'timeSeries.other', routers: 'timeSeries.routers', floating_ips_used: 'timeSeries.floatingIps',
+  };
+  function seriesLabel(key: string): string { return SERIES_LABELS[key] ? t(SERIES_LABELS[key]) : key; }
 
 
   function getVal(d: DataPoint, key: string): number | null {
@@ -58,8 +68,8 @@
   const delta = $derived(latestVal !== null && prevVal !== null ? latestVal - prevVal : null);
 
   const chartSeries = $derived<ChartSeries[]>([
-    { key: mainKey, label: mainKey, color: 'var(--color-chart-1)', area: true },
-    ...extraKeys.filter(key => EXTRA_COLORS[key]).map(key => ({ key, label: key, color: EXTRA_COLORS[key], dashed: true })),
+    { key: mainKey, label: seriesLabel(mainKey), color: 'var(--color-chart-1)', area: true },
+    ...extraKeys.filter(key => EXTRA_COLORS[key]).map(key => ({ key, label: seriesLabel(key), color: EXTRA_COLORS[key], dashed: true })),
   ]);
   const spec = $derived<ChartSpec>({
     kind: 'time-series',
@@ -85,16 +95,7 @@
         {/if}
       {/if}
     </div>
-    <div class="flex gap-1">
-      {#each RANGES as r}
-        <button
-          type="button"
-          aria-pressed={currentRange === r}
-          onclick={() => onRangeChange?.(r)}
-          class="min-h-11 md:min-h-8 text-xs px-2 py-0.5 rounded transition-colors focus-visible:outline focus-visible:outline-accent {currentRange === r ? 'bg-action-warm text-[var(--color-action-on-warm)]' : 'text-ink-2 hover:text-ink-0'}"
-        >{t('timeSeries.rangeDays', { days: RANGE_DAYS[r] })}</button>
-      {/each}
-    </div>
+    <ToggleGroup value={currentRange} options={RANGES.map(range => ({ value: range, label: t('timeSeries.rangeDays', { days: RANGE_DAYS[range] }) }))} onchange={(range) => onRangeChange?.(range)} ariaLabel={title} size="sm" />
   </div>
 
   {#if points.length === 0}
@@ -109,13 +110,13 @@
       <div class="flex flex-wrap gap-3 mt-2">
         <div class="flex items-center gap-1">
           <div class="w-4 h-0.5 bg-chart-1"></div>
-          <span class="text-xs text-ink-2">{mainKey}</span>
+          <span class="text-[0.8125rem] text-ink-2">{seriesLabel(mainKey)}</span>
         </div>
         {#each extraKeys as key}
           {#if EXTRA_COLORS[key]}
             <div class="flex items-center gap-1">
               <div class="w-4 h-0.5" style="background:{EXTRA_COLORS[key]}; opacity:0.7; border-top: 1px dashed {EXTRA_COLORS[key]}"></div>
-              <span class="text-xs text-ink-2">{key}</span>
+              <span class="text-[0.8125rem] text-ink-2">{seriesLabel(key)}</span>
             </div>
           {/if}
         {/each}

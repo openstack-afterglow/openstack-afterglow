@@ -21,6 +21,24 @@ async function session() {
 }
 
 describe('authentication recovery state', () => {
+	it('expires a duplicated stale tab locally without signing out another independently rotated tab', async () => {
+		const healthy = await session();
+		healthy.setLoginAuth({ token: 'healthy-access', refreshToken: 'healthy-refresh', userId: 'user',
+			domainId: 'domain-1', identityDomainId: 'domain-1', accessExpiresAt: Math.floor(Date.now() / 1000) + 900 });
+		const sharedMarker = localStorage.getItem(healthy.AUTH_LOGOUT_EVENT_KEY);
+		vi.resetModules();
+		const stale = await session();
+		mockFetch.mockResolvedValueOnce(Response.json({ detail: 'Refresh replay window expired' }, { status: 401 }));
+		await expect(stale.refreshSession()).resolves.toBeNull();
+		expect(get(stale.auth).token).toBeNull();
+		expect(get(stale.authReady)).toBe(false);
+		expect(sessionStorage.getItem(stale.AUTH_STORAGE_KEY)).toBeNull();
+		expect(localStorage.getItem(stale.AUTH_LOGOUT_EVENT_KEY)).toBe(sharedMarker);
+		expect(document.cookie).toContain('afterglow_session=1');
+		expect(get(healthy.auth).token).toBe('healthy-access');
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+
 	it('does not turn an ordinary resource outage into an authentication outage', async () => {
 		const s = await session();
 		s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900 });
@@ -54,6 +72,107 @@ describe('authentication recovery state', () => {
 		revoked = true;
 		await expect(s.api.get('/api/v1/volumes', 'fresh-access')).rejects.toMatchObject({ status: 401 });
 		expect(renewals).toBe(3);
+	});
+
+	it('uses the non-extending marker for proactive lifecycle events but not explicit recovery or expiry', async () => {
+		vi.useFakeTimers();
+		const s = await session();
+		const deadline = Math.floor(Date.now() / 1000) + 90;
+		s.setAuth({ token: 'old-access', accessExpiresAt: deadline });
+		let renewals = 0;
+		mockFetch.mockImplementation(async (url: string) => {
+			if (!url.includes('/auth/refresh')) throw new Error(`Unexpected request ${url}`);
+			renewals++;
+			return Date.now() >= deadline * 1000 ? Response.json({ detail: 'expired' }, { status: 401 })
+				: Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', domain_id: 'domain-1',
+					identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(deadline * 1000).toISOString() });
+		});
+		// Fresh modules intentionally bind the actual lifecycle to this tab's coordinator.
+		const { startSessionRefreshLifecycle } = await import('$lib/utils/sessionRefreshLifecycle');
+		const stop = startSessionRefreshLifecycle({
+			getSession: () => ({ ...get(s.auth), isMock: false, isLoggingOut: false }), refreshSession: s.refreshSession,
+		});
+		try {
+			await vi.waitFor(() => expect(renewals).toBe(1));
+			await vi.advanceTimersByTimeAsync(0);
+			for (const event of ['focus', 'pageshow', 'online']) {
+				window.dispatchEvent(new Event(event));
+				await vi.advanceTimersByTimeAsync(0);
+			}
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(renewals).toBe(1);
+			await expect(s.refreshSession()).resolves.toBe('fresh-access');
+			expect(renewals).toBe(2);
+			vi.setSystemTime(deadline * 1000 + 1);
+			window.dispatchEvent(new Event('pageshow'));
+			await vi.waitFor(() => expect(get(s.auth).token).toBeNull());
+			expect(renewals).toBe(3);
+		} finally { stop(); vi.useRealTimers(); }
+	});
+
+	it('coalesces explicit recovery into one real refresh when a proactive marker skip starts first', async () => {
+		const s = await session();
+		const deadline = Math.floor(Date.now() / 1000) + 90;
+		s.setAuth({ token: 'old-access', accessExpiresAt: deadline, sessionId: 'explicit-recovery-owner' });
+		const owner = get(s.auth).sessionId;
+		mockFetch
+			.mockResolvedValueOnce(Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', domain_id: 'domain-1',
+				identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(deadline * 1000).toISOString() }))
+			.mockResolvedValueOnce(Response.json({ token: 'recovered-access', refresh_token: 'recovered-refresh', domain_id: 'domain-1',
+				identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(deadline * 1000).toISOString() }));
+		await expect(s.refreshSession()).resolves.toBe('fresh-access');
+
+		const proactive = s.refreshSession({ proactive: true });
+		const recovery = s.refreshSession();
+		const concurrentRecovery = s.refreshSession();
+		await expect(Promise.all([proactive, recovery, concurrentRecovery])).resolves.toEqual([
+			'fresh-access', 'recovered-access', 'recovered-access',
+		]);
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ refresh_token: 'fresh-refresh' });
+		expect(get(s.auth)).toMatchObject({ token: 'recovered-access', refreshToken: 'recovered-refresh', sessionId: owner });
+		expect(get(s.authRecovery)).toBeNull();
+	});
+
+	it('refreshes a real 401 coinciding with a proactive marker skip without clearing the live session', async () => {
+		const s = await session();
+		const deadline = Math.floor(Date.now() / 1000) + 90;
+		s.setAuth({ token: 'old-access', accessExpiresAt: deadline, sessionId: 'reactive-recovery-owner' });
+		const owner = get(s.auth).sessionId;
+		const rejectedResource = Promise.withResolvers<Response>();
+		const resourceDispatched = Promise.withResolvers<void>();
+		const refreshCredentials: string[] = [];
+		const resourceCredentials: string[] = [];
+		mockFetch.mockImplementation((url: string, options: RequestInit) => {
+			if (url.includes('/auth/refresh')) {
+				refreshCredentials.push(JSON.parse(options.body as string).refresh_token);
+				const prefix = refreshCredentials.length === 1 ? 'fresh' : 'recovered';
+				return Promise.resolve(Response.json({ token: `${prefix}-access`, refresh_token: `${prefix}-refresh`, domain_id: 'domain-1',
+					identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(deadline * 1000).toISOString() }));
+			}
+			resourceCredentials.push(new Headers(options.headers).get('Authorization')!);
+			if (resourceCredentials.length === 1) {
+				resourceDispatched.resolve();
+				return rejectedResource.promise;
+			}
+			return Promise.resolve(Response.json({ state: 'visible' }));
+		});
+		await expect(s.refreshSession()).resolves.toBe('fresh-access');
+		const request = s.fetchWithAuth('/api/v1/volumes', {}, 'fresh-access');
+		await resourceDispatched.promise;
+		// Queue the actual 401 before the proactive call can yield through any imports.
+		rejectedResource.resolve(Response.json({ detail: 'Native proof needs renewal' }, { status: 401 }));
+		const proactive = s.refreshSession({ proactive: true });
+		await expect(proactive).resolves.toBe('fresh-access');
+		const response = await request;
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({ state: 'visible' });
+		expect(refreshCredentials).toEqual(['refresh', 'fresh-refresh']);
+		expect(resourceCredentials).toEqual(['Bearer fresh-access', 'Bearer recovered-access']);
+		expect(mockFetch).toHaveBeenCalledTimes(4);
+		expect(get(s.auth)).toMatchObject({ token: 'recovered-access', refreshToken: 'recovered-refresh', sessionId: owner });
+		expect(get(s.authRecovery)).toBeNull();
+		expect(sessionStorage.getItem(s.AUTH_STORAGE_KEY)).toContain('recovered-access');
 	});
 
 	it('exposes an outage, honors retry cooldown, and clears recovery after successful rotation', async () => {
@@ -273,6 +392,44 @@ describe('authentication recovery state', () => {
 		await expect(pending).rejects.toMatchObject({ status: 401 });
 		expect(nativeEffects).toBe(1);
 		expect(get(s.auth).token).toBe('rotated-allocation-token');
+	});
+	it.each(['pool', 'cap', 'remove-cap', 'automation', 'reconcile', 'profiles', 'discover', 'host', 'defaults', 'native-project', 'ceilings', 'quota-reconcile'] as const)('does not dispatch stale %s after token preflight when observation scope returns through ABA', async action => {
+		const s = await session();
+		s.setLoginAuth({ token: 'old-access', refreshToken: 'refresh', accessExpiresAt: 1, userId: 'admin', identityDomainId: 'domain-1', domainId: 'domain-1', projectId: 'admin-project', isSystemAdmin: true });
+		const refreshed = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refreshed.promise);
+		let observationGeneration = 0;
+		const captured = observationGeneration;
+		const authority = { token: () => get(s.auth).token ?? '', projectId: () => 'admin-project', isCurrent: () => observationGeneration === captured, canSubmit: () => observationGeneration === captured };
+		// resetModules gives each test fresh auth stores; load wrappers into that same graph.
+		const { computePools } = await import('../computePools');
+		const { flavorAutomation } = await import('../flavorAutomation');
+		const { workspaceIam, adminDomainBudgets } = await import('../workspaceIam');
+		const iam = workspaceIam({ ...authority, userId: 'admin', domainId: 'observed-domain-a' });
+		const quotas = adminDomainBudgets('observed-domain-a', authority);
+		const pool = computePools('observed-domain-a', true, authority), automation = flavorAutomation(authority);
+		const pending = action === 'pool' ? pool.save(1, true, { CPU: 4 })
+			: action === 'cap' ? pool.saveProject('project-a', 1, { CPU: 2 })
+			: action === 'remove-cap' ? pool.removeProject('project-a', 1)
+			: action === 'automation' ? automation.save(1, true)
+			: action === 'reconcile' ? automation.reconcile()
+			: action === 'profiles' ? automation.saveProfiles(1, [])
+			: action === 'discover' ? automation.discover()
+			: action === 'defaults' ? iam.defaults(1, { cores: 8, ram: 16384 })
+			: action === 'native-project' ? iam.saveProject('project-a', { cores: 8, ram: 16384 })
+			: action === 'ceilings' ? quotas.save(1, { cores: 16, ram: 32768 })
+			: action === 'quota-reconcile' ? quotas.reconcile('operation-a')
+			: automation.host('host-a', 1, true);
+		const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		expect(mockFetch.mock.calls[0][0]).toContain('/auth/refresh');
+		// A→B→A selected-domain navigation changes the editor generation without rescoping auth.
+		observationGeneration += 2;
+		refreshed.resolve(Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', user_id: 'admin', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain', project_id: 'admin-project', expires_at: new Date(Date.now() + 900_000).toISOString() }));
+		await rejected;
+		expect(mockFetch).toHaveBeenCalledOnce();
+		expect(get(s.auth).token).toBe('fresh-access');
+		expect(get(s.auth).projectId).toBe('admin-project');
 	});
 	it('keeps a pending workspace selection alive when the periodic refresh timer fires', async () => {
 		const s = await session();

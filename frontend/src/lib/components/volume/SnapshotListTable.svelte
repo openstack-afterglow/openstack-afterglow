@@ -4,7 +4,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -50,7 +50,7 @@
 	<ActionMenu open={openSnapshotActionMenu === snap.id} ariaLabel={t('snapshotListTable.snapshotActions', { name: snap.name || snap.id })} onopen={() => onActionMenuOpen(snap.id)} onclose={onActionMenuClose}>
 		<button onclick={() => { onActionMenuClose(); onDelete(snap.id, snap.name); }} disabled={deleting === snap.id} class="w-full text-left px-3 py-1.5 text-[13px] text-state-danger-text hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
 			{#if deleting === snap.id}
-				<ActivityIndicator size="xs" tone="danger" />
+				<LoadingState variant="control" label="" />
 			{:else}
 				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
 			{/if}
@@ -77,7 +77,7 @@
 						<span class="font-medium min-w-0 flex-1 break-all">{snap.name || snap.id.slice(0, 12)}</span>
 						<StatusChip status={snap.status} />
 					</div>
-					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}</span>{/if}
+					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><LoadingState variant="control" label="" />{t('snapshotListTable.deleting')}</span>{/if}
 					<dl>
 						<div><dt>{t('snapshotListTable.size')}</dt><dd>{snap.size} GB</dd></div>
 						<div><dt>{t('snapshotListTable.sourceVolume')}</dt><dd class="font-mono break-all">{snap.volume_id.slice(0, 12)}…</dd></div>
@@ -117,7 +117,7 @@
 				</div>
 				<div class="flex flex-col items-start gap-1">
 					<StatusChip status={snap.status} />
-					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}</span>{/if}
+					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><LoadingState variant="control" label="" />{t('snapshotListTable.deleting')}</span>{/if}
 				</div>
 				<div class="flex justify-end" role="none">
 					{@render snapshotActions(snap)}

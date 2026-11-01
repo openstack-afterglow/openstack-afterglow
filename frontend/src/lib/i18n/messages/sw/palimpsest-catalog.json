@@ -20,7 +20,7 @@
   "previous": "Ukurasa uliotangulia",
   "next": "Ukurasa unaofuata",
   "empty.title": "Hakuna tabaka zilizorekodiwa katika chanzo hiki.",
-  "empty.help": "Badili chanzo au tumia vidhibiti vya ujenzi vilivyo hapa chini.",
+  "empty.help": "Badili chanzo au anza ujenzi mpya katika studio ya ujenzi.",
   "empty.search": "Hakuna matokeo ya utafutaji.",
   "empty.searchHelp": "Futa utafutaji au chagua chanzo kingine.",
   "error.denied": "Mwito wa sasa hauna ruhusa ya kusoma orodha hii. Kagua mamlaka ya msimamizi.",
@@ -76,6 +76,6 @@
   "children.more": "Watoto zaidi wa moja kwa moja wapo. Jibu hili lina kikomo.",
   "relations.none": "Hakuna mahusiano yaliyorejeshwa",
   "bundles": "Vifurushi / wasifu vinavyorejelea",
-  "bundles.help": "Marejeo yaliyorekodiwa tu; viungo huenda kwenye wasifu unaosimamiwa hapa chini.",
+  "bundles.help": "Marejeleo yaliyorekodiwa pekee yanaonyeshwa; viungo hufungua kichupo cha Profaili.",
   "bundles.none": "Hakuna marejeo yaliyorekodiwa (si ushahidi wa kutotumika)"
 }

@@ -18,7 +18,7 @@
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ChatContextPanel from './ChatContextPanel.svelte';
 
@@ -602,7 +602,7 @@
 							</button>
 						</div>
 						{#if a.status === 'uploading'}
-							<ActivityIndicator variant="upload" size="xs" label={t('input.uploading')} />
+							<LoadingState variant="inline" label={t('input.uploading')} />
 						{/if}
 					</div>
 				{/each}
@@ -730,7 +730,7 @@
 						aria-atomic="true"
 					>
 						{#if contextBusy}
-							<ActivityIndicator size="sm" label={contextStatus} />
+							<LoadingState variant="inline" label={contextStatus} />
 						{:else if knownContext}
 							<button
 								type="button"
@@ -792,7 +792,7 @@
 				{/if}
 
 				{#if streaming}
-					<ActivityIndicator variant="dots" size="xs" label={t('sidebar.generatingResponse')} />
+					<LoadingState variant="inline" label={t('sidebar.generatingResponse')} />
 					<button type="button" class="send stop" onclick={onStop} title={t('input.stopGeneration')} aria-label={t('input.stopGeneration')}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
 					</button>

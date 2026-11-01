@@ -233,3 +233,37 @@ def test_render_cli_emits_toml_without_creating_files(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert tomllib.loads(result.stdout) == config
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("operator_enabled", [None, False, True])
+def test_instance_usage_scheduler_native_default_and_sparse_operator_override(effective_config, operator_enabled):
+    from jinja2 import Environment, StrictUndefined, meta
+
+    root = Path(__file__).resolve().parents[2]
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters.update(bool=bool, to_json=json.dumps)
+    template = environment.parse(
+        (root / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2").read_text()
+    )
+    context = dict.fromkeys(meta.find_undeclared_variables(template), "")
+    for key in (
+        "backend_port",
+        "frontend_port",
+        "cloud_shell_home_size_gib",
+        "cloud_shell_cpu",
+        "cloud_shell_memory_mib",
+        "cloud_shell_idle_timeout_seconds",
+        "cloud_shell_max_session_seconds",
+        "cloud_shell_ticket_ttl_seconds",
+        "cloud_shell_reconcile_interval_seconds",
+    ):
+        context["afterglow_" + key] = 1
+    context["afterglow_rbd_volume_pools"] = {}
+    native = environment.from_string(template).render(context)
+    assert tomllib.loads(native)["instance_usage"]["scheduler_enabled"] is False
+    operator = '[app]\nsite_name = "Preserved operator"\n'
+    if operator_enabled is not None:
+        operator += f"[instance_usage]\nscheduler_enabled = {str(operator_enabled).lower()}\n"
+    effective = tomllib.loads(effective_config.render_toml(effective_config.merge_config(native, operator)))
+    assert effective["instance_usage"]["scheduler_enabled"] is bool(operator_enabled)
+    assert effective["app"]["site_name"] == "Preserved operator"

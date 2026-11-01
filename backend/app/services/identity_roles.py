@@ -12,7 +12,9 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import math
 import secrets
+import time
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
 from functools import wraps
@@ -34,6 +36,8 @@ from app.services.service_permissions import (
 
 _logger = logging.getLogger(__name__)
 _GRAPH_LOCK_TTL_SECONDS = 60
+_GRAPH_WAIT_SECONDS = 15
+_GRAPH_WAIT_POLL_SECONDS = 0.05
 
 CORE_NAMES = frozenset({"admin", "manager", "member", "reader"})
 SYSTEM_NAMES = frozenset({"admin", "manager"})
@@ -599,6 +603,32 @@ class _GraphLease:
         if self.lost or not isinstance(owned, str) or not hmac.compare_digest(owned, self.owner):
             raise HTTPException(status_code=409, detail="Role graph lock expired; reload and retry")
 
+    async def waiters_pending(self) -> bool:
+        """Observe foreground demand only while this lease still owns the graph."""
+        await self.assert_owned()
+        try:
+            async with self.redis.pipeline() as pipe:
+                await pipe.watch(self.key)
+                owned = await pipe.get(self.key)
+                if isinstance(owned, bytes):
+                    owned = owned.decode()
+                if self.lost or not isinstance(owned, str) or not hmac.compare_digest(owned, self.owner):
+                    raise HTTPException(status_code=409, detail="Role graph lock expired; reload and retry")
+                seconds, microseconds = await pipe.time()
+                now = seconds + microseconds / 1_000_000
+                pipe.multi()
+                pipe.zremrangebyscore(self.key + ":waiters", "-inf", now)
+                pipe.zcard(self.key + ":waiters")
+                result = await pipe.execute()
+                return bool(result[-1])
+        except HTTPException:
+            raise
+        except WatchError:
+            await self.assert_owned()
+            raise _unavailable("Role graph waiters cannot be verified") from None
+        except Exception:
+            raise _unavailable("Role graph waiters cannot be verified") from None
+
     async def renew(self) -> None:
         while True:
             await asyncio.sleep(_GRAPH_LOCK_TTL_SECONDS / 3)
@@ -611,8 +641,59 @@ class _GraphLease:
                 return
 
 
+async def _acquire_graph_lock(lease, *, wait):
+    """Admit only the live FIFO head; a fail-fast writer cannot jump the queue."""
+    queue = lease.key + ":waiters"
+    deadline = time.monotonic() + _GRAPH_WAIT_SECONDS
+    registered = False
+    while True:
+        if wait and time.monotonic() >= deadline:
+            raise HTTPException(status_code=409, detail="Another role change is in progress")
+        try:
+            async with lease.redis.pipeline() as pipe:
+                await pipe.watch(lease.key, queue)
+                seconds, microseconds = await pipe.time()
+                now = seconds + microseconds / 1_000_000
+                head = await pipe.zrangebyscore(queue, f"({now}", "+inf", start=0, num=1)
+                if registered:
+                    score = await pipe.zscore(queue, lease.owner)
+                    if score is None or score <= now:
+                        raise HTTPException(status_code=409, detail="Role graph wait expired; retry")
+                free = await pipe.get(lease.key) is None
+                first = not head if not registered else bool(head) and head[0] in (lease.owner, lease.owner.encode())
+                acquired = free and first
+                score = None
+                if wait and not registered and not acquired:
+                    last = await pipe.zrange(queue, -1, -1, withscores=True)
+                    # Redis time supplies cross-process ordering; avoid lexical ties
+                    # between random owners when two registrations share a timestamp.
+                    score = now + _GRAPH_WAIT_SECONDS
+                    if last:
+                        score = max(score, math.nextafter(last[0][1], math.inf))
+                if wait and time.monotonic() >= deadline:
+                    raise HTTPException(status_code=409, detail="Another role change is in progress")
+                pipe.multi()
+                pipe.zremrangebyscore(queue, "-inf", now)
+                if acquired:
+                    pipe.set(lease.key, lease.owner, ex=_GRAPH_LOCK_TTL_SECONDS)
+                    if registered:
+                        pipe.zrem(queue, lease.owner)
+                elif score is not None:
+                    pipe.zadd(queue, {lease.owner: score})
+                    pipe.expire(queue, _GRAPH_WAIT_SECONDS * 2)
+                await pipe.execute()
+                if acquired:
+                    return
+                registered = registered or score is not None
+        except WatchError:
+            pass
+        if not wait:
+            raise HTTPException(status_code=409, detail="Another role change is in progress")
+        await asyncio.sleep(min(_GRAPH_WAIT_POLL_SECONDS, max(0, deadline - time.monotonic())))
+
+
 @asynccontextmanager
-async def _graph_lock(conn):
+async def _graph_lock(conn, *, wait=False):
     owner = secrets.token_hex(24)
     try:
         endpoint = await asyncio.to_thread(conn.endpoint_for, "identity")
@@ -620,24 +701,43 @@ async def _graph_lock(conn):
             raise ValueError("identity endpoint is unavailable")
         key = "afterglow:identity-role-graph:" + hashlib.sha256(endpoint.rstrip("/").encode()).hexdigest()
         redis = await session_store._get_redis()
-        acquired = await redis.set(key, owner, nx=True, ex=_GRAPH_LOCK_TTL_SECONDS)
     except Exception:
         raise _unavailable("Role graph lock is unavailable") from None
-    if not acquired:
-        raise HTTPException(status_code=409, detail="Another role change is in progress")
     lease = _GraphLease(redis, key, owner)
-    renewal = asyncio.create_task(lease.renew())
+    renewal = None
     try:
+        try:
+            if wait:
+                async with asyncio.timeout(_GRAPH_WAIT_SECONDS):
+                    await _acquire_graph_lock(lease, wait=True)
+            else:
+                await _acquire_graph_lock(lease, wait=False)
+        except TimeoutError:
+            raise HTTPException(status_code=409, detail="Another role change is in progress") from None
+        except HTTPException:
+            raise
+        except Exception:
+            raise _unavailable("Role graph lock is unavailable") from None
+        renewal = asyncio.create_task(lease.renew())
         yield lease
     finally:
-        with CancelScope(shield=True):
-            renewal.cancel()
-            with suppress(asyncio.CancelledError):
-                await renewal
+
+        async def release():
+            if renewal is not None:
+                renewal.cancel()
+                with suppress(asyncio.CancelledError):
+                    await renewal
+            try:
+                await redis.zrem(key + ":waiters", owner)
+            except Exception:
+                _logger.warning("Role graph waiter release failed; it expires automatically")
             try:
                 await lease._if_owned(lambda pipe: pipe.delete(key))
             except Exception:
                 _logger.warning("Role graph lock release failed; it expires automatically")
+
+        with CancelScope(shield=True):
+            await _to_completion(release())
 
 
 async def _write(lease, fn, *args, **kwargs):

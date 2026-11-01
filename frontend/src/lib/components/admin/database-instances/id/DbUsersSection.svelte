@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { DbUser } from '$lib/types/database';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -59,7 +59,7 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newUser.name.trim() || !newUser.password}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.create')}{/if}
+				{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.create')}{/if}
 			</button>
 		</div>
 	{/if}
@@ -73,7 +73,7 @@
 				{#each users as u}
 					<CompactResourceCard>
 						<h3 class="break-all font-medium text-ink-0">{u.name}</h3><p class="text-xs text-ink-2">{tr('labels.databases')}: {u.databases?.length ?? 0}</p>
-						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingUser === u.name} onclick={() => onDelete(u.name)}>{deletingUser === u.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
+						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingUser === u.name} onclick={() => onDelete(u.name)}>{#if deletingUser === u.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingUser === u.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<p class="break-all text-xs text-ink-2">{u.databases?.map((database) => database.name).join(', ') || '-'}</p>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -90,7 +90,7 @@
 					{#if canMutate}
 					<button onclick={() => onDelete(u.name)} disabled={deletingUser === u.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{#if deletingUser === u.name}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
+						{#if deletingUser === u.name}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 					</button>
 					{/if}
 				</div>

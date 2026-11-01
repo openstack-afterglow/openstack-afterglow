@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -113,12 +113,7 @@
 	{/if}
 
 	{#if loading && loadbalancers.length === 0}
-		<div class="space-y-4" role="status" aria-busy={loading}>
-			<span class="inline-flex items-center gap-2 text-sm text-ink-2"><ActivityIndicator size="xs" />{t('loadbalancersPage.loading')}</span>
-			{#each [1, 2, 3] as _}
-				<div class="h-12 motion-skeleton rounded-lg" aria-hidden="true"></div>
-			{/each}
-		</div>
+		<LoadingState variant="surface" label={t('loadbalancersPage.loading')} />
 	{:else if !error && loadbalancers.length === 0}
 		<div class="text-center py-20 text-ink-2 bg-surface-base/20 border border-line/50 rounded-lg">
 			<div class="text-5xl mb-4">{t('loadbalancersPage.emptyIcon')}</div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -110,11 +110,11 @@
 
     <!-- 인터페이스 목록 -->
     {#if loadingIfaces}
-      <div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('networks.loading')} /></div>
+      <div class="text-xs text-ink-2 py-2"><LoadingState variant="control" label={t('networks.loading')} /></div>
     {:else if ifaceError}
       <div class="text-xs text-red-400 py-2">{ifaceError}</div>
     {:else if currentIfaces === null}
-      <div class="text-xs text-ink-2 py-2">{t('networks.loading')}</div>
+      <LoadingState variant="inline" label={t('networks.loading')} class="py-2 text-xs" />
     {:else if currentIfaces.length === 0}
       <div class="text-xs text-ink-2 py-2">{t('networks.noInterfaces')}</div>
     {:else}
@@ -150,7 +150,7 @@
               title={iface.is_primary ? t('networks.primaryCannotRemove') : t('networks.removeInterface')}
               class="shrink-0 text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
             >
-              {#if s.interfaceActioning === detachingKey}<ActivityIndicator size="xs" label={t('networks.removing')} />{:else}{t('networks.remove')}{/if}
+              {#if s.interfaceActioning === detachingKey}<LoadingState variant="control" label={t('networks.removing')} />{:else}{t('networks.remove')}{/if}
             </button>
           </div>
         {/each}
@@ -179,7 +179,7 @@
             disabled={!selectedNetId || !!s.interfaceActioning}
             class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
           >
-            {#if s.interfaceActioning === selectedVmId}<ActivityIndicator size="xs" label={t('networks.adding')} />{:else}{t('networks.add')}{/if}
+            {#if s.interfaceActioning === selectedVmId}<LoadingState variant="control" label={t('networks.adding')} />{:else}{t('networks.add')}{/if}
           </button>
         </div>
       </div>

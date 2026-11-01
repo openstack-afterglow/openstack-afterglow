@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { domainsApi } from '$lib/api/domains';
@@ -82,7 +83,7 @@
     {/snippet}
   </PageHeader>
   {#if error}<Alert>{error}</Alert>
-  {:else if loading}<p class="text-sm text-ink-2" role="status">{t('state.loading')}</p>
+  {:else if loading}<LoadingState variant="section" label={t('state.loading')} />
   {:else if data}
     {@const monitoring = data}
     <Alert tone={data.coverage.partial ? 'warning' : 'info'} class="mb-4">

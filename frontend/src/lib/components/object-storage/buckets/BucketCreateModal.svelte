@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { validateBucketName } from '$lib/utils/bucketName';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -83,7 +84,7 @@
 					onclick={submit}
 					disabled={creating || !name.trim()}
 					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
-				>{creating ? t('buckets.createModal.creating') : t('buckets.createModal.create')}</button>
+				>{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('buckets.createModal.creating') : t('buckets.createModal.create')}</button>
 			</div>
 		</div>
 	</div>

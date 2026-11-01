@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -10,7 +10,6 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { formatIsoDateTime, formatNumber } from '$lib/utils/format';
 	import type { AccessRule, ExportLocationDetail, FileStorage, FileStorageDeleteDiagnostic, FileStorageForceDeleteResult } from '$lib/types/fileStorage';
 	import { t } from '$lib/i18n/ns/admin-storage';
@@ -206,7 +205,7 @@
 	}
 </script>
 
-<div class="p-6 space-y-6">
+<div class={loading && !fileStorage ? 'flex min-h-full flex-col' : 'p-6 space-y-6'}>
 	<div class="flex items-center justify-between gap-3">
 		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 		<AutoRefreshControl
@@ -219,7 +218,7 @@
 	</div>
 
 	{#if loading && !fileStorage}
-		<LoadingSkeleton variant="detail" rows={6} />
+		<LoadingState variant="surface" label={t('fileDetail.loading')} />
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if fileStorage}
@@ -235,7 +234,7 @@
 					disabled={deleting}
 					class="text-red-300 hover:text-red-200 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-800 hover:border-red-600 disabled:border-line-2 transition-colors"
 				>
-					{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.deleting')}</span></span>{:else}{t('fileDetail.delete')}{/if}
+					{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('fileDetail.deleting')}</span></span>{:else}{t('fileDetail.delete')}{/if}
 				</button>
 			{/if}
 			{/snippet}
@@ -256,7 +255,7 @@
 								</span>
 							{/if}
 							{#if diagnosticLoading}
-								<ActivityIndicator size="sm" label={t('fileDetail.diagnosing')} />
+								<LoadingState variant="section" label={t('fileDetail.diagnosing')} />
 							{/if}
 						</div>
 						{#if diagnosticError}
@@ -298,7 +297,7 @@
 							disabled={diagnosticLoading}
 							class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors"
 						>
-							{#if diagnosticLoading}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.diagnosing')}</span></span>{:else}{t('fileDetail.rerunDiagnostic')}{/if}
+							{#if diagnosticLoading}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('fileDetail.diagnosing')}</span></span>{:else}{t('fileDetail.rerunDiagnostic')}{/if}
 						</button>
 						{#if deleteDiagnostic?.force_delete_available}
 							<button
@@ -307,7 +306,7 @@
 								disabled={forceDeleting || deleting}
 								class="text-red-100 bg-red-800/80 hover:bg-red-700 disabled:bg-surface-sunken disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-700 disabled:border-line-2 transition-colors"
 							>
-								{#if forceDeleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.forceDeleting')}</span></span>{:else}{t('fileDetail.forceDelete')}{/if}
+								{#if forceDeleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('fileDetail.forceDeleting')}</span></span>{:else}{t('fileDetail.forceDelete')}{/if}
 							</button>
 						{/if}
 					</div>
@@ -360,7 +359,7 @@
 		<section class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="flex items-center justify-between gap-3 mb-4">
 				<h3 class="text-sm font-semibold text-ink-0">{t('fileDetail.accessRules')}</h3>
-				{#if accessLoading}<ActivityIndicator size="sm" label={t('fileDetail.loading')} />{/if}
+				{#if accessLoading}<LoadingState variant="inline" label={t('fileDetail.loading')} />{/if}
 			</div>
 			{#if accessError}
 				<div class="bg-red-900/30 border border-red-800 text-red-300 rounded px-3 py-2 text-sm mb-3">{accessError}</div>

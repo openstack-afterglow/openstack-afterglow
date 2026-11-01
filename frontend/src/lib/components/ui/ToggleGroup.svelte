@@ -56,8 +56,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
-		padding: 0.25rem;
-		border: 1px solid var(--color-line-2);
+		padding: 0;
+		border: 0;
 		border-radius: var(--radius-lg);
 		background: var(--color-surface-sunken);
 	}
@@ -72,11 +72,12 @@
 		background: transparent;
 		color: var(--color-ink-2);
 		font-weight: 500;
+		min-height: var(--control-height);
 		cursor: pointer;
 		transition: background var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	.toggle-xs .toggle-option { padding: 0.1875rem 0.5rem; font-size: 0.6875rem; }
-	.toggle-sm .toggle-option { padding: 0.25rem 0.625rem; font-size: 0.75rem; }
+	.toggle-xs .toggle-option { padding: 0.25rem 0.5rem; font-size: var(--type-support); }
+	.toggle-sm .toggle-option { padding: 0.375rem 0.625rem; font-size: var(--type-body); }
 	.toggle-option:hover:not(:disabled) { color: var(--color-ink-0); }
 	.toggle-option:focus-visible {
 		outline: none;
@@ -84,10 +85,12 @@
 	}
 	.toggle-selected {
 		background: var(--color-surface-selected);
+		box-shadow: inset 0 0 0 1px var(--color-line-2);
 		color: var(--color-ink-0);
 	}
 	.toggle-option:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}
+	@media (max-width: 767px), (pointer: coarse) { .toggle-option { min-height: var(--control-touch-height); } }
 </style>

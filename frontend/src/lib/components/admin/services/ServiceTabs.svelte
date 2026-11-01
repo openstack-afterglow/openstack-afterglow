@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/common';
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	type TabKey = 'compute' | 'network' | 'block_storage' | 'shared_file_system' | 'orchestration' | 'container' | 'container_infra' | 'endpoints' | 'storage_pools';
 
 	let {
@@ -43,7 +43,7 @@
 		>
 			{tab.label}
 			{#if loadingMap[tab.key]}
-				<ActivityIndicator size="xs" class="ml-1.5" /><span class="sr-only">{t('state.loading')}</span>
+				<LoadingState variant="control" label="" aria-hidden="true" class="ml-1.5" /><span class="sr-only">{t('state.loading')}</span>
 			{:else if !loadedMap[tab.key]}
 				<Pill class="ml-1.5" tone="neutral" size="xs">—</Pill>
 			{:else}

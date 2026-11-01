@@ -6,7 +6,7 @@
 	import { derived, get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import type { ProviderEntryTicket } from '$lib/api/errors';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -177,10 +177,12 @@
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
 <main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
+	{#if loading && !abandoned && !$logoutInProgress && !$projectSwitching}
+		<LoadingState variant="surface" style="min-height: 100dvh" label={t('callback.processing')} />
+	{:else}
 	<PageShell class="flex justify-center"><div class="w-full max-w-md">
 		{#if abandoned || $logoutInProgress || $projectSwitching}
 			<Button href={loginPath} class="w-full">{t('common.backToLogin')}</Button>
-		{:else if loading}<div class="flex justify-center"><ActivityIndicator size="lg" label={t('callback.processing')} /></div>
 		{:else}<div class="bg-surface-raised rounded-xl border border-line-2 p-6 sm:p-8 space-y-4">
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			{#if approval}
@@ -203,7 +205,7 @@
 					{#if entryTicket.action === 'connect'}<div><dt class="text-ink-2">{t('entry.username')}</dt><dd class="text-ink-0 break-words">{entryTicket.username}</dd></div>{/if}
 				</dl>
 				<form onsubmit={confirmEntry}>
-					<Button type="submit" disabled={linking} ariaBusy={linking} class="w-full">{t(entryTicket.action === 'connect' ? 'entry.connect' : 'entry.create')}</Button>
+					<Button type="submit" disabled={linking} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t(entryTicket.action === 'connect' ? 'entry.connect' : 'entry.create')}{/if}</Button>
 				</form>
 			{:else if ticket}
 				<h1 class="text-xl font-semibold text-ink-0">{t('link.title')}</h1>
@@ -211,7 +213,7 @@
 				<form onsubmit={link} class="space-y-4">
 					<Field for="link-username" label={t('onboarding.name')} required><TextInput id="link-username" bind:value={username} autocomplete="username" disabled={linking} required /></Field>
 					<Field for="link-password" label={t('onboarding.password')} required><TextInput id="link-password" bind:value={password} type="password" autocomplete="current-password" disabled={linking} required /></Field>
-					<Button type="submit" disabled={linking || !username.trim() || !password} ariaBusy={linking} class="w-full">{t('link.submit')}</Button>
+					<Button type="submit" disabled={linking || !username.trim() || !password} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t('link.submit')}{/if}</Button>
 				</form>
 				{#if $auth.token}
 					<p class="text-sm text-ink-2">{t('link.authenticatedHelp')}</p>
@@ -224,4 +226,5 @@
 			{/if}
 		</div>{/if}
 	</div></PageShell>
+	{/if}
 </main>

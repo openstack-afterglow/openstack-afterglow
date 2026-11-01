@@ -1,0 +1,5 @@
+## Decision
+Use 100world px plus6px per additional connection, sharing the bend band between endpoints rather than adding both independently. Keep switch fanout global and VM ingress network-local. Sort switch targets using actual NIC anchors and reverse left-going shelf ordering using the actual slot x (not card center). For unobstructed facing vertical ports, prefer a single horizontal shelf checked against existing cards/HUD header obstacles; retain obstacle routing when necessary.
+
+## Verification
+Before fix: compact gap test failed112>104, left-going parallel paths crossed. After fix:64 layout tests; complete canvas suite11files244 tests pass. Actual compiled CanvasNodeCard/CanvasHud/CanvasEdgeLayer15direction/zoom conditions have zero label/cable crossings or unnecessary backtracking. Browser geometry sweep205cases(2–6NICs,41offsets) has zero crossings, shared horizontal overlaps or backtracking. Mid-edit stale browser imports were discarded after navigation and final sweep rerun. Existing manual-blocker regression remains passing. No production/native-cloud change; no repository-wide gate/build.

@@ -156,7 +156,15 @@ async function showStep(index: number, direction: 1 | -1 = 1): Promise<void> {
 	currentIndex = index;
 	persistTour(tour.id, index);
 
-	if (step.route && window.location.pathname !== step.route) {
+	const targetUrl = step.route ? new URL(step.route, window.location.href) : null;
+	const currentUrl = new URL(window.location.href);
+	const routeMatches = !targetUrl || (currentUrl.pathname === targetUrl.pathname
+		&& [...new Set(targetUrl.searchParams.keys())].every(key => {
+			const expected = targetUrl.searchParams.getAll(key);
+			const actual = currentUrl.searchParams.getAll(key);
+			return expected.length === actual.length && expected.every((value, position) => actual[position] === value);
+		}));
+	if (step.route && !routeMatches) {
 		try {
 			await goto(step.route);
 		} catch {
@@ -167,6 +175,50 @@ async function showStep(index: number, direction: 1 | -1 = 1): Promise<void> {
 
 	const timeout = step.waitTimeoutMs ?? (index === 0 ? 8000 : 3000);
 
+	const isLast = index === tour.steps.length - 1;
+	const clickDriven = step.advanceOn === 'click';
+	const wizardDriven = step.advanceOn === 'wizard';
+
+	if (clickDriven || step.backElement || step.cancelElement) {
+		// 진행/후진/취소 트리거는 하이라이트 요소와 다를 수 있다(예: 폼 전체 하이라이트 + 생성/이전/취소 버튼).
+		// document 캡처 위임: 하이라이트 표시 전에 무장되고, 대상 노드가 리렌더로 교체돼도 동작한다.
+		const advanceSelector = clickDriven ? (step.advanceElement ?? step.element) : null;
+		const backSelector = step.backElement ?? null;
+		const cancelSelector = step.cancelElement ?? null;
+		const handler = (event: Event) => {
+			const target = event.target as Element | null;
+			if (!target?.closest) return;
+			if (cancelSelector && target.closest(cancelSelector)) {
+				stopTour();
+			} else if (advanceSelector && target.closest(advanceSelector)) {
+				cleanupClickListener();
+				void moveTo(index + 1);
+			} else if (backSelector && target.closest(backSelector)) {
+				cleanupClickListener();
+				void moveTo(index - 1);
+			}
+		};
+		document.addEventListener('click', handler, { capture: true });
+		clickCleanup = () => document.removeEventListener('click', handler, { capture: true });
+	}
+
+	if (step.wizardStep != null || step.followWizard) {
+		const onWizardStep = async (event: Event) => {
+			const detail = (event as CustomEvent<{ step: number }>).detail;
+			if (!detail) return;
+			if (step.followWizard) {
+				// Successful deployment resets the step immediately before closing the wizard.
+				await tick();
+				if (!await step.followWizard() || d !== driverInstance || currentTour !== tour || serial !== showSerial) return;
+			}
+			const mappedIndex = tour.steps.findIndex((st) => st.wizardStep === detail.step);
+			if (mappedIndex >= 0 && mappedIndex !== currentIndex) {
+				void moveTo(mappedIndex);
+			}
+		};
+		window.addEventListener('afterglow:wizard-step', onWizardStep);
+		wizardStepCleanup = () => window.removeEventListener('afterglow:wizard-step', onWizardStep);
+	}
 	// 숨겨진 탭 내부가 settlement anchor인 경우 먼저 탭을 연다.
 	if (step.beforeReady) {
 		await tick();
@@ -219,45 +271,6 @@ async function showStep(index: number, direction: 1 | -1 = 1): Promise<void> {
 		return;
 	}
 
-	const isLast = index === tour.steps.length - 1;
-	const clickDriven = step.advanceOn === 'click';
-	const wizardDriven = step.advanceOn === 'wizard';
-
-	if (clickDriven || step.backElement || step.cancelElement) {
-		// 진행/후진/취소 트리거는 하이라이트 요소와 다를 수 있다(예: 폼 전체 하이라이트 + 생성/이전/취소 버튼).
-		// document 캡처 위임: 하이라이트 표시 전에 무장되고, 대상 노드가 리렌더로 교체돼도 동작한다.
-		const advanceSelector = clickDriven ? (step.advanceElement ?? step.element) : null;
-		const backSelector = step.backElement ?? null;
-		const cancelSelector = step.cancelElement ?? null;
-		const handler = (event: Event) => {
-			const target = event.target as Element | null;
-			if (!target?.closest) return;
-			if (cancelSelector && target.closest(cancelSelector)) {
-				stopTour();
-			} else if (advanceSelector && target.closest(advanceSelector)) {
-				cleanupClickListener();
-				void moveTo(index + 1);
-			} else if (backSelector && target.closest(backSelector)) {
-				cleanupClickListener();
-				void moveTo(index - 1);
-			}
-		};
-		document.addEventListener('click', handler, { capture: true });
-		clickCleanup = () => document.removeEventListener('click', handler, { capture: true });
-	}
-
-	if (step.wizardStep != null) {
-		const onWizardStep = (event: Event) => {
-			const detail = (event as CustomEvent<{ step: number }>).detail;
-			if (!detail) return;
-			const mappedIndex = tour.steps.findIndex((st) => st.wizardStep === detail.step);
-			if (mappedIndex >= 0 && mappedIndex !== currentIndex) {
-				void moveTo(mappedIndex);
-			}
-		};
-		window.addEventListener('afterglow:wizard-step', onWizardStep);
-		wizardStepCleanup = () => window.removeEventListener('afterglow:wizard-step', onWizardStep);
-	}
 
 	d.highlight({
 		element: step.element,

@@ -11,7 +11,7 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
 
 	let { onSelected, onClose, mockup = false, busy = $bindable(false) }: { onSelected: () => void; onClose: () => void; mockup?: boolean; busy?: boolean } = $props();
@@ -82,7 +82,7 @@
 	<div class="min-h-0 flex-1 overflow-y-auto p-4 md:p-5 space-y-4">
 		{#if controller.error}<Alert tone="warning">{t(controller.error)}</Alert>{/if}
 		{#if controller.storageFailed}<Alert tone="warning">{t('storageFailed')}</Alert>{/if}
-		{#if controller.loading}<ActivityIndicator label={t('loading')} />{/if}
+		{#if controller.loading}<LoadingState variant={controller.ready ? 'inline' : 'section'} label={t('loading')}  />{/if}
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 			<Field label={t('domainSearch')} for={`${componentId}-domain-search`}><TextInput id={`${componentId}-domain-search`} bind:value={domainSearch} disabled={mutationBusy} /></Field>
 			<Field label={t('domain')} for={`${componentId}-domain`}>

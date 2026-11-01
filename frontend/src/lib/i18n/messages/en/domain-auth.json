@@ -158,7 +158,7 @@
 	"recovery.username": "Find username",
 	"recovery.password": "Reset password",
 	"recovery.description": "Request a one-use link at your account email. You do not need to know your domain name.",
-	"recovery.sent": "If this address is eligible, an email has been sent. Check your inbox.",
+	"recovery.sent": "Request accepted. If this address is eligible, an email will be sent. Acceptance does not confirm delivery. Check your inbox; if no email arrives or you cannot access it, contact your administrator.",
 	"recovery.notAvailable": "Email requests are not currently available. Contact your administrator or try again later.",
 	"recovery.usernameResult": "This verification link has been used. Sign in with your original username and domain below. Reopening the link will not reveal them again.",
 	"recovery.reset": "Save new password",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "Sign in again",
 	"recovery.failed": "The result could not be confirmed. This account may not support this recovery method, or the link may already be used. The request will not be repeated automatically. Request a new link or contact your administrator.",
 	"link.authenticatedHelp": "For an external-only account, approve with the already signed-in original account session. The server verifies that it is the same account.",
-	"link.authenticated": "Approve connection as signed-in {username}"
+	"link.authenticated": "Approve connection as signed-in {username}",
+	"recovery.passwordHelp": "The link sent to your registered email opens a form to choose a new password; it never sends the password itself. If no email arrives or you cannot access the mailbox, contact your administrator."
 }

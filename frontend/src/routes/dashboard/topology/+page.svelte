@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/topology';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -77,7 +78,7 @@
 		{/if}
 	{/if}
 	{#if loading}
-		<LoadingSkeleton variant="card" rows={8} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('legacy.title') })} />
 	{:else if data}
 		{@const _visibleNets = data.networks.filter(n => n.is_external || n.is_shared || n.project_id === $auth.projectId)}
 		{@const _projectRouters = data.routers.filter(r => r.project_id === $auth.projectId)}

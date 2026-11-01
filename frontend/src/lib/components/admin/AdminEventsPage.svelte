@@ -4,12 +4,15 @@
 	import { get } from 'svelte/store';
 	import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 	import { api, ApiError } from '$lib/api/client';
-	import { ActivityIndicator, Alert, Button, Card, Field, PageHeader, PageShell, Pill, SelectInput, TableShell, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, Field, PageHeader, PageShell, Pill, SelectInput, TableShell, TextInput } from '$lib/components/ui';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
+	import { t as tLogin } from '$lib/i18n/ns/login-monitoring';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { interactionAuditHealth } from '$lib/utils/interactionAudit';
 
 	interface EventRecord {
 		id: number;
@@ -31,11 +34,17 @@
 		event_type?: string | null;
 		http_status?: number | null;
 		// Only these explicit, backend-sanitized metadata fields may reach the UI.
-		extra?: { error_type?: string | null; error_code?: string | number | null } | null;
+		extra?: {
+			error_type?: string | null; error_code?: string | number | null;
+			method?: string | null; route?: string | null; stage?: string | null; duration_ms?: number | null;
+			auth_method?: 'password' | 'federated' | null;
+			control?: string | null; ordinal?: number | null; destination?: string | null; interaction_id?: string | null;
+			severity?: string | null; logger?: string | null; function?: string | null; line?: number | null;
+		} | null;
 	}
 	interface FailureGroup { key: string | null; total: number; failed: number }
 	interface EventStats {
-		total: number; success: number; failed: number; started: number;
+		total: number; success: number; failed: number; started: number; observed?: number;
 		by_service: FailureGroup[]; by_project: FailureGroup[]; by_action: FailureGroup[]; by_page: FailureGroup[];
 	}
 	type Dimension = 'by_service' | 'by_project' | 'by_action' | 'by_page';
@@ -59,6 +68,8 @@
 	let action = $state('');
 	let status = $state('');
 	let source = $state('');
+	let requestId = $state('');
+	let interactionId = $state('');
 	let applied = $state('');
 	let events = $state<EventRecord[]>([]);
 	let cursor = $state<number | null>(null);
@@ -71,6 +82,11 @@
 	let selected = $state<EventRecord | null>(null);
 	let detailLoading = $state(false);
 	let detailError = $state<string | null>(null);
+	let timeline = $state<EventRecord[]>([]);
+	let timelineLoading = $state(false);
+	let timelineError = $state<string | null>(null);
+	let timelineSource = $state('');
+	const visibleTimeline = $derived(timeline.filter(row => !timelineSource || row.source === timelineSource));
 	let generation = 0;
 	let detailGeneration = 0;
 	let authorityRevision = $state(0);
@@ -81,6 +97,7 @@
 		authorityKey = key;
 		++generation; ++detailGeneration;
 		events = []; stats = null; cursor = null; selected = null;
+		timeline = []; timelineError = null; timelineLoading = false;
 		++authorityRevision;
 	};
 	const subscriptions = [auth.subscribe(changed), adminInventoryScope.subscribe(changed)];
@@ -89,7 +106,7 @@
 		const now = new Date();
 		const params = new URLSearchParams({ from_at: new Date(now.getTime() - Number.parseInt(range, 10) * 86_400_000).toISOString(), to_at: now.toISOString(), limit: String(limit) });
 		const scope = get(adminInventoryScope);
-		for (const [key, value] of Object.entries({ domain_id: scope.domainId, project_id: scope.projectId, user_id: user, username, service, page: pageFilter, resource_type: resource, resource_id: resourceId, action, status, source })) {
+		for (const [key, value] of Object.entries({ domain_id: scope.domainId, project_id: scope.projectId, user_id: user, username, service, page: pageFilter, resource_type: resource, resource_id: resourceId, action, status, source, request_id: requestId, interaction_id: interactionId })) {
 			if (value.trim()) params.set(key, value.trim());
 		}
 		return params.toString();
@@ -109,6 +126,12 @@
 			[t('events.resourceType'), row.resource_type], [t('events.resourceName'), row.resource_name], [t('events.resourceId'), row.resource_id],
 			[t('events.action'), row.action], [t('events.eventType'), row.event_type], [t('events.requestId'), row.request_id],
 			[t('events.externalId'), row.external_id], [t('events.errorType'), row.extra?.error_type], [t('events.errorCode'), row.extra?.error_code],
+			[t('events.method'), row.extra?.method], [t('events.route'), row.extra?.route], [t('events.stage'), row.extra?.stage],
+			[tLogin('method'), row.extra?.auth_method === 'password' ? tLogin('password') : row.extra?.auth_method === 'federated' ? tLogin('federated') : null],
+			[t('events.duration'), row.extra?.duration_ms], [t('events.control'), row.extra?.control], [t('events.ordinal'), row.extra?.ordinal],
+			[t('events.destination'), row.extra?.destination], [t('events.interactionId'), row.extra?.interaction_id],
+			[t('events.severity'), row.extra?.severity], [t('events.logger'), row.extra?.logger],
+			[t('events.function'), row.extra?.function], [t('events.line'), row.extra?.line],
 		];
 	}
 
@@ -151,6 +174,7 @@
 		const requestGeneration = ++generation;
 		++detailGeneration;
 		selected = null;
+		timeline = []; timelineError = null; timelineLoading = false;
 		detailError = null;
 		events = [];
 		cursor = null;
@@ -183,7 +207,7 @@
 		reload(applied);
 	}
 	function reset() {
-		range = '7d'; user = ''; username = ''; service = ''; pageFilter = ''; resource = ''; resourceId = ''; action = ''; status = ''; source = '';
+		range = '7d'; user = ''; username = ''; service = ''; pageFilter = ''; resource = ''; resourceId = ''; action = ''; status = ''; source = ''; requestId = ''; interactionId = '';
 		setAdminInventoryScope('', '');
 		applied = query();
 		reload(applied);
@@ -203,22 +227,47 @@
 		++detailGeneration;
 		selected = null;
 		detailError = null;
+		timeline = []; timelineError = null; timelineLoading = false;
 	}
 	async function showDetail(row: EventRecord) {
 		const current = ++detailGeneration;
 		selected = row;
 		detailLoading = true;
 		detailError = null;
+		timeline = []; timelineError = null; timelineLoading = false; timelineSource = '';
 		const token = $auth.token;
 		const projectId = $auth.projectId ?? undefined;
-		if (!token) return;
+		const owns = () => current === detailGeneration && $auth.token === token && ($auth.projectId ?? undefined) === projectId;
+		if (!token) { detailLoading = false; return; }
 		try {
-			const full = await api.get<EventRecord>(`${base}/${row.id}`, token, projectId);
-			if (current === detailGeneration && $auth.token === token && ($auth.projectId ?? undefined) === projectId) selected = full;
+			const scopeParams = new URLSearchParams();
+			const filters = new URLSearchParams(applied);
+			for (const name of ['domain_id', 'project_id']) { const value = filters.get(name); if (value) scopeParams.set(name, value); }
+			const full = await api.get<EventRecord>(`${base}/${row.id}${scopeParams.size ? `?${scopeParams}` : ''}`, token, projectId);
+			if (!owns()) return;
+			selected = full;
+			detailLoading = false;
+			if (full.request_id || full.extra?.interaction_id) {
+				timelineLoading = true;
+				const params = new URLSearchParams(applied);
+				// Preserve authority/domain/project/time bounds, not unrelated list filters.
+				for (const name of ['user_id', 'username', 'service', 'page', 'resource_type', 'resource_id', 'action', 'status', 'source', 'request_id', 'interaction_id']) params.delete(name);
+				params.set('limit', '50');
+				if (full.extra?.interaction_id) params.set('interaction_id', full.extra.interaction_id);
+				else if (full.request_id) params.set('request_id', full.request_id);
+				try {
+					const rows = await api.get<EventRecord[]>(`${base}?${params}`, token, projectId);
+					if (owns()) timeline = rows.slice(0, 50).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
+				} catch (error) {
+					if (owns()) timelineError = message(error);
+				} finally {
+					if (owns()) timelineLoading = false;
+				}
+			}
 		} catch (error) {
-			if (current === detailGeneration) detailError = message(error);
+			if (owns()) detailError = message(error);
 		} finally {
-			if (current === detailGeneration) detailLoading = false;
+			if (owns()) detailLoading = false;
 		}
 	}
 
@@ -241,6 +290,7 @@
 		{/snippet}
 	</PageHeader>
 	<p class="mb-6 text-sm text-ink-2">{t('events.collectionNotice')}</p>
+	<p class="mb-6 text-sm tabular-nums text-ink-2" role="status">{t('events.localDelivery', { queued: $interactionAuditHealth.queued, sent: $interactionAuditHealth.sent, dropped: $interactionAuditHealth.dropped, failed: $interactionAuditHealth.failedBatches })}</p>
 
 	<Card surface="base" class="mb-6">
 		<form onsubmit={apply} aria-label={t('events.filters')}>
@@ -255,8 +305,10 @@
 				<Field label={t('events.resourceType')} for="event-resource"><TextInput id="event-resource" bind:value={resource} /></Field>
 				<Field label={t('events.resourceId')} for="event-resource-id"><TextInput id="event-resource-id" bind:value={resourceId} /></Field>
 				<Field label={t('events.action')} for="event-action"><TextInput id="event-action" bind:value={action} /></Field>
-				<Field label={t('events.status')} for="event-status"><SelectInput id="event-status" bind:value={status}><option value="">{t('events.all')}</option><option value="started">{t('events.started')}</option><option value="success">{t('events.success')}</option><option value="failed">{t('events.failed')}</option></SelectInput></Field>
-				<Field label={t('events.source')} for="event-source"><SelectInput id="event-source" bind:value={source}><option value="">{t('events.all')}</option><option value="afterglow">Afterglow</option><option value="openstack">OpenStack</option></SelectInput></Field>
+				<Field label={t('events.status')} for="event-status"><SelectInput id="event-status" bind:value={status}><option value="">{t('events.all')}</option><option value="started">{t('events.started')}</option><option value="success">{t('events.success')}</option><option value="failed">{t('events.failed')}</option><option value="observed">{t('events.observed')}</option></SelectInput></Field>
+				<Field label={t('events.source')} for="event-source"><SelectInput id="event-source" bind:value={source}><option value="">{t('events.all')}</option><option value="afterglow">Afterglow</option><option value="openstack">OpenStack</option><option value="browser">{t('events.browser')}</option></SelectInput></Field>
+				<Field label={t('events.requestId')} for="event-request"><TextInput id="event-request" bind:value={requestId} /></Field>
+				<Field label={t('events.interactionId')} for="event-interaction"><TextInput id="event-interaction" bind:value={interactionId} /></Field>
 			</div>
 			<div class="mt-4 flex flex-wrap gap-2"><Button type="submit">{t('events.applyFilters')}</Button><Button type="button" variant="secondary" onclick={reset}>{t('events.reset')}</Button></div>
 		</form>
@@ -266,7 +318,8 @@
 		<h2 class="mb-3 text-base font-semibold text-ink-0">{t('events.failureAnalysis')}</h2>
 		{#if statsError}<Alert tone="danger" title={t('events.statsFailed')}>{statsError}</Alert>{/if}
 		{#if stats && !statsLoading && !statsError}<p class="mb-3 text-sm tabular-nums text-ink-2">{t('events.statsSummary', { total: stats.total, failed: stats.failed, success: stats.success, started: stats.started })}</p>{/if}
-		{#if statsLoading}<ActivityIndicator label={t('events.statsLoading')} />
+		{#if stats && !statsLoading && !statsError}<p class="mb-3 text-sm tabular-nums text-ink-2">{t('events.observedSummary', { count: stats.observed ?? 0 })}</p>{/if}
+		{#if statsLoading}<LoadingState variant="section" label={t('events.statsLoading')} />
 		{:else if !statsError}
 			<div class="motion-stagger grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 				{#each dimensions as dimension}
@@ -287,7 +340,7 @@
 	<section aria-label={t('events.list')}>
 		<h2 class="mb-3 text-base font-semibold text-ink-0">{t('events.list')}</h2>
 		{#if listError}<Alert tone="danger" title={t('events.listFailed')}>{listError} <Button variant="secondary" size="sm" onclick={retryList}>{t('events.retry')}</Button></Alert>{/if}
-		{#if loading}<ActivityIndicator label={t('events.listLoading')} />
+		{#if loading}<LoadingState variant="table" columns={7} label={t('events.listLoading')} />
 		{:else if events.length === 0 && !listError}<Card surface="base"><p class="text-sm text-ink-2">{t('events.noEvents')}</p></Card>
 		{:else if events.length > 0}
 			<ResponsiveTable>
@@ -296,7 +349,7 @@
 						<CompactResourceCard>
 							<div class="flex min-w-0 items-start justify-between gap-2">
 								<span class="min-w-0 font-medium">{row.resource_name || row.resource_type}</span>
-								<Pill tone={row.status === 'failed' ? 'danger' : row.status === 'success' ? 'success' : row.status === 'started' ? 'info' : 'neutral'}>{row.status === 'failed' ? t('events.failed') : row.status === 'success' ? t('events.success') : row.status === 'started' ? t('events.started') : row.status}</Pill>
+							<Pill tone={row.status === 'failed' ? 'danger' : row.status === 'success' ? 'success' : row.status === 'started' ? 'info' : 'neutral'}>{row.status === 'failed' ? t('events.failed') : row.status === 'success' ? t('events.success') : row.status === 'started' ? t('events.started') : row.status === 'observed' ? t('events.observed') : row.status}</Pill>
 							</div>
 							<dl>
 								<div><dt>{t('events.action')}</dt><dd>{row.action}</dd></div>
@@ -320,13 +373,13 @@
 			<TableShell>
 				<table><thead><tr><th scope="col">{t('events.time')}</th><th scope="col">{t('events.status')}</th><th scope="col">{t('events.serviceSource')}</th><th scope="col">{t('events.projectUser')}</th><th scope="col">{t('events.resource')}</th><th scope="col">{t('events.action')}</th><th scope="col">{t('events.details')}</th></tr></thead>
 					<tbody>{#each events as row (row.id)}
-						<tr><td class="whitespace-nowrap tabular-nums">{date(row.created_at)}</td><td><Pill tone={row.status === 'failed' ? 'danger' : row.status === 'success' ? 'success' : row.status === 'started' ? 'info' : 'neutral'}>{row.status === 'failed' ? t('events.failed') : row.status === 'success' ? t('events.success') : row.status === 'started' ? t('events.started') : row.status}</Pill></td>
+						<tr><td class="whitespace-nowrap tabular-nums">{date(row.created_at)}</td><td><Pill tone={row.status === 'failed' ? 'danger' : row.status === 'success' ? 'success' : row.status === 'started' ? 'info' : 'neutral'}>{row.status === 'failed' ? t('events.failed') : row.status === 'success' ? t('events.success') : row.status === 'started' ? t('events.started') : row.status === 'observed' ? t('events.observed') : row.status}</Pill></td>
 						<td>{row.service || t('events.unknown')} <span class="text-ink-2">/ {row.source}</span></td><td><span class="block max-w-40 truncate" title={row.project_id}>{row.project_id || t('events.unknown')}</span><span class="block max-w-40 truncate text-ink-2" title={row.username || row.user_id}>{row.username || row.user_id || t('events.unknown')}</span></td>
 						<td><span class="block max-w-40 truncate" title={row.resource_name || row.resource_type}>{row.resource_name || row.resource_type}</span><span class="block text-ink-2">{row.resource_type}</span></td><td>{row.action}</td><td><Button variant="secondary" size="sm" onclick={() => showDetail(row)} ariaLabel={t('events.viewDetailsAria', { action: row.action, id: row.id })}>{t('events.viewDetails')}</Button></td></tr>
 					{/each}</tbody></table>
 			</TableShell>
 			</ResponsiveTable>
-			{#if cursor}<div class="mt-4 flex justify-center"><Button variant="secondary" disabled={moreLoading || !!listError} ariaBusy={moreLoading} onclick={loadMore}>{#if moreLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{moreLoading ? t('events.loading') : t('events.showMore')}</Button></div>{/if}
+			{#if cursor}<div class="mt-4 flex justify-center"><Button variant="secondary" disabled={moreLoading || !!listError} ariaBusy={moreLoading} onclick={loadMore}>{#if moreLoading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{moreLoading ? t('events.loading') : t('events.showMore')}</Button></div>{/if}
 		{/if}
 	</section>
 
@@ -334,7 +387,7 @@
 		<SlidePanel onClose={closeDetail} ariaLabel={t('events.detailAria', { id: selected.id })} width="w-full md:w-[60vw] max-w-3xl" resizable={false}>
 			<div class="p-4 md:p-6">
 				<h2 class="mb-4 text-base font-semibold">{t('events.detailTitle', { id: selected.id })}</h2>
-				{#if detailLoading}<ActivityIndicator label={t('events.detailLoading')} />{/if}
+				{#if detailLoading}<LoadingState variant="section" label={t('events.detailLoading')} />{/if}
 				{#if detailError}<Alert tone="danger" title={t('events.detailFailed')}>{detailError} <Button variant="secondary" size="sm" onclick={() => selected && showDetail(selected)}>{t('events.retry')}</Button></Alert>{/if}
 				{#if !detailLoading && !detailError}
 					<dl class="motion-fade grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
@@ -343,6 +396,30 @@
 						{/each}
 					</dl>
 					<h3 class="mt-5 mb-2 text-sm font-semibold">{t('events.errorMessage')}</h3><p class="whitespace-pre-wrap break-words rounded-md border border-line bg-surface-sunken p-3 text-sm text-ink-1">{selected.error_message || (selected.source === 'openstack' ? t('events.openstackErrorNotice') : t('events.noErrorMessage'))}</p>
+					<section class="mt-6">
+						<h3 class="mb-2 text-sm font-semibold">{t('events.timeline')}</h3>
+						<p class="mb-3 text-sm text-ink-2">{t('events.timelineNotice')}</p>
+						{#if timelineLoading}<LoadingState variant="section" label={t('events.detailLoading')} />{/if}
+						{#if timelineError}<Alert tone="danger" title={t('events.timelineFailed')}>{timelineError} <Button variant="secondary" size="sm" onclick={() => selected && showDetail(selected)}>{t('events.retry')}</Button></Alert>{/if}
+						{#if !timelineLoading && !timelineError}
+							<Field label={t('events.source')} for="timeline-source"><SelectInput id="timeline-source" bind:value={timelineSource}><option value="">{t('events.all')}</option><option value="browser">{t('events.browser')}</option><option value="afterglow">Afterglow</option><option value="openstack">OpenStack</option></SelectInput></Field>
+							{#if !visibleTimeline.length}<p class="mt-3 text-sm text-ink-2">{t('events.noTimeline')}</p>
+							{:else}<div class="mt-3 max-h-96 overflow-auto rounded-md border border-line p-3" role="region" aria-label={t('events.timeline')}>
+								<ol class="space-y-4">
+									{#each visibleTimeline as item (item.id)}
+										<li class="min-w-0 text-sm">
+											<p class="break-words font-medium">{item.source === 'browser' ? t('events.browser') : item.source} · {item.action} · {item.status === 'observed' ? t('events.observed') : item.status === 'started' ? t('events.started') : item.status === 'success' ? t('events.success') : item.status === 'failed' ? t('events.failed') : item.status}</p>
+											<p class="mt-1 break-all text-ink-2">{date(item.created_at)} · {item.extra?.method ?? '—'} {item.extra?.route ?? item.page ?? '—'} · {item.extra?.stage ?? '—'}</p>
+											{#if item.extra?.control}<p class="mt-1 break-all text-ink-2">{t('events.control')}: {item.extra.control} · {t('events.ordinal')}: {item.extra.ordinal ?? '—'} · {t('events.destination')}: {item.extra.destination ?? '—'}</p>{/if}
+											{#if item.http_status != null || item.extra?.duration_ms != null}<p class="mt-1 tabular-nums text-ink-2">{t('events.httpStatus')}: {item.http_status ?? '—'} · {t('events.duration')}: {item.extra?.duration_ms ?? '—'}</p>{/if}
+											{#if item.extra?.severity}<p class="mt-1 break-all text-ink-2">{t('events.severity')}: {item.extra.severity} · {item.extra.logger ?? '—'} · {item.extra.function ?? '—'}:{item.extra.line ?? '—'}</p>{/if}
+											<Button variant="secondary" size="sm" onclick={() => showDetail(item)} ariaLabel={t('events.viewDetailsAria', { action: item.action, id: item.id })}>{t('events.viewDetails')}</Button>
+										</li>
+									{/each}
+								</ol>
+							</div>{/if}
+						{/if}
+					</section>
 				{/if}
 			</div>
 		</SlidePanel>

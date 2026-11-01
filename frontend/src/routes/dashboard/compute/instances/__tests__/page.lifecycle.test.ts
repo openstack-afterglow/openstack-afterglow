@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { derived, writable } from 'svelte/store';
+import { derived, get, writable, type Writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ vi.mock('$lib/api/client', () => ({
 	api: { get: mocks.get, post: mocks.post, delete: mocks.delete },
 	ApiError: class extends Error { status = 500; },
 }));
+vi.mock('$app/stores', () => ({ page: writable({ url: new URL('http://localhost/dashboard/compute/instances'), data: {} }) }));
 vi.mock('$lib/stores/auth', () => {
 	const auth = writable({ token: 'token-a', projectId: 'project-a', canWrite: true });
 	return { auth, canWrite: derived(auth, ($auth) => $auth.canWrite) };
@@ -27,8 +28,13 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 
 import { auth } from '$lib/stores/auth';
+import { page } from '$app/stores';
+import { wizardOpen } from '$lib/stores/wizard';
+import { sidebarOpen } from '$lib/stores/sidebar';
 import { t } from '$lib/i18n/ns/instance';
+import { t as commonT } from '$lib/i18n/ns/common';
 import Page from '../+page.svelte';
+const mockPage = page as unknown as Writable<{ url: URL; data: { mockup?: { active: boolean; profile: string } } }>;
 
 const instance = (id: string, status = 'SHUTOFF'): Instance => ({
 	id, name: id, status, image_name: 'Ubuntu', flavor_name: 'small', ip_addresses: [],
@@ -62,6 +68,9 @@ async function settle(pending: { resolve(value: boolean): void }) {
 describe('consumer instance list lifecycle safety', () => {
 	beforeEach(() => {
 		rows = [instance('vm-a'), instance('vm-b')];
+		wizardOpen.set(false);
+		sidebarOpen.close();
+		mockPage.set({ url: new URL('http://localhost/dashboard/compute/instances'), data: {} });
 		auth.update((state) => ({ ...state, token: 'token-a', projectId: 'project-a', canWrite: true }));
 		mocks.get.mockReset().mockImplementation((path: string) => Promise.resolve(
 			path.endsWith('metrics-summary-batch') ? { monitoring_available: false, instances: {} } : rows,
@@ -69,6 +78,93 @@ describe('consumer instance list lifecycle safety', () => {
 		mocks.post.mockReset().mockResolvedValue({ results: [{ id: 'vm-a', ok: true }, { id: 'vm-b', ok: true }] });
 		mocks.delete.mockReset().mockResolvedValue(undefined);
 		mocks.confirm.mockReset().mockResolvedValue(true);
+	});
+	afterEach(() => { wizardOpen.set(false); sidebarOpen.close(); });
+
+	it.each([false, true])('opens the existing VM wizard from the instance page with tutorial=%s', async tutorial => {
+		mockPage.set({
+			url: new URL(`http://localhost/dashboard/compute/instances${tutorial ? '?tutorial=on' : ''}`),
+			data: tutorial ? { mockup: { active: true, profile: 'on' } } : {},
+		});
+		await mount();
+		expect(document.querySelector('[data-tour="instance-list"]')).not.toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('list.createVmAction') }));
+		expect(get(wizardOpen)).toBe(true);
+		expect(document.querySelector('[data-tour="instance-list"]')).toBeNull();
+		expect(get(sidebarOpen)).toBe(false);
+		expect(mocks.post).not.toHaveBeenCalled();
+		rows = [...rows, instance('vm-created')];
+		wizardOpen.set(false);
+		await waitFor(() => expect(document.querySelector('[data-tour="instance-list"]')).not.toBeNull());
+		expect(await screen.findByRole('button', { name: 'vm-created' })).toBeTruthy();
+	});
+
+	it('renders newest first and applies every sort choice across refresh without reordering source rows', async () => {
+		rows = [
+			{ ...instance('vm-a'), created_at: '2026-01-01T00:00:00Z' },
+			{ ...instance('vm-c'), created_at: '2026-02-01T00:00:00Z' },
+			{ ...instance('vm-b'), created_at: '2026-03-01T00:00:00Z' },
+		];
+		const { container } = render(Page);
+		await screen.findByRole('button', { name: 'vm-a' });
+		const order = () => screen.getAllByRole('button', { name: /^vm-[a-d]$/ }).map((button) => button.textContent?.trim());
+		const selector = container.querySelector<HTMLSelectElement>('#project-instance-sort')!;
+		expect(selector.value).toBe('created_desc');
+		expect(order()).toEqual(['vm-b', 'vm-c', 'vm-a']);
+		for (const [value, expected] of [
+			['created_asc', ['vm-a', 'vm-c', 'vm-b']],
+			['name_asc', ['vm-a', 'vm-b', 'vm-c']],
+			['name_desc', ['vm-c', 'vm-b', 'vm-a']],
+			['created_desc', ['vm-b', 'vm-c', 'vm-a']],
+		] as const) {
+			await fireEvent.change(selector, { target: { value } });
+			expect(order()).toEqual(expected);
+		}
+		expect(rows.map((row) => row.id)).toEqual(['vm-a', 'vm-c', 'vm-b']);
+		await fireEvent.change(selector, { target: { value: 'name_desc' } });
+		rows = [...rows, { ...instance('vm-d'), created_at: '2025-01-01T00:00:00Z' }];
+		await mocks.refresh!();
+		await screen.findByRole('button', { name: 'vm-d' });
+		expect(selector.value).toBe('name_desc');
+		expect(order()).toEqual(['vm-d', 'vm-c', 'vm-b', 'vm-a']);
+	});
+
+	it('searches the complete project snapshot by name or UUID and resets display pagination for filters', async () => {
+		rows = Array.from({ length: 23 }, (_, index) => ({
+			...instance(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, index % 2 ? 'ACTIVE' : 'SHUTOFF'),
+			name: `vm-${String(index).padStart(2, '0')}`,
+		}));
+		const { container } = render(Page);
+		await screen.findByRole('button', { name: 'vm-00' });
+		await fireEvent.change(screen.getByLabelText(t('list.pageSize')), { target: { value: '10' } });
+		expect(screen.getAllByRole('button', { name: /^vm-\d\d$/ })).toHaveLength(10);
+		await fireEvent.click(screen.getByRole('checkbox', { name: t('row.select', { name: 'vm-00' }) }).closest('label')!);
+		expect(bulkDelete()).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.next') }));
+		expect(screen.queryByRole('button', { name: 'vm-00' })).toBeNull();
+		expect(screen.queryByRole('region', { name: t('list.bulkActions') })).toBeNull();
+		const search = screen.getByRole('searchbox', { name: t('list.search') });
+		await fireEvent.input(search, { target: { value: rows[22].id } });
+		expect(screen.getByRole('button', { name: 'vm-22' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: commonT('pagination.previous') }).hasAttribute('disabled')).toBe(true);
+		await fireEvent.input(search, { target: { value: 'vm-0' } });
+		await fireEvent.change(container.querySelector('#project-instance-status')!, { target: { value: 'ACTIVE' } });
+		expect(screen.getAllByRole('button', { name: /^vm-\d\d$/ })).toHaveLength(5);
+		await fireEvent.input(search, { target: { value: 'missing-resource' } });
+		expect(screen.getByText(t('list.filteredEmpty'))).toBeTruthy();
+		expect(screen.queryByText(t('list.emptyTitle'))).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('list.clearFilters') }));
+		expect(screen.getAllByRole('button', { name: /^vm-\d\d$/ })).toHaveLength(10);
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('does not describe first-load query failure as an empty project', async () => {
+		mocks.get.mockRejectedValue(new Error('unavailable'));
+		render(Page);
+		await screen.findByRole('alert');
+		expect(screen.queryByText(t('list.emptyTitle'))).toBeNull();
+		expect(screen.queryByText(t('list.filteredEmpty'))).toBeNull();
+		expect(screen.getByRole('button', { name: t('list.retry') })).toBeTruthy();
 	});
 
 	it('never offers deletion for mixed, missing or non-exact stopped selections', async () => {

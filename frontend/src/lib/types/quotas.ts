@@ -1,5 +1,5 @@
 export interface Project { id: string; name: string; }
-export interface QuotaLimit { limit: number; in_use: number; reserved?: number; }
+export interface QuotaLimit extends QuotaItem { reserved?: number; }
 export interface ComputeQuotas {
 	instances?: QuotaLimit;
 	cores?: QuotaLimit;
@@ -53,14 +53,34 @@ export interface QuotaUpdateResponse {
 	updated: string[];
 	errors: Record<string, string>;
 }
-export interface GpuQuota { gpu_type: string; limit: number; in_use: number; available: number; }
+export interface GpuQuota extends QuotaItem { gpu_type: string; available: number; }
 export interface GpuDefaultQuota { gpu_type: string; limit: number; }
-export interface QuotaItem { limit: number; in_use: number; }
+export interface QuotaItem {
+	limit: number;
+	in_use: number;
+	available?: number | null;
+	quota_scope?: 'project' | 'domain';
+	domain_id?: string | null;
+	project_limit?: number | null;
+	project_in_use?: number | null;
+}
+export interface ComputePoolSummary {
+	state: 'unmanaged' | 'active' | 'paused' | 'unavailable';
+	domain_id: string | null;
+	limits: Record<string, number>;
+	usage: Record<string, number | null>;
+	available: Record<string, number | null>;
+	project_limits: Record<string, number>;
+	project_usage: Record<string, number | null>;
+	project_available: Record<string, number | null>;
+	error?: string;
+}
 export interface ManilaFileQuota { shares: QuotaItem; gigabytes: QuotaItem; share_networks: QuotaItem; }
 
 /** Full `/api/v1/dashboard/quotas` view; optional keys depend on enabled services and adapter fallbacks. */
 export interface DashboardQuotas {
-  compute: { instances: QuotaItem; cores: QuotaItem; ram: QuotaItem; key_pairs?: QuotaItem; server_groups?: QuotaItem };
+  compute: { instances: QuotaItem; cores: QuotaItem | null; ram: QuotaItem | null; key_pairs?: QuotaItem; server_groups?: QuotaItem };
+  native_compute?: ComputeQuotas | null;
   storage: {
     volumes: QuotaItem;
     gigabytes: QuotaItem;
@@ -83,6 +103,7 @@ export interface DashboardQuotas {
   gpu_available?: boolean;
   database?: { instances_count: number };
   object_storage?: { container_count: number; object_count: number; bytes_used: number };
+  compute_pool?: ComputePoolSummary;
 }
 export interface DashboardAlert {
 	type: 'quota' | 'instance_error';
@@ -92,9 +113,10 @@ export interface DashboardAlert {
 }
 
 export interface DashboardOverviewQuotas {
-	compute: { instances: QuotaItem; cores: QuotaItem; ram: QuotaItem };
+	compute: { instances: QuotaItem; cores: QuotaItem | null; ram: QuotaItem | null };
 	storage: { volumes: QuotaItem; gigabytes: QuotaItem };
 	network: { floatingip: QuotaItem };
 	file_storage: { shares: QuotaItem; gigabytes: QuotaItem; share_networks?: QuotaItem } | null;
 	alerts: DashboardAlert[];
+	compute_pool?: ComputePoolSummary;
 }

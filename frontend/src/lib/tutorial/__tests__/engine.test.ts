@@ -19,20 +19,26 @@ const driverHarness = vi.hoisted(() => {
 });
 
 vi.mock('driver.js', () => ({ driver: driverHarness.driver }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn().mockResolvedValue(undefined) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { sidebarOpen } from '$lib/stores/sidebar';
+import { goto } from '$app/navigation';
 import { refreshTourAnchor, startTour, stopTour } from '../engine';
 import { clearPersistedTour, readPersistedTour, waitForElement } from '../engine';
 import { getTour, isTourId, tours, TOUR_IDS, TOUR_STORAGE_KEY } from '../tours';
+import { closeWizard, resetWizard, wizard, wizardOpen } from '$lib/stores/wizard';
 
 const originalInnerWidth = window.innerWidth;
+const originalLocation = window.location.href;
 const originalGetClientRects = HTMLElement.prototype.getClientRects;
 
 beforeEach(() => {
 	sessionStorage.clear();
 	document.body.innerHTML = '';
 	sidebarOpen.close();
+	wizardOpen.set(false);
+	vi.mocked(goto).mockReset().mockResolvedValue(undefined);
 	driverHarness.highlight.mockClear();
 	driverHarness.refresh.mockClear();
 	driverHarness.destroy.mockClear();
@@ -47,6 +53,8 @@ afterEach(() => {
 	sessionStorage.clear();
 	document.body.innerHTML = '';
 	sidebarOpen.close();
+	wizardOpen.set(false);
+	window.history.replaceState({}, '', originalLocation);
 	Object.defineProperty(window, 'innerWidth', { value: originalInnerWidth, configurable: true });
 	HTMLElement.prototype.getClientRects = originalGetClientRects;
 });
@@ -109,16 +117,95 @@ describe('tour definitions', () => {
 		expect(tenant?.steps[1].readyElement).toBe('[data-tour="waygate-ready"]');
 	});
 
+	it.each(['studio', 'profiles'])('settles the studio route from tab=%s without repeated navigation', async tab => {
+		window.history.replaceState({}, '', `/admin/libraries?tab=${tab}&tutorial=admin`);
+		document.body.innerHTML = '<div data-tour="admin-library-import"></div>';
+		vi.mocked(goto).mockImplementation(async url => {
+			window.history.replaceState({}, '', `${url}&tutorial=admin`);
+		});
+		await startTour('admin-library', 1);
+		expect(goto).toHaveBeenCalledTimes(tab === 'studio' ? 0 : 1);
+		const highlights = driverHarness.highlight.mock.calls.length;
+		refreshTourAnchor();
+		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenCalledTimes(highlights + 1));
+		expect(goto).toHaveBeenCalledTimes(tab === 'studio' ? 0 : 1);
+	});
+
+	it('keeps unrelated query parameters on an already matching queryless route', async () => {
+		window.history.replaceState({}, '', '/admin/libraries?tutorial=admin&tab=catalog');
+		document.body.innerHTML = '<div data-tour="admin-library-header"></div><div data-tour="admin-library-ready"></div>';
+		await startTour('admin-library');
+		expect(goto).not.toHaveBeenCalled();
+	});
+
 
 });
 
 describe('VM tour engine behavior', () => {
+	it('finishes after the real successful reset-then-close sequence instead of returning to Flavor', async () => {
+		document.body.innerHTML = '<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div><button data-tour="wizard-next">deploy</button><div data-tour="instance-list"></div>';
+		wizard.update(value => ({ ...value, step: 6 }));
+		wizardOpen.set(true);
+		await startTour('vm-create', 4);
+		document.querySelector<HTMLButtonElement>('[data-tour="wizard-next"]')!.click();
+		await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 5 }));
+		resetWizard();
+		closeWizard();
+		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ element: '[data-tour="instance-list"]' })));
+		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 5 });
+		driverHarness.options().onNextClick();
+		expect(readPersistedTour()).toBeNull();
+	});
+	it.each([false, true])('cancels deployment waiting without completion after capacity correction=%s', async correction => {
+		document.body.innerHTML = '<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div><button data-tour="wizard-next">deploy</button><button data-tour="wizard-cancel">cancel</button><div data-tour="instance-list"></div>';
+		wizardOpen.set(true);
+		const complete = vi.fn();
+		window.addEventListener('afterglow:tour-complete', complete);
+		try {
+			await startTour('vm-create', 4);
+			document.querySelector<HTMLButtonElement>('[data-tour="wizard-next"]')!.click();
+			await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 5 }));
+			if (correction) {
+				window.dispatchEvent(new CustomEvent('afterglow:wizard-step', { detail: { step: 2 } }));
+				await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 1 }));
+				await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ popover: expect.objectContaining({ title: expect.stringContaining('플레이버 선택') }) })));
+			}
+			document.querySelector<HTMLButtonElement>('[data-tour="wizard-cancel"]')!.click();
+			wizardOpen.set(false);
+			await Promise.resolve();
+			expect(readPersistedTour()).toBeNull();
+			expect(complete).not.toHaveBeenCalled();
+		} finally {
+			window.removeEventListener('afterglow:tour-complete', complete);
+		}
+	});
+	it('waits for the instance route and page action without opening global navigation', async () => {
+		const route = Promise.withResolvers<void>();
+		vi.mocked(goto).mockImplementationOnce(async () => {
+			await route.promise;
+			document.body.innerHTML = '<button data-tour="vm-create-open">create</button>';
+		});
+		sidebarOpen.open();
+		const starting = startTour('vm-create');
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/dashboard/compute/instances'));
+		expect(driverHarness.highlight).not.toHaveBeenCalled();
+		route.resolve();
+		await starting;
+		expect(get(sidebarOpen)).toBe(false);
+		expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ element: '[data-tour="vm-create-open"]' }));
+		const button = document.querySelector<HTMLButtonElement>('[data-tour="vm-create-open"]')!;
+		button.addEventListener('click', () => {
+			document.body.insertAdjacentHTML('beforeend', '<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div>');
+		}, { once: true });
+		button.click();
+		await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 1 }));
+		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ element: '[data-tour="wizard-panel"]' })));
+	});
 	it('tracks Flavor then image in both directions and finishes after deployment', async () => {
 		document.body.innerHTML = `
 			<div data-tour="wizard-panel"><div data-tour="wizard-body"></div></div>
 			<button data-tour="wizard-next">deploy</button>
 			<button data-tour="wizard-cancel">cancel</button>
-			<div data-tour="dashboard-recent"></div>
 		`;
 		await startTour('vm-create', 1);
 		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 1 });
@@ -142,9 +229,18 @@ describe('VM tour engine behavior', () => {
 			}));
 		}
 
+		wizardOpen.set(true);
 		document.querySelector<HTMLButtonElement>('[data-tour="wizard-next"]')!.click();
+		expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ element: '[data-tour="wizard-panel"]' }));
+		document.body.insertAdjacentHTML('beforeend', '<div data-tour="instance-list"></div>');
+		vi.useFakeTimers();
+		await vi.advanceTimersByTimeAsync(25000);
+		expect(driverHarness.highlight).toHaveBeenLastCalledWith(expect.objectContaining({ element: '[data-tour="wizard-panel"]' }));
+		wizardOpen.set(false);
+		await vi.advanceTimersByTimeAsync(0);
+		vi.useRealTimers();
 		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenLastCalledWith(
-			expect.objectContaining({ element: '[data-tour="dashboard-recent"]' }),
+			expect.objectContaining({ element: '[data-tour="instance-list"]' }),
 		));
 		expect(readPersistedTour()).toEqual({ tourId: 'vm-create', stepIndex: 5 });
 		driverHarness.options().onNextClick();

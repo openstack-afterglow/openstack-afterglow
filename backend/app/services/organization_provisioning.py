@@ -224,15 +224,15 @@ async def require_current(row, *, ks, user_id=None, subject=None):
             if binding is None:
                 raise DomainAuthConflict("Organization binding is unknown", code="organization_binding_unknown")
             _check_binding(binding, row, organization, key)
-            await asyncio.to_thread(_native_binding, ks, binding)
-            if user_id is not None:
-                await asyncio.to_thread(domain_projects.assert_membership, user_id, binding.domain_id, ks=ks)
-                if subject in organization.manager_subjects and not await asyncio.to_thread(
-                    domain_projects.has_manager, user_id, binding.domain_id, ks=ks
-                ):
-                    raise DomainAuthDenied(
-                        "Organization manager authority changed", code="organization_membership_changed"
-                    )
+        # The binding is a fully loaded read-only snapshot, not a SQL lock on
+        # native membership. Release its connection before provider waits.
+        await asyncio.to_thread(_native_binding, ks, binding)
+        if user_id is not None:
+            await asyncio.to_thread(domain_projects.assert_membership, user_id, binding.domain_id, ks=ks)
+            if subject in organization.manager_subjects and not await asyncio.to_thread(
+                domain_projects.has_manager, user_id, binding.domain_id, ks=ks
+            ):
+                raise DomainAuthDenied("Organization manager authority changed", code="organization_membership_changed")
     except SQLAlchemyError:
         raise DomainAuthUnavailable("Organization binding storage is unavailable") from None
 

@@ -4,14 +4,19 @@ Signed IdP/native federation wires and domain creation are controlled doubles;
 no live Keystone provisioning capability is claimed by these tests.
 """
 
+import asyncio
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from app.models.auth_settings import AuthSettings
+from app.models.domain_auth import DomainLoginPolicy
 from app.models.organization_provisioning import OrganizationBinding
 from app.services import domain_auth as auth
 from app.services import domain_projects, organization_provisioning, project_service
@@ -510,3 +515,105 @@ async def test_settlement_http_routes_require_admin_confirmation_and_hide_secret
         assert partial.status_code == 409 and partial.json()["code"] == "organization_settlement_incomplete"
         assert SECRET not in partial.text
     assert (await binding(env)).status == "uncertain" and len(env.org_creates) == 1
+
+
+@pytest.fixture
+async def single_slot_current_org(org_env, monkeypatch):
+    """Use real async SQL with one slot shared by organization and login reads."""
+    from app import database
+
+    await callback(org_env)
+    provider = await auth._load_config_provider("dom-a", "cfg:org")
+    async with org_env.db() as session:
+        url = session.bind.url
+    engine = create_async_engine(url, poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0, pool_timeout=0.1)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(database, "get_session_factory", lambda: factory)
+    try:
+        yield org_env, provider, factory
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("cancel_current", [False, True])
+async def test_slow_current_organization_does_not_block_login_policy(
+    single_slot_current_org, monkeypatch, cancel_current
+):
+    env, provider, factory = single_slot_current_org
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    original = env.keystone.domains.get
+
+    def slow_domain(identity):
+        entered.set()
+        try:
+            if not release.wait(5):
+                raise TimeoutError("Synthetic native provider was not released")
+            return original(identity)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(env.keystone.domains, "get", slow_domain)
+    current = asyncio.create_task(
+        organization_provisioning.require_current(provider, ks=env.keystone, user_id="fed-user")
+    )
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 2), timeout=3)
+        if cancel_current:
+            current.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await current
+        # This needs the same sole SQL connection while the native call remains
+        # blocked. Before the fix it fails with DomainAuthUnavailable/checkout timeout.
+        policy = await asyncio.wait_for(auth.require_password("dom-accounts", "dev@corp.example"), timeout=1)
+        assert policy.password_enabled
+        assert current.cancelled() if cancel_current else not current.done()
+        async with factory() as session, session.begin():
+            session.add(
+                DomainLoginPolicy(
+                    domain_id="dom-accounts", password_enabled=False, updated_by_user_id="synthetic-test-admin"
+                )
+            )
+        with pytest.raises(auth.DomainAuthDenied) as denied:
+            await asyncio.wait_for(auth.require_password("dom-accounts", "dev@corp.example"), timeout=1)
+        assert denied.value.code == "password_disabled"
+    finally:
+        release.set()
+        try:
+            if not current.cancelled():
+                await asyncio.wait_for(current, timeout=3)
+        finally:
+            assert await asyncio.wait_for(asyncio.to_thread(finished.wait, 2), timeout=3)
+
+
+async def test_current_organization_unknown_binding_still_conflicts(single_slot_current_org):
+    env, provider, factory = single_slot_current_org
+    async with factory() as session, session.begin():
+        saved = await session.get(
+            OrganizationBinding, organization_provisioning.binding_key(ISSUER, "stable-tenant-id")
+        )
+        await session.delete(saved)
+    with pytest.raises(auth.DomainAuthConflict) as unknown:
+        await organization_provisioning.require_current(provider, ks=env.keystone, user_id="fed-user")
+    assert unknown.value.code == "organization_binding_unknown"
+
+
+async def test_current_organization_revoked_manager_still_denied(single_slot_current_org):
+    env, provider, _ = single_slot_current_org
+    saved = await binding(env)
+    project = domain_projects.default_project(saved.domain_id, ks=env.keystone)
+    env.keystone.roles.revoke(rid("manager"), user="fed-user", project=project["id"])
+    with pytest.raises(auth.DomainAuthDenied) as denied:
+        await organization_provisioning.require_current(
+            provider, ks=env.keystone, user_id="fed-user", subject="subject-1"
+        )
+    assert denied.value.code == "organization_membership_changed"
+
+
+async def test_current_organization_sql_error_still_unavailable(single_slot_current_org):
+    env, provider, factory = single_slot_current_org
+    async with factory() as session:
+        await session.run_sync(lambda sql: OrganizationBinding.__table__.drop(bind=sql.connection()))
+        await session.commit()
+    with pytest.raises(auth.DomainAuthUnavailable) as unavailable:
+        await organization_provisioning.require_current(provider, ks=env.keystone, user_id="fed-user")
+    assert unavailable.value.status_code == 503

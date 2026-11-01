@@ -52,7 +52,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -656,7 +656,7 @@
 				<p>{t('mcp.scopeHelp')}</p>
 			</div>
 			<Button variant="ghost" size="sm" onclick={loadAccess} disabled={loading}>
-				{#if loading}<ActivityIndicator size="xs" label={t('mcp.loading')} />{:else}{t('mcp.refresh')}{/if}
+				{#if loading}<LoadingState variant="control" label={t('mcp.loading')}  />{:else}{t('mcp.refresh')}{/if}
 			</Button>
 		</div>
 
@@ -691,7 +691,7 @@
 			</Alert>
 		{/if}
 
-		{#if mutatingId}<ActivityIndicator label={tc('state.processing')} />{/if}
+		{#if mutatingId}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
 		{#if method === 'api'}
 		<form class="token-form" onsubmit={submitToken.bind(null, owner)}>
 			<Field label={t('mcp.name')} for="mcp-token-name" required>
@@ -743,7 +743,7 @@
 						{#snippet children()}{t('mcp.projectsRetryHelp')}{/snippet}
 					</Alert>
 				{:else if !projectsReady}
-					<ActivityIndicator label={t('mcp.projectsLoading')} />
+					<LoadingState variant="section" label={t('mcp.projectsLoading')}  />
 				{:else if projects.length === 0}
 					<p class="project-help">{t('mcp.noProjects')}</p>
 				{:else if projectScope === 'selected'}
@@ -758,7 +758,7 @@
 					{#if selectedProjectIds.length === 0}<p class="project-help" role="alert">{t('mcp.projectsRequired')}</p>{/if}
 				{/if}
 			</div>
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !validProjectSelection}>{#if creating}<ActivityIndicator size="xs" label={t('mcp.creating')} />{:else}{t('mcp.create')}{/if}</Button></div>
+			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !validProjectSelection}>{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
 			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
@@ -775,7 +775,7 @@
 					{/snippet}
 				</Field>
 				<Button type="submit" variant="outline" disabled={verifying || !verificationToken.trim()}>
-					{#if verifying && verificationSource === 'saved'}<ActivityIndicator size="xs" label={t('mcp.verifying')} />{:else}{t('mcp.verify')}{/if}
+					{#if verifying && verificationSource === 'saved'}<LoadingState variant="control" label={t('mcp.verifying')}  />{:else}{t('mcp.verify')}{/if}
 				</Button>
 			</form>
 			{#if verificationSource === 'saved'}{@render connectionFeedback()}{/if}
@@ -787,10 +787,11 @@
 				<h3 id="mcp-personal-tokens-heading">{t('mcp.personal')}</h3>
 				{#if tokensScope === owner && !tokensError}<span><AnimatedNumber value={tokens.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>{/if}
 			</div>
+			{#if tokensLoading && tokensScope === owner}<LoadingState variant="inline" label={t('mcp.loadingAccess')} />{/if}
 			{#if tokensError}
 				{@render listFailure(tokensError)}
-			{:else if tokensLoading}
-				<div class="empty"><ActivityIndicator label={t('mcp.loadingAccess')} /></div>
+			{:else if tokensLoading && tokensScope !== owner}
+				<LoadingState variant="section" label={t('mcp.loadingAccess')}  />
 			{:else if tokensScope === owner && tokens.length === 0}
 				<p class="empty">{t('mcp.emptyTokens')}</p>
 			{:else}
@@ -823,10 +824,11 @@
 
 		<section aria-labelledby="mcp-oauth-grants-heading">
 			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3>{#if grantsScope === owner && !grantsError}<span><AnimatedNumber value={oauthGrants.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>{/if}</div>
+			{#if grantsLoading && grantsScope === owner}<LoadingState variant="inline" label={t('mcp.loadingAccess')} />{/if}
 			{#if grantsError}
 				{@render listFailure(grantsError)}
-			{:else if grantsLoading}
-				<div class="empty"><ActivityIndicator label={t('mcp.loadingAccess')} /></div>
+			{:else if grantsLoading && grantsScope !== owner}
+				<LoadingState variant="section" label={t('mcp.loadingAccess')}  />
 			{:else if grantsScope === owner && oauthGrants.length === 0}
 				<p class="empty">{t('mcp.emptyOAuth')}</p>
 			{:else if grantsScope === owner && oauthGrants.length > 0}
@@ -863,7 +865,7 @@
 			<div class="dialog-actions">
 				<Button variant="outline" onclick={copyContent.bind(null, 'token', owner, issuedToken)}>{copyStates.token === 'copied' ? t('mcp.copied') : t('mcp.copy')}</Button>
 				<Button variant="outline" onclick={verifyConnection.bind(null, owner, issuedToken, 'issued')} disabled={verifying}>
-					{#if verifying}<ActivityIndicator size="xs" label={t('mcp.verifying')} />{:else}{t('mcp.verify')}{/if}
+					{#if verifying}<LoadingState variant="control" label={t('mcp.verifying')}  />{:else}{t('mcp.verify')}{/if}
 				</Button>
 				<Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)}>{t('mcp.done')}</Button>
 			</div>

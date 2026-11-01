@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import type { DashboardOverviewSummary } from '$lib/types/compute';
@@ -39,7 +40,7 @@
 
 <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
 	{#if summaryPending && !summary}
-		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.instances') })}</span></div>
+		<div class="flex min-h-[82px] items-center bg-surface-base p-4"><LoadingState variant="inline" label={tc('state.loadingNamed', { name: t('statTiles.instances') })} /></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.instances')}
@@ -58,7 +59,7 @@
 	{/if}
 
 	{#if quotasPending && !quotas}
-		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.volumes') })}</span></div>
+		<div class="flex min-h-[82px] items-center bg-surface-base p-4"><LoadingState variant="inline" label={tc('state.loadingNamed', { name: t('statTiles.volumes') })} /></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.volumes')}
@@ -77,7 +78,7 @@
 	{/if}
 
 	{#if quotasPending && !quotas}
-		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.floatingIp') })}</span></div>
+		<div class="flex min-h-[82px] items-center bg-surface-base p-4"><LoadingState variant="inline" label={tc('state.loadingNamed', { name: t('statTiles.floatingIp') })} /></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.floatingIp')}
@@ -102,7 +103,7 @@
 			{/snippet}
 		</StatTile>
 	{:else if k3sPending && !k3sStats}
-		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.drover') })}</span></div>
+		<div class="flex min-h-[82px] items-center bg-surface-base p-4"><LoadingState variant="inline" label={tc('state.loadingNamed', { name: t('statTiles.drover') })} /></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.drover')}

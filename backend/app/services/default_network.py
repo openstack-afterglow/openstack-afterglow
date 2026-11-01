@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import openstack
 
+from app.api.common.errors import public_service_error
 from app.database import get_session_factory, is_db_available
 from app.models.storage import NetworkInfo
 
@@ -83,10 +84,10 @@ async def get_default_network_record(project_id: str) -> dict | None:
 
 async def _db_get(project_id: str) -> dict | None:
     if not is_db_available():
-        return None
+        raise public_service_error(503, "default_network_storage_unavailable")
     factory = get_session_factory()
-    if not factory:
-        return None
+    if factory is None:
+        raise public_service_error(503, "default_network_storage_unavailable")
 
     from sqlalchemy import select
 
@@ -109,9 +110,9 @@ async def _db_get(project_id: str) -> dict | None:
                 "created_at": row.created_at.isoformat() if row.created_at else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             }
-    except Exception:
+    except Exception as exc:
         _logger.warning("DB Default 네트워크 조회 실패", exc_info=True)
-        return None
+        raise public_service_error(503, "default_network_storage_unavailable") from exc
 
 
 async def _db_upsert(

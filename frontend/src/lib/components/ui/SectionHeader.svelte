@@ -42,14 +42,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.6875rem;
+    font-size: var(--type-support);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     font-weight: 500;
     color: var(--color-ink-2);
   }
   .section-header-meta {
-    font-size: 0.6875rem;
+    font-size: var(--type-support);
     color: var(--color-ink-2);
   }
   .section-header-right { flex-shrink: 0; }

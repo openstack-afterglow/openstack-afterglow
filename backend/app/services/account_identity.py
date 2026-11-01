@@ -20,13 +20,13 @@ from app.services import domain_projects, identity_roles, keystone
 _field = identity_roles._field
 
 
-def _account_users(ks, domain_id, *, operation=None):
-    """Complete native inventory plus exact resources, never lossy SDK extras."""
+def _account_users(ks, domain_id, *, operation=None, exact_name=None):
+    """Complete native inventory and exact metadata for every possible candidate."""
     from app.services.domain_auth import DomainAuthUnavailable
     from app.services.domain_iam import _account_rows
 
     try:
-        return _account_rows(ks, domain_id, operation=operation)
+        return _account_rows(ks, domain_id, operation=operation, exact_name=exact_name)
     except Exception:
         raise DomainAuthUnavailable("Native account inventory is unavailable or incomplete") from None
 
@@ -41,17 +41,18 @@ def password_account(username: str, *, operation):
     from app.services.domain_auth import DomainAuthConflict, normalize_email
 
     home = _field(account_spaces.shared_domain("account", operation=operation), "id")
-    rows = _account_users(operation.ks, home, operation=operation)
     email = normalize_email(username).casefold() if "@" in username else ""
+    rows = _account_users(operation.ks, home, operation=operation, exact_name=None if email else username)
     from app.services import native_oidc
 
-    # Federation-only shadows must not compete with credential-backed accounts.
-    candidates = [
+    # Match exact hydrated metadata before inspecting federation. Unrelated
+    # identities cannot own this login alias and need no mapping/protocol reads.
+    matches = [
         row
         for row in rows
-        if _field(row, "afterglow_local_password") is True or not native_oidc._native_user(row, ks=operation.ks)
+        if (_field(row, "name") == username or (email and _email(row) == email))
+        and (_field(row, "afterglow_local_password") is True or not native_oidc._native_user(row, ks=operation.ks))
     ]
-    matches = [row for row in candidates if _field(row, "name") == username or (email and _email(row) == email)]
     if len(matches) > 1:
         raise DomainAuthConflict("Account identity is ambiguous", code="account_ambiguous")
     if not matches:

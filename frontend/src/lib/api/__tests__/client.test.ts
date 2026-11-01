@@ -73,6 +73,48 @@ describe('api client', () => {
     expect(mockFetch.mock.calls[0][1].cache).toBe('no-store');
   });
 
+  it.each(['no-store', 'mutation'] as const)('bounds a caller-signaled %s request with the normal deadline', async kind => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    const deadline = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    mockFetch.mockImplementation((_url, options) => {
+      const { promise, reject } = Promise.withResolvers<Response>();
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      return promise;
+    });
+    try {
+      const pending = kind === 'no-store'
+        ? api.get('/api/v1/instances/usage-schedules', undefined, undefined, { signal: caller.signal, cache: 'no-store' })
+        : api.post('/api/v1/example', {}, undefined, undefined, { signal: caller.signal });
+      const rejected = expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+      expect(deadline).toHaveBeenCalledWith(30_000);
+      timeout.abort(new DOMException('Request deadline exceeded', 'TimeoutError'));
+      await rejected;
+      expect(caller.signal.aborted).toBe(false);
+    } finally { deadline.mockRestore(); }
+  });
+
+  it('keeps caller cancellation independent of the request deadline', async () => {
+    const timeout = new AbortController();
+    const caller = new AbortController();
+    const deadline = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+    mockFetch.mockImplementation((_url, options) => {
+      const { promise, reject } = Promise.withResolvers<Response>();
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      return promise;
+    });
+    try {
+      const pending = api.get('/api/v1/instances/usage-schedules', undefined, undefined, { signal: caller.signal, cache: 'no-store' });
+      const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+      caller.abort();
+      await rejected;
+      expect(timeout.signal.aborted).toBe(false);
+    } finally { deadline.mockRestore(); }
+  });
+
+
   it.each([false, true])('retains link tickets only in structured metadata, not error text (nested=%s)', async (nested) => {
     const ticket = { code: 'account_link_required', link_token: 'private-one-use-ticket', domain_id: 'original-home' };
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(nested ? { detail: ticket } : ticket), { status: 409, headers: { 'Content-Type': 'application/json' } }));

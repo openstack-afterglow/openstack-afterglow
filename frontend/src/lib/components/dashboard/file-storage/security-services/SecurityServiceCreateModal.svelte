@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/file-storage';
     import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -114,7 +115,7 @@
           class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('securityCreate.cancel')}</button>
         <button onclick={handleSubmit} disabled={creating || !form.name.trim()}
           class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-          {creating ? t('securityCreate.creating') : t('securityCreate.create')}
+          {#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('securityCreate.creating') : t('securityCreate.create')}
         </button>
       </div>
     </div>

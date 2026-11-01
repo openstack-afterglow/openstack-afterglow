@@ -87,6 +87,7 @@ class VolumeInfo(BaseModel):
     attachments: list[dict] = []
     bootable: bool = False
     volume_image_metadata: dict | None = None
+    created_at: str | None = None
 
 
 VolumeDeleteRootCause = Literal[

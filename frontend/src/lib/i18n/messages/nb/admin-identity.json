@@ -645,5 +645,17 @@
 	"rolePresets.previewHelp": "Forhåndsvisning endrer ikke skyen. Hver tjeneste vurderer tillatelser gjennom sin policy.yaml. Eksisterende roller gjenbrukes, og bare de oppførte gamle tjenestearvelenkene fjernes.",
 	"rolePresets.directImplications": "Direkte arvelenker som skal legges til",
 	"rolePresets.retiredImplications": "Gamle tjenestearvelenker som skal fjernes",
-	"quotaController.saveFailed": "Kunne ikke lagre"
+	"quotaController.saveFailed": "Kunne ikke lagre",
+	"userEdit.resetEmailTitle": "Tilbakestill til tilfeldig passord og send det på e-post",
+	"userEdit.resetEmailHelp": "Send selve det nye tilfeldige passordet til gjeldende registrerte e-post. Ulagrede endringer av navn eller e-post i dette skjemaet brukes ikke.",
+	"userEdit.resetEmailTarget": "Mål: {name} · UUID: {id} · Gjeldende registrert e-post: {email}",
+	"userEdit.resetEmailWarning": "Dette erstatter det tidligere passordet. Det faktiske nye passordet blir liggende i e-posten og kan bli synlig for alle med tilgang til postkassen. Be brukeren endre det umiddelbart etter innlogging.",
+	"userEdit.resetEmailSuccess": "Passordet er endret og levert til registrert e-post. Be brukeren endre det umiddelbart.",
+	"userEdit.resetEmailDeliveryFailed": "Passordet er endret, men e-postleveringen mislyktes. Det tidligere passordet er ikke lenger gyldig. Ingen automatisk gjentakelse. Administratoren må kontrollere status og utføre en separat tilbakestilling.",
+	"userEdit.resetEmailSessionsFailed": "Passordet er endret, men noen økter kunne ikke tilbakekalles og kan være aktive. E-postleveringen kan også ha mislyktes. Administratoren må bekrefte levering og tilbakekalle gjenværende økter. Ingen automatisk ny tilbakestilling.",
+	"userEdit.resetEmailAuditFailed": "Operasjonens revisjonslogg kunne ikke bekreftes. Passordendringen eller e-postleveringen kan allerede være fullført. Administratoren må kontrollere faktisk resultat, levering, tilbakekalling av økter og revisjonslogg. Ingen automatisk gjentakelse.",
+	"userEdit.resetEmailUnknown": "Resultatet av passordendringen er ukjent. Det tidligere passordet kan være endret. Ingen automatisk gjentakelse. Administratoren må kontrollere resultatet og tilbakekalling av økter.",
+	"userEdit.resetEmailRejected": "Forespørselen ble avvist. Vellykket endring og levering er ikke bekreftet. Kontroller tillatelser og registrert kontostatus. Ingen automatisk gjentakelse.",
+	"userEdit.resetEmailUnavailable": "En aktivert konto med registrert e-post kreves.",
+	"userEdit.resetEmailSending": "Tilbakestiller passord og leverer e-post…"
 }

@@ -1,0 +1,64 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { get } from 'svelte/store';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
+import type { DomainBudgets } from '$lib/api/workspaceIam';
+import { t } from '$lib/i18n/ns/workspace-iam';
+import { t as tp } from '$lib/i18n/ns/compute-pools';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
+vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error {} }));
+vi.mock('$app/state', () => ({ page: { params: { id: 'domain-a' }, url: new URL('http://localhost/admin/domains/domain-a') } }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+import DomainBudgetEditor from './DomainBudgetEditor.svelte';
+import DomainPage from '../../../../routes/admin/domains/[id]/+page.svelte';
+const originalAuth = get(auth), originalReady = get(authReady), originalSwitching = get(projectSwitching), originalLogout = get(logoutInProgress);
+const ceilings = { instances: 3, cores: 8, ram: 16384 };
+const budgets: DomainBudgets = { domain_id: 'domain-a', revision: 1, ceilings, defaults: {}, enforcement_scope: 'afterglow_project_allocations', defaults_future_only: true, drift: false, allocations: {}, projects: [], operations: [], allocation_blocked: false, blocking_operation_id: null };
+beforeEach(() => { vi.resetAllMocks(); auth.set({ ...originalAuth, token: 'token', sessionId: 'session-a', userId: 'admin', projectId: 'admin-project', isSystemAdmin: true }); authReady.set(true); projectSwitching.set(false); logoutInProgress.set(false); mocks.get.mockResolvedValue(budgets); mocks.put.mockResolvedValue({ ...budgets, revision: 2 }); });
+afterEach(() => { cleanup(); auth.set(originalAuth); authReady.set(originalReady); projectSwitching.set(originalSwitching); logoutInProgress.set(originalLogout); });
+it.each(['active', 'paused', 'failed', 'pending'] as const)('saves native CPU/RAM ceilings on the domain route independently of %s pool lookup', async state => {
+	mocks.get.mockImplementation((path: string) => {
+		if (path === '/api/v1/admin/domains') return Promise.resolve({ items: [{ id: 'domain-a', name: 'Domain A', enabled: true }] });
+		if (path.endsWith('/compute-pool')) return state === 'failed' ? Promise.reject(new Error('pool lookup failed')) : state === 'pending' ? new Promise(() => {}) : Promise.resolve({ domain_id: 'domain-a', state, enabled: state === 'active', revision: 3, limits: { CPU: 100, MEMORY_MB: 999999 }, project_limits: {}, usage: {}, available: {}, projects: [], policy_ready: true, control_scope: 'afterglow', gpu_profiles: [] });
+		if (path.endsWith('/quotas')) return Promise.resolve(budgets);
+		return Promise.reject(new Error('monitoring unavailable'));
+	});
+	render(DomainPage);
+	const cores = await screen.findByLabelText(t('field.cores')) as HTMLInputElement;
+	expect(cores.value).toBe('8');
+	expect((screen.getByLabelText(t('field.ram')) as HTMLInputElement).value).toBe('16384');
+	expect(screen.getByRole('region', { name: tp('title') })).toBeTruthy();
+	await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/domains/domain-a/compute-pool', 'token', 'admin-project', { cache: 'no-store' }));
+	if (state === 'active' || state === 'paused') await screen.findByText(tp(`poolState.${state}`));
+	if (state === 'failed') await screen.findByText(tp('loadFailed'));
+	await fireEvent.input(cores, { target: { value: '12' } });
+	await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '24576' } });
+	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+	await waitFor(() => expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/api/v1/admin/domains/domain-a/quotas', { revision: 1, ceilings: { instances: 3, cores: 12, ram: 24576 } }, 'token', 'admin-project', { replayOnUnauthorized: false, beforeDispatch: expect.any(Function) }));
+	await screen.findByText(t('reloadRequired'));
+	expect(screen.queryByRole('button', { name: t('save') })).toBeNull();
+});
+it('keeps unknown native operations blocked without pool authority', async () => {
+	mocks.get.mockResolvedValue({ ...budgets, allocation_blocked: true, blocking_operation_id: 'unknown-native' });
+	render(DomainBudgetEditor, { domainId: 'domain-a' });
+	const save = await screen.findByRole('button', { name: t('save') });
+	expect((save as HTMLButtonElement).disabled).toBe(true);
+	await fireEvent.click(save);
+	expect(mocks.put).not.toHaveBeenCalled();
+});
+it('rejects a native allocation snapshot for a different domain', async () => {
+	mocks.get.mockResolvedValue({ ...budgets, domain_id: 'other-domain' });
+	render(DomainBudgetEditor, { domainId: 'domain-a' });
+	await screen.findByText(t('loadFailed'));
+	expect(screen.queryByRole('button', { name: t('save') })).toBeNull();
+	expect(mocks.put).not.toHaveBeenCalled();
+});
+it('requires a fresh native snapshot after losing administrator authority', async () => {
+	const view = render(DomainBudgetEditor, { domainId: 'domain-a' });
+	await screen.findByRole('button', { name: t('save') });
+	auth.update(state => ({ ...state, isSystemAdmin: false }));
+	await view.rerender({ domainId: 'domain-a' });
+	await screen.findByText(t('denied'));
+	expect(screen.queryByRole('button', { name: t('save') })).toBeNull();
+	expect(mocks.put).not.toHaveBeenCalled();
+});

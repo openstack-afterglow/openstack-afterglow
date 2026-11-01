@@ -11,6 +11,7 @@ export interface Instance {
   image_name: string | null;
   os_type?: string | null;
   flavor_name: string | null;
+  flavor_display_name?: string | null;
   ip_addresses: IpAddress[];
   created_at: string | null;
   union_libraries: string[];
@@ -36,7 +37,7 @@ export interface DashboardSummary {
 
 export type DashboardRecentInstance = Pick<
   Instance,
-  'id' | 'name' | 'status' | 'flavor_name' | 'ip_addresses' | 'created_at'
+  'id' | 'name' | 'status' | 'flavor_name' | 'flavor_display_name' | 'ip_addresses' | 'created_at'
 >;
 
 export interface DashboardOverviewSummary {

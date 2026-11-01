@@ -12,10 +12,10 @@ vi.mock('$lib/api/client', async () => ({
 
 const login: LoginResponse = {
 	token: 'same-token', refresh_token: 'refresh', user_id: 'alice', username: 'Alice',
-	project_id: 'project-a', project_name: 'Project A', expires_at: null,
+	project_id: 'project-a', project_name: 'Project A', expires_at: '2099-01-01T00:00:00Z',
 	identity_domain_id: 'home', identity_domain_name: 'Home', domain_id: 'home', domain_name: 'Home',
 	available_domains: [{ id: 'home', name: 'Home' }], roles: ['reader'],
-	is_system_admin: false, is_domain_manager: true, can_write: false,
+	is_system_admin: false, is_domain_manager: true, can_write: false, can_create_domain: false, auth_method: 'password',
 };
 const me: AuthMeResponse = { ...login, auth_method: 'password' };
 
@@ -97,48 +97,37 @@ describe('root authentication readiness transitions', () => {
 		expect(mocks.protectedRead).not.toHaveBeenCalled();
 	});
 
-	it('retains an established draft through native refresh while verifying its new token', async () => {
+	it('retains an established draft and skips redundant /me after an exact complete refresh', async () => {
 		const { store, mapping, Consumer, render } = await modules();
 		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
 		render(Consumer); await flush();
 		const draft = screen.getByRole('textbox', { name: 'Unsubmitted draft' }) as HTMLInputElement;
 		draft.value = 'Keep this unsent work';
-		const pending = Promise.withResolvers<AuthMeResponse>();
-		mocks.me.mockReturnValueOnce(pending.promise);
 		store.setAuth(mapping.refreshAuthState({ ...login, token: 'rotated', refresh_token: 'rotated-refresh' }, get(store.auth)));
 		await flush();
 		expect(screen.getByRole('status').textContent).toContain('/dashboard');
 		expect(screen.getByRole('textbox', { name: 'Unsubmitted draft' })).toBe(draft);
 		expect(draft.value).toBe('Keep this unsent work');
-		expect(mocks.me).toHaveBeenCalledOnce();
-		expect(store.hasVerifiedAuth()).toBe(false);
-		pending.resolve(me); await flush();
+		expect(mocks.me).not.toHaveBeenCalled();
 		expect(store.hasVerifiedAuth()).toBe(true);
-		expect(draft.value).toBe('Keep this unsent work');
 	});
 
-	it('verifies a refreshed projectless continuation without sending the revoked project or retrying', async () => {
+	it('settles authoritative refresh project revocation without requesting /me or the revoked project', async () => {
 		const { store, mapping, Consumer, render } = await modules();
 		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
 		render(Consumer); await flush();
 		const previous = get(store.auth);
-		const projectless = { ...me, project_id: '', project_name: '', roles: [] };
-		const pending = Promise.withResolvers<AuthMeResponse>();
-		mocks.me.mockReturnValueOnce(pending.promise).mockResolvedValue(projectless);
 		store.setAuth(mapping.refreshAuthState({ ...login, token: 'rotated', project_id: '', project_name: '', roles: [] }, previous));
 		await flush();
 		expect(get(store.auth)).toMatchObject({ token: 'rotated', projectId: null, projectName: null, roles: [],
 			userId: previous.userId, domainId: previous.domainId, identityDomainId: previous.identityDomainId, sessionId: previous.sessionId });
 		expect(get(store.authReady)).toBe(true);
-		expect(mocks.me).toHaveBeenCalledOnce();
-		expect(mocks.me).toHaveBeenCalledWith('/api/v1/auth/me', 'rotated', undefined,
-			expect.objectContaining({ refresh: true, suppressAuthRedirect: true }));
-		pending.resolve(projectless); await flush();
+		expect(mocks.me).not.toHaveBeenCalled();
 		expect(store.hasVerifiedAuth()).toBe(true);
 		expect(screen.getByRole('status').textContent).toContain('/select-project');
 		expect(get(store.authRecovery)).toBeNull();
 		await vi.advanceTimersByTimeAsync(5000); await flush();
-		expect(mocks.me).toHaveBeenCalledOnce();
+		expect(mocks.me).not.toHaveBeenCalled();
 	});
 
 	it.each(['', null])('accepts authoritative /me project revocation (%s) and settles projectless readiness', async (project_id) => {
@@ -160,13 +149,23 @@ describe('root authentication readiness transitions', () => {
 		expect(get(store.authRecovery)).toBeNull();
 	});
 
-	it.each(['copy', 'reuse', 'different login', 'unverified source'] as const)('does not retain readiness from a continuation with %s', async (boundary) => {
+	it.each(['copy', 'reuse', 'different login', 'unverified source', 'ABA', 'logout'] as const)('does not retain readiness from a continuation with %s', async (boundary) => {
 		const { store, mapping, Consumer, render } = await modules();
 		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
 		const update = mapping.refreshAuthState({ ...login, token: 'rotated' }, get(store.auth));
 		if (boundary === 'reuse') store.setAuth(update);
 		if (boundary === 'different login') store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
 		if (boundary === 'unverified source') store.setAuth({ token: login.token });
+		if (boundary === 'ABA') {
+			const original = get(store.auth);
+			store.setProject('other-project', 'Other');
+			store.auth.set(original);
+		}
+		if (boundary === 'logout') {
+			const original = get(store.auth);
+			store.clearAuth();
+			store.auth.set(original);
+		}
 		const pending = Promise.withResolvers<AuthMeResponse>();
 		mocks.me.mockReturnValue(pending.promise);
 		store.setAuth(boundary === 'copy' ? { ...update } : update);
@@ -175,6 +174,67 @@ describe('root authentication readiness transitions', () => {
 		expect(screen.queryByRole('textbox', { name: 'Unsubmitted draft' })).toBeNull();
 		expect(mocks.protectedRead).not.toHaveBeenCalled();
 		expect(mocks.me).toHaveBeenCalledOnce();
+	});
+
+	it('still verifies a complete refresh mapped from restored credentials', async () => {
+		let loaded = await modules();
+		loaded.store.setLoginAuth(loaded.mapping.loginAuthState(login, { federated: false }).state);
+		vi.resetModules();
+		loaded = await modules();
+		loaded.store.setAuth(loaded.mapping.refreshAuthState({ ...login, token: 'restored-rotation' }, get(loaded.store.auth)));
+		const pending = Promise.withResolvers<AuthMeResponse>();
+		mocks.me.mockReturnValueOnce(pending.promise);
+		loaded.render(loaded.Consumer); await flush();
+		expect(screen.getByRole('status').textContent).toBe('Verifying session');
+		expect(mocks.me).toHaveBeenCalledOnce();
+		expect(mocks.protectedRead).not.toHaveBeenCalled();
+		pending.resolve(me); await flush();
+		expect(screen.getByRole('status').textContent).toContain('/dashboard');
+	});
+
+	it('isolates verified refresh metadata from later response-object mutation', async () => {
+		const { store, mapping, Consumer, render } = await modules();
+		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
+		const response = { ...login, token: 'rotated', roles: ['reader'], available_domains: [{ id: 'home', name: 'Home' }] };
+		const update = mapping.refreshAuthState(response, get(store.auth));
+		response.roles.push('admin'); response.available_domains[0].name = 'Changed';
+		store.setAuth(update);
+		render(Consumer); await flush();
+		expect(store.hasVerifiedAuth()).toBe(true);
+		expect(get(store.auth).roles).toEqual(['reader']);
+		expect(get(store.auth).availableDomains).toEqual([{ id: 'home', name: 'Home' }]);
+		expect(mocks.me).not.toHaveBeenCalled();
+	});
+
+	it.each(['roles', 'can_write', 'is_system_admin', 'is_domain_manager', 'can_create_domain', 'available_domains',
+		'project_id', 'project_name', 'username', 'domain_name', 'refresh_token', 'expires_at', 'auth_method'] as const)(
+		'verifies a compatibility refresh missing %s before granting verified continuation', async field => {
+			const { store, mapping, Consumer, render } = await modules();
+			store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
+			const partial: Partial<LoginResponse> = { ...login, token: 'rotated' };
+			delete partial[field];
+			store.setAuth(mapping.refreshAuthState(partial as LoginResponse, get(store.auth)));
+			const pending = Promise.withResolvers<AuthMeResponse>();
+			mocks.me.mockReturnValueOnce(pending.promise);
+			render(Consumer); await flush();
+			expect(mocks.me).toHaveBeenCalledOnce();
+			expect(store.hasVerifiedAuth()).toBe(false);
+			pending.resolve(me); await flush();
+			expect(store.hasVerifiedAuth()).toBe(true);
+		});
+
+	it('keeps explicit rescope separate from refresh proof and verifies the new project', async () => {
+		const { store, mapping, Consumer, render } = await modules();
+		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
+		const response = { ...login, token: 'rescope-token', project_id: 'project-b', project_name: 'Project B' };
+		const pending = Promise.withResolvers<AuthMeResponse>();
+		mocks.me.mockReturnValueOnce(pending.promise);
+		store.setAuth(mapping.rescopeAuthState(response, get(store.auth)));
+		render(Consumer); await flush();
+		expect(mocks.me).toHaveBeenCalledWith('/api/v1/auth/me', 'rescope-token', 'project-b', expect.anything());
+		expect(store.hasVerifiedAuth()).toBe(false);
+		pending.resolve({ ...me, project_id: 'project-b', project_name: 'Project B' }); await flush();
+		expect(screen.getByRole('status').textContent).toContain('project-b');
 	});
 
 	it.each(['token', 'userId', 'identityDomainId', 'domainId', 'projectId'] as const)('revokes the fresh proof synchronously on changed %s and same-tick ABA', async (field) => {
@@ -265,6 +325,7 @@ describe('root authentication readiness transitions', () => {
 		let loaded = await modules();
 		loaded.store.setLoginAuth(loaded.mapping.loginAuthState(login, { federated: false }).state);
 		vi.resetModules(); loaded = await modules();
+		const sharedMarker = localStorage.getItem(loaded.store.AUTH_LOGOUT_EVENT_KEY);
 		if (kind === '401') mocks.me.mockRejectedValueOnce(new (await import('$lib/api/client')).ApiError(401, 'expired'));
 		else mocks.me.mockResolvedValueOnce({ ...me, ...(kind === 'foreign home' ? { identity_domain_id: 'foreign' }
 			: kind === 'foreign working domain' ? { domain_id: 'foreign' } : kind === 'foreign project' ? { project_id: 'foreign' } : { user_id: 'foreign' }) });
@@ -273,6 +334,8 @@ describe('root authentication readiness transitions', () => {
 		expect(get(loaded.store.authRecovery)).toBeNull();
 		expect(mocks.protectedRead).not.toHaveBeenCalled();
 		expect(sessionStorage.getItem(loaded.store.AUTH_STORAGE_KEY)).toBeNull();
+		expect(localStorage.getItem(loaded.store.AUTH_LOGOUT_EVENT_KEY)).toBe(sharedMarker);
+		expect(document.cookie).toContain('afterglow_session=1');
 	});
 
 	it('keeps restored outage retry scoped and clears recovery for a new login', async () => {

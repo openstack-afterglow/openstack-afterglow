@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { DbDatabase } from '$lib/types/database';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -55,7 +55,7 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newDb.name.trim()}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.create')}{/if}
+				{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.create')}{/if}
 			</button>
 		</div>
 	{/if}
@@ -69,7 +69,7 @@
 				{#each databases as db}
 					<CompactResourceCard>
 						<h3 class="break-all font-medium text-ink-0">{db.name}</h3>
-						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
+						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{#if deletingDb === db.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
@@ -80,7 +80,7 @@
 					{#if canMutate}
 					<button onclick={() => onDelete(db.name)} disabled={deletingDb === db.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{#if deletingDb === db.name}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
+						{#if deletingDb === db.name}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 					</button>
 					{/if}
 				</div>

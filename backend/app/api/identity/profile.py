@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -207,47 +208,76 @@ async def change_password(
     request: Request,
     req: ChangePasswordRequest,
     token_info: dict = Depends(get_token_info),
-    conn=Depends(get_os_conn),
 ):
-    """패스워드 변경 (현재 패스워드 검증 후 변경)."""
-    # 외부(federated) 로그인 사용자는 로컬 패스워드가 없으므로 변경 불가
-    if token_info.get("auth_method") == "federated":
-        raise HTTPException(status_code=403, detail="외부 로그인 사용자는 패스워드를 변경할 수 없습니다")
+    """Change an existing credential using Keystone's self-service policy."""
+    from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 
-    user_id = token_info["user_id"]
-    username = token_info["username"]
+    from app.services.native_operation import NativeOperation
 
-    # Reauthenticate in the immutable account namespace, not the working domain.
-    from keystoneauth1.exceptions.http import Unauthorized
-
-    try:
-        current = await asyncio.to_thread(
-            keystone.authenticate,
-            username,
-            req.current_password,
-            "",
-            token_info["identity_domain_id"],
-            unscoped_only=True,
-        )
-    except Unauthorized as exc:
-        raise HTTPException(status_code=401, detail="현재 패스워드가 올바르지 않습니다") from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="현재 패스워드를 검증할 수 없습니다") from exc
-    if current.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Password identity does not match the current account")
-
-    def _change():
+    async with NativeOperation() as operation:
         try:
-            conn.identity.update_user(user_id, password=req.new_password)
-            return {"status": "changed"}
-        except Exception as e:
-            _logger.warning("패스워드 변경 실패: %s", e)
+            current = await operation.run(
+                keystone.authenticate,
+                token_info["username"],
+                req.current_password,
+                "",
+                token_info["identity_domain_id"],
+                unscoped_only=True,
+                operation=operation,
+            )
+        except keystone.PasswordRejected as exc:
+            raise HTTPException(401, "password_current_invalid") from exc
+        except Unauthorized as exc:
+            raise HTTPException(403, "password_identity_mismatch") from exc
+        except Forbidden as exc:
+            raise HTTPException(403, "password_change_forbidden") from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "password_verification_unavailable") from exc
 
-            raise HTTPException(status_code=400, detail="패스워드 변경 실패")
+        if (
+            current.get("user_id") != token_info["user_id"]
+            or current.get("identity_domain_id") != token_info["identity_domain_id"]
+        ):
+            raise HTTPException(403, "password_identity_mismatch")
+        proof = current.get("token")
+        if not isinstance(proof, str) or not proof:
+            raise HTTPException(503, "password_verification_unavailable")
 
-    try:
-        return await asyncio.to_thread(_change)
-    except HTTPException:
-        raise
+        def _change():
+            settings = keystone.get_settings()
+            session = operation.own_session(
+                keystone.native_transport.create_session(timeout=30, verify=settings.ssl_verify)
+            )
+            # Stock Keystone permits self-service POST, not generic user PATCH.
+            # Explicit auth prevents exchanging this proof into another token.
+            # Credential bodies and native errors must never enter debug logs.
+            try:
+                response = session.post(
+                    f"{settings.os_auth_url.rstrip('/')}/users/{quote(token_info['user_id'], safe='')}/password",
+                    json={"user": {"original_password": req.current_password, "password": req.new_password}},
+                    headers={"X-Auth-Token": proof},
+                    authenticated=False,
+                    allow_reauth=False,
+                    redirect=False,
+                    connect_retries=0,
+                    status_code_retries=0,
+                    log=False,
+                    raise_exc=False,
+                )
+            except Exception as exc:
+                # The provider may have committed before the response was lost.
+                # Do not retry or expose exception text containing credentials.
+                raise HTTPException(502, "password_change_outcome_unknown") from exc
+            if response.status_code == 204:
+                return {"status": "changed"}
+            if response.status_code == 401:
+                raise HTTPException(401, "password_current_invalid")
+            if response.status_code == 403:
+                raise HTTPException(403, "password_change_forbidden")
+            if response.status_code in {400, 409, 422}:
+                raise HTTPException(400, "password_change_rejected")
+            raise HTTPException(502, "password_change_outcome_unknown")
+
+        return await operation.run(_change)

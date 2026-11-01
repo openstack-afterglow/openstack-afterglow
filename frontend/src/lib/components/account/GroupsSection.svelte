@@ -3,7 +3,7 @@
   import { t as tc } from '$lib/i18n/ns/common';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   interface Group {
     id: string;
@@ -44,12 +44,7 @@
   {#if error}
     <div class="text-red-400 text-xs">{error}</div>
   {:else if loading}
-    <ActivityIndicator label={tc('state.loading')} />
-    <div class="space-y-2 mt-2" aria-hidden="true">
-      {#each [1, 2] as _}
-        <div class="h-8 motion-skeleton rounded"></div>
-      {/each}
-    </div>
+    <LoadingState variant="section" label={tc('state.loading')}  />
   {:else if noPermission}
     <div class="text-ink-2 text-xs text-center py-4">{t('groups.empty')}</div>
   {:else}

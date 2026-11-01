@@ -93,4 +93,18 @@ describe('activity auto-refresh', () => {
 		expect(await screen.findByText('로그 없음')).toBeTruthy();
 		expect(statText('성공률')).toContain('—%');
 	});
+
+	it('keeps observed and started events distinct from business failure and terminal success rate', async () => {
+		mockGet.mockResolvedValueOnce(activity({ total: 104, success: 3, failed: 1 }, [action(3, 'button-observation', 'observed'), action(2, 'request-start', 'started'), action(1, 'business-failure', 'failed')]));
+		render(Page);
+		const observation = (await screen.findByText('button-observation')).closest('tr')!;
+		const started = screen.getByText('request-start').closest('tr')!;
+		expect(observation.textContent).not.toContain('FAIL');
+		expect(observation.querySelector('[title="observed"].chip-neutral')).toBeTruthy();
+		expect(started.querySelector('[title="started"].chip-info')).toBeTruthy();
+		expect(started.textContent).not.toContain('FAIL');
+		expect(screen.getByText('business-failure').closest('tr')!.textContent).toContain('FAIL');
+		expect(statText('성공률')).toContain('75%');
+		expect(statText('실패한 작업')).toContain('1/4');
+	});
 });

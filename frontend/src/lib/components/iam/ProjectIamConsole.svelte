@@ -7,7 +7,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import IamProjects from './IamProjects.svelte';
 
 	let capabilityState = $state.raw<ProjectManagementState>({ scope: null, capability: null, checking: false, error: '' });
@@ -53,7 +53,7 @@
 	<PageHeader breadcrumb={t('title')} title={t('projectsTitle')} subtitle={t('projectsSubtitle')}>
 		{#snippet actions()}<Button variant="secondary" disabled={capabilityState.checking || !capabilityState.scope} onclick={() => { void refreshProjectManagement(); }}>{t('refresh')}</Button>{/snippet}
 	</PageHeader>
-	{#if !entryVerified || capabilityState.checking}<ActivityIndicator label={t('projectsVerifying')} />
+	{#if !entryVerified || capabilityState.checking}<LoadingState variant={session ? 'inline' : 'surface'} label={t('projectsVerifying')}  />
 	{:else if capabilityState.error}<Alert tone="danger">{t('loadFailed')}</Alert>
 	{:else if !session}<Alert tone="warning">{t('projectsDenied')}</Alert>{/if}
 	{#if session}

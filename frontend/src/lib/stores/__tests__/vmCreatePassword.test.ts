@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '$lib/api/client';
-import { auth } from '../auth';
+import { auth, authReady } from '../auth';
 import { siteConfig } from '$lib/config/site';
 import { closeWizard, openWizard, resetWizard, wizard, wizardPassword } from '../wizard';
 import type { VmCreateStore } from '../vmCreateStore.svelte';
@@ -52,6 +52,8 @@ beforeEach(() => {
 	resetWizard();
 	openWizard();
 	auth.set({ token: 'token-a', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
+	auth.update(value => ({ ...value, canWrite: true }));
+	authReady.set(true);
 	siteConfig.update(value => ({ ...value, runtime: { ...value.runtime, api_base: 'https://afterglow.test' }, services: { ...value.services, manila: false } }));
 	requests = [];
 	refresh = null;
@@ -84,6 +86,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); closeWizard(); vi.unstubAllGlobals(); });
 
 async function start(adminMode = false, bootSource: 'image' | 'volume' = 'image') {
+	if (adminMode) { auth.update(value => ({ ...value, isSystemAdmin: true })); authReady.set(true); }
 	if (adminMode) wizard.update(w => ({ ...w, targetProjectId: 'target-a' }));
 	let store!: VmCreateStore;
 	const view = render(Wrapper, { adminMode, onStore: value => { store = value; } });

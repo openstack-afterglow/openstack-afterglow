@@ -5,7 +5,7 @@ import Page from './+page.svelte';
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/traffic-analytics';
-import { observations } from '$lib/components/admin/traffic/__tests__/observations';
+import { networkObservations, observations } from '$lib/components/admin/traffic/__tests__/observations';
 import type { TrafficSnapshot } from '$lib/types/trafficAnalytics';
 import type * as SvelteReactivity from 'svelte/reactivity';
 
@@ -23,6 +23,45 @@ beforeEach(() => { viewport.desktop = true; get.mockReset(); initLocale('en'); a
 afterEach(() => { cleanup(); initLocale('ko'); });
 
 describe('traffic API to UI', () => {
+	it.each([true, false])('renders API address ranges and evidence with exact metrics in desktop=%s', async (desktop) => {
+		viewport.desktop = desktop;
+		const networks = networkObservations();
+		get.mockResolvedValue(observations({ networks })); render(Page);
+		const section = await screen.findByRole('region', { name: t('networks.title') });
+		for (const row of networks) {
+			const candidates = within(section).getAllByText(row.network).map(label => label.closest(desktop ? 'tr' : 'article')!);
+			const container = candidates.find(candidate => within(candidate).queryByText(t(`networks.bases.${row.basis}`)))!;
+			expect(container).toBeTruthy();
+			if (desktop) expect(within(container).getAllByRole('cell').slice(-2).map(cell => cell.textContent)).toEqual([String(row.requests), String(row.errors)]);
+			else for (const [key, value] of [['requests', row.requests], ['errors', row.errors]] as const) {
+				expect(within(container).getByText(t(`metrics.${key}`), { selector: 'dt' }).nextElementSibling?.textContent).toBe(String(value));
+			}
+		}
+		expect(within(section).queryByRole('button')).toBeNull();
+		expect(screen.getByRole('button', { name: /\(XX\)/ })).toBeTruthy();
+		expect(get).toHaveBeenCalledTimes(1);
+	});
+	it.each(['source', 'range', 'origin'] as const)('keeps network rows inside the %s response fence', async (control) => {
+		const pending = Promise.withResolvers<TrafficSnapshot>();
+		const current = observations({ networks: [networkObservations()[2]], routes: [] });
+		if (control === 'source') current.source = 'frontend';
+		else if (control === 'range') current.range = '7d';
+		else { current.origin = 'unknown'; current.origins = { internal: 0, external: 0, unknown: 10, legacy_unclassified: 0 }; }
+		get.mockImplementationOnce(() => pending.promise).mockResolvedValue(current);
+		render(Page); await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+		await fireEvent.change(screen.getByLabelText(t(`controls.${control}`)), { target: { value: control === 'source' ? 'frontend' : control === 'range' ? '7d' : 'unknown' } });
+		await screen.findByText('10.8.0.0/16');
+		pending.resolve(observations({ networks: [networkObservations()[0]] }));
+		await waitFor(() => expect(screen.queryByText('172.30.0.0/16')).toBeNull());
+		expect(screen.getByText('10.8.0.0/16')).toBeTruthy();
+	});
+	it('rejects malformed network data at the API boundary instead of showing partial trusted-looking rows', async () => {
+		const row = networkObservations()[0];
+		get.mockResolvedValue({ ...observations(), networks: [row, { ...row, network: '172.30.1.99/32' }] }); render(Page);
+		await screen.findByText(t('loadFailed'));
+		expect(screen.queryByText('172.30.0.0/16')).toBeNull();
+		expect(screen.queryByText('172.30.1.99/32')).toBeNull();
+	});
 	it('keeps compact route diagnostics, measured values and country selection without extra reads', async () => {
 		viewport.desktop = false;
 		get.mockResolvedValue(observations()); render(Page);

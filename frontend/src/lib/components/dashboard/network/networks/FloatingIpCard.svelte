@@ -4,6 +4,7 @@
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
   import type { FloatingIp } from '$lib/types/networks';
+  import { Button } from '$lib/components/ui';
 
   let {
     floatingIps,
@@ -47,12 +48,7 @@
       {/if}
     </div>
     <div class="ml-auto flex gap-2">
-      <button
-        onclick={onAllocateClick}
-        disabled={!hasExternalNetwork}
-        class="min-h-11 px-3 py-1.5 text-[13px] bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm font-medium rounded-lg transition-colors"
-        title={!hasExternalNetwork ? t('floatingIpCard.noExternal') : t('floatingIpCard.allocate')}
-      >{t('floatingIpCard.allocateButton')}</button>
+      <Button variant="secondary" size="sm" onclick={onAllocateClick} disabled={!hasExternalNetwork} title={!hasExternalNetwork ? t('floatingIpCard.noExternal') : t('floatingIpCard.allocate')}>{t('floatingIpCard.allocateButton')}</Button>
     </div>
   </div>
   {#if floatingIps.length === 0}
@@ -61,7 +57,7 @@
     <div class="motion-stagger grid grid-cols-1 lg:grid-cols-3 gap-2.5">
       {#each floatingIps as fip (fip.id)}
         <div
-          class="resource-selection-surface bg-[#0B1220] border border-line rounded-lg p-3 flex items-center gap-3"
+          class="resource-selection-surface bg-surface-base border border-line rounded-lg p-3 flex items-center gap-3"
           data-selected={selectedIds.has(fip.id)}
         >
           <SelectionCheckbox

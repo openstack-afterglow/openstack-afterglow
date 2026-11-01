@@ -102,6 +102,9 @@ def directory(monkeypatch):
         if uid == "linked":
             user.afterglow_local_password = True
         state.users[uid] = user
+    state.password_states = {uid: "existing" for uid in state.users}
+    state.password_states.update({"external": "absent", "legacy-linked": "absent"})
+    state.password_revisions = {uid: "5" for uid in state.users}
     state.catalog = [
         {"id": role, "name": role, "domain_id": None, "implied_role_ids": []} for role in ["admin", "service"]
     ]
@@ -134,6 +137,7 @@ def directory(monkeypatch):
         return {"user_id": user.id, "identity_domain_id": home, "token": "temporary-reauth-token"}
 
     state.ks = SimpleNamespace(
+        session=SimpleNamespace(get_token=lambda: "synthetic-admin-token"),
         users=SimpleNamespace(get=get_user, update=update_user, list=lambda **kw: list(state.users.values())),
         domains=SimpleNamespace(
             get=lambda home: SimpleNamespace(
@@ -184,6 +188,33 @@ def directory(monkeypatch):
     monkeypatch.setattr(session_store, "_get_redis", redis)
     monkeypatch.setattr(domain_scope, "invalidate_authority", invalidate)
     monkeypatch.setattr("aiosmtplib.send", send)
+
+    def initial_request(credential, method, path, *, body=None):
+        if path.endswith("/capabilities"):
+            return 200, {"supported": True, "revision": recovery._INITIAL_PASSWORD_REVISION}
+        uid = path.split("/")[1]
+        user = get_user(uid)
+        if method == "GET":
+            return 200, {
+                "user": {
+                    "id": user.id,
+                    "domain_id": user.domain_id,
+                    "email": user.email,
+                    "identity_revision": state.password_revisions[uid],
+                    "password_state": state.password_states[uid],
+                }
+            }
+        if method == "PATCH":
+            user = update_user(uid, **body["user"])
+            return 200, {"user": {"id": user.id, "domain_id": user.domain_id}}
+        if state.password_states[uid] != "existing":
+            return 409, None
+        if body["user"]["identity_revision"] != state.password_revisions[uid]:
+            return 412, None
+        update_user(uid, password=body["user"]["password"], afterglow_local_password=True)
+        return 204, None
+
+    monkeypatch.setattr(recovery, "_initial_request", initial_request)
     return state
 
 
@@ -316,7 +347,7 @@ async def test_reset_preserves_identity_and_revokes_every_working_domain_session
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mutation", ["expired", "email", "home", "disabled", "deleted", "duplicate", "external"])
+@pytest.mark.parametrize("mutation", ["expired", "email", "home", "disabled", "deleted", "duplicate"])
 async def test_bound_proof_cannot_reset_changed_or_ambiguous_subject(client, directory, recoveries, mutation):
     token = await issue(directory, recoveries)
     if mutation == "expired":
@@ -336,8 +367,6 @@ async def test_bound_proof_cannot_reset_changed_or_ambiguous_subject(client, dir
         directory.users["other"] = SimpleNamespace(
             id="other", name="other", email="LOCAL@test.invalid", domain_id="other-home", enabled=True
         )
-    else:
-        directory.users["local"].afterglow_local_password = False
     response = await client.post(
         "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
     )
@@ -697,3 +726,73 @@ async def test_token_inspection_budget_is_shared_across_distinct_bearer_paths(di
             assert result.status_code == 410
     finally:
         endpoints.limiter.enabled = enabled
+
+
+@pytest.mark.asyncio
+async def test_smtp_error_cannot_disclose_recovery_proof_or_password(directory, monkeypatch, caplog):
+    from app.services import email_service
+
+    secret = "synthetic-credential-body-do-not-log-6192"
+
+    async def fail(*args, **kwargs):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr("aiosmtplib.send", fail)
+    assert await email_service.send_email("local@test.invalid", "Account recovery", secret, secret) is False
+    assert secret not in caplog.text
+    assert "RuntimeError" in caplog.text
+
+
+@pytest.mark.parametrize("marker", [None, True])
+async def test_public_recovery_never_creates_markerless_first_password(directory, client, marker):
+    user = directory.users["external"]
+    user.federated = []
+    user.password = None
+    if marker is None:
+        del user.afterglow_local_password
+    else:
+        user.afterglow_local_password = marker
+    response = await client.post("/api/v1/auth/recovery/password", json={"email": user.email})
+    assert response.status_code == 202
+    if directory.sent:
+        token = token_from(directory.sent[-1])
+        await client.post("/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT})
+    assert user.password is None and not directory.updates
+    assert not directory.sent
+
+
+@pytest.mark.parametrize("state", ["absent", "existing"])
+async def test_legacy_password_proof_without_native_revision_cannot_dispatch(directory, recoveries, client, state):
+    user = directory.users["local"]
+    directory.password_states["local"] = state
+    async with recoveries() as session:
+        await recovery._issue("password", user, user.email, session)
+    token = token_from(directory.sent[-1])
+    response = await client.post(
+        "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
+    )
+    assert response.status_code == 410
+    assert not directory.updates
+
+
+async def test_public_local_password_recovery_requires_native_existing_state(directory, client, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise ConnectionError("Native guard unavailable")
+
+    monkeypatch.setattr(recovery, "_initial_request", unavailable)
+    response = await client.post("/api/v1/auth/recovery/password", json={"email": directory.users["local"].email})
+    assert response.status_code == 202
+    assert not directory.sent and not directory.updates
+
+
+async def test_public_password_recovery_cannot_recreate_history_deleted_after_mail(directory, client):
+    user = directory.users["local"]
+    assert (await client.post("/api/v1/auth/recovery/password", json={"email": user.email})).status_code == 202
+    token = token_from(directory.sent[-1])
+    directory.password_states["local"] = "absent"
+    user.password = None
+    response = await client.post(
+        "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
+    )
+    assert response.status_code == 410
+    assert user.password is None and not directory.updates

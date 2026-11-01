@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/containers-shell';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
@@ -6,7 +7,7 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import type { Cluster, StackResource, StackEvent } from '$lib/types/cluster';
   import ClusterHeader from '$lib/components/dashboard/containers/clusters/id/ClusterHeader.svelte';
@@ -163,7 +164,7 @@
     <div class="flex items-center gap-3 mb-6">
       <button onclick={() => goto('/dashboard/containers/clusters')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">{t('clusters.header.backToList')}</button>
     </div>
-    <LoadingSkeleton variant="detail" />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('clusters.list.title') })} />
   {:else if cluster}
     <ClusterHeader
       {cluster}

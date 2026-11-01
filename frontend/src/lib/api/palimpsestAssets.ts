@@ -3,6 +3,8 @@ import { fetchWithAuth, ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
 import type { PackageIdentity, PackageSummary, PackageVersion, ProjectContext, ScopedPage } from './palimpsestPackages';
 import { HubClientError } from './palimpsestHub';
+import type { UsageScheduleRequest } from '$lib/types/instanceUsage';
+import type { FlavorOption } from '$lib/types/flavor';
 
 export interface AssetIdentity extends PackageIdentity { sessionId?: string }
 export function sameAssetActor(a: AssetIdentity | null, b: AssetIdentity | null): boolean {
@@ -48,9 +50,11 @@ export interface CloudRequest {
   key_name: string;
   server_name: string;
   ssh_username: string;
+  usage_schedule?: UsageScheduleRequest;
 }
+export type CloudFlavor = Pick<FlavorOption, 'id' | 'name' | 'display_name' | 'vcpus' | 'ram' | 'extra_specs' | 'is_gpu' | 'gpu_count' | 'usage_schedule_required'>;
 export interface CloudResources {
-  flavors: { id: string; name: string; vcpus: number; ram: number }[];
+  flavors: CloudFlavor[];
   networks: { id: string; name: string; external?: boolean }[];
   keys: { name: string }[];
 }
@@ -151,7 +155,7 @@ export const assetApi = {
     request<ConsumeResult>(identity, signal, `${root}/environments/consumes/${id}`, undefined, (response) => response.json(), 'DELETE'),
   resources: async (identity: PackageIdentity, signal: AbortSignal): Promise<CloudResources> => {
     const [flavors, networks, keys] = await Promise.all([
-      json<{ id: string; name: string; vcpus: number; ram: number }[]>(identity, signal, '/api/v1/flavors'),
+      json<CloudFlavor[]>(identity, signal, '/api/v1/flavors'),
       json<{ id: string; name: string; external?: boolean }[]>(identity, signal, '/api/v1/networks'),
       json<{ name: string }[]>(identity, signal, '/api/v1/keypairs'),
     ]);

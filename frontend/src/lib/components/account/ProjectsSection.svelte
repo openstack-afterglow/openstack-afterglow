@@ -4,7 +4,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import ProjectSelector from '$lib/components/ProjectSelector.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   interface Project {
     id: string;
@@ -80,7 +80,7 @@
     <h3 class="text-sm font-semibold text-ink-0">{t('projects.title')}</h3>
     <div class="w-48"><ProjectSelector /></div>
   </div>
-  {#if settingDefault}<ActivityIndicator label={tc('state.processing')} />{/if}
+  {#if settingDefault}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
 
   {#if error}
     <div class="text-red-400 text-xs mb-2">{error}</div>
@@ -90,12 +90,7 @@
   {/if}
 
   {#if loading}
-    <ActivityIndicator label={tc('state.loading')} />
-    <div class="space-y-2 mt-2" aria-hidden="true">
-      {#each [1, 2] as _}
-        <div class="h-8 motion-skeleton rounded"></div>
-      {/each}
-    </div>
+    <LoadingState variant="section" label={tc('state.loading')}  />
   {:else if projects.length === 0}
     <div class="text-ink-2 text-xs text-center py-4">{t('projects.empty')}</div>
   {:else}

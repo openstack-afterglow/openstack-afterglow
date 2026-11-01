@@ -3,12 +3,12 @@
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import RichText from '$lib/i18n/RichText.svelte';
   import { auth, clearAuth, logoutInProgress } from '$lib/stores/auth';
-  import { api, ApiError, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
+  import { api, ApiError } from '$lib/api/client';
+  import { startLogout } from '$lib/utils/logout';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { toast } from '$lib/stores/toast';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
   const token = $derived($auth.token ?? undefined);
@@ -87,31 +87,11 @@
     }
   }
 
-  async function logoutAll() {
+  function logoutAll() {
     showConfirm = false;
+    if (revoking || $logoutInProgress) return;
     revoking = true;
-    error = '';
-    success = '';
-    await cloudShell.close('logout', { keepDock: false });
-    logoutInProgress.set(true);
-    try {
-      const pendingRefresh = beginSessionRevocation();
-      await pendingRefresh;
-      const logoutToken = $auth.token;
-      await api.post('/api/v1/auth/logout-all', {}, logoutToken ?? undefined, projectId);
-      success = t('security.signedOut');
-      clearAuth();
-      // duration 0 = 자동 소멸 없음. 확인 문구는 root layout 의 Toast 가 로그인 화면까지 옮기고
-      // 사용자가 직접 닫는다. 1.5초 타이머로 확인 문구를 빼앗지 않는다 (WCAG 2.2.1).
-      toast.success(t('security.signedOut'), 0);
-      void goto('/login', { replaceState: true }).finally(() => logoutInProgress.set(false));
-    } catch (e) {
-      error = e instanceof ApiError ? e.message : t('security.revokeFailed');
-      logoutInProgress.set(false);
-      revoking = false;
-    } finally {
-      endSessionRevocation();
-    }
+    void startLogout({ all: true });
   }
 
   function formatTime(unixTs: number): string {
@@ -134,7 +114,7 @@
       onclick={loadSessions}
       class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
       disabled={loadingSessions}
-    >{#if loadingSessions}<ActivityIndicator size="xs" label={t('security.loading')} />{:else}{t('security.refresh')}{/if}</button>
+    >{#if loadingSessions}<LoadingState variant="control" label={t('security.loading')}  />{:else}{t('security.refresh')}{/if}</button>
   </div>
 
   {#if error}
@@ -145,7 +125,7 @@
   {/if}
 
   <!-- 활성 세션 목록 -->
-  {#if removingJti}<ActivityIndicator size="xs" label={t('security.deleting')} />{/if}
+  {#if removingJti}<LoadingState variant="control" label={t('security.deleting')}  />{/if}
   {#if sessions.length > 0}
     <div class="mb-4 space-y-2">
       <p class="text-xs text-ink-2 mb-2"><RichText segments={t.rich('security.count', { count: sessions.length })} tags={{ count: sessionCount }} /></p>
@@ -211,7 +191,7 @@
             onclick={logoutAll}
             disabled={revoking}
             class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded-lg transition-colors"
-          >{#if revoking}<ActivityIndicator size="xs" label={t('security.revoking')} />{:else}{t('security.confirm')}{/if}</button>
+          >{#if revoking}<LoadingState variant="control" label={t('security.revoking')}  />{:else}{t('security.confirm')}{/if}</button>
           <button
             onclick={() => { showConfirm = false; }}
             class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded-lg transition-colors"

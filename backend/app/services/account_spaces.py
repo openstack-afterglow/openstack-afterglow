@@ -134,11 +134,12 @@ def _member_sources(sources, catalog, user_id, project_id):
     )
 
 
-def _verify_personal_member(ks, catalog, project, user_id, *, operation=None):
+def _verify_personal_member(ks, catalog, project, user_id, *, operation=None, sources=None):
     from app.services import domain_projects, identity_roles, project_service
 
     pid = _field(project, "id")
-    sources = domain_projects._sources(ks, project, catalog, operation=operation)
+    if sources is None:
+        sources = domain_projects._sources(ks, project, catalog, operation=operation)
     if not _member_sources(sources, catalog, user_id, pid):
         raise HTTPException(503, "Personal project contains unexpected native authority")
     member = _personal_member_role(catalog)
@@ -154,11 +155,15 @@ def _verify_personal_member(ks, catalog, project, user_id, *, operation=None):
         raise HTTPException(503, "Personal project native member could not be verified")
 
 
-def personal_project(user_id, *, ks=None, operation=None, native_mapping=None, mapped_username=None):
+def personal_project(
+    user_id, *, ks=None, operation=None, native_mapping=None, mapped_username=None, catalog=None, domain=None
+):
+    """Validate Personal authority; optional facts belong to the same no-write phase."""
     from app.services import identity_roles, keystone, project_service
 
     ks = operation.ks if operation is not None else ks or keystone._get_admin_ks_client()
-    domain = shared_domain("personal", ks=ks, operation=operation, required=False)
+    if domain is None:
+        domain = shared_domain("personal", ks=ks, operation=operation, required=False)
     if domain is None:
         return None
     did = _field(domain, "id")
@@ -188,14 +193,15 @@ def personal_project(user_id, *, ks=None, operation=None, native_mapping=None, m
             or type(_field(full, "enabled")) is not bool
         ):
             raise HTTPException(503, "Personal project provenance is unavailable")
-        catalog = operation.catalog() if operation is not None else identity_roles._trusted_catalog()
+        if catalog is None:
+            catalog = operation.catalog() if operation is not None else identity_roles._trusted_catalog()
         from app.services import domain_projects
 
         sources = domain_projects._sources(ks, full, catalog, operation=operation)
         if not domain_projects._personal_member(sources, catalog, user_id, pid):
             raise HTTPException(503, "Personal primary membership could not be verified")
         if any(source["role_id"] == _personal_member_role(catalog)["id"] for source in sources):
-            _verify_personal_member(ks, catalog, full, user_id, operation=operation)
+            _verify_personal_member(ks, catalog, full, user_id, operation=operation, sources=sources)
         else:
             # Preserve established owner-based projects without regranting or migrating them.
             ownership = project_service._ownership_state_sync(ks, catalog, pid)
@@ -503,7 +509,7 @@ async def ensure_personal_project(user_id, *, operation=None):
     if operation is not None:
         operation.invalidate()
     async with domain_iam._iam_write() as mutation:
-        _, ks, _ = mutation
+        _, ks, catalog = mutation
         user = await _human(user_id, mutation)
         async with _factory()() as session:
             intent = (
@@ -556,6 +562,7 @@ async def ensure_personal_project(user_id, *, operation=None):
             expected = [row for row in enrollments if row.personal_domain_id is not None and row not in deferred]
             if len(expected) > 1:
                 raise HTTPException(503, "Accepted personal primary binding is ambiguous")
+            personal_domain = None
             if intent is not None:
                 shared = await _provider_call(shared_domain, "personal", ks=ks)
                 if (
@@ -566,7 +573,9 @@ async def ensure_personal_project(user_id, *, operation=None):
                     raise HTTPException(503, "Personal identity binding changed")
                 if intent.status != "accepted":
                     await provision_primary(intent, session, mutation)
-            existing = await _provider_call(personal_project, user_id, ks=ks)
+                else:
+                    personal_domain = shared
+            existing = await _provider_call(personal_project, user_id, ks=ks, catalog=catalog, domain=personal_domain)
             if intent is not None and existing is not None and not expected and not deferred:
                 from app.services import native_oidc
 

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_token_info
+from app.api.deps import require_admin
 from app.config import get_settings
 
 router = APIRouter()
@@ -10,12 +10,13 @@ router = APIRouter()
 
 @router.get("/dashboards")
 async def get_grafana_dashboards(
-    token_info: dict = Depends(get_token_info),
+    token_info: dict = Depends(require_admin),
 ):
-    """Grafana 대시보드 UID 매핑 + 기본 URL 반환.
+    """Return the administrator's external Grafana catalog.
 
-    미설정 시 grafana_url은 빈 문자열, dashboards는 기본 UID 반환.
-    항상 200 — 프론트엔드가 grafana_url 유무로 빈 상태 판단.
+    Dashboard variables are presentation hints, not tenant authorization. Consumer
+    VM charts use the Nova-authorized instance metrics API instead of this origin.
+    An unset URL still returns the configured catalog to authorized administrators.
     """
     settings = get_settings()
     return {

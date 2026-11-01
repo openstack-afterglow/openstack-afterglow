@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
@@ -261,7 +262,7 @@
 					<ResponsiveTable>
 						{#snippet cards()}
 							<CompactResourceCard>
-								<div class="flex items-start justify-between gap-2 min-w-0"><span class="min-w-0 font-medium break-all">{transferResult.volume_name || transferResult.volume_id}</span><StatusChip status={transferResult.status} /></div>
+								<div class="flex items-start justify-between gap-2 min-w-0"><span class="min-w-0 font-medium break-all">{transferResult.volume_name || transferResult.volume_id}</span><StatusChip status={transferResult.status} kind="volume" /></div>
 								<dl>
 									<div class="col-span-2"><dt>{t('transferModal.volumeInfo')}</dt><dd>{t('transferModal.size', { size: transferResult.size })} · {transferResult.volume_type || '—'}</dd></div>
 									<div><dt>{t('transferModal.sourceDomain')}</dt><dd>{transferResult.source_domain.name}</dd></div>
@@ -326,7 +327,7 @@
 				{/if}
 			{/if}
 			{#if error}<Alert>{error}</Alert>{/if}
-			{#if busy}<Alert tone="info">{t('transferModal.busy')}</Alert>{/if}
+			{#if busy}<LoadingState variant="inline" label={t('transferModal.busy')} />{/if}
 		</div>
 		<footer class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line p-4">
 			<Button variant="secondary" disabled={!!busy} onclick={close}>{t('transferModal.close')}</Button>

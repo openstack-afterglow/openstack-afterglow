@@ -118,12 +118,12 @@
 	}
 	button {
 		position: relative;
-		min-height: 2.5rem;
+		min-height: var(--control-height);
 		margin-bottom: -1px;
 		padding: 0.5rem 0.75rem;
 		border-bottom: 2px solid transparent;
 		color: var(--color-ink-2);
-		font-size: 0.8125rem;
+		font-size: var(--type-body);
 		font-weight: 500;
 		white-space: nowrap;
 		transition: color var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-standard);
@@ -134,7 +134,7 @@
 		inset-inline: 0;
 		bottom: -2px;
 		height: 2px;
-		background: var(--color-action-warm);
+		background: var(--color-ink-1);
 		transform: scaleX(0);
 		transform-origin: center;
 		transition: transform var(--motion-duration-base) var(--motion-ease-emphasized);
@@ -159,7 +159,7 @@
 		color: var(--color-ink-3);
 		opacity: 0.55;
 	}
-	@media (pointer: coarse) {
-		button { min-height: 2.75rem; }
+	@media (max-width: 767px), (pointer: coarse) {
+		button { min-height: var(--control-touch-height); }
 	}
 </style>

@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import SecurityGroupCard from '$lib/components/dashboard/security-groups/SecurityGroupCard.svelte';
 	import SecurityGroupCreateModal from '$lib/components/dashboard/security-groups/SecurityGroupCreateModal.svelte';
 
@@ -104,7 +105,7 @@
 	{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('securityGroup.page.title') })} />
 	{:else if securityGroups.length === 0}
 		<div class="text-center py-20 text-ink-2">
 			<div class="text-5xl mb-4">🔒</div>

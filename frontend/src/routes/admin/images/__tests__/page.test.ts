@@ -23,6 +23,7 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }),
 }));
 import { auth } from '$lib/stores/auth';
+import { t as commonT } from '$lib/i18n/ns/common';
 import Page from '../+page.svelte';
 import InventoryBoundary from '$lib/components/admin/domains/_AdminInventoryBoundaryHarness.svelte';
 
@@ -131,7 +132,7 @@ describe.each([true, false])('administrator image catalog (desktop=%s)', desktop
 		render(Page);
 		expect(await screen.findByRole('button', { name: 'debian' })).toBeTruthy();
 		mocks.get.mockResolvedValueOnce({ items: [ubuntuNew], next_marker: 'u-new' }).mockRejectedValueOnce(new Error('다음 페이지 조회 실패'));
-		await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		expect(await screen.findByText('다음 페이지 조회 실패')).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'debian' })).toBeTruthy();
 		expect(screen.queryByText(':24.04')).toBeNull();

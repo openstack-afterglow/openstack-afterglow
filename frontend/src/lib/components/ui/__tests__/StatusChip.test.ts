@@ -1,33 +1,36 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { describe, it, expect, vi } from 'vitest';
+import { render } from '@testing-library/svelte';
 import StatusChip from '../StatusChip.svelte';
+import { settledSignal } from '$lib/design/characterFormats.js';
 
 describe('StatusChip', () => {
-	it('status 텍스트 렌더링', () => {
-		render(StatusChip, { status: 'active' });
-		expect(screen.getByText('active')).toBeTruthy();
+	it('preserves arbitrary authority scope identifiers without calling them unknown states', () => {
+		const view = render(StatusChip, { status: 'models:read' });
+		expect(view.getByText('models:read')).toBeTruthy();
 	});
 
-	it('null status는 "—" 표시', () => {
-		render(StatusChip, { status: null });
-		expect(screen.getByText('—')).toBeTruthy();
+	it('does not turn available backup or snapshot resources into attachable volumes', () => {
+		const view = render(StatusChip, { status: 'available' });
+		expect(view.container.querySelector('.chip-success')).toBeTruthy();
+	});
+	it('retains unknown native status codes without presenting them as healthy', () => {
+		const { container } = render(StatusChip, { status: 'FUTURE_NATIVE_STATE' });
+		expect(container.querySelector('[title="FUTURE_NATIVE_STATE"]')?.textContent).toContain('FUTURE_NATIVE_STATE');
+		expect(container.querySelector('.chip-neutral')).toBeTruthy();
 	});
 
-	it('undefined status는 "—" 표시', () => {
-		render(StatusChip, { status: undefined });
-		expect(screen.getByText('—')).toBeTruthy();
+	it('distinguishes attachable storage from attached storage', () => {
+		const available = render(StatusChip, { status: 'available', kind: 'volume' });
+		expect(available.container.querySelector('.chip-neutral')).toBeTruthy();
+		available.unmount();
+		const attached = render(StatusChip, { status: 'in-use', kind: 'volume' });
+		expect(attached.container.querySelector('.chip-info')).toBeTruthy();
 	});
 
-	it('span 요소로 렌더링', () => {
-		const { container } = render(StatusChip, { status: 'ACTIVE' });
-		const chip = container.querySelector('span');
-		expect(chip).not.toBeNull();
-	});
-
-	it('dot indicator가 포함됨', () => {
-		const { container } = render(StatusChip, { status: 'active' });
-		const spans = container.querySelectorAll('span');
-		expect(spans.length).toBeGreaterThanOrEqual(2);
+	it.each([null, undefined, ''])('announces unavailable status %s rather than an empty decorative dash', (status) => {
+		const { container } = render(StatusChip, { status });
+		expect(container.textContent?.trim()).not.toBe('');
+		expect(container.querySelector('.chip-neutral')).toBeTruthy();
 	});
 
 	it('maps ACTIVE to success tone', () => {
@@ -35,12 +38,6 @@ describe('StatusChip', () => {
 		expect(container.querySelector('.chip-success')).toBeTruthy();
 	});
 
-	it('maps BUILD to warning tone with pulse', () => {
-		const { container } = render(StatusChip, { status: 'BUILD' });
-		const chip = container.querySelector('.chip-warning');
-		expect(chip).toBeTruthy();
-		expect(chip?.classList.contains('pulse')).toBe(true);
-	});
 
 	it('maps ERROR to danger tone', () => {
 		const { container } = render(StatusChip, { status: 'ERROR' });
@@ -50,5 +47,43 @@ describe('StatusChip', () => {
 	it('maps unknown statuses to neutral tone', () => {
 		const { container } = render(StatusChip, { status: 'mystery' });
 		expect(container.querySelector('.chip-neutral')).toBeTruthy();
+	});
+
+	it('shows a rotating glyph only while a resource is transitioning, never a settled outcome mark', () => {
+		const settledMarks = (['success', 'failed', 'blocked', 'canceled'] as const).map(settledSignal);
+		const building = render(StatusChip, { status: 'BUILD' });
+		const glyph = building.container.querySelector('[data-art]')!;
+		expect(glyph.getAttribute('aria-hidden')).toBe('true');
+		expect(settledMarks).not.toContain(glyph.getAttribute('data-art'));
+		building.unmount();
+		expect(render(StatusChip, { status: 'ACTIVE' }).container.querySelector('[data-art]')?.getAttribute('data-art')).toBe(settledSignal('success'));
+		expect(render(StatusChip, { status: 'ERROR' }).container.querySelector('[data-art]')?.getAttribute('data-art')).toBe(settledSignal('failed'));
+	});
+
+	it.each(['observed', 'FUTURE_NATIVE_STATE', null, 'SHUTOFF', 'manage'])('does not mark %s as a finished outcome', (status) => {
+		const outcomes = (['success', 'failed', 'blocked', 'canceled'] as const).map(settledSignal);
+		const art = render(StatusChip, { status }).container.querySelector('[data-art]')?.getAttribute('data-art');
+		expect(outcomes).not.toContain(art);
+	});
+
+	it('marks an explicitly canceled job as canceled', () => {
+		expect(render(StatusChip, { status: 'canceled' }).container.querySelector('[data-art]')?.getAttribute('data-art')).toBe(settledSignal('canceled'));
+	});
+
+	it('keeps the shared character clock idle while every chip is settled', () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+		try {
+			const settled = render(StatusChip, { status: 'ACTIVE' });
+			expect(vi.getTimerCount()).toBe(0);
+			const building = render(StatusChip, { status: 'BUILD' });
+			expect(vi.getTimerCount()).toBe(1);
+			building.unmount();
+			expect(vi.getTimerCount()).toBe(0);
+			settled.unmount();
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllGlobals();
+		}
 	});
 });

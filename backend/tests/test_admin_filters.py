@@ -137,6 +137,29 @@ async def test_all_instances_status_filter(admin_client, mock_conn):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("extra_specs", "display_name"),
+    [({}, "mem.4c_32g"), (None, None), ({"pci_passthrough:alias": "graphics:1"}, None)],
+)
+async def test_all_instances_cpu_label_requires_native_snapshot(admin_client, mock_conn, extra_specs, display_name):
+    response = _make_servers_response()
+    response["servers"][0]["flavor"] = {
+        "original_name": "cpu.ag.4c.32g.1616bb0430ce",
+        "vcpus": 4,
+        "ram": 32768,
+        "disk": 0,
+        "extra_specs": extra_specs,
+    }
+    mock_conn.compute.get_endpoint.return_value = "http://nova"
+    mock_conn.session.get.return_value = _make_session_response(response)
+    result = await admin_client.get("/api/v1/admin/all-instances")
+    assert result.status_code == 200
+    item = result.json()["items"][0]
+    assert item["flavor"] == "cpu.ag.4c.32g.1616bb0430ce"
+    assert item["flavor_display_name"] == display_name
+
+
+@pytest.mark.asyncio
 async def test_all_instances_name_filter_uses_literal_full_inventory(admin_client, mock_conn):
     """Literal name/ID filtering is not delegated to Nova's name-only regex."""
     mock_conn.compute.get_endpoint.return_value = "http://nova"

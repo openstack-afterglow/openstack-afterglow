@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
-	import { ActivityIndicator, Alert, Button, Card, CompactResourceCard, Field, Pill, ResponsiveTable, TableShell, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, CompactResourceCard, Field, Pill, ResponsiveTable, TableShell, TextInput } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 	const id = $props.id();
@@ -189,7 +190,7 @@
 							<span data-testid="windows-setup-save" class="max-w-full">
 								<Button type="submit" dataTour="windows-setup-save" disabled={controlsLocked || !s.canSaveWindowsSetup} ariaBusy={s.windowsSaving}
 									class="min-h-11 max-w-full !whitespace-normal">
-									{#if s.windowsSaving}<ActivityIndicator size="xs" label={t('windowsSetup.saving')} />{:else if s.windowsError}{t('windowsSetup.retry')}{:else}{t('windowsSetup.save')}{/if}
+									{#if s.windowsSaving}<LoadingState variant="control" label={t('windowsSetup.saving')} />{:else if s.windowsError}{t('windowsSetup.retry')}{:else}{t('windowsSetup.save')}{/if}
 								</Button>
 							</span>
 						</div>

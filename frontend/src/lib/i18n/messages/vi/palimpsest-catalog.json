@@ -20,7 +20,7 @@
   "previous": "Trang trước",
   "next": "Trang sau",
   "empty.title": "Nguồn này chưa ghi nhận lớp nào.",
-  "empty.help": "Chuyển nguồn hoặc dùng các điều khiển dựng hiện có bên dưới.",
+  "empty.help": "Đổi nguồn hoặc bắt đầu bản dựng mới trong Studio bản dựng.",
   "empty.search": "Không có kết quả tìm kiếm.",
   "empty.searchHelp": "Xóa tìm kiếm hoặc chọn nguồn khác.",
   "error.denied": "Người gọi hiện tại không có quyền đọc danh mục. Kiểm tra quyền quản trị.",
@@ -76,6 +76,6 @@
   "children.more": "Còn lớp con trực tiếp khác. Phản hồi này có giới hạn.",
   "relations.none": "Không trả về quan hệ nào",
   "bundles": "Gói / hồ sơ tham chiếu",
-  "bundles.help": "Chỉ các tham chiếu đã ghi nhận; liên kết mở hồ sơ quản lý bên dưới.",
+  "bundles.help": "Chỉ hiển thị tham chiếu đã ghi; liên kết mở thẻ Hồ sơ.",
   "bundles.none": "Không có tham chiếu ghi nhận (không chứng minh chưa được dùng)"
 }

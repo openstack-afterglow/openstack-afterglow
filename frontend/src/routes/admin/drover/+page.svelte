@@ -1,10 +1,11 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import { api, ApiError } from '$lib/api/client';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import K3sClusterDetailPanel from '$lib/components/K3sClusterDetailPanel.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
@@ -17,6 +18,8 @@
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import ClusterFailure from '$lib/components/dashboard/drover/ClusterFailure.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 
 	interface AdminK3sCluster {
 		id: string;
@@ -35,6 +38,10 @@
 	let clusters = $state<AdminK3sCluster[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
+	let error = $state('');
+	let loadGeneration = 0;
+	onDestroy(() => { loadGeneration++; });
+	const privateScope = createPrivateViewScope();
 	let statusFilter = $state<'all' | 'active' | 'pending' | 'error' | 'deleted'>('all');
 	// 슬라이드 패널
 	let selectedClusterId = $state<string | null>(null);
@@ -56,6 +63,11 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	async function load(force = false) {
+		const generation = ++loadGeneration;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestScope = $privateScope;
+		const owns = () => generation === loadGeneration && requestScope === $privateScope && !!token;
 		if (clusters.length === 0) loading = true;
 		else refreshing = true;
 		try {
@@ -69,17 +81,20 @@
 				params.set('status', 'DELETED');
 			}
 			if (params.toString()) url += `?${params.toString()}`;
-			clusters = await api.get<AdminK3sCluster[]>(url, token, projectId, { refresh: force });
-		} catch {
-			clusters = [];
+			const response = await api.get<AdminK3sCluster[]>(url, requestToken, requestProject, { refresh: force });
+			if (!owns()) return;
+			clusters = response;
+			error = '';
+		} catch (caught) {
+			if (owns()) error = caught instanceof ApiError ? caught.message : t('clusterError.loadFailed');
 		} finally {
-			loading = false;
-			refreshing = false;
+			if (owns()) { loading = false; refreshing = false; }
 		}
 	}
 
 	function setStatusFilter(filter: typeof statusFilter) {
 		statusFilter = filter;
+		clusters = [];
 		void load();
 	}
 
@@ -105,7 +120,7 @@
 {/if}
 
 <PageShell>
-	<PageHeader breadcrumb="DROVER" title={t('cluster.title')}>
+	<PageHeader breadcrumb="Kubernetes · Drover" title={t('cluster.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -135,18 +150,20 @@
 		</div>
 	</div>
 
+	{#if error}<Alert tone="danger" title={t('clusterError.loadFailed')} class="mb-4">{#if error !== t('clusterError.loadFailed')}{error}{/if}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => load(true)} disabled={refreshing}>{t('clusterError.reload')}</Button>{/snippet}</Alert>{/if}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
-	{:else if clusters.length === 0}
+		<LoadingState variant="surface" />
+	{:else if clusters.length === 0 && !error}
 		<EmptyState headline={t('cluster.empty')} />
-	{:else}
+	{:else if clusters.length > 0}
   <ResponsiveTable>
    {#snippet cards()}
     {#each clusters as c (c.id)}
      <CompactResourceCard>
       <div class="flex flex-wrap items-start gap-2"><button onclick={() => openClusterPanel(c.id)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
       <p class="text-xs text-ink-2 break-all">{t('admin.project')}: {c.project_id ? ($projectNames.get(c.project_id) ?? c.project_id.slice(0, 8)) : '-'}</p><p class="text-xs">{t('admin.nodeCount', { current: c.agent_vm_ids?.length ?? 0, total: c.agent_count })} · {c.k3s_version || '-'}</p>
-      {#snippet details()}<p class="text-xs font-mono break-all">{t('admin.serverIp')}: {c.server_ip || '-'}</p><p class="text-xs">{t('admin.created')}: {c.created_at ? c.created_at.slice(0, 10) : '-'}</p>{#if c.status_reason}<p class="text-xs break-all">{c.status_reason}</p>{/if}{/snippet}
+					{#if c.status_reason && (c.status === 'ERROR' || c.status === 'FAILED')}<ClusterFailure reason={c.status_reason} />{/if}
+					{#snippet details()}<p class="text-xs font-mono break-all">{t('admin.serverIp')}: {c.server_ip || '-'}</p><p class="text-xs">{t('admin.created')}: {c.created_at ? c.created_at.slice(0, 10) : '-'}</p>{#if c.status_reason && c.status !== 'ERROR' && c.status !== 'FAILED'}<p class="text-xs break-all">{c.status_reason}</p>{/if}{/snippet}
      </CompactResourceCard>
     {/each}
    {/snippet}
@@ -176,7 +193,7 @@
 									{c.name}
 								</span>
 								{#if c.status_reason}
-									<div class="mt-0.5 max-w-40 truncate text-xs text-ink-2">{c.status_reason}</div>
+									{#if c.status === 'ERROR' || c.status === 'FAILED'}<ClusterFailure reason={c.status_reason} />{:else}<p class="mt-0.5 max-w-prose whitespace-pre-wrap text-[0.8125rem] text-ink-2">{c.status_reason}</p>{/if}
 								{/if}
 							</td>
 							<td>

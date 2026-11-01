@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/file-storage';
 	import type { AccessRule } from '$lib/types/fileStorage';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { ResponsiveTable, CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
 	let {
@@ -79,7 +79,7 @@
 					disabled={addingRule || !ruleForm.access_to.trim()}
 					class="inline-flex items-center gap-1.5 px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded transition-colors"
 				>
-					{#if addingRule}<ActivityIndicator size="xs" tone="ink" />{/if}{addingRule ? t('accessRules.adding') : t('accessRules.add')}
+					{#if addingRule}<LoadingState variant="control" label="" />{/if}{addingRule ? t('accessRules.adding') : t('accessRules.add')}
 				</button>
 			</div>
 			{#if addError}<p class="text-red-400 text-xs mt-2">{addError}</p>{/if}
@@ -87,7 +87,7 @@
 	{/if}
 
 	{#if accessLoading}
-		<div class="flex justify-center py-4"><ActivityIndicator label={t('accessRules.loading')} /></div>
+		<div class="flex justify-center py-4"><LoadingState variant="section" label={t('accessRules.loading')} /></div>
 	{:else if accessRules.length === 0}
 		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.empty')}</p>
 	{:else}
@@ -100,7 +100,7 @@
 						{#snippet details()}<p class="font-mono break-all">ID: {rule.id}</p><p>{t('accessRules.accessKey')}: <span class="font-mono">{rule.access_key ? `${rule.access_key.slice(0, 16)}...` : '-'}</span></p>{/snippet}
 						{#snippet actions()}
 							{#if rule.access_key}<Button size="sm" variant="secondary" onclick={() => copyKey(rule.access_key!, rule.id)}>{copiedKey === rule.id ? t('accessRules.copied') : t('accessRules.copy')}</Button>{/if}
-							<Button size="sm" variant="danger-outline" onclick={() => onRevoke(rule.id)} disabled={revokingId === rule.id}>{#if revokingId === rule.id}<ActivityIndicator size="xs" tone="danger" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}</Button>
+							<Button size="sm" variant="danger-outline" onclick={() => onRevoke(rule.id)} disabled={revokingId === rule.id}>{#if revokingId === rule.id}<LoadingState variant="control" label="" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}</Button>
 						{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -147,7 +147,7 @@
 									disabled={revokingId === rule.id}
 									class="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
 								>
-									{#if revokingId === rule.id}<ActivityIndicator size="xs" tone="danger" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
+									{#if revokingId === rule.id}<LoadingState variant="control" label="" />{/if}{revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
 								</button>
 							</td>
 						</tr>

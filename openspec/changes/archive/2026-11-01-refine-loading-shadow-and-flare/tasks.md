@@ -1,0 +1,3 @@
+- [x] Tune corona, flare length, soft edge and lower 5% shadow.
+- [x] Inspect desktop/mobile and regression checks.
+- [x] Independent review, documentation, packaging and archive.

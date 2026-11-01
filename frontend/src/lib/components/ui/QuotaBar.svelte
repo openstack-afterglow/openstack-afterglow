@@ -1,5 +1,6 @@
 <script lang="ts">
 	import UsageBar from './UsageBar.svelte';
+	import type { DesignTone } from '$lib/design/tokens';
 
 	interface Props {
 		label: string;
@@ -8,10 +9,11 @@
 		color?: string;
 		size?: 'xs' | 'sm' | 'md';
 		showValue?: boolean;
+		tone?: DesignTone;
 		class?: string;
 	}
 
-	let { label, used, limit, color: _color, size = 'xs', showValue = true, class: className = '' }: Props = $props();
+	let { label, used, limit, color: _color, tone, size = 'xs', showValue = true, class: className = '' }: Props = $props();
 </script>
 
-<UsageBar {label} value={used} max={limit} {size} {showValue} class={className} />
+<UsageBar {label} value={used} max={limit} {tone} {size} {showValue} class={className} />

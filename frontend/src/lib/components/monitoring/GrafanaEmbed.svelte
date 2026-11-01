@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { auth } from '$lib/stores/auth';
+	import { resolvedTheme } from '$lib/stores/theme';
 	import { loadGrafanaContext, type GrafanaDashboardKey } from '$lib/stores/grafana';
 
 	interface Props {
@@ -46,6 +50,10 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	let authRevision = $state(0);
+	let contextRevision = $state(-1);
+	const unsubscribe = auth.subscribe(() => { authRevision += 1; });
+	onDestroy(unsubscribe);
 
 	// ctx는 $state로 분리 — token/projectId 변경 시만 재로드 (캐시됨)
 	type GrafanaCtx = { grafanaUrl: string; dashboards: Record<GrafanaDashboardKey, string> };
@@ -55,21 +63,31 @@
 	let loading = $state(true);
 
 	$effect(() => {
+		const revision = authRevision;
+		let active = true;
 		// 동기 구간에서 token, projectId를 읽어 의존성 등록
 		loading = true;
 		loadError = false;
 		contextError = false;
 		ctx = null;
+		if (!token || $auth.isSystemAdmin !== true) {
+			loading = false;
+			contextError = true;
+			return;
+		}
 		loadGrafanaContext(token, projectId).then((result) => {
+			if (!active || revision !== authRevision) return;
 			loading = false;
 			if (!result) { contextError = true; return; }
 			ctx = result;
+			contextRevision = revision;
 		});
+		return () => { active = false; };
 	});
 
 	// iframeUrl은 $derived — ctx, vars, dashboardKey, panelId, range 모두 동기 의존성으로 추적됨
 	const iframeUrl = $derived.by(() => {
-		if (!ctx) return null;
+		if (!ctx || contextRevision !== authRevision || !token || $auth.isSystemAdmin !== true) return null;
 		const uid = ctx.dashboards[dashboardKey];
 		if (!uid) return null;
 		const base = ctx.grafanaUrl;
@@ -78,7 +96,7 @@
 			.join('&');
 		const timeParams = `from=${range}&to=now`;
 		// Grafana handles branding inside the cross-origin frame; avoid its sticky kiosk footer.
-		const common = `orgId=1&theme=dark&kiosk&hideLogo=1&${timeParams}${varParams ? '&' + varParams : ''}`;
+		const common = `orgId=1&theme=${$resolvedTheme}&kiosk&hideLogo=1&${timeParams}${varParams ? '&' + varParams : ''}`;
 		if (panelId !== undefined) {
 			return `${base}/d-solo/${uid}/_?panelId=${panelId}&${common}`;
 		}
@@ -88,9 +106,7 @@
 
 <div class="w-full rounded-xl overflow-hidden bg-surface-base border border-line" style="height: {containerHeight}">
 	{#if loading}
-		<div class="w-full h-full flex items-center justify-center">
-			<div class="w-5 h-5 border-2 border-action-warm border-t-transparent rounded-full animate-spin"></div>
-		</div>
+		<LoadingState variant="section" label={tc('state.loadingNamed', { name: title ?? t('monitoring.page.title') })} />
 	{:else if contextError || loadError}
 		<div class="w-full h-full flex flex-col items-center justify-center gap-2 text-center px-6">
 			<svg class="w-8 h-8 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

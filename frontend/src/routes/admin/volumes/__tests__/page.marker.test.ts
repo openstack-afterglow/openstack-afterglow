@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 const { mockGet, mockPrefetch } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPrefetch: vi.fn() }));
@@ -44,7 +44,7 @@ describe('admin volume marker generation', () => {
 
 		render(Page);
 		await vi.waitFor(() => expect(mockGet.mock.calls.some((call) => String(call[0]).includes('limit=20'))).toBe(true));
-		await fireEvent.click(screen.getByRole('button', { name: '10' }));
+		await fireEvent.change(within(screen.getByTestId('admin-volume-footer')).getByRole('combobox'), { target: { value: '10' } });
 		await vi.waitFor(() => expect(mockGet.mock.calls.some((call) => String(call[0]).includes('limit=10'))).toBe(true));
 
 		newRequest.resolve({
@@ -60,6 +60,6 @@ describe('admin volume marker generation', () => {
 
 		expect(screen.queryByText('Stale volume')).toBeNull();
 		expect(mockPrefetch).toHaveBeenCalledOnce();
-		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/all-volumes?limit=10&marker=new-marker');
+		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/all-volumes?limit=10&sort=created_desc&marker=new-marker');
 	});
 });

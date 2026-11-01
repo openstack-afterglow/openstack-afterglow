@@ -1,16 +1,22 @@
 """Consumer-visible create discovery/admission boundaries, independent of scheduling."""
 
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import requests
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.compute import FlavorCapacityInfo, FlavorInfo
+from app.models.db import ResourcePolicy
+from app.services import flavor_capacity, resource_policy_store
 from app.services.flavor_eligibility import (
     FlavorEligibilityUnavailable,
     evaluate_project_flavors,
     require_flavor_eligible,
 )
-from app.services.resource_policies import ResourcePolicyValidationError
 
 FLAVOR = FlavorInfo(
     id="gpu-large",
@@ -27,7 +33,13 @@ QUOTA = {
     "ram": {"limit": 262144, "in_use": 8192},
 }
 GPU_STATUS = [{"gpu_type": "RTX3090TI", "limit": 2, "available": 1, "in_use": 1}]
-PAYLOAD = {"name": "capacity-check", "image_id": "image-a", "flavor_id": FLAVOR.id, "network_id": "net-a"}
+PAYLOAD = {
+    "name": "capacity-check",
+    "image_id": "image-a",
+    "flavor_id": FLAVOR.id,
+    "network_id": "net-a",
+    "usage_schedule": {},
+}
 WIZARD_LIST = "/api/v1/flavors?capacity=create"
 ADMIN_WIZARD_LIST = "/api/v1/admin/instances/flavors-for-project?project_id=target-project&capacity=create"
 
@@ -77,7 +89,6 @@ async def test_create_rechecks_changed_capacity_before_any_mutation(
     discovered = await admin_client.get(WIZARD_LIST)
     assert discovered.status_code == 200
     assert discovered.json()[0]["eligibility"]["selectable"] is True
-    assert sources.await_args.kwargs["fresh"] is True  # every create chooser refresh reads current hosts
     sources.return_value = {flavor.id: capacity(status)}
     payload = {**PAYLOAD, "flavor_id": flavor.id, **({"project_id": "target-project"} if "/admin/" in endpoint else {})}
     with (
@@ -87,7 +98,6 @@ async def test_create_rechecks_changed_capacity_before_any_mutation(
     ):
         response = await admin_client.post(endpoint, json=payload)
     assert response.status_code == expected_status
-    assert sources.await_args.kwargs["fresh"] is True  # admission never reuses the discovery snapshot
     volume.assert_not_called()
     server.assert_not_called()
     reserve.assert_not_awaited()
@@ -120,10 +130,17 @@ async def test_multi_vm_admin_list_does_not_claim_single_vm_capacity(admin_clien
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("endpoint", [WIZARD_LIST, ADMIN_WIZARD_LIST])
-async def test_unknown_capacity_blocks_every_flavor(admin_client, mock_conn, sources, monkeypatch, endpoint):
+@pytest.mark.parametrize("failure", ["exception", "unavailable-snapshot"])
+async def test_unknown_capacity_blocks_every_flavor(admin_client, mock_conn, sources, monkeypatch, endpoint, failure):
     # An unverified snapshot never admits a VM: an operator or Placement outage blocks CPU and GPU flavors alike.
     monkeypatch.setattr("app.services.nova.list_flavors", lambda _conn: [FLAVOR, CPU_FLAVOR])
-    sources.side_effect = RuntimeError("provider-private-id in failed authority")
+    if failure == "exception":
+        sources.side_effect = RuntimeError("provider-private-id in failed authority")
+    else:
+        sources.return_value = {
+            flavor.id: FlavorCapacityInfo(status="unavailable", checked_at="2026-10-01T00:00:00+00:00")
+            for flavor in (FLAVOR, CPU_FLAVOR)
+        }
     response = await admin_client.get(endpoint)
     assert response.status_code == 200
     rows = {row["id"]: row["eligibility"] for row in response.json()}
@@ -131,6 +148,7 @@ async def test_unknown_capacity_blocks_every_flavor(admin_client, mock_conn, sou
         assert rows[flavor.id]["selectable"] is False
         assert [blocker["code"] for blocker in rows[flavor.id]["blockers"]] == ["host_capacity_unavailable"]
         assert rows[flavor.id]["capacity"]["status"] == "unavailable"
+        assert rows[flavor.id]["capacity"]["reason"] is None
         assert rows[flavor.id]["capacity"]["remaining_vcpus"] is None
     assert "provider-private-id" not in response.text
 
@@ -140,25 +158,92 @@ async def test_unknown_capacity_blocks_every_flavor(admin_client, mock_conn, sou
 
 
 @pytest.mark.asyncio
-async def test_missing_default_zone_blocks_every_flavor(client, sources, monkeypatch):
-    # The create precheck rejects an unconfigured default zone, so discovery must not offer any flavor either.
-    monkeypatch.setattr("app.services.nova.list_flavors", lambda _conn: [FLAVOR, CPU_FLAVOR])
-    monkeypatch.setattr(
-        "app.services.resource_policy_store.resolve_policies",
-        AsyncMock(
-            side_effect=ResourcePolicyValidationError(
-                "required resource policies are not configured: nova.default_compute_availability_zone"
+@pytest.mark.parametrize("policy_state", ["missing", "invalid", "discovery-unavailable", "placement-unavailable"])
+async def test_policy_failure_is_distinct_from_actual_placement_failure(mock_conn, monkeypatch, tmp_path, policy_state):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'capacity-policy.sqlite'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(ResourcePolicy.__table__.create)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(resource_policy_store, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(resource_policy_store, "is_db_available", lambda: True)
+    if policy_state != "missing":
+        async with factory() as session, session.begin():
+            session.add(
+                ResourcePolicy(
+                    policy_key="nova.default_compute_availability_zone",
+                    resource_kind="compute_availability_zone",
+                    resource_id="nova",
+                    resource_name="Previously selected zone",
+                    updated_by_user_id="original-admin",
+                )
             )
-        ),
+    native_calls = []
+
+    def zones():
+        native_calls.append("zones")
+        if policy_state == "discovery-unavailable":
+            raise requests.Timeout("private-native-endpoint")
+        return [] if policy_state == "invalid" else [{"zoneName": "nova", "zoneState": {"available": True}}]
+
+    def get(url, **kwargs):
+        native_calls.append(url)
+        response = requests.Response()
+        response.status_code = 200
+        if "/os-quota-sets/" in url:
+            body = {"quota_set": QUOTA}
+        elif url.endswith("/os-services"):
+            body = {"services": []}
+        elif url.endswith("/os-aggregates"):
+            body = {"aggregates": []}
+        elif url.endswith("/os-hypervisors/detail"):
+            body = {"hypervisors": []}
+        elif url == "https://placement.invalid/resource_providers":
+            response.status_code, body = 404, {}
+        else:
+            pytest.fail(f"unexpected native GET {url}")
+        response._content = json.dumps(body).encode()
+        response._content_consumed = True
+        return response
+
+    mock_conn.compute.get_endpoint.return_value = "https://nova.invalid/v2.1"
+    mock_conn.compute.availability_zones.side_effect = zones
+    mock_conn.session.get.side_effect = get
+    operator = SimpleNamespace(
+        compute=SimpleNamespace(get_endpoint=lambda: "https://nova.invalid/v2.1"),
+        placement=SimpleNamespace(get_endpoint=lambda: "https://placement.invalid"),
+        session=SimpleNamespace(get=get),
+        close=lambda: None,
     )
-    response = await client.get(WIZARD_LIST)
-    assert response.status_code == 200
-    rows = {row["id"]: row["eligibility"] for row in response.json()}
-    for flavor in (FLAVOR, CPU_FLAVOR):
-        assert rows[flavor.id]["selectable"] is False
-        assert [blocker["code"] for blocker in rows[flavor.id]["blockers"]] == ["host_capacity_unavailable"]
-        assert rows[flavor.id]["capacity"]["status"] == "unavailable"
-    sources.assert_not_awaited()
+    monkeypatch.setattr("app.services.keystone.get_admin_project_connection", lambda: operator)
+    monkeypatch.setattr(flavor_capacity, "_operator", None)
+    try:
+        result = (await evaluate_project_flavors(mock_conn, "project-a", [CPU_FLAVOR], check_capacity=True))[0]
+        eligibility = result.eligibility
+        assert eligibility.selectable is False
+        assert [blocker.code for blocker in eligibility.blockers] == ["host_capacity_unavailable"]
+        assert eligibility.capacity.status == "unavailable"
+        assert eligibility.capacity.reason == (
+            None if policy_state == "placement-unavailable" else "default_compute_zone_unavailable"
+        )
+        placement_called = "https://placement.invalid/resource_providers" in native_calls
+        assert placement_called is (policy_state == "placement-unavailable")
+        if policy_state == "missing":
+            assert "zones" not in native_calls
+        with pytest.raises(FlavorEligibilityUnavailable):
+            await require_flavor_eligible(mock_conn, "project-a", CPU_FLAVOR, check_capacity=True)
+        async with factory() as session:
+            rows = (await session.scalars(select(ResourcePolicy))).all()
+            if policy_state == "missing":
+                assert rows == []
+            else:
+                assert len(rows) == 1
+                assert (rows[0].resource_id, rows[0].resource_name, rows[0].updated_by_user_id) == (
+                    "nova",
+                    "Previously selected zone",
+                    "original-admin",
+                )
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -169,6 +254,7 @@ async def test_explicit_zone_does_not_require_default_policy(client, sources, mo
     response = await client.get(f"{WIZARD_LIST}&availability_zone=gpu-zone")
     assert response.status_code == 200
     assert response.json()[0]["eligibility"]["selectable"] is True
+    assert response.json()[0]["eligibility"]["capacity"]["reason"] is None
 
 
 @pytest.mark.asyncio

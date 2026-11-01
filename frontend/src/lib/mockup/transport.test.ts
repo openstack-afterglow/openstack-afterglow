@@ -34,6 +34,31 @@ describe('mockup transport', () => {
 		})]);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
+	it('serves native-shaped administrator notifications and the existing recent-events read', async () => {
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		// Module-boundary test: resetModules recreates the mutable fixture singleton.
+		const { maybeMockJson } = await import('./transport');
+		const notices = await maybeMockJson('GET', '/api/v1/admin/notifications', undefined, 'mock-token-admin-scoped', 'mock-project-1');
+		expect(notices).toEqual({ notifications: expect.arrayContaining([expect.objectContaining({ type: 'error', severity: 'high', count: 3 })]), total: 3 });
+		const events = await maybeMockJson('GET', '/api/v1/admin/events?limit=5', undefined, 'mock-token-admin-scoped', 'mock-project-1');
+		expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ id: 1001, status: 'failed', action: 'create', resource_id: 'mock-instance-6' })]));
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+	it('projects native instance ownership for the project VM metrics picker', async () => {
+		// resetModules recreates the transport's mutable tutorial state for each test.
+		const { maybeMockJson } = await import('./transport');
+		const rows = await maybeMockJson<Array<{ id: string; project_id: string }>>(
+			'GET', '/api/v1/instances', undefined, 'mock-token-tutorial-scoped', 'mock-project-1',
+		);
+		expect(rows).toEqual(expect.any(Array));
+		if (!Array.isArray(rows)) throw new Error('Expected the native instance list shape');
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows.every((row) => row.project_id === 'mock-project-1')).toBe(true);
+		const selected = rows[0];
+		const detail = await maybeMockJson('GET', `/api/v1/instances/${selected.id}`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1');
+		expect(detail).toMatchObject({ id: selected.id, project_id: 'mock-project-1' });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 	it('serves supported JSON reads and applies local instance mutations to later GETs', async () => {
 		// Dynamic import required: transport owns mutable singleton fixture state that each test must reinitialize.
 		const { maybeMockJson } = await import('./transport');
@@ -416,6 +441,24 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['all-instances', ['mock-instance-6', 'mock-instance-4', 'mock-instance-1'], ['mock-instance-1', 'mock-instance-4', 'mock-instance-6']],
+		['all-volumes', ['mock-admin-volume-error', 'mock-admin-volume-in-use', 'mock-admin-volume-available'], ['mock-admin-volume-error', 'mock-admin-volume-in-use', 'mock-admin-volume-available']],
+	])('sorts %s before tutorial marker pagination', async (route, newestIds, nameDescIds) => {
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		// resetModules isolates the mutable tutorial singleton for each route.
+		const { maybeMockJson } = await import('./transport');
+		type Page = { items: { id: string }[]; next_marker: string | null };
+		const first = await maybeMockJson<Page>('GET', `/api/v1/admin/${route}?limit=2`) as Page;
+		expect(first.items.map(item => item.id)).toEqual(newestIds.slice(0, 2));
+		const second = await maybeMockJson<Page>('GET', `/api/v1/admin/${route}?limit=2&marker=${first.next_marker}`) as Page;
+		expect([...first.items, ...second.items].map(item => item.id)).toEqual(newestIds);
+		const named = await maybeMockJson<Page>('GET', `/api/v1/admin/${route}?limit=1&sort=name_desc`) as Page;
+		expect(named.items[0].id).toBe(nameDescIds[0]);
+		const nextNamed = await maybeMockJson<Page>('GET', `/api/v1/admin/${route}?limit=2&sort=name_desc&marker=${named.next_marker}`) as Page;
+		expect([named.items[0], ...nextNamed.items].map(item => item.id)).toEqual(nameDescIds);
+	});
+
 	it('serves every administrator tour contract with filters and no network access', async () => {
 		sessionStorage.clear();
 		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
@@ -563,6 +606,8 @@ describe('mockup transport', () => {
 
 
 	it('serves lean dashboard overview contracts without changing full fixtures', async () => {
+		// resetModules must recreate the shared mutable state used by both fixtures and transport.
+		const { getMockupState } = await import('./state');
 		const { maybeMockJson, maybeMockK3sStream } = await import('./transport');
 		const fullSummary = await maybeMockJson<{ gpu_used: number }>(
 			'GET',

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 import httpx
@@ -58,11 +60,12 @@ from app.services import (
 from app.services import libraries as lib_svc
 from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, ttl_normal
 from app.services.cache import invalidation as cache_invalidation
+from app.services.flavor_presentation import canonical_cpu_display_name
 from app.services.keystone import get_drover_proxy
 from app.services.octavia import get_topology_lbs
 
 # FastAPI-free 인벤토리 유틸리티로 이동됨 — admin.py 내부 호출 + 하위 호환 재export.
-from app.services.openstack_inventory import _fetch_hypervisors_raw
+from app.services.openstack_inventory import _fetch_hypervisors_raw, list_servers_complete
 from app.services.parallel import run_parallel
 from app.utils.version import read_app_version
 
@@ -183,74 +186,75 @@ async def list_active_builds():
 # ---------------------------------------------------------------------------
 
 
+def _overview_number(value) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        raise ValueError("Invalid overview inventory quantity")
+    return value
+
+
 def _fetch_overview_hypervisors(conn) -> dict:
-    """하이퍼바이저 집계 데이터 수집."""
-    try:
-        data = _fetch_hypervisors_raw(conn)
-        return {
-            "host_count": len(data) or 1,
-            "used_vcpus": sum(h.get("vcpus_used", 0) or 0 for h in data),
-            "total_ram_mb": sum(h.get("memory_mb", 0) or 0 for h in data),
-            "used_ram_mb": sum(h.get("memory_mb_used", 0) or 0 for h in data),
-            "running_vms": sum(h.get("running_vms", 0) or 0 for h in data),
-            "total_vcpus": sum(h.get("vcpus", 0) or 0 for h in data),
-        }
-    except Exception:
-        _logger.warning("하이퍼바이저 집계 실패", exc_info=True)
-        return {
-            "host_count": 0,
-            "used_vcpus": 0,
-            "total_ram_mb": 0,
-            "used_ram_mb": 0,
-            "running_vms": 0,
-            "total_vcpus": 0,
-        }
+    """Nova allocation/inventory counters, not measured guest utilization."""
+    data = _fetch_hypervisors_raw(conn, strict=True)
+    return {
+        "host_count": len(data),
+        "used_vcpus": sum(_overview_number(h.get("vcpus_used")) for h in data),
+        "total_ram_mb": sum(_overview_number(h.get("memory_mb")) for h in data),
+        "used_ram_mb": sum(_overview_number(h.get("memory_mb_used")) for h in data),
+        "running_vms": sum(_overview_number(h.get("running_vms")) for h in data),
+        "total_vcpus": sum(_overview_number(h.get("vcpus")) for h in data),
+    }
 
 
 def _fetch_overview_disk(conn) -> dict:
-    """클러스터 등록 Cinder 풀 총용량 vs (볼륨 + 이미지) 사용량."""
+    """Keep each source independently known; never turn a failed read into zero."""
     from app.services.cinder import list_storage_pools
     from app.services.glance import get_total_image_bytes
 
-    total_disk = 0.0
+    result = {"total_disk": None, "volume_gb": None, "image_gb": None, "used_disk": None}
     try:
-        for p in list_storage_pools(conn):
-            total_disk += p.get("total_capacity_gb", 0) or 0
+        result["total_disk"] = round(
+            sum(_overview_number(p["total_capacity_gb"]) for p in list_storage_pools(conn, strict=True)), 2
+        )
     except Exception:
-        pass
-
-    used_disk = 0.0
+        _logger.warning("Overview pool capacity unavailable", exc_info=True)
     try:
-        for v in conn.block_storage.volumes(all_projects=True):
-            used_disk += v.size or 0
+        result["volume_gb"] = round(
+            sum(_overview_number(v.size) for v in conn.block_storage.volumes(all_projects=True)), 2
+        )
     except Exception:
-        pass
-
+        _logger.warning("Overview provisioned volume capacity unavailable", exc_info=True)
     try:
-        used_disk += round(get_total_image_bytes(conn) / (1024**3), 2)
+        result["image_gb"] = round(get_total_image_bytes(conn, strict=True) / (1024**3), 2)
     except Exception:
-        pass
-
-    return {"used_disk": round(used_disk, 2), "total_disk": round(total_disk, 2)}
+        _logger.warning("Overview image bytes unavailable", exc_info=True)
+    if result["volume_gb"] is not None and result["image_gb"] is not None:
+        result["used_disk"] = round(result["volume_gb"] + result["image_gb"], 2)
+    return result
 
 
 def _fetch_overview_placement(conn) -> dict:
-    """Placement API에서 물리 코어 수 및 allocation_ratio 수집."""
+    """Inventory totals and configured allocation-ratio capacity; not policy ceilings."""
     physical_vcpus = 0
     allowed_vcpus_total = 0
-    try:
-        placement_ep = conn.placement.get_endpoint()
-        rps_resp = conn.session.get(f"{placement_ep}/resource_providers")
-        rps = rps_resp.json().get("resource_providers", [])
-        for rp in rps:
-            inv_resp = conn.session.get(f"{placement_ep}/resource_providers/{rp['uuid']}/inventories")
-            vcpu_inv = inv_resp.json().get("inventories", {}).get("VCPU", {})
-            inv_total = vcpu_inv.get("total", 0)
-            inv_ratio = vcpu_inv.get("allocation_ratio", 1.0)
-            physical_vcpus += inv_total
-            allowed_vcpus_total += int(inv_total * inv_ratio)
-    except Exception:
-        _logger.warning("Placement API CPU 조회 실패", exc_info=True)
+    placement_ep = conn.placement.get_endpoint().rstrip("/")
+    rps_resp = conn.session.get(f"{placement_ep}/resource_providers")
+    rps_resp.raise_for_status()
+    rps = rps_resp.json()["resource_providers"]
+    if not isinstance(rps, list):
+        raise ValueError("Invalid Placement provider inventory")
+    for rp in rps:
+        inv_resp = conn.session.get(f"{placement_ep}/resource_providers/{rp['uuid']}/inventories")
+        inv_resp.raise_for_status()
+        inventories = inv_resp.json()["inventories"]
+        if not isinstance(inventories, dict):
+            raise ValueError("Invalid Placement inventories")
+        vcpu_inv = inventories.get("VCPU")
+        if vcpu_inv is None:
+            continue
+        inv_total = _overview_number(vcpu_inv.get("total"))
+        inv_ratio = _overview_number(vcpu_inv.get("allocation_ratio"))
+        physical_vcpus += inv_total
+        allowed_vcpus_total += int(inv_total * inv_ratio)
     return {"physical_vcpus": physical_vcpus, "allowed_vcpus": allowed_vcpus_total}
 
 
@@ -258,87 +262,49 @@ def _fetch_overview_servers(conn) -> dict:
     """Nova 서버 목록에서 GPU 인스턴스 수 + 상태별 집계."""
     gpu_instances = 0
     instance_stats = {"total": 0, "active": 0, "shutoff": 0, "error": 0, "other": 0}
-    try:
-        _ep = conn.compute.get_endpoint()
-        _params = {"all_tenants": "1", "limit": "1000"}
-        _resp = conn.session.get(
-            f"{_ep}/servers/detail",
-            params=_params,
-            headers={"OpenStack-API-Version": "compute 2.53"},
-        )
-        for s in _resp.json().get("servers", []):
-            flavor = s.get("flavor") or {}
-            fname = (flavor.get("original_name") or flavor.get("id") or "").lower()
-            instance_stats["total"] += 1
-            st = (s.get("status") or "").upper()
-            if st == "ACTIVE":
-                instance_stats["active"] += 1
-            elif st == "SHUTOFF":
-                instance_stats["shutoff"] += 1
-            elif st == "ERROR":
-                instance_stats["error"] += 1
-            else:
-                instance_stats["other"] += 1
-            # SHELVED/SHELVED_OFFLOADED는 실제 호스트 할당이 없으므로 GPU 사용량에서 제외
-            if "gpu" in fname and st in ("ACTIVE", "SHUTOFF", "PAUSED", "SUSPENDED", "RESIZE"):
-                gpu_instances += 1
-    except Exception:
-        _logger.warning("서버 집계 실패", exc_info=True)
+    for s in list_servers_complete(conn):
+        flavor = s.get("flavor") or {}
+        fname = (flavor.get("original_name") or flavor.get("id") or "").lower()
+        instance_stats["total"] += 1
+        st = (s.get("status") or "").upper()
+        bucket = {"ACTIVE": "active", "SHUTOFF": "shutoff", "ERROR": "error"}.get(st, "other")
+        instance_stats[bucket] += 1
+        if "gpu" in fname and st in ("ACTIVE", "SHUTOFF", "PAUSED", "SUSPENDED", "RESIZE"):
+            gpu_instances += 1
     return {"gpu_instances": gpu_instances, "instance_stats": instance_stats}
 
 
-def _fetch_overview_containers(conn) -> int:
-    """Zun 컨테이너 수 수집."""
+def _fetch_overview_containers(conn) -> int | None:
     if not get_settings().service_zun_enabled:
-        return 0
-    try:
-        from app.services.zun import list_containers_admin
+        return None
+    from app.services.zun import list_containers_admin
 
-        return len(list_containers_admin(conn))
-    except Exception:
-        return 0
+    return len(list_containers_admin(conn))
 
 
-def _fetch_overview_file_storage(conn) -> int:
-    """Manila 파일 스토리지 수 수집."""
+def _fetch_overview_file_storage(conn) -> int | None:
     if not get_settings().service_manila_enabled:
-        return 0
-    try:
-        return len(manila.list_file_storages(conn, all_tenants=True))
-    except Exception:
-        return 0
+        return None
+    return len(manila.list_file_storages(conn, all_tenants=True))
 
 
-def _fetch_overview_database_instances(conn) -> int:
-    """Trove DB 인스턴스 수 수집."""
+def _fetch_overview_database_instances(conn) -> int | None:
     if not get_settings().service_trove_enabled:
-        return 0
-    try:
-        from app.services.trove import count_instances
+        return None
+    from app.services.trove import list_instances_admin_all_projects
 
-        return count_instances(conn)
-    except Exception:
-        return 0
+    return len(list_instances_admin_all_projects(conn))
 
 
-def _fetch_overview_object_storage(conn) -> int:
-    """Swift 오브젝트 스토리지 컨테이너 수 수집 — admin scope cross-project 합산.
-
-    swift 계정은 프로젝트별로 분리되므로 admin 본인 프로젝트의 conn.object_store만
-    보면 다른 프로젝트의 버킷이 누락된다. admin 토큰으로 fan-out 해서 모든 프로젝트의
-    버킷 수를 합산해야 admin overview 의 의미와 맞다.
-    """
+def _fetch_overview_object_storage(conn) -> int | None:
     if not get_settings().service_swift_enabled:
-        return 0
-    try:
-        from app.services.swift import count_containers_all_projects
+        return None
+    from app.services.swift import count_containers_all_projects
 
-        admin_token = getattr(conn, "_afterglow_token", "") or ""
-        if not admin_token:
-            return 0
-        return count_containers_all_projects(admin_token)
-    except Exception:
-        return 0
+    admin_token = getattr(conn, "_afterglow_token", "") or ""
+    if not admin_token:
+        raise ValueError("Missing admin scope for Swift overview")
+    return count_containers_all_projects(admin_token, strict=True)
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +392,40 @@ def _count_identity_users_projects() -> tuple[int, int]:
         return 0, 0
 
 
-@router.get("/overview", dependencies=[Depends(require_admin)])
+class OverviewCpu(BaseModel):
+    total: float | None
+    allowed: float | None
+    used: float | None
+
+
+class OverviewMemory(BaseModel):
+    total: float | None
+    used: float | None
+
+
+class OverviewDisk(OverviewMemory):
+    volumes: float | None
+    images: float | None
+
+
+class AdminOverviewResponse(BaseModel):
+    collected_at: datetime
+    unavailable_sections: list[str]
+    disabled_sections: list[str]
+    hypervisor_count: int | None
+    running_vms: int | None
+    gpu_instances: int | None
+    instance_stats: dict[str, int] | None
+    vcpus: OverviewCpu
+    ram_gb: OverviewMemory
+    disk_gb: OverviewDisk
+    containers_count: int | None
+    file_storage_count: int | None
+    database_instances_count: int | None
+    object_storage_containers_count: int | None
+
+
+@router.get("/overview", dependencies=[Depends(require_admin)], response_model=AdminOverviewResponse)
 async def admin_overview(
     conn: openstack.connection.Connection = Depends(get_admin_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
@@ -444,30 +443,63 @@ async def admin_overview(
                 f_db = executor.submit(_fetch_overview_database_instances, conn)
                 f_os = executor.submit(_fetch_overview_object_storage, conn)
 
-            hyp = f_hyp.result(timeout=15)
-            disk = f_disk.result(timeout=15)
-            cpu = f_cpu.result(timeout=15)
-            srv = f_srv.result(timeout=15)
-            ctr = f_ctr.result(timeout=15)
-            fs = f_fs.result(timeout=15)
-            db = f_db.result(timeout=15)
-            os_count = f_os.result(timeout=15)
+            unavailable: list[str] = []
+            settings = get_settings()
+            disabled = [
+                name
+                for name, enabled in (
+                    ("containers", settings.service_zun_enabled),
+                    ("file_storage", settings.service_manila_enabled),
+                    ("database", settings.service_trove_enabled),
+                    ("object_storage", settings.service_swift_enabled),
+                )
+                if not enabled
+            ]
 
-            # Placement 실패 시 hypervisor 데이터로 fallback
-            physical_vcpus = cpu["physical_vcpus"]
-            allowed_vcpus = cpu["allowed_vcpus"]
-            if physical_vcpus == 0 and hyp["total_vcpus"] > 0:
-                physical_vcpus = hyp["total_vcpus"]
-                allowed_vcpus = hyp["total_vcpus"]
+            def observed(name, future):
+                try:
+                    return future.result(timeout=15)
+                except Exception:
+                    unavailable.append(name)
+                    _logger.warning("Overview %s collection failed", name, exc_info=True)
+                    return None
+
+            hyp = observed("hypervisors", f_hyp)
+            disk = observed("storage", f_disk)
+            cpu = observed("placement", f_cpu)
+            srv = observed("instances", f_srv)
+            ctr = observed("containers", f_ctr)
+            fs = observed("file_storage", f_fs)
+            db = observed("database", f_db)
+            os_count = observed("object_storage", f_os)
+            disk = disk or {"total_disk": None, "used_disk": None, "volume_gb": None, "image_gb": None}
+            for key in ("total_disk", "volume_gb", "image_gb"):
+                if disk[key] is None:
+                    unavailable.append(f"storage.{key}")
 
             return {
-                "hypervisor_count": hyp["host_count"],
-                "running_vms": hyp["running_vms"],
-                "gpu_instances": srv["gpu_instances"],
-                "instance_stats": srv["instance_stats"],
-                "vcpus": {"total": physical_vcpus, "allowed": allowed_vcpus, "used": hyp["used_vcpus"]},
-                "ram_gb": {"total": round(hyp["total_ram_mb"] / 1024, 1), "used": round(hyp["used_ram_mb"] / 1024, 1)},
-                "disk_gb": {"total": disk["total_disk"], "used": disk["used_disk"]},
+                "collected_at": datetime.now(UTC).isoformat(),
+                "unavailable_sections": unavailable,
+                "disabled_sections": disabled,
+                "hypervisor_count": hyp["host_count"] if hyp else None,
+                "running_vms": hyp["running_vms"] if hyp else None,
+                "gpu_instances": srv["gpu_instances"] if srv else None,
+                "instance_stats": srv["instance_stats"] if srv else None,
+                "vcpus": {
+                    "total": cpu["physical_vcpus"] if cpu else None,
+                    "allowed": cpu["allowed_vcpus"] if cpu else None,
+                    "used": hyp["used_vcpus"] if hyp else None,
+                },
+                "ram_gb": {
+                    "total": round(hyp["total_ram_mb"] / 1024, 1) if hyp else None,
+                    "used": round(hyp["used_ram_mb"] / 1024, 1) if hyp else None,
+                },
+                "disk_gb": {
+                    "total": disk["total_disk"],
+                    "used": disk["used_disk"],
+                    "volumes": disk["volume_gb"],
+                    "images": disk["image_gb"],
+                },
                 "containers_count": ctr,
                 "file_storage_count": fs,
                 "database_instances_count": db,
@@ -475,7 +507,7 @@ async def admin_overview(
             }
 
         return await cached_call(
-            "afterglow:admin:overview", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh
+            "afterglow:admin:overview:v2", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh
         )
     except Exception:
         _logger.warning("admin overview 조회 실패", exc_info=True)
@@ -544,6 +576,16 @@ async def get_monitoring_summary(
     """
 
     async def _collect() -> dict:
+        unavailable: list[str] = []
+
+        def observed(name, collector):
+            try:
+                return collector(conn)
+            except Exception:
+                unavailable.append(name)
+                _logger.warning("Monitoring %s collection failed", name, exc_info=True)
+                return None
+
         # 1차: 동기 SDK 호출들을 ThreadPool 병렬로 (asyncio.to_thread + gather)
         (
             hyp_data,
@@ -563,11 +605,11 @@ async def get_monitoring_summary(
             identity_pair,
         ) = await asyncio.gather(
             asyncio.to_thread(_fetch_hypervisors_raw, conn),
-            asyncio.to_thread(_fetch_overview_servers, conn),
+            asyncio.to_thread(observed, "instances", _fetch_overview_servers),
             asyncio.to_thread(_collect_storage_block, conn),
             asyncio.to_thread(_collect_network_block, conn),
-            asyncio.to_thread(_fetch_overview_containers, conn),
-            asyncio.to_thread(_fetch_overview_file_storage, conn),
+            asyncio.to_thread(observed, "containers", _fetch_overview_containers),
+            asyncio.to_thread(observed, "file_storage", _fetch_overview_file_storage),
             asyncio.to_thread(_count_volume_snapshots, conn),
             asyncio.to_thread(_count_volume_backups, conn),
             asyncio.to_thread(_count_share_snapshots, conn),
@@ -591,6 +633,7 @@ async def get_monitoring_summary(
 
         hyp_up = sum(1 for h in hyp_data if h.get("state") == "up")
         result: dict = {
+            "unavailable_sections": unavailable,
             "compute": {
                 "hypervisors_total": len(hyp_data),
                 "hypervisors_up": hyp_up,
@@ -599,8 +642,8 @@ async def get_monitoring_summary(
                 "memory_used_mb": sum(h.get("memory_mb_used", 0) or 0 for h in hyp_data),
                 "memory_total_mb": sum(h.get("memory_mb", 0) or 0 for h in hyp_data),
                 "running_vms": sum(h.get("running_vms", 0) or 0 for h in hyp_data),
-                "instance_stats": srv_data.get("instance_stats", {}),
-                "gpu_instances": srv_data.get("gpu_instances", 0),
+                "instance_stats": srv_data["instance_stats"] if srv_data is not None else None,
+                "gpu_instances": srv_data["gpu_instances"] if srv_data is not None else None,
             },
             "storage": {
                 **storage_block,
@@ -1070,6 +1113,15 @@ async def relocate_hypervisor_servers(
     return result
 
 
+def _server_flavor_display_name(flavor):
+    """Display only a CPU flavor proven by this server's native snapshot."""
+    if not isinstance(flavor, dict):
+        return None
+    return canonical_cpu_display_name(
+        flavor.get("original_name"), flavor.get("vcpus"), flavor.get("ram"), flavor.get("extra_specs")
+    )
+
+
 @router.get("/hypervisors/{hypervisor_id}", dependencies=[Depends(require_admin)])
 async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.Connection = Depends(get_admin_os_conn)):
     """하이퍼바이저 상세 정보 + 해당 호스트의 VM 목록."""
@@ -1099,6 +1151,7 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
                     "flavor_id": (s.get("flavor") or {}).get("id"),
                     "flavor_name": (s.get("flavor") or {}).get("original_name")
                     or flavors.get((s.get("flavor") or {}).get("id")),
+                    "flavor_display_name": _server_flavor_display_name(s.get("flavor")),
                     "flavor": (s.get("flavor") or {}).get("original_name")
                     or flavors.get((s.get("flavor") or {}).get("id"))
                     or (s.get("flavor") or {}).get("id")
@@ -1177,6 +1230,31 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
         raise HTTPException(status_code=500, detail="하이퍼바이저 상세 조회 실패")
 
 
+ResourceSort = Literal["created_desc", "created_asc", "name_asc", "name_desc"]
+
+
+def _sort_resource_items(items: list[dict], sort: ResourceSort) -> list[dict]:
+    direction = -1 if sort.endswith("_desc") else 1
+    if sort.startswith("name_"):
+        # Stable ID order remains ascending even when names descend.
+        items.sort(key=lambda row: row["id"])
+        items.sort(key=lambda row: row["name"].lower(), reverse=direction == -1)
+        return items
+
+    def key(row):
+        value = row.get("created_at")
+        try:
+            created = datetime.fromisoformat(value)
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=UTC)
+            return (False, direction * created.timestamp(), row["id"])
+        except (TypeError, ValueError, OverflowError):
+            return (True, 0, row["id"])
+
+    items.sort(key=key)
+    return items
+
+
 @router.get("/all-instances", dependencies=[Depends(require_admin)])
 async def list_all_instances(
     limit: int = Query(default=20, ge=1, le=100),
@@ -1187,6 +1265,7 @@ async def list_all_instances(
     host: str | None = Query(default=None),
     status: str | None = Query(default=None),
     name: str | None = Query(default=None),
+    sort: ResourceSort = Query(default="created_desc"),
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """전체 프로젝트의 인스턴스 목록 (페이지네이션)."""
@@ -1216,7 +1295,7 @@ async def list_all_instances(
                 )
             ]
             items = []
-            for s in sorted(servers, key=lambda row: row["id"]):
+            for s in servers:
                 fault_info = None
                 if (s.get("status") or "").upper() == "ERROR":
                     fault = s.get("fault") or {}
@@ -1232,12 +1311,13 @@ async def list_all_instances(
                         **directory.owner(s),
                         "user_id": s.get("user_id"),
                         "flavor": flavor.get("original_name") or flavor.get("id") or "",
+                        "flavor_display_name": _server_flavor_display_name(flavor),
                         "host": server_host,
                         "created_at": s.get("created"),
                         "fault": fault_info,
                     }
                 )
-            return page(items, limit, marker)
+            return page(_sort_resource_items(items, sort), limit, marker)
 
         return await asyncio.to_thread(_list)
     except HTTPException:
@@ -1319,6 +1399,7 @@ async def list_all_volumes(
     volume_type: str | None = Query(None),
     min_size: int | None = Query(None, ge=0),
     max_size: int | None = Query(None, ge=0),
+    sort: ResourceSort = Query(default="created_desc"),
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """전체 프로젝트의 볼륨 목록 (페이지네이션)."""
@@ -1338,9 +1419,9 @@ async def list_all_volumes(
                     **directory.owner(v),
                     "created_at": str(field(v, "created_at")) if field(v, "created_at") else None,
                 }
-                for v in sorted(volumes, key=lambda row: field(row, "id"))
+                for v in volumes
             ]
-            return page(items, limit, marker)
+            return page(_sort_resource_items(items, sort), limit, marker)
 
         return await asyncio.to_thread(_list)
     except HTTPException:
@@ -2496,15 +2577,42 @@ async def resize_instance(
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    """인스턴스 플레이버 변경 (cold resize). 완료 후 confirm-resize 또는 revert-resize 필요."""
+    """Apply the target project's eligibility before native cold resize."""
+    from app.api.compute.instances import _resize_current_flavor, _resize_target_blockers
+    from app.api.identity.admin_instances import _server
+    from app.services.flavor_eligibility import (
+        FlavorEligibilityDenied,
+        FlavorEligibilityUnavailable,
+        is_flavor_frontend_visible,
+        require_flavor_eligible,
+    )
+
+    server = await asyncio.to_thread(_server, conn, server_id)
+    if server.status not in {"ACTIVE", "SHUTOFF"}:
+        raise HTTPException(409, "현재 상태에서는 리사이즈할 수 없습니다")
+    flavors = await asyncio.to_thread(nova._list_flavors, conn, project_id=server.project_id)
+    current = _resize_current_flavor(server, flavors)
+    target = next((f for f in flavors if f.id == req.flavor_id and is_flavor_frontend_visible(f)), None)
+    if target is None:
+        raise HTTPException(400, "Invalid flavor ID")
+    blockers = _resize_target_blockers(target, current, image_backed=bool(server.image_id))
+    if blockers:
+        raise HTTPException(409, ", ".join(blocker.code for blocker in blockers))
+    try:
+        await require_flavor_eligible(conn, server.project_id, target, current_flavor=current)
+    except FlavorEligibilityDenied as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except FlavorEligibilityUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
     try:
         await asyncio.to_thread(nova.resize_server, conn, server_id, req.flavor_id)
-        project_id = token_info.get("project_id", "")
-        await invalidate(f"afterglow:nova:{project_id}:instances:*")
-        return {"status": "resizing"}
-    except Exception as e:
-        _logger.warning("리사이즈 실패: %s", e)
-        raise HTTPException(status_code=400, detail="리사이즈 실패")
+    except Exception as exc:
+        _logger.warning("리사이즈 실패: %s", exc)
+        raise HTTPException(status_code=400, detail="리사이즈 실패") from exc
+    from app.api.compute.instances import _invalidate_resized_instance
+
+    await _invalidate_resized_instance(server.project_id, server_id)
+    return {"status": "resizing"}
 
 
 @router.post("/instances/{server_id}/revert-resize", dependencies=[Depends(require_admin)])

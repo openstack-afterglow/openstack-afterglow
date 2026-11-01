@@ -17,7 +17,7 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import RoleBadges from '$lib/components/admin/roles/RoleBadges.svelte';
@@ -239,8 +239,8 @@
 			{#if loadError}<Alert tone="danger">{loadError} {roles.length ? t('rolePage.previousListShown') : ''} <Button variant="secondary" size="sm" disabled={busy} onclick={() => { void load(); }}>{t('rolePage.retry')}</Button></Alert>{/if}
 			{#if actionError && !editor && !deleteId && !selected}<Alert tone="danger">{actionError}</Alert>{/if}
 			{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-			{#if refreshing}<p role="status" class="text-xs text-ink-2">{t('rolePage.refreshing')}</p>{/if}
-			{#if loading}<LoadingSkeleton variant="table" rows={5} />
+			{#if refreshing}<LoadingState variant="inline" label={t('rolePage.refreshing')} />{/if}
+			{#if loading}<LoadingState variant="surface" />
 			{:else if roles.length === 0 && !loadError}<EmptyState headline={t('rolePage.empty')} description={t('rolePage.emptyDescription')} />
 			{:else if filtered.length === 0 && roles.length > 0}<EmptyState headline={t('rolePage.noResults')} description={t('rolePage.noResultsDescription')}>{#snippet cta()}<Button variant="secondary" onclick={() => { query = ''; }}>{t('rolePage.clearSearch')}</Button>{/snippet}</EmptyState>
 			{:else if view === 'tree'}<RoleTree {roles} {query} {sort} {direction} onSelect={selectRole} />

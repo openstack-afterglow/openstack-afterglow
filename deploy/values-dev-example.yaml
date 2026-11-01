@@ -92,9 +92,9 @@ cache:
   ttlAuthToken: 60
 
 session:
-  timeoutSeconds: 86400
+  timeoutSeconds: 604800
   warningBeforeSeconds: 300
-  jwtAccessTtl: 900
+  jwtAccessTtl: 3600
   jwtRefreshTtl: 604800
 
 nova:

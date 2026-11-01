@@ -1,8 +1,10 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { onDestroy, untrack } from 'svelte';
-	import { auth, authReady } from '$lib/stores/auth';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { auth, canWrite } from '$lib/stores/auth';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 	import { siteConfig } from '$lib/config/site';
 	import { api } from '$lib/api/client';
 	import type {
@@ -12,12 +14,15 @@
 	import type { DashboardK3sStats } from '$lib/types/k3s';
 	import type { AnnouncementUser } from '$lib/types/announcements';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { Alert, AnimatedNumber, PageShell, Spark, SectionHeader } from '$lib/components/ui';
+	import { Alert, AnimatedNumber, Button, PageShell, SectionHeader } from '$lib/components/ui';
+	import BklitChart from '$lib/components/charts/BklitChart.svelte';
+	import type { ChartSpec } from '$lib/components/charts/types';
 	import DashboardGreetingHeader from '$lib/components/dashboard/overview/DashboardGreetingHeader.svelte';
 	import DashboardStatTiles from '$lib/components/dashboard/overview/DashboardStatTiles.svelte';
 	import RecentInstancesCard from '$lib/components/dashboard/overview/RecentInstancesCard.svelte';
 	import QuotaUsageCard from '$lib/components/dashboard/overview/QuotaUsageCard.svelte';
 	import RangeToggle from '$lib/components/dashboard/overview/RangeToggle.svelte';
+	import UsageScheduleReminders from '$lib/components/instance/UsageScheduleReminders.svelte';
 
 	type Range = '24h' | '7d' | '14d';
 	type SyncStatus = 'waiting' | 'partial' | 'complete';
@@ -77,9 +82,9 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const context = $derived(JSON.stringify([$authReady, token, $auth.userId, $auth.identityDomainId, projectId]));
+	const context = $derived($authDisplayContext.key);
 	const k3sDisabled = $derived(!($siteConfig.services?.k3s ?? false));
-	const authLoading = $derived(!$authReady);
+	const authLoading = $derived(!$authDisplayContext.ready);
 
 	function newResource<T>(disabled = false): ResourceState<T> {
 		return { data: null, pending: false, disabled, error: null, lastSuccessAt: null };
@@ -129,7 +134,10 @@
 	// 관리자 공지(영속·읽음추적) — 쿼터 경고(파생·일시적)와 같은 카드에서 병합 표시.
 	const announcements = $derived(announcementsState.data ?? []);
 	const alertsPending = $derived(
-		authLoading || initialLoadPending || summaryState.pending || quotasState.pending || announcementsState.pending,
+		authLoading || initialLoadPending
+			|| (summaryState.pending && summaryState.data === null)
+			|| (quotasState.pending && quotasState.data === null)
+			|| (announcementsState.pending && announcementsState.data === null),
 	);
 	const alertsFailed = $derived(Boolean(summaryState.error || quotasState.error || announcementsState.error));
 	const alertsCompleteEmpty = $derived(
@@ -256,7 +264,7 @@
 		const requestProjectId = projectId;
 		const requestToken = token;
 		const requestContext = context;
-		if (!$authReady || !requestProjectId || !requestToken || visibleContext !== requestContext) return;
+		if (!$authDisplayContext.ready || !requestProjectId || !requestToken || visibleContext !== requestContext) return;
 
 		const slot = slots[domain];
 		slot.controller?.abort();
@@ -345,7 +353,7 @@
 			}
 			retireBatch(active);
 		}
-		if (!$authReady || !token || !projectId || projectId !== visibleProjectId) return;
+		if (!$authDisplayContext.ready || !token || !projectId || projectId !== visibleProjectId) return;
 
 		const enabled: Domain[] = ['summary', 'quotas', 'trend', 'announcements'];
 		if (!k3sDisabled) enabled.push('k3s');
@@ -373,7 +381,7 @@
 		range = nextRange;
 		trendState.data = null;
 		localStorage.setItem('dashboard-overview-range', nextRange);
-		if (!$authReady) return;
+		if (!$authDisplayContext.ready) return;
 		const batch = currentBatch;
 		if (batch && !batch.retired && !batch.finished && batch.enabled.has('trend') && !batch.settled.has('trend')) {
 			void loadTrend(batch, nextRange);
@@ -390,20 +398,22 @@
 		invokeOnMount: false,
 	});
 
-	$effect.pre(() => {
-		const nextContext = context;
-		if (nextContext === visibleContext) return;
+	function updateVisibleContext(next: { key: string; project: string | null }): void {
+		if (next.key === visibleContext) return;
 		retireBatch(currentBatch);
 		projectEpoch += 1;
 		abortAllSlots();
 		resetResources();
-		visibleProjectId = projectId ?? null;
-		visibleContext = nextContext;
+		visibleProjectId = next.project;
+		visibleContext = next.key;
 		initialContext = null;
-	});
+	}
+	// Initialize before child mounts, then fence even same-tick scope A → B → A.
+	$effect.pre(() => updateVisibleContext($authDisplayContext));
+	onMount(() => authDisplayContext.subscribe(updateVisibleContext));
 
 	$effect(() => {
-		const ready = $authReady;
+		const ready = $authDisplayContext.ready;
 		const nextContext = context;
 		if (!ready || !token || !projectId || nextContext !== visibleContext || initialContext === nextContext) return;
 		initialContext = nextContext;
@@ -436,6 +446,34 @@
 		if (status === 'unavailable') return t('telemetry.unavailable');
 		return t('telemetry.noData');
 	}
+
+	const startReady = $derived(!authLoading && !initialLoadPending && summaryState.data?.instances.total === 0);
+	const currentTrend = $derived(trendState.data?.range === range ? trendState.data : null);
+	const trendCards = $derived([
+		{ label: t('overview.vcpu', { range }), color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
+		{ label: t('overview.memory', { range }), color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
+		{ label: t('overview.disk', { range }), color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
+	]);
+	function hasSamples(series: TrendSeries | undefined): boolean {
+		return Boolean(series?.available && (series.status === 'available' || series.status === 'partial') && series.data.some(Number.isFinite));
+	}
+
+	function trendChart(data: number[], label: string, color: string): ChartSpec {
+		const known = data.filter(Number.isFinite);
+		const min = known.length ? Math.min(...known) : 0;
+		const max = known.length ? Math.max(...known) : 0;
+		return {
+			kind: 'time-series',
+			data: data.map((value, index) => ({ sample: index + 1, value: Number.isFinite(value) ? value : null })),
+			xKey: 'sample',
+			series: [{ key: 'value', label, color, area: true }],
+			domain: min === max ? [min - 0.5, max + 0.5] : [min, max],
+			compact: true,
+			tooltips: true,
+			formatTime: (sample) => String(sample),
+			formatValue: (value) => `${value.toFixed(1)}%`,
+		};
+	}
 </script>
 
 {#key visibleContext}
@@ -463,92 +501,94 @@
 		{k3sDisabled}
 	/>
 
-	<div class="flex items-center justify-between mb-1">
-		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{t('overview.trend')}</p>
-		<RangeToggle value={range} onchange={handleRangeChange} />
-	</div>
-	{#if trendState.data?.scope === 'native_policy'}
-		<p class="text-xs text-ink-2">{t('telemetry.nativePolicy')}</p>
-	{/if}
-	<div class="motion-stagger grid grid-cols-1 md:grid-cols-3 gap-3.5">
-		{#each [
-			{ label: t('overview.vcpu', { range }), color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
-			{ label: t('overview.memory', { range }), color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
-			{ label: t('overview.disk', { range }), color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
-		] as card (`${card.key}:${range}`)}
-			{@const currentTrend = trendState.data?.range === range ? trendState.data : null}
-			{@const series = currentTrend?.[card.key]}
-			{@const hasData = Boolean(series?.available && (series.status === 'available' || series.status === 'partial') && series.data.length > 0)}
-			{@const current = hasData ? series!.data.at(-1)! : null}
-			{@const min = hasData ? Math.min(...series!.data) : null}
-			{@const max = hasData ? Math.max(...series!.data) : null}
-			<div role="group" aria-label={card.label} class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
-				<div class="flex items-baseline justify-between">
-					<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{card.label}</p>
-					{#if current !== null}
-						<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-						<AnimatedNumber value={current} format={(value) => value.toFixed(1)} /><span class="ml-0.5 text-xs text-[var(--color-ink-2)]">{card.unit}</span>
-						</span>
-					{/if}
-				</div>
-				<div class="min-h-[72px] flex items-center w-full">
-					{#if (authLoading || initialLoadPending || trendState.pending) && !hasData}
-						<div class="h-[72px] w-full motion-skeleton rounded" role="status" aria-busy="true"><span class="sr-only">{card.label} · {tc('state.loading')}</span></div>
-					{:else if hasData}
-						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
-					{:else if trendState.error}
-						<p class="text-xs italic text-[var(--color-state-danger)]">{t('overview.metricsFailed')}</p>
-					{:else if series}
-						<p class="text-xs text-ink-2">{telemetryStatus(series.status)}</p>
-					{:else if currentTrend && !currentTrend.monitoring_available}
-						<p class="text-xs italic text-ink-2">{t('overview.metricsNotConfigured')}</p>
-					{:else}
-						<p class="text-xs text-ink-2">{t('telemetry.noData')}</p>
-					{/if}
-				</div>
-				{#if series?.source}
-					<p class="text-xs text-ink-2">{telemetrySource(series.source)}</p>
-				{/if}
-				{#if hasData && series?.status === 'partial'}
-					<p class="text-xs text-state-warning-text">{t('telemetry.partial')}</p>
-				{/if}
-				{#if series?.source && series.source !== 'gnocchi' && series.native_status && series.native_status !== 'available'}
-					<p class="text-xs text-ink-2">{t('telemetry.nativeState', { status: telemetryStatus(series.native_status) })}</p>
-				{/if}
-				{#if hasData}
-					<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
-						{t('overview.minMax', { min: min!.toFixed(1), max: max!.toFixed(1), unit: card.unit })}
-						{#if trendState.error} · {t('overview.refreshFailed')}{/if}
-					</p>
-				{/if}
+	<section aria-label={t('telemetry.collection')} class="min-w-0 space-y-3">
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<h2 class="text-sm font-semibold text-ink-0">{t('overview.trend')}</h2>
+			<div class="flex flex-wrap items-center gap-3">
+				<Button variant="link" href="/dashboard/observability">{t('telemetry.openMonitoring')}</Button>
+				<RangeToggle value={range} onchange={handleRangeChange} />
 			</div>
-		{/each}
-	</div>
+		</div>
+		<div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+			{#each trendCards as card (card.key)}
+				{@const series = currentTrend?.[card.key]}
+				{@const available = hasSamples(series)}
+				{@const pending = (authLoading || initialLoadPending || trendState.pending) && !currentTrend}
+				{@const current = available && Number.isFinite(series!.data.at(-1)) ? series!.data.at(-1)! : null}
+				{@const known = available ? series!.data.filter(Number.isFinite) : []}
+				<div role="group" aria-label={card.label} aria-busy={pending} data-metric={card.key} data-state={pending ? 'loading' : available ? trendState.error ? 'stale' : 'ready' : trendState.error && !currentTrend ? 'error' : series?.status ?? 'empty'} class="metric-slot min-w-0 rounded-lg border border-line bg-surface-base p-5">
+					<div class="flex min-h-11 items-baseline justify-between gap-2">
+						<h3 class="min-w-0 flex-1 text-xs text-ink-2">{card.label}</h3>
+						{#if current !== null}
+							<span class="shrink-0 text-xl font-semibold tabular-nums text-ink-0"><AnimatedNumber value={current} format={(value) => value.toFixed(1)} /><span class="ml-0.5 text-xs text-ink-2">{card.unit}</span></span>
+						{/if}
+					</div>
+					<div class="metric-slot-content">
+						{#if available}
+							<BklitChart spec={trendChart(series!.data, card.label, card.color)} height={72} label={`${card.label} · ${tc('chart.data')}`} showData xLabel={tc('chart.category')} class="w-full" />
+						{:else if pending}
+							<LoadingState variant="section" label={tc('state.loadingNamed', { name: card.label })} />
+						{:else if trendState.error && !currentTrend}
+							<p role="status" class="text-sm text-state-danger-text">{t('overview.metricsFailed')}</p>
+						{:else}
+							<p class="text-sm text-ink-2">{series ? telemetryStatus(series.status) : currentTrend && !currentTrend.monitoring_available ? t('overview.metricsNotConfigured') : t('telemetry.noData')}</p>
+						{/if}
+					</div>
+					<div class="metric-slot-meta text-xs text-ink-2">
+						<details>
+							<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('telemetry.collection')}{#if trendState.error && currentTrend} · <span class="text-state-danger-text">{t('overview.refreshFailed')}</span>{/if}</summary>
+							<div class="space-y-1 pb-2">
+								{#if pending}<LoadingState variant="inline" label={tc('state.loadingNamed', { name: card.label })} />
+								{:else if available}
+									{#if series?.source}<p>{telemetrySource(series.source)}</p>{/if}
+									{#if series?.status === 'partial'}<p class="text-state-warning-text">{t('telemetry.partial')}</p>{/if}
+									{#if series?.source && series.source !== 'gnocchi' && series.native_status && series.native_status !== 'available'}<p>{t('telemetry.nativeState', { status: telemetryStatus(series.native_status) })}</p>{/if}
+								{:else}<p>{series ? t('telemetry.nativeState', { status: telemetryStatus(series.native_status ?? series.status) }) : t('telemetry.unavailable')}</p>{/if}
+								{#if card.key === 'vcpu' && currentTrend?.scope === 'native_policy'}<p>{t('telemetry.nativePolicy')}</p>{/if}
+							</div>
+						</details>
+						{#if available}<p class="tabular-nums">{t('overview.minMax', { min: Math.min(...known).toFixed(1), max: Math.max(...known).toFixed(1), unit: card.unit })}</p>{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+	</section>
 
-	<div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
-		<div data-tour="dashboard-recent">
+	<div class="grid grid-cols-1 gap-3.5 lg:grid-cols-[2fr_1fr]">
+		<div data-tour={startReady ? undefined : 'dashboard-recent'}>
 			<RecentInstancesCard
 				instances={summaryState.data?.recent_instances ?? []}
-				pending={authLoading || initialLoadPending || summaryState.pending}
+				pending={authLoading || initialLoadPending || (summaryState.pending && summaryState.data === null)}
 				error={summaryState.error}
-			/>
+				loaded={summaryState.data !== null}
+			>
+				{#snippet emptyContent()}
+					{#if startReady}
+						<section aria-labelledby="dashboard-start-title" data-tour="dashboard-recent">
+							<h2 id="dashboard-start-title" class="text-lg font-semibold text-ink-0">{t('start.title')}</h2>
+							<p class="mt-1 text-sm text-ink-2">{t('start.description')}</p>
+							<div class="mt-4 flex flex-wrap gap-2">
+								{#if $canWrite && $auth.token && projectId}<Button href="/dashboard/compute/instances">{t('start.create')}</Button>{/if}
+								<Button variant="secondary" href="/dashboard/compute/images">{t('start.images')}</Button>
+								<Button variant="ghost" href="/docs">{t('start.guide')}</Button>
+							</div>
+						</section>
+					{:else}<p class="py-2 text-sm text-ink-2">{t('recentInstances.empty')}</p>{/if}
+				{/snippet}
+			</RecentInstancesCard>
 		</div>
 
 		<div class="flex flex-col gap-3.5">
 			<div class="bg-surface-base border border-line rounded-lg p-5">
 				<SectionHeader title={t('overview.systemAlerts')}>
 					{#snippet right()}
-						<a href="/dashboard/notifications" class="text-[13px] text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)] transition-colors">{t('overview.viewAll')}</a>
+						<a href="/dashboard/notifications" class="text-[13px] text-ink-2 hover:text-ink-0 transition-colors">{t('overview.viewAll')}</a>
 					{/snippet}
 				</SectionHeader>
-				{#if alertsPending && alerts.length === 0 && announcements.length === 0}
-					<div class="mt-3 flex flex-col gap-2" role="status" aria-busy="true">
-						<span class="sr-only">{t('overview.systemAlerts')} · {tc('state.loading')}</span>
-						<div class="h-4 motion-skeleton rounded"></div>
-						<div class="h-4 motion-skeleton rounded w-3/4"></div>
-					</div>
+				{#if alertsPending && !alertsFailed && alerts.length === 0 && announcements.length === 0}
+					<LoadingState variant="section" class="mt-3" label={tc('state.loadingNamed', { name: t('overview.systemAlerts') })} />
 				{:else if alertsCompleteEmpty}
-					<p class="text-sm text-[var(--color-ink-3)] mt-4">{t('overview.noAlerts')}</p>
+					<p class="mt-3 min-h-10 text-sm text-ink-2">{t('overview.noAlerts')}</p>
 				{:else}
 					<ul class="system-alert-list mt-3 flex flex-col gap-2">
 						{#each alerts as alert}
@@ -559,7 +599,7 @@
 								></span>
 								<span class="flex-1 text-[var(--color-ink-0)] text-xs leading-snug">{alert.message}</span>
 								{#if alert.count > 1}
-									<span class="text-xs text-[var(--color-ink-3)] tabular-nums flex-shrink-0">×{alert.count}</span>
+								<span class="text-xs text-ink-2 tabular-nums flex-shrink-0">×{alert.count}</span>
 								{/if}
 							</li>
 						{/each}
@@ -587,6 +627,8 @@
 				{/if}
 			</div>
 
+			<UsageScheduleReminders />
+
 			<QuotaUsageCard
 				quotas={quotasState.data}
 				pending={authLoading || initialLoadPending || quotasState.pending}
@@ -598,6 +640,14 @@
 {/key}
 
 <style>
+	.metric-slot {
+		display: grid;
+		grid-template-rows: auto 1fr auto;
+		gap: 0.5rem;
+	}
+	.metric-slot-content { min-block-size: 7.5rem; }
+	.metric-slot-meta { min-block-size: 3.5rem; }
+
 	@media (min-width: 1024px) {
 		.system-alert-list {
 			max-block-size: clamp(5.5rem, 14vh, 12rem);

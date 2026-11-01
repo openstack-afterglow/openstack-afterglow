@@ -122,6 +122,7 @@ async def create_tables() -> None:
         return
     from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent  # noqa: F401
     from app.models.db import Base as _ModelBase  # noqa: F401 — side effect: 모델 등록
+    from app.models.gpu_quota_requests import GpuQuotaRequest  # noqa: F401
     from app.models.organization_provisioning import OrganizationBinding  # noqa: F401
 
     async with _engine.begin() as conn:

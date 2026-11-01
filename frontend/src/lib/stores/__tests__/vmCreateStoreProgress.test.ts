@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
-import { auth } from '../auth';
+import { auth, authReady } from '../auth';
 import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
@@ -54,6 +54,7 @@ function durations(): Record<string, number> {
 }
 
 async function start(adminMode = false) {
+	if (adminMode) { auth.update(value => ({ ...value, isSystemAdmin: true })); authReady.set(true); }
 	render(VmCreateStoreLoadWrapper, { adminMode });
 	await fireEvent.click(screen.getByTestId('init'));
 	await vi.advanceTimersByTimeAsync(0);
@@ -70,6 +71,8 @@ beforeEach(() => {
 	resetWizard();
 	betaFeatures.set(DEFAULT_BETA_FEATURES);
 	auth.set({ token: 'token', refreshToken: null, accessExpiresAt: null, userId: 'user', username: 'user', projectId: 'project', projectName: 'project', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
+	auth.update(value => ({ ...value, canWrite: true }));
+	authReady.set(true);
 	siteConfig.update(config => ({ ...config, services: { ...config.services, manila: false } }));
 	mocks.apiGet.mockImplementation((path: string) => Promise.resolve(path.includes('flavors') ? [flavor] : []));
 	mocks.fetchWithAuth.mockImplementation(() => Promise.resolve(new Response(new ReadableStream<Uint8Array>({

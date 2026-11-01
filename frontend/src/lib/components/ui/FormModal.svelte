@@ -4,7 +4,7 @@
 	import Card from './Card.svelte';
 	import Modal from './Modal.svelte';
 	import { t } from '$lib/i18n/ns/common';
-	import ActivityIndicator from './ActivityIndicator.svelte';
+	import LoadingState from './LoadingState.svelte';
 
 	interface Props {
 		open: boolean;
@@ -44,7 +44,7 @@
 			<h2 id={titleId} class="form-modal-title">{title}</h2>
 			{@render children()}
 			<div class="form-modal-actions">
-				{#if submitting}<ActivityIndicator size="xs" label={t('state.processing')} />{/if}
+				{#if submitting}<LoadingState variant="inline" label={t('state.processing')} />{/if}
 				{#if actions}
 					{@render actions()}
 				{:else}

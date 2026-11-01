@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/volume';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import type { Volume, VolumeSnapshot } from '$lib/types/volume';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import { Alert, Button, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
@@ -177,7 +178,7 @@
 
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
   {#if loading}
-    <LoadingSkeleton variant="table" rows={4} />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshotsPage.title') })} />
   {:else if snapshots.length === 0}
     <VolumeSnapshotsEmptyState onCreate={openCreate} onintent={prefetchVolumes} />
   {:else}

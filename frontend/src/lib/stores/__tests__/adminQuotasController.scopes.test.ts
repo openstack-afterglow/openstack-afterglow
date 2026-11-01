@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import type { AdminQuotasController } from '../adminQuotasController.svelte';
-import type { GpuQuota, Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
+import type { Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
 import Probe from './_AdminQuotasControllerProbe.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), metadata: vi.fn() }));
@@ -19,7 +19,6 @@ const projects = [
 	{ id: 'p-unknown', name: 'Unknown domain' },
 ];
 const quota: Quotas = { compute: { cores: { limit: 8, in_use: 2 } }, volume: null, network: null, file_storage: null };
-const gpu: GpuQuota[] = [{ gpu_type: 'gpu-a', limit: 2, in_use: 1, available: 1 }];
 const saved: QuotaUpdateResponse = { status: 'updated', updated: ['compute'], errors: {} };
 const initialAuth = get(auth);
 
@@ -42,7 +41,6 @@ describe('admin quota independent domain and project scope', () => {
 		mocks.metadata.mockResolvedValue({ projects, failed: false });
 		mocks.get.mockImplementation((path: string) => {
 			if (path === '/api/v1/admin/domains') return Promise.resolve({ items: [{ id: 'd-a', name: 'Domain A', enabled: true }, { id: 'd-b', name: 'Domain B', enabled: true }] });
-			if (path.includes('/gpu-quotas/')) return Promise.resolve(gpu);
 			return Promise.resolve(quota);
 		});
 		mocks.put.mockResolvedValue(saved);
@@ -70,23 +68,19 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.projects).toEqual(projects);
 	});
 
-	it('clears quotas, GPU results and save feedback synchronously on domain change even for a compatible project', async () => {
+	it('clears quotas and save feedback synchronously on domain change even for a compatible project', async () => {
 		const { controller } = await setup();
 		controller.selectedProjectId = 'p-a';
 		await controller.loadQuotas();
-		await controller.loadGpuQuotas();
 		await controller.saveSectionQuotas('compute', { cores: 16 });
 		expect(controller.quotas).not.toBeNull();
-		expect(controller.gpuQuotas).toHaveLength(1);
 		expect(controller.saveSuccess).toBeTruthy();
 		controller.selectedDomainId = 'd-a';
 		expect(controller.selectedProjectId).toBe('p-a');
 		expect(controller.quotas).toBeNull();
-		expect(controller.gpuQuotas).toEqual([]);
 		expect(controller.saveSuccess).toBe('');
 		expect(controller.sectionSuccesses).toEqual({});
 		expect(controller.sectionErrors).toEqual({});
-		expect(controller.gpuQuotaError).toBe('');
 		expect(controller.saving).toBe(false);
 	});
 
@@ -94,12 +88,10 @@ describe('admin quota independent domain and project scope', () => {
 		const { controller } = await setup();
 		controller.selectedProjectId = 'p-a';
 		await controller.loadQuotas();
-		await controller.loadGpuQuotas();
 		const pending = Promise.withResolvers<Quotas>();
-		mocks.get.mockImplementation((path: string) => path.includes('/gpu-quotas/') ? Promise.resolve([]) : pending.promise);
+		mocks.get.mockReturnValue(pending.promise);
 		controller.selectedProjectId = 'p-b';
 		expect(controller.quotas).toBeNull();
-		expect(controller.gpuQuotas).toEqual([]);
 		const loading = controller.loadQuotas();
 		expect(controller.quotaLoading).toBe(true);
 		pending.resolve({ ...quota, project_id: 'p-b' });
@@ -107,51 +99,31 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.quotas?.project_id).toBe('p-b');
 	});
 
-	it('rejects late quota, GPU and save responses after project A→B→A', async () => {
+	it('rejects late quota and save responses after project A→B→A', async () => {
 		const { controller } = await setup();
 		const oldQuota = Promise.withResolvers<Quotas>();
-		const oldGpu = Promise.withResolvers<GpuQuota[]>();
 		const oldSave = Promise.withResolvers<QuotaUpdateResponse>();
-		mocks.get.mockImplementation((path: string) => path.includes('/gpu-quotas/') ? oldGpu.promise : oldQuota.promise);
+		mocks.get.mockReturnValue(oldQuota.promise);
 		mocks.put.mockReturnValue(oldSave.promise);
 		controller.selectedProjectId = 'p-a';
 		const loading = controller.loadQuotas();
 		const saving = controller.saveSectionQuotas('compute', { cores: 16 });
 		controller.selectedProjectId = 'p-b';
 		controller.selectedProjectId = 'p-a';
-		oldQuota.resolve(quota); oldGpu.resolve(gpu); oldSave.resolve(saved);
+		oldQuota.resolve(quota); oldSave.resolve(saved);
 		await Promise.all([loading, saving]);
 		expect(controller.quotas).toBeNull();
-		expect(controller.gpuQuotas).toEqual([]);
 		expect(controller.saveSuccess).toBe('');
 		expect(controller.saving).toBe(false);
 	});
 
-	it('rejects old GPU mutation completions after a domain A→B→A without issuing a new read', async () => {
-		const { controller } = await setup();
-		const write = Promise.withResolvers<void>();
-		const clear = Promise.withResolvers<void>();
-		mocks.put.mockReturnValue(write.promise); mocks.delete.mockReturnValue(clear.promise);
-		controller.selectedDomainId = 'd-a'; controller.selectedProjectId = 'p-a';
-		const writing = controller.setGpuQuota('gpu-a', 3);
-		const clearing = controller.deleteGpuQuota('gpu-a');
-		controller.selectedDomainId = 'd-b';
-		controller.selectedDomainId = 'd-a'; controller.selectedProjectId = 'p-a';
-		const calls = mocks.get.mock.calls.length;
-		write.resolve(); clear.resolve();
-		await Promise.all([writing, clearing]);
-		expect(mocks.get).toHaveBeenCalledTimes(calls);
-		expect(controller.gpuQuotas).toEqual([]);
-		expect(controller.gpuQuotaError).toBe('');
-	});
 
 	it('clears synchronously and rejects late responses across same-tick auth A→B→A', async () => {
 		const { controller } = await setup();
 		controller.selectedProjectId = 'p-a';
 		await controller.loadQuotas();
 		const oldQuota = Promise.withResolvers<Quotas>();
-		const oldGpu = Promise.withResolvers<GpuQuota[]>();
-		mocks.get.mockImplementation((path: string) => path.includes('/gpu-quotas/') ? oldGpu.promise : oldQuota.promise);
+		mocks.get.mockReturnValue(oldQuota.promise);
 		const loading = controller.loadQuotas();
 		const original = get(auth);
 		auth.set({ ...original, sessionId: 'session-b', token: 'token-b' });
@@ -160,10 +132,9 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.projects).toEqual([]);
 		auth.set(original);
 		controller.selectedProjectId = 'p-a';
-		oldQuota.resolve(quota); oldGpu.resolve(gpu);
+		oldQuota.resolve(quota);
 		await loading;
 		expect(controller.quotas).toBeNull();
-		expect(controller.gpuQuotas).toEqual([]);
 	});
 
 	it('preserves the directory, selected project and loaded quotas during same-session bearer rotation', async () => {
@@ -179,20 +150,6 @@ describe('admin quota independent domain and project scope', () => {
 		expect(controller.quotas).toEqual(quota);
 	});
 
-	it('refreshes global GPU defaults after a successful write even when the project scope changes', async () => {
-		const { controller } = await setup();
-		const write = Promise.withResolvers<void>();
-		mocks.put.mockReturnValueOnce(write.promise);
-		mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/gpu-quotas/defaults'
-			? Promise.resolve([{ gpu_type: 'gpu-a', limit: 5 }]) : Promise.resolve([]));
-		controller.selectedProjectId = 'p-a';
-		const writing = controller.setGpuDefault('gpu-a', 5);
-		controller.selectedDomainId = 'd-b'; controller.selectedProjectId = 'p-b';
-		write.resolve(); await writing;
-		expect(controller.gpuDefaultMap).toEqual({ 'gpu-a': 5 });
-		expect(controller.gpuDefaultSuccess).toBeTruthy();
-		expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/admin/gpu-quotas/p-b', expect.anything(), expect.anything());
-	});
 
 	it.each([projectSwitching, logoutInProgress])('clears results when a session transition starts', async transition => {
 		const { controller } = await setup();
@@ -201,7 +158,6 @@ describe('admin quota independent domain and project scope', () => {
 		transition.set(true);
 		expect(controller.quotas).toBeNull();
 		expect(controller.selectedProjectId).toBe('');
-		expect(controller.gpuQuotas).toEqual([]);
 		transition.set(false);
 	});
 

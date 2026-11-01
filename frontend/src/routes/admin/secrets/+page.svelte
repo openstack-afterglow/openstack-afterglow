@@ -2,7 +2,7 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -10,7 +10,6 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import { api as baseApi, ApiError } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
@@ -166,7 +165,7 @@
 		<Button variant="secondary" onclick={() => { showSetQuota = false; }} disabled={submitting}>{tc('actions.cancel')}</Button>
 		<Button variant="primary" onclick={handleSetQuota} disabled={submitting}>
 			{#if submitting}
-				<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.saving')}</span></span>
+				<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('secrets.saving')}</span></span>
 			{:else}{t('secrets.save')}{/if}
 		</Button>
 	{/snippet}
@@ -208,7 +207,7 @@
 
 	<div data-tour="admin-key-manager-table">
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={4} />
+		<LoadingState variant="surface" />
 	{:else if quotas.length === 0}
 		<div class="text-center py-16 text-ink-2" data-tour="admin-key-manager-ready">
 			<div class="text-4xl mb-3">📊</div>
@@ -231,7 +230,7 @@
 								<Button variant="secondary" size="sm" onclick={() => openEdit(q)}>{t('secrets.configure')}</Button>
 								<Button variant="subtle" size="sm" onclick={() => handleResetQuota(q.project_id)} disabled={resettingProjects[q.project_id]}>
 									{#if resettingProjects[q.project_id]}
-										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.resetting')}</span></span>
+										<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('secrets.resetting')}</span></span>
 									{:else}{t('secrets.reset')}{/if}
 								</Button>
 							</div>
@@ -261,7 +260,7 @@
 								<button onclick={() => openEdit(q)} class="text-xs text-warm-text hover:text-warm-text-hover">{t('secrets.configure')}</button>
 								<button onclick={() => handleResetQuota(q.project_id)} disabled={resettingProjects[q.project_id]} class="text-xs text-ink-2 hover:text-ink-1">
 									{#if resettingProjects[q.project_id]}
-										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.resetting')}</span></span>
+										<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('secrets.resetting')}</span></span>
 									{:else}{t('secrets.reset')}{/if}
 								</button>
 							</td>

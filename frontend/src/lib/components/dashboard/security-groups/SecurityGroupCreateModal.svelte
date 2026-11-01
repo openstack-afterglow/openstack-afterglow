@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let {
 		open = $bindable(),
@@ -83,7 +83,7 @@
 					aria-busy={submitting}
 					class="flex-1 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm py-2 rounded transition-colors"
 				>
-					{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? t('securityGroup.create.creating') : t('securityGroup.create.submit')}
+					{#if submitting}<LoadingState variant="control" label="" />{/if}{submitting ? t('securityGroup.create.creating') : t('securityGroup.create.submit')}
 				</button>
 				<button
 					onclick={() => { open = false; }}

@@ -12,7 +12,7 @@
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
 	import type { SwiftContainer } from '$lib/types/common';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { formatStorage } from '$lib/utils/format';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -170,7 +170,7 @@
 
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm">{partial ? t('buckets.adminPage.partialEmpty') : t('buckets.adminPage.empty')}</div>
 	{:else}

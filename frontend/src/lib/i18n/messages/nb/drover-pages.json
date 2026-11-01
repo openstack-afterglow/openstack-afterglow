@@ -122,5 +122,9 @@
 	"yaml.parseError": "Feil ved tolking av YAML: {error}",
 	"yaml.configMapKind": "kind må være ConfigMap",
 	"yaml.secretKind": "kind må være Secret",
-	"yaml.stringDataRequired": "Bruk stringData i stedet for data for å redigere en Secret (inndata i ren tekst)"
+	"yaml.stringDataRequired": "Bruk stringData i stedet for data for å redigere en Secret (inndata i ren tekst)",
+	"clusterError.details": "Feildetaljer",
+	"clusterError.recovery": "Se mislykket trinn og tilknyttede ressurser i klyngedetaljene. Løs problemer med sikkerhetsgruppe, nettverk eller kvote, og oppdater statusen.",
+	"clusterError.loadFailed": "Kunne ikke laste klynger",
+	"clusterError.reload": "Last inn på nytt"
 }

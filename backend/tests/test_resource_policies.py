@@ -60,6 +60,28 @@ def test_flavor_discovery_projects_real_catalog_without_afterglow_connection_att
     assert [option["id"] for option in resource_policies._discover_sync(conn, tenant)] == ["public"]
 
 
+@pytest.mark.parametrize(
+    "vcpus,ram,specs,required",
+    [
+        (2, 4096, {"hw:cpu_policy": "shared"}, False),
+        (12, 4096, {"afterglow:usage_schedule_required": "false"}, True),
+        (2, 65536, {"afterglow:usage_schedule_required": "false"}, True),
+        (2, 4096, {"resources:VGPU": "1"}, True),
+        (2, 4096, {"afterglow:usage_schedule_required": "true"}, True),
+    ],
+)
+def test_flavor_resource_choices_project_native_usage_schedule_requirement(vcpus, ram, specs, required):
+    from types import SimpleNamespace
+
+    flavor = SimpleNamespace(
+        id="native", name="native", vcpus=vcpus, ram=ram, disk=0, is_public=True, extra_specs=specs
+    )
+    conn = SimpleNamespace(compute=SimpleNamespace(flavors=lambda **kwargs: [flavor]))
+    spec = resource_policies.PolicySpec("test.flavor", "flavor", "Flavor", "Test", "", execution_scope="service")
+    (option,) = resource_policies._discover_sync(conn, spec)
+    assert option["usage_schedule_required"] is required
+
+
 @pytest.mark.asyncio
 async def test_policy_clear_does_not_require_live_resource_lookup(monkeypatch):
     monkeypatch.setattr(

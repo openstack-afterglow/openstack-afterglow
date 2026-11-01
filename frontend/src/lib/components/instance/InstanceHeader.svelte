@@ -4,7 +4,8 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { ActivityIndicator, AnimatedNumber, Button, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { AnimatedNumber, Button, ProgressTrack } from '$lib/components/ui';
 
 	interface Props {
 		adminProjectId: string | null;
@@ -41,11 +42,11 @@
 		size="sm"
 		ariaBusy={s.passwordPrecheckLoading}
 	>
-		{#if s.passwordPrecheckLoading}<ActivityIndicator size="xs" />{t('header.checking')}{:else}{t('header.changePassword')}{/if}
+		{#if s.passwordPrecheckLoading}<LoadingState variant="control" label="" />{t('header.checking')}{:else}{t('header.changePassword')}{/if}
 	</Button>
 {/snippet}
 
-<DetailHeader title={s.instance!.name} status={s.instance!.status} size="lg">
+<DetailHeader title={s.instance!.name} status={s.instance!.status} statusKind="server" size="lg">
 	{#snippet meta()}
 		{#if s.instance!.status === 'ERROR' && s.instance!.fault?.message && adminProjectId}
 			<div class="p-3 rounded-lg bg-red-900/30 border border-red-800/40 text-red-300 text-sm max-w-xl">
@@ -56,7 +57,7 @@
 		{#if adminProjectId && s.instance!.status === 'MIGRATING' && s.migrationStatus?.migration}
 			{@const mig = s.migrationStatus.migration}
 			<div class="p-3 rounded-lg bg-surface-sunken border border-line-2 text-ink-1 text-sm max-w-xl">
-				<ActivityIndicator variant="pulse" label={t('header.migrationInProgress')} />
+				<LoadingState variant="inline" label={t('header.migrationInProgress')} />
 				<div class="text-xs opacity-90">
 					{mig.source ?? '?'} → {mig.dest ?? '?'}
 					{#if mig.memory_percent !== null && mig.memory_percent !== undefined}
@@ -83,43 +84,43 @@
 				{#if s.instance!.status === 'ACTIVE'}
 					<Button onclick={s.openConsole} disabled={s.consoleOpening} ariaBusy={s.consoleOpening} variant="outline" size="sm">
 						{#if s.consoleOpening}
-							<ActivityIndicator size="xs" />{t('header.consolePreparing')}
+							<LoadingState variant="control" label="" />{t('header.consolePreparing')}
 						{:else}
 							{t('header.openConsole')}
 						{/if}
 					</Button>
 					{#if canMutate}
 						<Button onclick={() => s.performAction('stop')} disabled={busy} variant="outline" size="sm">
-							{#if s.actioning === 'stop'}<ActivityIndicator size="xs" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}
+							{#if s.actioning === 'stop'}<LoadingState variant="control" label={t('header.stopping')} />{:else}{t('header.stop')}{/if}
 						</Button>
 						<Button onclick={() => s.performAction('reboot')} disabled={busy} variant="outline" size="sm">
-							{#if s.actioning === 'reboot'}<ActivityIndicator size="xs" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}
+							{#if s.actioning === 'reboot'}<LoadingState variant="control" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}
 						</Button>
 					{/if}
 				{/if}
 				{#if canMutate && s.instance!.status === 'SHUTOFF'}
 					<Button onclick={() => s.performAction('start')} disabled={busy} variant="primary" size="sm">
-						{#if s.actioning === 'start'}<ActivityIndicator size="xs" label={t('header.starting')} />{:else}{t('header.start')}{/if}
+						{#if s.actioning === 'start'}<LoadingState variant="control" label={t('header.starting')} />{:else}{t('header.start')}{/if}
 					</Button>
 					<Button onclick={() => s.performAction('shelve')} disabled={busy} variant="outline" size="sm">
-						{#if s.actioning === 'shelve'}<ActivityIndicator size="xs" label={t('header.shelving')} />{:else}{t('header.shelve')}{/if}
+						{#if s.actioning === 'shelve'}<LoadingState variant="control" label={t('header.shelving')} />{:else}{t('header.shelve')}{/if}
 					</Button>
 					<Button onclick={s.deleteInstance} disabled={busy} variant="danger-outline" size="sm">
-						{#if s.deleting}<ActivityIndicator size="xs" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}
+						{#if s.deleting}<LoadingState variant="control" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}
 					</Button>
 					<Button onclick={onOpenResizeModal} disabled={busy} variant="outline" size="sm">{t('header.resize')}</Button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
 					<Button onclick={() => s.performAction('unshelve')} disabled={busy} variant="primary" size="sm">
-						{#if s.actioning === 'unshelve'}<ActivityIndicator size="xs" label={t('header.unshelving')} />{:else}{t('header.unshelve')}{/if}
+						{#if s.actioning === 'unshelve'}<LoadingState variant="control" label={t('header.unshelving')} />{:else}{t('header.unshelve')}{/if}
 					</Button>
 				{/if}
 				{#if canMutate && s.instance!.status === 'VERIFY_RESIZE'}
 					<Button onclick={s.confirmResize} disabled={busy} variant="primary" size="sm">
-						{#if s.actioning === 'confirm-resize'}<ActivityIndicator size="xs" label={t('header.confirming')} />{:else}{t('header.confirmResize')}{/if}
+						{#if s.actioning === 'confirm-resize'}<LoadingState variant="control" label={t('header.confirming')} />{:else}{t('header.confirmResize')}{/if}
 					</Button>
 					<Button onclick={s.revertResize} disabled={busy} variant="outline" size="sm">
-						{#if s.actioning === 'revert-resize'}<ActivityIndicator size="xs" label={t('header.canceling')} />{:else}{t('header.revert')}{/if}
+						{#if s.actioning === 'revert-resize'}<LoadingState variant="control" label={t('header.canceling')} />{:else}{t('header.revert')}{/if}
 					</Button>
 				{/if}
 			</div>
@@ -139,10 +140,10 @@
 				<div class="flex items-center gap-2 flex-wrap justify-end">
 					{#if s.instance!.status === 'MIGRATING'}
 						<Button onclick={() => requestMigrationControl('complete')} disabled={migrationRequest !== null} variant="outline" size="sm">
-							{#if migrationRequest === 'complete'}<ActivityIndicator size="xs" label={`${t('header.forceComplete')} · ${tc('state.processing')}`} />{:else}{t('header.forceComplete')}{/if}
+							{#if migrationRequest === 'complete'}<LoadingState variant="control" label={`${t('header.forceComplete')} · ${tc('state.processing')}`} />{:else}{t('header.forceComplete')}{/if}
 						</Button>
 						<Button onclick={() => requestMigrationControl('abort')} disabled={migrationRequest !== null} variant="outline" size="sm">
-							{#if migrationRequest === 'abort'}<ActivityIndicator size="xs" label={`${t('header.abortMigration')} · ${tc('state.processing')}`} />{:else}{t('header.abortMigration')}{/if}
+							{#if migrationRequest === 'abort'}<LoadingState variant="control" label={`${t('header.abortMigration')} · ${tc('state.processing')}`} />{:else}{t('header.abortMigration')}{/if}
 						</Button>
 					{:else}
 						{#if s.instance!.status === 'ACTIVE'}

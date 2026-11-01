@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -99,9 +99,9 @@
 		</div>
 
 		<!-- Log body -->
-		<div class="flex-1 overflow-auto p-4">
+		<div class="flex min-h-0 flex-1 flex-col overflow-auto {loading ? '' : 'p-4'}">
 			{#if loading}
-				<div class="text-ink-2 text-sm text-center py-8"><ActivityIndicator label={t('podLog.loading')} /></div>
+				<LoadingState variant="section" label={t('podLog.loading')} />
 			{:else if error}
 				<div class="text-red-400 text-sm">{error}</div>
 			{:else if !log}

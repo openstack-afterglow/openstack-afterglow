@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	const s = useObjectBrowser();
@@ -26,7 +27,7 @@
 					onclick={s.doRename}
 					disabled={s.renaming}
 					class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected px-3 py-1.5 rounded border border-indigo-500 disabled:border-line-2"
-				>{t(s.renaming ? 'dialogs.rename.renaming' : 'dialogs.rename.submit')}</button>
+				>{#if s.renaming}<LoadingState variant="control" label="" />{/if}{t(s.renaming ? 'dialogs.rename.renaming' : 'dialogs.rename.submit')}</button>
 			</div>
 		</div>
 	</div>

@@ -60,27 +60,31 @@ const topologyTokenNames = [
 	'--color-topology-grid-major',
 ];
 
+const afterglowArtworkTokenNames = [
+	'--afterglow-artwork-base',
+	'--afterglow-artwork-warm',
+	'--afterglow-artwork-light',
+	'--afterglow-artwork-ink',
+	'--afterglow-artwork-muted',
+];
+
 const motionTokenNames = [
 	'--motion-duration-fast',
 	'--motion-duration-base',
 	'--motion-duration-panel',
 	'--motion-duration-data',
-	'--motion-duration-status-pulse',
 	'--motion-ease-standard',
 	'--motion-ease-out',
 	'--motion-ease-in-out',
-	'--motion-duration-spin',
 	'--motion-duration-shimmer',
 	'--motion-duration-stagger',
 	'--motion-ease-emphasized',
 	'--motion-ease-overshoot',
 	'--motion-sheen',
-	'--motion-skeleton-highlight',
 ];
 
 // 반복 loop의 정지 frame을 보장하려면 새 duration도 reduced-motion 블록에서 0으로 수렴해야 한다.
 const reducedMotionDurationDeclarations = [
-	'--motion-duration-spin: 0.01ms',
 	'--motion-duration-shimmer: 0.01ms',
 	'--motion-duration-stagger: 0ms',
 ];
@@ -120,8 +124,6 @@ const motionDurationExports = [
 	'base: 160',
 	'panel: 200',
 	'data: 500',
-	'statusPulse: 1400',
-	'spin: 800',
 	'shimmer: 1600',
 	'stagger: 40',
 	"REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'",
@@ -137,17 +139,14 @@ const motionCssVars = [
 	"durationBase: 'var(--motion-duration-base)'",
 	"durationPanel: 'var(--motion-duration-panel)'",
 	"durationData: 'var(--motion-duration-data)'",
-	"durationStatusPulse: 'var(--motion-duration-status-pulse)'",
 	"easeStandard: 'var(--motion-ease-standard)'",
 	"easeOut: 'var(--motion-ease-out)'",
 	"easeInOut: 'var(--motion-ease-in-out)'",
-	"durationSpin: 'var(--motion-duration-spin)'",
 	"durationShimmer: 'var(--motion-duration-shimmer)'",
 	"durationStagger: 'var(--motion-duration-stagger)'",
 	"easeEmphasized: 'var(--motion-ease-emphasized)'",
 	"easeOvershoot: 'var(--motion-ease-overshoot)'",
 	"sheen: 'var(--motion-sheen)'",
-	"skeletonHighlight: 'var(--motion-skeleton-highlight)'",
 ];
 
 const requiredUiExports = [
@@ -167,7 +166,6 @@ const requiredUiExports = [
 	'ProgressTrack',
 	'StepProgress',
 	'ProvisionPipeline',
-	'ActivityIndicator',
 	'AnimatedNumber',
 ];
 
@@ -178,6 +176,16 @@ describe('design system source contracts', () => {
 		expect(layoutSource).toContain('Legacy light-mode compatibility overrides');
 		for (const token of designTokenNames) expect(layoutSource).toContain(token);
 		for (const token of topologyTokenNames) expect(layoutSource).toContain(token);
+		for (const token of afterglowArtworkTokenNames) {
+			expect(layoutSource).toContain(`${token}:`);
+			expect(tokenSource).toContain(`var(${token})`);
+		}
+	});
+
+	it('maps authored artwork to the existing live console palette rather than a fixed dark color island', () => {
+		for (const [artwork, semantic] of [
+			['base', 'surface-canvas'], ['warm', 'warm-text'], ['light', 'warm-2'], ['ink', 'ink-0'], ['muted', 'ink-2'],
+		]) expect(layoutSource).toContain(`--afterglow-artwork-${artwork}: var(--color-${semantic});`);
 	});
 
 
@@ -297,7 +305,6 @@ describe('design system source contracts', () => {
 		for (const token of motionTokenNames) {
 			expect(layoutSource).toContain(token);
 			expect(tokenSource).toContain(token);
-			expect(designSource).toContain(token);
 		}
 		expect(tokenSource).toContain('MOTION_CSS_VAR');
 		for (const cssVar of motionCssVars) expect(tokenSource).toContain(cssVar);

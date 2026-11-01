@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import {
     toConfigMapYaml,
@@ -114,7 +114,7 @@
         disabled={!$k3sPermissions.workloads || (mode === 'secret' && secretType !== 'Opaque' && !$k3sPermissions.adminCredentials) || saving || !!liveError}
         class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
       >
-        {#if saving}<ActivityIndicator size="xs" label={t('resourceEditor.saving')} />{:else}{t('resourceEditor.save')}{/if}
+        {#if saving}<LoadingState variant="control" label={t('resourceEditor.saving')} />{:else}{t('resourceEditor.save')}{/if}
       </button>
     </div>
   </div>

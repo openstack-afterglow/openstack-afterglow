@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Afterglow · Loading</title>
+  <link rel="stylesheet" href="./loading.css">
+  <script src="./loading.js" defer></script>
+</head>
+<body>
+  <main class="afterglow-loading" aria-labelledby="brand">
+    <canvas class="afterglow-loading__scene" aria-hidden="true"></canvas>
+    <header class="afterglow-loading__header">
+      <span class="afterglow-loading__signature" aria-hidden="true"><i></i> AFTERGLOW</span>
+      <button class="afterglow-loading__motion" type="button" aria-pressed="false">애니메이션 일시정지</button>
+    </header>
+    <div class="afterglow-loading__caption">
+      <p class="afterglow-loading__eyebrow" aria-hidden="true">A QUIET MOMENT BEFORE WHAT'S NEXT</p>
+      <h1 id="brand">afterglow<span aria-hidden="true">.</span></h1>
+      <p class="afterglow-loading__status" role="status" aria-live="polite"><span class="afterglow-loading__dot" aria-hidden="true"></span><span data-loading-status>잠시만 기다려 주세요</span></p>
+    </div>
+    <footer class="afterglow-loading__footer" aria-hidden="true"><span>CLOUD WORKSPACE</span><span>빛이 머무는 곳, 다음이 시작되는 곳.</span></footer>
+    <noscript><p class="afterglow-loading__no-script">화면 효과에는 JavaScript가 필요합니다.</p></noscript>
+  </main>
+</body>
+</html>

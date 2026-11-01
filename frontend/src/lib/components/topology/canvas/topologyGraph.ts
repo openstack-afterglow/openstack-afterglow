@@ -463,7 +463,7 @@ function sumNetworks(traffic: TopologyTraffic, netIds: readonly string[]): Traff
  *
  *   max(rx,tx)  ≤  T  ≤  rx + tx
  *
- * 로만 좁혀진다 — 미지수 3개에 식 2개라 EW 를 계측으로 가를 수 없다(`flowStreams` 와 같은 한계).
+ * 로만 좁혀진다 — 미지수 3개에 식 2개라 EW 를 계측으로 가를 수 없다.
  * 두 끝값은 각각 최악 2배 틀린다: 순수 동서에서 `rx+tx` 가 2배 과대(실측 2026-09-13:
  * dmslab 3-tier 235k/230k → 465k), 양방향 남북에서 `max` 가 2배 과소다.
  * 그래서 구간의 **중점**을 쓴다 — 과대 1.5배·과소 1.33배로 최악 오차가 가장 작고,
@@ -471,16 +471,6 @@ function sumNetworks(traffic: TopologyTraffic, netIds: readonly string[]): Traff
  */
 export function switchThroughput(rate: { rx_bps: number; tx_bps: number }): number {
 	return Math.max(rate.rx_bps, rate.tx_bps) + Math.min(rate.rx_bps, rate.tx_bps) / 2;
-}
-
-/**
- * 강도 인코딩(굵기·불투명도·흐름)에 쓸 스칼라.
- *
- * - **케이블과 그 밖**: `rx + tx`. NIC 하나의 두 방향은 진짜로 서로 다른 방향이라 이중 계상이 없다.
- * - **트렁크**: `switchThroughput`.
- */
-export function intensityBps(kind: CanvasEdge['kind'], rate: { rx_bps: number; tx_bps: number }): number {
-	return kind === 'trunk' ? switchThroughput(rate) : rate.rx_bps + rate.tx_bps;
 }
 
 /**
@@ -523,18 +513,6 @@ export function edgeStyle(e: CanvasEdge, traffic: TopologyTraffic | null | undef
 	return { opacity, width, dash, bps, rate };
 }
 
-/**
- * 이 미만이면 흐름을 그리지 않는다 — "사용량 없음" 을 0 이 아니라 "점 없음" 으로 읽게 한다.
- * 실측(2026-09-13)에서 NIC 43개 중 `1e5` 이상은 4개뿐이라 흐름이 사실상 보이지 않았다.
- * `1e4` 는 같은 표본에서 21/43 이 이 문턱을 넘는다.
- *
- * **다만 화면에 실제로 점이 붙는 엣지 수는 이 문턱이 아니라 `rebuildFlow` 의 전역 점 예산(60)이
- * 정한다.** 후보를 bps 내림차순으로 훑으며 예산이 차면 멈추므로, 문턱을 넘고도 점이 없는 엣지가
- * 생긴다(실측 표본·경로 길이 기준 상위 8~15개만 배정). 이는 문턱과 무관한 성능 예산이며 굵기·
- * 불투명도는 43개 전부에 그대로 실린다.
- */
-export const FLOW_MIN_BPS = 1e4;
-
 /** 한 엣지에 흘릴 점 스트림. `dir=true` 는 엣지의 from→to(인스턴스→스위치) 방향이다. */
 export interface FlowStream {
 	bps: number;
@@ -543,37 +521,26 @@ export interface FlowStream {
 }
 
 /**
- * 엣지 하나에 어떤 점 스트림을 흘릴지 정한다.
- *
- * - **라우터가 전혀 없는 망(isolated)의 케이블**: 나갈 경로가 없으므로 그 망의 NIC 트래픽은
- *   정의상 전부 내부 통신이다. tx(인스턴스→스위치)와 rx(스위치→인스턴스)를 각각의 사용량만큼
- *   따로 흘려 인스턴스 ↔ 스위치 ↔ 인스턴스가 눈에 보이게 한다.
- * - **그 밖의 모든 엣지**: 게이트웨이 방향 한 줄만 흘린다. 라우터가 있는 망은 내부/외부 비중을
- *   계측으로 가를 수 없다(Σtx = 내부+유출, Σrx = 내부+유입 — 미지수 3개에 식 2개). 없는 데이터는 그리지 않는다.
- *
- * 쌍 단위(A→B) 경로는 어느 경우에도 계측되지 않는다 — exporter 에 peer 라벨이 없다.
+ * NIC 하나의 측정된 tx(인스턴스→스위치)와 rx(스위치→인스턴스)를 독립적으로 흘린다.
+ * 라우터 유무는 방향·사용량을 바꾸지 않고, 격리 망의 기존 표시만 유지한다.
+ * 유한한 양수만 후보가 되며 낮은 사용량도 숨기지 않는다. 0 또는 미계측 방향은 정적이다.
+ * 트렁크 합산·FIP·LB 연결은 이 NIC 구간의 측정이 아니므로 점을 복제하지 않는다.
+ * exporter 에 peer 라벨이 없어 쌍 단위(A→B) 경로나 Internet 트래픽을 추론하지 않는다.
  */
 export function flowStreams(
 	edge: Pick<CanvasEdge, 'kind' | 'netId'>,
 	rate: { rx_bps: number; tx_bps: number },
 	isolatedNet: boolean,
-	/** 게이트웨이 방향 스트림에 쓸 스칼라. 생략하면 `intensityBps` 로 계산한다.
-	 *  uplink 트렁크처럼 `edgeStyle` 이 망별 합으로 따로 계산하는 경우 그 값을 넘겨야 어긋나지 않는다. */
-	aggregateBps?: number,
 ): FlowStream[] {
-	if (edge.kind === 'cable' && isolatedNet) {
-		return [
-			{ bps: rate.tx_bps, dir: true, internal: true },
-			{ bps: rate.rx_bps, dir: false, internal: true },
-		].filter((s) => s.bps >= FLOW_MIN_BPS);
-	}
-	const bps = aggregateBps ?? intensityBps(edge.kind, rate);
-	if (bps < FLOW_MIN_BPS) return [];
-	return [{ bps, dir: rate.tx_bps >= rate.rx_bps, internal: false }];
+	if (edge.kind !== 'cable') return [];
+	return [
+		{ bps: rate.tx_bps, dir: true, internal: isolatedNet },
+		{ bps: rate.rx_bps, dir: false, internal: isolatedNet },
+	].filter((s) => Number.isFinite(s.bps) && s.bps > 0);
 }
 
 /**
- * 흐름 점 전역 예산. **성능 한도**이며 사용량 문턱(`FLOW_MIN_BPS`)과는 별개다.
+ * 흐름 점 전역 예산. 사용량 문턱이 아니라 **성능 한도**다.
  * 대규모(인스턴스 40+) 화면에서 rAF 마다 옮길 원 개수의 상한이다.
  */
 export const FLOW_DOT_BUDGET = 60;
@@ -594,7 +561,7 @@ export interface FlowAllocation {
  * 잘린 개수는 통과 빈도를 그만큼 거짓으로 낮춰(8개 중 4개면 절반) 사용량을 잘못 읽게 만든다.
  * 건너뛴 뒤에도 계속 훑으므로 남은 예산은 더 한가한(그래서 더 적게 필요한) 엣지에게 돌아간다.
  *
- * 그 결과 화면에 점이 붙는 엣지 수는 `FLOW_MIN_BPS` 가 아니라 이 예산이 정한다.
+ * 그 결과 유한한 양수인 방향도 이 예산에 따라 화면에 점이 없을 수 있다.
  * 굵기·불투명도에는 이런 절단이 없어 모든 엣지가 사용량대로 그려진다.
  */
 export function allocateFlowDots(

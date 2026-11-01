@@ -52,26 +52,27 @@ Backend의 `services/native_transport.py`는 별도 API 요청 사이에도 nati
   로그인 출처 IP/기기 지문, 인증 방식, 변경 불가 `identity_domain_id`와 선택한 작업 `domain_id`를 저장합니다. Federated 세션은 `provider_id`, `provider_revision`, **로그인을 시작한 provider 정책 도메인 `provider_domain_id`**, 검증된 `login_email`도 보존합니다. 필수 identity/working/provider-origin 문맥이 없는 과거 세션은 재로그인이 필요합니다.
 - **세션 타임아웃** — Keystone 토큰 수명과 별개로, Redis에 세션 시작 시간을 기록해
   `session_timeout_seconds`를 초과하면 401로 만료 처리합니다.
-- **토큰 회전** — `POST /refresh`는 기존 refresh 세션을 즉시 삭제하고 새 쌍을
-  발급합니다. 같은 refresh 토큰을 두 번 사용하면 두 번째 호출은 401입니다.
+- **토큰 회전** — `POST /refresh`는 기존 refresh 세션을 소비하고 새 쌍과 최대30초 복구 receipt를 원자적으로 발행합니다. 같은 이전 refresh의 짧은 재요청은 정확한 successor·현재 권한 검증 뒤 동일 응답만 받으며 old access는401입니다.
 - **명시적 작업 범위 전환** — `/token/domain`과 `/token/workspace`만 작업 도메인을 변경합니다. `/token/workspace`는 정확한 domain/project 쌍을 한 번에 commit하며 중간 도메인 세션을 발급하지 않습니다. Refresh·프로젝트 전환은 계정 소속, 원래 세션 시작 시간·출처·provider를 유지합니다. 이전 JTI alias는 세션 회수에만 쓰며 이전 access/refresh를 다시 유효하게 만들지 않습니다.
 - **프로젝트 role 변경** — 본인을 포함한 직접·그룹·상속·역할 추론 변경은 현재 권위와 기존 검증 cache를 무효화하지만 로그인 family를 일괄 삭제하지 않습니다. 회수한 권한은 새 요청부터 반영되어 해당 작업이 `403`일 수 있으며 다음 로그인까지 권한을 유지하지 않습니다. 명시적 세션 회수·계정 차단·실제 native 로그인 증명 무효는 별도 보안 경계입니다.
 - **선택 프로젝트 접근 상실** — 로그인과 작업 도메인 정책이 여전히 유효하면 인증 문맥·다른 프로젝트 선택은 사용할 수 있고 refresh는 실제 native 범위를 projectless로 회전할 수 있습니다. 관리자 논리 작업 대상도 현재 `system:all`과 대상 도메인·프로젝트를 다시 검증한 경우에만 유지합니다. Refresh·인증 조회·`/token/project` 복구는 철회된 grant를 자동 복원하지 않습니다. 검증된 신규 로그인과 명시 domain/workspace 전환의 기존 onboarding은 그대로입니다.
 - **다른 도메인에서 projectless 복구** — 서버는 실제 native subject와 변경 불가 home을 먼저 검증한 뒤 현재 membership으로 선택 working domain을 적용합니다. 따라서 프로젝트 회수 후 반복 refresh·`/me`·workspace 탐색은 home과 working domain이 달라도 사용할 수 있습니다. Scoped native token의 프로젝트/도메인 불일치, 계정·home 비활성, working membership 상실이나 원 native 로그인 증명 회수는 허용하지 않습니다. Frontend는 refresh·`/me`의 명시적 null/빈 `project_id`에서 ID와 이름을 함께 지우며, 필드 생략은 기존 값을 유지합니다. 예상치 못한 다른 nonempty project를 scope 전환으로 받아들이지 않습니다.
 
-Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성을 보장하지 않습니다. Source 기본값은 access900초·refresh604800초·절대 세션86400초이며 명시한 실제 실행 설정이 우선합니다. 발급되는 두 JWT와 Redis TTL은 각 configured TTL, 최초 `started_at + session_timeout_seconds`, native unscoped root 만료 중 가장 이른 시각으로 제한합니다. Refresh·프로젝트/도메인 전환은 이 deadline을 연장하지 않습니다. Keystone token exchange는 원래 root의 만료를 늘리지 않으므로 native 증명이 하루보다 먼저 만료되거나 회수되면 재로그인이 필요합니다. 명시한 더 짧은 운영자 timeout·계정·도메인·로그인 정책도 우회하지 않습니다. Source default 변경만으로 기존 private TOML의3600초나 실행 중인 세션을 변경하지 않으며 운영 반영은 별도입니다.
-기본 배포 값도 Helm `session.timeoutSeconds`·Kolla bundled template·K8s generator까지86400초로 일치시킵니다. 유효한 private 설정은 `[session] timeout_seconds = 86400`이며 Helm override는 `session.timeoutSeconds: 86400`입니다. 이전 `absolute_timeout`/`absoluteTimeout`은 backend consumer가 없는 죽은 배포 필드였으므로 제거했으며 별도4시간 cap이 아닙니다. 기존 운영자의 명시3600초는 자동으로 바꾸지 않습니다.
+Refresh JWT의 `exp`와 Redis key의 양수 TTL만으로 로그인 유효성이 보장되지 않습니다. Source 기본값은 access3600초·refresh604800초·원래 로그인 절대 수명최대604800초이며 더 짧은 명시 정책을 보존합니다. 두 JWT/Redis TTL은 configured TTL·최초 `started_at + session_timeout_seconds`·native root 만료의 최소값이고 refresh는 이전 refresh 만료도 넘지 않습니다. Native 증명이 먼저 만료되거나 회수되면 재로그인이 필요합니다. 계정·도메인·로그인 정책과 출처 바인딩도 우회하지 않습니다.
+Helm `session.timeoutSeconds`·Kolla template·K8s generator 기본값도604800초이며 access는3600초입니다. 이전 `absolute_timeout`/`absoluteTimeout`은 사용하지 않습니다. 기존 private3600초 override와 실행 중 세션은 자동 변경되지 않습니다. 실제7일 유지는 [native Keystone·Fernet 보존과 운영 override 동시 적용](../deployment.md#브라우저-세션의-7일-유지-선행-조건) 및 fresh login이 선행 조건입니다.
 
 2026-10-16의 새 격리 정본 실행에서는 실제 서명 JWT 수명과 회전 전후의 동일 `started_at`, 양 JWT/Redis TTL이 남은 절대 만료의401을 확인했습니다. 공유 debug 세션도 read-only Redis/native-token 관찰로 native 만료와 별개의 최초 로그인 deadline을 확인했습니다. 합성 deadline 이동·실제 사용자 세션·현재 브라우저 JWT 관측의 제한은 [검증 기록](../testing.md#작업-영역-지연조기-로그아웃-조사-2026-10-16-frozen-local-qualification-일부-수용-차단)에서 구분합니다. 만료나 회수 정책을 느슨하게 바꾼 것은 아닙니다.
 
 브라우저는 만료 전 공유 refresh 한 건을 실행하고 focus·visibility 복귀·pageshow·online에서 갱신을 재검사합니다. 성공/오류가 늦게 도착해도 기존 token·refreshToken·검증 epoch가 바뀌었다면 현재 세션에 공개하지 않습니다.503/429/네트워크 오류는 cooldown 뒤 재시도 가능한 복구 상태로 유지하며 실제401·provider/도메인 정책 회수는 종료합니다. 새 fresh 관리자 guard는 자기 `NativeOperation` 안에서만 directory/catalog/service session 중복을 재사용하고 다음 guard는 다시 native 권위를 읽습니다.
 
+선제 preflight/lifecycle은 같은 token·refreshToken·epoch·미래 만료 시각이 연장되지 않은 경우 반복 회전을 생략합니다. 이 skip-only 결과는 실제 refresh의 공유 promise를 점유하지 않으므로 동시 명시 복구·401은 실제 갱신을 수행합니다. 실제 만료 이후에는 생략하지 않으며 native/원래 로그인 deadline을 연장하지 않습니다.
+
+자동401/잘못된 복원 응답으로 한 탭이 인증을 종료할 때는 그 탭의 자격만 지우고 다른 탭의 logout marker·SSR presence cookie를 변경하지 않습니다. 오래된 복제 탭의 거부가 이미 갱신된 정상 탭까지 로그아웃시키지 않게 하기 위함입니다. 명시 logout/logout-all·보안 회수는 기존 browser-wide broadcast를 유지하며 탭 간 token 공유는 하지 않습니다.
+
 ### 보안 제한 (참고)
 
 - **로그인 실패 계정 잠금** — 도메인 ID와 사용자 이름으로 분리하며 native `v3.Password` 자격증명 거부만 실패 횟수에 반영합니다. Directory 장애는 503이고 실패 횟수를 늘리지 않습니다. Redis 장애 시 잠금은 가용성 우선으로 생략(fail-open)합니다.
-- **토큰 출처 바인딩** — access 토큰의 출처 IP/기기 지문이 최초 로그인과 불일치하면
-  차단할 수 있습니다. 바인딩 검사 자체가 실패(Redis 장애 등)하면 **요청을 거부
-  (fail-closed, 401)** 합니다.
+- **토큰 출처 바인딩** — 검증된 출처 불일치는401로 차단합니다. 검사 자체가 실패(Redis 장애 등)하면503 fail-closed로 현재 요청을 거부하며, transient outage를 잘못된 자격으로 확정하거나 로그인 전체를 해제하지 않습니다.
 
 ---
 
@@ -251,9 +252,11 @@ Refresh JWT의 `exp`와 Redis key의 양수 TTL은 로그인 세션의 유효성
 
 Native client와 directory 읽기는 요청 안에서만 공유하고 credential exchange 전 password 방법 정책을 확인합니다. 새 personal primary는 exact marker와 본인 직접 member·전체 native provenance를 다시 검증하며 불명 SQL/native intent·disabled user/home/project·필수 membership 회수는 성공 세션을 만들지 못합니다. 기존 owner 기반 personal은 원래 단일-owner 검증과 grant를 보존합니다. Configured OIDC organization은 현재 binding marker와 조직 membership을 callback 최종 공개·refresh·scope 공개에서도 검사합니다. Provider origin과 immutable identity/working scope는 독립적입니다. 요청 간 authority cache나 token 검증 TTL은 늘리지 않습니다.
 
-브라우저는 완전히 매핑한 새 로그인 응답을 일회성 메모리 proof로 받아 즉시 사용할 수 있으므로 로그인 직후 `/auth/me`를 반복하지 않습니다. 저장된 자격을 새로고침으로 복원하거나 임의/복사된 상태를 주입하면 `/auth/me` 검증이 필요합니다. 서버가 검증한 exact-owner refresh/rescope 응답은 기존 준비된 화면을 유지하지만 새 token의 `/me` 검증을 생략하지 않습니다. Proof는 sessionStorage에 저장하지 않으며 이전 검증 응답·retry는 새 로그인/작업 범위를 덮어쓰지 못합니다.
+브라우저는 완전히 매핑한 새 로그인 응답을 일회성 메모리 proof로 받아 즉시 사용할 수 있으므로 로그인 직후 `/auth/me`를 반복하지 않습니다. 같은 검증된 source 객체·논리 owner·verification epoch에서 만든 완전한 refresh 응답도 one-use proof로 추가 `/me` 없이 적용합니다. 필수 identity/scope/capability 필드가 없는 부분 응답·raw/복사/재사용/stale 상태와 저장소 복원, 명시 rescope/domain 전환은 계속 `/me`가 필요합니다. 서버는 refresh receipt 재전달에서도 현재 native 권한과 응답 capability·도메인 metadata를 다시 대조하며 바뀐 응답을 검증된 proof로 재전달하지 않습니다. Proof는 sessionStorage에 저장하지 않으며 이전 검증 응답·retry는 새 로그인/작업 범위를 덮어쓰지 못합니다.
 
-Root 인증 controller만 `/auth/me`와 해당 검증의 retry를 소유합니다. 관리자 layout은 별도 검증 요청·권한 snapshot을 만들지 않고 `authReady`와 현재 시스템 관리자 flag를 함께 소비합니다. 따라서 전체 document 새로고침은 한 번의 서버 검증 전까지 비공개 화면을 숨기지만, 정상 native token 갱신의 background 재검증은 이미 준비된 화면·입력을 재생성하지 않습니다. 일반 목록 새로고침·관리자 내부 탐색도 인증 검증을 추가하지 않습니다. 명시적 scope 전환 중에는 이전 workspace를 숨기며 확인된 권한 철회·401·검증 장애는 기존 거부/로그아웃/root 복구 경계를 유지합니다. 서버 관리자 endpoint의 live native 검증과 권한 cache/TTL은 변경하지 않습니다.
+배포 시 새 backend의 모든 API writer를 먼저 전환한 뒤 새 frontend를 제공해야 합니다. 구 backend의 replay는 숨겨진 native 역할 변경으로 달라진 `can_write`나 도메인 표시 metadata까지 대조하지 않을 수 있으므로, 구 backend+중복 `/me` 생략 frontend 혼용은 지원하지 않습니다. 기존 frontend+새 backend는 기존 검증 경로를 유지합니다. 이 변경은 SQL/Redis schema 변경이나 운영 배포 승인을 포함하지 않습니다.
+
+Root 인증 controller만 필요한 `/auth/me`와 해당 검증의 retry를 소유합니다. 관리자 layout은 별도 검증 요청·권한 snapshot을 만들지 않고 `authReady`와 현재 시스템 관리자 flag를 함께 소비합니다. 전체 document 새로고침은 한 번의 서버 검증 전까지 비공개 화면을 숨기지만 완전한 exact refresh는 기존 화면·입력을 유지하고 중복 검증을 시작하지 않습니다. 일반 목록 새로고침·관리자 내부 탐색도 인증 검증을 추가하지 않습니다. 명시적 scope 전환 중에는 이전 workspace를 숨기며 확인된 권한 철회·401·검증 장애는 기존 거부/로그아웃/root 복구 경계를 유지합니다. Tutorial/project/unread 표시 데이터는 logical owner에 소유되며 성공한 조회를 token 회전만으로 반복하지 않습니다. 실패한 tutorial은 다음 갱신에서 재시도하고 project 목록의 기존 TTL·명시 갱신과 실제 service permission 조회는 유지합니다.
 
 ### 오류 응답
 
@@ -291,6 +294,12 @@ Root 인증 controller만 `/auth/me`와 해당 검증의 retry를 소유합니�
 
 브라우저는 진행 중인 refresh 또는 서버 폐기 요청이 실패해도 로컬 로그아웃을 완료합니다. 서버 폐기 확인에 실패했다면 성공으로 숨기지 않고 이 기기에서만 로그아웃했음을 알립니다.
 
+명시 로그아웃(header·작업 공간 chooser·확인된 전체 로그아웃)은 네트워크 정리 전에 공개 `/logout`으로 이동합니다. 전용 화면은 열린 연결 정리·서버 세션 종료·브라우저 인증정보 제거의 실제 pending/active/done/warning을 보여주며 자동으로 로그인 화면으로 이동하지 않습니다. 완료 후 `로그인으로 돌아가기`를 직접 선택합니다. 기존 refresh가 끝나면 최신 token을 폐기하고, 실패해도 같은 login owner의 메모리·tab credential storage·SSR presence cookie를 제거/확인합니다. 서버 실패는 부분 완료, browser storage 제거 미확인은 오류와 창 닫기 안내로 구분하며 성공이라고 하지 않습니다. 무자격 직접 접근/새로고침·locale remount는 안전하며 이후 새 login의 직접 logout 방문은 새 cleanup을 시작합니다. URL/새 영속 저장소에 자격을 넣지 않습니다. 자동401·비밀번호 변경 등 별도 보안 종료의 기존 동작은 그대로입니다.
+
+일반 header·작업 공간 chooser 로그아웃 버튼은 먼저 기존 `로그아웃하시겠습니까?` 확인 창을 연다. 취소는 현재 화면·세션을 유지하고 폐기 요청을 보내지 않는다. 확인 뒤에만 `/logout`으로 이동하며 확인 대기 중 login/scope owner가 바뀌면 그 확인으로 새 세션을 종료하지 않는다. 전체 로그아웃은 기존 별도 확인을 유지한다.
+
+Access 만료로 logout/logout-all이 dependency401을 반환하면 기존 동일-owner 인증 복구로 refresh한 뒤 새 token으로 한 번 다시 폐기합니다. Revocation fence는 일반 background refresh를 막지만 이 logout-owned 복구는 허용합니다. `suppressAuthRedirect`는 유지하므로 정리 도중 로그인으로 튀지 않으며 network/503의 결과 불명 요청을 자동 재전송하지 않습니다.
+
 ### 응답 (200 OK)
 
 ```json
@@ -301,8 +310,9 @@ Root 인증 controller만 `/auth/me`와 해당 검증의 retry를 소유합니�
 
 ## POST /api/v1/auth/refresh
 
-refresh JWT로 새 access/refresh JWT 쌍을 발급합니다(**토큰 회전**). 기존 refresh
-JTI는 즉시 삭제되므로 같은 refresh 토큰으로 두 번 호출하면 두 번째는 401입니다.
+Refresh JWT로 새 access/refresh JWT 쌍을 발급합니다(**토큰 회전**). Access 기본 수명은1시간이고 refresh와 최초 로그인 기준 전체 세션은최대7일입니다. 더 짧은 운영 정책·native Keystone 만료를 넘기거나 원래 refresh 만료를 연장하지 않습니다.
+
+기존 refresh JTI는 삭제되므로 이전 access는401입니다. 다만 rotation과 **같은 Redis Lua commit**에 보관한 최대30초 receipt로 응답 유실·동시 refresh를 복구합니다. 정확한 후속 세션·가족·scope·출처·수명과 현재 native/provider 정책을 다시 검증한 경우에만 동일 token 응답을 재전달하며 추가 발급은 하지 않습니다. Logout·blacklist·scope 변경·추가 rotation·receipt/원래 token 만료 후에는401입니다. 임의 세션 alias를 인증에 사용하는 것이 아니며, failover가 확정 쓰기 자체를 잃으면 복구를 보장하지 않습니다.
 비율 제한: **30회/분**. 이 엔드포인트는 Authorization 헤더가 아니라 본문의
 refresh 토큰으로 인증합니다.
 
@@ -786,9 +796,11 @@ Email-first 요청은 기존 계정 여부를 조회하지 않고 같은 검증 
 
 Email3–255자, token32–256자, new_password12–1024자, current_password1–1024자입니다. 공개 요청은 유효한 email에 대해 계정 부재·중복·부적격·SMTP 비활성/실패·DB/Redis/native 장애·주소 budget 초과에도 **같은202**이며 계정 존재/home/username/token을 노출하지 않습니다. 잘못된 입력은422, IP route limit은429입니다. 주소별 SHA-256 Redis key의60초 budget은 username/password 종류 및 출처 IP 사이에 공유됩니다. 이202는 메일 발송/수신 성공 확인이 아닙니다.
 
-대상은 global unique email을 가진 enabled native local-password 계정 및 enabled home입니다. **사람의 manager/system admin도 복구 가능**하며 그 권한만으로 제외하지 않습니다. 설정된 operational `os_username`, 실제 effective `service` 역할, external-only 계정은 제외합니다. 명시적 `afterglow_local_password=true`가 있으면 linked federated 계정도 가능하고, 과거 marker 없는 계정은 native `federated` 연결이 없어야 합니다. 복구가 external-only 사용자에게 password를 새로 만드는 우회가 되지 않습니다.
+대상은 global unique canonical email과 enabled native user/home입니다. **사람의 manager/system admin도 복구 가능**하며 권한만으로 제외하지 않습니다. Operational `os_username`과 effective `service` 역할은 제외합니다. Password proof는 로컬·외부·매핑 여부와 metadata 유무에 무관하게 API v2의 actual valid existing history와 native identity revision이 필수입니다. History absent/unknown 또는 extension 불가이면 동일202/no-mail이며 최초 설정은 새 provider 본인 증명 경로로만 진행합니다. SMTP parser가 다른 mailbox로 재해석하는 comments/display-name은 거부합니다.
 
 Proof는 `/recover/{token}` 메일 링크로만 전달하며 SHA-256 해시와 exact user ID/home/original native email·kind·상태를 SQL에 저장합니다. 수명은 발급부터 **1시간·1회용**이고 전달 완료 `pending`만 사용할 수 있습니다. 조회 시에도 enabled/local eligibility·현재 original email·global unique 소유권을 다시 검사합니다. Username kind의 GET은 그 자리에서 소비하고 username을 반환합니다. Password/email_change kind 조회는 소비하지 않으며 username을 포함하지 않습니다.
+
+인증된 프로필의 `POST /api/v1/profile/password/recovery/request`는 strict `{}`로 현재 본인의 등록 주소만 사용하고 위202 비열거 응답을 재사용합니다. Password 복구 메일은 새 비밀번호 입력 폼의 일회용 링크이지 password 자체의 전송이 아닙니다. 모든 password proof는 발급 native revision을 저장하고 완료 시 exact user/home/email/revision과 existing history를 같은 native conditional reset에서 다시 검사합니다. Stock 관리자 PATCH fallback은 없으며 기존 NULL-revision password proof는410으로 거부합니다. Native conditional409/412/422는 소비된 명시 거절이며 다른 불명 결과와 구분합니다. 메일 접근 불가·미수신·native guard 불가는 관리자 문의를 안내하고, 별도 관리자 난수 메일 동작은 fresh system-admin 명시 요청만 허용합니다([Profile API](profile.md#관리자-난수-비밀번호-재설정등록-메일-전송)).
 
 프로필 변경 요청은 현재 bearer의 **실제 home 계정에 current_password 재인증** 후 기존/신규 email의 global 유일성과 home email 정책을 검사합니다. 기존 주소에 token·신규 주소 없는 알림을 먼저 전달하고, 성공한 경우에만 신규 주소로 proof를 보냅니다. 어느 전달이 실패해도 redeemable proof가 되지 않습니다. `/api/v1/profile`의 일반 PATCH는 다른 email이면409 `{detail:"email_verification_required"}`로 거부하며 직접 변경하지 않습니다. 기존과 같은 email만 보내고 다른 metadata가 없으면 변경할 항목 없음400입니다.
 

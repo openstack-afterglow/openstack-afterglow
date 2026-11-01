@@ -32,8 +32,8 @@ describe('AdminVolumeDomainSummary', () => {
 	it('keeps complete, attached, available and filtered totals distinct and drills down using only a verified domain UUID', async () => {
 		const onDomain = vi.fn();
 		render(AdminVolumeDomainSummary, { summary, loading: false, scoped: false, onDomain });
-		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('볼륨 12개 · 1,200 GiB');
-		expect(screen.getByTestId('admin-volume-filtered-total').textContent).toContain('볼륨 2개 · 250 GiB');
+		expect(screen.getByTestId('admin-volume-analytics-total').textContent).toBe('볼륨 12개 · 1,200 GiB');
+		expect(screen.getByTestId('admin-volume-analytics-filtered-total').textContent).toContain('볼륨 2개 · 250 GiB');
 		for (const label of ['소유자 알 수 없음', '삭제된 프로젝트', '삭제된 도메인']) expect(screen.getByText(label)).toBeTruthy();
 		const buttons = screen.getAllByRole('button');
 		expect(buttons).toHaveLength(1);
@@ -72,9 +72,9 @@ describe('AdminVolumeDomainSummary', () => {
 	it('never substitutes zero capacity for pending or unavailable inventory', async () => {
 		const props = { summary: null, loading: true, scoped: false, onDomain: vi.fn() };
 		const view = render(AdminVolumeDomainSummary, props);
-		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('—');
+		expect(screen.getByTestId('admin-volume-analytics-total').textContent).toBe('—');
 		await view.rerender({ ...props, loading: false });
-		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('—');
-		expect(screen.getByTestId('admin-volume-filtered-total').textContent).not.toContain('0 GiB');
+		expect(screen.getByTestId('admin-volume-analytics-total').textContent).toBe('—');
+		expect(screen.getByTestId('admin-volume-analytics-filtered-total').textContent).not.toContain('0 GiB');
 	});
 });

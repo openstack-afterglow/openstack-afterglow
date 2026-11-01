@@ -217,7 +217,7 @@ async def test_gpu_password_uses_native_windows_delivery_or_linux_bootstrap(
         ],
     )
     password_cloud.admit.return_value = SimpleNamespace(gpu_requested={"a100": 1})
-    payload = {**BASE, "admin_pass": PASSWORD}
+    payload = {**BASE, "admin_pass": PASSWORD, "usage_schedule": {}}
     if custom:
         payload["userdata"] = custom
     if source == "volume":
@@ -305,7 +305,7 @@ async def test_windows_password_rejects_linux_bootstrap_conflicts_before_effects
         "app.api.compute.instances.nova.list_flavors",
         lambda _conn: [FlavorInfo(id="flavor-1", name="gpu.a100x1_small", vcpus=4, ram=8192, disk=0)],
     )
-    payload = {**BASE, "admin_pass": PASSWORD, **extra}
+    payload = {**BASE, "admin_pass": PASSWORD, "usage_schedule": {}, **extra}
     response = await client.post(route, json=payload)
     assert response.status_code == 400
     password_cloud.admit.assert_not_awaited()

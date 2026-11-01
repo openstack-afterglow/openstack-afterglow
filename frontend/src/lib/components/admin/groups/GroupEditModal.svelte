@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { Group } from '$lib/types/adminGroup';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-identity';
@@ -60,7 +60,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { target = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button aria-busy={updating} onclick={handleSave} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.updating')}</span>{:else}{t('groupEdit.submit')}{/if}</button>
+				<button aria-busy={updating} onclick={handleSave} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.updating')}</span>{:else}{t('groupEdit.submit')}{/if}</button>
 			</div>
 		</div>
 	</div>

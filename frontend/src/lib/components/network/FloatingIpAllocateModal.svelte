@@ -4,7 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { Network } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	interface Props {
 		open: boolean;
@@ -121,7 +121,7 @@
 					disabled={allocating || externalNetworks.length === 0}
 					aria-busy={allocating}
 					class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{#if allocating}<ActivityIndicator size="xs" tone="ink" />{/if}{allocating ? t('network.floatingIp.allocating') : t('network.floatingIp.allocate')}</button>
+				>{#if allocating}<LoadingState variant="control" label="" />{/if}{allocating ? t('network.floatingIp.allocating') : t('network.floatingIp.allocate')}</button>
 			</div>
 		</div>
 	</div>

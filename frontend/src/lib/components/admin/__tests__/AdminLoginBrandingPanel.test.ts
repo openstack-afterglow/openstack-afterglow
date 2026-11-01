@@ -22,6 +22,7 @@ vi.mock('$lib/api/client', () => {
 
 	return {
 		ApiError,
+		getBaseUrl: () => 'https://api.example.com',
 		api: {
 			get: mocks.apiGet,
 			upload: mocks.apiUpload,
@@ -140,7 +141,7 @@ describe('AdminLoginBrandingPanel', () => {
 
 		renderPanel();
 
-		const lightSlot = (await screen.findByRole('heading', { name: 'Dark login background' })).closest('.slot-card');
+		const lightSlot = (await screen.findByText('https://api.example.com/api/v1/site-config/assets/logo_light', { selector: 'dd' })).closest('.slot-card');
 		expect(lightSlot).toBeTruthy();
 		const lightQueries = within(lightSlot as HTMLElement);
 		const uploadInput = lightQueries.getByLabelText('업로드') as HTMLInputElement;
@@ -184,7 +185,7 @@ describe('AdminLoginBrandingPanel', () => {
 
 		renderPanel();
 
-		const lightSlot = (await screen.findByRole('heading', { name: 'Dark login background' })).closest('.slot-card');
+		const lightSlot = (await screen.findByText('https://api.example.com/api/v1/site-config/assets/logo_light', { selector: 'dd' })).closest('.slot-card');
 		expect(lightSlot).toBeTruthy();
 		const lightQueries = within(lightSlot as HTMLElement);
 

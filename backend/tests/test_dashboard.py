@@ -3,12 +3,76 @@
 import asyncio
 import json
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+
+
+@pytest.mark.asyncio
+async def test_display_inventory_survives_poll_but_refresh_mutation_and_expiry_are_fresh(monkeypatch):
+    from app.api.common import dashboard
+    from app.api.compute import instances
+    from app.api.deps import CacheMode
+    from app.services import cache
+
+    # A deterministic clock exercises response freshness, not wall-clock sleeps
+    # or how many times the endpoint happens to invoke its cache helper.
+    clock = [0]
+    entries = {}
+
+    async def get(key):
+        value, expires = entries.get(key, (None, 0))
+        return value if expires > clock[0] else None
+
+    async def set_value(key, value, ttl):
+        entries[key] = (value, clock[0] + ttl)
+
+    async def delete(*keys):
+        for key in keys:
+            entries.pop(key, None)
+
+    backend = SimpleNamespace(get=get, set=set_value, delete=delete)
+    monkeypatch.setattr(cache, "_get_backend", lambda: backend)
+    monkeypatch.setattr(instances.cache_invalidation, "invalidate_mutation_count", AsyncMock())
+    conn = SimpleNamespace(_afterglow_project_id="project-a")
+    server = SimpleNamespace(id="vm-a", name="initial", status="ACTIVE", project_id="project-a")
+    monkeypatch.setattr(dashboard.nova, "list_servers", lambda _conn: [server])
+    monkeypatch.setattr(instances.nova, "get_server", lambda _conn, _id: server)
+
+    def rename(_conn, _id, name):
+        server.name = name
+        return server
+
+    monkeypatch.setattr(instances.nova, "rename_server", rename)
+
+    async def summary(*, refresh=False, enabled=True):
+        response = await dashboard.get_dashboard_summary(
+            view="overview", recent_limit=5, conn=conn, cm=CacheMode(enabled=enabled, refresh=refresh)
+        )
+        return response["recent_instances"][0]["name"]
+
+    assert await summary() == "initial"
+    server.name = "external-change"
+    clock[0] = 30
+    assert await summary() == "initial"  # The normal next poll actually hits.
+    assert await summary(refresh=True) == "external-change"
+    server.name = "external-after-refresh"
+    assert await summary() == "external-change"
+
+    # Exercise the actual owned mutation handler, not invalidation arguments.
+    await instances.rename_owned_instance(
+        "vm-a", instances.InstanceNameRequest(name="renamed"), conn=conn, token_info={}
+    )
+    assert await summary() == "renamed"
+    server.name = "native-after-mutation"
+    assert await summary(enabled=False) == "native-after-mutation"
+    assert await summary() == "renamed"  # Bypass never rewrites a cached display.
+    clock[0] = 76
+    assert await summary() == "native-after-mutation"
 
 
 @pytest.mark.asyncio
@@ -58,6 +122,7 @@ async def test_get_dashboard_summary_overview_exact_shape_and_no_heavy_calls(cli
             "flavor_id": "f1",
             "flavor_name": "small",
             "created_at": "2025-01-01T00:00:00Z",
+            "flavor_display_name": "cpu.2c_4g",
             "ip_addresses": [{"addr": "10.0.0.2", "type": "fixed", "network_name": "private"}],
         },
         {
@@ -83,6 +148,7 @@ async def test_get_dashboard_summary_overview_exact_shape_and_no_heavy_calls(cli
                 "name": "newer",
                 "status": "ACTIVE",
                 "flavor_name": None,
+                "flavor_display_name": None,
                 "ip_addresses": [],
                 "created_at": "2026-01-01T00:00:00Z",
             },
@@ -91,6 +157,7 @@ async def test_get_dashboard_summary_overview_exact_shape_and_no_heavy_calls(cli
                 "name": "older",
                 "status": "SHUTOFF",
                 "flavor_name": "small",
+                "flavor_display_name": "cpu.2c_4g",
                 "ip_addresses": [{"addr": "10.0.0.2", "type": "fixed", "network_name": "private"}],
                 "created_at": "2025-01-01T00:00:00Z",
             },
@@ -156,12 +223,15 @@ async def test_get_dashboard_quotas_success(client):
     swift_meta = {"container_count": 0, "object_count": 0, "bytes_used": 0}
     with patch(
         "app.api.common.dashboard.cached_call",
-        new=AsyncMock(return_value=[quota, quota, quota, quota, quota_int, swift_meta]),
+        new=AsyncMock(
+            return_value=[{"compute": quota, "native_compute": quota}, quota, quota, quota, quota_int, swift_meta]
+        ),
     ):
         resp = await client.get("/api/v1/dashboard/quotas")
     assert resp.status_code == 200
     data = resp.json()
     assert "compute" in data
+    assert data["native_compute"] == quota
     assert "storage" in data
 
 
@@ -516,7 +586,9 @@ async def test_get_dashboard_quotas_gpu_drover_error_returns_empty_gpu(client):
     with (
         patch(
             "app.api.common.dashboard.cached_call",
-            new=AsyncMock(return_value=[quota, quota, quota, quota, quota_int, swift_meta]),
+            new=AsyncMock(
+                return_value=[{"compute": quota, "native_compute": quota}, quota, quota, quota, quota_int, swift_meta]
+            ),
         ),
         patch("app.api.common.dashboard.is_db_available", return_value=True),
         patch("app.services.gpu_quota.get_effective_gpu_quota_status", side_effect=Exception("lost")),
@@ -588,3 +660,29 @@ async def test_compact_snapshot_rejects_unbounded_recent_limit(client):
 async def test_compact_snapshot_requires_authentication():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as anonymous:
         assert (await anonymous.get("/api/v1/dashboard/snapshot")).status_code == 401
+
+
+def test_dashboard_serialization_preserves_only_proven_server_display_label():
+    from types import SimpleNamespace
+
+    from app.api.common import dashboard
+
+    servers = [
+        SimpleNamespace(
+            id="one",
+            name="vm",
+            status="ACTIVE",
+            flavor_id="native",
+            flavor_name="m1.old",
+            flavor_display_name="cpu.2c_1.5g",
+            created_at=None,
+        ),
+        SimpleNamespace(id="two", name="vm2", status="ACTIVE", flavor_name="m1.old"),
+    ]
+    with patch.object(dashboard.nova, "list_servers", return_value=servers):
+        rows = dashboard._list_servers_as_dicts(None)
+    projected = {row["id"]: row for row in dashboard._recent_instances(rows)}
+    assert projected["one"]["flavor_name"] == "m1.old"
+    assert projected["one"]["flavor_display_name"] == "cpu.2c_1.5g"
+    assert projected["two"]["flavor_name"] == "m1.old"
+    assert projected["two"]["flavor_display_name"] is None

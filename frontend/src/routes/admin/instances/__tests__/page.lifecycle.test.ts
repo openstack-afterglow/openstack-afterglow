@@ -14,9 +14,6 @@ vi.mock('$lib/stores/auth', () => ({
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('$lib/stores/projectNames', () => ({
-	projectNames: Object.assign(writable(new Map<string, string>()), { load: vi.fn() }),
-}));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (refresh: () => void) => {
 		mocks.refresh = refresh;
@@ -89,7 +86,7 @@ describe('administrator instance list lifecycle safety', () => {
 		expect(mocks.confirm.mock.calls[0][0]).toContain(instanceT('panel.stoppedQuotaWarning'));
 	});
 
-	it.each(['live', 'missing', 'selection', 'scope', 'permission', 'filter', 'page', 'target-project'] as const)(
+	it.each(['live', 'missing', 'selection', 'scope', 'permission', 'filter', 'sort', 'page', 'target-project'] as const)(
 		'blocks a stale delete confirmation after %s changes', async (change) => {
 			await mount();
 			await select('vm-a');
@@ -109,7 +106,9 @@ describe('administrator instance list lifecycle safety', () => {
 			} else if (change === 'permission') auth.update((state) => ({ ...state, isSystemAdmin: false }));
 			else if (change === 'filter') {
 				await fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'SHUTOFF' } });
-			} else await fireEvent.click(screen.getByRole('button', { name: '10' }));
+			} else if (change === 'sort') {
+				await fireEvent.change(document.querySelector<HTMLSelectElement>('#admin-instance-sort')!, { target: { value: 'name_asc' } });
+			} else await fireEvent.change(document.querySelector<HTMLSelectElement>('#admin-instance-page-size')!, { target: { value: '10' } });
 			pending.resolve(true);
 			await pending.promise;
 			await Promise.resolve();

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const s = useDbInstanceDetailController();
 </script>
@@ -51,16 +51,16 @@
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 						{tr('actions.delete')}
 					</button>
-					{#if s.detachingFip}<ActivityIndicator size="xs" tone="ink" label={tr('connection.detaching')} />{/if}
+					{#if s.detachingFip}<LoadingState variant="control" label={tr('connection.detaching')} />{/if}
 				</div>
 			{:else if s.instance!.status === 'BUILD' || s.instance!.status === 'BUILDING'}
-				<ActivityIndicator size="xs" label={tr('connection.creating')} />
+				<LoadingState variant="control" label={tr('connection.creating')} />
 			{:else}
 				<div class="flex items-center gap-2">
 					<span class="text-ink-2 text-sm">{tr('connection.unassigned')}</span>
 					<button onclick={() => s.attachFip()} disabled={s.attachingFip || !s.instance!.ip}
 						class="inline-flex items-center gap-1.5 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-						{#if s.attachingFip}<ActivityIndicator size="xs" tone="ink" />{/if}{s.attachingFip ? tr('state.assigning') : tr('actions.assignIp')}
+						{#if s.attachingFip}<LoadingState variant="control" label="" />{/if}{s.attachingFip ? tr('state.assigning') : tr('actions.assignIp')}
 					</button>
 				</div>
 			{/if}
@@ -83,7 +83,7 @@
 		{:else}
 			<button onclick={() => s.enableRoot()} disabled={s.enablingRoot}
 				class="inline-flex items-center gap-1.5 text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
-				{#if s.enablingRoot}<ActivityIndicator size="xs" tone="ink" />{/if}{s.enablingRoot ? tr('state.enablingRoot') : tr('actions.enableRoot')}
+				{#if s.enablingRoot}<LoadingState variant="control" label="" />{/if}{s.enablingRoot ? tr('state.enablingRoot') : tr('actions.enableRoot')}
 			</button>
 		{/if}
 	</div>

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import ClusterFailure from './ClusterFailure.svelte';
 	import type { K3sCluster } from '$lib/types/k3s';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
@@ -30,7 +32,7 @@
 	role="button"
 	aria-disabled={cluster.deleted_at ? 'true' : 'false'}
 	tabindex={cluster.deleted_at ? -1 : 0}
-	onkeydown={(e) => e.key === 'Enter' && !cluster.deleted_at && onSelect(cluster.id)}
+	onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !cluster.deleted_at) { e.preventDefault(); onSelect(cluster.id); } }}
 >
 	<!-- Header -->
 	<div class="flex items-center gap-2.5 mb-3">
@@ -67,37 +69,27 @@
 			</div>
 		{:else if cluster.status_reason}
 			<div class="col-span-2">
-				<div class="text-xs text-ink-2 truncate">{cluster.status_reason}</div>
+				{#if cluster.status === 'ERROR' || cluster.status === 'FAILED'}<ClusterFailure reason={cluster.status_reason} />{:else}<p class="break-words text-[0.8125rem] text-ink-2">{cluster.status_reason}</p>{/if}
 			</div>
 		{/if}
 	</div>
 
 	<!-- Actions -->
 	<div class="flex gap-1.5" role="none" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-		<button
-			onclick={() => canDownload && onDownloadKubeconfig(cluster.id, cluster.name)}
-			disabled={!canDownload}
-			class="flex-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors text-center"
-		>kubeconfig</button>
-		<button
-			onclick={() => !cluster.deleted_at && onSelect(cluster.id)}
-			disabled={!!cluster.deleted_at}
-			class="text-ink-2 hover:text-ink-0 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-line-2 hover:border-line-2 disabled:border-line-2 transition-colors"
-		>{t('actions.details')}</button>
+		<Button variant="secondary" size="sm" class="flex-1" onclick={() => canDownload && onDownloadKubeconfig(cluster.id, cluster.name)} disabled={!canDownload}>kubeconfig</Button>
+		<Button variant="secondary" size="sm" onclick={() => !cluster.deleted_at && onSelect(cluster.id)} disabled={!!cluster.deleted_at}>{t('actions.details')}</Button>
 		{#if !cluster.deleted_at}
-			<button
-				onclick={() => canDelete && onDelete(cluster.id, cluster.name)}
-				disabled={!canDelete}
-				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-			>{#if deleting}<ActivityIndicator size="xs" label={t('state.deleting')} />{:else}{t('actions.delete')}{/if}</button>
+			<Button variant="danger-outline" size="sm" onclick={() => canDelete && onDelete(cluster.id, cluster.name)} disabled={!canDelete}>
+				{#if deleting}<LoadingState variant="control" label={t('state.deleting')} />{:else}{t('actions.delete')}{/if}
+			</Button>
 		{/if}
 	</div>
 </div>
 
 <style>
 	.cluster-badge {
-		background: color-mix(in oklab, var(--color-accent) 12%, transparent);
-		border: 1px solid color-mix(in oklab, var(--color-accent) 30%, transparent);
-		color: var(--color-accent);
+		background: var(--color-surface-sunken);
+		border: 1px solid var(--color-line);
+		color: var(--color-ink-2);
 	}
 </style>

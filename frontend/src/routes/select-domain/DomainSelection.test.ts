@@ -14,6 +14,7 @@ import { workspacePreferenceKey } from '$lib/stores/workspacePreferences';
 import type { WorkspaceInventory } from '$lib/stores/workspaceController.svelte';
 import type { SessionTokenResponse } from '$lib/types/auth';
 import Page from './+page.svelte';
+import { dialogState } from '$lib/stores/confirm.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), close: vi.fn() }));
 vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 'test' }));
@@ -67,6 +68,27 @@ function startHomeSession() {
 }
 
 describe('home-first workspace chooser', () => {
+	it('does not revoke or navigate before confirmation, on cancel, or after the login owner changes', async () => {
+		render(Page);
+		const logout = screen.getByRole('button', { name: tp('selectProject.logout') });
+		await fireEvent.click(logout);
+		expect(dialogState.open).toBe(true);
+		expect(get(logoutInProgress)).toBe(false);
+		expect(get(auth).token).toBe('home-token');
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.goto).not.toHaveBeenCalled();
+		dialogState.reject();
+		await waitFor(() => expect(dialogState.open).toBe(false));
+		await fireEvent.click(logout);
+		expect(dialogState.open).toBe(true);
+		setLoginAuth({ ...get(auth), sessionId: 'another-login', token: 'new-login-token' });
+		dialogState.accept();
+		await waitFor(() => expect(dialogState.open).toBe(false));
+		expect(get(auth).token).toBe('new-login-token');
+		expect(get(logoutInProgress)).toBe(false);
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.goto).not.toHaveBeenCalled();
+	});
 	it.each(['ko', 'en', 'ja', 'zh-CN', 'sw', 'nb', 'ms', 'vi', 'bn'] as const)('keeps account identity outside workspace options and starts at personal in %s', async locale => {
 		initLocale(locale);
 		const personal = { id: 'personal', name: 'Personal', kind: 'personal' as const };

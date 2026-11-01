@@ -12,7 +12,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => domainIam(session));
 	let live = true;
@@ -50,7 +50,7 @@
 <div class="space-y-4">
 	<Alert tone="info">{t('recoveryHelp')}</Alert>
 	<Button variant="secondary" disabled={busy || loading} onclick={load}>{t('refresh')}</Button>
-	{#if loading || busy}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading || busy}<LoadingState variant={busy || rows.length ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
 	<ResponsiveTable>

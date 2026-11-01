@@ -1,7 +1,8 @@
 <script lang="ts">
  import { t } from '$lib/i18n/ns/file-storage';
  import { ResponsiveTable, CompactResourceCard, Button } from '$lib/components/ui';
- import StatusChip from '$lib/components/ui/StatusChip.svelte'; import Pill from '$lib/components/ui/Pill.svelte'; import type { SecurityService } from '$lib/types/securityService'; import { typeLabel } from '$lib/types/securityService'; import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte'; import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+ import StatusChip from '$lib/components/ui/StatusChip.svelte'; import Pill from '$lib/components/ui/Pill.svelte'; import type { SecurityService } from '$lib/types/securityService'; import { typeLabel } from '$lib/types/securityService'; import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
  let { services, deleting, onAttachClick, onDelete, onCreateClick, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll }: { services: SecurityService[]; deleting: string | null; onAttachClick: (id: string) => void; onDelete: (id: string, name: string) => void; onCreateClick: () => void; selectedIds: ReadonlySet<string>; selectableIds: ReadonlySet<string>; selectionDisabled: boolean; onToggleSelect: (id: string) => void; onToggleAll: () => void; } = $props(); const selectedCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 {#snippet selectAll()}
@@ -12,7 +13,7 @@
 {/snippet}
 {#snippet serviceActions(svc: SecurityService)}
  <Button variant="secondary" size="sm" onclick={() => onAttachClick(svc.id)}>{t('securityTable.attachNetwork')}</Button>
- <Button variant="danger-outline" size="sm" onclick={() => onDelete(svc.id, svc.name)} disabled={deleting === svc.id}>{#if deleting === svc.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting === svc.id ? t('securityTable.deleting') : t('securityTable.delete')}</Button>
+ <Button variant="danger-outline" size="sm" onclick={() => onDelete(svc.id, svc.name)} disabled={deleting === svc.id}>{#if deleting === svc.id}<LoadingState variant="control" label="" />{/if}{deleting === svc.id ? t('securityTable.deleting') : t('securityTable.delete')}</Button>
 {/snippet}
 {#if services.length === 0}
  <div class="text-center py-20 text-ink-2"><p class="text-lg">{t('securityTable.empty')}</p><button onclick={onCreateClick} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">{t('securityTable.create')}</button></div>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { untrack } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import ToolCallCard from './ToolCallCard.svelte';
 
@@ -27,7 +27,7 @@
 <details class="tool-category" bind:open>
 	<summary>
 		{#if running && !open}
-			<ActivityIndicator variant="spinner" size="xs" label={t('toolCategoryGroup.running')} />
+			<LoadingState variant="inline" label={t('toolCategoryGroup.running')} />
 		{:else}
 			<span class="category-dot" aria-hidden="true"></span>
 		{/if}

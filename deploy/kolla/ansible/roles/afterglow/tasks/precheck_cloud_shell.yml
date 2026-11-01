@@ -36,15 +36,24 @@
       - afterglow_effective_config.cloud_shell.interface in ['public', 'internal']
       - afterglow_effective_config.cloud_shell.home_size_gib | int >= 1
       - afterglow_effective_config.cloud_shell.home_size_gib | int <= 100
-      - afterglow_effective_config.cloud_shell.cpu | float > 0
-      - afterglow_effective_config.cloud_shell.memory_mib | int >= 512
+      - afterglow_effective_config.cloud_shell.cpu | float >= 0.01
+      - afterglow_effective_config.cloud_shell.cpu | float <= 1.0
+      - afterglow_effective_config.cloud_shell.memory_mib | int >= 256
+      - afterglow_effective_config.cloud_shell.memory_mib | int <= 1024
+      - afterglow_effective_config.cloud_shell.blocked_cidrs is sequence
+      - afterglow_effective_config.cloud_shell.blocked_cidrs is not string
+      - afterglow_effective_config.cloud_shell.blocked_cidrs is not mapping
+      - afterglow_effective_config.cloud_shell.blocked_cidrs | length > 0
+      - afterglow_effective_config.cloud_shell.blocked_cidrs | length <= 64
+      - afterglow_effective_config.cloud_shell.blocked_cidrs | unique | length == afterglow_effective_config.cloud_shell.blocked_cidrs | length
+      - "['169.254.169.254/32', 'fd00:ec2::254/128', 'fe80::a9fe:a9fe/128'] | difference(afterglow_effective_config.cloud_shell.blocked_cidrs) | length == 0"
       - afterglow_effective_config.cloud_shell.idle_timeout_seconds | int >= 300
       - afterglow_effective_config.cloud_shell.idle_timeout_seconds | int <= 7200
       - afterglow_effective_config.cloud_shell.max_session_seconds | int >= afterglow_effective_config.cloud_shell.idle_timeout_seconds | int
       - afterglow_effective_config.cloud_shell.ticket_ttl_seconds | int >= 15
       - afterglow_effective_config.cloud_shell.ticket_ttl_seconds | int <= 120
       - afterglow_effective_config.cloud_shell.reconcile_interval_seconds | int > 0
-    fail_msg: "Cloud Shell requires a dedicated project, an optional project-owned network UUID, a valid security group name or ID, an immutable image digest, trusted HTTPS/WSS endpoints, and bounded resources"
+    fail_msg: "Cloud Shell requires a dedicated project, an optional project-owned network UUID, a valid security group selector, an immutable image digest, trusted HTTPS/WSS endpoints, CPU 0.01..1, memory 256..1024MiB and at most 64 deny routes including all mandatory metadata routes"
   run_once: true
   no_log: true
 

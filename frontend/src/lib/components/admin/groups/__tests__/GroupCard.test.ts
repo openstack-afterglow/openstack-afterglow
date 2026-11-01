@@ -150,3 +150,25 @@ it('preserves the new source search when a previous source add settles late', as
 	await waitFor(() => expect((screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement).value).toBe(secondUser.email));
 });
 
+it('shows candidates before searching and adds selected users across filters, stopping on failure', async () => {
+	const onAddMember = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+	render(GroupCard, props({ onAddMember }));
+	expect(screen.getByText(firstUser.id)).toBeTruthy();
+	expect(screen.getByText(secondUser.id)).toBeTruthy();
+	await fireEvent.click(within(candidate(firstUser.id)).getByRole('checkbox'));
+	await search(secondUser.email);
+	await fireEvent.click(screen.getByRole('checkbox', { name: '전체 추가 가능한 사용자 선택' }));
+	await search('unmatched');
+	await fireEvent.click(screen.getByRole('button', { name: '2개 선택됨 · 추가' }));
+	await waitFor(() => expect(onAddMember).toHaveBeenCalledTimes(2));
+	expect(onAddMember.mock.calls.map(([id]) => id)).toEqual([firstUser.id, secondUser.id]);
+	expect(await screen.findByRole('button', { name: '1개 선택됨 · 추가' })).toBeTruthy();
+});
+
+it('clears selected candidates when the source changes', async () => {
+	const view = render(GroupCard, props({ sourceGeneration: 1 }));
+	await fireEvent.click(within(candidate(firstUser.id)).getByRole('checkbox'));
+	await view.rerender({ sourceGeneration: 2, userDomainId: 'other' });
+	expect((within(candidate(firstUser.id)).getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+});
+

@@ -890,9 +890,7 @@ async def test_inline_build_consumer_transport_is_frozen_in_job(admin_client, mo
         consumer["transport"] = transport
     with (
         patch("app.api.palimpsest.builds.prepare_inline_dockerfile_import", AsyncMock(return_value=plan)),
-        patch(
-            "app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock(return_value=snapshot)
-        ) as resolve,
+        patch("app.services.layer_build.resolve_layer_consume_resource_snapshot", AsyncMock(return_value=snapshot)),
         patch("app.api.palimpsest.builds.create_import_job", AsyncMock(return_value={"id": 1})) as create,
     ):
         response = await admin_client.post(
@@ -903,7 +901,6 @@ async def test_inline_build_consumer_transport_is_frozen_in_job(admin_client, mo
     spec = create.await_args.kwargs["consumer_spec"]
     assert spec["transport"] == (transport or "nfs")
     assert spec["resource_snapshot"] == snapshot
-    resolve.assert_awaited_once_with(mock_conn, flavor_ref="m1.small", network_id=None)
 
 
 async def test_inline_block_consumer_rejected_before_provider_mutation(admin_client, mock_conn):

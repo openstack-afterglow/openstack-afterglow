@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/object-storage';
@@ -62,7 +63,7 @@
 			<label class="text-ink-2 text-xs mb-1 block font-medium" for="field-movemodal-56">{t('dialogs.move.destinationDirectory')}</label>
 			{#if s.moveLoadingDirs}
 				<div class="bg-surface-sunken border border-line-2 rounded-lg p-3 mb-3">
-					<p class="text-ink-2 text-xs">{t('dialogs.move.loadingDirectories')}</p>
+					<LoadingState variant="inline" label={t('dialogs.move.loadingDirectories')} />
 				</div>
 			{:else}
 				<div class="bg-surface-sunken border border-line-2 rounded-lg max-h-48 overflow-y-auto mb-3">
@@ -112,9 +113,9 @@
 					class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 px-4 py-2 rounded-lg border border-indigo-500 disabled:border-line-2 transition-colors"
 				>
 					{#if bulk}
-						{s.bulkMoving ? t('dialogs.move.moving') : t('dialogs.move.moveCount', { count: s.selectedCount })}
+						{#if s.bulkMoving}<LoadingState variant="control" label="" />{/if}{s.bulkMoving ? t('dialogs.move.moving') : t('dialogs.move.moveCount', { count: s.selectedCount })}
 					{:else}
-						{t(s.moving ? 'dialogs.move.moving' : 'dialogs.move.submit')}
+						{#if s.moving}<LoadingState variant="control" label="" />{/if}{t(s.moving ? 'dialogs.move.moving' : 'dialogs.move.submit')}
 					{/if}
 				</button>
 			</div>

@@ -1,11 +1,12 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import { Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	import type { Network, SubnetDetail } from '$lib/types/networks';
 	import { t } from '$lib/i18n/ns/network-pages';
@@ -117,7 +118,7 @@
 			<div>
 				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.subnet.label')}</label>
 				{#if loadingSubnets}
-					<ActivityIndicator label={t('loadBalancerCreate.form.subnet.loading')} />
+					<LoadingState variant="section" label={t('loadBalancerCreate.form.subnet.loading')}  />
 				{:else if subnets.length === 0}
 					<div class="text-ink-2 text-sm">{t('loadBalancerCreate.form.subnet.empty')}</div>
 				{:else}
@@ -155,7 +156,7 @@
 				{t('loadBalancerCreate.actions.cancel')}
 			</button>
 			<Button onclick={createLb} disabled={creating} ariaBusy={creating}>
-				{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('loadBalancerCreate.actions.creating')}{:else}{t('loadBalancerCreate.actions.create')}{/if}
+				{#if creating}<LoadingState variant="control"  label="" aria-hidden="true" />{t('loadBalancerCreate.actions.creating')}{:else}{t('loadBalancerCreate.actions.create')}{/if}
 			</Button>
 		</div>
 	</div>

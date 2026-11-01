@@ -1,0 +1,16 @@
+{
+  "scope": "Disposable isolated exact current working-source snapshot; shared index and review stamp untouched. Includes concurrent working source, not a claim of separate review of unrelated changes.",
+  "working_source_sha256": "61e92199695e5be031a6a288a22d2d1f5f5e1937d5da763bbe780ab8ebd519bd",
+  "source_files": 3579,
+  "stamp": "stamped working source_sha256=61e92199695e5be031a6a288a22d2d1f5f5e1937d5da763bbe780ab8ebd519bd files=3579",
+  "working_check": "checked working source_sha256=61e92199695e5be031a6a288a22d2d1f5f5e1937d5da763bbe780ab8ebd519bd files=3579",
+  "staged_check": "checked staged source_sha256=61e92199695e5be031a6a288a22d2d1f5f5e1937d5da763bbe780ab8ebd519bd files=3579",
+  "staged_exit_code": 0,
+  "removed_tracked_paths_absent_in_both": [
+    "frontend/src/lib/components/admin/quotas/GpuDefaultQuotaSection.svelte",
+    "frontend/src/lib/components/admin/quotas/GpuQuotaTable.svelte",
+    "frontend/src/lib/components/admin/quotas/__tests__/GpuQuotaActivity.test.ts",
+    "frontend/src/lib/stores/__tests__/adminQuotasController.catalog.test.ts"
+  ],
+  "review_summary": "Dashboard overview Bklit interactive ordered samples and header-only user documentation navigation; no API, authorization, or collection architecture changes."
+}

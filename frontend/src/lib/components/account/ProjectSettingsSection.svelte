@@ -11,7 +11,7 @@
 	import type { ProjectAccessMember, AssignableProjectRoles, EligibleProjectUser, Project } from '$lib/types/project';
 	import type { IamSession } from '$lib/api/domainIam';
 	import { projectAuthority } from '$lib/api/projectAuthority';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -143,7 +143,7 @@
 		{/if}
 	</div>
 	{#if $canManageDomain}<div class="mb-4"><Button href="/dashboard/iam/users" variant="secondary" size="sm">{td('invitations')}</Button></div>{/if}
-	{#if $projectPermissions.loading}<ActivityIndicator label={t('projectSettings.checkingPermissions')} />{/if}
+	{#if $projectPermissions.loading}<LoadingState variant="inline" label={t('projectSettings.checkingPermissions')}  />{/if}
 	{#if $projectPermissions.error}<p role="alert" class="text-sm text-state-danger-text">{$projectPermissions.error}</p><Button variant="secondary" size="sm" onclick={() => { void refreshProjectPermissions(); }}>{t('projectSettings.recheckPermissions')}</Button>{/if}
 
 	{#if !projectId}
@@ -158,15 +158,10 @@
 				{#if !membersFresh && scope}<Button variant="secondary" size="sm" disabled={membersLoading} onclick={() => { if (scope) void loadMembers(scope); }}>{t('projectSettings.retry')}</Button>{/if}
 			{/if}
 
-			{#if managingUserId}<ActivityIndicator label={tc('state.processing')} />{/if}
-			{#if membersLoading && members.length > 0}<ActivityIndicator label={tc('state.loading')} />{/if}
+			{#if managingUserId}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
+			{#if membersLoading && members.length > 0}<LoadingState variant="inline" label={tc('state.loading')}  />{/if}
 			{#if membersLoading && members.length === 0}
-				<ActivityIndicator label={tc('state.loading')} />
-				<div class="space-y-2 mt-2" aria-hidden="true">
-					{#each [1, 2, 3] as _}
-						<div class="h-12 motion-skeleton rounded-lg"></div>
-					{/each}
-				</div>
+				<LoadingState variant="section" label={tc('state.loading')}  />
 			{:else if members.length === 0}
 				<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
 			{:else}

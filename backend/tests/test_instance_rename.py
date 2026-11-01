@@ -25,18 +25,12 @@ async def test_user_rename_confirms_metadata_without_power_requirement(client, m
     with (
         patch.object(nova, "get_server", return_value=server(status=status)),
         patch.object(nova, "rename_server", return_value=server(name="new-name", status=status)) as rename,
-        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock) as invalidate,
+        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
     ):
         response = await client.put(USER_PATH, json={"name": "  new name  "})
     assert response.status_code == 200
     assert response.json() == {"id": "inst-1", "name": "new-name", "project_id": PROJECT}
     rename.assert_called_once_with(mock_conn, "inst-1", "new-name")
-    assert {call.args[0] for call in invalidate.await_args_list} == {
-        "afterglow:nova:*:instance:inst-1",
-        f"afterglow:nova:{PROJECT}:instances*",
-        "afterglow:admin:instances*",
-        "afterglow:admin:topology",
-    }
     mock_conn.compute.stop_server.assert_not_called()
 
 

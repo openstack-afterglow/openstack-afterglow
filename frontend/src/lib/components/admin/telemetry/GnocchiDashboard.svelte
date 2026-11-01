@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { Alert, Button, Card, Field, PageHeader, PageShell, SelectInput, TableShell, TextInput } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -230,7 +231,7 @@
 	{:else}
 		<div class="space-y-6">
 			<Alert tone="info">{t('gnocchi.processingHelp')}</Alert>
-			{#if overviewLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+			{#if overviewLoading}<LoadingState variant="section" label={t('loading')} />{/if}
 			{#if overviewFailure}<NativeStatus status={overviewFailure} /><Button variant="secondary" onclick={loadOverview}>{t('retry')}</Button>{/if}
 			{#if overview}
 				<NativeStatus status={overview.status} error={overview.error} />
@@ -284,7 +285,7 @@
 					<Field for="gnocchi-resource-type" label={t('gnocchi.resourceType')} class="w-full md:w-64"><SelectInput id="gnocchi-resource-type" value={resourceType} onchange={changeType}>{#each types as type}<option value={type}>{type}</option>{/each}</SelectInput></Field>
 					<Button variant="secondary" onclick={() => { clearMetric(); void loadResources(); }}>{t('refresh')}</Button>
 				</div>
-				{#if resourcesLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+				{#if resourcesLoading}<LoadingState variant="section" label={t('loading')} />{/if}
 				{#if resources}
 					<NativeStatus status={resources.status} error={resources.error} />
 					{#if resources.status === 'available' || (resources.status === 'partial' && resources.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: resourceMarkers.length, count: resources.items.length })}</p>{/if}
@@ -315,7 +316,7 @@
 			<section aria-label={t('gnocchi.metrics')} class="space-y-3">
 				<div class="flex flex-wrap items-center gap-3"><h2 class="mr-auto text-sm font-semibold text-ink-0">{t('gnocchi.metrics')}</h2><Button variant="secondary" onclick={() => { clearMetric(); void loadMetrics(); }}>{t('refresh')}</Button></div>
 				<p class="text-sm text-ink-2">{t('gnocchi.metricHelp')}</p>
-				{#if metricsLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+				{#if metricsLoading}<LoadingState variant="section" label={t('loading')} />{/if}
 				{#if metrics}
 					<NativeStatus status={metrics.status} error={metrics.error} />
 					{#if metrics.status === 'available' || (metrics.status === 'partial' && metrics.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: metricMarkers.length, count: metrics.items.length })}</p>{/if}
@@ -351,7 +352,7 @@
 					</div>
 					{#if !validRange}<Alert tone="warning">{t('gnocchi.invalidRange')}</Alert>{/if}
 					<Button variant="secondary" disabled={!validRange || measuresLoading} onclick={loadMeasures}>{t('gnocchi.readMeasures')}</Button>
-					{#if measuresLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+					{#if measuresLoading}<LoadingState variant="section" label={t('loading')} />
 					{:else if !measures}<p class="text-sm text-ink-2">{t('gnocchi.pendingMeasures')}</p>{/if}
 					{#if measures}
 						<NativeStatus status={measures.status} error={measures.error} />

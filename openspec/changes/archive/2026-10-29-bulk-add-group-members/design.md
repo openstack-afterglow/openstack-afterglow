@@ -1,0 +1,2 @@
+## Design
+The existing controller already loads the complete default or explicitly selected home-domain directory and enforces scope-generation fences. The component renders that directory before filtering, tracks user UUIDs across searches, and sequentially invokes the existing per-user operation. It stops on the first failure or scope change; there is no atomic batch or automatic retry. Existing server checks remain authoritative.

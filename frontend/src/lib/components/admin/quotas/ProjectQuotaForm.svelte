@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { tick, untrack } from 'svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -380,7 +380,7 @@
 					disabled={!onSaveSection || !hasChanges(sec.id) || saving || isSaving}
 					class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 				>
-					{#if isSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('quotaForm.saving')}</span></span>{:else}{t('quotaForm.saveSection', { label: sec.label })}{/if}
+					{#if isSaving}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('quotaForm.saving')}</span></span>{:else}{t('quotaForm.saveSection', { label: sec.label })}{/if}
 				</button>
 			</div>
 		{/if}

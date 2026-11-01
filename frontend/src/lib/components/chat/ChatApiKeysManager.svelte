@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { auth, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -82,6 +83,7 @@
 	let keys = $state<ApiKey[]>([]);
 	const visibleKeys = $derived(showAll ? keys : keys.filter((key) => key.is_active));
 	let loading = $state(true);
+	let keyListLoaded = $state(false);
 	let name = $state('');
 	let creating = $state(false);
 	// 발급 직후 평문 키(1회만). 모달로 표시 후 목록 새로고침.
@@ -256,7 +258,10 @@ claude` : '');
 		loading = true;
 		try {
 			const result = await api.get<ApiKey[]>('/api/v1/chat/api-keys', requestToken, requestProject);
-			if (boundary === boundaryGeneration && generation === listGeneration && $serviceCapabilities('lumen-keys_editor')) keys = result;
+			if (boundary === boundaryGeneration && generation === listGeneration && $serviceCapabilities('lumen-keys_editor')) {
+				keys = result;
+				keyListLoaded = true;
+			}
 		} catch {
 			if (boundary === boundaryGeneration && generation === listGeneration) toast.error(t('apiKeys.toast.loadFailed'));
 		} finally {
@@ -495,6 +500,7 @@ claude` : '');
 		++boundaryGeneration;
 		++listGeneration;
 		keys = [];
+		keyListLoaded = false;
 		issued = null;
 		showAll = false;
 		closeCreate();
@@ -505,6 +511,7 @@ claude` : '');
 		++boundaryGeneration;
 		++listGeneration;
 		keys = [];
+		keyListLoaded = false;
 		issued = null;
 		closeCreate();
 		stopEditing();
@@ -555,10 +562,9 @@ claude` : '');
 		</Button>
 	</div>
 
-	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('apiKeys.loading')}>
-			<span class="sr-only">{t('apiKeys.loading')}</span>
-		</div>
+	{#if loading && keyListLoaded}<LoadingState variant="inline" label={t('apiKeys.loading')} />{/if}
+	{#if loading && !keyListLoaded}
+		<LoadingState label={t('apiKeys.loading')} />
 	{:else if visibleKeys.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
 	{:else}
@@ -600,7 +606,7 @@ claude` : '');
 							<div class="flex flex-col gap-2 sm:flex-row">
 								<TextInput ariaLabel={t('apiKeys.nameLabel')} maxlength={100} bind:value={nameDraft} />
 								<div class="flex justify-end gap-2">
-									<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{t('apiKeys.save')}</Button>
+									<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{#if savingEdit}<LoadingState variant="control" label={t('apiKeys.save')} />{:else}{t('apiKeys.save')}{/if}</Button>
 									<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 								</div>
 							</div>
@@ -641,7 +647,7 @@ claude` : '');
 								</Field>
 							</div>
 							<div class="mt-3 flex justify-end gap-2">
-								<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{t('apiKeys.save')}</Button>
+								<Button variant="accent" size="sm" type="submit" disabled={savingEdit || !$serviceCapabilities('lumen-keys_editor')}>{#if savingEdit}<LoadingState variant="control" label={t('apiKeys.save')} />{:else}{t('apiKeys.save')}{/if}</Button>
 								<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 							</div>
 						</form>
@@ -655,7 +661,7 @@ claude` : '');
 	<div class="{cardCls} mt-5 min-w-0 p-5">
 		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-1)]">{t('apiKeys.guide.title')}</h4>
 		{#if guideLoading}
-			<p class="text-xs text-ink-2" role="status">{t('apiKeys.guide.loading')}</p>
+			<LoadingState label={t('apiKeys.guide.loading')} />
 		{:else if guideError}
 			<Alert>{guideError}</Alert>
 			<Button variant="secondary" size="sm" class="mt-3" onclick={() => loadConnectionGuide()}>
@@ -860,14 +866,14 @@ claude` : '');
 		{#if targetReady}
 			<p class="text-xs tabular-nums text-ink-2">{t('apiKeys.quota', { monthly: formatCredit(targetQuota!.monthly_credit_limit), weekly: formatCredit(targetQuota!.weekly_credit_limit) })}</p>
 		{/if}
-		{#if targetLoading}<p role="status" class="text-xs text-ink-2">{t('apiKeys.target.loading')}</p>
+		{#if targetLoading}<LoadingState variant="inline" label={t('apiKeys.target.loading')} />
 		{:else if targetError}<Alert tone="danger">{targetError}</Alert>
 		{:else if targetPermissions && !targetLeaves.has('lumen-keys_editor')}<Alert tone="warning">{t('apiKeys.target.denied')}</Alert>
 		{:else if targetReady && requestedScopes.length === 0}<Alert tone="warning">{t('apiKeys.target.noScopes')}</Alert>{/if}
 	</div>
 	{#snippet actions()}
 		<Button variant="secondary" onclick={closeCreate} disabled={creating}>{t('apiKeys.cancel')}</Button>
-		<Button onclick={create} disabled={creating || !canIssue} ariaBusy={creating}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
+		<Button onclick={create} disabled={creating || !canIssue} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label={t('apiKeys.creating')} />{:else}{t('apiKeys.create')}{/if}</Button>
 	{/snippet}
 </FormModal>
 

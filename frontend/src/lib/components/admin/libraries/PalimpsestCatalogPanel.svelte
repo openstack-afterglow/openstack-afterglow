@@ -14,7 +14,7 @@
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   let { onbundle }: { onbundle?: (name: string) => void } = $props();
   const catalog = createPalimpsestCatalogController();
@@ -68,7 +68,7 @@
         <h2 id="palimpsest-catalog-heading" class="text-sm font-semibold text-ink-0">{t('heading')}</h2>
         <p class="text-sm text-ink-2">{t('description')}</p>
       </div>
-      <Button variant="secondary" size="sm" ariaLabel={t('refreshLabel')} disabled={!catalog.authorized || catalog.loading} onclick={() => catalog.refresh()}>{t('refresh')}</Button>
+      <Button variant="secondary" size="sm" ariaLabel={t('refreshLabel')} disabled={!catalog.authorized || catalog.loading} onclick={() => catalog.refresh()}>{t('refreshLabel')}</Button>
     </div>
     <div class="mt-4 space-y-3">
       <ToggleGroup value={catalog.source} options={sourceOptions} ariaLabel={t('source.label')} onchange={(value) => catalog.setSource(value as CatalogSource)} />
@@ -83,7 +83,7 @@
   {#if !catalog.authorized}
     <Alert tone="info">{t('authority')}</Alert>
   {:else if catalog.loading}
-    <div role="status" aria-label={t('loading')}><LoadingSkeleton rows={3} /></div>
+    <LoadingState variant="surface" label={t('loading')} />
   {:else if catalog.error}
     <Alert tone="danger">{t(`error.${catalog.error}`)}
       {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => catalog.refresh()}>{t('retry')}</Button>{/snippet}
@@ -126,7 +126,7 @@
     <section bind:this={inspector} tabindex="-1" aria-label={t('details')} data-testid="palimpsest-catalog-inspector" class="catalog-inspector min-w-0">
       <Card surface="base">
         <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold">{t('details')}</h3><Button variant="ghost" size="sm" onclick={closeInspector}>{t('close')}</Button></div>
-        {#if catalog.detailLoading}<div role="status" aria-label={t('loading')} class="mt-3"><LoadingSkeleton rows={3} /></div>
+        {#if catalog.detailLoading}<LoadingState variant="section" label={t('loading')} class="mt-3" />
         {:else if catalog.detailError}<Alert tone="danger" class="mt-3">{t(`error.${catalog.detailError}`)}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => inspect(catalog.selected!)}>{t('retry')}</Button>{/snippet}</Alert>
         {:else if catalog.detail}
           {@const item = catalog.detail}
@@ -156,7 +156,7 @@
               <section><h4 class="text-sm font-semibold">{t('ancestors')}</h4><p class="text-xs text-ink-2">{t('ancestors.help')}</p>{#if item.ancestors.length}<ol class="mt-2">{#each item.ancestors as row (row.id)}{@render relation(row)}{/each}</ol>{:else}<p class="mt-2 text-sm text-ink-2">{t('relations.none')}</p>{/if}</section>
               <section><h4 class="text-sm font-semibold">{t('children')}</h4>{#if item.children.length}<ul class="mt-2">{#each item.children as row (row.id)}{@render relation(row)}{/each}</ul>{:else}<p class="mt-2 text-sm text-ink-2">{t('relations.none')}</p>{/if}{#if item.children_has_more}<p class="mt-2 text-xs text-ink-2">{t('children.more')}</p>{/if}</section>
             </div>
-            <section><h4 class="text-sm font-semibold">{t('bundles')}</h4><p class="text-xs text-ink-2">{t('bundles.help')}</p>{#if item.bundles.length}<ul class="mt-2 space-y-2">{#each item.bundles as bundle}<li class="text-sm break-all"><Button variant="link" size="sm" class="palimpsest-catalog-link" href="#palimpsest-managed-profiles" onclick={() => onbundle?.(bundle)}>{bundle}</Button></li>{/each}</ul>{:else}<p class="mt-2 text-sm text-ink-2">{t('bundles.none')}</p>{/if}</section>
+            <section><h4 class="text-sm font-semibold">{t('bundles')}</h4><p class="text-xs text-ink-2">{t('bundles.help')}</p>{#if item.bundles.length}<ul class="mt-2 space-y-2">{#each item.bundles as bundle}<li class="text-sm break-all"><Button variant="link" size="sm" class="palimpsest-catalog-link" onclick={() => onbundle?.(bundle)}>{bundle}</Button></li>{/each}</ul>{:else}<p class="mt-2 text-sm text-ink-2">{t('bundles.none')}</p>{/if}</section>
           </div>
         {/if}
       </Card>

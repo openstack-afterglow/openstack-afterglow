@@ -2,7 +2,8 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { useImageDetailController, isReservedKey } from '$lib/stores/imageDetailController.svelte';
-	import { ActivityIndicator, Alert, AnimatedNumber, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, AnimatedNumber, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 	const setupLocked = $derived(s.windowsEditing || s.windowsSaving);
@@ -130,7 +131,7 @@
 				class="min-h-11 lg:min-h-0 text-xs text-ink-2 hover:text-ink-0 px-3 py-2 lg:py-1 border border-line-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">{t('propertiesSection.cancel')}</button>
 			<button onclick={() => { if (!controlsLocked) s.saveProperties(); }} disabled={controlsLocked} data-testid="props-save" aria-busy={s.savingProps}
 				class="min-h-11 lg:min-h-0 text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-2 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 lg:py-1 rounded">
-				{#if s.savingProps}<ActivityIndicator size="xs" label={t('propertiesSection.saving')} />{:else}{t('propertiesSection.save')}{/if}
+				{#if s.savingProps}<LoadingState variant="control" label={t('propertiesSection.saving')} />{:else}{t('propertiesSection.save')}{/if}
 			</button>
 		</div>
 	{/if}

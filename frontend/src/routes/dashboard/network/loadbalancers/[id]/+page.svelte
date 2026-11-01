@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
@@ -12,7 +13,7 @@
 	import ListenerSection from '$lib/components/dashboard/loadbalancers/ListenerSection.svelte';
 	import PoolSection from '$lib/components/dashboard/loadbalancers/PoolSection.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const ctrl = createNetworkLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -46,11 +47,12 @@
 		/>
 	</div>
 
-	{#if ctrl.loading}
-		<ActivityIndicator label={t('loadBalancerDetail.loading')} />
+	{#if ctrl.loading && ctrl.lb?.id !== $page.params.id}
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })}  />
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}
+		{#if ctrl.loading}<LoadingState variant="inline" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })} />{/if}
 		<LbDetailHeader lb={ctrl.lb} saving={ctrl.saving} onDelete={ctrl.deleteLb} />
 
 		{#if ctrl.lb.status === 'ERROR' || ctrl.lb.status?.includes('ERROR')}

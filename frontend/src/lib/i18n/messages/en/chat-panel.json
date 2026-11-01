@@ -310,6 +310,8 @@
 	"message.forkHere": "Branch from here",
 	"message.fork": "Branch",
 	"message.generationSpeed": "Generation speed",
+	"message.ttft": "TTFT {seconds}s",
+	"message.ttftExplanation": "From sending to receiving the first answer text: {seconds} seconds",
 	"window.elapsedMinutesSeconds": "{minutes, plural, one {# minute} other {# minutes}} {seconds, plural, one {# second} other {# seconds}}",
 	"window.elapsedSeconds": "{seconds, plural, one {# second} other {# seconds}}",
 	"window.skillFallback": "skill #{id}",

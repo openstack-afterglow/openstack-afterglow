@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t as tr } from '$lib/i18n/ns/database';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -9,7 +9,6 @@
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
 	onDestroy(api.dispose);
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -113,7 +112,7 @@
 	{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else if instances.length === 0 && !loadError}
 		<div class="text-ink-2 text-sm">{tr('instances.empty')}</div>
 	{:else if instances.length > 0}
@@ -123,7 +122,7 @@
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><a class="min-h-11 break-all font-medium text-warm-text" href={`/admin/database-instances/${inst.id}`}>{inst.name || inst.id.slice(0, 8)}</a><StatusChip status={inst.status} /></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {inst.size ?? '-'} GB</p><p>{tr('labels.project')}: {inst.project_id || '-'}</p></div>
-						{#snippet actions()}{#if inst.project_id && inst.project_id === projectId}<Button variant="secondary" size="sm" disabled={restarting === inst.id} onclick={() => restartInstance(inst.id, inst.name)}>{restarting === inst.id ? tr('state.restarting') : tr('actions.restart')}</Button><Button variant="danger" size="sm" disabled={deleting === inst.id} onclick={() => deleteInstance(inst.id, inst.name)}>{deleting === inst.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
+						{#snippet actions()}{#if inst.project_id && inst.project_id === projectId}<Button variant="secondary" size="sm" disabled={restarting === inst.id} onclick={() => restartInstance(inst.id, inst.name)}>{#if restarting === inst.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{restarting === inst.id ? tr('state.restarting') : tr('actions.restart')}</Button><Button variant="danger" size="sm" disabled={deleting === inst.id} onclick={() => deleteInstance(inst.id, inst.name)}>{#if deleting === inst.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deleting === inst.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{inst.id}</p><p>{tr('labels.created')}: {inst.created_at?.slice(0, 10) ?? '-'}</p></div>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -159,11 +158,11 @@
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}
 										class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
-										{#if restarting === inst.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.restarting')}</span></span>{:else}{tr('actions.restart')}{/if}
+										{#if restarting === inst.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.restarting')}</span></span>{:else}{tr('actions.restart')}{/if}
 									</button>
 									<button onclick={(e) => { e.stopPropagation(); deleteInstance(inst.id, inst.name); }} disabled={deleting === inst.id}
 										class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">
-										{#if deleting === inst.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
+										{#if deleting === inst.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 									</button>
 								</div>
 								{/if}

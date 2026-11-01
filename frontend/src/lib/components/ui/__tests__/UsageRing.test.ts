@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import UsageRing from '../UsageRing.svelte';
 
 describe('UsageRing', () => {
-	it('exposes a clamped, text-equivalent quantitative meter', () => {
+	it('exposes an unclamped observation with the caller text equivalent', () => {
 		const view = render(UsageRing, {
 			percent: 130,
 			label: '컨텍스트 입력 예산 사용률',
@@ -11,9 +11,9 @@ describe('UsageRing', () => {
 		});
 		const meter = view.getByRole('meter', { name: '컨텍스트 입력 예산 사용률' });
 
-		expect(meter.getAttribute('aria-valuenow')).toBe('100');
+		expect(meter.getAttribute('aria-valuenow')).toBe('130');
 		expect(meter.getAttribute('aria-valuemin')).toBe('0');
-		expect(meter.getAttribute('aria-valuemax')).toBe('100');
+		expect(meter.getAttribute('aria-valuemax')).toBe('130');
 		expect(meter.getAttribute('aria-valuetext')).toBe('약 11,000 / 9,856 토큰 · 112%');
 		expect(meter.getAttribute('data-tone')).toBe('danger');
 	});

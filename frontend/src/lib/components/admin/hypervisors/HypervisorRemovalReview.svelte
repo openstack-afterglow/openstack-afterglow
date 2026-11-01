@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -235,7 +236,7 @@
 			{t('hypervisors.removal.scopeWarning')}
 		</Alert>
 		<Button variant="secondary" size="sm" class="w-full whitespace-normal" ariaLabel={t('hypervisors.removal.refresh')} disabled={busy} onclick={refreshInspection}>{t('hypervisors.removal.refresh')}</Button>
-		{#if busy}<p role="status">{t('hypervisors.removal.busy')}</p>{/if}
+		{#if busy}<LoadingState variant="inline" label={t('hypervisors.removal.busy')} />{/if}
 		{#if invalidReason}<Alert tone="warning">{invalidReason}</Alert>{/if}
 		{#if localError}<Alert tone="danger">{t(localError)}</Alert>{/if}
 	</div>

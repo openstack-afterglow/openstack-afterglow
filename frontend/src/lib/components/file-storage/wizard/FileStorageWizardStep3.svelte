@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
-	import { ActivityIndicator, Alert, Button, ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
@@ -49,7 +50,7 @@
 			</label>
 		</div>
 		<Button variant="accent" class="whitespace-nowrap mb-[1px]" onclick={s.addAccessRule} disabled={s.addingRule || !s.ruleForm.access_to.trim()} ariaBusy={s.addingRule}>
-			{#if s.addingRule}<ActivityIndicator size="xs" tone="ink" />{t('wizard.actions.adding')}{:else}{t('wizard.actions.add')}{/if}
+			{#if s.addingRule}<LoadingState variant="control" label="" />{t('wizard.actions.adding')}{:else}{t('wizard.actions.add')}{/if}
 		</Button>
 	</div>
 	{#if s.ruleError}<Alert tone="danger" class="mt-2">{s.ruleError}</Alert>{/if}

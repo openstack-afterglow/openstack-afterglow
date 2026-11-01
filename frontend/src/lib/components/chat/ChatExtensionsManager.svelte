@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -56,6 +57,7 @@
 	let tools = $state<CustomTool[]>([]);
 	let skills = $state<Skill[]>([]);
 	let loading = $state(true);
+	let catalogLoaded = $state(false);
 	let loadGeneration = 0;
 
 	const isAdmin = $derived(base.includes('/admin'));
@@ -163,7 +165,10 @@
 								] as const)
 						)
 					);
-			if (generation === loadGeneration && requestToken === token && requestProject === projectId) oauthStatus = statuses;
+			if (generation === loadGeneration && requestToken === token && requestProject === projectId) {
+				oauthStatus = statuses;
+				catalogLoaded = true;
+			}
 		} catch {
 			if (generation === loadGeneration) toast.error(t('extensions.loadFailed'));
 		} finally {
@@ -333,6 +338,7 @@
 		tools = [];
 		skills = [];
 		oauthStatus = {};
+		catalogLoaded = false;
 	}));
 	$effect(() => {
 		void [token, projectId, $auth.userId, canAssets];
@@ -358,7 +364,7 @@
 {#if !only || only === 'mcp'}
 <section class="mb-8">
 	{#if !isAdmin}
-		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global')} {loading} {oauthStatus} onChanged={load} />
+		<ChatMcpCatalogue servers={mcps.filter((mcp) => mcp.scope === 'global')} loading={loading && !catalogLoaded} {oauthStatus} onChanged={load} />
 	{/if}
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
@@ -411,13 +417,12 @@
 			<p class="mt-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.authHelp')}</p>
 		{/if}
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{addingMcp ? t('extensions.actions.adding') : t('extensions.mcp.add')}</Button>
+			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{#if addingMcp}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.mcp.add')}{/if}</Button>
 		</div>
 	</div>
-	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.mcp.loading')}>
-			<span class="sr-only">{t('extensions.mcp.loading')}</span>
-		</div>
+	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.mcp.loading')} />{/if}
+	{#if loading && !catalogLoaded}
+		<LoadingState label={t('extensions.mcp.loading')} />
 	{:else if mcps.filter((mcp) => isAdmin || mcp.scope !== 'global').length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.mcp.empty')}</p>
 	{:else}
@@ -444,7 +449,7 @@
 								{:else}
 									<button class="text-[var(--color-accent)] hover:opacity-80" disabled={connectingOAuthId === m.id || !canMcp} onclick={() => connectOAuth(m)}>
 										{#if connectingOAuthId === m.id}
-											{t('extensions.oauth.preparing')}
+											<LoadingState variant="control" label={t('extensions.oauth.preparing')} />
 										{:else}
 											<RichText segments={t.rich('extensions.oauth.connect', { name: m.name })} />
 										{/if}
@@ -503,13 +508,12 @@
 			</div>
 		{/if}
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addTool} disabled={addingTool || !canAssets}>{addingTool ? t('extensions.actions.adding') : t('extensions.tools.add')}</Button>
+			<Button onclick={addTool} disabled={addingTool || !canAssets}>{#if addingTool}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.tools.add')}{/if}</Button>
 		</div>
 	</div>
-	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.tools.loading')}>
-			<span class="sr-only">{t('extensions.tools.loading')}</span>
-		</div>
+	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.tools.loading')} />{/if}
+	{#if loading && !catalogLoaded}
+		<LoadingState label={t('extensions.tools.loading')} />
 	{:else if tools.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.tools.empty')}</p>
 	{:else}
@@ -574,13 +578,12 @@
 			></textarea>
 		</div>
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addSkill} disabled={addingSkill || !canAssets}>{addingSkill ? t('extensions.actions.adding') : t('extensions.skills.add')}</Button>
+			<Button onclick={addSkill} disabled={addingSkill || !canAssets}>{#if addingSkill}<LoadingState variant="control" label={t('extensions.actions.adding')} />{:else}{t('extensions.skills.add')}{/if}</Button>
 		</div>
 	</div>
-	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.skills.loading')}>
-			<span class="sr-only">{t('extensions.skills.loading')}</span>
-		</div>
+	{#if loading && catalogLoaded}<LoadingState variant="inline" label={t('extensions.skills.loading')} />{/if}
+	{#if loading && !catalogLoaded}
+		<LoadingState label={t('extensions.skills.loading')} />
 	{:else if skills.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.skills.empty')}</p>
 	{:else}

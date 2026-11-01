@@ -6,6 +6,7 @@ production FOR UPDATE or Redis behavior.
 
 import asyncio
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,7 +20,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.deps import get_admin_os_conn, get_os_conn, require_admin, require_domain_manager
 from app.api.identity import domain_quotas as api
+from app.models.compute import FlavorInfo
 from app.models.domain_quotas import DomainQuotaOperation, DomainQuotaPolicy, ProjectQuotaUpdate
+from app.services import compute_pools, flavor_eligibility
 from app.services import domain_quotas as service
 
 DOMAIN = "domain-a"
@@ -44,7 +47,10 @@ async def budget(tmp_path, monkeypatch):
             get_project=lambda pid: projects.get(pid),
         )
     )
-    limits = {"a": {"instances": 4, "volumes": 1}, "b": {"instances": 2, "volumes": 1}}
+    limits = {
+        "a": {"instances": 4, "cores": 2, "ram": 4096, "volumes": 1},
+        "b": {"instances": 2, "cores": 2, "ram": 4096, "volumes": 1},
+    }
     writes, commits = [], []
     lease = SimpleNamespace(assert_owned=AsyncMock())
     busy = False
@@ -602,3 +608,245 @@ async def test_personal_quota_uncertainty_fences_only_the_affected_project(budge
         await service.update_project(budget.conn, "a", {"instances": 7})
     assert denied.value.detail == "quota_native_operation_unresolved"
     assert budget.writes == [("b", "compute", {"instances": 3})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active", [True, False], ids=["active", "paused"])
+async def test_pool_native_quota_correction_and_policy_remain_independent(
+    budget, _unmanaged_compute_pool_native, active
+):
+    document = {
+        "schema": 1,
+        "revision": 1,
+        "enabled": active,
+        "limits": {"CUSTOM_PCI_10DE_2204": 1},
+        "project_limits": {},
+    }
+    _unmanaged_compute_pool_native[DOMAIN] = document
+    original = deepcopy(document)
+    snapshot = await service.update_policy(budget.conn, DOMAIN, 0, {"cores": 8, "ram": 16384})
+    assert snapshot["allocations"]["cores"] == {"limit": 4, "status": "ready", "within_budget": True}
+    assert snapshot["allocations"]["ram"] == {"limit": 8192, "status": "ready", "within_budget": True}
+    assert "compute_pool_enabled" not in snapshot
+    snapshot = await service.update_policy(budget.conn, DOMAIN, 1, {"cores": 4, "ram": 8192}, defaults=True)
+    assert snapshot["defaults"] == {"cores": 4, "ram": 8192}
+    assert budget.writes == []  # Saving defaults never enlarges existing projects.
+    result = await service.update_project(budget.conn, "a", {"cores": 4, "ram": 8192})
+    assert result["status"] == "updated"
+    assert budget.writes == [("a", "compute", {"cores": 4, "ram": 8192})]
+    snapshot = await service.snapshot(budget.conn, DOMAIN)
+    assert snapshot["ceilings"] == {"cores": 8, "ram": 16384}
+    assert snapshot["defaults"] == {"cores": 4, "ram": 8192}
+    assert snapshot["allocations"]["cores"]["limit"] == 6
+    assert snapshot["allocations"]["ram"]["limit"] == 12288
+    assert _unmanaged_compute_pool_native[DOMAIN] == original
+
+
+@pytest.mark.asyncio
+async def test_pool_lookup_failure_cannot_block_native_quota_authority(budget, monkeypatch):
+    unavailable = AsyncMock(side_effect=compute_pools.ComputePoolUnavailable("pool unavailable"))
+    monkeypatch.setattr(compute_pools, "_operator", unavailable)
+    await service.update_policy(budget.conn, DOMAIN, 0, {"cores": 8, "ram": 16384})
+    await service.update_policy(budget.conn, DOMAIN, 1, {"cores": 4, "ram": 8192}, defaults=True)
+    result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert result["status"] == "updated"
+    await service.assert_project_allocation(budget.conn, DOMAIN, "b", lease=budget.lease)
+    snapshot = await service.snapshot(budget.conn, DOMAIN)
+    assert snapshot["allocations"]["cores"]["within_budget"] is True
+    assert snapshot["defaults"] == {"cores": 4, "ram": 8192}
+    unavailable.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pool_project_creation_applies_native_defaults_before_enable(budget, _unmanaged_compute_pool_native):
+    document = {
+        "schema": 1,
+        "revision": 1,
+        "enabled": True,
+        "limits": {"CUSTOM_PCI_10DE_2204": 1},
+        "project_limits": {},
+    }
+    _unmanaged_compute_pool_native[DOMAIN] = document
+    original = deepcopy(document)
+    await service.update_policy(budget.conn, DOMAIN, 0, {"cores": 8, "ram": 16384})
+    await service.update_policy(budget.conn, DOMAIN, 1, {"instances": 3, "cores": 4, "ram": 8192}, defaults=True)
+    result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert result["status"] == "updated"
+    assert budget.writes == [("b", "compute", {"instances": 3, "cores": 4, "ram": 8192})]
+    assert budget.limits["b"]["cores"] == 4 and budget.limits["b"]["ram"] == 8192
+    assert budget.projects["b"].is_enabled is False
+    async with budget.factory() as session:
+        operation = await session.get(DomainQuotaOperation, result["operation_id"])
+        assert operation.status == "updated"
+        assert operation.sections["compute"] == {
+            "status": "verified",
+            "observed": {"instances": 3, "cores": 4, "ram": 8192},
+        }
+    await service.assert_project_allocation(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert budget.limits["a"]["cores"] == 2  # Future-only; enabled peer is untouched.
+    assert _unmanaged_compute_pool_native[DOMAIN] == original
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resource,ceiling,requested", [("cores", 4, 3), ("ram", 8192, 6144)])
+@pytest.mark.parametrize("active", [True, False], ids=["active", "paused"])
+async def test_pool_cannot_bypass_finite_native_allocation_budget(
+    budget, _unmanaged_compute_pool_native, resource, ceiling, requested, active
+):
+    _unmanaged_compute_pool_native[DOMAIN] = {
+        "schema": 1,
+        "revision": 1,
+        "enabled": active,
+        "limits": {"CUSTOM_PCI_10DE_2204": 1},
+        "project_limits": {},
+    }
+    await service.update_policy(budget.conn, DOMAIN, 0, {resource: ceiling})
+    await service.update_policy(budget.conn, DOMAIN, 1, {resource: requested}, defaults=True)
+    with pytest.raises(HTTPException) as policy_denied:
+        await service.update_policy(budget.conn, DOMAIN, 2, {resource: ceiling - 1})
+    assert policy_denied.value.detail == f"quota_budget_exceeded:{resource}"
+    with pytest.raises(HTTPException) as denied:
+        await service.update_project(budget.conn, "a", {resource: requested})
+    assert denied.value.detail == f"quota_budget_exceeded:{resource}"
+    with pytest.raises(HTTPException) as defaults_denied:
+        await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert defaults_denied.value.detail == f"quota_budget_exceeded:{resource}"
+    assert budget.projects["b"].is_enabled is False
+    assert budget.writes == []
+    budget.limits["a"][resource] = requested  # External drift is still checked before enable.
+    with pytest.raises(HTTPException) as enable_denied:
+        await service.assert_project_allocation(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert enable_denied.value.detail == f"quota_budget_exceeded:{resource}"
+    snapshot = await service.snapshot(budget.conn, DOMAIN)
+    assert snapshot["allocations"][resource]["within_budget"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resource,ceiling,default,lower_ceiling",
+    [("cores", 8, 6, 5), ("ram", 16384, 12288, 10000)],
+)
+async def test_pool_native_defaults_and_ceiling_cannot_contradict_each_other(
+    budget, _unmanaged_compute_pool_native, resource, ceiling, default, lower_ceiling
+):
+    _unmanaged_compute_pool_native[DOMAIN] = {
+        "schema": 1,
+        "revision": 1,
+        "enabled": True,
+        "limits": {"CUSTOM_PCI_10DE_2204": 1},
+        "project_limits": {},
+    }
+    await service.update_policy(budget.conn, DOMAIN, 0, {resource: ceiling})
+    with pytest.raises(HTTPException) as invalid_default:
+        await service.update_policy(budget.conn, DOMAIN, 1, {resource: -1}, defaults=True)
+    assert invalid_default.value.detail == f"quota_default_exceeds_ceiling:{resource}"
+    await service.update_policy(budget.conn, DOMAIN, 1, {resource: default}, defaults=True)
+    with pytest.raises(HTTPException) as invalid_ceiling:
+        await service.update_policy(budget.conn, DOMAIN, 2, {resource: lower_ceiling})
+    assert invalid_ceiling.value.detail == f"quota_default_exceeds_ceiling:{resource}"
+    snapshot = await service.snapshot(budget.conn, DOMAIN)
+    assert snapshot["revision"] == 2
+    assert snapshot["ceilings"] == {resource: ceiling}
+    assert snapshot["defaults"] == {resource: default}
+    assert not budget.writes
+
+
+@pytest.mark.asyncio
+async def test_pool_native_cpu_timeout_is_journaled_and_never_replayed(
+    budget, _unmanaged_compute_pool_native, monkeypatch
+):
+    _unmanaged_compute_pool_native[DOMAIN] = {
+        "schema": 1,
+        "revision": 1,
+        "enabled": True,
+        "limits": {"CUSTOM_PCI_10DE_2204": 1},
+        "project_limits": {},
+    }
+    await service.update_policy(budget.conn, DOMAIN, 0, {"cores": 8, "ram": 16384})
+    original_write = service.quota_native.update_section
+
+    def timeout(*args):
+        original_write(*args)
+        raise TimeoutError("native outcome uncertain")
+
+    monkeypatch.setattr(service.quota_native, "update_section", timeout)
+    result = await service.update_project(budget.conn, "a", {"cores": 4, "ram": 8192})
+    assert result["status"] == "unknown"
+    assert result["errors"] == {"compute": "native_outcome_unknown"}
+    async with budget.factory() as session:
+        operation = await session.get(DomainQuotaOperation, result["operation_id"])
+        assert operation.requested == {"cores": 4, "ram": 8192}
+        assert operation.sections["compute"]["observed"] == {"cores": 4, "ram": 8192}
+    with pytest.raises(HTTPException) as denied:
+        await service.update_project(budget.conn, "a", {"cores": 2, "ram": 4096})
+    assert denied.value.detail == "quota_native_operation_unresolved"
+    assert budget.writes == [("a", "compute", {"cores": 4, "ram": 8192})]
+
+
+@pytest.mark.asyncio
+async def test_gpu_only_pool_native_adjustment_changes_eligibility_without_policy_or_acl_changes(
+    budget, _unmanaged_compute_pool_native, monkeypatch
+):
+    gpu = "CUSTOM_PCI_10DE_2204"
+    document = {"schema": 1, "revision": 1, "enabled": True, "limits": {gpu: 1}, "project_limits": {}}
+    _unmanaged_compute_pool_native[DOMAIN] = document
+    snapshot = {
+        "domain_id": DOMAIN,
+        "project_id": "a",
+        "enabled": True,
+        "state": "active",
+        "limits": {gpu: 1},
+        "usage": {"CPU": 0, "MEMORY_MB": 0, gpu: 0},
+        "available": {"CPU": -1, "MEMORY_MB": -1, gpu: 1},
+        "project_limits": {},
+        "project_usage": {"CPU": 0, "MEMORY_MB": 0, gpu: 0},
+        "project_available": {"CPU": -1, "MEMORY_MB": -1, gpu: 1},
+        "policy_ready": True,
+        "control_scope": "afterglow",
+        "_aliases": [{"name": "RTX3090", "resource_class": gpu}],
+        "_pci_aliases": [{"name": "RTX3090", "resource_class": gpu, "is_gpu": True, "classification_verified": True}],
+        "_resource_kinds": {gpu: "gpu"},
+    }
+    candidate = FlavorInfo(
+        id="approved-gpu",
+        name="gpu.approved",
+        vcpus=4,
+        ram=8192,
+        disk=0,
+        extra_specs={"pci_passthrough:alias": "RTX3090:1"},
+    )
+    original_document, original_snapshot = deepcopy(document), deepcopy(snapshot)
+    original_flavor = candidate.model_dump()
+    acl_write = MagicMock(side_effect=AssertionError("quota adjustment must not change GPU access"))
+    budget.conn.compute = SimpleNamespace(flavor_add_tenant_access=acl_write, flavor_remove_tenant_access=acl_write)
+    monkeypatch.setattr(compute_pools, "project_pool_snapshot", AsyncMock(return_value=snapshot))
+    native_read = service.quota_native.get_section
+
+    def measured_quota(conn, pid, **_):
+        entries = native_read(conn, pid, "compute")
+        entries["cores"].update(in_use=1, reserved=1)
+        entries["ram"].update(in_use=2048, reserved=2048)
+        return entries
+
+    monkeypatch.setattr(flavor_eligibility.nova, "get_project_quota", measured_quota)
+    before = (await flavor_eligibility.evaluate_project_flavors(budget.conn, "a", [candidate]))[0].eligibility
+    assert not before.selectable
+    assert {blocker.code for blocker in before.blockers} == {"cores_insufficient", "ram_insufficient"}
+    await service.update_policy(budget.conn, DOMAIN, 0, {"cores": 8, "ram": 16384})
+    app = FastAPI()
+    app.include_router(api.router, prefix="/api/v1")
+    token = {"user_id": "manager", "domain_id": DOMAIN}
+    app.dependency_overrides[require_domain_manager] = lambda: token
+    monkeypatch.setattr(service.keystone, "get_admin_project_connection", lambda: budget.conn)
+    budget.conn.close = MagicMock()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.put("/api/v1/iam/projects/a/quotas", json={"cores": 6, "ram": 12288})
+    assert response.status_code == 200 and response.json()["status"] == "updated"
+    assert budget.writes == [("a", "compute", {"cores": 6, "ram": 12288})]
+    after = (await flavor_eligibility.evaluate_project_flavors(budget.conn, "a", [candidate]))[0].eligibility
+    assert after.selectable and after.blockers == []
+    assert after.quota_scope == "domain" and after.remaining.gpus == {gpu: 1}
+    acl_write.assert_not_called()
+    assert candidate.model_dump() == original_flavor
+    assert snapshot == original_snapshot
+    assert _unmanaged_compute_pool_native[DOMAIN] == original_document

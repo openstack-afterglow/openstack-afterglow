@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Button, Pill, StatusChip, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
@@ -35,18 +35,18 @@
 		<Button variant="secondary" size="xs" onclick={() => onToggleVerification(img)}
 			disabled={verifyingId === img.id || (img.verification_status !== 'verified' && img.status !== 'active')}
 			title={img.status !== 'active' && img.verification_status !== 'verified' ? t('images.table.verificationHelp') : undefined}>
-			{#if verifyingId === img.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.processing')}</span></span>{:else}{img.verification_status === 'verified' ? t('images.table.revokeVerification') : t('images.table.approveVerification')}{/if}
+			{#if verifyingId === img.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('images.processing')}</span></span>{:else}{img.verification_status === 'verified' ? t('images.table.revokeVerification') : t('images.table.approveVerification')}{/if}
 		</Button>
 		{#if img.status === 'active' || img.status === 'deactivated'}
 			<Button variant="ghost" size="xs" onclick={() => onToggleActivation(img)} disabled={togglingId === img.id}>
-				{#if togglingId === img.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.processing')}</span></span>{:else}{img.status === 'active' ? t('images.table.deactivate') : t('images.table.activate')}{/if}
+				{#if togglingId === img.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('images.processing')}</span></span>{:else}{img.status === 'active' ? t('images.table.deactivate') : t('images.table.activate')}{/if}
 			</Button>
 		{/if}
 		<Button variant="link" size="xs" onclick={() => onEdit(img)}>{t('images.edit.action')}</Button>
 		{#if !img.protected}
 			<Button variant="danger-outline" size="xs" onclick={() => onDelete(img)} disabled={deletingId === img.id}>
 				{#if deletingId === img.id}
-					<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.delete.pending')}</span></span>
+					<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('images.delete.pending')}</span></span>
 				{:else}{t('images.delete.action')}{/if}
 			</Button>
 		{/if}

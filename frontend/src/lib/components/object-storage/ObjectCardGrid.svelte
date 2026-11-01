@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { untrack } from 'svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { EmptyState, SelectionCheckbox } from '$lib/components/ui';
 	import ObjectFileCard from './ObjectFileCard.svelte';
 	import ObjectFolderCard from './ObjectFolderCard.svelte';
@@ -24,10 +24,27 @@
 		arrivalContainer = name;
 		arrivals.reset();
 	});
+
+	// Retain a settled directory only while refreshing that exact listing.
+	let completedListing = $state<string | null>(null);
+	let completedObjects = $state.raw<typeof s.objects | null>(null);
+	let pendingListing = '';
+	let listingWasLoading = true;
+	$effect.pre(() => {
+		const owner = JSON.stringify([s.containerName, s.prefix]);
+		if (s.loading) pendingListing = owner;
+		else if (listingWasLoading) {
+			completedListing = pendingListing || owner;
+			completedObjects = s.objects;
+		}
+		listingWasLoading = s.loading;
+	});
+	const retainedListing = $derived(completedObjects === s.objects && completedListing === JSON.stringify([s.containerName, s.prefix]));
 </script>
 
-{#if s.loading}
-	<LoadingSkeleton variant="card" rows={8} />
+{#if s.loading && retainedListing}<LoadingState variant="inline" />{/if}
+{#if s.loading && !retainedListing}
+	<LoadingState variant="surface" />
 {:else if s.gridRows.length === 0}
 	<EmptyState
 		icon="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"

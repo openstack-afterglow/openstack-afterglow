@@ -250,6 +250,14 @@ describe('MCP OAuth consent shell', () => {
 		expect(response.headers.get('Location')).toBe('/login');
 	});
 
+	it('keeps logout reachable after credentials are removed', async () => {
+		const { handle } = await loadHandle();
+		const logout = createRequest('http://frontend.example.com/logout');
+		const response = await handle({ event: logout.event, resolve: logout.resolve });
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Location')).toBeNull();
+	});
+
 	it.each(['/auth/callback', '/signup', '/recover', '/recover/' + 'r'.repeat(43), '/invitations/' + 'a'.repeat(43), '/registrations/' + 'b'.repeat(43)])(
 		'serves the token-bearing sign-in route %s without a session', async (path) => {
 			const { handle } = await loadHandle();

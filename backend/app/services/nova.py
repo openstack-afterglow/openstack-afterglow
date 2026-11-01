@@ -2,17 +2,74 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from urllib.parse import quote
+
+from fastapi import HTTPException
+from openstack.resource import Resource
 
 if TYPE_CHECKING:
     import openstack
 
 from app.models.compute import FlavorInfo, InstanceInfo, IpAddress
+from app.services.flavor_presentation import canonical_cpu_display_name
 from app.services.image_refs import image_reference_fields
 from app.services.ssh_access import GITHUB_LOGIN_METADATA_KEY, SSH_ACCESS_MODE_METADATA_KEY
 
 _logger = logging.getLogger(__name__)
+
+
+def _validated_flavor_specs(specs) -> dict[str, str]:
+    if not isinstance(specs, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str) for key, value in specs.items()
+    ):
+        raise HTTPException(503, "Native flavor extra specs are invalid")
+    return dict(specs)
+
+
+def native_flavor_extra_specs(compute, flavor_id: str) -> dict[str, str]:
+    """Require the native envelope; SDK defaults cannot prove an empty catalog."""
+    response = compute.get(
+        f"/flavors/{quote(str(flavor_id), safe='')}/os-extra_specs",
+        redirect=False,
+        allow_reauth=False,
+        connect_retries=0,
+        status_code_retries=0,
+    )
+    if type(response.status_code) is not int or not 200 <= response.status_code < 300:
+        raise HTTPException(503, "Native flavor extra specs are unavailable")
+    try:
+        payload = response.json()
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(503, "Native flavor extra specs are invalid") from exc
+    if not isinstance(payload, dict) or "extra_specs" not in payload:
+        raise HTTPException(503, "Native flavor extra specs are missing")
+    links = payload.get("links")
+    if (
+        payload.get("truncated")
+        or payload.get("limited")
+        or payload.get("extra_specs_links")
+        or (links is not None and (not isinstance(links, dict) or links.get("next")))
+    ):
+        raise HTTPException(503, "Native flavor extra specs are incomplete")
+    return _validated_flavor_specs(payload["extra_specs"])
+
+
+def flavor_extra_specs(compute, flavor) -> dict[str, str]:
+    """Use explicit native fields, never a descriptor's absent-field default."""
+    if isinstance(flavor, Resource):
+        fields = flavor._body.attributes
+    elif isinstance(flavor, Mapping):
+        fields = flavor
+    else:
+        fields = vars(flavor)
+    if "extra_specs" in fields:
+        return _validated_flavor_specs(fields["extra_specs"])
+    identity = flavor.get("id") if isinstance(flavor, Mapping) else flavor.id
+    return native_flavor_extra_specs(compute, identity)
 
 
 def _requires_flavor_access_check(conn) -> bool:
@@ -20,19 +77,29 @@ def _requires_flavor_access_check(conn) -> bool:
     return native_admin if type(native_admin) is bool else getattr(conn, "_afterglow_is_system_admin", False) is True
 
 
+def _project_visible_flavors(conn, flavors, project_id):
+    rows = list(flavors)
+    if project_id is None or not _requires_flavor_access_check(conn):
+        return rows
+    private = [flavor for flavor in rows if getattr(flavor, "is_public", None) is not True]
+
+    def allowed(flavor):
+        access = conn.compute.get_flavor_access(flavor.id)
+        return str(flavor.id), any(
+            (entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access
+        )
+
+    # One authenticated operation owns this connection and drains all workers
+    # before it returns. Never cache these authorization decisions.
+    with ThreadPoolExecutor(max_workers=min(8, len(private)) or 1) as workers:
+        grants = dict(workers.map(allowed, private))
+    return [flavor for flavor in rows if getattr(flavor, "is_public", None) is True or grants[str(flavor.id)]]
+
+
 def project_flavor_visibility(conn: openstack.connection.Connection) -> dict[str, bool]:
     """Read current native visibility; an administrator's catalog is not target access."""
-    project_id = conn._afterglow_project_id
-    admin = _requires_flavor_access_check(conn)
-    visible: dict[str, bool] = {}
-    for flavor in conn.compute.flavors(is_public=None):
-        public = getattr(flavor, "is_public", None) is True
-        if not public and admin:
-            access = conn.compute.get_flavor_access(flavor.id)
-            if not any((entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access):
-                continue
-        visible[str(flavor.id)] = public
-    return visible
+    rows = _project_visible_flavors(conn, conn.compute.flavors(is_public=None), conn._afterglow_project_id)
+    return {str(flavor.id): getattr(flavor, "is_public", None) is True for flavor in rows}
 
 
 def list_flavors(conn: openstack.connection.Connection) -> list[FlavorInfo]:
@@ -47,22 +114,13 @@ def list_catalog_flavors(conn: openstack.connection.Connection) -> list[FlavorIn
 
 def _list_flavors(conn: openstack.connection.Connection, *, project_id: str | None) -> list[FlavorInfo]:
     flavors = []
-    admin = _requires_flavor_access_check(conn)
-    for f in conn.compute.flavors(is_public=None):
-        if project_id is not None and getattr(f, "is_public", None) is not True and admin:
-            access = conn.compute.get_flavor_access(f.id)
-            if not any((entry.get("tenant_id") or entry.get("project_id")) == project_id for entry in access):
-                continue
-        extra = dict(f.extra_specs) if f.extra_specs else {}
-        # Older Nova microversions omit extra specs. Reuse the native metadata
-        # endpoint instead of degrading an unreadable GPU request into CPU-only.
-        if not extra:
-            detail = conn.compute.fetch_flavor_extra_specs(f)
-            extra = dict(detail.extra_specs)
+    for f in _project_visible_flavors(conn, conn.compute.flavors(is_public=None), project_id):
+        extra = flavor_extra_specs(conn.compute, f)
         flavors.append(
             FlavorInfo(
                 id=f.id,
                 name=f.name,
+                display_name=canonical_cpu_display_name(f.name, f.vcpus, f.ram, extra),
                 vcpus=f.vcpus,
                 ram=f.ram,
                 disk=f.disk,
@@ -225,13 +283,19 @@ def get_project_limits(conn: openstack.connection.Connection) -> dict:
 _NOVA_QUOTA_KEYS = ("instances", "cores", "ram", "key_pairs", "server_groups")
 
 
-def get_project_quota(conn: openstack.connection.Connection, project_id: str, *, strict: bool = False) -> dict:
+def get_project_quota(
+    conn: openstack.connection.Connection, project_id: str, *, strict: bool = False, include_native: bool = False
+) -> dict:
     """프로젝트의 상세 Nova 할당량 (usage 포함).
 
     ``strict`` is reserved for dashboard overview callers.  It rejects
     malformed usage-bearing raw quota data before legacy sentinel
     normalization, while default callers retain the historic REST-to-limits
     fallback behavior and complete wire shape.
+
+    ``include_native`` returns a composite ``compute`` / ``native_compute``
+    projection from the same reads. Legacy sentinels remain in ``compute``;
+    only observed, valid usage pairs enter ``native_compute``.
     """
 
     def _normalize(q) -> dict:
@@ -264,6 +328,23 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
             raise ValueError(f"Nova limits usage is missing for {key}")
         return _strict_entry({"limit": limit, "in_use": in_use}, key)
 
+    def _projection(legacy: dict, entry, *, available: bool = True) -> dict:
+        if not include_native:
+            return legacy
+        native = {} if available else None
+        if native is not None:
+            for key in ("instances", "cores", "ram"):
+                try:
+                    pair = entry(key)
+                    if type(pair["limit"]) is not int or pair["limit"] < -1:
+                        raise ValueError("Invalid native quota limit")
+                    if type(pair["in_use"]) is not int or pair["in_use"] < 0:
+                        raise ValueError("Invalid native quota usage")
+                    native[key] = pair
+                except ValueError:
+                    continue
+        return {"compute": legacy, "native_compute": native}
+
     try:
         compute_endpoint = conn.compute.get_endpoint()
         resp = conn.session.get(f"{compute_endpoint}/os-quota-sets/{project_id}/detail")
@@ -277,7 +358,14 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
             raise ValueError("Nova quota_set is malformed")
         if strict:
             return {key: _strict_entry(qs.get(key), key) for key in ("instances", "cores", "ram")}
-        return {k: _normalize(qs.get(k)) for k in _NOVA_QUOTA_KEYS}
+        legacy = {k: _normalize(qs.get(k)) for k in _NOVA_QUOTA_KEYS}
+        native_available = True
+        if include_native:
+            try:
+                resp.raise_for_status()
+            except Exception:
+                native_available = False
+        return _projection(legacy, lambda key: _strict_entry(qs.get(key), key), available=native_available)
     except Exception as exc:
         # A successful but incomplete/malformed detailed response is never
         # converted into a fake zero for strict overview callers.  Legacy
@@ -297,7 +385,7 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
                 "cores": _strict_limits_entry(absolute, "max_total_cores", "total_cores_used", "cores"),
                 "ram": _strict_limits_entry(absolute, "max_total_ram_size", "total_ram_used", "ram"),
             }
-        return {
+        legacy = {
             "instances": {
                 "limit": getattr(absolute, "max_total_instances", -1),
                 "in_use": getattr(absolute, "total_instances_used", 0),
@@ -313,6 +401,16 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
             "key_pairs": {"limit": getattr(absolute, "max_total_keypairs", -1), "in_use": 0},
             "server_groups": {"limit": getattr(absolute, "max_server_groups", -1), "in_use": 0},
         }
+        attributes = {
+            "instances": ("max_total_instances", "total_instances_used"),
+            "cores": ("max_total_cores", "total_cores_used"),
+            "ram": ("max_total_ram_size", "total_ram_used"),
+        }
+        return _projection(
+            legacy,
+            lambda key: _strict_limits_entry(absolute, *attributes[key], key),
+            available=isinstance(authenticated_project, str) and authenticated_project == project_id,
+        )
 
 
 def parse_nova_timestamp(value: object) -> datetime | None:
@@ -820,15 +918,24 @@ def _server_to_info(s) -> InstanceInfo:
     image_id = s.image.get("id") if isinstance(s.image, dict) else None
     flavor_id = None
     flavor_name = None
+    flavor_display_name = None
     flavor_snapshot = None
-    if isinstance(s.flavor, dict):
-        flavor_id = s.flavor.get("id")
-        flavor_name = s.flavor.get("original_name")
+    # Resource descriptors normalize embedded Flavor values (including absent or
+    # malformed extra_specs) into defaults. Only the native body is evidence.
+    native_flavor = s._body.attributes.get("flavor") if isinstance(s, Resource) else s.flavor
+    if isinstance(native_flavor, Resource):
+        native_flavor = native_flavor._body.attributes
+    if isinstance(native_flavor, dict):
+        flavor_id = native_flavor.get("id")
+        flavor_name = native_flavor.get("original_name")
         if flavor_name:
             # SDK Flavor.id aliases original_name in Nova 2.47+; that is not a native ID.
             if flavor_id == flavor_name:
                 flavor_id = None
-            flavor_snapshot = {key: s.flavor.get(key) for key in ("vcpus", "ram", "disk", "extra_specs")}
+            flavor_snapshot = {key: native_flavor.get(key) for key in ("vcpus", "ram", "disk", "extra_specs")}
+            flavor_display_name = canonical_cpu_display_name(
+                flavor_name, native_flavor.get("vcpus"), native_flavor.get("ram"), native_flavor.get("extra_specs")
+            )
 
     fault = None
     if s.status == "ERROR":
@@ -846,6 +953,7 @@ def _server_to_info(s) -> InstanceInfo:
         image_id=image_id,
         flavor_id=flavor_id,
         flavor_name=flavor_name,
+        flavor_display_name=flavor_display_name,
         ip_addresses=ips,
         created_at=str(s.created_at) if s.created_at else None,
         metadata=meta,

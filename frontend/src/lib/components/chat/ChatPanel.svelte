@@ -27,6 +27,7 @@
 	import {
 		computeMetrics,
 		estimateTokens,
+		observeTtft,
 		type StreamMetrics
 	} from '$lib/api/chatMetrics';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
@@ -1098,8 +1099,7 @@
 
 	async function refreshHistoryAfterRun(
 		conversationId: string,
-		selection = selectionGeneration,
-		metrics: StreamMetrics | null = null
+		selection = selectionGeneration
 	): Promise<boolean> {
 		if (activeConvId !== conversationId || tempMode) return false;
 		if (historyHasAfter || historyLoading) {
@@ -1107,7 +1107,6 @@
 			return false;
 		}
 		const loaded = await loadMessages(conversationId, selection);
-		if (loaded && metrics && activeLeafId) metricsById.set(activeLeafId, metrics);
 		return loaded;
 	}
 
@@ -1703,9 +1702,12 @@
 		descriptor: ChatRunDescriptor,
 		draft: DisplayMessage,
 		onDone: (metrics: StreamMetrics | null) => Promise<void> | void,
-		generation: number
+		generation: number,
+		submittedAtMs: number | null
 	) {
 		let firstTokenMs: number | null = null;
+		let ttftSeconds: number | null = null;
+		let assistantMessageId: string | null = null;
 		let charCount = 0;
 		let latestMetrics: StreamMetrics | null = null;
 		let text = '';
@@ -1733,6 +1735,12 @@
 				status: tool.status === 'running' ? undefined : tool.status,
 				errorCode: tool.errorCode
 			}));
+		}
+
+		function rememberMetrics() {
+			if (latestMetrics && assistantMessageId && runState.messageId === assistantMessageId && descriptor.conversation_id === activeConvId && !tempMode) {
+				metricsById.set(assistantMessageId, latestMetrics);
+			}
 		}
 
 		function cancelProjectionFrame() {
@@ -1807,7 +1815,17 @@
 		try {
 			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
 				if (destroyed || generation !== streamGeneration) return;
+				const receivedAtMs = performance.now();
 				runState = reduceRunEvent(runState, evt);
+				if (evt.type === 'message.created') {
+					assistantMessageId = evt.payload.role === 'assistant' ? evt.payload.message_id : null;
+				}
+				const observedTtft = observeTtft(ttftSeconds, submittedAtMs, evt, assistantMessageId, receivedAtMs);
+				if (observedTtft !== ttftSeconds) {
+					ttftSeconds = observedTtft;
+					latestMetrics ??= { tokens: null, seconds: null, tokPerSec: null, approximate: true };
+					latestMetrics.ttftSeconds = ttftSeconds;
+				}
 				if (evt.type === 'message.created') {
 					reveal.clear();
 					text = '';
@@ -1837,7 +1855,6 @@
 					if (evt.type === 'part.delta') {
 						const { part_type: partType, delta } = evt.payload;
 						if (partType === 'text') {
-							const receivedAtMs = performance.now();
 							text += delta;
 							reveal.append(delta, receivedAtMs);
 							toolActivity = null;
@@ -1847,7 +1864,8 @@
 								estimateTokens(charCount),
 								firstTokenMs,
 								performance.now(),
-								true
+								true,
+								ttftSeconds
 							);
 						} else {
 							reasoning += delta;
@@ -1889,7 +1907,8 @@
 						evt.payload.completion_tokens,
 						firstTokenMs,
 						performance.now(),
-						false
+						false,
+						ttftSeconds
 					);
 				} else if (evt.type === 'run.completed') {
 					pendingToolApprovals = pendingToolApprovals.filter((approval) => approval.runId !== descriptor.run_id);
@@ -1898,6 +1917,7 @@
 					if (contextPhase === 'compacting') contextPhase = 'ready';
 					if (generation !== streamGeneration || destroyed) return;
 					draft.streaming = false;
+					rememberMetrics();
 					await onDone(latestMetrics);
 					if (generation !== streamGeneration || destroyed) return;
 					endStream();
@@ -1910,6 +1930,7 @@
 					contextCause = null;
 					if (contextPhase === 'compacting') contextPhase = 'ready';
 					draft.streaming = false;
+					rememberMetrics();
 					if (stream?.temp && stream.assistant === draft) tempMessages = [...stream.base, draft];
 					error = evt.type === 'run.failed' ? runFailureMessage(evt.payload, descriptor.run_id) : evt.payload.safe_message;
 					endStream();
@@ -1958,6 +1979,7 @@
 		body: unknown,
 		draft: DisplayMessage,
 		onDone: (metrics: StreamMetrics | null) => Promise<void> | void,
+		submittedAtMs: number,
 		onStarted?: (descriptor: ChatRunDescriptor) => void,
 		idempotencyKey?: string
 	): Promise<boolean> {
@@ -1971,7 +1993,7 @@
 			if (destroyed || generation !== streamGeneration) return false;
 			currentRun = descriptor;
 			onStarted?.(descriptor);
-			await followRun(descriptor, draft, onDone, generation);
+			await followRun(descriptor, draft, onDone, generation, submittedAtMs);
 			return true;
 		} catch (caught) {
 			if (destroyed || generation !== streamGeneration) return false;
@@ -2032,17 +2054,18 @@
 			void followRun(
 				descriptor,
 				draft,
-				async (metrics) => {
+				async () => {
 					setConversationRun(conversationId, false);
 					if (activeConvId === conversationId && !tempMode) {
 						const selection = selectionGeneration;
-						await refreshHistoryAfterRun(conversationId, selection, metrics);
+						await refreshHistoryAfterRun(conversationId, selection);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
 					void executeContextPreview();
 				},
-				generation
+				generation,
+				null
 			);
 		} catch {
 			// A completed/deleted run or a transient list failure must not block opening the conversation.
@@ -2093,6 +2116,7 @@
 			error = t('panel.errors.uploadPending');
 			return;
 		}
+		const submittedAtMs = performance.now();
 		if (!tempMode && activeConvId && historyHasAfter) {
 			const loadedLatest = await replaceHistoryWindow();
 			if (!loadedLatest) return;
@@ -2102,7 +2126,7 @@
 		attachments = [];
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs);
 
 		invalidateContextPreview();
 		streaming = true;
@@ -2173,16 +2197,17 @@
 			path,
 			body,
 			live,
-			async (metrics) => {
+			async () => {
 				setConversationRun(convId!, false);
 				if (activeConvId === convId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(convId!, selection, metrics);
+					await refreshHistoryAfterRun(convId!, selection);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
 				void executeContextPreview();
 			},
+			submittedAtMs,
 			() => setConversationRun(convId!, true),
 			idempotencyKey
 		);
@@ -2203,7 +2228,8 @@
 
 	async function sendTemp(
 		text: string,
-		inputParts: UserInputPart[]
+		inputParts: UserInputPart[],
+		submittedAtMs: number
 	) {
 		const userMsg: DisplayMessage = {
 			id: tempId(),
@@ -2238,6 +2264,7 @@
 				void loadUsage();
 				void executeContextPreview();
 			},
+			submittedAtMs,
 			(descriptor) => rememberTempThread(descriptor.temp_thread_id)
 		);
 	}
@@ -2250,6 +2277,7 @@
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
+		const submittedAtMs = performance.now();
 		invalidateContextPreview();
 		streaming = true;
 		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
@@ -2266,16 +2294,17 @@
 				skill_ids: selectedSkillIds,
 			},
 			live,
-			async (metrics) => {
+			async () => {
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(conversationId, selection, metrics);
+					await refreshHistoryAfterRun(conversationId, selection);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
 				void executeContextPreview();
 			},
+			submittedAtMs,
 			() => setConversationRun(conversationId, true)
 		);
 	}
@@ -2285,6 +2314,7 @@
 		if (streaming || tempMode || !token || !projectId) return;
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
+			const submittedAtMs = performance.now();
 			error = null;
 			invalidateContextPreview();
 			streaming = true;
@@ -2320,16 +2350,17 @@
 				submission.path,
 				submission.body,
 				live,
-				async (metrics) => {
+				async () => {
 					setConversationRun(convId!, false);
 					if (activeConvId === convId && !tempMode) {
 						const selection = selectionGeneration;
-						await refreshHistoryAfterRun(convId!, selection, metrics);
+						await refreshHistoryAfterRun(convId!, selection);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
 					void executeContextPreview();
 				},
+				submittedAtMs,
 				() => setConversationRun(convId!, true),
 				submission.idempotencyKey
 			);
@@ -2342,6 +2373,7 @@
 		const message = activePath[idx];
 		const targetRunId = message?.execution?.run_id;
 		if (idx === -1 || message?.role !== 'user' || !targetRunId || message.execution?.retryable !== true) return;
+		const submittedAtMs = performance.now();
 		error = null;
 		invalidateContextPreview();
 		streaming = true;
@@ -2356,16 +2388,17 @@
 			`/api/v1/chat/conversations/${conversationId}/runs/${targetRunId}/retry`,
 			{},
 			live,
-			async (metrics) => {
+			async () => {
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(conversationId, selection, metrics);
+					await refreshHistoryAfterRun(conversationId, selection);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
 				void executeContextPreview();
 			},
+			submittedAtMs,
 			() => setConversationRun(conversationId, true)
 		);
 	}
@@ -2644,7 +2677,7 @@
 			{/if}
 		</header>
 
-		<div class="chat-workspace" class:empty-workspace={isEmpty} class:expanded-composer={expandedComposer} class:temp-mode={tempMode}>
+		<div class="chat-workspace" class:empty-workspace={isEmpty && !treeLoading && !historyLoading} class:expanded-composer={expandedComposer} class:temp-mode={tempMode}>
 		<ChatWindow
 			actionsDisabled={!canChat}
 			activePath={displayPath}

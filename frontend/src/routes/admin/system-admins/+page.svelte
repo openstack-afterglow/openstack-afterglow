@@ -1,10 +1,9 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -107,10 +106,10 @@
 	</PageHeader>
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={3} />
+		<LoadingState variant="surface" />
 	{:else}
 			{#if policyLoading}
-				<Alert tone="neutral" class="mb-3"><span class="inline-flex items-center gap-2"><ActivityIndicator size="xs" />{t('systemPage.policyLoading')}</span></Alert>
+				<Alert tone="neutral" class="mb-3"><span class="inline-flex items-center gap-2"><LoadingState variant="control" label="" aria-hidden="true" />{t('systemPage.policyLoading')}</span></Alert>
 			{:else if policyError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
 			{:else if policy}

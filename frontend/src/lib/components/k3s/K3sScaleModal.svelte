@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -71,7 +71,7 @@
 				onclick={handleApply}
 				disabled={!$k3sPermissions.workloads || applying || replicas === currentReplicas}
 				class="flex-1 py-2 rounded-lg text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:opacity-40 transition-colors"
-			>{#if applying}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('scale.apply')}{/if}</button>
+			>{#if applying}<LoadingState variant="control" label={t('scale.applying')} />{:else}{t('scale.apply')}{/if}</button>
 		</div>
 	</div>
 </div>

@@ -6,7 +6,7 @@
 	import { auth, logoutInProgress, projectSwitching, setLoginAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoginBrandHeader from '$lib/components/auth/LoginBrandHeader.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -229,7 +229,7 @@
 					</div>
 					{#if error}<Alert tone="danger">{error}</Alert>{/if}
 					{#if providersLoading}
-						<ActivityIndicator label={td('login.sso.loading')} class="login-activity" />
+						<LoadingState variant="section" label={td('login.sso.loading')} class="login-activity"  />
 					{:else if providersError}
 						<Alert tone="warning">{td('login.providers.unavailable')}</Alert>
 					{:else if providers.length === 0}
@@ -244,7 +244,7 @@
 						</div>
 					{/if}
 					{#if providerLoading}
-						<ActivityIndicator label={td('login.provider.redirecting', { name: providerLoading.name })} class="login-activity motion-fade" />
+						<LoadingState variant="section" label={td('login.provider.redirecting', { name: providerLoading.name })} class="login-activity motion-fade"  />
 					{/if}
 					<Button variant="ghost" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(false)}>{td('login.sso.back')}</Button>
 				</section>
@@ -265,7 +265,7 @@
 					<div class="login-divider" aria-hidden="true"><span>{td('login.methods.or')}</span></div>
 					<Button variant="secondary" size="lg" class="login-provider min-h-11" disabled={busy} onclick={() => selectMethod(true)}>{td('login.sso.open')}</Button>
 					{#if loading}
-						<ActivityIndicator label={t('loginForm.signingIn')} class="login-activity motion-fade" />
+						<LoadingState variant="section" label={t('loginForm.signingIn')} class="login-activity motion-fade"  />
 					{/if}
 				</form>
 

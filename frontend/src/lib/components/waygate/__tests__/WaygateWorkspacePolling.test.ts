@@ -20,6 +20,7 @@ vi.mock('$lib/config/site', () => ({ siteConfig: writable({ services: { waygate:
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: mocks.toastError } }));
 // Exercise the real autoRefresh controller, preferences and visibility listeners.
 import { auth } from '$lib/stores/auth';
+import { t as commonT } from '$lib/i18n/ns/common';
 import { ApiError } from '$lib/api/client';
 import WaygateWorkspace from '../WaygateWorkspace.svelte';
 
@@ -192,30 +193,30 @@ describe('Waygate visible detail polling', () => {
 	it('turns peer polling Off without stopping metadata and manually refreshes only clients', async () => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click(peers().getByRole('button', { name: accessibleName => accessibleName === 'Off' }));
+		await fireEvent.change(peers().getByRole('combobox'), { target: { value: 'off' } });
 		mocks.get.mockClear();
 		await advance(30_000);
 		expect(calls(clientsPath)).toBe(0);
 		for (const path of [detailPath, attachmentsPath]) expect(calls(path)).toBe(2);
 		for (const path of [base, catalogPath]) expect(calls(path)).toBe(0);
 		mocks.get.mockClear();
-		await fireEvent.click(peers().getByRole('button', { name: accessibleName => accessibleName === '새로고침' }));
+		await fireEvent.click(peers().getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		await settle();
 		expect(calls(clientsPath)).toBe(1);
 		for (const path of [base, detailPath, attachmentsPath, catalogPath]) expect(calls(path)).toBe(0);
-		expect(peers().getByRole('button', { name: accessibleName => accessibleName === 'Off' }).getAttribute('aria-pressed')).toBe('true');
+		expect((peers().getByRole('combobox') as HTMLSelectElement).value).toBe('off');
 	});
 
 	it('turns metadata Off without stopping peers and manually refreshes detail, catalog and peers', async () => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click(metadata().getByRole('button', { name: accessibleName => accessibleName === 'Off' }));
+		await fireEvent.change(metadata().getByRole('combobox'), { target: { value: 'off' } });
 		mocks.get.mockClear();
 		await advance(30_000);
 		expect(calls(clientsPath)).toBe(30);
 		for (const path of [base, detailPath, attachmentsPath, catalogPath]) expect(calls(path)).toBe(0);
 		mocks.get.mockClear();
-		await fireEvent.click(metadata().getByRole('button', { name: accessibleName => accessibleName === '새로고침' }));
+		await fireEvent.click(metadata().getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		await settle();
 		expect(calls(clientsPath)).toBe(1);
 		for (const path of [detailPath, attachmentsPath, catalogPath]) expect(calls(path)).toBe(1);
@@ -225,8 +226,8 @@ describe('Waygate visible detail polling', () => {
 	it.each([1, 2, 5, 10, 15, 30, 60])('runs peers at the selected %is cadence independently of metadata', async (seconds) => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click(metadata().getByRole('button', { name: accessibleName => accessibleName === '30s' }));
-		await fireEvent.click(peers().getByRole('button', { name: accessibleName => accessibleName === `${seconds}s` }));
+		await fireEvent.change(metadata().getByRole('combobox'), { target: { value: '30' } });
+		await fireEvent.change(peers().getByRole('combobox'), { target: { value: String(seconds) } });
 		await settle();
 		mocks.get.mockClear();
 		await advance(seconds * 1000 - 1);
@@ -235,7 +236,7 @@ describe('Waygate visible detail polling', () => {
 		expect(calls(clientsPath)).toBe(1);
 		for (const path of [detailPath, attachmentsPath]) expect(calls(path)).toBe(Math.floor(seconds / 30));
 		for (const path of [base, catalogPath]) expect(calls(path)).toBe(0);
-		expect(metadata().getByRole('button', { name: accessibleName => accessibleName === '30s' }).getAttribute('aria-pressed')).toBe('true');
+		expect((metadata().getByRole('combobox') as HTMLSelectElement).value).toBe('30');
 	});
 
 	it.each([
@@ -248,7 +249,7 @@ describe('Waygate visible detail polling', () => {
 		await openDetail();
 		expect(panel().getByText('laptop-a')).toBeTruthy();
 		for (const control of [peers(), metadata()]) {
-			expect(control.getByRole('button', { name: accessibleName => accessibleName === 'Off' }).getAttribute('aria-pressed')).toBe('true');
+			expect((control.getByRole('combobox') as HTMLSelectElement).value).toBe('off');
 		}
 		await advance(30_000);
 		expect(calls(clientsPath)).toBe(1);
@@ -262,8 +263,8 @@ describe('Waygate visible detail polling', () => {
 		localStorage.setItem('autoRefresh.dashboard-network-waygate-detail.interval', '30');
 		render(WaygateWorkspace);
 		await openDetail();
-		expect(metadata().getByRole('button', { name: accessibleName => accessibleName === '30s' }).getAttribute('aria-pressed')).toBe('true');
-		expect(peers().getByRole('button', { name: accessibleName => accessibleName === '1s' }).getAttribute('aria-pressed')).toBe('true');
+		expect((metadata().getByRole('combobox') as HTMLSelectElement).value).toBe('30');
+		expect((peers().getByRole('combobox') as HTMLSelectElement).value).toBe('1');
 		mocks.get.mockClear();
 		await advance(1000);
 		expect(calls(clientsPath)).toBe(1);
@@ -279,7 +280,7 @@ describe('Waygate visible detail polling', () => {
 		localStorage.setItem(`autoRefresh.${key}-peers.interval`, '5');
 		render(WaygateWorkspace, { admin });
 		await openDetail();
-		expect(peers().getByRole('button', { name: accessibleName => accessibleName === '5s' }).getAttribute('aria-pressed')).toBe('true');
+		expect((peers().getByRole('combobox') as HTMLSelectElement).value).toBe('5');
 		mocks.get.mockClear();
 		await advance(4999);
 		expect(calls(clientsPath)).toBe(0);
@@ -291,8 +292,8 @@ describe('Waygate visible detail polling', () => {
 	it('stops detail requests on close and restores independent cadences on reopen', async () => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click(peers().getByRole('button', { name: accessibleName => accessibleName === '5s' }));
-		await fireEvent.click(metadata().getByRole('button', { name: accessibleName => accessibleName === '30s' }));
+		await fireEvent.change(peers().getByRole('combobox'), { target: { value: '5' } });
+		await fireEvent.change(metadata().getByRole('combobox'), { target: { value: '30' } });
 		await fireEvent.click(panel().getByRole('button', { name: '패널 닫기 버튼' }));
 		await settle();
 		mocks.get.mockClear();
@@ -306,8 +307,8 @@ describe('Waygate visible detail polling', () => {
 		expect(calls(clientsPath)).toBe(1);
 		expect(calls(attachmentsPath)).toBe(1);
 		expect(calls(detailPath)).toBe(1);
-		expect(peers().getByRole('button', { name: accessibleName => accessibleName === '5s' }).getAttribute('aria-pressed')).toBe('true');
-		expect(metadata().getByRole('button', { name: accessibleName => accessibleName === '30s' }).getAttribute('aria-pressed')).toBe('true');
+		expect((peers().getByRole('combobox') as HTMLSelectElement).value).toBe('5');
+		expect((metadata().getByRole('combobox') as HTMLSelectElement).value).toBe('30');
 		mocks.get.mockClear();
 		await advance(5000);
 		expect(calls(clientsPath)).toBe(1);
@@ -339,7 +340,7 @@ describe('Waygate visible detail polling', () => {
 	it.each(['peers', 'metadata'] as const)('keeps %s Off through a visibility cycle while the other controller resumes', async (paused) => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click((paused === 'peers' ? peers() : metadata()).getByRole('button', { name: accessibleName => accessibleName === 'Off' }));
+		await fireEvent.change((paused === 'peers' ? peers() : metadata()).getByRole('combobox'), { target: { value: 'off' } });
 		await setHidden(true);
 		mocks.get.mockClear();
 		await advance(45_000);
@@ -394,7 +395,7 @@ describe('Waygate visible detail polling', () => {
 	it.each(['success', 'failure'])('keeps the new server polling while the previous server timed request has a late %s', async (outcome) => {
 		render(WaygateWorkspace);
 		await openDetail();
-		await fireEvent.click(peers().getByRole('button', { name: accessibleName => accessibleName === '2s' }));
+		await fireEvent.change(peers().getByRole('combobox'), { target: { value: '2' } });
 		const oldPoll = deferred<unknown[]>();
 		mocks.get.mockImplementationOnce(() => oldPoll.promise);
 		await advance(2000);

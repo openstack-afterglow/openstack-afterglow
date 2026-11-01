@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +25,131 @@ from app.services.mcp_control_plane.registry import (
     registry_entries,
     validate_registry_inventory,
 )
+
+
+def _vm_create_arguments():
+    return {
+        "name": "scheduled-vm",
+        "image_id": "33333333-3333-4333-8333-333333333333",
+        "flavor_id": "large",
+        "network_id": "22222222-2222-4222-8222-222222222222",
+        "availability_zone": "nova",
+    }
+
+
+@pytest.mark.parametrize("schedule", [{}, {"expires_at": None}])
+def test_vm_create_schedule_requires_explicit_expiry_without_approval_protocol_changes(schedule):
+    entry = entry_by_name("afterglow_vm_create")
+    with pytest.raises(ValueError, match="usage_schedule.expires_at is required"):
+        parse_entry_arguments(entry, {**_vm_create_arguments(), "usage_schedule": schedule})
+
+
+@pytest.mark.asyncio
+async def test_vm_create_schedule_approval_fingerprint_covers_expiry_reason_and_all_deletion_consent(monkeypatch):
+    from app.services.mcp_control_plane import registry
+
+    @asynccontextmanager
+    async def connection(_context):
+        yield object()
+
+    async def preview_create(_conn, **arguments):
+        return {key: value for key, value in arguments.items() if key not in {"user_id", "project_id"}}
+
+    monkeypatch.setattr(ConsumerCloudContext, "openstack_connection", connection)
+    monkeypatch.setattr(registry, "preview_project_server_create", preview_create)
+    entry = entry_by_name("afterglow_vm_create")
+    principal = McpPrincipal(
+        grant_id="grant-a",
+        user_id="user-a",
+        project_id="project-a",
+        credential_epoch=1,
+        scopes=frozenset({"mcp:read", "mcp:write"}),
+        source="personal_token",
+    )
+    context = ConsumerCloudContext(principal=principal)
+    expiry = datetime.now(UTC).replace(microsecond=0) + timedelta(days=7)
+    schedule = {"expires_at": expiry.isoformat(), "reason": "study"}
+    raw = {**_vm_create_arguments(), "usage_schedule": schedule}
+    parsed = parse_entry_arguments(entry, raw)
+    first = await build_mutation_preview(context, entry=entry, arguments=parsed)
+    confirmed = parse_entry_arguments(entry, parsed.model_dump(mode="json"))
+    second = await build_mutation_preview(context, entry=entry, arguments=confirmed)
+    assert first == second
+    assert confirmed.usage_schedule.expires_at == expiry
+    assert "shelve and offload" in first.estimated_effect and "retain attached volumes" in first.estimated_effect
+    assert parsed.model_dump(mode="json")["usage_schedule"]["expires_at"] in first.estimated_effect
+    assert "study" in first.estimated_effect
+    assert not first.destructive
+    fingerprints = {first.fingerprint}
+    variants = [
+        {"usage_schedule": {**schedule, "expires_at": (expiry + timedelta(days=1)).isoformat()}},
+        {"usage_schedule": {**schedule, "reason": "another study"}},
+        {"usage_schedule": {**schedule, "expiry_action": "delete"}},
+        {"usage_schedule": {**schedule, "expiry_action": "delete", "delete_volumes": True}},
+        {"delete_boot_volume_on_termination": True},
+    ]
+    for change in variants:
+        preview = await build_mutation_preview(
+            context, entry=entry, arguments=parse_entry_arguments(entry, {**raw, **change})
+        )
+        assert preview.fingerprint not in fingerprints
+        fingerprints.add(preview.fingerprint)
+        if change.get("usage_schedule", {}).get("expiry_action") == "delete":
+            assert preview.destructive and "stop then delete the VM" in preview.estimated_effect
+            if change["usage_schedule"].get("delete_volumes"):
+                assert "delete all attached volumes" in preview.estimated_effect
+            else:
+                assert "retain attached volumes" in preview.estimated_effect
+
+
+@pytest.mark.asyncio
+async def test_vm_create_dispatch_forwards_public_serialized_schedule_unchanged(monkeypatch):
+    from app.services.mcp_control_plane import registry
+
+    @asynccontextmanager
+    async def connection(_context):
+        yield object()
+
+    received = []
+
+    async def create(_conn, **arguments):
+        received.append(arguments)
+        return {
+            "id": "server-new",
+            "name": arguments["name"],
+            "status": "BUILD",
+            "created_at": None,
+            "updated_at": None,
+            "requested_action": "create",
+        }
+
+    monkeypatch.setattr(ConsumerCloudContext, "openstack_connection", connection)
+    monkeypatch.setattr(registry, "request_project_server_create", create)
+    entry = entry_by_name("afterglow_vm_create")
+    parsed = parse_entry_arguments(
+        entry,
+        {
+            **_vm_create_arguments(),
+            "usage_schedule": {
+                "expires_at": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
+                "expiry_action": "delete",
+                "delete_volumes": True,
+                "reason": "study",
+            },
+        },
+    )
+    principal = McpPrincipal(
+        grant_id="grant-a",
+        user_id="user-a",
+        project_id="project-a",
+        credential_epoch=1,
+        scopes=frozenset({"mcp:read", "mcp:write"}),
+        source="personal_token",
+    )
+    await dispatch(ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed)
+    assert len(received) == 1
+    assert received[0]["usage_schedule"] == parsed.model_dump(mode="json")["usage_schedule"]
+    assert isinstance(received[0]["usage_schedule"], dict)
 
 
 @pytest.fixture(autouse=True)

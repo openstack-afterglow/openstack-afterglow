@@ -158,7 +158,7 @@
 	"recovery.username": "Finn brukernavn",
 	"recovery.password": "Tilbakestill passord",
 	"recovery.description": "Be om en engangslenke til kontoens e-postadresse. Du trenger ikke å vite domenenavnet ditt.",
-	"recovery.sent": "Hvis adressen er kvalifisert, er en e-post sendt. Sjekk innboksen din.",
+	"recovery.sent": "Forespørselen er mottatt. Hvis adressen er kvalifisert, sendes en e-post. Mottak bekrefter ikke levering. Sjekk innboksen; kontakt administratoren hvis e-posten ikke kommer, eller du ikke har tilgang.",
 	"recovery.notAvailable": "E-postforespørsler er ikke tilgjengelige for øyeblikket. Kontakt administratoren din eller prøv igjen senere.",
 	"recovery.usernameResult": "Denne bekreftelseslenken er brukt. Logg inn med det opprinnelige brukernavnet og domenet ditt nedenfor. Å åpne lenken igjen viser dem ikke på nytt.",
 	"recovery.reset": "Lagre nytt passord",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "Logg inn igjen",
 	"recovery.failed": "Resultatet kunne ikke bekreftes. Kontoen støtter kanskje ikke denne gjenopprettingsmetoden, eller lenken kan allerede være brukt. Forespørselen gjentas ikke automatisk. Be om en ny lenke eller kontakt administratoren din.",
 	"link.authenticatedHelp": "For en konto med bare ekstern innlogging må du godkjenne med en allerede innlogget økt for den opprinnelige kontoen. Serveren bekrefter at det er samme konto.",
-	"link.authenticated": "Godkjenn tilknytning som innlogget {username}"
+	"link.authenticated": "Godkjenn tilknytning som innlogget {username}",
+	"recovery.passwordHelp": "Lenken som sendes til registrert e-post, åpner et skjema for nytt passord; selve passordet sendes aldri. Kontakt administratoren hvis e-posten ikke kommer, eller du ikke har tilgang til postkassen."
 }

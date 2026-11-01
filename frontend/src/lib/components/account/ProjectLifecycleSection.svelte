@@ -10,7 +10,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AdminProjectDeleteModal from '$lib/components/admin/projects/AdminProjectDeleteModal.svelte';
 	import { get } from 'svelte/store';
 	import { auth } from '$lib/stores/auth';
@@ -86,7 +86,7 @@
 
 <section class="space-y-3 rounded-lg border border-line p-4" aria-label={t('ownership')}>
 	<div class="flex flex-wrap items-center justify-between gap-3"><h4 class="text-sm font-semibold text-ink-0">{t('ownership')}</h4><Button variant="secondary" size="sm" disabled={loading || busy} onclick={load}>{t('refresh')}</Button></div>
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={ownership ? 'inline' : 'section'} label={t('loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if needsRefresh}<Alert tone="warning">{t('mutationUncertain')}</Alert>{/if}
 	{#if ownership}

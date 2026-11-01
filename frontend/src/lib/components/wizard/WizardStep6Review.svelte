@@ -4,18 +4,19 @@
 	import { normalizeGithubUsername, normalizeRequestedInstanceName } from '$lib/utils/instanceCreate';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import { Alert, Button, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import { t as tu } from '$lib/i18n/ns/usage-schedule';
+	import { fromLocalDateTime } from '$lib/utils/instanceUsage';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tp } from '$lib/i18n/ns/compute-pools';
+	import { flavorGpuRequests } from '$lib/utils/flavorGpu';
+	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 
 	const s = useVmCreate();
 	const reviewFlavor = $derived(s.flavors.find((f: any) => f.id === $wizard.flavorId));
 	const reviewGpu = $derived.by(() => {
 		if (!reviewFlavor) return '';
-		const alias = reviewFlavor.extra_specs?.['pci_passthrough:alias'] ?? '';
-		if (!alias) return '';
-		const parts = alias.split(',').filter((e: string) => e.includes(':') && !e.toLowerCase().includes('audio'));
-		return parts.map((e: string) => {
-			const idx = e.lastIndexOf(':');
-			return `${e.slice(0, idx).trim()} × ${parseInt(e.slice(idx + 1)) || 1}`;
-		}).join(', ');
+		const requests = flavorGpuRequests(reviewFlavor);
+		return requests == null ? tp('unknown') : requests.map(({ model, count }) => `${model} × ${count}`).join(', ');
 	});
 	const reviewInstanceName = $derived(normalizeRequestedInstanceName($wizard.instanceName));
 	const reviewSshAccess = $derived.by(() => {
@@ -27,9 +28,31 @@
 			? t('review.ssh.verifiedWithName', { login, name: profile.name })
 			: t('review.ssh.verified', { login });
 	});
+	const usageExpiry = $derived.by(() => {
+		const iso = $wizard.usageSchedule ? fromLocalDateTime($wizard.usageSchedule.expiresLocal) : null;
+		return iso ? new Intl.DateTimeFormat(intlLocale(), {
+			year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+		}).format(new Date(iso)) : '—';
+	});
 </script>
 
 <h2 class="text-lg font-semibold text-ink-0 mb-4">{t('review.title')}</h2>
+
+{#if s.usageScheduleRequired && $wizard.usageSchedule}
+	<section class="mb-4 min-w-0 rounded-lg border border-line bg-surface-base p-4" aria-labelledby="review-usage-title">
+		<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+			<h3 id="review-usage-title" class="text-sm font-semibold text-ink-0">{tu('title')}</h3>
+			<Button variant="secondary" size="sm" class="min-h-11" onclick={() => s.goTo(5)}>{tu('edit')}</Button>
+		</div>
+		<dl class="space-y-2 text-sm">
+			<div><dt class="text-xs text-ink-2">{tu('expires')}</dt><dd class="break-words tabular-nums">{usageExpiry} · {Intl.DateTimeFormat().resolvedOptions().timeZone}</dd></div>
+			<div><dt class="text-xs text-ink-2">{tu('action')}</dt><dd>{$wizard.usageSchedule.expiryAction === 'delete' ? tu('delete') : tu('shelve')}</dd></div>
+			<div><dt class="text-xs text-ink-2">{tu('volumeHandling')}</dt><dd>{$wizard.usageSchedule.expiryAction === 'delete' && $wizard.usageSchedule.deleteVolumes ? tu('volumesDeleted') : tu('retain')}</dd></div>
+			{#if $wizard.usageSchedule.reason.trim()}<div><dt class="text-xs text-ink-2">{tu('reason')}</dt><dd class="break-words [overflow-wrap:anywhere]">{$wizard.usageSchedule.reason}</dd></div>{/if}
+		</dl>
+		{#if $wizard.usageSchedule.expiryAction === 'delete'}<Alert tone="warning" class="mt-3">{tu('destructive')} {tu('storageScope')}</Alert>{/if}
+	</section>
+{/if}
 
 <div class="mb-4"><ResponsiveTable>
 	{#snippet cards()}
@@ -38,8 +61,8 @@
 			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(5)}>{t('review.edit')}</Button>{/snippet}
 		</CompactResourceCard>
 		<CompactResourceCard>
-			<h3 class="text-xs text-ink-2">{t('review.flavor')}</h3><p class="break-all text-sm font-medium">{$wizard.flavorName ?? '-'}</p>
-			{#if reviewFlavor}<p class="text-xs text-ink-2">{reviewFlavor.vcpus} vCPU · {reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'} RAM · {reviewFlavor.disk}G {t('review.disk')}</p>{/if}
+			<h3 class="text-xs text-ink-2">{t('review.flavor')}</h3><p class="break-all text-sm font-medium">{consumerFlavorLabel(reviewFlavor)}</p>
+			{#if reviewFlavor}<p class="text-xs text-ink-2">{reviewFlavor.vcpus} vCPU · {reviewFlavor.ram >= 1024 ? reviewFlavor.ram / 1024 + 'G' : reviewFlavor.ram + 'M'} RAM · {reviewFlavor.disk}G {t('review.disk')}</p>{/if}
 			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => s.goTo(2)}>{t('review.edit')}</Button>{/snippet}
 			{#snippet details()}<p class="break-all text-xs">GPU: {reviewGpu || '—'}</p>{/snippet}
 		</CompactResourceCard>
@@ -84,7 +107,7 @@
 	<div class="grid grid-cols-[minmax(0,5rem)_minmax(0,1fr)_auto] @lg/panel:grid-cols-[140px_minmax(0,1fr)_auto] gap-3 items-start px-4 py-3.5 border-b border-line">
 		<span class="text-xs text-ink-2 font-medium mt-0.5">{t('review.flavor')}</span>
 		<span class="flex flex-col gap-2 min-w-0">
-			<span class="break-all text-sm text-ink-0 font-mono font-semibold">{$wizard.flavorName ?? '-'}</span>
+			<span class="break-all text-sm text-ink-0 font-mono font-semibold">{consumerFlavorLabel(reviewFlavor)}</span>
 			{#if reviewFlavor}
 				<div class="grid grid-cols-1 @md/panel:grid-cols-2 @xl/panel:grid-cols-4 gap-2">
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
@@ -93,7 +116,7 @@
 					</div>
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
 						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">RAM</span>
-						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'}</span>
+						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.ram >= 1024 ? reviewFlavor.ram / 1024 + 'G' : reviewFlavor.ram + 'M'}</span>
 					</div>
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
 						<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-medium">{t('review.disk')}</span>

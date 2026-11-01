@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { createDbInstanceDetailController, provideDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import DbInstanceHeader from '$lib/components/database/DbInstanceHeader.svelte';
 	import DbInfoSection from '$lib/components/database/DbInfoSection.svelte';
 	import DbConnectionSection from '$lib/components/database/DbConnectionSection.svelte';
@@ -35,11 +35,11 @@
 	});
 </script>
 
-<div class="p-4 md:p-6 space-y-4">
+<div class="flex min-h-full flex-col {s.loading && !s.instance ? '' : 'p-4 md:p-6 space-y-4'}">
 	<DbInstanceHeader {onClose} />
 
 	{#if s.loading && !s.instance}
-		<LoadingSkeleton variant="detail" rows={8} />
+		<LoadingState variant="surface" label={tr('state.loading')} />
 	{:else if !s.instance}
 		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}

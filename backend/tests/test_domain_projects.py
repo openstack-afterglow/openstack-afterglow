@@ -288,7 +288,7 @@ def domain_native(monkeypatch):
     native.lock_depth = 0
 
     @asynccontextmanager
-    async def lock(_):
+    async def lock(_, *, wait=False):
         assert native.lock_depth == 0, "nested graph lease"
         native.lock_depth += 1
 

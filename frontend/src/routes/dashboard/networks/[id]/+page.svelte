@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t as tn } from '$lib/i18n/ns/network-pages';
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -6,7 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import NetworkTopology from '$lib/components/NetworkTopology.svelte';
 	import DashboardNetworkHeader from '$lib/components/dashboard/networks/id/DashboardNetworkHeader.svelte';
 	import DashboardNetworkInfoCard from '$lib/components/dashboard/networks/id/DashboardNetworkInfoCard.svelte';
@@ -32,7 +34,8 @@
 	});
 
 	async function fetchNetwork(id: string) {
-		loading = true;
+		if (network?.id !== id) network = null;
+		loading = !network;
 		error = '';
 		try {
 			network = await api.get<NetworkDetail>(
@@ -108,7 +111,7 @@
 			{error}
 		</div>
 	{:else if loading}
-		<LoadingSkeleton variant="card" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tn('networks.title') })} />
 	{:else if network}
 		<DashboardNetworkHeader {network} {deleting} canManage={canManageNetwork} onDelete={deleteNetwork} />
 		<DashboardNetworkInfoCard {network} />

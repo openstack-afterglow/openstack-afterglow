@@ -1,4 +1,9 @@
 const translations: Record<string, string> = {
+	"프로젝트 역할 포함 관계": "Hubungan rangkuman peranan projek",
+	"서비스 등급의 기능 포함 관계": "Hubungan rangkuman fungsi peringkat perkhidmatan",
+	"포함": "merangkumi",
+	"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.": "Anak panah menunjuk kepada peranan bawahan yang dirangkumi oleh peranan atasan. Hubungan peranan sebenar mesti dikonfigurasikan dalam Keystone, dan manager serta project_creator tidak termasuk dalam hierarki ini.",
+	"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.": "Anak panah menunjuk kepada fungsi peringkat bawahan yang dirangkumi oleh peringkat atasan. Peranan terperinci tidak diberikan secara automatik, dan syarat projek, pemilikan serta kelayakan tetap terpakai.",
 	"IAM · 서비스별 권한": "IAM · Kebenaran mengikut perkhidmatan",
 	"사용자별 역할과 서비스 이용 권한 이해하기": "Fahami peranan pengguna dan kebenaran menggunakan perkhidmatan",
 	"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.": "Panduan fungsi bagi manager organisasi, peranan projek serta peringkat dan peranan terperinci Waygate, Drover, Lumen dan Palimpsest, termasuk gabungan kebenaran yang diperlukan.",

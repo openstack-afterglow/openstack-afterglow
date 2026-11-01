@@ -310,6 +310,8 @@
 	"message.forkHere": "Forgren herfra",
 	"message.fork": "Forgren",
 	"message.generationSpeed": "Genereringshastighet",
+	"message.ttft": "TTFT {seconds}s",
+	"message.ttftExplanation": "Fra sending til første svartekst mottas: {seconds} sekunder",
 	"window.elapsedMinutesSeconds": "{minutes, plural, one {# minutt} other {# minutter}} {seconds, plural, one {# sekund} other {# sekunder}}",
 	"window.elapsedSeconds": "{seconds, plural, one {# sekund} other {# sekunder}}",
 	"window.skillFallback": "ferdighet #{id}",

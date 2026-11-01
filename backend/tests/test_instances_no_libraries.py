@@ -82,6 +82,7 @@ PAYLOAD = {
 @pytest.mark.asyncio
 async def test_async_placement_policy_failure_returns_safe_503(client):
     with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.services.instance_names.ensure_unique_instance_name", return_value="test-no-libs"),
         patch(
             "app.api.compute.instances.instance_orch.resolve_availability_zones",

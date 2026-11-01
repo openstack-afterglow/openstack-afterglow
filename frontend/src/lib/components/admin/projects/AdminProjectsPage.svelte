@@ -1,12 +1,12 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -182,29 +182,28 @@
 	</PageHeader>
 
 	<ResourceToolbar label={t('projectPage.filters')} class="mb-3">
-		<div class="flex-1 basis-full sm:basis-64 min-w-0">
-			<TextInput type="search" value={search} ariaLabel={t('projectPage.search')} placeholder={t('projectPage.searchPlaceholder')}
+		<Field label={t('projectPage.search')} for="admin-project-search" class="min-w-0 w-full md:flex-1 md:basis-64">
+			<TextInput id="admin-project-search" type="search" value={search} ariaLabel={t('projectPage.search')} placeholder={t('projectPage.searchPlaceholder')}
 				oninput={(event) => { search = (event.target as HTMLInputElement).value; resetList(true); }} />
-		</div>
-		<div class="w-full sm:w-36">
-			<SelectInput value={filterStatus} ariaLabel={t('projectPage.status')}
+		</Field>
+		<Field label={t('projectPage.status')} for="admin-project-status" class="min-w-0 max-w-full w-full md:w-auto">
+			<SelectInput id="admin-project-status" value={filterStatus} ariaLabel={t('projectPage.status')}
 				onchange={(event) => { filterStatus = (event.target as HTMLSelectElement).value; resetList(); }}>
 				<option value="all">{t('projectPage.allStatuses')}</option>
 				<option value="enabled">{t('state.enabled')}</option>
 				<option value="disabled">{t('state.disabled')}</option>
 			</SelectInput>
-		</div>
+		</Field>
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={clearFilters}>{t('projectPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
-		{#if loading}<ActivityIndicator size="xs" />{/if}
-		<span aria-live="polite">{loading ? t('projectPage.loading') : error ? t('projectPage.resultsUnavailable') : t('projectPage.results', { total: total.toLocaleString(intlLocale()) })}</span>
+		{#if !loading}<span aria-live="polite">{error ? t('projectPage.resultsUnavailable') : t('projectPage.results', { total: total.toLocaleString(intlLocale()) })}</span>{/if}
 		<span>{t('projectPage.sortNotice')}</span>
 	</div>
 	{#if error}<Alert class="mb-3">{error}</Alert>{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={t('projectPage.loading')} />
 	{:else if !error}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			{#if projects.length === 0}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
@@ -35,6 +36,8 @@
 	let mcps = $state<AgentExtension[]>([]);
 	let tools = $state<AgentExtension[]>([]);
 	let loading = $state(true);
+	let loadedAgentScope = $state('');
+	const agentScope = $derived(JSON.stringify([token, projectId]));
 	let mode = $state<'list' | 'form'>('list');
 	let editingId = $state<number | null>(null);
 	let form = $state<AgentForm>(emptyAgentForm());
@@ -56,6 +59,7 @@
 			agents = ags;
 			mcps = ms;
 			tools = ts;
+			loadedAgentScope = JSON.stringify([requestToken, requestProject]);
 		} catch {
 			toast.error(t('agentManager.loadFailed'));
 		} finally {
@@ -150,13 +154,15 @@
 					{mcps}
 					{tools}
 					editing={editingId !== null}
-					saving={saving || !$serviceCapabilities('lumen-agents_editor')}
+					saving={saving}
+					disabled={!$serviceCapabilities('lumen-agents_editor')}
 					onSubmit={submit}
 					onCancel={() => (mode = 'list')}
 				/>
-			{:else if loading}
-				<p class="muted">{t('agentManager.loading')}</p>
+			{:else if loading && loadedAgentScope !== agentScope}
+				<LoadingState label={t('agentManager.loading')} />
 			{:else}
+				{#if loading}<LoadingState variant="inline" label={t('agentManager.loading')} />{/if}
 				<div class="list-head">
 					<span class="muted">{t('agentManager.count', { count: agents.length })}</span>
 					<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-agents_editor')} onclick={startCreate}>{t('agentManager.create')}</Button>

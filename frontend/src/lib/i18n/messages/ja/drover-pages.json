@@ -122,5 +122,9 @@
 	"yaml.parseError": "YAML解析エラー：{error}",
 	"yaml.configMapKind": "kindはConfigMapである必要があります",
 	"yaml.secretKind": "kindはSecretである必要があります",
-	"yaml.stringDataRequired": "Secretの編集にはdataではなくstringDataを使用してください（プレーンテキスト入力）"
+	"yaml.stringDataRequired": "Secretの編集にはdataではなくstringDataを使用してください（プレーンテキスト入力）",
+	"clusterError.details": "エラー詳細",
+	"clusterError.recovery": "クラスター詳細で失敗した手順と関連リソースを確認してください。セキュリティグループ、ネットワーク、クォータの問題を解決して状態を再取得してください。",
+	"clusterError.loadFailed": "クラスター一覧を取得できませんでした",
+	"clusterError.reload": "再読み込み"
 }

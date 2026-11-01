@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+import yaml
 from jinja2 import Environment, StrictUndefined
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -189,3 +190,82 @@ def test_mcp_requests_preserve_target_method_body_and_frontend_boundaries(proxy,
         }
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("kind", ["compose", "kolla", "kolla-direct"])
+def test_cloud_shell_ticket_route_is_silent_but_adjacent_routes_remain_logged(kind, tmp_path):
+    requested = os.environ.get("HAPROXY_BIN")
+    binary = shutil.which(requested or "haproxy")
+    if binary is None:
+        if requested:
+            pytest.fail(f"HAPROXY_BIN is unavailable: {requested}")
+        pytest.skip("Install HAProxy or set HAPROXY_BIN to exercise actual access logs")
+    with _upstream("backend") as backend_port, _upstream("frontend") as frontend_port:
+        port = _unused_port()
+        if kind == "kolla-direct":
+            role = ROOT / "deploy/kolla/ansible/roles/afterglow"
+            defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+            extra = defaults["afterglow_services"]["afterglow-backend"]["haproxy"]["afterglow-api"]
+            configuration = (
+                "defaults\n    mode http\n    timeout connect 2s\n"
+                "    timeout client 5s\n    timeout server 5s\n"
+                f"frontend direct\n    bind 127.0.0.1:{port}\n"
+                "    default_backend afterglow-api_back\nbackend afterglow-api_back\n"
+                + "\n".join("    " + line for line in extra["backend_http_extra"])
+                + f"\n    server backend 127.0.0.1:{backend_port}\n"
+            )
+        else:
+            configuration = _configuration(kind, port, backend_port, frontend_port)
+        configuration = "global\n    log stdout format raw local0 info\n" + configuration.replace(
+            "defaults\n", "defaults\n    log global\n    option httplog\n", 1
+        )
+        config = tmp_path / "logged-haproxy.cfg"
+        config.write_text(configuration)
+        parsed = subprocess.run([binary, "-c", "-f", str(config)], capture_output=True, text=True)
+        assert parsed.returncode == 0, parsed.stdout + parsed.stderr
+        with (tmp_path / "access.log").open("w+") as log:
+            process = subprocess.Popen([binary, "-db", "-f", str(config)], stdout=log, stderr=log)
+            try:
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                            break
+                    except OSError:
+                        if process.poll() is not None or time.monotonic() >= deadline:
+                            log.seek(0)
+                            pytest.fail(f"HAProxy did not become ready: {log.read()}")
+                        time.sleep(0.02)
+                paths = [
+                    "/api/v1/cloud-shell/ws?ticket=opaque-shell-ticket-must-not-log",
+                    "/api/v1/cloud-shell/ws-extra?probe=adjacent-route-visible",
+                    "/api/v1/cloud-shell/tickets?probe=tickets-route-visible",
+                ]
+                for path in paths:
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                    try:
+                        connection.request("GET", path, headers={"Host": "cloud.dmslab.re.kr"})
+                        response = connection.getresponse()
+                        assert response.status == 200
+                        assert json.loads(response.read())["path"] == path
+                    finally:
+                        connection.close()
+                deadline = time.monotonic() + 5
+                while True:
+                    log.seek(0)
+                    emitted = log.read()
+                    if "adjacent-route-visible" in emitted and "tickets-route-visible" in emitted:
+                        break
+                    if time.monotonic() >= deadline:
+                        pytest.fail(f"Unrelated access logs were not preserved: {emitted}")
+                    time.sleep(0.02)
+                assert "opaque-shell-ticket-must-not-log" not in emitted
+                assert "/api/v1/cloud-shell/ws?" not in emitted
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()

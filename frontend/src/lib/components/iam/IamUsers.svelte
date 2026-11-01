@@ -12,7 +12,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
@@ -83,7 +83,7 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap gap-2"><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('refresh')}</Button></div>
 	<Alert tone="info">{t('evictionHelp')}<p class="mt-2">{t('evictionReadmission')}</p></Alert>
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={users.length ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error && !open}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
 	<ResponsiveTable>

@@ -518,9 +518,11 @@ describe('Image Studio', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		expect(screen.queryByRole('img', { name: t('imageStudio.generatedImage') })).toBeNull();
 		const developing = await screen.findByLabelText(t('imageStudio.developing'));
-		expect(developing.getAttribute('aria-busy')).toBe('true');
+		expect(within(developing).getByText(t('imageStudio.developing')).getAttribute('aria-busy')).toBe('true');
 		expect((developing as HTMLElement).style.aspectRatio).toBe('1536 / 1024');
-		expect(within(developing).getByRole('status')).toBeTruthy();
+		const status = within(developing).getByRole('status');
+		expect(status).toBeTruthy();
+		expect(status.closest('[aria-busy="true"]')).toBeNull();
 		await fireEvent.click(await screen.findByRole('button', { name: '작업 취소' }));
 		await screen.findByText('작업이 취소되었습니다.');
 		expect(api.cancel).toHaveBeenCalledWith('run-1', { token: 'token', projectId: 'project-1' });

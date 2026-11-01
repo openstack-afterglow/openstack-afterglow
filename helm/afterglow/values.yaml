@@ -8,6 +8,10 @@
 # Do not inject a default DEBUG environment variable that would override TOML.
 debug: false
 
+# Global native schedule writer; enable only for the verified shared cloud Redis cohort.
+instanceUsage:
+  schedulerEnabled: false
+
 # -----------------------------------------------------------------------------
 # 이미지
 # -----------------------------------------------------------------------------
@@ -192,9 +196,9 @@ cache:
 # [session]
 # -----------------------------------------------------------------------------
 session:
-  timeoutSeconds: 86400
+  timeoutSeconds: 604800
   warningBeforeSeconds: 300
-  jwtAccessTtl: 900
+  jwtAccessTtl: 3600
   jwtRefreshTtl: 604800
   tokenIpBindingMode: "subnet"
 
@@ -572,8 +576,8 @@ cloudShell:
   # Containers and home volumes live in serviceProjectId, never in user projects.
   # Empty networkId uses that project's external-connected default network.
   networkId: ""
-  # "default" resolves the dedicated project's default group with its existing rules
-  # (no egress-only guarantee). Explicit overrides must be owned by that project.
+  # Selected group must have no ingress or remote-group rules; ordinary default
+  # groups with lateral ingress are rejected. Egress SGs alone do not deny metadata.
   securityGroup: "default"
   authUrl: ""
   interface: "public"
@@ -581,6 +585,8 @@ cloudShell:
   homeSizeGib: 5
   cpu: 1.0
   memoryMib: 1024
+  # Must match native driver deny routes; append operator management CIDRs.
+  blockedCidrs: ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]
   idleTimeoutSeconds: 1200
   maxSessionSeconds: 3600
   ticketTtlSeconds: 60

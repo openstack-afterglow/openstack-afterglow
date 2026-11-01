@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/topology';
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
@@ -14,7 +15,6 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
-	import CanvasLegend from '$lib/components/topology/canvas/CanvasLegend.svelte';
 	import NetworkDetailPanel from '$lib/components/NetworkDetailPanel.svelte';
 	import NetworkCreateModal from '$lib/components/dashboard/network/networks/NetworkCreateModal.svelte';
 	import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
@@ -403,7 +403,7 @@
 		{/if}
 	{/if}
 	{#if loading}
-		<LoadingSkeleton variant="card" rows={8} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('topology.title') })} />
 	{:else if data}
 		{@const _visibleNets = data.networks.filter(n => n.is_external || n.is_shared || n.project_id === $auth.projectId)}
 		{@const _projectRouters = data.routers.filter(r => r.project_id === $auth.projectId)}
@@ -451,9 +451,7 @@
 			{/if}
 		</div>
 
-		{#if view === 'canvas'}
-			<CanvasLegend />
-		{:else}
+		{#if view === 'lane'}
 			<TopologyLegend />
 		{/if}
 

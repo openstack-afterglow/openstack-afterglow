@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 249 254" role="img" aria-labelledby="afterglow-progress-circular-title" style="color:var(--afterglow-artwork-warm,#f4976c)">
+<title id="afterglow-progress-circular-title">진행률 · 원형</title>
+<g fill="currentColor" font-family="monospace" font-size="14" xml:space="preserve">
+  <text x="12" y="24">                         </text>
+  <text x="12" y="42">       ·····######       </text>
+  <text x="12" y="60">    ···           ###    </text>
+  <text x="12" y="78">  ···               ##   </text>
+  <text x="12" y="96">  ·                   #  </text>
+  <text x="12" y="114"> ·                     # </text>
+  <text x="12" y="132"> ·         42%         # </text>
+  <text x="12" y="150"> ·                     # </text>
+  <text x="12" y="168">  ·                   #  </text>
+  <text x="12" y="186">  ···               ###  </text>
+  <text x="12" y="204">    ···           ###    </text>
+  <text x="12" y="222">       ··········#       </text>
+  <text x="12" y="240">                         </text>
+</g></svg>

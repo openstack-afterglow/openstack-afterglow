@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onDestroy } from 'svelte';
   import FormModal from '$lib/components/ui/FormModal.svelte';
   import Field from '$lib/components/ui/Field.svelte';
@@ -76,6 +77,6 @@
   </div>
   {#snippet actions()}
     <Button variant="secondary" disabled={submitting} onclick={() => { open = false; onClose(); }}>{tc(rereadRequired ? 'actions.close' : 'actions.cancel')}</Button>
-    {#if !rereadRequired}<Button variant="danger" disabled={submitting || !domainId || user.domain_id !== domainId || confirmation !== user.id} ariaBusy={submitting} onclick={submit}>{submitting ? t('state.deleting') : t('actions.delete')}</Button>{/if}
+    {#if !rereadRequired}<Button variant="danger" disabled={submitting || !domainId || user.domain_id !== domainId || confirmation !== user.id} ariaBusy={submitting} onclick={submit}>{#if submitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{submitting ? t('state.deleting') : t('actions.delete')}</Button>{/if}
   {/snippet}
 </FormModal>

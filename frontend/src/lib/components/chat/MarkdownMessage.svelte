@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { renderMarkdown, highlightCodeBlocks } from '$lib/api/chatMarkdown';
 	import { enhanceChatMarkdown } from '$lib/api/chatRichOutput';
@@ -78,10 +79,11 @@
 	});
 </script>
 
-<div bind:this={host} class="md-body" class:streaming={streaming && content.length > 0}>
+<div bind:this={host} class="md-body">
 	<!-- renderMarkdown 이 DOMPurify.sanitize 로 살균한 HTML -->
 	{@html html}
 </div>
+{#if streaming && content.length > 0}<LoadingState variant="inline" label="" aria-hidden="true" />{/if}
 
 <style>
 	.md-body {
@@ -90,17 +92,6 @@
 		color: var(--color-ink-1);
 		word-break: break-word;
 		overflow-wrap: anywhere;
-	}
-	.md-body.streaming::after {
-		content: '';
-		display: inline-block;
-		width: 0.45rem;
-		height: 1.05em;
-		margin-left: 0.14rem;
-		vertical-align: -0.16em;
-		border-radius: 1px;
-		background: var(--color-accent);
-		animation: motion-breathe var(--motion-duration-status-pulse) var(--motion-ease-in-out) infinite;
 	}
 	.md-body :global(.math-display) {
 		display: block;
@@ -131,9 +122,6 @@
 	}
 	.md-body :global(pre[data-mermaid-error]) {
 		border-color: var(--color-state-warning);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.md-body.streaming::after { animation: none; }
 	}
 	.md-body :global(p) {
 		margin: 0 0 0.75em;

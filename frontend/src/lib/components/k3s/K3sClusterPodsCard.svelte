@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -43,7 +43,7 @@
 	<SectionHeader title="Pod" meta={t('pods.count', { count: s.pods.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6"><ActivityIndicator label={t('pods.loading')} /></div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6"><LoadingState variant="section" label={t('pods.loading')} /></div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.pods.length === 0}
@@ -57,7 +57,7 @@
       <div class="flex flex-wrap items-center gap-2"><strong class="text-sm font-mono break-all">{pod.name}</strong><span class="px-1.5 py-0.5 rounded text-xs bg-surface-sunken text-ink-1">{pod.phase || '—'}</span></div>
       <p class="text-xs">{t('pods.ready')}: {pod.ready} · <span class={pod.restarts > 5 ? 'text-state-warning-text' : 'text-ink-2'}>{t('pods.restarts')}: {pod.restarts}</span></p>
       {#snippet details()}<p class="text-xs font-mono break-all">{t('pods.node')}: {pod.node ?? '—'}</p>{/snippet}
-      {#snippet actions()}<button onclick={() => { viewingLogPod = pod; }} disabled={!$k3sPermissions.credentials} class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2">{t('pods.logs')}</button><button onclick={() => s.removePod(pod.name)} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-sunken text-state-danger-text disabled:opacity-40">{#if actioning}<ActivityIndicator size="xs" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>{/snippet}
+      {#snippet actions()}<button onclick={() => { viewingLogPod = pod; }} disabled={!$k3sPermissions.credentials} class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2">{t('pods.logs')}</button><button onclick={() => s.removePod(pod.name)} disabled={!$k3sPermissions.workloads || !!s.workloadActioning} class="px-2 py-1 rounded text-xs bg-surface-sunken text-state-danger-text disabled:opacity-40">{#if actioning}<LoadingState variant="control" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>{/snippet}
      </CompactResourceCard>
     {/each}
    {/snippet}
@@ -96,7 +96,7 @@
 										onclick={() => s.removePod(pod.name)}
 										disabled={!$k3sPermissions.workloads || !!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-300 hover:bg-red-900/70 disabled:opacity-40 transition-colors"
-									>{#if actioning}<ActivityIndicator size="xs" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>
+									>{#if actioning}<LoadingState variant="control" label={t('pods.deleting')} />{:else}{t('pods.delete')}{/if}</button>
 								</div>
 							</td>
 						</tr>

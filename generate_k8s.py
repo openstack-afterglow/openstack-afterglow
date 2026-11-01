@@ -550,6 +550,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("[DEFAULT]")
     lines.append(f"debug = {_toml_bool(cfg.get('DEFAULT', {}).get('debug', False))}")
     lines.append("")
+    lines.append("[instance_usage]")
+    lines.append(f"scheduler_enabled = {_toml_bool(cfg.get('instance_usage', {}).get('scheduler_enabled', False))}")
+    lines.append("")
 
     # [openstack]
     lines.append("[openstack]")
@@ -654,8 +657,8 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [session]
     lines.append("[session]")
-    lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 86400)}")
-    lines.append(f"jwt_access_ttl = {sess.get('jwt_access_ttl', 900)}")
+    lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 604800)}")
+    lines.append(f"jwt_access_ttl = {sess.get('jwt_access_ttl', 3600)}")
     lines.append(f"jwt_refresh_ttl = {sess.get('jwt_refresh_ttl', 604800)}")
     lines.append(f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}")
     lines.append("")
@@ -737,6 +740,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         ("home_size_gib", 5),
         ("cpu", 1.0),
         ("memory_mib", 1024),
+        ("blocked_cidrs", ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]),
         ("idle_timeout_seconds", 1200),
         ("max_session_seconds", 3600),
         ("ticket_ttl_seconds", 60),

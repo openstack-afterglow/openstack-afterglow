@@ -7,7 +7,7 @@
 	import ThinkingBlock from './ThinkingBlock.svelte';
 	import ExecutionTimeline from './ExecutionTimeline.svelte';
 	import ChatBubble from '$lib/components/ui/ChatBubble.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import type { AvailableModel, ChatMessage } from '$lib/api/chatTree';
 	import { formatMetrics, type StreamMetrics } from '$lib/api/chatMetrics';
@@ -22,7 +22,7 @@
 	interface Props {
 		message: ChatMessage & { streaming?: boolean };
 		models: AvailableModel[];
-		/** 생성 속도 계측(tok/s). 없으면 미표시. */
+		/** 브라우저 TTFT 및 생성 속도 계측. 없으면 미표시. */
 		metrics?: StreamMetrics | null;
 		/** 라이브 스트리밍 중 누적된 도구 실행 아이템(draft 전용). */
 		toolItems?: ToolActivityItem[];
@@ -77,6 +77,10 @@
 	const retryable = $derived(isUser && message.execution?.retryable === true);
 	const reasoningActive = $derived(streaming && message.content.length === 0);
 	const metricsText = $derived(formatMetrics(metrics));
+	const timeFormatter = $derived(new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }));
+	const ttftValue = $derived(metrics?.ttftSeconds == null ? null : timeFormatter.format(metrics.ttftSeconds));
+	const ttftText = $derived(ttftValue === null ? '' : t('message.ttft', { seconds: ttftValue }));
+	const ttftExplanation = $derived(ttftValue === null ? '' : t('message.ttftExplanation', { seconds: ttftValue }));
 	const visibleActivity = $derived(visibleActivityItems(activityItems, streaming));
 	const hasProgress = $derived(
 		progressElsewhere || visibleActivity.some((item) => activityIsRunning(item, activityItems, streaming)) ||
@@ -189,14 +193,19 @@
 			{/if}
 			<MarkdownMessage content={message.content} {streaming} />
 			{#if streaming && message.content.length === 0 && !hasProgress}
-				<ActivityIndicator variant="orbit" label={t('message.preparingResponse')} />
+				<LoadingState variant="inline" label={t('message.preparingResponse')} />
 			{/if}
-			{#if streaming && metricsText}
-				<div class="live-metric" aria-live="off">{metricsText}</div>
+			{#if streaming && (metricsText || ttftText)}
+				<div class="live-metric" aria-live="off">
+					{#if ttftText}<span title={ttftExplanation} aria-label={ttftExplanation}>{ttftText}</span>{/if}
+					{#if ttftText && metricsText} · {/if}
+					{metricsText}
+				</div>
 			{/if}
 		{/if}
 
 		{#snippet footer()}
+			<div class="message-footer">
 			<div class="actions" class:user={isUser} class:retryable>
 				{#if hasPreviousVersion || hasNextVersion}
 					<div class="versions">
@@ -236,9 +245,13 @@
 					<button type="button" class="act" disabled={busy} onclick={onFork} title={t('message.forkHere')} aria-label={t('message.fork')}>
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="9" r="2.5" /><path d="M6 8.5v3a3 3 0 0 0 3 3h6M18 11.5v.5" stroke-linecap="round" /></svg>
 					</button>
-					{#if metricsText}
-						<span class="metric-tag" title={t('message.generationSpeed')}>{metricsText}</span>
-					{/if}
+				{/if}
+			</div>
+				{#if !isUser && ttftText}
+					<span class="metric-tag" title={ttftExplanation} aria-label={ttftExplanation}>{ttftText}</span>
+				{/if}
+				{#if !isUser && metricsText}
+					<span class="metric-tag" title={t('message.generationSpeed')}>{metricsText}</span>
 				{/if}
 			</div>
 		{/snippet}
@@ -255,8 +268,17 @@
 	.row.assistant {
 		align-items: flex-start;
 	}
+	.message-footer {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.3rem;
+		min-width: 0;
+		max-width: 100%;
+	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.15rem;
 		opacity: 0;
@@ -314,15 +336,16 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.metric-tag {
-		font-size: 0.68rem;
+		font-size: 0.75rem;
 		color: var(--color-ink-2);
 		padding-left: 0.3rem;
 		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 	.live-metric {
 		margin-top: 0.35rem;
-		font-size: 0.68rem;
+		font-size: 0.75rem;
 		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}

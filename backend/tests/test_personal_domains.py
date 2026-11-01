@@ -612,6 +612,36 @@ async def test_legacy_login_preserves_identity_and_reuses_primary(directory, enr
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["deleted", "disabled", "membership", "foreign-domain", "duplicate-primary"])
+async def test_settled_personal_login_revalidates_native_binding_without_reprovision(directory, enrollments, change):
+    primary = await account_spaces.ensure_personal_project("foreign")
+    user = vars(directory.users["foreign"]).copy()
+    project = directory.personal_projects[primary["id"]]
+    if change == "deleted":
+        del directory.personal_projects[primary["id"]]
+    elif change == "disabled":
+        project.enabled = False
+    elif change == "membership":
+        directory.ks.roles.revoke(rid("member"), user="foreign", project=primary["id"])
+    elif change == "foreign-domain":
+        project.domain_id = "other"
+    else:
+        directory.personal_projects["duplicate-primary"] = SimpleNamespace(
+            **{**vars(project), "id": "duplicate-primary"}
+        )
+        directory.ks.roles.grant(rid("member"), user="foreign", project="duplicate-primary")
+    projects = set(directory.personal_projects)
+    with pytest.raises(HTTPException) as rejected:
+        await account_spaces.ensure_personal_project("foreign")
+    assert rejected.value.status_code == 503
+    assert set(directory.personal_projects) == projects and vars(directory.users["foreign"]) == user
+    async with enrollments() as session:
+        intent = (await session.execute(select(PersonalProjectIntent))).scalar_one()
+        assert intent.status == "accepted" and intent.primary_user_id == "foreign"
+        assert intent.personal_project_id == primary["id"]
+
+
+@pytest.mark.asyncio
 async def test_legacy_unknown_create_fences_login_and_preserves_identity(directory, enrollments):
     original, calls = vars(directory.users["foreign"]).copy(), []
 

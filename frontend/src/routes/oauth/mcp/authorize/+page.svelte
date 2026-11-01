@@ -10,7 +10,7 @@
 		pendingMcpConsentTicket,
 		storeMcpConsentTicket,
 	} from '$lib/utils/mcpConsent';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -204,6 +204,9 @@
 </svelte:head>
 
 <main class="consent-page">
+	{#if loading && !error}
+		<LoadingState variant="surface" style="min-height: 100dvh" label={t('mcpConsent.loading')} />
+	{:else}
 	<PageShell class="flex justify-center">
 	<Card surface="raised" padding="lg" class="consent-card motion-stagger">
 		<header>
@@ -218,7 +221,7 @@
 			</Alert>
 		{/if}
 		{#if loading}
-			<ActivityIndicator label={t('mcpConsent.loading')} />
+			<LoadingState variant="surface" label={t('mcpConsent.loading')} />
 		{:else if consent}
 			{@const requestsManage = consent.scopes.includes('mcp:write')}
 			<section aria-labelledby="consent-client-heading" class="details">
@@ -270,7 +273,7 @@
 			</Alert>
 			<div class="actions">
 				{#if deciding}
-					<ActivityIndicator label={t('mcpConsent.actions.processing')} class="decision-activity motion-fade" />
+					<LoadingState variant="inline" label={t('mcpConsent.actions.processing')} class="decision-activity motion-fade" />
 				{/if}
 				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>{t('mcpConsent.actions.deny')}</Button>
 				<Button onclick={() => decide('approve')} disabled={!canApprove}>{accessLevel === 'manage' ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
@@ -281,6 +284,7 @@
 		{/if}
 	</Card>
 	</PageShell>
+	{/if}
 </main>
 
 <style>

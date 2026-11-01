@@ -80,7 +80,6 @@ describe('instance operation feedback', () => {
 		await fireEvent.click(other);
 		expect(detachVolume).toHaveBeenCalledOnce();
 		expect(detachVolume).toHaveBeenCalledWith('volume-a');
-		expect(screen.getAllByText('in-use')).toHaveLength(2);
 	});
 
 	it('keeps initial console loading feedback outside the copyable log content', async () => {

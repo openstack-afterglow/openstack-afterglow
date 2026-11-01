@@ -82,6 +82,9 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     """afterglow.conf dict → Helm values dict."""
     out: dict = {}
     out["debug"] = cfg.get("DEFAULT", {}).get("debug", False)
+    out["instanceUsage"] = {
+        "schedulerEnabled": cfg.get("instance_usage", {}).get("scheduler_enabled", False),
+    }
 
     os_cfg  = cfg.get("openstack", {})
     app     = cfg.get("app", {})
@@ -260,7 +263,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     cloud_shell_out: dict = {}
     for k in ("service_project_id", "image", "image_pull_policy", "registry_id",
               "network_id", "security_group", "auth_url", "interface", "volume_type",
-              "home_size_gib", "cpu", "memory_mib", "idle_timeout_seconds",
+              "home_size_gib", "cpu", "memory_mib", "blocked_cidrs", "idle_timeout_seconds",
               "max_session_seconds", "ticket_ttl_seconds", "reconcile_interval_seconds",
               "zun_websocket_origin"):
         if k in cloud_shell:

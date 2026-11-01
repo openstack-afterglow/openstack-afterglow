@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -11,7 +12,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import BucketCreateDialog from '$lib/components/object-storage/BucketCreateDialog.svelte';
 	import BucketCardGrid from '$lib/components/object-storage/BucketCardGrid.svelte';
-	import BucketCardSkeleton from '$lib/components/object-storage/BucketCardSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -25,6 +26,7 @@
 	let account = $state<AccountMeta | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
+	let inventoryLoaded = $state(false);
 	let trashLoading = $state(true);
 	let activeError = $state('');
 	let trashError = $state('');
@@ -59,7 +61,7 @@
 		const requestProject = projectId;
 		const generation = ++loadGeneration;
 		const owns = () => generation === loadGeneration && token === requestToken && projectId === requestProject;
-		if (containers.length === 0) loading = true;
+		if (!inventoryLoaded) loading = true;
 		else refreshing = true;
 		trashLoading = true;
 		activeError = '';
@@ -71,11 +73,11 @@
 			.then((value) => {
 				if (!owns()) return;
 				containers = value;
+				inventoryLoaded = true;
 				retainSelection();
 			})
 			.catch((loadError) => {
 				if (!owns()) return;
-				containers = [];
 				activeError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.loadFailed');
 			})
 			.finally(() => {
@@ -89,7 +91,6 @@
 			})
 			.catch((loadError) => {
 				if (!owns()) return;
-				deletedContainers = [];
 				trashError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.trashLoadFailed');
 			})
 			.finally(() => {
@@ -101,7 +102,6 @@
 			})
 			.catch((loadError) => {
 				if (!owns()) return;
-				account = null;
 				accountError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.accountLoadFailed');
 			})
 			.finally(() => {
@@ -214,6 +214,7 @@
 		trashArrivals.reset();
 		bucketArrivals.reset();
 		containers = [];
+		inventoryLoaded = false;
 		deletedContainers = [];
 		account = null;
 		if (!pid) {
@@ -244,8 +245,8 @@
 		{/snippet}
 	</ResourceToolbar>
 	<section aria-label={t('buckets.dashboardPage.accountStats')} class="mb-6">
-		{#if accountLoading}
-			<Alert tone="neutral">{t('buckets.dashboardPage.accountLoading')}</Alert>
+		{#if accountLoading && !account}
+			<LoadingState variant="section" label={t('buckets.dashboardPage.accountLoading')} />
 		{:else if accountError}
 			<Alert tone="danger" title={t('buckets.dashboardPage.accountLoadFailed')}>{accountError}</Alert>
 		{:else if account}
@@ -265,7 +266,7 @@
 
 
 	{#if loading}
-		<BucketCardSkeleton />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('buckets.dashboardPage.title') })} />
 	{:else if containers.length === 0 && !activeError}
 		<EmptyState headline={t('buckets.dashboardPage.emptyTitle')} description={t('buckets.dashboardPage.emptyDescription')} />
 	{:else}
@@ -295,7 +296,7 @@
 	{/if}
 
 		{#if trashLoading}
-			<Alert tone="neutral" class="mt-8">{t('buckets.dashboardPage.trashLoading')}</Alert>
+			<LoadingState variant="inline" class="mt-8" label={t('buckets.dashboardPage.trashLoading')} />
 		{:else if trashError}
 			<Alert tone="danger" class="mt-8" title={t('buckets.dashboardPage.trashLoadFailed')}>{trashError}</Alert>
 		{/if}
@@ -341,8 +342,8 @@
 								</div>
 							</div>
 							<div class="flex gap-2">
-								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{restoring === c.name ? t('buckets.dashboardPage.restoring') : t('buckets.dashboardPage.restore')}</button>
-								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{deleting === c.name ? t('buckets.dashboardPage.deleting') : t('buckets.dashboardPage.purge')}</button>
+								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{#if restoring === c.name}<LoadingState variant="control" label={t('buckets.dashboardPage.restoring')} />{:else}{t('buckets.dashboardPage.restore')}{/if}</button>
+								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{#if deleting === c.name}<LoadingState variant="control" label={t('buckets.dashboardPage.deleting')} />{:else}{t('buckets.dashboardPage.purge')}{/if}</button>
 							</div>
 						</div>
 					{/each}

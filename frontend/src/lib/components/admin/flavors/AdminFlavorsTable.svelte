@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { t as poolText } from '$lib/i18n/ns/compute-pools';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { Flavor } from '$lib/types/flavor';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { isManagedFlavor } from '$lib/api/computePools';
 
 	let {
 		flavors,
@@ -56,6 +58,9 @@
 			if (sortColumn === 'is_public') {
 				va = a.is_public ? 1 : 0;
 				vb = b.is_public ? 1 : 0;
+			} else if (sortColumn === 'name') {
+				va = a.display_name ?? a.name;
+				vb = b.display_name ?? b.name;
 			} else {
 				va = (a as unknown as Record<string, unknown>)[sortColumn] as string | number;
 				vb = (b as unknown as Record<string, unknown>)[sortColumn] as string | number;
@@ -87,9 +92,10 @@
 		</div>
 		{#each pagedFlavors as f (f.id)}
 			<CompactResourceCard>
-				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
+				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.display_name ?? f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.gpu_count === null || f.is_gpu === null}<Pill tone="neutral" size="xs">GPU · {poolText('unknown')}</Pill>{:else if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
+				{#if f.display_name}<p class="break-all text-xs text-ink-2">{f.name} · <span class="font-mono">{f.id}</span></p>{/if}
 				<p class="text-xs text-ink-2">{f.vcpus} vCPU · {formatRam(f.ram)} · {f.disk} GB</p>
-				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id} onclick={() => onDelete(f.id)}>{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id || isManagedFlavor(f)} onclick={() => onDelete(f.id)}>{#if deletingId === f.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
 				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{f.id}</p>{#if f.description}<p>{f.description}</p>{/if}</div>{/snippet}
 			</CompactResourceCard>
 		{/each}
@@ -127,7 +133,8 @@
 					<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors">
 						<td class="py-2 pr-4">
 							<div class="min-w-0">
-								<span class="text-ink-0 max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.name}</span>
+								<span class="text-ink-0 max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.display_name ?? f.name}</span>
+								<p class="break-all text-xs text-ink-2">{#if f.display_name && f.display_name !== f.name}{f.name} · {/if}<span class="font-mono">{f.id}</span></p>
 								{#if f.description}
 									<div class="text-ink-2 text-xs mt-0.5">{f.description}</div>
 								{/if}
@@ -146,8 +153,10 @@
 							</div>
 						</td>
 						<td class="py-2 pr-4 text-ink-2">
-							{#if f.is_gpu}
-								<span class="text-purple-400">GPU{f.gpu_count > 1 ? ` x${f.gpu_count}` : ''}</span>
+							{#if f.gpu_count === null || f.is_gpu === null}
+								<span>GPU · {poolText('unknown')}</span>
+							{:else if f.is_gpu}
+								<span class="text-purple-400">GPU ×{f.gpu_count}</span>
 							{:else}
 								-
 							{/if}
@@ -160,11 +169,11 @@
 								>{t('flavors.manage.action')}</button>
 								<button
 									onclick={() => onDelete(f.id)}
-									disabled={deletingId === f.id}
+									disabled={deletingId === f.id || isManagedFlavor(f)}
 									class="text-state-danger-text hover:text-state-danger-text/90 text-xs"
 								>
 									{#if deletingId === f.id}
-										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.delete.pending')}</span></span>
+										<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('flavors.delete.pending')}</span></span>
 									{:else}{t('flavors.delete.action')}{/if}
 								</button>
 							</div>

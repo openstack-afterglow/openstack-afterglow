@@ -19,7 +19,7 @@ export const mcpGuide: DocGuide = {
 				'이 가이드는 외부 AI 클라이언트 → Afterglow MCP 서버의 인바운드 연결입니다. /dashboard/account의 외부 AI 접근에서 발급한 개인 키는 발급 사용자와 당시 선택한 프로젝트에 묶입니다. 브라우저 로그인 토큰, Keystone 비밀번호, Lumen 추론 API 키를 대신 넣지 마세요.',
 				'Afterglow는 제한된 Keystone application credential로 위임 권한을 실행합니다. 개인 키는 다른 사용자·프로젝트나 관리자 전체 클라우드 접근을 허용하지 않습니다. 클라이언트 설정에 프로젝트 ID를 추가하거나 대시보드 프로젝트를 바꿔도 기존 키의 프로젝트는 바뀌지 않습니다.'
 			],
-			links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account' }]
+			links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account/mcp' }]
 		},
 		{
 			id: 'personal-key',
@@ -108,7 +108,7 @@ export const mcpGuide: DocGuide = {
 					code: 'codex mcp add afterglow-oauth --url https://cloud.dmslab.re.kr/mcp\ncodex mcp login afterglow-oauth'
 				}
 			],
-			links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account' }]
+			links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account/mcp' }]
 		},
 		{
 			id: 'clients',
@@ -178,7 +178,7 @@ export const mcpGuide: DocGuide = {
 	],
 	related: ['getting-started', 'lumen'],
 	consoleLinks: [
-		{ label: '계정의 외부 AI 접근', href: '/dashboard/account' },
+		{ label: '계정의 외부 AI 접근', href: '/dashboard/account/mcp' },
 		{ label: '채팅 설정', href: '/dashboard/chat/settings' }
 	],
 	externalLinks: [

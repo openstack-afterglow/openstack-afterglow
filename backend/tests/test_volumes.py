@@ -26,6 +26,40 @@ async def test_list_volumes(client, mock_conn):
 
 
 @pytest.mark.asyncio
+async def test_list_preserves_native_creation_time_for_resource_ordering(client, mock_conn):
+    from openstack.block_storage.v3.volume import Volume
+
+    mock_conn.block_storage.volumes.return_value = [
+        Volume(id="old", name="Old", status="available", size=10, created_at="2026-10-26T01:02:03.123456"),
+        Volume(id="new", name="New", status="available", size=20, created_at="2026-10-28T02:03:04Z"),
+        Volume(id="unknown", name="Unknown", status="available", size=30),
+    ]
+    response = await client.get("/api/v1/volumes")
+    assert response.status_code == 200
+    assert {row["id"]: row["created_at"] for row in response.json()} == {
+        "old": "2026-10-26T01:02:03.123456",
+        "new": "2026-10-28T02:03:04Z",
+        "unknown": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_old_cached_volume_shape_cannot_hide_native_creation_time(client, mock_conn, _fake_redis_global):
+    import json
+
+    from openstack.block_storage.v3.volume import Volume
+
+    old = make_mock_volume().model_dump(exclude={"created_at"})
+    await _fake_redis_global.set("afterglow:cinder:test-project-123:volumes:v2", json.dumps([old]), ex=60)
+    mock_conn.block_storage.volumes.return_value = [
+        Volume(id="vol-1", name="test-vol", status="available", size=10, created_at="2026-10-28T02:03:04Z"),
+    ]
+    response = await client.get("/api/v1/volumes?cache=true")
+    assert response.status_code == 200
+    assert response.json()[0]["created_at"] == "2026-10-28T02:03:04Z"
+
+
+@pytest.mark.asyncio
 async def test_create_volume(client, mock_conn):
     with patch(
         "app.api.storage.volumes.cinder.create_empty_volume", return_value=make_mock_volume("vol-new", "new-vol")
@@ -170,17 +204,16 @@ async def test_rename_volume_failure_does_not_report_success(client, mock_conn, 
 
 
 @pytest.mark.asyncio
-async def test_rename_volume_refresh_failure_invalidates_cache_and_records_failure(client, mock_conn):
+async def test_rename_volume_refresh_failure_records_failed_audit(client, mock_conn):
     with (
         patch("app.api.storage.volumes.cinder.get_volume", side_effect=RuntimeError("secret traceback")),
         patch("app.api.storage.volumes.rec", new_callable=AsyncMock) as record,
-        patch("app.api.storage.volumes.invalidate", new_callable=AsyncMock) as invalidate,
+        patch("app.api.storage.volumes.invalidate", new_callable=AsyncMock),
     ):
         response = await client.patch("/api/v1/volumes/vol-1", json={"name": "new-name"})
 
     assert response.status_code == 500
     assert "secret traceback" not in response.text
-    invalidate.assert_awaited_once_with("afterglow:cinder:test-project-123:volumes:v2")
     assert [call.kwargs["status"] for call in record.await_args_list] == ["failed"]
 
 

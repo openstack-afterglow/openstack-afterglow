@@ -46,8 +46,8 @@
 	<span role="listitem"><span class="mono fip" style:color={TOPOLOGY_COLORS.external}>✦</span>{t('legend.floatingIp')}</span>
 	<span role="listitem"><Pill tone="warm" size="xs">2NIC</Pill>{t('canvasLegend.multiNic')}</span>
 	<span role="listitem"><span class="ln" style:background={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.connection')}</span>
-	<span role="listitem"><span class="dot dot-in" style:background={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.isolatedTraffic')}</span>
-	<span role="listitem"><span class="dot dot-ns" style:background={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.gatewayTraffic')}</span>
+	<span role="listitem"><span class="dot" style:background={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.measuredTx')}</span>
+	<span role="listitem"><span class="dot" style:background={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.measuredRx')}</span>
 	<span role="listitem"><span class="ln dash" style:--c={TOPOLOGY_COLORS.internal}></span>{t('canvasLegend.lbMember')}</span>
 	<span role="listitem"><span class="ln dash" style:--c={TONE_CSS_VAR.neutral}></span>{t('canvasLegend.inactive')}</span>
 	<span role="listitem"><Pill tone="neutral" size="xs"><span class="mono">▼ ▲</span></Pill><RichText segments={t.rich('canvasLegend.trunk')} tags={{ mono: monoText }} /></span>
@@ -55,8 +55,6 @@
 
 <style>
 	.dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
-	.dot-ns { border: 1px solid var(--color-surface-base); }
-	.dot-in { border: none; }
 	.legend {
 		display: flex;
 		flex-wrap: wrap;

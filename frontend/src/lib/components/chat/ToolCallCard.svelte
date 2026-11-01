@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import { untrack } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { downloadChatAsset } from '$lib/api/chatAttachments';
 	import { formatToolArgs, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -68,7 +68,7 @@
 		aria-expanded={open}
 	>
 		{#if item.running}
-			<ActivityIndicator variant="spinner" size="xs" />
+			<LoadingState variant="control" label="" aria-hidden="true" />
 		{:else if item.status === 'failed'}
 			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" /></svg>
 		{:else}
@@ -113,7 +113,7 @@
 								aria-label={t('toolCall.downloadFile', { name: file.name })}
 							>
 								{#if downloadingAssetId === file.assetId}
-									<ActivityIndicator variant="download" size="xs" label={t('toolCall.downloading')} />
+									<LoadingState variant="inline" label={t('toolCall.downloading')} />
 								{:else}
 									<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
 										<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
@@ -274,19 +274,5 @@
 		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 		font-size: 0.68rem;
 		overflow-wrap: anywhere;
-	}
-	.tool-head::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		opacity: 0;
-		background: linear-gradient(90deg, transparent, var(--motion-sheen), transparent);
-	}
-	@media (prefers-reduced-motion: no-preference) {
-		.running .tool-head::after {
-			opacity: 0.45;
-			animation: motion-sweep var(--motion-duration-shimmer) var(--motion-ease-in-out) infinite;
-		}
 	}
 </style>

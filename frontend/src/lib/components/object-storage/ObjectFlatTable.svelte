@@ -3,8 +3,7 @@
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import FileIcon from '$lib/components/ui/FileIcon.svelte';
 	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
 	import { createArrivals } from './arrivals';
@@ -31,10 +30,27 @@
 		arrivalContainer = name;
 		arrivals.reset();
 	});
+
+	// Retain a settled directory only while refreshing that exact listing.
+	let completedListing = $state<string | null>(null);
+	let completedObjects = $state.raw<typeof s.objects | null>(null);
+	let pendingListing = '';
+	let listingWasLoading = true;
+	$effect.pre(() => {
+		const owner = JSON.stringify([s.containerName, s.prefix]);
+		if (s.loading) pendingListing = owner;
+		else if (listingWasLoading) {
+			completedListing = pendingListing || owner;
+			completedObjects = s.objects;
+		}
+		listingWasLoading = s.loading;
+	});
+	const retainedListing = $derived(completedObjects === s.objects && completedListing === JSON.stringify([s.containerName, s.prefix]));
 </script>
 
-{#if s.loading}
-	<LoadingSkeleton variant="table" rows={5} />
+{#if s.loading && retainedListing}<LoadingState variant="inline" />{/if}
+{#if s.loading && !retainedListing}
+	<LoadingState variant="surface" />
 {:else if s.objects.length === 0}
 	<div class="text-ink-2 text-sm py-8 text-center">
 		<svg class="w-12 h-12 mx-auto text-ink-2 mb-3" viewBox="0 0 20 20" fill="currentColor">
@@ -147,7 +163,7 @@
 										class="p-1.5 text-ink-2 hover:text-ink-0 hover:bg-surface-selected rounded transition-colors disabled:cursor-default"
 									>
 										{#if downloadPreparing}
-											<ActivityIndicator variant="download" size="sm" />
+											<LoadingState variant="control" label="" />
 										{:else}
 											<svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
 										{/if}

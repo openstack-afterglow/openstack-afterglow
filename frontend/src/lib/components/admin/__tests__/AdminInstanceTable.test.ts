@@ -4,21 +4,11 @@ import type { AdminInstance } from '$lib/types/adminInstance';
 import { t } from '$lib/i18n/ns/admin-compute';
 import { t as instanceT } from '$lib/i18n/ns/instance';
 
-vi.mock('$lib/stores/projectNames', () => ({
-	projectNames: {
-		subscribe: (run: (value: Map<string, string>) => void) => {
-			run(new Map([['project-1', 'Project One']]));
-			return () => {};
-		},
-		load: vi.fn(),
-		reset: vi.fn(),
-	},
-}));
 
 import AdminInstanceTable from '../instances/AdminInstanceTable.svelte';
 
 describe('AdminInstanceTable', () => {
-	it('keeps content interactive while refreshing', async () => {
+	it('opens the selected resource from its name', async () => {
 		const instance: AdminInstance = {
 			id: 'inst-1',
 			name: 'vm-one',
@@ -31,23 +21,15 @@ describe('AdminInstanceTable', () => {
 		};
 		const onOpen = vi.fn();
 
-		const { container } = render(AdminInstanceTable, {
+		render(AdminInstanceTable, {
 			props: {
-				refreshing: true,
 				instances: [instance],
-				markerStack: [],
-				nextMarker: null,
 				selectedIds: new Set<string>(),
 				onOpen,
-				onPrev: vi.fn(),
-				onNext: vi.fn(),
 				onToggleSelect: vi.fn(),
 				onToggleAll: vi.fn(),
 			},
 		});
-
-		expect(container.querySelector('.opacity-60')).toBeNull();
-		expect(container.querySelector('.pointer-events-none')).toBeNull();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'vm-one' }));
 		expect(onOpen).toHaveBeenCalledTimes(1);
@@ -60,8 +42,8 @@ describe('AdminInstanceTable', () => {
 			user_id: 'user-1', flavor: 'small', host: 'host-1', created_at: null,
 		};
 		const { rerender } = render(AdminInstanceTable, {
-			instances: [instance], markerStack: [], nextMarker: null, refreshing: false,
-			selectedIds: new Set<string>(), onOpen: vi.fn(), onPrev: vi.fn(), onNext: vi.fn(),
+			instances: [instance],
+			selectedIds: new Set<string>(), onOpen: vi.fn(),
 			onRecover: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(),
 		});
 		expect(screen.queryByRole('button', { name: t('instances.table.recover') })).toBeNull();
@@ -74,5 +56,23 @@ describe('AdminInstanceTable', () => {
 		expect(screen.queryByRole('button', { name: t('instances.table.recover') })).toBeNull();
 		expect(screen.queryByRole('button', { name: instanceT('rowActions.delete') })).toBeNull();
 		expect(screen.queryByRole('button', { name: instanceT('rowActions.shelve') })).toBeNull();
+	});
+
+	it('uses row-native owner names and preserves deleted or unknown ownership states', () => {
+		const base = { id: 'one', name: 'vm-one', status: 'ACTIVE', project_id: 'p-one', user_id: null, flavor: 'small', host: 'host', created_at: null };
+		render(AdminInstanceTable, {
+			instances: [
+				{ ...base, project_name: 'Research', domain_id: 'd-one', domain_name: 'Science', owner_status: 'known' },
+				{ ...base, id: 'two', project_id: 'p-two', project_name: 'Research', domain_id: 'd-two', domain_name: 'Engineering', owner_status: 'known' },
+				{ ...base, id: 'three', project_id: 'deleted', owner_status: 'deleted_project' },
+				{ ...base, id: 'four', project_id: null, owner_status: 'unknown_owner' },
+			],
+			selectedIds: new Set<string>(), onOpen: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(),
+		});
+		expect(screen.getAllByText('Research')).toHaveLength(2);
+		expect(screen.getByText(`${t('instances.table.domain')}: Science`)).toBeTruthy();
+		expect(screen.getByText(`${t('instances.table.domain')}: Engineering`)).toBeTruthy();
+		expect(screen.getByText(t('instances.table.deletedProject'))).toBeTruthy();
+		expect(screen.getByText(t('instances.table.unknownOwner'))).toBeTruthy();
 	});
 });

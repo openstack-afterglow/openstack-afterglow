@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 # Running a script by path puts ``backend/scripts`` on sys.path, not ``backend``.
@@ -215,6 +216,43 @@ async def _database_snapshot_blockers(database_url: str) -> list[str]:
         await engine.dispose()
 
 
+async def _insert_policy_if_absent(session: Any, key: str, resource: dict[str, str]) -> bool:
+    """Keep a concurrent administrator/reconciler winner without aborting seeding."""
+    from app.models.db import ResourcePolicy
+    from app.services.resource_policies import get_spec
+
+    spec = get_spec(key)
+    try:
+        async with session.begin_nested():
+            session.add(
+                ResourcePolicy(
+                    policy_key=key,
+                    resource_kind=spec.resource_kind,
+                    resource_id=resource["id"],
+                    resource_name=resource["name"],
+                )
+            )
+            await session.flush()
+        return True
+    except IntegrityError as exc:
+        # Only duplicate-key errors can represent an absent-snapshot race.
+        # Other integrity failures must still roll back the entire import.
+        original = exc.orig
+        code = getattr(original, "sqlite_errorcode", None)
+        if code is None and original.args:
+            code = original.args[0]
+        if code not in (1062, 1555, 2067) and getattr(original, "sqlstate", None) != "23505":
+            raise
+        # In MariaDB REPEATABLE READ another plain SELECT can retain the old
+        # absent snapshot. A locking read observes the committed unique-key winner.
+        winner = await session.scalar(
+            select(ResourcePolicy.policy_key).where(ResourcePolicy.policy_key == key).with_for_update()
+        )
+        if winner is None:
+            raise
+        return False
+
+
 async def _apply(
     database_url: str,
     selected: dict[str, dict[str, str]],
@@ -222,7 +260,6 @@ async def _apply(
     base_images: dict[str, dict[str, object]],
 ) -> tuple[int, int, int]:
     from app.models.db import LayerArtifact, ResourcePolicy, RuntimeSetting
-    from app.services.resource_policies import get_spec
 
     engine = create_async_engine(database_url, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -236,16 +273,7 @@ async def _apply(
             for key, resource in selected.items():
                 if key in existing_policy_keys:
                     continue
-                spec = get_spec(key)
-                session.add(
-                    ResourcePolicy(
-                        policy_key=key,
-                        resource_kind=spec.resource_kind,
-                        resource_id=resource["id"],
-                        resource_name=resource["name"],
-                    )
-                )
-                policy_count += 1
+                policy_count += await _insert_policy_if_absent(session, key, resource)
             blockers = await _inflight_snapshot_blockers(session)
             if blockers:
                 raise ValueError(f"unresolved in-flight resource snapshots: {', '.join(blockers)}")

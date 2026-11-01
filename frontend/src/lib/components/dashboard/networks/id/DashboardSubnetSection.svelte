@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import type { SubnetDetail } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -96,7 +96,7 @@
 					aria-busy={addingSubnet}
 					class="inline-flex items-center gap-1.5 text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{#if addingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
+					{#if addingSubnet}<LoadingState variant="control" label="" />{/if}{addingSubnet ? t('network.subnets.adding') : t('network.subnets.add')}
 				</button>
 			</div>
 		</div>

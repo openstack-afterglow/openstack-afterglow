@@ -1,8 +1,9 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { DomainUsage } from '$lib/types/adminOverview';
-	import { Alert, CompactResourceCard, ResponsiveTable, TableShell } from '$lib/components/ui';
+	import { Alert, CompactResourceCard, ResourceIdentifier, ResponsiveTable, TableShell } from '$lib/components/ui';
 
 	let { domains, loading, error = '' }: { domains: DomainUsage[]; loading: boolean; error?: string } = $props();
 	const ownerKeys = {
@@ -22,17 +23,15 @@
 	<p class="mb-3 text-xs text-ink-2">{t('overview.domains.description')}</p>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}
-		<div class="space-y-2" role="status" aria-busy="true" aria-label={t('overview.domains.loading')}>
-			{#each Array(4) as _}<div class="h-9 motion-skeleton rounded"></div>{/each}
-		</div>
+		<LoadingState variant="table" columns={6} rows={4} label={t('overview.domains.loading')} />
 	{:else if domains.length > 0}
 		{#snippet identity(domain: DomainUsage)}
 			<div class="min-w-0 space-y-1">
 				<p class="break-words font-medium text-ink-0">{domain.domain_name || t(ownerKeys[domain.owner_status])}</p>
 				{#if domain.domain_name && domain.owner_status !== 'known'}<p class="text-xs text-ink-2">{t(ownerKeys[domain.owner_status])}</p>{/if}
-				{#if domain.domain_id}<p class="break-all font-mono text-xs text-ink-2">{domain.domain_id}</p>{/if}
+				{#if domain.domain_id}<ResourceIdentifier id={domain.domain_id} />{/if}
 				{#if !domain.domain_id && domain.project_ids.length > 0}
-					{#each domain.project_ids as id}<p class="break-all font-mono text-xs text-ink-2">{id}</p>{/each}
+					{#each domain.project_ids as id}<ResourceIdentifier {id} />{/each}
 				{/if}
 			</div>
 		{/snippet}
@@ -74,12 +73,12 @@
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
-			<TableShell density="compact"><table>
-				<thead><tr><th>{t('overview.domains.domain')}</th><th>{t('overview.domains.projects')}</th><th>VM</th><th>vCPU</th><th>RAM (GiB)</th><th>GPU VM</th><th>{t('overview.domains.volumes')}</th><th>{t('overview.domains.capacity')}</th><th>{t('overview.domains.details')}</th></tr></thead>
+		<TableShell><table>
+			<thead><tr><th>{t('overview.domains.domain')}</th><th class="text-right">{t('overview.domains.projects')}</th><th class="text-right">VM</th><th class="text-right">vCPU</th><th class="text-right">RAM (GiB)</th><th class="text-right">GPU VM</th><th class="text-right">{t('overview.domains.volumes')}</th><th class="text-right">{t('overview.domains.capacity')}</th><th>{t('overview.domains.details')}</th></tr></thead>
 				<tbody>
 					{#each domains as domain (JSON.stringify([domain.owner_status, domain.domain_id, domain.project_ids]))}
 						<tr>
-							<td>{@render identity(domain)}</td><td class="tabular-nums">{number(domain.project_count)}</td><td class="tabular-nums">{number(domain.instances)}</td><td class="tabular-nums">{number(domain.vcpus)}</td><td class="tabular-nums">{number(domain.ram_mb === null ? null : domain.ram_mb / 1024)}</td><td class="tabular-nums">{number(domain.gpu_instances)}</td><td class="tabular-nums">{number(domain.volumes)}</td><td class="tabular-nums">{number(domain.volume_gb)} GiB</td>
+						<td>{@render identity(domain)}</td><td class="text-right tabular-nums">{number(domain.project_count)}</td><td class="text-right tabular-nums">{number(domain.instances)}</td><td class="text-right tabular-nums">{number(domain.vcpus)}</td><td class="text-right tabular-nums">{number(domain.ram_mb === null ? null : domain.ram_mb / 1024)}</td><td class="text-right tabular-nums">{number(domain.gpu_instances)}</td><td class="text-right tabular-nums">{number(domain.volumes)}</td><td class="text-right tabular-nums">{number(domain.volume_gb)} GiB</td>
 							<td><details><summary class="min-h-11 cursor-pointer text-xs text-ink-2">{t('overview.domains.volumeDetails')}</summary>{@render volumeDetails(domain)}</details>{@render links(domain)}</td>
 						</tr>
 					{/each}

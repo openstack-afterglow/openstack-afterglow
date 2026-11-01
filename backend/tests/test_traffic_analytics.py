@@ -128,6 +128,7 @@ async def test_redis_outage_is_unknown_and_recovered_drops(settings, monkeypatch
     snapshot = await service.snapshot("backend", "24h")
     assert snapshot["state"] == "unavailable"
     assert snapshot["totals"] is None
+    assert snapshot["networks"] == []
     assert snapshot["coverage"]["dropped_events"] is None
     redis = SimpleNamespace(eval=AsyncMock(return_value=1))
     monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
@@ -320,6 +321,7 @@ async def test_snapshot_http_exposes_configured_or_null_site_country(settings, m
         response = await client.get(f"/traffic?range=24h&source={source}")
     assert response.status_code == 200
     assert response.json()["coverage"]["site_country"] == (country or None)
+    assert response.json()["networks"] == []
 
 
 @pytest.mark.parametrize(
@@ -440,9 +442,9 @@ async def test_sources_use_independent_exact_proxy_policies(settings, monkeypatc
     monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
     value = event(peer_ip="172.30.0.11", peer_verified=True, forwarded_for="8.8.8.8")
     assert await service.record_event(value, "backend")
-    assert redis.eval.call_args.args[-1] == "external"
+    assert redis.eval.call_args.args[-2:] == ("external", "")
     assert await service.record_event(value, "frontend")
-    assert redis.eval.call_args.args[-1] == "internal"
+    assert redis.eval.call_args.args[-2:] == ("internal", "n:resolved_client:private:172.30.0.0/16")
     # The same UUID belongs to independent source dedupe namespaces.
     assert ":frontend:dedupe:" in repr(redis.eval.call_args.args)
 
@@ -457,3 +459,148 @@ async def test_backend_proxy_trust_ignores_headers_unless_peer_trusted(settings,
     assert rate_limit._get_real_ip(Request(scope)) == "8.8.8.8"
     settings.trusted_proxies = "8.8.8.0/24"
     assert rate_limit._get_real_ip(Request(scope)) == "9.9.9.9"
+
+
+@pytest.mark.parametrize(
+    "address,expected",
+    [
+        ("172.30.1.7", ("172.30.0.0/16", "private")),
+        ("172.31.255.254", ("172.31.0.0/16", "private")),
+        ("10.8.9.12", ("10.8.0.0/16", "private")),
+        ("::ffff:10.8.9.12", ("10.8.0.0/16", "private")),
+        ("192.168.12.34", ("192.168.0.0/16", "private")),
+        ("100.100.12.34", ("100.64.0.0/10", "shared")),
+        ("127.50.12.34", ("127.0.0.0/8", "loopback")),
+        ("169.254.12.34", ("169.254.0.0/16", "link_local")),
+        ("192.0.2.123", ("192.0.2.0/24", "documentation")),
+        ("198.51.100.123", ("198.51.100.0/24", "documentation")),
+        ("203.0.113.123", ("203.0.113.0/24", "documentation")),
+        ("198.19.12.34", ("198.18.0.0/15", "benchmark")),
+        ("239.12.34.56", ("224.0.0.0/4", "multicast")),
+        ("250.12.34.56", ("240.0.0.0/4", "reserved")),
+        ("0.12.34.56", ("0.0.0.0/8", "unspecified")),
+        ("fd12:3456:789a::12", ("fc00::/7", "private")),
+        ("fc98:7654:3210::34", ("fc00::/7", "private")),
+        ("fe80:1234::12", ("fe80::/10", "link_local")),
+        ("2001:db8:1234::12", ("2001:db8::/32", "documentation")),
+        ("2001:2::1234", ("2001:2::/48", "benchmark")),
+        ("ff02::1234", ("ff00::/8", "multicast")),
+        ("100::1234", ("100::/64", "reserved")),
+        ("::2", None),
+        ("::1", ("::1/128", "loopback")),
+        ("::", ("::/128", "unspecified")),
+        ("8.8.8.8", None),
+        ("2001:4860:4860::8888", None),
+        (None, None),
+        ("garbage", None),
+        ("fe80::12%eth0", None),
+    ],
+)
+def test_nonpublic_network_uses_only_fixed_standard_ranges(address, expected):
+    from app.services.traffic_address import nonpublic_network
+
+    assert nonpublic_network(address) == expected
+
+
+def test_private_network_cardinality_does_not_follow_hosts_or_ipv6_site_prefixes():
+    from app.services.traffic_address import nonpublic_network
+
+    hosts = [f"10.{site}.{host}.123" for site in range(256) for host in (0, 77, 255)]
+    hosts += [f"172.{site}.{host}.123" for site in range(16, 32) for host in (0, 77, 255)]
+    hosts += [f"192.168.{host}.123" for host in (0, 77, 255)]
+    assert len({nonpublic_network(address) for address in hosts}) == 273
+    assert {nonpublic_network(f"fd12:{site:x}:abcd::1234") for site in range(1024)} == {("fc00::/7", "private")}
+
+
+@pytest.mark.parametrize(
+    "peer,verified,chain,expected_origin,expected_dimension,expected_reason",
+    [
+        ("172.30.5.7", True, None, "internal", "n:resolved_client:private:172.30.0.0/16", "non_global"),
+        ("172.31.5.7", True, None, "unknown", "n:resolved_client:private:172.31.0.0/16", "non_global"),
+        ("10.8.5.7", True, "172.30.8.8", "unknown", "n:resolved_client:private:10.8.0.0/16", "non_global"),
+        ("8.8.8.8", True, "10.8.5.7", "external", "", "database_unconfigured"),
+        ("172.30.0.11", True, "10.8.5.7", "unknown", "n:resolved_client:private:10.8.0.0/16", "non_global"),
+        ("172.30.0.11", True, None, "unknown", "n:socket_peer:private:172.30.0.0/16", "forwarded_missing"),
+        ("172.30.0.11", True, "10.8.5.7, bad", "unknown", "n:socket_peer:private:172.30.0.0/16", "forwarded_invalid"),
+        ("172.30.0.11", True, "172.30.0.11", "unknown", "n:socket_peer:private:172.30.0.0/16", "forwarded_all_trusted"),
+        ("172.30.0.11", False, "10.8.5.7", "unknown", "", "peer_unverified"),
+        ("invalid", True, "10.8.5.7", "unknown", "", "invalid_address"),
+        (None, True, "10.8.5.7", "unknown", "", "address_unavailable"),
+        ("239.1.2.3", True, None, "unknown", "n:resolved_client:multicast:224.0.0.0/4", "non_global"),
+    ],
+)
+async def test_network_writer_keeps_address_and_origin_authority(
+    settings, monkeypatch, peer, verified, chain, expected_origin, expected_dimension, expected_reason
+):
+    settings.traffic_analytics.backend_trusted_proxy_cidrs = ["172.30.0.11/32"]
+    settings.traffic_analytics.cluster_cidrs = ["172.30.0.0/16"]
+    redis = SimpleNamespace(eval=AsyncMock(return_value=1))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    assert await service.record_event(event(peer_ip=peer, peer_verified=verified, forwarded_for=chain), "backend")
+    args = redis.eval.call_args.args
+    measures = json.loads(args[args[1] + 6])
+    assert args[-2:] == (expected_origin, expected_dimension)
+    assert args[args[1] + 4] == "XX"
+    assert measures["unlocated"] == 1 and measures["geo_reason_" + expected_reason] == 1
+    if peer and peer != "invalid":
+        assert peer not in repr(args)
+    if chain:
+        assert chain not in repr(args)
+
+
+async def test_global_country_lookup_miss_does_not_create_network(settings, monkeypatch):
+    geo = SimpleNamespace(lookup=lambda address: ("XX", "range_missing"))
+    monkeypatch.setattr(service, "country_lookup", lambda filename: geo)
+    redis = SimpleNamespace(eval=AsyncMock(return_value=1))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    assert await service.record_event(event(peer_ip="8.8.8.8", peer_verified=True), "backend")
+    assert redis.eval.call_args.args[-2:] == ("external", "")
+
+
+async def test_snapshot_http_networks_are_full_metrics_with_independent_provenance(settings, monkeypatch):
+    now = time.time()
+    hour = int(now) // 3600
+    monkeypatch.setattr(service.time, "time", lambda: now)
+    measures = {key: 0 for key in service.COUNTERS}
+    measures.update(requests=2, errors=1, success=1, status_2xx=1, status_5xx=1, unlocated=2, identity_known=1)
+    dimensions = (
+        "t",
+        "c:XX",
+        "r:/dashboard",
+        "o:unknown:t",
+        "o:unknown:c:XX",
+        "o:unknown:r:/dashboard",
+        "n:resolved_client:private:10.8.0.0/16",
+        "o:unknown:n:resolved_client:private:10.8.0.0/16",
+    )
+    raw = {dimension + "|" + key: value for dimension in dimensions for key, value in measures.items()}
+    rows = [value for _ in range(23) for value in ({}, {}, 0)]
+    rows.extend(({}, raw, 1, {"first": hour * 3600, "last": now}, 1))
+    pipe = SimpleNamespace(hgetall=lambda *args: None, pfcount=lambda *args: None, execute=AsyncMock(return_value=rows))
+    redis = SimpleNamespace(pipeline=lambda **kwargs: pipe)
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    app = FastAPI()
+    app.include_router(api.admin_router, prefix="/traffic")
+    app.dependency_overrides[get_token_info] = lambda: {"is_system_admin": True}
+    app.dependency_overrides[require_admin] = synthetic_verified_admin
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/traffic?origin=unknown&source=backend&range=24h")
+    assert response.status_code == 200
+    data = response.json()
+    row = data["networks"][0]
+    assert row["network"] == "10.8.0.0/16" and row["kind"] == "private"
+    assert row["basis"] == "resolved_client"
+    assert row["requests"] == 2 and row["errors"] == 1
+    assert row["unlocated"] == 2 and row["unique_visitors"] is None
+    assert row["request_bytes"] is None and row["response_bytes"] is None
+    assert set(row) == set(data["totals"]) | {"network", "kind", "basis"}
+    assert data["totals"]["requests"] == data["countries"][0]["requests"] == 2
+
+
+@pytest.mark.parametrize("chain", [None, "bad, 10.8.4.5", "8.8.8.8"])
+async def test_failed_global_proxy_peer_does_not_become_nonpublic_network(settings, monkeypatch, chain):
+    settings.traffic_analytics.backend_trusted_proxy_cidrs = ["8.8.8.8/32"]
+    redis = SimpleNamespace(eval=AsyncMock(return_value=1))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    assert await service.record_event(event(peer_ip="8.8.8.8", peer_verified=True, forwarded_for=chain), "backend")
+    assert redis.eval.call_args.args[-2:] == ("unknown", "")

@@ -1,0 +1,4 @@
+- [x] Replace opaque disk and random glyphs with translucent light and service-term rain.
+- [x] Add six palettes and linked comparison gallery with paused previews.
+- [x] Verify gallery, themes, responsive bounds and motion lifecycle in browser.
+- [x] Independent review, documentation, screenshots, package and archive.

@@ -1,16 +1,19 @@
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/svelte';
-import { writable, type Writable } from 'svelte/store';
+import { get, writable, type Writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { api, confirmDialog } = vi.hoisted(() => ({
 	api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 	confirmDialog: vi.fn(),
 }));
-vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error {
+	constructor(public status: number, message: string, public code?: string) { super(message); }
+} }));
 vi.mock('$app/stores', () => ({ page: writable({ data: { mockup: { active: false } } }) }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project', userId: 'me', federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false }),
-	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false), setAuth: vi.fn(),
+	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false), setAuth: vi.fn(), clearAuth: vi.fn(),
 	canManageDomain: writable(false),
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));
@@ -26,8 +29,12 @@ import KeypairsSection from '../KeypairsSection.svelte';
 import ProjectsSection from '../ProjectsSection.svelte';
 import ProjectSettingsSection from '../ProjectSettingsSection.svelte';
 import CreateProjectModal from '../../projects/CreateProjectModal.svelte';
-import { auth, authReady, canManageDomain } from '$lib/stores/auth';
+import { ApiError } from '$lib/api/client';
+import { auth, authReady, canManageDomain, clearAuth, logoutInProgress } from '$lib/stores/auth';
 import { projectPermissions } from '$lib/stores/servicePermissions';
+import { goto } from '$app/navigation';
+import { toast } from '$lib/stores/toast';
+import { cloudShell } from '$lib/stores/cloudShell.svelte';
 import type { PermissionState } from '$lib/stores/servicePermissions';
 const permissionFixture = projectPermissions as Writable<PermissionState>;
 
@@ -47,6 +54,10 @@ function authorityFixture(path: string) {
 afterEach(cleanup);
 beforeEach(() => {
 	vi.resetAllMocks();
+	api.get.mockResolvedValue({ mode: 'change' });
+	(authReady as Writable<boolean>).set(true); (logoutInProgress as Writable<boolean>).set(false);
+	vi.mocked(goto).mockResolvedValue(undefined);
+	vi.mocked(cloudShell.close).mockResolvedValue(undefined);
 	auth.update((state) => ({ ...state, token: 'token', projectId: 'project', userId: 'me', federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false }));
 	(canManageDomain as Writable<boolean>).set(false);
 	permissionFixture.set({ permissions: { is_owner: true, is_manager: true, can_write: true, service_permissions: {} }, loading: false, error: '' });
@@ -117,11 +128,11 @@ describe('account controls follow real pending work', () => {
 		expect(screen.queryByText('새 이메일로 확인 링크를 보냈습니다. 받은편지함에서 승인하세요. 아직 계정 이메일은 변경되지 않았습니다.')).toBeNull();
 	});
 
-	it('disables password submission only for valid work and clears fields on success', async () => {
+	it('clears passwords, avoids replay, and asks for fresh login on successful change', async () => {
 		const pending = deferred<unknown>();
 		api.post.mockReturnValue(pending.promise);
 		render(PasswordSection);
-		const change = screen.getByRole('button', { name: '패스워드 변경' }) as HTMLButtonElement;
+		const change = await screen.findByRole('button', { name: '패스워드 변경' }) as HTMLButtonElement;
 		await fireEvent.click(change);
 		expect(change.disabled).toBe(false);
 		expect(api.post).not.toHaveBeenCalled();
@@ -133,11 +144,187 @@ describe('account controls follow real pending work', () => {
 		await fireEvent.input(confirmation, { target: { value: 'new-password' } });
 		await fireEvent.click(change);
 		expect(change.disabled).toBe(true);
-		pending.resolve({});
-		await waitFor(() => expect(change.disabled).toBe(false));
+		expect(api.post).toHaveBeenCalledWith('/api/v1/profile/password', { current_password: 'current-password', new_password: 'new-password' }, 'token', 'project', { cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+		pending.resolve({ status: 'changed' });
+		await waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(toast.success).toHaveBeenCalledWith('패스워드가 변경되었습니다. 다시 로그인해 주세요.', 0);
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/login', { replaceState: true }));
 		expect(currentPassword.value).toBe('');
 		expect(newPassword.value).toBe('');
 		expect(confirmation.value).toBe('');
+	});
+
+	it('keeps the session when the current password is rejected', async () => {
+		api.post.mockRejectedValue(new ApiError(401, 'password_current_invalid'));
+		render(PasswordSection);
+		await fireEvent.input(await screen.findByLabelText('현재 패스워드'), { target: { value: 'incorrect' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드'), { target: { value: 'new-password' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드 확인'), { target: { value: 'new-password' } });
+		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
+		expect(await screen.findByText('현재 패스워드가 올바르지 않습니다.')).toBeTruthy();
+		expect((screen.getByLabelText('현재 패스워드') as HTMLInputElement).value).toBe('');
+		expect(get(authReady)).toBe(true);
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('does not publish an old password result after authority is lost and restored', async () => {
+		const pending = deferred<unknown>();
+		api.post.mockReturnValue(pending.promise);
+		render(PasswordSection);
+		await fireEvent.input(await screen.findByLabelText('현재 패스워드'), { target: { value: 'current-password' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드'), { target: { value: 'new-password' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드 확인'), { target: { value: 'new-password' } });
+		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
+		(authReady as Writable<boolean>).set(false); (authReady as Writable<boolean>).set(true);
+		pending.resolve({ status: 'changed' });
+		await waitFor(() => expect(clearAuth).not.toHaveBeenCalled());
+		expect(toast.success).not.toHaveBeenCalled();
+		expect((await screen.findByLabelText('새 패스워드') as HTMLInputElement).value).toBe('');
+	});
+
+	it('offers an external email-proof request without collecting or creating a password in profile', async () => {
+		auth.update(state => ({ ...state, federated: true }));
+		api.get.mockResolvedValue({ mode: 'create' });
+		const pending = deferred<{ accepted: boolean }>(); api.post.mockReturnValue(pending.promise);
+		const { container } = render(PasswordSection);
+		const create = await screen.findByRole('button', { name: '패스워드 생성하기' });
+		expect(screen.getByText(/다중 인증\(MFA\)이나 계정 비활성화 정책/)).toBeTruthy();
+		expect(container.querySelector('input[type="password"]')).toBeNull();
+		await fireEvent.click(create); await fireEvent.click(create);
+		expect(api.post).toHaveBeenCalledOnce();
+		expect(api.post.mock.calls[0]?.[1]).toEqual({});
+		expect(container.querySelector('input[type="password"]')).toBeNull();
+		expect(screen.queryByText(/아직 패스워드는 생성되지 않았습니다/)).toBeNull();
+		pending.resolve({ accepted: true });
+		expect(await screen.findByText(/아직 패스워드는 생성되지 않았습니다/)).toBeTruthy();
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it.each(['unavailable', 'malformed'])('does not advertise creation with %s capability', async mode => {
+		auth.update(state => ({ ...state, federated: true })); api.get.mockResolvedValue({ mode });
+		render(PasswordSection);
+		await screen.findByRole('button', { name: '사용 가능 여부 다시 확인' });
+		expect(screen.queryByRole('button', { name: '패스워드 생성하기' })).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it('does not claim mail delivery on unavailable request and discards old capability across project ABA', async () => {
+		auth.update(state => ({ ...state, federated: true })); api.get.mockResolvedValue({ mode: 'create' });
+		api.post.mockRejectedValue(new ApiError(503, 'private-configuration'));
+		render(PasswordSection);
+		await fireEvent.click(await screen.findByRole('button', { name: '패스워드 생성하기' }));
+		expect(await screen.findByText(/확인 메일을 보내지 못했습니다/)).toBeTruthy();
+		expect(screen.queryByText(/아직 패스워드는 생성되지 않았습니다/)).toBeNull();
+		const pending = deferred<{ mode: string }>(); api.get.mockReturnValueOnce(pending.promise);
+		api.get.mockResolvedValueOnce({ mode: 'unavailable' });
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		await screen.findByRole('button', { name: '사용 가능 여부 다시 확인' });
+		pending.resolve({ mode: 'create' }); await pending.promise;
+		expect(screen.queryByRole('button', { name: '패스워드 생성하기' })).toBeNull();
+		expect(document.body.textContent).not.toContain('private-configuration');
+	});
+
+	it('clears existing change secrets and ignores its result across project ABA', async () => {
+		const pending = deferred<unknown>(); api.post.mockReturnValue(pending.promise);
+		render(PasswordSection);
+		await fireEvent.input(await screen.findByLabelText('현재 패스워드'), { target: { value: 'current-secret' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드'), { target: { value: 'new-password' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드 확인'), { target: { value: 'new-password' } });
+		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		pending.reject(new ApiError(502, 'unknown', 'password_change_outcome_unknown'));
+		expect((await screen.findByLabelText('새 패스워드') as HTMLInputElement).value).toBe('');
+		expect(clearAuth).not.toHaveBeenCalled(); expect(toast.error).not.toHaveBeenCalled();
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it('does not publish mail confirmation after scope changes while requesting', async () => {
+		auth.update(state => ({ ...state, federated: true })); api.get.mockResolvedValue({ mode: 'create' });
+		const pending = deferred<{ accepted: boolean }>(); api.post.mockReturnValue(pending.promise);
+		render(PasswordSection);
+		await fireEvent.click(await screen.findByRole('button', { name: '패스워드 생성하기' }));
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		pending.resolve({ accepted: true }); await pending.promise;
+		await screen.findByRole('button', { name: '패스워드 생성하기' });
+		expect(screen.queryByText(/아직 패스워드는 생성되지 않았습니다/)).toBeNull();
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it('explains request throttling without claiming delivery or blaming mail configuration', async () => {
+		auth.update(state => ({ ...state, federated: true })); api.get.mockResolvedValue({ mode: 'create' });
+		api.post.mockRejectedValue(new ApiError(429, 'limited', 'password_create_rate_limited'));
+		render(PasswordSection);
+		await fireEvent.click(await screen.findByRole('button', { name: '패스워드 생성하기' }));
+		expect(await screen.findByText('확인 메일 요청이 너무 많습니다. 잠시 기다린 뒤 다시 요청하세요.')).toBeTruthy();
+		expect(screen.queryByText(/확인 메일을 보내지 못했습니다/)).toBeNull();
+		expect(screen.queryByText(/아직 패스워드는 생성되지 않았습니다/)).toBeNull();
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it('signs out after an unknown existing-password change without retrying credentials', async () => {
+		api.post.mockRejectedValue(new ApiError(502, 'unknown', 'password_change_outcome_unknown'));
+		render(PasswordSection);
+		const current = await screen.findByLabelText('현재 패스워드') as HTMLInputElement;
+		await fireEvent.input(current, { target: { value: 'current-secret' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드'), { target: { value: 'new-password' } });
+		await fireEvent.input(screen.getByLabelText('새 패스워드 확인'), { target: { value: 'new-password' } });
+		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
+		await waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(current.value).toBe(''); expect(api.post).toHaveBeenCalledOnce();
+		expect(toast.success).not.toHaveBeenCalled();
+		expect(toast.error).toHaveBeenCalledWith('패스워드 변경 결과를 확인하지 못했습니다. 다시 로그인해 상태를 확인하세요.');
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/login', { replaceState: true }));
+	});
+
+	it('requests a link for the signed-in owner without passwords or an editable target and never claims delivery', async () => {
+		const pending = deferred<{ accepted: boolean }>(); api.post.mockReturnValue(pending.promise);
+		render(PasswordSection);
+		const current = await screen.findByLabelText('현재 패스워드') as HTMLInputElement;
+		await fireEvent.input(current, { target: { value: 'do-not-send-this-secret' } });
+		const forgot = screen.getByRole('button', { name: '비밀번호를 잊으셨나요?' }) as HTMLButtonElement;
+		await fireEvent.click(forgot); await fireEvent.click(forgot);
+		expect(api.post).toHaveBeenCalledOnce();
+		expect(api.post).toHaveBeenCalledWith('/api/v1/profile/password/recovery/request', {}, 'token', 'project', { cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+		expect(current.value).toBe(''); expect(forgot.disabled).toBe(true);
+		pending.resolve({ accepted: true });
+		expect(await screen.findByText(/접수는 실제 발송을 보장하지 않습니다/)).toBeTruthy();
+		expect(screen.getByText(/비밀번호 자체는 보내지 않습니다/)).toBeTruthy();
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('keeps current-password proof usable when native credential state is unknown without claiming absence', async () => {
+		api.get.mockResolvedValue({ mode: 'change', reason: 'password_state_unknown' });
+		render(PasswordSection);
+		expect(await screen.findByLabelText('현재 패스워드')).toBeTruthy();
+		expect(screen.getByText(/최초 설정은 관리자가 네이티브 상태 확인 기능을 준비해야 합니다/)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '패스워드 생성하기' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '패스워드 변경' }));
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it.each(['resolve', 'reject'] as const)('discards recovery results after an owner ABA transition (%s)', async outcome => {
+		const pending = deferred<{ accepted: boolean }>(); api.post.mockReturnValue(pending.promise);
+		render(PasswordSection);
+		await fireEvent.click(await screen.findByRole('button', { name: '비밀번호를 잊으셨나요?' }));
+		auth.update(state => ({ ...state, userId: 'other' }));
+		auth.update(state => ({ ...state, userId: 'me' }));
+		if (outcome === 'resolve') pending.resolve({ accepted: true }); else pending.reject(new Error('private-result'));
+		await screen.findByRole('button', { name: '비밀번호를 잊으셨나요?' });
+		expect(screen.queryByText(/접수는 실제 발송을 보장하지 않습니다/)).toBeNull();
+		expect(screen.queryByText(/복구 링크 요청을 확인하지 못했습니다/)).toBeNull();
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it('localizes recovery throttling and does not repeat a failed request automatically', async () => {
+		api.post.mockRejectedValue(new ApiError(429, 'private-error'));
+		render(PasswordSection);
+		await fireEvent.click(await screen.findByRole('button', { name: '비밀번호를 잊으셨나요?' }));
+		expect(await screen.findByText('복구 요청이 너무 많습니다. 잠시 기다린 뒤 다시 요청하세요.')).toBeTruthy();
+		expect(document.body.textContent).not.toContain('private-error');
+		expect(api.post).toHaveBeenCalledOnce();
 	});
 
 	it('disables keypair deletion until the request and refresh settle', async () => {

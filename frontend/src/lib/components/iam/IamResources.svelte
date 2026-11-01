@@ -11,7 +11,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResourceMetricTable from './ResourceMetricTable.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => workspaceIam(session));
@@ -53,7 +53,7 @@
 	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('monitoringOverview')}</h2><Button variant="secondary" disabled={loading || blocked} onclick={load}>{t('reload')}</Button></div>
 	<Alert tone="info">{t('attributionHelp')}</Alert>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={data ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if data}
 		<Alert tone={data.coverage.partial ? 'warning' : 'info'}>{t('coverage')}: {t(data.coverage.partial ? 'state.partial' : 'state.ready')} · {t('observedAt')}: {data.coverage.observed_at}</Alert>
 		{#if view === 'domain'}

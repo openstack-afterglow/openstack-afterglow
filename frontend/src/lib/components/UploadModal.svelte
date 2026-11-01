@@ -2,7 +2,7 @@
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/object-storage';
-	import { ActivityIndicator, Button } from '$lib/components/ui';
+	import { Button } from '$lib/components/ui';
 
 	interface Props {
 		containerName: string;
@@ -80,7 +80,7 @@
 			ondrop={acceptDrop}
 		>
 			{#if dropActive}
-				<div class="motion-pop"><ActivityIndicator variant="upload" label={t('views.dragOverlay.dropFiles')} /></div>
+				<div class="motion-pop"><span>{t('views.dragOverlay.dropFiles')}</span></div>
 			{/if}
 			<input
 				type="file"

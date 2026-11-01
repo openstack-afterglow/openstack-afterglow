@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let {
 		submitting,
 		onSubmit,
@@ -107,7 +107,7 @@
 			aria-busy={submitting}
 			class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 		>
-			{#if submitting}<ActivityIndicator size="xs" tone="ink" />{/if}{submitting ? t('securityGroup.ruleForm.adding') : t('securityGroup.ruleForm.add')}
+			{#if submitting}<LoadingState variant="control" label="" />{/if}{submitting ? t('securityGroup.ruleForm.adding') : t('securityGroup.ruleForm.add')}
 		</button>
 		<button
 			onclick={handleCancel}

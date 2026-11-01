@@ -1,7 +1,9 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import K3sClusterCard from '$lib/components/dashboard/drover/K3sClusterCard.svelte';
+	import { Button, EmptyState } from '$lib/components/ui';
 	import type { K3sCluster } from '$lib/types/k3s';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
@@ -27,19 +29,11 @@
 </script>
 
 {#if loading}
-	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5" role="status" aria-label={tc('state.loadingNamed', { name: t('cluster.title') })} aria-busy="true">
-		{#each Array(3) as _}
-			<div class="motion-skeleton h-48 border border-line rounded-lg"></div>
-		{/each}
-	</div>
+	<LoadingState variant="surface" label={tc('state.loadingNamed', { name: t('cluster.title') })} />
 {:else if clusters.length === 0}
-	<div class="text-center py-20 text-ink-2">
-		<div class="text-5xl mb-4">☸</div>
-		<p class="text-lg">{t('cluster.empty')}</p>
-		<button disabled={!$k3sPermissions.editClusters} onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">
-			{t('cluster.createFirst')}
-		</button>
-	</div>
+	<EmptyState headline={t('cluster.empty')}>
+		{#snippet cta()}<Button variant="primary" disabled={!$k3sPermissions.editClusters} onclick={onOpenCreate} onintent={onOpenCreateIntent}>{t('cluster.createFirst')}</Button>{/snippet}
+	</EmptyState>
 {:else}
 	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
 		{#each clusters as cluster (cluster.id)}

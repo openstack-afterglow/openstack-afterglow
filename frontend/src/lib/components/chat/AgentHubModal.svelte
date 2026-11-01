@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
@@ -22,16 +23,20 @@
 	let query = $state('');
 	let agents = $state<Agent[]>([]);
 	let loading = $state(true);
+	let loadedAgentScope = $state('');
+	const agentScope = $derived(JSON.stringify([token, projectId]));
 	let cloningId = $state<number | null>(null);
 	let debounce: ReturnType<typeof setTimeout> | null = null;
 
 	async function load() {
 		if (!token) return;
+		const requestScope = agentScope;
 		loading = true;
 		try {
 			const q = query.trim();
 			const path = `/api/v1/chat/agents/hub?limit=50${q ? `&query=${encodeURIComponent(q)}` : ''}`;
 			agents = await api.get<Agent[]>(path, token, projectId);
+			loadedAgentScope = requestScope;
 		} catch {
 			toast.error(t('agentHub.loadFailed'));
 		} finally {
@@ -90,8 +95,9 @@
 
 		<div class="body">
 			<LumenPermissionNotice leaves={['lumen-agents_editor']} />
-			{#if loading}
-				<p class="muted">{t('agentHub.loading')}</p>
+			{#if loading && loadedAgentScope === agentScope}<LoadingState variant="inline" label={t('agentHub.loading')} />{/if}
+			{#if loading && loadedAgentScope !== agentScope}
+				<LoadingState label={t('agentHub.loading')} />
 			{:else if agents.length === 0}
 				<div class="empty-box">
 					<p>{t('agentHub.empty')}</p>
@@ -124,7 +130,7 @@
 									<span class="mine">{t('agentHub.myAgent')}</span>
 								{:else}
 									<Button variant="secondary" size="sm" disabled={cloningId === a.id || !$serviceCapabilities('lumen-agents_editor')} onclick={() => clone(a)}>
-										{cloningId === a.id ? t('agentHub.cloning') : t('agentHub.clone')}
+										{#if cloningId === a.id}<LoadingState variant="control" label={t('agentHub.cloning')} />{:else}{t('agentHub.clone')}{/if}
 									</Button>
 								{/if}
 							</div>

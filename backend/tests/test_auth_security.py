@@ -133,3 +133,13 @@ async def test_change_password_empty_new_password_returns_422(client):
         json={"current_password": "correct", "new_password": ""},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password_validation_does_not_return_credentials(client):
+    current = "current-secret-do-not-echo"
+    new = "new-secret-do-not-echo-" * 60
+    response = await client.post("/api/v1/profile/password", json={"current_password": current, "new_password": new})
+    assert response.status_code == 422
+    assert current not in response.text
+    assert new not in response.text

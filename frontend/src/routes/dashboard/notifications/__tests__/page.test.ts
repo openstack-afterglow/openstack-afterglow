@@ -16,7 +16,7 @@ vi.mock('$lib/api/client', () => ({
 	api: { get: mockGet, post: mockPost },
 	ApiError: class ApiError extends Error { status = 500; },
 }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }), authReady: writable(true), projectSwitching: writable(false) }));
 
 import Page from '../+page.svelte';
 
@@ -48,13 +48,15 @@ describe('notification loading boundaries', () => {
 		const announcements = Promise.withResolvers<AnnouncementUser[]>();
 		const quota = Promise.withResolvers<unknown>();
 		const readMark = Promise.withResolvers<unknown>();
-		mockGet.mockImplementation((path: string) => path.startsWith('/api/v1/announcements')
-			? announcements.promise
-			: quota.promise);
+		mockGet.mockImplementation((path: string) => path === '/api/v1/instances/usage-schedules'
+			? Promise.resolve({ schedules: [], errors: [] })
+			: path.startsWith('/api/v1/announcements') ? announcements.promise : quota.promise);
 		mockPost.mockReturnValue(readMark.promise);
 
 		render(Page);
-		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(mockGet.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining([
+			'/api/v1/announcements', '/api/v1/dashboard/quotas?view=overview', '/api/v1/instances/usage-schedules',
+		])));
 		announcements.resolve([announcement()]);
 		expect(await screen.findByText('Maintenance notice')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: /Maintenance notice/ }));
@@ -80,7 +82,8 @@ describe('notification loading boundaries', () => {
 		})));
 		const scrollIntoView = vi.fn();
 		Element.prototype.scrollIntoView = scrollIntoView;
-		mockGet.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/announcements') ? [announcement()] : { alerts: [] }));
+		mockGet.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/instances/usage-schedules'
+			? { schedules: [], errors: [] } : path.startsWith('/api/v1/announcements') ? [announcement()] : { alerts: [] }));
 		mockPost.mockResolvedValue({});
 
 		render(Page);

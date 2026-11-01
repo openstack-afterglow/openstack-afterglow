@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "ページあたりの行数",
+	"list.analytics": "ネットワークの推移",
+	"list.details": "詳細を見る",
+	"list.actionsFor": "ネットワーク {name} の操作",
+	"list.scopedHistory": "プロジェクト範囲ではネットワーク全体の履歴を利用できません。",
+	"list.deleteImpact": "ネットワークの削除は取り消せません。接続されたポートがあると削除できない場合があります。",
 	"loadbalancersPage.loading": "ロードバランサーを読み込み中...",
 	"adminNetworkCreateModal.title": "ネットワークを作成",
 	"adminNetworkCreateModal.name": "名前",

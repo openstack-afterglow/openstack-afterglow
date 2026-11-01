@@ -1,0 +1,6 @@
+- [x] Inspect current shared renderer, primitives and asset categories.
+- [x] Complete source-wide inventory and disposition.
+- [x] Implement shared loading/progress/empty/error family and affected wrappers.
+- [x] Relevant tests, representative visual inspection and independent source approval complete.
+- [x] Update design/architecture/docs.
+- [ ] Full authenticated nine-locale/native200% visual acceptance remains unavailable; keep change open rather than claiming all-screen qualification.

@@ -1,0 +1,9 @@
+{
+  "scope": "The previous consumer-cleanup correction remains valid, but its v2 pause admission guarantee was incomplete",
+  "superseded_claim": "Checking only positive snapshot deltas is sufficient to prevent growth in a paused pool",
+  "before_evidence": "artifact://325: installed native move_allocations recreates the target at the same generation; stale zero-delta PUT succeeds below the cap; unchanged paused PUT also returns204",
+  "correction_change": "reject-paused-nonempty-allocation-writes",
+  "required_native_hook_revision": "domain-pool-v3",
+  "decision": "Reject every paused nonempty admission/recheck; permit ordinary all-empty native releases; nonempty maintenance waits for explicit reactivation",
+  "historical_receipts": "Preserved unchanged; previous 28-test result is not evidence of these two newly covered pause properties"
+}

@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminDatabaseInstanceDetailController } from '$lib/stores/adminDatabaseInstanceDetailController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import DbInstanceHeader from '$lib/components/admin/database-instances/id/DbInstanceHeader.svelte';
 	import DbConnectionInfoCard from '$lib/components/admin/database-instances/id/DbConnectionInfoCard.svelte';
 	import DbDatabasesSection from '$lib/components/admin/database-instances/id/DbDatabasesSection.svelte';
@@ -30,7 +30,7 @@
 	</div>
 
 	{#if ctrl.loading}
-		<LoadingSkeleton variant="detail" rows={8} />
+		<LoadingState variant="surface" />
 	{:else if ctrl.loadError}
 		<div role="alert" class="text-state-danger-text text-sm">{ctrl.loadError}</div>
 	{:else if !ctrl.instance}

@@ -3,7 +3,8 @@
 	import { api } from '$lib/api/client';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as tq } from '$lib/i18n/ns/workspace-iam';
-	import { Alert, Button, Field, SelectInput, ActivityIndicator } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Field, SelectInput } from '$lib/components/ui';
 	import type { QuotaField } from '$lib/api/workspaceIam';
 	let { token, projectId, current }: { token: string; projectId?: string; current: () => boolean } = $props();
 	interface Project { id: string; name: string; user_id: string | null; enabled: boolean }
@@ -49,7 +50,7 @@
 	<h3 class="text-sm font-semibold">{t('enrollment.convergeTitle')}</h3>
 	<p class="text-sm text-ink-2">{t('enrollment.convergeHelp')}</p>
 	<Button variant="secondary" disabled={busy} onclick={() => load()}>{t('enrollment.convergeLoad')}</Button>
-	{#if busy}<ActivityIndicator label={t('enrollment.loading')} />{/if}
+	{#if busy}<LoadingState variant="section" label={t('enrollment.loading')} />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loaded}
 		<Field label={t('enrollment.convergeProject')} for="personal-quota-project"><SelectInput id="personal-quota-project" bind:value={selected} disabled={busy} onchange={clearPreview}>

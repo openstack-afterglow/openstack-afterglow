@@ -6,7 +6,7 @@
 	import { t as tc } from '$lib/i18n/ns/common';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { ApiError } from '$lib/api/client';
 	import { getClusterAuthorization, reauthorizeCluster, retireClusterCredentials } from '$lib/api/k3s';
 	import { auth } from '$lib/stores/auth';
@@ -125,7 +125,7 @@
 	{:else if status && rolling}
 		<Alert tone="info" title={t('authorization.inProgressTitle')} class="mb-3">
 			<span class="inline-flex items-center gap-2">
-				<ActivityIndicator size="xs" label={tc('state.processing')} />
+				<LoadingState variant="control" label={tc('state.processing')} />
 				{t('authorization.inProgressBody')}
 			</span>
 		</Alert>
@@ -147,7 +147,7 @@
 						ariaBusy={busy === 'reauthorize'}
 						onclick={reauthorize}
 					>
-						{#if busy === 'reauthorize'}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('authorization.reauthorize')}{/if}
+						{#if busy === 'reauthorize'}<LoadingState variant="control" label={tc('state.processing')} />{:else}{t('authorization.reauthorize')}{/if}
 					</Button>
 				{/if}
 			{/snippet}
@@ -165,7 +165,7 @@
 					ariaBusy={busy === 'retire'}
 					onclick={retireOwn}
 				>
-					{#if busy === 'retire'}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('authorization.retire')}{/if}
+					{#if busy === 'retire'}<LoadingState variant="control" label={tc('state.processing')} />{:else}{t('authorization.retire')}{/if}
 				</Button>
 			{/snippet}
 		</Alert>

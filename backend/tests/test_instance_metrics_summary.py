@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from threading import Event
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,6 +72,49 @@ def native_metrics(mock_conn):
         ),
     ):
         yield instance, project
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_batch_inventory_keeps_event_loop_responsive_and_drains_on_cancel(mock_conn, cancel):
+    from app.api.compute import instance_metrics
+
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = Event()
+    finished = Event()
+
+    def inventory(_conn):
+        loop.call_soon_threadsafe(started.set)
+        try:
+            assert release.wait(5), "test did not release Nova inventory"
+            return []
+        finally:
+            finished.set()
+
+    # Restore the enclosing native_metrics patch before that fixture unwinds.
+    with patch.object(instance_metrics.nova, "list_servers", inventory):
+        task = asyncio.create_task(instance_metrics.get_metrics_summary_batch(mock_conn, {"project_id": _PROJECT_ID}))
+        try:
+            await asyncio.wait_for(started.wait(), 3)
+            # This coroutine can run while the synchronous Nova read is blocked.
+            assert not finished.is_set() and not task.done()
+            if cancel:
+                task.cancel()
+                await asyncio.sleep(0)
+                task.cancel()
+                await asyncio.sleep(0)
+                assert not task.done() and not finished.is_set()
+            release.set()
+            if cancel:
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                assert await task == {"range": "7d", "monitoring_available": False, "instances": {}}
+            assert finished.is_set()
+        finally:
+            release.set()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def _instant(value: float, instance_id: str = "inst-1"):
@@ -193,6 +238,29 @@ async def test_summary_suggested_flavor_excludes_disk_shrink(client):
     suggested = rec["suggested_flavor"]
     assert suggested is not None
     assert suggested["disk"] >= 50  # 현재 disk 이상
+
+
+@pytest.mark.anyio
+async def test_summary_preserves_native_flavor_identity_and_canonical_cpu_labels(client):
+    current = _LARGE_FLAVOR.model_copy(update={"display_name": "cpu.8c_16g"})
+    smaller = _SMALL_FLAVOR.model_copy(update={"display_name": "cpu.2c_4g"})
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.nova.list_flavors", return_value=[current, smaller]),
+        patch("app.api.compute.instance_metrics.query_instant_multi", new=AsyncMock(return_value=_instant(5.0))),
+    ):
+        response = await client.get("/api/v1/instances/inst-1/metrics-summary?range=7d")
+    assert response.status_code == 200
+    recommendation = response.json()["recommendation"]
+    assert (recommendation["current_flavor"]["name"], recommendation["current_flavor"]["display_name"]) == (
+        "m1.large",
+        "cpu.8c_16g",
+    )
+    assert (
+        recommendation["suggested_flavor"]["id"],
+        recommendation["suggested_flavor"]["name"],
+        recommendation["suggested_flavor"]["display_name"],
+    ) == ("flavor-small", "m1.small", "cpu.2c_4g")
 
 
 @pytest.mark.anyio

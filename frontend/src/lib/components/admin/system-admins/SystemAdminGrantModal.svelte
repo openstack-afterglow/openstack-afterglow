@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -175,7 +175,7 @@
 			<Alert tone="danger" class="my-3">{domainsError}</Alert>
 			<Button variant="secondary" size="sm" onclick={loadDomains}>{domainT('actions.refresh')}</Button>
 		{:else if !selectedDomain}
-			<p class="my-3 text-sm text-ink-2" role="status">{loadingDomains ? domainT('state.loading') : domainT('scope.required')}</p>
+			{#if loadingDomains}<LoadingState variant="inline" label={domainT('state.loading')} />{:else}<p class="my-3 text-sm text-ink-2" role="status">{domainT('scope.required')}</p>{/if}
 		{/if}
 
 		{#if selectedDomain}
@@ -193,10 +193,10 @@
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm my-3"
 		/>
 
-		{#if granting}<div class="mb-3"><ActivityIndicator size="xs" label={t('systemGrant.granting')} /></div>{/if}
+		{#if granting}<div class="mb-3"><LoadingState variant="inline" label={t('systemGrant.granting')} /></div>{/if}
 		<div aria-busy={granting || loadingUsers} class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers && allUsers.length === 0}
-				<div class="text-ink-2 text-sm px-4 py-6 text-center"><ActivityIndicator size="sm" label={t('systemGrant.loading')} /></div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center"><LoadingState variant="section" label={t('systemGrant.loading')} /></div>
 			{:else if !usersError && filtered.length === 0}
 				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.empty')}</div>
 			{:else}
@@ -229,7 +229,7 @@
 		{#if nextMarker}
 			<Alert tone="info" class="my-3">{domainT('systemGrant.partial')}</Alert>
 			<Button variant="secondary" size="sm" disabled={loadingUsers || granting} onclick={() => loadUsers(true)}>
-				{#if loadingUsers}<ActivityIndicator size="xs" />{/if}{domainT('systemGrant.loadMore')}
+				{#if loadingUsers}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{domainT('systemGrant.loadMore')}
 			</Button>
 		{/if}
 		{/if}

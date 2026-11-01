@@ -1,6 +1,6 @@
 """Mount this router once at /api/v1/auth; proofs never appear in responses to requests."""
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,6 +81,25 @@ async def complete_password(
     request: Request, response: Response, req: CompletePassword, session: AsyncSession = Depends(get_session)
 ):
     return await account_recovery.complete(req.token, session, new_password=req.new_password)
+
+
+@router.post("/recovery/password/create/complete")
+@limiter.limit("5/minute")
+async def complete_password_creation(
+    request: Request,
+    response: Response,
+    req: CompletePassword,
+    token_info: dict = Depends(get_token_info),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await account_recovery.complete_password_creation(req.token, req.new_password, token_info, session)
+    except HTTPException:
+        raise
+    except Exception:
+        # Never expose transport/SQL diagnostics or claim an uncertain write
+        # failed harmlessly. The durable dispatch fence remains authoritative.
+        raise HTTPException(502, {"code": "password_create_outcome_unknown"}) from None
 
 
 @router.post("/email/changes", status_code=202)

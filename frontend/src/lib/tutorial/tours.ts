@@ -1,4 +1,3 @@
-import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { sidebarOpen } from '$lib/stores/sidebar';
 import { t } from '$lib/i18n/ns/tutorial';
@@ -43,6 +42,8 @@ export interface TourStep {
 	advanceOn?: 'click' | 'wizard';
 	/** 이 팝오버가 대응하는 위저드 raw 단계 번호($wizard.step). 엔진이 afterglow:wizard-step 이벤트로 매핑한다. */
 	wizardStep?: number;
+	/** Keep wizard correction events synchronized while awaiting deployment settlement. */
+	followWizard?: () => boolean | Promise<boolean>;
 	/** 진행 트리거 셀렉터 — 생략 시 element 자체 클릭으로 진행 */
 	advanceElement?: string;
 	/** 이 셀렉터 클릭 시 투어를 한 단계 뒤로 (예: 위저드 "← 이전" 버튼) */
@@ -116,12 +117,8 @@ function vmCreateSteps(): TourStep[] {
 	return [
 		{
 			element: '[data-tour="vm-create-open"]',
-			route: '/dashboard',
-			prepare: async () => {
-				if (typeof window === 'undefined') return;
-				sidebarOpen.open();
-				await tick();
-			},
+			route: '/dashboard/compute/instances',
+			prepare: () => sidebarOpen.close(),
 			get title() { return t('tours.vmCreate.step1.title'); },
 			get description() { return t('tours.vmCreate.step1.description'); },
 			advanceOn: 'click',
@@ -163,7 +160,23 @@ function vmCreateSteps(): TourStep[] {
 			cancelElement: '[data-tour="wizard-cancel"]',
 		},
 		{
-			element: '[data-tour="dashboard-recent"]',
+			element: '[data-tour="instance-list"]',
+			followWizard: async () => {
+				// Shared catalog readers must not eagerly initialize the browser wizard runtime.
+				const { wizardOpen } = await import('$lib/stores/wizard');
+				return get(wizardOpen);
+			},
+			cancelElement: '[data-tour="wizard-cancel"]',
+			beforeReady: async () => {
+				// The API client's tutorial catalog also loads this module outside the browser wizard runtime.
+				const { wizardOpen } = await import('$lib/stores/wizard');
+				if (!get(wizardOpen)) return;
+				const { promise, resolve } = Promise.withResolvers<void>();
+				const unsubscribe = wizardOpen.subscribe(open => {
+					if (!open) { unsubscribe(); resolve(); }
+				});
+				await promise;
+			},
 			get title() { return t('tours.vmCreate.step7.title'); },
 			get description() { return t('tours.vmCreate.step7.description'); },
 			waitTimeoutMs: 20000,
@@ -382,26 +395,31 @@ function adminLibrarySteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="admin-library-import"]',
+			route: '/admin/libraries?tab=studio',
 			get title() { return t('tours.adminLibrary.step2.title'); },
 			get description() { return t('tours.adminLibrary.step2.description'); },
 		},
 		{
 			element: '[data-tour="admin-library-profile"]',
+			route: '/admin/libraries?tab=profiles',
 			get title() { return t('tours.adminLibrary.step3.title'); },
 			get description() { return t('tours.adminLibrary.step3.description'); },
 		},
 		{
 			element: '[data-tour="admin-library-artifacts"]',
+			route: '/admin/libraries?tab=artifacts',
 			get title() { return t('tours.adminLibrary.step4.title'); },
 			get description() { return t('tours.adminLibrary.step4.description'); },
 		},
 		{
 			element: '[data-tour="admin-library-builds"]',
+			route: '/admin/libraries?tab=builds',
 			get title() { return t('tours.adminLibrary.step5.title'); },
 			get description() { return t('tours.adminLibrary.step5.description'); },
 		},
 		{
 			element: '[data-tour="admin-library-consumes"]',
+			route: '/admin/libraries?tab=instances',
 			get title() { return t('tours.adminLibrary.step6.title'); },
 			get description() { return t('tours.adminLibrary.step6.description'); },
 		},
@@ -454,9 +472,9 @@ function adminNetworkSteps(): TourStep[] {
 			get description() { return t('tours.adminNetwork.step5.description'); },
 		},
 		{
-			element: '[data-tour="admin-network-legend"]',
+			element: '[data-tour="topology-legend-toggle"]',
 			skipReadyElement: ready,
-			skipIf: () => isTourElementMissing('[data-tour="admin-network-legend"]'),
+			skipIf: () => isTourElementMissing('[data-tour="topology-legend-toggle"]'),
 			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminNetwork.step6.title'); },
 			get description() { return t('tours.adminNetwork.step6.description'); },

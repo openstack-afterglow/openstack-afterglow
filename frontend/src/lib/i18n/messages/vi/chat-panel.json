@@ -310,6 +310,8 @@
 	"message.forkHere": "Tạo nhánh từ đây",
 	"message.fork": "Nhánh",
 	"message.generationSpeed": "Tốc độ tạo",
+	"message.ttft": "TTFT {seconds} giây",
+	"message.ttftExplanation": "Từ lúc gửi đến khi nhận văn bản trả lời đầu tiên: {seconds} giây",
 	"window.elapsedMinutesSeconds": "{minutes, plural, one {# phút} other {# phút}} {seconds, plural, one {# giây} other {# giây}}",
 	"window.elapsedSeconds": "{seconds, plural, one {# giây} other {# giây}}",
 	"window.skillFallback": "Kỹ năng #{id}",

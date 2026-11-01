@@ -247,6 +247,37 @@ def test_update_section_propagates_provider_failure_without_replay(conn, enabled
     conn.session.get.assert_not_called()
 
 
+def test_cpu_ram_correction_uses_stock_quota_api_without_overwriting_usage_or_reservations(conn):
+    measured = {
+        "cores": {"limit": 2, "in_use": 1, "reserved": 1},
+        "ram": {"limit": 4096, "in_use": 1024, "reserved": 1024},
+    }
+    conn.session.get.return_value.json.side_effect = lambda: {"quota_set": measured}
+    before = quota_native.get_section(conn, TARGET, "compute")
+
+    def update(_, *, json, **kwargs):
+        assert kwargs == {"connect_retries": 0, "status_code_retries": 0}
+        for resource, limit in json["quota_set"].items():
+            measured[resource]["limit"] = limit
+        return MagicMock()
+
+    conn.session.put.side_effect = update
+    quota_native.update_section(conn, TARGET, "compute", {"cores": 8, "ram": 16384})
+    conn.session.put.assert_called_once_with(
+        f"{ENDPOINTS['compute']}/os-quota-sets/{TARGET}",
+        json={"quota_set": {"cores": 8, "ram": 16384}},
+        connect_retries=0,
+        status_code_retries=0,
+    )
+    after = quota_native.get_section(conn, TARGET, "compute")
+    assert after == {
+        "cores": {"limit": 8, "in_use": 1, "reserved": 1},
+        "ram": {"limit": 16384, "in_use": 1024, "reserved": 1024},
+    }
+    assert before["cores"]["limit"] == 2 and before["ram"]["limit"] == 4096
+    conn.compute.update_quota_set.assert_not_called()
+
+
 @pytest.mark.parametrize("values", [{}, {"unknown": 3}, {"share_gigabytes": 1}, {"shares": True}, {"shares": -2}])
 def test_update_section_rejects_non_native_keys_or_invalid_limits(conn, enabled, values):
     with patch.object(quota_native.manila, "get_client") as client, pytest.raises(ValueError):

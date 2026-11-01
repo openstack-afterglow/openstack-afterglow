@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
   import { goto } from '$app/navigation';
@@ -6,7 +7,7 @@
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
@@ -213,7 +214,7 @@
   <ZunServiceBanner available={serviceAvailable} message={serviceMessage} />
 
   {#if loading}
-    <LoadingSkeleton variant="table" rows={4} />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('instances.list.title') })} />
   {:else if !serviceAvailable}
     <ZunServiceUnavailable />
   {:else}

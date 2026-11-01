@@ -3,6 +3,7 @@ import { api } from '$lib/api/client';
 import { getActiveMockupProfile } from '$lib/mockup/transport';
 import { getMockupRevision, onMockupRevisionChange } from '$lib/mockup/state';
 import type { MockupProfileId } from '$lib/mockup/contracts';
+import { getAuthVerificationEpoch } from '$lib/stores/auth';
 
 export type GrafanaDashboardKey = 'node' | 'rabbitmq' | 'mysqld' | 'proxysql' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu';
 
@@ -16,6 +17,7 @@ interface GrafanaScope {
 	projectId?: string;
 	mockProfile: MockupProfileId | null;
 	mockRevision: number;
+	authEpoch: number;
 }
 
 interface GrafanaContextStore {
@@ -37,6 +39,7 @@ function keyForScope(scope: GrafanaScope): string {
 		scope.projectId ?? null,
 		scope.mockProfile,
 		scope.mockRevision,
+		scope.authEpoch,
 	]);
 }
 
@@ -50,6 +53,7 @@ function currentScopeKeyFor(token?: string, projectId?: string): string {
 		projectId,
 		mockProfile: getActiveMockupProfile(),
 		mockRevision: getMockupRevision(),
+		authEpoch: getAuthVerificationEpoch(),
 	});
 }
 

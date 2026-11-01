@@ -32,6 +32,8 @@ from pydantic import BaseModel, field_validator
 
 from app.api.common.activity_recorder import rec
 from app.api.common.owner_check import assert_instance_owner, assert_project_resource_owner
+from app.api.compute.usage_schedules import read_server as read_usage_server
+from app.api.compute.usage_schedules import router as usage_schedules_router
 from app.api.deps import (
     CacheMode,
     cache_mode,
@@ -62,7 +64,18 @@ from app.models.compute import (
 )
 from app.models.progress import ProgressMessage, ProgressStep
 from app.rate_limit import limiter
-from app.services import cinder, cloudinit, github_ssh, glance, keystone, manila, neutron, nova, vm_cloud_init_library
+from app.services import (
+    cinder,
+    cloudinit,
+    github_ssh,
+    glance,
+    instance_usage,
+    keystone,
+    manila,
+    neutron,
+    nova,
+    vm_cloud_init_library,
+)
 from app.services import instance_orchestration as instance_orch
 from app.services.cache import (
     cached_call,
@@ -114,6 +127,7 @@ async def _verify_github_ssh(req: CreateInstanceRequest, *, token_info: dict) ->
 
 
 router = APIRouter()
+router.include_router(usage_schedules_router)
 
 _DATA_SHARE_METADATA_KEY = "afterglow_data_share_ids"
 _LEGACY_DATA_SHARE_METADATA_KEY = "union_data_share_ids"
@@ -352,6 +366,7 @@ async def _rename_instance(conn, server: InstanceInfo, name: str) -> dict:
         # An uncertain provider result may still have committed; never retain old metadata.
         await invalidate(f"afterglow:nova:*:instance:{server.id}")
         await invalidate(f"afterglow:nova:{server.project_id}:instances*")
+        await invalidate(f"afterglow:nova:{server.project_id}:servers")
         await invalidate("afterglow:admin:instances*")
         await invalidate("afterglow:admin:topology")
         await cache_invalidation.invalidate_mutation_count("nova", server.project_id)
@@ -435,6 +450,7 @@ def _resize_target_blockers(target: FlavorInfo, current: FlavorInfo, *, image_ba
 async def _invalidate_resized_instance(project_id: str, instance_id: str) -> None:
     await invalidate(f"afterglow:nova:{project_id}:instance:{instance_id}")
     await invalidate(f"afterglow:nova:{project_id}:instances")
+    await invalidate(f"afterglow:nova:{project_id}:servers")
     await cache_invalidation.invalidate_mutation_count("nova", project_id)
 
 
@@ -453,7 +469,11 @@ async def list_instance_resize_flavors(
     current = _resize_current_flavor(server, flavors)
     visible = [flavor for flavor in flavors if is_flavor_frontend_visible(flavor)]
     evaluated = await evaluate_project_flavors(
-        conn, server.project_id or conn._afterglow_project_id, visible, current_flavor=current
+        conn,
+        server.project_id or conn._afterglow_project_id,
+        visible,
+        current_flavor=current,
+        include_gpu_projection=True,
     )
     for flavor in evaluated:
         blockers = _resize_target_blockers(flavor, current, image_backed=bool(server.image_id))
@@ -569,15 +589,16 @@ async def create_instance(
     password_plan = await asyncio.to_thread(preflight_password, conn, req)
     if req.admin_pass is not None:
         req = await _verify_github_ssh(req, token_info=token_info)
+    flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    flavor = next((f for f in flavors if f.id == req.flavor_id), None)
+    if flavor is None:
+        raise HTTPException(status_code=400, detail="Invalid flavor ID")
+    usage_metadata = instance_usage.creation_metadata(flavor, req.usage_schedule)
     req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
         req,
         conn,
         settings,
     )
-    flavors = await asyncio.to_thread(nova.list_flavors, conn)
-    flavor = next((f for f in flavors if f.id == req.flavor_id), None)
-    if flavor is None:
-        raise HTTPException(status_code=400, detail="Invalid flavor ID")
     try:
         admission = await admit_flavor(
             conn, conn._afterglow_project_id, flavor, availability_zone=compute_availability_zone
@@ -664,10 +685,12 @@ async def create_instance(
         req = req.model_copy(update={"security_groups": effective_sgs})
 
         meta = github_ssh_metadata(req.github_username)
+        meta.update(usage_metadata)
 
         if data_mounts_info:
             meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
+        instance_usage.require_creation_schedule_current(meta)
         server = await asyncio.to_thread(
             nova.create_server,
             conn,
@@ -722,6 +745,7 @@ async def create_instance(
             resource_name=req.name,
         )
         await invalidate(f"afterglow:nova:{project_id}:instances")
+        await invalidate(f"afterglow:nova:{project_id}:servers")
         await cache_invalidation.invalidate_mutation_count("nova", project_id)
         return server
 
@@ -830,15 +854,16 @@ async def create_instance_async(
     password_plan = await asyncio.to_thread(preflight_password, conn, req)
     if req.admin_pass is not None:
         req = await _verify_github_ssh(req, token_info=token_info)
+    sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
+    if sse_flavor is None:
+        raise HTTPException(status_code=400, detail="Invalid flavor ID")
+    usage_metadata = instance_usage.creation_metadata(sse_flavor, req.usage_schedule)
     req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
         req,
         conn,
         settings,
     )
-    sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
-    sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
-    if sse_flavor is None:
-        raise HTTPException(status_code=400, detail="Invalid flavor ID")
     try:
         admission = await admit_flavor(
             conn, conn._afterglow_project_id, sse_flavor, availability_zone=compute_availability_zone
@@ -938,10 +963,12 @@ async def create_instance_async(
             _sse_effective_sgs: list[str] | None = effective_sgs if effective_sgs else None
 
             meta = github_ssh_metadata(req.github_username)
+            meta.update(usage_metadata)
 
             if data_mounts_info:
                 meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
+            instance_usage.require_creation_schedule_current(meta)
             server = await asyncio.to_thread(
                 nova.create_server,
                 conn,
@@ -1029,6 +1056,7 @@ async def create_instance_async(
             )
             _pid = conn._afterglow_project_id
             await invalidate(f"afterglow:nova:{_pid}:instances")
+            await invalidate(f"afterglow:nova:{_pid}:servers")
             await cache_invalidation.invalidate_mutation_count("nova", _pid)
             yield send_progress(ProgressStep.COMPLETED, 100, "인스턴스 생성 완료", instance_id=server_id)
 
@@ -1159,10 +1187,13 @@ async def bulk_instance_action(
             if body.action == "delete":
                 await _bulk_delete_one(conn, token_info, server, instance_id, pid)
             else:
+                if body.action == "start":
+                    instance_usage.require_resume_schedule(server)
                 nova_fn = nova_fn_map[body.action]
                 await asyncio.to_thread(nova_fn, conn, instance_id)
                 await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
                 await invalidate(f"afterglow:nova:{pid}:instances")
+                await invalidate(f"afterglow:nova:{pid}:servers")
                 await cache_invalidation.invalidate_mutation_count("nova", pid)
                 await rec(
                     token_info,
@@ -1239,6 +1270,7 @@ async def delete_instance(
     await finish_instance_delete(conn, instance_id, server, token_info)
     block_cleaned = block_cleaned or catalog_delete
     await invalidate(f"afterglow:nova:{pid}:instances")
+    await invalidate(f"afterglow:nova:{pid}:servers")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
     await cache_invalidation.invalidate_mutation_count("nova", pid)
@@ -1423,13 +1455,17 @@ async def list_instance_volumes(
 async def attach_volume_to_instance(
     instance_id: str,
     body: AttachVolumeRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     volume_id = body.volume_id
     pid = conn._afterglow_project_id
     try:
-        result = await asyncio.to_thread(nova.attach_volume, conn, instance_id, volume_id)
+        server = await read_usage_server(conn, instance_id)
+        async with instance_usage.volume_mutation_lease(conn, server) as lease:
+            if not await lease.current():
+                raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+            result = await instance_usage.sdk_call(nova.attach_volume, conn, instance_id, volume_id)
         await invalidate(f"afterglow:cinder:{pid}:vol_attach:{instance_id}")
         await rec(
             token_info,
@@ -1441,6 +1477,8 @@ async def attach_volume_to_instance(
             extra={"volume_id": volume_id},
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         await rec(
             token_info,
@@ -1459,12 +1497,16 @@ async def attach_volume_to_instance(
 async def detach_volume_from_instance(
     instance_id: str,
     volume_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     try:
-        await asyncio.to_thread(nova.detach_volume, conn, instance_id, volume_id)
+        server = await read_usage_server(conn, instance_id)
+        async with instance_usage.volume_mutation_lease(conn, server) as lease:
+            if not await lease.current():
+                raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+            await instance_usage.sdk_call(nova.detach_volume, conn, instance_id, volume_id)
         await invalidate(f"afterglow:cinder:{pid}:vol_attach:{instance_id}")
         await rec(
             token_info,
@@ -1475,6 +1517,8 @@ async def detach_volume_from_instance(
             resource_id=instance_id,
             extra={"volume_id": volume_id},
         )
+    except HTTPException:
+        raise
     except HttpException as e:
         await rec(
             token_info,
@@ -1505,18 +1549,25 @@ async def update_volume_attachment(
     instance_id: str,
     volume_id: str,
     body: UpdateVolumeAttachmentRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     try:
-        await asyncio.to_thread(
-            nova.update_volume_attachment_delete_flag,
-            conn,
-            instance_id,
-            volume_id,
-            body.delete_on_termination,
-        )
+        server = await read_usage_server(conn, instance_id)
+        async with instance_usage.volume_mutation_lease(conn, server) as lease:
+            if not await lease.current():
+                raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+            await instance_usage.sdk_call(
+                nova.update_volume_attachment_delete_flag,
+                conn,
+                instance_id,
+                volume_id,
+                body.delete_on_termination,
+            )
         await invalidate(f"afterglow:cinder:{pid}:vol_attach:{instance_id}")
+    except HTTPException:
+        raise
     except HttpException as e:
         raise HTTPException(status_code=e.http_status or 500, detail=e.message or str(e))
     except Exception:
@@ -1581,6 +1632,7 @@ async def attach_interface(
         result = await asyncio.to_thread(nova.attach_interface, conn, instance_id, net_id)
         await invalidate(f"afterglow:neutron:{pid}:ports:{instance_id}")
         await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
+        await invalidate(f"afterglow:nova:{pid}:servers")
         await rec(
             token_info,
             conn,
@@ -1616,6 +1668,7 @@ async def detach_interface(
         await asyncio.to_thread(nova.detach_interface, conn, instance_id, port_id)
         await invalidate(f"afterglow:neutron:{pid}:ports:{instance_id}")
         await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
+        await invalidate(f"afterglow:nova:{pid}:servers")
         await rec(
             token_info,
             conn,
@@ -1725,6 +1778,7 @@ async def _bulk_delete_one(
     await finish_instance_delete(conn, instance_id, server, token_info)
     block_cleaned = block_cleaned or catalog_delete
     await invalidate(f"afterglow:nova:{pid}:instances")
+    await invalidate(f"afterglow:nova:{pid}:servers")
     await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
     await invalidate(f"afterglow:neutron:{pid}:port_mac_map")
     await cache_invalidation.invalidate_mutation_count("nova", pid)
@@ -1796,10 +1850,13 @@ async def _simple_action(
     except Exception:
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
+    if action_name in {"instance.start", "instance.unshelve"}:
+        instance_usage.require_resume_schedule(server)
     try:
         await asyncio.to_thread(nova_fn, conn, instance_id)
         await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
         await invalidate(f"afterglow:nova:{pid}:instances")
+        await invalidate(f"afterglow:nova:{pid}:servers")
         await cache_invalidation.invalidate_mutation_count("nova", pid)
         await rec(
             token_info,
@@ -2002,6 +2059,7 @@ async def assign_floating_ip(
                 pass
             raise ex
         await invalidate(f"afterglow:neutron:{pid}:floating_ips")
+        await invalidate(f"afterglow:nova:{pid}:servers")
         await rec(
             token_info,
             conn,
@@ -2072,6 +2130,7 @@ async def release_floating_ip(
     try:
         await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
         await invalidate(f"afterglow:neutron:{pid}:floating_ips")
+        await invalidate(f"afterglow:nova:{pid}:servers")
         await rec(
             token_info,
             conn,

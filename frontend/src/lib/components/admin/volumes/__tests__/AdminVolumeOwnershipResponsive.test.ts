@@ -27,9 +27,9 @@ afterEach(() => { cleanup(); initLocale('ko'); });
 describe('administrator volume ownership and responsive detail access', () => {
 	it('preserves selection and detail/action callbacks across desktop and compact cards without hiding native IDs', async () => {
 		const props = {
-			volumes: [volume], selectedVolumeId: null, openActionMenu: null, copiedProjectId: null,
+			volumes: [volume], selectedVolumeId: null, openActionMenu: null,
 			selectedIds: new Set([volume.id]), selectableIds: new Set([volume.id]),
-			onSelect: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(), onActionMenuOpen: vi.fn(), onActionMenuClose: vi.fn(), onCopyProjectId: vi.fn(),
+			onSelect: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(), onActionMenuOpen: vi.fn(), onActionMenuClose: vi.fn(),
 			onEdit: vi.fn(), onExtend: vi.fn(), onTransfer: vi.fn(), onReset: vi.fn(), onForceDelete: vi.fn(), onDelete: vi.fn(), onBootFromVolume: vi.fn(),
 		};
 		render(AdminVolumeTable, props);
@@ -44,10 +44,9 @@ describe('administrator volume ownership and responsive detail access', () => {
 		expect(props.onSelect).toHaveBeenCalledTimes(2);
 		const disclosure = screen.getByText('상세 정보', { selector: 'summary' });
 		await fireEvent.click(disclosure);
-		expect(screen.getByText(volume.id)).toBeTruthy();
-		expect(screen.getByText(`소유 도메인: ${volume.domain_id}`)).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: volume.project_id! }));
-		expect(props.onCopyProjectId).toHaveBeenCalledExactlyOnceWith(volume.project_id);
+		expect(screen.getByTitle(volume.id)).toBeTruthy();
+		expect(screen.getByTitle(volume.domain_id!)).toBeTruthy();
+		expect(screen.getByTitle(volume.project_id!)).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Dataset 볼륨 작업' }));
 		expect(props.onActionMenuOpen).toHaveBeenCalledExactlyOnceWith(volume.id);
 		media.matches = true; media.dispatchEvent(new Event('change'));

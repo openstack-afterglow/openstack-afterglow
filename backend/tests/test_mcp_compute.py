@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -164,6 +165,101 @@ async def test_vm_action_rejects_foreign_or_invalid_state_before_provider_call()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("action,status", [("start", "SHUTOFF"), ("unshelve", "SHELVED_OFFLOADED")])
+@pytest.mark.parametrize("schedule_state,expired", [("active", True), ("complete", False), ("unknown", False)])
+async def test_vm_action_resume_rejects_expired_or_nonactive_schedule_without_native_action(
+    action, status, schedule_state, expired
+):
+    from app.models.instance_usage import UsageScheduleRequest
+    from app.services.instance_usage import creation_metadata
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    metadata = creation_metadata(
+        {"vcpus": 12},
+        UsageScheduleRequest(expires_at=now + timedelta(days=7), reason="study"),
+        now=now - timedelta(days=2),
+    )
+    metadata["afterglow_usage_state"] = schedule_state
+    if expired:
+        metadata["afterglow_usage_expires_at"] = (now - timedelta(seconds=1)).isoformat()
+    server = SimpleNamespace(id="server-a", name="scheduled", project_id="project-a", status=status, metadata=metadata)
+    calls = []
+    conn = SimpleNamespace(
+        compute=SimpleNamespace(
+            get_server=lambda _id: server,
+            start_server=lambda _id: calls.append("start"),
+            unshelve_server=lambda _id: calls.append("unshelve"),
+        )
+    )
+    for operation in (preview_project_server_action, request_project_server_action):
+        with pytest.raises(McpComputeError, match="[Ee]xtend"):
+            await operation(conn, project_id="project-a", server_id="server-a", action=action)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,status", [("start", "SHUTOFF"), ("unshelve", "SHELVED_OFFLOADED")])
+@pytest.mark.parametrize("scheduled", [False, True])
+async def test_vm_action_resume_allows_absent_or_reason_extended_active_future_schedule(action, status, scheduled):
+    from app.models.instance_usage import UsageScheduleRequest
+    from app.services.instance_usage import creation_metadata
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    metadata = {}
+    if scheduled:
+        metadata = creation_metadata(
+            {"vcpus": 12}, UsageScheduleRequest(expires_at=now + timedelta(days=60), reason="extend study"), now=now
+        )
+        metadata.update(
+            {
+                "afterglow_usage_extended_at": now.isoformat(),
+                "afterglow_usage_extended_by": "user-a",
+            }
+        )
+    server = SimpleNamespace(id="server-a", name="scheduled", project_id="project-a", status=status, metadata=metadata)
+    calls = []
+    conn = SimpleNamespace(
+        compute=SimpleNamespace(
+            get_server=lambda _id: server,
+            start_server=lambda _id: calls.append("start"),
+            unshelve_server=lambda _id: calls.append("unshelve"),
+        )
+    )
+    preview = await preview_project_server_action(conn, project_id="project-a", server_id="server-a", action=action)
+    result = await request_project_server_action(conn, project_id="project-a", server_id="server-a", action=action)
+    assert preview["requested_action"] == result["requested_action"] == action
+    assert calls == [action]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,status", [("start", "SHUTOFF"), ("unshelve", "SHELVED_OFFLOADED")])
+async def test_vm_action_resume_revalidates_schedule_after_preview_before_dispatch(action, status):
+    from app.models.instance_usage import UsageScheduleRequest
+    from app.services.instance_usage import creation_metadata
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    metadata = creation_metadata(
+        {"vcpus": 12},
+        UsageScheduleRequest(expires_at=now + timedelta(days=7), reason="study"),
+        now=now - timedelta(days=2),
+    )
+    server = SimpleNamespace(id="server-a", name="scheduled", project_id="project-a", status=status, metadata=metadata)
+    calls = []
+    conn = SimpleNamespace(
+        compute=SimpleNamespace(
+            get_server=lambda _id: server,
+            start_server=lambda _id: calls.append("start"),
+            unshelve_server=lambda _id: calls.append("unshelve"),
+        )
+    )
+    await preview_project_server_action(conn, project_id="project-a", server_id="server-a", action=action)
+    metadata["afterglow_usage_expires_at"] = (now - timedelta(seconds=1)).isoformat()
+    with pytest.raises(McpComputeError, match="extend"):
+        await request_project_server_action(conn, project_id="project-a", server_id="server-a", action=action)
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_cloud_overview_counts_only_exact_project_provider_records():
     calls: list[dict[str, object]] = []
 
@@ -305,6 +401,9 @@ def create_cloud(monkeypatch):
         "after_admission": None,
         "created_owner": None,
         "get_override": None,
+        "admissions": 0,
+        "eligibility_checks": 0,
+        "create_bodies": [],
     }
 
     class Compute:
@@ -318,6 +417,7 @@ def create_cloud(monkeypatch):
             return list(state["servers"].values())
 
         def create_server(self, **body):
+            state["create_bodies"].append(body)
             mapping = body["block_device_mapping"][0]
             state["volumes"].append(
                 {
@@ -348,10 +448,12 @@ def create_cloud(monkeypatch):
             return state["servers"].get(_id)
 
     async def eligible(*_args, **_kwargs):
+        state["eligibility_checks"] += 1
         if state["denied"]:
             raise RuntimeError("quota authority provider-secret")
 
     async def admit(*args, **kwargs):
+        state["admissions"] += 1
         await eligible(*args, **kwargs)
         state["reservations"].add("gpu-reservation")
         if state["after_admission"]:
@@ -405,6 +507,92 @@ async def test_vm_create_accepts_one_owned_volume_boot_without_exposing_credenti
     }
     assert state["volumes"] == [{"source_image": "image-a", "size": 20, "delete_with_server": delete_with_server}]
     assert state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "capacity",
+    [
+        {"vcpus": 12},
+        {"ram": 65536},
+        {"extra_specs": {"resources:VGPU": "1"}},
+        {"extra_specs": {"afterglow:usage_schedule_required": "true"}},
+        {"vcpus": 12, "extra_specs": {"afterglow:usage_schedule_required": "false"}},
+    ],
+)
+async def test_vm_create_required_schedule_rejected_before_quota_or_compute_mutation(create_cloud, capacity):
+    conn, arguments, state, _, flavor, *_ = create_cloud
+    flavor.update(capacity)
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule",
+    [
+        {},
+        {"expires_at": "2000-01-01T00:00:00Z"},
+        {"expires_at": "2099-01-01T00:00:00Z", "reason": "   "},
+        {"expires_at": "2099-01-01T00:00:00Z", "reason": "study", "delete_volumes": True},
+        {"expires_at": "2099-01-01T00:00:00Z", "reason": "study", "expiry_action": "delete", "delete_volumes": "true"},
+        {"expires_at": "2099-01-01T00:00:00Z", "reason": "bad\nreason"},
+        {"expires_at": "2099-01-01T00:00:00", "reason": "study"},
+    ],
+)
+async def test_vm_create_invalid_schedule_and_consent_never_reaches_quota_or_compute_mutation(create_cloud, schedule):
+    conn, arguments, state, *_ = create_cloud
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments, usage_schedule=schedule)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,delete_volumes", [("shelve", False), ("delete", False), ("delete", True)])
+async def test_vm_create_first_native_create_contains_validated_schedule(create_cloud, action, delete_volumes):
+    from app.models.instance_usage import UsageScheduleRequest
+    from app.services.instance_usage import parse_schedule
+
+    conn, arguments, state, _, flavor, *_ = create_cloud
+    flavor["vcpus"] = 12
+    requested = UsageScheduleRequest(
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+        expiry_action=action,
+        delete_volumes=delete_volumes,
+        reason="scheduled study",
+    ).model_dump(mode="json")
+    preview = await preview_project_server_create(conn, **arguments, usage_schedule=requested)
+    assert state["create_bodies"] == []
+    assert preview["usage_schedule"] == requested
+    result = await request_project_server_create(conn, **arguments, usage_schedule=requested)
+    assert len(state["create_bodies"]) == 1
+    schedule = parse_schedule({"id": result["id"], "metadata": state["create_bodies"][0]["metadata"]})
+    assert datetime.fromisoformat(schedule.expires_at) == datetime.fromisoformat(requested["expires_at"])
+    assert schedule.expiry_action == action and schedule.delete_volumes is delete_volumes
+    assert schedule.reason == "scheduled study" and schedule.source == "created" and schedule.state == "active"
+    assert state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+async def test_vm_create_rechecks_expiry_after_quota_before_first_native_create(create_cloud, monkeypatch):
+    from app.services import instance_usage
+
+    conn, arguments, state, *_ = create_cloud
+    now = datetime(2035, 1, 1, tzinfo=UTC)
+    clock = [now]
+    monkeypatch.setattr(instance_usage, "_clock", lambda _now=None: clock[0])
+    state["after_admission"] = lambda: clock.__setitem__(0, now + timedelta(days=2))
+    with pytest.raises(McpComputeError):
+        await request_project_server_create(
+            conn, **arguments, usage_schedule={"expires_at": (now + timedelta(days=1)).isoformat()}
+        )
+    assert state["admissions"] == 1 and state["reservations"] == set()
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
 
 
 @pytest.mark.asyncio
@@ -496,6 +684,8 @@ async def test_vm_create_preserves_quota_capacity_failure_before_native_write(cr
     [
         ("image", {"status": "deleted"}),
         ("flavor", {"ram": 8192}),
+        ("flavor", {"vcpus": 12}),
+        ("flavor", {"extra_specs": {"afterglow:usage_schedule_required": "true"}}),
         ("network", {"project_id": "foreign"}),
         ("keypair", {"user_id": "foreign"}),
     ],

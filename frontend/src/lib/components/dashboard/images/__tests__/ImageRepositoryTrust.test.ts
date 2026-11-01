@@ -65,7 +65,6 @@ describe('repository trust', () => {
 		const row = screen.getByRole('row', { name: /:one\b/ });
 		expect(within(row).getByText('검증됨')).toBeTruthy();
 		expect(within(row).getByText('2026-01-01')).toBeTruthy();
-		expect(within(row).getByText('active')).toBeTruthy();
 		expect(within(row).queryByText('2026-09-01')).toBeNull();
 		expect(within(screen.getByText(':two').closest('tr')!).getByText('검증 불가')).toBeTruthy();
 		expect(within(screen.getByText(':three').closest('tr')!).getByText('미검증')).toBeTruthy();

@@ -20,4 +20,10 @@
 		max-width: var(--app-content-max-width);
 		margin-inline: auto;
 	}
+	.page-shell:has(> :global(.loading-state--surface)) {
+		display: flex;
+		flex-direction: column;
+		min-height: calc(100dvh - var(--app-header-height));
+	}
+	.page-shell > :global(.loading-state--surface) { height: auto; }
 </style>

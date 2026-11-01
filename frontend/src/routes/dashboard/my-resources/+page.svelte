@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { t } from '$lib/i18n/ns/dashboard-home';
@@ -119,10 +120,7 @@
 	{#if !currentOwner}
 		<div data-resource-auth-gate><EmptyState headline={t('myResources.selectProject')} /></div>
 	{:else if initialLoading && !visibleData}
-		<div data-resource-loading role="status" aria-busy="true" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-			<span class="sr-only">{tc('state.loading')}</span>
-			{#each [1, 2, 3] as _}<div class="motion-skeleton border border-line rounded-lg h-48" aria-hidden="true"></div>{/each}
-		</div>
+		<LoadingState variant="surface" data-resource-loading label={tc('state.loadingNamed', { name: t('myResources.title') })} />
 	{:else if visibleData}
 		<div data-resource-snapshot>
 			<MyResourcesSummary totals={visibleData.totals} />

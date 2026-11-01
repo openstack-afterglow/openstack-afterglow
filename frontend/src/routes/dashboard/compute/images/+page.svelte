@@ -1,4 +1,6 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/images-keys';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -151,11 +153,7 @@
   {#if ctrl.error}<Alert tone="danger">{ctrl.error}</Alert>{/if}
 
   {#if ctrl.loading}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-      {#each Array(8) as _}
-        <div class="motion-skeleton h-32 border border-line rounded-lg"></div>
-      {/each}
-    </div>
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('imagesPage.title') })} />
   {:else}
     <ImageCatalogToolbar
       bind:searchQuery={ctrl.searchQuery}

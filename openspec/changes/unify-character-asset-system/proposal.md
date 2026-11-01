@@ -1,0 +1,4 @@
+## Why
+The user requests a source-wide inventory of themeable assets and a unified Afterglow character-graphic family beyond standalone previews. Current source already shares the authored scene across hundreds of pending surfaces, while compact spinners, determinate tracks and SVG/emoji empty-state decorations remain inconsistent.
+## What Changes
+Inventory every relevant source/static asset category and shared consumers. Unify existing pending/progress primitives and introduce a static decorative AssetGlyph family for empty/search/error/offline/success/upload/locked. Apply it to common EmptyState, four custom empty wrappers and root error. Preserve actual content/brand/provider assets, functional icons, chart semantics, task authority and localization. No deployment or authentication behavior change.

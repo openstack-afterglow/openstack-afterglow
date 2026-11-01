@@ -5,23 +5,31 @@
   import { t } from '$lib/i18n/ns/palimpsest-admin';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
   import RichText from '$lib/i18n/RichText.svelte';
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import Tabs from '$lib/components/ui/Tabs.svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import type { Keypair } from '$lib/types/keypair';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import ProgressTrack, { type ProgressTone } from '$lib/components/ui/ProgressTrack.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import DockerfileLintPanel, { type DockerfileLintResponse } from '$lib/components/admin/libraries/DockerfileLintPanel.svelte';
   import PalimpsestCatalogPanel from '$lib/components/admin/libraries/PalimpsestCatalogPanel.svelte';
+  import UsageScheduleFields from '$lib/components/instance/UsageScheduleFields.svelte';
+  import { t as usageText } from '$lib/i18n/ns/usage-schedule';
+  import { defaultUsageDraft, requiresUsageSchedule, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
+  import type { CloudFlavor } from '$lib/api/palimpsestAssets';
+  import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   // ---------------------------------------------------------------------------
   // 타입
@@ -136,6 +144,29 @@
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
+  const workspaceTabs = $derived([
+    { value: 'catalog', label: t('workspace.catalog'), panelId: 'library-catalog' },
+    { value: 'studio', label: t('workspace.studio'), panelId: 'library-studio' },
+    { value: 'profiles', label: t('workspace.profiles'), panelId: 'library-profiles' },
+    { value: 'artifacts', label: t('workspace.artifacts'), panelId: 'library-artifacts' },
+    { value: 'builds', label: t('workspace.builds'), panelId: 'library-builds' },
+    { value: 'instances', label: t('workspace.instances'), panelId: 'library-instances' },
+  ]);
+  const workspace = $derived(workspaceTabs.some(item => item.value === $page.url.searchParams.get('tab')) ? $page.url.searchParams.get('tab')! : 'catalog');
+  function workspaceHref(tab: string, editor = false) {
+    const url = new URL($page.url);
+    url.searchParams.set('tab', tab);
+    if (tab === 'studio' && editor) url.searchParams.set('step', 'editor');
+    else url.searchParams.delete('step');
+    url.hash = '';
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+  function openWorkspace(tab: string, editor = false) {
+    const href = workspaceHref(tab, editor);
+    if (href === `${$page.url.pathname}${$page.url.search}${$page.url.hash}`) return;
+    if (tab !== 'studio' || !editor) resetSourceChoice();
+    void goto(href, { noScroll: true, keepFocus: true });
+  }
 
   let builds = $state<LayerBuild[]>([]);
   let consumes = $state<LayerConsume[]>([]);
@@ -217,8 +248,6 @@
   let selectedProfileId = $state<number | null>(null);
   const selectedHistoricalProfile = $derived(profiles.find(profile => profile.id === selectedProfileId));
   let publicationUpdating = $state('');
-  // 봉인 완료된 artifact만 부모 후보로 사용
-  const sealedArtifacts = $derived(artifacts.filter(a => a.is_sealed));
   let profileMessage = $state('');
   let profileDeletingName = $state('');
   let profileDeleteError = $state('');
@@ -234,20 +263,30 @@
   ];
   let dockerfileTarget = $state<DockerfileExecutionTarget>('build');
   let dockerfileConsumer = $state({ server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' });
+  let consumerFlavors = $state<CloudFlavor[]>([]);
+  let consumerFlavorError = $state('');
+  let consumerFlavorsLoading = $state(false);
+  let consumerScopeGeneration = 0;
+  let consumerFlavorRequest = 0;
+  let dockerfileUsage = $state(defaultUsageDraft());
+  const dockerfileFlavor = $derived(consumerFlavors.find(item => item.id === dockerfileConsumer.flavor_id.trim()));
+  const dockerfileScheduleRequired = $derived(requiresUsageSchedule(dockerfileFlavor));
+  const dockerfileScheduleReady = $derived(!dockerfileScheduleRequired || !usageDraftError(dockerfileUsage));
   const dockerfileConsumerReady = $derived(
     dockerfileTarget === 'build' || (
-      !!dockerfileConsumer.flavor_id.trim() &&
+      !!dockerfileFlavor && !consumerFlavorsLoading && !consumerFlavorError && dockerfileScheduleReady &&
       (!!dockerfileConsumer.key_name.trim() || !!dockerfileConsumer.ssh_public_key.trim())
     )
   );
   function buildDockerfileConsumer() {
     if (dockerfileTarget !== 'instance') return undefined;
-    const consumer: Record<string, string> = { flavor_id: dockerfileConsumer.flavor_id.trim() };
+    const consumer: Record<string, unknown> = { flavor_id: dockerfileConsumer.flavor_id.trim() };
     if (dockerfileConsumer.server_name.trim()) consumer.server_name = dockerfileConsumer.server_name.trim();
     if (dockerfileConsumer.network_id.trim()) consumer.network_id = dockerfileConsumer.network_id.trim();
     if (dockerfileConsumer.key_name) consumer.key_name = dockerfileConsumer.key_name;
     if (dockerfileConsumer.ssh_public_key.trim()) consumer.ssh_public_key = dockerfileConsumer.ssh_public_key.trim();
     if (dockerfileConsumer.ssh_username.trim()) consumer.ssh_username = dockerfileConsumer.ssh_username.trim();
+    if (dockerfileScheduleRequired) consumer.usage_schedule = usagePayload(dockerfileUsage);
     return consumer;
   }
   let selectedImportId = $state<number | null>(null);
@@ -257,29 +296,85 @@
   let historyConsumer = $state({ server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' });
   let historyConsumeSubmitting = $state(false);
   let historyConsumeError = $state('');
+  let historyUsage = $state(defaultUsageDraft());
+  const historyFlavor = $derived(consumerFlavors.find(item => item.id === historyConsumer.flavor_id.trim()));
+  const historyScheduleRequired = $derived(requiresUsageSchedule(historyFlavor));
+  const historyScheduleReady = $derived(!historyScheduleRequired || !usageDraftError(historyUsage));
+  $effect(() => {
+    dockerfileConsumer.flavor_id; dockerfileTarget;
+    untrack(() => { dockerfileUsage = defaultUsageDraft(); });
+  });
+  $effect(() => {
+    historyConsumer.flavor_id; historyConsumeTargetId; selectedImportId;
+    untrack(() => { historyUsage = defaultUsageDraft(); });
+  });
+  onMount(() => {
+    let owner: string | null = null;
+    const stop = auth.subscribe(state => {
+      const next = sessionScopeKey(state);
+      if (owner !== next) {
+        ++consumerScopeGeneration; ++consumerFlavorRequest;
+        consumerFlavors = []; consumerFlavorError = ''; consumerFlavorsLoading = false;
+        dockerfileUsage = defaultUsageDraft(); historyUsage = defaultUsageDraft();
+        dockerfileConsumer = { server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' };
+        historyConsumer = { server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' };
+        historyConsumeTargetId = null; selectedImportId = null; historyConsumeError = '';
+        importSubmitting = false; historyConsumeSubmitting = false;
+        ++dockerfileAuthoringRevision;
+        dockerfileFetching = false; dockerfileFetchError = ''; uploadedFileName = '';
+        resetSourceChoice();
+        sourceImageId = ''; sourceProfileId = ''; editorReady = false; dockerfileText = '';
+      }
+      owner = next;
+    });
+    return () => { ++consumerScopeGeneration; ++consumerFlavorRequest; ++sourceSeq; ++dockerfileAuthoringRevision; sourceAbort?.abort(); stop(); };
+  });
+  async function loadConsumerFlavors() {
+    const generation = consumerScopeGeneration, request = ++consumerFlavorRequest;
+    consumerFlavorsLoading = true; consumerFlavorError = '';
+    try {
+      const result = await api.get<CloudFlavor[]>('/api/v1/flavors', token, projectId, { cache: 'no-store' });
+      if (generation === consumerScopeGeneration && request === consumerFlavorRequest) consumerFlavors = result;
+    } catch (cause) {
+      if (generation === consumerScopeGeneration && request === consumerFlavorRequest) {
+        consumerFlavors = []; consumerFlavorError = cause instanceof ApiError ? cause.message : t('error.network');
+      }
+    } finally {
+      if (generation === consumerScopeGeneration && request === consumerFlavorRequest) consumerFlavorsLoading = false;
+    }
+  }
+  $effect(() => {
+    token; projectId; $auth.userId; $auth.sessionId; $auth.identityDomainId; $auth.domainId;
+    if (token) untrack(() => { void loadConsumerFlavors(); });
+  });
   const historyConsumerReady = $derived(
-    !!historyConsumer.flavor_id.trim() && (!!historyConsumer.key_name.trim() || !!historyConsumer.ssh_public_key.trim())
+    !!historyFlavor && !consumerFlavorsLoading && !consumerFlavorError && historyScheduleReady && (!!historyConsumer.key_name.trim() || !!historyConsumer.ssh_public_key.trim())
   );
 
   async function consumeCompletedImport(job: LayerImportJob) {
     if (historyConsumeSubmitting || job.status !== 'complete' || !job.dockerfile_digest || !historyConsumerReady || !job.artifact_ids?.length) return;
+    const scheduleError = historyScheduleRequired ? usageDraftError(historyUsage) : null;
+    if (scheduleError) { historyConsumeError = usageText(scheduleError); return; }
+    const generation = consumerScopeGeneration, target = historyConsumeTargetId;
     historyConsumeSubmitting = true;
     historyConsumeError = '';
     try {
-      const body: Record<string, string | number> = { import_id: job.id, flavor_id: historyConsumer.flavor_id.trim() };
+      const body: Record<string, unknown> = { import_id: job.id, flavor_id: historyConsumer.flavor_id.trim() };
       if (historyConsumer.server_name.trim()) body.server_name = historyConsumer.server_name.trim();
       if (historyConsumer.network_id.trim()) body.network_id = historyConsumer.network_id.trim();
       if (historyConsumer.key_name.trim()) body.key_name = historyConsumer.key_name.trim();
       if (historyConsumer.ssh_public_key.trim()) body.ssh_public_key = historyConsumer.ssh_public_key.trim();
       if (historyConsumer.ssh_username.trim()) body.ssh_username = historyConsumer.ssh_username.trim();
+      if (historyScheduleRequired) body.usage_schedule = usagePayload(historyUsage);
       const result = await api.post<{ consume_id: number; server_id: string }>('/api/v1/admin/libraries/consume', body, token, projectId);
+      if (generation !== consumerScopeGeneration || target !== historyConsumeTargetId) return;
       message = t('toast.consumeCreated', { jobId: job.id, serverId: result.server_id });
       historyConsumeTargetId = null;
       await loadConsumes(true);
     } catch (e) {
-      historyConsumeError = e instanceof ApiError ? e.message : t('error.createVm');
+      if (generation === consumerScopeGeneration && target === historyConsumeTargetId) historyConsumeError = e instanceof ApiError ? e.message : t('error.createVm');
     } finally {
-      historyConsumeSubmitting = false;
+      if (generation === consumerScopeGeneration) historyConsumeSubmitting = false;
     }
   }
 
@@ -296,7 +391,7 @@
   let dockerfileMode = $state<DockerfileInputMode>('editor');
   let dockerfileAuthoringRevision = 0;
 
-  let dockerfileText = $state(`FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git\nENV APP_ENV=production\nWORKDIR /app\n`);
+  let dockerfileText = $state('');
   let dockerfileUrl = $state('');
   let dockerfileFetching = $state(false);
   let dockerfileFetchError = $state('');
@@ -305,6 +400,118 @@
   let lintLoading = $state(false);
   let lintError = $state('');
   let lintSeq = 0;
+  let sourceKind = $state<'image' | 'profile' | 'dockerfile'>('image');
+  interface SourceArtifact {
+    id: number; name: string; parent_id: number | null; is_sealed: boolean;
+    blob_digest: string | null; digest_state: string; created_at: string | null;
+  }
+  let sourceImageId = $state('');
+  let sourceProfileId = $state('');
+  let sourceLoading = $state(false);
+  let sourceError = $state('');
+  let sourceLint = $state<DockerfileLintResponse | null>(null);
+  let sourceSeq = 0;
+  let sourceAbort: AbortController | null = null;
+  let editorReady = $state(false);
+  let baseImagesError = $state('');
+  const editorVisible = $derived(editorReady && $page.url.searchParams.get('step') === 'editor');
+  function resetSourceChoice() {
+    ++sourceSeq;
+    sourceAbort?.abort(); sourceAbort = null;
+    sourceLoading = false;
+    sourceError = '';
+    sourceLint = null;
+  }
+  $effect(() => {
+    $page.url.pathname; $page.url.search;
+    untrack(resetSourceChoice);
+  });
+  async function chooseBuildSource() {
+    if (sourceLoading || importSubmitting) return;
+    const seq = ++sourceSeq, generation = consumerScopeGeneration;
+    sourceAbort?.abort();
+    const abort = new AbortController(); sourceAbort = abort;
+    sourceLoading = true;
+    sourceError = '';
+    sourceLint = null;
+    try {
+      if (sourceKind === 'dockerfile') {
+        editorReady = true;
+        openWorkspace('studio', true);
+        return;
+      }
+      let ref = '';
+      let parentId: number | null = null;
+      if (sourceKind === 'image') {
+        const image = baseImages.find(item => item.id === sourceImageId && item.status.toLowerCase() === 'active');
+        if (!image) throw new Error(t('source.chooseImage'));
+        ref = image.id;
+      } else {
+        const selected = profiles.find(item => String(item.id) === sourceProfileId);
+        if (!selected) throw new Error(t('source.profileUnavailable'));
+        const [profile, inventory] = await Promise.all([
+          api.get<LayerProfile>(`/api/v1/admin/libraries/profiles/${encodeURIComponent(selected.name)}`, token, projectId, { cache: 'no-store', signal: abort.signal }),
+          api.get<SourceArtifact[]>('/api/v1/admin/palimpsest/artifacts', token, projectId, { cache: 'no-store', signal: abort.signal }),
+        ]);
+        if (seq !== sourceSeq || generation !== consumerScopeGeneration) return;
+        if (profile.id !== selected.id || profile.name !== selected.name || !profile.layers?.length) throw new Error(t('source.profileUnavailable'));
+        // Profiles name current sealed versions, not the bounded recent-artifact page.
+        // Native consumption resolves newest created_at; catalog uses id to break ties.
+        const latest = new Map<string, SourceArtifact>();
+        for (const item of inventory) {
+          if (!item.is_sealed) continue;
+          const previous = latest.get(item.name);
+          const date = item.created_at ? Date.parse(item.created_at) : -Infinity;
+          const previousDate = previous?.created_at ? Date.parse(previous.created_at) : -Infinity;
+          if (!previous || date > previousDate || (date === previousDate && item.id > previous.id)) latest.set(item.name, item);
+        }
+        const selectedArtifacts = profile.layers.map(name => latest.get(name));
+        if (selectedArtifacts.some(item => !item)) throw new Error(t('source.profileUnavailable'));
+        const selectedIds = selectedArtifacts.map(item => item!.id);
+        if (new Set(selectedIds).size !== selectedIds.length) throw new Error(t('source.profileUnavailable'));
+        const byId = new Map(inventory.map(item => [item.id, item]));
+        const chain: SourceArtifact[] = [];
+        const seen = new Set<number>();
+        let current: SourceArtifact | undefined = selectedArtifacts[0];
+        while (current) {
+          if (seen.has(current.id) || !current.is_sealed) throw new Error(t('source.profileUnavailable'));
+          seen.add(current.id); chain.push(current);
+          if (current.parent_id === null) break;
+          current = byId.get(current.parent_id);
+          if (!current) throw new Error(t('source.profileUnavailable'));
+        }
+        const projected = chain.filter(item => selectedIds.includes(item.id)).map(item => item.id);
+        if (projected.length !== selectedIds.length || projected.some((id, index) => id !== selectedIds[index])) throw new Error(t('source.profileUnavailable'));
+        const leaf = chain[0];
+        if (!leaf || leaf.digest_state !== 'ready' || !/^sha256:[a-f0-9]{64}$/.test(leaf.blob_digest ?? '')) throw new Error(t('source.profileUnavailable'));
+        parentId = leaf.id;
+        ref = `palimpsest/${leaf.name}@${leaf.blob_digest}`;
+      }
+      const fromLine = `FROM ${ref}`;
+      const text = dockerfileText.trim()
+        ? (/^\s*FROM\b[^\r\n]*/im.test(dockerfileText)
+          ? dockerfileText.replace(/^\s*FROM\b[^\r\n]*/im, fromLine)
+          : `${fromLine}\n${dockerfileText}`)
+        : `${fromLine}\n`;
+      const result = await api.post<DockerfileLintResponse>('/api/v1/palimpsest/builds/dockerfile/lint', { dockerfile: text }, token, projectId, { signal: abort.signal });
+      if (seq !== sourceSeq || generation !== consumerScopeGeneration) return;
+      sourceLint = result;
+      if (result.from.error || (parentId !== null ? result.from.parent?.id !== parentId : result.from.image?.id !== sourceImageId)) {
+        sourceError = t('source.invalid');
+        return;
+      }
+      ++dockerfileAuthoringRevision;
+      dockerfileText = text;
+      dockerfileMode = 'editor';
+      uploadedFileName = '';
+      editorReady = true;
+      openWorkspace('studio', true);
+    } catch (cause) {
+      if (seq === sourceSeq && generation === consumerScopeGeneration) sourceError = cause instanceof Error ? cause.message : t('error.network');
+    } finally {
+      if (seq === sourceSeq && generation === consumerScopeGeneration) sourceLoading = false;
+    }
+  }
 
   async function runDockerfileLint(text: string, prefix: string, seq: number, requestToken: string, requestProjectId: string | undefined) {
     try {
@@ -333,7 +540,7 @@
     const seq = ++lintSeq;
     dockerfileLint = null;
     lintError = '';
-    const shouldLint = mode !== 'github' && !!text.trim() && !!requestToken;
+    const shouldLint = editorReady && mode !== 'github' && !!text.trim() && !!requestToken;
     lintLoading = shouldLint;
     if (!shouldLint || !requestToken) return;
     const timer = setTimeout(() => { void runDockerfileLint(text, prefix, seq, requestToken, requestProjectId); }, 600);
@@ -433,9 +640,11 @@
   async function loadBaseImages(refresh = false) {
     try {
       baseImages = await api.get<LayerBaseImage[]>('/api/v1/admin/libraries/base-images', token, projectId, { refresh });
+      baseImagesError = '';
 
-    } catch {
+    } catch (cause) {
       baseImages = [];
+      baseImagesError = cause instanceof ApiError ? cause.message : t('error.network');
     }
   }
 
@@ -573,6 +782,9 @@
 
   async function submitDockerfileImport() {
     if (importSubmitting || !pinnedCommitValid || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !dockerfileConsumerReady) return;
+    const scheduleError = dockerfileTarget === 'instance' && dockerfileScheduleRequired ? usageDraftError(dockerfileUsage) : null;
+    if (scheduleError) { error = usageText(scheduleError); return; }
+    const generation = consumerScopeGeneration, draft = dockerfileUsage;
     importSubmitting = true;
     error = '';
     message = '';
@@ -587,14 +799,16 @@
       const consumer = buildDockerfileConsumer();
       if (consumer) body.consumer = consumer;
       const result = await api.post<LayerImportJob>('/api/v1/admin/libraries/imports/dockerfile', body, token, projectId);
+      if (generation !== consumerScopeGeneration) return;
+      if (draft === dockerfileUsage) dockerfileUsage = defaultUsageDraft();
       importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
       selectedImportId = result.id;
       message = t('toast.importStarted', { id: result.id, profile: result.profile_name });
       await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
-      error = e instanceof ApiError ? t('error.import', { detail: e.message }) : t('error.network');
+      if (generation === consumerScopeGeneration) error = e instanceof ApiError ? t('error.import', { detail: e.message }) : t('error.network');
     } finally {
-      importSubmitting = false;
+      if (generation === consumerScopeGeneration) importSubmitting = false;
     }
   }
 
@@ -692,6 +906,8 @@
 
   async function submitInlineDockerfileBuild() {
     if (importSubmitting || lintLoading || dockerfileLint?.valid === false || !dockerfileConsumerReady) return;
+    const scheduleError = dockerfileTarget === 'instance' && dockerfileScheduleRequired ? usageDraftError(dockerfileUsage) : null;
+    if (scheduleError) { error = usageText(scheduleError); return; }
     if (!dockerfileText.trim()) {
       error = t('validation.emptyDockerfile');
       return;
@@ -700,6 +916,7 @@
       error = t('validation.prefix');
       return;
     }
+    const generation = consumerScopeGeneration, draft = dockerfileUsage;
     importSubmitting = true;
     error = '';
     message = '';
@@ -718,15 +935,17 @@
         token,
         projectId,
       );
+      if (generation !== consumerScopeGeneration) return;
+      if (draft === dockerfileUsage) dockerfileUsage = defaultUsageDraft();
       importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
       selectedImportId = result.id;
       message = t('toast.buildStarted', { id: result.id, profile: result.profile_name });
       dockerfilePlan = null;
       await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
-      error = e instanceof ApiError ? t('error.buildStart', { detail: e.message }) : t('error.network');
+      if (generation === consumerScopeGeneration) error = e instanceof ApiError ? t('error.buildStart', { detail: e.message }) : t('error.network');
     } finally {
-      importSubmitting = false;
+      if (generation === consumerScopeGeneration) importSubmitting = false;
     }
   }
 
@@ -963,34 +1182,17 @@
   <div data-tour="admin-library-header">
     <PageHeader title={t('page.title')} breadcrumb="Palimpsest" subtitle={t('page.subtitle')}>
       {#snippet actions()}
+        {#if workspace !== 'studio'}<Button variant="primary" onclick={() => openWorkspace('studio')}>{t('workspace.createBuild')}</Button>{/if}
         <Button variant="secondary" href="/palimpsest/packages">{t('actions.projectPackages')}</Button>
         <TutorialStartButton tour="admin-library" compactOnMobile />
-        <button
-          onclick={() => loadAll(true)}
-          class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
-        >{t('actions.refresh')}</button>
+        <Button variant="secondary" onclick={() => loadAll(true)}>{t('actions.refresh')}</Button>
       {/snippet}
     </PageHeader>
   </div>
-  <PalimpsestCatalogPanel onbundle={(name) => { selectedProfileId = profiles.find(profile => profile.name === name)?.id ?? null; }} />
-  <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label={t('summary.label')}>
-    <div class="px-3 first:pl-0 md:border-r md:border-line">
-      <p class="text-xs text-ink-2">{t('summary.sealed')}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{sealedArtifacts.length}</p>
+  <div data-tour="admin-library-ready"><Tabs id="library-workspace-tabs" value={workspace} items={workspaceTabs} ariaLabel={t('workspace.label')} onchange={(value) => openWorkspace(value)} class="mb-5" /></div>
+    <div id="library-catalog" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-catalog" hidden={workspace !== 'catalog'}>
+      <PalimpsestCatalogPanel onbundle={(name) => { selectedProfileId = profiles.find(profile => profile.name === name)?.id ?? null; openWorkspace('profiles'); }} />
     </div>
-    <div class="px-3 md:border-r md:border-line">
-      <p class="text-xs text-ink-2">{t('summary.profiles')}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{profiles.length}</p>
-    </div>
-    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:border-r md:pt-0">
-      <p class="text-xs text-ink-2">{t('summary.builds')}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-warm-text">{activeBuilds.length + activeImportJobs.length}</p>
-    </div>
-    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:pt-0">
-      <p class="text-xs text-ink-2">{t('summary.vms')}</p>
-      <p class="mt-1 text-lg font-semibold tabular-nums text-state-success">{consumes.filter((consume) => CONSUME_BLOCKING_STATUSES.has((consume.status || '').toLowerCase())).length}</p>
-    </div>
-  </div>
 
   {#if error}
     <Alert tone="danger" class="mb-4">{error}</Alert>
@@ -1000,9 +1202,10 @@
   {/if}
 
   {#if loading}
-    <LoadingSkeleton rows={4} />
+    {#if workspace !== 'catalog'}<LoadingState variant="surface" />{/if}
   {:else}
-    <div class="mb-8" data-tour="admin-library-ready">
+    {#if workspace === 'studio'}
+    <div id="library-studio" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-studio" class="mb-8">
       <section class="min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
         <div class="flex items-center justify-between mb-1">
           <h2 class="text-sm font-semibold text-ink-0">{t('studio.title')}</h2>
@@ -1011,6 +1214,37 @@
         <p class="text-xs text-ink-2 mb-3">
           {t('studio.description')}
         </p>
+        {#if !editorVisible}
+          <div class="max-w-2xl space-y-4" data-testid="palimpsest-build-source">
+            <h3 class="text-sm font-semibold">{t('source.title')}</h3>
+            <p class="text-sm text-ink-2">{t('source.help')}</p>
+            <ToggleGroup value={sourceKind} options={[
+              { value: 'image', label: t('source.image') },
+              { value: 'profile', label: t('source.profile') },
+              { value: 'dockerfile', label: t('source.document') },
+            ]} ariaLabel={t('source.title')} onchange={(value) => { resetSourceChoice(); sourceKind = value as typeof sourceKind; }} />
+            {#if sourceKind === 'image'}
+              <label class="block text-sm text-ink-2" for="palimpsest-base-image">{t('source.chooseImage')}</label>
+              <SearchSelect id="palimpsest-base-image" value={sourceImageId} options={baseImages.filter(image => image.status.toLowerCase() === 'active').map(image => ({ value: image.id, label: image.name, description: `${image.id} · ${image.ubuntu_base} · ${image.min_disk} GiB` }))} onchange={(value) => { resetSourceChoice(); sourceImageId = value; }} disabled={sourceLoading} />
+              {#if baseImagesError}<Alert tone="danger">{baseImagesError}</Alert>{:else if baseImages.length === 0}<Alert tone="info">{t('source.imagesEmpty')}</Alert>{/if}
+              <Button variant="secondary" size="sm" onclick={() => loadBaseImages(true)} disabled={sourceLoading}>{t('actions.refresh')}</Button>
+            {:else if sourceKind === 'profile'}
+              <label class="block text-sm text-ink-2" for="palimpsest-base-profile">{t('source.profile')}</label>
+              <SearchSelect id="palimpsest-base-profile" value={sourceProfileId} options={profiles.map(profile => ({ value: String(profile.id), label: profile.name, description: profile.layers.join(' → ') }))} onchange={(value) => { resetSourceChoice(); sourceProfileId = value; }} disabled={sourceLoading} />
+              <p class="text-sm text-ink-2">{t('source.profileHelp')}</p>
+            {:else}
+              <p class="text-sm text-ink-2">{t('source.documentHelp')}</p>
+            {/if}
+            {#if sourceError}<Alert tone="danger">{sourceError}</Alert>{/if}
+            {#if sourceLint && !sourceLint.valid}<DockerfileLintPanel lint={sourceLint} loading={false} requestError="" />{/if}
+            <div class="flex flex-wrap gap-2">
+              <Button variant="primary" onclick={chooseBuildSource} disabled={sourceLoading || !token || (sourceKind === 'image' && !sourceImageId) || (sourceKind === 'profile' && !sourceProfileId)}>{#if sourceLoading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{sourceLoading ? t('source.checking') : t('source.continue')}</Button>
+              {#if editorReady}<Button variant="secondary" onclick={() => openWorkspace('studio', true)}>{t('source.resume')}</Button>{/if}
+              <Button variant="secondary" href={workspaceHref('builds')}>{t('workspace.builds')}</Button>
+            </div>
+          </div>
+        {:else}
+          <Button variant="secondary" size="sm" class="mb-4" onclick={() => openWorkspace('studio')}>{t('source.change')}</Button>
 
         <!-- 모드 선택 탭 -->
         <ToggleGroup
@@ -1046,7 +1280,7 @@
                   disabled={dockerfileFetching || !dockerfileUrl.trim()}
                   class="px-3 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
                 >
-                  {dockerfileFetching ? t('url.fetching') : t('url.fetch')}
+                  {#if dockerfileFetching}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{dockerfileFetching ? t('url.fetching') : t('url.fetch')}
                 </button>
               </div>
               {#if dockerfileFetchError}
@@ -1162,12 +1396,21 @@
           {#if dockerfileTarget === 'instance'}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label={t('consumer.settings')}>
               <p class="md:col-span-2 text-xs text-ink-2">{t('consumer.help')}</p>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-flavor">{t('consumer.flavor')}</label><input id="dockerfile-consumer-flavor" type="text" bind:value={dockerfileConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              {#if consumerFlavorsLoading}<div class="md:col-span-2"><LoadingState variant="inline" /></div>{/if}
+              {#if consumerFlavorError}<div class="md:col-span-2"><Alert tone="danger">{consumerFlavorError}</Alert><Button variant="secondary" size="sm" onclick={loadConsumerFlavors}>{t('actions.refresh')}</Button></div>{/if}
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-flavor">{t('consumer.flavor')}</label><SearchSelect id="dockerfile-consumer-flavor" value={dockerfileConsumer.flavor_id} options={consumerFlavors.map(item => ({ value: item.id, label: item.name, description: `${item.id} · ${item.vcpus} vCPU · ${item.ram} MiB` }))} onchange={(value) => { dockerfileConsumer.flavor_id = value; }} disabled={importSubmitting || consumerFlavorsLoading} /></div>
               <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-server">{t('consumer.server')}</label><input id="dockerfile-consumer-server" type="text" bind:value={dockerfileConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
               <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-network">{t('consumer.network')}</label><input id="dockerfile-consumer-network" type="text" bind:value={dockerfileConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
               <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-keypair">{t('consumer.keypair')}</label><select id="dockerfile-consumer-keypair" bind:value={dockerfileConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">{t('form.noSelection')}</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
               <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-user">{t('consumer.user')}</label><input id="dockerfile-consumer-user" type="text" bind:value={dockerfileConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
               <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-pubkey">{t('consumer.publicKey')}</label><textarea id="dockerfile-consumer-pubkey" rows="2" bind:value={dockerfileConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+              {#if dockerfileScheduleRequired}
+                <section class="min-w-0 space-y-3 md:col-span-2" aria-label={usageText('title')}>
+                  <h3 class="text-sm font-semibold">{usageText('title')}</h3>
+                  <p class="text-sm text-ink-2">{usageText('required')}</p>
+                  <UsageScheduleFields value={dockerfileUsage} onchange={(value) => dockerfileUsage = value} disabled={importSubmitting} idPrefix="dockerfile-usage" />
+                </section>
+              {/if}
             </div>
           {/if}
           {#if dockerfileMode !== 'github'}
@@ -1216,7 +1459,7 @@
                 disabled={planLoading || lintLoading || dockerfileFetching || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
-                {planLoading ? t('plan.calculating') : t('plan.preview')}
+                {#if planLoading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{planLoading ? t('plan.calculating') : t('plan.preview')}
               </Button>
               <Button
                 variant="primary"
@@ -1225,7 +1468,7 @@
                 disabled={importSubmitting || lintLoading || dockerfileFetching || !dockerfileConsumerReady || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
-                {importSubmitting ? t('build.starting') : t('build.start')}
+                {#if importSubmitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{importSubmitting ? t('build.starting') : t('build.start')}
               </Button>
             {:else}
               <Button
@@ -1235,114 +1478,34 @@
                 disabled={importSubmitting || !dockerfileConsumerReady || !pinnedCommitValid || !importForm.github_url.trim() || !importForm.layer_prefix.trim()}
                 class="w-full sm:col-span-2"
               >
-                {importSubmitting ? t('import.starting') : t('import.start')}
+                {#if importSubmitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{importSubmitting ? t('import.starting') : t('import.start')}
               </Button>
             {/if}
           </div>
 
-          <!-- importJobs 테이블 -->
-          <h3 class="text-sm font-semibold text-ink-0">{t('history.title')}</h3>
-          {#if importLoadError}<Alert tone="danger">{importLoadError}</Alert>{/if}
-          {#if selectedImport}
-            {@const importRunning = !TERMINAL.has(selectedImport.status)}
-            <section aria-label={t('history.selected')} class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
-              <p class="font-mono">#{selectedImport.id} · {selectedImport.profile_name} · {selectedImport.source_type || 'github'}</p>
-              <StatusChip status={selectedImport.status} />
-              <p class="flex items-center gap-1.5">
-                {#if importRunning}<ActivityIndicator size="xs" />{/if}
-                <span>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</span>
-              </p>
-              <ProgressTrack
-                value={selectedImport.progress_pct}
-                label={t('history.progress')}
-                tone={jobProgressTone(selectedImport.status)}
-                active={importRunning}
-              />
-              {#if selectedImport.error_message}<Alert tone="danger">{selectedImport.error_message}</Alert>{/if}
-              <p>{t('history.base', { image: selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base })}</p>
-              {#if selectedImport.github_url}<p class="break-all">{selectedImport.github_url} · {selectedImport.commit_sha} · {selectedImport.dockerfile_path}</p>{/if}
-              {#if selectedImport.dockerfile_digest}<p class="break-all">{t('history.digest', { digest: selectedImport.dockerfile_digest })}</p>{/if}
-              <p>{t('history.artifactIds', { ids: selectedImport.artifact_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
-              <p>{t('history.buildIds', { ids: selectedImport.build_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
-              {#if selectedImport.consume_id || selectedImport.consumer_status || selectedImport.consumer_spec}
-                <p>{t(selectedImport.consumer_spec ? 'history.consumeWithSpec' : 'history.consumeSummary', { id: selectedImport.consume_id ? `#${selectedImport.consume_id}` : t('history.reserved'), status: selectedImport.consumer_status || t('history.waiting'), name: selectedImport.consumer_spec?.server_name || t('history.autoName'), flavor: selectedImport.consumer_spec?.flavor_id ?? '' })}</p>
-                {#if selectedImport.consume_id}
-                  <button type="button" class="underline" onclick={() => { selectedConsumeId = selectedImport.consume_id!; consumeDetailOpen = true; }}>{t('history.consumeDetails', { id: selectedImport.consume_id })}</button>
-                {/if}
-              {/if}
-              {#if selectedImport.status === 'complete' && selectedImport.dockerfile_digest && selectedImport.artifact_ids?.length}
-                <Button variant="secondary" size="sm" onclick={() => { historyConsumeTargetId = historyConsumeTargetId === selectedImport.id ? null : selectedImport.id; historyConsumeError = ''; }} disabled={historyConsumeSubmitting}>
-                  {historyConsumeTargetId === selectedImport.id ? t('history.closeSettings') : t('history.createVm')}
-                </Button>
-                {#if historyConsumeTargetId === selectedImport.id}
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label={t('history.settings')}>
-                    <p class="md:col-span-2 text-ink-2">{t('history.artifactsHelp', { id: selectedImport.id, artifacts: selectedImport.artifact_ids.join(', #') })}</p>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-flavor">{t('history.flavor')}</label><input id="history-consumer-flavor" type="text" bind:value={historyConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-server">{t('history.server')}</label><input id="history-consumer-server" type="text" bind:value={historyConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-network">{t('history.network')}</label><input id="history-consumer-network" type="text" bind:value={historyConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-keypair">{t('history.keypair')}</label><select id="history-consumer-keypair" bind:value={historyConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">{t('form.noSelection')}</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-user">{t('history.user')}</label><input id="history-consumer-user" type="text" bind:value={historyConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-pubkey">{t('history.publicKey')}</label><textarea id="history-consumer-pubkey" rows="2" bind:value={historyConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
-                    {#if historyConsumeError}<div class="md:col-span-2"><Alert tone="danger">{historyConsumeError}</Alert></div>{/if}
-                    <div class="md:col-span-2"><Button variant="primary" size="sm" onclick={() => consumeCompletedImport(selectedImport)} disabled={!historyConsumerReady || historyConsumeSubmitting}>{historyConsumeSubmitting ? t('history.creating') : t('history.createSelected')}</Button></div>
-                  </div>
-                {/if}
-              {/if}
-              <p>{t('history.timestamps', { created: fmtDate(selectedImport.created_at), completed: fmtDate(selectedImport.completed_at) })}</p>
-              {#each selectedImport.planned_layers ?? [] as step}
-                <p class="font-mono">L{step.line} · {step.name} · {step.instruction}</p>
-              {/each}
-            </section>
-          {/if}
-          {#if importJobs.length > 0}
-            <ResponsiveTable class="mt-3">{#snippet cards()}{#each importJobs as job}<CompactResourceCard>
-              <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">#{job.id} {job.profile_name}</h3><StatusChip status={job.status} /></div><p class="text-xs">{job.progress_step || job.status} · {job.progress_pct}%</p>
-              {#snippet details()}<p class="text-xs">{t('columns.baseImage')}: {job.base_image_name || shortId(job.base_image_id)}</p>{#if job.consumer_status || job.consume_id}<p class="text-xs">VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-xs text-state-danger-text">{job.error_message}</p>{/if}{/snippet}
-              {#snippet actions()}<Button variant="secondary" size="sm" ariaLabel={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>{t('actions.details')}</Button>{/snippet}
-            </CompactResourceCard>{/each}{/snippet}
-            <div class="border border-line-2 rounded-lg overflow-x-auto mt-3">
-              <table class="min-w-full text-xs">
-                <thead class="bg-surface-base text-ink-2">
-                  <tr>
-                    <th class="px-3 py-2 text-left">ID</th>
-                    <th class="px-3 py-2 text-left">{t('columns.profileEnglish')}</th>
-                    <th class="px-3 py-2 text-left">{t('columns.baseImage')}</th>
-                    <th class="px-3 py-2 text-left">{t('columns.statusEnglish')}</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-line">
-                  {#each importJobs as job}
-                    <tr>
-                      <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
-                      <td class="px-3 py-2 font-mono">{job.profile_name}</td>
-                      <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
-                      <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1 flex items-center gap-1.5">{#if !TERMINAL.has(job.status)}<ActivityIndicator size="xs" />{/if}<span>{job.progress_step || job.status} · {job.progress_pct}%</span></p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-[var(--color-state-danger-text)]">{job.error_message}</p>{/if}</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-            </ResponsiveTable>
-          {/if}
         </div>
+        <Button variant="secondary" class="mt-4" href={workspaceHref('builds')}>{t('workspace.builds')}</Button>
+        {/if}
       </section>
 
     </div>
+    {/if}
 
     <!-- ---------------------------------------------------------------------- -->
     <!-- 프로필 구성 카드                                                        -->
     <!-- ---------------------------------------------------------------------- -->
-    <div class="mb-8">
+    {#if workspace === 'profiles'}
+    <div id="library-profiles" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-profiles" class="mb-8">
       <section id="palimpsest-managed-profiles" class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-profile">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">{t('profiles.title')}</h2>
         <p class="text-xs text-ink-2 mb-4">
           {t('profiles.help')}
         </p>
         {#if profileDeleteError}
-          <div class="mb-3 p-2 bg-red-900/40 border border-red-700 rounded text-red-300 text-xs">{profileDeleteError}</div>
+          <Alert tone="danger" class="mb-3">{profileDeleteError}</Alert>
         {/if}
         {#if profileMessage}
-          <div class="mb-3 p-2 bg-green-900/40 border border-green-700 rounded text-green-300 text-xs">{profileMessage}</div>
+          <Alert tone="success" class="mb-3">{profileMessage}</Alert>
         {/if}
         {#if selectedHistoricalProfile}
           <div class="mb-3 p-3 border border-line-2 rounded text-xs" aria-label={t('profiles.selected')}>
@@ -1357,7 +1520,7 @@
                 <ResponsiveTable>{#snippet cards()}{#each profiles as profile (profile.id)}{@const blockers = blockingConsumesForProfile(profile.name)}<CompactResourceCard>
                   <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{profile.name}</h3><span class="text-xs">{profile.is_published ? t('publication.public') : t('publication.private')}</span></div><p class="text-xs">{t('columns.activeConsumes')}: {blockers.length}</p>
                   {#snippet details()}<p class="text-xs">{t('columns.layerChain')}: {profile.layers.join(' → ')}</p>{/snippet}
-                  {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectedProfileId = profile.id}>{t('actions.details')}</Button><Button variant="secondary" size="sm" onclick={() => setProfilePublication(profile, !profile.is_published)} disabled={publicationUpdating === `profile:${profile.name}`}>{publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteProfile(profile)} disabled={blockers.length > 0 || profileDeletingName === profile.name} title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}>{profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}</Button>{/snippet}
+                  {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectedProfileId = profile.id}>{t('actions.details')}</Button><Button variant="secondary" size="sm" onclick={() => setProfilePublication(profile, !profile.is_published)} disabled={publicationUpdating === `profile:${profile.name}`}>{#if publicationUpdating === `profile:${profile.name}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteProfile(profile)} disabled={blockers.length > 0 || profileDeletingName === profile.name} title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}>{#if profileDeletingName === profile.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}</Button>{/snippet}
                 </CompactResourceCard>{/each}{/snippet}
                 <div class="overflow-x-auto border border-line-2 rounded-lg">
                   <table class="w-full text-xs">
@@ -1394,7 +1557,7 @@
                                 disabled={publicationUpdating === `profile:${profile.name}`}
                                 class="px-2 py-1 rounded border border-action-warm text-warm-text hover:border-action-warm disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                               >
-                                {publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}
+                                {#if publicationUpdating === `profile:${profile.name}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}
                               </button>
                               <button
                                 type="button"
@@ -1403,7 +1566,7 @@
                                 title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}
                                 class="px-2 py-1 rounded border border-red-800 text-red-300 hover:border-red-500 disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                               >
-                                {profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}
+                                {#if profileDeletingName === profile.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}
                               </button>
                             </div>
                           </td>
@@ -1417,11 +1580,13 @@
             {/if}
       </section>
     </div>
+    {/if}
 
     <!-- ---------------------------------------------------------------------- -->
     <!-- 아티팩트 현황 / 삭제                                                    -->
     <!-- ---------------------------------------------------------------------- -->
-    <div class="mb-6" data-tour="admin-library-artifacts">
+    {#if workspace === 'artifacts'}
+    <div id="library-artifacts" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-artifacts" class="mb-6" data-tour="admin-library-artifacts">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('artifacts.title')}</h3>
       {#if artifacts.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
@@ -1431,7 +1596,7 @@
         <ResponsiveTable>{#snippet cards()}{#each artifacts as a (a.id)}<CompactResourceCard>
           <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">#{a.id} {a.name}</h4><span class="text-xs">{a.is_sealed ? t('artifacts.sealed') : t('artifacts.unsealed')}</span></div><p class="text-xs">{a.kind}{#if a.python_version} · py{a.python_version}{/if} · {a.can_delete ? t('artifacts.deletable') : t('artifacts.blocked', { count: a.delete_blockers.length })}</p>
           {#snippet details()}<p class="text-xs">{t('labels.ubuntu', { base: ubuntuBaseLabel(a) })}</p><p class="text-xs">{t('columns.lineage')}: {artifactChainLabel(a)}</p><p class="text-xs">{t('columns.packages')}: {packageLabel(a)}</p>{/snippet}
-          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => setArtifactPublication(a, !a.is_published)} disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`} title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}>{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</Button><Button variant="danger-outline" size="sm" onclick={() => openDeletePreview(a)}>{t('artifacts.reviewDeletion')}</Button>{/snippet}
+          {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => setArtifactPublication(a, !a.is_published)} disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`} title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}>{#if publicationUpdating === `artifact:${a.id}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</Button><Button variant="danger-outline" size="sm" onclick={() => openDeletePreview(a)}>{t('artifacts.reviewDeletion')}</Button>{/snippet}
         </CompactResourceCard>{/each}{/snippet}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
           <div class="max-h-80 overflow-y-auto">
@@ -1477,7 +1642,7 @@
                         disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`}
                         class="mr-3 text-xs {a.is_published ? 'text-warm-text hover:text-warm-text-hover' : 'text-ink-2 hover:text-ink-0'} disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                         title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}
-                      >{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</button>
+                      >{#if publicationUpdating === `artifact:${a.id}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</button>
                       <button
                         type="button"
                         onclick={() => openDeletePreview(a)}
@@ -1493,10 +1658,106 @@
         </ResponsiveTable>
       {/if}
     </div>
+    {/if}
 
     <!-- ---------------------------------------------------------------------- -->
     <!-- 빌드 현황 테이블                                                        -->
     <!-- ---------------------------------------------------------------------- -->
+    {#if workspace === 'builds'}
+    <div id="library-builds" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-builds" class="space-y-6">
+          <!-- importJobs 테이블 -->
+          <h3 class="text-sm font-semibold text-ink-0">{t('history.title')}</h3>
+          {#if importLoadError}<Alert tone="danger">{importLoadError}</Alert>{/if}
+          {#if selectedImport}
+            {@const importRunning = !TERMINAL.has(selectedImport.status)}
+            <section aria-label={t('history.selected')} class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
+              <p class="font-mono">#{selectedImport.id} · {selectedImport.profile_name} · {selectedImport.source_type || 'github'}</p>
+              <StatusChip status={selectedImport.status} />
+              <p class="flex items-center gap-1.5">
+                {#if importRunning}<LoadingState variant="control" label="" aria-hidden="true" />{/if}
+                <span>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</span>
+              </p>
+              <ProgressTrack
+                value={selectedImport.progress_pct}
+                label={t('history.progress')}
+                tone={jobProgressTone(selectedImport.status)}
+                active={importRunning}
+              />
+              {#if selectedImport.error_message}<Alert tone="danger">{selectedImport.error_message}</Alert>{/if}
+              <p>{t('history.base', { image: selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base })}</p>
+              {#if selectedImport.github_url}<p class="break-all">{selectedImport.github_url} · {selectedImport.commit_sha} · {selectedImport.dockerfile_path}</p>{/if}
+              {#if selectedImport.dockerfile_digest}<p class="break-all">{t('history.digest', { digest: selectedImport.dockerfile_digest })}</p>{/if}
+              <p>{t('history.artifactIds', { ids: selectedImport.artifact_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
+              <p>{t('history.buildIds', { ids: selectedImport.build_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
+              {#if selectedImport.consume_id || selectedImport.consumer_status || selectedImport.consumer_spec}
+                <p>{t(selectedImport.consumer_spec ? 'history.consumeWithSpec' : 'history.consumeSummary', { id: selectedImport.consume_id ? `#${selectedImport.consume_id}` : t('history.reserved'), status: selectedImport.consumer_status || t('history.waiting'), name: selectedImport.consumer_spec?.server_name || t('history.autoName'), flavor: selectedImport.consumer_spec?.flavor_id ?? '' })}</p>
+                {#if selectedImport.consume_id}
+                  <button type="button" class="underline" onclick={() => { selectedConsumeId = selectedImport.consume_id!; consumeDetailOpen = true; }}>{t('history.consumeDetails', { id: selectedImport.consume_id })}</button>
+                {/if}
+              {/if}
+              {#if selectedImport.status === 'complete' && selectedImport.dockerfile_digest && selectedImport.artifact_ids?.length}
+                <Button variant="secondary" size="sm" onclick={() => { historyConsumeTargetId = historyConsumeTargetId === selectedImport.id ? null : selectedImport.id; historyConsumeError = ''; }} disabled={historyConsumeSubmitting}>
+                  {historyConsumeTargetId === selectedImport.id ? t('history.closeSettings') : t('history.createVm')}
+                </Button>
+                {#if historyConsumeTargetId === selectedImport.id}
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label={t('history.settings')}>
+                    <p class="md:col-span-2 text-ink-2">{t('history.artifactsHelp', { id: selectedImport.id, artifacts: selectedImport.artifact_ids.join(', #') })}</p>
+                    {#if consumerFlavorsLoading}<div class="md:col-span-2"><LoadingState variant="inline" /></div>{/if}
+                    {#if consumerFlavorError}<div class="md:col-span-2"><Alert tone="danger">{consumerFlavorError}</Alert><Button variant="secondary" size="sm" onclick={loadConsumerFlavors}>{t('actions.refresh')}</Button></div>{/if}
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-flavor">{t('history.flavor')}</label><SearchSelect id="history-consumer-flavor" value={historyConsumer.flavor_id} options={consumerFlavors.map(item => ({ value: item.id, label: item.name, description: `${item.id} · ${item.vcpus} vCPU · ${item.ram} MiB` }))} onchange={(value) => { historyConsumer.flavor_id = value; }} disabled={historyConsumeSubmitting || consumerFlavorsLoading} /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-server">{t('history.server')}</label><input id="history-consumer-server" type="text" bind:value={historyConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-network">{t('history.network')}</label><input id="history-consumer-network" type="text" bind:value={historyConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-keypair">{t('history.keypair')}</label><select id="history-consumer-keypair" bind:value={historyConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">{t('form.noSelection')}</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-user">{t('history.user')}</label><input id="history-consumer-user" type="text" bind:value={historyConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-pubkey">{t('history.publicKey')}</label><textarea id="history-consumer-pubkey" rows="2" bind:value={historyConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+                    {#if historyScheduleRequired}
+                      <section class="min-w-0 space-y-3 md:col-span-2" aria-label={usageText('title')}>
+                        <h3 class="text-sm font-semibold">{usageText('title')}</h3>
+                        <p class="text-sm text-ink-2">{usageText('required')}</p>
+                        <UsageScheduleFields value={historyUsage} onchange={(value) => historyUsage = value} disabled={historyConsumeSubmitting} idPrefix="history-usage" />
+                      </section>
+                    {/if}
+                    {#if historyConsumeError}<div class="md:col-span-2"><Alert tone="danger">{historyConsumeError}</Alert></div>{/if}
+                    <div class="md:col-span-2"><Button variant="primary" size="sm" onclick={() => consumeCompletedImport(selectedImport)} disabled={!historyConsumerReady || historyConsumeSubmitting}>{#if historyConsumeSubmitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{historyConsumeSubmitting ? t('history.creating') : t('history.createSelected')}</Button></div>
+                  </div>
+                {/if}
+              {/if}
+              <p>{t('history.timestamps', { created: fmtDate(selectedImport.created_at), completed: fmtDate(selectedImport.completed_at) })}</p>
+              {#each selectedImport.planned_layers ?? [] as step}
+                <p class="font-mono">L{step.line} · {step.name} · {step.instruction}</p>
+              {/each}
+            </section>
+          {/if}
+          {#if importJobs.length > 0}
+            <ResponsiveTable class="mt-3">{#snippet cards()}{#each importJobs as job}<CompactResourceCard>
+              <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">#{job.id} {job.profile_name}</h3><StatusChip status={job.status} /></div><p class="text-xs">{job.progress_step || job.status} · {job.progress_pct}%</p>
+              {#snippet details()}<p class="text-xs">{t('columns.baseImage')}: {job.base_image_name || shortId(job.base_image_id)}</p>{#if job.consumer_status || job.consume_id}<p class="text-xs">VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-xs text-state-danger-text">{job.error_message}</p>{/if}{/snippet}
+              {#snippet actions()}<Button variant="secondary" size="sm" ariaLabel={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>{t('actions.details')}</Button>{/snippet}
+            </CompactResourceCard>{/each}{/snippet}
+            <div class="border border-line-2 rounded-lg overflow-x-auto mt-3">
+              <table class="min-w-full text-xs">
+                <thead class="bg-surface-base text-ink-2">
+                  <tr>
+                    <th class="px-3 py-2 text-left">ID</th>
+                    <th class="px-3 py-2 text-left">{t('columns.profileEnglish')}</th>
+                    <th class="px-3 py-2 text-left">{t('columns.baseImage')}</th>
+                    <th class="px-3 py-2 text-left">{t('columns.statusEnglish')}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-line">
+                  {#each importJobs as job}
+                    <tr>
+                      <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
+                      <td class="px-3 py-2 font-mono">{job.profile_name}</td>
+                      <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
+                      <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1 flex items-center gap-1.5">{#if !TERMINAL.has(job.status)}<LoadingState variant="control" label="" aria-hidden="true" />{/if}<span>{job.progress_step || job.status} · {job.progress_pct}%</span></p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-[var(--color-state-danger-text)]">{job.error_message}</p>{/if}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+            </ResponsiveTable>
+          {/if}
     <div class="mb-6" data-tour="admin-library-builds">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
         {t('builds.title')}
@@ -1552,7 +1813,7 @@
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs hidden md:table-cell max-w-40">
                       <span class="flex min-w-0 items-center gap-1.5">
-                        {#if !isDone}<ActivityIndicator size="xs" />{/if}
+                        {#if !isDone}<LoadingState variant="control" label="" aria-hidden="true" />{/if}
                         <span class="truncate">{build.progress_step || '—'}</span>
                       </span>
                     </td>
@@ -1590,11 +1851,14 @@
         </ResponsiveTable>
       {/if}
     </div>
+    </div>
+    {/if}
 
     <!-- ---------------------------------------------------------------------- -->
     <!-- 소비 인스턴스 테이블                                                    -->
     <!-- ---------------------------------------------------------------------- -->
-    <div data-tour="admin-library-consumes">
+    {#if workspace === 'instances'}
+    <div id="library-instances" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-instances" data-tour="admin-library-consumes">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('consumes.title')}</h3>
       {#if consumes.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
@@ -1651,6 +1915,7 @@
         </ResponsiveTable>
       {/if}
     </div>
+    {/if}
   {/if}
 </PageShell>
 
@@ -1686,17 +1951,13 @@
       </div>
 
       {#if detailLoading && !buildDetail}
-        <div class="space-y-2">
-          {#each [1, 2, 3] as _}
-            <div class="motion-skeleton h-8 rounded"></div>
-          {/each}
-        </div>
+        <LoadingState variant="section" />
       {:else if buildDetail}
         <!-- 진행률 바 -->
         <div>
           <div class="flex justify-between text-xs text-ink-2 mb-1">
             <span class="flex items-center gap-1.5">
-              {#if detailIsActive}<ActivityIndicator size="xs" />{/if}
+              {#if detailIsActive}<LoadingState variant="control" label="" aria-hidden="true" />{/if}
               {buildDetail.progress_step || t('buildDetail.waiting')}
             </span>
             <span>{buildDetail.progress_pct}%</span>
@@ -1718,7 +1979,7 @@
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
             <p class="text-ink-2 mb-0.5">{t('buildDetail.vmStatus')}</p>
             {#if buildDetail.vm_status}
-              <StatusChip status={buildDetail.vm_status.toLowerCase()} />
+              <StatusChip kind="server" status={buildDetail.vm_status.toLowerCase()} />
             {:else}
               <p class="text-ink-2">—</p>
             {/if}
@@ -1839,11 +2100,7 @@
       </div>
 
       {#if consumeDetailLoading && !consumeDetail}
-        <div class="space-y-2">
-          {#each [1, 2, 3] as _}
-            <div class="motion-skeleton h-8 rounded"></div>
-          {/each}
-        </div>
+        <LoadingState variant="section" />
       {:else if consumeDetail}
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
@@ -1853,7 +2110,7 @@
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
             <p class="text-ink-2 mb-0.5">{t('buildDetail.vmStatus')}</p>
             {#if consumeDetail.vm_status}
-              <StatusChip status={consumeDetail.vm_status.toLowerCase()} />
+              <StatusChip kind="server" status={consumeDetail.vm_status.toLowerCase()} />
             {:else}
               <p class="text-ink-2">—</p>
             {/if}
@@ -1918,11 +2175,7 @@
       </div>
 
       {#if deleteLoading}
-        <div class="space-y-2">
-          {#each [1, 2, 3] as _}
-            <div class="motion-skeleton h-8 rounded"></div>
-          {/each}
-        </div>
+        <LoadingState variant="section" label={t('delete.loading')} />
       {:else if deletePreview}
         <div class="space-y-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
@@ -1976,7 +2229,7 @@
           disabled={!deletePreview?.can_delete || deleteSubmitting}
           class="px-3 py-1.5 text-xs text-red-300 border border-red-700/60 hover:bg-red-900/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
-          {deleteSubmitting ? t('actions.deleting') : t('delete.execute')}
+          {#if deleteSubmitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deleteSubmitting ? t('actions.deleting') : t('delete.execute')}
         </button>
       </div>
     </div>

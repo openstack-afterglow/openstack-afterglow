@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/volume';
   import { attachmentServerId, useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -24,7 +24,7 @@
             {:else if instance.state === 'resolved'}
               <a href="/dashboard/instances/{serverId}" class="inline-flex items-center min-h-11 min-w-0 font-medium break-all text-warm-text hover:text-warm-text-hover">{instance.name}</a>
             {:else if instance.state === 'loading'}
-              <p class="inline-flex items-center gap-1.5 text-ink-2"><ActivityIndicator size="xs" tone="ink" />{t('attachmentsList.resolvingName')}</p>
+              <p class="inline-flex items-center gap-1.5 text-ink-2"><LoadingState variant="control" label="" />{t('attachmentsList.resolvingName')}</p>
             {:else}
               <p class="font-mono break-all">{serverId}</p>
               <p class="text-ink-2">{t('attachmentsList.nameUnavailable')}</p>
@@ -46,7 +46,7 @@
               <a href="/dashboard/instances/{serverId}" class="block truncate text-sm text-warm-text hover:text-warm-text-hover transition-colors">{instance.name}</a>
               <span class="block font-mono break-all">{serverId}</span>
             {:else if instance.state === 'loading'}
-              <span class="inline-flex items-center gap-1.5 text-ink-2"><ActivityIndicator size="xs" tone="ink" />{t('attachmentsList.resolvingName')}</span>
+              <span class="inline-flex items-center gap-1.5 text-ink-2"><LoadingState variant="control" label="" />{t('attachmentsList.resolvingName')}</span>
               <span class="block font-mono break-all">{serverId}</span>
             {:else}
               <span class="block font-mono text-ink-0 break-all">{serverId}</span>

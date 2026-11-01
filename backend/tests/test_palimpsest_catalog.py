@@ -438,6 +438,7 @@ async def test_caller_dispatcher_runs_real_consume_and_sql_with_distinct_service
         flavor_id="catalog-flavor",
         network_id="catalog-network",
         ssh_username="ubuntu",
+        usage_schedule=catalog.UsageScheduleRequest(),
     )
     try:
         await consume._execute(
@@ -463,6 +464,9 @@ async def test_caller_dispatcher_runs_real_consume_and_sql_with_distinct_service
         assert metadata["afterglow_owner_project_id"] == PROVIDER_PROJECT
         assert metadata["afterglow_catalog_consume_id"] == str(consume_id)
         assert "afterglow_import_id" not in metadata and closed == [True]
+        assert metadata["afterglow_usage_source"] == "created"
+        assert metadata["afterglow_usage_action"] == "shelve"
+        assert metadata["afterglow_usage_delete_volumes"] == "false"
         assert state["unexpected"] == []
     finally:
         await redis.close()
@@ -570,8 +574,15 @@ async def test_consume_endpoint_admits_exact_snapshot_or_rejects_race_before_row
         assert kwargs["compute_conn"] is conn and kwargs["share_conn"] is conn
         assert kwargs["resource_snapshot"]["consumer_project"]["id"] == PROJECT
         assert kwargs["resolved_artifacts"] == snapshot["artifacts"]
+        assert kwargs["usage_schedule"].model_dump(mode="json") == {
+            "expires_at": None,
+            "expiry_action": "shelve",
+            "delete_volumes": False,
+            "reason": "",
+        }
         async with catalog_db() as session:
             row = await session.get(LayerConsume, kwargs["consume_db_id"])
+            assert row.resource_snapshot["usage_schedule_request"]["expires_at"] is None
             row.status, row.server_id = "active", "caller-server"
             await session.commit()
         return "caller-server"
@@ -582,7 +593,9 @@ async def test_consume_endpoint_admits_exact_snapshot_or_rejects_race_before_row
     monkeypatch.setattr(consume, "current_writer", AsyncMock())
     monkeypatch.setattr(layer_build, "validate_consume_image_identity", validate)
     monkeypatch.setattr(layer_build, "run_layer_consume", runner)
-    monkeypatch.setattr(nova, "list_flavors", lambda *_: [SimpleNamespace(id="small", name="small")])
+    monkeypatch.setattr(
+        nova, "list_flavors", lambda *_: [SimpleNamespace(id="small", name="small", vcpus=12, ram=4096, extra_specs={})]
+    )
     monkeypatch.setattr(
         resource_policy_store,
         "get_policy_snapshot",
@@ -600,6 +613,7 @@ async def test_consume_endpoint_admits_exact_snapshot_or_rejects_race_before_row
                 "flavor_id": "small",
                 "network_id": "caller-net",
                 "server_name": "torch",
+                "usage_schedule": {},
             },
         )
         if race:
@@ -819,3 +833,67 @@ async def test_managed_candidate_page_preserves_continuation_after_private_chain
     assert second.status_code == 200
     assert [item["id"] for item in second.json()["items"]] == [str(visible_id)]
     assert second.json()["has_more"] is False and second.json()["next_offset"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "schedule_fields",
+    [
+        {},
+        {"usage_schedule": None},
+        {"usage_schedule": {"expires_at": "2001-01-01T00:00:00Z"}},
+        {"usage_schedule": {"expires_at": "2099-01-01T00:00:00Z"}},
+        {"usage_schedule": {"delete_volumes": True}},
+        {"usage_schedule": {"reason": "x" * 256}},
+    ],
+)
+async def test_catalog_required_schedule_invalid_before_admission_or_sql(
+    catalog_client, catalog_db, monkeypatch, schedule_fields
+):
+    from app.api import deps
+    from app.services import flavor_eligibility, layer_build, nova
+
+    _, _, profile_id = await seed(catalog_db)
+    async with catalog_db() as session:
+        snapshot = await service.published_snapshot(session, profile_id)
+    conn = SimpleNamespace(
+        network=SimpleNamespace(
+            get_network=lambda identity: SimpleNamespace(id=identity, name="net", project_id=PROJECT)
+        )
+    )
+    closed = []
+
+    async def scope(*_):
+        try:
+            yield conn
+        finally:
+            closed.append(True)
+
+    admission, image = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(deps, "get_os_conn", scope)
+    monkeypatch.setattr(consume, "current_writer", AsyncMock())
+    monkeypatch.setattr(flavor_eligibility, "admit_flavor", admission)
+    monkeypatch.setattr(layer_build, "validate_consume_image_identity", image)
+    monkeypatch.setattr(
+        nova,
+        "list_flavors",
+        lambda *_: [SimpleNamespace(id="required", name="required", vcpus=12, ram=4096, extra_specs={})],
+    )
+    client, _, _ = catalog_client
+    response = await client.post(
+        BASE + f"/environments/{profile_id}/consume",
+        json={
+            "revision": snapshot["revision"],
+            "flavor_id": "required",
+            "network_id": "net",
+            "server_name": "scheduled",
+            **schedule_fields,
+        },
+    )
+    assert response.status_code == 422
+    admission.assert_not_awaited()
+    image.assert_not_awaited()
+    async with catalog_db() as session:
+        assert list((await session.execute(select(LayerConsume))).scalars()) == []
+    if closed:
+        assert closed == [True]

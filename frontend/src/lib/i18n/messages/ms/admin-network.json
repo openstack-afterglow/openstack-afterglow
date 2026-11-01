@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "Baris setiap halaman",
+	"list.analytics": "Aliran rangkaian",
+	"list.details": "Lihat butiran",
+	"list.actionsFor": "Tindakan untuk rangkaian {name}",
+	"list.scopedHistory": "Sejarah rangkaian seluruh awan tidak tersedia dalam skop projek.",
+	"list.deleteImpact": "Pemadaman rangkaian tidak boleh dibuat asal. Port yang disambungkan mungkin menghalang pemadaman.",
 	"loadbalancersPage.loading": "Memuatkan pengimbang beban...",
 	"adminNetworkCreateModal.title": "Cipta rangkaian",
 	"adminNetworkCreateModal.name": "Nama",

@@ -1,0 +1,3 @@
+- [x] Replace shape/overlay rendering with character-cell art and terminology rain.
+- [x] Browser appearance, rendering-operation, responsive and pause checks.
+- [x] Independent review, docs, previews, packaging and archive.

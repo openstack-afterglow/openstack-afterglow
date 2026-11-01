@@ -4,6 +4,8 @@ import { get, writable } from 'svelte/store';
 import { tick } from 'svelte';
 import { siteConfig } from '$lib/config/site';
 import { auth, type AuthState } from '$lib/stores/auth';
+import { t as tp } from '$lib/i18n/ns/compute-pools';
+import { t } from '$lib/i18n/ns/dashboard-home';
 
 const { mockGet, refreshCallbacks } = vi.hoisted(() => ({ mockGet: vi.fn(), refreshCallbacks: [] as Array<() => unknown> }));
 
@@ -242,5 +244,26 @@ describe('usage report page', () => {
 		await tick();
 		expect(screen.queryByText('old-project-flavor')).toBeNull();
 		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
+	});
+
+	it('labels shared domain consumption and explicit cap-limited remaining without project-derived forecasts', async () => {
+		mockSources(report({ quota: {
+			vcpus: { limit: 100, in_use: 60, available: 2, quota_scope: 'domain', domain_id: 'domain-a', project_limit: 8, project_in_use: 6 },
+			ram_mb: { limit: 262144, in_use: 131072, available: 1024, quota_scope: 'domain', domain_id: 'domain-a' },
+			gpu: [{ gpu_type: 'CUSTOM_PCI_10DE_2236', limit: 4, in_use: 2, available: 0, quota_scope: 'domain', domain_id: 'domain-a', project_limit: 1, project_in_use: 1 }],
+		} }), Promise.resolve(QUOTAS));
+		render(Page);
+		expect((await screen.findAllByText(tp('domainQuotaTitle'))).length).toBe(3);
+		expect(screen.getAllByText(t('usageReport.forecast.noTrend')).length).toBeGreaterThanOrEqual(3);
+		expect(screen.getByText('GPU CUSTOM_PCI_10DE_2236')).toBeTruthy();
+		expect(screen.getAllByText(`${tp('projectCaps')}:`)).toHaveLength(2);
+	});
+
+	it('keeps paused pool state distinct from zero usage and retains independent storage', async () => {
+		mockSources(report({ quota: { compute_available: false, gpu_available: false, vcpus: null, ram_mb: null, gpu: [], compute_pool: { state: 'paused', domain_id: 'domain-a', limits: {}, usage: {}, available: {}, project_limits: {}, project_usage: {}, project_available: {} } } }), Promise.resolve(QUOTAS));
+		render(Page);
+		expect(await screen.findByText(tp('pauseHelp'))).toBeTruthy();
+		expect(screen.getByText(t('usageReport.forecast.computeFailed'))).toBeTruthy();
+		expect(screen.getByText(t('usageReport.resources.volumeCount'))).toBeTruthy();
 	});
 });

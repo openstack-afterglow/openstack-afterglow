@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { DbBackup } from '$lib/types/database';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -62,7 +62,7 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newBackup.name.trim()}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.backup')}{/if}
+				{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.backup')}{/if}
 			</button>
 		</div>
 	{/if}
@@ -76,7 +76,7 @@
 				{#each backups as b (b.id)}
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{b.name}</h3><StatusChip status={b.status} /></div><p class="text-xs text-ink-2">{b.size === null || b.size === undefined ? '-' : `${b.size} GB`} · {b.created_at?.slice(0, 10) ?? '-'}</p>
-						{#snippet actions()}{#if canMutate}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
+						{#snippet actions()}{#if canMutate}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{#if restoringBackup === b.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{#if deletingBackup === b.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{b.id}</p>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -103,11 +103,11 @@
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}
 									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{#if restoringBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.restoring')}</span></span>{:else}{tr('actions.restore')}{/if}
+									{#if restoringBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.restoring')}</span></span>{:else}{tr('actions.restore')}{/if}
 								</button>
 								<button onclick={() => onDelete(b.id)} disabled={deletingBackup === b.id}
 									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{#if deletingBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
+									{#if deletingBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 								</button>
 							</div>
 							{/if}

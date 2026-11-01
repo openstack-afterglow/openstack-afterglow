@@ -3,7 +3,7 @@
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
@@ -24,7 +24,7 @@
 						disabled={s.saving}
 						aria-busy={removingGateway}
 						class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-					>{#if removingGateway}<ActivityIndicator size="xs" tone="danger" />{/if}{removingGateway ? `${t('router.gateway.remove')}: ${commonT('state.processing')}` : t('router.gateway.remove')}</button>
+					>{#if removingGateway}<LoadingState variant="control" label="" />{/if}{removingGateway ? `${t('router.gateway.remove')}: ${commonT('state.processing')}` : t('router.gateway.remove')}</button>
 				{:else}
 					<button
 						onclick={() => s.showSetGateway = !s.showSetGateway}
@@ -52,7 +52,7 @@
 					<option value={net.id}>{net.name || net.id.slice(0, 12)}</option>
 				{/each}
 			</select>
-			<Button onclick={() => pending.run('set', () => s.setGateway())} disabled={!s.selectedExtNetId || s.saving} ariaBusy={settingGateway} size="sm">{#if settingGateway}<ActivityIndicator size="xs" tone="ink" />{/if}{settingGateway ? `${t('router.gateway.set')}: ${commonT('state.processing')}` : t('router.actions.set')}</Button>
+			<Button onclick={() => pending.run('set', () => s.setGateway())} disabled={!s.selectedExtNetId || s.saving} ariaBusy={settingGateway} size="sm">{#if settingGateway}<LoadingState variant="control" label="" />{/if}{settingGateway ? `${t('router.gateway.set')}: ${commonT('state.processing')}` : t('router.actions.set')}</Button>
 			<button onclick={() => s.showSetGateway = false} class="text-ink-2 hover:text-ink-1 text-sm px-2">{t('router.actions.cancel')}</button>
 		</div>
 	{/if}

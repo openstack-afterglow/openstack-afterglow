@@ -99,6 +99,31 @@ export function makeDomainFixture(): TopologyData {
 	return data;
 }
 
+/** Small reproducible name/CIDR collision topology for component and browser QA. */
+export const LABEL_COLLISION_PROJECT = 'synthetic-hud-label-qa';
+export function makeLabelCollisionFixture(): TopologyData {
+	const shared = mkNet('net-transit', 'drover-ci-net', '2001:db8:1234:5678::/64', '2001:db8:1234:5678::1', { shared: true });
+	shared.subnet_details[0].ip_version = 6;
+	return {
+		networks: [
+			mkNet('net-pub', 'public_provider', '203.0.113.0/24', '203.0.113.1', { external: true, shared: true }),
+			shared,
+		],
+		routers: [],
+		instances: [
+			mkInst('vm-paper', 'DMSLab-paper', 'ACTIVE', [['net-pub', '203.0.113.23', '00:01:01']], [], LABEL_COLLISION_PROJECT),
+			mkInst('vm-ci', 'ci-runner', 'ACTIVE', [['net-transit', '2001:db8:1234:5678::42', '00:01:02']], [], LABEL_COLLISION_PROJECT),
+		],
+		floating_ips: [], load_balancers: [],
+	};
+}
+
+/** Close-but-not-overlapping resource cards whose padded network headers overlap. */
+export const LABEL_COLLISION_POSITIONS = {
+	'vm-paper': { x: 40, y: 380 },
+	'vm-ci': { x: 285, y: 380 },
+};
+
 export function makeTraffic(): TopologyTraffic {
 	const interfaces: NonNullable<TopologyTraffic['interfaces']> = {
 		'port-web-01-eth0': { instance_id: 'vm-web-01', network_id: 'net-web', mac_address: 'fa:16:3e:a1:00:11', rx_bps: 3.2e6, tx_bps: 1.1e6 },

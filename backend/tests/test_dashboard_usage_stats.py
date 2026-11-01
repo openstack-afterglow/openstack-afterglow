@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import patch_redis_cache_miss
+
 
 def _make_server(server_id: str, name: str = "test-vm", flavor_name: str = "cpu.4c_8g") -> MagicMock:
     s = MagicMock()
@@ -172,3 +174,79 @@ async def test_denied_native_and_failed_cpu_do_not_discard_measured_ram(client, 
     assert instance["ram_pct"] == 0
     assert instance["ram_source"] == "libvirt"
     assert instance["ram_native_status"] == "forbidden"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["usage-stats", "summary"])
+@pytest.mark.parametrize(
+    ("flavor_name", "expected"),
+    [
+        ("gpu.renderx4_8c_16g", 4),
+        ("gpu.renderx4_8c_16g.0123456789ab", 4),
+        ("gpu.renderx4_8c_16g.0123456789abcdef0123456789abcdef", 4),
+        ("gpu.render.4gpu.8c.16g.0123456789ab", 4),
+        ("gpu.render.4gpu.8c.16g.0123456789abcdef0123456789abcdef", 4),
+        ("gpu.8c_64g_a10", 1),
+        ("gpu.render", 1),
+        ("unrelated-unknown", 0),
+        ("cpu.4c_8g", 0),
+        (None, 0),
+    ],
+)
+async def test_dashboard_missing_flavor_legacy_gpu_count_is_display_only(
+    client, mock_conn, monkeypatch, endpoint, flavor_name, expected
+):
+    patch_redis_cache_miss(monkeypatch)
+    mock_conn.block_storage.volumes.return_value = []
+    servers = [{"id": "retired-vm", "status": "ACTIVE", "flavor_name": flavor_name}]
+    with (
+        patch("app.api.common.dashboard._list_servers_as_dicts", return_value=servers),
+        patch("app.api.common.dashboard._list_flavors_as_dicts", return_value=[]),
+        patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
+        patch(
+            "app.api.common.dashboard.native_telemetry.project_series",
+            AsyncMock(return_value={"status": "unavailable", "instances": {}}),
+        ),
+        patch("app.api.common.dashboard.prom_query.query_instant_multi", AsyncMock(return_value=[])),
+    ):
+        response = await client.get(f"/api/v1/dashboard/{endpoint}")
+    assert response.status_code == 200
+    data = response.json()
+    if endpoint == "summary":
+        assert data["gpu_used"] == expected
+    else:
+        assert data["top_instances"][0]["gpu"] == expected
+        assert data["top_instances"][0]["flavor_name"] == flavor_name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["usage-stats", "summary"])
+@pytest.mark.parametrize(
+    ("native_name", "extra_specs", "expected"),
+    [
+        ("cpu.4c_8g", {}, 0),
+        ("gpu.renderx4_8c_16g", {}, 1),
+        ("gpu.renderx4_8c_16g", {"pci_passthrough:alias": "legacy:2"}, 2),
+    ],
+)
+async def test_dashboard_present_flavor_never_replaced_with_missing_name_count(
+    client, mock_conn, monkeypatch, endpoint, native_name, extra_specs, expected
+):
+    patch_redis_cache_miss(monkeypatch)
+    mock_conn.block_storage.volumes.return_value = []
+    servers = [{"id": "vm", "status": "ACTIVE", "flavor_id": "native", "flavor_name": "gpu.renderx4_8c_16g"}]
+    flavors = [{"id": "native", "name": native_name, "extra_specs": extra_specs}]
+    with (
+        patch("app.api.common.dashboard._list_servers_as_dicts", return_value=servers),
+        patch("app.api.common.dashboard._list_flavors_as_dicts", return_value=flavors),
+        patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
+        patch(
+            "app.api.common.dashboard.native_telemetry.project_series",
+            AsyncMock(return_value={"status": "unavailable", "instances": {}}),
+        ),
+        patch("app.api.common.dashboard.prom_query.query_instant_multi", AsyncMock(return_value=[])),
+    ):
+        response = await client.get(f"/api/v1/dashboard/{endpoint}")
+    assert response.status_code == 200
+    data = response.json()
+    assert (data["gpu_used"] if endpoint == "summary" else data["top_instances"][0]["gpu"]) == expected

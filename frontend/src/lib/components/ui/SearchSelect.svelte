@@ -9,6 +9,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { t } from '$lib/i18n/ns/common';
+	import LoadingState from './LoadingState.svelte';
 
 	interface Props {
 		id: string;
@@ -164,13 +165,14 @@
 		type="button"
 		class="search-select-trigger"
 		disabled={disabled || loading}
+		aria-busy={loading}
 		aria-label={ariaLabel}
 		aria-haspopup="listbox"
 		aria-expanded={open}
 		aria-controls={open ? listboxId : undefined}
 		onclick={() => (open ? closeMenu() : void openMenu())}
 	>
-		<span class:selected={selected}>{loading ? t('state.loading') : selected?.label ?? placeholder}</span>
+		{#if loading}<LoadingState variant="control" label={t('state.loading')} />{:else}<span class:selected={selected}>{selected?.label ?? placeholder}</span>{/if}
 		<span class="chevron" aria-hidden="true"></span>
 	</button>
 
@@ -223,9 +225,9 @@
 		width: 100%;
 		border: 1px solid var(--color-line-2);
 		border-radius: var(--radius-md);
-		background: var(--color-surface-sunken);
+		background: var(--color-surface-input);
 		color: var(--color-ink-0);
-		font-size: 0.875rem;
+		font-size: var(--type-body);
 		line-height: 1.4;
 	}
 	.search-select-trigger {
@@ -233,8 +235,8 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		min-height: 2.375rem;
-		padding: 0.5rem 0.75rem;
+		min-height: var(--control-height);
+		padding: 0.375rem 0.75rem;
 		text-align: left;
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 	}
@@ -242,7 +244,7 @@
 	.search-select-trigger > span.selected { color: var(--color-ink-0); }
 	.search-select-trigger:focus-visible,
 	.search-select-input:focus-visible { outline: none; border-color: var(--color-line-2); box-shadow: var(--focus-ring); }
-	.search-select-trigger:disabled { cursor: not-allowed; opacity: 0.55; }
+	.search-select-trigger:disabled { cursor: not-allowed; color: var(--color-ink-2); background: var(--color-surface-input-disabled); border-color: var(--color-line); }
 	.chevron { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-0.125rem) rotate(45deg); color: var(--color-ink-2); }
 	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); }
 	.search-select-input { border: 0; border-bottom: 1px solid var(--color-line); border-radius: 0; padding: 0.625rem 0.75rem; }
@@ -253,7 +255,8 @@
 	.search-select-option:hover,
 	.search-select-option.active,
 	.search-select-option.selected { background: var(--color-surface-selected); color: var(--color-ink-0); }
-	.search-select-option small { overflow: hidden; color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; text-overflow: ellipsis; white-space: nowrap; }
+	.search-select-option small { overflow: hidden; color: var(--color-ink-2); font-family: var(--font-mono); font-size: var(--type-identifier); text-overflow: ellipsis; white-space: nowrap; }
 	.search-select-empty { margin: 0; padding: 0.75rem; color: var(--color-ink-2); font-size: 0.8125rem; }
 	@media (forced-colors: active) { .search-select-trigger:focus-visible, .search-select-input:focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; } }
+	@media (max-width: 767px), (pointer: coarse) { .search-select-trigger, .search-select-option { min-height: var(--control-touch-height); } }
 </style>

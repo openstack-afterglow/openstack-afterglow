@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -47,10 +48,11 @@
 	<PageHeader title={t('title')} breadcrumb={t('monitoring')} subtitle={t('description')}>
 		{#snippet actions()}<Button variant="secondary" disabled={!ctrl.allowed || ctrl.loading} onclick={ctrl.load}>{t('refresh')}</Button>{/snippet}
 	</PageHeader>
+	{#if (ctrl.loading || !$authReady || $projectSwitching) && !ctrl.snapshot}<LoadingState variant="surface" label={t('loading')} />{/if}
 	<div class="space-y-4">
 		{#if ctrl.error}<Alert>{t(ctrl.error)}</Alert>{/if}
 		{#if !ctrl.allowed && $authReady && !$projectSwitching}<Alert tone="warning">{t('denied')}</Alert>{/if}
-		{#if ctrl.loading || !$authReady || $projectSwitching}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>{/if}
+		{#if (ctrl.loading || !$authReady || $projectSwitching) && ctrl.snapshot}<LoadingState variant="inline" label={t('loading')} />{/if}
 		{#if ctrl.snapshot && ctrl.allowed && graph}
 			{#if !ctrl.snapshot.enabled}<Alert tone="warning">{t('disabled')}</Alert>{/if}
 			{#if ctrl.snapshot.enabled && ctrl.snapshot.error}<Alert>{t('unavailable')}</Alert>{/if}

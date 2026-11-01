@@ -42,6 +42,8 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/admin/services',
 	'/admin/users',
 	'/admin/quotas',
+	'/admin/domains',
+	'/admin/flavors',
 ] as const;
 
 const PROFILE_ALLOWED_PATHS: Record<MockupProfileId, readonly string[]> = {
@@ -93,6 +95,7 @@ export function buildMockupSession(profile: MockupProfileId): MockupSession {
 export function isMockupPathAllowed(profile: MockupProfileId, pathname: string): boolean {
 	if (isDocsPath(pathname)) return true;
 	if (PROFILE_ALLOWED_PATHS[profile].includes(pathname)) return true;
+	if (profile === 'admin' && /^\/admin\/domains\/[^/]+$/.test(pathname)) return true;
 	// 튜토리얼은 대시보드 전체를 실제와 동일하게 탐색할 수 있다.
 	return profile === 'on' && pathname.startsWith('/dashboard/');
 }

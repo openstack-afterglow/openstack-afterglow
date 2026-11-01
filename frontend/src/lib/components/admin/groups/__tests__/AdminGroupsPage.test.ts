@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 import { writable } from 'svelte/store';
 import { ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
+import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(), listDomains: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } } }));
@@ -33,6 +34,35 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+
+it('adds multiple selected users using individually scoped authorized requests', async () => {
+  const second = { ...candidate, id: 'b2222222-2222-4222-8222-222222222222', email: 'second@example.test' };
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/domains/domain-a/members'
+    ? Promise.resolve({ domain_id: 'domain-a', items: [candidate, second] }) : original(path));
+  mocks.put.mockResolvedValue({});
+  render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
+  await screen.findByText(group.name);
+  await fireEvent.click(screen.getByRole('button', { name: '멤버' }));
+  await screen.findByText(candidate.email);
+  await fireEvent.click(screen.getByRole('checkbox', { name: '전체 추가 가능한 사용자 선택' }));
+  await fireEvent.click(screen.getByRole('button', { name: '2개 선택됨 · 추가' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(2));
+  expect(mocks.put.mock.calls.map(([path]) => path)).toEqual([
+    `/api/v1/admin/groups/g1/users/${candidate.id}?domain_id=domain-a`,
+    `/api/v1/admin/groups/g1/users/${second.id}?domain_id=domain-a`,
+  ]);
+});
+
+it('reports a replacement group lookup failure instead of hiding it', async () => {
+  render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
+  await screen.findByText(group.name);
+  mocks.get.mockRejectedValueOnce(new DOMException('invalidated', 'AbortError'))
+    .mockRejectedValueOnce(new ApiError(503, 'directory_unavailable'));
+  await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+  expect(await screen.findByText('directory_unavailable')).toBeTruthy();
+  expect(mocks.get).toHaveBeenCalledTimes(3);
+});
 describe('domain-scoped group administration', () => {
   it('adds joined foreign-home users without widening the home credential directory', async () => {
     render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
@@ -191,7 +221,7 @@ const sourcePath = '/api/v1/admin/groups/g1/candidates?domain_id=domain-a&user_d
 const account = { ...candidate, name: 'pieroot', email: 'account@example.test', domain_id: 'accounts' };
 async function chooseSource(name: string) {
   await fireEvent.click(screen.getByRole('button', { name: '계정 홈 도메인' }));
-  await fireEvent.click(await screen.findByRole('option', { name }));
+  await fireEvent.click(await within(screen.getByRole('listbox', { name: '계정 홈 도메인' })).findByRole('option', { name }));
 }
 async function openGroup() {
   render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
@@ -207,11 +237,12 @@ describe('explicit account home candidates', () => {
     expect(mocks.get.mock.calls.some(([path]) => path.includes('/candidates'))).toBe(false);
     expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/domains/domain-a/members', 'token', 'admin-project', { refresh: true });
     await fireEvent.click(screen.getByRole('button', { name: '계정 홈 도메인' }));
-    expect(screen.getAllByRole('option')).toHaveLength(3);
-    expect(screen.getByRole('option', { name: 'Accounts accounts' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Research research-home' })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /Disabled|전체|All/ })).toBeNull();
-    await fireEvent.click(screen.getByRole('option', { name: '현재 도메인 및 가입한 계정 domain-a' }));
+    const homes = within(screen.getByRole('listbox', { name: '계정 홈 도메인' }));
+    expect(homes.getAllByRole('option')).toHaveLength(3);
+    expect(homes.getByRole('option', { name: 'Accounts accounts' })).toBeTruthy();
+    expect(homes.getByRole('option', { name: 'Research research-home' })).toBeTruthy();
+    expect(homes.queryByRole('option', { name: /Disabled|전체|All/ })).toBeNull();
+    await fireEvent.click(homes.getByRole('option', { name: '현재 도메인 및 가입한 계정 domain-a' }));
     expect(mocks.get.mock.calls.some(([path]) => path.includes('/candidates'))).toBe(false);
     expect(mocks.listDomains).toHaveBeenCalledOnce();
   });

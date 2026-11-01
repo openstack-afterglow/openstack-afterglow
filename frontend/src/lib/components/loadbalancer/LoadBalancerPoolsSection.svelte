@@ -3,7 +3,7 @@
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import PoolAddForm from './PoolAddForm.svelte';
   import PoolMembersPanel from './PoolMembersPanel.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
@@ -38,7 +38,7 @@
             {#snippet actions()}
               <Button size="sm" variant="secondary" onclick={() => s.togglePool(pool.id)} ariaExpanded={s.selectedPoolId === pool.id}>{s.selectedPoolId === pool.id ? t('lb.pools.collapse') : t('lb.pools.members')}</Button>
               {#if s.canMutate}
-              <Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => s.deletePool(pool.id))} disabled={s.saving} ariaBusy={deletingPool}>{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('lb.actions.deleting') : t('lb.actions.delete')}</Button>
+              <Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${pool.id}`, () => s.deletePool(pool.id))} disabled={s.saving} ariaBusy={deletingPool}>{#if deletingPool}<LoadingState variant="control" label="" />{/if}{deletingPool ? t('lb.actions.deleting') : t('lb.actions.delete')}</Button>
               {/if}
             {/snippet}
           </CompactResourceCard>

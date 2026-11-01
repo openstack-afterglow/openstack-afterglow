@@ -1,0 +1,3 @@
+- [x] Implement cached diffuse corona, soft rim, occulting disk and descending light.
+- [x] Inspect desktop/mobile rendering; five viewport bounds, pause/resume and console checks passed.
+- [x] Independent reviewer approved; update documentation, preview images and source ZIP, then archive.

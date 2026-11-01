@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import logging
 import re
 import time
 import urllib.parse
 from copy import deepcopy
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
@@ -17,7 +16,7 @@ from keystoneauth1 import session as ks_session
 from openstack import connection
 
 from app.models.compute import FlavorInfo
-from app.services import flavor_capacity, gpu_inventory
+from app.services import flavor_automation_policy, flavor_capacity, gpu_inventory
 
 BASE = "http://capacity.test"
 GPU_RC = "CUSTOM_PCI_10DE_2203"
@@ -276,7 +275,6 @@ def cloud(monkeypatch):
     fake = FakeCloud()
     monkeypatch.setattr(gpu_inventory, "PCI_DEVICE_MAP", deepcopy(gpu_inventory._DEFAULT_PCI_DEVICE_MAP))
     monkeypatch.setattr(flavor_capacity, "_operator", None)
-    monkeypatch.setattr(flavor_capacity, "_shared_snapshot", None)
 
     def connect():
         transport = requests.Session()
@@ -300,7 +298,6 @@ def cloud(monkeypatch):
     monkeypatch.setattr("app.database.is_db_available", lambda: False)
     yield fake
     flavor_capacity._operator = None
-    flavor_capacity._shared_snapshot = None
 
 
 async def evaluate(*flavors, zone=ZONE, fresh=True):
@@ -744,43 +741,6 @@ async def test_operator_session_is_replaced_after_a_snapshot_failure(cloud):
     assert (cloud.opened, cloud.closed) == (2, 1)
 
 
-async def test_discovery_shares_a_single_flight_snapshot_but_admission_reads_fresh(cloud, monkeypatch):
-    cloud.add_host(ROOT_B, vcpu=(64, 0), ram=(262144, 0))
-    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
-    cpu = flavor("cpu", vcpus=8, ram=8192)
-
-    first, second = await asyncio.gather(evaluate(cpu, fresh=False), evaluate(cpu, fresh=False))
-    assert first["cpu"].status == second["cpu"].status == "available"
-    assert len(cloud.candidate_queries()) == 1  # concurrent wizard polls share one Placement snapshot
-
-    cloud.usages[ROOT_B]["VCPU"] = 60  # 4 vCPUs left
-    assert (await evaluate(cpu, fresh=False))["cpu"].status == "available"  # still within the snapshot TTL
-    assert (await evaluate(cpu))["cpu"].status == "insufficient"  # create admission never uses that snapshot
-
-    monkeypatch.setattr(flavor_capacity, "_SNAPSHOT_TTL_SECONDS", 0.0)
-    assert (await evaluate(cpu, fresh=False))["cpu"].status == "insufficient"  # an expired snapshot is replaced
-
-
-async def test_discovery_reuses_a_failed_shape_until_the_snapshot_expires(cloud, monkeypatch, caplog):
-    cloud.add_host(ROOT_B, vcpu=(64, 0), ram=(262144, 0))
-    cloud.failures["/placement/allocation_candidates"] = (503, b'{"errors": [{"status": 503}]}')
-    small, large = flavor("small", vcpus=2, ram=2048), flavor("large", vcpus=8, ram=8192)
-    caplog.set_level(logging.WARNING, logger=flavor_capacity.__name__)
-
-    for _ in range(3):  # wizard polls during a Placement outage
-        result = await evaluate(small, large, fresh=False)
-        assert {capacity.status for capacity in result.values()} == {"unavailable"}
-    assert len(cloud.candidate_queries()) == 1  # one failed shape query, not one per flavor per poll
-    # Polls must not flood the log either: one line for the failed shape, without a traceback.
-    logged = [record for record in caplog.records if record.name == flavor_capacity.__name__]
-    assert [(record.levelno, record.exc_info) for record in logged] == [(logging.WARNING, None)]
-
-    del cloud.failures["/placement/allocation_candidates"]
-    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
-    monkeypatch.setattr(flavor_capacity, "_SNAPSHOT_TTL_SECONDS", 0.0)
-    assert (await evaluate(small, fresh=False))["small"].status == "available"
-
-
 async def test_stalled_placement_returns_unavailable_within_the_deadline(cloud, monkeypatch):
     monkeypatch.setattr(flavor_capacity, "_REQUEST_TIMEOUT_SECONDS", 0.2)
     monkeypatch.setattr(flavor_capacity, "_DEADLINE_SECONDS", 0.5)
@@ -815,6 +775,7 @@ async def test_equal_demands_share_one_query_and_response_hides_identifiers(clou
         assert identifier not in payload
     assert set(result["gpu-a"].model_dump()) == {
         "status",
+        "reason",
         "checked_at",
         "candidate_hosts",
         "cpu_resource_class",
@@ -822,6 +783,7 @@ async def test_equal_demands_share_one_query_and_response_hides_identifiers(clou
         "remaining_ram_mb",
         "numa_unverified",
     }
+    assert result["gpu-a"].reason is None
 
 
 async def test_boot_from_volume_ignores_flavor_disk_but_honors_explicit_disk(cloud):
@@ -872,3 +834,118 @@ async def test_exact_single_host_cpu_ram_boundary_is_inclusive_then_freshly_exha
     assert (await evaluate(cpu))["boundary"].status == "available"
     cloud.usages[ROOT_B]["MEMORY_MB"] += 1
     assert (await evaluate(cpu))["boundary"].status == "insufficient"
+
+
+async def test_managed_capacity_uses_fresh_exact_approved_alias_not_builtin_names(cloud, monkeypatch):
+    cloud.add_host(ROOT_A, gpus=[(GPU_A1, 0)])
+    cloud.answers[GPU_SHAPE] = [allocation({ROOT_A: ONE, GPU_A1: {GPU_RC: 1}})]
+    monkeypatch.setattr(gpu_inventory, "PCI_DEVICE_MAP", {})
+    profile = {
+        "name": "4090",
+        "enabled": True,
+        "resource_class": GPU_RC,
+        "resource_requirements": {GPU_RC: 1},
+        "alias_resource_classes": {"fresh-special": GPU_RC},
+    }
+    load = AsyncMock(return_value={"gpu_profiles": [profile]})
+    monkeypatch.setattr(flavor_automation_policy, "load_policy", load)
+    managed = flavor(
+        "approved",
+        name="gpu.4090.1gpu.4c.8g",
+        specs={
+            "afterglow:managed_by": "domain-compute-v1",
+            "pci_passthrough:alias": "fresh-special:1",
+        },
+    )
+    assert (await evaluate(managed))["approved"].status == "available"
+    assert load.await_count == 1
+    profile["enabled"] = False
+    assert (await evaluate(managed))["approved"].status == "unavailable"
+    assert load.await_count == 2
+
+
+async def test_managed_capacity_never_falls_back_to_builtin_alias_when_unapproved(cloud, monkeypatch):
+    cloud.add_host(ROOT_A, gpus=[(GPU_A1, 0)])
+    cloud.answers[GPU_SHAPE] = [allocation({ROOT_A: ONE, GPU_A1: {GPU_RC: 1}})]
+    monkeypatch.setattr(flavor_automation_policy, "load_policy", AsyncMock(return_value={"gpu_profiles": []}))
+    managed = flavor("unapproved", specs={"afterglow:managed_by": "domain-compute-v1", **GPU_SPECS})
+    assert (await evaluate(managed))["unapproved"].status == "unavailable"
+    assert not cloud.candidate_queries()
+
+
+async def test_approved_managed_alias_does_not_make_down_compute_schedulable(cloud, monkeypatch):
+    cloud.add_host(ROOT_A, gpus=[(GPU_A1, 0)])
+    cloud.service(ROOT_A)["state"] = "down"
+    cloud.answers[GPU_SHAPE] = [allocation({ROOT_A: ONE, GPU_A1: {GPU_RC: 1}})]
+    profile = {
+        "enabled": True,
+        "resource_requirements": {GPU_RC: 1},
+        "alias_resource_classes": {"fresh-special": GPU_RC},
+    }
+    monkeypatch.setattr(flavor_automation_policy, "load_policy", AsyncMock(return_value={"gpu_profiles": [profile]}))
+    managed = flavor(
+        "down", specs={"afterglow:managed_by": "domain-compute-v1", "pci_passthrough:alias": "fresh-special:1"}
+    )
+    assert (await evaluate(managed))["down"].status == "insufficient"
+
+
+def test_approved_grouped_resources_preserve_exact_scheduling_constraints():
+    catalog = flavor_capacity._ApprovedAliasCatalog(
+        [
+            {
+                "enabled": True,
+                "resource_requirements": {GPU_RC: 1, AUDIO_RC: 1},
+                "alias_resource_classes": {"fresh-special": GPU_RC, "fresh-companion": AUDIO_RC},
+            }
+        ]
+    )
+    managed = flavor(
+        "grouped",
+        specs={
+            "resourcesgpu:" + GPU_RC: "2",
+            "resourcesaudio:" + AUDIO_RC: "2",
+            "traitgpu:CUSTOM_APPROVED": "required",
+            "traitaudio:CUSTOM_EXCLUDED": "forbidden",
+            "same_subtree": "gpu,audio",
+            "group_policy": "isolate",
+        },
+    )
+    demand = flavor_capacity._parse_demand(managed, catalog)
+    assert demand.shape.expected() == {"VCPU": 1, "MEMORY_MB": 1, GPU_RC: 2, AUDIO_RC: 2}
+    query = dict(demand.shape.query())
+    assert query["resources_APP0"] == AUDIO_RC + ":2"
+    assert query["resources_APP1"] == GPU_RC + ":2"
+    assert query["required_APP0"] == "!CUSTOM_EXCLUDED"
+    assert query["required_APP1"] == "CUSTOM_APPROVED"
+    assert query["same_subtree"] == "_APP1,_APP0"
+    assert query["group_policy"] == "isolate"
+    assert not any(key.startswith("resources_PCI") for key in query)
+    managed.extra_specs["pci_passthrough:alias"] = "fresh-special:2,fresh-companion:2"
+    with pytest.raises(ValueError, match="overlapping"):
+        flavor_capacity._parse_demand(managed, catalog)
+
+
+def test_disjoint_approved_alias_and_explicit_groups_preserve_both_native_demands():
+    catalog = flavor_capacity._ApprovedAliasCatalog(
+        [
+            {
+                "enabled": True,
+                "resource_requirements": {GPU_RC: 1, AUDIO_RC: 1},
+                "alias_resource_classes": {"fresh-special": GPU_RC},
+            }
+        ]
+    )
+    demand = flavor_capacity._parse_demand(
+        flavor(
+            "disjoint",
+            specs={
+                "resourcesaudio:" + AUDIO_RC: "2",
+                "pci_passthrough:alias": "fresh-special:2",
+            },
+        ),
+        catalog,
+    )
+    assert demand.shape.expected() == {"VCPU": 1, "MEMORY_MB": 1, GPU_RC: 2, AUDIO_RC: 2}
+    query = dict(demand.shape.query())
+    assert query["resources_APP0"] == AUDIO_RC + ":2"
+    assert query["resources_PCI0"] == query["resources_PCI1"] == GPU_RC + ":1"

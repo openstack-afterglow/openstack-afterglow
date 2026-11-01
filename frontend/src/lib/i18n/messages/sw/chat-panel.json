@@ -310,6 +310,8 @@
   "message.forkHere": "Anzisha tawi kutoka hapa",
   "message.fork": "Anzisha tawi",
   "message.generationSpeed": "Kasi ya uzalishaji",
+  "message.ttft": "TTFT sekunde {seconds}",
+  "message.ttftExplanation": "Kutoka kutuma hadi kupokea maandishi ya kwanza ya jibu: sekunde {seconds}",
   "window.elapsedMinutesSeconds": "{minutes, plural, one {Dakika #} other {Dakika #}} {seconds, plural, one {sekunde #} other {sekunde #}}",
   "window.elapsedSeconds": "{seconds, plural, one {Sekunde #} other {Sekunde #}}",
   "window.skillFallback": "ujuzi #{id}",

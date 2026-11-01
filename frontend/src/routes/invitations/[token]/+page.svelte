@@ -6,7 +6,7 @@
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { api, ApiError } from '$lib/api/client';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
@@ -165,15 +165,16 @@
 
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
 
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center py-8">
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center {loading ? '' : 'py-8'}">
+	{#if loading}
+		<LoadingState variant="surface" style="min-height: 100dvh" label={t('invitation.loading')} />
+	{:else}
 	<PageShell class="flex justify-center">
 	<div class="w-full max-w-md">
 		<h1 class="text-center text-xl font-semibold text-ink-0 mb-6 motion-enter">{t('invitation.title')}</h1>
 
 		<div class="bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 motion-enter" style="--motion-index: 1">
-			{#if loading}
-				<div class="flex justify-center py-6"><ActivityIndicator label={t('invitation.loading')} /></div>
-			{:else if loadError}
+			{#if loadError}
 				<div class="space-y-4">
 					<Alert tone="danger">{loadError}</Alert>
 					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
@@ -220,7 +221,7 @@
 						{t('invitation.acceptExisting', { username: $auth.username ?? '' })}
 					</Button>
 					{#if acting}
-						<ActivityIndicator label={t('onboarding.processing')} class="mt-3" />
+						<LoadingState variant="inline" label={t('onboarding.processing')} class="mt-3" />
 					{/if}
 				{:else}
 					{#if createAbandoned || $logoutInProgress || $projectSwitching}
@@ -239,6 +240,7 @@
 		</div>
 	</div>
 	</PageShell>
+	{/if}
 </main>
 
 <style>

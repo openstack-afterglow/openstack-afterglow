@@ -6,12 +6,11 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { formatIsoDateTime } from '$lib/utils/format';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import type { AnnouncementAdmin, AnnouncementSeverity, AnnouncementTargetType } from '$lib/types/announcements';
 	import { t } from '$lib/i18n/ns/admin-system';
@@ -250,7 +249,7 @@
 		</div>
 		<div class="flex justify-end mt-5">
 			<Button variant="accent" disabled={ctrl.creating} ariaBusy={ctrl.creating} onclick={handleCreate}>
-				{#if ctrl.creating}<ActivityIndicator size="xs" tone="ink" />{/if}{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
+				{#if ctrl.creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
 			</Button>
 		</div>
 	</Card>
@@ -258,7 +257,7 @@
 	<Card padding="lg">
 		<h2 class="text-sm font-semibold text-[var(--color-ink-0)] mb-4">{t('announcements.history.title')}</h2>
 		{#if ctrl.loading}
-			<LoadingSkeleton variant="table" rows={5} />
+			<LoadingState variant="surface" />
 		{:else if ctrl.announcements.length === 0}
 			<div class="text-center text-[var(--color-ink-3)] text-sm py-8">{t('announcements.history.empty')}</div>
 		{:else}

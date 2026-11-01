@@ -67,7 +67,6 @@ describe('K3sNodegroupCard', () => {
 		expect(screen.getByText('GPU 4')).toBeTruthy();
 		const provisioning = screen.getByRole('status');
 		expect(provisioning.textContent).toMatch(/\+?2\b/);
-		expect(provisioning.getAttribute('data-variant')).toBe('pulse');
 		const vmCounts = screen.getByText((_, element) =>
 			element?.tagName === 'SPAN' && /\b1\s*\/\s*2\b/.test(element.textContent ?? ''),
 		);

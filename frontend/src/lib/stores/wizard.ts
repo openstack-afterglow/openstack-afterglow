@@ -1,7 +1,10 @@
 import type { GithubSshProfile } from '$lib/types/compute';
+import type { UsageScheduleDraft } from '$lib/types/instanceUsage';
+import { sessionScopeKey } from '$lib/utils/authSession';
 import { writable } from 'svelte/store';
 import { sidebarOpen } from './sidebar';
 import { auth } from './auth';
+import { clearActiveResourceDraft } from './flavorResourceDraft';
 
 // Deliberately separate from WizardState/prefill and never written to browser storage.
 export const wizardPassword = writable({ password: '', confirmation: '' });
@@ -85,6 +88,7 @@ export interface WizardState {
 	newVolumes: NewVolumeSpec[];
 	dataMounts: DataMountSpec[];
 	targetProjectId: string | null;
+	usageSchedule: UsageScheduleDraft | null;
 }
 
 const initial: WizardState = {
@@ -115,9 +119,20 @@ const initial: WizardState = {
 	newVolumes: [],
 	dataMounts: [],
 	targetProjectId: null,
+	usageSchedule: null,
 };
 
 export const wizard = writable<WizardState>({ ...initial });
+
+// Resource references and destruction consent are fenced even while the panel is closed.
+let usageActor = '';
+auth.subscribe(value => {
+	const actor = value.token ? sessionScopeKey(value) : '';
+	if (actor !== usageActor) {
+		usageActor = actor;
+		wizard.update(state => ({ ...state, step: 2, flavorId: null, flavorName: null, usageSchedule: null }));
+	}
+});
 
 let passwordBootIdentity = '';
 wizard.subscribe(value => {
@@ -141,7 +156,8 @@ if (typeof window !== 'undefined') {
 	});
 }
 
-export function resetWizard() {
+export function resetWizard(options?: { preserveResourceDraft?: boolean }) {
+	if (!options?.preserveResourceDraft) clearActiveResourceDraft();
 	clearWizardPassword();
 	wizard.set({ ...initial });
 }

@@ -5,7 +5,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const instanceId = $derived($page.params.id ?? '');
 	const token = $derived($auth.token ?? undefined);
@@ -59,7 +59,7 @@
 				<span class="text-ink-2 text-xs">{t('consoleLog.lastLoaded', { time: formatTime(lastLoaded) })}</span>
 			{/if}
 			{#if loading}
-				<ActivityIndicator size="xs" label={t('consoleLog.loading')} />
+				<LoadingState variant="control" label={t('consoleLog.loading')}  />
 			{/if}
 			<button
 				onclick={load}
@@ -81,7 +81,7 @@
 	{#if error}
 		<div role="alert" class="p-4 text-state-danger-text">{t('consoleLog.queryFailed', { error })}</div>
 	{:else if loading && !log}
-		<div class="p-4"><ActivityIndicator label={t('consoleLog.loadingLog')} /></div>
+		<LoadingState variant="surface" class="min-h-[calc(100dvh-var(--app-header-height)-3rem)]" label={t('consoleLog.loadingLog')} />
 	{:else if !log}
 		<div class="p-4 text-ink-2">{t('consoleLog.empty')}</div>
 	{:else}

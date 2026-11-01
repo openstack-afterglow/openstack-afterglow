@@ -260,6 +260,7 @@ async def test_gpu_quota_allow_reaches_mutation_boundary():
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
+        usage_schedule={},
     )
 
     with (
@@ -317,6 +318,7 @@ async def test_nonstandard_flavor_name_gpu_quota_checked():
         name="test-nonstandard-vm",
         flavor_id="fl-custom",
         image_id="img-123",
+        usage_schedule={},
         network_id="net-1",
         data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
@@ -369,6 +371,7 @@ async def test_sync_instance_creation_gpu_quota_denial_prevents_mutation():
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
+        usage_schedule={},
         network_id="net-1",
         data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
@@ -417,6 +420,7 @@ async def test_sync_instance_creation_name_only_gpu_quota_unavailable_returns_50
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
+        usage_schedule={},
         network_id="net-1",
         data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
@@ -470,6 +474,7 @@ async def test_sync_instance_creation_gpu_quota_authority_unavailable_returns_50
         name="test-gpu-vm",
         flavor_id="fl-gpu",
         image_id="img-123",
+        usage_schedule={},
         network_id="net-1",
         data_mounts=[{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
     )
@@ -518,6 +523,7 @@ async def test_tenant_async_quota_denial_returns_409_before_streaming(client, mo
         "name": "tenant-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
+        "usage_schedule": {},
         "network_id": "net-1",
         "data_mounts": [{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
         "boot_volume_size_gb": 50,
@@ -558,6 +564,7 @@ async def test_tenant_async_quota_unavailable_returns_503_before_streaming(clien
         "name": "tenant-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
+        "usage_schedule": {},
         "network_id": "net-1",
         "data_mounts": [{"file_storage_id": "share-data", "mount_point": "/mnt/data"}],
         "boot_volume_size_gb": 50,
@@ -598,6 +605,7 @@ async def test_admin_async_quota_denial_returns_409_before_streaming(admin_clien
         "name": "admin-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
+        "usage_schedule": {},
         "project_id": "target-proj-abc",
     }
 
@@ -638,6 +646,7 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
         "name": "admin-sse-vm",
         "image_id": "img-123",
         "flavor_id": "fl-gpu",
+        "usage_schedule": {},
         "project_id": "target-proj-abc",
     }
 

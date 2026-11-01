@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "Rader per side",
+	"list.analytics": "Nettverkstrender",
+	"list.details": "Vis detaljer",
+	"list.actionsFor": "Handlinger for nettverk {name}",
+	"list.scopedHistory": "Nettverkshistorikk for hele skyen er ikke tilgjengelig i prosjektomfang.",
+	"list.deleteImpact": "Sletting av et nettverk kan ikke angres. Tilkoblede porter kan hindre sletting.",
 	"loadbalancersPage.loading": "Laster inn lastbalanserere...",
 	"adminNetworkCreateModal.title": "Opprett nettverk",
 	"adminNetworkCreateModal.name": "Navn",

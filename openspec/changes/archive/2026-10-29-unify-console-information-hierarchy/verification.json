@@ -1,0 +1,77 @@
+{
+  "scope": "Source-only paired-theme UI audit implementation; no live cloud or deployment acceptance",
+  "snapshot": {
+    "sourceSha256": "704d1092547a50ae31a85fd1bb57ef8d757bd67ed9a7d9ef221aa594e271fd8f",
+    "sourceEntries": 3682,
+    "architectureWorkingStagedMatch": true,
+    "jsOrchestration": "passed",
+    "backendUnit": {
+      "passed": 11137,
+      "skipped": 106
+    },
+    "frontendUnit": {
+      "filesPassed": 474,
+      "passed": 5772
+    },
+    "contracts": {
+      "passed": 183
+    },
+    "dbFunctional": {
+      "passed": 167,
+      "deselected": 33
+    },
+    "backendLint": {
+      "passed": false,
+      "errors": 3,
+      "files": [
+        "app/services/cloud_shell.py",
+        "tests/test_cloud_shell.py",
+        "tests/test_cloud_shell_authority.py"
+      ],
+      "scope": "concurrent non-task-owned changes preserved"
+    },
+    "raw": "artifact://249"
+  },
+  "affectedBackend": {
+    "passed": 102
+  },
+  "productionBuild": {
+    "passed": true
+  },
+  "typecheck": {
+    "errors": 0,
+    "warnings": 16
+  },
+  "localization": {
+    "errors": 0,
+    "orderingWarnings": 45,
+    "hardcodedKoreanLines": 0
+  },
+  "browser": {
+    "responsive": {
+      "conditions": 168,
+      "failures": 0
+    },
+    "locales": {
+      "conditions": 126,
+      "failures": 0
+    },
+    "compiled": {
+      "conditions": 84,
+      "overflowFailures": 0
+    },
+    "zoom200": {
+      "conditions": 12,
+      "failures": 0
+    }
+  },
+  "proofDirectory": "/Users/pieroot/.local/share/afterglow-proofs/console-hierarchy-20261030",
+  "documentation": "docs/testing.md#콘솔-정보-위계라이트다크-공동-개선-2026-10-30-source-only",
+  "limitations": [
+    "Synthetic identities/providers only",
+    "Not global WCAG certification",
+    "Full gate fails on three concurrent non-task-owned backend Cloud Shell lint errors",
+    "Gbrain unavailable",
+    "Generic strict OpenSpec validation requires deltas; repository rapid workflow intentionally has no spec layer"
+  ]
+}

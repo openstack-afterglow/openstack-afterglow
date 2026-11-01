@@ -2,7 +2,6 @@
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { parseImageReference, sanitizeImageFilename } from '$lib/utils/imageReference';
 	import Button from '$lib/components/ui/Button.svelte';
-	import { ActivityIndicator } from '$lib/components/ui';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/images-keys';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -165,7 +164,7 @@
 				onkeydown={(e) => e.key === 'Enter' && (document.getElementById('image-file-input') as HTMLInputElement)?.click()}
 			>
 				{#if dropActive}
-					<div class="motion-pop mb-3"><ActivityIndicator variant="upload" label={t('uploadModal.dropFiles')} /></div>
+					<div class="motion-pop mb-3"><span>{t('uploadModal.dropFiles')}</span></div>
 				{/if}
 				{#if file}
 					<div class="text-sm text-[var(--color-ink-0)] font-medium">{file.name}</div>

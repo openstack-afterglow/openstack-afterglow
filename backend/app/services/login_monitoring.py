@@ -82,11 +82,18 @@ def _login_method(row: ActivityLog) -> str | None:
         row.resource_type == "auth" and row.action == "login" and row.source == "afterglow" and row.status == "success"
     ):
         return None
-    # Password hook has no extra; OIDC hook explicitly records method=federated.
-    if row.extra is None or row.extra == {}:
+    extra = row.extra
+    if isinstance(extra, dict) and "auth_method" in extra:
+        method = extra["auth_method"]
+        return method if isinstance(method, str) and method in {"password", "federated"} else None
+    # Read-only compatibility for historical rows; never rewrite stored data.
+    if extra is None or extra == {}:
         return "password"
-    if isinstance(row.extra, dict) and row.extra.get("method") == "federated":
-        return "federated"
+    if isinstance(extra, dict):
+        if extra.get("method") == "federated":
+            return "federated"
+        if extra.get("method") == "POST" and extra.get("route") == "/api/v1/auth/login":
+            return "password"
     return None
 
 

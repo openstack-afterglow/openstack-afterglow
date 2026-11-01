@@ -188,7 +188,7 @@ def list_containers(
         return []
 
 
-def count_containers(conn, *, timeout: float | int | None = None) -> int:
+def count_containers(conn, *, timeout: float | int | None = None, strict: bool = False) -> int:
     """현재 계정의 오브젝트 스토리지 컨테이너 수 반환."""
     _apply_endpoint_override(conn)
     try:
@@ -204,11 +204,20 @@ def count_containers(conn, *, timeout: float | int | None = None) -> int:
                 val = headers.get("x-account-container-count")
         if val is not None:
             try:
-                return int(val)
+                count = int(val)
+                if strict and count < 0:
+                    raise ValueError("Invalid Swift container count")
+                return count
             except (ValueError, TypeError):
+                if strict:
+                    raise ValueError("Invalid Swift container count")
                 return 0
+        if strict:
+            raise ValueError("Missing Swift container count")
         return 0
     except Exception as exc:
+        if strict and not _is_account_not_found(exc):
+            raise
         if not _is_account_not_found(exc):
             _logger.debug("Swift 컨테이너 수 조회 실패", exc_info=True)
         return 0
@@ -220,6 +229,7 @@ def count_containers_all_projects(
     per_request_timeout: float = 2.0,
     total_budget: float = 8.0,
     max_workers: int = 8,
+    strict: bool = False,
 ) -> int:
     """admin 토큰으로 모든 프로젝트 fan-out 해서 swift 컨테이너 총 수 반환.
 
@@ -234,8 +244,12 @@ def count_containers_all_projects(
         projects = keystone.list_system_projects(admin_token)
     except Exception:
         _logger.warning("admin 프로젝트 목록 조회 실패", exc_info=True)
+        if strict:
+            raise
         return 0
 
+    if strict and (not isinstance(projects, list) or any(not isinstance(p, dict) or not p.get("id") for p in projects)):
+        raise ValueError("Invalid project inventory for Swift overview")
     project_ids = [p["id"] for p in projects if isinstance(p, dict) and p.get("id")]
     if not project_ids:
         return 0
@@ -246,8 +260,10 @@ def count_containers_all_projects(
             sub_conn = keystone.get_admin_connection_for_project(pid)
             if hasattr(sub_conn, "session") and sub_conn.session is not None:
                 sub_conn.session.timeout = per_request_timeout
-            return count_containers(sub_conn, timeout=per_request_timeout)
+            return count_containers(sub_conn, timeout=per_request_timeout, strict=strict)
         except Exception as exc:
+            if strict:
+                raise
             if not _is_unauthorized(exc):
                 _logger.debug("프로젝트 %s connection 실패", pid, exc_info=True)
             return 0
@@ -271,6 +287,8 @@ def count_containers_all_projects(
             )
             for f in not_done:
                 f.cancel()
+            if strict:
+                raise TimeoutError("Swift all-project inventory incomplete")
             return 0
 
         total = 0

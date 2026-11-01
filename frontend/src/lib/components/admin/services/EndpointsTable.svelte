@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -63,7 +63,7 @@
 	/>
 
 	{#if loading && endpoints.length === 0}
-		<LoadingSkeleton variant="table" rows={8} />
+		<LoadingState variant="section" />
 	{:else if endpoints.length === 0}
 		<EmptyState headline={emptyMessage} />
 	{:else if visibleEndpoints.length === 0}

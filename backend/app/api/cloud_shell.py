@@ -204,6 +204,7 @@ async def _relay_terminal(
                 if len(binary) > MAX_BINARY_FRAME_BYTES:
                     await _close(websocket, 1009, "terminal frame too large")
                     return
+                await cloud_shell.assert_session_authority(runtime.lease)
                 last_activity[0] = time.monotonic()
                 await upstream.send(binary)
                 continue
@@ -237,6 +238,7 @@ async def _relay_terminal(
             ):
                 await _close(websocket, 1002, "invalid terminal size")
                 return
+            await cloud_shell.assert_session_authority(runtime.lease)
             resize.submit(cols, rows)
 
     async def upstream_to_browser() -> None:
@@ -255,6 +257,7 @@ async def _relay_terminal(
         while True:
             await asyncio.sleep(1)
             now_monotonic = time.monotonic()
+            await cloud_shell.assert_session_authority(runtime.lease)
             if int(time.time()) >= runtime.expires_at:
                 await _send_event(websocket, "exit", reason="session_expired")
                 await _close(websocket, 4419, "Cloud Shell session expired")
@@ -265,6 +268,7 @@ async def _relay_terminal(
                 await _close(websocket, 4408, "Cloud Shell idle timeout")
                 return
             if now_monotonic - last_heartbeat[0] >= cloud_shell.HEARTBEAT_INTERVAL_SECONDS:
+                await cloud_shell.assert_session_authority(runtime.lease, native=True)
                 if not await cloud_shell.refresh_heartbeat(runtime.lease):
                     await _send_event(websocket, "error", code="coordination_lost")
                     await _close(websocket, 4500, "Cloud Shell coordination lost")
@@ -299,8 +303,10 @@ async def cloud_shell_ws(websocket: WebSocket, ticket: str = Query(...)) -> None
     upstream: Any = None
     token_info: dict[str, Any] | None = None
     release_lease = True
+    liveness: asyncio.Task[None] | None = None
     try:
         lease = await cloud_shell.consume_cloud_shell_ticket(ticket)
+        liveness = asyncio.create_task(cloud_shell.renew_preparation_liveness(lease))
         token_info = {
             "user_id": lease.user_id,
             "username": lease.username,
@@ -323,8 +329,16 @@ async def cloud_shell_ws(websocket: WebSocket, ticket: str = Query(...)) -> None
             ping_timeout=20,
         )
         await _wait_for_marker(upstream, cloud_shell.BOOTSTRAP_READY_MARKER)
+        await cloud_shell.assert_session_authority(lease, native=True)
         await upstream.send(cloud_shell.bootstrap_payload(lease))
         await _wait_for_marker(upstream, cloud_shell.BOOTSTRAP_OK_MARKER)
+        await cloud_shell.assert_session_authority(lease)
+        if liveness is not None:
+            liveness.cancel()
+            with suppress(asyncio.CancelledError):
+                await liveness
+        if not await cloud_shell.refresh_heartbeat(lease):
+            raise cloud_shell.CloudShellUnavailable("coordination_lost", "Cloud Shell preparation ownership was lost")
         await _send_event(
             websocket,
             "ready",
@@ -351,6 +365,10 @@ async def cloud_shell_ws(websocket: WebSocket, ticket: str = Query(...)) -> None
         await _send_event(websocket, "error", code="terminal_failed")
         await _close(websocket, 4500, "Cloud Shell terminal failed")
     finally:
+        if liveness is not None:
+            liveness.cancel()
+            with suppress(asyncio.CancelledError, cloud_shell.CloudShellError):
+                await liveness
         if upstream is not None:
             with suppress(Exception):
                 await upstream.close()

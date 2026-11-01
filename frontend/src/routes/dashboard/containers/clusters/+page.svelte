@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
   import RichText from '$lib/i18n/RichText.svelte';
@@ -13,7 +14,7 @@
   import { executeBulkMutations } from '$lib/utils/bulkActions';
   import type { Cluster, ClusterTemplate, CreateClusterForm } from '$lib/types/cluster';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import { toast } from '$lib/stores/toast';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -167,7 +168,7 @@
       <p class="text-sm text-ink-2"><RichText segments={t.rich('clusters.serviceUnavailable.body')} /></p>
     </div>
   {:else if loading}
-    <LoadingSkeleton variant="table" rows={4} />
+    <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('clusters.list.title') })} />
   {:else if clusters.length === 0}
     <div class="text-center py-20 text-ink-2">
       <p class="text-lg mb-2">{t('clusters.empty.title')}</p>

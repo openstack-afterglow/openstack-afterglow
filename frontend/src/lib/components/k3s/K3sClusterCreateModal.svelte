@@ -2,7 +2,8 @@
 	import { t } from '$lib/i18n/ns/drover';
 	import type { ClusterTemplate, CreateClusterForm } from '$lib/types/cluster';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
-	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 	import { canWrite } from '$lib/stores/auth';
 
 	let {
@@ -101,11 +102,11 @@
 				</div>
 			</div>
 			{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
-			{#if creating}<ProgressTrack value={null} active label={t('clusterCreate.creating')} class="mt-4" />{/if}
+			{#if creating}<LoadingState variant="inline" label={t('clusterCreate.creating')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('clusterCreate.cancel')}</button>
 				<Button onclick={submit} disabled={!$canWrite || creating || !form.name || !form.cluster_template_id} ariaBusy={creating}>
-					{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('clusterCreate.creating')}{:else}{t('clusterCreate.create')}{/if}
+					{#if creating}<LoadingState variant="control" label="" />{t('clusterCreate.creating')}{:else}{t('clusterCreate.create')}{/if}
 				</Button>
 			</div>
 		</div>

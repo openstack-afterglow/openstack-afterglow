@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -71,7 +71,7 @@
 			</Field>
 			<label class="flex items-center gap-2 text-xs text-ink-1"><input type="checkbox" bind:checked={form.dhcp} /> {t('network.subnets.enableDhcp')}</label>
 			{#if s.subnetError}<Alert tone="danger" title={t('network.errors.createSubnet')}>{s.subnetError}</Alert>{/if}
-			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet} ariaBusy={s.addingSubnet}>{#if s.addingSubnet}<ActivityIndicator size="xs" tone="ink" />{/if}{s.addingSubnet ? t('network.subnets.creating') : t('network.subnets.create')}</Button></div>
+			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet} ariaBusy={s.addingSubnet}>{#if s.addingSubnet}<LoadingState variant="control" label="" />{/if}{s.addingSubnet ? t('network.subnets.creating') : t('network.subnets.create')}</Button></div>
 		</form>
 	{/if}
 

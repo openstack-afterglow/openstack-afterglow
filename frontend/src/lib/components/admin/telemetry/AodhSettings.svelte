@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ActivityIndicator, Alert, Button, Field, FormModal, PageHeader, SelectInput, TableShell, TextareaInput, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Field, FormModal, PageHeader, SelectInput, TableShell, TextareaInput, TextInput } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { adminTelemetryRequest, TelemetryError, type AlarmType, type AlarmWrite, type AodhDetail, type NativeAlarm, type NativePage } from '$lib/api/adminTelemetry';
@@ -208,7 +209,7 @@
 		<Alert tone="warning">{t('settings.uncertain')}</Alert>
 		{#if uncertain.id}<Button variant="secondary" disabled={busy || selecting} onclick={() => uncertain?.id && selectAlarm(uncertain.id, true)}>{t('settings.reread')}</Button>{/if}
 	{/if}
-	{#if loading || selecting}<ActivityIndicator label={t('settings.loading')} />{/if}
+	{#if loading || selecting}<LoadingState variant="section" label={t('settings.loading')} />{/if}
 	{#if alarms}
 		{@const alarmPage = alarms}
 		<NativeStatus status={alarms.status} error={alarms.error} />

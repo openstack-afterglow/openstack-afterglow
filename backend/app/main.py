@@ -38,6 +38,7 @@ class _JSONFormatter(logging.Formatter):
 
 def _setup_logging() -> None:
     from app.config import get_settings
+    from app.utils.auth_diagnostics import RequestDiagnosticHandler
     from app.utils.daily_size_handler import DailySizeHandler
 
     cfg = get_settings()
@@ -51,6 +52,7 @@ def _setup_logging() -> None:
     stream_handler.setFormatter(formatter)
     stream_handler.addFilter(sensitive_filter)
     root.addHandler(stream_handler)
+    root.addHandler(RequestDiagnosticHandler())
 
     try:
         file_handler = DailySizeHandler(
@@ -70,6 +72,12 @@ def _setup_logging() -> None:
     logging.getLogger("app").setLevel(logging.DEBUG if cfg.debug else logging.NOTSET)
     for namespace in WARNING_LOG_NAMESPACES:
         logging.getLogger(namespace).setLevel(logging.WARNING)
+    # Uvicorn installs non-propagating handlers before importing this module.
+    # Its WebSocket handshake messages contain the full query-bearing URL.
+    for namespace in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logger = logging.getLogger(namespace)
+        for handler in logger.handlers:
+            handler.addFilter(sensitive_filter)
     logging.getLogger(__name__).debug(
         "logging configuration",
         extra={
@@ -132,6 +140,7 @@ from app.api.common import (
     tutorial_status_router,
     user_dashboard_router,
 )
+from app.api.common.interactions import router as interactions_router
 from app.api.common.metrics import record_request as _record_request
 
 _mark("api.common")
@@ -182,23 +191,29 @@ from app.api.identity.admin_infrastructure_topology import router as admin_infra
 from app.api.identity.admin_instances import router as admin_instances_router
 from app.api.identity.admin_notion import router as admin_notion_router
 from app.api.identity.admin_orphans import router as admin_orphans_router
+from app.api.identity.admin_password_reset import router as admin_password_reset_router
 from app.api.identity.admin_resource_details import router as admin_resource_details_router
 from app.api.identity.admin_resource_policies import router as admin_resource_policies_router
 from app.api.identity.admin_secrets import router as admin_secrets_router
 from app.api.identity.admin_services import router as admin_services_router
 from app.api.identity.admin_telemetry import router as admin_telemetry_router
 from app.api.identity.admin_worker_runtime import router as admin_worker_runtime_router
+from app.api.identity.compute_pools import router as compute_pools_router
 from app.api.identity.domain_auth import iam_router as domain_policy_router
 from app.api.identity.domain_auth import public_router as domain_auth_router
 from app.api.identity.domain_quotas import router as domain_quotas_router
 from app.api.identity.domains import router as admin_domains_router
 from app.api.identity.enrollment_policy import router as enrollment_policy_router
+from app.api.identity.gpu_quota_requests import router as gpu_quota_requests_router
 from app.api.identity.iam import router as iam_router
 from app.api.identity.login_monitoring import router as login_monitoring_router
+from app.api.identity.managed_flavors import router as managed_flavors_router
 from app.api.identity.onboarding import router as onboarding_router
 from app.api.identity.organization_bindings import router as organization_bindings_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
+from app.api.identity.profile_password import admin_router as admin_profile_password_router
+from app.api.identity.profile_password import router as profile_password_router
 from app.api.identity.projects import router as projects_router
 from app.api.mcp import auth_router as mcp_oauth_router
 from app.api.mcp import root_router as mcp_root_router
@@ -290,7 +305,12 @@ async def creation_validation_exception_handler(request: Request, exc: RequestVa
         )
     sensitive_credential = request.method in {"POST", "PUT", "PATCH"} and any(
         path == base or path.startswith(base + "/")
-        for base in ("/api/v1/admin/application-credentials", "/api/v1/admin/user-credentials", "/api/v1/admin/users")
+        for base in (
+            "/api/v1/admin/application-credentials",
+            "/api/v1/admin/user-credentials",
+            "/api/v1/admin/users",
+            "/api/v1/profile/password",
+        )
     )
     sensitive_creation = request.method == "POST" and path in {
         "/api/v1/instances",
@@ -309,9 +329,9 @@ async def creation_validation_exception_handler(request: Request, exc: RequestVa
 @app.exception_handler(HTTPException)
 async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
     """Return safe 5xx details; log structural diagnostics, never exception text."""
-    # Only client-visible failure detail is eligible for the audit record.
-    if (exc.status_code < 500 or getattr(exc, "_afterglow_safe_public_detail", False)) and isinstance(exc.detail, str):
-        request.state.audit_error = exc.detail
+    # Audit only server-owned structural classifications, never public detail:
+    # even a 4xx message can contain an upstream credential or attempted username.
+    request.state.audit_error_code = f"http_{exc.status_code}"
     if exc.status_code >= 500:
         _logger.error(
             "HTTP error",
@@ -359,6 +379,7 @@ if _ClientDisconnect is not None:
 
 from app.services.activity import _audit_ctx, service_for_resource
 from app.services.activity import record as _record_activity
+from app.services.activity import record_request_observations as _record_request_observations
 
 
 @app.exception_handler(Exception)
@@ -405,6 +426,8 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/auth/mcp-tokens", "mcp_grant"),
     ("/api/v1/volumes/backups", "volume_backup"),
     ("/api/v1/admin/announcements", "announcement"),
+    ("/api/v1/admin/gpu-quota-requests", "gpu_quota_request"),
+    ("/api/v1/iam/gpu-quota-requests", "gpu_quota_request"),
     ("/api/v1/volume-snapshots", "volume_snapshot"),
     ("/api/v1/share-snapshots", "share_snapshot"),
     ("/api/v1/share-networks", "share_network"),
@@ -543,7 +566,7 @@ async def request_logging_middleware(request: Request, call_next):
             )
 
 
-_CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, Authorization, Idempotency-Key, Last-Event-ID"
+_CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, X-Afterglow-Interaction-Id, Authorization, Idempotency-Key, Last-Event-ID"
 _CORS_ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 
@@ -592,78 +615,164 @@ async def cors_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def activity_audit_middleware(request: Request, call_next):
-    """Record authenticated resource mutations, including rejected/failed attempts.
+    """Structural request/auth observations with authoritative business terminals.
 
-    Explicit endpoint records own their result; never duplicate one in middleware.
-    A streaming endpoint must record its terminal result itself: a 200 handshake
-    is not evidence that the operation succeeded.
+    No body, raw URL, response payload or exception message enters this channel.
+    Successful uncorrelated polling is excluded; all API failures remain visible.
+    Browser collection itself is excluded, including its errors, to avoid recursion.
     """
     from uuid import uuid4
 
+    from app.services.interaction_policy import canonical_page, interaction_id
+    from app.utils.auth_diagnostics import safe_error_type
+
+    path = request.url.path
+    if not path.startswith("/api/") or path.rstrip("/") == "/api/v1/activity/interactions":
+        return await call_next(request)
+    started = time.perf_counter()
     is_mut = request.method in ("POST", "PUT", "PATCH", "DELETE")
-    mapped = _resource_for_path(request.url.path) if is_mut else None
-    page = request.headers.get("X-Afterglow-Page", "")
-    if len(page) > 255 or not re.fullmatch(r"/(?:dashboard|admin|account)(?:/[a-z0-9_:\-]*)?", page):
-        page = ""
-    holder: dict = {"logged": False}
-    if mapped:
-        holder["request_id"] = f"req-{uuid4().hex}"
-        holder["service"] = service_for_resource(mapped[0])
-        holder["source"] = "afterglow"
-        holder["page"] = page or None
+    mapped = _resource_for_path(path) if is_mut else None
+    auth_request = is_mut and path.startswith("/api/v1/auth/")
+    correlation = interaction_id(request.headers.get("X-Afterglow-Interaction-Id"))
+    try:
+        page = canonical_page(request.headers.get("X-Afterglow-Page", ""))
+    except ValueError:
+        page = None
+    metadata = {"method": _safe_method(request.method)}
+    if correlation:
+        metadata["interaction_id"] = correlation
+    holder: dict = {
+        "logged": False,
+        "request_id": f"req-{uuid4().hex}",
+        "service": service_for_resource(mapped[0]) if mapped else "keystone" if auth_request else "afterglow",
+        "source": "afterglow",
+        "page": page,
+        "metadata": metadata,
+        "request": request,
+        "started": started,
+    }
 
-    async def record_outcome(status_code: int, *, streaming: bool = False, raised: bool = False) -> None:
-        if not mapped or streaming:
+    async def record_outcome(status_code: int, *, streaming: bool = False, error_type: str | None = None) -> None:
+        failed = status_code >= 400
+        intermediate_failure = any(status == "failed" for status, _ in holder.get("stages", ()))
+        selected = bool(mapped or auth_request or correlation or failed or intermediate_failure)
+        if not selected:
             return
-        outcome = "failed" if status_code >= 400 else "started" if status_code == 202 else "success"
-        recorded_status = holder.get("recorded_status")
-        # A failed business result may deliberately use a 2xx HTTP response.
-        if recorded_status == "failed" or recorded_status == outcome or (outcome == "started" and holder["logged"]):
+        # Authentication dependencies set token_info only after verified proof.
+        # Login successes may instead supply a trusted actor via explicit record().
+        info = getattr(request.state, "token_info", None) or holder.get("actor") or {}
+        if not info.get("user_id") and not (auth_request or correlation or failed or intermediate_failure):
             return
-
-        info = getattr(request.state, "token_info", None)
-        if not info or not info.get("user_id"):
-            return
-        if not info.get("project_id") and not (info.get("domain_id") and request.url.path.startswith("/api/v1/iam/")):
-            return
-        rtype, rid = mapped
-        path_parts = request.url.path.rstrip("/").split("/")
-        operation = path_parts[-1] if rid and path_parts[-1] != rid else None
-        verb = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "delete"}[request.method]
-        action = f"{rtype}.{operation or verb}"
-        # Never persist exception text or response bodies: either may contain secrets.
-        detail = getattr(request.state, "audit_error", None) if outcome == "failed" and not raised else None
-        try:
-            await _record_activity(
-                project_id=info.get("project_id", ""),
-                user_id=info["user_id"],
-                username=info.get("username", ""),
-                resource_type=rtype,
-                action=action,
-                status=outcome,
-                resource_id=rid,
-                error_message=detail,
-                http_status=status_code,
-                request_id=holder["request_id"],
-                service=holder["service"],
-                page=page or None,
-                source="afterglow",
-                extra={"domain_id": info["domain_id"]} if info.get("domain_id") else None,
+        outcome = "failed" if failed else "started" if status_code == 202 else "success"
+        route = _route_template(request)
+        common = {**metadata, "route": route}
+        for stage_status, stage_metadata in holder.get("stages", ()):
+            if stage_status == "failed" and stage_metadata.get("stage") == "request":
+                for key in ("error_type", "error_code"):
+                    if key in stage_metadata:
+                        common[key] = stage_metadata[key]
+        duration = round((time.perf_counter() - started) * 1000, 3)
+        if failed:
+            common["error_code"] = f"http_{status_code}"
+        if error_type:
+            common["error_type"] = error_type
+        identity = {
+            "project_id": info.get("project_id", ""),
+            "user_id": info.get("user_id", ""),
+            "username": info.get("username", ""),
+        }
+        rtype, rid = mapped if mapped else ("auth" if auth_request else "request", None)
+        if not info.get("user_id") or rtype in {
+            "cloud_shell",
+            "invitation",
+            "secret",
+            "secret_container",
+            "secret_order",
+            "chat_git_credential",
+            "chat_api_key",
+            "application_credential",
+            "user_credential",
+            "palimpsest_package_key",
+        }:
+            rid = None
+        # Only source route literals can become operation names, never raw IDs.
+        operation = route.rstrip("/").split("/")[-1]
+        verb = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "delete"}.get(request.method, "read")
+        action = f"{rtype}.{operation if rid and re.fullmatch(r'[a-z][a-z_-]{0,30}', operation) else verb}"
+        if auth_request:
+            auth_actions = {
+                "/api/v1/auth/login": "login",
+                "/api/v1/auth/providers/callback": "login",
+                "/api/v1/auth/providers/entry": "login",
+                "/api/v1/auth/personal-project/recovery": "login",
+                "/api/v1/auth/logout": "logout",
+                "/api/v1/auth/logout-all": "logout_all",
+                "/api/v1/auth/refresh": "refresh",
+            }
+            action = auth_actions.get(
+                route, f"auth.{operation}" if re.fullmatch(r"[a-z][a-z_-]{0,30}", operation) else "auth.request"
             )
-        except Exception:
-            _logger.warning("activity audit write failed", exc_info=True)
 
-    tok = _audit_ctx.set(holder) if is_mut else None
+        observations = []
+
+        def emit(status: str, extra: dict, *, stage_event: bool = False) -> None:
+            observations.append(
+                {
+                    **identity,
+                    "resource_type": rtype,
+                    "action": f"{rtype}.stage" if stage_event else action,
+                    "status": status,
+                    "resource_id": rid,
+                    "error_message": None,
+                    "http_status": status_code if not stage_event or extra.get("stage") == "request" else None,
+                    "request_id": holder["request_id"],
+                    "service": holder["service"],
+                    "page": page,
+                    "source": "afterglow",
+                    "extra": extra,
+                }
+            )
+
+        if auth_request:
+            emit("started", {**common, "stage": "request_started", "duration_ms": 0}, stage_event=True)
+        for status, stage in holder.get("stages", ()):
+            if stage.get("stage") != "request" and (status == "failed" or auth_request or correlation):
+                emit(status, {**common, **stage}, stage_event=True)
+        if holder.get("stages_truncated"):
+            emit("started", {**common, "stage": "stages_truncated"}, stage_event=True)
+        recorded_statuses = holder.get("statuses", set())
+        terminal_owned = (
+            "failed" in recorded_statuses or outcome in recorded_statuses or (outcome == "started" and holder["logged"])
+        )
+        # Explicit business failures win over HTTP2xx; stream200 is not completion.
+        if not terminal_owned and not (streaming and not failed):
+            emit(outcome, {**common, "stage": "request", "duration_ms": duration})
+        try:
+            if len(observations) == 1:
+                await _record_activity(**observations[0])
+            elif observations:
+                await _record_request_observations(observations)
+        except Exception:
+            _logger.warning("activity audit write failed")
+
+    tok = _audit_ctx.set(holder)
+
+    def close_context() -> None:
+        metadata["route"] = _route_template(request)
+        holder.pop("request", None)
+        holder["closed"] = True
+        _audit_ctx.reset(tok)
+
     try:
         response = await call_next(request)
-    except Exception:
-        await record_outcome(500, raised=True)
+    except BaseException as exc:
+        close_context()
+        await record_outcome(500, error_type=safe_error_type(exc))
         raise
-    finally:
-        if tok is not None:
-            _audit_ctx.reset(tok)
-
-    if mapped:
+    else:
+        close_context()
+    selected = mapped or auth_request or correlation or response.status_code >= 400
+    if selected:
         response.headers["X-Request-Id"] = holder["request_id"]
     await record_outcome(
         response.status_code, streaming=response.headers.get("content-type", "").startswith("text/event-stream")
@@ -720,7 +829,11 @@ app.include_router(admin_services_router, prefix="/api/v1/admin", tags=["admin-s
 app.include_router(admin_telemetry_router, prefix="/api/v1/admin/telemetry", tags=["admin-telemetry"])
 app.include_router(admin_worker_runtime_router, prefix="/api/v1/admin", tags=["admin-worker-runtime"])
 app.include_router(admin_flavors_router, prefix="/api/v1/admin", tags=["admin-flavors"])
+app.include_router(compute_pools_router, prefix="/api/v1", tags=["compute-pools"])
+app.include_router(gpu_quota_requests_router, prefix="/api/v1", tags=["gpu-quota-requests"])
+app.include_router(managed_flavors_router, prefix="/api/v1", tags=["flavor-automation"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(admin_password_reset_router, prefix="/api/v1/admin", tags=["admin-identity"])
 app.include_router(organization_bindings_router, prefix="/api/v1/admin", tags=["organization-bindings"])
 app.include_router(admin_domains_router, prefix="/api/v1/admin", tags=["admin-domains"])
 app.include_router(admin_credentials_router, prefix="/api/v1/admin", tags=["admin-credentials"])
@@ -737,8 +850,11 @@ app.include_router(admin_notion_router, prefix="/api/v1/admin", tags=["admin-not
 app.include_router(admin_images_router, prefix="/api/v1/admin", tags=["admin-images"])
 app.include_router(admin_resource_policies_router, prefix="/api/v1/admin", tags=["admin-resource-policies"])
 app.include_router(profile_router, prefix="/api/v1/profile", tags=["profile"])
+app.include_router(profile_password_router, prefix="/api/v1/profile", tags=["profile"])
+app.include_router(admin_profile_password_router, prefix="/api/v1/admin/identity", tags=["admin-identity"])
 app.include_router(profile_activity_router, prefix="/api/v1/profile/activity", tags=["profile-activity"])
 app.include_router(admin_activity_router, prefix="/api/v1/admin", tags=["admin-activity"])
+app.include_router(interactions_router, prefix="/api/v1/activity", tags=["activity"])
 app.include_router(admin_orphans_router, prefix="/api/v1/admin", tags=["admin-orphans"])
 app.include_router(admin_announcements_router, prefix="/api/v1/admin/announcements", tags=["admin-announcements"])
 app.include_router(projects_router, prefix="/api/v1/projects", tags=["projects"])
@@ -1369,6 +1485,15 @@ async def start_background_workers():
         from app.services.layer_consume_resources import reconciliation_loop as consume_reconciliation_loop
 
         roles["block-consumer-reconciliation"] = consume_reconciliation_loop
+        from app.services.managed_flavors import reconciliation_loop as flavor_reconciliation_loop
+
+        roles["managed-flavor-reconciliation"] = flavor_reconciliation_loop
+        from app.services.resource_policy_reconciliation import reconciliation_loop as policy_reconciliation_loop
+
+        roles["resource-policy-reconciliation"] = policy_reconciliation_loop
+        from app.services.flavor_discovery import discovery_loop as flavor_discovery_loop
+
+        roles["flavor-discovery"] = flavor_discovery_loop
     if _db_cfg.openstack_notifications_enabled:
         if not _db_cfg.database_url:
             raise RuntimeError("OpenStack notification collection requires a persistent database")
@@ -1382,6 +1507,10 @@ async def start_background_workers():
 
     _start_background(scheduler_loop(), name="volume-backup-dispatch")
     _start_background(snapshot_scheduler_loop(), name="volume-snapshot-dispatch")
+    if _db_cfg.instance_usage_scheduler_enabled:
+        from app.services.instance_usage_scheduler import scheduler_loop as instance_usage_scheduler_loop
+
+        _start_background(instance_usage_scheduler_loop(), name="instance-usage-dispatch")
     # Register empty generations too, so disabling sources fences an older replica.
     _start_background(fabric_monitoring_loop(settings=_db_cfg), name="physical-fabric-observation")
     if _db_cfg.monitoring_host_healthcheck_enabled:

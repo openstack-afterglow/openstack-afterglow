@@ -369,3 +369,69 @@ async def test_domain_observation_legacy_sessions_and_storage_outage_are_explici
     assert "sessions_without_domain_attribution" in data["notes"]
     assert data["logins"]["state"] == "unavailable" and data["logins"]["successes"] is None
     assert data["activity"]["events"] is None and data["activity"]["hour_distribution"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("auth_method", ["password", "federated"])
+async def test_persisted_auth_method_survives_http_metadata_enrichment(monitoring, monkeypatch, auth_method):
+    from app.services import activity
+
+    monkeypatch.setattr(activity, "get_session_factory", lambda: monitoring.factory)
+    monkeypatch.setattr(activity, "is_db_available", lambda: True)
+    token = activity._audit_ctx.set(
+        {
+            "request_id": "req-server-owned",
+            "metadata": {
+                "method": "POST",
+                "route": "/api/v1/auth/login",
+                "stage": "request",
+                "interaction_id": "11111111-1111-4111-8111-111111111111",
+            },
+        }
+    )
+    try:
+        await activity.record(
+            project_id="project-a",
+            user_id="selected",
+            username="Selected user",
+            resource_type="auth",
+            action="login",
+            status="success",
+            source="afterglow",
+            extra={"auth_method": auth_method, "method": "federated", "route": "/untrusted-business-extra"},
+        )
+    finally:
+        activity._audit_ctx.reset(token)
+    rows = await activity.list_events(action="login")
+    assert len(rows) == 1
+    assert rows[0]["extra"]["method"] == "POST"
+    assert rows[0]["extra"]["auth_method"] == auth_method
+    assert rows[0]["extra"]["route"] == "/api/v1/auth/login"
+    result = await monitoring.client.get(BASE + "/users/selected")
+    assert result.status_code == 200
+    assert result.json()["history"]["events"][0]["auth_method"] == auth_method
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra,expected",
+    [
+        (None, "password"),
+        ({}, "password"),
+        ({"method": "federated", "provider_kind": "oidc"}, "federated"),
+        ({"method": "POST", "route": "/api/v1/auth/login", "stage": "request"}, "password"),
+        ({"auth_method": "password", "method": "federated"}, "password"),
+        ({"auth_method": "invalid", "method": "federated"}, None),
+        ({"method": "POST", "route": "/unrecognized-login"}, None),
+    ],
+)
+async def test_retained_login_method_classification_is_read_only_and_fail_closed(monitoring, extra, expected):
+    from sqlalchemy import select
+
+    await add_event(monitoring.factory, extra=extra)
+    response = await monitoring.client.get(BASE + "/users/selected")
+    assert response.status_code == 200
+    assert response.json()["history"]["events"][0]["auth_method"] == expected
+    async with monitoring.factory() as session:
+        row = (await session.execute(select(ActivityLog))).scalar_one()
+    assert row.extra == extra  # no migration/rewrite of historical method=federated

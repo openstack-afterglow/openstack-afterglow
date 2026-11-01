@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -78,7 +78,7 @@
 		searchPlaceholder={t('services.pools.searchPlaceholder')}
 	/>
 	{#if loading && pools.length === 0}
-		<LoadingSkeleton variant="table" rows={4} />
+		<LoadingState variant="section" />
 	{:else if pools.length === 0}
 		<EmptyState headline={emptyMessage} />
 	{:else if visiblePools.length === 0}

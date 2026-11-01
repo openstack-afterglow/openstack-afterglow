@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import type { SwiftContainer } from '$lib/types/objectStorage';
 	import { formatStorage } from '$lib/utils/format';
@@ -31,7 +32,7 @@
 
 <ResponsiveTable>
  {#snippet cards()}
-  {#each containers as c (c.name)}<CompactResourceCard selected={selectedIds.has(c.name)}><div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.name)} disabled={selectionDisabled} ariaLabel={t('views.bucketCardGrid.select', { name: c.name })} onclick={() => onToggleSelect(c.name)} /><a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="min-w-0 text-sm font-medium break-all">{c.name}</a></div><p class="text-xs text-ink-2">{t('views.bucketCardGrid.objectCount', { count: c.count })} · {formatStorage(c.bytes / 1_000_000_000)}</p>{#snippet actions()}<a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="text-xs text-warm-text">{t('views.bucketCardGrid.details')}</a><button onclick={() => onDelete(c.name)} disabled={deleting === c.name || selectionDisabled} class="text-xs text-state-danger-text disabled:text-ink-3">{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>{/snippet}</CompactResourceCard>{/each}
+  {#each containers as c (c.name)}<CompactResourceCard selected={selectedIds.has(c.name)}><div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.name)} disabled={selectionDisabled} ariaLabel={t('views.bucketCardGrid.select', { name: c.name })} onclick={() => onToggleSelect(c.name)} /><a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="min-w-0 text-sm font-medium break-all">{c.name}</a></div><p class="text-xs text-ink-2">{t('views.bucketCardGrid.objectCount', { count: c.count })} · {formatStorage(c.bytes / 1_000_000_000)}</p>{#snippet actions()}<a href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}" class="text-xs text-warm-text">{t('views.bucketCardGrid.details')}</a><button onclick={() => onDelete(c.name)} disabled={deleting === c.name || selectionDisabled} class="text-xs text-state-danger-text disabled:text-ink-3">{#if deleting === c.name}<LoadingState variant="control" label="" />{/if}{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>{/snippet}</CompactResourceCard>{/each}
  {/snippet}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
 	{#each containers as c (c.name)}
@@ -78,7 +79,7 @@
 					onclick={() => onDelete(c.name)}
 					disabled={deleting === c.name || selectionDisabled}
 					class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 transition-colors"
-				>{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>
+				>{#if deleting === c.name}<LoadingState variant="control" label="" />{/if}{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>
 			</div>
 		</article>
 	{/each}

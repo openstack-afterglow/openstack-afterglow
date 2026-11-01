@@ -2,8 +2,8 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import { ActivityIndicator, Button, Card, FileIcon, Modal } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Button, Card, FileIcon, Modal } from '$lib/components/ui';
 
 	const s = useObjectBrowser();
 	const label = $derived(s.displayName(s.previewName) || s.previewName);
@@ -23,7 +23,7 @@
 				onclick={() => s.downloadObject(s.previewName)}
 			>
 				{#if downloadPreparing}
-					<ActivityIndicator variant="download" size="xs" label={`${t('views.previewModal.download')}: ${commonT('state.processing')}`} />
+					<LoadingState variant="control" label={`${t('views.previewModal.download')}: ${commonT('state.processing')}`} />
 				{:else}
 					{t('views.previewModal.download')}
 				{/if}
@@ -35,9 +35,9 @@
 			</Button>
 		</div>
 
-		<div class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-surface-sunken p-4">
+		<div class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-surface-sunken {s.loadingPreview ? '' : 'p-4'}">
 			{#if s.loadingPreview}
-				<LoadingSkeleton variant="detail" rows={4} />
+				<LoadingState variant="section" />
 			{:else if s.previewContentType.startsWith('image/')}
 				<img src={s.previewUrl} alt={label} class="max-h-[80vh] max-w-full object-contain" />
 			{:else if s.previewContentType === 'application/pdf'}

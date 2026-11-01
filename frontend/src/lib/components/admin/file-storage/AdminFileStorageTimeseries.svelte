@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import type { TsPoint } from '$lib/types/common';
 	import { t } from '$lib/i18n/ns/admin-storage';
@@ -18,9 +18,7 @@
 </script>
 
 {#if loading}
-	<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-		<ActivityIndicator size="sm" label={t('fileTimeseries.loading')} />
-	</div>
+	<LoadingState variant="section" label={t('fileTimeseries.loading')} />
 {:else}
 	<TimeSeriesChart
 		{data}

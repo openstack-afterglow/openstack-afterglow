@@ -25,7 +25,7 @@
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import HubArtifactsPanel from '$lib/components/palimpsest/HubArtifactsPanel.svelte';
   import PalimpsestLocalGuide from '$lib/components/palimpsest/PalimpsestLocalGuide.svelte';
   import AssetSearchPanel from '$lib/components/palimpsest/AssetSearchPanel.svelte';
@@ -192,7 +192,7 @@
       {#if controller.errors.context}
         <Button variant="secondary" disabled={!$selectedIdentity || !!controller.busy.context} onclick={() => controller.loadContext()}>{t('actions.retry')}</Button>
       {:else if !$selectedIdentity}<Alert tone="info">{t('context.selectProject')}</Alert>
-      {:else}<p class="text-sm text-ink-2" role="status">{t('context.loading')}</p>{/if}
+      {:else}<LoadingState variant="surface" label={t('context.loading')} />{/if}
     {:else}
       <Card surface="base">
         <p class="break-words text-sm font-medium">{controller.context.project_name}</p>
@@ -214,7 +214,7 @@
           <div id="package-inventory" role="tabpanel" aria-labelledby="package-tabs-inventory" tabindex="0" class="space-y-4">
             {#if controller.errors.inventory}<Alert tone="danger">{controller.errors.inventory}</Alert><Button variant="secondary" onclick={() => controller.loadInventory()}>{t('inventory.retry')}</Button>{/if}
             {#if !controller.canRead}<Alert tone="warning">{t('inventory.denied')}</Alert>
-            {:else if controller.busy.inventory && controller.inventory === null}<p class="text-sm text-ink-2" role="status">{t('inventory.loading')}</p>
+            {:else if controller.busy.inventory && controller.inventory === null}<LoadingState variant="section" label={t('inventory.loading')} />
             {:else if controller.inventory !== null}
               <Field label={t('search.label')} for="native-package-search" help={t('search.scope')}><TextInput id="native-package-search" type="search" bind:value={search} /></Field>
               <p class="text-sm text-ink-2" role="status">{t('search.count', { matched: visibleInventory.length, loaded: controller.inventory.length })}</p>
@@ -223,7 +223,7 @@
               {:else}
                 <ResponsiveTable>{#snippet cards()}{#each visibleInventory as item (item.package_id)}<CompactResourceCard>
                   <h2 class="break-all font-mono text-sm font-medium">{item.namespace}/{item.name}</h2><p class="text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })}</p>
-                  {#if controller.latestVersions[item.package_id]?.version}<p class="text-xs tabular-nums">{size(controller.latestVersions[item.package_id].version!.total_bytes)} · {t('metadata.size')}</p>{:else}<p class="text-xs text-ink-2">{controller.latestVersions[item.package_id] ? t('metadata.unavailable') : t('metadata.loading')}</p>{/if}
+                  {#if controller.latestVersions[item.package_id]?.version}<p class="text-xs tabular-nums">{size(controller.latestVersions[item.package_id].version!.total_bytes)} · {t('metadata.size')}</p>{:else if controller.latestVersions[item.package_id]}<p class="text-xs text-ink-2">{t('metadata.unavailable')}</p>{:else}<LoadingState variant="inline" label={t('metadata.loading')} />{/if}
                   {#snippet details()}<div class="space-y-1 text-xs">{@render latestMetadata(item)}{#each item.tags as tag}<p class="break-all font-mono">{tag.tag} → {tag.digest}</p>{/each}{#if !item.tags.length}<p>{t('inventory.noTags')}</p>{/if}<p>{platforms(item.platforms)}</p><p class="break-all">{item.latest_pushed_by ?? t('inventory.noPublisher')} · {timestamp(item.latest_pushed_at)}</p><p>{t('context.private')}</p></div>{/snippet}
                   {#snippet actions()}{@render packageActions(item)}{/snippet}
                 </CompactResourceCard>{/each}{/snippet}
@@ -239,7 +239,7 @@
               {#if controller.nextCursor}<Button variant="secondary" disabled={!!controller.busy.inventory} onclick={() => controller.loadInventory(true)}>{t('inventory.more')}</Button>{/if}
             {/if}
             {#if controller.errors.detail}<Alert tone="danger">{controller.errors.detail}</Alert>{/if}
-            {#if controller.busy.detail && !controller.detail}<p class="text-sm text-ink-2" role="status">{t('detail.loading')}</p>{/if}
+            {#if controller.busy.detail && !controller.detail}<LoadingState variant="section" label={t('detail.loading')} />{/if}
             {#if controller.errors.download}<Alert tone="danger">{controller.errors.download}</Alert>{/if}
           </div>
         {:else}
@@ -249,7 +249,7 @@
             {#if controller.errors.keys}<Alert tone="danger">{controller.errors.keys}</Alert><Button variant="secondary" onclick={() => controller.loadKeys()}>{t('keys.retry')}</Button>{/if}
             {#if controller.errors.issue}<Alert tone="danger">{controller.errors.issue}</Alert>{/if}
             {#if controller.errors.revoke}<Alert tone="danger">{controller.errors.revoke}</Alert>{/if}
-            {#if controller.busy.keys}<p class="text-sm text-ink-2" role="status">{t('keys.loading')}</p>{:else if controller.keys !== null}
+            {#if controller.busy.keys && controller.keys === null}<LoadingState variant="section" label={t('keys.loading')} />{:else if controller.keys !== null}
               {#if !controller.keys.length}<Card surface="base"><p class="text-sm text-ink-2">{t('keys.empty')}</p></Card>{:else}
                 <ResponsiveTable>{#snippet cards()}{#each controller.keys as key (key.key_id)}<CompactResourceCard>
                   <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="text-sm font-medium">{key.name}</h2><StatusChip status={keyStatus(key)} /></div><p class="break-words font-mono text-xs">{key.actions.join(', ')}</p>
@@ -272,14 +272,14 @@
 {#snippet packageActions(item: PackageSummary, stacked = false)}
   {@const digest = controller.latestVersions[item.package_id]?.version?.root_digest ?? item.tags[0]?.digest}
   <!-- Table rows stack actions so the max-content table keeps every action visible. -->
-  <div class={stacked ? 'flex flex-col items-start gap-2' : 'flex flex-wrap gap-2'}><Button variant="secondary" onclick={() => controller.openPackage(item.name)}>{t('actions.detail')}</Button>{#if digest}<Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.name, digest)}>{t('actions.copyReference')}</Button><Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!controller.canDownload || !!controller.busy.download} onclick={() => controller.download(item.name, digest)}>{#if controller.busy.download}<ActivityIndicator variant="download" label={t('actions.preparingDownload')} />{:else}{t('actions.download')}{/if}</Button>{/if}</div>
+  <div class={stacked ? 'flex flex-col items-start gap-2' : 'flex flex-wrap gap-2'}><Button variant="secondary" onclick={() => controller.openPackage(item.name)}>{t('actions.detail')}</Button>{#if digest}<Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.name, digest)}>{t('actions.copyReference')}</Button><Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!controller.canDownload || !!controller.busy.download} onclick={() => controller.download(item.name, digest)}>{#if controller.busy.download}<LoadingState variant="control" label={t('actions.preparingDownload')}  />{:else}{t('actions.download')}{/if}</Button>{/if}</div>
 {/snippet}
 {#snippet latestMetadata(item: PackageSummary, compact = false)}
   {@const latest = controller.latestVersions[item.package_id]}
   {#if latest?.version}
     <p class="text-xs tabular-nums">{size(latest.version.total_bytes)} · {t('metadata.size')}</p>
     <p class="max-w-72 break-all font-mono text-xs text-ink-2" title={latest.version.root_digest}>{t('metadata.digest')} {compact ? shortDigest(latest.version.root_digest) : latest.version.root_digest}</p>
-  {:else if !latest}<p class="text-xs text-ink-2" role="status">{t('metadata.loading')}</p>
+  {:else if !latest}<LoadingState variant="inline" label={t('metadata.loading')} />
   {:else}<p class="max-w-72 text-xs text-state-warning-text">{t('metadata.unavailable')} · {latest.error}</p>{/if}
 {/snippet}
 {#snippet keyRevoke(key: PackageKey)}
@@ -305,12 +305,12 @@
         <div class="flex flex-wrap gap-2">
           <Button variant="secondary" disabled={!!controller.busy.version} onclick={() => controller.selectVersion(item.root_digest)}>{t('detail.version')}</Button>
           <Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.package, item.root_digest)}>{t('actions.copyReference')}</Button>
-          <Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!controller.canDownload || !!controller.busy.download} onclick={() => controller.download(item.package, item.root_digest)}>{#if controller.busy.download}<ActivityIndicator variant="download" label={t('actions.preparingDownload')} />{:else}{t('actions.download')}{/if}</Button>
+          <Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!controller.canDownload || !!controller.busy.download} onclick={() => controller.download(item.package, item.root_digest)}>{#if controller.busy.download}<LoadingState variant="control" label={t('actions.preparingDownload')}  />{:else}{t('actions.download')}{/if}</Button>
         </div>
       </Card>
     {/each}
     {#if controller.versionsCursor}<Button variant="secondary" disabled={!!controller.busy.detail} onclick={() => controller.moreVersions()}>{t('detail.more')}</Button>{/if}
-    {#if controller.busy.version}<p role="status" class="text-sm text-ink-2">{t('detail.versionLoading')}</p>{/if}
+    {#if controller.busy.version}<LoadingState variant="inline" label={t('detail.versionLoading')} />{/if}
     {#if controller.errors.version}<Alert tone="danger">{controller.errors.version}</Alert>{/if}
     {#if controller.errors.download}<Alert tone="danger">{controller.errors.download}</Alert>{/if}
     {#if controller.version}<Card surface="base" class="space-y-2 text-sm"><h3 class="font-semibold">{t('detail.selected')}</h3><p class="break-all font-mono text-xs">{controller.version.root_digest}</p><p>{t('detail.mediaType', { type: controller.version.root_media_type })}</p><p>{t('detail.sizes', { verified: size(controller.version.total_bytes), archive: size(controller.version.archive_size_bytes) })}</p><p>{controller.version.pushed_by} · {timestamp(controller.version.pushed_at)}</p><h4 class="font-medium">{t('detail.provenance')}</h4><pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">{JSON.stringify(controller.version.provenance, null, 2)}</pre><h4 class="font-medium">{t('detail.graph')}</h4><pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">{JSON.stringify(controller.version.graph, null, 2)}</pre></Card>{/if}
@@ -334,7 +334,7 @@
       {#if !controller.canPublish && (controller.canRead || controller.canDownload)}<p class="text-xs text-ink-2">{t('create.readOnly')}</p>{/if}
       <Field label={t('create.expiry')} for="package-key-expiry" help={t('create.expiryHelp')}><TextInput id="package-key-expiry" type="number" inputmode="numeric" bind:value={expiryDays} disabled={!controller.canIssue || !!controller.busy.issue} required /></Field>
       {#if formError}<Alert tone="danger">{t(formError)}</Alert>{/if}{#if controller.errors.issue}<Alert tone="danger">{controller.errors.issue}</Alert>{/if}
-      <div class="flex flex-wrap justify-end gap-2"><Button variant="secondary" disabled={!!controller.busy.issue} onclick={() => { showCreate = false; controller.discardSecret(); }}>{t('actions.cancel')}</Button><Button type="submit" disabled={!controller.canIssue || !actions.length || !actions.every(controller.canDelegate) || !!controller.busy.issue}>{controller.busy.issue ? t('create.busy') : t('keys.issue')}</Button></div>
+      <div class="flex flex-wrap justify-end gap-2"><Button variant="secondary" disabled={!!controller.busy.issue} onclick={() => { showCreate = false; controller.discardSecret(); }}>{t('actions.cancel')}</Button><Button type="submit" disabled={!controller.canIssue || !actions.length || !actions.every(controller.canDelegate) || !!controller.busy.issue}>{#if controller.busy.issue}<LoadingState variant="control" label={t('create.busy')} />{:else}{t('keys.issue')}{/if}</Button></div>
     </form>
   </Card>
 </Modal>

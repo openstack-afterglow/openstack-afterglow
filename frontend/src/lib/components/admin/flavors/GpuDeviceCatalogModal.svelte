@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -198,14 +198,14 @@
 				<div>
 					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.devices', { count: devices.length })}</div>
 					{#if loading}
-						<div class="py-4"><ActivityIndicator size="sm" label={t('flavors.loading')} /></div>
+						<div class="py-4"><LoadingState variant="section" label={t('flavors.loading')} /></div>
 					{:else}
 						<ResponsiveTable>
 							{#snippet cards()}
 								{#each devices.filter((d) => !d.is_audio) as d (d.vendor_id + d.device_id)}
 									<CompactResourceCard>
 										<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{d.name}</h3><Pill tone="neutral" size="xs">{sourceLabel[d.source]}</Pill></div><p class="text-xs text-ink-2">{d.vendor_name} · <span class="font-mono">{d.vendor_id}:{d.device_id}</span></p>
-										{#snippet actions()}{#if d.source === 'db'}<Button variant="danger" size="sm" disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} onclick={() => deleteDevice(d)}>{deletingDeviceId === `${d.vendor_id}:${d.device_id}` ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/if}{/snippet}
+										{#snippet actions()}{#if d.source === 'db'}<Button variant="danger" size="sm" disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} onclick={() => deleteDevice(d)}>{#if deletingDeviceId === `${d.vendor_id}:${d.device_id}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingDeviceId === `${d.vendor_id}:${d.device_id}` ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/if}{/snippet}
 										{#snippet details()}<p class="break-all font-mono text-xs text-ink-2">{t('gpuCatalog.fields.aliases')}: {d.aliases.join(', ') || '-'}</p>{/snippet}
 									</CompactResourceCard>
 								{/each}
@@ -234,7 +234,7 @@
 												{#if d.source === 'db'}
 													<button onclick={() => deleteDevice(d)} disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} class="text-state-danger-text hover:text-state-danger-text/90">
 														{#if deletingDeviceId === `${d.vendor_id}:${d.device_id}`}
-															<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.delete.pending')}</span></span>
+															<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('flavors.delete.pending')}</span></span>
 														{:else}{t('flavors.delete.action')}{/if}
 													</button>
 												{/if}
@@ -270,7 +270,7 @@
 							onclick={addDevice}
 							disabled={saving || !form.vendor_id.trim() || !form.device_id.trim() || !form.name.trim()}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{#if saving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.specs.saving')}</span></span>{:else}{t('flavors.specs.addEdit')}{/if}</button>
+						>{#if saving}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('flavors.specs.saving')}</span></span>{:else}{t('flavors.specs.addEdit')}{/if}</button>
 					</div>
 				</div>
 
@@ -293,7 +293,7 @@
 						>{t('gpuCatalog.csvTemplate')}</button>
 					</div>
 					{#if downloading}
-						<ActivityIndicator variant="download" size="xs" label={t('gpuCatalog.downloading')} />
+						<LoadingState variant="inline" label={t('gpuCatalog.downloading')} />
 					{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<input
@@ -314,7 +314,7 @@
 							onclick={importCsv}
 							disabled={importing || !csvFile}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{#if importing}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator variant="upload" size="xs" tone="ink" /><span>{t('gpuCatalog.uploading')}</span></span>{:else}{t('gpuCatalog.upload')}{/if}</button>
+						>{#if importing}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('gpuCatalog.uploading')}</span></span>{:else}{t('gpuCatalog.upload')}{/if}</button>
 					</div>
 				</div>
 			</div>

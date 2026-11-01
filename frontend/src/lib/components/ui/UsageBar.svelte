@@ -1,13 +1,15 @@
 <script lang="ts">
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
-	import { SURFACE_CSS_VAR, TONE_CSS_VAR, usageTone } from '$lib/design/tokens';
+	import { SURFACE_CSS_VAR, TONE_CSS_VAR, usageTone, type DesignTone } from '$lib/design/tokens';
 	import { t } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface Props {
 		value?: number;
 		max?: number;
 		percent?: number;
 		thresholds?: { warning: number; danger: number };
+		tone?: DesignTone;
 		size?: 'xs' | 'sm' | 'md';
 		label?: string;
 		unit?: string;
@@ -20,6 +22,7 @@
 		max,
 		percent,
 		thresholds = { warning: 80, danger: 95 },
+		tone: requestedTone,
 		size = 'sm',
 		label,
 		unit = '',
@@ -27,34 +30,33 @@
 		class: className = '',
 	}: Props = $props();
 
-	const rawPercent = $derived(percent ?? (max && max > 0 && value != null ? (value / max) * 100 : 0));
-	const pct = $derived(
-		Number.isFinite(rawPercent)
-			? Math.max(0, Math.min(100, Math.round(rawPercent)))
-			: 0,
-	);
-	const tone = $derived(usageTone(pct, thresholds));
 	const isUnlimited = $derived(max === -1);
-	const valueText = $derived(value == null ? '' : unit ? `${value}${unit}` : `${value}`);
-	const maxText = $derived(max === -1 ? t('quota.unlimited') : max == null ? '' : unit ? `${max}${unit}` : `${max}`);
+	const zeroQuota = $derived(max === 0 && value != null && Number.isFinite(value) && percent == null);
+	const rawPercent = $derived(percent ?? (max != null && max > 0 && value != null ? (value / max) * 100 : null));
+	const observedPercent = $derived(!isUnlimited && rawPercent != null && Number.isFinite(rawPercent) ? rawPercent : null);
+	const visualPercent = $derived(observedPercent == null ? 0 : Math.max(0, Math.min(100, observedPercent)));
+	const tone = $derived(requestedTone ?? (zeroQuota && value! > 0 ? 'danger' : observedPercent == null ? 'neutral' : usageTone(observedPercent, thresholds)));
+	const valueText = $derived(value == null || !Number.isFinite(value) ? '' : unit ? `${value}${unit}` : `${value}`);
+	const maxText = $derived(isUnlimited ? t('quota.unlimited') : max == null || !Number.isFinite(max) ? '' : unit ? `${max}${unit}` : `${max}`);
 	const height = $derived(size === 'xs' ? 4 : size === 'md' ? 8 : 6);
+	const displayPercent = $derived(observedPercent == null ? null : (observedPercent > 100 ? Math.ceil(observedPercent * 10) : Math.floor(observedPercent * 10)) / 10);
+	const percentText = $derived(zeroQuota ? value! > 0 ? t('quota.overLimit') : '' : displayPercent == null ? t('quota.unknown') : `${displayPercent.toLocaleString(intlLocale(), { maximumFractionDigits: 1 })}%`);
 	const accessibleValue = $derived(
 		isUnlimited
-			? value == null ? t('quota.unlimited') : `${valueText} / ${maxText}`
-			: value == null ? `${pct}%` : `${valueText}${maxText ? ` / ${maxText}` : ''} · ${pct}%`,
+			? valueText ? `${valueText} / ${maxText}` : maxText
+			: `${valueText ? `${valueText}${maxText ? ` / ${maxText}` : ''}` : ''}${percentText ? `${valueText ? ' · ' : ''}${percentText}` : ''}`,
 	);
 </script>
 
 <div
 	class="usage-bar {className}"
 	data-tone={tone}
-	style:--usage-tone={TONE_CSS_VAR[tone]}
-	role={isUnlimited ? 'group' : 'meter'}
-	aria-label={label || accessibleValue}
-	aria-valuemin={isUnlimited ? undefined : 0}
-	aria-valuemax={isUnlimited ? undefined : 100}
-	aria-valuenow={isUnlimited ? undefined : pct}
-	aria-valuetext={isUnlimited ? undefined : accessibleValue}
+	role={observedPercent == null ? 'group' : 'meter'}
+	aria-label={observedPercent == null && label ? `${label}: ${accessibleValue}` : label || accessibleValue}
+	aria-valuemin={observedPercent == null ? undefined : Math.min(0, observedPercent)}
+	aria-valuemax={observedPercent == null ? undefined : Math.max(100, observedPercent)}
+	aria-valuenow={observedPercent ?? undefined}
+	aria-valuetext={observedPercent == null ? undefined : accessibleValue}
 >
 	{#if showValue || label}
 		<div class="usage-meta">
@@ -63,23 +65,23 @@
 			{/if}
 			{#if showValue}
 				<span class="usage-value">
-					{#if value != null}
+					{#if valueText}
 						<span class="usage-current">{valueText}</span>{#if maxText} / {maxText}{/if}
 					{:else if isUnlimited}
 						<span class="usage-current">{t('quota.unlimited')}</span>
 					{/if}
-					{#if !isUnlimited}
-						<span class="usage-percent">{pct}%</span>
+					{#if !isUnlimited && percentText}
+						<span class="usage-percent">{percentText}</span>
 					{/if}
 				</span>
 			{/if}
 		</div>
 	{/if}
-	{#if isUnlimited}
+	{#if isUnlimited || observedPercent == null}
 		<div class="usage-unlimited" style:height={`${height}px`} aria-hidden="true"></div>
 	{:else}
 		<BklitChart
-			spec={{ kind: 'gauge', value: pct, color: TONE_CSS_VAR[tone], track: SURFACE_CSS_VAR.sunken }}
+			spec={{ kind: 'gauge', value: visualPercent, color: TONE_CSS_VAR[tone], track: SURFACE_CSS_VAR.sunken }}
 			{height}
 			decorative
 		/>
@@ -92,11 +94,12 @@
 	}
 	.usage-meta {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		justify-content: space-between;
 		gap: 0.5rem;
 		margin-bottom: 0.375rem;
-		font-size: 0.75rem;
+		font-size: var(--type-support);
 	}
 	.usage-label {
 		min-width: 0;
@@ -106,8 +109,10 @@
 		color: var(--color-ink-2);
 	}
 	.usage-value {
-		flex-shrink: 0;
+		min-width: 0;
+		overflow-wrap: anywhere;
 		color: var(--color-ink-2);
+		font-variant-numeric: tabular-nums;
 	}
 	.usage-current {
 		font-weight: 600;
@@ -116,7 +121,7 @@
 	.usage-percent {
 		margin-left: 0.25rem;
 		font-weight: 600;
-		color: var(--usage-tone);
+		color: var(--color-ink-1);
 	}
 	.usage-unlimited {
 		border: 1px dashed var(--color-line-2);

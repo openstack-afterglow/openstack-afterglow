@@ -440,14 +440,18 @@ def remove_image_member(conn: openstack.connection.Connection, image_id: str, me
     conn.image.remove_member(member_id, image_id)
 
 
-def get_total_image_bytes(conn) -> int:
-    """active 상태 모든 이미지의 size 합 (bytes). 실패 시 0."""
+def get_total_image_bytes(conn, *, strict: bool = False) -> int:
+    """Sum active image bytes; strict reads preserve inventory failures."""
     total = 0
     try:
         for img in conn.image.images():
             if getattr(img, "status", None) != "active":
                 continue
-            total += int(getattr(img, "size", 0) or 0)
+            value = getattr(img, "size", None)
+            if strict and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+                raise ValueError("Image size unavailable")
+            total += int(value or 0)
     except Exception:
-        pass
+        if strict:
+            raise
     return total

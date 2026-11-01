@@ -31,8 +31,8 @@
 		line-height: 1.6;
 		white-space: nowrap;
 	}
-	.pill-xs { padding: 0.0625rem 0.375rem; font-size: 0.625rem; }
-	.pill-sm { padding: 0.125rem 0.5rem; font-size: 0.6875rem; }
+	.pill-xs { padding: 0.0625rem 0.375rem; font-size: var(--type-identifier); }
+	.pill-sm { padding: 0.125rem 0.5rem; font-size: var(--type-support); }
 	.pill-dot {
 		width: 0.375rem;
 		height: 0.375rem;
@@ -46,37 +46,37 @@
 	}
 	.pill-warm {
 		background: color-mix(in oklab, var(--color-warm) 14%, transparent);
-		color: var(--color-warm);
+		color: var(--color-warm-text);
 		border-color: color-mix(in oklab, var(--color-warm) 30%, transparent);
 	}
 	.pill-success {
 		background: color-mix(in oklab, var(--color-state-success) 14%, transparent);
-		color: var(--color-state-success);
+		color: var(--color-state-success-text);
 		border-color: color-mix(in oklab, var(--color-state-success) 30%, transparent);
 	}
 	.pill-warning {
 		background: color-mix(in oklab, var(--color-state-warning) 14%, transparent);
-		color: var(--color-state-warning);
+		color: var(--color-state-warning-text);
 		border-color: color-mix(in oklab, var(--color-state-warning) 30%, transparent);
 	}
 	.pill-danger {
 		background: color-mix(in oklab, var(--color-state-danger) 14%, transparent);
-		color: var(--color-state-danger);
+		color: var(--color-state-danger-text);
 		border-color: color-mix(in oklab, var(--color-state-danger) 30%, transparent);
 	}
 	.pill-info {
 		background: color-mix(in oklab, var(--color-state-info) 14%, transparent);
-		color: var(--color-state-info);
+		color: var(--color-state-info-text);
 		border-color: color-mix(in oklab, var(--color-state-info) 30%, transparent);
 	}
 	.pill-neutral {
 		background: color-mix(in oklab, var(--color-state-neutral) 14%, transparent);
-		color: var(--color-state-neutral);
+		color: var(--color-state-neutral-text);
 		border-color: color-mix(in oklab, var(--color-state-neutral) 30%, transparent);
 	}
 	.pill-admin-tone {
 		background: var(--admin-tone-soft);
-		color: var(--admin-tone);
+		color: var(--color-state-warning-text);
 		border-color: var(--admin-tone-ring);
 	}
 </style>

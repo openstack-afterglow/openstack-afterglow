@@ -4,9 +4,25 @@ import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '$lib/i18n/ns/vm-wizard';
 
+const projection = vi.hoisted(() => ({ enabled: false, duplicate: false }));
+const media = vi.hoisted(() => {
+	const events = new EventTarget();
+	const query = { matches: true, media: '(min-width: 1024px)', onchange: null,
+		addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events),
+		dispatchEvent: events.dispatchEvent.bind(events), addListener: () => undefined, removeListener: () => undefined };
+	vi.stubGlobal('matchMedia', () => query);
+	return query;
+});
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: (path: string) => Promise.resolve(wizardResource(path) ?? { history: [], presets: [] }) },
+	api: { get: (path: string) => {
+		const resource = wizardResource(path);
+		if (projection.enabled && (path.startsWith('/api/v1/flavors') || path.includes('/flavors-for-project'))) {
+			const flavors = (resource as Record<string, unknown>[]).map(item => ({ ...item, name: 'm1.small', display_name: 'cpu.4c_1.5g', ram: 1536, extra_specs: {} }));
+			return Promise.resolve(projection.duplicate ? [...flavors, { ...flavors[0], id: 'flavor-dedicated', name: 'dedicated-small', extra_specs: { 'hw:cpu_policy': 'dedicated' } }] : flavors);
+		}
+		return Promise.resolve(resource ?? { history: [], presets: [] });
+	} },
 	ApiError: class ApiError extends Error {},
 	fetchWithAuth: vi.fn(),
 	getBaseUrl: () => '',
@@ -28,6 +44,9 @@ async function renderReview() {
 
 afterEach(cleanup);
 beforeEach(() => {
+	projection.enabled = false;
+	projection.duplicate = false;
+	media.matches = true;
 	prepareWizardConsumer(6);
 	wizard.update(w => ({
 		...w,
@@ -48,13 +67,32 @@ function reviewRow(label: string): HTMLElement {
 }
 
 describe('WizardStep6Review ordinary VM', () => {
+	it.each([true, false])('keeps exact selected identity internal in final confirmation for desktop=%s', async desktop => {
+		projection.enabled = true;
+		projection.duplicate = true;
+		media.matches = desktop;
+		wizard.update(w => ({ ...w, flavorId: 'flavor-dedicated', flavorName: 'dedicated-small' }));
+		await renderReview();
+		expect(screen.getByText('4 vCPU · 1.5 GiB RAM')).toBeTruthy();
+		expect(screen.queryByText('flavor-dedicated')).toBeNull();
+		expect(screen.queryByText(/dedicated-small/)).toBeNull();
+		expect(get(wizard)).toMatchObject({ flavorId: 'flavor-dedicated', flavorName: 'dedicated-small' });
+	});
+	it('projects a legacy CPU label by selected ID while retaining the native wizard name', async () => {
+		projection.enabled = true;
+		wizard.update(w => ({ ...w, flavorName: 'm1.small' }));
+		await renderReview();
+		expect(screen.getByText('4 vCPU · 1.5 GiB RAM')).toBeTruthy();
+		expect(screen.queryByText('m1.small')).toBeNull();
+		expect(get(wizard)).toMatchObject({ flavorId: 'flavor-a', flavorName: 'm1.small' });
+	});
 	it.each([false, true])('preserves image root disk size and delete-with-VM setting %s', async deleteWithVm => {
 		wizard.update(w => ({ ...w, deleteBootVolumeOnTermination: deleteWithVm }));
 		await renderReview();
 
 		expect(screen.getByText('ordinary-vm')).toBeTruthy();
 		expect(screen.getByText('Ubuntu 24.04')).toBeTruthy();
-		expect(screen.getByText('gpu.4c_8g')).toBeTruthy();
+		expect(screen.getByText('4 vCPU · 8 GiB RAM · gpu-a × 1')).toBeTruthy();
 		expect(screen.getByText('project-key')).toBeTruthy();
 		expect(screen.getByText('private-net')).toBeTruthy();
 		expect(screen.getByText('gpu-a × 1')).toBeTruthy();

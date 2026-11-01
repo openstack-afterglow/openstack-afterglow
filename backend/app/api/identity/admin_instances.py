@@ -6,6 +6,7 @@ import asyncio
 import logging
 import secrets
 from typing import TYPE_CHECKING, Literal
+from uuid import UUID
 
 if TYPE_CHECKING:
     import openstack
@@ -17,6 +18,7 @@ from openstack.resource import Resource
 
 from app.api.common.activity_recorder import rec
 from app.api.compute.instance_metrics import _PrivateMetricsRoute
+from app.api.compute.usage_schedules import admin_router as usage_schedules_admin_router
 from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.config import get_settings
 from app.models import compute as compute_models
@@ -30,9 +32,10 @@ from app.models.compute import (
     UpdateSecurityGroupsRequest,
     UpdateVolumeAttachmentRequest,
 )
+from app.models.flavor_composition import ComposerOptions, FlavorComposition, SavedCompositions
 from app.models.progress import ProgressMessage, ProgressStep
 from app.models.storage import ExtendVolumeRequest
-from app.services import cinder, cloudinit, keystone, manila, neutron, nova, vm_cloud_init_library
+from app.services import cinder, cloudinit, instance_usage, keystone, manila, neutron, nova, vm_cloud_init_library
 from app.services import instance_orchestration as instance_orch
 from app.services.cache import invalidate
 from app.services.cache import invalidation as cache_invalidation
@@ -49,6 +52,7 @@ from app.services.volume_protection import register_volume_protection, rollback_
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])
+router.include_router(usage_schedules_admin_router)
 metrics_router = APIRouter(route_class=_PrivateMetricsRoute)
 
 
@@ -74,6 +78,85 @@ def _make_admin_conn(project_id: str, user_id: str) -> openstack.connection.Conn
     return conn
 
 
+@router.get("/instances/flavor-composer-options", response_model=ComposerOptions)
+async def admin_composer_options(
+    project_id: str = Query(..., min_length=1, max_length=128),
+    availability_zone: str | None = None,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services import flavor_composition
+
+    await flavor_composition._authorize(token_info, project_id, admin=True)
+    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    try:
+        return await flavor_composition.options(conn, project_id, availability_zone=availability_zone)
+    finally:
+        await asyncio.to_thread(conn.close)
+
+
+@router.get("/instances/flavor-compositions", response_model=SavedCompositions)
+async def admin_saved_compositions(
+    project_id: str = Query(..., min_length=1, max_length=128),
+    availability_zone: str | None = None,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services import flavor_composition
+
+    await flavor_composition._authorize(token_info, project_id, admin=True)
+    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    try:
+        return await flavor_composition.history(
+            conn, project_id, token_info, admin=True, availability_zone=availability_zone
+        )
+    finally:
+        await asyncio.to_thread(conn.close)
+
+
+@router.get("/instances/flavor-compositions/operations/{operation_id}", response_model=compute_models.FlavorInfo | None)
+async def admin_composition_operation(
+    operation_id: UUID,
+    project_id: str = Query(..., min_length=1, max_length=128),
+    availability_zone: str | None = None,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services import flavor_composition
+
+    await flavor_composition._authorize(token_info, project_id, admin=True, write=True)
+    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    try:
+        return await flavor_composition.resolve(
+            conn, project_id, token_info, operation_id, admin=True, availability_zone=availability_zone
+        )
+    finally:
+        await asyncio.to_thread(conn.close)
+
+
+@router.post("/instances/flavor-compositions", response_model=compute_models.FlavorInfo)
+async def admin_save_composition(
+    request: FlavorComposition,
+    project_id: str = Query(..., min_length=1, max_length=128),
+    availability_zone: str | None = None,
+    operation_id: UUID | None = None,
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services import flavor_composition
+
+    await flavor_composition._authorize(token_info, project_id, admin=True, write=True)
+    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    try:
+        return await flavor_composition.save(
+            conn,
+            project_id,
+            token_info,
+            request,
+            operation_id=operation_id,
+            admin=True,
+            availability_zone=availability_zone,
+        )
+    finally:
+        await asyncio.to_thread(conn.close)
+
+
 @router.get("/instances/flavors-for-project", dependencies=[Depends(require_admin)])
 async def list_project_flavors_for_admin(
     project_id: str = Query(..., description="대상 프로젝트 ID"),
@@ -83,12 +166,17 @@ async def list_project_flavors_for_admin(
     token_info: dict = Depends(get_token_info),
 ):
     """Return target-project-visible flavors with target quota eligibility."""
+    from app.services.flavor_discovery import list_flavors as discovery_flavors
     from app.services.flavor_eligibility import evaluate_project_flavors
 
     try:
         conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info.get("user_id", ""))
         try:
-            flavors = await asyncio.to_thread(nova.list_flavors, conn)
+            flavors = (
+                await discovery_flavors(conn)
+                if capacity == "create"
+                else await asyncio.to_thread(nova.list_flavors, conn)
+            )
             return await evaluate_project_flavors(
                 conn,
                 project_id,
@@ -96,7 +184,8 @@ async def list_project_flavors_for_admin(
                 count=count,
                 check_capacity=capacity == "create",
                 availability_zone=availability_zone,
-                fresh_capacity=capacity == "create",
+                fresh_capacity=False,
+                include_gpu_projection=True,
             )
         finally:
             await asyncio.to_thread(conn.close)
@@ -205,6 +294,12 @@ async def admin_create_instance_async(
         await close_preflight_connection()
         if req.admin_pass is not None:
             raise HTTPException(status_code=400, detail=PASSWORD_PROVISIONING_ERROR) from None
+        raise
+
+    try:
+        usage_metadata = instance_usage.creation_metadata(sse_flavor, req.usage_schedule)
+    except HTTPException:
+        await close_preflight_connection()
         raise
 
     try:
@@ -340,6 +435,8 @@ async def admin_create_instance_async(
             _sse_effective_sgs: list[str] | None = list(req.security_groups) if req.security_groups else None
 
             meta = github_ssh_metadata(req.github_username)
+            meta.update(usage_metadata)
+            instance_usage.require_creation_schedule_current(meta)
             server = await asyncio.to_thread(
                 nova.create_server,
                 conn,
@@ -756,6 +853,7 @@ async def get_admin_instance_resize_flavors(instance_id: str, conn=Depends(get_a
         server.project_id,
         [flavor for flavor in flavors if is_flavor_frontend_visible(flavor)],
         current_flavor=current,
+        include_gpu_projection=True,
     )
     for flavor in evaluated:
         blockers = _resize_target_blockers(flavor, current, image_backed=bool(server.image_id))
@@ -852,6 +950,8 @@ async def unshelve_admin_instance(instance_id: str, conn=Depends(get_admin_os_co
 
 async def _admin_action(conn, instance_id, action):
     server = await asyncio.to_thread(_server, conn, instance_id)
+    if action in {"start", "unshelve"}:
+        instance_usage.require_resume_schedule(server)
     await asyncio.to_thread(getattr(nova, f"{action}_server"), conn, instance_id)
     await _invalidate_detail(server)
 
@@ -861,7 +961,10 @@ async def attach_admin_instance_volume(instance_id: str, body: AttachVolumeReque
     server = await asyncio.to_thread(_server, conn, instance_id)
     volume = await asyncio.to_thread(conn.block_storage.get_volume, body.volume_id)
     _exact(volume, body.volume_id, server.project_id)
-    result = await asyncio.to_thread(nova.attach_volume, conn, instance_id, body.volume_id)
+    async with instance_usage.volume_mutation_lease(conn, server) as lease:
+        if not await lease.current():
+            raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+        result = await instance_usage.sdk_call(nova.attach_volume, conn, instance_id, body.volume_id)
     await _invalidate_detail(server)
     return result
 
@@ -879,7 +982,10 @@ async def _attached_volume(conn, instance_id, volume_id):
 )
 async def detach_admin_instance_volume(instance_id: str, volume_id: str, conn=Depends(get_admin_os_conn)):
     server = await _attached_volume(conn, instance_id, volume_id)
-    await asyncio.to_thread(nova.detach_volume, conn, instance_id, volume_id)
+    async with instance_usage.volume_mutation_lease(conn, server) as lease:
+        if not await lease.current():
+            raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+        await instance_usage.sdk_call(nova.detach_volume, conn, instance_id, volume_id)
     await _invalidate_detail(server)
 
 
@@ -890,9 +996,12 @@ async def update_admin_instance_volume(
     instance_id: str, volume_id: str, body: UpdateVolumeAttachmentRequest, conn=Depends(get_admin_os_conn)
 ):
     server = await _attached_volume(conn, instance_id, volume_id)
-    await asyncio.to_thread(
-        nova.update_volume_attachment_delete_flag, conn, instance_id, volume_id, body.delete_on_termination
-    )
+    async with instance_usage.volume_mutation_lease(conn, server) as lease:
+        if not await lease.current():
+            raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
+        await instance_usage.sdk_call(
+            nova.update_volume_attachment_delete_flag, conn, instance_id, volume_id, body.delete_on_termination
+        )
     await _invalidate_detail(server)
 
 

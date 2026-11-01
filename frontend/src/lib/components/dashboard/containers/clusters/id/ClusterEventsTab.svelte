@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/containers-shell';
-  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import type { StackEvent } from '$lib/types/cluster';
   import { resourceStatusColor } from '$lib/types/cluster';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -13,8 +13,9 @@
   <div class="text-sm text-ink-2">{t('clusters.events.count', { count: events.length })}</div>
   <button onclick={onRefresh} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('clusters.actions.refresh')}</button>
 </div>
-{#if loading}
-  <LoadingSkeleton variant="table" rows={8} />
+{#if loading && events.length > 0}<LoadingState variant="inline" />{/if}
+{#if loading && events.length === 0}
+  <LoadingState variant="section" />
 {:else if events.length === 0}
   <div class="text-ink-2 text-sm">{t('clusters.events.unavailable')}</div>
 {:else}

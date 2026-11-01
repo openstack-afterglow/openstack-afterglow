@@ -27,7 +27,7 @@ export interface K3sCluster {
 	master_count?: number;
 	stampede_enabled?: boolean;
 }
-export interface K3sFlavor { id: string; name: string; vcpus: number; ram: number; disk: number; extra_specs?: Record<string, string>; gpu_count?: number; eligibility?: FlavorEligibility | null; }
+export interface K3sFlavor { id: string; name: string; display_name?: string | null; vcpus: number; ram: number; disk: number; extra_specs?: Record<string, string>; gpu_count?: number; eligibility?: FlavorEligibility | null; }
 export interface K3sNetwork { id: string; name: string; is_external: boolean; }
 export interface K3sKeypair { name: string; }
 

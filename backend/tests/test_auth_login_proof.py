@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import pytest
@@ -17,15 +16,19 @@ from keystoneauth1.identity.v3.token import Token as NativeToken
 from keystoneauth1.session import Session as NativeSession
 from requests.adapters import BaseAdapter
 
-from app.api.deps import get_os_conn
 from app.main import app
+from app.services import activity as activity_svc
 from app.services import jwt_service, keystone, session_store
+from app.services.login_monitoring import _login_method
 from tests.ownership_journal import ownership_journal as ownership_journal
+from tests.test_admin_events import event_db as event_db
 from tests.test_domain_projects import domain_native as domain_native
 from tests.test_domain_projects import grant
 from tests.test_login_native_operation import login as fresh_login
 from tests.test_login_native_operation import native_login as native_login
 from tests.test_login_native_operation import provider_login
+
+_REAL_ACTIVITY_RECORD = activity_svc.record
 
 
 async def organization_login(client, *, method="password", monkeypatch=None):
@@ -48,7 +51,12 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
     state.issued = {"native:ordinary:": ("ordinary", "")}
     state.native_requests = []
     state.passwords = {uid: "valid" for uid in state.user_rows}
+    state.password_posts = []
+    state.password_status = 204
+    state.password_response_lost = False
+    state.redirect_requests = []
     state.substitute = None
+    state.password_substitute = None
     # Keystone token exchanges retain the original root's expiry; they do not
     # turn token authentication into a renewable password/IdP credential.
     state.native_expires = datetime.now(UTC) + timedelta(hours=1)
@@ -80,9 +88,41 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
         def send(self, request, **kwargs):
             path = urlsplit(request.url).path.rstrip("/")
             state.native_requests.append((request.method, path))
+            if urlsplit(request.url).hostname == "sink.test":
+                state.redirect_requests.append(request)
+                return reply(request, 204, {})
+            if path.startswith("/v3/users/"):
+                # Default member RBAC denies generic PATCH. Self-service POST
+                # validates the old password without RBAC; this fixture also
+                # asserts Afterglow's stricter exact proof-token wire contract.
+                if request.method != "POST" or not path.endswith("/password"):
+                    return reply(request, 403, {"error": {"message": "Admin required"}})
+                state.password_posts.append(request)
+                uid = path.split("/")[3]
+                proof = request.headers.get("X-Auth-Token")
+                if proof not in state.issued or state.issued[proof] != (uid, ""):
+                    return reply(request, 403, {"error": {"message": "Self identity required"}})
+                payload = json.loads(request.body)["user"]
+                if payload["original_password"] != state.passwords[uid]:
+                    return reply(request, 401, {"error": {"message": "Original password rejected"}})
+                if state.password_status != 204:
+                    response = reply(request, state.password_status, {"error": {"message": "Credential denied"}})
+                    if state.password_status in {301, 302, 303, 305, 307, 308}:
+                        response.headers["Location"] = "https://sink.test/credential-sink"
+                    return response
+                state.passwords[uid] = payload["password"]
+                # Keystone identity.Manager.change_password emits a user-wide
+                # revocation event after commit (upstream e226ae14f5da354a,
+                # identity/core.py:1703 and revoke/core.py:revoke_by_user).
+                # Only already-issued tokens are revoked; future login works.
+                state.revoked.update(token for token, subject in state.issued.items() if subject[0] == uid)
+                if state.password_response_lost:
+                    raise requests.ConnectionError("Response lost after commit")
+                return reply(request, 204, {})
             assert request.method == "POST" and path == "/v3/auth/tokens", (request.method, request.url)
             data = json.loads(request.body)["auth"]
             identity = data["identity"]
+            substitute = (state.password_substitute or state.substitute) if "password" in identity else state.substitute
             if "password" in identity:
                 user = identity["password"]["user"]
                 uid = user.get("name") or user.get("id")
@@ -100,14 +140,10 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
             pid = data.get("scope", {}).get("project", {}).get("id", "") if isinstance(data.get("scope"), dict) else ""
             if not state.user_rows[uid].enabled or pid and not state.assignments(user=uid, project=pid, effective=True):
                 return reply(request, 401, {"error": {"message": "Access denied"}})
-            wrong_subject = (state.substitute == "subject" and pid) or (
-                state.substitute == "unscoped_subject" and not pid
-            )
+            wrong_subject = (substitute == "subject" and pid) or (substitute == "unscoped_subject" and not pid)
             actual_uid = "second" if wrong_subject else uid
             actual_pid = "default-a" if state.substitute == "project" and pid else pid
-            wrong_home = (state.substitute == "identity" and pid) or (
-                state.substitute == "unscoped_identity" and not pid
-            )
+            wrong_home = (substitute == "identity" and pid) or (substitute == "unscoped_identity" and not pid)
             home = "tenant-b" if wrong_home else state.user_rows[actual_uid].domain_id
             token = f"native:{actual_uid}:{actual_pid}:{len(state.issued)}"
             state.issued[token] = (actual_uid, actual_pid)
@@ -138,6 +174,7 @@ async def login_proof(native_login, monkeypatch, ownership_journal):
     def native_session(**kwargs):
         transport = requests.Session()
         transport.mount("https://native.test/", NativeHTTP())
+        transport.mount("https://sink.test/", NativeHTTP())
         return NativeSession(session=transport, **kwargs)
 
     original_revoke = state.roles.revoke
@@ -552,28 +589,33 @@ async def test_concurrent_proof_renewal_accepts_current_same_family(login_proof,
 
 
 @pytest.mark.asyncio
-async def test_account_home_password_change_keeps_personal_scope_and_replaces_credential(login_proof, monkeypatch):
+@pytest.mark.parametrize("method", ["password", "provider"])
+async def test_account_home_password_change_keeps_personal_scope_and_replaces_credential(
+    login_proof, monkeypatch, method
+):
     client, state = login_proof
     state.user_rows["ordinary"].default_project_id = ""
-    signed_in = await fresh_login(client)
+    signed_in = await fresh_login(client) if method == "password" else await provider_login(client, monkeypatch)
     assert signed_in.status_code == 200, signed_in.text
     original = signed_in.json()
     assert original["identity_domain_id"] == "account" and original["domain_id"] == "personal"
 
-    def update_user(user_id, *, password):
-        state.passwords[user_id] = password
-        return state.user_rows[user_id]
-
-    async def password_connection():
-        yield SimpleNamespace(identity=SimpleNamespace(update_user=update_user))
-
-    monkeypatch.setitem(app.dependency_overrides, get_os_conn, password_connection)
     changed = await client.post(
         "/api/v1/profile/password",
         json={"current_password": "valid", "new_password": "ChangedProofPass2026!"},
         headers=headers(original),
     )
     assert changed.status_code == 200, changed.text
+    assert len(state.password_posts) == 1
+    write = state.password_posts[0]
+    assert write.url == "https://native.test/v3/users/ordinary/password"
+    assert state.issued[write.headers["X-Auth-Token"]] == ("ordinary", "")
+    assert write.headers["X-Auth-Token"] != (await stored(original))[1]["keystone_token"]
+    assert json.loads(write.body) == {"user": {"original_password": "valid", "password": "ChangedProofPass2026!"}}
+    assert not any(method == "PATCH" for method, _ in state.native_requests)
+    assert all(token in state.revoked for token, subject in state.issued.items() if subject[0] == "ordinary")
+    old_session = await client.get("/api/v1/auth/me", headers=headers(original))
+    assert old_session.status_code == 401, old_session.text
     old = await client.post("/api/v1/auth/login", json={"username": "ordinary", "password": "valid"})
     assert old.status_code == 401
     replacement = await client.post(
@@ -584,6 +626,81 @@ async def test_account_home_password_change_keeps_personal_scope_and_replaces_cr
     assert replacement.json()["identity_domain_id"] == "account"
     assert replacement.json()["project_id"] == original["project_id"]
     assert state.user_rows["ordinary"].domain_id == "account"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rejected_proof,status", [("password", 401), ("unscoped_subject", 403), ("unscoped_identity", 403)]
+)
+async def test_native_password_change_requires_fresh_exact_home_proof(login_proof, rejected_proof, status):
+    client, state = login_proof
+    signed_in = await fresh_login(client)
+    assert signed_in.status_code == 200, signed_in.text
+    state.password_substitute = None if rejected_proof == "password" else rejected_proof
+    changed = await client.post(
+        "/api/v1/profile/password",
+        json={"current_password": "wrong" if rejected_proof == "password" else "valid", "new_password": "New!2026"},
+        headers=headers(signed_in.json()),
+    )
+    assert changed.status_code == status, changed.text
+    assert state.password_posts == []
+    assert state.passwords["ordinary"] == "valid"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "native_status,status,detail",
+    [
+        (401, 401, "password_current_invalid"),
+        (403, 403, "password_change_forbidden"),
+        (400, 400, "password_change_rejected"),
+        (409, 400, "password_change_rejected"),
+        (422, 400, "password_change_rejected"),
+        (200, 502, "password_change_outcome_unknown"),
+        (503, 502, "password_change_outcome_unknown"),
+        *[(code, 502, "password_change_outcome_unknown") for code in (301, 302, 303, 305, 307, 308)],
+    ],
+)
+async def test_native_password_write_never_replays_or_redirects(login_proof, caplog, native_status, status, detail):
+    client, state = login_proof
+    signed_in = await fresh_login(client)
+    assert signed_in.status_code == 200, signed_in.text
+    state.password_status = native_status
+    state.native_requests.clear()
+    with caplog.at_level("DEBUG", logger="keystoneauth"):
+        changed = await client.post(
+            "/api/v1/profile/password",
+            json={"current_password": "valid", "new_password": "NeverLogNewPassword!2026"},
+            headers=headers(signed_in.json()),
+        )
+    assert changed.status_code == status, changed.text
+    if status < 500:
+        assert changed.json()["detail"] == detail
+    assert len(state.password_posts) == 1
+    assert state.redirect_requests == []
+    assert state.passwords["ordinary"] == "valid"
+    # One session validation exchange plus one fresh password proof; no
+    # native reauthentication after the single credential-changing POST.
+    write_index = state.native_requests.index(("POST", "/v3/users/ordinary/password"))
+    assert state.native_requests[write_index:] == [("POST", "/v3/users/ordinary/password")]
+    assert "NeverLogNewPassword!2026" not in caplog.text + changed.text
+    assert state.password_posts[0].headers["X-Auth-Token"] not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_native_password_lost_response_does_not_retry_committed_write(login_proof):
+    client, state = login_proof
+    signed_in = await fresh_login(client)
+    assert signed_in.status_code == 200, signed_in.text
+    state.password_response_lost = True
+    changed = await client.post(
+        "/api/v1/profile/password",
+        json={"current_password": "valid", "new_password": "CommittedDespiteLostResponse2026!"},
+        headers=headers(signed_in.json()),
+    )
+    assert changed.status_code == 502
+    assert len(state.password_posts) == 1
+    assert state.passwords["ordinary"] == "CommittedDespiteLostResponse2026!"
 
 
 @pytest.mark.asyncio
@@ -675,3 +792,31 @@ async def test_short_native_root_bounds_both_browser_credentials(login_proof, mo
     rejected = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert rejected.status_code == 401
     assert await session_store.get_session(jti) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["password", "provider"])
+async def test_actual_login_writers_persist_distinct_http_and_authentication_methods(
+    login_proof, event_db, monkeypatch, method
+):
+    from sqlalchemy import select
+
+    from app.models.activity import ActivityLog
+
+    client, _state = login_proof
+    # native_login normally isolates the audit writer; restore its real SQL path
+    # against this test's separate ActivityLog database, not the ownership journal.
+    monkeypatch.setattr(activity_svc, "record", _REAL_ACTIVITY_RECORD)
+    response = await fresh_login(client) if method == "password" else await provider_login(client, monkeypatch)
+    assert response.status_code == 200, response.text
+    async with event_db() as session:
+        rows = (await session.execute(select(ActivityLog).where(ActivityLog.action == "login"))).scalars().all()
+    assert len(rows) == 1
+    row = rows[0]
+    expected = "password" if method == "password" else "federated"
+    assert row.extra["method"] == "POST"
+    assert row.extra["auth_method"] == expected
+    assert row.extra["route"] == ("/api/v1/auth/login" if method == "password" else "/api/v1/auth/providers/callback")
+    assert _login_method(row) == expected
+    projected = await activity_svc.get_event(row.id)
+    assert projected["extra"]["method"] == "POST" and projected["extra"]["auth_method"] == expected

@@ -1,27 +1,29 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 	import { createAdminQuotasController } from '$lib/stores/adminQuotasController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
-	import GpuDefaultQuotaSection from '$lib/components/admin/quotas/GpuDefaultQuotaSection.svelte';
 	import ProjectSelector from '$lib/components/admin/quotas/ProjectSelector.svelte';
 	import ProjectQuotaForm from '$lib/components/admin/quotas/ProjectQuotaForm.svelte';
-	import GpuQuotaTable from '$lib/components/admin/quotas/GpuQuotaTable.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as td } from '$lib/i18n/ns/domain-admin';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t as tp } from '$lib/i18n/ns/compute-pools';
+	import ComputePoolPanel from '$lib/components/iam/ComputePoolPanel.svelte';
+	import GpuQuotaRequests from '$lib/components/iam/GpuQuotaRequests.svelte';
 
 	const ctrl = createAdminQuotasController({
 		token: () => get(auth).token ?? undefined,
 		projectId: () => get(auth).projectId ?? undefined,
 		userId: () => get(auth).userId ?? undefined,
 	});
+	const selectedDomain = $derived(ctrl.selectedDomainId || ctrl.projects.find(project => project.id === ctrl.selectedProjectId)?.domain_id || '');
 
 	onMount(() => {
 		let owner = '';
@@ -31,7 +33,7 @@
 			if (next === owner) return;
 			owner = next;
 			if (!state.token || !state.isSystemAdmin || !get(authReady) || get(projectSwitching) || get(logoutInProgress)) return;
-			void ctrl.loadDomains(); void ctrl.loadProjects(); void ctrl.loadGpuAliases(); void ctrl.loadGpuDefaults();
+			void ctrl.loadDomains(); void ctrl.loadProjects();
 		};
 		const subscriptions = [auth.subscribe(sync), authReady.subscribe(sync), projectSwitching.subscribe(sync), logoutInProgress.subscribe(sync)];
 		return () => { for (const unsubscribe of subscriptions) unsubscribe(); };
@@ -40,18 +42,12 @@
 
 <PageShell>
 	<PageHeader breadcrumb={t('quotaPage.breadcrumb')} title={t('quotaPage.title')} />
+	<GpuQuotaRequests adminMode onSelectDomain={async (domainId) => { ctrl.selectedDomainId = domainId; await tick(); document.getElementById('gpu-request-domain-editor')?.focus(); }} />
 
 	{#if ctrl.loading}
-		<LoadingSkeleton variant="table" rows={3} />
+		<LoadingState variant="surface" />
 	{:else}
-			<GpuDefaultQuotaSection
-				defaults={ctrl.gpuDefaultMap}
-				allGpuTypes={ctrl.allGpuTypes}
-				loading={ctrl.gpuDefaultLoading}
-				error={ctrl.gpuDefaultError}
-				success={ctrl.gpuDefaultSuccess}
-				onChange={ctrl.setGpuDefault}
-			/>
+			<Alert tone="info" class="mb-4">{tp('legacyHelp')}<div class="mt-2"><Button variant="link" href={selectedDomain ? `/admin/domains/${encodeURIComponent(selectedDomain)}` : '/admin/domains'}>{tp('managePools')}</Button></div></Alert>
 
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-3xl">
 				<Field for="quota-domain-scope" label={td('scope.domain')}>
@@ -85,11 +81,12 @@
 				<Alert class="mb-4">{ctrl.projectsError}</Alert>
 				<Button variant="secondary" size="sm" disabled={ctrl.loading || ctrl.refreshing} onclick={() => ctrl.loadProjects()}>{td('actions.refresh')}</Button>
 			{/if}
+			{#if selectedDomain}<div id="gpu-request-domain-editor" tabindex="-1" class="mb-6 scroll-mt-4">{#key `${ctrl.scopeRevision}:${selectedDomain}`}<ComputePoolPanel domainId={selectedDomain} adminMode />{/key}</div>{/if}
 
 		{#key ctrl.scopeRevision}
 			{#if ctrl.selectedProjectId}
 				{#if ctrl.quotaLoading}
-					<LoadingSkeleton variant="table" rows={3} />
+					<LoadingState variant="section" />
 				{:else if ctrl.quotas}
 					<ProjectQuotaForm
 						quotas={ctrl.quotas}
@@ -103,15 +100,6 @@
 				{:else}
 					<div class="text-ink-2 text-sm">{t('quotaPage.unavailable')}</div>
 				{/if}
-				<GpuQuotaTable
-					rows={ctrl.gpuQuotaRows}
-					defaults={ctrl.gpuDefaultMap}
-					loading={ctrl.gpuQuotaLoading}
-					error={ctrl.gpuQuotaError}
-					hasAnyAlias={ctrl.allGpuTypes.length > 0}
-					onSetLimit={ctrl.setGpuQuota}
-					onClear={ctrl.deleteGpuQuota}
-				/>
 			{/if}
 		{/key}
 	{/if}

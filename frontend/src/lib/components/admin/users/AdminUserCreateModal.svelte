@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onDestroy } from 'svelte';
   import FormModal from '$lib/components/ui/FormModal.svelte';
   import Field from '$lib/components/ui/Field.svelte';
@@ -67,6 +68,6 @@
   </div>
   {#snippet actions()}
     <Button variant="secondary" disabled={creating} onclick={() => open = false}>{created ? tc('actions.close') : t('userCreate.cancel')}</Button>
-    {#if !created}<Button variant="primary" disabled={creating || !domainId || !form.name.trim()} onclick={submit}>{creating ? t('userCreate.creating') : t('userCreate.create')}</Button>{/if}
+    {#if !created}<Button variant="primary" disabled={creating || !domainId || !form.name.trim()} onclick={submit}>{#if creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{creating ? t('userCreate.creating') : t('userCreate.create')}</Button>{/if}
   {/snippet}
 </FormModal>

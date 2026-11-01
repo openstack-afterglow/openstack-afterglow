@@ -7,9 +7,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import QuotaEditor from './QuotaEditor.svelte';
 	import BudgetSummary from './BudgetSummary.svelte';
+	import ComputePoolPanel from './ComputePoolPanel.svelte';
+	import GpuQuotaRequests from './GpuQuotaRequests.svelte';
+	import { t as gpuT } from '$lib/i18n/ns/gpu-quota-requests';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => workspaceIam(session));
 	let live = true;
@@ -25,6 +28,7 @@
 	let editor = $state<'defaults' | 'project'>('defaults');
 	let project = $state('');
 	let editorRevision = $state(0);
+	let requestsOpen = $state(false);
 	function fail(cause: unknown) {
 		if (!live || !session.isCurrent()) return;
 		error = cause instanceof ApiError ? cause.message : t('loadFailed');
@@ -90,11 +94,16 @@
 </script>
 
 <div class="space-y-4">
+	<ComputePoolPanel domainId={session.domainId} {session} {blocked} />
+	<details bind:open={requestsOpen} class="min-w-0">
+		<summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold text-ink-0">{gpuT('title')} · {gpuT('history')}</summary>
+		{#if requestsOpen}<GpuQuotaRequests {session} {blocked} {onDenied} />{/if}
+	</details>
 	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('monitoringAllocation')}</h2><Button variant="secondary" disabled={blocked || loading || busy} onclick={load}>{t('reload')}</Button></div>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if outcome}<Alert tone={reloadRequired ? 'warning' : 'info'}>{outcome}</Alert>{/if}
 	{#if reloadRequired}<Alert tone="warning">{t('reloadRequired')}</Alert>{/if}
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={data ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if data}
 		<BudgetSummary {data} />
 		<div class="flex flex-wrap gap-2"><Button variant={editor === 'defaults' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { editor = 'defaults'; native = null; editorRevision++; }}>{t('editDefaults')}</Button><Button variant={editor === 'project' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { editor = 'project'; void loadProject(); }}>{t('editProject')}</Button></div>

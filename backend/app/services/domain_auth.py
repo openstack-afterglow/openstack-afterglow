@@ -31,6 +31,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parseaddr
 from typing import Any
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit
 from uuid import uuid4
@@ -224,7 +225,13 @@ def normalize_email(value: object) -> str:
         host = normalize_email_domain(host)
     except DomainAuthInvalid as exc:
         raise DomainAuthDenied("Email address is invalid", code="email_required") from exc
-    return f"{local}@{host}"
+    canonical = f"{local}@{host}"
+    # SMTP's address parser must not reinterpret comments/display-name syntax
+    # as a different mailbox from the identity's globally unique address.
+    display_name, mailbox = parseaddr(canonical, strict=True)
+    if display_name or mailbox != canonical:
+        raise DomainAuthDenied("Email address is invalid", code="email_required")
+    return canonical
 
 
 # ── policy ──────────────────────────────────────────────────────────────────

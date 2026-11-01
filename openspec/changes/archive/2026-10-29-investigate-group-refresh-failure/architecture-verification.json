@@ -1,0 +1,9 @@
+{
+  "source_sha256": "7b0c0144888902c784fb9563fc425696167fdbf8fc6209b2ce7088c3c0517f75",
+  "files": 3579,
+  "stamp": "stamped working source_sha256=7b0c0144888902c784fb9563fc425696167fdbf8fc6209b2ce7088c3c0517f75 files=3579",
+  "working": "checked working source_sha256=7b0c0144888902c784fb9563fc425696167fdbf8fc6209b2ce7088c3c0517f75 files=3579",
+  "staged": "checked staged source_sha256=7b0c0144888902c784fb9563fc425696167fdbf8fc6209b2ce7088c3c0517f75 files=3579",
+  "shared_index_and_stamp": "untouched",
+  "scope": "shared source includes concurrent work; review limited to group change"
+}

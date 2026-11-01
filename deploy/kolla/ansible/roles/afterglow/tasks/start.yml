@@ -7,6 +7,7 @@
   loop:
     - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}"
     - "{{ afterglow_runtime_config_dir }}/{{ afterglow_frontend_config_name }}"
+    - "{{ afterglow_nova_pci_alias_snapshot_path }}"
   when: inventory_hostname in groups['afterglow']
 
 - name: Start | Validate offline country database pin

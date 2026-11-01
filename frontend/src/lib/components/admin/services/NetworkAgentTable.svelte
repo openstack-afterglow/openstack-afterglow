@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -57,7 +57,7 @@
 
 {#if agents.length === 0}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={8} />
+		<LoadingState variant="section" />
 	{:else}
 		<EmptyState headline={emptyMessage} />
 	{/if}

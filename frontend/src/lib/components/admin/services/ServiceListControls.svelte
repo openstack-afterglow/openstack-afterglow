@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -67,7 +67,7 @@
 	{/if}
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<span class="inline-flex items-center gap-1.5 text-xs text-ink-2 tabular-nums" role="status">
-			{#if loading}<ActivityIndicator size="xs" />{/if}
+			{#if loading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}
 			<span>{#if loading && total === 0}{t('services.list.loading')}{:else}{t(loading ? 'services.list.countRefreshing' : 'services.list.count', { count, total })}{/if}</span>
 		</span>
 		<Button variant="ghost" size="sm" class="min-h-11 md:min-h-0"

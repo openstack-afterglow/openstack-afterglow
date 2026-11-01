@@ -1,29 +1,45 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/instance';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onDestroy, untrack } from 'svelte';
-	import { page } from '$app/stores';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { createSwr } from '$lib/utils/swr.svelte';
 	import { apiMut } from '$lib/api/mutations';
 	import type { Instance } from '$lib/types/compute';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
 	import { invalidateInstanceDetailSelection } from '$lib/stores/instanceDetailController.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
-	import { openWizard } from '$lib/stores/wizard';
+	import { Alert, Button, EmptyState, Field, PageHeader, PageShell, ResourceToolbar, TextInput, SelectInput, Pagination } from '$lib/components/ui';
+	import { openWizard, wizardOpen } from '$lib/stores/wizard';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import InstancesTable from '$lib/components/instance/list/InstancesTable.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { isTransitional } from '$lib/utils/instanceStatus';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
+	import ResourceSortSelect from '$lib/components/ui/ResourceSortSelect.svelte';
+	import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
+	import { getStatusLabel } from '$lib/config/statusColors';
 
 	let instances = $state<Instance[]>([]);
+	let sort = $state<ResourceSort>('created_desc');
+	let search = $state('');
+	let statusFilter = $state('');
+	let pageSize = $state('20');
+	let currentPage = $state(1);
+	const filteredInstances = $derived(sortResources(instances.filter((instance) =>
+		(!statusFilter || instance.status === statusFilter)
+		&& (!search.trim() || `${instance.name} ${instance.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+	), sort));
+	const totalPages = $derived(Math.max(1, Math.ceil(filteredInstances.length / Number(pageSize))));
+	const visiblePage = $derived(Math.min(currentPage, totalPages));
+	const visibleInstances = $derived(filteredInstances.slice((visiblePage - 1) * Number(pageSize), visiblePage * Number(pageSize)));
+	const statuses = $derived([...new Set(instances.map((instance) => instance.status))].sort());
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
@@ -49,16 +65,9 @@
 	}
 	const canBulkDelete = $derived(targetsAllowed([...selection.ids], 'delete'));
 
-	const mockupActive = $derived($page.data.mockup?.active === true);
-	const selectableIds = $derived(new Set(instances.map((instance) => instance.id)));
+	const selectableIds = $derived(new Set(visibleInstances.map((instance) => instance.id)));
+	$effect(() => { const visibleIds = selectableIds; untrack(() => selection.retain(visibleIds)); });
 
-	function openCreateEntryPoint() {
-		if (mockupActive) {
-			toast.info(t('list.mockupCreateExcluded'));
-			return;
-		}
-		openWizard();
-	}
 	const { swrGet, swrSet } = createSwr(() => `${$auth.userId ?? ''}:${$auth.projectId ?? ''}:${scopeRevision}`);
 
 	async function fetchInstances(opts?: { refresh?: boolean }) {
@@ -144,6 +153,15 @@
 			refreshing = false;
 		}
 	}
+
+	let previousWizardOpen = false;
+	$effect(() => {
+		const open = $wizardOpen;
+		if (previousWizardOpen && !open) {
+			untrack(() => { if ($auth.token && $auth.projectId) void forceRefresh(); });
+		}
+		previousWizardOpen = open;
+	});
 
 	const ar = createAutoRefresh(() => fetchInstances(), {
 		storageKey: 'dashboard-compute-instances',
@@ -333,6 +351,7 @@
 		untrack(() => {
 			loadGeneration += 1;
 			selection.clear();
+			currentPage = 1;
 			selectedInstanceId = null;
 			instances = [];
 			underutilized = {};
@@ -345,12 +364,20 @@
 </script>
 
 <PageShell class="bulk-selection-page space-y-4 pb-28 md:pb-32">
-	<PageHeader breadcrumb={t('list.breadcrumb')} title={t('list.title')}>
+	<PageHeader breadcrumb={t('list.breadcrumb')} title={loading || error ? t('list.title') : t('list.titleWithCount', { count: instances.length })}>
 		{#snippet actions()}
-			<Button onclick={openCreateEntryPoint} variant="primary">{t('list.createVmAction')}</Button>
+			<Button onclick={() => openWizard()} variant="primary" dataTour="vm-create-open">{t('list.createVmAction')}</Button>
 		{/snippet}
 	</PageHeader>
+	{#if !loading && !error && instancesRevision === scopeRevision}
+		<p class="text-sm tabular-nums text-ink-2" data-testid="instance-summary">{t('list.summary', { total: instances.length, active: instances.filter((instance) => instance.status === 'ACTIVE').length, errors: instances.filter((instance) => instance.status === 'ERROR').length })}</p>
+	{/if}
 	<ResourceToolbar label={t('list.toolbar')}>
+		{#snippet filters()}
+			<Field label={t('list.search')} for="project-instance-search" class="min-w-0 w-full md:flex-1 md:basis-48"><TextInput id="project-instance-search" type="search" bind:value={search} ariaLabel={t('list.search')} placeholder={t('list.search')} oninput={() => { currentPage = 1; selection.clear(); }} /></Field>
+			<Field label={t('table.status')} for="project-instance-status" class="min-w-0 max-w-full w-full md:w-auto"><SelectInput id="project-instance-status" bind:value={statusFilter} ariaLabel={t('table.status')} onchange={() => { currentPage = 1; selection.clear(); }}><option value="">{t('list.allStatuses')}</option>{#each statuses as status}<option value={status}>{getStatusLabel(status, 'server')}</option>{/each}</SelectInput></Field>
+			<ResourceSortSelect id="project-instance-sort" bind:value={sort} onchange={() => selection.clear()} />
+		{/snippet}
 		{#snippet actions()}
 			<TutorialStartButton tour="vm-create" />
 			<AutoRefreshControl
@@ -367,24 +394,37 @@
 		<Alert tone="danger">{error}</Alert>
 	{/if}
 
+	<div class={loading || instancesRevision !== scopeRevision ? "flex min-h-[calc(100dvh-var(--app-header-height)-12rem)] flex-col" : ""} data-tour={!$wizardOpen && !loading && !refreshing && !error && instancesRevision === scopeRevision ? 'instance-list' : undefined}>
 	{#if loading || (instances.length > 0 && instancesRevision !== scopeRevision)}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('list.title') })} />
+	{:else if error && instances.length === 0}
+		<Button variant="secondary" onclick={forceRefresh}>{t('list.retry')}</Button>
 	{:else if instances.length === 0}
-		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')}>
-			{#snippet cta()}<Button onclick={openCreateEntryPoint} variant="primary">{t('list.createVm')}</Button>{/snippet}
+		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')} />
+	{:else if filteredInstances.length === 0}
+		<EmptyState headline={t('list.filteredEmpty')} description={t('list.filteredEmptyDescription')}>
+			{#snippet cta()}<Button variant="secondary" onclick={() => { search = ''; statusFilter = ''; currentPage = 1; selection.clear(); }}>{t('list.clearFilters')}</Button>{/snippet}
 		</EmptyState>
 	{:else}
-		<InstancesTable
-			{instances}
-			{underutilized}
-			selectedIds={selection.ids}
-			{selectableIds}
-			selectionDisabled={bulkActioning}
-			onSelect={openInstancePanel}
-			onAction={handleAction}
-			onToggleSelect={(id) => selection.toggle(id)}
-			onToggleAll={() => selection.toggleAll(selectableIds)}
-		/>
+			<InstancesTable
+				instances={visibleInstances}
+				{underutilized}
+				selectedIds={selection.ids}
+				{selectableIds}
+				selectionDisabled={bulkActioning}
+				onSelect={openInstancePanel}
+				onAction={handleAction}
+				onToggleSelect={(id) => selection.toggle(id)}
+				onToggleAll={() => selection.toggleAll(selectableIds)}
+			/>
+	{/if}
+	</div>
+	{#if !loading && instances.length > 0 && instancesRevision === scopeRevision}
+		<footer class="flex flex-wrap items-end justify-between gap-3" data-testid="instance-list-footer">
+			<p class="text-sm tabular-nums text-ink-2">{t('list.resultCount', { count: filteredInstances.length, total: instances.length })}</p>
+			<div class="flex items-center gap-2"><label for="project-instance-page-size" class="text-xs text-ink-2">{t('list.pageSize')}</label><SelectInput id="project-instance-page-size" bind:value={pageSize} onchange={() => { currentPage = 1; selection.clear(); }}>{#each [10, 20, 30] as size}<option value={String(size)}>{size}</option>{/each}</SelectInput></div>
+			<Pagination class="!mt-0" page={visiblePage} {totalPages} hasPrev={visiblePage > 1} hasNext={visiblePage < totalPages} onPrev={() => { currentPage = visiblePage - 1; selection.clear(); }} onNext={() => { currentPage = visiblePage + 1; selection.clear(); }} />
+		</footer>
 	{/if}
 
 	<BulkSelectionOverlay

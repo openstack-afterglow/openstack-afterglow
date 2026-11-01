@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -9,7 +10,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import { secretsApi, type SecretInfo, type ContainerInfo, type OrderInfo, type QuotaInfo } from '$lib/api/secrets';
 	import { ApiError } from '$lib/api/client';
@@ -25,7 +26,6 @@
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
 	type Tab = 'secrets' | 'containers' | 'orders' | 'quota';
@@ -487,8 +487,7 @@
 	{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
 	{#if loading}
-		<ActivityIndicator label={`${t('secrets.page.title')} · ${tc('state.loading')}`} />
-		<LoadingSkeleton variant="table" rows={4} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('secrets.page.title') })} />
 	{:else if activeTab === 'secrets'}
 		{#if secrets.length === 0}
 			<div class="motion-fade text-center py-16 text-ink-2">
@@ -512,7 +511,7 @@
 				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(s.id)} disabled={s.system_managed || selectionBusy} unavailable={s.system_managed} title={s.system_managed ? t('secrets.selection.systemManaged') : undefined} ariaLabel={t('secrets.selection.item', { name: s.name ?? s.id })} onclick={() => selection.toggle(s.id)} /><h3 class="text-sm font-medium break-all">{s.name ?? s.id}</h3><span class="ml-auto text-xs">{s.status ?? '-'}</span></div><p class="text-xs text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}{#if s.system_managed} · {t('secrets.secret.system')}{/if}</p>
 				{#if payloadVisible[s.id] !== undefined}<code class="text-xs break-all">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>{/if}
 				{#snippet details()}<p class="text-xs break-all font-mono">{s.id}</p><p class="text-xs">{t('secrets.table.created')}: {s.created ? new Date(s.created).toLocaleDateString(intlLocale()) : '-'}</p><p class="text-xs">{t('secrets.table.expires')}: {s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</p>{/snippet}
-				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} ariaBusy={payloadLoading === s.id}>{payloadLoading === s.id ? t('secrets.actions.loading') : payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}</Button>{#if payloadVisible[s.id] !== undefined}<Button variant="secondary" size="sm" onclick={() => copyPayload(payloadVisible[s.id])}>{t('secrets.actions.copy')}</Button>{/if}{#if !s.system_managed}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} ariaBusy={deletingSecretId === s.id}>{t('secrets.actions.delete')}</Button>{/if}{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} ariaBusy={payloadLoading === s.id}>{#if payloadLoading === s.id}<LoadingState variant="control" label={t('secrets.actions.loading')} />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</Button>{#if payloadVisible[s.id] !== undefined}<Button variant="secondary" size="sm" onclick={() => copyPayload(payloadVisible[s.id])}>{t('secrets.actions.copy')}</Button>{/if}{#if !s.system_managed}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} ariaBusy={deletingSecretId === s.id}>{t('secrets.actions.delete')}</Button>{/if}{/snippet}
 			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
@@ -553,8 +552,8 @@
 								<td class="py-3 pr-4 text-ink-2 text-xs">{s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</td>
 								<td class="py-3">
 									<div class="flex gap-2">
-										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} aria-busy={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{#if payloadLoading === s.id}<ActivityIndicator size="xs" label={t('secrets.actions.loading')} />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</button>
-										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingSecretId === s.id}<ActivityIndicator size="xs" tone="danger" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`} />{:else}{t('secrets.actions.delete')}{/if}</button>{/if}
+										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} aria-busy={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{#if payloadLoading === s.id}<LoadingState variant="control" label={t('secrets.actions.loading')}  />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</button>
+										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingSecretId === s.id}<LoadingState variant="control" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`}  />{:else}{t('secrets.actions.delete')}{/if}</button>{/if}
 									</div>
 									{#if payloadVisible[s.id] !== undefined}
 										<div class="motion-fade mt-2 flex items-center gap-2">
@@ -615,7 +614,7 @@
 								<td class="py-3 pr-4 text-ink-2">{c.type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[c.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{c.status ?? '-'}</span></td>
 								<td class="py-3 pr-4 text-ink-2"><AnimatedNumber value={c.secret_refs.length} format={(value) => t('secrets.container.secretCount', { count: Math.round(value) })} /></td>
-								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy || deletingContainerId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingContainerId === c.id}<ActivityIndicator size="xs" tone="danger" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`} />{:else}{t('secrets.actions.delete')}{/if}</button></td>
+								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy || deletingContainerId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingContainerId === c.id}<LoadingState variant="control" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`}  />{:else}{t('secrets.actions.delete')}{/if}</button></td>
 							</tr>
 						{/each}
 					</tbody>
@@ -633,7 +632,7 @@
 			</div>
 		{:else}
 			<ResponsiveTable>{#snippet cards()}{#each orders as o (o.id)}<CompactResourceCard>
-				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{o.type}</h3><span class="text-xs">{o.status ?? '-'}</span></div><p class="text-xs">{#if o.secret_ref}{t('secrets.order.secretCreated')}{:else if o.error_reason}<span class="text-state-danger-text">{t('activity.failure')}</span>{:else}{t('secrets.order.pending')}{/if}</p>{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}<ActivityIndicator size="xs" label={t('secrets.order.pending')} />{/if}
+				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{o.type}</h3><span class="text-xs">{o.status ?? '-'}</span></div><p class="text-xs">{#if o.secret_ref}{t('secrets.order.secretCreated')}{:else if o.error_reason}<span class="text-state-danger-text">{t('activity.failure')}</span>{:else}{t('secrets.order.pending')}{/if}</p>{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}<LoadingState variant="control" label={t('secrets.order.pending')}  />{/if}
 				{#snippet details()}<code class="text-xs break-all">{o.id}</code><p class="text-xs">{t('secrets.table.created')}: {o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</p>{#if o.error_reason}<p class="text-xs text-state-danger-text">{o.error_reason}</p>{/if}{/snippet}
 			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
@@ -655,7 +654,7 @@
 								<td class="py-3 pr-4">
 									<span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[o.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{o.status ?? '-'}</span>
 									{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}
-										<ActivityIndicator size="xs" label={t('secrets.order.pending')} />
+										<LoadingState variant="control" label={t('secrets.order.pending')}  />
 									{/if}
 								</td>
 								<td class="py-3 pr-4 text-ink-2 text-xs">{o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</td>

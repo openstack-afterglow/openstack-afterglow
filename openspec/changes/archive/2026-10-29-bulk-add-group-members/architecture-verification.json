@@ -1,0 +1,14 @@
+{
+  "source_sha256": "8f0d0be5f23554e58401f9d95eff7f240abb5019ea07415e4b77a8df0b77db34",
+  "source_files": 3579,
+  "working": "checked working source_sha256=8f0d0be5f23554e58401f9d95eff7f240abb5019ea07415e4b77a8df0b77db34 files=3579",
+  "staged": "checked staged source_sha256=8f0d0be5f23554e58401f9d95eff7f240abb5019ea07415e4b77a8df0b77db34 files=3579",
+  "stamp": "stamped working source_sha256=8f0d0be5f23554e58401f9d95eff7f240abb5019ea07415e4b77a8df0b77db34 files=3579",
+  "scope": "Exact shared working source snapshot with independent index; shared review stamp and index unchanged. Concurrent source included, not independently reviewed.",
+  "missing_tracked_paths": [
+    "frontend/src/lib/components/admin/quotas/GpuDefaultQuotaSection.svelte",
+    "frontend/src/lib/components/admin/quotas/GpuQuotaTable.svelte",
+    "frontend/src/lib/components/admin/quotas/__tests__/GpuQuotaActivity.test.ts",
+    "frontend/src/lib/stores/__tests__/adminQuotasController.catalog.test.ts"
+  ]
+}

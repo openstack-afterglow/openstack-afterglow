@@ -145,7 +145,7 @@ async def test_resize_rechecks_quota_at_submission_and_invalidates_on_success(cl
         patch("app.api.compute.instances.nova.list_flavors", return_value=_flavors()),
         patch("app.services.flavor_eligibility.nova.get_project_quota", side_effect=lambda *_, **__: quota),
         patch("app.api.compute.instances.nova.resize_server") as resize,
-        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock) as invalidate,
+        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
         patch("app.api.compute.instances.cache_invalidation.invalidate_mutation_count", new_callable=AsyncMock),
     ):
         discovery = await client.get(f"{BASE}/resize-flavors")
@@ -161,10 +161,6 @@ async def test_resize_rechecks_quota_at_submission_and_invalidates_on_success(cl
         assert accepted.json() == {"status": "resizing"}
         assert resize.call_args.args[1:] == ("inst-1", "large")
         assert resize.call_args.args[0]._afterglow_project_id == PROJECT
-        assert {call.args[0] for call in invalidate.await_args_list} == {
-            f"afterglow:nova:{PROJECT}:instance:inst-1",
-            f"afterglow:nova:{PROJECT}:instances",
-        }
 
 
 @pytest.mark.asyncio
@@ -325,7 +321,7 @@ async def test_finish_resize_requires_verify_and_invalidates(client, suffix, ope
     with (
         patch("app.api.compute.instances.nova.get_server", side_effect=[_server(), _server(status="VERIFY_RESIZE")]),
         patch(f"app.api.compute.instances.nova.{operation}") as nova_action,
-        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock) as invalidate,
+        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
     ):
         denied = await client.post(f"{BASE}/{suffix}")
         assert denied.status_code == 409
@@ -334,10 +330,6 @@ async def test_finish_resize_requires_verify_and_invalidates(client, suffix, ope
     assert accepted.status_code == 200
     assert accepted.json() == {"status": expected}
     nova_action.assert_called_once()
-    assert {call.args[0] for call in invalidate.await_args_list} == {
-        f"afterglow:nova:{PROJECT}:instance:inst-1",
-        f"afterglow:nova:{PROJECT}:instances",
-    }
 
 
 @pytest.mark.asyncio

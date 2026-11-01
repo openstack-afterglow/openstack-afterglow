@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { get } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 const { apiGet, mockScope, revisionListeners } = vi.hoisted(() => ({
 	apiGet: vi.fn(),
@@ -19,6 +19,12 @@ vi.mock('$lib/mockup/state', () => ({
 		return () => revisionListeners.delete(listener);
 	},
 }));
+vi.mock('$lib/stores/auth', () => {
+	const auth = writable({ token: 'token', projectId: 'project', userId: 'user-a', sessionId: 'session-a', isSystemAdmin: true, roles: ['member'] });
+	let epoch = 0;
+	auth.subscribe(() => { epoch += 1; });
+	return { auth, getAuthVerificationEpoch: () => epoch };
+});
 
 type DashboardResponse = { grafana_url: string; dashboards: Record<string, string> };
 
@@ -126,5 +132,22 @@ describe('Grafana context cache', () => {
 		invalidateGrafanaContext();
 		await loadGrafanaContext('token', 'project');
 		expect(apiGet).toHaveBeenCalledTimes(3);
+	});
+
+	it('starts a fresh real-store catalog after semantic auth A -> B -> A before the old read rejects', async () => {
+		const previous = Promise.withResolvers<DashboardResponse>();
+		apiGet.mockReturnValueOnce(previous.promise).mockResolvedValue({ grafana_url: 'https://fresh.example.test', dashboards: { node: 'fresh' } });
+		const { loadGrafanaContext, grafanaStore } = await loadStore();
+		// resetModules intentionally gives the same live auth singleton used by the fresh catalog module.
+		const { auth } = await import('../auth');
+		const oldLoad = loadGrafanaContext('token', 'project');
+		auth.update(state => ({ ...state, projectId: 'other-project' }));
+		auth.update(state => ({ ...state, projectId: 'project' }));
+		const freshLoad = loadGrafanaContext('token', 'project');
+		expect(apiGet).toHaveBeenCalledTimes(2);
+		previous.reject(new DOMException('Retired API auth epoch', 'AbortError'));
+		await expect(oldLoad).resolves.toBeNull();
+		await expect(freshLoad).resolves.toMatchObject({ grafanaUrl: 'https://fresh.example.test' });
+		expect(get(grafanaStore).ctx?.grafanaUrl).toBe('https://fresh.example.test');
 	});
 });

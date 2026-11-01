@@ -310,6 +310,8 @@
 	"message.forkHere": "从此处分支",
 	"message.fork": "分支",
 	"message.generationSpeed": "生成速度",
+	"message.ttft": "TTFT {seconds}秒",
+	"message.ttftExplanation": "从发送到收到首段回答文本的时间：{seconds}秒",
 	"window.elapsedMinutesSeconds": "{minutes} 分 {seconds} 秒",
 	"window.elapsedSeconds": "{seconds} 秒",
 	"window.skillFallback": "技能 #{id}",

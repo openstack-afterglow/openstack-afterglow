@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/containers-shell';
   import type { EnvVar, PortMapping } from '$lib/types/zunContainer';
   import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -136,7 +137,7 @@
       {#if error}<div class="mt-3 text-red-400 text-xs">{error}</div>{/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('instances.actions.cancel')}</button>
-        <button onclick={handleCreate} disabled={creating || !form.name || !form.image} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? t('instances.create.creating') : t('instances.actions.create')}</button>
+        <button onclick={handleCreate} disabled={creating || !form.name || !form.image} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('instances.create.creating') : t('instances.actions.create')}</button>
       </div>
     </div>
   </div>

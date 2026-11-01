@@ -35,17 +35,17 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
-		font-size: 0.75rem;
+		font-size: var(--type-support);
 		font-weight: 500;
 		color: var(--color-ink-1);
 	}
-	.field-required { color: var(--color-state-danger); }
+	.field-required { color: var(--color-state-danger-text); }
 	.field-help,
 	.field-error {
 		margin: 0;
-		font-size: 0.75rem;
+		font-size: var(--type-support);
 		line-height: 1.4;
 	}
 	.field-help { color: var(--color-ink-2); }
-	.field-error { color: var(--color-state-danger); }
+	.field-error { color: var(--color-state-danger-text); }
 </style>

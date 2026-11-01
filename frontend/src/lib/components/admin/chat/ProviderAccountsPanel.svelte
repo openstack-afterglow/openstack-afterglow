@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -302,7 +303,7 @@
 				{:else}
 					<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.deviceCloseNotice')}</p>
 					{#if attempt}
-						<p role="status">{t(`accounts.deviceStatus.${attempt.status}`)}</p>
+						{#if attempt.status === 'pending'}<LoadingState variant="inline" label={t(`accounts.deviceStatus.${attempt.status}`)} />{:else}<p role="status">{t(`accounts.deviceStatus.${attempt.status}`)}</p>{/if}
 						<p class="text-xs text-[var(--color-ink-2)]">{t('configuration.credentialExpiry', { v0: displayTime(attempt.expires_at) })}</p>
 						{#if attempt.status === 'pending'}
 							{#if attempt.user_code}<code class="block break-all rounded-lg bg-[var(--color-surface-sunken)] p-3 text-lg text-[var(--color-ink-0)]">{attempt.user_code}</code>{/if}
@@ -325,7 +326,7 @@
 				{#if probeResult}<Alert tone={probeResult.status === 'connected' ? 'success' : 'danger'}><p>{t(probeResult.status === 'connected' ? 'accounts.probeConnected' : 'accounts.probeFailed')}</p>{#if probeResult.reason}<p>{t(`accounts.probeReason.${probeResult.reason}`)}</p>{/if}<p>{t('accounts.probeDetails', { mode: t(`accounts.probeMode.${probeResult.mode}`), model: probeResult.model_id, generation: probeResult.generation, ms: probeResult.elapsed_ms, time: displayTime(probeResult.checked_at) })}</p></Alert>{/if}
 			</section>
 		{/if}
-		{#if loading}<p class="mt-4 text-sm text-[var(--color-ink-2)]" role="status">{t('accounts.loading')}</p>{/if}
+		{#if loading}<LoadingState variant={accounts.length ? 'inline' : 'section'} label={t('accounts.loading')} />{/if}
 		{#if !loading && !listFailed && accounts.length === 0}<p class="mt-4 text-sm text-[var(--color-ink-2)]">{t('accounts.empty')}</p>{/if}
 		<div class="mt-4 space-y-4">
 			{#each accounts as account (account.id)}
@@ -356,7 +357,7 @@
 								<h5 class="text-sm font-medium text-[var(--color-ink-0)]">{t('accounts.relayHistory')}</h5>
 								<p class="text-xs text-[var(--color-ink-2)]">{t('accounts.relayBoundary')}</p>
 								<Button variant="ghost" size="sm" disabled={busy || historyLoading !== null} onclick={() => loadHistory(account.id, credential)}>{t('accounts.loadRelays')}</Button>
-								{#if historyLoading === credential.id}<p role="status" class="text-xs text-[var(--color-ink-2)]">{t('accounts.loading')}</p>{/if}
+								{#if historyLoading === credential.id}<LoadingState variant={histories[credential.id] ? 'inline' : 'section'} label={t('accounts.loading')} />{/if}
 								{#if historyErrors[credential.id]}<Alert tone="danger">{historyErrors[credential.id]}</Alert>{/if}
 								{#if histories[credential.id]}
 									{#each histories[credential.id].items as row (row.ledger_id)}

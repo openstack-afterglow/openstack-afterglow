@@ -158,7 +158,7 @@
 	"recovery.username": "Tafuta jina la mtumiaji",
 	"recovery.password": "Weka nywila upya",
 	"recovery.description": "Omba kiungo cha matumizi ya mara moja kwenye barua pepe ya akaunti yako. Huhitaji kujua jina la kikoa chako.",
-	"recovery.sent": "Ikiwa anwani hii inastahiki, barua pepe imetumwa. Kagua kikasha chako.",
+	"recovery.sent": "Ombi limekubaliwa. Ikiwa anwani hii inastahiki, barua pepe itatumwa. Kukubaliwa hakuthibitishi uwasilishaji. Kagua kikasha; ikiwa barua haifiki au huwezi kukifikia, wasiliana na msimamizi.",
 	"recovery.notAvailable": "Maombi kwa barua pepe hayapatikani kwa sasa. Wasiliana na msimamizi wako au ujaribu tena baadaye.",
 	"recovery.usernameResult": "Kiungo hiki cha uthibitishaji kimetumika. Ingia kwa jina lako asili la mtumiaji na kikoa vilivyo hapa chini. Kufungua kiungo tena hakutavionyesha tena.",
 	"recovery.reset": "Hifadhi nywila mpya",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "Ingia tena",
 	"recovery.failed": "Matokeo hayakuweza kuthibitishwa. Huenda akaunti hii haitumii mbinu hii ya urejeshaji, au kiungo tayari kimetumika. Ombi halitarudiwa kiotomatiki. Omba kiungo kipya au uwasiliane na msimamizi wako.",
 	"link.authenticatedHelp": "Kwa akaunti inayotumia uthibitishaji wa nje pekee, idhinisha kwa kipindi cha akaunti asili ambacho tayari kimeingia. Seva huthibitisha kwamba ni akaunti ileile.",
-	"link.authenticated": "Idhinisha kuunganisha kama {username} aliyeingia"
+	"link.authenticated": "Idhinisha kuunganisha kama {username} aliyeingia",
+	"recovery.passwordHelp": "Kiungo kinachotumwa kwa barua pepe iliyosajiliwa hufungua fomu ya kuchagua nenosiri jipya; hakitumi nenosiri lenyewe. Ikiwa barua haifiki au huwezi kufikia kisanduku, wasiliana na msimamizi."
 }

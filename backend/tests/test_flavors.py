@@ -39,6 +39,50 @@ async def test_list_flavors_success(client, mock_conn):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_project_flavor_exposes_only_approved_group_primary_alias(client, monkeypatch, enabled):
+    from app.services import compute_pools, flavor_automation_policy
+    from tests.test_domain_pool_flavor_eligibility import GPU, pool_snapshot
+    from tests.test_managed_flavors import AUDIO, profile
+
+    approved = profile("render", GPU)
+    approved["enabled"] = enabled
+    approved["extra_specs"]["pci_passthrough:alias"] = "graphics:1,sound:1"
+    approved["alias_resource_classes"] = {"graphics": GPU, "sound": AUDIO}
+    monkeypatch.setattr(
+        flavor_automation_policy, "load_policy", AsyncMock(return_value={"revision": 1, "gpu_profiles": [approved]})
+    )
+    capabilities = await flavor_automation_policy.capabilities()
+    snapshot = pool_snapshot()
+    snapshot.update(
+        _aliases=capabilities["aliases"],
+        _pci_aliases=capabilities["pci_aliases"],
+        _resource_kinds=capabilities["resource_kinds"],
+    )
+    monkeypatch.setattr(compute_pools, "project_pool_snapshot", AsyncMock(return_value=snapshot))
+    specs = {
+        "afterglow:managed_by": "domain-compute-v1",
+        "afterglow:access_mode": "gpu_quota",
+        "pci_passthrough:alias": "graphics:2,sound:2",
+        "hw:cpu_policy": "shared",
+    }
+    flavor = FlavorInfo(id="managed", name="gpu.renderx2_2c_4g", vcpus=2, ram=4096, disk=0, extra_specs=specs)
+    quota = {name: {"limit": -1, "in_use": 0} for name in ("instances", "cores", "ram")}
+    with (
+        patch("app.api.compute.flavors.nova.list_flavors", return_value=[flavor]),
+        patch("app.services.nova.get_project_quota", return_value=quota),
+    ):
+        response = await client.get("/api/v1/flavors")
+
+    assert response.status_code == 200
+    aliases = response.json()[0]["gpu_primary_aliases"]
+    if enabled:
+        assert aliases == [{"name": "graphics", "count": 2, "resource_class": GPU, "profile_name": "render"}]
+    else:
+        assert aliases is None
+
+
+@pytest.mark.asyncio
 async def test_list_flavors_excludes_afterglow_hidden_flavors_before_eligibility(client, mock_conn):
     async def mock_cached_call(key, ttl, fn, *, refresh=False, **kw):
         return await fn()
@@ -263,8 +307,8 @@ def test_flavor_metadata_failure_cannot_turn_gpu_demand_into_cpu(mock_conn):
 
     from app.services import nova
 
-    mock_conn.compute.flavors.return_value = [SimpleNamespace(id="unknown", is_public=True, extra_specs={})]
-    mock_conn.compute.fetch_flavor_extra_specs.side_effect = RuntimeError("native metadata unavailable")
+    mock_conn.compute.flavors.return_value = [SimpleNamespace(id="unknown", is_public=True)]
+    mock_conn.compute.get.side_effect = RuntimeError("native metadata unavailable")
     with pytest.raises(RuntimeError, match="native metadata unavailable"):
         nova.list_flavors(mock_conn)
 
@@ -306,7 +350,6 @@ async def test_admin_target_catalog_native_access_and_uniform_quota_matrix(
     mock_conn._afterglow_authenticated_project_id = "service-project"
     mock_conn._afterglow_is_system_admin = True
     mock_conn.compute.flavors.return_value = [native]
-    mock_conn.compute.fetch_flavor_extra_specs.return_value = native
     mock_conn.compute.get_flavor_access.return_value = [
         {"tenant_id": "target-project" if granted else "service-project"}
     ]

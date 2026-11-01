@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import { ActivityIndicator, Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import UsageScheduleReminders from '$lib/components/instance/UsageScheduleReminders.svelte';
+	import { Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import { prefersReducedMotion } from '$lib/utils/motion';
 	import type { AnnouncementUser, AnnouncementSeverity } from '$lib/types/announcements';
@@ -16,6 +18,8 @@
 	let loading = $state(true);
 	let quotaLoading = $state(true);
 	let loadGeneration = 0;
+	let loadedProject = $state<string | undefined | null>(null);
+	let quotaLoadedProject = $state<string | undefined | null>(null);
 	let error = $state('');
 	let expandedId = $state<number | null>(null);
 	let initialized = false;
@@ -67,7 +71,7 @@
 
 	async function load() {
 		const generation = ++loadGeneration;
-		loading = true;
+		loading = loadedProject !== ($auth.projectId ?? undefined);
 		quotaLoading = true;
 		error = '';
 		const token = $auth.token ?? undefined;
@@ -77,6 +81,7 @@
 			.then((quotas) => {
 				if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
 					quotaAlerts = quotas.alerts ?? [];
+					quotaLoadedProject = projectId;
 				}
 			})
 			.catch(() => {
@@ -88,6 +93,7 @@
 		try {
 			const items = await api.get<AnnouncementUser[]>('/api/v1/announcements', token, projectId);
 			if (generation !== loadGeneration || ($auth.projectId ?? undefined) !== projectId) return;
+			loadedProject = projectId;
 			const unread = items.filter((announcement) => !announcement.is_read);
 			announcements = items.map((announcement) => (
 				unread.some((item) => item.id === announcement.id)
@@ -126,13 +132,15 @@
 
 	<PageHeader breadcrumb="" title={t('notifications.title')} subtitle={t('notifications.subtitle')} />
 
+	<UsageScheduleReminders class="mb-4" />
+
 	{#if error}
 		<Alert tone="danger" class="mb-4">{error}</Alert>
 	{/if}
 
-	{#if quotaLoading}
+	{#if quotaLoading && quotaLoadedProject !== ($auth.projectId ?? undefined)}
 		<Card padding="lg" class="mb-4">
-			<ActivityIndicator label={t('notifications.loadingQuota')} />
+			<LoadingState variant="section" label={t('notifications.loadingQuota')}  />
 		</Card>
 	{:else if quotaAlerts.length > 0}
 		<Card padding="lg" class="mb-4">
@@ -152,7 +160,7 @@
 	{/if}
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('notifications.title') })} />
 	{:else}
 
 		<Card padding="lg">

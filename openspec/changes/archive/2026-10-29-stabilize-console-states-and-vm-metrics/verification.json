@@ -1,0 +1,178 @@
+{
+  "sourceOnly": true,
+  "liveDatabaseRepaired": false,
+  "nativeScope": {
+    "case_count": 8,
+    "cases": [
+      {
+        "case": "member_catalog_fresh_native_denial",
+        "status": 403
+      },
+      {
+        "case": "admin_catalog_fresh_native_allow",
+        "status": 200
+      },
+      {
+        "case": "own_batch_actual_sdk_exact_native_series",
+        "cpu_points": 2,
+        "memory_points": 3,
+        "source": "gnocchi",
+        "status": 200
+      },
+      {
+        "case": "own_summary_actual_sdk_native_stats",
+        "cpu_avg": 50,
+        "memory_avg": 50,
+        "status": 200
+      },
+      {
+        "case": "foreign_metrics-batch_before_telemetry",
+        "status": 403,
+        "telemetry_reads": 0
+      },
+      {
+        "case": "foreign_metrics-summary_before_telemetry",
+        "status": 403,
+        "telemetry_reads": 0
+      },
+      {
+        "case": "native_empty_metrics-batch_no_host_broadening",
+        "status": 200
+      },
+      {
+        "case": "native_empty_metrics-summary_no_host_broadening",
+        "status": 200
+      }
+    ],
+    "evidence_kind": "local synthetic provider and real API TCP / installed SDK; not production",
+    "failure": null,
+    "fresh_native_system_checks": 2,
+    "native_sdk_connections": 6,
+    "native_subject_exchanges": [
+      "member",
+      "admin"
+    ],
+    "ok": true,
+    "provider_methods": {
+      "GET": 88,
+      "POST": 4
+    },
+    "provider_requests": 92,
+    "server_threads_stopped": true,
+    "unexpected_reads": [],
+    "unsafe_promql": 0,
+    "writes": 0
+  },
+  "backendFocused": {
+    "passed": 87
+  },
+  "frontendLatestScoped": {
+    "files": 9,
+    "passed": 117
+  },
+  "browser": {
+    "dashboardStateCases": 24,
+    "vmScopeCases": 6,
+    "navigation": {
+      "sidebarCreate": 0,
+      "drawerCreate": 0,
+      "focusRestored": true,
+      "compactFocusRestored": true,
+      "pageWizardOpened": true,
+      "providerCreatePosts": 0
+    },
+    "authRecovery": {
+      "rejected": {
+        "heading": "인증 서비스에 연결할 수 없습니다",
+        "storedSession": true,
+        "path": "/dashboard"
+      },
+      "observedAuthStatuses": [
+        503,
+        200
+      ],
+      "recoveredPath": "http://localhost:5197/dashboard"
+    },
+    "compiledDashboard": {
+      "cases": 24,
+      "cardHeights": [
+        278
+      ],
+      "overflows": 0
+    },
+    "compiledVmLocaleCount": 9
+  },
+  "warnings": {
+    "typecheck": 16,
+    "i18nKeyOrder": 45
+  },
+  "gate": {
+    "passed": false,
+    "firstBackendSnapshot": "6a06a3050fd55bf7c4073be01760d12092dedfb6e01b9591a2749e259a7be792",
+    "backend": {
+      "passed": 11166,
+      "skipped": 106,
+      "failed": 4,
+      "unrelatedConcurrentFile": "tests/test_cloud_shell_authority.py"
+    },
+    "note": "Do not combine two source snapshots into one passing full gate."
+  },
+  "tutorialFinal": {
+    "files": 3,
+    "passed": 77
+  },
+  "build": {
+    "passed": true,
+    "raw": "artifact://376"
+  },
+  "typecheck": {
+    "errors": 0,
+    "warnings": 16
+  },
+  "localization": {
+    "errors": 0,
+    "orderingWarnings": 45,
+    "hardcodedKorean": 0,
+    "files": 1259
+  },
+  "nativeIncident": {
+    "root": "external Galera initialized/disconnected/unready",
+    "repaired": false
+  },
+  "finalSnapshot": {
+    "sha256": "870fd74d65f9e6af4fe3cc37b7b729747a6638aea1c56fcfff77fe3c1eb4938c",
+    "entries": 3685,
+    "root": "/tmp/afterglow-state-gate-3Bey62",
+    "workingStagedGuardPassed": true
+  },
+  "finalStages": {
+    "frontend": {
+      "files": 475,
+      "passed": 5810
+    },
+    "contracts": {
+      "passed": 183
+    },
+    "functional": {
+      "passed": 167,
+      "deselected": 33
+    },
+    "ruffCheck": "passed",
+    "ruffFormat": {
+      "passed": false,
+      "unrelatedConcurrentFiles": [
+        "app/services/cloud_shell.py",
+        "app/services/cloud_shell_authority.py",
+        "tests/test_cloud_shell_authority.py"
+      ]
+    },
+    "raw": "artifact://384"
+  },
+  "scope": {
+    "liveDatabaseRecovered": false,
+    "configurationChanged": false,
+    "deployed": false,
+    "sharedIndexModified": false,
+    "committed": false
+  }
+}

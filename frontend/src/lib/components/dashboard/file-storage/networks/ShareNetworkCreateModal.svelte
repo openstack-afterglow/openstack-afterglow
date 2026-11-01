@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/file-storage';
   import { api, ApiError } from '$lib/api/client';
   import type { ShareNeutronNetwork, ShareSubnet } from '$lib/types/shareNetwork';
@@ -103,7 +104,7 @@
         <div>
           <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('networkCreate.subnetLabel')}
             {#if loadingSubnets}
-              <div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm mt-1.5">{t('networkCreate.loading')}</div>
+              <LoadingState variant="inline" label={t('networkCreate.loading')} />
             {:else}
               <select bind:value={form.neutron_subnet_id}
                 disabled={subnets.length === 0}
@@ -125,7 +126,7 @@
           class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('networkCreate.cancel')}</button>
         <button onclick={handleCreate} disabled={creating || !form.name.trim() || !form.neutron_net_id || !form.neutron_subnet_id}
           class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-          {creating ? t('networkCreate.creating') : t('networkCreate.create')}
+          {#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}
         </button>
       </div>
     </div>

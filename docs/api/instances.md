@@ -38,6 +38,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 10. [리소스 메트릭](#10-리소스-메트릭)
 11. [GitHub SSH 사용자 확인](#11-github-ssh-사용자-확인)
 12. [cloud-init 스니펫 라이브러리](#12-cloud-init-스니펫-라이브러리)
+13. [사용 일정](#13-사용-일정-usage-schedule)
 
 ---
 
@@ -163,6 +164,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
 | `userdata` | string | 아니오 | 사용자 cloud-init. 관리형 cloud-config 뒤에 병합 (최대 64 KiB). Windows 초기 비밀번호와 함께 지정할 수 없음 |
 | `github_username` | string | 아니오 | GitHub 공개키 SSH 접근. Ubuntu 이미지 직접 부팅에서만 사용하며 생성 전에 서버가 GitHub 프로필·공개키를 재검증 |
+| `usage_schedule` | object | 조건부 | 필수 대상 플레이버는 `{}`라도 명시. 기본 한 달·shelve·디스크 보존. 상세는 [사용 일정](#13-사용-일정-usage-schedule) 참조 |
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
 
@@ -354,6 +356,8 @@ Nova2.47+는 현재 플레이버를 ID 없이 `original_name`·vCPU·RAM·disk·
 | `POST` | `/api/v1/instances/{instance_id}/volumes` | 볼륨 연결 |
 | `DELETE` | `/api/v1/instances/{instance_id}/volumes/{volume_id}` | 볼륨 해제 |
 | `PATCH` | `/api/v1/instances/{instance_id}/volumes/{volume_id}` | 볼륨 연결 옵션 수정 |
+
+볼륨 연결·해제·`delete_on_termination` 변경은 사용 일정 등록 여부와 무관하게 실제 native owner의 같은 ephemeral usage lease를 사용하여 만료 작업과 조정합니다. Redis coordination 불가·lease 상실·만료 작업과의 충돌은409이며, native 상태와 일정을 새로 확인한 뒤 판단합니다.
 
 ### GET /api/v1/instances/{instance_id}/volumes
 
@@ -647,6 +651,10 @@ Nova metadata에는 share ID, 정확한 rule ID/type/target/level, managed 여�
 
 현재 caller의 Keystone catalog `metric` endpoint에서 Gnocchi를 자동 발견하여 Ceilometer 수집값을 우선 읽습니다. 현대 Ceilometer의 제거된 REST API는 호출하지 않습니다. Native 서비스 부재·권한 거절·미수집·실패 시 CPU/guest RAM·네트워크·disk I/O는 기존 Prometheus(node_exporter → libvirt-exporter, GPU는 DCGM) 경로를 지표별로 사용합니다. Native 일부 지표가 실패해도 다른 지표는 유지됩니다.
 
+사용자 **VM 메트릭**(`/dashboard/observability`)은 현재 프로젝트의 실제 Nova 인스턴스를 검색·선택하고 아래 UUID-specific API를 호출한다. Compute-node `node_exporter`의 host dashboard를 VM 데이터로 사용하지 않는다. 기존 fallback에서 node exporter를 사용하는 경우에도 Nova UUID로 식별되는 guest 수집 대상이며 임의 host 합계가 아니다. Backend Nova 소유권과 Gnocchi resource/project를 검증하고, 미수집/실패는 host 지표나0으로 대체하지 않는다. 사용자 모드에서는 관리자 identity도 Grafana iframe을 열지 않는다.
+
+Infrastructure Grafana catalog `GET /api/v1/grafana/dashboards`는 fresh system-admin 확인을 요구한다. 관리자 instance monitoring은 기존 admin metrics endpoint와 명시적 admin mode를 사용한다. Grafana URL의 project 변수나 UID 비공개는 외부 Grafana의 tenant 인가가 아니며 direct-origin ACL은 별도 운영 설정·검증 대상이다.
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/instances/{instance_id}/metrics` | 단일 메트릭 시계열 |
@@ -794,3 +802,47 @@ GitHub 공개키 SSH 접근을 선택한 VM 생성 전에 GitHub 사용자 존�
 **오류**
 - `404 Not Found` — 삭제 대상 스니펫 없음(다른 사용자 소유 포함)
 - `503 Service Unavailable` — DB 미초기화
+
+---
+
+## 13. 사용 일정 (Usage schedule)
+
+일정의 유일한 정본은 **Nova server metadata**입니다. 모든 GPU 플레이버, `vcpus >= 12` **또는** `ram >= 65536` MiB인 플레이버, 관리자가 추가 지정한 플레이버(`afterglow:usage_schedule_required=true`)에 적용됩니다. 추가 지정의 해제/false는 GPU·CPU·RAM 기본 조건을 해제하지 않습니다. 대상 기존 VM은 생성 시각이 아니라 **첫 성공적인 metadata 등록부터 한 calendar month**의 유예를 받습니다. 일부/손상된 일정 metadata는 새 일정으로 덮어쓰지 않습니다.
+
+분류에는 실제 native extra-specs object 또는 `GET flavors/{id}/os-extra_specs`의 명시적 `extra_specs` string-map을 요구합니다. 정상 빈 `{}`는 허용하지만 envelope 누락·null·잘못된 map·redirect는503으로 중단하며, 읽을 수 없는 GPU/관리자 추가 지정을 CPU 비대상으로 낮추지 않습니다.
+
+### 생성 입력과 날짜
+
+일반 동기/SSE 생성과 관리자 SSE 생성의 `usage_schedule: {}`는 `expires_at: null`, `expiry_action: "shelve"`, `delete_volumes: false`, `reason: ""`의 기본값을 뜻합니다. 필수 대상에서 object 자체를 생략하면422입니다. 비대상도 명시적으로 일정을 설정할 수 있습니다. 검증한 일정은 첫 Nova CREATE에 포함됩니다. MCP VM 생성은 승인 내용의 만료 시각이 바뀌지 않도록 **timezone을 포함한 명시적 `expires_at`**가 필요하며 `{}`/null 기본 날짜를 허용하지 않습니다.
+
+독립 관리형 consumer 생성도 같은 필수 조건을 적용합니다. `POST /api/v1/palimpsest/catalog/environments/{profile_id}/consume`과 `POST /api/v1/admin/libraries/consume`는 직접 `usage_schedule` object를, `POST /api/v1/admin/libraries/imports/dockerfile`의 JSON 입력은 기존 nested `consumer.usage_schedule` object를 사용합니다(별도 outer `consume_usage_schedule` 필드가 아님). 필수 대상에서 `{}`를 명시하면 기본 한 calendar month·shelve·디스크 보존이며, import job enqueue 시점이 아니라 실제 consumer allocation/첫 Nova CREATE 준비 시 기본 날짜를 계산하고 명시 날짜도 다시 검증합니다. 대기 중 job의 기존 immutable CREATE request payload에 요청을 보존하는 것은 live schedule SQL 저장이 아니며, 검증한 일정은 첫 Nova CREATE metadata에 포함되고 생성 후 일정 권위는 계속 Nova metadata뿐입니다.
+
+- 날짜는 timezone이 있는 ISO8601(`Z` 또는 offset)이며 UTC로 저장·반환하고 소수 초는 제거합니다. UI는 사용자의 local timezone으로 편집합니다.
+- 기본 한 달은30일이 아니라 UTC calendar month이며 해당 일이 없으면 월말로 clamp합니다(예:1월31일 →2월28일/29일). 생성일 기본 날짜는 실제 생성 준비 시 계산되므로 화면의 예상 날짜와 다를 수 있습니다.
+- 초기 날짜는 미래여야 하며 기본 한 달보다 늦으면 사유가 필수입니다. 사유는 앞뒤 공백을 제거한 한 줄, 최대255 **UTF-8 bytes**이며 제어 문자를 허용하지 않습니다.
+- `expiry_action`은 `shelve` 또는 `delete`입니다. `delete_volumes`는 strict boolean이며 `true`는 `delete`와 함께만 유효합니다.
+
+### 조회·수정·연장
+
+아래 경로는 모두 `Cache-Control: no-store`입니다. GET은 현재 프로젝트 reader가 사용할 수 있고 PUT/POST는 프로젝트 writer 권한과 정확한 native 소유 범위를 다시 확인합니다. 관리자 변형은 [관리자 API](admin.md#인스턴스-사용-일정)에 따릅니다.
+
+| 메서드 | 경로 | 입력·응답 |
+|---|---|---|
+| `GET` | `/api/v1/instances/usage-schedules` | `{schedules: [...], errors: [...]}`. 현재 프로젝트 목록; schedule에는 선택적 `instance_name`, 오류에는 `instance_id`, `instance_name`, `message` |
+| `GET` | `/api/v1/instances/{instance_id}/usage-schedule` | 일정 object 또는 등록된 prefix key가 전혀 없을 때만 `null` |
+| `PUT` | `/api/v1/instances/{instance_id}/usage-schedule` | `revision` 필수, 선택적 `expires_at`, `expiry_action`, `delete_volumes`, `reason`; 갱신된 일정 반환 |
+| `POST` | `/api/v1/instances/{instance_id}/usage-schedule/extend` | `{"expires_at":"2027-02-28T09:00:00Z","reason":"실험 계속 진행","revision":"0123456789abcdef0123456789abcdef"}`; 갱신된 일정 반환 |
+
+일정 응답은 `instance_id`, `starts_at`, `expires_at`, `expiry_action`, `delete_volumes`, `reason`, `revision`, `state`, `source`(`created`/`adopted`), 선택적 `last_error`, `extended_at`, `extended_by`를 포함합니다. Revision은32자리 lowercase hex이며 최신 GET 값을 보내야 합니다. PUT의 생략/null 날짜는 기존 날짜를 보존하고 생략한 action/디스크 동의도 보존합니다. 날짜를 앞당길 수 없고, 늘릴 때는 미래 날짜와 비어 있지 않은 사유가 필요합니다. POST는 반드시 기존보다 늦춰야 합니다. `blocked`/`complete`는 미래로 연장해야 다시 `active`가 되며 **연장 자체가 start/unshelve를 수행하지 않습니다**. 진행 중/`unknown` 일정은 수정할 수 없습니다. Afterglow에서 다시 시작하려면 먼저 유효한 active 일정을 확보해야 합니다.
+
+`409`는 stale revision·진행 중/불명 상태·coordination 불가·손상 metadata, `422`는 입력/날짜/사유 위반입니다. Native 조회 실패는 빈 목록이나 `null`로 바꾸지 않으며, 목록의 `errors`도 확인해야 합니다. `502` 쓰기 결과는 적용 여부가 불명일 수 있어 새 조회와 필요 시 운영자 조정 없이 자동 재전송하지 않습니다.
+
+### 만료 동작과 데이터 경계
+
+Scheduler는 운영자가 명시적으로 활성화한 환경에서 약60초 간격으로 native census를 수행하며 재시작 후에도 metadata에서 연체 일정을 발견합니다. 기본은 비활성이고 metadata API/UI 자체는 사용할 수 있습니다. 정각 실행 SLA는 아니며 서비스·coordination·native 장애가 있으면 늦어질 수 있습니다. 기본 만료 동작은 shelve 후 `SHELVED`를 확인하고 offload하여 `SHELVED_OFFLOADED`를 확인하는 순서입니다. 단순 shelve/stop만으로 compute 자원이 반환되었다고 간주하지 않습니다. 선택한 삭제는 실행 중이면 먼저 stop하고 정지 상태·소유권·attachment를 확인한 뒤 일반 Nova DELETE를 한 번 제출합니다. Force 삭제나 불명 요청의 자동 replay는 하지 않습니다.
+
+예약 삭제의 기본은 **root와 모든 data Cinder 볼륨 보존**입니다. 기존 attachment가 `delete_on_termination=true`여도 Nova microversion2.85로 `false` 변경과 readback을 확인한 뒤 삭제합니다. 별도 `delete_volumes=true` 동의는 검증한 현재 연결 볼륨에만 적용하며 multiattach·타 프로젝트·알 수 없는 attachment는 안전하게 차단합니다. 이 동의는 백업·스냅샷·Manila share·공개 원본 이미지/스냅샷·보호된 source/clone artifact를 지우는 권한이 아닙니다. 단, **소비자 소유로 따로 복제한 단독 연결 lower clone 볼륨은 연결 디스크 삭제 동의의 대상**이 될 수 있으며 clone이라는 이유만으로 보존되지는 않습니다. Detached managed disk는 임의 정리하지 않습니다. VM 삭제 시 local ephemeral disk는 보존되지 않습니다.
+
+관리형 Palimpsest/Union 자원의 정확한 소유권 receipt를 사용해 health credential·전용 접근 규칙·port/Floating IP를 정리하고, 보존 디스크는 기존 resource ledger에 retained tombstone으로 남겨 다른 reclaimer의 삭제를 막습니다. 보존 lower/upper disk가 남으면 immutable source artifact 참조도 유지하고, kept managed disk가 모두 native 부재로 확인되기 전에는 VM 삭제만으로 source 참조를 해제하지 않습니다. 이것은 SQL 일정이나 새 schedule schema가 아닙니다. Legacy name-only CephX receipt·정확한 server binding 없는 health alias 등은 이름으로 추정하지 않고 stop 전 실제 오류로 차단합니다. Metadata-only 전용 grant/health는 quiescent `delete_requested` 확인 후 DELETE 전에 회수하고, 기존 ledger의 grant/port/Floating IP 정리는 native server404 뒤에 조정합니다. Native403/409·응답 유실·`*_requested`/`unknown`은 성공도 안전한 재시도 허가도 아니므로 native 상태와 resource receipt를 운영자가 대조해야 합니다.
+
+Native metadata key는 prefix `afterglow_usage_` 아래 `version`(`1`), `starts_at`, `expires_at`, `action`, `delete_volumes`(`true`/`false`), `reason`, `revision`, `state`, `source` 및 선택적 `last_error`, `extended_at`, `extended_by`입니다. State는 `active`, `blocked`, `shelve_requested`, `offload_requested`, `stop_requested`, `volume_flags_requested`, `volumes_ready`, `delete_requested`, `complete`, `unknown`입니다. 다른 metadata는 보존합니다. Native metadata를 직접 수정할 권한이 있는 사용자의 CLI 우회까지 막는 Nova 정책은 아니며, 운영상 coordination 제약은 [배포 가이드](../deployment.md#인스턴스-사용-일정-운영-source-only)를 참조하세요.

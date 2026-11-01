@@ -3,7 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { t } from '$lib/i18n/ns/shared';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { ActivityIndicator } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import UsageBar from '$lib/components/ui/UsageBar.svelte';
 
 	interface QuotaItem {
@@ -125,9 +125,9 @@
 		>×</button>
 	</div>
 
-	<div class="flex-1 overflow-y-auto p-5 space-y-5">
-		{#if loading}
-			<ActivityIndicator variant="spinner" size="sm" label={t('quotaPanel.loading')} />
+	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto {loading && !quota ? '' : 'p-5 space-y-5'}">
+		{#if loading && !quota}
+			<LoadingState variant="section" label={t('quotaPanel.loading')} />
 		{:else if error && !quota}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if quota}
@@ -252,7 +252,7 @@
 				class="w-full bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:cursor-not-allowed text-action-on-warm text-sm font-medium py-2 rounded-lg transition-colors"
 			>
 				{#if saving}
-					<ActivityIndicator variant="spinner" tone="ink" size="sm" label={t('quotaPanel.saving')} />
+					<LoadingState variant="control" label={t('quotaPanel.saving')} />
 				{:else}
 					{t('quotaPanel.save')}
 				{/if}

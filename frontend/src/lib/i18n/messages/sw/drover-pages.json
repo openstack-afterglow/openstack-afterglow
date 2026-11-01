@@ -122,5 +122,9 @@
 	"yaml.parseError": "Hitilafu ya uchanganuzi wa YAML: {error}",
 	"yaml.configMapKind": "kind lazima iwe ConfigMap",
 	"yaml.secretKind": "kind lazima iwe Secret",
-	"yaml.stringDataRequired": "Tumia stringData badala ya data kuhariri Secret (uingizaji wa maandishi ya kawaida)"
+	"yaml.stringDataRequired": "Tumia stringData badala ya data kuhariri Secret (uingizaji wa maandishi ya kawaida)",
+	"clusterError.details": "Maelezo ya hitilafu",
+	"clusterError.recovery": "Kagua hatua iliyoshindwa na rasilimali katika maelezo ya klasta. Tatua masuala ya kikundi cha usalama, mtandao au mgao, kisha onyesha hali upya.",
+	"clusterError.loadFailed": "Imeshindwa kupakia klasta",
+	"clusterError.reload": "Pakia tena"
 }

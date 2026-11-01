@@ -270,9 +270,14 @@ def _account_name_key(name):
     return _email_key(name) or name.casefold()
 
 
-def _account_rows(ks, domain_id, *, operation=None):
-    """Complete inventory with exact account metadata for every identity writer."""
+def _account_rows(ks, domain_id, *, operation=None, exact_name=None):
+    """Complete inventory; hydrate all writers, or exact native password names.
+
+    Only raw native core names can exclude unrelated password candidates. Email
+    aliases and SDK adapter inventories still require every exact user resource.
+    """
     transport = getattr(ks.users, "client", None)
+    native_names = transport is not None and callable(getattr(transport, "get", None))
     if transport is not None and callable(getattr(transport, "get", None)):
         url = "/users" + ("?" + urlencode({"domain_id": domain_id}) if domain_id else "")
         _, body = transport.get(url)
@@ -293,12 +298,22 @@ def _account_rows(ks, domain_id, *, operation=None):
             or (isinstance(links, dict) and links.get("next"))
         ):
             raise HTTPException(503, "Native account inventory is incomplete")
+    narrow_names = (
+        exact_name is not None
+        and native_names
+        and all(
+            isinstance(_field(row, "name"), str) and bool(_field(row, "name")) and _field(row, "domain_id") == domain_id
+            for row in rows
+        )
+    )
     result, ids = [], set()
     for row in rows:
         uid = _field(row, "id")
         if not isinstance(uid, str) or not uid or uid in ids:
             raise HTTPException(503, "Native account inventory identity is invalid")
         ids.add(uid)
+        if narrow_names and _field(row, "name") != exact_name:
+            continue
         try:
             full = operation.get("users", uid) if operation is not None else ks.users.get(uid)
         except Exception as exc:
@@ -337,7 +352,7 @@ async def _iam_write():
     """One lock order for enrollment state and native writes: graph, then SQL."""
     conn = await _provider_call(keystone.get_admin_project_connection)
     try:
-        async with identity_roles._graph_lock(conn) as lease:
+        async with identity_roles._graph_lock(conn, wait=True) as lease:
             ks = await _provider_call(keystone._get_admin_ks_client)
             catalog = await _provider_call(identity_roles.load_catalog, conn)
             yield lease, ks, catalog

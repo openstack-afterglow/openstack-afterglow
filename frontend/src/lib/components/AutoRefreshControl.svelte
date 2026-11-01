@@ -1,7 +1,9 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/Button.svelte';
-	import ToggleGroup, { type ToggleOption } from '$lib/components/ui/ToggleGroup.svelte';
-	import { t } from '$lib/i18n/ns/shared';
+	import Field from '$lib/components/ui/Field.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		active: boolean;
@@ -19,11 +21,9 @@
 		onManualRefresh,
 	}: Props = $props();
 
-	const toggleValue = $derived(active ? String(intervalSeconds) : 'off');
-	const options: ToggleOption[] = $derived([
-		{ value: 'off', label: t('autoRefresh.off') },
-		...intervalOptions.map((opt) => ({ value: String(opt), label: `${opt}s` })),
-	]);
+	const componentId = $props.id();
+	const selectedInterval = $derived(active ? String(intervalSeconds) : 'off');
+	const options = $derived([...new Set([...intervalOptions, intervalSeconds])].filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b));
 
 	function handleChange(value: string) {
 		if (value === 'off') {
@@ -36,17 +36,33 @@
 </script>
 
 <div class="auto-refresh-control">
+	<div class="refresh-frequency">
+		<Field label={t('autoRefresh.label')} for={`${componentId}-interval`} class="min-w-0 max-w-full [overflow-wrap:anywhere]">
+			<SelectInput id={`${componentId}-interval`} value={selectedInterval} ariaLabel={t('autoRefresh.label')} onchange={(event) => handleChange((event.currentTarget as HTMLSelectElement).value)}>
+				<option value="off">{t('autoRefresh.off')}</option>
+				{#each options as seconds (seconds)}
+					<option value={String(seconds)}>{t('autoRefresh.seconds', { seconds })}</option>
+				{/each}
+			</SelectInput>
+		</Field>
+	</div>
 	<Button
 		type="button"
 		onclick={onManualRefresh}
 		disabled={refreshing}
+		ariaBusy={refreshing}
+		ariaLabel={refreshing ? t('autoRefresh.loading') : t('autoRefresh.refreshNow')}
 		title={refreshing ? t('autoRefresh.loading') : t('autoRefresh.refreshNow')}
 		variant="subtle"
 		size="sm"
+		class="max-w-full !whitespace-normal"
 	>
+		{#if refreshing}
+			<LoadingState variant="control" label="" aria-hidden="true" />
+		{:else}
 		<svg
-			class="refresh-icon {refreshing ? 'motion-spin' : ''}"
-			style={refreshing ? 'animation-direction: reverse' : ''}
+			class="refresh-icon"
+			aria-hidden="true"
 			fill="none"
 			stroke="currentColor"
 			stroke-width="2"
@@ -58,23 +74,27 @@
 				d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-3M20 15a8 8 0 01-14.93 3"
 			/>
 		</svg>
+		{/if}
 		<span class="refresh-label">{t('autoRefresh.refresh')}</span>
 	</Button>
-	<ToggleGroup value={toggleValue} {options} onchange={handleChange} size="xs" />
 </div>
 
 <style>
 	.auto-refresh-control {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.375rem;
+		gap: 0.5rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.refresh-icon {
 		width: 0.875rem;
+		flex-shrink: 0;
 		height: 0.875rem;
 	}
-	.refresh-label { display: none; }
-	@media (min-width: 768px) {
-		.refresh-label { display: inline; }
-	}
+	.refresh-frequency { min-width: 0; max-width: 100%; }
+	.refresh-frequency :global(.field) { flex-direction: row; align-items: center; }
+	.refresh-frequency :global(select) { width: auto; max-width: 100%; }
+	.refresh-label { overflow-wrap: anywhere; }
 </style>

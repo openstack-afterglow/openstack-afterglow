@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -60,7 +60,7 @@
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
 				{/if}
 				{#if inFlight > 0}
-					<ActivityIndicator variant="pulse" size="xs" label={t('nodegroup.provisioning', { count: inFlight })} class="text-xs" />
+					<LoadingState variant="control" label={t('nodegroup.provisioning', { count: inFlight })} class="text-xs" />
 				{/if}
 			{/if}
 		</div>

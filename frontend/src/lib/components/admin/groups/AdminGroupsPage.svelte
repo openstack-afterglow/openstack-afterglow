@@ -1,11 +1,11 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAdminGroupsController } from '$lib/stores/adminGroupsController.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -61,14 +61,13 @@
 	</PageHeader>
 
 	<ResourceToolbar label={t('groupPage.filters')} class="mb-3">
-		<div class="flex-1 basis-full sm:basis-64 min-w-0">
-			<TextInput type="search" bind:value={search} ariaLabel={t('groupPage.search')} placeholder={t('groupPage.searchPlaceholder')} />
-		</div>
+		<Field label={t('groupPage.search')} for="admin-group-search" class="min-w-0 w-full md:flex-1 md:basis-64">
+			<TextInput id="admin-group-search" type="search" bind:value={search} ariaLabel={t('groupPage.search')} placeholder={t('groupPage.searchPlaceholder')} />
+		</Field>
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; }}>{t('groupPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
-		{#if ctrl.loading}<ActivityIndicator size="xs" />{/if}
-		<span aria-live="polite">{ctrl.loading ? t('groupPage.loading') : ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>
+		{#if !ctrl.loading}<span aria-live="polite">{ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>{/if}
 		<span>{t('groupPage.sortNotice')}</span>
 	</div>
 
@@ -77,7 +76,7 @@
 	{/if}
 
 	{#if ctrl.loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={t('groupPage.loading')} />
 	{:else if filteredGroups.length === 0 && !ctrl.error}
 		<div class="text-center text-ink-2 text-sm py-8">{hasFilters ? t('groupPage.noMatches') : t('groupPage.empty')}</div>
 	{:else if filteredGroups.length > 0}

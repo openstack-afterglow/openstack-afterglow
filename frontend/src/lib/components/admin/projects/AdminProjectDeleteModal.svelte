@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
@@ -261,7 +261,7 @@
 			{#if deleteError}<Alert tone="danger">{deleteError}</Alert>{/if}
 			{#if checking}
 				<div class="flex items-center gap-2 text-sm text-ink-2" role="status" aria-live="polite">
-					<ActivityIndicator size="xs" />{t('projectDelete.checking')}
+					<LoadingState variant="control" label="" aria-hidden="true" />{t('projectDelete.checking')}
 				</div>
 			{:else if checkError}
 				<Alert tone="danger">{checkError}</Alert>

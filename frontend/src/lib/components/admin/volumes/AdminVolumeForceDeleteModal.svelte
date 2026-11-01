@@ -1,10 +1,10 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-storage';
-	import { volumeStatusLabel } from './AdminVolumeStatusSummary.svelte';
+	import { getStatusLabel } from '$lib/config/statusColors';
 
 	interface AdminVolume {
 		id: string;
@@ -69,7 +69,7 @@
 			<h2 class="text-lg font-semibold text-state-danger-text mb-3">{t('volumeForceDelete.title')}</h2>
 			<p class="text-sm text-ink-2 mb-2">
 				<span class="text-ink-0 font-mono">{volume.name || volume.id.slice(0, 8)}</span>
-				({volumeStatusLabel(volume.status)})
+				({getStatusLabel(volume.status, 'volume')})
 			</p>
 			<p class="text-xs text-state-danger-text mb-1">{t('volumeForceDelete.warning')}</p>
 			<p class="text-xs text-ink-2 mb-4">{t('volumeForceDelete.attachedWarning')}</p>
@@ -78,7 +78,7 @@
 			{/if}
 			<div class="flex justify-end gap-3">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeForceDelete.cancel')}</button>
-				<button onclick={confirmForceDelete} disabled={forceDeleting} class="px-4 py-2 bg-state-danger hover:bg-state-danger/90 text-surface-canvas text-sm font-medium rounded-lg disabled:opacity-30">{#if forceDeleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeForceDelete.deleting')}</span></span>{:else}{t('volumeForceDelete.delete')}{/if}</button>
+				<button onclick={confirmForceDelete} disabled={forceDeleting} class="px-4 py-2 bg-state-danger hover:bg-state-danger/90 text-surface-canvas text-sm font-medium rounded-lg disabled:opacity-30">{#if forceDeleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('volumeForceDelete.deleting')}</span></span>{:else}{t('volumeForceDelete.delete')}{/if}</button>
 			</div>
 		</div>
 	</div>

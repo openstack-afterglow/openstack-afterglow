@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
   import type { Network } from '$lib/types/networks';
   import { dialogFocus } from '$lib/utils/dialogFocus';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   let {
     open = $bindable(),
@@ -64,7 +64,7 @@
       {#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('router.actions.cancel')}</button>
-        <button onclick={submit} disabled={creating} aria-busy={creating} class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<ActivityIndicator size="xs" tone="ink" />{/if}{creating ? t('router.create.creating') : t('router.create.submit')}</button>
+        <button onclick={submit} disabled={creating} aria-busy={creating} class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('router.create.creating') : t('router.create.submit')}</button>
       </div>
     </div>
   </div>

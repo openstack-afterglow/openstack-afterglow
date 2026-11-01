@@ -1,0 +1,76 @@
+---
+# Unlike run_once (once per serial batch), the first actual play target observes
+# the complete Nova API inventory once and shares one immutable aggregate with
+# every later batch. Controllers excluded by --limit remain unavailable;
+# delegation never expands an operator's requested inventory scope.
+- name: PCI aliases | Collect complete controller observation
+  when: inventory_hostname == ansible_play_hosts_all[0]
+  block:
+    - name: PCI aliases | Select authoritative Nova API controllers
+      ansible.builtin.set_fact:
+        afterglow_nova_pci_alias_controllers: "{{ (groups.get('nova-api', []) or groups['afterglow']) | unique | sort }}"
+        cacheable: false
+      no_log: true
+
+    - name: PCI aliases | Read sanitized effective controller aliases
+      become: true
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/snapshot_nova_pci_aliases.py') }}"
+        stdin: >-
+          {{ {'host': item, 'path': (hostvars[item].node_config_directory | default('', true)) ~ '/nova-api/nova.conf'} | to_json }}
+      delegate_to: "{{ item }}"
+      loop: "{{ groups.get('nova-api', []) | intersect(query('ansible.builtin.inventory_hostnames', ansible_limit | default('all', true))) | unique | sort }}"
+      register: afterglow_nova_pci_alias_observations
+      changed_when: false
+      failed_when: false
+      ignore_unreachable: true
+      check_mode: false
+      when: (hostvars[item].node_config_directory | default('', true)) | string | length > 0
+      no_log: true
+
+    # If nova-api is not in inventory, fallback hosts stay explicitly unavailable:
+    # file discovery alone cannot prove the complete authoritative controller set.
+    - name: PCI aliases | Build closed identical aggregate
+      become: true
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/snapshot_nova_pci_aliases.py') }}"
+        stdin: >-
+          {{ {'mode': 'aggregate', 'controllers': afterglow_nova_pci_alias_controllers,
+              'results': afterglow_nova_pci_alias_observations.results | default([])} | to_json }}
+      register: afterglow_nova_pci_alias_aggregate
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: PCI aliases | Share sanitized snapshot across serial batches
+      ansible.builtin.set_fact:
+        afterglow_nova_pci_alias_snapshot: "{{ afterglow_nova_pci_alias_aggregate.stdout | from_json }}"
+        cacheable: false
+      no_log: true
+
+- name: PCI aliases | Create isolated observation directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ afterglow_nova_pci_alias_snapshot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: inventory_hostname in groups['afterglow']
+
+- name: PCI aliases | Install sanitized backend observation read-only
+  become: true
+  ansible.builtin.copy:
+    content: "{{ hostvars[ansible_play_hosts_all[0]].afterglow_nova_pci_alias_snapshot | to_json(ensure_ascii=true, sort_keys=true, separators=[',', ':']) }}\n"
+    dest: "{{ afterglow_nova_pci_alias_snapshot_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  no_log: true
+  when: inventory_hostname in groups['afterglow']

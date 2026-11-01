@@ -6,6 +6,7 @@ import json
 import subprocess
 import threading
 from contextlib import asynccontextmanager, contextmanager
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -412,9 +413,22 @@ def _import_provider(conn):
 
 
 @pytest.mark.asyncio
-async def test_import_consumer_binding_preserves_root_first_ids_and_is_reused(_fake_redis_global):
+@pytest.mark.parametrize(
+    "schedule",
+    [
+        {"expires_at": None, "expiry_action": "shelve", "delete_volumes": False, "reason": ""},
+        {
+            "expires_at": "2099-01-01T00:00:00Z",
+            "expiry_action": "delete",
+            "delete_volumes": True,
+            "reason": "Long-running imported experiment",
+        },
+    ],
+)
+async def test_import_consumer_binding_preserves_root_first_ids_and_is_reused(_fake_redis_global, schedule):
     job = _import_job(cached=True, consumer=True)
     job.artifact_ids = [1, 2]
+    job.consumer_spec["usage_schedule"] = schedule
     store = _ImportRows(job, _sealed_import_root())
 
     async def launch(**values):
@@ -424,6 +438,9 @@ async def test_import_consumer_binding_preserves_root_first_ids_and_is_reused(_f
     with patch("app.services.layer_build.run_layer_consume", AsyncMock(side_effect=launch)) as consume:
         async with _owned_import(store, _fake_redis_global):
             await dockerfile_import._launch_import_consumer(9)
+            # A completed VM's native metadata is now the sole schedule authority.
+            # Stale or corrupt immutable job input must not trigger another CREATE.
+            job.consumer_spec["usage_schedule"] = {"expires_at": "2000-01-01T00:00:00Z"}
             await dockerfile_import._launch_import_consumer(9)
             assert (await build_work.journal_get())["consume_id"] == job.consume_id
     rows = [row for (kind, _), row in store.rows.items() if kind is LayerConsume]
@@ -434,6 +451,7 @@ async def test_import_consumer_binding_preserves_root_first_ids_and_is_reused(_f
     assert consume.call_args.kwargs["artifact_ids"] == [1, 2]
     assert consume.call_args.kwargs["resource_snapshot"] == job.consumer_spec["resource_snapshot"]
     assert consume.call_args.kwargs["image_id"] == job.base_image_id
+    assert consume.call_args.kwargs["usage_schedule"] == schedule
 
 
 @pytest.mark.asyncio
@@ -573,6 +591,91 @@ async def test_report_failure_identifies_observed_state_without_token(
                 )
     assert expected in str(failure.value)
     assert "a" * 32 not in str(failure.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_expiry", [False, True])
+async def test_import_consumer_freezes_request_not_schedule_epoch(mock_conn, explicit_expiry):
+    from app.api.union.layer_ops import DockerfileConsumerRequest
+
+    flavor = SimpleNamespace(id="required-flavor", name="cpu", vcpus=12, ram=8192, extra_specs={})
+    mock_conn.compute.find_flavor.return_value = flavor
+    mock_conn.compute.fetch_flavor_extra_specs.return_value = flavor
+    expiry = datetime.now(UTC) + timedelta(days=14) if explicit_expiry else None
+    request = DockerfileConsumerRequest(
+        flavor_id="required-flavor",
+        ssh_public_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest import-review",
+        usage_schedule={"expires_at": expiry, "expiry_action": "delete", "delete_volumes": True},
+    )
+    with (
+        patch(
+            "app.services.resource_policy_store.resolve_policy_snapshot",
+            AsyncMock(return_value={"nova.default_network": {"id": "net-1", "name": "network"}}),
+        ),
+        patch(
+            "app.services.resource_policy_store.get_policy_snapshot",
+            AsyncMock(return_value={"openstack.service_project": {"id": "service-project"}}),
+        ),
+    ):
+        spec = await dockerfile_import.prepare_import_consumer(mock_conn, request, profile_name="imported")
+    assert spec["usage_schedule"] == request.usage_schedule.model_dump(mode="json")
+    if expiry:
+        assert datetime.fromisoformat(spec["usage_schedule"]["expires_at"]) == expiry.replace(microsecond=0)
+    else:
+        assert spec["usage_schedule"]["expires_at"] is None
+    assert spec["usage_schedule"]["delete_volumes"] is True
+    assert not any(key.startswith("afterglow_usage_") for key in spec)
+    assert "key_name" not in spec
+    mock_conn.compute.create_server.assert_not_called()
+    mock_conn.network.create_port.assert_not_called()
+    mock_conn.block_storage.create_volume.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schedule", [None, {"expires_at": "2000-01-01T00:00:00Z"}])
+async def test_import_required_schedule_rejected_before_enqueue(admin_client, mock_conn, schedule):
+    flavor = SimpleNamespace(
+        id="required-flavor",
+        name="small",
+        vcpus=2,
+        ram=8192,
+        extra_specs={"afterglow:usage_schedule_required": "true"},
+    )
+    mock_conn.compute.find_flavor.return_value = flavor
+    mock_conn.compute.fetch_flavor_extra_specs.return_value = flavor
+    with (
+        patch.object(
+            dockerfile_import,
+            "prepare_dockerfile_import",
+            return_value=SimpleNamespace(profile_name="imported", parent_digest=None),
+        ),
+        patch(
+            "app.services.resource_policy_store.resolve_policy_snapshot",
+            AsyncMock(return_value={"nova.default_network": {"id": "net-1", "name": "network"}}),
+        ),
+        patch(
+            "app.services.resource_policy_store.get_policy_snapshot",
+            AsyncMock(return_value={"openstack.service_project": {"id": "service-project"}}),
+        ),
+        patch.object(dockerfile_import, "create_import_job", AsyncMock()) as enqueue,
+    ):
+        response = await admin_client.post(
+            "/api/v1/admin/libraries/imports/dockerfile",
+            json={
+                "github_url": "https://github.com/acme/widgets",
+                "layer_prefix": "demo",
+                "consumer": {
+                    "flavor_id": "required-flavor",
+                    "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest import-review",
+                    "usage_schedule": schedule,
+                },
+            },
+        )
+    assert response.status_code == 422
+    enqueue.assert_not_awaited()
+    mock_conn.compute.create_server.assert_not_called()
+    mock_conn.network.create_port.assert_not_called()
+    mock_conn.block_storage.create_volume.assert_not_called()
 
 
 @pytest.mark.asyncio

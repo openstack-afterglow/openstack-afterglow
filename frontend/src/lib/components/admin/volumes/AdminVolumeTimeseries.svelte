@@ -1,27 +1,36 @@
 <script lang="ts">
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { TsPoint } from '$lib/types/common';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let {
 		data,
 		loading,
 		range,
+		error = '',
+		onRetry,
 		onRangeChange,
 	}: {
 		data: TsPoint[];
 		loading: boolean;
 		range: string;
+		error?: string;
+		onRetry?: () => void;
 		onRangeChange: (r: string) => void;
 	} = $props();
 </script>
 
-<div class="mb-6">
+<div>
 	{#if loading}
-		<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-			<ActivityIndicator size="sm" label={t('volumeList.chartLoading')} />
-		</div>
+		<LoadingState variant="section" label={t('volumeList.chartLoading')} />
+	{:else if error}
+		<Alert tone="danger">{error}</Alert>
+		{#if onRetry}<Button variant="outline" onclick={onRetry}>{t('volumeList.retryChart')}</Button>{/if}
+	{:else if data.length === 0}
+		<p class="py-4 text-sm text-ink-2" role="status">{t('volumeList.chartEmpty')}</p>
 	{:else}
 		<TimeSeriesChart
 			{data}

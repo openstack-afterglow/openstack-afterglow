@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { DocsLocale } from './locales';
 import { createDocSearchIndex, getDocGuides, searchDocGuides } from './catalog';
+import type { DocGuide } from './types';
+import { translateDocGuide } from './translate';
 
 const nativeSnapshotQueries: { locale: DocsLocale; query: string }[] = [
 	{ locale: 'ko', query: 'Cinder 스냅샷' },
@@ -65,5 +67,42 @@ describe('localized documentation search', () => {
 		const index = createDocSearchIndex(await getDocGuides('en'));
 		expect(searchDocGuides('provisioning_status', index).map(({ slug }) => slug)).toContain('octavia');
 		expect(searchDocGuides('DHSS CephFS', index).map(({ slug }) => slug)).toContain('manila');
+	});
+});
+
+describe('document hierarchy content', () => {
+	const guide: DocGuide = {
+		slug: 'hierarchy-example', name: 'Guide', title: 'Guide', summary: 'Guide', category: 'start',
+		keywords: [], prerequisites: [], related: [], consoleLinks: [],
+		sections: [{
+			id: 'roles', title: 'Roles', hierarchy: {
+				title: 'Hierarchy', description: 'Conditional access', relation: 'includes',
+				levels: [{ role: 'example_owner', alsoIncludes: ['native_writer'] }, { role: 'example_reader' }],
+			},
+		}],
+	};
+
+	it('finds graph-only descriptions and side branches while requiring every search term', () => {
+		const index = createDocSearchIndex([guide]);
+		expect(searchDocGuides('conditional native_WRITER', index).map(({ slug }) => slug)).toEqual(['hierarchy-example']);
+		expect(searchDocGuides('Hierarchy example_reader', index).map(({ slug }) => slug)).toEqual(['hierarchy-example']);
+		expect(searchDocGuides('conditional absent-role', index)).toEqual([]);
+	});
+
+	it('localizes graph prose without treating exact roles or side branches as translation keys', () => {
+		const translated = translateDocGuide(guide, {
+			Guide: 'Anleitung', Roles: 'Rollen', Hierarchy: 'Hierarchie',
+			'Conditional access': 'Bedingter Zugriff', includes: 'enthält',
+		});
+		expect(translated.sections[0].hierarchy).toEqual({
+			title: 'Hierarchie', description: 'Bedingter Zugriff', relation: 'enthält',
+			levels: [{ role: 'example_owner', alsoIncludes: ['native_writer'] }, { role: 'example_reader' }],
+		});
+		expect(searchDocGuides('Zugriff native_writer', createDocSearchIndex([translated])).map(({ slug }) => slug)).toEqual(['hierarchy-example']);
+	});
+
+	it('rejects missing graph explanations instead of displaying an untranslated authority caveat', () => {
+		expect(() => translateDocGuide(guide, { Guide: 'Anleitung', Roles: 'Rollen', Hierarchy: 'Hierarchie', includes: 'enthält' }))
+			.toThrow('Missing documentation translation: hierarchy-example: Conditional access');
 	});
 });

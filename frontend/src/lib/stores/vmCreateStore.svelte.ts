@@ -1,12 +1,16 @@
 import { t } from '$lib/i18n/ns/vm-wizard';
+import { t as tp } from '$lib/i18n/ns/compute-pools';
 import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { setContext, getContext } from 'svelte';
 import { wizard, wizardPassword, wizardPasswordRevision, clearWizardPassword, resetWizard, closeWizard } from '$lib/stores/wizard';
 import type { WizardState } from '$lib/stores/wizard';
 import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
+import { domainsApi } from '$lib/api/domains';
 import { maybeMockInstanceCreateStream } from '$lib/mockup/transport';
-import { auth } from '$lib/stores/auth';
+import { auth, authReady, canWrite, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+import { createFlavorComposer } from '$lib/stores/flavorComposer';
+import { flavorComposerApi } from '$lib/api/flavorComposer';
 import { toast } from '$lib/stores/toast';
 import { siteConfig } from '$lib/config/site';
 import type { NetworkInfo } from '$lib/types/networks';
@@ -15,6 +19,8 @@ import type { Volume } from '$lib/types/volume';
 import type { Keypair } from '$lib/types/keypair';
 import { flavorCreateBlock, type FlavorCreateBlock, type FlavorOption } from '$lib/types/flavor';
 import type { ImageInfo } from '$lib/types/compute';
+import { defaultUsageDraft, requiresUsageSchedule, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
+import { flavorGpuRequests } from '$lib/utils/flavorGpu';
 import {
 	isGithubSshEligible,
 	isSshAccessReady,
@@ -36,7 +42,7 @@ interface ProgressMessage {
 	elapsed_seconds?: number | null;
 }
 
-interface ProjectInfo { id: string; name: string; }
+interface ProjectInfo { id: string; name: string; domain_id?: string | null; domain_name?: string | null; }
 interface QuotaPair { used: number; quota: number; }
 interface ProjectQuota {
 	project_id: string;
@@ -49,15 +55,15 @@ interface ProjectQuota {
 }
 interface QuotaBlock {
 	instances?: { limit: number; in_use: number };
-	cores?: { limit: number; in_use: number };
-	ram?: { limit: number; in_use: number };
+	cores?: { limit: number; in_use: number } | null;
+	ram?: { limit: number; in_use: number } | null;
 	gigabytes?: { limit: number; in_use: number };
 }
-interface QuotaResponse { compute?: QuotaBlock; storage?: QuotaBlock; volume?: QuotaBlock; }
+interface QuotaResponse { compute?: QuotaBlock; native_compute?: QuotaBlock | null; storage?: QuotaBlock; volume?: QuotaBlock; }
 export interface FlavorQuotaSummary {
 	instances?: { limit: number; in_use: number };
-	cores?: { limit: number; in_use: number };
-	ram?: { limit: number; in_use: number };
+	cores?: { limit: number; in_use: number } | null;
+	ram?: { limit: number; in_use: number } | null;
 	gigabytes?: { limit: number; in_use: number };
 }
 
@@ -117,8 +123,17 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	// Mirror writable stores in runes for reactive derived values
 	let wizardState = $state(get(wizard));
 	let authProjectId = $state(get(auth).projectId);
+	let actorCanWrite = $state(get(auth).canWrite ?? get(canWrite));
+	let actorAdmin = $state(get(auth).isSystemAdmin);
+	const writeAllowed = $derived(opts.adminMode() ? actorAdmin : actorCanWrite);
 	$effect(() => wizard.subscribe(v => { wizardState = v; }));
-	$effect(() => auth.subscribe(v => { authProjectId = v.projectId; }));
+	$effect(() => auth.subscribe(value => { authProjectId = value.projectId; actorAdmin = value.isSystemAdmin; actorCanWrite = value.canWrite ?? get(canWrite); }));
+	let rootAuthReady = $state(get(authReady) && !get(projectSwitching) && !get(logoutInProgress));
+	$effect(() => {
+		const sync = () => { rootAuthReady = get(authReady) && !get(projectSwitching) && !get(logoutInProgress); };
+		const stops = [authReady.subscribe(sync), projectSwitching.subscribe(sync), logoutInProgress.subscribe(sync)];
+		return () => stops.forEach(stop => stop());
+	});
 	let passwordDraft = $state(get(wizardPassword));
 	$effect(() => wizardPassword.subscribe(value => { passwordDraft = value; }));
 	let images = $state<ImageInfo[]>([]);
@@ -138,6 +153,48 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let flavorRefreshSeq = 0;
 	let flavorRefreshController: AbortController | null = null;
 	let submitChecking = false;
+	const savedFlavorIds = new Set<string>();
+	const composer = createFlavorComposer({
+		invalidate: () => { wizard.update(w => ({ ...w, flavorId: null, flavorName: null, usageSchedule: null })); },
+		scopeReady: () => {
+			if (!initialized) return;
+			const bootPromise = loadBootOptions();
+			preloadConfigurationAfterBoot(bootPromise, adminSelectedProjectId ?? undefined);
+			if (!flavorRefreshing) void loadFlavorOptions();
+			void loadFlavorQuota();
+		},
+		authorityInvalidated: () => {
+			advanceProjectGeneration();
+			flavors = [];
+			optionStatus.flavors = 'idle';
+			for (const key of OPTION_KEYS) if (optionStatus[key] === 'loading') optionStatus[key] = 'idle';
+		},
+		scopeChanged: () => {
+			savedFlavorIds.clear();
+			loadedAuthProjectId = get(auth).projectId;
+			if (opts.adminMode()) resetTargetOptions(); else resetPublicProjectOptions();
+			if (initialized) {
+				const bootPromise = loadBootOptions();
+				preloadConfigurationAfterBoot(bootPromise, adminSelectedProjectId ?? undefined);
+				void loadFlavorOptions(); void loadFlavorQuota();
+			}
+		},
+		select: flavor => {
+			const selection = get(composer);
+			if (destroyed || get(wizard).step !== 2 || selection.saving || selection.unknown || selection.selectedId !== flavor.id) return;
+			resetFlavorRefresh();
+			savedFlavorIds.add(flavor.id);
+			flavors = [flavor, ...flavors.filter(candidate => candidate.id !== flavor.id)];
+			optionStatus.flavors = 'loaded';
+			delete optionErrors.flavors;
+			selectFlavor(flavor.id, flavor.name);
+		},
+		restore: (id, mode) => {
+			if (mode !== 'catalog') savedFlavorIds.add(id);
+			wizard.update(w => ({ ...w, flavorId: id, flavorName: null }));
+			void refreshFlavorOptions('manual');
+		},
+	});
 
 	// UI state
 	let optionStatus = $state<Record<OptionKey, LoadStatus>>(
@@ -254,6 +311,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	// Admin state
 	let adminProjects = $state<ProjectInfo[]>([]);
 	let adminProjectsLoading = $state(false);
+	let adminProjectsError = $state<string | null>(null);
 	let adminProjectQuotas = $state<Map<string, ProjectQuota>>(new Map());
 	let adminProjectQuotasLoading = $state(false);
 	let adminProjectSearch = $state('');
@@ -266,6 +324,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (!q) return adminProjects;
 		return adminProjects.filter(p =>
 			p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
+			|| (p.domain_name ?? '').toLowerCase().includes(q) || (p.domain_id ?? '').toLowerCase().includes(q)
 		);
 	});
 
@@ -393,16 +452,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			`${f.ram >= 1024 ? Math.round(f.ram / 1024) + ' GB' : f.ram + ' MB'}`,
 			`${f.disk} GB`,
 		];
-		const alias = f.extra_specs?.['pci_passthrough:alias'] ?? '';
-		if (alias) {
-			const gpuParts = alias.split(',').filter((e: string) => e.includes(':') && !e.toLowerCase().includes('audio'));
-			gpuParts.forEach((e: string) => {
-				const idx = e.lastIndexOf(':');
-				const model = e.slice(0, idx).trim();
-				const count = parseInt(e.slice(idx + 1)) || 1;
-				parts.push(`${model} ${count > 1 ? '× ' + count : ''}`);
-			});
-		}
+		const gpuRequests = flavorGpuRequests(f);
+		if (gpuRequests == null) parts.push(tp('unknown'));
+		else gpuRequests.forEach(({ model, count }) => parts.push(`${model} ${count > 1 ? '× ' + count : ''}`));
 		return parts.join(' · ');
 	});
 
@@ -430,6 +482,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	const selectedFlavor = $derived(
 		wizardState.flavorId ? flavors.find(f => f.id === wizardState.flavorId) ?? null : null
 	);
+	const usageScheduleRequired = $derived(requiresUsageSchedule(selectedFlavor));
+	const usageScheduleReady = $derived(!usageScheduleRequired || Boolean(wizardState.usageSchedule && !usageDraftError(wizardState.usageSchedule)));
+	let usageFlavorId: string | null = null;
+	$effect(() => {
+		const flavor = selectedFlavor;
+		if (!flavor) return;
+		const changedFlavor = usageFlavorId !== flavor.id;
+		usageFlavorId = flavor.id;
+		if (changedFlavor || (requiresUsageSchedule(flavor) && !wizardState.usageSchedule)) {
+			wizard.update(w => ({ ...w, usageSchedule: requiresUsageSchedule(flavor) ? defaultUsageDraft() : null }));
+		}
+	});
 	// 'missing': the selection is no longer in the current target project's list.
 	const selectedFlavorBlock = $derived.by((): FlavorCreateBlock | 'missing' | null => {
 		if (!wizardState.flavorId) return null;
@@ -438,6 +502,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	});
 	const flavorAdmissionReady = $derived(
 		Boolean(wizardState.flavorId)
+			&& rootAuthReady
+			&& writeAllowed
 			&& optionStatus.flavors === 'loaded'
 			&& !flavorRefreshing
 			&& !flavorRefreshError
@@ -446,17 +512,19 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	const canNext = $derived((() => {
 		if (windowsUnsupported && wizardState.step !== 2) return false;
+		if (!rootAuthReady || !writeAllowed) return false;
 		switch (wizardState.step) {
 			case 1: return flavorAdmissionReady && (wizardState.bootSource === 'volume' ? !!wizardState.bootVolumeId : !!wizardState.imageId);
 			case 2: return flavorAdmissionReady;
 			case 5:
-				return accessReady && bootVolumeSizeReady && volumeProtectionReady;
-			case 6: return flavorAdmissionReady && bootMetadataReady(wizardState) && bootVolumeSizeReady && volumeProtectionReady && (!isWindowsBoot || accessReady);
+				return accessReady && bootVolumeSizeReady && volumeProtectionReady && usageScheduleReady;
+			case 6: return flavorAdmissionReady && bootMetadataReady(wizardState) && bootVolumeSizeReady && volumeProtectionReady && usageScheduleReady && (!isWindowsBoot || accessReady);
 			default: return false;
 		}
 	})());
 
 	const needsProjectSelect = $derived(opts.adminMode() && !adminSelectedProjectId);
+	$effect(() => { composer.configure(opts.adminMode(), adminSelectedProjectId); });
 
 	// Helpers
 	function fmtRemaining(p?: QuotaPair): string {
@@ -471,8 +539,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 
-	function optionError(error: unknown): string {
-		return error instanceof ApiError ? t('options.loadFailed', { status: error.status }) : t('options.serverError');
+	function optionError(error: unknown, includeDetails = false): string {
+		if (!(error instanceof ApiError)) return t('options.serverError');
+		const summary = t('options.loadFailed', { status: error.status });
+		return includeDetails && error.message ? `${summary}: ${error.message}` : summary;
 	}
 
 	function loadOption<T>(
@@ -502,7 +572,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			.catch(error => {
 				if (destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent()) return;
 				if (error instanceof DOMException && error.name === 'AbortError') return;
-				optionErrors[key] = optionError(error);
+				optionErrors[key] = optionError(error, key === 'flavors');
 				optionStatus[key] = 'error';
 			})
 			.finally(() => {
@@ -577,25 +647,32 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		isCurrent: () => boolean;
 	} | null {
 		const { token, projectId } = authScope();
+		const mergeSaved = async (catalog: Promise<FlavorOption[]>, signal?: AbortSignal): Promise<FlavorOption[]> => {
+			if (savedFlavorIds.size === 0) return catalog;
+			const [rows, saved] = await Promise.all([catalog, flavorComposerApi.history({ token: token ?? '', projectId: projectId ?? '', targetProjectId: opts.adminMode() ? adminSelectedProjectId! : projectId!, admin: opts.adminMode() }, signal ?? projectLoadController.signal)]);
+			// Own freshly assessed history supersedes discovery metadata for the same native UUID.
+			// Missing/withdrawn history cannot fall back to a previously saved or catalog snapshot.
+			return [...rows.filter(row => !savedFlavorIds.has(row.id)), ...saved.items.filter(row => savedFlavorIds.has(row.id))];
+		};
 		const generation = loadGeneration;
 		if (opts.adminMode()) {
 			const targetProjectId = adminSelectedProjectId;
 			if (!targetProjectId) return null;
 			return {
 				key: targetProjectId,
-				request: (signal, refresh) => api.get<FlavorOption[]>(
+				request: (signal, refresh) => mergeSaved(api.get<FlavorOption[]>(
 					`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}&capacity=create`,
 					token,
 					projectId,
 					refresh ? { signal, refresh: true } : { signal },
-				),
+				), signal),
 				isCurrent: () => targetIsCurrent(targetProjectId, generation),
 			};
 		}
 		return {
 			key: `public:${projectId ?? ''}`,
-			request: (signal, refresh) => api.get<FlavorOption[]>('/api/v1/flavors?capacity=create', token, projectId,
-				refresh ? { signal, refresh: true } : { signal }),
+			request: (signal, refresh) => mergeSaved(api.get<FlavorOption[]>('/api/v1/flavors?capacity=create', token, projectId,
+				refresh ? { signal, refresh: true } : { signal }), signal),
 			isCurrent: () => authProjectIsCurrent(projectId, generation),
 		};
 	}
@@ -656,7 +733,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		} catch (error) {
 			if (!isCurrent()) return false;
 			if (error instanceof DOMException && error.name === 'AbortError') return false;
-			const message = optionError(error);
+			const message = optionError(error, true);
 			if (background) {
 				flavorBackgroundRefreshError = message;
 			} else if (optionStatus.flavors === 'loaded') {
@@ -686,7 +763,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				loadOption('networks', `public:${projectId ?? ''}`, (signal) => api.get<NetworkInfo[]>('/api/v1/networks', token, projectId, { signal }), value => { networks = value; }),
 				loadOption('keypairs', `public:${projectId ?? ''}`, (signal) => api.get<Keypair[]>('/api/v1/keypairs', token, projectId, { signal }), value => { keypairs = value; }),
 				loadOption('securityGroups', `public:${projectId ?? ''}`, (signal) => api.get<SecurityGroupInfo[]>('/api/v1/security-groups', token, projectId, { signal }), value => { securityGroups = value; }),
-				loadOption('defaultNetwork', `public:${projectId ?? ''}`, (signal) => api.get<{ network_id: string }>('/api/v1/networks/default', token, projectId, { signal }), value => { defaultNetworkId = value.network_id; }),
+				loadOption('defaultNetwork', `public:${projectId ?? ''}`, async (signal) => {
+					try {
+						return await api.get<{ network_id: string | null }>('/api/v1/networks/default', token, projectId, { signal });
+					} catch (error) {
+						// Only confirmed absence is optional; legacy ambiguous 404s and
+						// storage, proxy, authorization or provider failures remain errors.
+						if (error instanceof ApiError && error.status === 404 && error.code === 'default_network_not_configured') {
+							return { network_id: null };
+						}
+						throw error;
+					}
+				}, value => { defaultNetworkId = value.network_id; }),
 			]);
 			if (authProjectIsCurrent(projectId, generation)) applyConfigurationDefaults();
 			return;
@@ -772,6 +860,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		};
 	}
 
+	function nativeQuotaPair(value: { limit: number; in_use: number } | null | undefined) {
+		return value && Number.isSafeInteger(value.limit) && value.limit >= -1
+			&& Number.isSafeInteger(value.in_use) && value.in_use >= 0
+			? { limit: value.limit, in_use: value.in_use }
+			: undefined;
+	}
+
 	async function loadFlavorQuota() {
 		if (destroyed) return;
 		const { token, projectId } = authScope();
@@ -811,9 +906,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				const response = await api.get<QuotaResponse>('/api/v1/dashboard/quotas', token, projectId, { signal: projectLoadController.signal });
 				if (!authProjectIsCurrent(projectId, generation)) return;
 				flavorQuota = {
-					instances: response.compute?.instances,
-					cores: response.compute?.cores,
-					ram: response.compute?.ram,
+					instances: nativeQuotaPair(response.native_compute?.instances),
+					cores: nativeQuotaPair(response.native_compute?.cores),
+					ram: nativeQuotaPair(response.native_compute?.ram),
 					gigabytes: response.storage?.gigabytes,
 				};
 			} catch {
@@ -851,7 +946,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 						const project = adminProjects[nextProject++];
 						try {
 							const quota = await api.get<QuotaResponse>(`/api/v1/admin/quotas/${encodeURIComponent(project.id)}`, token, projectId, { signal });
-							const pair = (value: { limit: number; in_use: number } | undefined) => value && Number.isFinite(value.limit) && Number.isFinite(value.in_use) ? { used: value.in_use, quota: value.limit } : undefined;
+							const pair = (value: { limit: number; in_use: number } | null | undefined) => value && Number.isFinite(value.limit) && Number.isFinite(value.in_use) ? { used: value.in_use, quota: value.limit } : undefined;
 							const instances = pair(quota.compute?.instances), cpu = pair(quota.compute?.cores), ram_mb = pair(quota.compute?.ram), disk_gb = pair(quota.volume?.gigabytes);
 							if (current() && instances && cpu && ram_mb && disk_gb) rows.push({ project_id: project.id, project_name: project.name, instances, cpu, ram_mb, disk_gb });
 						} catch { /* Unverified quota is omitted, never displayed as zero. */ }
@@ -876,15 +971,23 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (destroyed) return;
 		const requestId = ++adminProjectsRequestId;
 		adminProjectsLoading = true;
+		adminProjectsError = null;
 		const { token, projectId } = authScope();
 		try {
-			const rows = await api.get<ProjectInfo[]>('/api/v1/admin/projects/names', token, projectId);
+			const [rows, domains] = await Promise.all([
+				api.get<Omit<ProjectInfo, 'domain_name'>[]>('/api/v1/admin/projects/names', token, projectId),
+				domainsApi.list({ token, projectId }).catch(() => null),
+			]);
 			if (requestId !== adminProjectsRequestId) return;
-			adminProjects = rows;
+			const domainNames = new Map((domains?.items ?? []).map(domain => [domain.id, domain.name]));
+			adminProjects = rows.map(project => ({ ...project, domain_name: project.domain_id ? domainNames.get(project.domain_id) ?? null : null }));
 			const selected = adminSelectedProjectId && rows.find(project => project.id === adminSelectedProjectId);
 			if (selected) adminSelectedProjectName = selected.name;
-		} catch {
-			if (requestId === adminProjectsRequestId) adminProjects = [];
+		} catch (error) {
+			if (requestId === adminProjectsRequestId) {
+				adminProjects = [];
+				adminProjectsError = optionError(error);
+			}
 		} finally {
 			if (requestId === adminProjectsRequestId) adminProjectsLoading = false;
 		}
@@ -913,6 +1016,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			bootVolumeName: null,
 			flavorId: null,
 			flavorName: null,
+			usageSchedule: null,
 			networkId: null,
 			networkName: null,
 			securityGroups: [],
@@ -937,7 +1041,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		fileStorages = [];
 		defaultNetworkId = null;
 		flavorQuota = null;
-		resetWizard();
+		// Project navigation preserves the prior project's resource draft; explicit Reset clears it.
+		resetWizard({ preserveResourceDraft: true });
 	}
 
 	function ensureStepData(step: WizardStepId) {
@@ -953,7 +1058,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function selectAdminProject(id: string, name: string) {
 		adminSelectedProjectId = id;
 		adminSelectedProjectName = name;
-		resetTargetOptions();
+		composer.configure(opts.adminMode(), id);
 		const bootPromise = loadBootOptions();
 		preloadConfigurationAfterBoot(bootPromise, id);
 		void loadFlavorOptions();
@@ -962,10 +1067,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function handleReset() {
+		if (compositionNavigationLocked()) return;
 		resetWizard();
 		adminSelectedProjectId = null;
 		adminSelectedProjectName = null;
 		resetTargetOptions();
+		composer.configure(opts.adminMode(), null);
 		if (opts.adminMode()) {
 			void loadAdminProjects().then(loadAdminProjectQuotas);
 		} else {
@@ -983,7 +1090,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		);
 	}
 
+	function compositionNavigationLocked() {
+		const { saving, unknown } = get(composer);
+		return saving || unknown;
+	}
+
 	function nextStep() {
+		if (compositionNavigationLocked()) return;
 		if (!canNext) return;
 		const current = get(wizard).step as WizardStepId;
 		const index = visibleStepIds.indexOf(current);
@@ -994,6 +1107,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function prevStep() {
+		if (compositionNavigationLocked()) return;
 		const current = get(wizard).step as WizardStepId;
 		const index = visibleStepIds.indexOf(current);
 		const prev = visibleStepIds[Math.max(index - 1, 0)];
@@ -1003,12 +1117,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function goTo(step: number) {
+		if (compositionNavigationLocked()) return;
 		const next = nearestVisibleStep(step);
 		ensureStepData(next);
 		wizard.update(w => ({ ...w, step: next }));
 	}
 
 	function goToVisible(index: number) {
+		if (compositionNavigationLocked()) return;
 		const step = visibleStepIds[index - 1];
 		if (!step) return;
 		ensureStepData(step);
@@ -1016,14 +1132,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function selectImage(id: string, name: string) {
+		if (compositionNavigationLocked()) return;
 		wizard.update(w => ({ ...w, imageId: id, imageName: name }));
 		nextStep();
 	}
 	function selectFlavor(id: string, name: string) {
+		if (compositionNavigationLocked() || get(wizard).step !== 2) return;
+		if (!get(authReady) || get(projectSwitching) || get(logoutInProgress) || !(opts.adminMode() ? get(auth).isSystemAdmin : (get(auth).canWrite ?? get(canWrite)))) return;
 		if (flavorRefreshing || flavorRefreshError || optionStatus.flavors !== 'loaded') return;
 		const selected = flavors.find(candidate => candidate.id === id);
 		if (!selected || flavorCreateBlock(selected) !== null) return;
-		wizard.update(w => ({ ...w, flavorId: id, flavorName: name }));
+		wizard.update(w => ({ ...w, flavorId: id, flavorName: name, usageSchedule: w.flavorId === id ? w.usageSchedule : requiresUsageSchedule(selected) ? defaultUsageDraft() : null }));
+		composer.rememberSelection(id);
 		nextStep();
 	}
 
@@ -1046,7 +1166,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 
 	async function deploy() {
-		if (destroyed || deploying || submitChecking) return;
+		if (destroyed || deploying || submitChecking || !rootAuthReady || !writeAllowed) return;
 		if (!bootMetadataReady(get(wizard))) {
 			goTo(1);
 			return;
@@ -1078,6 +1198,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (
 			destroyed
 			|| deploying
+			|| !get(authReady) || get(projectSwitching) || get(logoutInProgress)
 			|| checkedGeneration !== loadGeneration
 			|| checkedTargetProjectId !== adminSelectedProjectId
 			|| (!opts.adminMode() && checkedAuthProjectId !== get(auth).projectId)
@@ -1085,6 +1206,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			|| checkedActor !== JSON.stringify([get(auth).userId, get(auth).token, get(auth).projectId])
 			|| checkedAdminMode !== opts.adminMode()
 			|| checkedPasswordRevision !== wizardPasswordRevision
+			|| JSON.stringify(checked.usageSchedule) !== JSON.stringify(get(wizard).usageSchedule)
 			|| checked.bootSource !== get(wizard).bootSource
 			|| checked.imageId !== get(wizard).imageId
 			|| checked.bootVolumeId !== get(wizard).bootVolumeId
@@ -1107,6 +1229,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			return;
 		}
 		if (isWindowsImageMetadata(metadataFor(get(wizard))) && !configurationReady(get(wizard), get(wizardPassword))) {
+			goTo(5);
+			return;
+		}
+		if (requiresUsageSchedule(admitted) && (!get(wizard).usageSchedule || usageDraftError(get(wizard).usageSchedule!))) {
 			goTo(5);
 			return;
 		}
@@ -1146,6 +1272,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					volume_protection_force: (w.autoSnapshot || w.autoBackup) && w.volumeProtectionForce,
 				}),
 			flavor_id: w.flavorId,
+			...(requiresUsageSchedule(admitted) && w.usageSchedule ? { usage_schedule: usagePayload(w.usageSchedule) } : {}),
 			network_id: w.networkId,
 			key_name: keyName,
 			github_username: githubUsername,
@@ -1271,6 +1398,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function destroy() {
 		if (destroyed) return;
 		destroyed = true;
+		composer.destroy();
 		clearWizardPassword();
 		initialized = false;
 		projectLoadController.abort();
@@ -1288,13 +1416,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function init() {
 		if (destroyed) return;
 		loadedAuthProjectId = get(auth).projectId;
-		initialized = true;
 		if (opts.adminMode()) {
 			const targetId = get(wizard).targetProjectId;
 			if (targetId) {
 				adminSelectedProjectId = targetId;
 				adminSelectedProjectName = targetId;
 				resetTargetOptions();
+				composer.configure(true, targetId);
+				initialized = true;
 				void loadAdminProjects().then(loadAdminProjectQuotas);
 				const bootPromise = loadBootOptions();
 				preloadConfigurationAfterBoot(bootPromise, targetId);
@@ -1303,9 +1432,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				ensureStepData(wizardState.step as WizardStepId);
 				return;
 			}
+			composer.configure(true, null);
+			initialized = true;
 			void loadAdminProjects().then(loadAdminProjectQuotas);
 			return;
 		}
+		composer.configure(false, null);
+		initialized = true;
 		const bootPromise = loadBootOptions();
 		preloadConfigurationAfterBoot(bootPromise);
 		void loadFlavorOptions();
@@ -1316,6 +1449,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	return {
 		// Opts passthrough
 		get adminMode() { return opts.adminMode(); },
+		composer,
 		// Wizard state mirror (for sub-components that need form state without $ prefix)
 		get wizardState() { return wizardState; },
 		// Data state
@@ -1353,6 +1487,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		// Admin state
 		get adminProjects() { return adminProjects; },
 		get adminProjectsLoading() { return adminProjectsLoading; },
+		get adminProjectsError() { return adminProjectsError; },
 		get adminProjectQuotasLoading() { return adminProjectQuotasLoading; },
 		get adminProjectQuotas() { return adminProjectQuotas; },
 		get adminProjectSearch() { return adminProjectSearch; },
@@ -1376,6 +1511,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		get passwordError() { return passwordError; },
 		get hasGpuFlavor() { return hasGpuFlavor; },
 		get selectedFlavorDetail() { return selectedFlavorDetail; },
+		get usageScheduleRequired() { return usageScheduleRequired; },
+		get usageScheduleReady() { return usageScheduleReady; },
 		get canNext() { return canNext; },
 		get needsProjectSelect() { return needsProjectSelect; },
 		// Helpers

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -12,7 +12,6 @@
 	import { projectNames } from '$lib/stores/projectNames';
 	import { createImageCatalog, currentImagesByReference } from '$lib/stores/imageCatalog.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import ImageUploadModal from '$lib/components/ImageUploadModal.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -179,13 +178,13 @@
 	</PageHeader>
 	<ResourceToolbar label={t('images.toolbarLabel')}>
 		{#snippet filters()}
-			<Field label={t('images.visibility.label')} for="admin-image-visibility">
+			<Field label={t('images.visibility.label')} for="admin-image-visibility" class="min-w-0 max-w-full w-full md:w-auto">
 				<SelectInput id="admin-image-visibility" bind:value={visibilityFilter}>
 					<option value="all">{t('images.visibility.all')}</option><option value="public">{t('images.visibility.public')}</option>
 					<option value="community">{t('images.visibility.community')}</option><option value="shared">{t('images.visibility.shared')}</option><option value="private">{t('images.visibility.private')}</option>
 				</SelectInput>
 			</Field>
-			<Field label={t('images.pageSize')} for="admin-image-page-size">
+			<Field label={t('images.pageSize')} for="admin-image-page-size" class="min-w-0 max-w-full w-full md:w-auto">
 				<SelectInput id="admin-image-page-size" bind:value={pageSize}>
 					{#each [12, 24, 48] as size}<option value={String(size)}>{t('images.pageSizeCount', { count: size })}</option>{/each}
 				</SelectInput>
@@ -203,7 +202,7 @@
 	{/if}
 	{#if verificationUnavailable}<Alert tone="warning">{t('images.verification.unavailable')}</Alert>{/if}
 	{#if loading}
-		<LoadingSkeleton variant="card" rows={6} />
+		<LoadingState variant="surface" />
 	{:else}
 		<ImageCatalogToolbar bind:searchQuery={catalog.searchQuery} bind:repositoryFilter={catalog.repositoryFilter}
 			bind:tagFilter={catalog.tagFilter} bind:verificationFilter={catalog.verificationFilter} bind:sortMode={catalog.sortMode}
@@ -244,7 +243,7 @@
 {#if selectedImageId}
 	<SlidePanel onClose={() => selectedImageId = null} ariaLabel={t('images.detailLabel')} width="w-full md:w-[50vw] max-w-2xl">
 		{#await import('$lib/components/ImageDetailPanel.svelte')}
-			<div class="p-6"><ActivityIndicator size="sm" label={t('images.detailLoading')} /></div>
+			<div class="flex min-h-full flex-col"><LoadingState variant="surface" label={t('images.detailLoading')} /></div>
 		{:then { default: Panel }}
 			<Panel imageId={selectedImageId} onClose={() => selectedImageId = null} isAdmin={true} onDelete={() => { selectedImageId = null; void load(true); }} />
 		{/await}

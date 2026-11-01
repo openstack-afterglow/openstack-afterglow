@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { SecurityGroup, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import { t } from '$lib/i18n/ns/network-pages';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let {
 		ruleForm = $bindable(),
@@ -90,7 +90,7 @@
 	</fieldset>
 	{#if error}<p role="alert" class="text-xs text-state-danger-text mt-3">{error}</p>{/if}
 	<div class="flex flex-wrap gap-2 mt-3">
-		<button type="submit" disabled={adding || !canAdd} aria-busy={adding} class="inline-flex items-center gap-1.5 text-xs bg-action-warm text-action-on-warm rounded-md px-3 py-1.5 disabled:opacity-50">{#if adding}<ActivityIndicator size="xs" tone="ink" />{/if}{originalRuleId ? (adding ? t('addRule.saving') : t('addRule.save')) : (adding ? t('addRule.adding') : t('addRule.add'))}</button>
+		<button type="submit" disabled={adding || !canAdd} aria-busy={adding} class="inline-flex items-center gap-1.5 text-xs bg-action-warm text-action-on-warm rounded-md px-3 py-1.5 disabled:opacity-50">{#if adding}<LoadingState variant="control" label="" />{/if}{originalRuleId ? (adding ? t('addRule.saving') : t('addRule.save')) : (adding ? t('addRule.adding') : t('addRule.add'))}</button>
 		<button type="button" onclick={onCancel} disabled={adding} class="text-xs text-ink-2 border border-line-2 rounded-md px-3 py-1.5 disabled:opacity-50">{t('addRule.cancel')}</button>
 	</div>
 	{#if !canAdd}<p class="text-xs text-ink-2 mt-2">{t('addRule.quotaHelp')}</p>{/if}

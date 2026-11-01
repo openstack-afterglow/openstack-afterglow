@@ -1,4 +1,9 @@
 const translations: Record<string, string> = {
+	"프로젝트 역할 포함 관계": "Quan hệ bao hàm giữa các vai trò dự án",
+	"서비스 등급의 기능 포함 관계": "Quan hệ bao hàm chức năng giữa các cấp dịch vụ",
+	"포함": "bao gồm",
+	"화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.": "Mũi tên chỉ đến vai trò cấp dưới được vai trò cấp trên bao hàm. Các quan hệ vai trò thực tế phải được cấu hình trong Keystone; manager và project_creator không thuộc hệ phân cấp này.",
+	"화살표는 상위 등급이 포함하는 하위 등급의 기능을 가리킵니다. 세부 역할을 자동 부여하지 않으며 프로젝트·소유권·자격 조건은 그대로 적용됩니다.": "Mũi tên chỉ đến chức năng của cấp dưới được cấp trên bao hàm. Các vai trò chi tiết không được tự động gán; các điều kiện về dự án, quyền sở hữu và tư cách vẫn áp dụng như cũ.",
 	"IAM · 서비스별 권한": "IAM · Quyền theo từng dịch vụ",
 	"사용자별 역할과 서비스 이용 권한 이해하기": "Hiểu vai trò người dùng và quyền sử dụng dịch vụ",
 	"조직 manager, 프로젝트 역할, Waygate·Drover·Lumen·Palimpsest의 등급과 세부 역할을 기능별로 설명하고 필요한 권한 조합을 안내합니다.": "Giải thích theo chức năng về manager của tổ chức, vai trò dự án, các cấp và vai trò chi tiết của Waygate, Drover, Lumen và Palimpsest, cùng các tổ hợp quyền cần thiết.",

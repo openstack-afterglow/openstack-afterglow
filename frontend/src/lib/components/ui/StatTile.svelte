@@ -160,7 +160,7 @@
     min-width: 0;
   }
   .stat-label {
-    font-size: 0.75rem;
+    font-size: var(--type-support);
     letter-spacing: -0.01em;
     font-weight: 500;
     color: var(--color-ink-2);
@@ -176,17 +176,18 @@
     font-size: 1.75rem;
     font-weight: 700;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
     color: var(--color-ink-0);
   }
   .stat-unit {
-    font-size: 0.75rem;
+    font-size: var(--type-support);
     color: var(--color-ink-2);
   }
   .stat-delta {
     margin-left: auto;
-    font-size: 0.6875rem;
+    font-size: var(--type-support);
     font-weight: 500;
-    color: var(--color-state-success);
+    color: var(--color-state-success-text);
   }
   .stat-footer { margin-top: 0.25rem; }
   .icon-chip {

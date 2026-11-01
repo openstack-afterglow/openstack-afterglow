@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
 	import { t } from '$lib/i18n/ns/volume';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -36,7 +37,7 @@
 		</div>
 		{#if !$canWrite}<p class="mt-3 text-sm text-ink-2">{t('autoPolicy.reader')}</p>{/if}
 	</Card>
-	{#if controller.loading}<p role="status" class="text-sm text-ink-2">{t('autoPolicy.loading')}</p>{/if}
+	{#if controller.loading}<LoadingState variant="inline" label={t('autoPolicy.loading')} />{/if}
 	{#if controller.error}<Alert tone="danger">{controller.error}</Alert>{/if}
 	{#if controller.volumesError}<Alert tone="danger">{controller.volumesError}</Alert>{/if}
 	{#if controller.error || controller.volumesError}<Button variant="secondary" class="min-h-11 max-w-full" onclick={controller.refresh} disabled={controller.loading}><span class="whitespace-normal">{t('autoPolicy.retry')}</span></Button>{/if}

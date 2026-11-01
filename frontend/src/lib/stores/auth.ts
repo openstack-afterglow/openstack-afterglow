@@ -4,7 +4,7 @@ import type { MockupProfileId } from '$lib/mockup/contracts';
 import type { AvailableDomain } from '$lib/types/auth';
 import { consumeMappedContinuation, consumeMappedLogin, sessionScopeKey } from '$lib/utils/authSession';
 
-// Ready after an authoritative fresh login mapping or current /auth/me verification.
+// Ready after authoritative login/refresh mapping or current /auth/me verification.
 export const authReady = writable(false);
 export const logoutInProgress = writable(false);
 // Clears project-private views before rescope starts, not after its response arrives.
@@ -34,7 +34,7 @@ export interface AuthState {
 	roles: string[];
 	isSystemAdmin: boolean;
 	canWrite?: boolean;            // verified capability; role names may be hidden
-	federated: boolean;             // true = OIDC/외부 로그인 (패스워드 변경 불가)
+	federated: boolean;             // login method only, not proof of local password presence
 	domainId: string | null;        // explicit working domain, not credential namespace
 	domainName: string | null;
 	identityDomainId?: string | null; // immutable Keystone credential namespace
@@ -186,6 +186,7 @@ let verifiedEpoch: number | null = null;
 let verificationKey = '';
 let pendingVerifiedLogin: AuthState | null = null;
 let pendingReadyContinuation: AuthState | null = null;
+let pendingVerifiedRefresh: AuthState | null = null;
 
 function invalidateVerification(preserveReadiness = false): void {
 	verificationEpoch += 1;
@@ -220,8 +221,9 @@ auth.subscribe((state) => {
 		invalidateVerification(state === pendingReadyContinuation);
 	}
 	if (state === pendingReadyContinuation) pendingReadyContinuation = null;
-	if (state === pendingVerifiedLogin) {
+	if (state === pendingVerifiedLogin || state === pendingVerifiedRefresh) {
 		pendingVerifiedLogin = null;
+		pendingVerifiedRefresh = null;
 		verifiedEpoch = verificationEpoch;
 		authReady.set(true);
 	}
@@ -334,12 +336,14 @@ export function setLoginAuth(data: Partial<AuthState> & { token: string }): void
 export function setAuth(data: Partial<AuthState> & { token: string }) {
 	const previous = get(auth);
 	const continuation = consumeMappedContinuation(data, previous);
+	const verifiedRefresh = continuation === 'refresh' && hasVerifiedAuth();
 	const state = { ...previous, ...data };
-	// Keep existing consumers through a validated native continuation. Its new
-	// token still requires /me; raw, copied or stale updates cannot retain readiness.
+	// Preserve established views through native continuation; only an exact,
+	// complete refresh of an already verified generation also replaces /me proof.
 	pendingReadyContinuation = continuation && persistenceMode === 'real' && get(authReady)
 		&& !!previous.token && !!data.token ? state : null;
 	invalidateVerification(pendingReadyContinuation !== null);
+	pendingVerifiedRefresh = verifiedRefresh && pendingReadyContinuation !== null ? state : null;
 	auth.set(state);
 }
 
@@ -358,11 +362,13 @@ export function setAvailableProjects(projects: Project[]) {
 	}));
 }
 
-export function clearAuth() {
+/** Explicit logout/revocation broadcasts; automatic credential rejection clears only this tab. */
+export function clearAuth({ broadcast = true }: { broadcast?: boolean } = {}) {
 	pendingVerifiedLogin = null;
 	pendingReadyContinuation = null;
+	pendingVerifiedRefresh = null;
 	invalidateVerification();
-	if (persistenceMode === 'real' && typeof window !== 'undefined' && get(auth).token) {
+	if (broadcast && persistenceMode === 'real' && typeof window !== 'undefined' && get(auth).token) {
 		try {
 			// Random event id only: no identity, access token or refresh token.
 			const marker = crypto.randomUUID();

@@ -166,6 +166,84 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it.each(['run.completed', 'run.failed', 'run.canceled'] as const)('retains completed-only TTFT through conversation creation and %s history reload', async (terminal) => {
+		let now = 1000;
+		const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.post.mockImplementation(async (path: string) => {
+			if (path === '/api/v1/chat/conversations') {
+				now = 2500;
+				return { id: 'ttft-chat', title: 'TTFT 대화', model_name: 'model-1', workspace_id: null, updated_at: at };
+			}
+			return {};
+		});
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path.includes('/ttft-chat/messages?')) return {
+				messages: [{ id: 'answer', conversation_id: 'ttft-chat', parent_id: null, role: 'assistant', content: '완료된 답변', created_at: at }],
+				active_leaf_id: 'answer', history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+			};
+			return fallback(path, ...args);
+		});
+		mocks.createRun.mockResolvedValue({ run_id: 'run-1', conversation_id: 'ttft-chat', temp_thread_id: null, status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' });
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'message.created', { message_id: 'answer', role: 'assistant', parent_id: null });
+			now = 3000;
+			yield event(2, 'part.delta', { message_id: 'answer', part_index: 1, part_type: 'reasoning', delta: '추론만 도착' });
+			now = 3750;
+			yield event(3, 'part.completed', { message_id: 'answer', part_index: 0, part: { type: 'text', text: '완료된 답변' } });
+			now = 8000;
+			if (terminal === 'run.completed') {
+				yield event(4, terminal, { status: 'completed', message_id: 'answer' });
+			} else {
+				yield event(4, terminal, { status: terminal === 'run.failed' ? 'failed' : 'canceled', message_id: 'answer', error_code: 'interrupted', safe_message: '중단됨' });
+			}
+		});
+		try {
+			render(ChatPanel);
+			await screen.findByRole('button', { name: 'Model 1' });
+			await fireEvent.input(screen.getByRole('textbox'), { target: { value: '답변해 주세요' } });
+			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+			await screen.findByText('완료된 답변');
+			await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+			expect(screen.getByText('TTFT 2.75초')).toBeTruthy();
+			expect(screen.queryByText(/tok\/s/)).toBeNull();
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it('never invents TTFT while replaying a resumed active run', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const descriptor = { run_id: 'run-1', conversation_id: 'ttft-resume', temp_thread_id: null, status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		let completed = false;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'ttft-resume', title: '재연결 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/ttft-resume/messages?')) return {
+				messages: completed ? [{ id: 'answer', conversation_id: 'ttft-resume', role: 'assistant', content: '재생된 답변', created_at: at }] : [],
+				active_leaf_id: completed ? 'answer' : null, history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+			};
+			if (path === '/api/v1/chat/conversations/ttft-resume/runs?active=true') return [descriptor];
+			return fallback(path, ...args);
+		});
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'message.created', { message_id: 'answer', role: 'assistant', parent_id: null });
+			yield event(2, 'part.delta', { message_id: 'answer', part_index: 0, part_type: 'text', delta: '재생된 답변' });
+			observed.resolve();
+			await finish.promise;
+			completed = true;
+			yield event(3, 'run.completed', { status: 'completed', message_id: 'answer' });
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByText('재연결 대화'));
+		await observed.promise;
+		expect(screen.queryByText(/TTFT/)).toBeNull();
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+		expect(await screen.findByText('재생된 답변')).toBeTruthy();
+		expect(screen.queryByText(/TTFT/)).toBeNull();
+	});
 	it('sends chat-only text with tool defaults explicitly disabled', async () => {
 		grantLumen('lumen-chat_user');
 		render(ChatPanel);
@@ -748,6 +826,18 @@ describe('ChatPanel', () => {
 	});
 
 	it('keeps a pre-persistence send failure visible and retries with the same request key', async () => {
+		let now = 1000;
+		const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'message.created', { message_id: 'retry-answer', role: 'assistant', parent_id: null });
+			now = 10500;
+			yield event(2, 'part.completed', { message_id: 'retry-answer', part_index: 0, part: { type: 'text', text: '재시도 답변' } });
+			observed.resolve();
+			await finish.promise;
+			yield event(3, 'run.completed', { status: 'completed', message_id: 'retry-answer' });
+		});
 		mocks.post.mockImplementation(async (path: string) => {
 			if (path === '/api/v1/chat/conversations') {
 				return {
@@ -765,12 +855,15 @@ describe('ChatPanel', () => {
 			.mockRejectedValueOnce(new Error('일시적으로 전송하지 못했습니다'))
 			.mockImplementationOnce(() => retry.promise);
 
+		try {
 		render(ChatPanel);
 		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '실패 후 재전송' } });
 		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 
 		await screen.findByText('응답 생성에 실패했습니다');
 		expect(screen.getByText('실패 후 재전송')).toBeTruthy();
+		expect(screen.queryByText(/TTFT/)).toBeNull();
+		now = 10000;
 		const retryButton = screen.getByRole('button', { name: '다시 전송' });
 		await fireEvent.click(retryButton);
 		await fireEvent.click(retryButton);
@@ -780,7 +873,7 @@ describe('ChatPanel', () => {
 		const retryOptions = mocks.createRun.mock.calls[1][2];
 		expect(retryOptions.idempotencyKey).toBe(firstOptions.idempotencyKey);
 		retry.resolve({
-			run_id: 'run-retry',
+			run_id: 'run-1',
 			conversation_id: 'conversation-1',
 			temp_thread_id: null,
 			status: 'queued',
@@ -788,6 +881,14 @@ describe('ChatPanel', () => {
 			events_url: '/events',
 			cancel_url: '/cancel'
 		});
+		await observed.promise;
+		now = 10600;
+		await waitFor(() => { flushAnimationFrames(); expect(screen.getByText('TTFT 0.5초')).toBeTruthy(); });
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+		} finally {
+			clock.mockRestore();
+		}
 	});
 	it('keeps a failed conversation creation attempt visible with retry button and retries conversation creation on click', async () => {
 		let attempts = 0;

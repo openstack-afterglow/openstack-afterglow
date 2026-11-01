@@ -158,7 +158,7 @@
 	"recovery.username": "找回用户名",
 	"recovery.password": "重置密码",
 	"recovery.description": "向账户邮箱请求一次性验证链接，无需知道域名。",
-	"recovery.sent": "如果此地址符合条件，邮件已发送。请检查收件箱。",
+	"recovery.sent": "请求已受理。如果此地址符合条件，将发送邮件。受理不代表已送达。请检查收件箱；如果未收到或无法访问，请联系管理员。",
 	"recovery.notAvailable": "目前无法使用邮件请求。请联系管理员或稍后重试。",
 	"recovery.usernameResult": "此验证链接已使用。请使用下方的原始用户名和域登录。再次打开链接将无法查看。",
 	"recovery.reset": "保存新密码",
@@ -180,5 +180,6 @@
 	"link.signInAgain": "重新登录",
 	"recovery.failed": "无法确认结果。此账户可能不支持此恢复方法，或链接已使用。请求不会自动重发。请请求新链接或联系管理员。",
 	"link.authenticatedHelp": "仅外部登录账户可以通过已登录的原始账户会话批准连接。服务器将验证是否为同一账户。",
-	"link.authenticated": "以已登录的 {username} 批准连接"
+	"link.authenticated": "以已登录的 {username} 批准连接",
+	"recovery.passwordHelp": "发送到注册邮箱的链接会打开新密码表单，不会发送密码本身。如果未收到邮件或无法访问邮箱，请联系管理员。"
 }

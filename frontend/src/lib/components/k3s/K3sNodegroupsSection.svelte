@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import RichText from '$lib/i18n/RichText.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
@@ -73,7 +73,7 @@
 	</div>
 
 	{#if loading && nodegroups.length === 0}
-		<div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('overview.nodegroups.loading')} /></div>
+		<div class="text-xs text-ink-2 py-2"><LoadingState variant="control" label={t('overview.nodegroups.loading')} /></div>
 	{:else if nodegroups.length === 0}
 		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.empty')}</div>
 	{:else}
@@ -136,7 +136,7 @@
 					onclick={confirmDelete}
 					disabled={!$k3sPermissions.administerClusters || deleting}
 					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
-				>{#if deleting}<ActivityIndicator size="xs" label={t('overview.nodegroups.deleting')} />{:else}{t('overview.nodegroups.delete')}{/if}</button>
+				>{#if deleting}<LoadingState variant="control" label={t('overview.nodegroups.deleting')} />{:else}{t('overview.nodegroups.delete')}{/if}</button>
 			</div>
 		</div>
 	</div>

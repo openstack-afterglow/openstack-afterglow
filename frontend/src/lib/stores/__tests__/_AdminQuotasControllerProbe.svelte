@@ -18,6 +18,4 @@
 </script>
 
 <div data-testid="quota-loading">{controller.quotaLoading ? 'loading' : 'ready'}</div>
-<div data-testid="gpu-loading">{controller.gpuQuotaLoading ? 'loading' : 'ready'}</div>
 <div data-testid="quota-value">{JSON.stringify(controller.quotas)}</div>
-<div data-testid="gpu-count">{controller.gpuQuotas.length}</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
@@ -34,6 +35,6 @@
 			onclick={s.bulkDelete}
 			disabled={s.bulkDeleting}
 			class="text-xs text-ink-0 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected disabled:text-ink-3 transition-colors px-3 py-1.5 rounded border border-red-600 disabled:border-line-2"
-		>{s.bulkDeleting ? t('views.bulkActionBar.deleting') : t('views.bulkActionBar.deleteSelected')}</button>
+		>{#if s.bulkDeleting}<LoadingState variant="control" label="" />{/if}{s.bulkDeleting ? t('views.bulkActionBar.deleting') : t('views.bulkActionBar.deleteSelected')}</button>
 	</div>
 {/if}

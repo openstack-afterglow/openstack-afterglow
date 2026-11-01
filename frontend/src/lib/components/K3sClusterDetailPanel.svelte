@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/drover';
   import { onDestroy, untrack } from 'svelte';
   import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -128,7 +129,7 @@
     <K3sInstanceViewerOverlay />
   {/if}
 
-  <div class={onClose ? 'p-6' : ''}>
+  <div class="flex min-h-full flex-col {onClose && !(s.loading && !s.cluster) ? 'p-6' : ''}">
     <div class="mb-5 flex items-center justify-between">
       <!-- SlidePanel 안에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
            단독 라우트에서만 목록 백링크를 둔다. -->
@@ -139,11 +140,8 @@
       {/if}
     </div>
 
-    {#if s.loading}
-      <div class="space-y-4" role="status" aria-label={t('clusterDetail.loading')} aria-busy="true">
-        <div class="motion-skeleton h-8 rounded w-64 max-w-full"></div>
-        <div class="motion-skeleton h-40 rounded"></div>
-      </div>
+    {#if s.loading && !s.cluster}
+		<LoadingState variant="surface" label={t('clusterDetail.loading')} />
     {:else if s.error}
       <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
     {:else if s.cluster}

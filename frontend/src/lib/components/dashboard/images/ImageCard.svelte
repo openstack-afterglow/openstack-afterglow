@@ -8,7 +8,7 @@
 	import { imageReferenceParts, imageVerificationStatus } from '$lib/stores/imageCatalog.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { t } from '$lib/i18n/ns/images-keys';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let {
 		img,
@@ -111,7 +111,7 @@
 					onclick={() => onToggleActivation(img)}
 					disabled={toggling}
 					class="text-xs {img.status === 'active' ? 'text-[var(--color-state-warning)] hover:text-[var(--color-warm-2)]' : 'text-[var(--color-state-success)] hover:text-[var(--color-state-success)]'} disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-surface-sunken)]"
-				>{#if toggling}<ActivityIndicator size="xs" label={t('imageCard.toggling')} />{:else}{img.status === 'active' ? t('imageCard.deactivate') : t('imageCard.activate')}{/if}</button>
+				>{#if toggling}<LoadingState variant="control" label={t('imageCard.toggling')} />{:else}{img.status === 'active' ? t('imageCard.deactivate') : t('imageCard.activate')}{/if}</button>
 			{/if}
 			<button
 				onclick={() => onEdit(img)}
@@ -121,7 +121,7 @@
 				onclick={() => onDelete(img.id, img.name)}
 				disabled={deleting}
 				class="text-xs text-[var(--color-state-danger)] hover:text-[var(--color-state-danger)] disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-state-danger)]/15"
-			>{#if deleting}<ActivityIndicator size="xs" label={t('imageCard.deleting')} />{:else}{t('imageCard.delete')}{/if}</button>
+			>{#if deleting}<LoadingState variant="control" label={t('imageCard.deleting')} />{:else}{t('imageCard.delete')}{/if}</button>
 		</div>
 	{/if}
 </article>

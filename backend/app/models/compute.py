@@ -1,7 +1,21 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
+
+from app.models.instance_usage import UsageScheduleRequest
+
+CPU_CONTROL_SPEC = "afterglow:cpu_control_token"
 
 
 class IpAddress(BaseModel):
@@ -73,6 +87,7 @@ class FlavorRemainingInfo(BaseModel):
 
 class FlavorCapacityInfo(BaseModel):
     status: Literal["available", "insufficient", "unavailable"]
+    reason: Literal["default_compute_zone_unavailable"] | None = None
     checked_at: str
     candidate_hosts: int = 0
     cpu_resource_class: Literal["VCPU", "PCPU"] | None = None
@@ -90,17 +105,57 @@ class FlavorEligibility(BaseModel):
     remaining: FlavorRemainingInfo
     blockers: list[FlavorQuotaBlocker] = []
     capacity: FlavorCapacityInfo | None = None
+    quota_scope: Literal["project", "domain"] = "project"
+    domain_id: str | None = None
+
+
+class FlavorGpuPrimaryAlias(BaseModel):
+    name: str
+    count: int
+    resource_class: str
+    profile_name: str
 
 
 class FlavorInfo(BaseModel):
     id: str
     name: str
+    display_name: str | None = None
     vcpus: int
     ram: int  # MB
     disk: int  # GB
     is_public: bool = True
+    cpu_automation_managed: bool = False
     extra_specs: dict = {}
     eligibility: FlavorEligibility | None = None
+    # None means the managed mapping is unavailable; never infer companion roles.
+    gpu_primary_aliases: list[FlavorGpuPrimaryAlias] | None = None
+    # Server-validated resource coordinates for explicit saved-configuration reuse.
+    composition: dict[str, int | str | None] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def detect_cpu_automation(cls, value):
+        if (
+            isinstance(value, dict)
+            and isinstance(value.get("extra_specs"), dict)
+            and CPU_CONTROL_SPEC in value["extra_specs"]
+        ):
+            return {**value, "cpu_automation_managed": True}
+        return value
+
+    @field_serializer("extra_specs")
+    def serialize_extra_specs(self, specs: dict) -> dict:
+        # Native ownership markers are not scheduling metadata for API clients.
+        if CPU_CONTROL_SPEC not in specs:
+            return specs
+        return {key: value for key, value in specs.items() if key != CPU_CONTROL_SPEC}
+
+    @computed_field
+    @property
+    def usage_schedule_required(self) -> bool:
+        from app.services.instance_usage import requires_schedule
+
+        return requires_schedule(self)
 
     @property
     def is_gpu(self) -> bool:
@@ -157,6 +212,7 @@ class InstanceInfo(BaseModel):
     os_type: str | None = None
     flavor_id: str | None = None
     flavor_name: str | None = None
+    flavor_display_name: str | None = None
     ip_addresses: list[IpAddress] = []
     created_at: str | None = None
     metadata: dict = {}
@@ -201,6 +257,7 @@ class CreateInstanceRequest(BaseModel):
     availability_zone: str | None = None
     security_groups: list[str] = []
     userdata: str | None = None
+    usage_schedule: UsageScheduleRequest | None = None
 
     boot_volume_size_gb: int | None = Field(None, ge=1, le=16384)
     delete_boot_volume_on_termination: bool = False

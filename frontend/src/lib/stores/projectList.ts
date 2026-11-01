@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { api } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
+import { sessionScopeKey } from '$lib/utils/authSession';
 import { writable, get } from 'svelte/store';
 
 export interface Project {
@@ -19,6 +20,8 @@ interface CachedProjectList {
 	data: Project[];
 	ts: number;
 	domainId?: string | null;
+	identityDomainId?: string | null;
+	projectId?: string | null;
 }
 
 export const BROWSER_TTL_MS = 5 * 60 * 1000;
@@ -33,8 +36,13 @@ const store = writable<ProjectListState>(initialState);
 const { subscribe, set, update } = store;
 
 let requestSequence = 0;
-let inFlightRevalidation: { userId: string; promise: Promise<void> } | null = null;
-let inFlightRefresh: { userId: string; promise: Promise<void> } | null = null;
+let successfulLoad: { owner: string; ts: number } | null = null;
+let inFlightRevalidation: { owner: string; promise: Promise<void> } | null = null;
+let inFlightRefresh: { owner: string; promise: Promise<void> } | null = null;
+
+function requestOwner(userId: string): string {
+	return JSON.stringify([userId, sessionScopeKey(get(auth))]);
+}
 
 function storageKey(userId: string): string {
 	return `afterglow.projects.${userId}`;
@@ -47,7 +55,10 @@ function readCache(userId: string): CachedProjectList | null {
 		if (!raw) return null;
 		const cached = JSON.parse(raw) as Partial<CachedProjectList>;
 		if (!Array.isArray(cached.data) || typeof cached.ts !== 'number') return null;
-		if ((cached.domainId ?? null) !== get(auth).domainId) return null;
+		const state = get(auth);
+		if ((cached.domainId ?? null) !== state.domainId
+			|| (cached.identityDomainId ?? null) !== (state.identityDomainId ?? null)
+			|| (cached.projectId ?? null) !== state.projectId) return null;
 		return cached as CachedProjectList;
 	} catch {
 		return null;
@@ -57,7 +68,9 @@ function readCache(userId: string): CachedProjectList | null {
 function writeCache(userId: string, projects: Project[]): void {
 	if (!browser) return;
 	try {
-		localStorage.setItem(storageKey(userId), JSON.stringify({ data: projects, ts: Date.now(), domainId: get(auth).domainId }));
+		const state = get(auth);
+		localStorage.setItem(storageKey(userId), JSON.stringify({ data: projects, ts: Date.now(), domainId: state.domainId,
+			identityDomainId: state.identityDomainId ?? null, projectId: state.projectId }));
 	} catch {
 		// localStorage가 비활성화되거나 용량을 초과해도 인메모리 목록은 계속 사용한다.
 	}
@@ -69,6 +82,7 @@ async function fetchAndStore(path: string, token: string, userId: string): Promi
 	try {
 		const projects = await api.get<Project[]>(path, token);
 		if (requestId !== requestSequence) return;
+		successfulLoad = { owner: requestOwner(userId), ts: Date.now() };
 		set({ projects, loading: false, loaded: true });
 		writeCache(userId, projects);
 	} catch {
@@ -81,17 +95,20 @@ async function fetchAndStore(path: string, token: string, userId: string): Promi
 }
 
 function revalidate(token: string, userId: string): Promise<void> {
-	if (inFlightRefresh?.userId === userId) return inFlightRefresh.promise;
-	if (inFlightRevalidation?.userId === userId) return inFlightRevalidation.promise;
+	const owner = requestOwner(userId);
+	if (inFlightRefresh?.owner === owner) return inFlightRefresh.promise;
+	if (inFlightRevalidation?.owner === owner) return inFlightRevalidation.promise;
 
 	const promise = fetchAndStore('/api/v1/auth/projects?cache=true', token, userId).finally(() => {
 		if (inFlightRevalidation?.promise === promise) inFlightRevalidation = null;
 	});
-	inFlightRevalidation = { userId, promise };
+	inFlightRevalidation = { owner, promise };
 	return promise;
 }
 
 function prefetch(token: string, userId: string): void {
+	const owner = requestOwner(userId);
+	if (successfulLoad?.owner === owner && Date.now() - successfulLoad.ts < BROWSER_TTL_MS) return;
 	const cached = readCache(userId);
 	if (cached && Date.now() - cached.ts < BROWSER_TTL_MS) {
 		set({ projects: cached.data, loading: false, loaded: true });
@@ -100,17 +117,19 @@ function prefetch(token: string, userId: string): void {
 }
 
 function refresh(token: string, userId: string): Promise<void> {
-	if (inFlightRefresh?.userId === userId) return inFlightRefresh.promise;
+	const owner = requestOwner(userId);
+	if (inFlightRefresh?.owner === owner) return inFlightRefresh.promise;
 
 	const promise = fetchAndStore('/api/v1/auth/projects?refresh=true', token, userId).finally(() => {
 		if (inFlightRefresh?.promise === promise) inFlightRefresh = null;
 	});
-	inFlightRefresh = { userId, promise };
+	inFlightRefresh = { owner, promise };
 	return promise;
 }
 
 function reset(userId?: string): void {
 	requestSequence += 1;
+	successfulLoad = null;
 	inFlightRevalidation = null;
 	inFlightRefresh = null;
 	set(initialState);
@@ -126,7 +145,7 @@ if (browser) {
 	let previousUserId: string | null = null;
 	let previousOwner = '';
 	auth.subscribe(($auth) => {
-		const owner = JSON.stringify([$auth.userId, $auth.identityDomainId ?? null, $auth.domainId, $auth.sessionId ?? null]);
+		const owner = sessionScopeKey($auth);
 		if (!$auth.token || owner !== previousOwner) {
 			reset(previousUserId ?? undefined);
 		}

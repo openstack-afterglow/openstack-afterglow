@@ -10,10 +10,11 @@ vi.mock('$lib/api/client', () => ({
 }));
 
 import AdminResourcePoliciesPanel from '../AdminResourcePoliciesPanel.svelte';
+import { t } from '$lib/i18n/ns/admin-system';
 
 async function openBuilderFlavorPicker(): Promise<HTMLButtonElement> {
 	const trigger = (await screen.findByRole('button', {
-		name: 'Builder flavor 검색 및 선택'
+		name: t('policies.searchLabel', { title: t('policies.definition.builderFlavor.title') })
 	})) as HTMLButtonElement;
 	await waitFor(() => expect(trigger.disabled).toBe(false));
 	await fireEvent.click(trigger);
@@ -177,22 +178,6 @@ describe('AdminResourcePoliciesPanel', () => {
 		expect(document.activeElement).toBe(trigger);
 	});
 
-	it('renders Drover-owned K3s network and volume policy definitions', async () => {
-		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-
-		expect(screen.getByText('K3s volume availability zone')).toBeTruthy();
-		expect(screen.getByText('K3s default network')).toBeTruthy();
-		await waitFor(() => expect(get).toHaveBeenCalledWith(
-			'/api/v1/admin/resource-policies/catalog/k3s.volume_availability_zone',
-			'token',
-			'admin-project'
-		));
-		await waitFor(() => expect(get).toHaveBeenCalledWith(
-			'/api/v1/admin/resource-policies/catalog/k3s.default_network',
-			'token',
-			'admin-project'
-		));
-	});
 
 
 });

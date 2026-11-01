@@ -2,17 +2,20 @@
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import { CompactResourceCard, ResponsiveTable, StatusChip } from '$lib/components/ui';
+	import { consumerInstanceFlavorLabel } from '$lib/utils/flavorDisplay';
 
 	interface Props {
 		showHost?: boolean;
+		adminMode?: boolean;
 	}
 
-	let { showHost = false }: Props = $props();
+	let { showHost = false, adminMode = false }: Props = $props();
 
 	const s = useInstanceDetailController();
 
 	const githubLogin = $derived(s.instance!.ssh_access_mode === 'github' ? s.instance!.github_login : null);
 	const isWindows = $derived(s.instance!.os_type?.trim().toLowerCase() === 'windows');
+	const flavorLabel = $derived(adminMode ? s.instance!.flavor_display_name ?? s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-' : consumerInstanceFlavorLabel(s.instance!));
 </script>
 
 <div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
@@ -20,8 +23,8 @@
 	<ResponsiveTable>
 		{#snippet cards()}
 			<CompactResourceCard>
-				<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><h3 class="break-all text-sm font-medium line-clamp-2" title={s.instance!.name || s.instance!.id}>{s.instance!.name || s.instance!.id}</h3><StatusChip status={s.instance!.status} /></div>
-				<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('info.image')}</dt><dd class="break-all">{s.instance!.image_name ?? s.instance!.image_id ?? t('info.bootFromVolume')}</dd></div><div><dt class="text-ink-2">{t('info.flavor')}</dt><dd class="break-all">{s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-'}</dd></div></dl>
+				<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><h3 class="break-all text-sm font-medium line-clamp-2" title={s.instance!.name || s.instance!.id}>{s.instance!.name || s.instance!.id}</h3><StatusChip status={s.instance!.status} kind="server" /></div>
+				<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('info.image')}</dt><dd class="break-all">{s.instance!.image_name ?? s.instance!.image_id ?? t('info.bootFromVolume')}</dd></div><div><dt class="text-ink-2">{t('info.flavor')}</dt><dd class="break-all">{flavorLabel}</dd></div></dl>
 				{#snippet details()}
 					<dl class="space-y-2 text-xs">
 						<div><dt class="text-ink-2">ID</dt><dd class="break-all font-mono">{s.instance!.id}</dd></div>
@@ -49,7 +52,7 @@
 		</div>
 		<div>
 			<dt class="text-xs text-ink-2 mb-0.5">{t('info.flavor')}</dt>
-			<dd class="text-sm text-ink-2">{s.instance!.flavor_name ?? s.instance!.flavor_id ?? '-'}</dd>
+			<dd class="text-sm text-ink-2">{flavorLabel}</dd>
 		</div>
 		{#if !isWindows}
 			<div>

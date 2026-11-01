@@ -5,6 +5,7 @@ export interface AdminInstance {
 	project_id: string | null;
 	user_id: string | null;
 	flavor: string;
+	flavor_display_name?: string | null;
 	host: string | null;
 	created_at: string | null;
 	fault?: string | null;

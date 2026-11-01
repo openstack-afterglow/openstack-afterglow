@@ -39,6 +39,8 @@ nav_order: 70
 > 태그: `dashboard`  
 > 기본 경로: `/api/v1/dashboard`
 
+메인 UI는 최초 loading·성공 empty·일부 telemetry·실패 상태에서도 같은 metric slot과 recent/aside grid를 유지한다. Background refresh는 확인된 empty/기존 측정값을 skeleton으로 교체하지 않으며 오류는 별도 표시한다. 첫 인스턴스 안내는 실제 성공한 total0에서만 recent section에 나타나고 생성 작업은 인스턴스 페이지로 연결한다. VM 메트릭 페이지는 현재 프로젝트 Nova UUID에 대해 기존 instance metrics API를 사용하며 infrastructure Grafana node dashboard를 사용하지 않는다.
+
 ### 엔드포인트 목록
 
 | 메서드 | 경로 | 설명 |
@@ -123,6 +125,7 @@ nav_order: 70
 | 그룹 | full 응답 항목 |
 |---|---|
 | `compute` | `instances`, `cores`, `ram`, `key_pairs`, `server_groups` |
+| `native_compute` | Full 응답 전용. 같은 현재 프로젝트에서 이미 조회한 원래 Nova `instances`, `cores`, `ram` 등 native quota·사용량. Domain/effective projection 전의 관측이며 VM 생성 wizard의 native quota preview에 사용 |
 | `storage` | `volumes`, `gigabytes`, `snapshots`, `backups`, `backup_gigabytes` |
 | `network` | `floatingip`, `network`, `subnet`, `port`, `router`, `security_group`, `security_group_rule` |
 | `file_storage` | Manila 활성 시 `shares`, `gigabytes`, `share_networks`, `snapshot_gigabytes` |
@@ -131,6 +134,8 @@ nav_order: 70
 | `database` | Trove의 `instances_count` 통계 |
 
 프론트엔드는 Manila·Swift·Trove를 사이트 서비스 설정으로 게이트하고, 부분 응답에서 `{limit, in_use}`가 없는 항목은 표시하지 않습니다. 사용량 보고서의 `compute_available=false` 또는 `storage_available=false`이면 해당 full 응답 그룹을 표시하지 않아 정규화된 0/무제한 값을 정상 쿼터로 오인하지 않습니다. 키페어는 사용자 범위 리소스이며 Nova 프로젝트 쿼터에서 사용량을 제공하지 않으므로 **사용자별 한도만** 표시합니다. Swift·Trove는 쿼터 비율이 아닌 개수/용량 통계입니다. 보고서와 현황은 별도로 응답을 반영하므로 이 요청이 지연되어도 보고서를 먼저 표시하고, 실패하면 현황 섹션에 경고를 표시합니다. RAM 한도 그래프는 MB에서 소수 GB로 변환한 값으로 비율을 계산합니다.
+
+`compute`는 기존 domain pool/effective 한도와 검증 실패 시 CPU/RAM `null` 계약을 유지합니다. `native_compute`는 pool의 active/paused/unavailable 여부로 덮어쓰지 않고 같은 Nova 응답에서 사용량을 확인한 정수 쌍만 분리하므로 공용 domain 사용량을 프로젝트 사용량으로 오인하지 않습니다. `limit=-1`은 무제한이지만 `in_use`는 실제 관측값이며, native source 부재를 domain 수치·0/무제한으로 대체하지 않습니다. 누락/잘못된 항목은 생략하고 실패한 HTTP 관측은 `null`이며, 기존 limits fallback은 실제 인증 프로젝트 일치가 입증된 경우의 관측만 사용합니다. Full source cache는 `afterglow:dashboard:{project_id}:quotas:native-v1`로 이전 정규화 payload와 분리하고 기존 quota/pool 변경 무효화에 참여합니다. `view=overview`에는 이 새 필드를 추가하지 않습니다. 새 권한·추가 native 조회·DB schema·quota 변경은 없습니다.
 
 ### GET /api/v1/dashboard/gpu-available
 

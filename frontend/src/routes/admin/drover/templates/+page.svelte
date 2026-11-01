@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -81,7 +81,7 @@
 	</PageHeader>
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={3} />
+		<LoadingState variant="surface" />
 	{:else}
 			{#if templates.length === 0}
 				<div class="text-ink-2 text-sm py-12 text-center">{t('templates.empty')}</div>

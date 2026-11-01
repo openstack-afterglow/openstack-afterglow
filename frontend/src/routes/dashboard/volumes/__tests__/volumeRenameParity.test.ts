@@ -102,7 +102,7 @@ describe('volume detail parity and list rename', () => {
 	it('renames from the list action menu and updates both the row and the open detail panel', async () => {
 		render(ListPage);
 
-		await fireEvent.click(await screen.findByRole('button', { name: /^data-disk\s*vol-1/ }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'data-disk' }));
 		const heading = await screen.findByRole('heading', { name: 'data-disk' });
 		expect(heading).toBeTruthy();
 		expect(await screen.findByRole('link', { name: 'web-01' })).toBeTruthy();

@@ -71,6 +71,9 @@ x-afterglow-local-environment: &afterglow-local-environment
   REDIS_URL: redis://redis:6379/0
   SENTINEL_ENABLED: "false"
   SENTINEL_HOSTS: ""
+  # Local Redis must never coordinate a global writer against shared cloud credentials.
+  # Override shared TOML even when production explicitly enables the scheduler.
+  INSTANCE_USAGE_SCHEDULER_ENABLED: "false"
   SERVICE_WAYGATE_INTERNAL_URL: ${SERVICE_WAYGATE_INTERNAL_URL-${AFTERGLOW_LOCAL_WAYGATE_INTERNAL_URL-http://waygate-api:8010}}
   SERVICE_DROVER_INTERNAL_URL: ${SERVICE_DROVER_INTERNAL_URL-${AFTERGLOW_LOCAL_DROVER_INTERNAL_URL-http://drover-api:8011}}
   SERVICE_LUMEN_INTERNAL_URL: ${SERVICE_LUMEN_INTERNAL_URL-${AFTERGLOW_LOCAL_LUMEN_INTERNAL_URL-http://lumen-api:8012}}
@@ -425,6 +428,7 @@ services:
     volumes:
       - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
       - ./.local-services/logs:/app/logs
+      - ./.local-services/nova-pci-aliases:/app/nova-pci-aliases:ro
       - ${AFTERGLOW_LOCAL_CEPH_CONF:-/dev/null}:/etc/ceph/ceph.conf:ro
       - ${AFTERGLOW_LOCAL_CEPH_KEYRING:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
       - ${TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE:-/dev/null}:/etc/afterglow/geoip/country.mmdb:ro

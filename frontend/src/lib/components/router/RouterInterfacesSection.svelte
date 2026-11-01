@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import RouterInterfaceAddForm from './RouterInterfaceAddForm.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
@@ -42,7 +42,7 @@
 							disabled={s.saving}
 							aria-busy={removing}
 							class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-						>{#if removing}<ActivityIndicator size="xs" tone="danger" />{/if}{removing ? `${t('router.interfaces.remove')}: ${commonT('state.processing')}` : t('router.interfaces.remove')}</button>
+						>{#if removing}<LoadingState variant="control" label="" />{/if}{removing ? `${t('router.interfaces.remove')}: ${commonT('state.processing')}` : t('router.interfaces.remove')}</button>
 					{/if}
 				</div>
 			{/each}

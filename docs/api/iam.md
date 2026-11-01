@@ -54,12 +54,32 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `PUT /quotas/defaults` | `{revision,defaults}` | 갱신된 DomainQuotaSnapshot; 미래 프로젝트 기본값 전체 교체 |
 | `GET /projects/{project_id}/quotas` | 없음 | ProjectQuota; 같은 작업 도메인의 정확한 프로젝트 |
 | `PUT /projects/{project_id}/quotas` | flat nonempty QuotaMap | QuotaWrite; HTTP200이어도 partial/unknown 가능 |
+| `GET /compute-pool` | 없음 | 현재 domain 공용 CPU/RAM/승인 GPU 정책·usage·잔여량·policy_ready·control_scope=afterglow |
+| `PUT /compute-pool/projects/{project_id}` | `{revision,limits}` | pool 이하의 optional project cap; cap 합계는 allocation budget이 아님 |
+| `DELETE /compute-pool/projects/{project_id}?revision=N` | 없음 | optional cap 제거; exact native404·directory 부재·Placement0 확인 시 stale cap 명시 복구 |
+| `GET /gpu-quota-requests` | `status=pending\|fulfilled\|rejected\|all`, 선택 `cursor` | 현재 확인된 도메인의 요청 목록 `{items,next_cursor}`; 50개 단위 |
+| `POST /gpu-quota-requests` | `{project_id,resource_class,additional,reason}` | 선택 프로젝트의 승인 GPU 추가 요청; 현재 한도와 목표를 저장하며 quota는 변경하지 않음 |
 | `GET /monitoring` | 없음 | ManagerMonitoring; query/window/pagination 계약 없음 |
 | `GET /monitoring/forecast` | 없음 | 도메인 전체 Nova 할당 추세; 서비스별 미지원/불명 상태 유지 |
 
 `GET /monitoring/forecast`는 현재 도메인의 비활성 프로젝트도 포함한 전체 프로젝트를 조회하고 각각 Nova simple-tenant-usage를 명시 microversion2.39의 unpaged GET으로 읽는다. 반환 project/window와 모든 instance usage row를 검증한 경우에만 최근7일 allocation의 선형 추세와30일 후 비율·한도 도달 예상 일수를 계산한다. 분모는 전체 project quota 배분 합계이고 실제 CPU/RAM 이용률·미래 수요나 예약 보장이 아니다. 한 프로젝트라도 history가 불명/거부이면 aggregate 예측을 공개하지 않는다. Storage/GPU/다른 서비스의 도메인 전체 이력은 지원하지 않으며0으로 꾸미지 않는다. 응답은 `{domain_id,observed_at,window_days,horizon_days,source,entries:[{metric,unit,status,error,current,limit,trend}]}`다.
 
 사용자 IAM은 **모니터링 및 배분** 한 탭에서 도메인 전체 resource 관측·project/user 귀속 상세·예측·quota 예산/기본값/개별 project 배분을 제공한다. 세 요청/오류는 독립적이며 하나의 native 장애가 나머지 관측을 숨기지 않는다. Context 재검증 중 탭을 열어도 권위 확인이 끝난 뒤 최초 조회를 시작한다.
+
+Afterglow compute pool이 활성/중지된 domain의 CPU·RAM·GPU는 기존 allocation budget/default writer와 별도로 관리합니다. **관리자만 domain pool**, exact-domain manager/system-admin만 프로젝트 cap을 설정합니다. Cap 부재는 공유, explicit0은 거부이고 cap 합계를 allocation budget으로 다시 배분하지 않습니다. CPU/RAM domain 한도 부재는 추가 제한 없음이며 native 프로젝트 quota는 계속 적용합니다. 승인 GPU 모델을 할당하면 해당 모델/장 수 flavor는 모든 enabled 소속 프로젝트에 자동 공개됩니다. `paused`는 Afterglow 신규 admission 중지이며 direct Nova를 막는 전역 집행이 아닙니다. Nova 확장/fleet qualification 없이 표준 API와 승인 정책으로 동작하고 외부 호출 우회·비원자적 domain 동시성 한계를 명시합니다.
+
+GPU 추가 요청은 현재 도메인의 enabled 프로젝트와 활성 승인 GPU profile의 **primary resource class**를 사용합니다. 다른 도메인·companion·미확인 대상은 거부합니다. `additional`은 양의 정수이고, 상한 누락은 domain GPU 한도를 상속하며 domain GPU 한도도 없으면0입니다. 요청 시 현재 상한+추가량의 절대 `target_limit`을 저장하므로 이후 동시 요청을 합산한 예약이 아닙니다. 무제한 상한에는 추가 요청을 만들 수 없습니다. `pending`/`fulfilled`/`rejected`와 관리자 메모를 같은 도메인 manager가 확인합니다. 관리자가 기존 정책을 수동 변경하고 현재 domain 및 project 상한이 목표 이상인지 확인해야 완료됩니다. DB 또는 정책 조회 장애는 빈 목록·0이 아닙니다.
+
+승인 GPU profile·프로젝트와 정책 관측이 준비되어 있으면 미관리/일시 중지 풀에서도 요청은 접수할 수 있습니다. 완료는 관리자가 풀을 활성화하고 필요한 상한을 수동으로 맞춘 뒤에만 가능합니다.
+
+응답 필드는 `id`, `domain_id`, `project_id`, `requester_id`, `gpu_profile_name`, `resource_class`, `additional`, `baseline_limit`, `target_limit`, `pool_revision`, `reason`, `status`, `created_at`, `reviewer_id`, `reviewed_at`, `note`입니다. `id`와 cursor는32자리 소문자 hex이고 `reason`·`note`는 각각 최대2,000자입니다. 목록은 생성 시각·ID의 내림차순이며 cursor가 없으면 첫 페이지입니다. 생성은201, 권한 실패403, 부적격·충돌409, 저장소/정책 불명503입니다. 같은 도메인의 manager와 시스템 관리자가 이 텍스트를 볼 수 있으므로 비밀을 넣지 않습니다.
+
+같은 로그인 세션의 정상 Keystone root token 갱신은 요청 생성·조회·검토를 중단하지 않습니다. 세션이 삭제·차단되거나 현재 사용자/도메인/프로젝트·scope generation·provider 연결이 바뀌면 기존 요청은 거부하며, native 사용자와 권한도 별도로 다시 확인합니다.
+
+Native CPU/RAM 프로젝트 quota, domain allocation budget 및 새 프로젝트 defaults는 pool과 **독립적으로 편집**합니다. Active/paused/GPU-only pool이어도 `/projects/{id}/quotas`, `/quotas/defaults`에서 cores/ram을 누락하거나 pool cap으로 대체하지 않습니다. Native 사용량/예약·allocation ceiling·unknown operation·권한·readback은 계속 검증합니다. 새 프로젝트는 disabled 상태에서 CPU/RAM native defaults를 적용하고 확인한 뒤 enable합니다. Pool panel 조회 장애만으로 native snapshot이 검증된 editor를 잠그지 않으며 자동 quota 증액은 하지 않습니다.
+
+삭제된 프로젝트의 stale cap이 있으면 관리 snapshot은 저장 정책/revision과 `stale_project_caps`, `projection_unavailable`을 제공하되 사용량을0으로 만들지 않습니다. Admission은 계속 fail closed이며 명시 DELETE-cap은 exact404·완전한 같은 domain directory 부재·모든 Placement usage0을 확인한 대상만 정리합니다. 다른 domain으로 이동했거나 응답 불명/잔여 allocation이 있으면 제거하지 않습니다. 일반 프로젝트 삭제도 같은 graph lease에서 cap-aware preflight와 확인된 native 삭제 뒤 cap cleanup을 수행합니다. Native DELETE 결과가 불명이면 cap을 보존하고 자동 재전송하지 않습니다.
+
 
 Directory 목록에는 limit/marker 계약이 없고 native 작업 domain inventory를 검증해 반환합니다. `/context`의 `is_domain_manager=true`는 해당 Default의 현재 유효 manager를 뜻합니다. `is_system_admin`은 별도 현재 system authority이며 이 값만으로 IAM에 진입할 수 없습니다.
 

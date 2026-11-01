@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
 	import source from '$lib/i18n/messages/ko/admin-system.json';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import NotionTargetFormFields from './NotionTargetFormFields.svelte';
@@ -75,7 +75,7 @@
 		<div class="mt-4">
 			<button onclick={addTarget} disabled={adding}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-				{#if adding}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{adding ? t('notion.add.adding') : t('notion.add.submit')}
+				{#if adding}<LoadingState variant="control" label="" aria-hidden="true" class="mr-1.5" />{/if}{adding ? t('notion.add.adding') : t('notion.add.submit')}
 			</button>
 		</div>
 	</div>

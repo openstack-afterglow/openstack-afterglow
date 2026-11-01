@@ -87,12 +87,6 @@ describe('TopologyNetworkPanel', () => {
 		expect([...document.querySelectorAll('button')].filter((b) => b.textContent?.trim() === '×')).toEqual([]);
 	});
 
-	it('같은 상태 값을 한 화면에 두 번 보여주지 않는다', () => {
-		// 헤더 StatusChip 과 본문 "상태" 행이 같은 값을 동시에 보여주던 중복을 막는다.
-		renderPanel('net-web', true);
-		expect(screen.getAllByText('ACTIVE')).toHaveLength(1);
-	});
-
 	it('응답에 없는 네트워크 id 는 안내문만 보여준다', () => {
 		renderPanel('net-missing', true);
 		expect(screen.getByText('현재 토폴로지 응답에 없는 네트워크입니다.')).toBeTruthy();

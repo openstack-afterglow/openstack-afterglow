@@ -310,6 +310,8 @@
 	"message.forkHere": "এখান থেকে ব্রাঞ্চ করুন",
 	"message.fork": "ব্রাঞ্চ করুন",
 	"message.generationSpeed": "তৈরির গতি",
+	"message.ttft": "TTFT {seconds} সেকেন্ড",
+	"message.ttftExplanation": "পাঠানো থেকে প্রথম উত্তরের লেখা পাওয়া পর্যন্ত: {seconds} সেকেন্ড",
 	"window.elapsedMinutesSeconds": "{minutes} মিনিট {seconds} সেকেন্ড",
 	"window.elapsedSeconds": "{seconds} সেকেন্ড",
 	"window.skillFallback": "স্কিল #{id}",

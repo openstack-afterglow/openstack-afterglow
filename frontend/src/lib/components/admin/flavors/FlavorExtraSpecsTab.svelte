@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/admin-compute';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -11,19 +11,26 @@
 		type FlavorSpecTemplate,
 	} from '$lib/constants/flavorSpecTemplates';
 	import type { GpuCatalogDevice } from '$lib/types/gpu';
+	import { isManagedFlavor } from '$lib/api/computePools';
+	import { t as usage } from '$lib/i18n/ns/usage-schedule';
+	import { Alert } from '$lib/components/ui';
+	import { requiresUsageSchedule } from '$lib/utils/instanceUsage';
 
 	interface Flavor {
 		id: string;
 		name: string;
+		cpu_automation_managed?: boolean;
 		vcpus: number;
 		ram: number;
 		disk: number;
 		is_public: boolean;
 		description: string | null;
 		extra_specs: Record<string, string>;
-		is_gpu: boolean;
-		gpu_count: number;
+		is_gpu: boolean | null;
+		gpu_count: number | null;
 	}
+
+	const usageSpec = 'afterglow:usage_schedule_required';
 
 	let {
 		flavor: flavorIn,
@@ -40,6 +47,50 @@
 	$effect(() => {
 		flavor = flavorIn;
 	});
+
+	let usageDraft = $state(false);
+	let usageSaving = $state(false);
+	let usageError = $state('');
+	let usageGeneration = 0;
+	const additionalRequirement = $derived(['true', '1', 'yes', 'on'].includes((flavor.extra_specs[usageSpec] ?? '').trim().toLowerCase()));
+	const baselineRequired = $derived(requiresUsageSchedule({ ...flavor, usage_schedule_required: undefined, extra_specs: { ...flavor.extra_specs, [usageSpec]: 'false' } }));
+	$effect(() => {
+		const currentFlavor = flavorIn;
+		token; projectId;
+		usageGeneration += 1;
+		usageDraft = ['true', '1', 'yes', 'on'].includes((currentFlavor.extra_specs[usageSpec] ?? '').trim().toLowerCase());
+		usageError = '';
+		usageSaving = false;
+	});
+
+	async function saveUsageRequirement() {
+		if (usageSaving) return;
+		const generation = usageGeneration;
+		const id = flavor.id;
+		const required = usageDraft;
+		usageSaving = true;
+		usageError = '';
+		try {
+			const result = await api.put<{ flavor_id: string; usage_schedule_required: boolean; additional_requirement: boolean }>(
+				`/api/v1/admin/flavors/${encodeURIComponent(id)}/usage-schedule-requirement`,
+				{ required }, token, projectId,
+			);
+			if (generation !== usageGeneration) return;
+			if (result.flavor_id !== id || result.additional_requirement !== required
+				|| typeof result.usage_schedule_required !== 'boolean' || ((baselineRequired || required) && !result.usage_schedule_required)) {
+				throw new Error('Invalid flavor requirement response');
+			}
+			const specs = { ...flavor.extra_specs };
+			if (required) specs[usageSpec] = 'true';
+			else delete specs[usageSpec];
+			flavor = { ...flavor, extra_specs: specs };
+			onChanged();
+		} catch {
+			if (generation === usageGeneration) usageError = usage('saveFailed');
+		} finally {
+			if (generation === usageGeneration) usageSaving = false;
+		}
+	}
 
 	let newSpecKey = $state('');
 	let newSpecValue = $state('');
@@ -104,6 +155,7 @@
 
 	async function addExtraSpec() {
 		const value = effectiveValue();
+		if (isManagedFlavor(flavor)) return;
 		if (!newSpecKey.trim()) return;
 		specSaving = true;
 		specError = '';
@@ -129,7 +181,7 @@
 		}
 	}
 
-	onMount(loadGpuAliases);
+	onMount(() => { if (!isManagedFlavor(flavor)) void loadGpuAliases(); });
 
 	function startEditSpec(key: string, value: string) {
 		editingSpecKey = key;
@@ -142,6 +194,7 @@
 	}
 
 	async function saveEditSpec() {
+		if (isManagedFlavor(flavor)) return;
 		if (!editingSpecKey) return;
 		specSaving = true;
 		specError = '';
@@ -167,6 +220,7 @@
 	}
 
 	async function deleteExtraSpec(key: string) {
+		if (isManagedFlavor(flavor)) return;
 		deletingSpecKey = key;
 		specError = '';
 		try {
@@ -187,6 +241,23 @@
 	}
 </script>
 
+<Alert tone="info" class="mb-4">{usage('flavorHelp')}</Alert>
+<div class="mb-4 space-y-3 rounded-lg border border-line p-3">
+	<label class="flex items-center gap-2 text-sm text-ink-1">
+		<input type="checkbox" bind:checked={usageDraft} disabled={usageSaving} />
+		{usage('flavorLabel')}
+	</label>
+	{#if baselineRequired}<p class="text-xs text-ink-2">{usage('required')}</p>{/if}
+	{#if usageError}<Alert tone="danger">{usageError}</Alert>{/if}
+	<button type="button" onclick={saveUsageRequirement} disabled={usageSaving || usageDraft === additionalRequirement}
+		class="min-h-11 rounded-lg border border-line px-3 py-2 text-sm text-ink-1 disabled:opacity-50">
+		{#if usageSaving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{usageSaving ? usage('saving') : tr('flavors.specs.save')}
+	</button>
+</div>
+
+{#if isManagedFlavor(flavor)}
+	<dl class="divide-y divide-line">{#each Object.entries(flavor.extra_specs) as [key, value]}<div class="space-y-1 py-3 text-xs"><dt class="break-all font-mono text-ink-1">{key}</dt><dd class="break-all font-mono text-ink-2">{value}</dd></div>{/each}</dl>
+{:else}
 {#if specError}
 	<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{specError}</div>
 {/if}
@@ -195,7 +266,7 @@
 	<div class="text-ink-2 text-sm mb-4">{tr('flavors.specs.empty')}</div>
 {:else}
 	<div class="space-y-1 mb-4">
-		{#each Object.entries(flavor.extra_specs) as [k, v]}
+		{#each Object.entries(flavor.extra_specs).filter(([key]) => key !== usageSpec) as [k, v]}
 			<div class="bg-surface-base border border-line rounded-lg px-3 py-2">
 				{#if editingSpecKey === k}
 					<div class="flex flex-wrap lg:flex-nowrap items-center gap-2">
@@ -210,7 +281,7 @@
 								if (e.key === 'Escape') cancelEditSpec();
 							}}
 						/>
-						<button onclick={saveEditSpec} disabled={specSaving} class="min-h-11 lg:min-h-0 text-state-success-text hover:text-state-success-text/90 text-xs shrink-0">{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.save')}{/if}</button>
+						<button onclick={saveEditSpec} disabled={specSaving} class="min-h-11 lg:min-h-0 text-state-success-text hover:text-state-success-text/90 text-xs shrink-0">{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.save')}{/if}</button>
 						<button onclick={cancelEditSpec} class="min-h-11 lg:min-h-0 text-ink-2 hover:text-ink-2 text-xs shrink-0">{tr('flavors.cancel')}</button>
 					</div>
 				{:else}
@@ -225,7 +296,7 @@
 						</button>
 						<button onclick={() => deleteExtraSpec(k)} disabled={deletingSpecKey === k} class="min-h-11 lg:min-h-0 ml-2 text-state-danger-text hover:text-state-danger-text/90 text-xs shrink-0">
 							{#if deletingSpecKey === k}
-								<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.delete.pending')}</span></span>
+								<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('flavors.delete.pending')}</span></span>
 							{:else}{tr('flavors.delete.action')}{/if}
 						</button>
 					</div>
@@ -319,6 +390,7 @@
 		disabled={specSaving || !newSpecKey.trim() || (currentTemplate?.valueType === 'gpu_alias' && gpuAliasOptions.length > 0 && !gpuAlias)}
 		class="w-full px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 	>
-		{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.addEdit')}{/if}
+		{#if specSaving}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('flavors.specs.saving')}</span></span>{:else}{tr('flavors.specs.addEdit')}{/if}
 	</button>
 </div>
+{/if}

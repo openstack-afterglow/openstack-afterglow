@@ -1,0 +1,202 @@
+{
+  "empty": {
+    "category": "state",
+    "label": "빈 상태",
+    "art": "      . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :      "
+  },
+  "search": {
+    "category": "state",
+    "label": "검색",
+    "art": "     . : : .       \n   :         :     \n  :    ? ?    :    \n   :         :     \n     : : : :  : .  \n                : :"
+  },
+  "error": {
+    "category": "state",
+    "label": "오류",
+    "art": "        : :        \n      :  !  :      \n    :    !    :    \n  :      ·      :  \n : : : : : : : : : "
+  },
+  "offline": {
+    "category": "state",
+    "label": "오프라인",
+    "art": "  . : :     : : .  \n :    :     :    : \n      :  /  :      \n :    : /   :    : \n  : : :     : : :  "
+  },
+  "success": {
+    "category": "state",
+    "label": "완료",
+    "art": "     . : : : .     \n   :           :   \n  :        /    :  \n  :    \\  /     :  \n   :    \\/     :   \n     : : : : :     "
+  },
+  "upload": {
+    "category": "transfer",
+    "label": "업로드",
+    "art": "        : :        \n      : : : :      \n    :   : :   :    \n        : :        \n        : :        \n  : : : : : : : :  "
+  },
+  "locked": {
+    "category": "state",
+    "label": "권한 잠금",
+    "art": "      : : : :      \n    :         :    \n    :         :    \n  [ : : : : : : ]  \n  [     : :     ]  \n  [ : : : : : : ]  "
+  },
+  "compute": {
+    "category": "infrastructure",
+    "label": "컴퓨트",
+    "art": "    : : : : : : : :\n  [  CPU  ::  RAM  ]\n  [  ::   ::   ::  ]\n  [  VM   ::  VM   ]\n    : : : : : : : :\n        : : : :\n     .:: NOVA ::."
+  },
+  "network": {
+    "category": "infrastructure",
+    "label": "네트워크",
+    "art": "  [ :: ]       [ :: ]\n     :             :\n     : : : : : : : :\n           :\n       [ :: :: ]\n           :\n     .:: NEUTRON ::."
+  },
+  "storage": {
+    "category": "infrastructure",
+    "label": "스토리지",
+    "art": "     . : : : : : .\n   :               :\n   : : : : : : : : :\n   :    ::    ::   :\n   : : : : : : : : :\n   :    ::    ::   :\n     : : CINDER : :"
+  },
+  "database": {
+    "category": "infrastructure",
+    "label": "데이터베이스",
+    "art": "      . : : : : .\n    :   : : :   :\n    : : : : : : :\n    :  ROW ::   :\n    : : : : : : :\n    :  SQL ::   :\n      : : : : :"
+  },
+  "security": {
+    "category": "infrastructure",
+    "label": "보안",
+    "art": "   : : : : : : : :\n   :      :      :\n    :    : :    :\n     :   : :   :\n      :   :   :\n        : : :\n          :"
+  },
+  "cloud": {
+    "category": "infrastructure",
+    "label": "클라우드",
+    "art": "       . : : : .\n   . :           : .\n  :    OPENSTACK    :\n   : : : : : : : : :\n       :   :   :\n     [VM] [VM] [VM]\n       : : : : :"
+  },
+  "kubernetes": {
+    "category": "infrastructure",
+    "label": "Kubernetes",
+    "art": "       [ CONTROL ]\n             :\n     : : : : : : : :\n     :       :     :\n   [POD]   [POD] [POD]\n     :       :     :\n       :: DROVER ::"
+  },
+  "container": {
+    "category": "infrastructure",
+    "label": "컨테이너",
+    "art": "     . : : : : : .\n   :    :    :    :\n   : :: : :: : :: :\n   : : : : : : : : :\n    : :: : :: : :: :\n     : : : : : : : :\n        CONTAINER"
+  },
+  "ai": {
+    "category": "experience",
+    "label": "AI 모델",
+    "art": "     : .   .   . :\n       : : : : :\n   . : : : : : : : .\n   :    MODEL      :\n   :  :: :: :: ::  :\n     : : : : : : :\n       : LUMEN :"
+  },
+  "chat": {
+    "category": "experience",
+    "label": "채팅",
+    "art": "   . : : : : : : : .\n :                   :\n :  . . .   : : :    :\n :                   :\n   : : : : : : : : :\n        : :\n       :"
+  },
+  "image": {
+    "category": "experience",
+    "label": "이미지",
+    "art": "   : : : : : : : : :\n   :   . : .       :\n   :  :     :      :\n   :   : : :       :\n   :      : :      :\n   :  : :     : :  :\n   : : : : : : : : :"
+  },
+  "audio": {
+    "category": "experience",
+    "label": "오디오",
+    "art": "           :\n     :     :     :\n  :  :  :  :  :  :  :\n  :  :  :  :  :  :  :\n  :  :  :  :  :  :  :\n     :     :     :\n           :"
+  },
+  "download": {
+    "category": "transfer",
+    "label": "다운로드",
+    "art": "         : :\n         : :\n         : :\n     :   : :   :\n       : : : :\n         : :\n   : : : : : : : :"
+  },
+  "connecting": {
+    "category": "state",
+    "label": "연결 준비",
+    "art": "  . : :         : : .\n :      :     :      :\n :   : : : : : : :   :\n :      :     :      :\n  : : :         : : :\n        : : :\n         : :"
+  },
+  "processing": {
+    "category": "state",
+    "label": "처리 중",
+    "art": "       . : : : .\n     :     :     :\n    :      :      :\n    :      : :    :\n     :           :\n       : : : : :\n         : : :"
+  },
+  "queued": {
+    "category": "state",
+    "label": "작업 대기",
+    "art": "   [ :: :: :: :: ]\n          :\n     [ :: :: :: ]\n          :\n       [ :: :: ]\n          :\n         [ :: ]"
+  },
+  "canceled": {
+    "category": "state",
+    "label": "취소됨",
+    "art": "      . : : : .\n    :   :   :   :\n   :     : :     :\n   :      :      :\n    :    : :    :\n      : : : : :\n        :   :"
+  },
+  "document": {
+    "category": "workspace",
+    "label": "문서",
+    "art": "   : : : : : : : :\n   :  :: :: ::   :\n   :             :\n   :  :: :: ::   :\n   :  :: ::      :\n   :             :\n   : : : : : : : :"
+  },
+  "project": {
+    "category": "workspace",
+    "label": "프로젝트",
+    "art": "        . : : : .\n   : : :         : : :\n   :                 :\n   :    PROJECT      :\n   :    :: :: ::     :\n   :                 :\n   : : : : : : : : : :"
+  },
+  "user": {
+    "category": "workspace",
+    "label": "사용자",
+    "art": "        . : : .\n       :       :\n        : : : :\n           :\n       . : : : .\n     :           :\n    : : : : : : : :"
+  },
+  "terminal": {
+    "category": "workspace",
+    "label": "터미널",
+    "art": "   : : : : : : : : :\n   :               :\n   :  > ::         :\n   :     ::        :\n   :  > :: ::      :\n   :               :\n   : : : : : : : : :"
+  },
+  "backup": {
+    "category": "transfer",
+    "label": "백업·복원",
+    "art": "       . : : : .\n     :    : :    :\n    :    :   :    :\n    :   : : : :   :\n     :    : :    :\n       : : : : :\n     [ :: :: :: ]"
+  },
+  "monitoring": {
+    "category": "infrastructure",
+    "label": "모니터링",
+    "art": "   : : : : : : : : :\n   :               :\n   :   :     : :   :\n   :  : :   :   :  :\n   : :   : :     : :\n   :               :\n   : : : : : : : : :"
+  },
+  "table": {
+    "category": "workspace",
+    "label": "표·목록",
+    "art": "   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::\n   :  :  :  :  :  :\n   :: :: :: :: :: ::"
+  },
+  "progress": {
+    "category": "state",
+    "label": "진행률",
+    "art": "      : : : : : :\n   :               :\n  :                 :\n  :   [####....]    :\n   :               :\n      : : : : : :\n          : :"
+  },
+  "notification": {
+    "category": "workspace",
+    "label": "알림",
+    "art": "        . : : .\n       :       :\n      :         :\n      :         :\n     : : : : : : :\n         : :\n          :"
+  },
+  "calendar": {
+    "category": "workspace",
+    "label": "일정",
+    "art": "     :         :\n   : : : : : : : :\n   :             :\n   : :: :: :: :: :\n   : :: :: :: :: :\n   : :: :: :: :: :\n   : : : : : : : :"
+  },
+  "progress-linear": {
+    "category": "state",
+    "label": "진행률 · 일직선",
+    "art": "[###########···············]"
+  },
+  "progress-circular": {
+    "category": "state",
+    "label": "진행률 · 원형",
+    "art": "                         \n       ·····######       \n    ···           ###    \n  ···               ##   \n  ·                   #  \n ·                     # \n ·         42%         # \n ·                     # \n  ·                   #  \n  ···               ###  \n    ···           ###    \n       ··········#       \n                         "
+  },
+  "status-dots": {
+    "category": "state",
+    "label": "상태 표시 · 점 이동",
+    "art": "[  ·]"
+  },
+  "status-bars": {
+    "category": "state",
+    "label": "상태 표시 · 세로 막대",
+    "art": "[  |]"
+  },
+  "status-brackets": {
+    "category": "state",
+    "label": "상태 표시 · 대괄호 채움",
+    "art": "[  :]"
+  },
+  "status-spinner": {
+    "category": "state",
+    "label": "상태 표시 · 문자 회전",
+    "art": "[-]"
+  }
+}

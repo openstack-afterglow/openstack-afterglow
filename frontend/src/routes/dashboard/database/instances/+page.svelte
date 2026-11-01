@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { pushState } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -50,8 +51,9 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
+	let inventoryLoaded = $state(false);
 	async function load() {
-		if (instances.length === 0) loading = true;
+		if (!inventoryLoaded) loading = true;
 		else refreshing = true;
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
@@ -59,6 +61,7 @@
 			const nextInstances = await api.get<DbInstance[]>('/api/v1/database-instances', tokenSnapshot, projectSnapshot);
 			if ($auth.projectId !== projectSnapshot) return;
 			instances = nextInstances;
+			inventoryLoaded = true;
 			selection.retain(nextInstances.map((instance) => instance.id));
 		} catch {
 			if ($auth.projectId === projectSnapshot) {
@@ -154,6 +157,7 @@
 	$effect(() => {
 		const pid = $auth.projectId;
 		instances = [];
+		inventoryLoaded = false;
 		selection.clear();
 		if (!pid) return;
 		untrack(() => load());
@@ -193,7 +197,7 @@
 	</ResourceToolbar>
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tr('instances.title') })} />
 	{:else if instances.length === 0}
 		<EmptyState headline={tr('instances.empty')} description={tr('instances.emptyHelp')} />
 	{:else}

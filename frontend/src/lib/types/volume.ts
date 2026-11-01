@@ -7,6 +7,7 @@ export interface Volume {
   attachments: Record<string, unknown>[];
   bootable?: boolean;
   volume_image_metadata?: Record<string, string> | null;
+  created_at?: string | null;
 }
 
 export interface VolumeBackup {

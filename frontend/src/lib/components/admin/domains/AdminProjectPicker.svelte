@@ -6,6 +6,7 @@
 	import { projectNames, type AdminProjectName } from '$lib/stores/projectNames';
 	import { Alert, Button, Field, SearchSelect } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/domain-admin';
+	import { t as nav } from '$lib/i18n/ns/nav';
 
 	let { domainId = '', projectId = '', emptyProjectLabel, disabled = false, excludedProjectIds = [], selectProjectDomain = false, onchange }: {
 		domainId?: string; projectId?: string; emptyProjectLabel?: string; disabled?: boolean; excludedProjectIds?: readonly string[]; selectProjectDomain?: boolean;
@@ -61,7 +62,7 @@
 			{loading} disabled={disabled || loading || !!projectError} placeholder={projectId || emptyProjectLabel || t('scope.allProjects')} ariaLabel={t('scope.project')}
 			onchange={(value) => { const project = projects.find(project => project.id === value); onchange(domainId || (selectProjectDomain ? project?.domain_id ?? '' : ''), value, project?.name ?? ''); }} />
 	</Field>
-	<Button variant="secondary" size="sm" disabled={disabled || loading} onclick={() => refreshRevision += 1}>{t('actions.refresh')}</Button>
+	<Button variant="secondary" size="sm" disabled={disabled || loading} onclick={() => refreshRevision += 1}>{nav('actions.refreshDirectory')}</Button>
 </div>
 {#if domainError}<Alert class="mt-3">{domainError}</Alert>{/if}
 {#if projectError}<Alert class="mt-3">{projectError}</Alert>{/if}

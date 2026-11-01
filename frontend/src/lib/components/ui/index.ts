@@ -1,6 +1,9 @@
+export { default as AssetGlyph } from './AssetGlyph.svelte';
+export type { AssetGlyphVariant } from './AssetGlyph.svelte';
 export { default as ActionMenu } from './ActionMenu.svelte';
-export { default as ActivityIndicator } from './ActivityIndicator.svelte';
-export type { ActivitySize, ActivityTone, ActivityVariant } from './ActivityIndicator.svelte';
+export { default as AfterglowOrbit } from './AfterglowOrbit.svelte';
+export { default as LoadingState } from './LoadingState.svelte';
+export type { LoadingVariant, LoadingIndicator } from './LoadingState.svelte';
 export { default as Alert } from './Alert.svelte';
 export { default as AnimatedNumber } from './AnimatedNumber.svelte';
 export { default as Button } from './Button.svelte';
@@ -27,6 +30,7 @@ export type { ProgressTone } from './ProgressTrack.svelte';
 export { default as ProvisionPipeline } from './ProvisionPipeline.svelte';
 export type { PipelineStage } from './ProvisionPipeline.svelte';
 export { default as QuotaBar } from './QuotaBar.svelte';
+export { default as ResourceIdentifier } from './ResourceIdentifier.svelte';
 export { default as ResourceToolbar } from './ResourceToolbar.svelte';
 export { default as ResponsiveTable } from './ResponsiveTable.svelte';
 export { default as SectionHeader } from './SectionHeader.svelte';
@@ -51,3 +55,5 @@ export { default as Toast } from './Toast.svelte';
 export { default as ToggleGroup } from './ToggleGroup.svelte';
 export { default as UsageBar } from './UsageBar.svelte';
 export { default as UsageRing } from './UsageRing.svelte';
+
+export type { ProgressShape } from './ProgressTrack.svelte';

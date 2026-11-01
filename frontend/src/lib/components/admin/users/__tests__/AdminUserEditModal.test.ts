@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { auth } from '$lib/stores/auth';
+import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import type { User } from '$lib/types/common';
@@ -72,6 +72,7 @@ beforeEach(() => {
 		projectId: 'admin-project', projectName: 'Admin', availableProjects: [], roles: ['admin'],
 		isSystemAdmin: true, federated: false, domainId: 'default', domainName: 'Default', isDomainManager: false,
 	});
+	authReady.set(true); logoutInProgress.set(false); projectSwitching.set(false);
 	mocks.get.mockImplementation((path: string) => {
 		if (path.includes('/permissions?domain_id=default')) return Promise.resolve(permissions);
 		if (path.includes('/sessions?domain_id=default')) return Promise.resolve(sessionResponse);
@@ -358,4 +359,107 @@ describe('AdminUserEditModal permissions and sessions', () => {
 			expect(screen.queryByRole('alert')).toBeNull();
 		},
 	);
+});
+
+describe('explicit administrator randomized password email', () => {
+	const action = '난수 비밀번호 재설정 및 메일 전송';
+	async function confirmReset() {
+		await fireEvent.click(await screen.findByRole('button', { name: action }));
+		await fireEvent.click(screen.getByRole('button', { name: action }));
+	}
+	it('confirms immutable target and registered mailbox, dispatches once with an empty body, and keeps credentials out of the UI', async () => {
+		const pending = deferred<{ status: string; delivered: boolean }>(); mocks.post.mockReturnValue(pending.promise);
+		const view = renderModal();
+		await fireEvent.input(screen.getByLabelText('이메일'), { target: { value: 'unsaved@example.test' } });
+		await fireEvent.click(await screen.findByRole('button', { name: action }));
+		expect(screen.getByText(`대상: Alice · UUID: ${alice.id} · 현재 등록 이메일: alice@example.test`)).toBeTruthy();
+		expect(screen.getByText(/실제 새 비밀번호가 이메일에 남아/)).toBeTruthy();
+		const confirm = screen.getByRole('button', { name: action });
+		await fireEvent.click(confirm); await fireEvent.click(confirm);
+		expect(mocks.post).toHaveBeenCalledOnce();
+		expect(mocks.post).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/password/reset-email`, {}, 'admin-token', 'admin-project', { cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+		await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		pending.resolve({ status: 'changed', delivered: true });
+		expect(await screen.findByText('비밀번호를 변경하고 등록된 이메일로 전달했습니다. 사용자에게 즉시 변경하도록 안내하세요.')).toBeTruthy();
+		expect(view.onUpdate).not.toHaveBeenCalled();
+		expect(screen.queryByRole('button', { name: action })).toBeNull();
+		expect((screen.getByPlaceholderText('변경하지 않으면 비워두세요') as HTMLInputElement).value).toBe('');
+	});
+	it.each([
+		['admin_password_reset_email_failed', 503, '비밀번호는 변경되었지만 이메일 전달에 실패했습니다.'],
+		['admin_password_reset_sessions_failed', 503, '비밀번호는 변경되었지만 일부 세션을 폐기하지 못했습니다.'],
+		['admin_password_reset_outcome_unknown', 502, '비밀번호 변경 결과를 확인할 수 없습니다.'],
+		['admin_password_reset_audit_failed', 503, '작업의 감사 기록을 확인하지 못했습니다.'],
+	] as const)('distinguishes %s and leaves the dialog open without a repeat action', async (code, status, message) => {
+		mocks.post.mockRejectedValue(new ApiError(status, 'private-password-or-error', code));
+		renderModal(); await confirmReset();
+		expect(await screen.findByText(new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy();
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: action })).toBeNull();
+		expect(document.body.textContent).not.toContain('private-password-or-error');
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+	it('does not claim delivery for a malformed success response', async () => {
+		mocks.post.mockResolvedValue({ status: 'changed', delivered: false });
+		renderModal(); await confirmReset();
+		expect(await screen.findByText(/비밀번호 변경 결과를 확인할 수 없습니다/)).toBeTruthy();
+		expect(screen.queryByText(/비밀번호를 변경하고 등록된 이메일로 전달했습니다/)).toBeNull();
+	});
+	it.each(['owner', 'user', 'close'] as const)('drops a stale reset response across %s ABA', async transition => {
+		const pending = deferred<{ status: string; delivered: boolean }>(); mocks.post.mockReturnValue(pending.promise);
+		const view = renderModal(); await confirmReset();
+		if (transition === 'owner') {
+			auth.update(state => ({ ...state, userId: 'other-admin' }));
+			auth.update(state => ({ ...state, userId: 'admin' }));
+			authReady.set(true);
+			await tick();
+		} else {
+			await view.rerender({ user: transition === 'user' ? bob : null, domainId: 'default', onUpdate: view.onUpdate });
+			await view.rerender({ user: alice, domainId: 'default', onUpdate: view.onUpdate });
+		}
+		pending.resolve({ status: 'changed', delivered: true }); await tick();
+		expect(screen.queryByText(/비밀번호를 변경하고 등록된 이메일로 전달했습니다/)).toBeNull();
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+	it('disables reset for missing registered email without using unsaved form email', async () => {
+		renderModal({ ...alice, email: '' });
+		await fireEvent.input(screen.getByLabelText('이메일'), { target: { value: 'new@example.test' } });
+		expect((screen.getByRole('button', { name: action }) as HTMLButtonElement).disabled).toBe(true);
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+	it.each(['success', 'email_failed', 'unknown'] as const)('retains a pending reset and its %s outcome across same-session token refresh', async outcome => {
+		const pending = deferred<{ status: string; delivered: boolean }>(); mocks.post.mockReturnValue(pending.promise);
+		renderModal(); await confirmReset();
+		auth.update(state => ({ ...state, token: 'rotated' }));
+		// Raw store writes invalidate readiness; model the authoritative refresh continuation.
+		authReady.set(true);
+		await tick();
+		expect(screen.queryByRole('button', { name: action })).toBeNull();
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		if (outcome === 'success') pending.resolve({ status: 'changed', delivered: true });
+		else pending.reject(new ApiError(outcome === 'unknown' ? 502 : 503, 'private-reset-result', outcome === 'unknown' ? 'admin_password_reset_outcome_unknown' : 'admin_password_reset_email_failed'));
+		expect(await screen.findByText(outcome === 'success' ? /비밀번호를 변경하고 등록된 이메일로 전달했습니다/ : outcome === 'unknown' ? /비밀번호 변경 결과를 확인할 수 없습니다/ : /비밀번호는 변경되었지만 이메일 전달에 실패했습니다/)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: action })).toBeNull();
+		expect(mocks.post).toHaveBeenCalledOnce();
+		if (outcome === 'success') await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/users/${alice.id}/sessions?domain_id=default`, 'rotated', 'admin-project'));
+	});
+	it.each([
+		['ko', '난수 비밀번호 재설정 및 메일 전송', '비밀번호를 변경하고 등록된 이메일로 전달했습니다. 사용자에게 즉시 변경하도록 안내하세요.'],
+		['en', 'Reset randomized password and email it', 'Password changed and delivered to the registered email. Advise the user to change it immediately.'],
+		['ja', 'ランダムパスワードに再設定してメール送信', 'パスワードを変更し、登録メールに配信しました。すぐに変更するよう案内してください。'],
+		['zh-CN', '重置随机密码并发送邮件', '密码已修改并发送到注册邮箱。请提醒用户立即修改。'],
+		['sw', 'Weka upya nenosiri la nasibu na ulitume kwa barua pepe', 'Nenosiri limebadilishwa na kuwasilishwa kwa barua pepe iliyosajiliwa. Mshauri mtumiaji alibadilishe mara moja.'],
+		['nb', 'Tilbakestill til tilfeldig passord og send det på e-post', 'Passordet er endret og levert til registrert e-post. Be brukeren endre det umiddelbart.'],
+		['ms', 'Tetapkan semula kata laluan rawak dan e-melkannya', 'Kata laluan telah ditukar dan dihantar ke e-mel berdaftar. Nasihatkan pengguna menukarnya segera.'],
+		['vi', 'Đặt lại mật khẩu ngẫu nhiên và gửi email', 'Đã đổi mật khẩu và gửi đến email đã đăng ký. Hãy nhắc người dùng đổi ngay.'],
+		['bn', 'এলোমেলো পাসওয়ার্ড পুনরায় সেট করে ইমেইল পাঠান', 'পাসওয়ার্ড পরিবর্তন করে নিবন্ধিত ইমেইলে পাঠানো হয়েছে। ব্যবহারকারীকে অবিলম্বে পরিবর্তন করতে বলুন।'],
+	] as const)('renders localized reset confirmation and real success state (%s)', async (locale, label, success) => {
+		initLocale(locale); mocks.post.mockResolvedValue({ status: 'changed', delivered: true }); renderModal();
+		await fireEvent.click(await screen.findByRole('button', { name: label }));
+		expect(screen.getByText(text => text.includes(alice.id) && text.includes(alice.email!))).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: label }));
+		expect(await screen.findByText(success)).toBeTruthy();
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
 });

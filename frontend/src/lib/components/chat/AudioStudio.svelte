@@ -8,7 +8,8 @@
 	import { ApiError } from '$lib/api/client';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
-	import { ActivityIndicator, Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
+	import { Alert, Button, CompactResourceCard, Field, PageShell, ResponsiveTable, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -541,7 +542,7 @@
 					<aside class="settings" aria-labelledby="audio-tts-settings">
 						<h2 id="audio-tts-settings">{t('audioStudio.speechSettings')}</h2>
 						<Field label={t('audioStudio.speechModel')} for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { if (audioAllowed) selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={!audioAllowed || loading.tts || busyTts}><option value="">{t('audioStudio.selectModel')}</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-						{#if loading.tts || capabilityLoading.tts}<p role="status" class="muted">{t('audioStudio.speechChecking')}</p>{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
+						{#if loading.tts || capabilityLoading.tts}<LoadingState variant="inline" label={t('audioStudio.speechChecking')} />{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
 						<fieldset class="voices" disabled={!audioAllowed || busyTts || !voices.length}>
 							<legend>{t('audioStudio.voice')}</legend>
 							{#if voices.length}
@@ -554,7 +555,7 @@
 					</aside>
 					<div class="playbar">
 						<div class="playbar-output">
-							{#if busyTts}<ActivityIndicator variant="bars" label={t('audioStudio.speechGenerating')} />{/if}
+							{#if busyTts}<LoadingState variant="inline" label={t('audioStudio.speechGenerating')} />{/if}
 							{#if audioAllowed && audioUrl}
 								<audio bind:this={media} src={audioUrl} controls aria-label={t('audioStudio.generatedSpeech')}></audio>
 								<p class="muted">{t('audioStudio.speechOutputInfo', { voice: outputVoice, format: outputFormat.toUpperCase() })}</p>
@@ -565,7 +566,7 @@
 						</div>
 						<div class="playbar-actions">
 							{#if audioAllowed && audioUrl}<a href={audioUrl} download={`speech.${outputFormat}`} class="file-action">{t('audioStudio.downloadSpeech')}</a>{/if}
-							<Button type="submit" size="lg" disabled={!ttsReady}>{busyTts ? t('audioStudio.speechGenerating') : t('audioStudio.generateSpeech')}</Button>
+							<Button type="submit" size="lg" disabled={!ttsReady}>{#if busyTts}<LoadingState variant="control" label={t('audioStudio.speechGenerating')} />{:else}{t('audioStudio.generateSpeech')}{/if}</Button>
 						</div>
 					</div>
 				</form>
@@ -581,7 +582,7 @@
 							<div class="actions">
 								<input id="audio-file" class="file-input" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm" disabled={sourceLocked} aria-describedby="audio-file-help" onchange={chooseFile} />
 								<label for="audio-file" class="file-action">{t('audioStudio.chooseFile')}</label>
-								<Button variant="secondary" disabled={!recording && (!uploadAllowed || busyStt || permissionPending)} onclick={() => recording ? stopMic() : void startRecording()}>{permissionPending ? t('audioStudio.microphonePermissionChecking') : recording ? t('audioStudio.stopRecording') : t('audioStudio.recordMicrophone')}</Button>
+								<Button variant="secondary" disabled={!recording && (!uploadAllowed || busyStt || permissionPending)} onclick={() => recording ? stopMic() : void startRecording()}>{#if permissionPending}<LoadingState variant="control" label={t('audioStudio.microphonePermissionChecking')} />{:else}{recording ? t('audioStudio.stopRecording') : t('audioStudio.recordMicrophone')}{/if}</Button>
 							</div>
 							<p id="audio-file-help" class="muted">{t('audioStudio.audioFileHelp')}</p>
 						</div>
@@ -591,7 +592,7 @@
 								<div class="source-info">
 									<p class="source-name">{source.name}</p>
 									<p class="muted">{fileSize(source.size)} · {MIME_LABELS[source.type] ?? source.type}</p>
-									{#if uploading}<ActivityIndicator variant="upload" label={t('audioStudio.uploading')} />{:else if assetId}<p role="status" class="muted">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
+									{#if uploading}<LoadingState variant="inline" label={t('audioStudio.uploading')} />{:else if assetId}<p role="status" class="muted">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
 								</div>
 								<audio bind:this={sourceMedia} src={source.url} controls aria-label={t('audioStudio.previewSource', { name: source.name })}></audio>
 								<Button variant="ghost" size="icon" ariaLabel={t('audioStudio.removeSource')} disabled={transcribing} onclick={removeSource}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></Button>
@@ -601,7 +602,7 @@
 					<aside class="settings" aria-labelledby="audio-stt-settings">
 						<h2 id="audio-stt-settings">{t('audioStudio.transcriptionSettings')}</h2>
 						<Field label={t('audioStudio.transcriptionModel')} for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { if (audioAllowed) selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={!audioAllowed || loading.stt || busyStt}><option value="">{t('audioStudio.selectModel')}</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-						{#if loading.stt || capabilityLoading.stt}<p role="status" class="muted">{t('audioStudio.transcriptionChecking')}</p>{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
+						{#if loading.stt || capabilityLoading.stt}<LoadingState variant="inline" label={t('audioStudio.transcriptionChecking')} />{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" disabled={!audioAllowed} onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else if audioAllowed}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
 						<Field label={t('audioStudio.languageCode')} for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder={t('audioStudio.languagePlaceholder')} disabled={!audioAllowed || busyStt} /></Field>
 						<div class="switch-row">
 							<div class="switch-copy">
@@ -610,8 +611,8 @@
 							</div>
 							<input id="audio-timestamps" class="switch" type="checkbox" role="switch" checked={requestTimestamps} disabled={!audioAllowed || !timestampSupported || busyStt} aria-describedby="audio-timestamps-help" onchange={(event) => { if (audioAllowed) timestamps = event.currentTarget.checked; }} />
 						</div>
-						<Button size="lg" disabled={!sttReady} onclick={() => void transcribe()}>{transcribing ? t('audioStudio.processingAudio') : t('audioStudio.convertToText')}</Button>
-						{#if transcribing}<ActivityIndicator variant="dots" label={t('audioStudio.processingAudio')} />{/if}
+						<Button size="lg" disabled={!sttReady} onclick={() => void transcribe()}>{#if transcribing}<LoadingState variant="control" label={t('audioStudio.processingAudio')} />{:else}{t('audioStudio.convertToText')}{/if}</Button>
+						{#if transcribing}<LoadingState variant="inline" label={t('audioStudio.processingAudio')} />{/if}
 						{#if failures.stt}<Alert tone="danger">{failures.stt}</Alert>{/if}
 					</aside>
 				</div>

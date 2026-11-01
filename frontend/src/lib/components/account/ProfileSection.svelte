@@ -7,7 +7,7 @@
   import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
   import { sessionScopeKey } from '$lib/utils/authSession';
   import { api } from '$lib/api/client';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Field from '$lib/components/ui/Field.svelte';
@@ -121,7 +121,7 @@
   <h3 class="text-sm font-semibold text-ink-0">{t('profile.title')}</h3>
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
   {#if success}<Alert tone="success">{success}</Alert>{/if}
-  {#if loading}<ActivityIndicator label={tc('state.loading')} />{:else}
+  {#if loading}<LoadingState variant="section" label={tc('state.loading')}  />{:else}
     <div class="text-sm text-ink-2 break-all"><span>{t('profile.userId')}: </span><span class="font-mono">{profile.id}</span></div>
     <section class="space-y-3 border-b border-line pb-4" aria-label={t('profile.image.title')}>
       <div class="flex flex-wrap items-center gap-4">
@@ -137,12 +137,12 @@
         <Button variant="secondary" disabled={imageBlocked} ariaPressed={$profileImage.image?.kind === 'upload'} onclick={() => uploadInput?.click()}>{t('profile.image.upload')}</Button>
         <input bind:this={uploadInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label={t('profile.image.upload')} class="sr-only" tabindex="-1" disabled={imageBlocked} onchange={uploadImage} />
       </div>
-      {#if $profileImage.loading || $profileImage.busy}<ActivityIndicator label={tc('state.loading')} />{/if}
+      {#if $profileImage.loading || $profileImage.busy}<LoadingState variant="inline" label={tc('state.loading')}  />{/if}
     </section>
     <form onsubmit={save} class="space-y-3">
       <Field for="profile-name" label={t('profile.name')}><TextInput id="profile-name" bind:value={editName} disabled={blocked} /></Field>
       <Field for="profile-description" label={t('profile.description')}><textarea id="profile-description" bind:value={editDescription} disabled={blocked} rows="2" class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2"></textarea></Field>
-      <div class="flex justify-end"><Button type="submit" disabled={blocked} ariaBusy={saving}>{t('profile.save')}</Button></div>
+      <div class="flex justify-end"><Button type="submit" disabled={blocked} ariaBusy={saving}>{#if saving}<LoadingState variant="control" label={t('profile.saving')} />{:else}{t('profile.save')}{/if}</Button></div>
     </form>
     <form onsubmit={changeEmail} class="space-y-3 border-t border-line pt-4">
       <p class="text-sm text-ink-2 break-all">{t('profile.email')}: {profile.email}</p>
@@ -150,7 +150,7 @@
       {#if emailSent}<Alert tone="info">{ta('emailChange.sent')}</Alert>{/if}
       <Field for="profile-email" label={ta('emailChange.newEmail')} help={ta('emailChange.help')} required><TextInput id="profile-email" type="email" autocomplete="email" bind:value={editEmail} disabled={blocked} required /></Field>
       <Field for="profile-email-password" label={ta('emailChange.currentPassword')} required><TextInput id="profile-email-password" type="password" autocomplete="current-password" bind:value={currentPassword} maxlength={1024} disabled={blocked} required /></Field>
-      <Button type="submit" variant="secondary" disabled={blocked || !currentPassword || editEmail.trim() === profile.email} ariaBusy={sending}>{ta('emailChange.submit')}</Button>
+      <Button type="submit" variant="secondary" disabled={blocked || !currentPassword || editEmail.trim() === profile.email} ariaBusy={sending}>{#if sending}<LoadingState variant="control" label={ta('emailChange.submit')} />{:else}{ta('emailChange.submit')}{/if}</Button>
     </form>
   {/if}
 </Card>

@@ -20,7 +20,7 @@
   "previous": "Forrige side",
   "next": "Neste side",
   "empty.title": "Ingen lag registrert i denne kilden.",
-  "empty.help": "Bytt kilde eller bruk de eksisterende byggekontrollene nedenfor.",
+  "empty.help": "Bytt kilde eller start et nytt bygg i byggestudioet.",
   "empty.search": "Ingen søkeresultater.",
   "empty.searchHelp": "Tøm søket eller velg en annen kilde.",
   "error.denied": "Gjeldende bruker kan ikke lese oversikten. Kontroller administratortilgangen.",
@@ -76,6 +76,6 @@
   "children.more": "Flere direkte barn finnes. Svaret er avgrenset.",
   "relations.none": "Ingen relasjoner returnert",
   "bundles": "Refererende pakker / profiler",
-  "bundles.help": "Kun registrerte referanser; lenkene går til administrerte profiler nedenfor.",
+  "bundles.help": "Bare registrerte referanser vises; lenker åpner fanen Profiler.",
   "bundles.none": "Ingen registrerte referanser (beviser ikke at laget er ubrukt)"
 }

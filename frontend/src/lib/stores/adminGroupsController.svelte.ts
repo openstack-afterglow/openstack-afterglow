@@ -83,6 +83,10 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   });
 
   async function load() {
+    await loadAttempt(false);
+  }
+
+  async function loadAttempt(replacement: boolean) {
     const scope = capture();
     if (!scope.owns()) { loading = false; return; }
     const generation = ++listGeneration;
@@ -96,7 +100,11 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       if (res.some((group) => group.domain_id !== scope.domainId)) throw new Error('foreign domain');
       groups = res;
     } catch (e) {
-      if (owns()) { groups = []; error = message(e, 'groupController.loadFailed'); }
+      if (owns() && !replacement && e instanceof DOMException && e.name === 'AbortError') {
+        await loadAttempt(true);
+      } else if (owns()) {
+        groups = []; error = message(e, 'groupController.loadFailed');
+      }
     } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 

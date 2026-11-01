@@ -12,8 +12,12 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import { t as usageT } from '$lib/i18n/ns/admin-chat-usage';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
@@ -96,6 +100,11 @@
 		{ value: 'all', get label() { return t('adminStats.rangeAll'); } }
 	];
 
+	interface StatsFailure { message: string; status: number | null; }
+	function failure(cause: unknown, fallback: string): StatsFailure {
+		return { message: cause instanceof Error ? cause.message : fallback,
+			status: cause instanceof ApiError ? cause.status : null };
+	}
 	let authorityRevision = $state(0);
 	let authorityKey = '';
 	let disposed = false;
@@ -110,8 +119,9 @@
 	let loading = $state(false);
 	let loadingMore = $state(false);
 	let loadingTimeSeries = $state(false);
-	let timeSeriesError = $state('');
-	let error = $state('');
+	let timeSeriesError = $state<StatsFailure | null>(null);
+	let error = $state<StatsFailure | null>(null);
+	let userPageError = $state<StatsFailure | null>(null);
 	let userRows = $state<UserStat[]>([]);
 	let userOffset = $state(0);
 	let hasMoreUsers = $state(false);
@@ -145,8 +155,9 @@
 		userOffset = 0;
 		hasMoreUsers = false;
 		timeSeries = [];
-		error = '';
-		timeSeriesError = '';
+		error = null;
+		timeSeriesError = null;
+		userPageError = null;
 		loading = false;
 		loadingMore = false;
 		loadingTimeSeries = false;
@@ -184,7 +195,7 @@
 	function changeChart(kind: 'bucket' | 'model', value: string) {
 		++timeSeriesGeneration;
 		timeSeries = [];
-		timeSeriesError = '';
+		timeSeriesError = null;
 		if (kind === 'bucket') chartBucket = value;
 		else selectedModel = value;
 		++chartRevision;
@@ -193,7 +204,7 @@
 		const owner = capture();
 		if (!owner) return;
 		loading = true;
-		error = '';
+		error = null;
 		try {
 			const qs = new URLSearchParams({ range, user_limit: String(USER_PAGE), bucket: chartBucket });
 			const res = await api.get<StatsResponse>(adminInventoryPath(`/api/v1/chat/admin/stats?${qs}`, owner.scope), owner.token, owner.projectId);
@@ -203,7 +214,7 @@
 			userOffset = userRows.length;
 			hasMoreUsers = userRows.length >= USER_PAGE;
 		} catch (e) {
-			if (owner.current()) error = e instanceof ApiError ? e.message : t('adminStats.loadFailed');
+			if (owner.current()) error = failure(e, t('adminStats.loadFailed'));
 		} finally {
 			if (owner.current()) loading = false;
 		}
@@ -212,6 +223,7 @@
 		const owner = capture();
 		if (!owner || loading || loadingMore || !hasMoreUsers) return;
 		loadingMore = true;
+		userPageError = null;
 		try {
 			const qs = new URLSearchParams({ range, limit: String(USER_PAGE), offset: String(userOffset) });
 			const res = await api.get<{ users: UserStat[] }>(
@@ -222,7 +234,7 @@
 			userOffset += more.length;
 			hasMoreUsers = more.length >= USER_PAGE;
 		} catch (e) {
-			if (owner.current()) { hasMoreUsers = false; error = e instanceof ApiError ? e.message : t('adminStats.loadFailed'); }
+			if (owner.current()) userPageError = failure(e, t('adminStats.loadFailed'));
 		} finally {
 			if (owner.current()) loadingMore = false;
 		}
@@ -234,7 +246,7 @@
 		const current = () => owner.current() && generation === timeSeriesGeneration;
 		timeSeries = [];
 		loadingTimeSeries = true;
-		timeSeriesError = '';
+		timeSeriesError = null;
 		try {
 			const qs = new URLSearchParams({ range, bucket: chartBucket });
 			if (selectedModel) qs.set('model_name', selectedModel);
@@ -242,7 +254,7 @@
 				adminInventoryPath(`/api/v1/chat/admin/stats/timeseries?${qs}`, owner.scope), owner.token, owner.projectId);
 			if (current()) timeSeries = res.series ?? [];
 		} catch (e) {
-			if (current()) timeSeriesError = e instanceof ApiError ? e.message : t('adminStats.timeSeriesLoadFailed');
+			if (current()) timeSeriesError = failure(e, t('adminStats.timeSeriesLoadFailed'));
 		} finally {
 			if (current()) loadingTimeSeries = false;
 		}
@@ -363,10 +375,26 @@
 	const maxModelTokens = $derived(Math.max(1, ...models.map((m) => m.total_tokens)));
 	const hasData = $derived((overview?.request_count ?? 0) > 0);
 
-	const cardCls = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
-	const selectCls =
-		'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-1.5 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
+	const cardCls = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-base)]';
 </script>
+
+{#snippet failureNotice(problem: StatsFailure, retry: () => void)}
+	<Alert tone={problem.status === 403 ? 'warning' : 'danger'}>
+		<div class="grid min-w-0 gap-2" data-testid="lumen-stats-failure" data-status={problem.status}>
+			<h2 class="font-semibold">{usageT(problem.status === 403 ? 'stats.deniedTitle' : 'stats.unavailableTitle')}</h2>
+			<p>{usageT(problem.status === 403 ? 'stats.deniedHelp' : 'stats.unavailableHelp')}</p>
+			{#if problem.status === 403}
+				<p>{usageT('stats.requiredAction', { action: 'system:admin' })}</p>
+				<p>{usageT('stats.scopeRecovery')}</p>
+			{/if}
+			<details>
+				<summary class="cursor-pointer py-2">{usageT('stats.details')}</summary>
+				<pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{problem.status ? `HTTP ${problem.status}\n` : ''}{problem.message}</pre>
+			</details>
+			<div><Button variant="secondary" onclick={retry} disabled={loading || loadingMore || loadingTimeSeries}>{usageT('stats.refresh')}</Button></div>
+		</div>
+	</Alert>
+{/snippet}
 
 <PageShell>
 	<PageHeader
@@ -377,32 +405,27 @@
 
 	<!-- 필터 -->
 	<div class="mb-6 flex flex-wrap items-center gap-3">
-		<div class="flex gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-1">
-			{#each RANGES as r (r.value)}
-				<button
-					onclick={() => changeRange(r.value)}
-					class="rounded px-3 py-1 text-xs font-medium transition-colors {range === r.value
-						? 'bg-[var(--color-accent)] text-[var(--color-ink-0)]'
-						: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
-				>
-					{r.label}
-				</button>
-			{/each}
-		</div>
-		{#if loading}<ActivityIndicator size="xs" label={t('adminStats.loading')} class="text-xs text-ink-2" />{/if}
+		<ToggleGroup value={range} options={RANGES} onchange={changeRange} ariaLabel={usageT('periodLabel')} />
+		{#if loading && data}<LoadingState variant="inline" label={t('adminStats.loading')} class="text-xs text-ink-2" />{/if}
 	</div>
+	<p class="mb-4 break-all text-sm text-ink-2" data-testid="lumen-stats-scope">
+		{usageT('stats.workingProject', { id: $auth.projectId ?? '—' })} ·
+		{#if $adminInventoryScope.domainId}{usageT('stats.scopeDomain', { id: $adminInventoryScope.domainId })}{:else}{usageT('stats.scopeAllDomains')}{/if} ·
+		{#if $adminInventoryScope.projectId}{usageT('stats.scopeProject', { id: $adminInventoryScope.projectId })}{:else}{usageT('stats.scopeAllProjects')}{/if}
+	</p>
 
 	{#if error}
-		<div
-			class="mb-6 rounded-lg border border-[var(--color-state-danger)] bg-[var(--color-state-danger)]/10 px-4 py-3 text-sm text-[var(--color-state-danger)]"
-		>
-			{error}
-		</div>
+		<div class="mb-6">{@render failureNotice(error, () => { void load(); void loadTimeSeries(); })}</div>
+	{/if}
+	{#if !error && timeSeriesError && (!overview || !hasData)}
+		<div class="mb-6">{@render failureNotice(timeSeriesError, () => { void loadTimeSeries(); })}</div>
 	{/if}
 
-	{#if !loading && !error && data && !hasData}
+	{#if loading && !data}
+		<LoadingState variant="surface" label={t('adminStats.loading')} />
+	{:else if !loading && !error && !timeSeriesError && data && !hasData}
 		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} class="[&_.motion-enter]:animate-none" />
-	{:else if overview}
+	{:else if overview && !error && hasData}
 		<!-- KPI 카드 -->
 		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
 			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="blue" />
@@ -418,30 +441,30 @@
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 				<div>
 					<h3 class="text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.chartTitle', { granularity: chartGranularityLabel })}</h3>
-					<p class="mt-1 text-xs text-[var(--color-ink-3)]">
+					<p class="mt-1 text-xs text-[var(--color-ink-2)]">
 						{selectedModel
 							? t('adminStats.chartModelUsage', { model: selectedModel, granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })
 							: t('adminStats.chartAllUsage', { granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })}
 					</p>
 				</div>
 				<div class="flex flex-wrap gap-2">
-					<select class={selectCls} value={chartBucket} onchange={(event) => changeChart('bucket', event.currentTarget.value)} aria-label={t('adminStats.selectBucket')}>
+					<SelectInput value={chartBucket} onchange={(event) => changeChart('bucket', (event.currentTarget as HTMLSelectElement).value)} ariaLabel={t('adminStats.selectBucket')}>
 						{#each CHART_BUCKETS as bucket (bucket.value)}
 							<option value={bucket.value}>{bucket.label}</option>
 						{/each}
-					</select>
-					<select class={selectCls} value={selectedModel} onchange={(event) => changeChart('model', event.currentTarget.value)} aria-label={t('adminStats.selectModel')}>
+					</SelectInput>
+					<SelectInput value={selectedModel} onchange={(event) => changeChart('model', (event.currentTarget as HTMLSelectElement).value)} ariaLabel={t('adminStats.selectModel')}>
 						<option value="">{t('adminStats.allModels')}</option>
 						{#each models as model (model.model_name)}
 							<option value={model.model_name}>{model.model_name}</option>
 						{/each}
-					</select>
+					</SelectInput>
 				</div>
 			</div>
 			{#if loadingTimeSeries}
-				<ActivityIndicator label={t('adminStats.chartLoading', { granularity: chartGranularityLabel })} class="text-sm text-ink-2" />
+				<LoadingState variant="section" label={t('adminStats.chartLoading', { granularity: chartGranularityLabel })} class="text-sm text-ink-2" />
 			{:else if timeSeriesError}
-				<p class="text-sm text-[var(--color-state-danger)]">{timeSeriesError}</p>
+				{@render failureNotice(timeSeriesError, () => { void loadTimeSeries(); })}
 			{:else if timeSeries.length === 0}
 				<EmptyState headline={t('adminStats.chartEmpty', { granularity: chartGranularityLabel })} class="py-4 [&_.motion-enter]:animate-none" />
 			{:else}
@@ -453,7 +476,7 @@
 						{/each}
 					</div>
 				{/if}
-				<div class="mt-4 flex items-center gap-4 text-xs text-[var(--color-ink-3)]">
+				<div class="mt-4 flex items-center gap-4 text-xs text-[var(--color-ink-2)]">
 					<span class="flex items-center gap-1.5">
 						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]"></span>{t('adminStats.inputTokens')}
 					</span>
@@ -517,7 +540,7 @@
 
 		<!-- 사용자별 -->
 		<section>
-			{#snippet userUsageNote(text: string)}<span class="text-xs font-normal text-[var(--color-ink-3)]">{text}</span>{/snippet}
+			{#snippet userUsageNote(text: string)}<span class="text-xs font-normal text-[var(--color-ink-2)]">{text}</span>{/snippet}
 			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">
 				<RichText segments={t.rich('adminStats.userUsageTitle')} tags={{ note: userUsageNote }} />
 			</h3>
@@ -559,10 +582,13 @@
 					</table>
 				</TableShell>
 				</ResponsiveTable>
-				{#if hasMoreUsers}
+				{#if userPageError}
+					<div class="mt-3" data-testid="lumen-stats-user-page-error">{@render failureNotice(userPageError, () => { void loadMoreUsers(); })}</div>
+				{/if}
+				{#if hasMoreUsers && !userPageError}
 					<div class="mt-3 flex justify-center">
 						<Button variant="secondary" size="sm" onclick={loadMoreUsers} disabled={loadingMore} ariaBusy={loadingMore}>
-							{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
+							{#if loadingMore}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
 						</Button>
 					</div>
 				{/if}

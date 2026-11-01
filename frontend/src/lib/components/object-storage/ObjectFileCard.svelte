@@ -2,7 +2,8 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
-	import { ActionMenu, ActivityIndicator, FileIcon, SelectionCheckbox } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { ActionMenu, FileIcon, SelectionCheckbox } from '$lib/components/ui';
 	import { formatDate, formatObjectSize, shortContentType } from '$lib/utils/format';
 	import { observeVisible } from '$lib/utils/observeVisible';
 	import type { SwiftObject } from '$lib/types/objectStorage';
@@ -81,7 +82,7 @@
 			>
 				{#if downloadPreparing}
 					<span class="inline-flex items-center gap-1.5">
-						<ActivityIndicator variant="download" size="xs" />
+						<LoadingState variant="control" label="" />
 						{downloadPendingLabel}
 					</span>
 				{:else}
@@ -120,7 +121,7 @@
 		{/if}
 		{#if downloadPreparing}
 			<div class="motion-fade absolute inset-x-0 bottom-0 flex justify-center border-t border-line bg-surface-base px-2 py-1.5 text-xs text-ink-1">
-				<ActivityIndicator variant="download" size="xs" label={downloadPendingLabel} />
+				<LoadingState variant="control" label={downloadPendingLabel} />
 			</div>
 		{/if}
 	</div>

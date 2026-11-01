@@ -554,3 +554,49 @@ async def test_nonfinite_node_samples_can_use_finite_libvirt_fallback(client):
         response = await client.get("/api/v1/instances/inst-1/metrics?metric=cpu")
     assert response.status_code == 200
     assert response.json()["series"] == _FAKE_SERIES
+
+
+@pytest.mark.anyio
+async def test_member_observability_batch_uses_owned_native_vm_without_host_queries(non_admin_client, native_metrics):
+    native_metrics.return_value = {"cpu": _native([{"ts": 1700000000, "value": 0.0}])}
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock()) as exporters,
+    ):
+        response = await non_admin_client.get("/api/v1/instances/inst-1/metrics-batch?metrics=cpu&range=1h")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["metrics"]["cpu"]["source"] == "gnocchi"
+    assert response.json()["metrics"]["cpu"]["series"] == [{"ts": 1700000000, "value": 0.0}]
+    assert native_metrics.await_args.args[1] is _FAKE_INSTANCE
+    exporters.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_member_vm_without_samples_never_retries_with_host_scope(non_admin_client, native_metrics):
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_FAKE_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock(return_value=[])) as exporters,
+    ):
+        response = await non_admin_client.get("/api/v1/instances/inst-1/metrics-batch?metrics=cpu&range=1h")
+    assert response.status_code == 200
+    cpu = response.json()["metrics"]["cpu"]
+    assert cpu["series"] == []
+    assert cpu["status"] == "not_collected"
+    assert cpu["source"] is None
+    assert exporters.await_count == 2
+    for call in exporters.await_args_list:
+        assert 'instance_id="inst-1"' in call.args[0]
+        assert 'job="node"' not in call.args[0]
+
+
+@pytest.mark.anyio
+async def test_member_cannot_collect_foreign_vm_batch(non_admin_client, native_metrics):
+    with (
+        patch("app.api.compute.instance_metrics.nova.get_server", return_value=_OTHER_INSTANCE),
+        patch("app.api.compute.instance_metrics.query_range", new=AsyncMock()) as exporters,
+    ):
+        response = await non_admin_client.get("/api/v1/instances/inst-other/metrics-batch?metrics=cpu")
+    assert response.status_code == 403
+    native_metrics.assert_not_awaited()
+    exporters.assert_not_awaited()

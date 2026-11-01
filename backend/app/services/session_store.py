@@ -7,8 +7,8 @@ access JWT의 rjti 필드가 이 키를 가리킨다.
 started_at은 최초 로그인 시각이며 refresh/rescope의 원자적 회전에도 유지한다.
 Only an explicit previous_domain_id compare permits a working-domain switch;
 identity_domain_id always remains the original authentication namespace.
-Family aliases resolve only revocation targets; access/refresh always require the
-current JTI's own record, so rotation never makes an old credential reusable.
+Family aliases resolve only revocation targets; authentication requires the current
+JTI's record except for the refresh endpoint's bounded, validated response replay.
 """
 
 from __future__ import annotations
@@ -19,14 +19,20 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ReadOnlyError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
 from app.services.cache import _get_redis
 
 _PREFIX = "afterglow:refresh:"
 _USER_INDEX_PREFIX = "afterglow:user-sessions:"
 _FAMILY_PREFIX = "afterglow:session-family:"
 _FAMILY_ALIAS_PREFIX = "afterglow:refresh-family:"
+_REFRESH_REPLAY_PREFIX = "afterglow:refresh-replay:"
+REFRESH_REPLAY_SECONDS = 30
 _TOUCH_THROTTLE_SECONDS = 60  # last_ip/fp 갱신 최소 간격 (Redis 쓰기 폭증 방지)
-_SENSITIVE_KEYS = {"keystone_token", "family_id"}  # internal authority, never session-list metadata
+_SENSITIVE_KEYS = {"keystone_token", "family_id", "scope_revision"}
 
 _logger = logging.getLogger(__name__)
 
@@ -50,21 +56,26 @@ return 1
 
 _BLACKLIST_SCRIPT = """
 local raw = redis.call('GET', KEYS[1])
+local family = raw and (cjson.decode(raw)['family_id'] or ARGV[2]) or redis.call('GET', KEYS[2]) or ARGV[2]
+local current = redis.call('GET', ARGV[4] .. family) or ARGV[2]
+local key = ARGV[3] .. current
+raw = redis.call('GET', key)
 if not raw then return nil end
 local data = cjson.decode(raw)
+if (data['family_id'] or current) ~= family then return nil end
 if data['blacklisted'] == true and data['blacklist_reason'] == ARGV[1] then
     return nil
 end
 data['blacklisted'] = true
 data['blacklist_reason'] = ARGV[1]
-local pttl = redis.call('PTTL', KEYS[1])
+local pttl = redis.call('PTTL', key)
 local new_raw = cjson.encode(data)
 if pttl > 0 then
-    redis.call('SET', KEYS[1], new_raw, 'PX', pttl)
+    redis.call('SET', key, new_raw, 'PX', pttl)
 elseif pttl == -1 then
-    redis.call('SET', KEYS[1], new_raw)
+    redis.call('SET', key, new_raw)
 end
-return 1
+return new_raw
 """
 
 _TOUCH_SEEN_SCRIPT = """
@@ -106,11 +117,45 @@ end
 return tostring(data['started_at'])
 """
 
-_ROTATE_SESSION_SCRIPT = """
-local raw = redis.call('GET', KEYS[1])
-if not raw then return 0 end
-local old = cjson.decode(raw)
+_REPLAY_VALIDATION_SCRIPT = """
+local function valid_receipt(receipt, old_jti, now)
+    if type(receipt) ~= 'table' or receipt['old_jti'] ~= old_jti
+        or type(receipt['new_jti']) ~= 'string' or type(receipt['session']) ~= 'table'
+        or not tonumber(receipt['old_exp']) or now >= tonumber(receipt['old_exp']) then return nil end
+    local expected = receipt['session']
+    local family = expected['family_id']
+    if type(family) ~= 'string' or family == ''
+        or redis.call('GET', 'afterglow:session-family:' .. family) ~= receipt['new_jti'] then return nil end
+    local raw = redis.call('GET', 'afterglow:refresh:' .. receipt['new_jti'])
+    if not raw then return nil end
+    local current = cjson.decode(raw)
+    if current['blacklisted'] == true or not tonumber(current['exp'])
+        or now >= tonumber(current['exp']) or current['user_id'] ~= receipt['user_id'] then return nil end
+    for _, field in ipairs({'user_id', 'family_id', 'scope_revision', 'domain_id', 'identity_domain_id',
+        'project_id', 'target_project_id', 'started_at', 'exp', 'origin_ip', 'origin_fp',
+        'auth_method', 'provider_id', 'provider_revision', 'provider_domain_id', 'login_email'}) do
+        if current[field] ~= expected[field] then return nil end
+    end
+    return current
+end
+"""
+
+_ROTATE_SESSION_SCRIPT = (
+    _REPLAY_VALIDATION_SCRIPT
+    + """
 local replacement = cjson.decode(ARGV[1])
+local now = math.max(tonumber(ARGV[5]), tonumber(redis.call('TIME')[1]))
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    local receipt_raw = redis.call('GET', KEYS[4])
+    if not receipt_raw or ARGV[8] == '' then return 0 end
+    local receipt = cjson.decode(receipt_raw)
+    if receipt['new_jti'] ~= ARGV[4] or receipt['attempt'] ~= ARGV[10]
+        or not valid_receipt(receipt, ARGV[3], now) then return 0 end
+    -- Exact backend retry: no write, lifetime extension or cleanup side effect.
+    return {2, receipt['session']['family_id'], receipt['session']['scope_revision'], receipt['previous_revision']}
+end
+local old = cjson.decode(raw)
 local identity = old['identity_domain_id']
 -- Pre-multidomain records belong to their old domain, never the requested target.
 if not identity or identity == '' then identity = old['domain_id'] end
@@ -122,7 +167,9 @@ if old['user_id'] ~= replacement['user_id'] or old['blacklisted'] == true
     return 0
 end
 local start = tonumber(old['started_at'])
-if not start or tonumber(ARGV[5]) >= start + tonumber(ARGV[6]) then
+if not tonumber(old['exp']) or now >= tonumber(old['exp']) then return 0 end
+if ARGV[8] ~= '' and tonumber(replacement['exp']) > tonumber(old['exp']) then return 0 end
+if not start or now >= start + tonumber(ARGV[6]) then
     redis.call('DEL', KEYS[1])
     redis.call('SREM', KEYS[3], ARGV[3])
     return 0
@@ -139,17 +186,46 @@ local family_key = 'afterglow:session-family:' .. family
 local current = redis.call('GET', family_key)
 if current and current ~= ARGV[3] then return 0 end
 replacement['family_id'] = family
-redis.call('SETEX', family_key, ARGV[2], ARGV[4])
-redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[3], ARGV[2], family)
-redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[4], ARGV[2], family)
-redis.call('SETEX', KEYS[2], ARGV[2], cjson.encode(replacement))
+replacement['scope_revision'] = tonumber(old['scope_revision'] or 0)
+local old_project = type(old['target_project_id']) == 'string' and old['target_project_id'] or old['project_id']
+local new_project = type(replacement['target_project_id']) == 'string' and replacement['target_project_id'] or replacement['project_id']
+if old['domain_id'] ~= replacement['domain_id'] or old_project ~= new_project then
+    replacement['scope_revision'] = replacement['scope_revision'] + 1
+end
+local receipt = nil
+local receipt_ttl = 0
+if ARGV[8] ~= '' then
+    local old_exp = tonumber(ARGV[9])
+    if not old_exp or old_exp ~= tonumber(old['exp']) then return 0 end
+    receipt_ttl = math.min(30, tonumber(replacement['exp']) - now, old_exp - now,
+        math.floor(start + tonumber(ARGV[6]) - now))
+    if receipt_ttl <= 0 then return 0 end
+    local snapshot = {}
+    for _, field in ipairs({'user_id', 'family_id', 'scope_revision', 'domain_id', 'identity_domain_id',
+        'project_id', 'target_project_id', 'started_at', 'exp', 'origin_ip', 'origin_fp',
+        'auth_method', 'provider_id', 'provider_revision', 'provider_domain_id', 'login_email'}) do
+        snapshot[field] = replacement[field]
+    end
+    receipt = cjson.encode({old_jti=ARGV[3], new_jti=ARGV[4], user_id=old['user_id'],
+        old_exp=old_exp, session=snapshot, previous_revision=tonumber(old['scope_revision'] or 0),
+        attempt=ARGV[10], response_json=ARGV[8]})
+end
+local remaining = math.min(tonumber(ARGV[2]), tonumber(replacement['exp']) - now,
+    math.floor(start + tonumber(ARGV[6]) - now))
+if remaining <= 0 then return 0 end
+redis.call('SETEX', family_key, remaining, ARGV[4])
+redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[3], remaining, family)
+redis.call('SETEX', 'afterglow:refresh-family:' .. ARGV[4], remaining, family)
+redis.call('SETEX', KEYS[2], remaining, cjson.encode(replacement))
+if receipt then redis.call('SETEX', KEYS[4], receipt_ttl, receipt) end
 redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[3], ARGV[3])
 redis.call('SADD', KEYS[3], ARGV[4])
 local ttl = redis.call('TTL', KEYS[3])
 if ttl < tonumber(ARGV[2]) then redis.call('EXPIRE', KEYS[3], ARGV[2]) end
-return 1
+return {1, family, replacement['scope_revision'], tonumber(old['scope_revision'] or 0)}
 """
+)
 
 
 _REVOKE_USER_SCRIPT = """
@@ -202,13 +278,74 @@ redis.call('SREM', index, current)
 return {1, raw}
 """
 
+_FAMILY_SESSION_SCRIPT = """
+local current = redis.call('GET', KEYS[1])
+if not current then return nil end
+local raw = redis.call('GET', ARGV[1] .. current)
+if not raw then return nil end
+local data = cjson.decode(raw)
+if data['user_id'] ~= ARGV[2] or (data['family_id'] or current) ~= ARGV[3] then return nil end
+return raw
+"""
+
 
 def _key(jti: str) -> str:
     return f"{_PREFIX}{jti}"
 
 
+def _refresh_replay_key(old_jti: str) -> str:
+    return f"{_REFRESH_REPLAY_PREFIX}{hashlib.sha256(old_jti.encode()).hexdigest()}"
+
+
+_READ_REFRESH_REPLAY_SCRIPT = (
+    _REPLAY_VALIDATION_SCRIPT
+    + """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return nil end
+local ok, receipt = pcall(cjson.decode, raw)
+if not ok or not valid_receipt(receipt, ARGV[1], tonumber(ARGV[2])) then return nil end
+return raw
+"""
+)
+
+
+async def get_refresh_replay(old_jti: str) -> dict | None:
+    """Read a replay record; malformed values are absent, Redis failures propagate."""
+    r = await _get_redis()
+    raw = await r.eval(
+        _READ_REFRESH_REPLAY_SCRIPT, 1, _refresh_replay_key(old_jti), old_jti, int(datetime.now(UTC).timestamp())
+    )
+    if raw is None:
+        return None
+    try:
+        record = json.loads(raw)
+        if not isinstance(record, dict):
+            return None
+        response = json.loads(record["response_json"])
+        if not isinstance(response, dict):
+            return None
+        record["response"] = response
+    except (KeyError, ValueError, TypeError):
+        return None
+    return record
+
+
 def _user_index_key(user_id: str) -> str:
     return f"{_USER_INDEX_PREFIX}{user_id}"
+
+
+async def _revoke_shell_credentials(user_id: str, family_id: str | None = None, *, strict: bool = False) -> bool:
+    """Keep committed login transitions authoritative while receipts retain cleanup."""
+    from app.services.cloud_shell_authority import ShellAuthorityError, revoke_login_credentials
+
+    try:
+        await revoke_login_credentials(user_id, family_id)
+    except ShellAuthorityError:
+        _logger.warning("Cloud Shell credential cleanup pending after committed session transition")
+        if strict:
+            raise
+        return False
+    return True
 
 
 async def store_session(
@@ -234,6 +371,8 @@ async def store_session(
     previous_domain_id: str | None = None,
     target_project_id: str | None = None,
     target_project_name: str = "",
+    refresh_replay: dict | None = None,
+    previous_refresh_exp: int | None = None,
 ) -> bool:
     """Store a login or atomically replace an active previous refresh record.
 
@@ -256,6 +395,7 @@ async def store_session(
             "target_project_name": target_project_name,
             "user_id": user_id,
             "family_id": jti,
+            "scope_revision": 0,
             "domain_id": domain_id,
             "identity_domain_id": identity_domain_id or domain_id,
             "provider_id": provider_id,
@@ -283,22 +423,45 @@ async def store_session(
     if previous_jti is not None:
         if timeout_seconds is None or timeout_seconds <= 0:
             raise ValueError("Session rotation requires a positive absolute timeout")
-        return bool(
-            await r.eval(
-                _ROTATE_SESSION_SCRIPT,
-                3,
-                _key(previous_jti),
-                _key(jti),
-                _user_index_key(user_id),
-                data,
-                ttl,
-                previous_jti,
-                jti,
-                now,
-                timeout_seconds,
-                domain_id if previous_domain_id is None else previous_domain_id,
-            )
+        replay_json = json.dumps(refresh_replay) if refresh_replay is not None else ""
+        attempt = hashlib.sha256((data + replay_json).encode()).hexdigest()
+        args = (
+            _ROTATE_SESSION_SCRIPT,
+            4,
+            _key(previous_jti),
+            _key(jti),
+            _user_index_key(user_id),
+            _refresh_replay_key(previous_jti),
+            data,
+            ttl,
+            previous_jti,
+            jti,
+            now,
+            timeout_seconds,
+            domain_id if previous_domain_id is None else previous_domain_id,
+            replay_json,
+            previous_refresh_exp or 0,
+            attempt,
         )
+        try:
+            result = await r.eval(*args)
+        except (RedisConnectionError, RedisTimeoutError, ReadOnlyError):
+            if refresh_replay is None:
+                raise
+            # Only this receipt-backed operation is safe after a lost EVAL reply.
+            # Reuse every argument, including generated JWTs/JTI and expiry.
+            result = await r.eval(*args)
+        if not result:
+            return False
+        if result[0] == 2:
+            # The exact attempt committed, but this is now a read-side replay.
+            # Route it through the refresh handler's receipt recovery so current
+            # native/provider/domain policy is rechecked before returning bytes.
+            return False
+        if result[2] != result[3]:
+            family = result[1].decode() if isinstance(result[1], bytes) else result[1]
+            await _revoke_shell_credentials(user_id, family)
+        return True
     async with r.pipeline() as pipe:
         pipe.setex(_key(jti), ttl, data)
         pipe.setex(f"{_FAMILY_PREFIX}{jti}", ttl, jti)
@@ -326,6 +489,15 @@ async def get_session(jti: str) -> dict | None:
     return json.loads(raw)
 
 
+async def get_family_session(family_id: str, user_id: str) -> dict | None:
+    """Read the current family atomically; never authenticate an old JTI alias."""
+    if not family_id or not user_id:
+        return None
+    r = await _get_redis()
+    raw = await r.eval(_FAMILY_SESSION_SCRIPT, 1, f"{_FAMILY_PREFIX}{family_id}", _PREFIX, user_id, family_id)
+    return json.loads(raw) if raw else None
+
+
 async def _delete_family(jti: str, user_id: str = "") -> tuple[bool, dict | None]:
     r = await _get_redis()
     removed, raw = await r.eval(_DELETE_SESSION_SCRIPT, 2, _key(jti), f"{_FAMILY_ALIAS_PREFIX}{jti}", jti, user_id)
@@ -335,6 +507,8 @@ async def _delete_family(jti: str, user_id: str = "") -> tuple[bool, dict | None
 async def delete_session(jti: str) -> dict | None:
     """Invalidate the family and return its current native subject for revocation."""
     _, session = await _delete_family(jti)
+    if session is not None and not await _revoke_shell_credentials(session["user_id"], session.get("family_id") or jti):
+        session["cloud_shell_cleanup_pending"] = True
     return session
 
 
@@ -370,6 +544,7 @@ async def revoke_user_sessions(user_id: str, *, revoke_keystone: bool = True, st
                 except Exception:
                     native_failed = True
                     _logger.warning("Native token revocation failed after atomic session removal", exc_info=True)
+    await _revoke_shell_credentials(user_id, strict=strict_keystone)
     if native_failed and strict_keystone:
         raise RuntimeError("Native token revocation failed after atomic session removal")
     return len(deleted)
@@ -382,7 +557,12 @@ async def blacklist_session(jti: str, reason: str = "") -> None:
     이미 삭제된 세션이면 no-op.
     """
     r = await _get_redis()
-    await r.eval(_BLACKLIST_SCRIPT, 1, _key(jti), reason)
+    raw = await r.eval(
+        _BLACKLIST_SCRIPT, 2, _key(jti), f"{_FAMILY_ALIAS_PREFIX}{jti}", reason, jti, _PREFIX, _FAMILY_PREFIX
+    )
+    if raw:
+        session = json.loads(raw)
+        await _revoke_shell_credentials(session["user_id"], session.get("family_id") or jti)
 
 
 def session_seen_needs_touch(session: dict, ip: str, fp: str, *, now: int | None = None) -> bool:
@@ -419,6 +599,8 @@ async def delete_session_owned(user_id: str, jti: str, *, revoke_keystone: bool 
                 await asyncio.to_thread(keystone.revoke_token, token)
             except Exception:
                 _logger.warning("Native token revocation failed after atomic family removal", exc_info=True)
+    if removed and session is not None:
+        await _revoke_shell_credentials(user_id, session.get("family_id") or jti)
     return removed
 
 

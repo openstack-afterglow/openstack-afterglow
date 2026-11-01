@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -7,7 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createCoalescedRefresh, type CoalescedRefresh } from '$lib/utils/coalescedRefresh';
 	import type { FileStorage, AccessRule } from '$lib/types/fileStorage';
@@ -157,7 +158,7 @@
 	{#if scopeCurrent && error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if loading || !scopeCurrent}
-		<LoadingSkeleton variant="card" rows={5} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('list.title') })} />
 	{:else if fileStorage}
 		<div class="motion-stagger">
 			<FileStorageHeader

@@ -11,6 +11,8 @@ nav_order: 20
 
 관리자 API는 클러스터 전체(모든 프로젝트)를 대상으로 하는 **현재 system-admin 권위로 보호된** 관리 기능입니다. 이것이 모든 공급자에게 system-scoped token을 보낸다는 뜻은 아닙니다. Native 정책에 맞춘 provider admin-project 실행과 caller-bound credential/telemetry를 구분하며 하이퍼바이저·리소스 집계·전체 조회·VM/볼륨/네트워크·directory/quota/role·GPU/이미지/Notion·고아 정리 등을 제공합니다.
 
+관리자 사용자 수정의 난수 비밀번호·등록 메일 전송은 `POST /api/v1/admin/users/{user_id}/password/reset-email`입니다. Fresh system-admin·원 executor·활성 exact 사용자/home·유일한 현재 메일·검증 STARTTLS·회수 store를 확인하고32자 난수를 native setter에 한 번 적용합니다. 성공/메일 실패/회수 실패/감사 실패/결과 불명을 구분하며 비밀번호를 응답·로그·감사에 남기지 않습니다. 상세 strict 본문·응답·운영 위험은 [Profile API의 관리자 재설정](profile.md#관리자-난수-비밀번호-재설정등록-메일-전송)을 따릅니다. 공개 분실 요청만으로 이 관리자 동작을 실행하지 않습니다.
+
 ## 인증 및 권한
 
 | 헤더 | 설명 |
@@ -35,6 +37,60 @@ Projectless 예외는 위 service BFF에 한정되며 core OpenStack project sco
 *관리자 개요 페이지 — 클러스터 전체 vCPU·RAM·Disk 사용률, 총 VM/하이퍼바이저 수, 프로젝트별 리소스 할당량을 한 화면에서 조회*
 
 ---
+## 도메인 compute pool과 flavor 자동 관리
+
+기존 domain quota allocation budget과 별도인 **Afterglow 제어 정책·사용량 projection**입니다. Keystone domain metadata가 정책 권위이고 CPU=VCPU+PCPU, RAM=MEMORY_MB, GPU=관리자 승인 `CUSTOM_PCI_<vendor>_<product>`별 장 수입니다. Pool의 모든 프로젝트 Placement 사용량을 합산하고 승인 companion은 GPU 수에서 제외합니다. Native 프로젝트 CPU/RAM quota는 계속 적용하며 직접 CLI/API의 전역 domain quota를 강제한다고 주장하지 않습니다. 응답은 `policy_ready`, `control_scope:"afterglow"`, `gpu_profiles`를 포함하고 native_enforcement 필드는 제거했습니다.
+
+| 메서드 | 경로(`/api/v1` 아래) | 권한·입력 |
+|---|---|---|
+| GET | `/admin/domains/{domain_id}/compute-pool` | fresh system-admin; 정책·usage·remaining·projects·Afterglow scope/readiness |
+| PUT | `/admin/domains/{domain_id}/compute-pool` | system-admin; `{revision,enabled,limits}` |
+| PUT | `/admin/domains/{domain_id}/compute-pool/projects/{project_id}` | system-admin; `{revision,limits}` optional project cap |
+| DELETE | 위 project 경로 + `?revision=N` | 해당 cap 제거; native pool snapshot 반환 |
+| GET | `/iam/compute-pool` | exact current-domain manager |
+| PUT / DELETE | `/iam/compute-pool/projects/{project_id}` | exact-domain manager; 같은 입력·revision, 타 domain 거부 |
+| GET | `/admin/gpu-quota-requests?status=pending\|fulfilled\|rejected\|all&cursor=…` | fresh system-admin; 도메인별 요청의 50개 cursor page |
+| POST | `/admin/gpu-quota-requests/{id}/resolve` | `{status:"fulfilled"\|"rejected",note}`; pending만 검토, quota 직접 변경 없음 |
+| GET / PUT | `/admin/flavor-automation` | system-admin; 상태 조회 / `{revision,enabled}` |
+| POST | `/admin/flavor-automation/reconcile` | system-admin; 명시 실제 reconcile 및 readback 결과 |
+| GET | `/admin/flavor-automation/policy` | system-admin; revision·retained hosts·승인 GPU profiles, 읽기만 수행 |
+| GET | `/admin/flavor-automation/pci-devices` | system-admin; Nova API 설정 snapshot alias와 Placement PCI 사용량·매핑·미확인 상태를 구분해 조회 |
+| PUT | `/admin/flavor-automation/policy` | system-admin; `{revision,gpu_profiles}`; host registry는 보존 |
+| POST | `/admin/flavor-automation/discover` | system-admin; 표준 API 관측을 retained inventory에 병합 |
+| PUT | `/admin/flavor-automation/hosts/{host_id}` | system-admin; `{revision,removed}`; 제거 시 native service disable/readback |
+
+Limit은 strict integer0이상 또는-1(무제한)입니다. CPU/RAM 누락은 추가 domain 제한 없음, GPU 누락은0입니다. Project cap은 domain ceiling 이하이며 cap 부재는 pool 공유입니다. `state=unmanaged`(metadata 없음), `active`, `paused`를 구분합니다. `enabled=false`는 **Afterglow의 신규 admission 중지**이며 직접 Nova 호출을 가로채거나 legacy quota로 복귀하지 않습니다. 기존 프로젝트 native quota는 별도 검사하고 임의로 완화하지 않습니다. Pool 삭제 API는 없고 기존 cap 충돌을 덮어쓰지 않습니다.
+
+Native CPU/RAM quota는 pool cap과 독립입니다. 기존 `/admin/quotas/{project_id}` native writer와 domain allocation ceiling, manager의 future CPU/RAM defaults는 active/paused/GPU-only pool에서도 유지됩니다. Pool metadata로 cores/ram을 제거하거나 native editor를 숨기지 않고, native snapshot이 검증되면 pool 조회 장애 중에도 명시 수정할 수 있습니다. `compute_pool_enabled` 같은 이전 suppression용 budget response field는 제거했습니다. 사용량/예약·native allocation budget·operation journal/readback 검증은 유지하고 자동 quota 증액·pool 정책 변경은 없습니다.
+
+Revision/graph lease 충돌409, invalid 입력422, native directory/usage·readback 불명503입니다. Native PATCH는 retry/redirect/401 replay 없이 한 번 제출하며 `compute_pool_mutation_outcome_unknown`이면 fresh snapshot/revision부터 확인합니다. Custom Nova endpoint나 fleet qualification은 사용하지 않습니다.
+
+추가 GPU 요청은 프로젝트·요청자·승인 주 resource class·요청 시 기준/목표·검토자를 SQL에 기록할 뿐 실제 pool quota를 증액하지 않습니다. 관리자는 기존 pool/project cap 화면에서 직접 조정한 뒤 완료를 선택합니다. 완료에는 현재 활성 domain 정책·같은 enabled 프로젝트·동일한 활성 승인 GPU profile과 목표 이상의 domain/project 상한이 필요합니다. 미충족·불명은 pending을 유지하고 거절은 한도를 바꾸지 않습니다. 같은 결정 재호출은 기존 결과를 반환하며 서로 다른 동시 결정은 하나만 성공합니다. 이 기록은 자원 예약·native 프로젝트 quota 변경·메일 전달 증거가 아닙니다.
+
+GPU profile은 `{name,display_name,enabled,resource_class,resource_requirements,extra_specs,alias_resource_classes?}`입니다. `name`은3060/3060lhr/4090 같은 unique lowercase slug, resource_requirements와 specs는 GPU1장 기준입니다. Primary RC는1이어야 하고 다중 PCI alias는 exact alias→RC map을 요구합니다. **GPU와 모든 physical companion은 실제 부착용 pci_passthrough:alias가 필요**하며 Placement resources-only는 부착을 보장하지 않아 거부합니다. Protected annotations·모호한 alias·같은 RC의 alias/explicit resources 중복은422입니다. CPU policy는 shared/dedicated만 지원하고 dedicated는 별도 PCPU inventory로 fitting합니다. Builtin catalog는 승인이 아닙니다.
+
+관리자는 관측된 정확한 주 GPU alias와 동반 alias를 선택해 위 profile을 만들 수 있습니다. Kolla snapshot은 controller의 **effective nova-api 설정 파일**에서 PCI alias 필드만 추출한 시점 관측이며 실행 프로세스의 reload 또는 모든 compute 설정 일치를 증명하지 않습니다. Alias source/Placement inventory의 `ready`, `partial`, `unavailable`을 구분하고 조회 실패의 usage는 `null`입니다. Placement에 보고되지 않은 모든 물리 PCI 장치를 열거한다고 주장하지 않습니다. GPU와 audio alias를 함께 요청해도 Nova의 독립 할당이 같은 물리 카드임을 보장하지 않습니다. Pool/쿼터 표시는 profile `name`을 사용하지만 할당 계산의 키는 여전히 정확한 primary resource class입니다.
+
+Host registry는 단절/down/maintenance/목록 누락/축소 관측으로 마지막 지원 사양을 지우지 않습니다. Exact 관리자 제거만 inventory를 제외하고 존재하는 service는 Nova disable/readback을 먼저 수행합니다. 재발견은 제거를 취소하지 않고 다시 포함도 native service를 자동 enable하지 않습니다. VM·provider·flavor 삭제는 없습니다.
+
+자동 생성 flavor는 private staging→immutable shape·approved specs readback→**모델별 domain allocation이 허용하는 모든 enabled 소속 프로젝트** ACL 순서입니다. 새 프로젝트도 다음 reconcile에 포함하고 transient usage/project cap은 공개 권한을 줄이지 않습니다. 기존/신규 수동 CPU flavor는 충분한 native spec·ownership 검증 뒤 ID·원래 이름/설명·하드웨어를 보존하며 자동 편입합니다. Private은 확인된 domain 프로젝트 접근이 조정되고 Public은 native 공개 상태가 유지됩니다. GPU/모호한 수동 flavor와 확인되지 않은 ACL은 수정하지 않습니다. 관리 대상 수동 DELETE/specs/access/visibility는409이며 별도 사용 일정 지정은 유지합니다. 상태 unavailable/conflict는 완료가 아니고 unknown mutation은 blind replay하지 않습니다. [운영 절차](../deployment.md#afterglow-도메인-정책표준-flavor-자동화-source-only), [규격·적격성](flavors.md)을 따릅니다.
+
+
+## 인스턴스 사용 일정
+
+현재 source의 일정 API는 Nova server metadata만 정본으로 사용합니다. 모든 GPU,12 vCPU 이상 **또는** RAM65536 MiB 이상, 관리자 추가 지정 플레이버가 대상입니다. SQL/Redis 일정 저장소나 별도 승인 workflow가 아닙니다. 생성·날짜·볼륨 보존·state 계약은 [Instances API의 사용 일정](instances.md#13-사용-일정-usage-schedule)을 따릅니다.
+
+| 메서드 | 경로 | 입력·응답 |
+|---|---|---|
+| `GET` | `/api/v1/admin/instances/{instance_id}/usage-schedule` | 정확한 native 대상 일정 또는 metadata prefix가 전혀 없을 때 `null` |
+| `PUT` | 위 경로 | 최신 `revision` 필수; 선택적 `expires_at`, `expiry_action`, `delete_volumes`, `reason`; 갱신 일정 |
+| `POST` | 위 경로 + `/extend` | 미래로 늘린 aware `expires_at`, 비어 있지 않은 `reason`, 최신 `revision`; 갱신 일정 |
+
+세 경로 모두 현재 system-admin 권위와 exact native ID/owner를 검증하고 `Cache-Control: no-store`를 사용합니다. 변경은 입력 project ID가 아니라 조회한 실제 소유 프로젝트의 검증된 connection에서 수행합니다. 일반 project reader의 GET·writer의 PUT/POST와 구분하며, 관리자 전용 전체 일정 list는 제공하지 않습니다. 알림용 목록은 현재 프로젝트의 `GET /api/v1/instances/usage-schedules`입니다.
+
+필수 대상 관리자 SSE 생성도 `usage_schedule: {}`를 명시해야 하며 기본은 한 calendar month·shelve/offload·모든 Cinder root/data disk 보존입니다. 연장은 사유를 남기는 self-service 작업이지 관리자의 승인 요청이 아니고 자동 start/unshelve를 하지 않습니다. Native403/409·유실 응답·requested/unknown marker는 자동 삭제 재시도 사유가 아닙니다. Metadata·native status·attachment와 managed resource receipt를 대조해 수동 조정하세요. [운영 조건](../deployment.md#인스턴스-사용-일정-운영-source-only)을 충족하기 전 실제 배포·정각 실행·삭제 완료를 가정하지 않습니다.
+
+관리자의 추가 플레이버 지정은 `PUT /api/v1/admin/flavors/{flavor_id}/usage-schedule-requirement`의 `{"required":true|false}` 전용 경로를 사용합니다. 수동·managed 모두 가능하고 응답은 `{flavor_id, usage_schedule_required, additional_requirement}`입니다. False는 추가 key만 제거하고 GPU·CPU·RAM 기본 조건은 유지하며 hardware/ACL 잠금도 해제하지 않습니다. [Flavor API](flavors.md#사용-일정-필수-판정과-추가-지정)를 참조하세요. Background enrollment/만료 writer는 기본 비활성이고 승인된 shared-Redis cohort에서 운영자가 명시적으로 활성화해야 합니다. 일정 API/UI 사용 가능 여부와 별개입니다.
 
 ## Aodh 경보와 Gnocchi 서비스 점검
 
@@ -219,9 +275,13 @@ V2 event는 `{schema_version:2,id:UUID,at,status,route,peer_ip?,peer_verified?,f
 
 Version 없는 `{id,at,status,route,client_ip?,...측정 필드}`는 명시적 legacy wire만 허용합니다. 이 `client_ip`는 신뢰하지 않고 무시하므로 새로 수용된 legacy event는 `legacy_unclassified`, country `XX`, identity 미확인입니다. Version 없는 v2 필드 혼합·다른 schema version은 `422`입니다. **Backend v2 ingest를 먼저 전환한 뒤 reporter v2를 전환**해야 하며 v2 reporter→구 backend는 호환되지 않습니다. 이는 일반 주소 호환 shim이 아니라 rolling-upgrade 경계입니다.
 
-Snapshot은 `{state,source,origin,origins,range,retention_days,generated_at,coverage,totals,countries,routes,series}`입니다. `origins`는 `{internal,external,unknown,legacy_unclassified}` request count 또는 totals 미관측 시 null입니다. `countries[]`는 `{country,...metrics}`, `routes[]`는 `{route,origins,...metrics}`, `series[]`는 `{at,metrics}`입니다. `origin` filter는 totals·country·route·series·HLL·reason counts에 적용하고 선택되지 않은 origin count는 0입니다. `origins` 및 route별 origins의 합은 각 requests와 같습니다. Source별 Redis **UTC 시간 bucket**에서 요청 기간과 retention 중 짧은 범위(최대 30일)만 조회합니다. 두 source를 합쳐 고유 사용자/요청 수라고 주장하지 않습니다. `series[].at`은 bucket 시작 epoch, `metrics:null`은 미관측 bucket입니다.
+Snapshot은 `{state,source,origin,origins,range,retention_days,generated_at,coverage,totals,countries,networks,routes,series}`입니다. `origins`는 `{internal,external,unknown,legacy_unclassified}` request count 또는 totals 미관측 시 null입니다. `countries[]`는 `{country,...metrics}`, `networks[]`는 `{network,kind,basis,...metrics}`, `routes[]`는 `{route,origins,...metrics}`, `series[]`는 `{at,metrics}`입니다. `origin` filter는 totals·country·network·route·series·HLL·reason counts에 적용하고 선택되지 않은 origin count는 0입니다. `origins` 및 route별 origins의 합은 각 requests와 같습니다. Source별 Redis **UTC 시간 bucket**에서 요청 기간과 retention 중 짧은 범위(최대 30일)만 조회합니다. 두 source를 합쳐 고유 사용자/요청 수라고 주장하지 않습니다. `series[].at`은 bucket 시작 epoch, `metrics:null`은 미관측 bucket입니다.
 
 V2 bucket은 기존 v1 key와 분리합니다. 과거 v1 bucket은 기존 국가/metric/HLL을 보존한 채 origin만 `legacy_unclassified`로 읽으며 `all` 또는 legacy filter에서만 포함합니다. 과거 raw IP가 없으므로 MMDB/CIDR 변경이나 새 writer로 과거를 재분류하지 않습니다. Unknown 과거 geo의 사유도 legacy로만 남기고 원래 원인을 추정하지 않습니다. 새로 수용된 legacy event와 과거 v1 HLL의 identity coverage는 다를 수 있습니다.
+
+`networks[]`는 국가 `XX` 중 새 writer가 기록한 **비국가 IP 대역의 부분 집계**이며 국가 합계에 더하지 않습니다. `network`는 RFC1918 IPv4의 고정 `/16` 집계(예: `172.30.0.0/16`, `172.31.0.0/16`, `10.8.0.0/16`) 또는 유한한 표준 특수 목적 CIDR입니다. 실제 인터페이스 subnet을 발견한 결과가 아닙니다. IPv6 ULA는 `fc00::/7`, link-local은 `fe80::/10`으로 묶으며 host/site별 임의 prefix를 저장하지 않습니다. `kind`는 `private/shared/loopback/link_local/documentation/benchmark/multicast/reserved/unspecified`입니다. 종류나 대역만으로 cluster 관리망·WireGuard/VPN을 확정하지 않습니다.
+
+`basis=resolved_client`는 기존 provenance/XFF 검증으로 확인한 출발지 대역입니다. `basis=socket_peer`는 XFF 누락·오류·all-trusted로 원본 출발지가 불명일 때 **독립적으로 검증한 연결 상대의 대역만** 표시합니다. 후자는 proxy 뒤 원본 출발지 확인이 아니며 origin `unknown`·국가 `XX`와 원래 실패 사유를 그대로 유지합니다. 미검증/잘못된 socket peer와 XFF 문자열에서 대역을 추측하지 않습니다. 공인 주소의 GeoIP 미일치에도 대역을 생성하지 않습니다. 정렬은 요청 내림차순, network/basis/kind 순이며 같은 대역의 두 basis는 별도 행입니다. Networks의 고유 방문자는 별도 HLL이 없어 null입니다. 구 v1/v2 bucket은 raw 주소가 없으므로 소급 복원하지 않고 해당 dimension이 없으면 `networks:[]`입니다. 이 additive Redis 차원에는 SQL/config migration이 없으며 새 frontend의 필수 DTO를 위해 backend reader를 먼저 전환합니다.
 
 `totals` 및 country/route/hour metrics에는 `requests`, `success`(2xx/3xx), `errors`(4xx/5xx), `status_1xx`–`status_5xx`, `pageviews`, `unlocated`, `request_bytes`, `response_bytes`, 각각의 `*_bytes_known`, `latency_ms_total`, `latency_ms_max`, `unique_visitors`, `visitor_identity_known`가 있습니다. Byte coverage가 없으면 합계도 null이고 일부만 알려졌다면 알려진 합계 및 known count를 함께 봅니다. 이는 transport header/TLS/관측 밖 압축을 포함하는 wire bandwidth가 아닙니다. Latency 평균은 total/requests로 해석할 수 있으며 p95 같은 percentile은 수집하지 않습니다.
 
@@ -242,7 +302,7 @@ V2 bucket은 기존 v1 key와 분리합니다. 과거 v1 bucket은 기존 국가
 
 Reason은 개인정보 없는 집계 사유이며 IP별 drilldown이 아닙니다. `state=disabled/available/partial/unavailable`: 빈 store·선택 origin 미관측은 0이 아닌 `partial`, Redis 읽기 실패는 `unavailable`, known source drops·현재 worker drops·DB unavailable도 partial입니다. DB 미설정·미분류/위치 미확인 count 자체는 상태 실패로 바꾸지 않으므로 available이 모든 주소·국가의 완전한 관측을 뜻하지 않습니다.
 
-원문 peer/client IP·XFF는 전송·메모리 내 provenance/origin/국가/HMAC 계산에만 사용하고 durable aggregate·public snapshot·analytics 로그에 보관하지 않습니다. Cookie, user agent, body, token, 실제 URL/query/동적 path ID도 저장하지 않고 고정 route category만 남깁니다. 중복 방지용 event UUID는 제한된 Redis dedupe table에 TTL 300초로 잠시 남으며 사용자/request drilldown 기능이 아닙니다. 집계는 bucket 시작 기준 만료하고 늦은 event가 보존기간을 늘리지 않습니다. Reporter는 최대 16 inflight·2초 deadline, 집계 writer는 250 ms deadline으로 bounded이며 관측 실패가 원래 응답/예외를 바꾸지 않습니다. 설정과 secret 주입은 [운영 설정](../deployment.md#트래픽-분석-설정)을 따르세요.
+원문 peer/client IP·XFF는 전송·메모리 내 provenance/origin/국가/HMAC/비국가 대역 계산에만 사용하고 durable aggregate·public snapshot·analytics 로그에 보관하지 않습니다. 저장되는 network는 위 유한한 집계/표준 CIDR뿐입니다(`::1/128` 같은 표준 loopback 상수 포함). Cookie, user agent, body, token, 실제 URL/query/동적 path ID도 저장하지 않고 고정 route category만 남깁니다. 중복 방지용 event UUID는 제한된 Redis dedupe table에 TTL 300초로 잠시 남으며 사용자/request drilldown 기능이 아닙니다. 집계는 bucket 시작 기준 만료하고 늦은 event가 보존기간을 늘리지 않습니다. Reporter는 최대 16 inflight·2초 deadline, 집계 writer는 250 ms deadline으로 bounded이며 관측 실패가 원래 응답/예외를 바꾸지 않습니다. 설정과 secret 주입은 [운영 설정](../deployment.md#트래픽-분석-설정)을 따르세요.
 
 ---
 
@@ -296,17 +356,33 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 
 관리자 개요는 프로젝트별 quota 표 대신 **도메인별 실제 할당 자원**을 표시합니다. `/overview/domains`는 native Keystone project→domain UUID join으로 전체 Nova/Cinder inventory를 합산하며 사용자 home·동일한 표시 이름으로 소유권을 추정하지 않습니다. 자원이 없는 native domain과 프로젝트도 집계 대상입니다. 각 row는 `domain_id`, `domain_name`, `project_ids`, `project_count`, `instances`, `vcpus`, `ram_mb`, `gpu_instances`, `volumes`, `volume_gb`, `attached_volumes/attached_gb`, `available_volumes/available_gb`, `owner_status`를 반환합니다. Nova의 embedded CPU/RAM 수치가 없으면 해당 합계는 null이며 확인된0과 다릅니다. 삭제된 프로젝트·도메인과 owner 누락은 `deleted_project`·`deleted_domain`·`unknown_owner`로 구분합니다. Directory 조회 장애는503이지 빈 합계가 아닙니다. 도메인 행에서 인스턴스/볼륨 목록을 열면 `domain_id` query를 독립 관측 picker에 적용하고 로그인 workspace는 바꾸지 않습니다. 퇴역한 `/overview/projects`는 제공하지 않습니다.
 
+`GET /overview`는 source별 성공한 실제0과 조회 실패를 구분한다. Count와 nested numeric 값은 nullable이며 `collected_at`은 수집 완료 UTC 시각, `unavailable_sections`는 실패한 source, `disabled_sections`는 설정상 비활성 source다. 기존 권한·경로·명시 cache 동작은 유지한다. 캐시된 응답의 시각은 native sample 시각이 아니며 현재 실측으로 추정하지 않는다.
+
+필수 metadata와 독립 storage field를 추가한 source는 read-through cache를 `afterglow:admin:overview:v2`로 clean cutover한다. 구형 namespace JSON을 새 모델에 맞춘 가짜 값으로 보정하지 않는다. `overview*` 무효화·TTL과 공개 API 경로는 유지하며 브라우저 GET도 cache opt-in을 사용할 수 있다.
+
+- `vcpus.used`: Nova2.53 hypervisor `vcpus_used` 합계, 가상 CPU 할당이지 실측 CPU 이용률이 아니다.
+- `vcpus.total`: Placement `VCPU.total` 합계, 검증된 물리 코어 수가 아니다. Placement 실패 시 Nova 분모로 fallback하지 않는다.
+- `vcpus.allowed`: resource provider별 `int(total × allocation_ratio)` 합계이며 reservation 차감 전이다. 조직/프로젝트 정책 한도가 아니다. 256/212는120.8%,256/424는60.4%로 서로 다른 분모다. 막대 길이만100%로 제한하고 텍스트와 numeric accessibility는 원래 비율을 유지한다.
+- `ram_gb`: Nova hypervisor `memory_mb_used/memory_mb`를1024로 나눈 GiB이며 게스트 실측 메모리와 다르다.
+- `disk_gb.volumes`: 전체 프로젝트 Cinder provisioned GiB 합계. `images`: active Glance image bytes/2³⁰. `used`: 두 값이 모두 확인된 경우의 합계이며 일부 실패는 null이다. `total`: Cinder pool `total_capacity_gb`의 strict 합계로 unknown/infinite/malformed는 null이다. 실제 저장 공간 사용량이 아니고 이미지가 다른 저장소에 있거나 pool이 겹칠 수 있다.
+- Disabled 선택 서비스도 count=null이며 별도 metadata를 표시한다. Enabled 서비스 실패도 null+unavailable이지0이 아니다. Swift 일부 프로젝트 fanout/HEAD/예산 실패는 불완전 합계를 반환하지 않으며 실제 account404만 known empty다.
+
+`GET /monitoring/summary`도 독립 source 실패를 `unavailable_sections`와 nullable affected counters로 표시하고 확인한 다른 inventory/native telemetry를 유지한다. Identity summary의 기존 `partial_reasons`는 user/project/role뿐 아니라 group/domain 조회 실패도 구분하며 UI는 해당 숫자를0으로 해석하지 않는다.
+
 `GET /overview` 응답 예시:
 
 ```json
 {
+  "collected_at": "2026-10-30T00:00:00Z",
+  "unavailable_sections": [],
+  "disabled_sections": [],
   "hypervisor_count": 5,
   "running_vms": 42,
   "gpu_instances": 3,
   "instance_stats": {"total": 42, "active": 38, "shutoff": 2, "error": 1, "other": 1},
   "vcpus": {"total": 160, "allowed": 320, "used": 85},
   "ram_gb": {"total": 512.0, "used": 256.5},
-  "disk_gb": {"total": 10000, "used": 3500},
+  "disk_gb": {"total": 10000, "used": 3500, "volumes": 3400, "images": 100},
   "containers_count": 0,
   "file_storage_count": 12
 }
@@ -330,7 +406,7 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 
 `state`(`up/down`)는 호스트 생존 상태, `status`(`enabled/disabled`)는 새 인스턴스 스케줄링 허용 여부로 독립입니다. 비활성화는 기존 인스턴스를 자동으로 이동시키지 않습니다. 전체 이동은 `ACTIVE`의 live migration과 `SHUTOFF`의 cold migration을 별도로 요청하고, 다른 상태는 이유와 함께 건너뜁니다. `down`만으로 호스트가 펜싱되었다고 판단할 수 없으므로, 대피 전 운영자가 원본의 전원 차단·격리를 반드시 확인해야 합니다. API의 `requested`는 Nova가 비동기 작업을 접수했다는 뜻이며 **이동 완료·복구 성공이 아닙니다**. 개별 VM의 상태와 목적지, cold migration의 `VERIFY_RESIZE` 확정 여부를 후속 확인하세요.
 
-하이퍼바이저 상세의 `servers[]`는 각 VM의 `domain_id/domain_name`, `project_id/project_name`, `flavor_id/flavor_name`과 기존 `flavor`를 제공합니다. UI는 **도메인 - 프로젝트 - Flavor**로 표시하고 전체 UUID는 상세에서 확인할 수 있습니다. Native 소유 metadata가 없는 경우 확인 불가/삭제 상태를 표시하며 사용자 home이나 이름으로 보완하지 않습니다.
+하이퍼바이저 상세의 `servers[]`는 각 VM의 `domain_id/domain_name`, `project_id/project_name`, `flavor_id/flavor_name`과 기존 `flavor`를 제공합니다. `/admin/all-instances`와 호스트 상세는 완전한 CPU-only flavor snapshot에만 별도 `flavor_display_name`을 제공합니다. 이 값은 표시 전용이며 native 식별자와 다른 경우에도 API 요청·소유권·권한 판단에는 사용하지 않습니다. UI는 **도메인 - 프로젝트 - Flavor**로 표시하고 전체 UUID는 상세에서 확인할 수 있습니다. Native 소유 metadata가 없는 경우 확인 불가/삭제 상태를 표시하며 사용자 home이나 이름으로 보완하지 않습니다.
 
 ### 호스트 메타데이터 검토와 등록 제거
 
@@ -408,11 +484,15 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 
 인스턴스 상세의 기존 lifecycle·비밀번호·volume/interface·SG/FIP·storage 연결 작업도 exact native parent/child와 fresh 관리자 경계 아래 명시적 관리자 경로를 사용하며 성공·실패의 actor와 native target project를 구분해 기록합니다. Fixed executor로 target 소유를 보장할 수 없는 새 볼륨 생성은 관리자 상세에서 숨기며 caller-bound block-ledger 삭제는 native mutation 전에409입니다. LB/DB/파일 스토리지의 기존 일반 mutation은 실제 부모가 현재 caller project 소유일 때만 노출합니다. Palimpsest foreign-private export와 K3s 서비스 credential을 executor로 승격하지 않습니다.
 
+관리자 인스턴스의 `POST /api/v1/admin/instances/{instance_id}/volumes`, `DELETE`/`PATCH /api/v1/admin/instances/{instance_id}/volumes/{volume_id}`도 일정 등록 여부와 무관하게 실제 native owner 기준의 같은 ephemeral usage lease로 연결·해제·`delete_on_termination` 변경을 조정합니다. Redis coordination 불가·lease 상실·만료 작업과의 충돌은409이며 관리자 권한으로 이 fence를 우회하지 않습니다.
+
 관리자 인스턴스 storage 접근 허용 및 connection-info와 관리자 share access-rule 목록 응답에는 `secret`/`access_key`를 포함하지 않습니다. Native 규칙의 상태·대상·내보내기 위치만 보여주며, CephX key의 기존 caller-owned 명시 조회 계약을 관리자 executor로 확대하지 않습니다.
 
 관리자 화면의 공용 도메인→프로젝트 picker는 사용자 header의 active workspace와 독립적입니다. 도메인 변경은 선택 프로젝트가 새 도메인에 없으면 해제하고 목록 page/marker·선택·열린 상세를 초기화합니다. 이전 scope/auth 수명의 늦은 조회·mutation 피드백은 새 화면에 게시하지 않습니다. Quota와 flavor 접근 대상, 포트 생성·볼륨 이관의 대상 프로젝트 선택도 같은 디렉터리 조건을 사용하되 **관측 필터를 mutation 대상 허용 목록으로 오용하지 않습니다**. Shared/external network 등 생성 옵션은 원래 native 가용 범위를 유지합니다. 공지 수신 도메인의 프로젝트 목록도 해당 도메인으로 제한합니다.
 
-`all-instances`는 모든 scope에서 complete Nova inventory에 `domain_id/project_id/host/status/name`을 AND로 적용한 뒤 native UUID 오름차순으로 marker page를 자릅니다. `name`은 이름 또는 전체 ID의 literal 부분 검색입니다. `all-volumes`도 complete Cinder inventory에 동일한 소유 scope와 `status`, `name`(이름/ID), `volume_type`, `min_size`, `max_size`(GiB 정수)를 적용한 뒤 같은 방식으로 페이지를 만듭니다. `min_size > max_size`는422입니다. 두 row 형식 모두 native 소유 `domain_id/domain_name/project_name/owner_status`를 포함합니다. URL의 domain/project query는 공용 관측 picker와 동기화되며 filter 변경은 열린 상세·선택·marker도 초기화합니다.
+`all-instances`는 모든 scope에서 complete Nova inventory에 `domain_id/project_id/host/status/name`을 AND로 적용합니다. `name`은 이름 또는 전체 ID의 literal 부분 검색입니다. `all-volumes`도 complete Cinder inventory에 동일한 소유 scope와 `status`, `name`(이름/ID), `volume_type`, `min_size`, `max_size`(GiB 정수)를 적용합니다. `min_size > max_size`는422입니다. 두 row 형식 모두 native 소유 `domain_id/domain_name/project_name/owner_status`를 포함합니다. URL의 domain/project query는 공용 관측 picker와 동기화되며 filter 변경은 열린 상세·선택·marker도 초기화합니다.
+
+두 목록의 `sort`는 `created_desc`(기본, 최신순), `created_asc`(오래된순), `name_asc`, `name_desc`입니다. 전체 필터 결과를 정렬한 **뒤** `limit`+`marker`를 적용하며, 정렬을 바꾸면 marker를 생략해 첫 페이지부터 조회해야 합니다. 날짜는 native 생성 시각을 UTC로 비교하고 timezone 없는 Cinder 시각도 UTC로 해석합니다. 없거나 해석할 수 없는 시각은 두 날짜 방향 모두 마지막에 둡니다. 이름은 대소문자 구분 없는 문자열 순서이며 같은 값은 UUID 오름차순으로 고정합니다. 지원하지 않는 `sort`는422입니다. UI는 정렬 선택을 새로고침에도 유지하고 변경 시 이전 page·선택·prefetch·늦은 응답을 폐기합니다.
 
 사용자·프로젝트·그룹·credential·chat quota의 기존 **필수 identity-domain** 경계는 유지합니다. 이 도메인은 프로젝트 소유 도메인과 다른 의미이며 검증된 사용자의 account-wide quota 상세를 임의의 project-domain으로 잘라 표시하지 않습니다. 글로벌 설정·물리 인프라·catalog 기록에 의미 없는 도메인 필터를 추가하지 않습니다.
 
@@ -980,6 +1060,8 @@ Snapshot은 `{domain_id,revision,ceilings,defaults,enforcement_scope,allocations
 
 그룹 응답은 배열이며 nullable `created_at`을 포함합니다. 필수 domain_id는 서버에서 native inventory를 제한합니다. 이름·ID·설명 검색은 그 inventory에서 브라우저가 수행합니다. 조회·갱신 후 조건을 유지하며 mutation은 inventory cache를 무효화합니다. Native 실패는 `identity_native_denied`403 / `identity_not_found`404 / `identity_unavailable`503 등으로 반환하며 부분 성공 목록으로 바꾸지 않습니다.
 
+관리자 UI는 기본 도메인 가입 후보 또는 명시한 계정 홈 도메인 후보를 먼저 표시하고 검색·전체 선택·다중 선택을 지원합니다. 일괄 추가는 위 개별 PUT을 순차 호출하므로 원자적 트랜잭션이 아닙니다. 실패 시 중단하며 이미 성공한 추가는 유지하고 남은 선택은 보존합니다. 범위가 바뀌면 후속 전송과 선택을 중단합니다.
+
 기본 검색은 기존 `/domains/{domain_id}/members`의 home/joined 후보를 사용합니다. 특정 다른 계정 소속 도메인을 선택하면 `/groups/{group_id}/candidates?domain_id=<group-domain>&user_domain_id=<identity-home>`에서 `{domain_id,user_domain_id,items:[{id,name,email,enabled,domain_id}]}`를 받습니다. 최상위 두 ID는 각각 group 소유 domain과 선택한 identity home이며 item domain은 후자와 정확히 일치합니다. Accounts도 조회할 수 있지만 전역/all-domain 목록이나 조직 manager 권한으로 노출하지 않습니다. 응답은 `Cache-Control: no-store, private`; exact enabled group/두 domain 확인 뒤 native source-domain LIST의 고유 ID·정확한 home·boolean enabled·name/email 형식을 검증해 활성 후보를 구성합니다. 사용자별 GET은 하지 않으며 LIST/provider403/5xx·home404·불명/중복/잘못된 metadata는 부분 성공으로 숨기지 않습니다. 목록은 조회 시점 후보이지 추가 권한 proof가 아니므로 이후 삭제·비활성·home 변경은 다음 명시 PUT의 fresh exact 검증에서 거부됩니다.
 
 명시 `user_domain_id` PUT은 graph lease 안에서 native system-admin을 다시 검증하고 group anchor·활성 source/target domain·정확한 활성 사용자 UUID/home을 재조회합니다. Group 자신의 domain에 아직 가입하지 않은 Accounts 사용자도 이 명시 작업으로 추가할 수 있고 기존 group 역할이 적용됩니다. Group의 다른 domain project/domain grant에는 기존 membership을 계속 요구합니다. Source ID를 생략한 기존 PUT·일반 조직 IAM/credential/role API는 바뀌지 않습니다. Owner-bearing group409·projection group403·마지막 manager/system-admin·권위/lease/native 실패 보호를 유지하며 별도 역할을 자동 부여하거나 계정을 이동하지 않습니다. Browser source 선택은 관리 domain/workspace를 변경하지 않고 늦은 source 응답과 ABA를 폐기합니다.
@@ -1016,7 +1098,7 @@ Canonical `project_creator` 또는 이를 함의하는 역할을 native project 
 
 역할 CRUD·상속·프리셋 적용은 verified system admin 전용입니다. 프로젝트 `admin` 이름이나 DB manager는 권한이 아닙니다. 프로젝트 owner/admin은 [프로젝트 API](projects.md), 도메인 관리자는 [도메인 IAM](iam.md)의 현재 safe role ID를 사용합니다. 일반 identity 응답은 표시용 이름·OpenStack can_write·서비스별 service_permissions를 구분합니다. 초대 role_ids도 IAM의 safe catalog로 검증합니다.
 
-프로젝트 `POST /roles/assign`·`/roles/assign-group`는 native 이름이 `admin`인 실제 role ID의 새 할당을422 `Native admin project grants are removal-only`로 거부합니다. 기존 user/group direct admin은 해당 DELETE로 회수할 수 있고 관리자 UI도 이미 체크된 admin만 해제할 수 있습니다. 미할당 admin은 비활성이고 해제 뒤 재선택할 수 없습니다. 사용자/도메인 IAM replacement·초대에도 신규 admin grant가 허용되지 않으며 `project_admin`·서비스 `*_admin`의 기존 정책은 유지합니다. 예외는 전용 `/identity/system-roles/grant`·`/revoke`의 canonical `system:all` admin이며 기존 마지막 유효 관리자 보호·세션 회수 계약을 그대로 따릅니다.
+프로젝트 `POST /roles/assign`·`/roles/assign-group`는 native 이름이 `admin`인 실제 role ID의 새 할당을422 `Native admin project grants are removal-only`로 거부합니다. 관리자 사용자/그룹 역할 선택·검색에서는 기존 할당 유무와 무관하게 admin 행을 완전히 제거하며 비활성 checkbox도 표시하지 않습니다. 기존 할당 badge와 명시적 DELETE 회수 API는 유지하고 다른 역할 선택이 admin을 자동 회수하지 않습니다. 사용자/도메인 IAM assignable catalog·초대에서도 native admin은 제외하며 `project_admin`·서비스 `*_admin`의 기존 정책은 유지합니다. 전용 `/identity/system-roles/grant`·`/revoke`의 canonical `system:all` admin 및 마지막 유효 관리자 보호·세션 회수는 그대로입니다. 전체 `/roles`는 역할 정의/상속 inventory이므로 native admin을 계속 반환하며 할당 선택지와 구분합니다.
 
 목록 항목은 `id`, `name`, `description`, `domain_id`, `protected`, `system_only`, `implied_role_ids`(직접 하위), `inherited_role_ids`(전체 하위), `parent_role_ids`(직접 상위)를 반환합니다. `A → B`는 A 보유자가 B 권한을 얻는다는 뜻입니다. 화면의 `admin → manager → member → reader`는 실제 Keystone에 저장된 연결을 표시하며, 목록 조회로 기본 계층을 자동 생성하지 않습니다. 이름·ID·상속 수 정렬, 이름/ID/설명 검색, 다중 부모·공유 역할을 표시하는 상속 트리를 제공합니다.
 

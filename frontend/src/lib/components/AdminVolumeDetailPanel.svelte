@@ -8,7 +8,7 @@
 	import AdminVolumePropertiesSection from '$lib/components/admin-volume/AdminVolumePropertiesSection.svelte';
 	import AdminVolumeAttachmentsSection from '$lib/components/admin-volume/AdminVolumeAttachmentsSection.svelte';
 	import AdminVolumeMetadataSection from '$lib/components/admin-volume/AdminVolumeMetadataSection.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import AdminVolumeTransferModal from '$lib/components/admin/volumes/AdminVolumeTransferModal.svelte';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
@@ -37,9 +37,9 @@
 <div class="flex flex-col h-full">
 	<AdminVolumeDetailHeader {onClose} />
 
-	<div class="flex-1 overflow-y-auto p-5 space-y-4">
-		{#if s.loading}
-			<ActivityIndicator label={t('volumeDetail.loading')} />
+	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto {s.loading && !s.volume ? '' : 'p-5 space-y-4'}">
+		{#if s.loading && !s.volume}
+			<LoadingState variant="surface" label={t('volumeDetail.loading')} />
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.volume}

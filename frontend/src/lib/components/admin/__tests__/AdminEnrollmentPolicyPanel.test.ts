@@ -81,6 +81,39 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		expect(screen.getByText(t('enrollment.mailUnconfirmed'))).toBeTruthy();
 	});
 
+	it('keeps one policy draft and queue while task surfaces change without saving or reloading', async () => {
+		const view = render(AdminEnrollmentPolicyPanel, { section: 'policy' });
+		await screen.findByRole('form', { name: t('enrollment.policyForm') });
+		await fireEvent.click(screen.getByRole('checkbox', { name: t('enrollment.publicEmail') }));
+		expect(screen.queryByRole('textbox', { name: 'Instances' })).toBeNull();
+		expect(screen.queryByRole('article')).toBeNull();
+		await view.rerender({ section: 'quotas' });
+		expect(screen.queryByRole('checkbox', { name: t('enrollment.publicEmail') })).toBeNull();
+		await fireEvent.input(field('Instances'), { target: { value: '8' } });
+		await view.rerender({ section: 'requests' });
+		expect(screen.queryByRole('form')).toBeNull();
+		expect(row(request())).toBeTruthy();
+		await view.rerender({ section: 'policy' });
+		expect((screen.getByRole('checkbox', { name: t('enrollment.publicEmail') }) as HTMLInputElement).checked).toBe(true);
+		expect(mocks.get).toHaveBeenCalledTimes(2);
+		expect(mocks.put).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+		await submit();
+		expect(mocks.put.mock.calls[0][1]).toMatchObject({ public_signup_enabled: true, personal_quotas: { instances: 8 } });
+	});
+
+	it('points to the default-quota task when a hidden quota draft blocks a policy save', async () => {
+		const view = render(AdminEnrollmentPolicyPanel, { section: 'quotas' });
+		await screen.findByRole('textbox', { name: 'Instances' });
+		await fireEvent.input(field('Instances'), { target: { value: 'abc' } });
+		await view.rerender({ section: 'policy' });
+		await submit();
+		await screen.findByText(t('enrollment.invalidQuotaOtherTab'));
+		expect(mocks.put).not.toHaveBeenCalled();
+		await view.rerender({ section: 'quotas' });
+		expect(field('Instances').value).toBe('abc');
+	});
+
 	it('loads provided entitlements into the draft only and requires explicit policy save', async () => {
 		const defaults = { instances: 2, cores: 2, ram: 4096, volumes: 10, gigabytes: 1024 };
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path === policyPath ? policy({

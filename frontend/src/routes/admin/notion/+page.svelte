@@ -10,7 +10,8 @@
 	import NotionTargetEditForm from '$lib/components/admin/notion/NotionTargetEditForm.svelte';
 	import NotionTargetCard from '$lib/components/admin/notion/NotionTargetCard.svelte';
 	import type { NotionTarget } from '$lib/components/admin/notion/NotionTargetCard.svelte';
-	import { ActivityIndicator, Alert, Button, Card } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card } from '$lib/components/ui';
 	import { toast } from '$lib/stores/toast';
 
 
@@ -154,7 +155,7 @@
 				ariaBusy={savingGlobalGate}
 				onclick={() => setGlobalGate(!notionSyncEnabled)}
 			>
-				{#if savingGlobalGate}<ActivityIndicator size="xs" tone="ink" />{/if}{savingGlobalGate ? t('notion.gate.saving') : notionSyncEnabled ? t('notion.gate.enabled') : t('notion.gate.disabled')}
+				{#if savingGlobalGate}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{savingGlobalGate ? t('notion.gate.saving') : notionSyncEnabled ? t('notion.gate.enabled') : t('notion.gate.disabled')}
 			</Button>
 		</div>
 	</Card>
@@ -162,11 +163,7 @@
 	<NotionTargetAddForm bind:open={showAddForm} onAdded={fetchTargets} />
 
 	{#if loading}
-		<div class="space-y-3" role="status" aria-busy="true" aria-label={t('notion.loadingTargets')}>
-			{#each [0, 1] as _}
-				<div class="motion-skeleton rounded-lg h-32"></div>
-			{/each}
-		</div>
+		<LoadingState variant="surface" label={t('notion.loadingTargets')} />
 	{:else if targets.length === 0}
 		<div class="bg-surface-base border border-line rounded-lg p-8 text-center">
 			<p class="text-ink-2 text-sm">{t('notion.empty.title')}</p>

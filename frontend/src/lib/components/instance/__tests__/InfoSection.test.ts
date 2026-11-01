@@ -6,6 +6,7 @@ import type { Writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { t as tp } from '$lib/i18n/ns/compute-pools';
 
 const { mockControllerRef } = vi.hoisted(() => ({
 	mockControllerRef: { current: undefined as unknown },
@@ -29,7 +30,7 @@ const sampleInstance = {
 } as Instance;
 let controllerState: Writable<InstanceDetailController>;
 
-function renderInfoSection(props?: { showHost?: boolean }, overrides: Partial<InstanceDetailController> = {}) {
+function renderInfoSection(props?: { showHost?: boolean; adminMode?: boolean }, overrides: Partial<InstanceDetailController> = {}) {
 	controllerState = writable({
 		instance: sampleInstance,
 		formatDate: (d: string) => d,
@@ -57,6 +58,19 @@ afterEach(() => {
 });
 
 describe('InfoSection host visibility', () => {
+	it.each([
+		{ flavor_name: 'm1.small', flavor_display_name: 'cpu.2c_1.5g', expected: '2 vCPU · 1.5 GiB RAM' },
+		{ flavor_name: 'gpu.render', flavor_display_name: null, expected: 'gpu.render' },
+		{ flavor_name: 'manual.unknown', expected: 'manual.unknown' },
+		{ flavor_name: null, expected: tp('unknown') },
+	])('shows verified specs or the historical name for $flavor_name', ({ expected, ...fields }) => {
+		renderInfoSection(undefined, { instance: { ...sampleInstance, ...fields } });
+		expect(screen.getByText(expected)).toBeTruthy();
+	});
+	it('preserves native flavor reference on the explicit administrator surface', () => {
+		renderInfoSection({ adminMode: true }, { instance: { ...sampleInstance, flavor_name: 'm1.small', flavor_display_name: null } });
+		expect(screen.getByText('m1.small')).toBeTruthy();
+	});
 	it('does not render host label or host value by default (showHost=false)', () => {
 		renderInfoSection();
 		expect(screen.queryByText('호스트')).toBeNull();

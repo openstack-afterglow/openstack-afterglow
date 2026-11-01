@@ -82,7 +82,7 @@ function SeriesChart({ spec, options }: { spec: SeriesSpec; options: ChartRender
 				const common = { dataKey: series.key, data: source, stroke: series.color, strokeWidth: spec.compact ? 1.5 : 2, animate,
 					fadeEdges: false, showHighlight: tooltip && !hasGaps && !source && !options.reducedMotion, loading: false,
 					dashFromIndex: series.dashed ? 0 : undefined };
-				return series.area ? <Area key={series.key} {...common} fill={series.color} fillOpacity={0.18} /> : <Line key={series.key} {...common} />;
+				return series.area ? <Area key={series.key} {...common} fill={series.color} fillOpacity={0.08} /> : <Line key={series.key} {...common} />;
 			})}
 			{!spec.compact && <><XAxis tickMode="data" /><YAxis formatValue={formatValue} /></>}
 			{nativeTooltip}

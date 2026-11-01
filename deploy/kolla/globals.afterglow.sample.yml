@@ -251,6 +251,8 @@ afterglow_service_cloud_shell_enabled: false
 # afterglow_cloud_shell_home_size_gib: 5
 # afterglow_cloud_shell_cpu: 1.0
 # afterglow_cloud_shell_memory_mib: 1024
+# Match the native driver on all computes; append actual operator management CIDRs.
+# afterglow_cloud_shell_blocked_cidrs: ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]
 # afterglow_cloud_shell_idle_timeout_seconds: 1200
 # afterglow_cloud_shell_max_session_seconds: 3600
 # afterglow_cloud_shell_ticket_ttl_seconds: 60

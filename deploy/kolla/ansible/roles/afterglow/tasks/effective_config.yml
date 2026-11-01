@@ -7,11 +7,16 @@
       - afterglow_operator_config_source != afterglow_operator_frontend_config_source
       - afterglow_operator_config_source not in afterglow_owned_config_paths
       - afterglow_operator_frontend_config_source not in afterglow_owned_config_paths
+      - afterglow_nova_pci_alias_snapshot_path != afterglow_runtime_config_dir ~ '/' ~ afterglow_generated_config_name
+      - afterglow_nova_pci_alias_snapshot_path != afterglow_runtime_config_dir ~ '/' ~ afterglow_frontend_config_name
+      - afterglow_nova_pci_alias_snapshot_dir == afterglow_runtime_config_dir ~ '/nova-pci-aliases'
+      - afterglow_nova_pci_alias_snapshot_path == afterglow_nova_pci_alias_snapshot_dir ~ '/aliases.json'
     fail_msg: "Afterglow operator source paths must not overlap generated runtime artifacts"
   vars:
     afterglow_owned_config_paths:
       - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}"
       - "{{ afterglow_runtime_config_dir }}/{{ afterglow_frontend_config_name }}"
+      - "{{ afterglow_nova_pci_alias_snapshot_path }}"
       - "{{ afterglow_runtime_config_dir }}/afterglow.operator.generated.conf"
       - "{{ afterglow_runtime_config_dir }}/afterglow.frontend.operator.generated.conf"
       - "{{ afterglow_runtime_config_dir }}/afterglow.zz-kolla.generated.conf"

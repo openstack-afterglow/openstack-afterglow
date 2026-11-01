@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { DbInstance } from '$lib/types/database';
 
 	const statusColor: Record<string, string> = {
@@ -31,7 +31,7 @@
 	{#if canMutate}
 	<button onclick={onDelete} disabled={deleting}
 		class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.deleteInstance')}{/if}
+		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.deleteInstance')}{/if}
 	</button>
 	{/if}
 </div>

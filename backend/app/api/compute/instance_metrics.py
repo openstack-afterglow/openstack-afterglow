@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.deps import get_os_conn, get_token_info
 from app.services import native_telemetry, nova
+from app.services.identity_roles import _to_completion
 from app.services.prom_query import (
     PromBadQuery,
     PromUnavailable,
@@ -441,7 +442,7 @@ async def get_metrics_summary_batch(
     step_s = calc_step(range_s)
     # Canonical Nova ownership is established before any native resource search.
     try:
-        servers = nova.list_servers(conn)
+        servers = await _to_completion(asyncio.to_thread(nova.list_servers, conn))
     except Exception:
         raise HTTPException(status_code=502, detail="instance_inventory_unavailable")
     authorized_ids = {
@@ -646,6 +647,7 @@ async def instance_metrics_summary(server, range: str, conn, *, flavor_conn=None
                     current_flavor_info = {
                         "id": cur_flavor.id,
                         "name": cur_flavor.name,
+                        "display_name": cur_flavor.display_name,
                         "vcpus": cur_flavor.vcpus,
                         "ram": cur_flavor.ram,
                         "disk": cur_flavor.disk,
@@ -680,6 +682,7 @@ async def instance_metrics_summary(server, range: str, conn, *, flavor_conn=None
                             suggested_flavor_info = {
                                 "id": best.id,
                                 "name": best.name,
+                                "display_name": best.display_name,
                                 "vcpus": best.vcpus,
                                 "ram": best.ram,
                                 "disk": best.disk,

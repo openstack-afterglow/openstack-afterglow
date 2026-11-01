@@ -103,7 +103,7 @@ describe('CloudShellTerminal lifecycle', () => {
 	it('enables real input after ready and preserves the mounted terminal while minimized', async () => {
 		const { cloudShell } = await import('$lib/stores/cloudShell.svelte');
 		const { default: CloudShellDock } = await import('./CloudShellDock.svelte');
-		cloudShell.bindIdentity({ token: 'token', projectId: 'project', projectName: 'Project' });
+		cloudShell.bindIdentity({ token: 'token', userId: 'user', sessionId: 'login', projectId: 'project', projectName: 'Project' });
 		cloudShell.openConsent();
 		await cloudShell.approve();
 

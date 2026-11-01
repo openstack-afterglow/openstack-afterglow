@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, getAuthVerificationEpoch, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+import { auth, authRecovery, getAuthVerificationEpoch, logoutInProgress, projectSwitching, setAuth } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
 import { ApiError, decodeProviderCallbackError, type ProviderEntryTicket } from '$lib/api/errors';
@@ -72,7 +72,7 @@ let _handling403Admin = false;
 // 동시 다수 요청이 토큰 refresh를 중복 호출하지 않도록 직렬화
 let _refreshPromise: Promise<string | null> | null = null;
 let _sessionRevocationInProgress = false;
-const AUTH_PUBLIC_PATHS: Record<string, true> = { '/': true, '/login': true, '/signup': true, '/recover': true, '/auth/callback': true };
+const AUTH_PUBLIC_PATHS: Record<string, true> = { '/': true, '/login': true, '/logout': true, '/signup': true, '/recover': true, '/auth/callback': true };
 const AUTH_PUBLIC_PREFIXES = ['/invitations/', '/registrations/', '/recover/'];
 
 function isAuthPublicPath(pathname: string): boolean {
@@ -134,7 +134,8 @@ async function handleUnauthorized(): Promise<void> {
 			import('$app/navigation'),
 		]);
 		if (get(logoutInProgress) || get(auth).token !== rejectedToken || getAuthVerificationEpoch() !== rejectedEpoch) return;
-		clearAuth();
+		// A stale duplicated tab must not revoke another tab's healthy rotated credentials.
+		clearAuth({ broadcast: false });
 		if (!isAuthPublicPath(window.location.pathname)) await goto('/login', { replaceState: true });
 	} catch {
 		if (!get(logoutInProgress) && (!get(auth).token || getAuthVerificationEpoch() === rejectedEpoch) && !isAuthPublicPath(window.location.pathname)) window.location.replace('/login');
@@ -195,21 +196,20 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 		if (getAuthVerificationEpoch() !== epoch || current.token !== previous.token || current.refreshToken !== previous.refreshToken) return current.token;
 		return tryRefresh({ allowDuringRevocation, preflight });
 	}
+	const state = get(auth);
+	const epoch = getAuthVerificationEpoch();
+	// A marker-only skip must not become the shared promise for a real 401 recovery.
+	if (preflight && nonExtendingRefresh?.token === state.token
+		&& nonExtendingRefresh.refreshToken === state.refreshToken && nonExtendingRefresh.epoch === epoch
+		&& nonExtendingRefresh.expiresAt === state.accessExpiresAt
+		&& nonExtendingRefresh.expiresAt > Math.floor(Date.now() / 1000)) return state.token;
 	_refreshPromise = (async () => {
-		const { get } = await import('svelte/store');
-		const { auth, setAuth } = await import('$lib/stores/auth');
-		const state = get(auth);
-		const epoch = getAuthVerificationEpoch();
 		const ownsRefresh = () => getAuthVerificationEpoch() === epoch
 			&& get(auth).token === state.token && get(auth).refreshToken === state.refreshToken;
 
 		// Each tab owns its refresh session; never import another tab's credentials.
 		const refreshToken = state.refreshToken;
 		if (!refreshToken) return null;
-		if (preflight && nonExtendingRefresh?.token === state.token
-			&& nonExtendingRefresh.refreshToken === refreshToken && nonExtendingRefresh.epoch === epoch
-			&& nonExtendingRefresh.expiresAt === state.accessExpiresAt
-			&& nonExtendingRefresh.expiresAt > Math.floor(Date.now() / 1000)) return state.token;
 		nonExtendingRefresh = null;
 
 		if (_refreshSettledFailure) {
@@ -320,8 +320,8 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 }
 
 /** Refresh the current session through the shared, coalesced refresh flow. */
-export async function refreshSession(): Promise<string | null> {
-	const token = await tryRefresh();
+export async function refreshSession({ proactive = false }: { proactive?: boolean } = {}): Promise<string | null> {
+	const token = await tryRefresh({ preflight: proactive });
 	if (!token && get(auth).token && !_sessionRevocationInProgress && !get(logoutInProgress)) {
 		await handleUnauthorized();
 	}
@@ -505,14 +505,18 @@ export function fetchWithAuth(
 	options: RequestInit = {},
 	token?: string,
 	projectId?: string,
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean },
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void },
 ): Promise<Response> {
 	const baseUrl = reqOpts?.baseUrl ?? getBaseUrl();
 	return withAuthRecovery(
-		(currentToken) => fetch(`${baseUrl}${path}`, {
-			...options,
-			headers: _buildHeaders(currentToken, projectId, options.headers, options.method),
-		}),
+		(currentToken) => {
+			// Preflight token rotation may outlive a caller's editor or observation scope.
+			reqOpts?.beforeDispatch?.();
+			return fetch(`${baseUrl}${path}`, {
+				...options,
+				headers: _buildHeaders(currentToken, projectId, options.headers, options.method),
+			});
+		},
 		token,
 		{
 			signal: options.signal,
@@ -541,7 +545,7 @@ async function request<T>(
 	token?: string,
 	projectId?: string,
 	// Fix 3: caller가 401을 직접 처리하는 경우 전역 로그아웃 리다이렉트를 억제할 수 있음
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean }
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number }
 ): Promise<T> {
 	options.signal?.throwIfAborted();
 	const method = (options.method ?? 'GET').toString().toUpperCase();
@@ -556,6 +560,7 @@ async function request<T>(
 	if (typeof options.body === 'string') {
 		try { requestBody = JSON.parse(options.body); } catch { /* non-JSON body */ }
 	}
+	reqOpts?.beforeDispatch?.();
 	const mock = await maybeMockJson<T>(method, path, requestBody, token, projectId);
 	options.signal?.throwIfAborted();
 	assertReadOwner();
@@ -567,7 +572,7 @@ async function request<T>(
 		...options,
 		headers: { 'Content-Type': 'application/json', ...options.headers },
 		credentials: options.credentials ?? 'include',
-		signal: options.signal ?? AbortSignal.timeout(30_000),
+		signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(reqOpts?.timeoutMs ?? 30_000)]) : AbortSignal.timeout(reqOpts?.timeoutMs ?? 30_000),
 	}, token, projectId, { ...reqOpts, baseUrl: requestBaseUrl });
 	assertReadOwner();
 
@@ -800,12 +805,9 @@ function dispatchJsonGet<T>(
 	signal: AbortSignal | undefined,
 	suppressAuthRedirect: boolean,
 ): Promise<T> {
-	const requestSignal = signal
-		? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-		: undefined;
 	return request<T>(
 		requestPath,
-		{ method: 'GET', signal: requestSignal },
+		{ method: 'GET', signal },
 		token,
 		projectId,
 		{ suppressAuthRedirect, baseUrl },
@@ -1174,16 +1176,16 @@ export const api = {
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
+			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch, timeoutMs: opts?.timeoutMs })
 		);
 	},
-	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
+	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
+			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch })
 		);
 	},
 	putBlob: <T>(path: string, body: Blob, token?: string, projectId?: string, opts?: { signal?: AbortSignal; replayOnUnauthorized?: boolean }) => {
@@ -1198,10 +1200,10 @@ export const api = {
 			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
 		);
 	},
-	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
+	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'DELETE', signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
+			request<T>(path, { method: 'DELETE', signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch })
 		);
 	},
 

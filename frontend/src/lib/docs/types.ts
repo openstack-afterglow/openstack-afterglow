@@ -26,12 +26,21 @@ export interface DocStep {
 	screenshots?: DocScreenshot[];
 }
 
+/** Ordered inclusion chain; side branches are exact role names, never translated. */
+export interface DocRoleHierarchy {
+	title: string;
+	description: string;
+	relation: string;
+	levels: { role: string; alsoIncludes?: string[] }[];
+}
+
 export interface DocSection {
 	id: string;
 	title: string;
 	paragraphs?: string[];
 	bullets?: string[];
 	steps?: DocStep[];
+	hierarchy?: DocRoleHierarchy;
 	commands?: DocCommand[];
 	callout?: {
 		tone: 'info' | 'warning' | 'neutral';

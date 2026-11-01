@@ -5,7 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/images-keys';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let {
 		target,
@@ -100,7 +100,7 @@
 			{#if saveError}<div class="mt-3 text-[var(--color-state-danger)] text-xs">{saveError}</div>{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<Button variant="ghost" size="md" onclick={onClose}>{t('imageEdit.cancel')}</Button>
-				<Button variant="accent" size="md" onclick={save} disabled={saving}>{#if saving}<ActivityIndicator size="xs" label={t('imageEdit.saving')} />{:else}{t('imageEdit.save')}{/if}</Button>
+				<Button variant="accent" size="md" onclick={save} disabled={saving}>{#if saving}<LoadingState variant="control" label={t('imageEdit.saving')} />{:else}{t('imageEdit.save')}{/if}</Button>
 			</div>
 		</div>
 	</div>

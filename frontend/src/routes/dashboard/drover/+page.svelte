@@ -16,6 +16,7 @@
 	import K3sProgressModal from '$lib/components/dashboard/drover/K3sProgressModal.svelte';
 	import DroverHeader from '$lib/components/dashboard/drover/DroverHeader.svelte';
 	import DroverClusterGrid from '$lib/components/dashboard/drover/DroverClusterGrid.svelte';
+	import { Alert, Button } from '$lib/components/ui';
 
 	const progress = createK3sProgress();
 	const activeSteps = $derived(progress.mode === 'delete' ? K3S_DELETE_STEPS : K3S_CREATE_STEPS);
@@ -93,9 +94,10 @@
 	<p class="text-sm text-ink-2 mb-6">{t('dashboard.description')}</p>
 
 	{#if ctrl.error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>
+		<Alert tone="danger" title={t('clusterError.loadFailed')} class="mb-4">{ctrl.error}{#snippet actions()}<Button variant="secondary" size="sm" onclick={ctrl.forceRefresh} disabled={ctrl.refreshing}>{t('clusterError.reload')}</Button>{/snippet}</Alert>
 	{/if}
 
+	{#if ctrl.loading || ctrl.clusters.length > 0 || !ctrl.error}
 	<DroverClusterGrid
 		clusters={ctrl.clusters}
 		loading={ctrl.loading}
@@ -106,4 +108,5 @@
 		onOpenCreate={() => { ctrl.showModal = true; }}
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
+	{/if}
 </PageShell>

@@ -1,4 +1,4 @@
-import { auth } from '$lib/stores/auth';
+import { auth, authReady } from '$lib/stores/auth';
 import { siteConfig } from '$lib/config/site';
 import { openWizard, resetWizard, wizard } from '$lib/stores/wizard';
 
@@ -42,6 +42,8 @@ export function prepareWizardConsumer(step: number) {
 	resetWizard();
 	openWizard();
 	auth.set({ token: 'test-token', refreshToken: null, accessExpiresAt: null, userId: 'user-a', username: 'user-a', projectId: 'project-a', projectName: 'Project A', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false });
+	auth.update(value => ({ ...value, canWrite: true }));
+	authReady.set(true);
 	siteConfig.update(value => ({ ...value, services: { ...value.services, manila: true } }));
 	wizard.update(w => ({ ...w, step, imageId: 'image-a', imageName: 'Ubuntu 24.04', flavorId: 'flavor-a', flavorName: 'gpu.4c_8g' }));
 }

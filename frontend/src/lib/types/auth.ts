@@ -38,6 +38,7 @@ export interface LoginResponse extends DomainSessionFields {
   default_project_id?: string;
   is_system_admin?: boolean;
   can_write?: boolean;
+  auth_method?: string;
   refresh_token?: string;
   initial_workspace?: { kind: 'personal' | 'remembered'; domain_id: string; project_id: string } | null;
 }

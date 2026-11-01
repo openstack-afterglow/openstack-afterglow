@@ -18,7 +18,7 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => domainIam(session));
 	const uid = $props.id();
@@ -99,7 +99,7 @@
 	<Alert tone="info">{t('inviteHelp')}</Alert>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={rows.length ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	<Card><form class="space-y-4" onsubmit={prepare}>
 		<Field label={t('email')} required for={`${uid}-email`}><TextInput id={`${uid}-email`} type="email" bind:value={email} required disabled={blocked || busy || loading} autocomplete="off" /></Field>
 		<Button type="submit" variant="primary" disabled={blocked || !session.canSubmit() || busy || loading}>{t('sendInvite')}</Button>
@@ -129,7 +129,7 @@
 				<div class="space-y-2 border-b border-line pb-3">
 					<label class="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" class="mt-1 shrink-0" checked={project.id in selected} disabled={blocked || busy || roleLoading.includes(project.id)} onchange={(event) => toggleProject(project.id, event.currentTarget.checked)} /><span class="min-w-0 [overflow-wrap:anywhere]">{project.name}<span class="block text-xs text-ink-2">{project.id}</span></span></label>
 					{#if project.id in selected}
-						{#if roleLoading.includes(project.id)}<ActivityIndicator label={t('loading')} />{:else if catalogs[project.id]}
+						{#if roleLoading.includes(project.id)}<LoadingState variant="section" label={t('loading')}  />{:else if catalogs[project.id]}
 							<fieldset class="space-y-1 pl-5"><legend class="text-xs text-ink-2 [overflow-wrap:anywhere]">{project.name} · {project.id} · {t('inviteProjectsRoles')}</legend>
 								{#each catalogs[project.id].roles as role (role.id)}<label class="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={selected[project.id].includes(role.id)} disabled={blocked || busy} onchange={(event) => toggleRole(project.id, role.id, event.currentTarget.checked)} /><span class="min-w-0 [overflow-wrap:anywhere]">{role.name}</span></label>{/each}
 							</fieldset>

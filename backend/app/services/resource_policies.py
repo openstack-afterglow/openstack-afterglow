@@ -196,10 +196,21 @@ def _discover_sync(conn, spec: PolicySpec) -> list[dict[str, Any]]:
             images = [image for image in images if image.visibility in {"public", "community"}]
         return [_option(image.id, image.name, status=image.status) for image in images]
     if spec.resource_kind == "flavor":
+        from app.services.instance_usage import requires_schedule
+
         flavors = nova.list_catalog_flavors(conn)
         if spec.execution_scope == "tenant":
             flavors = [flavor for flavor in flavors if flavor.is_public]
-        return [_option(flavor.id, flavor.name, vcpus=flavor.vcpus, ram=flavor.ram) for flavor in flavors]
+        return [
+            _option(
+                flavor.id,
+                flavor.name,
+                vcpus=flavor.vcpus,
+                ram=flavor.ram,
+                usage_schedule_required=requires_schedule(flavor),
+            )
+            for flavor in flavors
+        ]
     if spec.resource_kind == "network":
         options = [
             _option(

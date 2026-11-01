@@ -130,3 +130,51 @@ describe('matchesGpuFilter', () => {
 		]);
 	});
 });
+
+
+describe('approved managed GPU aliases', () => {
+	const managed = flavor({
+		id: 'managed',
+		is_gpu: true,
+		gpu_count: 1,
+		extra_specs: {
+			'afterglow:managed_by': 'domain-compute-v1',
+			'pci_passthrough:alias': 'graphics:1,sound:1',
+		},
+		gpu_primary_aliases: [{ name: 'graphics', count: 1, resource_class: 'CUSTOM_GRAPHICS', profile_name: 'render-group' }],
+	});
+
+	it('lists and matches only approved primary aliases, never arbitrary companions', () => {
+		expect(buildGpuFilterOptions([managed]).slice(3)).toEqual([{ value: 'graphics', label: 'graphics' }]);
+		expect(matchesGpuFilter(managed, 'graphics')).toBe(true);
+		expect(matchesGpuFilter(managed, 'sound')).toBe(false);
+		expect(matchesGpuFilter(managed, 'render-group')).toBe(false);
+	});
+
+	it('preserves exact managed native names even when legacy normalization would merge them', () => {
+		const another = flavor({
+			...managed,
+			id: 'another',
+			gpu_primary_aliases: [{ name: 'GRAPH_ICS', count: 1, resource_class: 'CUSTOM_OTHER', profile_name: 'another' }],
+		});
+		expect(new Set(buildGpuFilterOptions([managed, another]).slice(3).map(option => option.value))).toEqual(new Set(['GRAPH_ICS', 'graphics']));
+		expect(matchesGpuFilter(managed, 'GRAPH_ICS')).toBe(false);
+		expect(matchesGpuFilter(another, 'graphics')).toBe(false);
+	});
+
+	it.each([null, undefined])('does not infer aliases or non-GPU state from unknown managed mapping %s', evidence => {
+		const unknown = flavor({ ...managed, is_gpu: null, gpu_count: null, gpu_primary_aliases: evidence });
+		expect(buildGpuFilterOptions([unknown]).slice(3)).toEqual([]);
+		expect(matchesGpuFilter(unknown, 'graphics')).toBe(false);
+		expect(matchesGpuFilter(unknown, 'sound')).toBe(false);
+		expect(matchesGpuFilter(unknown, '__gpu__')).toBe(false);
+		expect(matchesGpuFilter(unknown, '__non_gpu__')).toBe(false);
+		expect(matchesGpuFilter(unknown, '')).toBe(true);
+	});
+
+	it('keeps verified CPU flavors in non-GPU filters without adding alias options', () => {
+		const cpu = flavor({ ...managed, is_gpu: false, gpu_count: 0, gpu_primary_aliases: [] });
+		expect(matchesGpuFilter(cpu, '__non_gpu__')).toBe(true);
+		expect(buildGpuFilterOptions([cpu]).slice(3)).toEqual([]);
+	});
+});

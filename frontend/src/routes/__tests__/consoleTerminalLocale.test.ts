@@ -51,9 +51,9 @@ vi.mock('@xterm/xterm', () => ({ Terminal: TestTerminal }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
 vi.mock('$lib/utils/terminalTheme', () => ({ getTerminalTheme: () => ({ background: 'transparent' }) }));
 // Load the substitute through Vitest's actual-module boundary, not the mocked component.
-vi.mock('$lib/components/Sidebar.svelte', () => vi.importActual('$lib/components/LoadingSkeleton.svelte'));
-vi.mock('$lib/components/AdminSidebar.svelte', () => vi.importActual('$lib/components/LoadingSkeleton.svelte'));
-vi.mock('$lib/components/VmCreatePanel.svelte', () => vi.importActual('$lib/components/LoadingSkeleton.svelte'));
+vi.mock('$lib/components/Sidebar.svelte', () => vi.importActual('$lib/components/ui/LoadingState.svelte'));
+vi.mock('$lib/components/AdminSidebar.svelte', () => vi.importActual('$lib/components/ui/LoadingState.svelte'));
+vi.mock('$lib/components/VmCreatePanel.svelte', () => vi.importActual('$lib/components/ui/LoadingState.svelte'));
 vi.mock('$lib/tutorial/status', () => ({ loadTutorialStatuses() {} }));
 vi.mock('$lib/stores/projectList', () => ({ projectList: { prefetch() {} } }));
 vi.mock('$lib/stores/auth', async () => {

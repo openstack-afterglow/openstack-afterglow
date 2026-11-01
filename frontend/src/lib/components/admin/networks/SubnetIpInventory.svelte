@@ -4,7 +4,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { AdminSubnetDetail } from '$lib/types/networks';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button, Card, PageHeader } from '$lib/components/ui';
 	import SubnetInventoryDetails from './SubnetInventoryDetails.svelte';
 
@@ -79,7 +79,7 @@
 	{/if}
 
 	{#if busy}
-		<Card padding="md"><ActivityIndicator label={t('subnetDetailPage.loading')} /></Card>
+		<Card padding="md"><LoadingState variant="section" label={t('subnetDetailPage.loading')} /></Card>
 	{/if}
 	{#if visibleError}
 		<Alert tone="danger" title={t('subnetDetailPage.loadFailedTitle')}>

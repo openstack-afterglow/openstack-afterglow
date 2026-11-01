@@ -310,6 +310,8 @@
 	"message.forkHere": "이 지점에서 분기",
 	"message.fork": "분기",
 	"message.generationSpeed": "생성 속도",
+	"message.ttft": "TTFT {seconds}초",
+	"message.ttftExplanation": "전송부터 첫 답변 텍스트 수신까지: {seconds}초",
 	"window.elapsedMinutesSeconds": "{minutes}분 {seconds}초",
 	"window.elapsedSeconds": "{seconds}초",
 	"window.skillFallback": "skill #{id}",

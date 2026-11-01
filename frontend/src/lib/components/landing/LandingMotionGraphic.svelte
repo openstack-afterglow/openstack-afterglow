@@ -1,131 +1,279 @@
-<script lang="ts">
-	import { t } from '$lib/i18n/ns/public-entry';
-	import LandingSolid from './LandingSolid.svelte';
-	import type { SceneMotionState } from './sceneMotion';
+<script module lang="ts">
+	type GraphicKind = 'server' | 'gpu' | 'kubernetes' | 'onprem';
+	type Icon = 'cpu' | 'memory' | 'disk' | 'network' | 'vm' | 'data' | 'gpu' | 'model' | 'container' | 'node' | 'cloud' | 'team';
 
-	interface Props {
-		kind: 'hero' | 'server' | 'gpu' | 'kubernetes' | 'onprem';
-		state?: SceneMotionState;
-	}
+	const paths: Record<Icon, string> = {
+		cpu: 'M8 8h8v8H8z M5 10h3 M5 14h3 M16 10h3 M16 14h3 M10 5v3 M14 5v3 M10 16v3 M14 16v3',
+		memory: 'M3 8h18v8H3z M7 8v8 M11 8v8 M15 8v8 M6 16v3 M18 16v3',
+		disk: 'M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7 M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3',
+		network: 'M12 4v5 M12 9H6v4 M12 9h6v4 M10 2h4v3h-4z M4 13h4v4H4z M16 13h4v4h-4z M10 17h4v4h-4z M12 9v8',
+		vm: 'M4 5h16v11H4z M9 20h6 M12 16v4 M8 9h3 M8 12h6',
+		data: 'M3 7h7l2 2h9v10H3z',
+		gpu: 'M3 7h16v10H3z M19 10h2 M19 14h2 M7 10a2 2 0 1 0 0 .01 M13 12a3 3 0 1 0 0 .01 M6 17v3 M10 17v3 M14 17v3',
+		model: 'M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5',
+		container: 'M4 8l8-4 8 4v8l-8 4-8-4z M4 8l8 4 8-4 M12 12v8',
+		node: 'M4 4h16v6H4z M4 14h16v6H4z M7 7h.01 M7 17h.01 M11 7h6 M11 17h6',
+		cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-1 9z',
+		team: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 20a6 6 0 0 1 12 0 M16 5a3 3 0 0 1 0 6 M18 20a6 6 0 0 0-3-5.2',
+	};
 
-	let { kind, state = 'static' }: Props = $props();
+	// Illustrative values: product units, not live measurements.
+	const serverSpec: { icon: Icon; label: 'cpu' | 'memory' | 'storage' | 'network'; value: string; fill?: number }[] = [
+		{ icon: 'cpu', label: 'cpu', value: '8 vCPU', fill: 0.5 },
+		{ icon: 'memory', label: 'memory', value: '32 GB', fill: 0.62 },
+		{ icon: 'disk', label: 'storage', value: '200 GB', fill: 0.4 },
+		{ icon: 'network', label: 'network', value: '10.0.12.5' },
+	];
+	const dataset = [{ name: 'images/', fill: 0.82 }, { name: 'labels/', fill: 0.36 }, { name: 'train.csv', fill: 0.18 }];
+	const gpus = [0.92, 0.86, 0.95, 0.8];
+	const nodes = [['web', 'api'], ['api', 'worker'], ['web', 'worker']];
+	const rack: Icon[] = ['cpu', 'gpu', 'disk', 'network'];
+	const teams = [{ name: 'A', cpu: 0.6, gpu: 0.4 }, { name: 'B', cpu: 0.35, gpu: 0.75 }, { name: 'C', cpu: 0.5, gpu: 0.2 }];
 </script>
 
-<div class="landing-motion-graphic" data-graphic={kind} data-motion={state}>
-	<svg viewBox={kind === 'hero' ? '0 0 800 480' : '0 0 800 580'} role="img" aria-label={t(`landing.story.${kind}.graphic`)} focusable="false">
-		{#if kind === 'hero'}
-			<!-- Four different workloads stand on the same connected infrastructure. -->
-			<LandingSolid x={55} y={306} width={600} depth={90} height={18} />
-			{#each [{ x: 84, y: 266, count: 4, label: 'VM' }, { x: 250, y: 298, count: 8, label: 'GPU' }, { x: 416, y: 330, count: 5, label: 'AI' }, { x: 582, y: 362, count: 3, label: 'K8s' }] as tower, index}
-				{#each Array.from({ length: tower.count }, (_, layer) => layer) as layer}
-					<LandingSolid x={tower.x} y={tower.y - layer * 21} width={82} depth={58} height={15} tone={index === 1 || layer === tower.count - 1 ? 'accent' : 'neutral'} {state} dx={(index - 1.5) * (22 + layer * 6)} dy={-layer * 10 - 22} angle={(index % 2 ? -1 : 1) * (8 - layer)} step={layer} />
-				{/each}
-				<text class="hero-label settle" x={tower.x + 59} y={tower.y - tower.count * 21 - 20} text-anchor="middle">{tower.label}</text>
-			{/each}
-			<path class="route" pathLength="1" d="M75 322 627 455" />
-		{:else if kind === 'server'}
-			<!-- Resources align first. The bus only draws after all pieces have settled. -->
-			<path class="route" pathLength="1" d="M230 136H316V424H230 M230 280H316 M316 280H480" />
-			<text class="code settle" x="158" y="56" text-anchor="middle">CPU</text>
-			{#each [{ y: 110, label: 'compute' }, { y: 254, label: 'storage' }, { y: 398, label: 'network' }] as const as resource, index}
-				{#each [2, 1, 0] as layer}
-					<LandingSolid x={70} y={resource.y + layer * 10} width={112} depth={48} height={8} tone={layer === 0 ? 'accent' : 'neutral'} {state} dx={-35 - layer * 16} dy={-15 - layer * 6} angle={-8 + layer * 2} step={index * 2 + layer} />
-				{/each}
-				<text class="label" x="158" y={resource.y + 100} text-anchor="middle">{t(`landing.story.diagram.${resource.label}`)}</text>
-			{/each}
-			<LandingSolid x={428} y={392} width={198} depth={98} height={20} />
-			{#each [5, 4, 3, 2, 1, 0] as layer}
-				<LandingSolid x={480} y={178 + layer * 33} width={126} depth={88} height={27} tone={layer === 0 ? 'accent' : 'neutral'} {state} dx={layer % 2 ? 44 : -26} dy={-24 - (5 - layer) * 10} angle={layer % 2 ? 7 : -7} step={5 - layer} />
-			{/each}
-			<text class="code settle" x="561" y="106" text-anchor="middle">VM</text>
-			<text class="label" x="570" y="505" text-anchor="middle">{t('landing.story.diagram.project')}</text>
-			<text class="label secondary" x="570" y="551" text-anchor="middle">{t('landing.story.diagram.research')}</text>
-		{:else if kind === 'gpu'}
-			<!-- A fan of data plates converges on an accelerator, then a model lattice. -->
-			<path class="route" pathLength="1" d="M228 210H269Q292 210 292 235V320H320 M537 320H594Q616 320 616 298V223" />
-			{#each [3, 2, 1, 0] as layer}
-				<LandingSolid x={57} y={135 + layer * 23} width={108} depth={63} height={16} {state} dx={-layer * 12} dy={-layer * 14} angle={-10 + layer * 3} step={layer} />
-			{/each}
-			<text class="label" x="139" y="286" text-anchor="middle">{t('landing.story.diagram.data')}</text>
-			<LandingSolid x={242} y={372} width={211} depth={150} height={21} />
-			{#each [5, 4, 3, 2, 1, 0] as fin}
-				<LandingSolid x={283 + fin * 25} y={332 + fin * 6} width={16} depth={113} height={28} tone="accent" {state} dx={(fin - 2.5) * 17} dy={-40 - fin * 7} angle={(fin - 2.5) * 3} step={fin} />
-			{/each}
-			<text class="code settle" x="421" y="480" text-anchor="middle">GPU</text>
-			<text class="label" x="415" y="538" text-anchor="middle">{t('landing.story.diagram.research')}</text>
-			<g class="lattice" class:motion-assemble={state !== 'static'} style="--motion-assemble-y: -45px; --motion-assemble-angle: 10deg; --motion-index: 7">
-				<path class="lattice-edge" d="M546 113 616 76 686 113 686 187 616 224 546 187Z M546 113 616 150 686 113 M616 150v74 M616 76v74 M546 187 616 150 686 187" />
-				{#each [[546, 113], [616, 76], [686, 113], [546, 187], [616, 150], [686, 187], [616, 224]] as node, index}
-					<circle class="lattice-node" class:core={index === 4} cx={node[0]} cy={node[1]} r={index === 4 ? 18 : 9} />
-				{/each}
-			</g>
-			<text class="label" x="618" y="44" text-anchor="middle">{t('landing.story.diagram.model')}</text>
-		{:else if kind === 'kubernetes'}
-			<!-- One suspended workload per node; the assembly falls into a shared cluster. -->
-			<text class="label" x="400" y="48" text-anchor="middle">{t('landing.story.diagram.containers')}</text>
-			<path class="cluster-track" d="M88 349H714L748 448H54Z" />
-			{#each [124, 346, 568] as x, index}
-				<path class="route" pathLength="1" d={`M${x + 68} 232V324`} />
-				<LandingSolid {x} y={345} width={92} depth={76} height={65} />
-				<LandingSolid x={x + 8} y={322} width={76} depth={60} height={17} tone="accent" />
-				<LandingSolid x={x + 13} y={167} width={73} depth={56} height={52} tone="accent" {state} dx={(index - 1) * 55} dy={-54} angle={(index - 1) * 10} step={index * 3}>
-					{#each [0, 1, 2] as rib}<path class="groove" d={`M${15 + rib * 17} ${13 + rib * 4}v28`} />{/each}
-				</LandingSolid>
-			{/each}
-			<text class="label" x="402" y="498" text-anchor="middle">{t('landing.story.diagram.nodes')}</text>
-			<text class="cluster-name" x="400" y="548" text-anchor="middle">Kubernetes</text>
-		{:else}
-			<!-- A shared cloud is one laminated sculpture, never transparent intersecting plates. -->
-			<text class="label" x="145" y="53" text-anchor="middle">{t('landing.story.diagram.institution')}</text>
-			<path class="route" pathLength="1" d="M221 146H275V434H221 M221 290H275 M275 290H326 M534 310H576V153H622 M576 310V427H622" />
-			{#each [{ y: 130, label: 'compute' }, { y: 274, label: 'storage' }, { y: 418, label: 'network' }] as const as resource, index}
-				<LandingSolid x={67} y={resource.y} width={100} depth={54} height={32} {state} dx={-25 - index * 8} dy={-18} angle={-7} step={index * 2} />
-				<text class="label" x="144" y={resource.y + 100} text-anchor="middle">{t(`landing.story.diagram.${resource.label}`)}</text>
-			{/each}
-			{#each [6, 5, 4, 3, 2, 1, 0] as layer}
-				<LandingSolid x={326} y={210 + layer * 22} width={125} depth={83} height={17} tone="accent" {state} dx={layer % 2 ? -35 : 35} dy={-(6 - layer) * 12} angle={(layer - 3) * 3} step={6 - layer} />
-			{/each}
-			<text class="label" x="430" y="443" text-anchor="middle">{t('landing.story.diagram.platform')}</text>
-			<text class="label" x="625" y="83" text-anchor="middle">{t('landing.story.diagram.teams')}</text>
-			{#each [141, 415] as y, index}
-				<LandingSolid x={622} {y} width={82} depth={52} height={54} tone="accent" {state} dx={34} dy={index ? 36 : -36} angle={index ? -9 : 9} step={7}>
-					<text class="vm-mark" x="42" y="44" text-anchor="middle">VM</text>
-				</LandingSolid>
-			{/each}
-			<text class="label secondary" x="625" y="551" text-anchor="middle">{t('landing.story.diagram.project')}</text>
-		{/if}
-	</svg>
+<script lang="ts">
+	import { t } from '$lib/i18n/ns/public-entry';
+	import type { SceneMotionState } from './sceneMotion';
+
+	interface Props { kind: GraphicKind; state?: SceneMotionState; }
+	let { kind, state = 'static' }: Props = $props();
+	const specLabel = (label: (typeof serverSpec)[number]['label']) =>
+		label === 'cpu' ? 'CPU' : label === 'memory' ? t('landing.story.visual.memory') : t(`landing.story.diagram.${label}`);
+</script>
+
+{#snippet glyph(name: Icon)}
+	<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d={paths[name]} /></svg>
+{/snippet}
+
+{#snippet link(delay: number)}
+	<span class="link" style:--d={delay}><span class="pulse"></span></span>
+{/snippet}
+
+{#snippet status(delay: number, before: string, after: string)}
+	<span class="status" style:--d={delay}><span class="was"><i></i>{before}</span><span class="now"><i></i>{after}</span></span>
+{/snippet}
+
+<div class="landing-motion-graphic" data-graphic={kind} data-motion={state} role="img" aria-label={t(`landing.story.${kind}.graphic`)}>
+	<div class="window" aria-hidden="true">
+		<div class="window-bar"><span class="dots"><i></i><i></i><i></i></span><span>{t(`landing.story.${kind}.label`)}</span></div>
+		<div class="canvas">
+			{#if kind === 'server'}
+				<div class="panel spec">
+					{#each serverSpec as row, index}
+						<div class="spec-row enter" style:--d={index * 0.8}>
+							<span class="tile">{@render glyph(row.icon)}</span>
+							<span class="spec-name">{specLabel(row.label)}</span>
+							{#if row.fill !== undefined}<span class="meter"><span class="fill" style:--v={row.fill} style:--d={index * 0.8 + 0.4}></span></span>{/if}
+							<strong class="mono">{row.value}</strong>
+						</div>
+					{/each}
+				</div>
+				{@render link(3.4)}
+				<div class="panel result framed enter" style:--d={4.2}>
+					<span class="frame-label">{t('landing.story.diagram.project')}</span>
+					<div class="result-head"><span class="tile big">{@render glyph('vm')}</span><div><strong>{t('landing.story.diagram.research')}</strong><span class="mono muted">research-01</span></div></div>
+					{@render status(5.4, t('landing.story.visual.preparing'), t('landing.story.visual.running'))}
+					<code class="terminal"><span class="type" style:--d={6.4} style:--chars={26}>$ ssh researcher@10.0.12.5</span></code>
+				</div>
+			{:else if kind === 'gpu'}
+				<div class="panel column enter" style:--d={0}>
+					<div class="panel-head">{@render glyph('data')}<strong>{t('landing.story.visual.dataset')}</strong></div>
+					{#each dataset as file, index}
+						<div class="file"><span class="mono">{file.name}</span><span class="meter"><span class="fill" style:--v={file.fill} style:--d={0.6 + index * 0.5}></span></span></div>
+					{/each}
+				</div>
+				{@render link(2.2)}
+				<div class="panel column enter" style:--d={3}>
+					<div class="panel-head">{@render glyph('gpu')}<strong>GPU × {gpus.length}</strong></div>
+					<div class="gpu-grid">
+						{#each gpus as load, index}
+							<div class="gpu"><span class="util"><span class="level" style:--v={load} style:--d={3.6 + index * 0.2}></span></span><span class="mono">GPU{index}</span></div>
+						{/each}
+					</div>
+				</div>
+				{@render link(7)}
+				<div class="panel column framed enter" style:--d={7.8}>
+					<span class="frame-label">{t('landing.story.diagram.research')}</span>
+					<div class="panel-head">{@render glyph('model')}<strong>{t('landing.story.diagram.model')}</strong></div>
+					<svg class="chart" viewBox="0 0 120 64">
+						<path class="axis" d="M4 4v56h112" />
+						<path class="curve" style:--d={8.4} pathLength="1" d="M6 10C20 14 26 34 40 38S66 46 80 50 104 54 114 55" />
+					</svg>
+					{@render status(11, t('landing.story.visual.training'), t('landing.story.visual.trained'))}
+					<span class="mono muted">model.pt</span>
+				</div>
+			{:else if kind === 'kubernetes'}
+				<div class="cluster">
+					{#each nodes as apps, column}
+						<div class="panel node-box enter" style:--d={column * 0.6}>
+							<div class="panel-head">{@render glyph('node')}<strong>{t('landing.story.visual.node', { index: column + 1 })}</strong></div>
+							{#each apps as app, slot}
+								<span class="pod drop" style:--d={2 + (slot * 3 + column) * 0.6}>{@render glyph('container')}<span class="mono">{app}</span></span>
+							{/each}
+						</div>
+					{/each}
+				</div>
+				<div class="cluster-foot enter" style:--d={6}>
+					{@render status(6.4, t('landing.story.visual.preparing'), t('landing.story.visual.containersRunning', { count: nodes.flat().length }))}
+				</div>
+			{:else}
+				<div class="panel column enter" style:--d={0}>
+					<div class="rack">
+						{#each rack as unit, index}
+							<span class="unit">{@render glyph(unit)}<span class="rails"></span><i class="led" style:--d={index * 0.4}></i></span>
+						{/each}
+					</div>
+					<span class="caption">{t('landing.story.diagram.institution')}</span>
+				</div>
+				{@render link(2)}
+				<div class="panel column cloud enter" style:--d={2.8}>
+					<span class="tile big">{@render glyph('cloud')}</span>
+					<strong>{t('landing.story.diagram.platform')}</strong>
+					<span class="muted">{t('landing.story.visual.shared')}</span>
+				</div>
+				{@render link(4.2)}
+				<div class="panel column framed teams enter" style:--d={5}>
+					<span class="frame-label">{t('landing.story.diagram.project')}</span>
+					{#each teams as team, index}
+						<div class="team">
+							<span class="team-name">{@render glyph('team')}{t('landing.story.visual.team', { name: team.name })}</span>
+							<span class="quota"><span class="mono">CPU</span><span class="meter"><span class="fill" style:--v={team.cpu} style:--d={5.6 + index * 0.5}></span></span></span>
+							<span class="quota"><span class="mono">GPU</span><span class="meter"><span class="fill warm" style:--v={team.gpu} style:--d={5.8 + index * 0.5}></span></span></span>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</div>
 </div>
 
 <style>
-	.landing-motion-graphic { width: 100%; min-width: 0; }
-	svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
-	text { fill: var(--color-ink-0); font-weight: 500; }
-	.label { font-size: 2.5rem; }
-	.secondary { fill: var(--color-ink-2); }
-	.code, .hero-label, .cluster-name, .vm-mark { font-family: var(--font-mono); }
-	.code { font-size: 3rem; }
-	.hero-label { font-size: 2.5rem; }
-	.cluster-name { font-size: 2.5rem; }
-	.vm-mark { font-size: 2.25rem; }
-	.route { fill: none; stroke: var(--color-accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
-	.cluster-track { fill: none; stroke: var(--color-line-2); stroke-width: 1.5; stroke-linejoin: round; }
-	.groove { fill: none; stroke: var(--color-accent); stroke-width: 2; }
-	.lattice { transform-box: fill-box; transform-origin: center; }
-	.lattice-edge { fill: none; stroke: var(--color-accent); stroke-width: 3; stroke-linejoin: round; }
-	.lattice-node { fill: var(--color-surface-raised); stroke: var(--color-accent); stroke-width: 3; }
-	.lattice-node.core { fill: var(--color-accent); }
-	/* Every assembly ends by 1.78s. Routes start at 2s, so wires never drift. */
-	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .route {
-		animation: motion-draw calc(var(--motion-duration-data) * 2) var(--motion-ease-emphasized) backwards;
-		animation-delay: calc(var(--motion-duration-data) * 4);
+	/* The base frame is the finished picture; motion only replays how it got there. */
+	.landing-motion-graphic { --unit: 0.42s; container-type: inline-size; width: 100%; min-width: 0; padding-block: 1rem 0.5rem; }
+	.window { border: 1px solid var(--color-line-2); border-radius: var(--radius-xl); background: var(--color-surface-canvas); color: var(--color-ink-0); overflow: hidden; }
+	.window-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.8125rem; }
+	.dots { display: inline-flex; gap: 0.375rem; }
+	.dots i { width: 0.625rem; height: 0.625rem; border-radius: 50%; background: var(--color-line-2); }
+	.canvas { display: flex; align-items: stretch; justify-content: center; gap: 0.5rem; min-height: 19rem; padding: 2rem 1.5rem; font-size: 0.875rem; }
+	.canvas:has(.cluster) { flex-direction: column; gap: 1rem; }
+
+	.panel { position: relative; display: grid; align-content: start; gap: 0.75rem; min-width: 0; padding: 1rem; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); }
+	.column { flex: 1 1 0; }
+	.framed { border: 1px dashed var(--color-warm); background: color-mix(in oklab, var(--color-warm) 7%, var(--color-surface-raised)); }
+	.frame-label { position: absolute; top: 0; left: 1rem; translate: 0 -50%; padding-inline: 0.375rem; background: var(--color-surface-canvas); color: var(--color-warm-text); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+	.panel-head { display: flex; align-items: center; gap: 0.5rem; }
+	.panel-head .glyph { color: var(--color-warm); }
+	.glyph { flex: none; width: 1.125rem; height: 1.125rem; }
+	.tile { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); color: var(--color-warm); }
+	.tile.big { width: 2.75rem; height: 2.75rem; }
+	.tile.big .glyph { width: 1.5rem; height: 1.5rem; }
+	.mono { font-family: var(--font-mono); font-size: 0.8125rem; }
+	.muted, .caption { color: var(--color-ink-2); font-size: 0.8125rem; }
+	.caption { margin-top: auto; padding-top: 0.25rem; border-top: 1px solid var(--color-line); text-align: center; }
+	.meter { position: relative; display: block; height: 0.375rem; border-radius: 999px; background: var(--color-line); overflow: hidden; }
+	.fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--v) * 100%); border-radius: inherit; background: var(--color-ink-2); transform-origin: left; }
+	.fill.warm { background: var(--color-warm); }
+
+	.spec { flex: 1.2 1 0; gap: 0.875rem; }
+	.spec-row { display: grid; grid-template-columns: auto 5rem minmax(3rem, 1fr) auto; align-items: center; gap: 0.75rem; }
+	.spec-row:not(:has(.meter)) strong { grid-column: 3 / 5; justify-self: end; }
+	.spec-row strong { text-align: right; }
+	.result { flex: 1 1 0; align-content: center; gap: 1rem; }
+	.result-head { display: flex; align-items: center; gap: 0.75rem; }
+	.result-head div { display: grid; }
+	.terminal { display: block; padding: 0.625rem 0.75rem; border-radius: var(--radius-md, 0.5rem); background: var(--color-surface-sunken); color: var(--color-ink-1); font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap; overflow: hidden; }
+	.type { display: inline-block; overflow: hidden; vertical-align: bottom; }
+
+	.status { display: inline-grid; justify-self: start; font-size: 0.8125rem; font-weight: 600; }
+	.status > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.625rem; border-radius: 999px; white-space: nowrap; }
+	.status i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; }
+	.was { color: var(--color-state-warning-text); background: color-mix(in oklab, var(--color-state-warning) 14%, transparent); opacity: 0; }
+	.now { color: var(--color-state-success-text); background: color-mix(in oklab, var(--color-state-success) 14%, transparent); }
+
+	.file { display: grid; grid-template-columns: 5.5rem minmax(2rem, 1fr); align-items: center; gap: 0.5rem; }
+	.gpu-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+	.gpu { display: grid; justify-items: center; gap: 0.375rem; }
+	.util { position: relative; width: 100%; height: 5.5rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); overflow: hidden; }
+	.level { position: absolute; inset: auto 0 0; height: calc(var(--v) * 100%); background: linear-gradient(to top, var(--color-warm), color-mix(in oklab, var(--color-warm) 35%, transparent)); transform-origin: bottom; }
+	.gpu .mono { font-size: 0.6875rem; color: var(--color-ink-2); }
+	.chart { width: 100%; max-height: 5rem; overflow: visible; }
+	.chart path { fill: none; }
+	.axis { stroke: var(--color-line-2); stroke-width: 1; }
+	.curve { stroke: var(--color-warm); stroke-width: 2; stroke-dasharray: 1; }
+
+	.cluster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; flex: 1; }
+	.node-box { align-content: start; }
+	.pod { display: flex; align-items: center; gap: 0.5rem; padding: 0.625rem 0.75rem; border: 1px solid color-mix(in oklab, var(--color-warm) 45%, var(--color-line)); border-radius: var(--radius-md, 0.5rem); background: var(--color-surface-canvas); }
+	.pod .glyph { color: var(--color-warm); }
+	.cluster-foot { display: flex; justify-content: center; }
+
+	.rack { display: grid; gap: 0.5rem; }
+	.unit { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.5rem); background: var(--color-surface-sunken); color: var(--color-ink-1); }
+	.rails { height: 0.375rem; border-block: 1px solid var(--color-line-2); }
+	.led { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-state-success); }
+	.cloud { flex: 0.9 1 0; justify-items: center; align-content: center; text-align: center; }
+	.teams { gap: 0.75rem; }
+	.team { display: grid; gap: 0.375rem; }
+	.team + .team { padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
+	.team-name { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+	.team-name .glyph { color: var(--color-warm); }
+	.quota { display: grid; grid-template-columns: 2.25rem 1fr; align-items: center; gap: 0.5rem; }
+	.quota .mono { font-size: 0.6875rem; color: var(--color-ink-2); }
+
+	.link { position: relative; flex: none; align-self: center; width: clamp(1.75rem, 5cqi, 3.5rem); height: 2px; background: var(--color-line-2); transform-origin: left; }
+	.link::after { content: ''; position: absolute; right: 0; top: 50%; width: 0.5rem; height: 0.5rem; border-top: 2px solid var(--color-line-2); border-right: 2px solid var(--color-line-2); transform: translate(0, -50%) rotate(45deg); }
+	.pulse { position: absolute; top: 50%; left: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-warm); box-shadow: 0 0 0.75rem var(--color-warm); translate: -50% -50%; opacity: 0; }
+
+	@container (max-width: 40rem) {
+		.canvas { flex-direction: column; align-items: stretch; padding: 1.75rem 1rem 1.25rem; gap: 0.5rem; }
+		.link { align-self: center; width: 2px; height: 2rem; transform-origin: top; }
+		.link::after { top: auto; bottom: 0; right: 50%; transform: translate(50%, 0) rotate(135deg); }
+		.framed { margin-top: 0.75rem; }
+		.spec-row { grid-template-columns: auto 4.5rem minmax(2rem, 1fr) auto; }
 	}
-	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) :is(.settle, .label, .cluster-name) {
-		animation: motion-fade var(--motion-duration-data) var(--motion-ease-out) backwards;
-		animation-delay: calc(var(--motion-duration-data) * 4);
+
+	@container (max-width: 28rem) { .cluster { grid-template-columns: minmax(0, 1fr); } }
+	/* Motion: finite, unit-staggered, paused with the scene. */
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) :is(.enter, .drop, .fill, .level, .curve, .type, .led, .was, .now, .link, .pulse) {
+		animation-delay: calc(var(--d, 0) * var(--unit));
+		animation-timing-function: var(--motion-ease-emphasized, ease-out);
+		animation-fill-mode: backwards;
+		animation-duration: 0.6s;
 	}
-	.landing-motion-graphic[data-motion='paused'] :is(.route, .settle, .label, .cluster-name, .lattice) { animation-play-state: paused; }
-	@media (prefers-reduced-motion: reduce) {
-		.landing-motion-graphic :is(.route, .settle, .label, .cluster-name, .lattice) { animation: none !important; transform: none; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .enter { animation-name: graphic-enter; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .drop { animation-name: graphic-drop; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .fill { animation-name: graphic-fill; animation-duration: 0.9s; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .level { animation-name: graphic-load; animation-duration: 2.6s; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .curve { animation-name: graphic-draw; animation-duration: 2.6s; animation-timing-function: ease-in-out; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .type { animation-name: graphic-type; animation-duration: 1.4s; animation-timing-function: steps(var(--chars)); }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .led { animation-name: graphic-blink; animation-duration: 0.5s; animation-iteration-count: 4; animation-timing-function: steps(2); }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .was { animation-name: graphic-was; animation-fill-mode: both; animation-delay: 0s; animation-duration: calc((var(--d) + 1) * var(--unit)); animation-timing-function: linear; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .now { animation-name: graphic-now; animation-delay: 0s; animation-duration: calc((var(--d) + 1) * var(--unit)); animation-timing-function: linear; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .link { animation-name: graphic-link; }
+	.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .pulse { animation-name: graphic-pulse; animation-duration: 1s; animation-iteration-count: 2; animation-delay: calc((var(--d) + 1) * var(--unit)); animation-timing-function: ease-in-out; }
+	.landing-motion-graphic[data-motion='paused'] * { animation-play-state: paused; }
+
+	@keyframes graphic-enter { from { opacity: 0; transform: translateY(0.75rem); } }
+	@keyframes graphic-drop { from { opacity: 0; transform: translateY(-1.5rem); } }
+	@keyframes graphic-fill { from { transform: scaleX(0); } }
+	@keyframes graphic-load { 0% { transform: scaleY(0); } 30% { transform: scaleY(0.75); } 50% { transform: scaleY(0.45); } 75% { transform: scaleY(1.05); } }
+	@keyframes graphic-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+	@keyframes graphic-link-y { from { transform: scaleY(0); } }
+	@keyframes graphic-pulse-y { 0% { left: 50%; top: 0; opacity: 0; } 15%, 85% { opacity: 1; } 100% { left: 50%; top: 100%; opacity: 0; } }
+	@container (max-width: 40rem) {
+		.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .link { animation-name: graphic-link-y; }
+		.landing-motion-graphic:is([data-motion='playing'], [data-motion='paused']) .pulse { animation-name: graphic-pulse-y; }
+	}
+	@keyframes graphic-link { from { transform: scaleX(0); } }
+	@keyframes graphic-pulse { 0% { left: 0; top: 50%; opacity: 0; } 15%, 85% { opacity: 1; } 100% { left: 100%; top: 50%; opacity: 0; } }
+	@keyframes graphic-type { from { max-width: 0; } to { max-width: calc(var(--chars) * 1ch); } }
+	@keyframes graphic-blink { 50% { opacity: 0.2; } }
+	@keyframes graphic-was { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
+	@keyframes graphic-now { 0%, 90% { opacity: 0; } 100% { opacity: 1; } }
+
+	@media (forced-colors: active) {
+		.glyph, .tile { color: CanvasText; }
+		.pulse, .fill, .level, .led { background: CanvasText; box-shadow: none; }
+		.curve { stroke: CanvasText; }
 	}
 </style>

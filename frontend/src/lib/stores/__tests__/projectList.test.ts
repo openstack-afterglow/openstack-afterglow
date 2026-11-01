@@ -127,7 +127,7 @@ describe('projectList store', () => {
 		const { projectList } = await import('../projectList');
 		const pending = Promise.withResolvers<{ id: string; name: string }[]>();
 		vi.mocked(api.get).mockReturnValueOnce(pending.promise);
-		window.localStorage.setItem('afterglow.projects.user-1', JSON.stringify({ data: [{ id: 'home-project', name: 'Home' }], ts: Date.now(), domainId: 'home' }));
+		window.localStorage.setItem('afterglow.projects.user-1', JSON.stringify({ data: [{ id: 'home-project', name: 'Home' }], ts: Date.now(), domainId: 'home', identityDomainId: 'home' }));
 		projectList.prefetch('home-token', 'user-1');
 		expect(get(projectList).projects).toHaveLength(1);
 		setAuth({ token: 'team-token', domainId: 'team' });
@@ -140,4 +140,66 @@ describe('projectList store', () => {
 		expect(get(projectList).projects).toEqual([]);
 		clearAuth();
 	});
+	it('prefetches once per logical scope while manual refresh uses the latest token and wins old reads', async () => {
+		const { api } = await import('$lib/api/client');
+		const { auth, setLoginAuth } = await import('../auth');
+		setLoginAuth({ token: 'token', userId: 'user-1', identityDomainId: 'home', domainId: 'work', projectId: 'project' });
+		const { projectList } = await import('../projectList');
+		const old = Promise.withResolvers<{ id: string; name: string }[]>();
+		vi.mocked(api.get).mockReturnValueOnce(old.promise).mockResolvedValueOnce([{ id: 'new', name: 'New' }]);
+		projectList.prefetch('token', 'user-1');
+		auth.update(state => ({ ...state, token: 'rotated' }));
+		projectList.prefetch('rotated', 'user-1');
+		expect(api.get).toHaveBeenCalledOnce();
+		await projectList.refresh('rotated', 'user-1');
+		old.resolve([{ id: 'old', name: 'Old' }]); await old.promise; await Promise.resolve();
+		projectList.prefetch('rotated', 'user-1');
+		expect(vi.mocked(api.get).mock.calls.map(call => [call[0], call[1]])).toEqual([
+			['/api/v1/auth/projects?cache=true', 'token'], ['/api/v1/auth/projects?refresh=true', 'rotated'],
+		]);
+		expect(get(projectList).projects).toEqual([{ id: 'new', name: 'New' }]);
+	});
+
+	it.each(['sessionId', 'userId', 'identityDomainId', 'domainId', 'projectId'] as const)(
+		'reloads and fences stale projects across %s ABA', async field => {
+			const { api } = await import('$lib/api/client');
+			const { auth, setLoginAuth } = await import('../auth');
+			setLoginAuth({ token: 'token', userId: 'user-1', identityDomainId: 'home', domainId: 'work', projectId: 'project' });
+			const { projectList } = await import('../projectList');
+			const old = Promise.withResolvers<{ id: string; name: string }[]>();
+			vi.mocked(api.get).mockReturnValueOnce(old.promise).mockResolvedValueOnce([{ id: 'new', name: 'New' }]);
+			projectList.prefetch('token', 'user-1');
+			const original = get(auth);
+			auth.set({ ...original, [field]: 'other' }); auth.set(original);
+			projectList.prefetch('token', 'user-1');
+			await vi.waitFor(() => expect(get(projectList).projects).toEqual([{ id: 'new', name: 'New' }]));
+			old.resolve([{ id: 'old', name: 'Old' }]); await old.promise; await Promise.resolve();
+			expect(api.get).toHaveBeenCalledTimes(2);
+			expect(get(projectList).projects).toEqual([{ id: 'new', name: 'New' }]);
+		});
+
+	it('revalidates after the existing TTL and retries failed prefetch even with displayed cached data', async () => {
+		const { api } = await import('$lib/api/client');
+		const { auth, setLoginAuth } = await import('../auth');
+		setLoginAuth({ token: 'token', userId: 'user-1', identityDomainId: 'home', domainId: 'work', projectId: 'project' });
+		const { projectList, BROWSER_TTL_MS } = await import('../projectList');
+		vi.mocked(api.get).mockResolvedValueOnce([{ id: 'old', name: 'Old' }])
+			.mockRejectedValueOnce(new Error('temporary')).mockResolvedValueOnce([{ id: 'new', name: 'New' }]);
+		projectList.prefetch('token', 'user-1');
+		await vi.waitFor(() => expect(get(projectList).loaded).toBe(true));
+		auth.update(state => ({ ...state, token: 'rotated' }));
+		projectList.prefetch('rotated', 'user-1');
+		expect(api.get).toHaveBeenCalledOnce();
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + BROWSER_TTL_MS + 1);
+		try {
+			projectList.prefetch('rotated', 'user-1');
+			await vi.waitFor(() => expect(get(projectList).loading).toBe(false));
+			expect(api.get).toHaveBeenCalledTimes(2);
+			expect(get(projectList).projects).toEqual([{ id: 'old', name: 'Old' }]);
+			projectList.prefetch('rotated', 'user-1');
+			await vi.waitFor(() => expect(get(projectList).projects).toEqual([{ id: 'new', name: 'New' }]));
+			expect(api.get).toHaveBeenCalledTimes(3);
+		} finally { clock.mockRestore(); }
+	});
+
 });

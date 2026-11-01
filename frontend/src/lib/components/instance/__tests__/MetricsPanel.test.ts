@@ -14,7 +14,15 @@ vi.mock('$lib/api/client', () => ({
 
 
 vi.mock('$lib/stores/auth', () => ({
-	auth: writable({ token: 'test-token', projectId: 'test-project', userId: 'test-user' }),
+	auth: writable({ token: 'test-token', projectId: 'test-project', userId: 'test-user', isSystemAdmin: false }),
+	isMockAuthActive: () => false,
+	getMockupProfile: () => null,
+	getAuthVerificationEpoch: () => 0,
+	authReady: writable(true),
+	projectSwitching: writable(false),
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	observedProjectPermissions: writable({ loading: false, error: null, permissions: null }),
 }));
 
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
@@ -52,10 +60,38 @@ function mockAllMetrics() {
 beforeEach(() => {
 	vi.clearAllMocks();
 	initLocale('ko');
-	auth.update((state) => ({ ...state, token: 'test-token', projectId: 'test-project', userId: 'test-user' }));
+	auth.update((state) => ({ ...state, token: 'test-token', projectId: 'test-project', userId: 'test-user', isSystemAdmin: false }));
 });
 
 describe('MetricsPanel', () => {
+	it('renders native metrics for a projectless administrator without impersonating the target tenant', async () => {
+		mockAllMetrics();
+		auth.update(state => ({ ...state, projectId: null, isSystemAdmin: true }));
+		render(MetricsPanel, { instanceId: 'foreign-vm', projectId: 'foreign-project', adminMode: true });
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
+		expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/instances/foreign-vm/metrics-summary?range=1h', 'test-token', undefined);
+		expect(mockGet.mock.calls.some(([path, , project]) => path.startsWith('/api/v1/admin/instances/foreign-vm/metrics-batch?') && project === undefined)).toBe(true);
+		expect(mockGet.mock.calls.every(([, , project]) => project !== 'foreign-project')).toBe(true);
+	});
+	it.each([false, true])('keeps direct Grafana absent from consumer instance charts (admin identity=%s)', async (isSystemAdmin) => {
+		mockAllMetrics();
+		auth.update(state => ({ ...state, isSystemAdmin }));
+		render(MetricsPanel, { instanceId: 'inst-1' });
+		await screen.findByText('CPU 사용률');
+		expect(screen.queryByRole('button', { name: 'Grafana' })).toBeNull();
+		expect(mockGet.mock.calls.every(([path]) => path.startsWith('/api/v1/instances/inst-1/metrics-'))).toBe(true);
+	});
+
+	it('retains Grafana only in explicit administrator mode and closes it on authority loss', async () => {
+		mockAllMetrics();
+		auth.update(state => ({ ...state, isSystemAdmin: true }));
+		render(MetricsPanel, { instanceId: 'inst-1', adminMode: true });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Grafana' }));
+		await waitFor(() => expect(mockGet.mock.calls.some(([path]) => path === '/api/v1/grafana/dashboards')).toBe(true));
+		auth.update(state => ({ ...state, isSystemAdmin: false }));
+		await screen.findByText('CPU 사용률');
+		expect(screen.queryByRole('button', { name: 'Grafana' })).toBeNull();
+	});
 	it('uses explicit admin metrics paths while preserving caller-native telemetry project', async () => {
 		mockAllMetrics();
 		render(MetricsPanel, { instanceId: 'foreign-vm', projectId: 'foreign-project', adminMode: true });

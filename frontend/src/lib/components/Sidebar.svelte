@@ -8,11 +8,9 @@
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 	import { siteConfig } from '$lib/config/site';
-	import { openWizard } from '$lib/stores/wizard';
-	import Button from '$lib/components/ui/Button.svelte';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import type { BetaFeatures } from '$lib/stores/betaFeatures';
-	import { documentationNavItem, navIcons, userNavSections } from '$lib/config/nav';
+	import { navIcons, userNavSections } from '$lib/config/nav';
 	import type { NavItem, NavSection } from '$lib/config/nav';
 	import { isMockupPathAllowed } from '$lib/mockup/contracts';
 
@@ -25,7 +23,6 @@
 		{ label: tn('items.usageReport'), labelKey: 'items.usageReport', href: '/dashboard/usage-report', icon: navIcons.document, service: null },
 		{ label: tn('items.activity'), labelKey: 'items.activity', href: '/dashboard/activity', icon: navIcons.activity, service: null },
 		{ label: tn('items.topology'), labelKey: 'items.topology', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true },
-		documentationNavItem,
 	]);
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
@@ -72,14 +69,6 @@
 	{isSectionVisible}
 	{isItemVisible}
 >
-	{#snippet topActions()}
-		<div data-tour="vm-create-open">
-			<Button variant="secondary" onclick={() => openWizard()} class="w-full">
-				<svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
-				{t('sidebar.createVm')}
-			</Button>
-		</div>
-	{/snippet}
 
 	{#snippet footer()}
 		<div class="p-3 md:hidden">

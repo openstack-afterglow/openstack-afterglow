@@ -1,23 +1,26 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, Button, Card, CompactResourceCard, Pill, ResponsiveTable, TableShell } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card, CompactResourceCard, Pagination, ResponsiveTable, TableShell } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import {
 		flavorCreateBlock,
 		type FlavorCreateBlock,
 		type FlavorOption as FlavorInfo,
-		type FlavorQuotaBlocker,
 	} from '$lib/types/flavor';
 	import { t } from '$lib/i18n/ns/vm-wizard';
+	import { t as tp } from '$lib/i18n/ns/compute-pools';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { flavorGpuRequests } from '$lib/utils/flavorGpu';
+	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 
 	interface QuotaPair { limit: number; in_use: number; }
 	interface FlavorQuotaSummary {
 		instances?: QuotaPair;
-		cores?: QuotaPair;
-		ram?: QuotaPair;       // MB
+		cores?: QuotaPair | null;
+		ram?: QuotaPair | null; // MB
 		gigabytes?: QuotaPair; // GB
 	}
 
@@ -29,12 +32,16 @@
 
 	let {
 		adminMode = false,
+		catalogVisible = true,
+		refreshVisible = true,
+		previewFlavor = null,
 		flavors,
 		selectedId,
 		selectedName = null,
 		onSelect,
 		quota,
 		bootVolumeSizeGb,
+		initialLoading = false,
 		refreshing = false,
 		refreshError = null,
 		backgroundRefreshing = false,
@@ -43,6 +50,9 @@
 	}: {
 		/** Operator details belong to the administrator surface, not an admin identity in consumer mode. */
 		adminMode?: boolean;
+		catalogVisible?: boolean;
+		refreshVisible?: boolean;
+		previewFlavor?: FlavorInfo | null;
 		flavors: FlavorInfo[];
 		selectedId: string | null;
 		selectedName?: string | null;
@@ -50,6 +60,7 @@
 		quota?: FlavorQuotaSummary | null;
 		/** New root volume size; zero means booting from an existing volume. */
 		bootVolumeSizeGb?: number;
+		initialLoading?: boolean;
 		/** A locking initial, manual, or submit capacity refresh is in flight. */
 		refreshing?: boolean;
 		refreshError?: string | null;
@@ -64,43 +75,21 @@
 		defaultActive: true,
 		defaultInterval: 15,
 		invokeOnMount: false,
+		enabled: () => refreshVisible,
 	});
 
-	const selectionLocked = $derived(refreshing || Boolean(refreshError));
+	const selectionLocked = $derived(initialLoading || refreshing || Boolean(refreshError));
 
-	function parseGpuRequest(f: FlavorInfo): { model: string; count: number }[] {
-		const alias = f.extra_specs?.['pci_passthrough:alias'] ?? '';
-		if (!alias) return [];
-		return alias.split(',')
-			.map(e => e.trim())
-			.filter(e => e.includes(':') && !e.toLowerCase().includes('audio'))
-			.map(e => {
-				const idx = e.lastIndexOf(':');
-				return { model: e.slice(0, idx).trim(), count: parseInt(e.slice(idx + 1)) || 1 };
-			});
-	}
-
-	// Project GPU quota per alias comes from the target-project eligibility in the fenced flavor list.
-	// Host GPU fit is decided per flavor by the same-host capacity snapshot, never by a global aggregate.
-	const projectGpuQuota = $derived.by(() => {
-		const remaining = new Map<string, number>();
-		for (const f of flavors) {
-			for (const [alias, value] of Object.entries(f.eligibility?.remaining.gpus ?? {})) remaining.set(alias, value);
-		}
-		return [...remaining].map(([alias, value]) => ({
-			alias,
-			remaining: value,
-			requested: selectedFlavor?.eligibility?.requirements.gpus[alias] ?? 0,
-		}));
-	});
 
 	type FlavorCategory = 'all' | 'general' | 'cpu' | 'memory' | 'gpu';
 	let activeCategory = $state<FlavorCategory>('all');
 	let searchTerm = $state('');
+	let activeGpuType = $state<string | null>(null);
 	let currentPage = $state(1);
 	const PAGE_SIZE = 10;
 
 	function hasGpu(flavor: FlavorInfo): boolean {
+		if (flavor.is_gpu === true || (flavor.gpu_count ?? 0) > 0 || (flavor.gpu_primary_aliases?.length ?? 0) > 0) return true;
 		return Object.keys(flavor.extra_specs ?? {}).some(
 			(k) => k.toLowerCase().includes('gpu') || k.startsWith('pci_passthrough')
 		);
@@ -108,8 +97,9 @@
 
 	function categorize(f: FlavorInfo): 'general' | 'cpu' | 'memory' | 'gpu' {
 		if (f.name.startsWith('gpu.') || hasGpu(f)) return 'gpu';
-		if (f.name.startsWith('c1.') || f.name.startsWith('cpu.')) return 'cpu';
-		if (f.name.startsWith('r1.') || f.name.startsWith('mem.')) return 'memory';
+		if (Number.isFinite(f.vcpus) && f.vcpus > 0 && Number.isFinite(f.ram) && f.ram > 0 && f.ram / f.vcpus >= 4096) return 'memory';
+		if (f.name.startsWith('c1.') || f.name.startsWith('cpu.') || f.name.startsWith('mem.')) return 'cpu';
+		if (f.display_name?.startsWith('cpu.') || f.display_name?.startsWith('mem.')) return 'cpu';
 		return 'general';
 	}
 
@@ -117,27 +107,41 @@
 		return flavorCreateBlock(f) === null;
 	}
 
-	const selectableCount = $derived(flavors.filter(f => isSelectable(f)).length);
+	const creatableFlavors = $derived(flavors.filter(isSelectable));
+	const gpuTypes = $derived([...new Set(creatableFlavors.flatMap(f => (flavorGpuRequests(f) ?? []).map(request => request.model)))].sort((a, b) => a.localeCompare(b, intlLocale())));
+	// Keep an applied filter recognizable when refresh removes its last creatable flavor.
+	const gpuTypeOptions = $derived(activeGpuType !== null && !gpuTypes.includes(activeGpuType) ? [...gpuTypes, activeGpuType] : gpuTypes);
 
-	const baseFlavors = $derived(flavors.filter(f => isSelectable(f)));
+	const uncheckedFlavors = $derived(flavors.filter(f => flavorCreateBlock(f) === 'unchecked'));
+	const defaultZoneUnavailable = $derived(flavors.some(f => f.eligibility?.capacity?.reason === 'default_compute_zone_unavailable'));
+	const hasFilters = $derived(activeCategory !== 'all' || activeGpuType !== null || Boolean(searchTerm.trim()));
+	function resetFilters() {
+		activeCategory = 'all';
+		activeGpuType = null;
+		searchTerm = '';
+		currentPage = 1;
+	}
 
 	const counts = $derived({
-		general: baseFlavors.filter(f => categorize(f) === 'general').length,
-		cpu: baseFlavors.filter(f => categorize(f) === 'cpu').length,
-		memory: baseFlavors.filter(f => categorize(f) === 'memory').length,
-		gpu: baseFlavors.filter(f => categorize(f) === 'gpu').length,
+		general: creatableFlavors.filter(f => categorize(f) === 'general').length,
+		cpu: creatableFlavors.filter(f => categorize(f) === 'cpu').length,
+		memory: creatableFlavors.filter(f => categorize(f) === 'memory').length,
+		gpu: creatableFlavors.filter(f => categorize(f) === 'gpu').length,
 	});
 
 	const filteredFlavors = $derived(
-		activeCategory === 'all'
-			? baseFlavors
-			: baseFlavors.filter(f => categorize(f) === activeCategory)
+		creatableFlavors.filter(f =>
+			(activeCategory === 'all' || categorize(f) === activeCategory) &&
+			(activeGpuType === null || (flavorGpuRequests(f) ?? []).some(request => request.model === activeGpuType))
+		)
 	);
 
 	const searchedFlavors = $derived(
 		searchTerm.trim()
 			? filteredFlavors.filter(f =>
 				f.name.toLowerCase().includes(searchTerm.trim().toLowerCase()) ||
+				(f.display_name?.toLowerCase().includes(searchTerm.trim().toLowerCase()) ?? false) ||
+				consumerFlavorLabel(f).toLowerCase().includes(searchTerm.trim().toLowerCase()) ||
 				String(f.vcpus).includes(searchTerm.trim()) ||
 				ramLabel(f.ram).toLowerCase().includes(searchTerm.trim().toLowerCase())
 			)
@@ -153,7 +157,12 @@
 	$effect(() => {
 		activeCategory;
 		searchTerm;
+		activeGpuType;
 		currentPage = 1;
+	});
+
+	$effect(() => {
+		if (currentPage > totalPages) currentPage = totalPages;
 	});
 
 	function handleFlavorClick(f: FlavorInfo) {
@@ -161,38 +170,8 @@
 		onSelect(f.id, f.name);
 	}
 
-	function quotaBlockLabel(block: Exclude<FlavorCreateBlock, 'capacity_insufficient'> | 'missing'): string {
-		switch (block) {
-			case 'quota': return t('flavor.block.quota');
-			case 'unchecked': return t('flavor.block.unchecked');
-			case 'missing': return t('flavor.block.missing');
-		}
-	}
-	/** Same-host capacity was not verified; such a flavor never admits creation. */
-	function hostCapacityUnchecked(): string {
-		return t('flavor.host.unchecked');
-	}
-
-	/** The host check covers GPUs only when the flavor requests GPU aliases (quota requirements) or vGPU/pGPU resources. */
-	function requestsHostGpu(f: FlavorInfo | undefined): boolean {
-		if (Object.keys(f?.eligibility?.requirements.gpus ?? {}).length > 0) return true;
-		return Object.keys(f?.extra_specs ?? {}).some(key => /^resources[^:]*:[VP]GPU$/.test(key));
-	}
-
-	function hostShortageLabel(f: FlavorInfo | undefined): string {
-		return requestsHostGpu(f) ? t('flavor.host.shortageGpu') : t('flavor.host.shortage');
-	}
-
-	function blockLabel(block: FlavorCreateBlock | 'missing', f: FlavorInfo | undefined): string {
-		return block === 'capacity_insufficient' ? hostShortageLabel(f) : quotaBlockLabel(block);
-	}
-
-	function flavorBlockerLabels(f: FlavorInfo): string[] {
-		const labels = (f.eligibility?.blockers ?? []).map(blocker => blockerLabel(blocker, f));
-		const block = flavorCreateBlock(f);
-		// Missing eligibility or non-selectable eligibility may carry no blocker code.
-		if (block && labels.length === 0) labels.push(blockLabel(block, f));
-		return labels;
+	function selectionLabel(f: FlavorInfo): string {
+		return consumerFlavorLabel(f);
 	}
 
 	function hostCapacityText(f: FlavorInfo): string {
@@ -211,60 +190,28 @@
 		return capacity?.status === 'available' && capacity.numa_unverified === true;
 	}
 
-	function limitText(remaining: number, suffix = ''): string {
-		return remaining < 0 ? t('flavor.unlimited') : `${remaining}${suffix}`;
-	}
-
-	function blockerLabel(blocker: FlavorQuotaBlocker, f: FlavorInfo): string {
-		switch (blocker.code) {
-			case 'instances_insufficient':
-				return t('flavor.blocker.instances');
-			case 'cores_insufficient': {
-				const diff = blocker.required != null && blocker.remaining != null ? Math.max(0, blocker.required - blocker.remaining) : null;
-				return diff ? t('flavor.blocker.coresShort', { count: diff }) : t('flavor.blocker.cores');
-			}
-			case 'ram_insufficient': {
-				const diff = blocker.required != null && blocker.remaining != null ? Math.max(0, blocker.required - blocker.remaining) : null;
-				return diff ? t('flavor.blocker.ramShort', { size: Math.round(diff / 1024) }) : t('flavor.blocker.ram');
-			}
-			case 'gpu_insufficient': {
-				const diff = blocker.required != null && blocker.remaining != null ? Math.max(0, blocker.required - blocker.remaining) : null;
-				const res = blocker.resource ?? 'GPU';
-				return diff ? t('flavor.blocker.gpuShort', { resource: res, count: diff }) : t('flavor.blocker.gpu', { resource: res });
-			}
-			case 'compute_quota_unavailable':
-				return t('flavor.blocker.computeUnavailable');
-			case 'gpu_quota_unavailable':
-				return t('flavor.blocker.gpuUnavailable');
-			case 'host_capacity_insufficient':
-				return hostShortageLabel(f);
-			case 'host_capacity_unavailable':
-				return hostCapacityUnchecked();
-			default:
-				return blocker.code;
-		}
-	}
 	function ramLabel(mb: number): string {
-		return mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`;
+		return mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`;
 	}
 
 	function categoryBadge(f: FlavorInfo): { label: string; class: string } | null {
 		const cat = categorize(f);
-		if (cat === 'gpu') return { label: 'GPU', class: 'bg-purple-900/50 text-purple-300 border-purple-700/50' };
-		if (cat === 'cpu') return { label: 'CPU', class: 'bg-sky-900/50 text-sky-300 border-sky-700/50' };
-		if (cat === 'memory') return { label: t('flavor.category.memoryBadge'), class: 'bg-surface-selected/50 text-warm-text border-action-warm/50' };
+		if (cat === 'gpu') return { label: 'GPU', class: 'bg-surface-sunken text-ink-1 border-line' };
+		if (cat === 'cpu') return { label: 'CPU', class: 'bg-surface-sunken text-ink-1 border-line' };
+		if (cat === 'memory') return { label: t('flavor.category.memoryBadge'), class: 'bg-surface-sunken text-ink-1 border-line' };
 		return null;
 	}
 
 	function gpuSummary(f: FlavorInfo): string {
-		const reqs = parseGpuRequest(f);
-		if (reqs.length === 0) return '';
+		const reqs = flavorGpuRequests(f);
+		if (reqs == null) return tp('unknown');
 		return reqs.map(r => `${r.model} × ${r.count}`).join(', ');
 	}
 
-	const selectedFlavor = $derived(flavors.find(f => f.id === selectedId));
+	const selectedFlavor = $derived(previewFlavor ?? flavors.find(f => f.id === selectedId));
+	const selectedNativeFlavor = $derived(flavors.find(f => f.id === selectedId));
 	const selectedBlock = $derived<FlavorCreateBlock | 'missing' | null>(
-		selectedId ? (selectedFlavor ? flavorCreateBlock(selectedFlavor) : 'missing') : null
+		selectedId ? (selectedNativeFlavor ? flavorCreateBlock(selectedNativeFlavor) : 'missing') : null
 	);
 	const selectedCapacity = $derived(selectedFlavor?.eligibility?.capacity ?? null);
 	const capacityCheckedAt = $derived.by(() => {
@@ -277,25 +224,27 @@
 	});
 
 	function networkBandwidth(f: FlavorInfo): string {
-		const bw = f.extra_specs?.['quota:vif_outbound_peak'] ?? f.extra_specs?.['hw:bandwidth'] ?? '';
+		// Nova passes quota:vif_* to libvirt, whose peak unit is KiB/s.
+		const peak = f.extra_specs?.['quota:vif_outbound_peak'];
+		if (peak) return `${peak} KiB/s`;
+		const bw = f.extra_specs?.['hw:bandwidth'];
 		if (bw) return `${bw} Gbps`;
-		// Estimate from vCPU count
-		if (f.vcpus >= 32) return '25 Gbps';
-		if (f.vcpus >= 16) return '10 Gbps';
-		if (f.vcpus >= 8) return '5 Gbps';
-		if (f.vcpus >= 4) return '2.5 Gbps';
-		return '1 Gbps';
+		return tp('unknown');
 	}
 </script>
 
-<div class="flex flex-col">
+<div class="flex min-w-0 max-w-full flex-col">
+{#if initialLoading}
+	<LoadingState variant="surface" label={t('flavor.loading')} />
+{:else}
 <!-- 용량 확인 상태: 기존 목록과 선택을 유지한 채 새로고침/오류를 표시한다. -->
+{#if refreshVisible}
 <div class="order-1 mb-3 flex flex-wrap items-center justify-between gap-2">
 	<p class="text-xs text-[var(--color-ink-2)]" role="status" aria-live="polite">
 		{#if refreshing}
-			{t(adminMode ? 'flavor.refresh.checkingAdmin' : 'flavor.refresh.checking')}
+			<LoadingState variant="inline" label={t(adminMode ? 'flavor.refresh.checkingAdmin' : 'flavor.refresh.checking')} />
 		{:else if backgroundRefreshing}
-			{t(adminMode ? 'flavor.refresh.backgroundAdmin' : 'flavor.refresh.background')}
+			<LoadingState variant="inline" label={t(adminMode ? 'flavor.refresh.backgroundAdmin' : 'flavor.refresh.background')} />
 		{:else if capacityCheckedAt}
 			{t(adminMode ? 'flavor.refresh.checkedAtAdmin' : 'flavor.refresh.checkedAt', { time: capacityCheckedAt })}
 		{:else}
@@ -310,6 +259,7 @@
 		onManualRefresh={() => { void onRefresh('manual'); }}
 	/>
 </div>
+{/if}
 
 {#if backgroundRefreshError}
 	<p class="order-1 mb-3 text-xs text-[var(--color-state-warning-text)]" role="status" aria-live="polite">{t('flavor.refresh.backgroundFailed')}</p>
@@ -317,7 +267,8 @@
 
 {#if refreshError}
 	<Alert tone="danger" title={t('flavor.refresh.errorTitle')} class="order-1 mb-3">
-		{t('flavor.refresh.errorBody', { error: refreshError })}
+		<p>{t('flavor.refresh.errorBody', { error: refreshError })}</p>
+		<details class="mt-2 text-sm"><summary class="cursor-pointer">{t('flavor.failure.details')}</summary><p class="mt-2 break-words">{refreshError}</p></details>
 		{#snippet actions()}
 			<Button variant="danger-outline" size="sm" disabled={refreshing} onclick={() => { void onRefresh('manual'); }}>{t('flavor.refresh.retry')}</Button>
 		{/snippet}
@@ -326,32 +277,50 @@
 
 {#if selectedBlock}
 	<Alert tone="warning" title={t('flavor.selected.blockedTitle')} class="order-1 mb-3">
-		{t('flavor.selected.blockedBody', { name: selectedFlavor?.name ?? selectedName ?? t('flavor.selected.fallbackName'), reason: blockLabel(selectedBlock, selectedFlavor) })}
+		{t('flavor.selected.unavailableBody', { name: selectedNativeFlavor ? consumerFlavorLabel(selectedNativeFlavor) : t('flavor.selected.fallbackName') })}
 	</Alert>
 {/if}
 
-<div class="order-2 mb-3 flex flex-wrap items-center justify-between gap-2">
-	<p class="text-xs text-ink-2">{t('flavor.availability.selectable', { count: selectableCount })}</p>
-	<p class="text-xs text-ink-2">{t(adminMode ? 'flavor.availability.selectableHelpAdmin' : 'flavor.availability.selectableHelp')}</p>
-</div>
+{#if !refreshError && (defaultZoneUnavailable || uncheckedFlavors.length > 0)}
+	<Alert tone="warning" title={t(defaultZoneUnavailable ? 'flavor.policy.title' : 'flavor.failure.title')} class="order-1 mb-3">
+		<p>{t(defaultZoneUnavailable ? (adminMode ? 'flavor.policy.helpAdmin' : 'flavor.policy.help') : 'flavor.failure.reason')}</p>
+		{#snippet actions()}<Button variant="secondary" size="sm" disabled={refreshing} onclick={() => { void onRefresh('manual'); }}>{t('flavor.refresh.retry')}</Button>{/snippet}
+	</Alert>
+{/if}
+
+{#if catalogVisible && (flavors.length > 0 || hasFilters)}
+<p class="order-2 mb-3 text-xs text-ink-2">{t('flavor.availability.selectable', { count: creatableFlavors.length })}</p>
 
 <!-- 카테고리 필터 탭 -->
 <div class="order-3 mb-4 flex flex-wrap gap-2">
 	{#each ([
-		{ key: 'all', label: t('flavor.category.all', { count: baseFlavors.length }) },
+		{ key: 'all', label: t('flavor.category.all', { count: creatableFlavors.length }) },
 		{ key: 'general', label: t('flavor.category.general', { count: counts.general }) },
 		{ key: 'cpu', label: t('flavor.category.cpu', { count: counts.cpu }) },
 		{ key: 'memory', label: t('flavor.category.memory', { count: counts.memory }) },
 		{ key: 'gpu', label: t('flavor.category.gpu', { count: counts.gpu }) },
 	] as const) as tab}
 		<button
-			onclick={() => { activeCategory = tab.key; }}
-			class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {activeCategory === tab.key
-				? 'bg-action-warm text-action-on-warm'
-				: 'bg-surface-sunken text-ink-2 hover:bg-surface-selected'}"
+			onclick={() => { activeCategory = tab.key; if (tab.key !== 'all' && tab.key !== 'gpu') activeGpuType = null; }}
+			aria-pressed={activeCategory === tab.key}
+			class="min-h-11 md:min-h-9 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {activeCategory === tab.key
+				? 'bg-surface-selected text-ink-0 border border-line-2'
+				: 'bg-surface-sunken text-ink-2 border border-transparent hover:bg-surface-selected'}"
 		>{tab.label}</button>
 	{/each}
 </div>
+
+{#if gpuTypeOptions.length > 0}
+	<div class="order-3 mb-4" role="group" aria-label={t('flavor.gpuFilter.title')}>
+		<p class="mb-2 text-xs font-medium text-ink-2">{t('flavor.gpuFilter.title')}</p>
+		<div class="flex flex-wrap gap-2">
+			<Button variant={activeGpuType === null ? 'secondary' : 'subtle'} size="sm" class="max-w-full" ariaPressed={activeGpuType === null} onclick={() => { activeGpuType = null; }}><span class="min-w-0 whitespace-normal break-words">{t('flavor.gpuFilter.all')}</span></Button>
+			{#each gpuTypeOptions as model (model)}
+				<Button variant={activeGpuType === model ? 'secondary' : 'subtle'} size="sm" class="max-w-full" ariaPressed={activeGpuType === model} onclick={() => { activeGpuType = model; if (activeCategory !== 'all' && activeCategory !== 'gpu') activeCategory = 'gpu'; }}><span class="min-w-0 whitespace-normal break-words">{model}</span></Button>
+			{/each}
+		</div>
+	</div>
+{/if}
 
 <!-- 통합 검색 -->
 <div class="order-4 relative mb-4">
@@ -363,10 +332,12 @@
 	<input
 		type="search"
 		placeholder={t('flavor.searchPlaceholder')}
+		aria-label={t('flavor.searchPlaceholder')}
 		bind:value={searchTerm}
-		class="w-full bg-surface-base border border-line text-ink-1 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-line-2 placeholder-ink-3"
+		class="w-full min-h-11 md:min-h-9 rounded-lg border border-line bg-surface-base pl-9 pr-3 py-2 text-sm text-ink-1 placeholder-ink-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 	/>
 </div>
+{/if}
 
 <!-- 프로젝트 quota delta 미터 -->
 {#snippet quotaDelta(used: number, requested: number, limit: number, critical: boolean)}
@@ -388,181 +359,102 @@
 	</div>
 {/snippet}
 
+{#snippet quotaCell(label: string, pair: QuotaPair | null | undefined, requested: number, unit = '', divisor = 1)}
+	<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2" role="group" aria-label={label}>
+		<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">{label}</span>
+		{#if pair}
+			{@const critical = pair.limit >= 0 && pair.in_use + requested > pair.limit}
+			<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
+				<span class="text-sm text-ink-2">{pair.in_use / divisor}{unit}</span>
+				{#if requested > 0}
+					<span class="text-ink-2 text-xs">→</span>
+					<span class="text-sm font-bold {critical ? 'text-state-danger-text' : 'text-warm-text'}">{(pair.in_use + requested) / divisor}{unit}</span>
+				{/if}
+				<span class="text-ink-2 text-xs">/ {pair.limit < 0 ? '∞' : `${pair.limit / divisor}${unit}`}</span>
+			</div>
+			{#if pair.limit >= 0}
+				{@render quotaDelta(pair.in_use, requested, pair.limit, critical)}
+			{/if}
+		{:else}
+			<span class="text-sm text-ink-2">{tp('unknown')}</span>
+		{/if}
+	</div>
+{/snippet}
+
 {#if quota}
 	{@const reqVm = selectedFlavor ? 1 : 0}
 	{@const reqCpu = selectedFlavor?.vcpus ?? 0}
 	{@const reqRamMb = selectedFlavor?.ram ?? 0}
 	{@const reqDiskGb = selectedFlavor ? (bootVolumeSizeGb ?? selectedFlavor.disk) : 0}
-	{@const limVm = quota.instances?.limit ?? -1}
-	{@const limCpu = quota.cores?.limit ?? -1}
-	{@const limRamMb = quota.ram?.limit ?? -1}
-	{@const limDiskGb = quota.gigabytes?.limit ?? -1}
-	{@const curVm = quota.instances?.in_use ?? 0}
-	{@const curCpu = quota.cores?.in_use ?? 0}
-	{@const curRamMb = quota.ram?.in_use ?? 0}
-	{@const curDiskGb = quota.gigabytes?.in_use ?? 0}
-	{@const critVm = limVm >= 0 && curVm + reqVm > limVm}
-	{@const critCpu = limCpu >= 0 && curCpu + reqCpu > limCpu}
-	{@const critRam = limRamMb >= 0 && curRamMb + reqRamMb > limRamMb}
-	{@const critDisk = limDiskGb >= 0 && curDiskGb + reqDiskGb > limDiskGb}
 	<div class="order-1 mb-4 overflow-hidden rounded-xl border border-line bg-surface-base/70 md:mb-5">
 		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 border-b border-line">
-			<span class="text-xs text-ink-2 font-medium">
-				{#snippet selectedQuota(text: string)}<span class="text-warm-text ml-1">{text}</span>{/snippet}
-				<RichText segments={t.rich(selectedFlavor ? 'flavor.quota.remainingSelected' : 'flavor.quota.remaining')} tags={{ selected: selectedQuota }} />
-			</span>
+			<span class="text-xs text-ink-2 font-medium">{t('flavor.quota.title')}</span>
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2">
 				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 shrink-0 rounded-full bg-accent"></i>{t('flavor.quota.currentUsage')}</span>
 				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 shrink-0 rounded-full bg-action-warm"></i>{t('flavor.quota.addedVm')}</span>
 			</div>
 		</div>
 		<div class="grid grid-cols-2 gap-px bg-surface-sunken @2xl/panel:grid-cols-4">
-			<!-- VM cell -->
-			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">{t('flavor.quota.vm')}</span>
-				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
-					<span class="text-sm text-ink-2">{curVm}</span>
-					{#if reqVm > 0}
-						<span class="text-ink-2 text-xs">→</span>
-						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-warm-text'}">{curVm + reqVm}</span>
-					{/if}
-					{#if limVm >= 0}<span class="text-ink-2 text-xs">/ {limVm}</span>{/if}
-				</div>
-				{#if limVm >= 0}
-					{@render quotaDelta(curVm, reqVm, limVm, critVm)}
-				{/if}
-			</div>
-			<!-- vCPU cell -->
-			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">vCPU</span>
-				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
-					<span class="text-sm text-ink-2">{curCpu}</span>
-					{#if reqCpu > 0}
-						<span class="text-ink-2 text-xs">→</span>
-						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-warm-text'}">{curCpu + reqCpu}</span>
-					{/if}
-					{#if limCpu >= 0}<span class="text-ink-2 text-xs">/ {limCpu}</span>{/if}
-				</div>
-				{#if limCpu >= 0}
-					{@render quotaDelta(curCpu, reqCpu, limCpu, critCpu)}
-				{/if}
-			</div>
-			<!-- RAM cell -->
-			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">RAM</span>
-				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
-					<span class="text-sm text-ink-2">{Math.round(curRamMb / 1024)}GB</span>
-					{#if reqRamMb > 0}
-						<span class="text-ink-2 text-xs">→</span>
-						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-warm-text'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
-					{/if}
-					{#if limRamMb >= 0}<span class="text-ink-2 text-xs">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
-				</div>
-				{#if limRamMb >= 0}
-					{@render quotaDelta(curRamMb, reqRamMb, limRamMb, critRam)}
-				{/if}
-			</div>
-			<!-- DISK cell -->
-			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">{t('flavor.quota.disk')}</span>
-				{#if limDiskGb < 0}
-					<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
-						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
-						<span class="text-ink-2 text-xs">/ ∞</span>
-					</div>
-					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-					</div>
-				{:else}
-					<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
-						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
-						{#if reqDiskGb > 0}
-							<span class="text-ink-2 text-xs">→</span>
-							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-warm-text'}">{curDiskGb + reqDiskGb}GB</span>
-						{/if}
-						<span class="text-ink-2 text-xs">/ {limDiskGb}GB</span>
-					</div>
-					{@render quotaDelta(curDiskGb, reqDiskGb, limDiskGb, critDisk)}
-				{/if}
-			</div>
+			{@render quotaCell(t('flavor.quota.vm'), quota.instances, reqVm)}
+			{@render quotaCell('vCPU', quota.cores, reqCpu)}
+			{@render quotaCell('RAM', quota.ram, reqRamMb, 'GB', 1024)}
+			{@render quotaCell(t('flavor.quota.disk'), quota.gigabytes, reqDiskGb, 'GB')}
 		</div>
 	</div>
 {/if}
 
-<!-- 선택 플레이버의 프로젝트 쿼터와 관리자 전용 호스트 용량 스냅샷 -->
-{#if selectedFlavor?.eligibility}
-	{@const eligibility = selectedFlavor.eligibility}
+<!-- 관리자 전용: 현재 선택 가능한 플레이버의 호스트 용량 스냅샷 -->
+{#if adminMode && selectedFlavor?.eligibility && selectedBlock === null}
 	<Card surface="base" padding="sm" class="order-1 mb-4">
 		<p class="mb-2 text-xs font-medium text-[var(--color-ink-2)]">
 			{#snippet conditionFlavorName(text: string)}<span class="font-mono text-[var(--color-ink-0)]">{text}</span>{/snippet}
-			<RichText segments={t.rich('flavor.conditions.title', { name: selectedFlavor.name })} tags={{ name: conditionFlavorName }} />
+			<RichText segments={t.rich('flavor.conditions.title', { name: consumerFlavorLabel(selectedFlavor) })} tags={{ name: conditionFlavorName }} />
 		</p>
-		<dl class="grid grid-cols-1 gap-3 text-xs {adminMode ? '@md/panel:grid-cols-2' : ''}">
+		<dl class="text-xs">
 			<div>
-				<dt class="mb-1 text-[var(--color-ink-2)]">{t('flavor.conditions.projectQuota')}</dt>
+				<dt class="mb-1 text-[var(--color-ink-2)]">{t('flavor.conditions.hostMax')}</dt>
 				<dd class="font-mono text-[var(--color-ink-1)]">
-					VM {limitText(eligibility.remaining.instances)} · vCPU {limitText(eligibility.remaining.cores)} · RAM {eligibility.remaining.ram_mb < 0 ? t('flavor.unlimited') : ramLabel(eligibility.remaining.ram_mb)}
-					{#each Object.entries(eligibility.requirements.gpus) as [alias, required]}
-						<span class="block">{t('flavor.conditions.gpuRequirement', { alias, required, remaining: limitText(eligibility.remaining.gpus[alias] ?? 0) })}</span>
-					{/each}
+					{#if selectedCapacity?.remaining_vcpus != null && selectedCapacity.remaining_ram_mb != null}
+						{selectedCapacity.cpu_resource_class ?? 'CPU'} {selectedCapacity.remaining_vcpus} · RAM {ramLabel(selectedCapacity.remaining_ram_mb)}
+						<span class="block text-[var(--color-ink-2)]">{t('flavor.conditions.hostCandidates', { count: selectedCapacity.candidate_hosts })}</span>
+					{:else}
+						{t('flavor.conditions.hostAvailable')}
+					{/if}
+					{#if selectedCapacity?.numa_unverified}
+						<span class="block text-[var(--color-state-warning-text)]">{t('flavor.conditions.numaWarning')}</span>
+					{/if}
 				</dd>
 			</div>
-			{#if adminMode}
-				<div>
-					<dt class="mb-1 text-[var(--color-ink-2)]">{t('flavor.conditions.hostMax')}</dt>
-					<dd class="font-mono text-[var(--color-ink-1)]">
-						{#if selectedCapacity?.status === 'available' && selectedCapacity.remaining_vcpus != null && selectedCapacity.remaining_ram_mb != null}
-							{selectedCapacity.cpu_resource_class ?? 'CPU'} {selectedCapacity.remaining_vcpus} · RAM {ramLabel(selectedCapacity.remaining_ram_mb)}
-							<span class="block text-[var(--color-ink-2)]">{t('flavor.conditions.hostCandidates', { count: selectedCapacity.candidate_hosts })}</span>
-						{:else if selectedCapacity?.status === 'available'}
-							{t('flavor.conditions.hostAvailable')}
-						{:else if selectedCapacity?.status === 'insufficient'}
-							{hostShortageLabel(selectedFlavor)}
-						{:else}
-							{hostCapacityUnchecked()}
-						{/if}
-						{#if selectedCapacity?.status === 'available' && selectedCapacity.numa_unverified}
-							<span class="block text-[var(--color-state-warning-text)]">{t('flavor.conditions.numaWarning')}</span>
-						{/if}
-					</dd>
-				</div>
-			{/if}
 		</dl>
-		{#if adminMode}
-			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('flavor.conditions.notReserved')}</p>
-		{/if}
+		<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('flavor.conditions.notReserved')}</p>
 	</Card>
 {/if}
 
-<!-- 프로젝트 GPU 쿼터: 호스트 GPU 여유가 아니라 현재 대상 프로젝트의 GPU 쿼터 잔여량이다. -->
-{#if projectGpuQuota.length > 0 && (activeCategory === 'all' || activeCategory === 'gpu')}
-	<div class="order-5 mb-4">
-		<p class="mb-2 text-xs text-[var(--color-ink-2)]">{t(adminMode ? 'flavor.gpuQuota.titleAdmin' : 'flavor.gpuQuota.title')}</p>
-		<div class="flex flex-wrap gap-2">
-			{#each projectGpuQuota as gpuQuota}
-				<Pill tone={gpuQuota.remaining >= 0 && gpuQuota.requested > gpuQuota.remaining ? 'danger' : gpuQuota.remaining === 0 ? 'warning' : 'neutral'}>
-					<span class="font-mono">{gpuQuota.alias} {limitText(gpuQuota.remaining)}{#if gpuQuota.requested > 0} · {t('flavor.gpuQuota.selected', { count: gpuQuota.requested })}{/if}</span>
-				</Pill>
-			{/each}
-		</div>
-	</div>
+
+{#if catalogVisible && !refreshError && !defaultZoneUnavailable && uncheckedFlavors.length === 0 && creatableFlavors.length === 0}
+	<Alert tone="neutral" title={t('flavor.available.emptyTitle')} class="order-6 mb-4">{t('flavor.available.emptyBody')}</Alert>
+{:else if catalogVisible && !refreshError && creatableFlavors.length > 0 && searchedFlavors.length === 0 && hasFilters}
+	<Alert tone="neutral" title={t('flavor.empty')} class="order-6 mb-4">
+		{t('flavor.filter.reason')}
+		{#snippet actions()}<Button variant="secondary" size="sm" onclick={resetFilters}>{t('flavor.filter.reset')}</Button>{/snippet}
+	</Alert>
 {/if}
 
+
+{#if catalogVisible && searchedFlavors.length > 0}
 <div class="order-6 min-w-0">
 <ResponsiveTable>
 	{#snippet cards()}
 		{#each paginatedFlavors as flavor (flavor.id)}
 			{@const badge = categoryBadge(flavor)}
 			{@const gpu = gpuSummary(flavor)}
-			{@const selectable = isSelectable(flavor)}
-			{@const blockers = flavorBlockerLabels(flavor)}
 			{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
 			{@const cellUnverified = adminMode && numaUnverified(flavor)}
 			<CompactResourceCard selected={selectedId === flavor.id}>
-				<h3 class="break-words text-sm font-medium line-clamp-2" title={flavor.name}>{flavor.name}</h3>
+				<h3 class="break-words text-sm font-medium line-clamp-2" title={consumerFlavorLabel(flavor)}>{consumerFlavorLabel(flavor)}</h3>
 				{#if badge}<span class="text-xs text-ink-2">{badge.label}</span>{/if}
 				<dl class="flex flex-wrap gap-x-4 gap-y-1 text-xs"><div><dt class="text-ink-2">vCPU</dt><dd>{flavor.vcpus}</dd></div><div><dt class="text-ink-2">RAM</dt><dd>{ramLabel(flavor.ram)}</dd></div><div><dt class="text-ink-2">{t('flavor.disk')}</dt><dd>{flavor.disk} GB</dd></div></dl>
-				{#if blockers.length > 0}<p class="break-words text-xs text-state-danger-text">{blockers.join(' · ')}</p>{/if}
-				{#snippet actions()}<Button variant="secondary" size="sm" disabled={!selectable || selectionLocked} ariaPressed={selectedId === flavor.id} onclick={() => handleFlavorClick(flavor)}>{t('flavor.selectLabel', { name: flavor.name })}</Button>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={selectionLocked} ariaPressed={selectedId === flavor.id} onclick={() => handleFlavorClick(flavor)}>{t('flavor.selectLabel', { name: selectionLabel(flavor) })}</Button>{/snippet}
 				{#snippet details()}
 					<div class="space-y-1 break-words text-xs text-ink-2">
 						<p>{t('flavor.network')}: {networkBandwidth(flavor)}</p>
@@ -574,7 +466,6 @@
 				{/snippet}
 			</CompactResourceCard>
 		{/each}
-		{#if searchedFlavors.length === 0}<p class="col-span-full py-8 text-center text-sm text-ink-2">{t('flavor.empty')}</p>{/if}
 	{/snippet}
 <TableShell density="compact">
 <div class="min-w-[39rem]">
@@ -586,21 +477,18 @@
 		<div class="text-center">{t('flavor.network')}</div>
 	</div>
 
-	{#each paginatedFlavors as flavor}
+	{#each paginatedFlavors as flavor (flavor.id)}
 		{@const badge = categoryBadge(flavor)}
 		{@const gpu = gpuSummary(flavor)}
-		{@const selectable = isSelectable(flavor)}
-		{@const blockers = flavorBlockerLabels(flavor)}
 		{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
 		{@const cellUnverified = adminMode && numaUnverified(flavor)}
 		<button
 			onclick={() => handleFlavorClick(flavor)}
-			aria-label={t('flavor.selectLabel', { name: flavor.name })}
+			aria-label={t('flavor.selectLabel', { name: selectionLabel(flavor) })}
 			aria-pressed={selectedId === flavor.id}
-			disabled={!selectable || selectionLocked}
-			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-line/60 px-4 py-3 text-sm transition-all
-				{selectedId === flavor.id ? 'border-l-2 border-l-blue-500 bg-surface-selected/20' : ''}
-				{selectable ? 'hover:bg-surface-sunken/40' : 'opacity-60 cursor-not-allowed bg-[var(--color-surface-sunken)]/30'}"
+			disabled={selectionLocked}
+			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-line/60 px-4 py-3 text-sm tabular-nums transition-colors hover:bg-surface-selected focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink-2
+				{selectedId === flavor.id ? 'bg-surface-selected ring-1 ring-inset ring-line-2' : 'bg-surface-base'}"
 		>
 			<div class="flex min-w-0 items-center gap-3">
 				<div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-line-2 bg-surface-sunken">
@@ -610,7 +498,7 @@
 				</div>
 				<div class="min-w-0">
 					<div class="flex items-center gap-2">
-						<span class="truncate font-medium text-ink-0">{flavor.name}</span>
+						<span class="truncate font-medium text-ink-0">{consumerFlavorLabel(flavor)}</span>
 						{#if badge}
 							<span class="rounded border px-1.5 py-0.5 text-xs {badge.class}">{badge.label}</span>
 						{/if}
@@ -619,22 +507,13 @@
 						{/if}
 					</div>
 					{#if gpu}
-						<div class="mt-0.5 text-xs text-purple-400">{gpu}</div>
+						<div class="mt-0.5 text-xs text-ink-2">{gpu}</div>
 					{/if}
 					{#if hostCapacity}
 						<div class="mt-0.5 text-xs text-ink-2">{hostCapacity}</div>
 					{/if}
 					{#if cellUnverified}
 						<div class="mt-0.5 text-xs text-[var(--color-state-warning-text)]">{t('flavor.host.numaUnverifiedNote')}</div>
-					{/if}
-					{#if blockers.length > 0}
-						<div class="mt-1 flex flex-wrap gap-1">
-							{#each blockers as label}
-								<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
-									{label}
-								</span>
-							{/each}
-						</div>
 					{/if}
 				</div>
 			</div>
@@ -645,36 +524,25 @@
 		</button>
 	{/each}
 
-	{#if searchedFlavors.length === 0}
-		<div class="py-8 text-center text-sm text-ink-2">{t('flavor.empty')}</div>
-	{/if}
 </div>
 </TableShell>
 </ResponsiveTable>
 </div>
+{/if}
 
 <!-- 페이지네이션 -->
-{#if totalPages > 1}
-<div class="order-7 mt-3 flex items-center justify-between text-xs text-ink-2">
-	<span>{t('flavor.pagination.range', { count: searchedFlavors.length, start: (currentPage - 1) * PAGE_SIZE + 1, end: Math.min(currentPage * PAGE_SIZE, searchedFlavors.length) })}</span>
-	<div class="flex gap-1">
-		<button
-			onclick={() => currentPage = Math.max(1, currentPage - 1)}
-			disabled={currentPage === 1}
-			class="px-2 py-1 rounded bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-30 disabled:cursor-not-allowed"
-		>{t('flavor.pagination.previous')}</button>
-		{#each Array.from({ length: totalPages }, (_, i) => i + 1) as p}
-			<button
-				onclick={() => currentPage = p}
-				class="px-2 py-1 rounded {p === currentPage ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:bg-surface-selected'}"
-			>{p}</button>
-		{/each}
-		<button
-			onclick={() => currentPage = Math.min(totalPages, currentPage + 1)}
-			disabled={currentPage === totalPages}
-			class="px-2 py-1 rounded bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-30 disabled:cursor-not-allowed"
-		>{t('flavor.pagination.next')}</button>
-	</div>
+{#if catalogVisible && searchedFlavors.length > 0}
+<div class="order-7 min-w-0">
+	<Pagination
+		page={currentPage}
+		{totalPages}
+		hasPrev={currentPage > 1}
+		hasNext={currentPage < totalPages}
+		onPrev={() => currentPage = Math.max(1, currentPage - 1)}
+		onNext={() => currentPage = Math.min(totalPages, currentPage + 1)}
+		note={t('flavor.pagination.range', { count: searchedFlavors.length, start: (currentPage - 1) * PAGE_SIZE + 1, end: Math.min(currentPage * PAGE_SIZE, searchedFlavors.length) })}
+	/>
 </div>
+{/if}
 {/if}
 </div>

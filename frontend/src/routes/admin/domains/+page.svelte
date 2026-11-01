@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { untrack } from 'svelte';
   import { auth, authReady, projectSwitching } from '$lib/stores/auth';
   import { domainsApi } from '$lib/api/domains';
@@ -83,7 +84,7 @@
   </PageHeader>
   <p class="text-sm text-ink-2 mb-4">{t('inventory.description')}</p>
   {#if error}<Alert>{error}</Alert>
-  {:else if loading}<p role="status" class="text-sm text-ink-2">{t('state.loading')}</p>
+  {:else if loading}<LoadingState variant="surface" label={t('state.loading')} />
   {:else if items.length === 0}<p class="text-sm text-ink-2">{t('inventory.empty')}</p>
   {:else}
     <ResponsiveTable>

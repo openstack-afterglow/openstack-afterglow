@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { useAdminVolumeDetailController } from '$lib/stores/adminVolumeDetailController.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	const s = useAdminVolumeDetailController();
 
@@ -58,7 +58,7 @@
 			disabled={s.diagnosticLoading}
 			onclick={() => s.fetchDeleteDiagnostic({ refresh: true })}
 		>
-			{#if s.diagnosticLoading}<ActivityIndicator size="xs" tone="ink" />{/if}{s.diagnosticLoading ? t('diagnostic.running') : t('diagnostic.runAgain')}
+			{#if s.diagnosticLoading}<LoadingState variant="control" label="" />{/if}{s.diagnosticLoading ? t('diagnostic.running') : t('diagnostic.runAgain')}
 		</button>
 	</div>
 
@@ -67,7 +67,7 @@
 	{/if}
 
 	{#if s.diagnosticLoading && !s.deleteDiagnostic}
-		<ActivityIndicator label={t('diagnostic.loading')} />
+		<LoadingState variant="section" label={t('diagnostic.loading')} />
 	{/if}
 
 	{#if s.deleteDiagnostic}
@@ -162,7 +162,7 @@
 					disabled={s.recovering}
 					onclick={runRecovery}
 				>
-					{#if s.recovering}<ActivityIndicator size="xs" tone="ink" />{/if}{s.recovering ? t('diagnostic.recovering') : t('diagnostic.runRecovery')}
+					{#if s.recovering}<LoadingState variant="control" label="" />{/if}{s.recovering ? t('diagnostic.recovering') : t('diagnostic.runRecovery')}
 				</button>
 			{/if}
 		</div>

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import time
 from copy import deepcopy
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
@@ -2103,3 +2104,167 @@ async def test_projectless_catalog_exception_is_read_only(domain_client):
     with pytest.raises(HTTPException) as denied:
         await deps._resolve_jwt_token_info(request, tokens["token"], "", preserve_original=True)
     assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_me_directory_reflects_membership_changes_on_next_request(domain_client):
+    client, state = domain_client
+    tokens = await login(client, select_organization=False)
+    headers = {"Authorization": f"Bearer {tokens['token']}"}
+    current = await client.get("/api/v1/auth/me", headers=headers)
+    assert current.status_code == 200, current.text
+    assert {domain["id"] for domain in current.json()["available_domains"]} == {"personal", "tenant-a", "tenant-b"}
+    state.grants["user"] = ["personal-user"]
+    current = await client.get("/api/v1/auth/me", headers=headers)
+    assert current.status_code == 200, current.text
+    assert {domain["id"] for domain in current.json()["available_domains"]} == {"personal"}
+    assert current.json()["identity_domain_id"] == "accounts"
+    assert "_authenticated_domain_metadata" not in current.json()
+
+
+@pytest.mark.asyncio
+async def test_me_directory_failure_does_not_publish_partial_principal(domain_client, monkeypatch):
+    client, _ = domain_client
+    tokens = await login(client, select_organization=False)
+
+    def unavailable(*args, **kwargs):
+        raise ConnectionError("Directory unavailable")
+
+    monkeypatch.setattr(auth.domain_projects, "accessible_domains", unavailable)
+    denied = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['token']}"})
+    assert denied.status_code == 503, denied.text
+    assert "available_domains" not in denied.json() and "user_id" not in denied.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "changed", ["user_id", "identity_domain_id", "domain_id", "project_id", "refresh_jti", "token", "is_system_admin"]
+)
+async def test_me_metadata_handoff_never_applies_to_a_changed_principal(domain_client, monkeypatch, changed):
+    client, _ = domain_client
+    tokens = await login(client, select_organization=False)
+    principal = await deps._resolve_jwt_token_info(boundary_request("/api/v1/auth/me"), tokens["token"], None)
+    principal[changed] = not principal[changed] if changed == "is_system_admin" else "different"
+    fresh = AsyncMock(return_value={"available_domains": [], "can_create_domain": False})
+    monkeypatch.setattr(auth, "_domain_metadata", fresh)
+    current = await auth.me(principal)
+    assert current.available_domains == [] and current.can_create_domain is False
+    assert current.user_id == principal["user_id"]
+    assert current.identity_domain_id == principal["identity_domain_id"]
+    assert current.domain_id == principal["domain_id"]
+    assert current.project_id == principal["project_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/auth/me", "/api/v1/auth/refresh"])
+@pytest.mark.parametrize("change", ["password", "origin_email", "workspace_email"])
+async def test_session_policy_changes_during_native_exchange_are_denied(domain_client, monkeypatch, path, change):
+    client, state = domain_client
+    tokens = await login(client, select_organization=False)
+    old_jti, original = await session(tokens)
+    validate = keystone.validate_session
+    policy = domain_auth.get_policy
+    tightened = False
+
+    def exchange(token, project_id="", *, operation=None):
+        nonlocal tightened
+        result = validate(token, project_id, operation=operation)
+        if project_id == original["project_id"]:
+            tightened = True
+        return result
+
+    async def current_policy(domain_id, **kwargs):
+        row = await policy(domain_id, **kwargs)
+        if tightened:
+            if change == "password" and domain_id == "accounts":
+                row = replace(row, password_enabled=False)
+            elif domain_id == ("accounts" if change == "origin_email" else "personal"):
+                row = replace(row, allowed_email_domains=("changed.test",))
+        return row
+
+    monkeypatch.setattr(keystone, "validate_session", exchange)
+    monkeypatch.setattr(domain_auth, "get_policy", current_policy)
+    if path.endswith("refresh"):
+        denied = await client.post(path, json={"refresh_token": tokens["refresh_token"]})
+    else:
+        denied = await client.get(path, headers={"Authorization": f"Bearer {tokens['token']}"})
+    assert denied.status_code == 403, denied.text
+    assert "token" not in denied.json() and "user_id" not in denied.json()
+    assert (await session_store.get_session(old_jti))["project_id"] == original["project_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/auth/me", "/api/v1/auth/refresh"])
+@pytest.mark.parametrize(
+    "change,code",
+    [
+        ("provider", "provider_disabled"),
+        ("revision", "provider_changed"),
+        ("organization", "organization_membership_changed"),
+    ],
+)
+async def test_provider_revocation_during_native_exchange_is_denied(
+    provider_login_env, monkeypatch, path, change, code
+):
+    env = provider_login_env
+    callback = await provider_callback(env)
+    assert callback.status_code == 200, callback.text
+    tokens = callback.json()
+    old_jti, original = await session(tokens)
+    native_before = deepcopy((env.state.users, env.state.projects, env.state.grants, env.state.assignments))
+    validate = keystone.validate_session
+    organization_revoked = False
+    if change == "organization":
+        from app.services import organization_provisioning
+
+        env.provider._organization = SimpleNamespace(id="org")
+
+        async def current_organization(provider, *, ks, user_id):
+            assert provider is env.provider and user_id == "user"
+            if organization_revoked:
+                raise domain_auth.DomainAuthDenied(
+                    "Organization membership changed", code="organization_membership_changed"
+                )
+
+        monkeypatch.setattr(organization_provisioning, "require_current", current_organization)
+
+    def exchange(token, project_id="", *, operation=None):
+        nonlocal organization_revoked
+        result = validate(token, project_id, operation=operation)
+        if project_id == original["project_id"]:
+            if change == "provider":
+                env.provider.enabled = False
+            elif change == "revision":
+                env.provider.revision += 1
+            else:
+                organization_revoked = True
+        return result
+
+    monkeypatch.setattr(keystone, "validate_session", exchange)
+    if path.endswith("refresh"):
+        denied = await env.client.post(path, json={"refresh_token": tokens["refresh_token"]})
+    else:
+        denied = await env.client.get(path, headers={"Authorization": f"Bearer {tokens['token']}"})
+    assert denied.status_code == 403, denied.text
+    if path.endswith("refresh"):
+        assert denied.json()["code"] == code
+    assert not {"token", "refresh_token", "user_id", "available_domains"}.intersection(denied.json())
+    stored = await session_store.get_session(old_jti)
+    for key in ("user_id", "identity_domain_id", "domain_id", "project_id", "family_id", "started_at"):
+        assert stored[key] == original[key]
+    assert (env.state.users, env.state.projects, env.state.grants, env.state.assignments) == native_before
+
+
+@pytest.mark.asyncio
+async def test_me_never_trusts_a_plain_metadata_dto(domain_client, monkeypatch):
+    client, _ = domain_client
+    tokens = await login(client, select_organization=False)
+    principal = await deps._resolve_jwt_token_info(boundary_request("/api/v1/auth/me"), tokens["token"], None)
+    principal["_authenticated_domain_metadata"] = {
+        "owner": auth._domain_metadata_owner(principal),
+        "metadata": {"available_domains": [{"id": "foreign", "name": "Attacker"}], "can_create_domain": True},
+    }
+    fresh = AsyncMock(return_value={"available_domains": [], "can_create_domain": False})
+    monkeypatch.setattr(auth, "_domain_metadata", fresh)
+    current = await auth.me(principal)
+    assert current.available_domains == [] and current.can_create_domain is False

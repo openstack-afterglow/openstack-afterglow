@@ -15,7 +15,7 @@
 	import UserUsageDetailModal from '$lib/components/admin/chat/UserUsageDetailModal.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -26,7 +26,6 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -333,7 +332,7 @@
 				<Field label={t('adminQuotas.defaultMonthlyLabel')} for="default-monthly-quota" error={defaultError || undefined} class="min-w-0 flex-1">
 					<TextInput id="default-monthly-quota" inputmode="decimal" placeholder={t('adminQuotas.unlimitedPlaceholder')} bind:value={defaultDraft} />
 				</Field>
-				<Button type="submit" variant="accent" disabled={savingDefault || loading} ariaBusy={savingDefault}>{#if savingDefault}<ActivityIndicator size="xs" tone="ink" />{/if}{savingDefault ? t('adminQuotas.saving') : t('adminQuotas.saveDefault')}</Button>
+				<Button type="submit" variant="accent" disabled={savingDefault || loading} ariaBusy={savingDefault}>{#if savingDefault}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{savingDefault ? t('adminQuotas.saving') : t('adminQuotas.saveDefault')}</Button>
 			</form>
 		</div>
 	</section>
@@ -345,7 +344,7 @@
 	</div>
 
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={5} />
+		<LoadingState variant="surface" />
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
@@ -354,7 +353,7 @@
 						<div data-user-id={row.user.id}><p class="font-medium">{row.user.name}</p>{#if row.user.email}<p class="text-xs text-ink-2">{row.user.email}</p>{/if}</div>
 						<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.monthlyUsage')}</dt><dd>{formatCredit(row.quota?.month_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.monthlyLimit')}</dt><dd>{formatCredit(monthlyLimit(row), t('adminQuotas.unlimited'))}</dd><dd><Pill tone={monthlyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(monthlyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>
 						{#snippet details()}<p class="font-mono break-all">{row.user.id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.weeklyUsage')}</dt><dd>{formatCredit(row.quota?.week_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.weeklyLimit')}</dt><dd>{weeklyLabel(row)}</dd><dd><Pill tone={weeklyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(weeklyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>{/snippet}
-						{#snippet actions()}<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button><Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button><Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<ActivityIndicator size="xs" tone="ink" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>{/snippet}
+						{#snippet actions()}<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button><Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button><Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>{/snippet}
 					</CompactResourceCard>
 				{:else}<EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
 			{/snippet}
@@ -405,7 +404,7 @@
 								<div class="flex flex-wrap gap-2">
 									<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button>
 									<Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button>
-									<Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<ActivityIndicator size="xs" tone="ink" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>
+									<Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>
 								</div>
 							</td>
 						</tr>
@@ -449,7 +448,7 @@
 			</div>
 			<div class="mt-5 flex justify-end gap-2">
 				<Button type="button" variant="ghost" onclick={closeEditor} disabled={saving}>{t('adminQuotas.cancel')}</Button>
-				<Button type="submit" variant="accent" disabled={saving} ariaBusy={saving}>{#if saving}<ActivityIndicator size="xs" tone="ink" />{/if}{saving ? t('adminQuotas.saving') : t('adminQuotas.save')}</Button>
+				<Button type="submit" variant="accent" disabled={saving} ariaBusy={saving}>{#if saving}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving ? t('adminQuotas.saving') : t('adminQuotas.save')}</Button>
 			</div>
 		</form>
 	{/if}

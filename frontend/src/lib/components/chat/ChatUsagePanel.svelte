@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
@@ -148,9 +149,7 @@
 			</div>
 		</div>
 		{#if loading}
-			<div class="motion-skeleton rounded-lg border border-line h-24" role="status" aria-label={t('usage.trendLoading')}>
-				<span class="sr-only">{t('usage.trendLoading')}</span>
-			</div>
+			<LoadingState label={t('usage.trendLoading')} />
 		{:else if points.length === 0}
 			<p class="px-1 text-xs text-[var(--color-ink-3)]">{t('usage.empty')}</p>
 		{:else}

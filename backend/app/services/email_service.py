@@ -41,8 +41,9 @@ async def send_email(to: str, subject: str, html_body: str, text_body: str) -> b
         )
         _logger.info("이메일 전송 완료: to=%s, subject=%s", to, subject)
         return True
-    except Exception:
-        _logger.error("이메일 전송 실패: to=%s, subject=%s", to, subject, exc_info=True)
+    except Exception as exc:
+        # SMTP exceptions can contain MIME bodies, recovery proofs or credentials.
+        _logger.error("이메일 전송 실패: to=%s, subject=%s, error_type=%s", to, subject, type(exc).__name__)
         return False
 
 

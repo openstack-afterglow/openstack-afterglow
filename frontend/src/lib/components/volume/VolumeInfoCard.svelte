@@ -14,7 +14,7 @@
     <CompactResourceCard>
       <div class="flex items-start justify-between gap-2 min-w-0">
         <span class="min-w-0 font-medium break-all">{s.volume!.name || t('infoCard.unnamed')}</span>
-        <StatusChip status={s.volume!.status} />
+        <StatusChip status={s.volume!.status} kind="volume" />
       </div>
       <dl>
         <div><dt>{t('infoCard.size')}</dt><dd>{formatStorage(s.volume!.size)}</dd></div>

@@ -89,7 +89,7 @@ async def list_volumes(
     pid = conn._afterglow_project_id
     try:
         return await cached_call(
-            f"afterglow:cinder:{pid}:volumes:v2",
+            f"afterglow:cinder:{pid}:volumes:v3",
             ttl_fast(),
             lambda: [v.model_dump() for v in cinder.list_volumes(conn)],
             enabled=cm.enabled,
@@ -140,7 +140,7 @@ async def rename_volume(
     await _assert_volume_owner(conn, volume_id, token_info, strict=True)
     try:
         await asyncio.to_thread(cinder.rename_volume, conn, volume_id, req.name)
-        await invalidate(f"afterglow:cinder:{conn._afterglow_project_id}:volumes:v2")
+        await invalidate(f"afterglow:cinder:{conn._afterglow_project_id}:volumes:v3")
         result = await asyncio.to_thread(cinder.get_volume, conn, volume_id)
     except Exception as exc:
         await rec(
@@ -186,7 +186,7 @@ async def create_volume(
     pid = conn._afterglow_project_id
     try:
         result = await asyncio.to_thread(cinder.create_empty_volume, conn, req.name, req.size_gb, req.availability_zone)
-        await invalidate(f"afterglow:cinder:{pid}:volumes:v2")
+        await invalidate(f"afterglow:cinder:{pid}:volumes:v3")
         await rec(
             token_info,
             conn,
@@ -229,7 +229,7 @@ async def extend_volume(
     pid = conn._afterglow_project_id
     try:
         result = await asyncio.to_thread(cinder.extend_volume, conn, volume_id, req.new_size)
-        await invalidate(f"afterglow:cinder:{pid}:volumes:v2")
+        await invalidate(f"afterglow:cinder:{pid}:volumes:v3")
         await rec(
             token_info,
             conn,
@@ -273,7 +273,7 @@ async def delete_volume(
     await _assert_volume_owner(conn, volume_id, token_info)
     try:
         await asyncio.to_thread(cinder.delete_volume, conn, volume_id)
-        await invalidate(f"afterglow:cinder:{pid}:volumes:v2")
+        await invalidate(f"afterglow:cinder:{pid}:volumes:v3")
         await rec(
             token_info, conn, resource_type="volume", action="volume.delete", status="success", resource_id=volume_id
         )
@@ -303,7 +303,7 @@ async def force_delete_volume(
         # reset_status → error 상태로 전환 후 force delete
         await asyncio.to_thread(cinder.reset_volume_status, conn, volume_id, "error")
         await asyncio.to_thread(cinder.force_delete_volume, conn, volume_id)
-        await invalidate(f"afterglow:cinder:{pid}:volumes:v2")
+        await invalidate(f"afterglow:cinder:{pid}:volumes:v3")
         await rec(
             token_info,
             conn,

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/file-storage';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { FileStorage } from '$lib/types/fileStorage';
 
 	const statusColor: Record<string, string> = {
@@ -54,7 +54,7 @@
 			disabled={deleting}
 			class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 		>
-			{#if deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{deleting ? t('storageHeader.deleting') : t('storageHeader.delete')}
+			{#if deleting}<LoadingState variant="control" label="" />{/if}{deleting ? t('storageHeader.deleting') : t('storageHeader.delete')}
 		</button>
 	</div>
 </div>

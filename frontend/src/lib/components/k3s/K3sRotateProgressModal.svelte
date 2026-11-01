@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 	import StepProgress from '$lib/components/ui/StepProgress.svelte';
 
@@ -191,7 +191,7 @@
 				{/if}
 			{/each}
 			{#if !done}
-				<ActivityIndicator size="xs" label={t('rotateProgress.running')} class="text-xs" />
+				<LoadingState variant="control" label={t('rotateProgress.running')} class="text-xs" />
 			{/if}
 		</div>
 

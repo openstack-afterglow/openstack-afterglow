@@ -1,0 +1,3 @@
+- [x] Implement vertical terminology trails, changing letters and Afterglow main entry.
+- [x] Browser visual, character-mutation, responsive and pause/resume checks.
+- [x] Independent review, docs, previews, source package and archive.

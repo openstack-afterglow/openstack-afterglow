@@ -1,4 +1,10 @@
 {
+	"list.pageSize": "每页行数",
+	"list.analytics": "网络趋势",
+	"list.details": "查看详情",
+	"list.actionsFor": "网络 {name} 的操作",
+	"list.scopedHistory": "项目范围内无法查看整个云的网络历史。",
+	"list.deleteImpact": "删除网络后无法恢复。已连接的端口可能阻止删除。",
 	"loadbalancersPage.loading": "正在加载负载均衡器...",
 	"adminNetworkCreateModal.title": "创建网络",
 	"adminNetworkCreateModal.name": "名称",

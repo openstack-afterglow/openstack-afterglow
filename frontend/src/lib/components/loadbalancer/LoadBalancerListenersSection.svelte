@@ -2,7 +2,7 @@
   import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import ListenerAddForm from './ListenerAddForm.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
@@ -33,7 +33,7 @@
           <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{l.name || l.id.slice(0, 10)}</strong><StatusChip status={l.status} /></div>
           <p class="font-mono text-xs text-ink-2">{l.protocol}:{l.protocol_port}</p>
           {#snippet details()}<p class="font-mono break-all">ID: {l.id}</p>{/snippet}
-          {#snippet actions()}{#if s.canMutate}<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${l.id}`, () => s.deleteListener(l.id))} disabled={s.saving} ariaBusy={deletingListener}>{#if deletingListener}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingListener ? t('lb.actions.deleting') : t('lb.actions.delete')}</Button>{/if}{/snippet}
+          {#snippet actions()}{#if s.canMutate}<Button variant="danger-outline" size="sm" onclick={() => pending.run(`delete:${l.id}`, () => s.deleteListener(l.id))} disabled={s.saving} ariaBusy={deletingListener}>{#if deletingListener}<LoadingState variant="control" label="" />{/if}{deletingListener ? t('lb.actions.deleting') : t('lb.actions.delete')}</Button>{/if}{/snippet}
         </CompactResourceCard>
       {/each}
     </div>

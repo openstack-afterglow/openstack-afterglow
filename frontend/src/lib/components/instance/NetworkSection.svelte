@@ -4,7 +4,8 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import SecurityGroupUnion from './SecurityGroupUnion.svelte';
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
-	import { ActivityIndicator, StatusChip } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
 
@@ -75,7 +76,7 @@
 					disabled={!selectedNetId || s.actioning === 'attach-iface'}
 					class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 				>
-					{#if s.actioning === 'attach-iface'}<ActivityIndicator size="xs" label={t('network.adding')} />{:else}{t('network.add')}{/if}
+					{#if s.actioning === 'attach-iface'}<LoadingState variant="control" label={t('network.adding')} />{:else}{t('network.add')}{/if}
 				</button>
 			</div>
 		</div>
@@ -126,7 +127,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 								>
-									{#if s.actioning === 'fip-release-' + ifaceFip.id}<ActivityIndicator size="xs" label={t('network.releasing')} />{:else}{t('network.releaseFloatingIp')}{/if}
+									{#if s.actioning === 'fip-release-' + ifaceFip.id}<LoadingState variant="control" label={t('network.releasing')} />{:else}{t('network.releaseFloatingIp')}{/if}
 								</button>
 							{:else}
 								<button
@@ -134,7 +135,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 								>
-									{#if s.actioning === 'fip-assign-' + iface.id}<ActivityIndicator size="xs" label={t('network.assigning')} />{:else}{t('network.addFloatingIp')}{/if}
+									{#if s.actioning === 'fip-assign-' + iface.id}<LoadingState variant="control" label={t('network.assigning')} />{:else}{t('network.addFloatingIp')}{/if}
 								</button>
 							{/if}
 							<button
@@ -142,7 +143,7 @@
 								disabled={!!s.actioning}
 								class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 							>
-								{#if s.actioning === 'detach-iface-' + iface.id}<ActivityIndicator size="xs" label={t('network.removing')} />{:else}{t('network.remove')}{/if}
+								{#if s.actioning === 'detach-iface-' + iface.id}<LoadingState variant="control" label={t('network.removing')} />{:else}{t('network.remove')}{/if}
 							</button>
 						</div>
 					</div>
@@ -203,7 +204,7 @@
 										disabled={s.actioning === 'sg-' + iface.id || s.securityGroupsLoading || !!s.securityGroupsError}
 										class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 									>
-										{#if s.actioning === 'sg-' + iface.id}<ActivityIndicator size="xs" label={t('network.saving')} />{:else}{t('network.save')}{/if}
+										{#if s.actioning === 'sg-' + iface.id}<LoadingState variant="control" label={t('network.saving')} />{:else}{t('network.save')}{/if}
 									</button>
 									<button
 										onclick={() => { sgEditPortId = null; }}

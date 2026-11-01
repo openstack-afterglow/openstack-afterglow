@@ -1,7 +1,8 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { t } from '$lib/i18n/ns/network-pages';
   import { dialogFocus } from '$lib/utils/dialogFocus';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { Alert, Button, Field, TextInput } from '$lib/components/ui';
 
   let {
     open = $bindable(),
@@ -65,41 +66,25 @@
     >
       <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('networkCreate.title')}</h2>
       <div class="space-y-4">
-        <div>
-          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('networkCreate.name')}
-            <input bind:value={form.name} type="text" placeholder={t('networkCreate.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
-          </label>
-        </div>
+        <Field label={t('networkCreate.name')} for="network-create-name"><TextInput id="network-create-name" bind:value={form.name} disabled={creating} placeholder={t('networkCreate.namePlaceholder')} /></Field>
         <div class="flex items-center gap-2">
           <input type="checkbox" id="addSubnet" bind:checked={form.addSubnet} class="rounded border-line-2" />
           <label for="addSubnet" class="text-sm text-ink-2">{t('networkCreate.addSubnet')}</label>
         </div>
         {#if form.addSubnet}
-          <div>
-            <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('networkCreate.subnetName')}
-              <input bind:value={form.subnetName} type="text" placeholder={t('networkCreate.subnetNamePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
-            </label>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">CIDR
-              <input bind:value={form.cidr} type="text" placeholder="10.0.0.0/24" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1.5" />
-            </label>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('networkCreate.gateway')}
-              <input bind:value={form.gateway} type="text" placeholder="10.0.0.1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1.5" />
-            </label>
-          </div>
+          <Field label={t('networkCreate.subnetName')} for="network-create-subnet-name"><TextInput id="network-create-subnet-name" bind:value={form.subnetName} disabled={creating} placeholder={t('networkCreate.subnetNamePlaceholder')} /></Field>
+          <Field label="CIDR" for="network-create-cidr"><TextInput id="network-create-cidr" bind:value={form.cidr} disabled={creating} placeholder="10.0.0.0/24" class="font-mono" /></Field>
+          <Field label={t('networkCreate.gateway')} for="network-create-gateway"><TextInput id="network-create-gateway" bind:value={form.gateway} disabled={creating} placeholder="10.0.0.1" class="font-mono" /></Field>
           <div class="flex items-center gap-2">
             <input type="checkbox" id="dhcp" bind:checked={form.dhcp} class="rounded border-line-2" />
             <label for="dhcp" class="text-sm text-ink-2">{t('networkCreate.dhcp')}</label>
           </div>
         {/if}
       </div>
-      {#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
+      {#if error}<Alert tone="danger" class="mt-4">{error}</Alert>{/if}
       <div class="flex justify-end gap-3 mt-6">
-        <button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('networkCreate.cancel')}</button>
-        <button onclick={handleCreate} disabled={creating} aria-busy={creating} class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<ActivityIndicator size="xs" tone="ink" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}</button>
+        <Button variant="secondary" onclick={close} disabled={creating}>{t('networkCreate.cancel')}</Button>
+        <Button variant="primary" onclick={handleCreate} disabled={creating || !form.name.trim()} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}</Button>
       </div>
     </div>
   </div>

@@ -13,6 +13,27 @@ const callbacks = {
 };
 
 describe('ChatWindow', () => {
+	it('waits before offering an empty conversation and retains readable messages during refresh', async () => {
+		const view = render(ChatWindow, {
+			activePath: [], models: [], empty: true, loadingHistory: true,
+			starterPrompts: [{ label: '프로젝트 현황', prompt: '현재 프로젝트를 요약해 주세요.' }],
+			...callbacks
+		});
+		expect(view.getByRole('status')).toBeTruthy();
+		expect(view.queryByRole('heading')).toBeNull();
+		expect(view.queryByRole('button', { name: '프로젝트 현황' })).toBeNull();
+		await view.rerender({ loadingHistory: false });
+		expect(view.queryByRole('status')).toBeNull();
+		expect(view.getByRole('button', { name: '프로젝트 현황' })).toBeTruthy();
+		const saved = { id: 'saved', conversation_id: 'conversation', parent_id: null, role: 'user' as const, content: '읽고 있던 질문', created_at: null };
+		await view.rerender({ activePath: [saved], empty: false, loadingHistory: true });
+		expect(view.getByText(saved.content)).toBeTruthy();
+		expect(view.getByRole('status')).toBeTruthy();
+		await view.rerender({ loadingHistory: false });
+		expect(view.getByText(saved.content)).toBeTruthy();
+		expect(view.queryByRole('status')).toBeNull();
+	});
+
 	it('animates only fresh sends once, never loaded history, prepend, version switches or remounts', async () => {
 		const history = { id: 'history', conversation_id: 'conversation', parent_id: null, role: 'user' as const, content: '저장된 질문', created_at: null };
 		const view = render(ChatWindow, { activePath: [history], models: [], conversationKey: 'conversation', ...callbacks });
@@ -43,15 +64,12 @@ describe('ChatWindow', () => {
 		const reply = { id: 'reply', conversation_id: 'conversation', parent_id: null, role: 'assistant' as const, content: '', streaming: true, created_at: null };
 		const view = render(ChatWindow, { activePath: [reply], models: [], ...callbacks });
 		expect(view.getByRole('status').textContent).toContain('응답을 준비하는 중');
-		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
 		await view.rerender({ activePath: [{ ...reply, reasoning: '답변을 생각합니다' }], agentActivity: { label: '응답 작성 중', startedAt: new Date().toISOString() } });
 		expect(view.getByRole('status').textContent).toContain('추론 중');
 		expect(view.queryByText('응답을 준비하는 중')).toBeNull();
 		expect(view.queryByText('응답 작성 중')).toBeNull();
-		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
 		await view.rerender({ activePath: [reply] });
 		expect(view.getByRole('status').textContent).toContain('응답 작성 중');
-		expect(view.container.querySelectorAll('.activity')).toHaveLength(1);
 	});
 
 	it('shows safe ordered sources above the corresponding answer while streaming and after reload', async () => {

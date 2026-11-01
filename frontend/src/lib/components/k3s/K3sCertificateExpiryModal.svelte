@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { api } from '$lib/api/client';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { CertificateExpiryResponse, CertificateInfo } from '$lib/types/k3s';
@@ -71,7 +71,7 @@
 
 		<div class="p-5 space-y-4">
 			{#if loading}
-				<div class="text-ink-2 text-sm text-center py-6"><ActivityIndicator label={t('certificateExpiry.loading')} /></div>
+				<div class="text-ink-2 text-sm text-center py-6"><LoadingState variant="section" label={t('certificateExpiry.loading')} /></div>
 			{:else if error}
 				<p class="text-red-400 text-sm">{error}</p>
 			{:else if data}

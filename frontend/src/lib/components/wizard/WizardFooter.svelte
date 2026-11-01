@@ -1,10 +1,12 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import type { FlavorComposerController } from '$lib/stores/flavorComposer';
 
-	let { imageDisplay, flavorDisplay, step, totalSteps, canPrev, canNext, windowsUnsupported = false,
+	let { imageDisplay, flavorDisplay, step, totalSteps, canPrev, canNext, composer, windowsUnsupported = false,
 		onCancel, onPrev, onNext, onDeploy }: {
 		imageDisplay?: string | null;
 		flavorDisplay?: string | null;
@@ -12,6 +14,7 @@
 		totalSteps: number;
 		canPrev: boolean;
 		canNext: boolean;
+		composer?: FlavorComposerController;
 		windowsUnsupported?: boolean;
 		onCancel: () => void;
 		onPrev: () => void;
@@ -20,6 +23,8 @@
 	} = $props();
 
 	const isLast = $derived(step === totalSteps);
+	const composing = $derived($composer?.mode === 'compose');
+	const canSaveComposition = $derived.by(() => { $composer; return composer?.canSave() ?? false; });
 </script>
 
 {#if windowsUnsupported && step > 1 && step < totalSteps - 1}
@@ -52,7 +57,13 @@
 			>{t('footer.previous')}</button>
 		{/if}
 		{#if !isLast}
-			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onNext} disabled={!canNext}>{t('footer.next')}</Button></span>
+			<span class="order-3 md:order-none" data-tour="wizard-next">
+				{#if composing}
+					<Button onclick={() => { void composer?.save(); }} disabled={!canSaveComposition} ariaBusy={$composer?.saving}>{#if $composer?.saving}<LoadingState variant="control" label={t('composer.saving')} />{:else}{t('composer.saveContinue')}{/if}</Button>
+				{:else}
+					<Button onclick={onNext} disabled={!canNext}>{t('footer.next')}</Button>
+				{/if}
+			</span>
 		{:else}
 			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onDeploy} disabled={!canNext}>{t('footer.create')}</Button></span>
 		{/if}
@@ -64,6 +75,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 3px 10px;
     border-radius: 6px;
     background: var(--color-surface-sunken);

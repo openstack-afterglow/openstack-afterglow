@@ -3,7 +3,8 @@
 	import { onMount } from 'svelte';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { initSiteConfig, qualifyBackendAssetPaths, siteConfig } from '$lib/config/site';
-	import { ActivityIndicator, Alert, Button, Card } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Alert, Button, Card } from '$lib/components/ui';
 
 	type BrandingSlot = 'logo_light' | 'logo_dark';
 	type LogoField = 'logo_light_path' | 'logo_dark_path';
@@ -132,9 +133,9 @@
 <Card padding="lg" class="login-branding-panel">
 	<div class="panel-header">
 		<div>
-			<p class="eyebrow">{t('branding.eyebrow')}</p>
 			<h2>{t('branding.title')}</h2>
 			<p class="summary">{t('branding.summary')}</p>
+			<p class="summary">{t('branding.installationIdentity', { name: $siteConfig.site_name })}</p>
 		</div>
 		<Button variant="subtle" size="sm" onclick={loadStatus} disabled={loading || pendingSlot !== null}>{t('branding.refresh')}</Button>
 	</div>
@@ -147,8 +148,8 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading-card"><ActivityIndicator label={t('branding.loading')} /></div>
-	{:else}
+		<LoadingState variant="section" label={t('branding.loading')} />
+	{:else if status}
 		<div class="slot-grid motion-stagger">
 			{#each slots as slot}
 				{@const asset = status?.assets[slot.key] ?? null}
@@ -187,11 +188,11 @@
 								disabled={pendingSlot !== null}
 								onchange={(event) => uploadLogo(slot.key, event)}
 							/>
-							{#if pendingSlot === slot.key && pendingAction === 'upload'}<ActivityIndicator variant="upload" size="xs" />{/if}
+							{#if pendingSlot === slot.key && pendingAction === 'upload'}<LoadingState variant="control" label="" aria-hidden="true" />{/if}
 							<span>{pendingSlot === slot.key && pendingAction === 'upload' ? t('branding.uploading') : t('branding.upload')}</span>
 						</label>
 						<Button variant="ghost" size="sm" onclick={() => resetLogo(slot.key)} disabled={pendingSlot !== null || asset === null} ariaBusy={pendingSlot === slot.key && pendingAction === 'reset'}>
-							{#if pendingSlot === slot.key && pendingAction === 'reset'}<ActivityIndicator size="xs" tone="ink" />{t('branding.resetting')}{:else}{t('branding.reset')}{/if}
+							{#if pendingSlot === slot.key && pendingAction === 'reset'}<LoadingState variant="control" label="" aria-hidden="true" />{t('branding.resetting')}{:else}{t('branding.reset')}{/if}
 						</Button>
 					</div>
 				</div>
@@ -209,14 +210,6 @@
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
-	.eyebrow {
-		margin: 0 0 0.25rem;
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--admin-tone, var(--color-brand));
-	}
 	h2 {
 		margin: 0;
 		font-size: 1.05rem;
@@ -225,14 +218,7 @@
 	}
 	.summary {
 		margin: 0.35rem 0 0;
-		font-size: 0.8rem;
-		color: var(--color-ink-2);
-	}
-	.loading-card {
-		border: 1px dashed var(--color-line);
-		border-radius: 0.875rem;
-		padding: 1rem;
-		font-size: 0.85rem;
+		font-size: 0.875rem;
 		color: var(--color-ink-2);
 	}
 	.slot-grid {
@@ -260,7 +246,7 @@
 	}
 	.slot-copy p {
 		margin: 0.25rem 0 0;
-		font-size: 0.76rem;
+		font-size: 0.8125rem;
 		line-height: 1.45;
 		color: var(--color-ink-2);
 	}
@@ -269,7 +255,7 @@
 		border: 1px solid var(--color-line);
 		border-radius: 999px;
 		padding: 0.16rem 0.45rem;
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		font-weight: 700;
 		color: var(--color-ink-2);
 		white-space: nowrap;
@@ -295,14 +281,12 @@
 	}
 	.preview-dark {
 		color-scheme: dark;
-		background: radial-gradient(circle at 30% 20%, color-mix(in oklab, var(--color-warm) 15%, transparent), transparent 35%), var(--color-surface-base);
+		background: Canvas;
 	}
 	.preview-light {
 		color-scheme: light;
-		background: linear-gradient(135deg, var(--color-ink-0), var(--color-ink-1));
+		background: Canvas;
 	}
-	:global(html.light) .preview-dark { color-scheme: light; }
-	:global(html.light) .preview-light { color-scheme: dark; }
 	.asset-meta {
 		display: grid;
 		gap: 0.5rem;
@@ -310,10 +294,8 @@
 	}
 	.asset-meta div { min-width: 0; }
 	dt {
-		font-size: 0.65rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		font-size: 0.75rem;
+		font-weight: 600;
 		color: var(--color-ink-2);
 	}
 	dd {
@@ -334,18 +316,18 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.375rem;
-		min-height: 2rem;
-		border: 1px solid color-mix(in oklab, var(--admin-tone, var(--color-brand)) 38%, transparent);
-		border-radius: 0.65rem;
+		min-height: 2.25rem;
+		border: 1px solid var(--color-line-2);
+		border-radius: var(--radius-md);
 		padding: 0 0.75rem;
-		font-size: 0.78rem;
-		font-weight: 650;
-		color: var(--admin-tone, var(--color-brand));
-		background: color-mix(in oklab, var(--admin-tone, var(--color-brand)) 9%, transparent);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-ink-1);
+		background: var(--color-surface-sunken);
 		cursor: pointer;
 	}
 	.upload-label:hover {
-		background: color-mix(in oklab, var(--admin-tone, var(--color-brand)) 15%, transparent);
+		background: var(--color-surface-selected);
 	}
 	.upload-label[aria-disabled='true'] {
 		opacity: 0.55;
@@ -358,7 +340,9 @@
 		opacity: 0;
 		pointer-events: none;
 	}
-	@media (max-width: 900px) {
+	.upload-label:focus-within { outline: none; box-shadow: var(--focus-ring); }
+	@media (max-width: 767px) { .upload-label { min-height: 2.75rem; } }
+	@media (max-width: 767px) {
 		.slot-grid { grid-template-columns: 1fr; }
 		.panel-header { flex-direction: column; }
 	}

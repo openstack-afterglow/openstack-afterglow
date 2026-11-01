@@ -3,7 +3,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/domain-auth';
 
 	// Creates a password account from a verified onboarding link. Clear password
@@ -70,7 +70,7 @@
 	</Field>
 	<Button type="submit" size="lg" disabled={submitting || disabled} ariaBusy={submitting}>{submitLabel}</Button>
 	{#if submitting}
-		<ActivityIndicator label={t('onboarding.processing')} class="onboarding-activity motion-fade" />
+		<LoadingState variant="section" label={t('onboarding.processing')} class="onboarding-activity motion-fade"  />
 	{/if}
 </form>
 

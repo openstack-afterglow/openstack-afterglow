@@ -14,7 +14,7 @@ vi.mock('$lib/stores/instanceDetailController.svelte', () => ({
 
 import ResizeModal from '../ResizeModal.svelte';
 
-function renderModal(overrides: Partial<InstanceDetailController> = {}) {
+function renderModal(overrides: Partial<InstanceDetailController> = {}, adminMode = false) {
 	const doResize = vi.fn().mockResolvedValue(true);
 	mockControllerRef.current = {
 		resizeFlavors: [
@@ -36,6 +36,7 @@ function renderModal(overrides: Partial<InstanceDetailController> = {}) {
 		...render(ResizeModal, {
 			props: {
 				preselectFlavorId: 'flavor-2',
+				adminMode,
 				onClose,
 			},
 		}),
@@ -48,6 +49,33 @@ beforeEach(() => {
 
 describe('ResizeModal', () => {
 
+	it('keeps equal CPU display labels distinct and compares current flavor by native identity', async () => {
+		const { doResize } = renderModal({
+			instance: { id: 'vm', status: 'SHUTOFF', flavor_id: null, flavor_name: 'm1.small', flavor_display_name: 'cpu.2c_1.5g' } as Instance,
+			resizeFlavors: [
+				{ id: 'flavor-1', name: 'm1.small', display_name: 'cpu.2c_1.5g', vcpus: 2, ram: 1536, disk: 20, is_public: true },
+				{ id: 'flavor-2', name: 'dedicated-small', display_name: 'cpu.2c_1.5g', vcpus: 2, ram: 1536, disk: 40, is_public: false },
+				{ id: 'gpu', name: 'gpu.render', display_name: null, vcpus: 4, ram: 8192, disk: 40, is_public: true },
+			],
+		});
+		const [current, target] = screen.getAllByRole('option', { name: /2 vCPU · 1\.5 GiB RAM/ }) as HTMLOptionElement[];
+		expect(current.disabled).toBe(true);
+		expect(target.disabled).toBe(false);
+		expect(target.textContent).toContain('1.5 GiB');
+		expect(target.value).toBe('flavor-2');
+		expect(screen.getByRole('option', { name: '4 vCPU · 8 GiB RAM' })).toBeTruthy();
+		expect(screen.queryByText(/dedicated-small|m1\.small|gpu\.render/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '리사이즈' }));
+		await waitFor(() => expect(doResize).toHaveBeenCalledWith('flavor-2'));
+	});
+	it('retains native name and ID disambiguation only on the administrator surface', () => {
+		renderModal({ resizeFlavors: [
+			{ id: 'first-native', name: 'm1.small', display_name: 'cpu.2c_4g', vcpus: 2, ram: 4096, disk: 20, is_public: true },
+			{ id: 'second-native', name: 'private-dedicated', display_name: 'cpu.2c_4g', vcpus: 2, ram: 4096, disk: 40, is_public: false },
+		] }, true);
+		expect(screen.getByRole('option', { name: /m1\.small · first-native/ })).toBeTruthy();
+		expect(screen.getByRole('option', { name: /private-dedicated · second-native/ })).toBeTruthy();
+	});
 	it('closes on a successful controller-confirmed resize', async () => {
 		const { doResize, onClose } = renderModal();
 

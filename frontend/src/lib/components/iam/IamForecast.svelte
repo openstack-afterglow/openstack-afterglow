@@ -7,7 +7,7 @@
 	import { resourceLabel, observationLabel } from './workspaceLabels';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
@@ -43,7 +43,7 @@
 	<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('monitoringForecast')}</h2><Button variant="secondary" disabled={blocked || loading} onclick={load}>{t('reload')}</Button></div>
 	<p class="text-sm text-ink-2">{t('monitoringForecastHelp')}</p>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={data ? 'inline' : 'section'} label={t('loading')}  />{/if}
 	{#if data}
 		{@const snapshot = data}
 		<p class="text-xs text-ink-2">{t('monitoringForecastWindow', { window: data.window_days, horizon: data.horizon_days })} · {t('observedAt')}: {data.observed_at} · <code>{data.source}</code></p>

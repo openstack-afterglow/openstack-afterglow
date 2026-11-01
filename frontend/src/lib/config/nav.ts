@@ -8,7 +8,7 @@ export const navIcons = {
   instances: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2',
   image: 'M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4M14 8h.01',
   volume: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
-  backup: 'M5 8a7 7 0 1 1-1 5M5 3v5H1M8 10v7h8v-7H8z',
+  backup: 'M3 3h18v5H3zM5 8v13h14V8M10 12h4',
   snapshot: 'M3 8h4l2-3h6l2 3h4v12H3V8zM15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   folder: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
   network: 'M9 2h6v6H9zM2 16h6v6H2zM16 16h6v6h-6zM12 8v4M5 16v-4h14v4',
@@ -84,6 +84,19 @@ export const documentationNavItem: NavItem = withLabel('items.documentation', {
   href: '/docs', icon: navIcons.document, service: null, topLevel: true,
 });
 
+export const accountNavSection: NavSection = withLabel('sections.account', {
+  prefix: '/dashboard/account',
+  icon: navIcons.user,
+  items: [
+    withLabel('items.accountProfile', { href: '/dashboard/account', icon: navIcons.user, service: null }),
+    withLabel('items.accountSshKeys', { href: '/dashboard/account/keypairs', icon: navIcons.key, service: null }),
+    withLabel('items.accountBeta', { href: '/dashboard/account/beta', icon: navIcons.sliders, service: null }),
+    withLabel('items.accountSessions', { href: '/dashboard/account/sessions', icon: navIcons.monitor, service: null }),
+    { label: 'MCP', href: '/dashboard/account/mcp', icon: navIcons.tools, service: null },
+    withLabel('items.activity', { href: '/dashboard/account/activity', icon: navIcons.activity, service: null }),
+  ],
+});
+
 
 export const userNavSections: NavSection[] = [
   withLabel('sections.compute', {
@@ -115,7 +128,7 @@ export const userNavSections: NavSection[] = [
       withLabel('items.routers', { href: '/dashboard/network/routers', icon: navIcons.router, service: null }),
       withLabel('items.loadBalancers', { href: '/dashboard/network/loadbalancers', icon: navIcons.balance, service: null }),
       withLabel('items.securityGroups', { href: '/dashboard/network/security-groups', icon: navIcons.shield, service: null }),
-      { label: 'Waygate', href: '/dashboard/network/waygate', icon: navIcons.tunnel, service: 'waygate' },
+      withLabel('items.waygate', { href: '/dashboard/network/waygate', icon: navIcons.tunnel, service: 'waygate' }),
     ],
   }),
   withLabel('sections.fileStorage', {
@@ -130,14 +143,13 @@ export const userNavSections: NavSection[] = [
       withLabel('items.securityServices', { href: '/dashboard/file-storage/security-services', icon: navIcons.shield, service: null, beta: 'fileStorageSecurityServices' as const }),
     ],
   }),
-  {
-    label: 'Palimpsest',
+  withLabel('sections.palimpsest', {
     prefix: '/palimpsest',
     icon: navIcons.layers,
     items: [
       withLabel('items.projectPackages', { href: '/palimpsest/packages', icon: navIcons.layers, service: null }),
     ],
-  },
+  }),
   withLabel('sections.containers', {
     prefix: '/dashboard/containers',
     extraPrefixes: ['/dashboard/drover'],
@@ -146,7 +158,7 @@ export const userNavSections: NavSection[] = [
     items: [
       withLabel('items.k8sClusters', { href: '/dashboard/containers/clusters', icon: navIcons.cluster, service: 'magnum' }),
       withLabel('items.containers', { href: '/dashboard/containers/instances', icon: navIcons.container, service: 'zun' }),
-      { label: 'Drover', href: '/dashboard/drover', icon: navIcons.layers, service: 'k3s' },
+      withLabel('items.drover', { href: '/dashboard/drover', icon: navIcons.cluster, service: 'k3s' }),
     ],
   }),
   withLabel('sections.database', {
@@ -183,7 +195,7 @@ export const userNavSections: NavSection[] = [
     icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
     service: 'chat',
     items: [
-      { label: 'Lumen', href: '/dashboard/chat', icon: navIcons.chat, service: 'chat' },
+      withLabel('items.lumen', { href: '/dashboard/chat', icon: navIcons.chat, service: 'chat' }),
       withLabel('items.imageStudio', { href: '/dashboard/chat/images', icon: navIcons.image, service: 'chat' }),
       withLabel('items.audioStudio', { href: '/dashboard/chat/audio', icon: navIcons.audio, service: 'chat' })
     ],
@@ -197,6 +209,7 @@ export const userNavSections: NavSection[] = [
       withLabel('items.iamProjects', { href: '/dashboard/iam/projects', icon: navIcons.folder, service: null, capability: 'projectManagement' as const }),
     ],
   }),
+  accountNavSection,
 ];
 
 export const adminNavSections: NavSection[] = [
@@ -232,7 +245,7 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.routers', { href: '/admin/routers', icon: navIcons.router, service: null }),
       withLabel('items.loadBalancers', { href: '/admin/loadbalancers', icon: navIcons.balance, service: null }),
       withLabel('items.ports', { href: '/admin/ports', icon: navIcons.cpu, service: null }),
-      { label: 'Waygate', href: '/admin/waygate', icon: navIcons.tunnel, service: 'waygate' },
+      withLabel('items.waygate', { href: '/admin/waygate', icon: navIcons.tunnel, service: 'waygate' }),
     ],
   }),
   withLabel('sections.containers', {
@@ -240,12 +253,11 @@ export const adminNavSections: NavSection[] = [
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     items: [
       withLabel('items.allContainers', { href: '/admin/containers', icon: navIcons.container, service: 'zun' }),
-      { label: 'Drover', href: '/admin/drover', icon: navIcons.layers, service: 'k3s' },
+      withLabel('items.drover', { href: '/admin/drover', icon: navIcons.cluster, service: 'k3s' }),
       withLabel('items.clusterTemplates', { href: '/admin/drover/templates', icon: navIcons.templates, service: 'k3s' }),
     ],
   }),
-  {
-    label: 'Lumen',
+  withLabel('sections.lumen', {
     prefix: '/admin/chat',
     icon: 'M8 10h8M8 14h5M21 12a9 9 0 01-9 9H3l2.4-4.8A9 9 0 1121 12z',
     items: [
@@ -255,15 +267,14 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.modelSettings', { href: '/admin/chat/models', icon: navIcons.sliders, service: 'chat' }),
       withLabel('items.toolSettings', { href: '/admin/chat/tools', icon: navIcons.tools, service: 'chat' }),
     ],
-  },
-  {
-    label: 'Palimpsest',
+  }),
+  withLabel('sections.palimpsest', {
     prefix: '/admin/libraries',
     icon: 'M12 3L3 8l9 5 9-5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5',
     items: [
-      { label: 'Palimpsest', href: '/admin/libraries', icon: navIcons.layers, service: null, topLevel: true },
+      withLabel('sections.palimpsest', { href: '/admin/libraries', icon: navIcons.layers, service: null, topLevel: true }),
     ],
-  },
+  }),
   withLabel('sections.keyManager', {
     prefix: '/admin/secrets',
     icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z',

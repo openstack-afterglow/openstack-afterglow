@@ -64,9 +64,7 @@
 							<path class="motion-draw" pathLength="1" d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
 						</svg>
 					{:else if state === 'active'}
-						<span class="node-ripple"></span>
-						<span class="node-arc"></span>
-						<span class="node-core"></span>
+						<span class="node-active" aria-hidden="true"></span>
 					{:else}
 						<span class="node-index">{index + 1}</span>
 					{/if}
@@ -74,7 +72,6 @@
 				{#if index < steps.length - 1}
 					<span class="connector">
 						<span class="connector-fill"></span>
-						{#if state === 'active'}<span class="connector-packet"></span>{/if}
 					</span>
 				{/if}
 			</span>
@@ -137,34 +134,15 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.node-icon { width: 0.875rem; height: 0.875rem; }
+	.node-active { font-family: var(--font-mono); font-size: 0.875rem; font-weight: 600; line-height: 1; color: var(--color-warm); animation: step-active-blink 1.12s steps(2, end) infinite; }
+	.node-active::before { content: '›'; }
+	@keyframes step-active-blink { 50% { opacity: 0.4; } }
+	@media (prefers-reduced-motion: reduce) { .node-active { animation: none; } }
 
 	[data-state='active'] .node {
 		border-style: solid;
 		border-color: var(--step-active);
 		background: color-mix(in oklab, var(--step-active) 14%, var(--color-surface-base));
-	}
-	.node-core {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		background: var(--step-active);
-		animation: motion-breathe var(--motion-duration-status-pulse) var(--motion-ease-in-out) infinite;
-	}
-	.node-arc {
-		position: absolute;
-		inset: -4px;
-		border: 2px solid transparent;
-		border-top-color: var(--step-active);
-		border-radius: 50%;
-		animation: motion-spin var(--motion-duration-spin) linear infinite;
-	}
-	.node-ripple {
-		position: absolute;
-		inset: -1.5px;
-		border: 1.5px solid var(--step-active);
-		border-radius: 50%;
-		opacity: 0;
-		animation: motion-ripple var(--motion-duration-status-pulse) var(--motion-ease-out) infinite;
 	}
 	[data-state='done'] .node {
 		border-style: solid;
@@ -198,23 +176,6 @@
 		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
 	}
 	[data-state='done'] .connector-fill { transform: scaleY(1); }
-	/* Work heading toward the next step: a packet travels down the connector, then rests out of sight. */
-	.connector-packet {
-		position: absolute;
-		inset: 0;
-		opacity: 0;
-		animation: motion-travel-y calc(var(--motion-duration-shimmer) * 0.75) var(--motion-ease-in-out) infinite;
-	}
-	.connector-packet::before {
-		content: '';
-		position: absolute;
-		top: -0.75rem;
-		left: 0;
-		width: 2px;
-		height: 0.75rem;
-		border-radius: 999px;
-		background: linear-gradient(180deg, transparent, var(--step-active));
-	}
 
 	.body {
 		display: grid;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy } from 'svelte';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { Alert, Button, Field, FormModal, TextInput } from '$lib/components/ui';
@@ -111,7 +112,7 @@
 			disabled={submitting || !s.canChangePassword || s.instance?.status !== 'ACTIVE' || s.passwordPrecheckLoading || !s.passwordPrecheck?.supported || !newPassword || !confirmPassword}
 			ariaBusy={submitting}
 		>
-			{submitting ? t('password.changing') : t('password.submit')}
+			{#if submitting}<LoadingState variant="control" label="" />{/if}{submitting ? t('password.changing') : t('password.submit')}
 		</Button>
 	{/snippet}
 </FormModal>

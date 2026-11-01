@@ -8,6 +8,9 @@
 		disabled?: boolean;
 		required?: boolean;
 		maxlength?: number;
+		step?: number;
+		min?: number;
+		max?: number;
 		autocomplete?: HTMLInputAttributes['autocomplete'];
 		inputmode?: 'text' | 'decimal' | 'numeric' | 'search' | 'email' | 'url' | 'tel';
 		element?: HTMLInputElement | null;
@@ -27,6 +30,9 @@
 		disabled = false,
 		required = false,
 		maxlength,
+		step,
+		min,
+		max,
 		autocomplete,
 		inputmode,
 		ariaLabel,
@@ -49,6 +55,9 @@
 	{disabled}
 	{required}
 	{maxlength}
+	{step}
+	{min}
+	{max}
 	{autocomplete}
 	{inputmode}
 	aria-label={ariaLabel}
@@ -64,10 +73,11 @@
 		width: 100%;
 		border-radius: var(--radius-md);
 		border: 1px solid var(--color-line-2);
-		background: var(--color-surface-sunken);
+		background: var(--color-surface-input);
 		color: var(--color-ink-0);
-		padding: 0.5rem 0.75rem;
-		font-size: 0.875rem;
+		min-height: var(--control-height);
+		padding: 0.375rem 0.75rem;
+		font-size: var(--type-body);
 		line-height: 1.4;
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 	}
@@ -78,7 +88,12 @@
 		box-shadow: var(--focus-ring);
 	}
 	.control:disabled {
-		opacity: 0.55;
+		background: var(--color-surface-input-disabled);
+		border-color: var(--color-line);
+		color: var(--color-ink-2);
 		cursor: not-allowed;
+	}
+	@media (max-width: 767px), (pointer: coarse) {
+		.control { min-height: var(--control-touch-height); }
 	}
 </style>

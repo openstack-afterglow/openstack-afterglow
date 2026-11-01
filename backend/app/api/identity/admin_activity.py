@@ -42,10 +42,13 @@ def _event_filters(
     resource_id: str | None = Query(None, max_length=128),
     resource_type: str | None = Query(None, max_length=32),
     action: str | None = Query(None, max_length=48),
-    status: str | None = Query(None, pattern="^(started|success|failed)$"),
+    status: str | None = Query(None, pattern="^(started|success|failed|observed)$"),
     service: str | None = Query(None, max_length=32),
     source: str | None = Query(None, max_length=16),
     request_id: str | None = Query(None, max_length=64),
+    interaction_id: str | None = Query(
+        None, pattern="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    ),
     page: str | None = Query(None, max_length=255),
     from_at: datetime | None = Query(None),
     to_at: datetime | None = Query(None),
@@ -68,6 +71,7 @@ def _event_filters(
         "service": service,
         "source": source,
         "request_id": request_id,
+        "interaction_id": interaction_id.lower() if interaction_id else None,
         "page": page,
         "from_at": from_at,
         "to_at": to_at,
@@ -95,13 +99,13 @@ async def global_event_stats(filters: dict = Depends(_event_filters)) -> dict:
 
 
 @router.get("/events/{event_id}", dependencies=[Depends(require_admin)])
-async def get_global_event(event_id: int) -> dict:
+async def get_global_event(event_id: int, scope: AdminResourceScope = Depends(admin_resource_scope)) -> dict:
     if not 1 <= event_id <= 9223372036854775807:
         raise HTTPException(status_code=422, detail="event_id is outside the valid range")
     try:
         event = await svc.get_event(event_id)
     except (svc.ActivityDatabaseUnavailable, OperationalError, InterfaceError) as exc:
         raise HTTPException(status_code=503, detail="Activity database is unavailable") from exc
-    if event is None:
+    if event is None or not scope.includes(event):
         raise HTTPException(status_code=404, detail="Event not found")
     return event

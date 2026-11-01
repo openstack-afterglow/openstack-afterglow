@@ -4,7 +4,7 @@
 	import { api as baseApi, ApiError } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
 	import { Alert, Button, EmptyState, PageHeader, PageShell, Pagination, TableShell } from '$lib/components/ui';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -40,7 +40,7 @@
 		{#snippet actions()}<Button variant="secondary" size="sm" disabled={loading} onclick={load}>{t('subnetDetailPage.refresh')}</Button>{/snippet}
 	</PageHeader>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if loading}<LoadingSkeleton variant="table" rows={5} />
+	{#if loading}<LoadingState variant="surface" />
 	{:else if !error && subnets.length === 0}<EmptyState headline={t('subnetSection.empty')} />
 	{:else if subnets.length > 0}
 		<ResponsiveTable>

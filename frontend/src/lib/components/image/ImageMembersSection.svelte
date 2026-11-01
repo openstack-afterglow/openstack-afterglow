@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
 
 	const s = useImageDetailController();
@@ -19,7 +19,7 @@
 			onkeydown={(e) => e.key === 'Enter' && s.addMember()}
 		/>
 		<Button onclick={() => s.addMember()} disabled={s.addingMember || !s.newMemberId.trim()} size="sm">
-			{#if s.addingMember}<ActivityIndicator size="xs" label={t('membersSection.adding')} />{:else}{t('membersSection.add')}{/if}
+			{#if s.addingMember}<LoadingState variant="control" label={t('membersSection.adding')} />{:else}{t('membersSection.add')}{/if}
 		</Button>
 	</div>
 
@@ -28,7 +28,7 @@
 	{/if}
 
 	{#if s.loadingMembers}
-		<ActivityIndicator label={t('membersSection.loading')} />
+		<LoadingState variant="section" label={t('membersSection.loading')} />
 	{:else if s.members.length === 0}
 		<p class="text-ink-2 text-xs">{t('membersSection.empty')}</p>
 	{:else}
@@ -41,7 +41,7 @@
 						{#snippet actions()}
 							<button onclick={() => s.removeMember(m.member_id)} disabled={s.removingMember === m.member_id}
 								class="min-h-11 text-xs px-2 py-1 text-state-danger-text disabled:text-ink-3 transition-colors">
-								{#if s.removingMember === m.member_id}<ActivityIndicator size="xs" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
+								{#if s.removingMember === m.member_id}<LoadingState variant="control" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
 							</button>
 						{/snippet}
 					</CompactResourceCard>
@@ -59,7 +59,7 @@
 						disabled={s.removingMember === m.member_id}
 						class="text-xs px-2 py-1 text-red-400 hover:text-red-300 disabled:text-ink-3 transition-colors"
 					>
-						{#if s.removingMember === m.member_id}<ActivityIndicator size="xs" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
+						{#if s.removingMember === m.member_id}<LoadingState variant="control" label={t('membersSection.deleting')} />{:else}{t('membersSection.delete')}{/if}
 					</button>
 				</div>
 			{/each}

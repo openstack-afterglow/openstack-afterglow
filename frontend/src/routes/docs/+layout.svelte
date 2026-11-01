@@ -8,9 +8,10 @@
 	import { siteConfig } from '$lib/config/site';
 	import { resolveLandingLogoPath } from '$lib/config/brandAssets';
 	import { auth, isLoggedIn } from '$lib/stores/auth';
-	import { theme, resolvedTheme } from '$lib/stores/theme';
+	import { resolvedTheme } from '$lib/stores/theme';
 	import { docsHref, docsLanguageHref, docsMessages } from '$lib/docs/locales';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
+	import ThemeSelect from '$lib/components/ThemeSelect.svelte';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 	const locale = $derived(data.docsLocale);
@@ -29,12 +30,6 @@
 	const consoleHref = $derived($page.data.mockup?.active ? $page.data.mockup.homePath : ($isLoggedIn ? ($auth.projectId ? '/dashboard' : '/select-project') : '/login'));
 	const logoPath = $derived(resolveLandingLogoPath($siteConfig, themeReady ? $resolvedTheme : 'dark'));
 	const currentSlug = $derived($page.params.slug);
-	const themeLabel = $derived($theme === 'system' ? messages.themeSystem : $theme === 'dark' ? messages.themeDark : messages.themeLight);
-	const themeIcons = {
-		system: 'M3 4h18v13H3zM8 21h8M12 17v4',
-		dark: 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z',
-		light: 'M12 3v1m0 16v1M3 12h1m16 0h1M5.6 5.6l.7.7m11.4 11.4.7.7M5.6 18.4l.7-.7m11.4-11.4.7-.7M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
-	};
 </script>
 
 
@@ -64,9 +59,7 @@
 			<div class="header-actions">
 				<a class="home-link" href="/">{messages.home}</a>
 				<LocaleSelect id="docs-locale" variant="labelled" {locale} label={messages.language} href={(language) => docsLanguageHref($page.url, language)} bind:open={languageOpen} />
-				<Button variant="ghost" size="icon" class="min-h-11 min-w-11" ariaLabel={`${themeLabel}, ${messages.themeChange}`} title={`${themeLabel}, ${messages.themeChange}`} onclick={() => theme.toggle()}>
-					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d={themeIcons[$theme]} /></svg>
-				</Button>
+				<ThemeSelect id="docs-theme" {locale} />
 				<Button variant="primary" href={consoleHref} ariaLabel={consoleLabel} title={consoleLabel} class="min-h-11 min-w-11">
 					<svg class="console-icon size-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 3H4v18h4M12 8l4 4-4 4M8 12h12" /></svg>
 					<span class="console-label">{consoleLabel}</span>

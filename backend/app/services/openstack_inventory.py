@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
-def _fetch_hypervisors_raw(conn: openstack.connection.Connection) -> list[dict]:
+def _fetch_hypervisors_raw(conn: openstack.connection.Connection, *, strict: bool = False) -> list[dict]:
     """Nova microversion 2.53으로 하이퍼바이저 raw JSON 조회.
     2.88+ 에서 vcpus/memory_mb 등 필드가 deprecated되므로 2.53을 명시적으로 사용."""
     endpoint = conn.compute.get_endpoint()
@@ -23,7 +23,11 @@ def _fetch_hypervisors_raw(conn: openstack.connection.Connection) -> list[dict]:
         f"{endpoint}/os-hypervisors/detail",
         headers={"OpenStack-API-Version": "compute 2.53"},
     )
-    return resp.json().get("hypervisors", [])
+    resp.raise_for_status()
+    data = resp.json().get("hypervisors", None if strict else [])
+    if not isinstance(data, list):
+        raise RuntimeError("Nova hypervisor inventory response is invalid")
+    return data
 
 
 def list_servers_complete(conn, filters: dict | None = None) -> list[dict]:

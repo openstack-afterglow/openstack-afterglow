@@ -1,9 +1,9 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { Alert, Button, Field, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
+	import { Alert, Button, Field, Pagination, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { filterNetworks, type NetworkFlagFilter } from '$lib/components/admin/networks/networkList';
 	import { goto } from '$app/navigation';
@@ -33,11 +33,15 @@
 	let tsError = $state('');
 	let hasInventory = $state(false);
 	let ownerNames = $state<ReadonlyMap<string, string>>(new Map());
+	let ownerDomains = $state<ReadonlyMap<string, string>>(new Map());
 	let ownerWarning = $state(false);
 	let search = $state('');
 	let external = $state<NetworkFlagFilter>('all');
 	let shared = $state<NetworkFlagFilter>('all');
 	let internal = $state<NetworkFlagFilter>('all');
+	let displayPage = $state(1);
+	let pageSize = $state(20);
+	let analyticsOpen = $state(false);
 	let requestGeneration = 0;
 	let timeseriesGeneration = 0;
 	let scopeGeneration = 0;
@@ -45,6 +49,10 @@
 		external: t('adminNetworkTable.external'), shared: t('adminNetworkTable.shared'), internal: t('adminNetworkTable.internal'),
 	}));
 	const hasFilters = $derived(Boolean(search || external !== 'all' || shared !== 'all' || internal !== 'all'));
+	const pageCount = $derived(Math.max(1, Math.ceil(filteredNetworks.length / pageSize)));
+	const visibleNetworks = $derived(filteredNetworks.slice((Math.min(displayPage, pageCount) - 1) * pageSize, Math.min(displayPage, pageCount) * pageSize));
+	$effect(() => { search; external; shared; internal; pageSize; displayPage = 1; });
+	$effect(() => { if (displayPage > pageCount) displayPage = pageCount; });
 
 	function resetFilters() {
 		search = '';
@@ -68,13 +76,14 @@
 			hasInventory = false;
 			error = tsError = '';
 			ownerNames = new Map();
+			ownerDomains = new Map();
 			ownerWarning = false;
 			showCreate = false;
 			editNet = deleteNet = null;
 			loading = tsLoading = false;
 			if (tok && pathname === '/admin/networks') {
 				void loadNetworks();
-				void loadTimeseries(tsRange);
+				if (!api.scoped) void loadTimeseries(tsRange);
 				void loadOwnerNames(scope, scopeGeneration, tok, project, user);
 			}
 		});
@@ -82,9 +91,10 @@
 	});
 
 	async function loadOwnerNames(scope: string, generation: number, tok: string, project?: string, user?: string) {
-		const result = await projectNames.loadResult(tok, project, user);
+		const result = await projectNames.loadMetadata(tok, project, user);
 		if (scope !== scopeKey() || generation !== scopeGeneration) return;
-		ownerNames = result.names;
+		ownerNames = new Map(result.projects.map((project) => [project.id, project.name]));
+		ownerDomains = new Map(result.projects.filter((project) => project.domain_id).map((project) => [project.id, project.domain_id!]));
 		ownerWarning = result.failed;
 	}
 
@@ -116,7 +126,7 @@
 		}
 	}
 
-	async function loadTimeseries(range: string, opts?: { background?: boolean }) {
+	async function loadTimeseries(range: string, opts?: { background?: boolean; force?: boolean }) {
 		if (!token || $page.url.pathname !== '/admin/networks') return;
 		const generation = ++timeseriesGeneration;
 		const scope = scopeKey();
@@ -126,7 +136,7 @@
 		if (!opts?.background) tsLoading = true;
 		tsError = '';
 		try {
-			const data = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/networks?range=${range}`, tok, project);
+			const data = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/networks?range=${range}`, tok, project, { refresh: opts?.force ?? false });
 			if (owns()) tsData = data;
 		} catch {
 			if (owns()) tsError = t('networksPage.error.timeseriesFailed');
@@ -186,58 +196,52 @@
 		}
 	}
 
+	async function refreshAll(force = false) {
+		await Promise.allSettled([
+			loadNetworks(force),
+			...(!api.scoped ? [loadTimeseries(tsRange, { background: true, force })] : []),
+		]);
+	}
+
 	const ar = createAutoRefresh(
-		async () => { await Promise.allSettled([loadNetworks(), loadTimeseries(tsRange, { background: true })]); },
+		() => refreshAll(),
 		{ storageKey: 'admin-networks', defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false }
 	);
 
 </script>
 
 <PageShell>
-	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={t('networksPage.title')}>
+	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={hasInventory ? `${t('networksPage.title')} (${networks.length})` : t('networksPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('networksPage.actions.create')}</button>
-			<Button href="/admin/subnets" variant="secondary" size="sm">{t('subnetSection.title')}</Button>
-			<AutoRefreshControl
-				bind:active={ar.active}
-				bind:intervalSeconds={ar.intervalSeconds}
-				intervalOptions={ar.intervalOptions}
-				refreshing={loading}
-				onManualRefresh={() => loadNetworks(true)}
-			/>
+			<Button variant="primary" onclick={() => { showCreate = true; }}>{t('networksPage.actions.create')}</Button>
 		{/snippet}
 	</PageHeader>
-
-	{#if !api.scoped}
-	<AdminNetworkTimeseries
-		data={tsData}
-		loading={tsLoading}
-		range={tsRange}
-		onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }}
-	/>
-
-	{#if tsError}<Alert tone="warning" title={t('networksPage.timeseriesWarning')}>{tsError}</Alert>{/if}
-	{/if}
+	<div class="flex flex-wrap items-center gap-3 text-[13px] text-ink-2 mb-3" aria-live="polite">
+		{#if loading && hasInventory}<LoadingState variant="inline" label={t('networksPage.loading')} />{/if}
+		<span>{api.scoped ? [api.filter.domainId, api.filter.projectId ? ownerNames.get(api.filter.projectId) || api.filter.projectId : ''].filter(Boolean).join(' / ') : t('portsFilterBar.allProjects')}</span>
+		<span>{hasInventory ? t('networksPage.results', { shown: filteredNetworks.length, total: networks.length }) : loading ? t('networksPage.loading') : t('networksPage.resultsUnavailable')}</span>
+		<Button href="/admin/subnets" variant="ghost" size="sm">{t('subnetSection.title')}</Button>
+	</div>
 
 	<ResourceToolbar label={t('networksPage.filters.label')} class="mb-3">
-		<Field label={t('networksPage.filters.search')} for="network-search" class="w-full md:flex-1 md:min-w-64">
+		<Field label={t('networksPage.filters.search')} for="network-search" class="min-w-0 w-full md:flex-1 md:basis-64">
 			<TextInput id="network-search" type="search" bind:value={search} placeholder={t('networksPage.filters.searchPlaceholder')} />
 		</Field>
-		<Field label={t('adminNetworkTable.external')} for="network-external" class="w-full sm:w-auto">
+		<Field label={t('adminNetworkTable.external')} for="network-external" class="min-w-0 max-w-full w-full md:w-auto">
 			<SelectInput id="network-external" bind:value={() => external, (value) => external = value as NetworkFlagFilter}>
 				<option value="all">{t('networksPage.filters.all')}</option>
 				<option value="yes">{t('networksPage.filters.yes')}</option>
 				<option value="no">{t('networksPage.filters.no')}</option>
 			</SelectInput>
 		</Field>
-		<Field label={t('adminNetworkTable.shared')} for="network-shared" class="w-full sm:w-auto">
+		<Field label={t('adminNetworkTable.shared')} for="network-shared" class="min-w-0 max-w-full w-full md:w-auto">
 			<SelectInput id="network-shared" bind:value={() => shared, (value) => shared = value as NetworkFlagFilter}>
 				<option value="all">{t('networksPage.filters.all')}</option>
 				<option value="yes">{t('networksPage.filters.yes')}</option>
 				<option value="no">{t('networksPage.filters.no')}</option>
 			</SelectInput>
 		</Field>
-		<Field label={t('adminNetworkTable.internal')} for="network-internal" class="w-full sm:w-auto">
+		<Field label={t('adminNetworkTable.internal')} for="network-internal" class="min-w-0 max-w-full w-full md:w-auto">
 			<SelectInput id="network-internal" bind:value={() => internal, (value) => internal = value as NetworkFlagFilter}>
 				<option value="all">{t('networksPage.filters.all')}</option>
 				<option value="yes">{t('networksPage.filters.yes')}</option>
@@ -245,30 +249,42 @@
 			</SelectInput>
 		</Field>
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={resetFilters}>{t('networksPage.filters.reset')}</Button>
+		{#snippet actions()}
+			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading} onManualRefresh={() => refreshAll(true)} />
+		{/snippet}
 	</ResourceToolbar>
-	<div class="flex items-center gap-2 text-xs text-ink-2 mb-3" aria-live="polite">
-		{#if loading}<ActivityIndicator size="xs" label={t('networksPage.loading')} />{/if}
-		{#if hasInventory}
-			<span>{t('networksPage.results', { shown: filteredNetworks.length, total: networks.length })}</span>
-		{:else}
-			<span>{loading ? t('networksPage.loading') : t('networksPage.resultsUnavailable')}</span>
-		{/if}
-	</div>
 	{#if error}
 		<Alert tone="danger" title={t('networksPage.error.loadTitle')}>
 			{error}
-			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => loadNetworks(true)}>{t('networksPage.retry')}</Button>{/snippet}
+			{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => refreshAll(true)}>{t('networksPage.retry')}</Button>{/snippet}
 		</Alert>
 	{/if}
 	{#if ownerWarning}<Alert tone="warning" title={t('networksPage.ownerWarning')}>{t('networksPage.ownerWarningBody')}</Alert>{/if}
+	{#if loading && !hasInventory}
+		<LoadingState variant="surface" label={t('networksPage.loading')} />
+	{:else}
 	<AdminNetworkTable
-		networks={filteredNetworks}
+		networks={visibleNetworks}
 		{ownerNames}
+		{ownerDomains}
 		emptyMessage={hasInventory ? (hasFilters ? t('networksPage.noMatches') : t('networksPage.empty')) : ''}
 		onRowClick={(id) => goto(`/admin/networks/${id}`)}
 		onEdit={(n) => { editNet = n; }}
 		onDelete={(n) => { deleteNet = n; }}
 	/>
+	<div class="flex flex-wrap items-end justify-between gap-3">
+		<Field label={t('list.pageSize')} for="admin-networks-page-size">
+			<SelectInput id="admin-networks-page-size" bind:value={() => String(pageSize), (value) => pageSize = Number(value)}>{#each [20, 50, 100] as size}<option value={size}>{size}</option>{/each}</SelectInput>
+		</Field>
+		<Pagination class="!mt-0" page={displayPage} totalPages={pageCount} hasPrev={displayPage > 1} hasNext={displayPage < pageCount} onPrev={() => displayPage--} onNext={() => displayPage++} />
+	</div>
+	{/if}
+	{#if !api.scoped}
+		<details class="mt-4 rounded-lg border border-line bg-surface-base" bind:open={analyticsOpen}>
+			<summary class="cursor-pointer px-4 py-3 text-sm font-medium text-ink-1">{t('list.analytics')}</summary>
+			{#if analyticsOpen}<div class="px-4 pb-4"><AdminNetworkTimeseries data={tsData} loading={tsLoading} range={tsRange} onRangeChange={(r) => { tsRange = r; loadTimeseries(r); }} />{#if tsError}<Alert tone="warning" title={t('networksPage.timeseriesWarning')}>{tsError}</Alert>{/if}</div>{/if}
+		</details>
+	{:else}<p class="mt-4 text-[13px] text-ink-2">{t('list.scopedHistory')}</p>{/if}
 </PageShell>
 
 {#key currentScope}

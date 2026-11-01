@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import type { ChatPart } from '$lib/api/chatContracts';
@@ -66,7 +67,7 @@
 			<p>{t('approval.deadline', { expiry: expiresAt(approval.expiresAt) })}</p>
 			<div class="actions">
 				<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'deny')}>{t('approval.deny')}</Button>
-				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{t(busy ? 'approval.processing' : 'approval.approve')}</Button>
+				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{#if busy}<LoadingState variant="control" label={t('approval.processing')} />{:else}{t('approval.approve')}{/if}</Button>
 			</div>
 		</div>
 	</section>

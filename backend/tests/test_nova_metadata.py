@@ -148,3 +148,31 @@ def test_github_projection_preserves_owner_health_and_library_metadata():
     assert info.union_share_ids == ["share-1", "share-2"]
     assert info.union_upper_volume_id == "upper-1"
     assert "scheduling" not in info.model_dump()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("specs", [{}, {"pci_passthrough:alias": "graphics:1"}, None])
+async def test_instance_apis_keep_cpu_label_separate_from_native_flavor(client, mock_conn, specs):
+    server = _ssh_server({})
+    server.flavor = {
+        "id": "native-flavor",
+        "original_name": "m1.old",
+        "vcpus": 2,
+        "ram": 1536,
+        "disk": 17,
+        "extra_specs": specs,
+    }
+    mock_conn.compute.servers.return_value = [server]
+    mock_conn.compute.get_server.return_value = server
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[]),
+        patch("app.api.compute.instances.glance.list_images", return_value=[]),
+    ):
+        listed = await client.get("/api/v1/instances")
+        detailed = await client.get("/api/v1/instances/ssh-server")
+    assert listed.status_code == detailed.status_code == 200
+    for item in (listed.json()[0], detailed.json()):
+        assert item["flavor_id"] == "native-flavor"
+        assert item["flavor_name"] == "m1.old"
+        assert item["flavor_display_name"] == ("cpu.2c_1.5g" if specs == {} else None)
+        assert "_flavor_snapshot" not in item

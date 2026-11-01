@@ -147,12 +147,11 @@ describe('InstanceHeader resize access', () => {
 });
 
 describe('InstanceHeader operation attribution', () => {
-	it('only marks the requested action as working and retains the instance status', () => {
+	it('only marks the requested action as working', () => {
 		renderHeader({ actioning: 'stop' });
 		expect(screen.getByRole('status').textContent?.trim()).toBe('정지 중...');
 		expect(screen.getByRole('button', { name: '정지 중...' }).hasAttribute('disabled')).toBe(true);
 		expect(screen.queryByText('재부팅 중...')).toBeNull();
-		expect(screen.getByText('ACTIVE')).toBeTruthy();
 	});
 
 	it('keeps a migration control request busy until its promise settles', async () => {

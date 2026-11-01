@@ -629,7 +629,15 @@ _PROVISIONING_IMAGE = "33333333-3333-4333-8333-333333333333"
 def provisioning_cloud(runtime, monkeypatch):
     from app.services.mcp_control_plane import compute
 
-    state = SimpleNamespace(servers={}, volumes={}, ports={}, writes=[], uncertain=False)
+    state = SimpleNamespace(
+        servers={},
+        volumes={},
+        ports={},
+        writes=[],
+        uncertain=False,
+        admission_checks=0,
+        flavor={"name": "small", "vcpus": 1, "ram": 2048, "disk": 0, "extra_specs": {}},
+    )
 
     @asynccontextmanager
     async def cloud(context):
@@ -643,7 +651,7 @@ def provisioning_cloud(runtime, monkeypatch):
 
         class Compute:
             def get_flavor(self, flavor_id, **_kwargs):
-                return {"id": flavor_id, "name": "small", "vcpus": 1, "ram": 2048, "disk": 0, "extra_specs": {}}
+                return {"id": flavor_id, **state.flavor}
 
             def servers(self, **_kwargs):
                 return [server for server in state.servers.values() if server["project_id"] == project]
@@ -654,6 +662,7 @@ def provisioning_cloud(runtime, monkeypatch):
                     "project_id": project,
                     "name": body["name"],
                     "status": "BUILD",
+                    "metadata": body.get("metadata", {}),
                 }
                 return create("vm", {"id": _PROVISIONING_SERVER, "adminPass": "provider-secret"})
 
@@ -708,9 +717,13 @@ def provisioning_cloud(runtime, monkeypatch):
     async def policy(*_args, **_kwargs):
         return None
 
+    async def compute_policy(*args, **kwargs):
+        state.admission_checks += 1
+        return await policy(*args, **kwargs)
+
     monkeypatch.setattr(registry.ConsumerCloudContext, "openstack_connection", cloud)
-    monkeypatch.setattr(compute.flavor_eligibility, "require_flavor_eligible", policy)
-    monkeypatch.setattr(compute.flavor_eligibility, "admit_flavor", policy)
+    monkeypatch.setattr(compute.flavor_eligibility, "require_flavor_eligible", compute_policy)
+    monkeypatch.setattr(compute.flavor_eligibility, "admit_flavor", compute_policy)
     monkeypatch.setattr(compute.flavor_eligibility, "release_admission", policy)
     return state
 
@@ -813,6 +826,9 @@ async def test_provisioning_requires_saved_write_authority_for_selected_target(
         ("afterglow_vm_create", {"boot_volume_size_gb": "50"}),
         ("afterglow_vm_create", {"delete_boot_volume_on_termination": "false"}),
         ("afterglow_vm_create", {"availability_zone": "nova:host:node"}),
+        ("afterglow_vm_create", {"usage_schedule": {}}),
+        ("afterglow_vm_create", {"usage_schedule": {"expires_at": None}}),
+        ("afterglow_vm_create", {"usage_schedule": {"expires_at": "2099-01-01T00:00:00Z", "delete_volumes": True}}),
         ("afterglow_volume_create", {"size_gb": True}),
         ("afterglow_volume_create", {"size_gb": 16385}),
         ("afterglow_volume_create", {"image_id": _PROVISIONING_IMAGE}),
@@ -824,3 +840,55 @@ async def test_provisioning_strict_arguments_fail_before_ledger_or_provider(runt
     with pytest.raises(ValueError):
         await invoke_provisioning(runtime, "mcp", tool, {**provisioning_arguments(tool), **invalid}, "invalid-key")
     assert provisioning_cloud.writes == [] and runtime.invocations == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+async def test_vm_create_required_schedule_fails_public_path_before_quota_and_native_writes(
+    runtime, provisioning_cloud, surface
+):
+    provisioning_cloud.flavor["vcpus"] = 12
+    with pytest.raises((ValueError, HTTPException)):
+        await invoke_provisioning(
+            runtime, surface, "afterglow_vm_create", provisioning_arguments("afterglow_vm_create"), "missing-schedule"
+        )
+    assert provisioning_cloud.admission_checks == 0
+    assert provisioning_cloud.writes == [] and provisioning_cloud.servers == {} and provisioning_cloud.volumes == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+async def test_vm_create_public_path_preserves_explicit_approved_schedule_in_first_create(
+    runtime, provisioning_cloud, surface
+):
+    from datetime import timedelta
+
+    provisioning_cloud.flavor["vcpus"] = 12
+    expiry = datetime.now(UTC).replace(microsecond=0) + timedelta(days=7)
+    arguments = {
+        **provisioning_arguments("afterglow_vm_create"),
+        "usage_schedule": {
+            "expires_at": expiry.isoformat(),
+            "expiry_action": "delete",
+            "delete_volumes": True,
+            "reason": "study",
+        },
+    }
+    entry = registry.entry_by_name("afterglow_vm_create")
+    preview = await registry.build_mutation_preview(
+        registry.ConsumerCloudContext(principal=runtime.principal),
+        entry=entry,
+        arguments=registry.parse_entry_arguments(entry, arguments),
+    )
+    assert provisioning_cloud.writes == []
+    approved_expiry = registry.parse_entry_arguments(entry, arguments).model_dump(mode="json")["usage_schedule"][
+        "expires_at"
+    ]
+    assert approved_expiry in preview.estimated_effect
+    assert "delete all attached volumes" in preview.estimated_effect and preview.destructive
+    await invoke_provisioning(runtime, surface, "afterglow_vm_create", arguments, "scheduled-create")
+    assert provisioning_cloud.writes == [("vm", "b")]
+    metadata = provisioning_cloud.servers[_PROVISIONING_SERVER]["metadata"]
+    assert datetime.fromisoformat(metadata["afterglow_usage_expires_at"]) == expiry
+    assert metadata["afterglow_usage_action"] == "delete" and metadata["afterglow_usage_delete_volumes"] == "true"
+    assert metadata["afterglow_usage_reason"] == "study"

@@ -10,7 +10,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => projectAuthority(session));
 	const directory = untrack(() => domainIam(session));
@@ -63,7 +63,7 @@
 <section class="space-y-3 rounded-lg border border-line p-4" aria-label={t('projectCreators')}>
 	<div class="flex flex-wrap items-center justify-between gap-3"><h3 class="text-sm font-semibold text-ink-0">{t('projectCreators')}</h3><Button variant="secondary" size="sm" disabled={loading || busy} onclick={load}>{t('refresh')}</Button></div>
 	<p class="text-sm text-ink-2">{t('projectCreatorsHelp')}</p>
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={creators ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if needsRefresh}<Alert tone="warning">{t('mutationUncertain')}</Alert>{/if}
 	{#if creators}

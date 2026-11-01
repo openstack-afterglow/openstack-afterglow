@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
@@ -6,9 +7,8 @@
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import {
-		ActivityIndicator,
 		Alert,
 		AnimatedNumber,
 		EmptyState,
@@ -27,6 +27,7 @@
 		id: string;
 		name: string;
 		flavor_name: string;
+		flavor_display_name?: string | null;
 		vcpus: number;
 		ram_mb: number;
 		disk_gb: number;
@@ -228,7 +229,7 @@
 
 {#key visibleContext}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={6} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('usage.title') })} />
 	{:else if error}
 		<Alert tone="danger">{error}</Alert>
 	{:else if data}
@@ -237,9 +238,7 @@
 			<p class="text-xs text-ink-2">{t('telemetry.nativePolicy')}</p>
 		{/if}
 		<div class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
-		{#if trendLoading}
-			<ActivityIndicator label={t('usage.loadingTrend')} class="sm:col-span-4" />
-		{/if}
+			{#if trendLoading}<LoadingState variant="inline" class="sm:col-span-4" label={t('usage.loadingTrend')} />{/if}
 			{#each [
 				{ label: t('usage.vcpuTrend', { range: trendRange }),    unit: '%',     color: 'var(--color-accent)',      key: 'vcpu'    as const },
 				{ label: t('usage.ramTrend', { range: trendRange }),      unit: '%',     color: 'var(--color-accent-2)',    key: 'memory'  as const },
@@ -266,7 +265,7 @@
 						{#if hasData}
 							<Spark data={seriesData} color={card.color} height={72} class="w-full" />
 						{:else if trendLoading}
-							<div class="h-[72px] w-full motion-skeleton rounded" aria-hidden="true"></div>
+							<LoadingState variant="section" label={tl('state.loadingNamed', { name: card.label })} />
 						{:else if trendError}
 							<p class="text-xs text-state-danger-text">{t('overview.metricsFailed')}</p>
 						{:else if rawSeries}
@@ -305,7 +304,7 @@
 					{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
 					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
 						<p class="text-xs tabular-nums">vCPU: {inst.vcpus} · {cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}</p><p class="text-xs tabular-nums">RAM: {Math.round(inst.ram_mb / 1024)} GB · {ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}</p>
-						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}{/snippet}
+						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_display_name ?? inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}{/snippet}
 					</CompactResourceCard>
 				{/each}{/snippet}
 				<div class="mt-4 overflow-x-auto">
@@ -334,7 +333,7 @@
 											{/if}
 										</div>
 									</td>
-									<td class="py-2.5 text-ink-2 font-mono">{inst.flavor_name}</td>
+									<td class="py-2.5 text-ink-2 font-mono">{inst.flavor_display_name ?? inst.flavor_name}</td>
 									<td class="py-2.5 pr-4">
 										<div class="flex items-center gap-2">
 											<span class="tabular-nums text-ink-0 font-medium whitespace-nowrap">{inst.vcpus} vCPU</span>

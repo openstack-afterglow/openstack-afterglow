@@ -1,6 +1,6 @@
 """JWT access + refresh 토큰 유틸리티.
 
-access  : HS256, TTL=jwt_access_ttl (기본 15분), payload에 사용자·프로젝트 정보 포함
+access  : HS256, TTL=jwt_access_ttl (기본 1시간), payload에 사용자·프로젝트 정보 포함
 refresh : HS256, TTL=jwt_refresh_ttl (기본 7일), type="refresh" 구분자 포함
 
 비밀키는 Settings.secret_key 재사용. 별도 키 회전이 필요해지면 jwt_secret 필드를 추가할 것.

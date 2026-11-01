@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 195 128" role="img" aria-labelledby="afterglow-locked-title" style="color:var(--afterglow-artwork-warm,#f4976c)">
+<title id="afterglow-locked-title">권한 잠금</title>
+<g fill="currentColor" font-family="monospace" font-size="14" xml:space="preserve">
+  <text x="12" y="24">      : : : :      </text>
+  <text x="12" y="42">    :         :    </text>
+  <text x="12" y="60">    :         :    </text>
+  <text x="12" y="78">  [ : : : : : : ]  </text>
+  <text x="12" y="96">  [     : :     ]  </text>
+  <text x="12" y="114">  [ : : : : : : ]  </text>
+</g></svg>

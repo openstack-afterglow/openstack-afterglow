@@ -83,6 +83,7 @@ describe('unauthorized API redirect', () => {
 
 		await expect(api.get('/api/v1/protected', 'expired-token', 'project')).rejects.toBeInstanceOf(ApiError);
 		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(clearAuth).toHaveBeenCalledWith({ broadcast: false });
 
 		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
 		expect(replace).not.toHaveBeenCalled();
@@ -126,6 +127,7 @@ describe('unauthorized API redirect', () => {
 		const { refreshSession } = await import('../client');
 		await expect(refreshSession()).resolves.toBeNull();
 		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(clearAuth).toHaveBeenCalledWith({ broadcast: false });
 		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
 	});
 

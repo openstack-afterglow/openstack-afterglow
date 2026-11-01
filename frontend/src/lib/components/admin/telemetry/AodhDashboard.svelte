@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { Alert, Button, Card, Field, PageHeader, SelectInput, TableShell } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -201,7 +202,7 @@
 		<section aria-label={t('aodh.overview')} class="space-y-3">
 			<Card>
 				<h2 class="text-sm font-semibold text-ink-0 mb-2">{t('aodh.overview')}</h2>
-				{#if overviewLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+				{#if overviewLoading}<LoadingState variant="section" label={t('loading')} />
 				{:else if overviewFailure}<NativeStatus status={overviewFailure} />
 					<Button variant="secondary" class="mt-2" onclick={() => void loadOverview()}>{t('retry')}</Button>
 				{:else if overview}
@@ -212,7 +213,7 @@
 			<Card>
 				<h2 class="text-sm font-semibold text-ink-0 mb-2">{t('aodh.capabilities')}</h2>
 				<p class="text-xs text-ink-2 mb-2">{t('aodh.capabilitiesHelp')}</p>
-				{#if overviewLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+				{#if overviewLoading}<LoadingState variant="section" label={t('loading')} />
 				{:else if overview}
 					<NativeStatus status={overview.capabilities.status} error={overview.capabilities.error} />
 					{#if overview.capabilities.data && Object.keys(overview.capabilities.data).length}
@@ -246,7 +247,7 @@
 					{:else}<p class="text-sm text-ink-2 mt-2">{t('aodh.countsUnknown')}</p>{/if}
 				</section>
 			</Card>
-			{#if pageLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+			{#if pageLoading}<LoadingState variant="section" label={t('loading')} />
 			{:else if pageFailure}<NativeStatus status={pageFailure} /><Button variant="secondary" onclick={() => void loadPage()}>{t('retry')}</Button>
 			{:else if page}
 				<NativeStatus status={page.status} error={page.error} />
@@ -294,7 +295,7 @@
 				{#if selectedId}<Button variant="secondary" onclick={clearSelection}>{t('close')}</Button>{/if}
 			</div>
 			{#if !selectedId}<p class="text-sm text-ink-2">{t('aodh.selectAlarm')}</p>
-			{:else if detailLoading}<p role="status" class="text-sm text-ink-2">{t('loading')}</p>
+			{:else if detailLoading}<LoadingState variant="section" label={t('loading')} />
 			{:else}
 				{#if detailFailure}<NativeStatus status={detailFailure} />{/if}
 				{#if detail}<NativeStatus status={detail.status} error={detail.error} />{/if}

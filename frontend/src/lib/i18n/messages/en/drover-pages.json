@@ -122,5 +122,9 @@
 	"yaml.parseError": "YAML parsing error: {error}",
 	"yaml.configMapKind": "kind must be ConfigMap",
 	"yaml.secretKind": "kind must be Secret",
-	"yaml.stringDataRequired": "Use stringData instead of data to edit a Secret (plain text input)"
+	"yaml.stringDataRequired": "Use stringData instead of data to edit a Secret (plain text input)",
+	"clusterError.details": "Error details",
+	"clusterError.recovery": "Inspect the failed step and related resources in cluster details. Resolve security-group, network or quota issues, then refresh the status.",
+	"clusterError.loadFailed": "Could not load clusters",
+	"clusterError.reload": "Reload"
 }

@@ -1,0 +1,5 @@
+- [x] Add text-only linear/circular progress and five status indicator types.
+- [x] Connect optional shared component props while preserving defaults.
+- [x] Add deterministic browser exports and interactive preview.
+- [x] Verify source contracts, browser behavior and independent review.
+- [x] Update DESIGN/guide/package and archive.

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/images-keys';
 	import type { ImageInfo } from '$lib/types/compute';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	let { image, showId = true, compact = false }: { image: ImageInfo; showId?: boolean; compact?: boolean } = $props();
 	const digest = $derived.by(() => {
@@ -19,7 +20,11 @@
 		</code>
 	{:else}
 		{@const label = image.status === 'saving' || image.status === 'queued' ? t('digest.calculatingHash') : t('digest.noHash')}
-		<span class:truncate={compact} title={compact ? label : undefined}>{label}</span>
+		{#if image.status === 'saving' || image.status === 'queued'}
+			<LoadingState variant="inline" {label} />
+		{:else}
+			<span class:truncate={compact} title={compact ? label : undefined}>{label}</span>
+		{/if}
 	{/if}
 	{#if showId}
 		<code title={image.id} aria-label={t('digest.imageId', { id: image.id })}>ID {image.id.slice(0, 8)}</code>

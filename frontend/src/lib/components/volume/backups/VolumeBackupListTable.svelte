@@ -5,7 +5,7 @@
  import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
  import { t } from '$lib/i18n/ns/volume';
  import { intlLocale } from '$lib/i18n/runtime.svelte';
- import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+ import LoadingState from '$lib/components/ui/LoadingState.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
  import Button from '$lib/components/ui/Button.svelte';
@@ -38,7 +38,7 @@
     {/snippet}
     {#snippet actions()}
      <Button variant="secondary" size="sm" onclick={() => onRestore(backup)}>{t('backupListTable.restore')}</Button>
-     <Button variant="danger-outline" size="sm" onclick={() => onDelete(backup.id, backup.name)} disabled={deletingId === backup.id}>{#if deletingId === backup.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingId === backup.id ? t('backupListTable.deleting') : t('backupListTable.delete')}</Button>
+     <Button variant="danger-outline" size="sm" onclick={() => onDelete(backup.id, backup.name)} disabled={deletingId === backup.id}>{#if deletingId === backup.id}<LoadingState variant="control" label="" />{/if}{deletingId === backup.id ? t('backupListTable.deleting') : t('backupListTable.delete')}</Button>
     {/snippet}
    </CompactResourceCard>
   {/each}
@@ -54,7 +54,7 @@
    <td class="py-3 pr-6"><StatusChip status={backup.status} /></td><td class="py-3 pr-6 text-ink-2">{formatStorage(backup.size)}</td>
    <td class="py-3 pr-6"><span class="text-xs {backup.is_incremental ? 'text-warm-text' : 'text-ink-2'}">{backup.is_incremental ? t('backupListTable.incremental') : t('backupListTable.full')}</span></td>
    <td class="py-3 pr-6 text-ink-2 text-xs">{backup.created_at ? new Date(backup.created_at).toLocaleDateString(intlLocale()) : t('backupListTable.missingValue')}</td>
-   <td class="py-3 text-right"><div class="flex items-center justify-end gap-2"><button onclick={() => onRestore(backup)} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">{t('backupListTable.restore')}</button><button onclick={() => onDelete(backup.id, backup.name)} disabled={deletingId === backup.id} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{#if deletingId === backup.id}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingId === backup.id ? t('backupListTable.deleting') : t('backupListTable.delete')}</button></div></td>
+   <td class="py-3 text-right"><div class="flex items-center justify-end gap-2"><button onclick={() => onRestore(backup)} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">{t('backupListTable.restore')}</button><button onclick={() => onDelete(backup.id, backup.name)} disabled={deletingId === backup.id} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{#if deletingId === backup.id}<LoadingState variant="control" label="" />{/if}{deletingId === backup.id ? t('backupListTable.deleting') : t('backupListTable.delete')}</button></div></td>
   </tr>
  {/each}
 </tbody></table></div>

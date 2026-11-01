@@ -16,7 +16,7 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	let { session, blocked = false, onDenied }: { session: IamSession; blocked?: boolean; onDenied: () => void } = $props();
 	const client = untrack(() => domainIam(session));
 	const uid = $props.id();
@@ -145,7 +145,7 @@
 </script>
 
 <div class="space-y-4">
-	{#if loading}<ActivityIndicator label={t('loading')} />{/if}
+	{#if loading}<LoadingState variant={policy ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error && !open}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
 	<Button variant="secondary" disabled={loading || busy} onclick={load}>{t('refresh')}</Button>

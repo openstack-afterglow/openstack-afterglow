@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	export interface ApprovedMcpServer {
 		id: number;
 		name: string;
@@ -197,7 +198,7 @@
 				{#if cloudActive && cloud}
 					<p>{t('extensions.catalogue.savedAccess', { access: cloud.access_level === 'manage' ? t('extensions.catalogue.manage') : t('extensions.catalogue.read'), project: cloud.allowed_projects.map((project) => project.name || project.id).join(', ') })}</p>
 					{#if cloud.expires_at}<p class="tabular-nums">{t('extensions.catalogue.expires', { date: new Date(cloud.expires_at).toLocaleDateString(intlLocale()) })}</p>{/if}
-				{:else if cloudLoading}<p role="status">{t('extensions.catalogue.loading')}</p>
+				{:else if cloudLoading}<LoadingState variant="inline" label={t('extensions.catalogue.loading')} />
 				{:else if canCloud && cloud?.available === false}<p>{t('extensions.catalogue.unavailable')}</p>{/if}
 			</div>
 			<div class="server-actions">
@@ -211,7 +212,7 @@
 	</Card>
 	{#if loadError}<Alert tone="danger">{loadError}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => scope && loadCloud(scope)}>{t('extensions.catalogue.retry')}</Button>{/snippet}</Alert>{/if}
 	{#if loading}
-		<div class="motion-skeleton h-16 rounded-lg border border-line" role="status" aria-label={t('extensions.mcp.loading')}></div>
+		<LoadingState label={t('extensions.mcp.loading')} />
 	{:else}
 		{#each servers as server (server.id)}
 			{@const connected = server.auth_mode !== 'oauth' || oauthStatus[server.id]?.connected === true}
@@ -255,7 +256,7 @@
 	</div>
 	{#snippet actions()}
 		<Button variant="secondary" onclick={() => { consentOpen = false; consent = null; }} disabled={busy}>{t('apiKeys.cancel')}</Button>
-		<Button variant="primary" onclick={approve} disabled={busy || !consentValid}>{busy ? t('extensions.catalogue.approving') : t('extensions.catalogue.approve')}</Button>
+		<Button variant="primary" onclick={approve} disabled={busy || !consentValid}>{#if busy}<LoadingState variant="control" label={t('extensions.catalogue.approving')} />{:else}{t('extensions.catalogue.approve')}{/if}</Button>
 	{/snippet}
 </FormModal>
 

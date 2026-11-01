@@ -202,27 +202,31 @@ async def test_refresh_and_rescope_preserve_original_lifetime_and_origin(securit
 
 
 @pytest.mark.asyncio
-async def test_same_refresh_concurrent_http_has_one_success_and_one_live_session(security_client, _fake_redis_global):
+async def test_same_refresh_concurrent_http_replays_one_rotation(security_client, _fake_redis_global, monkeypatch):
     tokens = await _login(security_client)
     old_jti, original = await _session(tokens)
-    barrier = threading.Barrier(2)
+    both_ready = asyncio.Event()
+    original_eval = _fake_redis_global.eval
+    attempts = 0
 
-    def simultaneous_validation(_token, project_id="", *, operation=None):
-        barrier.wait(timeout=5)
-        return dict(
-            _IDENTITY,
-            project_id=project_id,
-            project_name=_IDENTITY["project_name"] if project_id else "",
-            roles=_IDENTITY["roles"] if project_id else [],
-        )
+    async def simultaneous_rotation(script, *args):
+        nonlocal attempts
+        if script == session_store._ROTATE_SESSION_SCRIPT:
+            attempts += 1
+            if attempts == 2:
+                both_ready.set()
+            await asyncio.wait_for(both_ready.wait(), 5)
+        return await original_eval(script, *args)
 
-    with patch.object(auth.keystone, "validate_token", side_effect=simultaneous_validation):
-        responses = await asyncio.gather(
-            security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}),
-            security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}),
-        )
-    assert sorted(response.status_code for response in responses) == [200, 401]
-    winner = next(response.json() for response in responses if response.status_code == 200)
+    monkeypatch.setattr(_fake_redis_global, "eval", simultaneous_rotation)
+    responses = await asyncio.gather(
+        security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}),
+        security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}),
+    )
+    assert [response.status_code for response in responses] == [200, 200]
+    assert responses[0].json() == responses[1].json()
+    assert attempts == 2
+    winner = responses[0].json()
     new_jti, new_session = await _session(winner)
     assert new_session["started_at"] == original["started_at"]
     assert await session_store.get_session(old_jti) is None
@@ -232,6 +236,129 @@ async def test_same_refresh_concurrent_http_has_one_success_and_one_live_session
     stale_access = await security_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['token']}"})
     live_access = await security_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {winner['token']}"})
     assert [stale_access.status_code, live_access.status_code] == [401, 200]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("roles,can_write", [(["reader"], False), (["admin", "reader"], True)])
+async def test_refresh_replay_retains_exact_bytes_for_unchanged_authority(
+    security_client, monkeypatch, roles, can_write
+):
+    monkeypatch.setitem(_IDENTITY, "roles", roles)
+    tokens = await _login(security_client)
+    _, original = await _session(tokens)
+    rotated = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rotated.status_code == 200
+    assert rotated.json()["roles"] == ["reader"]
+    assert rotated.json()["can_write"] is can_write
+    replayed = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replayed.status_code == 200
+    assert replayed.content == rotated.content
+    _, current = await _session(replayed.json())
+    assert current["started_at"] == original["started_at"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("had_admin", [True, False])
+async def test_refresh_replay_rejects_hidden_native_write_authority_change(
+    security_client, _fake_redis_global, monkeypatch, had_admin
+):
+    monkeypatch.setitem(_IDENTITY, "roles", ["admin", "reader"] if had_admin else ["reader"])
+    tokens = await _login(security_client)
+    old_jti, original = await _session(tokens)
+    rotated = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rotated.status_code == 200
+    winner = rotated.json()
+    assert winner["roles"] == ["reader"]
+    assert winner["is_system_admin"] is False
+    assert winner["can_write"] is had_admin
+    new_jti, _ = await _session(winner)
+
+    monkeypatch.setitem(_IDENTITY, "roles", ["reader"] if had_admin else ["admin", "reader"])
+    replayed = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replayed.status_code == 401
+    assert not {"token", "refresh_token"} & replayed.json().keys()
+    assert await session_store.get_session(old_jti) is None
+    members = await _fake_redis_global.smembers(session_store._user_index_key(_IDENTITY["user_id"]))
+    assert members == {new_jti}
+
+    fresh = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": winner["refresh_token"]})
+    assert fresh.status_code == 200
+    assert fresh.json()["roles"] == winner["roles"]
+    assert fresh.json()["can_write"] is not had_admin
+    _, current = await _session(fresh.json())
+    for field in ("started_at", "origin_ip", "origin_fp", "project_id", "domain_id", "identity_domain_id"):
+        assert current[field] == original[field]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_refresh_replay_rejects_organization_creation_policy_change(security_client, monkeypatch, enabled):
+    settings = auth.get_settings().model_copy(deep=True)
+    settings.auth.organization_creation_enabled = enabled
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    tokens = await _login(security_client)
+    rotated = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rotated.status_code == 200
+    winner = rotated.json()
+    assert winner["can_create_domain"] is enabled
+
+    settings.auth.organization_creation_enabled = not enabled
+    replayed = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replayed.status_code == 401
+    assert not {"token", "refresh_token"} & replayed.json().keys()
+    fresh = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": winner["refresh_token"]})
+    assert fresh.status_code == 200
+    assert fresh.json()["can_create_domain"] is not enabled
+
+
+@pytest.mark.asyncio
+async def test_refresh_replay_rejects_other_domain_membership_loss(security_client, auth_directory):
+    auth_directory.projects["foreign-project"] = {
+        "id": "foreign-project",
+        "name": "Foreign",
+        "domain_id": "tenant-b",
+        "enabled": True,
+    }
+    auth_directory.grants["security-user"].append("foreign-project")
+    tokens = await _login(security_client)
+    rotated = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rotated.status_code == 200
+    winner = rotated.json()
+    assert "tenant-b" in {domain["id"] for domain in winner["available_domains"]}
+
+    auth_directory.grants["security-user"].remove("foreign-project")
+    replayed = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replayed.status_code == 401
+    assert not {"token", "refresh_token"} & replayed.json().keys()
+    fresh = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": winner["refresh_token"]})
+    assert fresh.status_code == 200
+    assert fresh.json()["project_id"] == winner["project_id"]
+    assert "tenant-b" not in {domain["id"] for domain in fresh.json()["available_domains"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["project_name", "domain_name", "identity_domain_name", "username"])
+async def test_refresh_replay_rejects_changed_identity_display_metadata(
+    security_client, auth_directory, monkeypatch, field
+):
+    tokens = await _login(security_client)
+    rotated = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert rotated.status_code == 200
+    winner = rotated.json()
+    renamed = "Renamed " + winner[field]
+    if field == "project_name":
+        auth_directory.projects["security-project"]["name"] = renamed
+    elif field == "domain_name":
+        auth_directory.domains["default"]["name"] = renamed
+    else:
+        monkeypatch.setitem(_IDENTITY, field, renamed)
+
+    replayed = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert replayed.status_code == 401
+    assert not {"token", "refresh_token"} & replayed.json().keys()
+    fresh = await security_client.post("/api/v1/auth/refresh", json={"refresh_token": winner["refresh_token"]})
+    assert fresh.status_code == 200
+    assert fresh.json()[field] == renamed
 
 
 @pytest.mark.asyncio

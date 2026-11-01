@@ -6,7 +6,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import HostMetricCell from './HostMetricCell.svelte';
 	import type { HostHealthSnapshot, HostMetricKey, MonitoredHost } from '$lib/types/hostHealth';
 	import { t } from '$lib/i18n/ns/admin-compute';
@@ -114,7 +114,7 @@
 	{#if snapshot?.error}<Alert tone="warning">{t('hostHealth.collectionFailed')} <code>{snapshot.error}</code></Alert>{/if}
 	{#if snapshot?.enabled && !verified && !loading && !loadFailed}<Alert tone="warning">{t('hostHealth.stale')}</Alert>{/if}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={3} />
+		<LoadingState variant="section" />
 	{:else if snapshot && !snapshot.enabled}
 		<Alert tone="neutral">{t('hostHealth.disabled')}</Alert>
 	{:else if snapshot?.hosts.length}

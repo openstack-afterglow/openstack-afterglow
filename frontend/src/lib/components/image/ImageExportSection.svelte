@@ -4,7 +4,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
-	import { Card, Field, SelectInput, Button, StatusChip, Alert, ActivityIndicator, ProgressTrack } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { Card, Field, SelectInput, Button, StatusChip, Alert, ProgressTrack } from '$lib/components/ui';
 
 	interface ImageExportJob {
 		id: string;
@@ -243,7 +244,7 @@
 					tone={exportJob.status === 'error' || exportJob.error_message ? 'danger' : exportJob.status === 'complete' ? 'success' : 'accent'}
 				/>
 				{#if isNonTerminal}
-					<ActivityIndicator variant={exportJob.status === 'downloading' ? 'download' : exportJob.status === 'queued' ? 'dots' : 'spinner'} label={phaseText} />
+					<LoadingState variant="inline" label={phaseText} />
 				{/if}
 			{/if}
 
@@ -265,7 +266,7 @@
 					onclick={handleExport}
 					disabled={!canPublish || exporting || isNonTerminal}
 				>
-					{exporting ? t('exportSection.exporting') : isNonTerminal ? t('exportSection.processing') : t('exportSection.export')}
+					{#if exporting}<LoadingState variant="control" label="" />{/if}{exporting ? t('exportSection.exporting') : isNonTerminal ? t('exportSection.processing') : t('exportSection.export')}
 				</Button>
 
 				{#if exportJob?.status === 'complete'}
@@ -276,7 +277,7 @@
 						ariaBusy={downloading}
 					>
 						{#if downloading}
-							<ActivityIndicator variant="download" label={t('exportSection.preparingDownload')} />
+							<LoadingState variant="control" label={t('exportSection.preparingDownload')} />
 						{:else}
 							{t('exportSection.download')}
 						{/if}

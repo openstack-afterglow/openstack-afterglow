@@ -6,8 +6,7 @@
   import type { LibraryConfig } from '$lib/types/library';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
-  import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
   let {
     libraries,
@@ -48,8 +47,8 @@
       {/if}
       {#if building === lib.id || serverBuilding}
         <div class="mb-3 space-y-2">
-          {#if serverBuilding && building !== lib.id}<ActivityIndicator size="xs" label={ts('building')} />{/if}
-          <ProgressTrack value={null} active label={`${lib.name} · ${t('manage.prebuiltStatus')}`} />
+          {#if serverBuilding && building !== lib.id}<LoadingState variant="control" label={ts('building')} />{/if}
+          <LoadingState variant="inline" label={`${lib.name} · ${t('manage.prebuiltStatus')}`} />
         </div>
       {/if}
       <Button
@@ -61,7 +60,7 @@
         ariaBusy={building === lib.id}
       >
         {#if building === lib.id}
-          <ActivityIndicator size="xs" tone="ink" />
+          <LoadingState variant="control" label="" />
           {t('actions.creating')}
         {:else}
           {serverBuilding ? ts('building') : prebuilt ? t('prebuiltGrid.built') : t('list.createCta')}

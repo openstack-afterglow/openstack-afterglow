@@ -5,7 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
-	import { ActivityIndicator } from '$lib/components/ui';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	export interface AdminInstance {
 		id: string;
@@ -123,7 +123,7 @@
 
 		<div class="overflow-y-auto flex-1">
 			{#if loadingInstances && instanceList.length === 0}
-				<div class="p-4 flex justify-center"><ActivityIndicator label={t('monitoring.instances.loadingList')} /></div>
+				<LoadingState variant="surface" label={t('monitoring.instances.loadingList')} />
 			{:else if filtered.length === 0}
 				<div class="p-4 text-ink-2 text-sm text-center" data-tour="admin-monitoring-list-ready">
 					{search ? t('monitoring.instances.noResults') : t('monitoring.instances.empty')}
@@ -159,7 +159,7 @@
 					disabled={loadingInstances}
 					class="w-full py-2.5 text-xs text-warm-text hover:text-warm-text-hover disabled:text-ink-3 transition-colors"
 				>
-					{#if loadingInstances}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{loadingInstances ? t('monitoring.loading') : t('monitoring.instances.loadMore')}
+					{#if loadingInstances}<LoadingState variant="control" label="" aria-hidden="true" class="mr-1.5" />{/if}{loadingInstances ? t('monitoring.loading') : t('monitoring.instances.loadMore')}
 				</button>
 			{/if}
 		</div>
@@ -199,6 +199,7 @@
 								instanceId={selected.id}
 								projectId={selected.project_id}
 								isGpu={selected.flavor.toLowerCase().startsWith('gpu.')}
+								adminMode
 							/>
 						{/key}
 					{:else}

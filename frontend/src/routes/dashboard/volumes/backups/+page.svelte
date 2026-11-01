@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/volume';
 	import { page } from '$app/state';
 	import VolumeBackupPolicies from '$lib/components/volume/backups/VolumeBackupPolicies.svelte';
@@ -9,7 +10,7 @@
 	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume, VolumeBackup } from '$lib/types/volume';
-	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
@@ -153,7 +154,7 @@
 	<VolumeBackupPolicies controller={policies} />
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}
-		<LoadingSkeleton variant="table" rows={4} />
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
 	{:else if backups.length === 0}
 		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
 	{:else}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping
 from copy import copy
 from functools import partial
@@ -597,6 +598,7 @@ def _vol_to_info(vol) -> VolumeInfo:
     bootable = raw_bootable if isinstance(raw_bootable, bool) else str(raw_bootable).lower() == "true"
     raw_vim = raw.get("volume_image_metadata", getattr(vol, "volume_image_metadata", None))
     volume_image_metadata = raw_vim if isinstance(raw_vim, dict) else None
+    created_at = getattr(vol, "created_at", None)
     return VolumeInfo(
         id=vol.id,
         name=vol.name or "",
@@ -606,6 +608,7 @@ def _vol_to_info(vol) -> VolumeInfo:
         attachments=list(vol.attachments or []),
         bootable=bootable,
         volume_image_metadata=volume_image_metadata,
+        created_at=str(created_at) if isinstance(created_at, str) else None,
     )
 
 
@@ -616,14 +619,23 @@ def _safe_float(v) -> float:
         return 0.0
 
 
-def list_storage_pools(conn) -> list[dict]:
-    """Cinder backend pool 목록 — total/free/allocated capacity_gb 정규화 반환."""
+def list_storage_pools(conn, *, strict: bool = False) -> list[dict]:
+    """Cinder pool capacities; strict inventory reads reject missing/unknown totals."""
     bs_ep = conn.block_storage.get_endpoint()
     resp = conn.session.get(f"{bs_ep}/scheduler-stats/get_pools", params={"detail": "True"})
+    if strict:
+        resp.raise_for_status()
     out = []
-    for pool in resp.json().get("pools", []):
+    pools = resp.json()["pools"] if strict else resp.json().get("pools", [])
+    if strict and not isinstance(pools, list):
+        raise ValueError("Invalid Cinder pool inventory")
+    for pool in pools:
         caps = pool.get("capabilities", {})
         total_gb = caps.get("total_capacity_gb", 0)
+        if strict:
+            value = caps.get("total_capacity_gb")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ValueError("Cinder pool total capacity is unavailable")
         free_gb = caps.get("free_capacity_gb", 0)
         allocated_gb = caps.get("allocated_capacity_gb", 0)
         if isinstance(total_gb, str) and total_gb in ("infinite", "unknown"):

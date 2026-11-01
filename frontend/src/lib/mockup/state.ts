@@ -11,6 +11,8 @@ import type { User } from '$lib/types/common';
 import type { ZunContainerDetail } from '$lib/types/zunContainer';
 import type { MonitoringSummary } from '$lib/components/admin/monitoring/MonitoringSummaryTab.svelte';
 import type { McpClientObservation } from '$lib/components/account/McpAccessSection.svelte';
+import type { ComputePool } from '$lib/api/computePools';
+import type { FlavorAutomationStatus, FlavorAutomationPolicy } from '$lib/api/flavorAutomation';
 
 const NOW = '2026-07-09T00:00:00Z';
 const PROJECT_ID = 'mock-project-1';
@@ -35,6 +37,9 @@ interface MockMcpAccessRecord {
 }
 
 interface MockupState {
+	computePools: Record<string, ComputePool>;
+	flavorAutomation: FlavorAutomationStatus;
+	flavorAutomationPolicy: FlavorAutomationPolicy;
 	projects: Project[];
 	selectedProjectId: string;
 	tutorialStatuses: Record<string, 'completed' | 'dismissed'>;
@@ -54,7 +59,8 @@ interface MockupState {
 		overview: Overview;
 		domains: DomainUsage[];
 		version: VersionInfo;
-		notifications: { severity: string; message: string; target: string; href: string }[];
+		notifications: { notifications: { type: 'error' | 'resource' | 'k3s' | 'network'; severity: 'high' | 'warning' | 'info'; message: string; count: number; available?: boolean }[]; total: number };
+		recentEvents: { id: number; created_at: string; username: string; project_id: string; user_id: string; service: string; page: string; source: string; resource_type: string; resource_id: string; resource_name: string; action: string; status: 'started' | 'success' | 'failed'; error_message: string | null }[];
 		identitySummary: {
 			user_count: number;
 			project_count: number;
@@ -115,6 +121,7 @@ function instance(id: string, name: string, status: string, fixed: string, float
 		id,
 		name,
 		status,
+		project_id: PROJECT_ID,
 		image_name: 'Ubuntu 24.04 LTS',
 		flavor_name: flavor,
 		ip_addresses: [
@@ -224,6 +231,13 @@ function seedState(): MockupState {
 	];
 
 	return {
+		computePools: {},
+		flavorAutomation: { enabled: false, revision: 0, last_run: null, status: 'disabled', error: null, readiness: { verified: true, reason: 'Synthetic tutorial policy only; no native cloud qualification or writes.' }, items: [], diagnostics: [{ code: 'synthetic_fixture', message: 'Tutorial fixture; no native deployment qualification or cloud writes.' }] },
+		flavorAutomationPolicy: { revision: 0, gpu_profiles: [], hosts: [
+			{ id: 'mock-host-down', name: 'sample-compute-down', removed: false, observed_at: NOW, state: 'down', status: 'disabled', cpu: { total: 32 }, ram: { total: 131072 }, gpu: { CUSTOM_PCI_10DE_2504: 2 } },
+			{ id: 'mock-host-missing', name: 'sample-compute-missing', removed: false, observed_at: NOW, state: 'missing', cpu: { total: 16 }, ram: { total: 65536 }, gpu: {} },
+			{ id: 'mock-host-removed', name: 'sample-compute-removed', removed: true, observed_at: NOW, state: 'up', cpu: { total: 16 }, ram: { total: 65536 }, gpu: { CUSTOM_PCI_10DE_2684: 1 } }
+		] },
 		projects: [
 			{ id: PROJECT_ID, name: 'sample-project-alpha', description: '튜토리얼 기본 프로젝트', domain_name: 'Demo', last_accessed_at: '2026-07-08T23:00:00Z' },
 			{ id: 'mock-project-2', name: 'sample-project-beta', description: 'GPU 워크로드 데모', domain_name: 'Demo', last_accessed_at: '2026-07-08T12:30:00Z' },
@@ -284,8 +298,8 @@ function seedState(): MockupState {
 		},
 		instances,
 		volumes: [
-			{ id: 'mock-volume-1', name: 'root-disk', status: 'in-use', size: 80, volume_type: 'ceph-ssd', attachments: [{ server_id: 'mock-instance-1', device: '/dev/vda' }], bootable: true },
-			{ id: 'mock-volume-2', name: 'scratch', status: 'available', size: 200, volume_type: 'ceph-ssd', attachments: [], bootable: false },
+			{ id: 'mock-volume-1', name: 'root-disk', status: 'in-use', size: 80, volume_type: 'ceph-ssd', attachments: [{ server_id: 'mock-instance-1', device: '/dev/vda' }], bootable: true, created_at: '2026-07-02T08:30:00Z' },
+			{ id: 'mock-volume-2', name: 'scratch', status: 'available', size: 200, volume_type: 'ceph-ssd', attachments: [], bootable: false, created_at: '2026-07-08T21:10:00Z' },
 		],
 		k3sClusters: [
 			{ id: 'mock-k3s-1', name: 'sample-cluster-alpha', status: 'ACTIVE', status_reason: null, server_vm_id: 'mock-instance-1', agent_vm_ids: ['mock-instance-2', 'mock-instance-3'], agent_count: 2, api_address: 'https://192.0.2.24:6443', server_ip: '192.0.2.24', network_id: 'mock-net-private', key_name: 'sample-keypair', k3s_version: 'v1.30.4+k3s1', created_at: NOW, updated_at: NOW, deleted_at: null, deleted_by_user_id: null, deleted_reason: null, master_count: 1, stampede_enabled: true },
@@ -320,20 +334,25 @@ function seedState(): MockupState {
 		},
 		quotas: {
 			compute: { instances: { limit: 30, in_use: 8 }, cores: { limit: 128, in_use: 36 }, ram: { limit: 262144, in_use: 86016 } },
+			native_compute: { instances: { limit: 30, in_use: 8 }, cores: { limit: 128, in_use: 36 }, ram: { limit: 262144, in_use: 86016 } },
 			storage: { volumes: { limit: 60, in_use: 14 }, gigabytes: { limit: 8000, in_use: 1250 } },
 			network: { floatingip: { limit: 16, in_use: 3 } },
 			file_storage: { shares: { limit: 12, in_use: 4 }, gigabytes: { limit: 4096, in_use: 780 } },
 		},
 		admin: {
-			overview: { hypervisor_count: 7, running_vms: 46, gpu_instances: 8, instance_stats: { total: 58, active: 46, shutoff: 9, error: 3, other: 0 }, vcpus: { total: 768, allowed: 620, used: 312 }, ram_gb: { total: 2048, used: 890 }, disk_gb: { total: 78000, used: 31200 }, containers_count: 12, file_storage_count: 9, database_instances_count: 5, object_storage_containers_count: 18 },
+			overview: { collected_at: NOW, unavailable_sections: [], disabled_sections: [], hypervisor_count: 7, running_vms: 46, gpu_instances: 8, instance_stats: { total: 58, active: 46, shutoff: 9, error: 3, other: 0 }, vcpus: { total: 768, allowed: 620, used: 312 }, ram_gb: { total: 2048, used: 890 }, disk_gb: { total: 78000, used: 31200, volumes: 30000, images: 1200 }, containers_count: 12, file_storage_count: 9, database_instances_count: 5, object_storage_containers_count: 18 },
 			domains: [
 				{ domain_id: 'mock-domain', domain_name: 'Demo', owner_status: 'known', project_ids: [PROJECT_ID, 'mock-project-2', 'mock-project-3', 'mock-project-4'], project_count: 4, instances: 49, vcpus: 228, ram_mb: 593920, gpu_instances: 8, volumes: 20, volume_gb: 8950, attached_volumes: 14, attached_gb: 7200, available_volumes: 6, available_gb: 1750 },
 			],
 			version: { platform: { backend_version: '0.0.0-mock' }, runtime: { python_version: '3.12.8', uptime_seconds: 864000 }, dependencies: { fastapi: '0.125.0', openstacksdk: '3.3.0' }, git: { commit: 'mockup', tag: 'v0.0.0-mock', branch: 'mockup' } },
-			notifications: [
-				{ severity: 'critical', message: 'sample-compute-node-a GPU 온도가 임계치에 접근했습니다.', target: 'sample-compute-node-a', href: '/admin/monitoring' },
-				{ severity: 'warning', message: 'sample-project-beta RAM quota 사용률 80% 초과', target: 'mock-project-2', href: '/admin/projects' },
-				{ severity: 'info', message: '야간 백업 검증이 완료되었습니다.', target: 'sample-backup', href: '/admin/services' },
+			notifications: { notifications: [
+				{ type: 'error', severity: 'high', message: '오류 상태 인스턴스 3개', count: 3 },
+				{ type: 'resource', severity: 'warning', message: 'RAM 10% 미만 호스트 1개', count: 1 },
+				{ type: 'k3s', severity: 'info', message: '대기/오류 k3s 클러스터 2개', count: 2, available: true },
+			], total: 3 },
+			recentEvents: [
+				{ id: 1001, created_at: NOW, username: 'sample-admin', project_id: PROJECT_ID, user_id: 'mock-user-1', service: 'compute', page: '/admin/instances', source: 'afterglow', resource_type: 'instance', resource_id: 'mock-instance-6', resource_name: 'sample-batch-worker', action: 'create', status: 'failed', error_message: 'Synthetic scheduler capacity failure' },
+				{ id: 1000, created_at: '2026-07-08T23:30:00Z', username: 'sample-researcher', project_id: PROJECT_ID, user_id: 'mock-user-2', service: 'storage', page: '/admin/volumes', source: 'afterglow', resource_type: 'volume', resource_id: 'mock-admin-volume-available', resource_name: 'sample-dataset-ready', action: 'create', status: 'success', error_message: null },
 			],
 			identitySummary: { user_count: 128, project_count: 24, role_count: 9, group_count: 14, recent_users: [{ id: 'mock-user-1', name: 'sample-user' }, { id: 'mock-user-2', name: 'sample-researcher' }], recent_projects: [{ id: PROJECT_ID, name: 'sample-project-alpha' }, { id: 'mock-project-4', name: 'sample-visual-research' }] },
 			instances: adminInstances,

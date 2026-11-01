@@ -49,6 +49,9 @@ async def test_run_layer_consume_uses_artifact_and_resource_snapshots():
     from app.services.layer_build import run_layer_consume
 
     connection = MagicMock()
+    connection.compute.get_flavor.return_value = SimpleNamespace(
+        id="snapshot-flavor", name="small", vcpus=2, ram=4096, extra_specs={"hw:cpu_policy": "shared"}
+    )
     connection.compute.create_server.return_value = MagicMock(id="server-1")
     connection.image.get_image.return_value = SimpleNamespace(
         id="artifact-image", name="ubuntu-20.04", status="active", checksum="checksum-a"
@@ -95,6 +98,9 @@ async def test_root_consume_mounts_child_before_ancestor_and_waits_for_health():
     from app.services.layer_build import run_layer_consume
 
     conn = MagicMock()
+    conn.compute.get_flavor.return_value = SimpleNamespace(
+        id="snapshot-flavor", name="small", vcpus=2, ram=4096, extra_specs={"hw:cpu_policy": "shared"}
+    )
     conn.image.get_image.return_value = SimpleNamespace(id="image-a", name="ubuntu-24.04", status="active")
     conn.compute.create_server.return_value = SimpleNamespace(id="server-1")
     ancestors = [
@@ -204,6 +210,9 @@ async def test_root_only_consume_prepares_boot_without_usr_overlay():
     from app.services.layer_build import run_layer_consume
 
     conn = MagicMock()
+    conn.compute.get_flavor.return_value = SimpleNamespace(
+        id="snapshot-flavor", name="small", vcpus=2, ram=4096, extra_specs={"hw:cpu_policy": "shared"}
+    )
     conn.image.get_image.return_value = SimpleNamespace(id="image-a", name="ubuntu-24.04", status="active")
     conn.compute.create_server.return_value = SimpleNamespace(id="server-root")
     root = {
@@ -261,6 +270,9 @@ async def test_root_consume_nova_rejection_deletes_unclaimed_upper_volume():
     from app.services.layer_build import run_layer_consume
 
     conn = MagicMock()
+    conn.compute.get_flavor.return_value = SimpleNamespace(
+        id="snapshot-flavor", name="small", vcpus=2, ram=4096, extra_specs={"hw:cpu_policy": "shared"}
+    )
     conn.image.get_image.return_value = SimpleNamespace(id="image-a", name="ubuntu-24.04", status="active")
     conn.compute.create_server.side_effect = RuntimeError("Nova rejected server")
     root = {
@@ -522,6 +534,9 @@ async def test_image_fingerprint_mismatch_rejects_before_port_creation():
     from app.services.layer_build import run_layer_consume
 
     conn = MagicMock()
+    conn.compute.get_flavor.return_value = SimpleNamespace(
+        id="snapshot-flavor", name="small", vcpus=2, ram=4096, extra_specs={"hw:cpu_policy": "shared"}
+    )
     conn.image.get_image.return_value = SimpleNamespace(
         id="image-a", name="ubuntu-24.04", status="active", checksum="changed"
     )

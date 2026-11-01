@@ -18,6 +18,14 @@
 # 인증 우회 또는 시크릿 출력은 활성화하지 않습니다.
 debug = false
 
+[instance_usage]
+# Global Nova census/adoption and destructive expiry actions are disabled by default.
+# Enable only after every same-cloud API/scheduler writer shares one Redis primary,
+# logical DB, dispatcher namespace and cloud/project/server locks. This switch is
+# operator opt-in, not proof of that topology. Metadata APIs/UI remain available.
+# Environment override: INSTANCE_USAGE_SCHEDULER_ENABLED (local dev Compose pins false).
+scheduler_enabled = false
+
 [openstack]
 auth_url = "http://keystone.example.com:5000/v3"
 project_name = "admin"
@@ -372,11 +380,11 @@ ttl_admin_overview = 60      # admin 토폴로지, 하이퍼바이저 (60초)
 ttl_auth_token = 60          # Keystone 토큰 검증 결과 (60초)
 
 [session]
-# 최초 로그인부터의 절대 세션 수명 (기본 1일). refresh·프로젝트 전환으로 연장하지 않습니다.
+# 최초 로그인부터의 절대 세션 수명 (기본·최대 7일). refresh·프로젝트 전환으로 연장하지 않습니다.
 # Native Keystone 증명의 만료/회수와 명시한 더 짧은 운영자 정책도 계속 적용됩니다.
-timeout_seconds = 86400
+timeout_seconds = 604800
 # JWT access/refresh 토큰 수명 (초)
-jwt_access_ttl = 900      # access 토큰 (기본 15분)
+jwt_access_ttl = 3600     # access 토큰 (기본 1시간)
 jwt_refresh_ttl = 604800  # refresh 토큰 (기본 7일)
 # 토큰 출처 IP/기기 바인딩 검사 모드
 #   off    — 검사 없음
@@ -443,8 +451,8 @@ palimpsest_internal_url = ""
 # (os_service_project_id와 다른 프로젝트여야 합니다). 운영자는 전용 프로젝트와 쿼터를 준비합니다.
 # network_id를 비우면 전용 프로젝트의 기본 네트워크를 사용합니다. 외부 연결이 필요하며,
 # 직접 지정하는 네트워크도 전용 프로젝트 소유여야 합니다.
-# security_group을 비우거나 "default"로 두면 전용 프로젝트의 default 그룹과 기존 규칙을 사용합니다.
-# egress-only를 보장하지 않으며, 직접 지정하는 보안 그룹도 전용 프로젝트 소유여야 합니다.
+# 선택 보안 그룹은 전용 프로젝트 소유이며 ingress/remote-group 규칙이 없어야 합니다.
+# default 그룹에 기본 ingress 규칙이 있으면 거부됩니다. Egress SG만으로 metadata는 차단되지 않습니다.
 service_project_id = ""
 # Image source: https://github.com/openstack-afterglow/openstack-client (slim / alpine).
 # 개발은 :slim 태그를 사용할 수 있지만 운영은 게시된 manifest @sha256:<digest>로 고정합니다.
@@ -462,6 +470,8 @@ volume_type = ""
 home_size_gib = 5
 cpu = 1.0
 memory_mib = 1024
+# 필수 metadata IPv4/OpenStack IPv6/AWS IPv6 경로. 관리망 CIDR도 추가하고 native driver와 동일하게 설정합니다.
+blocked_cidrs = ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]
 idle_timeout_seconds = 1200
 max_session_seconds = 3600
 ticket_ttl_seconds = 60

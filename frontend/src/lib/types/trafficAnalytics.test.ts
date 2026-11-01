@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { countryIntensity, metricValue, parseTrafficSnapshot, trafficTrend } from './trafficAnalytics';
-import { metrics, observations } from '$lib/components/admin/traffic/__tests__/observations';
+import { metrics, networkObservations, observations } from '$lib/components/admin/traffic/__tests__/observations';
 
 describe('traffic snapshot schema and unknown coverage', () => {
 	it('accepts exact source, nullable buckets and nullable geographic visitor estimates without inventing zero', () => {
@@ -38,6 +38,42 @@ describe('traffic snapshot schema and unknown coverage', () => {
 		expect(() => parseTrafficSnapshot(duplicate, 'backend', '24h')).toThrow();
 		const invalid = observations(); Object.assign(invalid.coverage.origin_unknown_reasons, { 'raw-ip-192.0.2.10': 1 });
 		expect(() => parseTrafficSnapshot(invalid, 'backend', '24h')).toThrow();
+	});
+	it('requires network observations and preserves separate ranges and address bases without changing country totals', () => {
+		const input = observations({ networks: networkObservations() });
+		const parsed = parseTrafficSnapshot(input, 'backend', '24h');
+		expect(parsed.networks).toBe(input.networks);
+		expect(parsed.networks.filter(row => row.network === '172.30.0.0/16').map(row => row.basis)).toEqual(['resolved_client', 'socket_peer']);
+		expect(parsed.countries.find(row => row.country === 'XX')?.requests).toBe(10);
+		expect(parsed.totals?.requests).toBe(10);
+		const missing = observations(); Reflect.deleteProperty(missing, 'networks');
+		expect(() => parseTrafficSnapshot(missing, 'backend', '24h')).toThrow('Invalid traffic schema');
+		for (const networks of [null, {}, '172.30.0.0/16']) expect(() => parseTrafficSnapshot({ ...input, networks }, 'backend', '24h')).toThrow();
+	});
+	it.each([
+		['fc00::/7', 'private'], ['fe80::/10', 'link_local'], ['::1/128', 'loopback'], ['::/128', 'unspecified'],
+		['2001:db8::/32', 'documentation'], ['100.64.0.0/10', 'shared'], ['198.18.0.0/15', 'benchmark'],
+		['ff00::/8', 'multicast'], ['240.0.0.0/4', 'reserved'], ['10.255.0.0/16', 'private'],
+	])('accepts standard privacy-preserving range %s as %s', (network, kind) => {
+		const input = { ...observations(), networks: [{ ...metrics(), network, kind, basis: 'resolved_client' }] };
+		expect(parseTrafficSnapshot(input, 'backend', '24h').networks[0]).toMatchObject({ network, kind });
+	});
+	it.each([
+		{ network: '172.30.1.99/32' }, { network: '172.30.1.0/24' }, { network: '172.30.0.1/16' },
+		{ network: '10.256.0.0/16' }, { network: '10.08.0.0/16' }, { network: '172.32.0.0/16' },
+		{ network: '8.8.0.0/16' }, { network: '0.0.0.0/0' }, { network: '172.30.0.0/16\n' },
+		{ network: 'fc12:3456:789a::/48' }, { network: 'fe80::1234/128' }, { network: 'fc00::/129' },
+		{ network: 'fc00::/7%eth0' }, { network: 'fc00:::/7' }, { network: '<script>/16' },
+		{ network: 'a'.repeat(100) }, { network: null }, { network: 'FC00::/7' },
+		{ kind: 'vpn' }, { kind: 'loopback' }, { kind: undefined }, { basis: undefined }, { basis: 'forwarded_for' },
+		{ requests: -1 }, { errors: Number.MAX_SAFE_INTEGER + 1 },
+	])('rejects unsafe or malformed network row %j', (override) => {
+		const networks = [{ ...networkObservations()[0], ...override }];
+		expect(() => parseTrafficSnapshot({ ...observations(), networks }, 'backend', '24h')).toThrow('Invalid traffic schema');
+	});
+	it('rejects duplicate network and basis keys while permitting the same range with distinct evidence', () => {
+		const networks = networkObservations(); networks.push({ ...networks[0] });
+		expect(() => parseTrafficSnapshot(observations({ networks }), 'backend', '24h')).toThrow('Invalid traffic schema');
 	});
 	it.each([-1, Infinity, NaN, 1.5, '0', undefined])('rejects invalid request counters %s', (requests) => {
 		expect(() => parseTrafficSnapshot({ ...observations(), totals: { ...metrics(), requests } }, 'backend', '24h')).toThrow();

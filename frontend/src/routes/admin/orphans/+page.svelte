@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -177,7 +177,7 @@
 	{/if}
 
 	{#if loading}
-		<ActivityIndicator size="sm" label={t('orphanPage.loading')} />
+		<LoadingState variant="surface" label={t('orphanPage.loading')} />
 	{:else}
 		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
 		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />

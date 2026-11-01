@@ -13,6 +13,7 @@
     dataTour?: string;
     ariaLabel?: string;
     labelledBy?: string;
+    closePlacement?: 'flow' | 'overlay';
     children: Snippet;
   }
 
@@ -24,6 +25,7 @@
     dataTour,
     ariaLabel,
     labelledBy,
+    closePlacement = 'flow',
     children,
   }: Props = $props();
 
@@ -149,7 +151,9 @@
     <button
       type="button"
       data-slide-panel-close
-      class="sticky right-3 top-3 z-20 ml-auto mr-3 mt-3 flex size-9 items-center justify-center rounded-md border border-line bg-surface-raised text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+      class={closePlacement === 'overlay'
+        ? 'absolute right-3 top-3 z-20 flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]'
+        : 'sticky right-3 top-3 z-20 ml-auto mr-3 mt-3 flex size-9 items-center justify-center rounded-md border border-line bg-surface-raised text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]'}
       onclick={onClose}
       aria-label={t('slidePanel.closeButton')}
     >×</button>

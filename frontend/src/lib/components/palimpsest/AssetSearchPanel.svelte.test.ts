@@ -14,6 +14,7 @@ import AssetSearchPanel from './AssetSearchPanel.svelte';
 import PackagesPage from '../../../routes/palimpsest/packages/+page.svelte';
 import type { ReusableAsset, CloudEnvironment } from '$lib/api/palimpsestAssets';
 import { refreshAuthState } from '$lib/utils/authSession';
+import { defaultUsageDraft, toLocalDateTime } from '$lib/utils/instanceUsage';
 
 vi.mock('$lib/stores/servicePermissions', async () => {
   const { writable } = await vi.importActual<typeof SvelteStore>('svelte/store');
@@ -199,7 +200,10 @@ it('retains an accepted cloud receipt and replay lock across real outer workspac
     chain_complete: true, download_allowed: false, local_supported: true, local_reason: null, base_image_digest: otherDigest,
     source: 'managed', revision: otherDigest, cloud_supported: true, cloud_reason: null };
   vi.mocked(assetApi.environments).mockResolvedValue({ items: [environment], offset: 0, has_more: false, next_offset: null });
-  vi.mocked(assetApi.resources).mockResolvedValue({ flavors: [{ id: 'flavor-a', name: 'Training flavor', vcpus: 2, ram: 4096 }], networks: [{ id: 'network-a', name: 'Training network' }], keys: [{ name: 'training-key' }] });
+  vi.mocked(assetApi.resources).mockResolvedValue({ flavors: [
+    { id: 'flavor-a', name: 'm1.small', display_name: 'cpu.2c_4g', vcpus: 2, ram: 4096 },
+    { id: 'flavor-b', name: 'dedicated-small', display_name: 'cpu.2c_4g', vcpus: 2, ram: 4096, extra_specs: { 'hw:cpu_policy': 'dedicated' } },
+  ], networks: [{ id: 'network-a', name: 'Training network' }], keys: [{ name: 'training-key' }] });
   vi.mocked(assetApi.consume).mockResolvedValue({ consume_id: 71, server_id: 'server-71', status: 'building', ready: false, revision: otherDigest, project_id: identity.projectId });
   render(PackagesPage);
   const card = (await screen.findByRole('heading', { name: environment.name })).closest('article')!;
@@ -208,7 +212,7 @@ it('retains an accepted cloud receipt and replay lock across real outer workspac
   const modal = await screen.findByRole('dialog', { name: 'Create cloud instance' });
   await vi.waitFor(() => expect(assetApi.resources).toHaveBeenCalledOnce());
   await fireEvent.input(within(modal).getByLabelText('Instance name'), { target: { value: 'training-vm' } });
-  for (const [label, option] of [['Flavor', /Training flavor/], ['Network', /Training network/], ['SSH keypair', /training-key/]] as const) {
+  for (const [label, option] of [['Flavor', /cpu\.2c_4g.*dedicated-small.*flavor-b/], ['Network', /Training network/], ['SSH keypair', /training-key/]] as const) {
     await fireEvent.click(within(modal).getByLabelText(label));
     await fireEvent.click(await screen.findByRole('option', { name: option }));
   }
@@ -221,6 +225,7 @@ it('retains an accepted cloud receipt and replay lock across real outer workspac
   await screen.findByRole('heading', { name: 'Cloud operation #71' });
   expect((screen.getByRole('button', { name: 'Create cloud instance' }) as HTMLButtonElement).disabled).toBe(true);
   expect(assetApi.consume).toHaveBeenCalledOnce();
+  expect(assetApi.consume).toHaveBeenCalledWith(identity, expect.any(AbortSignal), environment.id, expect.objectContaining({ flavor_id: 'flavor-b' }));
 });
 
 it('cancels private browser bytes when a rotated token has not regained verified authority', async () => {
@@ -243,4 +248,114 @@ it('cancels private browser bytes when a rotated token has not regained verified
   pending.resolve(new Blob(['bytes from unverified scope']));
   await pending.promise; await tick();
   expect(createObjectURL).not.toHaveBeenCalled();
+});
+
+async function catalogCloudForm() {
+  const environment: CloudEnvironment = { id: 'managed-training', name: 'Managed training', kind: 'layer-bundle', blob_digest: digest,
+    chain_id: digest, arch: 'x86_64', ubuntu_base: '24.04', size_bytes: 3, created_at: null, visibility: 'public', layer_count: 1,
+    chain_complete: true, download_allowed: false, local_supported: true, local_reason: null, base_image_digest: otherDigest,
+    source: 'managed', revision: otherDigest, cloud_supported: true, cloud_reason: null };
+  vi.mocked(assetApi.environments).mockResolvedValue({ items: [environment], offset: 0, has_more: false, next_offset: null });
+  vi.mocked(assetApi.resources).mockResolvedValue({ flavors: [
+    { id: 'required', name: 'Training GPU', vcpus: 4, ram: 8192, usage_schedule_required: true },
+    { id: 'large', name: 'Large CPU', vcpus: 12, ram: 32768 },
+    { id: 'small', name: 'Small CPU', vcpus: 2, ram: 4096, usage_schedule_required: false },
+  ], networks: [{ id: 'network-a', name: 'Training network' }], keys: [{ name: 'training-key' }] });
+  vi.mocked(assetApi.consume).mockResolvedValue({ consume_id: 72, server_id: 'server-72', status: 'building', ready: false, revision: otherDigest, project_id: identity.projectId });
+  const mounted = render(AssetSearchPanel, { identity, onGuide: vi.fn() });
+  const card = (await screen.findByRole('heading', { name: environment.name })).closest('article')!;
+  await fireEvent.click(within(card).getByRole('button', { name: 'Use asset' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Create cloud instance' }));
+  const modal = await screen.findByRole('dialog', { name: 'Create cloud instance' });
+  await vi.waitFor(() => expect(assetApi.resources).toHaveBeenCalledOnce());
+  await fireEvent.input(within(modal).getByLabelText('Instance name'), { target: { value: 'scheduled-vm' } });
+  for (const [label, option] of [['Flavor', /Training GPU/], ['Network', /Training network/], ['SSH keypair', /training-key/]] as const) {
+    await fireEvent.click(within(modal).getByLabelText(label));
+    await fireEvent.click(await screen.findByRole('option', { name: option }));
+  }
+  return { mounted, modal, submit: within(modal).getByRole('button', { name: 'Create cloud instance' }) as HTMLButtonElement };
+}
+
+it('sends the creation-clock calendar-month default, archive and retained volumes from the catalog form', async () => {
+  const { submit } = await catalogCloudForm();
+  expect((document.querySelector('#asset-usage-action') as HTMLSelectElement).value).toBe('shelve');
+  expect(screen.queryByRole('checkbox', { name: 'Also permanently delete all attached volumes' })).toBeNull();
+  await fireEvent.click(submit);
+  expect(assetApi.consume).toHaveBeenCalledWith(identity, expect.any(AbortSignal), 'managed-training', expect.objectContaining({
+    usage_schedule: { expires_at: null, expiry_action: 'shelve', delete_volumes: false, reason: '' },
+  }));
+});
+
+it('blocks a later catalog deadline without a reason and sends changed deletion consent explicitly', async () => {
+  const { submit } = await catalogCloudForm();
+  const later = new Date(defaultUsageDraft().defaultExpiresAt); later.setUTCDate(later.getUTCDate() + 2);
+  await fireEvent.input(document.querySelector('#asset-usage-expires')!, { target: { value: toLocalDateTime(later.toISOString()) } });
+  expect(submit.disabled).toBe(true);
+  await fireEvent.click(submit);
+  expect(assetApi.consume).not.toHaveBeenCalled();
+  await fireEvent.input(document.querySelector('#asset-usage-reason')!, { target: { value: '  Continuing research  ' } });
+  await fireEvent.change(document.querySelector('#asset-usage-action')!, { target: { value: 'delete' } });
+  const consent = screen.getByRole('checkbox', { name: 'Also permanently delete all attached volumes' }) as HTMLInputElement;
+  expect(consent.checked).toBe(false);
+  await fireEvent.click(consent);
+  expect(submit.disabled).toBe(false);
+  await fireEvent.click(submit);
+  expect(assetApi.consume).toHaveBeenCalledWith(identity, expect.any(AbortSignal), 'managed-training', expect.objectContaining({
+    usage_schedule: { expires_at: expect.any(String), expiry_action: 'delete', delete_volumes: true, reason: 'Continuing research' },
+  }));
+});
+
+it('resets catalog consent after changed flavors and immediately drops drafts on same-tick actor ABA', async () => {
+  const { modal } = await catalogCloudForm();
+  await fireEvent.change(document.querySelector('#asset-usage-action')!, { target: { value: 'delete' } });
+  await fireEvent.click(screen.getByRole('checkbox', { name: 'Also permanently delete all attached volumes' }));
+  await fireEvent.click(within(modal).getByLabelText('Flavor'));
+  await fireEvent.click(screen.getByRole('option', { name: /Large CPU/ }));
+  expect((document.querySelector('#asset-usage-action') as HTMLSelectElement).value).toBe('shelve');
+  const current = get(auth);
+  auth.set({ ...current, projectId: 'project-b' });
+  auth.set(current);
+  await tick();
+  expect(screen.queryByRole('dialog', { name: 'Create cloud instance' })).toBeNull();
+  expect(document.querySelector('#asset-usage-action')).toBeNull();
+  expect(assetApi.consume).not.toHaveBeenCalled();
+});
+
+it('reopens the same catalog asset with archive and retained disks after an accepted launch becomes active', async () => {
+  const { submit } = await catalogCloudForm();
+  await fireEvent.change(document.querySelector('#asset-usage-action')!, { target: { value: 'delete' } });
+  await fireEvent.click(screen.getByRole('checkbox', { name: 'Also permanently delete all attached volumes' }));
+  await fireEvent.click(submit);
+  await screen.findByRole('heading', { name: 'Cloud operation #72' });
+  expect(assetApi.consume).toHaveBeenCalledWith(identity, expect.any(AbortSignal), 'managed-training', expect.objectContaining({
+    usage_schedule: { expires_at: null, expiry_action: 'delete', delete_volumes: true, reason: '' },
+  }));
+  vi.mocked(assetApi.consumeStatus).mockResolvedValue({ consume_id: 72, server_id: 'server-72', status: 'active', ready: true, revision: otherDigest, project_id: identity.projectId });
+  await fireEvent.click(await screen.findByRole('button', { name: 'Refresh status' }));
+  const reopen = screen.getByRole('button', { name: 'Create cloud instance' });
+  await vi.waitFor(() => expect((reopen as HTMLButtonElement).disabled).toBe(false));
+  await fireEvent.click(reopen);
+  const modal = await screen.findByRole('dialog', { name: 'Create cloud instance' });
+  expect((document.querySelector('#asset-usage-action') as HTMLSelectElement).value).toBe('shelve');
+  expect(within(modal).queryByRole('checkbox', { name: 'Also permanently delete all attached volumes' })).toBeNull();
+  await vi.waitFor(() => expect(assetApi.resources).toHaveBeenCalledTimes(2));
+  await fireEvent.click(within(modal).getByRole('button', { name: 'Create cloud instance' }));
+  expect(vi.mocked(assetApi.consume).mock.lastCall![3].usage_schedule).toEqual({ expires_at: null, expiry_action: 'shelve', delete_volumes: false, reason: '' });
+});
+
+it('rechecks the clock at catalog submission when an explicitly selected deadline expires while idle', async () => {
+  const { modal, submit } = await catalogCloudForm();
+  const deadline = new Date(Date.now() + 120_000);
+  await fireEvent.input(document.querySelector('#asset-usage-expires')!, { target: { value: toLocalDateTime(deadline.toISOString()) } });
+  expect(submit.disabled).toBe(false);
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(deadline.getTime() + 60_000);
+    await fireEvent.click(submit);
+    expect(assetApi.consume).not.toHaveBeenCalled();
+    expect(within(modal).getByText('Choose a future date and time.')).toBeTruthy();
+    expect(submit.disabled).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });
