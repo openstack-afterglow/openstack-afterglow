@@ -64,7 +64,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		const sequence = ++loadSequence;
 		loading = true;
 		await Promise.all([
-			api.post<VolumeBackupPolicy[]>(`${base}/configs`, {}, s.token, s.projectId).then((rows) => {
+			api.get<VolumeBackupPolicy[]>(`${base}/configs`, s.token, s.projectId).then((rows) => {
 				if (!current(s) || sequence !== loadSequence) return;
 				if (rows.some((row) => row.project_id !== s.projectId)) throw new Error('Policy scope mismatch');
 				policies = rows;

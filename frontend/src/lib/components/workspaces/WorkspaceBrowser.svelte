@@ -120,7 +120,7 @@
 			</div>
 		{/if}
 		<Field label={t('projectSearch')} for={`${componentId}-project-search`}><TextInput id={`${componentId}-project-search`} bind:value={search} disabled={mutationBusy} /></Field>
-		{#if controller.ready && !controller.loading}
+		{#if controller.ready}
 			{#if !projects.length}<p class="py-4 text-sm text-ink-2">{t('empty')}</p>{/if}
 			<ul class="divide-y divide-line rounded-lg border border-line" aria-label={t('projects')}>
 				{#each projects as project, index (project.id)}

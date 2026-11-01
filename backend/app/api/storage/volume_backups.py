@@ -240,7 +240,7 @@ async def _assert_schedule_source(conn, volume_id: str):
     return volume
 
 
-@router.post("/auto-backup/configs")
+@router.get("/auto-backup/configs")
 async def list_auto_backup_configs(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):

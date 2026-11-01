@@ -532,10 +532,12 @@ SDK3.3.0은 지원 microversion에 따라 `/os-volume-transfer` 또는3.55 이�
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `POST` | `/api/v1/volumes/backups/auto-backup/configs` | 현재 프로젝트의 저장된 정책과 원본 조회 상태 |
+| `GET` | `/api/v1/volumes/backups/auto-backup/configs` | 현재 프로젝트의 저장된 정책과 원본 조회 상태 |
 | `GET` | `/api/v1/volumes/backups/auto-backup/{volume_id}` | 현재 소유 볼륨의 정책 조회 |
 | `POST` | `/api/v1/volumes/backups/auto-backup/{volume_id}` | 정책 생성·수정·일시 중지·재개 |
 | `DELETE` | `/api/v1/volumes/backups/auto-backup/{volume_id}` | 정책만 제거; 기존 백업 보존 |
+
+정책 목록은 읽기 전용 GET이다. 이전 POST reader는 제거했으며 frontend/backend를 함께 전환한다. 브라우저의 실제 mutation invalidation은 정책 저장·삭제에만 적용하고, 정책 목록을 읽었다는 이유로 동시에 진행 중인 원본 볼륨·백업 GET을 취소하지 않는다.
 
 ### POST /api/v1/volumes/backups/auto-backup/{volume_id}
 

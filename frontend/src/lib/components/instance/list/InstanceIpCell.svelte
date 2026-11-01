@@ -11,9 +11,12 @@
 		{#each fixedIps as fip}
 			{@const paired = floatingIps.find(fl => fl.network_name === fip.network_name)}
 			<div class="flex items-center gap-1 flex-wrap">
-				<span class="font-mono text-ink-2 whitespace-nowrap">{fip.addr}</span>
-				{#if paired}<span class="font-mono text-green-400 bg-green-900/20 px-1.5 py-0.5 rounded whitespace-nowrap">{paired.addr}</span>{/if}
+				<span class="min-w-0 max-w-full break-all font-mono text-ink-2">{fip.addr}</span>
+				{#if paired}<span class="min-w-0 max-w-full break-all rounded bg-surface-selected px-1.5 py-0.5 font-mono text-state-success-text">{paired.addr}</span>{/if}
 			</div>
+		{/each}
+		{#each floatingIps.filter(ip => !fixedIps.some(fixed => fixed.network_name === ip.network_name)) as ip}
+			<span class="min-w-0 max-w-full break-all rounded bg-surface-selected px-1.5 py-0.5 font-mono text-state-success-text">{ip.addr}</span>
 		{/each}
 	</div>
 {:else}

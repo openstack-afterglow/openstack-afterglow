@@ -6,6 +6,25 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.31.4 release qualification (2026-11-01, local gate)
+
+- `env PATH="backend/.venv/bin:$PATH" npm run test:gate` 전체 통과: backend12365passed/94skipped, frontend501files6395tests, contracts183, realDBfunctional167, Python Ruff818files. Frontend production build 통과. Exact output artifact1070. Scope authority test의 incidental invalidate callcount는 실제 stale-authority revoke4cases로 교체했고, 실제 Uvicorn handler가 root logging fixture에 섞이던 격리를 수정했다. MCP final validation의20ms 타이밍은 SQL/thread 준비가 끝난 final check 도달 event 후 controlled SDK clock/async deadline으로 검증하여 provider mutation0을 유지한다.
+- 운영 readonly preflight는 현재 backend/frontend/worker revision c142357 및 Afterglow DB103컬럼/104table 부재를 확인했다. 현재 recovery가 활성이고 native v2 caps404라, 사용자 승인으로 Keystone native v2도 배포 범위에 포함했다. 보호된 backup/restore·현재 native/schema/writer qualification 이전에는 production DDL/새 writer를 시작하지 않는다. Gate 성공은 운영 배포 수용을 뜻하지 않으며 OpenSpec `release-afterglow-1-31-4`에서 별도 추적한다.
+
+## 기본 네트워크 미지정의 정상200 응답 (2026-11-01, source/isolated)
+
+- 과거 code404 계약을 대체한다. DB에서 default record가 없다고 확인되면 GET `/networks/default`는200 `{"network_id":null}`을 반환한다. 기존 record200·DB unavailable/factory/query503·권한 검사는 유지한다. Wizard의 code404 특례는 삭제하고 null 성공만 optional로 처리한다. 기존 visible network fallback을 유지하며 생성/지정/native 호출을 추가하지 않는다.
+- Backend network45tests와 frontend wizard53tests 통과. Svelte0errors/기존17warnings, 변경Python Ruff 통과. 실제 Uvicorn/current router→TCP의 미설정200·기존설정200·저장소503·회복 후 미설정200을 확인했다. Principal/DB reader는 synthetic, 실제 cloud/DB/Redis는 미접근이다. 증거 `~/.local/share/afterglow-proofs/default-network-optional-20261101/http-proof.json`.
+- Backend/frontend 동시 반영 필요. 운영 서비스 교체·배포·실제 브라우저 확인·전체 test:gate는 미실행이다. 한국어/영어 API 문서와 architecture를 갱신했다.
+
+## 리소스 선택 browser/backend 표시 cache (2026-11-01, source/isolated)
+
+- `workspaceController`는 memory-only30초 snapshot을 같은 검증된 logical owner의 sessionStorage에 credential 없이 보존한다. 최대16domains·512000문자, fresh30초·관측 후120초 이내 stale는 재검증 중 선택/생성 비활성 표시만 유지한다. AuthReady 이전 복원, nonce 없는 세션의 영속화, TTL sliding, 실패/old-owner 저장을 금지한다. API base·role/capability·membership·scope·login 변경과 logout은 폐기하며 명시 refresh는 ordinary flight를 취소하고 refresh=true pair를 시작한다.
+- Backend `/auth/workspaces`의 비관리자 후보 목록은 cloud/session/context 해시 key로30초 Redis cache를 사용한다. Fresh context와 반환 직전 project enabled/domain/membership 확인을 유지한다. Manager는 per-row GET 증가를 피하기 위해 cache bypass/live list, `/auth/domains`도 전체 native 권한 graph/directory를 계속 조회한다. 새 schema·운영 설정·token 수명 변경 없음.
+- 실제 isolated Chromium+Vite/Bun HTTP fixture: cold directory/workspace2요청, fresh 재열기0추가, full reload0추가, explicit refresh2추가(refresh=true), 검증된 role 변경2추가, logout storage 동기 폐기. 증거 `~/.local/share/afterglow-proofs/workspace-cache-20261101/browser-proof.json`. 운영 Keystone 인증과 별도 production 성능 검증은 아님.
+- 실제 isolated Uvicorn+설치 Keystoneauth/Keystoneclient→loopback native HTTP: ordinary cold26/warm23/refresh26요청, native token exchange와 user project enumeration은 각각1/0/1. Project 철회는 응답에서 제거, domain 철회403. Manager cold/warm20/20으로 native 호출 감소를 주장하지 않는다. `~/.local/share/afterglow-proofs/workspace-cache-20261101/native-http.xml`의 native_http_report. 격리 principal/fake Redis이며 shared cloud/DB/Redis는 변경하지 않았다. 개선의 주효과는30초 browser snapshot 재사용이며 만료 뒤 refetch는 기존 native 호출의23/26을 유지한다. Wall-clock 단축은 측정하지 않았다.
+- Backend4suite415통과와 최종 native smoke1통과. Frontend3files75통과(API base bootstrap 일치/변경 포함), Svelte0errors/기존17warnings, production build 성공. JSDOM canvas 경고는 기존 환경 제약이다. 전체 test:gate와 운영 배포는 미실행이며 실제 scope commit/create의 fresh native 검증은 변경하지 않았다.
+
 ## 메인 페이지 Lumen LLM 게이트웨이·Afterglow MCP 장면 (2026-11-01, source/isolated)
 
 - 사용자 요청: Lumen을 채팅 사이트가 아니라 LLM 게이트웨이로 소개하고(여러 provider 연결, 연구원별 API 키, Claude Code·Codex 같은 코딩 에이전트에서 사용), Afterglow MCP(에이전트가 클라우드 리소스를 조회·관리)도 다른 섹션처럼 모션 그래픽으로 보여 준다. 채팅 데모 `LandingChatDemo`/`LandingSolid`와 `landing.story.chat.*`를 삭제했다. 대신 `#workflow` LLM 게이트웨이 장면과 새 `#mcp` 장면을 추가했다. nav 항목은 "LLM 게이트웨이" 하나이고 MCP 구간도 이 항목이 강조된다. Meta description의 'AI 채팅'은 'LLM 게이트웨이'로 바꿨다(9개 언어).
@@ -3364,4 +3383,22 @@ Effective settings를 기존 production/isolated candidate에서 비밀 출력 �
 - 관련 logout3files24tests와 Svelte2,900files0errors/기존16warnings·production build를 통과했다(`artifact://3963`). 추가 workspace 회귀42tests도 통과했다. 새 회귀는 확인 전 무요청·취소 후 재확인·다른 login owner 보호를 검증한다.
 - 실제 compiled Chromium1440px에서 확인창의 기존 문구·취소/확인을 관측했다. 확인 전/취소 후 `/dashboard`, credential 존재, logout API0이었다. 확인 뒤 `/logout`, API1/서버 정리 pending을 거쳐200 응답 후 server done·credential 제거·명시 로그인 복귀를 확인했다.390px 확인창도 시각 검토했고 console errors0이었다. fixture의 오래된 expiry는 현재 시각으로 갱신했다. 증거: `~/.local/share/afterglow-proofs/logout-progress-20261101/confirmation-restored.json`.
 - Native 실세션/운영 배포 증거가 아니며 임시 Node와 소유 tab을 종료했다. 이번 변경에서 전체 suite/gate는 재실행하지 않았고 기존 stale architecture snapshot·전체frontend 무관 실패의 이전 한계를 해소했다고 주장하지 않는다.
+
+## 볼륨 백업 목록의 HTTP200 후 표시 오류 (2026-11-01, source/isolated only)
+
+- 사용자 보고의 원본 볼륨 오류·서버 오류·남아 있는 그림을 조사했다. Read-only `docker logs --since20m afterglow-local-services-backend-1`의 비밀 제외 요약에는 volumes GET6회, backups GET3회, policy configs POST3회가 모두200이고 ERROR record는0이었다. 이는 **local container** 관측이며 screenshot deployment와 동일한 origin/image임을 증명하지 않고 운영 장애를 부정하지 않는다. Chrome relay extension은 연결되지 않아 사용자 실제 tab은 조사하지 못했다.
+- 현재 source의 실제 Chromium/API client에서 synthetic identity와 모든 응답200만으로 같은 두 alert와 empty 그림을 재현했다. 정책 목록 reader가 `api.post`를 사용해 shared mutation fence가 동시 volume/backup GET을 retire했고, 두 Promise의 AbortError를 서버/원본 실패로 표시했다. 같은 browser에서 old policy POST는 fulfilled인 반면 두 GET은 AbortError였다. SYSTEM이라는 프로젝트 표시명이나 native system scope가 원인이라는 근거는 없으며 auth/scope/ownership guard를 변경하지 않았다.
+- 원인은 읽기 HTTP method이므로 backend와 controller를 GET `/api/v1/volumes/backups/auto-backup/configs`로 clean cutover했다. 기존 read-only POST caller·tests를 모두 이전했으며 실제 정책 저장·삭제의 global mutation invalidation은 보존한다. Alert 뒤 그림은 pending loader가 아니라 EmptyState artwork였다. 백업 조회 실패 때 성공-empty 설명/그림을 내보내지 않고 기존 rows가 있으면 refresh 실패에도 유지한다.
+- Backend focused `test_volume_backups.py`, `test_volume_owner_check.py`, `test_auto_backup_native_http.py`57passed(2.84s, 기존 deprecation warnings5). Frontend backup3files16tests는 실제 client를 사용하는 concurrent completion 순서2개·503표시·실제 mutation AbortError 회귀4개를 포함한다. 같은 최종 frontend check는0errors/기존17warnings, i18n check0errors/45key-order warnings, scan0hardcoded/1278files, production build성공(`artifact://895`; backend `artifact://892`). 전체 suite를 이번 proof로 대체하지 않는다.
+- 실제 격리 Uvicorn/current router와 설치된 openstacksdk가 loopback synthetic Cinder에 version/source-volume/backup-detail GET3개만 보내고 정책 GET·백업 GET200을 반환했다. Identity dependency와 policy store는 synthetic fixture이고 실제 DB/Redis/native cloud를 읽거나 쓰지 않았다. 현재 source Vite3191 + Chromium의 SYSTEM 표시 프로젝트에서 정책/원본/백업 GET200 후 실제 백업 행·alert0·console errors0을 확인했다. 별도 HTTP503 fixture에서는 alert가 보이고 empty/loading/artwork0,390px overflow0이었다.
+- 증거: `~/.local/share/afterglow-proofs/volume-backup-read-20261101/{local-log-summary,browser-proof,failure-proof}.json`, `fixed-desktop.png`, `failed-mobile.png`. Source-only 변경이며 local/production service restart·image교체·native backup 생성/삭제/복원은 없다. GET cutover는 backend/frontend를 함께 배포해야 하며 screenshot origin의 실제 배포 수용·native backup 저장소/복원은 미검증이다.
+
+
+## 프로젝트 인스턴스 표와 조작 위치 (2026-11-01, source/isolated only)
+
+- `finish-instance-list-controls`:64rem fixed desktop table의 작업 열을80px로 확보하고 긴 IPv6·library를 셀 안에 감싼다.6개 header 정렬과 compact44px 버튼은 오름차순→내림차순→기본 최신순을 공유하며 전체 filtered snapshot을 정렬한 뒤 paging하고 선택/page를 초기화한다. Tutorial은 생성 옆, page-size는 이전/다음과 같은 footer group이다.9locale 신규 문구를 추가했으며 API/schema/native 권한/배포 변경은 없다.
+- `npx vitest run src/lib/components/instance/list/__tests__ src/routes/dashboard/compute/instances/__tests__`:4files49tests 통과. Pure6column 양방향·빈 값/동률/원본 불변, desktop/card state·기존 작업/viewport lifecycle, page 정렬 cycle·refresh·선택 해제·footer grouping을 포함한다. JSDOM의 기존 canvas getContext 미지원 stderr가 있으나 assertion failure는 없다.
+- Backup 후속과 함께 실행한 최종 frontend check:2,910files0errors17warnings(별도 wizard/telemetry/docs/usage6files), i18n0errors45key-order warnings(53namespaces12,267messages), hardcoded scan0lines/1,278files, production build 성공. Backup3files16tests도 같은 batch에서 통과했으나 해당 기능의 native proof는 별도 receipt를 따른다. 첫 backup selector의 잘못된 storage 경로는 no-tests exit1이었으며 실제 volumes 경로로 고친 뒤 위 batch를 실행했다. 전체 test:gate는 이번 변경에서 실행하지 않았다.
+- Isolated Vite3191의 `/dashboard/compute/instances?tutorial=on` Chromium에서1440×1000일 때 shell client/scroll1150/1150, document1440/1440과 작업 trigger right1383을 확인했다. Synthetic23row에서 sorting asc/desc/default, page-size10·2/3이동·sort 후1/3, menu in-viewport와 Escape focus복원을 실행했다. 별도 긴 IPv6두 개·unbroken library fixture도 IP192/192·library128/128로 셀 overflow가 없었다.390×844에서 document390/390,6sort buttons 각44px와 Enter 활성화를 확인했다.
+- 9locale×1440/768/390px×light/dark54조건에서 document overflow0, 항상6sort controls, compact44px, action reachability 및 desktop shell1150/1150을 assertion으로 확인했다. Theme는 기존 root light class를 사용한 synthetic rendering이다. 최종 design detector는 `[]`; browser uncaught errors0. 증거는 `~/.local/share/afterglow-proofs/instance-controls-20261101/{locale-geometry.json,desktop-long-values.png,desktop-clean.png,mobile-clean.png}`이며 clean screenshots는 기존 진입 animation이 끝난 뒤 저장했다. Browser fixture/HMR reset 중 관측한8row와 확장23row proof를 혼합하지 않고 실제 native/cloud 자원·운영 배포 성공으로 해석하지 않는다. 소유 browser tabs를 닫았으며3191서버와 다른 tab은 유지했다. OpenSpec은 `2026-11-01-finish-instance-list-controls`로 archive하고3requirements를 main spec에 동기화했다.
 

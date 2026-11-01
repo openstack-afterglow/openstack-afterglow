@@ -332,6 +332,11 @@ async def test_every_mutation_adapter_fences_after_slow_final_validation(
     import importlib
 
     module = importlib.import_module(f"app.services.mcp_control_plane.{module_name}")
+    from app.services.mcp_control_plane import sdk
+
+    clock = [0.0]
+    monkeypatch.setattr(sdk, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    deadline = asyncio.timeout(None)
     started = threading.Event()
     finish_validation = threading.Event()
     mutations = []
@@ -376,18 +381,22 @@ async def test_every_mutation_adapter_fences_after_slow_final_validation(
     if prepare_name == "_checked_server_delete":
         from app.services.palimpsest_catalog_cleanup import McpCleanupAuthority, lookup_catalog_consume
 
-        # Exclude cold SQL setup from the short final-validation deadline.
+        # Prepare the real SQL exclusion path before exercising the final-validation fence.
         authority = McpCleanupAuthority(conn, "", arguments["project_id"])
         assert await lookup_catalog_consume("resource-a", proxy.get_server("resource-a"), authority) is None
 
     async def invoke():
-        with sdk_deadline(0.02):
-            async with asyncio.timeout(0.02):
+        with sdk_deadline(1):
+            async with deadline:
                 await getattr(module, request_name)(conn, **arguments)
 
     task = asyncio.create_task(invoke())
     await _wait(started)
-    await asyncio.sleep(0.04)
+    # Expire only after the final SDK validation starts, not during SQL/thread scheduling.
+    clock[0] = 2.0
+    deadline.reschedule(asyncio.get_running_loop().time())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
     assert not task.done()
     finish_validation.set()
     with pytest.raises(TimeoutError):

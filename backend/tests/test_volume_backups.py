@@ -190,7 +190,7 @@ async def test_schedule_save_get_list_pause_resume_remove_are_persisted_without_
         assert config["next_run_at"] is not None and config["last_status"] == "never"
         fetched = await client.get(url)
         assert fetched.status_code == 200 and fetched.json() == config
-        listed = await client.post("/api/v1/volumes/backups/auto-backup/configs")
+        listed = await client.get("/api/v1/volumes/backups/auto-backup/configs")
         assert listed.status_code == 200 and listed.json() == [config]
         paused = await client.post(url, json={**body, "enabled": False})
         assert paused.status_code == 201 and paused.json()["next_run_at"] is None
@@ -200,7 +200,7 @@ async def test_schedule_save_get_list_pause_resume_remove_are_persisted_without_
         removed = await client.delete(url)
         assert removed.status_code == 204
         assert (await client.get(url)).status_code == 404
-        assert (await client.post("/api/v1/volumes/backups/auto-backup/configs")).json() == []
+        assert (await client.get("/api/v1/volumes/backups/auto-backup/configs")).json() == []
         create.assert_not_called()
 
 
@@ -251,7 +251,7 @@ async def test_schedule_reader_can_read_but_cannot_save_pause_or_remove(client, 
     assert (await client.post(url, json={})).status_code == 201
     app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
     assert (await client.get(url)).status_code == 200
-    assert (await client.post("/api/v1/volumes/backups/auto-backup/configs")).status_code == 200
+    assert (await client.get("/api/v1/volumes/backups/auto-backup/configs")).status_code == 200
     assert (await client.post(url, json={})).status_code == 403
     assert (await client.post(url, json={"enabled": False})).status_code == 403
     assert (await client.delete(url)).status_code == 403
@@ -264,7 +264,7 @@ async def test_schedule_store_failure_is_unavailable_not_empty_or_disabled(clien
     with patch("app.services.auto_backup._get_redis", side_effect=RuntimeError("private endpoint")):
         for method, url, body in (
             ("get", "/api/v1/volumes/backups/auto-backup/vol-1", None),
-            ("post", "/api/v1/volumes/backups/auto-backup/configs", None),
+            ("get", "/api/v1/volumes/backups/auto-backup/configs", None),
             ("post", "/api/v1/volumes/backups/auto-backup/vol-1", {}),
             ("delete", "/api/v1/volumes/backups/auto-backup/vol-1", None),
         ):
@@ -294,7 +294,7 @@ async def test_missing_source_policy_remains_visible_and_can_be_removed_without_
             else HttpException(message="private source path", http_status=404)
         )
     with patch("app.api.storage.volume_backups.cinder.delete_backup") as delete_backup:
-        listed = await client.post("/api/v1/volumes/backups/auto-backup/configs")
+        listed = await client.get("/api/v1/volumes/backups/auto-backup/configs")
         assert listed.status_code == 200
         policy = listed.json()[0]
         assert policy["volume_id"] == "vol-1" and policy["max_daily"] == 3
@@ -341,7 +341,7 @@ async def test_source_outage_or_unproven_ownership_is_not_permission_to_remove_p
         mock_conn.block_storage.get_volume.return_value.project_id = (
             "foreign-project" if failure_kind == "foreign" else None
         )
-    listed = await client.post("/api/v1/volumes/backups/auto-backup/configs")
+    listed = await client.get("/api/v1/volumes/backups/auto-backup/configs")
     assert listed.status_code == 200
     policy = listed.json()[0]
     assert policy["enabled"] is True and policy["max_weekly"] == 4

@@ -155,9 +155,9 @@
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
-	{:else if backups.length === 0}
+	{:else if backups.length === 0 && !error}
 		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
-	{:else}
+	{:else if backups.length > 0}
 		<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}

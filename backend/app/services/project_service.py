@@ -20,6 +20,7 @@ async def invalidate_project_lists(user_id, domain_id):
     await cache.invalidate(keys.user_key(user_id, f"domain:{domain_id}:projects"))
     await cache.invalidate("afterglow:admin:projects:*")
     await cache.invalidate("afterglow:admin:project_names:*")
+    await cache.invalidate("afterglow:identity:workspace-directory:*")
 
 
 # ─── 프로젝트 생성 ────────────────────────────────────────────────────────────

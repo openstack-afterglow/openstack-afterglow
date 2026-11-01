@@ -1,12 +1,27 @@
 """Directory read phases preserve live authority; synthetic native I/O, real routes."""
 
+import asyncio
+import json
+import socket
+import threading
+from collections import Counter
+from contextlib import asynccontextmanager
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
+import uvicorn
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from keystoneauth1 import noauth
+from keystoneauth1 import session as native_session
+from keystoneclient.v3.client import Client as NativeClient
 
 from app.api.identity import auth
+from app.services import cache, domain_scope, project_service
 from tests.test_domain_projects import domain_native as domain_native
 from tests.test_domain_projects import grant, row
 
@@ -239,6 +254,378 @@ async def test_system_admin_cannot_keep_revoked_user_workspace_membership(
     after = await personal_directory_client.get("/api/v1/auth/workspaces?domain_id=personal")
     assert after.status_code == 403, after.text
     assert domain_native.calls == []
+
+
+@pytest.fixture
+async def cached_directory(domain_native, monkeypatch):
+    """Real routes/cache layer with isolated native state and fake Redis."""
+    native = domain_native
+    native.raw = [grant("project_reader", user="creator", project=pid) for pid in ("default-a", "work-a")]
+    actor = {
+        "user_id": "creator",
+        "identity_domain_id": "home",
+        "domain_id": "tenant-a",
+        "project_id": "default-a",
+        "refresh_jti": "isolated-login-jti",
+        "roles": ["project_reader"],
+        "token": "never-store-this-native-secret",
+    }
+    real_projects = auth.keystone.list_projects
+    enumerations = []
+
+    def projects(token, domain_id, **kwargs):
+        enumerations.append((token, domain_id))
+        return [vars(project).copy() for project in native.project_rows.values() if project.domain_id == domain_id]
+
+    monkeypatch.setattr(auth.keystone, "list_projects", projects)
+    app = FastAPI()
+    app.include_router(auth.router, prefix="/api/v1/auth")
+    app.dependency_overrides[auth.get_token_info] = lambda: actor.copy()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield SimpleNamespace(
+            app=app,
+            client=client,
+            native=native,
+            actor=actor,
+            enumerations=enumerations,
+            real_projects=real_projects,
+        )
+
+
+@pytest.mark.asyncio
+async def test_warm_workspace_keeps_live_checks_and_refresh_separate(cached_directory):
+    env = cached_directory
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a"
+    first = await env.client.get(path + "&cache=true")
+    assert first.status_code == 200, first.text
+    env.native.project_rows["work-a"].name = "Renamed"
+    before = Counter(env.native.read_calls)
+    warm = await env.client.get(path + "&cache=true")
+    assert warm.status_code == 200, warm.text
+    assert warm.json() == first.json()
+    assert len(env.enumerations) == 1
+    after = Counter(env.native.read_calls)
+    assert after[("user", "creator")] > before[("user", "creator")]
+    assert after[("project", "work-a")] > before[("project", "work-a")]
+    bypass = await env.client.get(path + "&cache=false")
+    assert bypass.status_code == 200
+    assert next(p["name"] for p in bypass.json()["projects"] if p["id"] == "work-a") == "Renamed"
+    assert (await env.client.get(path + "&cache=true")).json() == first.json()
+    refreshed = await env.client.get(path + "&refresh=true")
+    assert refreshed.json() == bypass.json()
+    assert (await env.client.get(path + "&cache=true")).json() == refreshed.json()
+    assert len(env.enumerations) == 3
+    redis = await cache._get_redis()
+    keys = await redis.keys("afterglow:identity:workspace-directory:*")
+    assert len(keys) == 1
+    assert 0 < await redis.ttl(keys[0]) <= 30
+    serialized = str(keys) + str(await redis.get(keys[0]))
+    assert env.actor["token"] not in serialized
+    assert env.actor["refresh_jti"] not in serialized
+    assert env.native.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["membership", "disabled", "moved"])
+async def test_warm_workspace_filters_revoked_or_disabled_rows(cached_directory, change):
+    env = cached_directory
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    assert (await env.client.get(path)).status_code == 200
+    if change == "membership":
+        env.native.raw = [grant("project_reader", user="creator", project="default-a")]
+    elif change == "disabled":
+        env.native.project_rows["work-a"].enabled = False
+    else:
+        env.native.project_rows["work-a"].domain_id = "tenant-b"
+        env.native.project_rows["work-a"].parent_id = "tenant-b"
+    fresh = await env.client.get(path)
+    assert fresh.status_code == 200, fresh.text
+    assert [project["id"] for project in fresh.json()["projects"]] == ["default-a"]
+    assert len(env.enumerations) == 1
+    assert env.native.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change,status", [("user", 401), ("domain", 403), ("membership", 403), ("graph", 503)])
+async def test_warm_workspace_never_caches_native_authority(cached_directory, change, status):
+    env = cached_directory
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    assert (await env.client.get(path)).status_code == 200
+    if change == "user":
+        env.native.user_rows["creator"].enabled = False
+    elif change == "domain":
+        env.native.domain_rows["tenant-a"].enabled = False
+    elif change == "membership":
+        env.native.raw = []
+    else:
+        env.native.raw = [grant("unknown-role", user="creator", project="default-a")]
+    denied = await env.client.get(path)
+    assert denied.status_code == status, denied.text
+    assert "projects" not in denied.json()
+    assert len(env.enumerations) == 1
+    assert env.native.calls == []
+
+
+@pytest.mark.asyncio
+async def test_warm_manager_workspace_rechecks_project_enablement(cached_directory):
+    env = cached_directory
+    env.native.raw = [grant("manager", user="creator", project="default-a")]
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    assert (await env.client.get(path)).status_code == 200
+    env.native.project_rows["work-a"].enabled = False
+    warm = await env.client.get(path)
+    assert warm.status_code == 200, warm.text
+    assert [project["id"] for project in warm.json()["projects"]] == ["default-a"]
+    env.native.raw = [grant("project_reader", user="creator", project="default-a")]
+    downgraded = await env.client.get(path)
+    assert downgraded.status_code == 200, downgraded.text
+    assert downgraded.json()["is_domain_manager"] is False
+    assert [project["id"] for project in downgraded.json()["projects"]] == ["default-a"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalidate", ["authority", "projects"])
+async def test_iam_invalidations_clear_workspace_display_cache(cached_directory, invalidate):
+    env = cached_directory
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    assert (await env.client.get(path)).status_code == 200
+    env.native.project_rows["work-a"].name = "New label"
+    if invalidate == "authority":
+        await domain_scope.invalidate_authority()
+    else:
+        await project_service.invalidate_project_lists("creator", "tenant-a")
+    fresh = await env.client.get(path)
+    assert fresh.status_code == 200, fresh.text
+    assert next(p["name"] for p in fresh.json()["projects"] if p["id"] == "work-a") == "New label"
+    assert len(env.enumerations) == 2
+
+
+@pytest.mark.asyncio
+async def test_workspace_cache_outage_uses_authoritative_path(cached_directory, monkeypatch):
+    env = cached_directory
+
+    async def unavailable(*args, **kwargs):
+        raise ConnectionError("isolated cache unavailable")
+
+    monkeypatch.setattr(cache.get_backend(), "get", unavailable)
+    monkeypatch.setattr(cache.get_backend(), "set", unavailable)
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    for _ in range(2):
+        response = await env.client.get(path)
+        assert response.status_code == 200, response.text
+    assert len(env.enumerations) == 2
+    env.native.raw = []
+    assert (await env.client.get(path)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_workspace_snapshot_isolated_by_login_and_scope(cached_directory):
+    env = cached_directory
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&cache=true"
+    assert (await env.client.get(path)).status_code == 200
+    env.native.project_rows["work-a"].name = "Second login label"
+    env.actor["refresh_jti"] = "different-login-jti"
+    second = await env.client.get(path)
+    assert second.status_code == 200
+    assert next(p["name"] for p in second.json()["projects"] if p["id"] == "work-a") == "Second login label"
+    env.actor["project_id"] = "work-a"
+    assert (await env.client.get(path)).status_code == 200
+    assert len(env.enumerations) == 3
+
+
+@pytest.fixture
+def native_http_directory(cached_directory, monkeypatch):
+    """Installed Keystone clients talk only to this disposable loopback server."""
+    env = cached_directory
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def respond(self, status, payload, *, token=None):
+            body = json.dumps(payload, default=vars).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            if token:
+                self.send_header("X-Subject-Token", token)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            requests.append((self.command, urlsplit(self.path).path))
+            if self.path != "/v3/auth/tokens":
+                return self.respond(405, {"error": {"message": "No native writes allowed"}})
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            assert body["auth"]["identity"]["token"]["id"] == env.actor["token"]
+            now = datetime.now(UTC)
+            self.respond(
+                201,
+                {
+                    "token": {
+                        "methods": ["token"],
+                        "issued_at": now.isoformat(),
+                        "expires_at": (now + timedelta(hours=1)).isoformat(),
+                        "user": {"id": "creator", "name": "creator", "domain": {"id": "home", "name": "home"}},
+                        "roles": [],
+                        "catalog": [
+                            {
+                                "id": "identity",
+                                "name": "keystone",
+                                "type": "identity",
+                                "endpoints": [
+                                    {
+                                        "id": "identity-public",
+                                        "interface": "public",
+                                        "region": "Isolated",
+                                        "url": endpoint,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                },
+                token="isolated-exchanged-token",
+            )
+
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            path = parsed.path.rstrip("/")
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            requests.append((self.command, path))
+
+            def param(name):
+                return query.get(name, [None])[0]
+
+            native = env.native
+            if path == "/v3":
+                return self.respond(
+                    200, {"version": {"id": "v3.14", "status": "stable", "links": [{"rel": "self", "href": endpoint}]}}
+                )
+            if path == "/v3/roles":
+                return self.respond(200, {"roles": native.role_rows, "links": {"next": None}})
+            if path == "/v3/role_inferences":
+                return self.respond(200, {"role_inferences": native.edges, "links": {"next": None}})
+            if path == "/v3/role_assignments":
+                rows = native.assignments(
+                    project=param("scope.project.id"),
+                    user=param("user.id"),
+                    group=param("group.id"),
+                    effective="effective" in query,
+                    system=param("scope.system"),
+                )
+                return self.respond(200, {"role_assignments": rows, "links": {"next": None}})
+            if path == "/v3/projects" or path == "/v3/users/creator/projects":
+                projects = native.projects_list(domain=param("domain_id"))
+                return self.respond(200, {"projects": projects, "links": {"next": None}})
+            if path == "/v3/groups" or path.endswith("/groups"):
+                uid = path.split("/")[3] if path.startswith("/v3/users/") else param("user_id")
+                return self.respond(200, {"groups": native.groups_list(user=uid), "links": {"next": None}})
+            if path.endswith("/users") and path.startswith("/v3/groups/"):
+                gid = path.split("/")[3]
+                return self.respond(200, {"users": native.users_list(group=gid), "links": {"next": None}})
+            kind, object_id = path.split("/")[-2:]
+            rows = {
+                "users": native.user_rows,
+                "domains": native.domain_rows,
+                "projects": native.project_rows,
+                "groups": native.group_rows,
+            }.get(kind, {})
+            if object_id in rows:
+                return self.respond(200, {kind[:-1]: rows[object_id]})
+            self.respond(404, {"error": {"message": "No such isolated native resource", "path": path}})
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    endpoint = f"http://127.0.0.1:{server.server_port}/v3"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    settings = auth.get_settings()
+    monkeypatch.setattr(settings, "os_auth_url", endpoint)
+    monkeypatch.setattr(settings, "os_region_name", "Isolated")
+    monkeypatch.setattr(settings, "os_interface", "public")
+    monkeypatch.setattr(auth.keystone, "list_projects", env.real_projects)
+
+    def admin_client():
+        transport = native_session.Session(auth=noauth.NoAuth())
+        return NativeClient(session=transport, endpoint_override=endpoint)
+
+    monkeypatch.setattr(auth.keystone, "_get_admin_ks_client", admin_client)
+    env.native_requests = requests
+    try:
+        yield env
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@asynccontextmanager
+async def _directory_tcp_server(app):
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, lifespan="off", log_level="error"))
+    task = asyncio.create_task(server.serve(sockets=[sock]))
+    try:
+        async with asyncio.timeout(10):
+            while not server.started:
+                if task.done():
+                    await task
+                await asyncio.sleep(0.01)
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 10)
+        sock.close()
+
+
+@pytest.mark.asyncio
+async def test_workspace_isolated_tcp_http_cache_smoke(native_http_directory, request):
+    """Actual API and Keystone TCP HTTP; no mocked native methods or shared services."""
+    env = native_http_directory
+    report = {}
+    path = "/api/v1/auth/workspaces?domain_id=tenant-a&"
+    async with _directory_tcp_server(env.app) as base_url, AsyncClient(base_url=base_url) as client:
+
+        async def measure_request(label, mode):
+            start = len(env.native_requests)
+            response = await client.get(path + mode)
+            counts = Counter(f"{method} {url}" for method, url in env.native_requests[start:])
+            report[label] = {
+                "http": response.status_code,
+                "native_http_total": sum(counts.values()),
+                "native_http_counts": dict(sorted(counts.items())),
+            }
+            return response
+
+        for label, mode in (("cold", "cache=true"), ("warm", "cache=true"), ("refresh", "refresh=true")):
+            response = await measure_request(label, mode)
+            assert response.status_code == 200, response.text
+        assert report["warm"]["native_http_total"] < report["cold"]["native_http_total"]
+        for key in ("POST /v3/auth/tokens", "GET /v3/users/creator/projects"):
+            assert [report[label]["native_http_counts"].get(key, 0) for label in ("cold", "warm", "refresh")] == [
+                1,
+                0,
+                1,
+            ]
+        assert report["warm"]["native_http_counts"]["GET /v3/users/creator"] > 0
+        assert report["warm"]["native_http_counts"]["GET /v3/role_assignments"] > 0
+        env.native.raw = [grant("project_reader", user="creator", project="default-a")]
+        revoked = await measure_request("revoked-project", "cache=true")
+        assert revoked.status_code == 200, revoked.text
+        assert [p["id"] for p in revoked.json()["projects"]] == ["default-a"]
+        env.native.raw = []
+        assert (await measure_request("revoked-domain", "cache=true")).status_code == 403
+        env.native.raw = [grant("manager", user="creator", project="default-a")]
+        for label in ("manager-cold", "manager-warm"):
+            response = await measure_request(label, "cache=true")
+            assert response.status_code == 200, response.text
+        assert report["manager-cold"] == report["manager-warm"]
+        assert report["manager-warm"]["native_http_counts"]["GET /v3/projects"] > 0
+    assert env.native.calls == []
+    request.node.user_properties.append(("native_http_report", json.dumps(report, sort_keys=True)))
+    print("isolated-workspace-http=" + json.dumps(report, sort_keys=True))
 
 
 @pytest.mark.asyncio

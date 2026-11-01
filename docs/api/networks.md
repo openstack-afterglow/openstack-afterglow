@@ -239,6 +239,8 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 }
 ```
 
+미설정은 오류가 아닌 `200 {"network_id": null}`입니다. 기존 네트워크 유무와 별개이며 자동 생성·지정하지 않습니다.
+
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | `project_id` | string | 프로젝트 UUID |
@@ -253,10 +255,9 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 | 코드 | 설명 |
 |------|------|
-| `404` | DB 조회가 성공했으나 Default 레코드가 없음 (`detail.code=default_network_not_configured`) |
 | `503` | DB unavailable·session factory 부재·query 실패; 부재로 간주하지 않음 |
 
-Wizard는 `404`와 `default_network_not_configured` code가 함께 있을 때만 선택적 기본값 부재로 처리합니다. 과거 code 없는404·proxy404·인증/DB 실패는 오류·명시 재조회로 남깁니다. DB 조회 실패 때문에 네트워크를 자동 생성하지 않습니다.
+Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 처리합니다.404·인증/DB 실패는 오류·명시 재조회로 남깁니다. DB 조회 실패 때문에 네트워크를 자동 생성하지 않습니다. Backend/frontend를 함께 반영해야 합니다.
 
 ### PUT /api/v1/networks/default
 

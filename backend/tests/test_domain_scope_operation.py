@@ -184,17 +184,35 @@ def test_domain_resolution_preserves_exactness_and_status(domain_native, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_invalidation_discards_supplied_operation_authority_reads(domain_native, monkeypatch):
+@pytest.mark.parametrize("scope", ["domain", "system"])
+@pytest.mark.parametrize("revocation", ["assignment", "group_membership"])
+async def test_invalidation_discards_supplied_operation_authority_reads(domain_native, monkeypatch, scope, revocation):
     n = domain_native
-    invalidate = AsyncMock()
-    monkeypatch.setattr("app.services.cache.invalidate", invalidate)
+    domain_id = "tenant-a" if scope == "domain" else None
+    native_scope = {"project": {"id": "default-a"}} if domain_id else {"system": {"all": True}}
+    principal = {"user": {"id": "creator"}}
+    if revocation == "group_membership":
+        n.group_rows["operators"] = row(id="operators", name="Operators", domain_id="home", description="")
+        n.members["operators"] = {"creator"}
+        principal = {"group": {"id": "operators"}}
+    n.raw = [row(**principal, role={"id": "manager" if domain_id else "admin"}, scope=native_scope)]
+    monkeypatch.setattr("app.services.cache.invalidate", AsyncMock())
     with NativeOperation() as operation:
-        assert domain_scope.has_scope_authority("creator", domain_id="tenant-a", operation=operation)
-        n.raw = []
+        assert domain_scope.has_scope_authority("creator", domain_id=domain_id, operation=operation)
+        assert domain_scope.domain_context("creator", "tenant-a", operation=operation)["domain_id"] == "tenant-a"
+        if revocation == "assignment":
+            n.raw = []
+        else:
+            n.members["operators"] = set()
+        # An explicitly retained snapshot is valid only until its mutation fence.
+        assert domain_scope.has_scope_authority("creator", domain_id=domain_id, operation=operation)
         await domain_scope.invalidate_authority(operation=operation)
-        assert not operation.reads
-        assert not domain_scope.has_scope_authority("creator", domain_id="tenant-a", operation=operation)
-    assert invalidate.await_count == 3
+        assert not domain_scope.has_scope_authority("creator", domain_id=domain_id, operation=operation)
+        with pytest.raises(HTTPException) as denied:
+            domain_scope.domain_context("creator", "tenant-a", operation=operation)
+        assert denied.value.status_code == 403
+    assert not domain_scope.has_scope_authority("creator", domain_id=domain_id)
+    assert n.calls == []
 
 
 @pytest.mark.asyncio

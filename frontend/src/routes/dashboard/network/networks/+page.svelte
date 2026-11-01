@@ -97,7 +97,7 @@
 
   async function fetchDefaultNetwork() {
     try {
-      const record = await api.get<{ network_id: string }>('/api/v1/networks/default', tok(), pid());
+      const record = await api.get<{ network_id: string | null }>('/api/v1/networks/default', tok(), pid());
       defaultNetworkId = record.network_id;
     } catch { defaultNetworkId = null; }
   }

@@ -157,6 +157,8 @@ def configured_logging(tmp_path, monkeypatch):
     previous_levels = {
         name: logger.level for name, logger in root.manager.loggerDict.items() if isinstance(logger, logging.Logger)
     }
+    uvicorn_loggers = [logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access")]
+    previous_uvicorn = [(logger, logger.handlers[:], logger.propagate) for logger in uvicorn_loggers]
     previous_sources = config._LOADED_CONFIG_SOURCES[:]
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config, "_config_candidates", lambda: [tmp_path / "afterglow.conf"])
@@ -172,6 +174,13 @@ def configured_logging(tmp_path, monkeypatch):
         config.get_settings.cache_clear()
         config.load_raw_toml.cache_clear()
         logging.getLogger("app.main").setLevel(logging.NOTSET)
+        # These assertions exercise Afterglow's two root outputs, not Uvicorn's
+        # non-propagating text handlers left by earlier in-process TCP tests.
+        # AccessFormatter requires a native five-argument HTTP access record;
+        # an arbitrary descendant warning is intentionally not such a record.
+        for logger in uvicorn_loggers:
+            logger.handlers = []
+            logger.propagate = True
         monkeypatch.setattr("sys.stderr", stream)
         _setup_logging()
         return stream, tmp_path / "logs"
@@ -194,6 +203,9 @@ def configured_logging(tmp_path, monkeypatch):
             for name, logger in root.manager.loggerDict.copy().items():
                 if isinstance(logger, logging.Logger):
                     logger.setLevel(previous_levels.get(name, logging.NOTSET))
+            for logger, handlers, propagate in previous_uvicorn:
+                logger.handlers = handlers
+                logger.propagate = propagate
             config.get_settings.cache_clear()
             config.load_raw_toml.cache_clear()
             config._LOADED_CONFIG_SOURCES[:] = previous_sources
@@ -370,6 +382,33 @@ def test_debug_credentials_are_fully_redacted_in_both_outputs(configured_logging
         assert "***" in events[-1]["message"]
         if template.endswith("=%s"):
             assert events[-1]["message"] == template.replace("%s", "***")
+
+
+def test_root_output_fixture_isolates_uvicorn_access_formatter(configured_logging):
+    from uvicorn.logging import AccessFormatter, DefaultFormatter
+
+    native_output = io.StringIO()
+    for name, formatter in (
+        ("uvicorn", DefaultFormatter("%(levelprefix)s %(message)s")),
+        ("uvicorn.access", AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s')),
+    ):
+        handler = logging.StreamHandler(native_output)
+        handler.setFormatter(formatter)
+        logger = logging.getLogger(name)
+        logger.handlers = [handler]
+        logger.propagate = False
+
+    stream, directory = configured_logging(log_level="DEBUG")
+    logging.getLogger("uvicorn.access.explicit_debug_consumer").warning("safe wire warning")
+    unrelated = logging.getLogger("uvicorn.access_consumer")
+    unrelated.setLevel(logging.DEBUG)
+    unrelated.debug("safe unrelated diagnostic")
+
+    assert native_output.getvalue() == ""
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        messages = [json.loads(line)["message"] for line in output.splitlines()]
+        assert "safe wire warning" in messages
+        assert "safe unrelated diagnostic" in messages
 
 
 @pytest.mark.parametrize(

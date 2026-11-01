@@ -126,7 +126,7 @@ async def test_schedule_list_retains_stored_policy_without_foreign_source_detail
 
     await enable_auto_backup(mock_conn._afterglow_project_id, "vol-foreign")
     mock_conn.block_storage.get_volume.return_value.project_id = "other-project-999"
-    response = await client.post("/api/v1/volumes/backups/auto-backup/configs")
+    response = await client.get("/api/v1/volumes/backups/auto-backup/configs")
     assert response.status_code == 200
     policy = response.json()[0]
     assert policy["volume_id"] == "vol-foreign" and policy["enabled"] is True

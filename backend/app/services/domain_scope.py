@@ -266,5 +266,6 @@ async def invalidate_authority(*, operation=None) -> None:
         "afterglow:identity:domain-context:*",
         "afterglow:identity:system-admin:*",
         "afterglow:identity:project-domain:*",
+        "afterglow:identity:workspace-directory:*",
     ):
         await invalidate(pattern)

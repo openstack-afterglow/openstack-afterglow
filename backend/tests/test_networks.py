@@ -191,18 +191,13 @@ def default_network_db(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_default_network_confirmed_empty_has_stable_code(client, mock_conn, default_network_db):
+async def test_get_default_network_confirmed_empty_is_optional_read_only(client, mock_conn, default_network_db):
     default_network_db.result.scalar_one_or_none.return_value = None
 
     response = await client.get("/api/v1/networks/default")
 
-    assert response.status_code == 404
-    assert response.json() == {
-        "detail": {
-            "code": "default_network_not_configured",
-            "message": "Default 네트워크가 설정되지 않았습니다",
-        }
-    }
+    assert response.status_code == 200
+    assert response.json() == {"network_id": None}
     default_network_db.result.scalar_one_or_none.assert_called_once_with()
     mock_conn.network.assert_not_called()
     assert mock_conn.network.mock_calls == []

@@ -1,0 +1,2 @@
+## Decisions
+Follow docs/agent-development-guide.md33–47: patch bump, origin/dev only; immutable tag after exact-SHA CI; verify manifests/latest; preserve production DB/schema/keys/config and rollback; standard /etc/kolla/multinode inventory and whole compute then control5tags reconfigure. Stop unsafe rollout if prerequisites fail; complete reachable publishing steps without calling them deployment acceptance.

@@ -194,7 +194,8 @@ describe('authorized workspace selector', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /select a resource/ }));
 		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
 		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
-		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/domains', '/api/v1/auth/workspaces?domain_id=home']);
+		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/domains', '/api/v1/auth/workspaces?domain_id=home', '/api/v1/auth/domains', '/api/v1/auth/workspaces?domain_id=home']);
+		expect(vi.mocked(api.get).mock.calls.map(call => call[3]!.refresh)).toEqual([false, false, true, true]);
 		workspace.resolve(inventory()); await workspace.promise;
 		expect(screen.queryByText(second.id)).toBeNull();
 		expect(screen.queryByRole('button', { name: t('newProject') })).toBeNull();
@@ -226,7 +227,7 @@ describe('authorized workspace selector', () => {
 		render(ProjectSelector); await open();
 		vi.mocked(api.get).mockClear();
 		await fireEvent.change(screen.getByRole('combobox', { name: t('domain') }), { target: { value: team.id } });
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/auth/workspaces?domain_id=team', 'original-token', undefined, expect.objectContaining({ refresh: true, signal: expect.any(AbortSignal) })));
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/auth/workspaces?domain_id=team', 'original-token', undefined, expect.objectContaining({ refresh: false, signal: expect.any(AbortSignal) })));
 		await screen.findByRole('button', { name: /^Project.*project-2/ });
 		expect(get(auth).domainId).toBe(home.id); expect(get(auth).projectId).toBe(first.id); expect(api.post).not.toHaveBeenCalled();
 		expect(vi.mocked(api.get).mock.calls.map(call => call[0])).toEqual(['/api/v1/auth/workspaces?domain_id=team']);

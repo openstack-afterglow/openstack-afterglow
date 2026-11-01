@@ -240,6 +240,8 @@ Returns the default network record stored for the current project (DB-based).
 }
 ```
 
+An unconfigured default returns `200 {"network_id": null}`. It does not mean the project has no networks and does not create or select a network.
+
 | Field | Type | Description |
 |------|------|------|
 | `project_id` | string | Project UUID |
@@ -254,7 +256,7 @@ Returns the default network record stored for the current project (DB-based).
 
 | Code | Description |
 |------|------|
-| `404` | No default network is set |
+| `503` | Default-network storage unavailable or query failed; not treated as absence |
 
 ### PUT /api/v1/networks/default
 

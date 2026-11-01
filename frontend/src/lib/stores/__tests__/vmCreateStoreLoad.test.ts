@@ -150,14 +150,15 @@ describe('VM create option loading boundaries', () => {
 	});
 
 	it.each([
-		[404, 'Default 네트워크가 설정되지 않았습니다', 'default_network_not_configured', 'yes'],
+		[200, 'No default configured', undefined, 'yes'],
 		[404, 'Default 네트워크가 설정되지 않았습니다', undefined, 'no'],
 		[404, 'Not Found', undefined, 'no'],
 		[401, 'Unauthorized', undefined, 'no'],
 		[503, 'Native network unavailable', undefined, 'no'],
 	])('distinguishes optional default absence from network failure (%s, %s, %s)', async (status, message, code, allowed) => {
 		api.get.mockImplementation((path: string) => {
-			if (path === '/api/v1/networks/default') return Promise.reject(new ApiError(status, message, code));
+			if (path === '/api/v1/networks/default') return status === 200
+				? Promise.resolve({ network_id: null }) : Promise.reject(new ApiError(status, message, code));
 			if (path === '/api/v1/networks') return Promise.resolve([{ id: 'available-network', name: 'Available network' }]);
 			if (path === '/api/v1/keypairs') return Promise.resolve([{ name: 'existing-key' }]);
 			if (path === '/api/v1/images') return Promise.resolve([image]);

@@ -57,7 +57,7 @@
 			<dl class="space-y-2 text-xs">
 				<div><dt class="text-ink-2">ID</dt><dd><ResourceIdentifier id={instance.id} compact={false} /></dd></div>
 				<div><dt class="text-ink-2">IP</dt><dd class="space-y-1 break-all font-mono">{#each instance.ip_addresses as ip}<p>{ip.addr} · {ip.network_name} · {ip.type}</p>{:else}—{/each}</dd></div>
-				<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-words">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
+				<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-all">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
 				<div><dt class="text-ink-2">{t('table.strategy')}</dt><dd>{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</dd></div>
 			</dl>
 		{/snippet}
@@ -78,7 +78,7 @@
 		<button
 			type="button"
 			onclick={() => onSelect(instance.id)}
-			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 underline-offset-4 transition-colors hover:text-warm-text-hover hover:underline"
+			class="flex min-w-0 max-w-full items-center gap-2.5 text-left text-ink-0 underline-offset-4 transition-colors hover:text-warm-text-hover hover:underline"
 		>
 			<span class="max-w-56 truncate font-medium" title={instance.name || instance.id}>{instance.name || instance.id.slice(0, 8)}</span>
 		</button>
@@ -89,9 +89,9 @@
 		{#if acting}<div class="mt-1"><LoadingState variant="control" label={t('rowActions.processing')} /></div>{/if}
 	</td>
 	<td class="text-xs">
-		<div class="truncate text-ink-2">{instance.image_name ?? t('row.bootFromVolume')}</div>
+		<div class="truncate text-ink-2" title={instance.image_name ?? undefined}>{instance.image_name ?? t('row.bootFromVolume')}</div>
 			<div class="mt-0.5 flex items-center gap-1.5 text-ink-2">
-				<span class="truncate">{consumerInstanceFlavorLabel(instance)}</span>
+				<span class="min-w-0 truncate" title={consumerInstanceFlavorLabel(instance)}>{consumerInstanceFlavorLabel(instance)}</span>
 				{#if isUnderutilized}
 					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-warm-text">{t('row.resizeRecommended')}</span>
 				{/if}
@@ -101,11 +101,11 @@
 	<td>
 		<div class="flex flex-wrap gap-1">
 			{#each instance.union_libraries.filter(Boolean) as lib}
-				<span class="rounded bg-surface-selected px-1.5 py-0.5 text-xs text-ink-1">{lib}</span>
+				<span class="max-w-full break-all rounded bg-surface-selected px-1.5 py-0.5 text-xs text-ink-1">{lib}</span>
 			{/each}
 		</div>
 	</td>
-	<td class="text-xs text-ink-2">{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</td>
+	<td class="break-words text-xs text-ink-2">{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</td>
 	<td class="text-right"><InstanceRowActions {instance} {onAction} bind:acting /></td>
 </tr>
 {/if}

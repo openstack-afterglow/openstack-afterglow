@@ -194,13 +194,7 @@ async def get_default_network(conn: openstack.connection.Connection = Depends(ge
 
     record = await get_default_network_record(project_id)
     if record is None:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "default_network_not_configured",
-                "message": "Default 네트워크가 설정되지 않았습니다",
-            },
-        )
+        return {"network_id": None}
     return record
 
 

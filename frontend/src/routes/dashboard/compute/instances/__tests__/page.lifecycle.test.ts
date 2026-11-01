@@ -99,7 +99,7 @@ describe('consumer instance list lifecycle safety', () => {
 		expect(await screen.findByRole('button', { name: 'vm-created' })).toBeTruthy();
 	});
 
-	it('renders newest first and applies every sort choice across refresh without reordering source rows', async () => {
+	it('cycles column sorting across refresh without changing the source snapshot', async () => {
 		rows = [
 			{ ...instance('vm-a'), created_at: '2026-01-01T00:00:00Z' },
 			{ ...instance('vm-c'), created_at: '2026-02-01T00:00:00Z' },
@@ -108,25 +108,26 @@ describe('consumer instance list lifecycle safety', () => {
 		const { container } = render(Page);
 		await screen.findByRole('button', { name: 'vm-a' });
 		const order = () => screen.getAllByRole('button', { name: /^vm-[a-d]$/ }).map((button) => button.textContent?.trim());
-		const selector = container.querySelector<HTMLSelectElement>('#project-instance-sort')!;
-		expect(selector.value).toBe('created_desc');
+		const sortName = () => screen.getByRole('button', { name: new RegExp(t('table.sortBy', { label: t('table.name') })) });
+		expect(container.querySelector('#project-instance-sort')).toBeNull();
 		expect(order()).toEqual(['vm-b', 'vm-c', 'vm-a']);
-		for (const [value, expected] of [
-			['created_asc', ['vm-a', 'vm-c', 'vm-b']],
-			['name_asc', ['vm-a', 'vm-b', 'vm-c']],
-			['name_desc', ['vm-c', 'vm-b', 'vm-a']],
-			['created_desc', ['vm-b', 'vm-c', 'vm-a']],
-		] as const) {
-			await fireEvent.change(selector, { target: { value } });
-			expect(order()).toEqual(expected);
-		}
+		await select('vm-a');
+		await fireEvent.click(sortName());
+		expect(order()).toEqual(['vm-a', 'vm-b', 'vm-c']);
+		expect(screen.queryByRole('region', { name: t('list.bulkActions') })).toBeNull();
+		await fireEvent.click(sortName());
+		expect(order()).toEqual(['vm-c', 'vm-b', 'vm-a']);
+		await fireEvent.click(sortName());
+		expect(order()).toEqual(['vm-b', 'vm-c', 'vm-a']);
 		expect(rows.map((row) => row.id)).toEqual(['vm-a', 'vm-c', 'vm-b']);
-		await fireEvent.change(selector, { target: { value: 'name_desc' } });
+		await fireEvent.click(sortName());
 		rows = [...rows, { ...instance('vm-d'), created_at: '2025-01-01T00:00:00Z' }];
 		await mocks.refresh!();
 		await screen.findByRole('button', { name: 'vm-d' });
-		expect(selector.value).toBe('name_desc');
-		expect(order()).toEqual(['vm-d', 'vm-c', 'vm-b', 'vm-a']);
+		expect(order()).toEqual(['vm-a', 'vm-b', 'vm-c', 'vm-d']);
+		const controls = screen.getByTestId('instance-pagination-controls');
+		expect(controls.contains(screen.getByLabelText(t('list.pageSize')))).toBe(true);
+		expect(controls.contains(screen.getByRole('button', { name: commonT('pagination.next') }))).toBe(true);
 	});
 
 	it('searches the complete project snapshot by name or UUID and resets display pagination for filters', async () => {

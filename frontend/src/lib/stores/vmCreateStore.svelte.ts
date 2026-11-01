@@ -763,18 +763,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				loadOption('networks', `public:${projectId ?? ''}`, (signal) => api.get<NetworkInfo[]>('/api/v1/networks', token, projectId, { signal }), value => { networks = value; }),
 				loadOption('keypairs', `public:${projectId ?? ''}`, (signal) => api.get<Keypair[]>('/api/v1/keypairs', token, projectId, { signal }), value => { keypairs = value; }),
 				loadOption('securityGroups', `public:${projectId ?? ''}`, (signal) => api.get<SecurityGroupInfo[]>('/api/v1/security-groups', token, projectId, { signal }), value => { securityGroups = value; }),
-				loadOption('defaultNetwork', `public:${projectId ?? ''}`, async (signal) => {
-					try {
-						return await api.get<{ network_id: string | null }>('/api/v1/networks/default', token, projectId, { signal });
-					} catch (error) {
-						// Only confirmed absence is optional; legacy ambiguous 404s and
-						// storage, proxy, authorization or provider failures remain errors.
-						if (error instanceof ApiError && error.status === 404 && error.code === 'default_network_not_configured') {
-							return { network_id: null };
-						}
-						throw error;
-					}
-				}, value => { defaultNetworkId = value.network_id; }),
+				loadOption('defaultNetwork', `public:${projectId ?? ''}`, (signal) =>
+					api.get<{ network_id: string | null }>('/api/v1/networks/default', token, projectId, { signal }),
+					value => { defaultNetworkId = value.network_id; }),
 			]);
 			if (authProjectIsCurrent(projectId, generation)) applyConfigurationDefaults();
 			return;

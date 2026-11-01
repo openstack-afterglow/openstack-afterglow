@@ -22,20 +22,19 @@
 	import { isTransitional } from '$lib/utils/instanceStatus';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
-	import ResourceSortSelect from '$lib/components/ui/ResourceSortSelect.svelte';
-	import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
+	import { sortInstances, type InstanceSort } from '$lib/components/instance/list/instanceSort';
 	import { getStatusLabel } from '$lib/config/statusColors';
 
 	let instances = $state<Instance[]>([]);
-	let sort = $state<ResourceSort>('created_desc');
+	let sort = $state<InstanceSort>(null);
 	let search = $state('');
 	let statusFilter = $state('');
 	let pageSize = $state('20');
 	let currentPage = $state(1);
-	const filteredInstances = $derived(sortResources(instances.filter((instance) =>
+	const filteredInstances = $derived(sortInstances(instances.filter((instance) =>
 		(!statusFilter || instance.status === statusFilter)
 		&& (!search.trim() || `${instance.name} ${instance.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
-	), sort));
+	), sort, (status) => getStatusLabel(status, 'server'), (strategy) => strategy === 'prebuilt' ? t('row.strategy.prebuilt') : strategy === 'dynamic' ? t('row.strategy.dynamic') : strategy));
 	const totalPages = $derived(Math.max(1, Math.ceil(filteredInstances.length / Number(pageSize))));
 	const visiblePage = $derived(Math.min(currentPage, totalPages));
 	const visibleInstances = $derived(filteredInstances.slice((visiblePage - 1) * Number(pageSize), visiblePage * Number(pageSize)));
@@ -366,6 +365,7 @@
 <PageShell class="bulk-selection-page space-y-4 pb-28 md:pb-32">
 	<PageHeader breadcrumb={t('list.breadcrumb')} title={loading || error ? t('list.title') : t('list.titleWithCount', { count: instances.length })}>
 		{#snippet actions()}
+			<TutorialStartButton tour="vm-create" />
 			<Button onclick={() => openWizard()} variant="primary" dataTour="vm-create-open">{t('list.createVmAction')}</Button>
 		{/snippet}
 	</PageHeader>
@@ -376,10 +376,8 @@
 		{#snippet filters()}
 			<Field label={t('list.search')} for="project-instance-search" class="min-w-0 w-full md:flex-1 md:basis-48"><TextInput id="project-instance-search" type="search" bind:value={search} ariaLabel={t('list.search')} placeholder={t('list.search')} oninput={() => { currentPage = 1; selection.clear(); }} /></Field>
 			<Field label={t('table.status')} for="project-instance-status" class="min-w-0 max-w-full w-full md:w-auto"><SelectInput id="project-instance-status" bind:value={statusFilter} ariaLabel={t('table.status')} onchange={() => { currentPage = 1; selection.clear(); }}><option value="">{t('list.allStatuses')}</option>{#each statuses as status}<option value={status}>{getStatusLabel(status, 'server')}</option>{/each}</SelectInput></Field>
-			<ResourceSortSelect id="project-instance-sort" bind:value={sort} onchange={() => selection.clear()} />
 		{/snippet}
 		{#snippet actions()}
-			<TutorialStartButton tour="vm-create" />
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -409,6 +407,8 @@
 			<InstancesTable
 				instances={visibleInstances}
 				{underutilized}
+				{sort}
+				onSortChange={(next) => { sort = next; currentPage = 1; selection.clear(); }}
 				selectedIds={selection.ids}
 				{selectableIds}
 				selectionDisabled={bulkActioning}
@@ -422,8 +422,10 @@
 	{#if !loading && instances.length > 0 && instancesRevision === scopeRevision}
 		<footer class="flex flex-wrap items-end justify-between gap-3" data-testid="instance-list-footer">
 			<p class="text-sm tabular-nums text-ink-2">{t('list.resultCount', { count: filteredInstances.length, total: instances.length })}</p>
+			<div class="flex max-w-full flex-wrap items-end gap-3" data-testid="instance-pagination-controls">
 			<div class="flex items-center gap-2"><label for="project-instance-page-size" class="text-xs text-ink-2">{t('list.pageSize')}</label><SelectInput id="project-instance-page-size" bind:value={pageSize} onchange={() => { currentPage = 1; selection.clear(); }}>{#each [10, 20, 30] as size}<option value={String(size)}>{size}</option>{/each}</SelectInput></div>
 			<Pagination class="!mt-0" page={visiblePage} {totalPages} hasPrev={visiblePage > 1} hasNext={visiblePage < totalPages} onPrev={() => { currentPage = visiblePage - 1; selection.clear(); }} onNext={() => { currentPage = visiblePage + 1; selection.clear(); }} />
+			</div>
 		</footer>
 	{/if}
 

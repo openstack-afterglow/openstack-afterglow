@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,7 +13,9 @@ from keystoneauth1.exceptions.http import Unauthorized
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import (
+    CacheMode,
     _check_session_timeout,
+    cache_mode,
     get_token_info,
     has_project_write_permission,
     invalidate_token_cache,
@@ -39,7 +43,7 @@ from app.services.domain_scope import (
     domain_context,
     resolve_domain,
 )
-from app.services.identity_roles import _field, visible_role_names
+from app.services.identity_roles import _field, _to_completion, visible_role_names
 from app.services.native_operation import NativeOperation
 from app.services.recent_projects import get_recent_project_ids, record_project_access
 from app.utils.auth_diagnostics import authentication_operation, authentication_step
@@ -1079,6 +1083,53 @@ def _workspace_projects(token: str, user_id: str, context: dict, *, operation: N
     return sorted(rows, key=lambda project: (project["name"].casefold(), project["id"]))
 
 
+def _workspace_directory_key(token_info: dict, context: dict) -> str:
+    """No credentials in Redis keys; display snapshots never carry authority."""
+    settings = get_settings()
+    owner = {
+        key: token_info.get(key)
+        for key in (
+            "user_id",
+            "identity_domain_id",
+            "domain_id",
+            "project_id",
+            "refresh_jti",
+            "family_id",
+            "scope_revision",
+            "provider_id",
+            "provider_revision",
+            "provider_domain_id",
+            "is_system_admin",
+            "roles",
+        )
+    }
+    owner.update(
+        cloud=[settings.os_auth_url, settings.os_region_name, settings.os_interface],
+        target=context["domain_id"],
+        manager=context["is_domain_manager"],
+        kind=context.get("domain_kind", "legacy"),
+    )
+    digest = hashlib.sha256(json.dumps(owner, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return f"afterglow:identity:workspace-directory:{digest}"
+
+
+def _authorized_workspace_rows(projects: list[dict], user_id: str, context: dict, *, operation) -> list[dict]:
+    """Cached candidates are display only; native enable/scope/membership stays live."""
+    rows = []
+    for project in projects:
+        assert_domain_resource(context["domain_id"], project.get("domain_id"))
+        try:
+            assert_project_domain(context["domain_id"], project["id"], operation=operation)
+            if not context["is_domain_manager"]:
+                domain_projects.assert_project_membership(user_id, project["id"], operation=operation)
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
+            continue
+        rows.append({**project, "domain_name": context["domain_name"]})
+    return rows
+
+
 def _administrator_workspace(
     current: dict, domain_id: str, project_id: str | None, *, operation: NativeOperation
 ) -> dict:
@@ -1106,6 +1157,7 @@ def _administrator_workspace(
 async def browse_workspace(
     domain_id: str | None = Query(default=None, min_length=1, max_length=255),
     token_info: dict = Depends(get_token_info),
+    cm: CacheMode = Depends(cache_mode),
 ):
     """Browse an authorized domain without rescoping, creating grants or rotating sessions."""
     user_id = token_info["user_id"]
@@ -1114,8 +1166,21 @@ async def browse_workspace(
         context = await operation.run(_workspace_context, user_id, target, operation=operation)
         assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
         try:
-            projects = await operation.run(
-                _workspace_projects, token_info["token"], user_id, context, operation=operation
+
+            async def load_projects():
+                return await operation.run(
+                    _workspace_projects, token_info["token"], user_id, context, operation=operation
+                )
+
+            # Drain cancelled cache loaders before closing their native client.
+            projects = await _to_completion(
+                cached_call(
+                    _workspace_directory_key(token_info, context),
+                    30,
+                    load_projects,
+                    enabled=cm.enabled and bool(token_info.get("refresh_jti")) and not context["is_domain_manager"],
+                    refresh=cm.refresh,
+                )
             )
         except HTTPException:
             raise
@@ -1132,11 +1197,14 @@ async def browse_workspace(
         assert_domain_resource(token_info["identity_domain_id"], fresh["identity_domain_id"])
         if fresh["is_domain_manager"] != context["is_domain_manager"]:
             raise HTTPException(403, "Domain authority changed; refresh the resource directory")
-        if not fresh["is_domain_manager"]:
-            for project in projects:
-                await operation.run(
-                    domain_projects.assert_project_membership, user_id, project["id"], operation=operation
-                )
+        if fresh["is_domain_manager"]:
+            # Managers already need this live list to identify Default. Reuse
+            # it instead of adding N individual native project GETs.
+            projects = await operation.run(
+                _workspace_projects, token_info["token"], user_id, fresh, operation=operation
+            )
+        else:
+            projects = await operation.run(_authorized_workspace_rows, projects, user_id, fresh, operation=operation)
         return WorkspaceInfo(
             domain=DomainInfo(id=target, name=fresh["domain_name"], kind=fresh.get("domain_kind", "legacy")),
             projects=[ProjectInfo(**project) for project in projects],
@@ -1332,7 +1400,9 @@ async def list_my_groups(token_info: dict = Depends(get_token_info)):
 @router.get("/projects", response_model=list[ProjectInfo])
 async def list_projects(token_info: dict = Depends(get_token_info)):
     """Use the same live user membership directory as the resource selector."""
-    workspace = await browse_workspace(domain_id=token_info["domain_id"], token_info=token_info)
+    workspace = await browse_workspace(
+        domain_id=token_info["domain_id"], token_info=token_info, cm=CacheMode(enabled=False, refresh=False)
+    )
     return workspace.projects
 
 
@@ -1343,7 +1413,9 @@ async def list_projects_recent(token_info: dict = Depends(get_token_info)):
     Redis에 기록된 접근 시각 기준으로 정렬하고, last_accessed_at 필드를 포함한다.
     Redis 기록이 없는 프로젝트는 이름순으로 뒤에 덧붙인다.
     """
-    workspace = await browse_workspace(domain_id=token_info["domain_id"], token_info=token_info)
+    workspace = await browse_workspace(
+        domain_id=token_info["domain_id"], token_info=token_info, cm=CacheMode(enabled=False, refresh=False)
+    )
     projects = workspace.projects
 
     user_id = token_info["user_id"]

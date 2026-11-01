@@ -50,7 +50,7 @@ beforeEach(() => {
 	page.url.search = '';
 	get.mockReset(); post.mockReset(); remove.mockReset(); confirm.mockReset();
 	get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [available, other] : []));
-	post.mockImplementation((path: string, body: VolumeBackupPolicyInput) => Promise.resolve(path === `${base}/configs` ? [] : saved({ ...body, volume_id: decodeURIComponent(path.split('/').at(-1)!) })));
+	post.mockImplementation((path: string, body: VolumeBackupPolicyInput) => Promise.resolve(saved({ ...body, volume_id: decodeURIComponent(path.split('/').at(-1)!) })));
 	remove.mockResolvedValue(undefined); confirm.mockResolvedValue(true);
 });
 
@@ -72,8 +72,8 @@ describe('scheduled backup settings', () => {
 
 	it('loads a deep-linked saved source, updates schedule/counts and preserves its saved force authorization', async () => {
 		page.url.search = '?auto-backup=volume-a';
-		get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [attached, other] : []));
-		post.mockImplementation((path: string, body: VolumeBackupPolicyInput) => Promise.resolve(path === `${base}/configs` ? [saved({ force: true })] : saved({ ...body, last_status: 'skipped', last_error: 'Source not ready', last_backup_id: null })));
+		get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [attached, other] : path === `${base}/configs` ? [saved({ force: true })] : []));
+		post.mockImplementation((_path: string, body: VolumeBackupPolicyInput) => Promise.resolve(saved({ ...body, last_status: 'skipped', last_error: 'Source not ready', last_backup_id: null })));
 		render(Page);
 		await screen.findByTestId('auto-backup-policy-editor');
 		expect((editor().getByLabelText('autoPolicy.source') as HTMLSelectElement).value).toBe('volume-a');
@@ -120,11 +120,11 @@ describe('scheduled backup settings', () => {
 	});
 
 	it('keeps policy load failures visible and prevents a reader from mutating saved policies', async () => {
-		post.mockRejectedValueOnce(new Error('unavailable'));
+		get.mockImplementation((path: string) => path === `${base}/configs` ? Promise.reject(new Error('unavailable')) : Promise.resolve([]));
 		render(Page);
 		await screen.findByText('autoPolicy.loadFailed');
 		expect(screen.queryByText('autoPolicy.empty')).toBeNull();
-		post.mockResolvedValue([saved()]);
+		get.mockImplementation((path: string) => Promise.resolve(path === `${base}/configs` ? [saved()] : path === '/api/v1/volumes' ? [available] : []));
 		await fireEvent.click(screen.getByRole('button', { name: 'autoPolicy.retry' }));
 		writableAccess.set(false); await tick();
 		await screen.findByText('completed-real-id');
@@ -146,8 +146,8 @@ describe('scheduled backup settings', () => {
 	});
 
 	it('opens resume as enabled but blocks an in-use saved policy until force is explicitly authorized', async () => {
-		get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [attached] : []));
-		post.mockImplementation((path: string, body: VolumeBackupPolicyInput) => Promise.resolve(path === `${base}/configs` ? [saved({ enabled: false })] : saved(body)));
+		get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/volumes' ? [attached] : path === `${base}/configs` ? [saved({ enabled: false })] : []));
+		post.mockImplementation((_path: string, body: VolumeBackupPolicyInput) => Promise.resolve(saved(body)));
 		render(Page); await screen.findByRole('button', { name: 'autoPolicy.resume:Data' });
 		await fireEvent.click(screen.getByRole('button', { name: 'autoPolicy.resume:Data' }));
 		expect((editor().getByLabelText('autoPolicy.enabled') as HTMLInputElement).checked).toBe(true);
@@ -159,7 +159,7 @@ describe('scheduled backup settings', () => {
 	});
 
 	it('keeps a rejected policy save in the editor without fabricating a saved policy', async () => {
-		post.mockImplementation((path: string) => path === `${base}/configs` ? Promise.resolve([]) : Promise.reject(new Error('provider unavailable')));
+		post.mockRejectedValue(new Error('provider unavailable'));
 		render(Page); await openSettings(); await source('volume-a'); await fireEvent.click(saveButton());
 		await screen.findByText('autoPolicy.saveFailed');
 		expect(screen.getByTestId('auto-backup-policy-editor')).toBeTruthy();
@@ -167,10 +167,10 @@ describe('scheduled backup settings', () => {
 	});
 
 	it('keeps invalid saved metadata and orphan-source errors visible without crashing and allows orphan removal', async () => {
-		post.mockResolvedValue([
+		get.mockImplementation((path: string) => Promise.resolve(path === `${base}/configs` ? [
 			saved({ enabled: false, timezone: 'Invalid/Timezone', last_run_at: 'not-a-date', last_status: 'error', last_error: 'Saved policy needs repair.' }),
 			saved({ volume_id: 'orphan-volume', enabled: false, source_status: 'missing', source_available: false, source_error: 'Source volume no longer exists.', last_error: null }),
-		]);
+		] : path === '/api/v1/volumes' ? [available] : []));
 		render(Page);
 		await screen.findByText('Saved policy needs repair.');
 		expect(screen.getByText('Source volume no longer exists.')).toBeTruthy();
@@ -189,7 +189,7 @@ describe('policy project/auth transitions', () => {
 	it('drops late A→B→A policy results even with the same token and never shows an empty policy area while loading', async () => {
 		const old = deferred<VolumeBackupPolicy[]>();
 		let lists = 0;
-		post.mockImplementation((path: string) => path === `${base}/configs` ? (++lists === 1 ? old.promise : Promise.resolve([saved({ last_backup_id: 'current-run' })])) : Promise.reject(new Error('unexpected mutation')));
+		get.mockImplementation((path: string) => path === `${base}/configs` ? (++lists === 1 ? old.promise : Promise.resolve([saved({ last_backup_id: 'current-run' })])) : Promise.resolve([]));
 		render(Page); await waitFor(() => expect(lists).toBe(1));
 		expect(screen.queryByText('autoPolicy.empty')).toBeNull();
 		actor.set({ token: 'token-a', projectId: 'project-b', userId: 'member' });
@@ -202,7 +202,7 @@ describe('policy project/auth transitions', () => {
 
 	it('closes the editor before project rescope and ignores an old save after the new project is ready', async () => {
 		const pending = deferred<VolumeBackupPolicy>();
-		post.mockImplementation((path: string) => path === `${base}/configs` ? Promise.resolve([]) : pending.promise);
+		post.mockReturnValue(pending.promise);
 		render(Page); await openSettings(); await source('volume-a'); await fireEvent.click(saveButton());
 		projectSwitching.set(true); await tick();
 		expect(screen.queryByTestId('auto-backup-policy-editor')).toBeNull();

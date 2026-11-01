@@ -41,7 +41,7 @@ describe('volume backup project isolation', () => {
     const oldResponse = new Promise<VolumeBackup[]>((resolve) => { resolveOld = resolve; });
 		const oldStarted = Promise.withResolvers<void>();
     mockGet.mockImplementation((path: string, _token: string, projectId: string) => {
-      if (path === '/api/v1/volumes') return Promise.resolve([]);
+      if (path === '/api/v1/volumes' || path.endsWith('/auto-backup/configs')) return Promise.resolve([]);
       expect(path).toBe('/api/v1/volumes/backups');
 			if (projectId === 'old') { oldStarted.resolve(); return oldResponse; }
 			return Promise.resolve([backup('current-backup')]);
