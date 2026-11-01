@@ -151,8 +151,9 @@ async def test_project_creation_rechecks_authority_inside_graph_lock(directory, 
     graph_lock = identity_roles._graph_lock
 
     @asynccontextmanager
-    async def revoked_lock(conn):
-        async with graph_lock(conn) as lease:
+    async def revoked_lock(conn, *, wait=False):
+        assert wait is True
+        async with graph_lock(conn, wait=wait) as lease:
             directory.managers.clear()
             directory.default_direct.clear()
             yield lease

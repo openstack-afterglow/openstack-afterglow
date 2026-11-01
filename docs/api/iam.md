@@ -113,6 +113,8 @@ PUT role_ids는 최대256개의 unique exact safe ID입니다. 기존 immovable 
 
 Native `admin`은 catalog/checkbox에 노출하지 않으며 신규 PUT·초대 grant는422/403으로 차단합니다. 기존 direct admin은 다른 역할 편집 시 보존하고, 그 실제 이름·descendant는 별도 `direct_roles`를 통해 읽기 전용으로 유지합니다. 명시적 API 회수의 privileged-account 예외는 graph lease 안에서 다른 역할 변경 없이 그 프로젝트의 direct admin만 제거하는 정확한 요청에 한정합니다. System/domain/다른 프로젝트 admin·service/operator identity와 credential 편집은 이 예외로 허용하지 않습니다. 그룹·상속 admin은 원래 provenance에서만 관리하고 `system:all` 전용 관리 API는 기존대로 유지합니다.
 
+프로젝트 멤버 역할 PUT/DELETE의 privileged-account 보호(`domain_iam.protected_user`)는 **다른** 계정에만 적용됩니다. Domain manager가 자기 자신을 대상으로 하면(system admin을 겸하는 경우 포함) 같은 도메인 프로젝트의 관리 가능한 직접 역할을 올리거나 내릴 수 있습니다. 본인 편집은 다른 계정에 권한을 위임하지 않기 때문입니다. Native `admin` 신규 부여 금지, owner-bearing 역할의 소유권 이전 전용 규칙, safe catalog 검증과 다른 privileged/service 계정 편집 차단은 그대로입니다. UI는 그룹·상속으로만 권한이 있는 멤버도 행의 역할 편집으로 직접 역할을 추가하며, 그룹·상속 역할은 읽기 전용으로 남고 멤버 제거는 직접 역할이 있을 때만 활성화됩니다.
+
 Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관리 주체**로 남으며 native `project_reader` 읽기 접근을 받습니다. 일반 프로젝트에 manager 또는 manager를 암시하는 역할을 별도로 부여할 수 없습니다. 각 프로젝트의 `project_owner/admin/member/reader` 위임은 그대로 유지됩니다. 마지막 유효 manager·Default rename/disable/delete·관리용 읽기 projection을 보호하고, grant/group/account/role graph 변경은 공유 graph lease 아래 최신 상태를 재검증합니다. Native 변경 뒤 응답만 실패해도 실제 상태를 다시 읽어 읽기 projection과 관련 권위 cache를 정리하며 요청 자체를 성공으로 표시하지 않습니다. Native의 group membership 제거는 unscoped 증명까지 사용자 전체 토큰을 회수할 수 있으므로 이 경우의 재로그인은 유지합니다.
 
 ### 소유권 계층과 project_creator

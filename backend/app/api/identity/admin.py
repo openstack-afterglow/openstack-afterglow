@@ -2578,8 +2578,8 @@ async def resize_instance(
     token_info: dict = Depends(get_token_info),
 ):
     """Apply the target project's eligibility before native cold resize."""
-    from app.api.compute.instances import _resize_current_flavor, _resize_target_blockers
     from app.api.identity.admin_instances import _server
+    from app.services import instance_resize
     from app.services.flavor_eligibility import (
         FlavorEligibilityDenied,
         FlavorEligibilityUnavailable,
@@ -2588,14 +2588,14 @@ async def resize_instance(
     )
 
     server = await asyncio.to_thread(_server, conn, server_id)
-    if server.status not in {"ACTIVE", "SHUTOFF"}:
-        raise HTTPException(409, "현재 상태에서는 리사이즈할 수 없습니다")
+    instance_resize.require_resizable(server)
     flavors = await asyncio.to_thread(nova._list_flavors, conn, project_id=server.project_id)
-    current = _resize_current_flavor(server, flavors)
+    resize = instance_resize.target_for(server, flavors)
+    current = resize.current
     target = next((f for f in flavors if f.id == req.flavor_id and is_flavor_frontend_visible(f)), None)
     if target is None:
         raise HTTPException(400, "Invalid flavor ID")
-    blockers = _resize_target_blockers(target, current, image_backed=bool(server.image_id))
+    blockers = instance_resize.target_blockers(target, resize)
     if blockers:
         raise HTTPException(409, ", ".join(blocker.code for blocker in blockers))
     try:

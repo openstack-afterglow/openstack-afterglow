@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, getAuthVerificationEpoch, logoutInProgress, projectSwitching, setAuth } from '$lib/stores/auth';
+import { auth, getAuthVerificationEpoch, logoutInProgress, projectSwitching, recordAuthServiceFailure, setAuth } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
 import { ApiError, decodeProviderCallbackError, type ProviderEntryTicket } from '$lib/api/errors';
@@ -246,7 +246,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 				error: err,
 				retryAt: Date.now() + DEFAULT_REFRESH_RETRY_COOLDOWN_MS,
 			};
-			if (state.token) authRecovery.set({ token: state.token, retryAt: _refreshSettledFailure.retryAt });
+			if (state.token) recordAuthServiceFailure(state.token, _refreshSettledFailure.retryAt);
 			throw err;
 		}
 
@@ -286,7 +286,7 @@ async function tryRefresh({ allowDuringRevocation = false, allowDuringScopeChang
 				error: err,
 				retryAt,
 			};
-			if (state.token) authRecovery.set({ token: state.token, retryAt });
+			if (state.token) recordAuthServiceFailure(state.token, retryAt, { counted: res.status !== 429 });
 			throw err;
 		}
 

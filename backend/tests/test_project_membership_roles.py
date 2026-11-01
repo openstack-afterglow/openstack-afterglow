@@ -897,8 +897,9 @@ async def test_real_membership_write_uses_shared_graph_lease_and_admin_identity_
     lease = SimpleNamespace(assert_owned=AsyncMock())
 
     @asynccontextmanager
-    async def graph_lock(connection):
+    async def graph_lock(connection, *, wait=False):
         assert connection is conn
+        assert wait is True
         events.append("locked")
         yield lease
         events.append("unlocked")

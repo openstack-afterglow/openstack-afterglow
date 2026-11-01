@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.0 GitHub minor qualification (2026-11-02)
+
+- 현재 pending backend/frontend 전체를 독립 검토한 뒤 root/frontend/backend/Helm version을1.32.0으로 동기화했다. Full `npm run test:gate` exit0: backend12375passed/94skipped, frontend501files6422tests, contracts183, disposable realDB functional167passed/37deselected, Ruff819filescheck/format. Source fingerprint `a2448137c9ff8fe5a07cacf39d50d3e8ab152bd0ce68f816781718010b866793`/3900files이며 gate artifact1436이다.
+- 같은 frontend의 Svelte check0errors/기존17warnings, i18n0errors/기존45key-order warnings, production build성공(artifact1437). 정렬만 맞추는 전체 locale 재포맷이나 기능 확장은 하지 않았다.
+- 실제 compiled Node/Chromium에서 ACTIVE 인스턴스의 resize composer·재시작 경고·catalog 선택을 확인했다. 사용자 확인 후 resize POST1회 접수 시 창이 닫히고, 후속 detail503에도 기존 VM과 refresh warning을 보존했다.390px/1440px page overflow0. 별도 실제 HTTP503 `/auth/me`3회 뒤 local token 제거·공유 logout marker 무변경을 확인했다. 모든 identity/API는 synthetic이며 native VM 변경·실계정 인증·운영 접근은 아니다.
+- 증거 `~/.local/share/afterglow-proofs/release-1.32.0-20261102/{browser-proof.json,auth-outage-proof.json,resize-mobile.png,resize-desktop.png,accepted-refresh-warning.png}`. 초기 fixture의 CORS/누락 union metadata/중첩 request interception 문제는 fixture만 바로잡았다. Application source를 smoke를 위해 완화하지 않았다.
+- 범위는 dev commit/push, exact-SHA CI, 불변tag·앱 이미지·Helm·GitHub notes 발행이다. 기존 controller1 incident와 native/schema/shared-writer/cold-backup 선행 조건은 보류 상태를 유지하며 이번 요청에서 운영 cutover나 main merge를 수행하지 않는다.
+
 ## 1.31.4 release qualification (2026-11-01, local gate)
 
 - `env PATH="backend/.venv/bin:$PATH" npm run test:gate` 전체 통과: backend12365passed/94skipped, frontend501files6395tests, contracts183, realDBfunctional167, Python Ruff818files. Frontend production build 통과. Exact output artifact1070. Scope authority test의 incidental invalidate callcount는 실제 stale-authority revoke4cases로 교체했고, 실제 Uvicorn handler가 root logging fixture에 섞이던 격리를 수정했다. MCP final validation의20ms 타이밍은 SQL/thread 준비가 끝난 final check 도달 event 후 controlled SDK clock/async deadline으로 검증하여 provider mutation0을 유지한다.

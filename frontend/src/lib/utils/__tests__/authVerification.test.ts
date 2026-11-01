@@ -350,7 +350,7 @@ describe('root authentication readiness transitions', () => {
 		expect(mocks.me).toHaveBeenCalledTimes(2);
 		expect(screen.getByRole('status').textContent).toContain('/dashboard');
 		expect(get(store.authRecovery)).toBeNull();
-		store.authRecovery.set({ token: login.token, retryAt: Date.now() + 5000 });
+		store.authRecovery.set({ token: login.token, retryAt: Date.now() + 5000, failures: 1 });
 		store.clearAuth();
 		store.setLoginAuth(mapping.loginAuthState(login, { federated: false }).state);
 		expect(get(store.authRecovery)).toBeNull();

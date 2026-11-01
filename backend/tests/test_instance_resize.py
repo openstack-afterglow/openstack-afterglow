@@ -44,6 +44,24 @@ def _quota(*, used_cores=8, limit_cores=10):
     }
 
 
+@pytest.fixture(autouse=True)
+def available_resize_capacity(monkeypatch):
+    """Resize discovery projects an advisory host bound; isolate it from Placement here."""
+    from app.models.compute import FlavorCapacityInfo
+
+    async def capacity(flavors, **_kwargs):
+        return {
+            flavor.id: FlavorCapacityInfo(status="available", checked_at="2026-11-01T00:00:00+00:00")
+            for flavor in flavors
+        }
+
+    monkeypatch.setattr("app.services.flavor_capacity.evaluate_flavor_capacities", AsyncMock(side_effect=capacity))
+    monkeypatch.setattr(
+        "app.services.resource_policy_store.resolve_policies",
+        AsyncMock(return_value={"nova.default_compute_availability_zone": "nova"}),
+    )
+
+
 @pytest.mark.asyncio
 async def test_resize_flavors_reports_delta_and_excludes_hidden_for_member(client):
     with (

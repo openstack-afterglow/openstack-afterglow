@@ -50,6 +50,7 @@
 	"authRecovery.checking": "Inakagua…",
 	"authRecovery.retryIn": "Jaribu tena baada ya sekunde {seconds}",
 	"authRecovery.retry": "Jaribu tena",
+	"authRecovery.forcedLogout": "Haikuwezekana kuunganisha kwenye huduma ya uthibitishaji baada ya majaribio {count}, kwa hiyo umeondolewa kwenye kifaa hiki. Ingia tena huduma itakaporejea.",
 	"error.notFound": "Ukurasa haujapatikana",
 	"error.generic": "Hitilafu imetokea",
 	"error.home": "Rudi mwanzo",

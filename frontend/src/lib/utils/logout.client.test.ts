@@ -52,4 +52,17 @@ describe('logout workflow with the real API client', () => {
 		expect(get(workflow.logoutProgress)).toMatchObject({ server: 'warning', local: 'done' });
 		expect(get(store.auth).token).toBeNull();
 	});
+
+	it('signs out automatically after an auth outage without signing out other tabs', async () => {
+		const store = await import('$lib/stores/auth');
+		store.setLoginAuth({ token: 'access', refreshToken: 'refresh', userId: 'alice', identityDomainId: 'home', domainId: 'team', projectId: 'project' });
+		const marker = localStorage.getItem(store.AUTH_LOGOUT_EVENT_KEY);
+		fetchMock.mockResolvedValue(new Response('bad gateway', { status: 502 }));
+		const workflow = await import('./logout');
+		await workflow.startLogout({ broadcast: false });
+		expect(get(workflow.logoutProgress)).toMatchObject({ phase: 'complete', server: 'warning', local: 'done' });
+		expect(get(store.auth).token).toBeNull();
+		expect(sessionStorage.getItem(store.AUTH_STORAGE_KEY)).toBeNull();
+		expect(localStorage.getItem(store.AUTH_LOGOUT_EVENT_KEY)).toBe(marker);
+	});
 });

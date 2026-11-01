@@ -263,6 +263,39 @@ async def test_cancellation_after_commit_releases_only_own_state(graph_env, monk
 
 
 @pytest.mark.asyncio
+async def test_member_role_write_queues_behind_background_lease(graph_env, monkeypatch):
+    """Domain IAM member edits wait for a background holder instead of failing 409."""
+    from app.services import keystone, project_service
+
+    env = graph_env
+    env.conn.close = lambda: None
+    monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: env.conn)
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: object())
+    monkeypatch.setattr(identity_roles, "load_catalog", lambda conn: [])
+    monkeypatch.setattr(project_service, "_assignment_rows", lambda ks, project_id, effective=False: [])
+
+    async def member_write():
+        async with project_service._membership_write("project-a") as (lease, *_):
+            await lease.assert_owned()
+            return lease.owner
+
+    task = None
+    try:
+        async with identity_roles._graph_lock(env.conn) as holder:
+            task = asyncio.create_task(member_write())
+            resume = await env.gate.parked()
+            assert not task.done()
+            assert await holder.waiters_pending()
+        resume.set_result(None)
+        owner = await asyncio.wait_for(task, timeout=2)
+        assert owner != holder.owner
+        assert await env.redis.zcard(env.queue) == 0
+    finally:
+        if task is not None and not task.done():
+            await _cancel(task)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("wait", [False, True])
 async def test_redis_admission_failure_is_unavailable(graph_env, monkeypatch, wait):
     env = graph_env

@@ -50,6 +50,7 @@
 	"authRecovery.checking": "যাচাই করা হচ্ছে…",
 	"authRecovery.retryIn": "{seconds} সেকেন্ড পরে আবার চেষ্টা করুন",
 	"authRecovery.retry": "আবার চেষ্টা করুন",
+	"authRecovery.forcedLogout": "{count} বার চেষ্টা করেও প্রমাণীকরণ সেবার সঙ্গে সংযোগ করা যায়নি, তাই এই ডিভাইস থেকে আপনাকে লগ আউট করা হয়েছে। সেবা ফিরে এলে আবার লগ ইন করুন।",
 	"error.notFound": "পৃষ্ঠাটি পাওয়া যায়নি",
 	"error.generic": "একটি ত্রুটি ঘটেছে",
 	"error.home": "হোমে ফিরুন",

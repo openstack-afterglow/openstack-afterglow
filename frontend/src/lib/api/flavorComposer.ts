@@ -6,12 +6,15 @@ export interface FlavorComposerAuthority {
 	projectId: string;
 	targetProjectId: string;
 	admin: boolean;
+	/** Resize: evaluate the increase over this instance's current allocation. */
+	instanceId?: string | null;
 }
 function path(authority: FlavorComposerAuthority, kind: 'options' | 'compositions', operationId?: string, readback = false) {
 	const base = authority.admin ? '/api/v1/admin/instances' : '/api/v1/flavors';
 	const leaf = authority.admin ? (kind === 'options' ? 'flavor-composer-options' : 'flavor-compositions') : (kind === 'options' ? 'composer-options' : 'compositions');
 	const params = new URLSearchParams();
 	if (authority.admin) params.set('project_id', authority.targetProjectId);
+	if (authority.instanceId) params.set('instance_id', authority.instanceId);
 	if (operationId && !readback) params.set('operation_id', operationId);
 	return `${base}/${leaf}${readback ? `/operations/${encodeURIComponent(operationId!)}` : ''}${params.size ? `?${params}` : ''}`;
 }

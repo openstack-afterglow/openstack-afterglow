@@ -50,6 +50,7 @@
 	"authRecovery.checking": "Sedang menyemak…",
 	"authRecovery.retryIn": "Cuba lagi dalam {seconds}s",
 	"authRecovery.retry": "Cuba lagi",
+	"authRecovery.forcedLogout": "Perkhidmatan pengesahan tidak dapat dihubungi selepas {count} percubaan, jadi anda telah dilog keluar pada peranti ini. Log masuk semula apabila perkhidmatan pulih.",
 	"error.notFound": "Halaman tidak ditemukan",
 	"error.generic": "Ralat telah berlaku",
 	"error.home": "Kembali ke halaman utama",

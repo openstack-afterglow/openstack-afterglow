@@ -3,7 +3,7 @@ import { getContext, onDestroy, setContext, untrack } from 'svelte';
 import { auth, canWrite } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
 import { createAutoRefresh, type AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
-import { isTransitional } from '$lib/utils/instanceStatus';
+import { isTransitional, RESIZABLE_STATUSES } from '$lib/utils/instanceStatus';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/instance';
@@ -12,7 +12,7 @@ import type { Instance } from '$lib/types/compute';
 import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/networks';
 import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { Volume as VolumeInfo } from '$lib/types/volume';
-import type { FlavorOption } from '$lib/types/flavor';
+import { flavorCreateBlock, type FlavorOption } from '$lib/types/flavor';
 
 // Selection setters publish synchronously: effects cannot observe same-tick A→B→A.
 const instanceDetailSelectionRevision = writable(0);
@@ -90,6 +90,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
+	// A failed background refresh keeps the last loaded instance on screen.
+	let refreshError = $state('');
 	let fetchGeneration = 0;
 	let deleting = $state(false);
 	let actioning = $state<string | null>(null);
@@ -313,6 +315,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		} else {
 			loading = true;
 			error = '';
+			refreshError = '';
 			allSecurityGroups = [];
 			securityGroupPorts = [];
 			securityGroupsLoading = true;
@@ -382,6 +385,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			if (!ownsRequest()) return;
 			instance = loadedInstance;
 			error = '';
+			refreshError = '';
 			if (canChangePassword) void fetchPasswordPrecheck(id);
 			if (opts.adminMode()) {
 				if (loadedInstance.status === 'MIGRATING') {
@@ -392,7 +396,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			}
 		} catch (e) {
 			if (ownsRequest()) {
-				error = e instanceof ApiError ? t('controller.error.fetchFailed', { status: e.status, message: e.message }) : t('controller.error.server');
+				// A background read superseded by an authority change is not a server failure.
+				if (fetchOpts?.silent && instance?.id === id && e instanceof DOMException && e.name === 'AbortError') return;
+				const message = e instanceof ApiError
+					? t('controller.error.fetchFailed', { status: e.status, message: e.message })
+					: e instanceof DOMException && e.name === 'TimeoutError' ? t('controller.error.timeout') : t('controller.error.server');
+				if (fetchOpts?.silent && instance?.id === id) refreshError = t('controller.error.refreshFailed', { message });
+				else error = message;
 			}
 		} finally {
 			if (ownsRequest()) {
@@ -674,15 +684,18 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	function resizeProjectId(context: InstanceMutationContext) {
 		return context.adminMode ? context.ownProjectId : context.effectiveProjectId;
 	}
-	function selectableResizeFlavor(flavorId: string) {
-		return flavorId !== instance?.flavor_id && resizeFlavors.some(f =>
-			f.id === flavorId && (!!instance?.flavor_id || f.name !== instance?.flavor_name) && f.eligibility?.selectable !== false
-		);
+	function isCurrentFlavor(flavor: Pick<FlavorOption, 'id' | 'name'>) {
+		return flavor.id === instance?.flavor_id || (!instance?.flavor_id && flavor.name === instance?.flavor_name);
+	}
+	/** Catalog targets come from resize-flavors; composed/saved targets from the resize composer readback. */
+	function selectableResizeFlavor(flavorId: string, composed?: FlavorOption | null) {
+		if (composed) return composed.id === flavorId && !isCurrentFlavor(composed) && flavorCreateBlock(composed) === null;
+		return resizeFlavors.some(f => f.id === flavorId && !isCurrentFlavor(f) && f.eligibility?.selectable !== false);
 	}
 
 	async function loadResizeFlavors() {
 		const context = captureMutationContext();
-		if (!context || context.status !== 'SHUTOFF' || mutationBusy()) return;
+		if (!context || !RESIZABLE_STATUSES.has(context.status) || mutationBusy()) return;
 		const generation = ++resizeFlavorGeneration;
 		resizeFlavorContext = null;
 		resizeFlavors = [];
@@ -705,22 +718,26 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		}
 	}
 
-	async function doResize(flavorId: string): Promise<boolean> {
+	async function doResize(flavorId: string, composed: FlavorOption | null = null): Promise<boolean> {
 		const context = resizeFlavorContext;
-		if (!context || context.status !== 'SHUTOFF' || !ownsMutationContext(context)
-			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;
-		const flavor = resizeFlavors.find(f => f.id === flavorId)!;
+		if (!context || !RESIZABLE_STATUSES.has(context.status) || !ownsMutationContext(context)
+			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId, composed)) return false;
+		const flavor = composed ?? resizeFlavors.find(f => f.id === flavorId)!;
 		const ramLabel = flavor.ram >= 1024 ? `${flavor.ram / 1024} GB` : `${flavor.ram} MB`;
 		const flavorLabel = t('resize.flavorLabel', { name: flavor.display_name ? `${flavor.display_name} (${flavor.name} · ${flavor.id})` : flavor.name, vcpus: flavor.vcpus, ram: ramLabel });
-		if (!(await confirmDialog(t('resize.confirmMessage', { flavorLabel })))) return false;
+		const message = t('resize.confirmMessage', { flavorLabel });
+		if (!(await confirmDialog(context.status === 'ACTIVE' ? `${message}\n\n${t('resize.runningNotice')}` : message))) return false;
 		if (resizeFlavorContext !== context || !ownsMutationContext(context)
-			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId)) return false;
+			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId, composed)) return false;
 		resizeLoading = true;
 		resizeError = '';
 		try {
 			await api.post(resizePath(context, 'resize'), { flavor_id: flavorId }, context.token, resizeProjectId(context));
-			if (!ownsMutationContext(context, false)) return false;
-			await fetchInstance(context.id, { silent: true });
+			// Nova accepted the resize: report success even if the access token rotated
+			// meanwhile, so the dialog never invites a duplicate submission. The status
+			// refresh runs in the background and cannot hold the dialog open.
+			resizeFlavorContext = null;
+			if (opts.instanceId() === context.id) void fetchInstance(context.id, { silent: true });
 			return true;
 		} catch (e) {
 			if (ownsMutationContext(context, false)) resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
@@ -913,6 +930,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get loading() { return loading; },
 		get refreshing() { return refreshing; },
 		get error() { return error; },
+		get refreshError() { return refreshError; },
 		get deleting() { return deleting; },
 		get actioning() { return actioning; },
 		get consoleLog() { return consoleLog; },
@@ -1004,6 +1022,7 @@ export interface InstanceDetailController {
 	readonly loading: boolean;
 	readonly refreshing: boolean;
 	readonly error: string;
+	readonly refreshError: string;
 	readonly deleting: boolean;
 	readonly actioning: string | null;
 	readonly consoleLog: string;
@@ -1052,8 +1071,8 @@ export interface InstanceDetailController {
 	detachInterface(portId: string): Promise<void>;
 	saveSgEdit(portId: string, sgIds: string[]): Promise<void>;
 	loadResizeFlavors(): Promise<void>;
-	selectableResizeFlavor(flavorId: string): boolean;
-	doResize(flavorId: string): Promise<boolean>;
+	selectableResizeFlavor(flavorId: string, composed?: FlavorOption | null): boolean;
+	doResize(flavorId: string, composed?: FlavorOption | null): Promise<boolean>;
 	revertResize(): Promise<void>;
 	confirmResize(): Promise<void>;
 	fetchPasswordPrecheck(serverId: string): Promise<void>;

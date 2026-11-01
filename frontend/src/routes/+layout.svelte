@@ -3,7 +3,8 @@
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
-	import { auth, authReady, authRecovery, isLoggedIn, isAdmin, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
+	import { auth, authReady, authRecovery, AUTH_SERVICE_FAILURE_LIMIT, isLoggedIn, isAdmin, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
+	import { toast } from '$lib/stores/toast';
 	import { createAuthVerificationController } from '$lib/utils/authVerification';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { installInteractionAudit, type InteractionAuditController } from '$lib/utils/interactionAudit';
@@ -89,6 +90,17 @@
 		const timer = window.setInterval(() => { recoveryClock = Date.now(); }, 1000);
 		return () => window.clearInterval(timer);
 	});
+	// Unlimited retries would keep an unreachable session alive and block a fresh sign-in.
+	// After the limit this device signs out locally; other tabs own their own sessions.
+	$effect(() => {
+		if (!authenticationUnavailable || $logoutInProgress || ($authRecovery?.failures ?? 0) < AUTH_SERVICE_FAILURE_LIMIT) return;
+		toast.warning(t('authRecovery.forcedLogout', { count: AUTH_SERVICE_FAILURE_LIMIT }));
+		void startLogout({ broadcast: false });
+	});
+	/** The recovery dialog already blocks the console; a confirmation would open beneath it. */
+	function logoutFromRecovery() {
+		if (!$logoutInProgress) void startLogout();
+	}
 
 	async function retryAuthentication() {
 		if (recoveryBusy || $logoutInProgress || recoveryWait > 0) return;
@@ -642,7 +654,7 @@
 				<p role="alert" class="text-sm leading-relaxed text-ink-1">{t('authRecovery.body')}</p>
 				<p class="text-xs text-ink-2">{t('authRecovery.hint')}</p>
 				<div class="flex flex-wrap justify-end gap-3">
-					<Button variant="secondary" disabled={$logoutInProgress} onclick={logout}>{t('logout.action')}</Button>
+					<Button variant="secondary" disabled={$logoutInProgress} onclick={logoutFromRecovery}>{t('logout.action')}</Button>
 					<Button disabled={recoveryBusy || $logoutInProgress || recoveryWait > 0} onclick={retryAuthentication}>
 						{#if recoveryBusy}<LoadingState variant="control" label={t('authRecovery.checking')} />{:else}{recoveryWait > 0 ? t('authRecovery.retryIn', { seconds: recoveryWait }) : t('authRecovery.retry')}{/if}
 					</Button>

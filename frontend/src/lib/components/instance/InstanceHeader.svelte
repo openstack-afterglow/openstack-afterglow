@@ -96,6 +96,7 @@
 						<Button onclick={() => s.performAction('reboot')} disabled={busy} variant="outline" size="sm">
 							{#if s.actioning === 'reboot'}<LoadingState variant="control" label={t('header.rebooting')} />{:else}{t('header.reboot')}{/if}
 						</Button>
+						<Button onclick={() => onOpenResizeModal()} disabled={busy} variant="outline" size="sm">{t('header.resize')}</Button>
 					{/if}
 				{/if}
 				{#if canMutate && s.instance!.status === 'SHUTOFF'}
@@ -108,7 +109,7 @@
 					<Button onclick={s.deleteInstance} disabled={busy} variant="danger-outline" size="sm">
 						{#if s.deleting}<LoadingState variant="control" label={t('header.deleting')} />{:else}{t('header.delete')}{/if}
 					</Button>
-					<Button onclick={onOpenResizeModal} disabled={busy} variant="outline" size="sm">{t('header.resize')}</Button>
+					<Button onclick={() => onOpenResizeModal()} disabled={busy} variant="outline" size="sm">{t('header.resize')}</Button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
 					<Button onclick={() => s.performAction('unshelve')} disabled={busy} variant="primary" size="sm">

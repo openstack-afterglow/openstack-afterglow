@@ -50,6 +50,7 @@
 	"authRecovery.checking": "確認中…",
 	"authRecovery.retryIn": "{seconds}秒後に再試行",
 	"authRecovery.retry": "再試行",
+	"authRecovery.forcedLogout": "認証サービスへの接続に{count}回連続で失敗したため、このデバイスからログアウトしました。復旧後に再度ログインしてください。",
 	"error.notFound": "ページが見つかりません",
 	"error.generic": "エラーが発生しました",
 	"error.home": "ホームに戻る",

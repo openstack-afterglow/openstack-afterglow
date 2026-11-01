@@ -18,26 +18,51 @@ from app.services.cache import keys
 router = APIRouter()
 
 
+async def _resize_context(conn, token_info: dict, instance_id: str | None):
+    """Owned ACTIVE/SHUTOFF instance whose allocation a resize composition replaces."""
+    if instance_id is None:
+        return None
+    from app.api.compute.instances import owned_resize_target
+
+    _, _, resize = await owned_resize_target(conn, token_info, instance_id)
+    return resize
+
+
+_INSTANCE_ID = Query(None, min_length=1, max_length=64, description="Resize target: evaluate against this instance")
+
+
 @router.get("/composer-options", response_model=ComposerOptions)
 async def composer_options(
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
-    return await flavor_composition.options(conn, conn._afterglow_project_id, availability_zone=availability_zone)
+    return await flavor_composition.options(
+        conn,
+        conn._afterglow_project_id,
+        availability_zone=availability_zone,
+        resize=await _resize_context(conn, token_info, instance_id),
+    )
 
 
 @router.get("/compositions", response_model=SavedCompositions)
 async def saved_compositions(
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
     return await flavor_composition.history(
-        conn, conn._afterglow_project_id, token_info, availability_zone=availability_zone
+        conn,
+        conn._afterglow_project_id,
+        token_info,
+        availability_zone=availability_zone,
+        resize=await _resize_context(conn, token_info, instance_id),
     )
 
 
@@ -45,13 +70,19 @@ async def saved_compositions(
 async def composition_operation(
     operation_id: UUID,
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(require_project_write),
 ):
     from app.services import flavor_composition
 
     return await flavor_composition.resolve(
-        conn, conn._afterglow_project_id, token_info, operation_id, availability_zone=availability_zone
+        conn,
+        conn._afterglow_project_id,
+        token_info,
+        operation_id,
+        availability_zone=availability_zone,
+        resize=await _resize_context(conn, token_info, instance_id),
     )
 
 
@@ -60,6 +91,7 @@ async def save_composition(
     request: FlavorComposition,
     availability_zone: str | None = None,
     operation_id: UUID | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(require_project_write),
 ):
@@ -72,6 +104,7 @@ async def save_composition(
         request,
         operation_id=operation_id,
         availability_zone=availability_zone,
+        resize=await _resize_context(conn, token_info, instance_id),
     )
 
 

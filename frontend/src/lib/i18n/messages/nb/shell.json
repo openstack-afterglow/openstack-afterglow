@@ -50,6 +50,7 @@
 	"authRecovery.checking": "Kontrollerer…",
 	"authRecovery.retryIn": "Prøv igjen om {seconds} s",
 	"authRecovery.retry": "Prøv igjen",
+	"authRecovery.forcedLogout": "Fikk ikke kontakt med autentiseringstjenesten etter {count} forsøk, så du er logget ut på denne enheten. Logg inn igjen når tjenesten er tilbake.",
 	"error.notFound": "Fant ikke siden",
 	"error.generic": "Noe gikk galt",
 	"error.home": "Tilbake til forsiden",

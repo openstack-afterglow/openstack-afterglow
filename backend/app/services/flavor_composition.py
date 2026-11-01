@@ -27,6 +27,7 @@ from app.services import (
     flavor_automation_policy,
     flavor_eligibility,
     identity_roles,
+    instance_resize,
     keystone,
     managed_flavors,
     nova,
@@ -209,26 +210,41 @@ def _status(flavor):
     return "available" if eligibility.selectable else "insufficient"
 
 
-async def _evaluate(conn, project_id, flavors, availability_zone, *, supported_hosts=None, capacity_regions=None):
+async def _evaluate(
+    conn,
+    project_id,
+    flavors,
+    availability_zone,
+    *,
+    supported_hosts=None,
+    capacity_regions=None,
+    resize: instance_resize.ResizeTarget | None = None,
+    same_flavor=True,
+):
     # All variants share tenant quotas, domain pool and one bounded native snapshot.
     composer = (
         {"supported_hosts": supported_hosts, "capacity_regions": capacity_regions}
         if capacity_regions is not None
         else {}
     )
-    return await flavor_eligibility.evaluate_project_flavors(
+    evaluated = await flavor_eligibility.evaluate_project_flavors(
         conn,
         project_id,
         flavors,
+        current_flavor=resize.current if resize else None,
+        resize_capacity=resize is not None,
         check_capacity=True,
         availability_zone=availability_zone,
         fresh_capacity=True,
         include_gpu_projection=True,
         **composer,
     )
+    # Resize demand is the increase over the replaced allocation; the same flavor
+    # and image-backed root disk shrink remain native resize impossibilities.
+    return instance_resize.apply_target_blockers(evaluated, resize, same_flavor=same_flavor) if resize else evaluated
 
 
-async def options(conn, project_id, *, availability_zone=None):
+async def options(conn, project_id, *, availability_zone=None, resize: instance_resize.ResizeTarget | None = None):
     try:
         async with asyncio.timeout(_OPTIONS_TIMEOUT):
             return await _options(
@@ -236,6 +252,7 @@ async def options(conn, project_id, *, availability_zone=None):
                 project_id,
                 availability_zone=availability_zone,
                 deadline=asyncio.get_running_loop().time() + _OPTIONS_TIMEOUT - 1,
+                resize=resize,
             )
     except (TimeoutError, HTTPException):
         return ComposerOptions(
@@ -286,7 +303,7 @@ def _base_shape(hosts, profiles, profile, count):
     return None
 
 
-def _variant(profile_id, count, flavor, regions, policy, *, enabled, publication_limits=None):
+def _variant(profile_id, count, flavor, regions, policy, *, enabled, publication_limits=None, credit=None):
     values = {"gpu_profile_id": profile_id, "gpu_count": count, "regions": [], "preview": None}
     if not enabled:
         return ComposerVariant(**values, status="unavailable")
@@ -319,6 +336,8 @@ def _variant(profile_id, count, flavor, regions, policy, *, enabled, publication
             region = {key: dict(value) for key, value in region.items()}
             for key, remaining in (("vcpus", eligibility.remaining.cores), ("ram_mb", eligibility.remaining.ram_mb)):
                 if remaining != -1:
+                    # A resize returns the replaced allocation to the same quota.
+                    remaining += (credit or {}).get(key, 0)
                     bound = remaining // region[key]["step"] * region[key]["step"]
                     region[key]["max"] = min(region[key]["max"], bound)
             if profile_id is None and publication_limits is not None:
@@ -373,7 +392,7 @@ def _variant(profile_id, count, flavor, regions, policy, *, enabled, publication
     return ComposerVariant(**values, status="available")
 
 
-async def _options(conn, project_id, *, availability_zone=None, deadline=None):
+async def _options(conn, project_id, *, availability_zone=None, deadline=None, resize=None):
     policy = await flavor_automation_policy.load_policy()
     try:
         directory = await managed_flavors._pool_projects()
@@ -440,6 +459,9 @@ async def _options(conn, project_id, *, availability_zone=None, deadline=None):
                         availability_zone,
                         supported_hosts=hosts,
                         capacity_regions=regions,
+                        resize=resize,
+                        # A minimal probe equal to the current shape still bounds larger tuples.
+                        same_flavor=False,
                     )
                 }
         except (TimeoutError, HTTPException):
@@ -453,6 +475,7 @@ async def _options(conn, project_id, *, availability_zone=None, deadline=None):
             policy,
             enabled=state["enabled"] and not evaluation_failed,
             publication_limits=limits,
+            credit={"vcpus": resize.current.vcpus, "ram_mb": resize.current.ram} if resize else None,
         )
         for (profile, count), probe in zip(variants, probes, strict=True)
     ]
@@ -469,7 +492,7 @@ async def _options(conn, project_id, *, availability_zone=None, deadline=None):
     )
 
 
-async def history(conn, project_id, info, *, admin=False, availability_zone=None):
+async def history(conn, project_id, info, *, admin=False, availability_zone=None, resize=None):
     await _authorize(info, project_id, admin=admin)
     state = await managed_flavors._load()
     ids = state["composition_history"].get(_actor(info, project_id), [])
@@ -491,10 +514,10 @@ async def history(conn, project_id, info, *, admin=False, availability_zone=None
         if not flavor_eligibility.is_flavor_frontend_visible(flavor):
             continue
         items.append(flavor.model_copy(update={"composition": dict(coordinates)}))
-    return SavedCompositions(items=await _evaluate(conn, project_id, items, availability_zone))
+    return SavedCompositions(items=await _evaluate(conn, project_id, items, availability_zone, resize=resize))
 
 
-async def resolve(conn, project_id, info, operation_id, *, admin=False, availability_zone=None):
+async def resolve(conn, project_id, info, operation_id, *, admin=False, availability_zone=None, resize=None):
     """GET-only recovery of this exact dispatch, never a tuple/history guess or replay."""
     signature = await _authorize(info, project_id, admin=admin, write=True)
     state = await managed_flavors._load()
@@ -555,7 +578,11 @@ async def resolve(conn, project_id, info, operation_id, *, admin=False, availabi
     if item is None or not flavor_eligibility.is_flavor_frontend_visible(item):
         return None
     evaluated = await _evaluate(
-        conn, project_id, [item.model_copy(update={"composition": receipt["composition"]})], availability_zone
+        conn,
+        project_id,
+        [item.model_copy(update={"composition": receipt["composition"]})],
+        availability_zone,
+        resize=resize,
     )
     if not evaluated or _status(evaluated[0]) != "available":
         raise HTTPException(409, "flavor_composition_not_selectable")
@@ -577,7 +604,15 @@ async def resolve(conn, project_id, info, operation_id, *, admin=False, availabi
 
 @identity_roles._complete_mutation
 async def save(
-    conn, project_id, info, request: FlavorComposition, *, operation_id=None, admin=False, availability_zone=None
+    conn,
+    project_id,
+    info,
+    request: FlavorComposition,
+    *,
+    operation_id=None,
+    admin=False,
+    availability_zone=None,
+    resize=None,
 ):
     signature = await _authorize(info, project_id, admin=admin, write=True)
     actor = _actor(info, project_id)
@@ -620,7 +655,10 @@ async def save(
             and len(state["composition_history"]) >= managed_flavors.MAX_HISTORY_ACTORS
         ):
             raise HTTPException(409, "flavor_composition_history_limit")
-        evaluated = await _evaluate(conn, project_id, [_flavor(shape, coordinates)], availability_zone)
+        evaluated = await _evaluate(conn, project_id, [_flavor(shape, coordinates)], availability_zone, resize=resize)
+        if resize and evaluated and any(blocker.code == "same_flavor" for blocker in evaluated[0].eligibility.blockers):
+            # Before any native write: publishing the current shape cannot change the VM.
+            raise HTTPException(409, "flavor_composition_same_as_current")
         if not evaluated or _status(evaluated[0]) != "available":
             raise HTTPException(
                 409 if evaluated and _status(evaluated[0]) == "insufficient" else 503,
@@ -658,7 +696,7 @@ async def save(
             if fid not in visible:
                 raise HTTPException(503, "flavor_composition_readback_unavailable")
             item = visible[fid].model_copy(update={"composition": coordinates})
-            evaluated = await _evaluate(conn, project_id, [item], availability_zone)
+            evaluated = await _evaluate(conn, project_id, [item], availability_zone, resize=resize)
             if not evaluated or _status(evaluated[0]) != "available":
                 raise HTTPException(409, "flavor_composition_not_selectable")
             await managed_flavors._fence(lease, state["revision"])

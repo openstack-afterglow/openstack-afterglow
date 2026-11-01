@@ -50,6 +50,7 @@
 	"authRecovery.checking": "正在检查…",
 	"authRecovery.retryIn": "{seconds} 秒后重试",
 	"authRecovery.retry": "重试",
+	"authRecovery.forcedLogout": "连续 {count} 次无法连接认证服务，已在此设备上退出登录。服务恢复后请重新登录。",
 	"error.notFound": "找不到页面",
 	"error.generic": "发生错误",
 	"error.home": "返回首页",

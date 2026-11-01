@@ -342,6 +342,7 @@ async def evaluate_project_flavors(
     include_gpu_projection: bool = False,
     supported_hosts: list[dict] | None = None,
     capacity_regions: dict[str, list[dict]] | None = None,
+    resize_capacity: bool = False,
 ) -> list[FlavorInfo]:
     """Attach eligibility to project-visible flavors using one snapshot per authority.
 
@@ -349,6 +350,9 @@ async def evaluate_project_flavors(
     flavor, ``count == 1``). A confirmed shortage and an unverified capacity both block every
     flavor: an unresolved default zone, an operator or Placement failure, or an unrepresentable
     flavor constraint never admits a VM to Nova.
+    Resize admission keeps that create gate off. Only the resize flavor composer opts in with
+    ``resize_capacity``: its CPU/RAM ranges are free-host regions that do not return the current
+    VM allocation, a conservative advisory bound; Nova still schedules the resize.
     Discovery lists pass ``fresh_capacity=False`` to project a bounded background observation.
     """
     flavor_list = list(flavors)
@@ -395,7 +399,7 @@ async def evaluate_project_flavors(
             _logger.warning("managed flavor GPU presentation policy unavailable")
 
     capacities: dict[str, FlavorCapacityInfo] = {}
-    needs_capacity = check_capacity and current_flavor is None and count == 1
+    needs_capacity = check_capacity and count == 1 and (current_flavor is None or resize_capacity)
     capacity_checked_at = datetime.now(UTC).isoformat()
     capacity_reason = None
     if needs_capacity:

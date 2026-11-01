@@ -1,3 +1,6 @@
+/** Nova resizes running (with a guest restart) and stopped instances. */
+export const RESIZABLE_STATUSES: ReadonlySet<string> = new Set(['ACTIVE', 'SHUTOFF']);
+
 /** 인스턴스 전이 중 상태 집합 (Nova 상태값 기준, 대소문자 무관 비교) */
 export const TRANSITIONAL_STATUSES = new Set([
 	'BUILD',

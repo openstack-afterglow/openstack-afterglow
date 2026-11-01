@@ -78,18 +78,61 @@ def _make_admin_conn(project_id: str, user_id: str) -> openstack.connection.Conn
     return conn
 
 
+def _admin_read_conn(project_id: str, user_id: str) -> openstack.connection.Connection:
+    """Verified admin-project executor reading one target project as its logical scope.
+
+    Unlike ``_make_admin_conn`` this never rescopes the service account into the
+    target, which Keystone rejects (401) for tenant projects it is not a member of.
+    Reads pass the target explicitly (flavor ACL, quota, pool, server ownership);
+    resources are never created through it.
+    """
+    from app.services import flavor_composition
+
+    conn = keystone.get_admin_project_connection()
+    try:
+        flavor_composition._verify_operator(conn)
+    except Exception:
+        conn.close()
+        raise
+    conn._afterglow_project_id = project_id
+    conn._afterglow_token = ""
+    conn._afterglow_user_id = user_id
+    conn._afterglow_is_system_admin = True
+    return conn
+
+
+_INSTANCE_ID = Query(None, min_length=1, max_length=64, description="Resize target: evaluate against this instance")
+
+
+async def _admin_resize_context(conn, project_id: str, instance_id: str | None):
+    """The selected project's own ACTIVE/SHUTOFF instance whose allocation a resize replaces."""
+    if instance_id is None:
+        return None
+    from app.services import instance_resize
+
+    server = await asyncio.to_thread(_server, conn, instance_id)
+    if server.project_id != project_id:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
+    instance_resize.require_resizable(server)
+    flavors = await asyncio.to_thread(nova._list_flavors, conn, project_id=project_id)
+    return instance_resize.target_for(server, flavors)
+
+
 @router.get("/instances/flavor-composer-options", response_model=ComposerOptions)
 async def admin_composer_options(
     project_id: str = Query(..., min_length=1, max_length=128),
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
     await flavor_composition._authorize(token_info, project_id, admin=True)
-    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    # The service account need not be a member of every tenant project.
+    conn = await asyncio.to_thread(_admin_read_conn, project_id, token_info["user_id"])
     try:
-        return await flavor_composition.options(conn, project_id, availability_zone=availability_zone)
+        resize = await _admin_resize_context(conn, project_id, instance_id)
+        return await flavor_composition.options(conn, project_id, availability_zone=availability_zone, resize=resize)
     finally:
         await asyncio.to_thread(conn.close)
 
@@ -98,15 +141,17 @@ async def admin_composer_options(
 async def admin_saved_compositions(
     project_id: str = Query(..., min_length=1, max_length=128),
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
     await flavor_composition._authorize(token_info, project_id, admin=True)
-    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    conn = await asyncio.to_thread(_admin_read_conn, project_id, token_info["user_id"])
     try:
+        resize = await _admin_resize_context(conn, project_id, instance_id)
         return await flavor_composition.history(
-            conn, project_id, token_info, admin=True, availability_zone=availability_zone
+            conn, project_id, token_info, admin=True, availability_zone=availability_zone, resize=resize
         )
     finally:
         await asyncio.to_thread(conn.close)
@@ -117,15 +162,17 @@ async def admin_composition_operation(
     operation_id: UUID,
     project_id: str = Query(..., min_length=1, max_length=128),
     availability_zone: str | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
     await flavor_composition._authorize(token_info, project_id, admin=True, write=True)
-    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    conn = await asyncio.to_thread(_admin_read_conn, project_id, token_info["user_id"])
     try:
+        resize = await _admin_resize_context(conn, project_id, instance_id)
         return await flavor_composition.resolve(
-            conn, project_id, token_info, operation_id, admin=True, availability_zone=availability_zone
+            conn, project_id, token_info, operation_id, admin=True, availability_zone=availability_zone, resize=resize
         )
     finally:
         await asyncio.to_thread(conn.close)
@@ -137,13 +184,15 @@ async def admin_save_composition(
     project_id: str = Query(..., min_length=1, max_length=128),
     availability_zone: str | None = None,
     operation_id: UUID | None = None,
+    instance_id: str | None = _INSTANCE_ID,
     token_info: dict = Depends(get_token_info),
 ):
     from app.services import flavor_composition
 
     await flavor_composition._authorize(token_info, project_id, admin=True, write=True)
-    conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info["user_id"])
+    conn = await asyncio.to_thread(_admin_read_conn, project_id, token_info["user_id"])
     try:
+        resize = await _admin_resize_context(conn, project_id, instance_id)
         return await flavor_composition.save(
             conn,
             project_id,
@@ -152,6 +201,7 @@ async def admin_save_composition(
             operation_id=operation_id,
             admin=True,
             availability_zone=availability_zone,
+            resize=resize,
         )
     finally:
         await asyncio.to_thread(conn.close)
@@ -840,28 +890,24 @@ async def get_admin_instance_log(
 
 @router.get("/instances/{instance_id}/resize-flavors", dependencies=[Depends(require_admin)])
 async def get_admin_instance_resize_flavors(instance_id: str, conn=Depends(get_admin_os_conn)):
-    from app.api.compute.instances import _resize_current_flavor, _resize_target_blockers
+    from app.services import instance_resize
     from app.services.flavor_eligibility import evaluate_project_flavors, is_flavor_frontend_visible
 
     server = await asyncio.to_thread(_server, conn, instance_id)
-    if server.status not in {"ACTIVE", "SHUTOFF"}:
-        raise HTTPException(status_code=409, detail="현재 상태에서는 리사이즈할 수 없습니다")
+    instance_resize.require_resizable(server)
     flavors = await asyncio.to_thread(nova._list_flavors, conn, project_id=server.project_id)
-    current = _resize_current_flavor(server, flavors)
+    resize = instance_resize.target_for(server, flavors)
     evaluated = await evaluate_project_flavors(
         conn,
         server.project_id,
         [flavor for flavor in flavors if is_flavor_frontend_visible(flavor)],
-        current_flavor=current,
+        current_flavor=resize.current,
         include_gpu_projection=True,
+        check_capacity=True,
+        resize_capacity=True,
+        fresh_capacity=False,
     )
-    for flavor in evaluated:
-        blockers = _resize_target_blockers(flavor, current, image_backed=bool(server.image_id))
-        if blockers:
-            flavor.eligibility = flavor.eligibility.model_copy(
-                update={"selectable": False, "blockers": [*flavor.eligibility.blockers, *blockers]}
-            )
-    return evaluated
+    return instance_resize.apply_target_blockers(evaluated, resize)
 
 
 @router.get("/instances/{instance_id}/admin-password/precheck", dependencies=[Depends(require_admin)])

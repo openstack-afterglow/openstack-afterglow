@@ -32,19 +32,35 @@ describe('fresh organization project capability', () => {
 		await waitFor(() => expect(get(projectManagement).checking).toBe(false));
 		expect(get(canManageOrganizationProjects)).toBe(false);
 	});
-	it('blocks on focus verification, uses rotated access credentials, and fences immediate logout', async () => {
+	it('keeps confirmed navigation during a focus recheck, uses rotated credentials, and fences immediate logout', async () => {
 		stop = canManageOrganizationProjects.subscribe(() => {});
 		await waitFor(() => expect(get(canManageOrganizationProjects)).toBe(true));
 		auth.update(state => ({ ...state, token: 'rotated-token' }));
 		expect(api.get).toHaveBeenCalledTimes(1);
 		const pending = Promise.withResolvers<unknown>(); api.get.mockReturnValue(pending.promise);
 		const refreshing = refreshProjectManagement();
-		expect(get(canManageOrganizationProjects)).toBe(false);
+		expect(get(projectManagement).checking).toBe(true);
+		expect(get(canManageOrganizationProjects)).toBe(true);
 		expect(api.get.mock.calls.at(-1)?.[1]).toBe('rotated-token');
 		logoutInProgress.set(true);
 		expect(get(projectManagement).scope).toBeNull();
+		expect(get(canManageOrganizationProjects)).toBe(false);
 		pending.resolve(caps); await refreshing;
 		expect(get(canManageOrganizationProjects)).toBe(false);
+	});
+	it('hides navigation on a failed recheck and on scope change before the new read settles', async () => {
+		stop = canManageOrganizationProjects.subscribe(() => {});
+		await waitFor(() => expect(get(canManageOrganizationProjects)).toBe(true));
+		api.get.mockRejectedValueOnce(new Error('offline'));
+		await refreshProjectManagement();
+		expect(get(canManageOrganizationProjects)).toBe(false);
+		await refreshProjectManagement();
+		expect(get(canManageOrganizationProjects)).toBe(true);
+		const pending = Promise.withResolvers<unknown>(); api.get.mockReturnValue(pending.promise);
+		auth.update(state => ({ ...state, domainId: 'other' }));
+		expect(get(canManageOrganizationProjects)).toBe(false);
+		pending.resolve({ ...caps, domain_id: 'other' });
+		await waitFor(() => expect(get(canManageOrganizationProjects)).toBe(true));
 	});
 	it('discards old capability reads after same-tick A to B to A transitions', async () => {
 		const pending = Promise.withResolvers<unknown>();

@@ -64,7 +64,7 @@ async def create_project_for_user(
 
     conn = await _provider_call(keystone.get_admin_project_connection)
     try:
-        async with identity_roles._graph_lock(conn) as lease:
+        async with identity_roles._graph_lock(conn, wait=True) as lease:
             if not await can_create_project(user_id, domain["id"]):
                 raise HTTPException(status_code=403, detail="Domain project creation capability required")
             ks = await _provider_call(keystone._get_admin_ks_client)
@@ -309,10 +309,11 @@ async def get_project_delegation_roles(project_id: str, user_id: str) -> list[di
 async def _membership_write(project_id):
     # Identity management uses the configured admin project, not a newly created
     # tenant where the service user has no assignment yet. Target scope is always
-    # supplied explicitly to the trusted role-assignment API.
+    # supplied explicitly to the trusted role-assignment API. Foreground member
+    # edits join the FIFO graph queue so background reconciliation yields to them.
     conn = await _provider_call(keystone.get_admin_project_connection)
     try:
-        async with identity_roles._graph_lock(conn) as lease:
+        async with identity_roles._graph_lock(conn, wait=True) as lease:
             ks = await _provider_call(keystone._get_admin_ks_client)
             catalog = await _provider_call(identity_roles.load_catalog, conn)
             effective = await _provider_call(_assignment_rows, ks, project_id, effective=True)
@@ -357,7 +358,11 @@ async def _domain_access(
         return context["is_domain_manager"]
     if not context["is_domain_manager"]:
         raise HTTPException(status_code=403, detail="Domain manager required")
-    if user_id:
+    if user_id and user_id != token_info["user_id"]:
+        # Protection keeps a domain manager from editing *another* privileged
+        # account. Editing one's own project grants delegates no authority to
+        # anyone else, so a domain manager may raise or lower their own managed
+        # project roles (native admin stays removal-only in replace_member_roles).
         from app.services.domain_iam import protected_user
 
         if await protected_user(
@@ -1279,7 +1284,7 @@ async def change_project_creator(domain_id, user_id, enabled, actor_id):
 
     conn = await _provider_call(keystone.get_admin_project_connection)
     try:
-        async with identity_roles._graph_lock(conn) as lease:
+        async with identity_roles._graph_lock(conn, wait=True) as lease:
             context = await _provider_call(domain_context, actor_id, domain_id)
             if not context["is_domain_manager"]:
                 raise HTTPException(403, "Domain manager required to delegate project creation")

@@ -8,6 +8,7 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { Alert, Button } from '$lib/components/ui';
 	import { createInstanceDetailController, provideInstanceDetailController, type InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
+	import { RESIZABLE_STATUSES } from '$lib/utils/instanceStatus';
 	import InstanceHeader from '$lib/components/instance/InstanceHeader.svelte';
 	import InfoSection from '$lib/components/instance/InfoSection.svelte';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
@@ -80,7 +81,7 @@
 	const canShowResize = $derived(
 		$canWrite && !!$auth.token && !!s.instance && s.instance.id === instanceId
 		&& !!s.instance.project_id && s.instance.project_id === effectiveProjectId
-		&& s.instance.status === 'SHUTOFF' && !s.loading && !s.actioning && !s.deleting
+		&& RESIZABLE_STATUSES.has(s.instance.status) && !s.loading && !s.actioning && !s.deleting
 	);
 	const canOpenResize = $derived(canShowResize && !s.resizeLoading);
 	$effect(() => {
@@ -201,6 +202,9 @@
 	{:else if s.loading && !s.instance}
 		<LoadingState variant="surface" class={onClose ? undefined : 'min-h-[calc(100dvh-var(--app-header-height)-8rem)]'} />
 	{:else if s.instance}
+		{#if s.refreshError}
+			<Alert tone="warning" class="mb-4">{s.refreshError}</Alert>
+		{/if}
 		<InstanceHeader
 			canMutate={$canWrite}
 			adminProjectId={adminMode ? s.instance.project_id ?? adminProjectId : null}
@@ -230,11 +234,9 @@
 						{t('panel.smallerResize')}
 					{/if}
 				</span>
-				{#if s.instance.status === 'SHUTOFF'}
-					<Button onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)} disabled={!canOpenResize} variant="outline" size="sm" class="shrink-0">
-						{t('panel.resize')}
-					</Button>
-				{/if}
+				<Button onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)} disabled={!canOpenResize} variant="outline" size="sm" class="shrink-0">
+					{t('panel.resize')}
+				</Button>
 			</div>
 		{/if}
 

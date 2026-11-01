@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { api, ApiError } from '$lib/api/client';
 import {
-	auth, authReady, authRecovery, logoutInProgress, clearAuth, isMockAuthActive,
+	auth, authReady, logoutInProgress, clearAuth, isMockAuthActive, recordAuthServiceFailure,
 	getAuthVerificationEpoch, hasVerifiedAuth, acceptAuthVerification,
 } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
@@ -60,9 +60,9 @@ export function createAuthVerificationController(): AuthVerificationController {
 					return;
 				}
 				authReady.set(false);
-				if (get(authRecovery)?.token !== state.token) {
-					authRecovery.set({ token: state.token!, retryAt: Date.now() + 5000 });
-				}
+				recordAuthServiceFailure(state.token!, Date.now() + 5000, {
+					counted: !(error instanceof ApiError && error.status === 429),
+				});
 				request.timer = window.setTimeout(() => {
 					if (!current()) return;
 					active = null;

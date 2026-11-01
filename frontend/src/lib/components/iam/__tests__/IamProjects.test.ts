@@ -112,11 +112,18 @@ describe('manager project creation and access', () => {
 		await fireEvent.click(within(dialog).getByRole('button', { name: '역할 저장' }));
 		expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/projects/project-a/members/user-b/roles', { role_ids: ['member-role'] }, 'token', undefined, { replayOnUnauthorized: false });
 	});
-	it.each(['group', 'inherited'] as const)('never exposes %s authority as a directly removable member', async source => {
+	it.each(['group', 'inherited'] as const)('edits only direct grants beside %s authority and never removes it', async source => {
 		members = [{ ...member, source, direct_role_ids: [], direct_roles: [], external_role_ids: ['reader-role'] }];
+		api.put.mockResolvedValue({});
 		render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
-		expect((screen.getByRole('button', { name: '역할 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect((screen.getByRole('button', { name: '멤버 제거' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '역할 편집' }));
+		const dialog = screen.getByRole('dialog');
+		const inherited = within(dialog).getByRole('checkbox', { name: /project_reader/ }) as HTMLInputElement;
+		expect(inherited.checked).toBe(true); expect(inherited.disabled).toBe(true);
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: /project_member/ }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '역할 저장' }));
+		expect(api.put).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/projects/project-a/members/user-a/roles', { role_ids: ['member-role'] }, 'token', undefined, { replayOnUnauthorized: false });
 		expect(api.delete).not.toHaveBeenCalled();
 	});
 	it('adds a direct grant beside group access without editing or removing the inherited role', async () => {

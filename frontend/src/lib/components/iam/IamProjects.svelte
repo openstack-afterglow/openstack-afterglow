@@ -76,8 +76,9 @@
 		showCreate = false;
 		void initialize(result.id);
 	}
-	function editable(member: ProjectAccessMember) { return !loading && !!catalog && !['group', 'inherited'].includes(member.source ?? '') && (catalog.can_manage_owners || !member.is_owner); }
-	function removable(member: ProjectAccessMember) { return editable(member) && !member.is_owner && (!member.is_manager || catalog?.can_manage_owners); }
+	// Group/inherited grants stay read-only in the editor; adding direct roles matches assign().
+	function editable(member: ProjectAccessMember) { return !loading && !!catalog && (catalog.can_manage_owners || !member.is_owner); }
+	function removable(member: ProjectAccessMember) { return editable(member) && member.direct_role_ids.length > 0 && !member.is_owner && (!member.is_manager || catalog?.can_manage_owners); }
 	function assign() {
 		if (!live || !session.isCurrent() || blocked || !session.canSubmit() || busy || loading || !catalog || !user) return;
 		const selected = users.find(row => row.id === user); if (!selected) return;
@@ -131,13 +132,13 @@
 		{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
 			<h3 class="text-sm font-medium">{member.username || member.user_id}</h3><p class="text-xs">{member.source ? t(member.source) : '—'} · {t('roleCount', { count: member.roles.length })}</p>{#if member.is_owner && ownerCount <= 1}<p class="text-xs text-ink-2">{t('lastOwner')}</p>{/if}
 			{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p>{/snippet}
-			{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = member; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button>{/snippet}
+			{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' }; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button>{/snippet}
 		</CompactResourceCard>{/each}
 		{#if !loading && !error && project && !members.length}<p class="text-sm text-ink-2">{t('emptyMembers')}</p>{/if}
 	{/snippet}
 	<TableShell><table>
 		<thead><tr><th>{t('user')}</th><th>{t('roles')}</th><th>{t('source')}</th><th>{t('actions')}</th></tr></thead>
-		<tbody>{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<tr><td>{member.username || member.user_id}</td><td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td><td>{member.source ? t(member.source) : '—'}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = member; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td></tr>{/each}
+		<tbody>{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<tr><td>{member.username || member.user_id}</td><td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td><td>{member.source ? t(member.source) : '—'}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' }; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td></tr>{/each}
 		{#if !loading && !error && project && !members.length}<tr><td colspan="4">{t('emptyMembers')}</td></tr>{/if}</tbody>
 	</table></TableShell>
 	</ResponsiveTable>

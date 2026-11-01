@@ -591,6 +591,27 @@ async def test_native_admin_removal_exception_preserves_other_privileged_identit
 
 
 @pytest.mark.asyncio
+async def test_privileged_domain_manager_may_raise_own_project_grade(directory):
+    # A system administrator who manages this domain was read-only to themselves.
+    # Self-edits grant nothing to another account; native admin stays removal-only.
+    directory.users["domain-manager"] = SimpleNamespace(
+        id="domain-manager", name="domain-manager", email="m@test.invalid", enabled=True, domain_id="domain"
+    )
+    directory.system_admins.add("domain-manager")
+    directory.direct.append(assignment("domain-manager", "project_reader"))
+    raised = await project_service.replace_member_roles(
+        PROJECT, "domain-manager", [rid("project_reader"), rid("project_member")], manager(), domain_management=True
+    )
+    assert rid("project_member") in raised["direct_role_ids"]
+    assert directory.calls == [("grant", "domain-manager", rid("project_member"))]
+    with pytest.raises(HTTPException) as native:
+        await project_service.replace_member_roles(
+            PROJECT, "domain-manager", [rid("admin")], manager(), domain_management=True
+        )
+    assert native.value.status_code == 422
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("inherited", [False, True])
 async def test_project_admin_removal_exception_does_not_authorize_identity_credential_edits(directory, inherited):
     directory.direct.append(assignment("member", "admin"))

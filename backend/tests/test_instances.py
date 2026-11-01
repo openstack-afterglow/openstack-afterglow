@@ -340,6 +340,28 @@ async def test_get_console_log_full(client, mock_conn):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [403, 404, 409])
+async def test_get_console_log_preserves_native_unavailable_status(client, mock_conn, status):
+    from openstack.exceptions import HttpException
+
+    error = HttpException(message="native", http_status=status)
+    with patch("app.api.compute.instances.nova.get_console_output", side_effect=error):
+        resp = await client.get("/api/v1/instances/inst-1/log")
+    assert resp.status_code == status
+    assert resp.json()["detail"] == "console_log_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_get_console_log_unexpected_native_error_stays_500(client, mock_conn):
+    from openstack.exceptions import HttpException
+
+    error = HttpException(message="native", http_status=503)
+    with patch("app.api.compute.instances.nova.get_console_output", side_effect=error):
+        resp = await client.get("/api/v1/instances/inst-1/log")
+    assert resp.status_code == 500
+
+
+@pytest.mark.asyncio
 async def test_get_console_log_length_negative(client, mock_conn):
     """음수 length는 거부되어야 한다."""
     resp = await client.get("/api/v1/instances/inst-1/log?length=-1")

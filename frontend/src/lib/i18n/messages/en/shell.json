@@ -50,6 +50,7 @@
 	"authRecovery.checking": "Checking…",
 	"authRecovery.retryIn": "Try again in {seconds}s",
 	"authRecovery.retry": "Try again",
+	"authRecovery.forcedLogout": "Couldn't reach the authentication service after {count} attempts, so you were signed out on this device. Sign in again once it recovers.",
 	"error.notFound": "Page not found",
 	"error.generic": "Something went wrong",
 	"error.home": "Back to home",

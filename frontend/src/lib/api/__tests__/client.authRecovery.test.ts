@@ -192,6 +192,28 @@ describe('authentication recovery state', () => {
 		expect(get(s.auth).refreshToken).toBe('new-refresh');
 	});
 
+	it('counts one failure per retry window, ignores rate limiting and reaches the sign-out limit', async () => {
+		const s = await session();
+		let now = Date.now();
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		mockFetch.mockResolvedValueOnce(new Response('bad gateway', { status: 502 }));
+		await expect(s.refreshSession()).rejects.toMatchObject({ status: 502 });
+		// A /me verification failing inside the same window is the same attempt.
+		s.recordAuthServiceFailure('old-access', now + 5000);
+		expect(get(s.authRecovery)?.failures).toBe(1);
+		now = get(s.authRecovery)!.retryAt + 1;
+		mockFetch.mockResolvedValueOnce(new Response('busy', { status: 429 }));
+		await expect(s.refreshSession()).rejects.toMatchObject({ status: 429 });
+		expect(get(s.authRecovery)?.failures).toBe(1);
+		for (const expected of [2, s.AUTH_SERVICE_FAILURE_LIMIT]) {
+			now = get(s.authRecovery)!.retryAt + 1;
+			mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+			await expect(s.refreshSession()).rejects.toThrow('Failed to fetch');
+			expect(get(s.authRecovery)?.failures).toBe(expected);
+		}
+		expect(get(s.auth).token).toBe('old-access');
+	});
+
 	it('does not let a late failed refresh block or clear a newly logged-in identity', async () => {
 		const s = await session();
 		const pending = Promise.withResolvers<Response>();

@@ -7,6 +7,9 @@ import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/instance';
+import { t as tw } from '$lib/i18n/ns/vm-wizard';
+import { flavorCreateBlock, type FlavorComposerSnapshot, type FlavorOption } from '$lib/types/flavor';
+import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
 
 const mocks = vi.hoisted(() => ({
 	controller: undefined as unknown,
@@ -17,8 +20,9 @@ const mocks = vi.hoisted(() => ({
 	doResize: vi.fn(),
 }));
 vi.mock('$lib/stores/auth', () => ({
-	auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false }),
+	auth: writable({ token: 'token-a', sessionId: 'login', projectId: 'project-a', userId: 'user-a', identityDomainId: 'home', domainId: 'domain', roles: ['member'], isSystemAdmin: false }),
 	canWrite: writable(true),
+	authReady: writable(true), logoutInProgress: writable(false), projectSwitching: writable(false),
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class ApiError extends Error {} }));
@@ -39,7 +43,7 @@ vi.mock('$lib/components/instance/UnionInfoSection.svelte', () => import('./_Unr
 import { auth, canWrite } from '$lib/stores/auth';
 import InstanceDetailPanel from '../InstanceDetailPanel.svelte';
 
-interface TestIdentity { token: string | null; projectId: string | null; userId: string; isSystemAdmin: boolean }
+interface TestIdentity { token: string | null; sessionId: string; projectId: string | null; userId: string; identityDomainId: string; domainId: string; roles: string[]; isSystemAdmin: boolean }
 const identity = auth as unknown as Writable<TestIdentity>;
 const permission = canWrite as unknown as Writable<boolean>;
 let controllerState: Writable<InstanceDetailController>;
@@ -49,7 +53,18 @@ const instance = {
 	image_id: 'image-a', image_name: 'Ubuntu', flavor_id: 'flavor-current', flavor_name: 'm1.small',
 	key_name: 'my-keypair', ip_addresses: [], union_libraries: [], union_strategy: null,
 } as Instance;
-const suggested = { id: 'flavor-small', name: 'm1.tiny', vcpus: 1, ram: 512, disk: 20, is_public: true };
+const suggested: FlavorOption = { id: 'flavor-small', name: 'm1.tiny', vcpus: 2, ram: 1024, disk: 20, is_public: true,
+	eligibility: { selectable: true, blockers: [], requirements: { instances: 0, cores: 0, ram_mb: 0, gpus: {} }, remaining: { instances: 10, cores: 128, ram_mb: 131072, gpus: {} },
+		capacity: { status: 'available', checked_at: '2026-10-31T10:00:00Z', candidate_hosts: 1, cpu_resource_class: 'VCPU', remaining_vcpus: 128, remaining_ram_mb: 131072 } } };
+const composerOptions: FlavorComposerSnapshot = { checked_at: '2026-10-31T10:00:00Z', status: 'available', gpu_profiles: [], variants: [
+	{ gpu_profile_id: null, gpu_count: 0, status: 'available', regions: [{ vcpus: { min: 2, max: 8, step: 2 }, ram_mb: { min: 1024, max: 8192, step: 1024 } }], preview: suggested },
+] };
+function composerResponse(path: string) {
+	const url = new URL(path, 'https://test.invalid');
+	if (url.pathname.endsWith('compositions')) return { items: [] };
+	if (url.pathname.endsWith('composer-options')) return composerOptions;
+	return undefined;
+}
 const summary = {
 	monitoring_available: true,
 	stats: { cpu: { avg: 1, min: 0, max: 3 }, memory: { avg: 5, min: 1, max: 10 } },
@@ -68,6 +83,11 @@ function setup(overrides: Partial<InstanceDetailController> = {}) {
 		performAction: vi.fn(), deleteInstance: vi.fn(), openConsole: vi.fn(),
 		resizeError: '', resizeLoading: false, resizeFlavorsLoading: false,
 		resizeFlavors: [suggested], loadResizeFlavors: mocks.loadResizeFlavors, doResize: mocks.doResize,
+		selectableResizeFlavor: (id: string, composed?: FlavorOption | null) => {
+			const controller = mocks.controller as InstanceDetailController;
+			const choice = composed ?? controller.resizeFlavors.find(row => row.id === id);
+			return Boolean(choice && choice.id === id && id !== controller.instance?.flavor_id && flavorCreateBlock(choice) === null);
+		},
 		...overrides,
 	} as unknown as InstanceDetailController);
 	const state = fromStore(controllerState);
@@ -80,7 +100,7 @@ function setup(overrides: Partial<InstanceDetailController> = {}) {
 	});
 }
 function resizeButtons() {
-	return screen.queryAllByRole<HTMLButtonElement>('button', { name: t('header.resize') });
+	return screen.queryAllByRole<HTMLButtonElement>('button', { name: t('header.resize') }).filter(button => !button.closest('[role="dialog"]'));
 }
 function resizeDialog() {
 	return screen.queryByRole('dialog', { name: t('resize.title') });
@@ -89,12 +109,19 @@ async function openHeaderResize() {
 	await fireEvent.click(resizeButtons()[0]);
 	return screen.findByRole('dialog', { name: t('resize.title') });
 }
+async function selectCatalogFlavor() {
+	const dialog = resizeDialog()!;
+	const catalog = within(dialog).getByRole<HTMLButtonElement>('button', { name: tw('composer.catalog') });
+	await waitFor(() => expect(catalog.disabled).toBe(false));
+	await fireEvent.click(catalog);
+	await fireEvent.click(within(dialog).getAllByRole('button', { name: tw('flavor.selectLabel', { name: consumerFlavorLabel(suggested) }) })[0]);
+}
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	mocks.get.mockImplementation(async (path: string) => path.endsWith('/usage-schedule') ? null : summary);
+	mocks.get.mockImplementation(async (path: string) => composerResponse(path) ?? (path.endsWith('/usage-schedule') ? null : summary));
 	mocks.loadResizeFlavors.mockResolvedValue(undefined);
-	identity.set({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false });
+	identity.set({ token: 'token-a', sessionId: 'login', projectId: 'project-a', userId: 'user-a', identityDomainId: 'home', domainId: 'domain', roles: ['member'], isSystemAdmin: false });
 	permission.set(true);
 	initLocale('ko');
 	setup();
@@ -109,28 +136,37 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(`/api/v1/admin/instances/${instance.id}/metrics-summary?range=7d`, 'token-a', 'project-a'));
 		expect(mocks.get.mock.calls.some(([path]) => path.startsWith('/api/v1/instances/'))).toBe(false);
 	});
-	it.each([null, 'project-a'])('gates header and recommendation resize across ACTIVE → SHUTOFF in %s mode', async adminProjectId => {
+	it.each([null, 'project-a'])('allows header and recommendation resize for ACTIVE and SHUTOFF in %s mode', async adminProjectId => {
+		identity.update(s => ({ ...s, isSystemAdmin: !!adminProjectId }));
 		render(InstanceDetailPanel, { instanceId: instance.id, adminProjectId, adminMode: !!adminProjectId });
 		await waitFor(() => expect(mocks.get).toHaveBeenCalled());
 		await tick();
-		expect(resizeButtons()).toHaveLength(0);
+		expect(resizeButtons()).toHaveLength(2);
 		expect(screen.queryByText(t('panel.stoppedQuotaWarning'))).toBeNull();
+		await fireEvent.click(resizeButtons()[1]);
+		const activeDialog = await screen.findByRole('dialog', { name: t('resize.title') });
+		expect(within(activeDialog).getByText(t('resize.runningNotice'))).toBeTruthy();
+		await fireEvent.click(within(activeDialog).getByRole('button', { name: t('resize.cancel') }));
 		controllerState.update(s => ({ ...s, instance: { ...instance, status: 'SHUTOFF' } }));
 		await waitFor(() => expect(resizeButtons()).toHaveLength(2));
 		expect(screen.getByText(t('panel.stoppedQuotaWarning')).closest('[role="status"]')).toBeTruthy();
 		await fireEvent.click(resizeButtons()[1]);
 		const dialog = await screen.findByRole('dialog', { name: t('resize.title') });
-		expect(within(dialog).getByRole<HTMLSelectElement>('combobox', { name: t('resize.newFlavor') }).value).toBe(suggested.id);
-		expect(mocks.loadResizeFlavors).toHaveBeenCalledTimes(1);
+		await waitFor(() => expect(within(dialog).getAllByRole('button', { name: tw('flavor.selectLabel', { name: consumerFlavorLabel(suggested) }) })[0].getAttribute('aria-pressed')).toBe('true'));
+		expect(mocks.loadResizeFlavors).toHaveBeenCalledTimes(2);
 		await fireEvent.click(within(dialog).getByRole('button', { name: t('resize.cancel') }));
 		expect(resizeDialog()).toBeNull();
 		await openHeaderResize();
-		expect(mocks.loadResizeFlavors).toHaveBeenCalledTimes(2);
+		expect(mocks.loadResizeFlavors).toHaveBeenCalledTimes(3);
 		controllerState.update(s => ({ ...s, instance: { ...instance, status: 'ACTIVE' } }));
+		await tick();
+		expect(resizeDialog()).not.toBeNull();
+		expect(resizeButtons()).toHaveLength(2);
+		expect(screen.queryByText(t('panel.stoppedQuotaWarning'))).toBeNull();
+		controllerState.update(s => ({ ...s, instance: { ...instance, status: 'BUILD' } }));
 		await tick();
 		expect(resizeDialog()).toBeNull();
 		expect(resizeButtons()).toHaveLength(0);
-		expect(screen.queryByText(t('panel.stoppedQuotaWarning'))).toBeNull();
 		expect(mocks.doResize).not.toHaveBeenCalled();
 	});
 
@@ -187,7 +223,7 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		expect(mocks.doResize).not.toHaveBeenCalled();
 		controllerState.update(s => ({ ...s, actioning: null, deleting: false, resizeLoading: false, loading: false }));
 		permission.set(true);
-		identity.set({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false });
+		identity.update(s => ({ ...s, token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false }));
 		await view.rerender({ instanceId: instance.id });
 		await tick();
 		expect(resizeDialog()).toBeNull();
@@ -197,12 +233,12 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		setup({ instance: { ...instance, status: 'SHUTOFF' } });
 		render(InstanceDetailPanel, { instanceId: instance.id });
 		await openHeaderResize();
-		await fireEvent.change(within(resizeDialog()!).getByRole('combobox', { name: t('resize.newFlavor') }), { target: { value: suggested.id } });
+		await selectCatalogFlavor();
 		controllerState.update(s => ({ ...s, resizeLoading: true }));
 		await tick();
 		const busyDialog = resizeDialog()!;
 		expect(busyDialog).not.toBeNull();
-		expect(within(busyDialog).getByRole<HTMLSelectElement>('combobox', { name: t('resize.newFlavor') }).value).toBe(suggested.id);
+		expect(within(busyDialog).getAllByRole('button', { name: tw('flavor.selectLabel', { name: consumerFlavorLabel(suggested) }) })[0].getAttribute('aria-pressed')).toBe('true');
 		expect(within(busyDialog).getByRole<HTMLButtonElement>('button', { name: t('resize.resizing') }).disabled).toBe(true);
 		controllerState.update(s => ({ ...s, resizeLoading: false, resizeError: 'Nova unavailable' }));
 		await tick();
@@ -231,13 +267,13 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		expect(mocks.doResize).not.toHaveBeenCalled();
 	});
 
-	it('does not reopen a modal when a flavor request completes after the instance starts', async () => {
+	it('does not reopen a modal when a flavor request completes after the instance becomes non-resizable', async () => {
 		let resolve!: () => void;
 		mocks.loadResizeFlavors.mockReturnValueOnce(new Promise<void>(done => { resolve = done; }));
 		setup({ instance: { ...instance, status: 'SHUTOFF' } });
 		render(InstanceDetailPanel, { instanceId: instance.id });
 		await openHeaderResize();
-		controllerState.update(s => ({ ...s, instance: { ...instance, status: 'ACTIVE' } }));
+		controllerState.update(s => ({ ...s, instance: { ...instance, status: 'SHELVED_OFFLOADED' } }));
 		await tick();
 		resolve();
 		await tick();
@@ -249,6 +285,8 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		const oldSummary = Promise.withResolvers<typeof summary>();
 		let summaryReads = 0;
 		mocks.get.mockImplementation((path: string) => {
+			const composer = composerResponse(path);
+			if (composer) return Promise.resolve(composer);
 			if (path.endsWith('/usage-schedule')) return Promise.resolve(null);
 			summaryReads += 1;
 			return summaryReads === 1 ? oldSummary.promise : Promise.resolve({ ...summary, recommendation: {
@@ -265,7 +303,9 @@ describe('Instance detail stopped lifecycle presentation', () => {
 		await tick();
 		await fireEvent.click(resizeButtons()[1]);
 		const dialog = await screen.findByRole('dialog', { name: t('resize.title') });
-		expect(within(dialog).getByRole<HTMLSelectElement>('combobox', { name: t('resize.newFlavor') }).value).toBe('flavor-new');
+		await waitFor(() => expect(within(dialog).getAllByRole('button', { name: tw('flavor.selectLabel', { name: consumerFlavorLabel(suggested) }) })[0].getAttribute('aria-pressed')).toBe('true'));
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('resize.submit') }));
+		expect(mocks.doResize).toHaveBeenCalledWith('flavor-new', null);
 	});
 
 	it.each([

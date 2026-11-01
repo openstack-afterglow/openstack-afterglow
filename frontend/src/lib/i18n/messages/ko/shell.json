@@ -50,6 +50,7 @@
 	"authRecovery.checking": "확인 중…",
 	"authRecovery.retryIn": "{seconds}초 후 다시 시도",
 	"authRecovery.retry": "다시 시도",
+	"authRecovery.forcedLogout": "인증 서비스 연결이 {count}회 연속 실패해 이 기기에서 로그아웃했습니다. 서비스가 복구되면 다시 로그인하세요.",
 	"error.notFound": "페이지를 찾을 수 없습니다",
 	"error.generic": "오류가 발생했습니다",
 	"error.home": "홈으로 돌아가기",

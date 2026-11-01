@@ -118,9 +118,11 @@ describe('InstanceHeader console feedback', () => {
 });
 
 describe('InstanceHeader resize access', () => {
-	it.each([null, 'project-admin'])('opens resize for writable %s detail', async adminProjectId => {
+	it.each([
+		[null, 'ACTIVE'], [null, 'SHUTOFF'], ['project-admin', 'ACTIVE'], ['project-admin', 'SHUTOFF'],
+	] as const)('opens resize for writable %s detail in %s', async (adminProjectId, status) => {
 		const onOpenResizeModal = vi.fn();
-		renderHeader({ instance: { ...activeInstance, status: 'SHUTOFF' } }, { adminProjectId, onOpenResizeModal });
+		renderHeader({ instance: { ...activeInstance, status } }, { adminProjectId, onOpenResizeModal });
 		await fireEvent.click(screen.getByRole('button', { name: '리사이즈' }));
 		expect(onOpenResizeModal).toHaveBeenCalledTimes(1);
 	});
@@ -177,10 +179,12 @@ describe('InstanceHeader stopped lifecycle actions', () => {
 	it.each([null, 'project-admin'])('updates ACTIVE to SHUTOFF actions in %s mode', async adminProjectId => {
 		const onOpenResizeModal = vi.fn();
 		renderHeader({}, { adminProjectId, onOpenResizeModal });
-		for (const name of ['시작', '보관', '삭제', '리사이즈']) {
+		for (const name of ['시작', '보관', '삭제']) {
 			expect(screen.queryByRole('button', { name })).toBeNull();
 		}
 		expect(screen.getByRole('button', { name: '정지' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '리사이즈' }));
+		expect(onOpenResizeModal).toHaveBeenCalledTimes(1);
 		controllerState.update(s => ({ ...s, instance: { ...activeInstance, status: 'SHUTOFF' } }));
 		await tick();
 		expect(screen.queryByRole('button', { name: '정지' })).toBeNull();
@@ -234,7 +238,7 @@ describe('InstanceHeader stopped lifecycle actions', () => {
 		expect(screen.getByRole('button', { name: '강제 이주' })).toBeTruthy();
 	});
 
-	it.each(['SHELVED', 'SHELVED_OFFLOADED', 'ERROR', 'VERIFY_RESIZE', 'BUILD', 'MIGRATING', 'STOPPED'])('omits archive/delete/resize in both modes for non-SHUTOFF %s', async status => {
+	it.each(['SHELVED', 'SHELVED_OFFLOADED', 'ERROR', 'VERIFY_RESIZE', 'BUILD', 'MIGRATING', 'STOPPED'])('omits archive/delete/resize in both modes for unsupported %s', async status => {
 		const view = renderHeader({ instance: { ...activeInstance, status } });
 		for (const name of ['보관', '삭제', '리사이즈']) {
 			expect(screen.queryByRole('button', { name })).toBeNull();

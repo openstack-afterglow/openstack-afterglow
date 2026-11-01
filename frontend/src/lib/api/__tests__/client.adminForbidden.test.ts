@@ -10,7 +10,7 @@ vi.mock('$lib/stores/auth', async () => {
 	const { writable } = await import('svelte/store');
 	const auth = writable<Partial<AuthState>>({});
 	return {
-		auth, authRecovery: writable({ phase: 'idle' }), logoutInProgress: writable(false),
+		auth, logoutInProgress: writable(false), recordAuthServiceFailure: () => {},
 		getMockupProfile: () => null, isMockAuthActive: () => false,
 		setAuth: (state: Partial<AuthState>) => auth.update(current => ({ ...current, ...state })),
 		clearAuth: () => auth.set({}),

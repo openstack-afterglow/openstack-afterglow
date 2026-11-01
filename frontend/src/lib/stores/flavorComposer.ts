@@ -84,8 +84,14 @@ export interface FlavorComposerController extends Readable<ComposerState> {
 	destroy(): void;
 }
 
-export function createFlavorComposer(callbacks: { invalidate: () => void; authorityInvalidated?: () => void; scopeChanged?: () => void; scopeReady?: () => void; select: (flavor: FlavorOption) => void; restore: (id: string, mode: FlavorComposerMode) => void }): FlavorComposerController {
+export function createFlavorComposer(
+	callbacks: { invalidate: () => void; authorityInvalidated?: () => void; scopeChanged?: () => void; scopeReady?: () => void; select: (flavor: FlavorOption) => void; restore: (id: string, mode: FlavorComposerMode) => void },
+	{ resizeInstanceId = null }: { resizeInstanceId?: string | null } = {},
+): FlavorComposerController {
 	const state = writable<ComposerState>(initial());
+	// A resize composer is modal-scoped: it never persists, restores or claims the
+	// VM wizard's shared draft, active key or reset broadcast.
+	const resize = Boolean(resizeInstanceId);
 	let surface = { admin: false, targetProjectId: null as string | null, configured: false };
 	let identity = '';
 	let storageKey: string | null = null;
@@ -101,6 +107,7 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 	let snapshot: FlavorComposerSnapshot | null = null;
 	const initializedScopes = new Set<string>();
 	function persist() {
+		if (resize) return;
 		const value = get(state);
 		writeResourceDraft(storageKey, { mode: value.mode, composition: value.composition, selectedId: value.selectedId });
 	}
@@ -109,7 +116,8 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 		if (destroyed || !surface.configured) return;
 		const actor = get(auth);
 		const target = surface.admin ? surface.targetProjectId : actor.projectId;
-		const key = flavorResourceDraftKey(actor.userId, actor.identityDomainId, target, surface.admin);
+		const draftKey = flavorResourceDraftKey(actor.userId, actor.identityDomainId, target, surface.admin);
+		const key = draftKey && resize ? `${draftKey}:resize:${resizeInstanceId}` : draftKey;
 		const previousOperation = key ? writeOperations.get(key) : undefined;
 		if (key && previousOperation && previousOperation.login !== actor.sessionId) {
 			// New logical logins cannot recover the previous login's private receipt.
@@ -118,7 +126,7 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 		}
 		const writeAllowed = surface.admin ? actor.isSystemAdmin : (actor.canWrite ?? get(canWrite));
 		const nextIdentity = JSON.stringify([actor.sessionId, actor.userId, actor.identityDomainId, actor.domainId, actor.projectId, actor.isSystemAdmin, writeAllowed, [...actor.roles].sort(), Boolean(actor.token), surface.admin, target]);
-		const previousSelectionScopeChanged = claimResourceSelectionScope(nextIdentity);
+		const previousSelectionScopeChanged = resize ? false : claimResourceSelectionScope(nextIdentity);
 		const ready = Boolean(actor.token && key && get(authReady) && !get(logoutInProgress) && !get(projectSwitching) && (!surface.admin || actor.isSystemAdmin));
 		const changed = nextIdentity !== identity;
 		if (changed || (wasReady && !ready)) {
@@ -129,8 +137,8 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 			if (identity || previousSelectionScopeChanged) callbacks.invalidate();
 			if (changed) {
 				if (identity) callbacks.scopeChanged?.();
-				identity = nextIdentity; storageKey = key; activateResourceDraft(key);
-				const draft = readResourceDraft(key);
+				identity = nextIdentity; storageKey = key; if (!resize) activateResourceDraft(key);
+				const draft = resize ? null : readResourceDraft(key);
 				const protectedTuple = key ? writeTuples.get(key) : undefined;
 				const initializationKey = JSON.stringify([actor.sessionId, key]);
 				const freshDirect = Boolean(key && !initializedScopes.has(initializationKey) && !protectedTuple && (!draft || draft.mode === 'compose'));
@@ -145,7 +153,7 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 				}
 			} else state.update(value => ({ ...value, quantityPending: initial().quantityPending, quantityRevision: epoch, options: null, history: [], ready: false, loading: false, refreshing: false, historyLoading: false, error: null, backgroundError: null, historyError: null, saveError: null }));
 		}
-		authority = ready ? { token: actor.token!, projectId: actor.projectId ?? '', targetProjectId: target!, admin: surface.admin } : null;
+		authority = ready ? { token: actor.token!, projectId: actor.projectId ?? '', targetProjectId: target!, admin: surface.admin, instanceId: resizeInstanceId } : null;
 		state.update(value => ({ ...value, ready, canWrite: writeAllowed }));
 		if (ready && (!wasReady || changed)) {
 			const selected = get(state).selectedId;
@@ -165,7 +173,7 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 	}));
 	let resetRevision = get(resourceDraftReset);
 	stops.push(resourceDraftReset.subscribe(revision => {
-		if (revision === resetRevision || destroyed) return;
+		if (resize || revision === resetRevision || destroyed) return;
 		const previous = get(state);
 		resetRevision = revision; epoch += 1; abortReads(); saveController?.abort(); callbacks.invalidate();
 		const composition = { ...((storageKey ? writeTuples.get(storageKey) : undefined) ?? defaultFlavorComposition()) };
@@ -331,6 +339,6 @@ export function createFlavorComposer(callbacks: { invalidate: () => void; author
 			writes.set(key, 'unknown'); writeRevision.update(value => value + 1);
 		}
 	}
-	function destroy() { if (destroyed) return; destroyed = true; snapshot = null; epoch += 1; abortReads(); saveController?.abort(); stops.forEach(stop => stop()); activateResourceDraft(null); }
+	function destroy() { if (destroyed) return; destroyed = true; snapshot = null; epoch += 1; abortReads(); saveController?.abort(); stops.forEach(stop => stop()); if (!resize) activateResourceDraft(null); }
 	return { subscribe: state.subscribe, configure, edit, setQuantityPending, selectGpu, setMode, refresh, loadHistory, save, canSave, rememberSelection, verifyUnknown, destroy };
 }

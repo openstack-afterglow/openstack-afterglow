@@ -50,6 +50,7 @@
 	"authRecovery.checking": "Đang kiểm tra…",
 	"authRecovery.retryIn": "Thử lại sau {seconds} giây",
 	"authRecovery.retry": "Thử lại",
+	"authRecovery.forcedLogout": "Không thể kết nối với dịch vụ xác thực sau {count} lần thử nên bạn đã được đăng xuất trên thiết bị này. Hãy đăng nhập lại khi dịch vụ được khôi phục.",
 	"error.notFound": "Không tìm thấy trang",
 	"error.generic": "Đã xảy ra lỗi",
 	"error.home": "Quay lại trang chủ",

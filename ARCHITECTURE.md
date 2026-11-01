@@ -4,7 +4,9 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.31.3`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.0`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+
+**1.32.0 GitHub minor publication (2026-11-02):** 사용자의 현재 변경 전체 게시 요청으로 resize composer·IAM 자기 역할 편집/FIFO 대기·인증 장애 복구·상세 새로고침과 capability 표시 개선을 통합한다. 새로운 DB migration·native 정책·배포 topology는 추가하지 않는다. Exact-SHA gate/CI와 불변 tag/image/release 수용은 release checklist로 추적하며, controller1 장애로 보류한 운영 native/schema/service cutover와 혼동하지 않는다.
 
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
@@ -81,7 +83,7 @@ User inventory v2 응답 cache identity는 configured Keystone endpoint·사용�
 
 프로젝트 역할은 기존 `project_owner → project_admin → project_member → project_reader`와 native `member`/`reader` 연결을 재사용한다. 소유권은 새 프로젝트 생성 또는 검토된 명시적 이전에서만 부여하며 마지막 유효 소유자를 보호한다. 역할 프리셋 적용은 현재 시스템 관리자의 명시적 API에서만 수행하며 조회·로그인은 seeding하지 않는다. 네 서비스의 grade·세부 role은 독립적인 전역 ID로 유지하고 서비스용 inference edge를 새로 만들지 않는다. 기존 프리셋이 만든 정확한 서비스 edge만 명시적 적용에서 제거하고 role ID·직접 할당·프로젝트 edge·custom edge를 보존한다. 서비스 grade를 세부 token role로 확장하는 대신 각 native 서비스의 실제 `oslo.policy` 등록 action과 운영자 `policy.yaml`이 인가한다.
 
-사용자·도메인 IAM·관리자 프로젝트 역할 할당은 native `admin`의 신규 user/group grant를 금지하며 assignable catalog와 모든 일반 역할 선택·검색에서 해당 이름을 대소문자와 무관하게 제외한다. 비활성 또는 해제 전용 선택지를 남기지 않는다. 사용자 replacement는 기존 direct admin을 보존하며 명시적 회수 API도 유지하고 group/상속을 direct로 복사하지 않는다. 멤버 응답의 별도 읽기 전용 `direct_roles`(실제 id/name/inherited_role_ids)가 assignable 밖의 기존 역할 이름과 descendant를 보존하고 UI 선택지를 확장하지 않는다. `external_role_ids`는 기존대로 group/domain 상속만 나타낸다. 도메인 관리자의 protected-user 예외는 graph lease 안에서 실제 delta가 해당 프로젝트의 native admin 회수만이고 다른 추가/회수가 없을 때에만 적용하며 identity/credential/system·다른 scope 권한은 보호한다. `project_admin`과 서비스 `*_admin`은 기존 계약을 유지하고 `system:all` canonical admin의 전용 grant/revoke 및 마지막 유효 관리자·Default manager 보호는 바꾸지 않는다. 기존 운영 grant를 자동 회수하거나 role/DAG를 변경하지 않는다.
+사용자·도메인 IAM·관리자 프로젝트 역할 할당은 native `admin`의 신규 user/group grant를 금지하며 assignable catalog와 모든 일반 역할 선택·검색에서 해당 이름을 대소문자와 무관하게 제외한다. 비활성 또는 해제 전용 선택지를 남기지 않는다. 사용자 replacement는 기존 direct admin을 보존하며 명시적 회수 API도 유지하고 group/상속을 direct로 복사하지 않는다. 멤버 응답의 별도 읽기 전용 `direct_roles`(실제 id/name/inherited_role_ids)가 assignable 밖의 기존 역할 이름과 descendant를 보존하고 UI 선택지를 확장하지 않는다. `external_role_ids`는 기존대로 group/domain 상속만 나타낸다. 도메인 관리자의 protected-user 예외는 graph lease 안에서 실제 delta가 해당 프로젝트의 native admin 회수만이고 다른 추가/회수가 없을 때에만 적용하며 identity/credential/system·다른 scope 권한은 보호한다. 또한 protected-user 검사는 다른 계정 대상에만 적용한다. 도메인 관리자가 자기 자신을 대상으로 하면(system admin 겸임 포함) 관리 가능한 직접 프로젝트 역할을 변경할 수 있으며, native admin 신규 부여 금지·owner 이전 전용 규칙·safe catalog 검증은 그대로다. 도메인 IAM UI는 그룹·상속 전용 멤버의 행 편집으로도 직접 역할을 추가하고 외부 역할은 읽기 전용으로 둔다. `project_admin`과 서비스 `*_admin`은 기존 계약을 유지하고 `system:all` canonical admin의 전용 grant/revoke 및 마지막 유효 관리자·Default manager 보호는 바꾸지 않는다. 기존 운영 grant를 자동 회수하거나 role/DAG를 변경하지 않는다.
 
 도메인 manager IAM은 `services/domain_membership.py`의 graph-locked current-domain eviction을 별도 identity deletion과 분리한다. 모든 직접 domain/project grant와 domain-local group source를 먼저 검증하며 owner/manager·current-home intrinsic membership·다른 범위의 shared grant·미완료 ownership을 차단한다. 계정/리소스/다른 도메인은 보존하고 native 부재 readback 뒤에만 removed를 반환한다. Partial/unknown은503과 fresh 확인이며 요청 자동 replay/rollback은 없다. 프로젝트 생성 UI는 기존 fresh manager capability를 직접 노출할 뿐 project_creator를 합성하지 않는다.
 
@@ -383,7 +385,7 @@ Workspace chooser의 기본 domain 표시는 서버의 `kind=personal`을 이름
 
 관리자 `managed_create`는 Accounts identity를 활성화하고 accepted enrollment와 같은 token/name·동결 quota의 `PersonalProjectIntent(status=deferred)`를 함께 저장하되 프로젝트를 즉시 만들지 않는다. 첫 성공한 password/provider 증명 뒤 `ensure_personal_project`가 기존 graph lease·SQL intent·disabled native staging을 재사용한다. Confirmed/not-sent 단계만 재개하며 dispatch된 create/grant/quota/activation의 unknown은 기존 system-admin settlement 전 자동 재전송하지 않는다. 기존 markerless interactive system administrator도 본인 personal primary를 지연 준비한다. 이름이나 관리자 여부로 human을 제외하지 않고 실제 native project/system/group의 `service` 역할을 가진 automation만 제외하며 user/home/password·기존 grant·자원을 변경하지 않는다.
 
-로그인 provider callback·개인 primary 준비를 포함하는 `domain_iam._iam_write`는 동일 identity endpoint graph lease의 foreground FIFO에 최대15초 대기한다. Redis TIME 기반 만료 sorted-set(`:waiters`)과 monotonic 요청 한도를 사용하고 lock+queue WATCH transaction으로 fail-fast writer의 새치기를 막는다. Lease 소유자 비교·60초 TTL/갱신·provider 완료 shield·graph→SQL 순서와 획득 뒤 fresh catalog/admission 검증은 그대로다. Timeout409·Redis/queue 불명503이며 다른 owner의 lease나 waiter를 강제 삭제하지 않는다. One-use IdP code/state나 native write를 재전송하는 retry가 아니라 첫 native mutation 전 lease admission만 기다린다. 기존30초 client 요청 한도 안의 여유를 위해 대기는15초로 제한하되 native provider 자체의 지연까지 성공 보장하지 않는다.
+로그인 provider callback·개인 primary 준비를 포함하는 `domain_iam._iam_write`는 동일 identity endpoint graph lease의 foreground FIFO에 최대15초 대기한다. 프로젝트 멤버 역할 교체·제거(`project_service._membership_write`), 프로젝트 생성, 생성 권한 위임도 같은 foreground FIFO(`wait=True`)를 사용해 다른 writer가 lease를 보유한 동안 즉시409 대신 최대15초 대기한다. 로컬 관측에서는 managed flavor 조정 pass(약39초) 보유 중 대기 writer가 0.17~0.48초에 획득했다. Redis TIME 기반 만료 sorted-set(`:waiters`)과 monotonic 요청 한도를 사용하고 lock+queue WATCH transaction으로 fail-fast writer의 새치기를 막는다. Lease 소유자 비교·60초 TTL/갱신·provider 완료 shield·graph→SQL 순서와 획득 뒤 fresh catalog/admission 검증은 그대로다. Timeout409·Redis/queue 불명503이며 다른 owner의 lease나 waiter를 강제 삭제하지 않는다. One-use IdP code/state나 native write를 재전송하는 retry가 아니라 첫 native mutation 전 lease admission만 기다린다. 기존30초 client 요청 한도 안의 여유를 위해 대기는15초로 제한하되 native provider 자체의 지연까지 성공 보장하지 않는다.
 
 `managed_flavors.reconcile`의 읽기 전용 supported hardware 관측은 lease 밖에서 수행하고 최신 policy merge·enable/readiness·native publication/ACL/claim·SQL 저장은 여전히 공유 lease 아래다. 전체 pass만 settled manual CPU/generated/retirement unit 사이에 live foreground waiter를 확인해 completed report/claims를 보존한 `idle`·`foreground_iam_waiting`을 저장하고 lease를 놓는다. 다음 pass는 새 authority/state로 시작하며 같은 in-memory snapshot을 재획득해 계속 쓰지 않는다. 사용자 exact requested-shape publication은 이 cooperative yield에 참여하지 않는다. Dispatched write/readback 도중 cancel·강제 unlock·unknown 자동 replay·별도 compute lock으로 인가 직렬화를 제거하지 않는다. 장시간 단일 unit·구형 writer는15초를 넘겨 여전히409일 수 있고 old/new writer 전체 전환 없이는 협력적 양보를 보장하지 않는다. SQL/schema·native quota·service topology 변경은 없다.
 
@@ -1899,9 +1901,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "cc6ee45aea7d49557199d9fd30f05fbadac4517a320d5acda11a35499fc84d4b",
-  "reviewed_at": "2026-11-01T16:24:04Z",
-  "summary": "Native publication retains exact baseline and corrected candidate in checksum-pinned paired export; no moving/pruned base registry dependency; baseline layer/runtime invariants preserved."
+  "source_sha256": "a2448137c9ff8fe5a07cacf39d50d3e8ab152bd0ce68f816781718010b866793",
+  "reviewed_at": "2026-11-01T17:22:53Z",
+  "summary": "Reviewed1.32.0 GitHub-only minor integration: resize context/composer, fresh user/admin ownership and incremental quotas, graph FIFO IAM, scoped auth recovery and retained display. No new schema/dependency/production mutation; full gate and smoke recorded separately."
 }
 ```
 <!-- architecture-review:end -->

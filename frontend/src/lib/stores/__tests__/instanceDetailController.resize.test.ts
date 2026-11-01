@@ -37,6 +37,11 @@ const flavors: FlavorOption[] = [
 		eligibility: { selectable: false, blockers: [{ code: 'disk_shrink' }], requirements: { instances: 0, cores: 0, ram_mb: 0, gpus: {} }, remaining: { instances: 0, cores: 0, ram_mb: 0, gpus: {} } } },
 ];
 let status = 'SHUTOFF';
+function composedFlavor(): FlavorOption {
+	return { id: 'composed', name: 'composed', vcpus: 6, ram: 12288, disk: 20, is_public: false,
+		eligibility: { selectable: true, blockers: [], requirements: { instances: 0, cores: 4, ram_mb: 8192, gpus: {} }, remaining: { instances: 10, cores: 128, ram_mb: 131072, gpus: {} },
+			capacity: { status: 'available', checked_at: '2026-10-31T10:00:00Z', candidate_hosts: 1, cpu_resource_class: 'VCPU', remaining_vcpus: 128, remaining_ram_mb: 131072 } } };
+}
 let flavorRequest: string;
 
 async function setup(adminMode = false, source = { id: 'vm', projectId: 'target-project', adminMode }): Promise<Controller> {
@@ -139,13 +144,15 @@ describe('instance detail resize routing', () => {
 		expect(mockPost).not.toHaveBeenCalled();
 	});
 
-	it('owns resize-submit confirmation and does not post when declined', async () => {
+	it.each(['ACTIVE', 'SHUTOFF'])('owns resize confirmation and includes running notice only for %s', async nextStatus => {
+		status = nextStatus;
 		const s = await setup();
 		await s.loadResizeFlavors();
 		confirmDialog.mockResolvedValueOnce(false);
 		expect(await s.doResize('next')).toBe(false);
 		const flavorLabel = t('resize.flavorLabel', { name: 'next', vcpus: 4, ram: '8 GB' });
-		expect(confirmDialog).toHaveBeenCalledWith(t('resize.confirmMessage', { flavorLabel }));
+		const message = t('resize.confirmMessage', { flavorLabel });
+		expect(confirmDialog).toHaveBeenCalledWith(nextStatus === 'ACTIVE' ? `${message}\n\n${t('resize.runningNotice')}` : message);
 		expect(mockPost).not.toHaveBeenCalled();
 		expect(s.resizeLoading).toBe(false);
 	});
@@ -171,28 +178,59 @@ describe('instance detail resize routing', () => {
 		expect(mockPost).not.toHaveBeenCalled();
 	});
 
-	it.each([false, true])('requires exact SHUTOFF before loading or submitting resize in adminMode=%s', async (adminMode) => {
-		status = 'ACTIVE';
+	it.each([
+		[false, 'ACTIVE'], [false, 'SHUTOFF'], [true, 'ACTIVE'], [true, 'SHUTOFF'],
+	] as const)('loads and submits resize in adminMode=%s with status=%s', async (adminMode, nextStatus) => {
+		status = nextStatus;
 		const s = await setup(adminMode);
 		await s.loadResizeFlavors();
-		expect(flavorRequest).toBe('');
-		expect(await s.doResize('next')).toBe(false);
-		status = 'SHUTOFF';
-		await s.fetchInstance('vm');
-		await s.loadResizeFlavors();
 		expect(s.resizeFlavors).toHaveLength(3);
-		status = 'ACTIVE';
-		await s.fetchInstance('vm');
-		expect(await s.doResize('next')).toBe(false);
-		expect(mockPost).not.toHaveBeenCalled();
+		expect(await s.doResize('next')).toBe(true);
+		expect(mockPost).toHaveBeenCalledWith(`/api/v1/${adminMode ? 'admin/' : ''}instances/vm/resize`, { flavor_id: 'next' }, 'token', adminMode ? 'own-project' : 'target-project');
 	});
 
-	it.each(['ACTIVE', 'STOPPED', 'SHELVED', 'ERROR', 'VERIFY_RESIZE'])('never permits resize for %s', async (nextStatus) => {
+	it.each(['BUILD', 'STOPPED', 'SHELVED', 'SHELVED_OFFLOADED', 'ERROR', 'VERIFY_RESIZE'])('never permits resize for %s', async (nextStatus) => {
 		status = nextStatus;
 		const s = await setup();
 		await s.loadResizeFlavors();
 		expect(await s.doResize('next')).toBe(false);
 		expect(flavorRequest).toBe('');
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each(['ACTIVE', 'SHUTOFF'])('accepts an eligible composed readback outside the catalog for %s', async nextStatus => {
+		status = nextStatus;
+		const s = await setup();
+		await s.loadResizeFlavors();
+		const composed = composedFlavor();
+		expect(s.selectableResizeFlavor(composed.id)).toBe(false);
+		expect(s.selectableResizeFlavor(composed.id, composed)).toBe(true);
+		expect(await s.doResize(composed.id, composed)).toBe(true);
+		expect(mockPost).toHaveBeenCalledWith('/api/v1/instances/vm/resize', { flavor_id: composed.id }, 'token', 'target-project');
+	});
+
+	it.each(['identity', 'current', 'eligibility', 'capacity', 'blocker'] as const)('rejects composed resize with invalid %s', async invalid => {
+		const s = await setup();
+		await s.loadResizeFlavors();
+		const composed = composedFlavor();
+		if (invalid === 'identity') composed.id = 'different';
+		if (invalid === 'current') composed.id = 'current';
+		if (invalid === 'eligibility') composed.eligibility = null;
+		if (invalid === 'capacity') composed.eligibility!.capacity!.status = 'unavailable';
+		if (invalid === 'blocker') composed.eligibility!.blockers = [{ code: 'disk_shrink' }];
+		const id = invalid === 'identity' ? 'composed' : composed.id;
+		expect(s.selectableResizeFlavor(id, composed)).toBe(false);
+		expect(await s.doResize(id, composed)).toBe(false);
+		expect(confirmDialog).not.toHaveBeenCalled();
+		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it.each(['BUILD', 'SHELVED_OFFLOADED', 'VERIFY_RESIZE'])('rejects loaded choices after transitioning to %s', async nextStatus => {
+		const s = await setup();
+		await s.loadResizeFlavors();
+		status = nextStatus;
+		await s.fetchInstance('vm');
+		expect(await s.doResize('next')).toBe(false);
 		expect(mockPost).not.toHaveBeenCalled();
 	});
 
@@ -249,5 +287,39 @@ describe('instance detail resize routing', () => {
 		pending.resolve(true);
 		await request;
 		expect(mockPost).not.toHaveBeenCalled();
+	});
+
+	it('reports an accepted resize without waiting for the refresh, even after token rotation', async () => {
+		const s = await setup();
+		await s.loadResizeFlavors();
+		const post = Promise.withResolvers<unknown>();
+		mockPost.mockReturnValueOnce(post.promise);
+		const refresh = Promise.withResolvers<unknown>();
+		const request = s.doResize('next');
+		await vi.waitFor(() => expect(mockPost).toHaveBeenCalled());
+		auth.update(state => ({ ...state, token: 'rotated' }));
+		mockGet.mockImplementationOnce(() => refresh.promise);
+		post.resolve({});
+		expect(await request).toBe(true);
+		expect(s.resizeLoading).toBe(false);
+		expect(await s.doResize('next')).toBe(false);
+		expect(mockPost).toHaveBeenCalledTimes(1);
+		refresh.resolve(undefined);
+	});
+
+	it('keeps the loaded instance when a background refresh fails', async () => {
+		const s = await setup();
+		mockGet.mockImplementationOnce(() => Promise.reject(new DOMException('signal timed out', 'TimeoutError')));
+		await s.fetchInstance('vm', { silent: true });
+		expect(s.error).toBe('');
+		expect(s.instance?.id).toBe('vm');
+		expect(s.refreshError).toBe(t('controller.error.refreshFailed', { message: t('controller.error.timeout') }));
+		mockGet.mockImplementationOnce(() => Promise.reject(new DOMException('aborted', 'AbortError')));
+		await s.fetchInstance('vm', { silent: true });
+		await s.fetchInstance('vm', { silent: true });
+		expect(s.refreshError).toBe('');
+		mockGet.mockImplementationOnce(() => Promise.reject(new DOMException('signal timed out', 'TimeoutError')));
+		await s.fetchInstance('vm');
+		expect(s.error).toBe(t('controller.error.timeout'));
 	});
 });

@@ -44,11 +44,11 @@ async function paintLogoutPage(): Promise<void> {
 	await promise;
 }
 
-function clearLocalCredentials(mock: boolean): boolean {
+function clearLocalCredentials(mock: boolean, broadcast: boolean): boolean {
 	let confirmed = true;
 	const attempt = (action: () => void) => { try { action(); } catch { confirmed = false; } };
 	// Clear the tutorial snapshot before exiting: exitMockAuth may restore a separate real login.
-	attempt(() => clearAuth());
+	attempt(() => clearAuth({ broadcast }));
 	if (mock) {
 		attempt(() => exitMockAuth());
 		attempt(() => {
@@ -69,7 +69,7 @@ function clearLocalCredentials(mock: boolean): boolean {
 	return confirmed;
 }
 
-function beginLogout(all: boolean, navigate: boolean): Promise<void> {
+function beginLogout(all: boolean, navigate: boolean, broadcast = true): Promise<void> {
 	if (inFlight) return inFlight;
 	const state = get(auth);
 	const mock = isMockAuthActive();
@@ -120,7 +120,7 @@ function beginLogout(all: boolean, navigate: boolean): Promise<void> {
 			// Never discard a rotated refresh credential, or a later unrelated login.
 			await settledRefresh;
 			progress.update(value => ({ ...value, local: 'active' }));
-			const cleared = ownsSession() && clearLocalCredentials(mock);
+			const cleared = ownsSession() && clearLocalCredentials(mock, broadcast);
 			progress.update(value => ({ ...value, local: cleared ? 'done' : 'warning', phase: 'complete' }));
 			endSessionRevocation();
 			logoutInProgress.set(false);
@@ -133,14 +133,18 @@ function beginLogout(all: boolean, navigate: boolean): Promise<void> {
 	return result.promise;
 }
 
-/** Explicit actions always show the logout page before awaiting any cleanup. */
-export function startLogout({ all = false }: { all?: boolean } = {}): Promise<void> {
+/**
+ * Explicit actions always show the logout page before awaiting any cleanup.
+ * `broadcast: false` is for automatic sign-out (authentication service unreachable):
+ * each tab owns its refresh session and reaches its own limit, so other tabs are not signed out.
+ */
+export function startLogout({ all = false, broadcast = true }: { all?: boolean; broadcast?: boolean } = {}): Promise<void> {
 	if (inFlight) return inFlight;
 	if (completed && !get(auth).token) {
 		void goto('/logout', { replaceState: true }).catch(() => undefined);
 		return completed;
 	}
-	return beginLogout(all, true);
+	return beginLogout(all, true, broadcast);
 }
 
 /** Direct route access starts once; locale/component remounts retain the settled result. */

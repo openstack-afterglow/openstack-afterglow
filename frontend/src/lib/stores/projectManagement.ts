@@ -66,5 +66,7 @@ export const projectManagement = readable<ProjectManagementState>(empty, set => 
 		if (typeof window !== 'undefined') { window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', visible); }
 	};
 });
-export const canManageOrganizationProjects = derived(projectManagement, state => !state.checking && !state.error && !!state.scope && !!state.capability && state.capability.domain_kind !== 'personal' && (state.capability.is_domain_manager || state.capability.can_create_project));
+// A same-scope focus recheck keeps the last confirmed capability visible; scope
+// changes clear it before loading and failed rechecks hide it (fail closed).
+export const canManageOrganizationProjects = derived(projectManagement, state => !state.error && !!state.scope && !!state.capability && state.capability.domain_kind !== 'personal' && (state.capability.is_domain_manager || state.capability.can_create_project));
 export async function refreshProjectManagement(): Promise<void> { await refresh?.(); }

@@ -32,7 +32,7 @@ const { goto, clearAuth, mockFetch, auth, logoutInProgress, setAuth, session, lo
 vi.mock('$app/navigation', () => ({ goto }));
 vi.mock('$lib/stores/auth', () => ({
 	auth,
-	authRecovery: { set: vi.fn() },
+	recordAuthServiceFailure: vi.fn(),
 	clearAuth,
 	getMockupProfile: () => null,
 	isMockAuthActive: () => false,

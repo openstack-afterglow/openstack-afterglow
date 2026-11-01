@@ -12,9 +12,15 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
-from app.models.compute import FlavorCapacityInfo, FlavorDemandInfo, FlavorEligibility, FlavorRemainingInfo
+from app.models.compute import (
+    FlavorCapacityInfo,
+    FlavorDemandInfo,
+    FlavorEligibility,
+    FlavorInfo,
+    FlavorRemainingInfo,
+)
 from app.models.flavor_composition import FlavorComposition
-from app.services import flavor_capacity, flavor_eligibility, managed_flavors
+from app.services import flavor_capacity, flavor_eligibility, instance_resize, managed_flavors
 from app.services import flavor_composition as svc
 from tests.test_flavor_capacity import CPU_SHAPE, HOST_NAMES, ONE, ROOT_A, ROOT_B, ZONE, allocation
 from tests.test_flavor_capacity import cloud as cloud
@@ -76,9 +82,11 @@ def composition_native(environment, monkeypatch):
         assert project_id == "p1"
         yield executor
 
-    async def evaluate(conn, project_id, flavors, zone):
+    async def evaluate(conn, project_id, flavors, zone, resize=None, **_kwargs):
         assert conn is caller  # operator credentials never replace target quota/visibility
-        return [eligible(flavor) for flavor in flavors]
+        rows = [eligible(flavor) for flavor in flavors]
+        # Synthetic quota/capacity; native resize impossibilities stay real.
+        return instance_resize.apply_target_blockers(rows, resize) if resize else rows
 
     def visible(conn):
         assert conn is caller
@@ -160,7 +168,7 @@ def composition_wait(composition_native, graph_env, monkeypatch):
     monkeypatch.setattr(svc.session_store, "get_session", AsyncMock(side_effect=lambda _: copy.deepcopy(env.session)))
     monkeypatch.setattr(domain_scope, "resolve_domain", lambda domain, **kwargs: {"id": domain})
     monkeypatch.setattr(deps, "require_admin", AsyncMock())
-    monkeypatch.setattr(admin_instances, "_make_admin_conn", lambda project, user: env.caller)
+    monkeypatch.setattr(admin_instances, "_admin_read_conn", lambda project, user: env.caller)
     env.app = FastAPI()
     env.app.include_router(flavors.router, prefix="/api/v1/flavors")
     env.app.include_router(admin_instances.router, prefix="/api/v1/admin")
@@ -412,6 +420,53 @@ async def test_native_quota_remaining_limits_conditional_choices(cloud, live_opt
     assert not fits(row, 6, 8192) and not fits(row, 4, 9216)
     assert row.preview.eligibility.remaining.cores == 4
     assert row.preview.eligibility.remaining.ram_mb == 8192
+
+
+def resize_target(vcpus=8, ram=16384, disk=0, *, image_backed=False):
+    current = FlavorInfo(id="current", name="current", vcpus=vcpus, ram=ram, disk=disk, extra_specs={})
+    return instance_resize.ResizeTarget(current=current, image_backed=image_backed)
+
+
+async def test_resize_snapshot_returns_current_allocation_to_quota(cloud, live_options):
+    cloud.add_host(ROOT_A, vcpu=(64, 0), ram=(131072, 0))
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_A: ONE})]
+    # A full instance quota cannot block a resize; CPU/RAM count only the increase.
+    live_options["instances"] = {"limit": 1, "in_use": 1, "reserved": 0}
+    live_options["cores"] = {"limit": 12, "in_use": 8, "reserved": 0}
+    live_options["ram"] = {"limit": 24576, "in_use": 16384, "reserved": 0}
+    row = variant(await svc.options(SimpleNamespace(), "p1", resize=resize_target()))
+    assert row.status == "available"
+    assert fits(row, 12, 24576) and fits(row, 2, 4096)
+    assert not fits(row, 14, 4096) and not fits(row, 2, 25600)
+    assert row.preview.eligibility.requirements.instances == 0
+    # Without the resize context the same quota leaves no new VM at all.
+    assert variant(await svc.options(SimpleNamespace(), "p1")).status == "insufficient"
+
+
+async def test_resize_snapshot_blocks_image_backed_root_disk_shrink(cloud, live_options):
+    cloud.add_host(ROOT_A, vcpu=(64, 0), ram=(131072, 0))
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_A: ONE})]
+    row = variant(await svc.options(SimpleNamespace(), "p1", resize=resize_target(disk=20, image_backed=True)))
+    assert row.status == "insufficient" and row.regions == []
+    assert [blocker.code for blocker in row.preview.eligibility.blockers] == ["disk_shrink"]
+    volume_backed = variant(await svc.options(SimpleNamespace(), "p1", resize=resize_target(disk=20)))
+    assert volume_backed.status == "available"
+
+
+async def test_resize_save_of_the_current_shape_never_writes_native(composition_native):
+    env = composition_native
+    shape = svc._shape(env.policy, request(vcpus=6, ram_mb=5120).model_dump())
+    current = FlavorInfo(id=shape["id"], name=shape["name"], vcpus=6, ram=5120, disk=0, extra_specs={})
+    with pytest.raises(HTTPException) as exc:
+        await svc.save(
+            env.caller,
+            "p1",
+            env.info,
+            request(vcpus=6, ram_mb=5120),
+            resize=instance_resize.ResizeTarget(current=current, image_backed=False),
+        )
+    assert (exc.value.status_code, exc.value.detail) == (409, "flavor_composition_same_as_current")
+    assert env.compute.rows == {}
 
 
 async def test_session_renewal_preserves_identity_scope_but_not_retarget(monkeypatch):
@@ -796,6 +851,7 @@ async def test_consumer_snapshot_http_schema_is_complete_coordinate_independent_
     app = FastAPI()
     app.include_router(flavors.router, prefix="/api/v1/flavors")
     app.dependency_overrides[deps.get_os_conn] = lambda: SimpleNamespace(_afterglow_project_id="p1")
+    app.dependency_overrides[deps.get_token_info] = lambda: {"user_id": "u1", "project_id": "p1"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/flavors/composer-options")
         other = await client.get("/api/v1/flavors/composer-options")
@@ -975,7 +1031,7 @@ async def test_snapshot_gpu_companion_exhaustion_and_project_gpu_ceiling(cloud, 
 async def test_snapshot_does_not_authorize_later_save(composition_native, monkeypatch):
     env = composition_native
 
-    async def denied(conn, project, flavors, zone):
+    async def denied(conn, project, flavors, zone, **_kwargs):
         return [
             eligible(row).model_copy(
                 update={
@@ -1028,7 +1084,7 @@ async def test_admin_snapshot_http_keeps_exact_target_authorization(cloud, live_
     principal = {"user_id": "admin", "project_id": "operator"}
     guard = AsyncMock()
     monkeypatch.setattr(svc, "_authorize", guard)
-    monkeypatch.setattr(admin_instances, "_make_admin_conn", lambda project, user: conn)
+    monkeypatch.setattr(admin_instances, "_admin_read_conn", lambda project, user: conn)
     app = FastAPI()
     app.include_router(admin_instances.router, prefix="/api/v1/admin")
     app.dependency_overrides[deps.get_token_info] = lambda: dict(principal)
@@ -1449,3 +1505,20 @@ async def test_operation_readback_accepts_only_reconciler_owned_immutable_names(
     env.compute.rows[result.id].name = "unowned-name-with-same-hardware"
     with pytest.raises(HTTPException, match="native_conflict"):
         await svc.resolve(env.caller, "p1", env.info, operation_id)
+
+
+async def test_admin_resize_context_is_bound_to_the_selected_project(monkeypatch):
+    from app.api.identity import admin_instances
+
+    server = SimpleNamespace(project_id="other", status="SHUTOFF", flavor_id="f", flavor_name="f", image_id=None)
+    monkeypatch.setattr(admin_instances, "_server", lambda conn, iid: server)
+    monkeypatch.setattr(
+        admin_instances.nova, "_list_flavors", lambda conn, project_id: pytest.fail("read after denial")
+    )
+    with pytest.raises(HTTPException) as exc:
+        await admin_instances._admin_resize_context(SimpleNamespace(), "p1", "vm-1")
+    assert exc.value.status_code == 404
+    server.project_id, server.status = "p1", "BUILD"
+    with pytest.raises(HTTPException) as exc:
+        await admin_instances._admin_resize_context(SimpleNamespace(), "p1", "vm-1")
+    assert exc.value.status_code == 409

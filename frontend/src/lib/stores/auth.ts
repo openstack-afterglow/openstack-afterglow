@@ -11,7 +11,23 @@ export const logoutInProgress = writable(false);
 export const projectSwitching = writable(false);
 
 // Transient verification failure for this token only; never persisted as credentials.
-export const authRecovery = writable<{ token: string; retryAt: number } | null>(null);
+// `failures` counts distinct authentication-service attempts for that token.
+export const authRecovery = writable<{ token: string; retryAt: number; failures: number } | null>(null);
+/** Consecutive failed attempts after which this device signs out instead of retrying forever. */
+export const AUTH_SERVICE_FAILURE_LIMIT = 3;
+
+/**
+ * Record one failed authentication-service attempt. Requests failing inside the same
+ * cooldown window are one coalesced attempt (refresh plus /me), so they count once.
+ * Rate limiting is guidance from a reachable service and does not count as an outage.
+ */
+export function recordAuthServiceFailure(token: string, retryAt: number, { counted = true }: { counted?: boolean } = {}) {
+	authRecovery.update(current => {
+		if (current?.token !== token) return { token, retryAt, failures: counted ? 1 : 0 };
+		const failures = counted && Date.now() >= current.retryAt ? current.failures + 1 : current.failures;
+		return { token, retryAt: Math.max(current.retryAt, retryAt), failures };
+	});
+}
 
 
 export interface Project {

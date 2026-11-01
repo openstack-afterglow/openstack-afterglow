@@ -52,7 +52,6 @@ from app.models.compute import (
     CreateCloudInitPresetRequest,
     CreateInstanceRequest,
     FlavorInfo,
-    FlavorQuotaBlocker,
     GitHubSshLookupRequest,
     GitHubSshProfile,
     GitHubSshUserHistory,
@@ -394,9 +393,6 @@ class InstanceResizeRequest(BaseModel):
     flavor_id: str
 
 
-_RESIZABLE_STATUSES = frozenset({"ACTIVE", "SHUTOFF"})
-
-
 async def _owned_resize_server(conn, token_info: dict, instance_id: str):
     try:
         server = await asyncio.to_thread(nova.get_server, conn, instance_id)
@@ -406,45 +402,14 @@ async def _owned_resize_server(conn, token_info: dict, instance_id: str):
     return server
 
 
-def _resize_current_flavor(server, flavors: list[FlavorInfo]) -> FlavorInfo:
-    snapshot = server._flavor_snapshot
-    if snapshot is not None:
-        # Nova's embedded flavor is the instance's allocation, not the mutable catalog.
-        # In particular a deleted/private/renamed flavor need not be in list_flavors.
-        resources = (snapshot.get("vcpus"), snapshot.get("ram"), snapshot.get("disk"))
-        if (
-            not server.flavor_name
-            or any(type(value) is not int for value in resources)
-            or resources[0] <= 0
-            or resources[1] <= 0
-            or resources[2] < 0
-            or not isinstance(snapshot.get("extra_specs"), dict)
-        ):
-            raise HTTPException(status_code=409, detail="현재 플레이버를 확인할 수 없습니다")
-        return FlavorInfo(
-            id=server.flavor_id or "",
-            name=server.flavor_name,
-            vcpus=resources[0],
-            ram=resources[1],
-            disk=resources[2],
-            extra_specs=snapshot["extra_specs"],
-        )
-    current = next((flavor for flavor in flavors if flavor.id == server.flavor_id), None)
-    if current is None and not server.flavor_id and server.flavor_name:
-        matches = [flavor for flavor in flavors if flavor.name == server.flavor_name]
-        current = matches[0] if len(matches) == 1 else None
-    if current is None:
-        raise HTTPException(status_code=409, detail="현재 플레이버를 확인할 수 없습니다")
-    return current
+async def owned_resize_target(conn, token_info: dict, instance_id: str) -> tuple:
+    """Owned server, live project-visible catalog and the allocation a resize replaces."""
+    from app.services import instance_resize
 
-
-def _resize_target_blockers(target: FlavorInfo, current: FlavorInfo, *, image_backed: bool) -> list[FlavorQuotaBlocker]:
-    blockers = []
-    if target.id == current.id or (not current.id and target.name == current.name):
-        blockers.append(FlavorQuotaBlocker(code="same_flavor"))
-    if image_backed and target.disk < current.disk:
-        blockers.append(FlavorQuotaBlocker(code="disk_shrink"))
-    return blockers
+    server = await _owned_resize_server(conn, token_info, instance_id)
+    instance_resize.require_resizable(server)
+    flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    return server, flavors, instance_resize.target_for(server, flavors)
 
 
 async def _invalidate_resized_instance(project_id: str, instance_id: str) -> None:
@@ -460,28 +425,23 @@ async def list_instance_resize_flavors(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
+    from app.services import instance_resize
     from app.services.flavor_eligibility import evaluate_project_flavors, is_flavor_frontend_visible
 
-    server = await _owned_resize_server(conn, token_info, instance_id)
-    if server.status.upper() not in _RESIZABLE_STATUSES:
-        raise HTTPException(status_code=409, detail="현재 상태에서는 리사이즈할 수 없습니다")
-    flavors = await asyncio.to_thread(nova.list_flavors, conn)
-    current = _resize_current_flavor(server, flavors)
+    server, flavors, resize = await owned_resize_target(conn, token_info, instance_id)
     visible = [flavor for flavor in flavors if is_flavor_frontend_visible(flavor)]
     evaluated = await evaluate_project_flavors(
         conn,
         server.project_id or conn._afterglow_project_id,
         visible,
-        current_flavor=current,
+        current_flavor=resize.current,
         include_gpu_projection=True,
+        # Advisory free-host bound shared with the creation picker; admission stays quota-only.
+        check_capacity=True,
+        resize_capacity=True,
+        fresh_capacity=False,
     )
-    for flavor in evaluated:
-        blockers = _resize_target_blockers(flavor, current, image_backed=bool(server.image_id))
-        if blockers:
-            flavor.eligibility = flavor.eligibility.model_copy(
-                update={"selectable": False, "blockers": [*flavor.eligibility.blockers, *blockers]}
-            )
-    return evaluated
+    return instance_resize.apply_target_blockers(evaluated, resize)
 
 
 @router.post("/{instance_id}/resize")
@@ -491,6 +451,7 @@ async def resize_owned_instance(
     conn: openstack.connection.Connection = Depends(get_os_conn_write),
     token_info: dict = Depends(require_project_write),
 ):
+    from app.services import instance_resize
     from app.services.flavor_eligibility import (
         FlavorEligibilityDenied,
         FlavorEligibilityUnavailable,
@@ -498,17 +459,14 @@ async def resize_owned_instance(
         require_flavor_eligible,
     )
 
-    server = await _owned_resize_server(conn, token_info, instance_id)
-    if server.status.upper() not in _RESIZABLE_STATUSES:
-        raise HTTPException(status_code=409, detail="현재 상태에서는 리사이즈할 수 없습니다")
-    flavors = await asyncio.to_thread(nova.list_flavors, conn)
-    current = _resize_current_flavor(server, flavors)
+    server, flavors, resize = await owned_resize_target(conn, token_info, instance_id)
+    current = resize.current
     target = next(
         (flavor for flavor in flavors if flavor.id == req.flavor_id and is_flavor_frontend_visible(flavor)), None
     )
     if target is None:
         raise HTTPException(status_code=400, detail="Invalid flavor ID")
-    blockers = _resize_target_blockers(target, current, image_backed=bool(server.image_id))
+    blockers = instance_resize.target_blockers(target, resize)
     if blockers:
         raise HTTPException(status_code=409, detail=", ".join(blocker.code for blocker in blockers))
     project_id = server.project_id or conn._afterglow_project_id
@@ -1407,6 +1365,13 @@ async def get_console_log(
     try:
         output = await asyncio.to_thread(nova.get_console_output, conn, instance_id, length)
         return {"output": output}
+    except HttpException as exc:
+        # Nova answers 404/409 when no console log exists yet (e.g. right after a
+        # resize or while stopped) and 403 for read-only callers; keep those
+        # distinct from an Afterglow server failure.
+        if exc.status_code in (403, 404, 409):
+            raise HTTPException(status_code=exc.status_code, detail="console_log_unavailable") from exc
+        raise HTTPException(status_code=500, detail="작업 실패") from exc
     except Exception:
         raise HTTPException(status_code=500, detail="작업 실패")
 
