@@ -6,6 +6,12 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.2 정식 발행 추적
+
+- 사용자 후속 지시로 버전 상향의 완료 범위가 정식 GitHub/GHCR/Helm 발행까지 확대됐다. 운영 Kolla/native/schema 변경은 포함하지 않는다.
+- Source-equivalent dev CI41467016850·41467160186이 실패했고, 후자의 backend는12530passed/3skipped와 기존 PTY interrupt timeout1건이었다. 그 외 버전·frontend·contract·disposable DB job은 통과했다. 실패를 무시하거나 tag를 먼저 생성하지 않는다.
+- PTY timeout에 credential/transcript 없이 foreground pgrp·ISIG/VINTR·pending byte 수·Linux signal/syscall/wait 상태를 기록해 원인을 구분한다. Prompt 관측만으로 input read 준비나 SIGINT 처리를 단정하지 않으며 테스트 시간·성공 조건은 완화하지 않는다.
+
 ## 1.32.2 커밋·버전 준비 (2026-11-02, local dev)
 
 - 사용자 요청은 현재 기본 dev 변경의 커밋과 명시적1.32.2 version-up이다. 별도 clone의 미검토 source, 형제 서비스 WIP, push·PR·tag·GitHub/GHCR/Helm 발행·운영 배포는 포함하지 않았다. 기존 최초 비밀번호/native 배포와 VM wizard 운영 원인 수집 checklist는 별도 미완료 범위를 유지한다.

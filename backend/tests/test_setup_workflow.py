@@ -224,7 +224,25 @@ def test_real_pty_edit_hidden_secret_and_generate_or_cancel(tmp_path, finish):
         deadline = time.monotonic() + 30
         while marker not in pending:
             if time.monotonic() > deadline:
-                raise AssertionError(f"PTY did not reach {marker!r}")
+                import termios
+
+                attributes = termios.tcgetattr(terminal)
+                state = {
+                    "foreground_pgrp": os.tcgetpgrp(terminal),
+                    "child_pgrp": os.getpgid(pid),
+                    "isig": bool(attributes[3] & termios.ISIG),
+                    "vintr": repr(attributes[6][termios.VINTR]),
+                    "pending_bytes": len(pending),
+                    "interrupt_echoed": b"^C" in pending,
+                }
+                proc = Path(f"/proc/{pid}")
+                if proc.is_dir():
+                    state["signals"] = [
+                        row for row in (proc / "status").read_text().splitlines() if row.startswith(("State:", "Sig"))
+                    ]
+                    state["syscall"] = (proc / "syscall").read_text().strip()
+                    state["wait_channel"] = (proc / "wchan").read_text().strip()
+                raise AssertionError(f"PTY did not reach {marker!r}; terminal/process state: {state}")
             ready, _, _ = select.select([terminal], [], [], 1)
             if ready:
                 chunk = os.read(terminal, 65536)

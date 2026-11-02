@@ -1936,9 +1936,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "c8d56bf68e9c4e37cf9bcf262881e1c6ab7e378cf2cc312ba9051e8d3ebd2b9f",
-  "reviewed_at": "2026-11-02T14:23:12Z",
-  "summary": "1.32.2 current dev: reviewed scoped Cinder lists and owner/parent fences, federated reset refusal before native/session writes, bounded same-scope AbortError recovery and lookup diagnostics without claiming fixed timeout duration, project quota usage/ceilings, continuous model ordering and aligned metadata. API409 docs synchronized. No schema, dependency upgrade, authority/native policy or topology change; no push, tag, publication or deployment."
+  "source_sha256": "3b43b196a82406020f79f91e7877caf61e9f806fde90e6a511c113e4813ce01e",
+  "reviewed_at": "2026-11-02T15:12:20Z",
+  "summary": "Investigate existing Linux PTY Ctrl-C cancellation timeout using non-secret terminal/process diagnostics; production topology and behavior unchanged; concurrent WIP excluded."
 }
 ```
 <!-- architecture-review:end -->
