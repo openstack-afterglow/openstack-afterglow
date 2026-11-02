@@ -9,9 +9,10 @@
 
 ## [1.32.2] - 2026-11-02
 
-현재 dev 변경의 커밋과 patch metadata 준비입니다. GitHub/GHCR/Helm 발행·운영 배포는 수행하지 않으며 기존1.32.1 artifact와 불변 tag는 보존합니다.
+현재 dev의 완료된 변경을 통합하는 patch release입니다. 정확한 SHA의 CI 성공 뒤 numeric `1.32.2` tag·GitHub Release·GHCR image/alias·Helm을 발행하고 검증합니다. 기존1.32.1 불변 tag와 artifact를 보존하며 운영 Kolla/native/schema 배포는 포함하지 않습니다.
 
 ### Changed
+- 버전 상향 요청의 완료 조건을 metadata·commit뿐 아니라 dev push·exact-SHA CI·정식 tag·GitHub Release·image/alias·Helm 발행 검증까지로 명문화합니다. 명시적인 준비 전용 요청만 예외이며 운영 배포 승인은 별개입니다.
 - 별도 worktree의 개발 완료 조건을 기본 공유 `dev` 정상 merge·통합 검증·작업 디렉터리 정리까지로 명문화합니다. 미반영 결과와 진행 중인 다른 작업·private 설정은 보존합니다.
 
 ### Fixed
