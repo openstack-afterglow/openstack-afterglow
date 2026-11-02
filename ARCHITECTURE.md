@@ -1915,9 +1915,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "6ee8007c4d760fb77e9182312646815282b89661b5ad5377a0ab3e5a82780fa6",
-  "reviewed_at": "2026-11-02T06:05:06Z",
-  "summary": "Reviewed current1.32.1 rebuild: includes AuthStudioShell/nine locales, single main landmark with preserved skip target, non-conflicting action labels and password concealment on method switches; existing auth/session/SSO/signup/recovery/logout semantics retained. Prior admin/Grafana/flavor and plain/historical tag identity fixes preserved. No new schema/native authority/topology; current native/storage prerequisite and five-service deployment separately qualified."
+  "source_sha256": "1c1aa6e44b99da1be307d9cfc92d058ea57ead578fa65524183b06f1a3fd08c3",
+  "reviewed_at": "2026-11-02T06:13:37Z",
+  "summary": "Current1.32.1 reviewed source and completed auth studio integration; removing only the accidental machine-local QA dependency symlink from the tracked tree. Runtime source, manifests, locks and previously passed full gate/build unchanged; user dependency directory preserved. No new schema/native authority/topology."
 }
 ```
 <!-- architecture-review:end -->
