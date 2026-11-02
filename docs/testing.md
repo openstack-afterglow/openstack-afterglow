@@ -31,6 +31,7 @@ nav_order: 8
 - 격리 Chromium에서 f8d4395b baseline의 저장중 이동 잠금과204 뒤 model-read 지연의 rows0/list unmount를 재현했다. Candidate는 연속 이동4회·provider별 최신 CAS·동시POST최대1·stale GET·별도provider·숨은kind슬롯·409/503 복구/retry·background-read 실패·native commit이 client timeout보다 늦는 경우의 다음409 resync를 확인했다. 실제 카드 identity와 정상 이동 focus를 유지했다. Up/down은 trusted CDP click이며 drag는 실제 Chromium DragEvent/DataTransfer dispatch로 확인했고 OS mouse drag 자체는 미검증이다.
 - ko/en×light/dark×390/768/1440의12조건에서 document overflow0과 저장중44×44 이동 버튼을 확인했다. 단, 영문768px 카드 내부87px overflow와 화면 밖 Deactivate/Delete는 baseline에서도 같은 기존 문제로 관측했고 이번 연속 이동 이식에 포함하지 않았다. 오류 복구 중 버튼 비활성화로 focus가 body/main으로 이동할 수 있으며 정상 이동의 focus 보존과 구분한다. Source fixture/API/identity는 synthetic이고 실제 Keystone/Lumen/provider·운영 수용은 아니다. UI baseline/candidate tab alias는 분리 후 재촬영했으며 `ui/summary.json`과 screenshot index에 한계를 기록했다. 임시 UI 서비스·브라우저·profile·fixture는 종료/정리했다.
 - `033f997e` CLI guide branch를 실제 normal merge했다. 충돌5files는 위 대응 근거에 따라 검증된 최신 localized guide·안전한 key-entry/launch 분리·desktop-default/CA/profile 계약·현재 회귀와 역사적 문서를 유지했다. Archive는 이미 dev에 있으며 옛 source로 되돌리지 않았다. 코드 fingerprint는 위317669bf와 같아 새 테스트 성공으로 수치를 중복 계산하지 않는다.
+- `bd108ddf` Barbican branch도 실제 normal merge했다. 충돌10files는 이미 이식된 `8e5234cc`와 후속 security/API/runtime 계약 및 full-app TCP 결과를 근거로 현재 구현을 유지했다. Legacy `/api`·과거 executor·KEK 헬퍼를 복원하지 않고 현재 ancestor에 원 branch history를 연결했다. Staged source fingerprint는 위317669bf와 같으며 새 native 권한·API/schema 변경은 없다.
 
 ## 1.32.1 plain-tag release qualification (2026-11-02)
 
