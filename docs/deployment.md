@@ -12,6 +12,8 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 `npm run version:bump:patch`(또는 minor/major)는 metadata와 lock만 동기화하며 commit/tag를 만들지 않는다. 전체 gate·실행 smoke·dev 게시·정확한 SHA의 CI 성공을 확인한 뒤 그 SHA에 `git tag -a 1.32.1 <sha> -m '1.32.1'`과 정상 tag push를 수행한다. Tag workflow 완료 뒤 release image·`latest`의 revision/digest 및 Helm version/appVersion을 확인한다. 이 발행 성공은 운영 native/schema·cold restore·전체 writer 전환과 실제 사용자 경로 검증을 대신하지 않는다.
 
+버전 상향 요청은 정식 발행까지 포함한다. Metadata·commit만으로 완료하지 않고 dev push·정확한 SHA의 CI·불변 numeric tag·GitHub Release·release 이미지/alias·Helm 검증까지 수행한다. 명시적인 준비 전용 요청만 예외이며, 운영 Kolla/native/schema 배포 승인을 자동으로 뜻하지 않는다.
+
 
 ## 리소스 정책 자동 초기화·갱신
 

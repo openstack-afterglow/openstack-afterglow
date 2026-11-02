@@ -37,6 +37,11 @@ git merge-base --is-ancestor origin/dev HEAD
 - 기본 checkout의 `dev` 통합과 관련 검증이 끝나면 자신이 만든 작업용 worktree·격리 디렉터리를 정리한다. 제거 전 고유 commit·미커밋/미추적 변경·ignored 설정/키·실행 중인 소비자를 확인하고, 필요한 private 파일은 보호된 위치에 보존한다. 기본 checkout이나 진행 중인 다른 작업은 제거하지 않는다. 오래된 결과가 후속 변경으로 달라졌다면 파일 전체의 현재 일치만 보지 말고 dev 이력의 실제 반영 근거를 확인한다.
 - 완료 보고에는 기본 checkout의 dev 반영 commit, 실제 검증 결과, 제거한 작업 디렉터리와 남긴 예외를 명시한다. `main` 직접 commit·merge와 기존 release tag 이동은 허용하지 않는다.
 
+### 버전 상향의 완료 계약
+
+- 사용자가 버전 상향을 요청하면 metadata·commit에서 멈추지 않고 dev 정상 push, 정확한 SHA의 CI 성공, 불변 numeric `X.Y.Z` tag, GitHub Release, 해당 release 이미지·alias와 Helm 발행 검증까지 완료한다. 버전 상향은 정식 발행을 포함한다. 단, 사용자가 명시적으로 준비만 요청하면 그 제한을 따른다.
+- 진행 중인 다른 세션 변경은 포함하지 않으며 main PR·merge 소유권과 기존 tag 불변성을 유지한다. 운영 Kolla/native/schema 변경은 버전 발행과 별개로 기존 승인·선행 조건을 따른다.
+
 ### 사용자 요청 “배포”의 완료 계약
 
 별도 지시가 없으면 “배포”는 아래 전 과정을 뜻한다. 단계 경계·push·container running만으로 완료를 보고하지 않는다.
