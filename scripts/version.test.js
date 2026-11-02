@@ -44,21 +44,25 @@ function assertSynced(directory, expected, kollaTag) {
 }
 
 for (const prefix of ["", "v"]) {
-	test(`apply-tag uses ${prefix || "plain "}GitHub release refs ahead of a conflicting CLI argument`, (t) => {
-		const directory = project(t, { rootVersion: "1.32.0", kollaTag: `${prefix}1.32.0` });
-		const result = run(directory, "apply-tag-version.js", { ref: `refs/tags/${prefix}${version}`, args: ["9.9.9"] });
-		assert.equal(result.status, 0, result.output);
-		assertSynced(directory, version, version);
-	});
+	for (const kollaTag of ["1.32.0", "v1.32.0"]) {
+		test(`apply-tag uses ${prefix || "plain "}GitHub release refs ahead of CLI and replaces ${kollaTag} with the published tag`, (t) => {
+			const directory = project(t, { rootVersion: "1.32.0", kollaTag });
+			const result = run(directory, "apply-tag-version.js", { ref: `refs/tags/${prefix}${version}`, args: ["9.9.9"] });
+			assert.equal(result.status, 0, result.output);
+			assertSynced(directory, version, `${prefix}${version}`);
+		});
+	}
 }
 
 for (const tag of [version, `v${version}`, `refs/tags/${version}`, `refs/tags/v${version}`]) {
-	test(`apply-tag accepts explicit ${tag} outside a tag event`, (t) => {
-		const directory = project(t, { rootVersion: "1.32.0" });
-		const result = run(directory, "apply-tag-version.js", { ref: "refs/heads/dev", args: [tag] });
-		assert.equal(result.status, 0, result.output);
-		assertSynced(directory, version, "latest");
-	});
+	for (const kollaTag of ["1.32.0", "v1.32.0"]) {
+		test(`apply-tag accepts explicit ${tag} outside a tag event and replaces ${kollaTag} with the published tag`, (t) => {
+			const directory = project(t, { rootVersion: "1.32.0", kollaTag });
+			const result = run(directory, "apply-tag-version.js", { ref: "refs/heads/dev", args: [tag] });
+			assert.equal(result.status, 0, result.output);
+			assertSynced(directory, version, tag.replace(/^refs\/tags\//, ""));
+		});
+	}
 }
 
 for (const tag of ["", "release-1.32.1", "1.32", "v1.32.1junk", "1.32.1/extra", "01.32.1", "1.32.1-rc1", "1.32.1+build"]) {
@@ -126,6 +130,28 @@ for (const kollaTag of ["1.31.9", "v1.31.9", "latest", "stable"]) {
 		assertSynced(directory, version, ["latest", "stable"].includes(kollaTag) ? kollaTag : version);
 	});
 }
+
+for (const tag of [version, `v${version}`]) {
+	for (const kollaTag of ["1.31.9", "v1.31.9", "latest", "stable"]) {
+		test(`sync-version uses explicit published tag ${tag} for ${kollaTag} without changing automatic channels`, (t) => {
+			const directory = project(t, { kollaTag });
+			const result = run(directory, "sync-version.js", { args: [tag] });
+			assert.equal(result.status, 0, result.output);
+			assertSynced(directory, version, ["latest", "stable"].includes(kollaTag) ? kollaTag : tag);
+		});
+	}
+}
+
+test("sync-version rejects mismatched or malformed explicit release tags before metadata writes", (t) => {
+	const directory = project(t, { frontendVersion: "1.32.0" });
+	const before = fs.readFileSync(path.join(directory, "frontend/package.json"));
+	for (const tag of ["", "1.32.0", "v1.32.0", "v1.32.1junk", "refs/tags/1.32.1"]) {
+		const result = run(directory, "sync-version.js", { args: [tag] });
+		assert.equal(result.status, 1, `${tag}: ${result.output}`);
+		assert.match(result.output, /release tag must match root package\.json/);
+		assert.deepEqual(fs.readFileSync(path.join(directory, "frontend/package.json")), before);
+	}
+});
 
 test("sync-version rejects malformed root versions before metadata writes", (t) => {
 	const directory = project(t, { rootVersion: "1.32.1garbage", frontendVersion: "1.32.0" });

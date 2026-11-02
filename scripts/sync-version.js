@@ -13,6 +13,13 @@ if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
 	process.exit(1);
 }
 
+// An explicit release tag preserves its published image identity; metadata-only bumps use plain SemVer.
+const releaseTag = process.argv[2] ?? version;
+if (releaseTag.replace(/^v/, "") !== version) {
+	console.error(`release tag must match root package.json ${version}: ${releaseTag}`);
+	process.exit(1);
+}
+
 // 1) frontend/package.json
 const fePath = path.join(root, "frontend/package.json");
 const fe = JSON.parse(fs.readFileSync(fePath, "utf-8"));
@@ -59,7 +66,7 @@ if (!/^afterglow_image_tag:\s*"(?:latest|stable|v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)
 if (!/^afterglow_image_tag:\s*"(?:latest|stable)"\s*$/m.test(kollaSample)) {
 	kollaSample = kollaSample.replace(
 		/^afterglow_image_tag:\s*"v?\d+\.\d+\.\d+"/m,
-		`afterglow_image_tag: "${version}"`
+		`afterglow_image_tag: "${releaseTag}"`
 	);
 	fs.writeFileSync(kollaSamplePath, kollaSample);
 }

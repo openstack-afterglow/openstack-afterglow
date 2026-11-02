@@ -4,7 +4,7 @@
 // helm-release.yml `check-changes` 잡의 chart 발행 판단(CLAUDE.md "CI 파이프라인 성능 규정" 8번).
 //
 // 규칙
-// - v* 태그 push, workflow_dispatch: 항상 발행한다.
+// - X.Y.Z/vX.Y.Z 태그 push, workflow_dispatch: 항상 발행한다.
 // - main push: `github.event.before..github.sha` 에 `helm/afterglow/` 변경이 있으면 발행한다.
 //   before 는 detect-build-targets.js 의 collectEventChanges 로 depth=1 fetch 뒤 비교한다.
 //   all-zero before(새 ref), forced push, 잘못된 before, fetch/diff 실패는 발행한다(fail-safe).

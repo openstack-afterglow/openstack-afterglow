@@ -1913,9 +1913,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "00359c71ea52ead952fddaaa1ec138ed6f5fb024cf4cb553d3c171d6ec96e37b",
-  "reviewed_at": "2026-11-02T05:38:52Z",
-  "summary": "Frozen1.32.1 completed source integration: admin-project authority and Swift visibility, strict flavor re-adoption/foreign-marker retention and FIFO observer race, temperature Grafana/nav/config and static login assets. Plain stable release tags plus historical-v apply/check/image/Helm/operator compatibility. In-flight authStudio production redesign excluded; no new schema/native authority/topology. Production maintenance preserved."
+  "source_sha256": "1c56a4256a9978a4bae7d3390f8025346d8dfd5cc76aa8420f76fc0a6b0859f4",
+  "reviewed_at": "2026-11-02T05:48:14Z",
+  "summary": "Final1.32.1 completed integration and plain stable release compatibility: exact tag identity preserved for explicit Kolla image pins on numeric/historical-v apply; metadata-only bump defaults plain; malformed/mismatch rejected. Admin-project authority, Swift partial visibility, bounded flavor claim re-adoption/foreign-marker retention, FIFO observer race and temperature Grafana; no new schema/topology. In-flight auth redesign excluded; production maintenance preserved."
 }
 ```
 <!-- architecture-review:end -->

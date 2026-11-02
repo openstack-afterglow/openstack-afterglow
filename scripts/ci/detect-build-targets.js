@@ -5,7 +5,7 @@
 //
 // 규칙
 // - workflow_dispatch: 입력 targets 를 그대로 매핑한다(지원하지 않는 값은 exit 1).
-// - dev 브랜치 push 이외(main, v* 태그, PR): 전체 빌드. diff 를 계산하지 않는다.
+// - dev 브랜치 push 이외(main, X.Y.Z/vX.Y.Z 태그, PR): 전체 빌드. diff 를 계산하지 않는다.
 //   PR 은 빌드 잡 자체가 실행되지 않으므로 PR diff 도 계산하지 않는다.
 // - dev push: 두 기준의 합집합.
 //   1) event 기준: `git diff <github.event.before> HEAD`. before 를 depth=1 로 fetch 한다.

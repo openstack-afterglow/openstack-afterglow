@@ -9,6 +9,7 @@
 
 - Frozen source00359c71ea52ead952fddaaa1ec138ed6f5fb024cf4cb553d3c171d6ec96e37b/3942files. Full gate exit0: backend12400/106skip, frontend6428/502files, contract183, realDBfunctional167/37deselected, Ruff820. Orchestration208·KollaJS28·shell20/PowerShell36skip. Artifact98; frontend production build artifact93.
 - Version38·promotion14tests와 actual workflow Bash13경우, custom-runner-configured actionlint 통과. Proof root `~/.local/share/afterglow-proofs/release-1.32.1-20261102/`.
+- Historical-v explicit Kolla pin identity 보완 후 최종source1c56a4256a9978a4bae7d3390f8025346d8dfd5cc76aa8420f76fc0a6b0859f4/3942files의 전체 gate 재통과(artifact112): orchestration223, 기타 backend12400/106skip·frontend6428/502files·contract183·realDB167·Ruff820. 중간 일회성 기존 shell PTY timeout108은 원인 미확정이며 installer/test를 변경하지 않았다. Actual npm metadata bump는 commit0/tag0이었다.
 
 ## Boundaries
 
