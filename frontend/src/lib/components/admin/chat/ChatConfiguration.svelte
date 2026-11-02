@@ -458,6 +458,11 @@
 	let modelDropTarget = $state<{ id: number; edge: 'before' | 'after' } | null>(null);
 	let modelDragAllowedId: number | null = null;
 	let modelOrderGeneration = 0;
+	let modelOrderRevision = 0;
+	const pendingModelOrders = new Map<number, number[]>();
+	const savedModelOrders = new Map<number, Model[]>();
+	let modelOrderSaveTask: Promise<void> | null = null;
+	let modelOrderRecovering = $state(false);
 	let modelOrderStatus = $state('');
 	let modelOrderSaving = $state(false);
 	let modelOrderSaveError = $state('');
@@ -497,7 +502,7 @@
 	const selectedVisibleIds = $derived(visibleModels.filter((model) => selectedModelIds[model.id]).map((model) => model.id));
 	const selectedCount = $derived(selectedVisibleIds.length);
 	const allModelsSelected = $derived(visibleModels.length > 0 && selectedCount === visibleModels.length);
-	const modelOrderBusy = $derived(loading || modelOrderSaving || deletingBulk);
+	const modelOrderBusy = $derived(loading || modelOrderRecovering || deletingBulk);
 	function changeRegisteredProvider() {
 		selectedModelIds = {};
 		resetModelDrag();
@@ -776,7 +781,9 @@
 	}
 
 	async function load({ freshBilling = false, preserveRows = false }: { freshBilling?: boolean; preserveRows?: boolean } = {}) {
-		if (!token) return;
+		const scopeToken = token, scopeProjectId = projectId;
+		if (modelOrderSaveTask) await modelOrderSaveTask;
+		if (!token || scopeToken !== token || scopeProjectId !== projectId || destroyed) return;
 		const generation = ++loadGeneration;
 		resetModelDrag();
 		const requestToken = token;
@@ -793,10 +800,8 @@
 			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			providers = [...ps].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
 			if (mProviderId === '' && ps.length === 1) mProviderId = ps[0].id;
-			const providerRanks = new Map(ps.map((provider) => [provider.id, provider.sort_order ?? 0]));
-			models = [...ms].sort((a, b) =>
-				(providerRanks.get(a.provider_id) ?? 0) - (providerRanks.get(b.provider_id) ?? 0)
-				|| a.provider_id - b.provider_id || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
+			models = sortModels(ms);
+			rememberModelOrders(models);
 			uncertainRegistrations = Object.fromEntries(Object.entries(uncertainRegistrations).filter(([key]) => {
 				const [providerId, modelName] = JSON.parse(key) as [number, string];
 				return !registeredNames(providerId).has(modelName);
@@ -967,6 +972,99 @@
 		if (target) void reorderModel(model, target, direction === 'up' ? 'before' : 'after', direction);
 	}
 
+	function sortModels(rows: Model[]): Model[] {
+		const providerRanks = new Map(providers.map((provider) => [provider.id, provider.sort_order ?? 0]));
+		return [...rows].sort((a, b) =>
+			(providerRanks.get(a.provider_id) ?? 0) - (providerRanks.get(b.provider_id) ?? 0)
+			|| a.provider_id - b.provider_id || (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id);
+	}
+
+	function rememberModelOrders(rows: Model[]) {
+		savedModelOrders.clear();
+		for (const row of rows) {
+			const siblings = savedModelOrders.get(row.provider_id) ?? [];
+			siblings.push(row);
+			savedModelOrders.set(row.provider_id, siblings);
+		}
+	}
+
+	// Compare JSON data by value, not object identity or property serialization order.
+	function sameModelData(left: unknown, right: unknown): boolean {
+		if (left === right) return true;
+		if (!left || !right || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) !== Array.isArray(right)) return false;
+		const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+		const keys = Object.keys(a);
+		return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameModelData(a[key], b[key]));
+	}
+
+	async function reconcileModelOrders(current: () => boolean) {
+		const revision = modelOrderRevision;
+		try {
+			const rows = await api.get<Model[]>('/api/v1/chat/admin/models', token, projectId);
+			if (!current() || revision !== modelOrderRevision || draggedModelId !== null) return;
+			const sorted = sortModels(rows);
+			rememberModelOrders(sorted);
+			if (!sameModelData(models, sorted)) models = sorted;
+			selectedModelIds = Object.fromEntries(visibleModels.filter((row) => selectedModelIds[row.id]).map((row) => [row.id, true]));
+		} catch (caught) {
+			if (current() && revision === modelOrderRevision && !modelOrderSaveError) {
+				modelOrderSaveError = caught instanceof ApiError
+					? t('configuration.lookupFailedAlternate', { v0: caught.status }) : t('configuration.serverError');
+			}
+		}
+	}
+
+	// Serial CAS saves: each provider keeps only its latest queued order, and the next
+	// request expects the order confirmed by the previous 204.
+	async function saveModelOrders() {
+		const requestToken = token, requestProjectId = projectId;
+		const generation = ++modelOrderGeneration;
+		const current = () => generation === modelOrderGeneration && requestToken === token && requestProjectId === projectId && !destroyed;
+		modelOrderSaving = true;
+		try {
+			do {
+				while (pendingModelOrders.size > 0 && current()) {
+					const [providerId, orderedIds] = pendingModelOrders.entries().next().value!;
+					pendingModelOrders.delete(providerId);
+					const saved = savedModelOrders.get(providerId) ?? [];
+					const expectedIds = saved.map((row) => row.id);
+					if (sameModelData(expectedIds, orderedIds)) continue;
+					await api.post('/api/v1/chat/admin/models/reorder', {
+						provider_id: providerId, expected_model_ids: expectedIds, model_ids: orderedIds
+					}, requestToken, requestProjectId);
+					if (!current()) return;
+					const byId = new Map(saved.map((row) => [row.id, row]));
+					savedModelOrders.set(providerId, orderedIds.map((id, sort_order) => ({ ...byId.get(id)!, sort_order })));
+					invalidateChatModels();
+				}
+				if (!current()) return;
+				// Keep keyed cards mounted; a newer move invalidates this read and stays queued.
+				await reconcileModelOrders(current);
+				if (!current()) return;
+			} while (pendingModelOrders.size > 0);
+			modelOrderStatus = t('pricing.modelOrderSaved');
+			toast.success(t('pricing.modelOrderSaved'));
+		} catch (caught) {
+			if (!current()) return;
+			modelOrderRecovering = true;
+			pendingModelOrders.clear();
+			++modelOrderRevision;
+			const savedById = new Map([...savedModelOrders.values()].flat().map((row) => [row.id, row]));
+			models = sortModels(models.map((row) => ({ ...row, sort_order: savedById.get(row.id)?.sort_order ?? row.sort_order })));
+			modelOrderSaveError = caught instanceof ApiError && caught.status === 409
+				? t('pricing.modelOrderConflict')
+				: t('pricing.modelOrderSaveFailed', { status: caught instanceof ApiError ? ` (${caught.status})` : '' });
+			modelOrderStatus = t('pricing.modelOrderFailed');
+			await reconcileModelOrders(current);
+		} finally {
+			if (current()) {
+				modelOrderSaving = false;
+				modelOrderRecovering = false;
+				modelOrderSaveTask = null;
+			}
+		}
+	}
+
 	async function reorderModel(source: Model, target: Model, edge: 'before' | 'after', focusMove?: 'up' | 'down') {
 		if (!token || modelOrderBusy || source.id === target.id || source.provider_id !== target.provider_id) return;
 		const siblings = modelSiblings(source);
@@ -979,43 +1077,21 @@
 		let visibleIndex = 0;
 		const orderedIds = expectedIds.map((id) => visibleIds.has(id) ? reordered[visibleIndex++] : id);
 		if (orderedIds.every((id, index) => id === expectedIds[index])) return;
-		const previousModels = models;
 		const byId = new Map(models.map((row) => [row.id, row]));
 		const orderedModels = orderedIds.map((id, sort_order) => ({ ...byId.get(id)!, sort_order }));
 		let providerIndex = 0;
 		models = models.map((row) => row.provider_id === source.provider_id ? orderedModels[providerIndex++] : row);
+		const revision = ++modelOrderRevision;
 		const requestToken = token, requestProjectId = projectId;
-		const generation = ++modelOrderGeneration;
-		const current = () => generation === modelOrderGeneration && requestToken === token && requestProjectId === projectId && !destroyed;
-		modelOrderSaving = true;
+		pendingModelOrders.set(source.provider_id, orderedIds);
 		modelOrderSaveError = '';
 		modelOrderStatus = t('pricing.modelOrderSaving');
+		if (!modelOrderSaveTask) modelOrderSaveTask = saveModelOrders();
 		resetModelDrag();
-		try {
-			await api.post('/api/v1/chat/admin/models/reorder', {
-				provider_id: source.provider_id, expected_model_ids: expectedIds, model_ids: orderedIds
-			}, requestToken, requestProjectId);
-			if (!current()) return;
-			invalidateChatModels();
-			await load();
-			if (!current()) return;
-			modelOrderStatus = t('pricing.modelOrderSaved');
-			toast.success(t('pricing.modelOrderSaved'));
-		} catch (caught) {
-			if (!current()) return;
-			models = previousModels;
-			modelOrderSaveError = caught instanceof ApiError && caught.status === 409
-				? t('pricing.modelOrderConflict')
-				: t('pricing.modelOrderSaveFailed', { status: caught instanceof ApiError ? ` (${caught.status})` : '' });
-			modelOrderStatus = t('pricing.modelOrderFailed');
-			await load();
-		} finally {
-			if (current()) {
-				modelOrderSaving = false;
-				if (focusMove) {
-					await tick();
-					if (current()) document.querySelector<HTMLButtonElement>(`[data-model-id="${source.id}"] [data-model-move="${focusMove}"] button:not(:disabled), [data-model-id="${source.id}"] [data-model-move] button:not(:disabled)`)?.focus();
-				}
+		if (focusMove) {
+			await tick();
+			if (revision === modelOrderRevision && requestToken === token && requestProjectId === projectId && !destroyed) {
+				document.querySelector<HTMLButtonElement>(`[data-model-id="${source.id}"] [data-model-move="${focusMove}"] button:not(:disabled), [data-model-id="${source.id}"] [data-model-move] button:not(:disabled)`)?.focus();
 			}
 		}
 	}
@@ -1681,6 +1757,11 @@
 			closeBillingKeyModal();
 			editingProvider = null;
 			++modelOrderGeneration;
+			++modelOrderRevision;
+			pendingModelOrders.clear();
+			savedModelOrders.clear();
+			modelOrderSaveTask = null;
+			modelOrderRecovering = false;
 			modelOrderSaving = false;
 			modelOrderSaveError = '';
 			modelOrderStatus = '';

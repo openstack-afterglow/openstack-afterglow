@@ -6,6 +6,31 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Remaining worktree integration (2026-11-02, local dev)
+
+기준은 공유 `dev` `f8d4395b`다. 여덟 남은 worktree의 HEAD·binary diff·미추적 public source와 재생성 가능한 dependency/cache를 제외한 ignored 파일을 private archive에 보존하고 각 저장 파일의 원본 SHA-256을 검증했다. 공유 checkout의 별도 최초 비밀번호 설정 변경18files와 index baseline도 따로 캡처했다. 원본 worktree는 read-only로 조사하고 격리 dev에서 최신 계약에 필요한 delta만 이식한다.
+
+| Worktree | 통합 또는 후속 구현으로 대체된 구체적 근거 |
+| --- | --- |
+| CLI model roles | `09a45199`의 archive와 실제 POSIX/PowerShell·provider guide·회귀 구현이 dev와 이력에 이미 포함된다. 네 locale의 installer introduction/modelHelp 값8개도 현재 dev와 같으며 API 문서의 models:read·Sol/Luna/Fable/Opus/Sonnet/Haiku·native profile·CA·관리 명령 전달과 architecture의 당시 검증 기록도 보존돼 있다. 구버전 전체 문서와 review stamp는 복원하지 않는다. |
+| GPU admission | 미통합 docs commits `3e039a76`·`93c2405b`·`5f9630dc`는 merge-tree가 충돌0인 정상 merge 대상이다. Source가 아니라1.30.13 immutable artifact·승인된 backend-only rollout·배포된 admission의 historical receipt와 archive 완료를 반영한다. 아래 기존 source-only pending 기록과 구분하며 이번 운영 수행으로 보고하지 않는다. |
+| i18n | 옛 blob이 dev ancestry에서 확인된 번역은 이후 현 source로 발전했다. ms/nb/sw/vi index는 `10117d49` 이후 `44b5c387`의 IAM guide가 추가됐으므로 역복원하지 않는다. 옛 review 파일들은 현재와 같은 빈 object다. 옛 bn/domain-admin118keys는 현재 ko/bn124keys의 scope6개를 누락하고 현재 glossary의 도메인 용어도 되돌리므로 보존 archive에만 남긴다. Human review status를 승격하지 않는다. |
+| Continuous model reorder | 실제로 누락된 동작이다. 최신 `ChatConfiguration`과 기존 provider catalog 회귀에 provider별 latest queue·직렬 CAS·마지막204 확정 expected IDs·model-only background reconcile·revision/scope/unmount fence와 연속 이동·focus를 이식했다. 최신 preserveRows와 미확정 등록 정리는 유지한다. 옛 archive3files는 원래 날짜와 당시 증거 경계 그대로 보존한다. |
+| 1.29.1 CLI guides | `033f997e`의 key-entry/launch 분리, 전체 ordinary key, 활성 public model ID, 기존 desktop default 보존, direct advertised SDK origin, optional provider header, TLS 검증 유지가 현재 `ChatApiKeysManager`·locale·API 문서·회귀에 모두 있다. `keyPromptExample`·`codexShellExample`과 macOS/Linux CA 안내 및 이후 role installer를 유지하며 hardcoded Korean/옛 snapshot으로 되돌리지 않는다. Archive도 이미 dev에 있다. |
+| Router agent | `217325d4`의 header 분해 이후 현재 route는 canManageRouter와 mutation guard, typed refresh controller의 ar.refresh를 전달한다. Header의 localized labels·StatusChip·pending delete·권한 gate는 옛 대안의 상위집합이다. |
+| Barbican agent | `bd108ddf`의 Secrets/Containers/Orders/ACL/Consumers/quota는 `8e5234cc` 및 후속 dev에 구현돼 있다. `/api/v1`·fresh admin-project executor·resource scope·비진행 pagination fail-closed·afterglow- system secret 삭제 보호·no-payload-cache·UUID 정규화와 의도적 KEK 제거를 유지한다. Full-app500 handler가 이미 provider 오류 응답을 가리므로 bare-router의 차이를 새 공개 API 수정으로 세지 않는다. |
+| Drover agent | `4584f13d` 이후 Grid는 K3sClusterCard로 위임한다. Deleted 표시·ACTIVE kubeconfig·삭제중 잠금·node/API/version·키보드 선택을 유지하면서 credentials/administer/edit permission, Enter/Space 접근성·상태 오류 표시·공용 Loading/EmptyState와 intent prefetch를 보강했다. 현재 route-keyed locale lifecycle과 byte-identical panel helper를 유지한다. |
+
+검증은 위 source의 새 결과만 아래에 추가한다. 과거 model-order archive나 GPU 운영 receipt의 성공 수치를 이번 통합의 테스트·운영 성공으로 재사용하지 않는다.
+
+- 실제 loopback TCP의 **전체 Afterglow app/router/middleware**에서 synthetic administrator/upstream failure를 사용했다. 원래 `_barbican_error`와 제안했던 generic helper 모두500/`내부 서버 오류`이며 provider URL/body 노출0, connection close2였다. 기존 full-app 보호가 이미 있어 불필요한 backend 한 줄 변경과 수정 전에도 통과할 신규 테스트는 제외했다. Bare router만 띄운 별도 probe는 public surface의 결함 증거로 사용하지 않는다. DB/native/provider/운영 접근은 없다.
+- Frozen dependency 설치 후 최초 frontend focus는 prepare를 생략해 generated tsconfig가 없어서 실패했다. 선언된 `svelte-kit sync`를 실행한 뒤 실제 provider catalog19tests가 통과했다. 제품 source나 검증을 완화하지 않았다.
+- 증거 위치는 `~/.local/share/afterglow-proofs/remaining-worktree-integration-20261102T172652/`다. Private archives는0700 디렉터리/0600 파일이며 키·설정 내용은 공개 문서나 Git에 포함하지 않는다.
+- 최종 source `317669bf9e0b052e38699dd823498d10099d15c2f165221bbb280c2ba0f6bc52`/3942files에서 `uv run --project backend --no-sync npm run test:gate`가 exit0이었다(artifact384). Orchestration223, KollaJS28, POSIX installer20/PowerShell36skip, backend12400passed/106skipped, frontend502files6435tests와 log-script9, contracts183, disposable realDBfunctional167/37deselected, Ruff820files가 통과했다. Testsuite·timeout·예외 경로를 완화하지 않았다.
+- Svelte check2905files/0errors/기존17warnings, i18n check0errors/기존 key-order45warnings, frontend production build가 통과했다(artifact404/405). 이 통합은 새 locale key를 추가하지 않는다.
+- 격리 Chromium에서 f8d4395b baseline의 저장중 이동 잠금과204 뒤 model-read 지연의 rows0/list unmount를 재현했다. Candidate는 연속 이동4회·provider별 최신 CAS·동시POST최대1·stale GET·별도provider·숨은kind슬롯·409/503 복구/retry·background-read 실패·native commit이 client timeout보다 늦는 경우의 다음409 resync를 확인했다. 실제 카드 identity와 정상 이동 focus를 유지했다. Up/down은 trusted CDP click이며 drag는 실제 Chromium DragEvent/DataTransfer dispatch로 확인했고 OS mouse drag 자체는 미검증이다.
+- ko/en×light/dark×390/768/1440의12조건에서 document overflow0과 저장중44×44 이동 버튼을 확인했다. 단, 영문768px 카드 내부87px overflow와 화면 밖 Deactivate/Delete는 baseline에서도 같은 기존 문제로 관측했고 이번 연속 이동 이식에 포함하지 않았다. 오류 복구 중 버튼 비활성화로 focus가 body/main으로 이동할 수 있으며 정상 이동의 focus 보존과 구분한다. Source fixture/API/identity는 synthetic이고 실제 Keystone/Lumen/provider·운영 수용은 아니다. UI baseline/candidate tab alias는 분리 후 재촬영했으며 `ui/summary.json`과 screenshot index에 한계를 기록했다. 임시 UI 서비스·브라우저·profile·fixture는 종료/정리했다.
+
 ## 1.32.1 plain-tag release qualification (2026-11-02)
 
 - 첫 후보는 완료 source를 격리 local dev로 동결하고 당시 진행 중인 production authStudio login/logout·test·public-entry 번역을 제외했다. 후속 사용자의 현재 기준 rebuild/deploy 요청과 authStudio checklist 완료에 따라 아래 새 후보는 그 변경도 포함한다. 원본 공유 source는 보존하고 기존 release/tag 호환성 수정도 유지한다.
@@ -2868,7 +2893,7 @@ Rapid change는 proposal/tasks 완료 후 `openspec archive instance-password-ch
 5. **운영 호환성 경계**: 이 URL 선택 변경은 SQL/ORM/manifest를 변경하지 않는다. 공유 작업 트리의 별도 migration `084-mcp-project-delegation`은 이 변경의 qualification에 포함하지 않는다. 실제 배포 ledger/checksum·production snapshot·원본 암호화 키·mixed API/worker와 양방향 writer/schema·backup/restore·rollback 검증은 아직 제공되지 않았으므로 운영 데이터 호환성을 미검증으로 남긴다. 같은 URL은 직접 공유 접근이며 자동 복제/동기화가 아니다. 이 DB 변경의 검증에서 운영 DB 조회/쓰기·migration·배포와 기존 공유 port/volume/key 변경은 수행하지 않았다.
 ## GPU admission service scope (2026-10-12)
 
-기준은 `9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93`(`v1.30.12` peeled commit)이며 canonical `npm version 1.30.13 --no-git-tag-version`/`version:check`로 patch manifests를 동기화했다. Focused36+14+14, K3s backend16/frontend9와 instances backend548/frontend209가 **test-passed**다. 최종 `npm run test:gate`도 통과했다: backend unit4431, frontend2569/334 files, contract174, functional35(9 deselected), Ruff check·561 files format check. Working architecture stamp와 staged check는 source SHA256 `33260ee0e5fe8c357dd4d3fe658313680068e01318be0cee78694fbc506f0a0e`/2531 files로 통과했다. Artifact qualification·rollout·deployed HTTP acceptance는 pending이며 과거 release 기록을 재사용하지 않는다. [Checklist](../openspec/changes/gpu-admission-service-scope/tasks.md)는 실제 완료된 단계만 기록한다.
+기준은 `9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93`(`v1.30.12` peeled commit)이며 canonical `npm version 1.30.13 --no-git-tag-version`/`version:check`로 patch manifests를 동기화했다. Focused36+14+14, K3s backend16/frontend9와 instances backend548/frontend209가 **test-passed**다. 최종 `npm run test:gate`도 통과했다: backend unit4431, frontend2569/334 files, contract174, functional35(9 deselected), Ruff check·561 files format check. Working architecture stamp와 staged check는 source SHA256 `33260ee0e5fe8c357dd4d3fe658313680068e01318be0cee78694fbc506f0a0e`/2531 files로 통과했다. 아래 별도 receipt는 실제 immutable artifact·backend-only rollout·deployed HTTP acceptance를 기록한다. [Archived checklist](../openspec/changes/archive/2026-10-12-gpu-admission-service-scope/tasks.md)는 실제 완료된 단계만 기록한다.
 
 Parent가 이미 관측한 수정 전503은 재현 근거로 보존한다. 이를 확인하려고 같은 실패를 다시 실행하지 않는다. 아래 native 계획의 대상 acceptance는 **HTTP200과 `gpu_required=true`**다. 실제409는 quota fail-closed 증거일 뿐 acceptance 통과가 아니며 실측 headroom 부족을 blocker로 보고한다.
 
@@ -2894,6 +2919,18 @@ npm run test:gate
 ### Candidate source with native providers — not deployed HTTP
 
 보호된 `afterglow_backend`의 별도 Python 프로세스에서 candidate API·quota 함수를 메모리로 로드하고 실제 runtime DB, canonical policy factory, Keystone와 Nova를 사용했다. 서비스 인증 UUID는 `dc73b4e609414046bf9c07014e1927a6`, 대상은 `99f2f82cb2d14788a0723af31c16dab0`이다. Exact flavor `fe5a5a4c-a568-481d-982b-469967f64808`의 alias는 `RTX-3060-LHR:1,GA106-audio:1`; 정규화 quota `RTX3060LHR=-1`, 대상 usage0이었다. In-process ASGI POST200/`gpu_required=true`, header 없음/잘못된 token401, malformed project/flavor400, 필수 필드 누락422를 확인했다. 독립 `NativeTenantExec`에서도 같은 flavor의 visibility·specs와 대상 서버0을 확인했다. Quota·membership·sharing·capacity·VM 변경0이다. 초기 probe는 DB teardown 누락 경고가 있었지만 후속 probe는 `finally: await close_db()`로 종료했고 warning 없이 exit0이었다. 이 proof는 실제 providers에 대한 candidate 실행이며 running API 교체·deployed HTTP acceptance가 아니다.
+
+### Tagged artifact, backend-only rollout and deployed HTTP
+
+Immutable `v1.30.13`은 `25f3557fd56e5a298093053ef5825063a83b61c7`이다. Canonical Docker workflow [38256798938](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38256798938)와 Helm release38256798620이 성공했다. Backend index는 `sha256:9ac44c15fd9dc96535ffcea3ef07251f7d08b5c38298f3fbd047b6a90eb04d53`, amd64 manifest는 `sha256:458ef3e90488410cf620fc6d8ea807b66db3f8d1150cc8ace248e8dd6146aebc`다. Canonical local backend amd64 build와 published immutable image는 app1.30.13, x86_64, API import·explicit-target quota contract·CPU bypass를 실제 실행했다. OCI revision은 정확하며 optional OCI version label은 없으므로 embedded app version을 확인한다. Backend/frontend/worker publication은 amd64이고 Cloud Shell publication만 amd64/arm64다.
+
+승인된 `/etc/kolla/globals.d/90-openstack-afterglow-globals.yml`의 `afterglow_backend_image_ref` 한 줄만 변경했다. Native Kolla prechecks/genconfig/pull과 controller1→2→3 sequential reconfigure가 성공했다. 각 backend의 Docker inspect `Config.Image`, OCI revision, embedded1.30.13과 runtime contract를 확인했다. Backend 외243/235/152개 컨테이너의 ID·image가 각각 그대로이며 frontend/worker pin, generic image tag1.30.12, 공유 datastore와 secrets/volumes를 변경하지 않았다. 각 direct health와 VIP/public health는200이었다. Health는 liveness이며 DB/Redis readiness 증거로 대체하지 않는다. 초기 checker의 nonexistent OCI version-label assertion 및 digest를 생략하는 `docker ps` image 비교는 수정하고 완료된 controller1을 다시 교체하지 않는 resume로 후속 controller를 마쳤다. Backup/rollout receipt는 `/etc/kolla/.afterglow-rollout-backups/1.30.13/`에 보존한다.
+
+Native receipt `2026-10-12T16:27:43Z`: deployed policy factory는 service `dc73b4e609414046bf9c07014e1927a6`에 인증했다. Target `99f2f82cb2d14788a0723af31c16dab0`의 exact private flavor `fe5a5a4c-a568-481d-982b-469967f64808` native ACL과 독립 tenant visibility/specs가 일치했다. Alias `RTX-3060-LHR:1,GA106-audio:1`, DB effective `RTX3060LHR=-1`, target usage0이며 service-filtered/tenant server count 모두0이었다. Placement의 compute10 PCI03:00 GPU는 total1/used0, PCI04:00 GPU는 total1/used1로 기존 할당을 유지했다. SDK/DB는 `finally`에서 정상 종료했다.
+
+실제 공개 HTTPS `/api/v1/internal/k3s/gpu-admission`은 **200/`gpu_required=true`**였고 운영 Drover `check_gpu_admission`도 `(true, null)`로 승인됐다. Missing/wrong internal auth401, invalid project/flavor ID400, missing/wrong-type field422, 기존 비공유 private flavor `0f06526d-091a-4516-8a42-8d77dde33023`400을 확인했다. Probe는 quota·membership·ACL·capacity·VM을 변경하지 않았다. 이는 deployed admission proof이며 GPU VM 생성·allocatable·실제 Pod 실행 또는 Stampede scale-in proof가 아니다.
+
+Cloud Shell의 초기 `tofu`/`kubectl` probe는 rc127이었다. Canonical root `Dockerfile:166-216`과 `cloud-shell/pyproject.toml` 검토 결과 두 binary는 이 target의 선언된 도구가 아니며 OpenTofu는 backend-only installer다. Published Cloud Shell index `sha256:8c88ca538e63f2288ce5ebe6e967111208df039c6489c0d7492944db7c882c91`의 실제 no-network amd64/arm64 실행에서 app1.30.13, x86_64/aarch64, uid1000, `openstack 8.3.0`, SDK import와 bootstrap executable을 확인했다. 지원하지 않는 CLI 부재를 admission 핫픽스 blocker로 계산하지 않는다. 이 artifact qualification은 authenticated Zun terminal/홈 lifecycle proof가 아니며 native Cloud Shell은 교체하지 않았다.
 
 
 ### How to run the protected native smoke after gates and rollout

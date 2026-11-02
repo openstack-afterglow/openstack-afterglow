@@ -52,6 +52,15 @@ const hidden = { ...model, id: 20, provider_id: 2, display_name: 'Hidden', model
 let providers: typeof nim[];
 let models: typeof model[];
 
+type ModelOrderRequest = { provider_id: number; expected_model_ids: number[]; model_ids: number[] };
+function persistModelOrder(body: ModelOrderRequest) {
+	const expected = models.filter((row) => row.provider_id === body.provider_id)
+		.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id).map((row) => row.id);
+	if (JSON.stringify(expected) !== JSON.stringify(body.expected_model_ids)) throw new mocks.ApiError('order conflict', 409);
+	const ranks = new Map(body.model_ids.map((id, index) => [id, index]));
+	models = models.map((row) => row.provider_id === body.provider_id ? { ...row, sort_order: ranks.get(row.id)! } : row);
+}
+
 function modelRow(id: number): HTMLElement {
 	const checkbox = screen.getByRole('checkbox', { name: `${models.find((row) => row.id === id)!.display_name} 선택` });
 	return checkbox.closest('[data-model-id]') as HTMLElement;
@@ -95,11 +104,8 @@ beforeEach(() => {
 		if (path === '/api/v1/chat/admin/models') return models.map((row) => ({ ...row }));
 		return [];
 	});
-	mocks.post.mockImplementation(async (path: string, body: { provider_id: number; model_ids: number[] }) => {
-		if (path === '/api/v1/chat/admin/models/reorder') {
-			const ranks = new Map(body.model_ids.map((id, index) => [id, index]));
-			models = models.map((row) => row.provider_id === body.provider_id ? { ...row, sort_order: ranks.get(row.id)! } : row);
-		}
+	mocks.post.mockImplementation(async (path: string, body: ModelOrderRequest) => {
+		if (path === '/api/v1/chat/admin/models/reorder') persistModelOrder(body);
 	});
 	mocks.patch.mockImplementation(async (path: string, body: Record<string, unknown>) => {
 		const id = Number(path.split('/').at(-1));
@@ -337,14 +343,149 @@ describe('provider catalog administration', () => {
 		expect((within(screen.getByRole('dialog')).getByLabelText('입력') as HTMLInputElement).value).toBe('1.25');
 	});
 
-	it('blocks overlapping reorders and discards a late failure after the auth scope changes', async () => {
+	it('keeps cards and focus available for consecutive moves and persists only the latest queued order', async () => {
+		models.push({ ...second, id: 72, display_name: 'Third', sort_order: 5 });
+		const pending = deferred<void>();
+		mocks.post.mockImplementationOnce(async (_path: string, body: ModelOrderRequest) => {
+			await pending.promise;
+			persistModelOrder(body);
+		});
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const card = modelRow(70);
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70, 72]);
+		expect((within(card).getByRole('button', { name: 'Nemotron 위로 이동' }) as HTMLButtonElement).disabled).toBe(false);
+		await dragModel(card, modelRow(71), 'before');
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		expect(document.activeElement).toBe(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
+		expect(mocks.post).toHaveBeenCalledTimes(1);
+		pending.resolve();
+		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
+		expect(list.isConnected).toBe(true);
+		expect(modelRow(70)).toBe(card);
+		expect(mocks.post).toHaveBeenCalledTimes(2);
+		view.unmount();
+		const reloaded = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		expect(rowOrder(reloaded.container)).toEqual([20, 70, 71, 72]);
+	});
+
+	it('keeps the exposed list during reconciliation and ignores a stale read when another move is queued', async () => {
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const card = modelRow(70);
+		const read = deferred<typeof models>();
+		mocks.get.mockImplementationOnce(async (path: string) => {
+			expect(path).toBe('/api/v1/chat/admin/models');
+			return read.promise;
+		});
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		const savedSnapshot = models.map((row) => ({ ...row }));
+		expect(list.isConnected).toBe(true);
+		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 아래로 이동' }));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		read.resolve(savedSnapshot);
+		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
+		expect(modelRow(70)).toBe(card);
+		expect(models.filter((row) => row.provider_id === 7).sort((a, b) => a.sort_order - b.sort_order).map((row) => row.id)).toEqual([71, 70]);
+	});
+
+	it('saves queued moves for separate providers without replacing either visible order', async () => {
+		models.push({ ...hidden, id: 21, display_name: 'Other Second', sort_order: 101 });
+		const pending = deferred<void>();
+		mocks.post.mockImplementationOnce(async (_path: string, body: ModelOrderRequest) => {
+			await pending.promise;
+			persistModelOrder(body);
+		});
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await fireEvent.click(within(modelRow(20)).getByRole('button', { name: 'Hidden 아래로 이동' }));
+		expect(rowOrder(view.container)).toEqual([21, 20, 70, 71]);
+		pending.resolve();
+		await waitFor(() => expect(screen.getByRole('list', { name: '등록 모델 표시 순서' }).getAttribute('aria-busy')).toBe('false'));
+		view.unmount();
+		const reloaded = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		expect(rowOrder(reloaded.container)).toEqual([21, 20, 70, 71]);
+	});
+
+	it.each([409, 503])('restores the last confirmed order when a subsequent queued save fails with %i', async (status) => {
+		models.push({ ...second, id: 72, display_name: 'Third', sort_order: 5 });
+		const pending = deferred<void>();
+		mocks.post.mockImplementationOnce(async (_path: string, body: ModelOrderRequest) => {
+			await pending.promise;
+			persistModelOrder(body);
+		}).mockImplementationOnce(async () => {
+			models = models.map((row) => row.id === 70 ? { ...row, effective_input_price_per_million: '2' } : row);
+			throw new mocks.ApiError('unsafe private failure', status);
+		});
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		const list = screen.getByRole('list', { name: '등록 모델 표시 순서' });
+		const card = modelRow(70);
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		pending.resolve();
+		await screen.findByRole('alert');
+		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70, 72]);
+		expect(within(card).getByText(/입력 2 · 출력 5 USD/)).toBeTruthy();
+		expect(screen.queryByText('unsafe private failure')).toBeNull();
+		expect(modelRow(70)).toBe(card);
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await waitFor(() => expect(list.getAttribute('aria-busy')).toBe('false'));
+		expect(rowOrder(view.container)).toEqual([20, 70, 71, 72]);
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
+	it('retains a confirmed move and reports a failed background read without rolling back the saved order', async () => {
+		const view = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		const card = modelRow(70);
+		mocks.get.mockRejectedValueOnce(new mocks.ApiError('private catalog failure', 503));
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await screen.findByRole('alert');
+		expect(rowOrder(view.container)).toEqual([20, 70, 71]);
+		expect(screen.queryByText('private catalog failure')).toBeNull();
+		view.unmount();
+		const reloaded = render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		expect(rowOrder(reloaded.container)).toEqual([20, 70, 71]);
+	});
+
+	it('applies changed server metadata after saving while retaining the keyed card and its selection', async () => {
+		render(ModelPage);
+		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
+		const card = modelRow(70);
+		await fireEvent.click(within(card).getByRole('checkbox', { name: 'Nemotron 선택' }));
+		mocks.post.mockImplementationOnce(async (_path: string, body: ModelOrderRequest) => {
+			persistModelOrder(body);
+			models = models.map((row) => row.id === 70 ? { ...row, effective_input_price_per_million: '2', is_active: false } : row);
+		});
+		await fireEvent.click(within(card).getByRole('button', { name: 'Nemotron 위로 이동' }));
+		await within(card).findByText(/입력 2 · 출력 5 USD/);
+		expect(modelRow(70)).toBe(card);
+		expect(within(card).getByRole('button', { name: '활성화' })).toBeTruthy();
+		expect((within(card).getByRole('checkbox', { name: 'Nemotron 선택' }) as HTMLInputElement).checked).toBe(true);
+	});
+
+	it('discards a late failure and pending moves after the auth scope changes', async () => {
 		const pending = Promise.withResolvers<void>();
 		mocks.post.mockReturnValueOnce(pending.promise);
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		await dragModel(modelRow(70), modelRow(71), 'before');
-		expect((within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' }) as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByLabelText('등록 모델 프로바이더 필터') as HTMLSelectElement).disabled).toBe(true);
+		await fireEvent.click(within(modelRow(70)).getByRole('button', { name: 'Nemotron 아래로 이동' }));
+		expect(rowOrder(view.container)).toEqual([20, 71, 70]);
 		models = [{ ...model, id: 90, display_name: 'Fresh A', sort_order: 0 }, { ...model, id: 91, display_name: 'Fresh B', sort_order: 1 }];
 		mocks.auth.set({ token: 'fresh-token', projectId: 'fresh-project' });
 		await screen.findByRole('checkbox', { name: 'Fresh A 선택' });
