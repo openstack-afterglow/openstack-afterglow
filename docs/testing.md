@@ -12,6 +12,8 @@ nav_order: 8
 - Source-equivalent dev CI41467016850·41467160186이 실패했고, 후자의 backend는12530passed/3skipped와 기존 PTY interrupt timeout1건이었다. 그 외 버전·frontend·contract·disposable DB job은 통과했다. 실패를 무시하거나 tag를 먼저 생성하지 않는다.
 - 진단 CI41469295043은 foreground pgrp=child pgrp, ISIG on, VINTR03, SIGINT unblocked/caught, Ctrl-C echo와 fd0 read 대기를 확인했다. 별도 Linux Python3.12.3의 libc fgets gate에서 prompt 출력과 read 사이에 Ctrl-C를 전달하면 대기하고 newline 뒤에만 cancellation이 처리되는 동일 증상을 결정적으로 재현했다.
 - Linux PTY fixture는 prompt 출력만으로 준비를 간주하지 않고 `/proc/<pid>/syscall`에서 실제 terminal fd0 read 진입을 기다린 뒤 동일한 Ctrl-C byte를 보낸다. SIGINT/no-write/hidden-secret 검증과 원래30초 deadline을 유지하며 추가 newline·임의 sleep·skip·성공할 때까지 재실행은 쓰지 않는다. 다른 POSIX는 기존 native prompt handshake를 유지한다. 이는 실제 입력 대기를 시험하는 harness 동기화이며 CPython의 일반 pre-read SIGINT 경합을 고쳤다는 주장이 아니다. 임시 signal diagnostics는 제거하고 JSON/log 증거를 보존한다.
+- Final source4b493144891cc6a6495560ba7a4339c09a0593a1/fingerprint afcfe6686bef0f5431f580634c14d2680350ff9b1e61cb9a37580a40fdfdbc92/3942files에서 isolated 전체 gate exit0(backend12428/106skip, frontend6446/502files, contracts183, realDB167/37deselected, Ruff820; artifact586), Linux Python3.12.3 actual setup11passed. 최초 scratch gate의 frontend 생성 설정 경로 오류를 수정한 뒤 최종 전체를 검증했다.
+- Exact sourceCI41472014102, numeric tag imageCI41473493948, Helm41473493855 success. GitHub latest stable [1.32.2](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.2), 세 release/latest image digest·OCI revision 일치와 network-none/read-only/non-root linux/amd64 runtime1.32.2, OCI Helm version/appVersion1.32.2를 확인했다. 운영 배포는 없으며 동시 진행 중 Pi/chat/SSO source·문서는 포함하지 않았다. Receipt: `~/.local/share/afterglow-proofs/release-1.32.2-20261102/`.
 
 ## 1.32.2 커밋·버전 준비 (2026-11-02, local dev)
 
