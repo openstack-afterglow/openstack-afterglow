@@ -10,6 +10,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **1.32.2 발행 범위 정정 (2026-11-02):** 사용자가 버전 상향은 항상 정식 release 발행까지 포함함을 명시했다. 위 source 준비 제한을 대체하여 검증된 commit의 dev push·exact-SHA CI·불변 numeric tag·GitHub Release·image/alias·Helm 발행을 수행한다. 진행 중인 다른 세션 source와 운영 Kolla/native/schema 변경은 제외하며 runtime/API topology는 변경하지 않는다.
 
+1.32.2 발행 CI의 기존 Linux PTY interrupt 실패는 prompt 출력과 실제 stdin read 준비를 구분해 진단했다. Fixture에서 실제 terminal read를 관측한 뒤 Ctrl-C를 보내며 no-write/비밀 비표시·deadline은 유지한다. Production CLI/API·schema·topology 변경은 없다.
+
 **남은 worktree 통합 (2026-11-02, local dev):** 여덟 historical worktree의 실제 delta를 최신 dev와 이력에 대조한다. 누락된 관리자 모델 연속 재정렬은 optimistic 표시·provider별 최신 대기 순서·직렬 CAS·마지막204 확정 순서·model-only background 조회로 통합하며 keyed 카드·포커스·숨은 종류 슬롯·auth/project 수명 fence와 새 `preserveRows`/미확정 등록 계약을 유지한다. 저장 중 추가 이동은 허용하고 다른 행 mutation·필터는 잠그며 실패 복구에서만 이동을 잠근다. 기존 native API/schema·권한 모델·배포 topology는 바꾸지 않는다. GPU1.30.13의 별도 post-release 증거와 archive를 정상 merge하며 오래된 CLI·i18n·Router·Drover·Barbican 스냅샷은 최신 구현을 되돌리지 않고 구체적인 대체 근거를 기록한다. Barbican의 옛 generic-error 계약도 기존 full-app500 handler가 이미 충족하므로 bare-router만의 차이를 새 공개 API 결함으로 오인해 수정하지 않는다. 공유 checkout의 진행 중 최초 비밀번호 설정 작업은 이 통합에 포함하지 않는다. 이 기록은 local source 통합이며 게시된1.32.1 artifact나 운영 수용을 소급 갱신하지 않는다.
 
 **1.32.0 GitHub minor publication 완료 (2026-11-02):** 현재 변경77files를 source `a8e993911f9793ef0b6b73aad0dba9a1f5adcbe2`로 dev에 게시했다. 전체 gate와 실제 compiled resize/auth smoke, exact-SHA CI41332584500 뒤 불변 `v1.32.0`을 생성했고 tagimage41333266068·Helm41333266023이 성공했다. API/frontend/worker의 linux/amd64 release/latest digest·revision 일치와 network-none 이미지3개의 실제1.32.0 metadata/API resize helper를 확인했다. Resize composer·IAM 자기 역할 편집/FIFO 대기·인증 장애 복구·상세 새로고침과 capability 표시 개선이며 새 migration/native 정책/topology는 없다. [완료 기록](openspec/changes/archive/2026-11-02-release-afterglow-1-32-0/tasks.md)은 GitHub 발행만 포함하고 controller1 장애로 보류한 운영 native/schema/service cutover는 수행하지 않았다.
@@ -1936,9 +1938,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3b43b196a82406020f79f91e7877caf61e9f806fde90e6a511c113e4813ce01e",
-  "reviewed_at": "2026-11-02T15:12:20Z",
-  "summary": "Investigate existing Linux PTY Ctrl-C cancellation timeout using non-secret terminal/process diagnostics; production topology and behavior unchanged; concurrent WIP excluded."
+  "source_sha256": "afcfe6686bef0f5431f580634c14d2680350ff9b1e61cb9a37580a40fdfdbc92",
+  "reviewed_at": "2026-11-02T15:24:54Z",
+  "summary": "Linux PTY fixture waits for actual terminal read; host ABI read numbers support amd64 emulation; no production behavior or topology change."
 }
 ```
 <!-- architecture-review:end -->

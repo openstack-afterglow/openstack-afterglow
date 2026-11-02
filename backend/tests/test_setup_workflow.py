@@ -224,25 +224,7 @@ def test_real_pty_edit_hidden_secret_and_generate_or_cancel(tmp_path, finish):
         deadline = time.monotonic() + 30
         while marker not in pending:
             if time.monotonic() > deadline:
-                import termios
-
-                attributes = termios.tcgetattr(terminal)
-                state = {
-                    "foreground_pgrp": os.tcgetpgrp(terminal),
-                    "child_pgrp": os.getpgid(pid),
-                    "isig": bool(attributes[3] & termios.ISIG),
-                    "vintr": repr(attributes[6][termios.VINTR]),
-                    "pending_bytes": len(pending),
-                    "interrupt_echoed": b"^C" in pending,
-                }
-                proc = Path(f"/proc/{pid}")
-                if proc.is_dir():
-                    state["signals"] = [
-                        row for row in (proc / "status").read_text().splitlines() if row.startswith(("State:", "Sig"))
-                    ]
-                    state["syscall"] = (proc / "syscall").read_text().strip()
-                    state["wait_channel"] = (proc / "wchan").read_text().strip()
-                raise AssertionError(f"PTY did not reach {marker!r}; terminal/process state: {state}")
+                raise AssertionError(f"PTY did not reach {marker!r}")
             ready, _, _ = select.select([terminal], [], [], 1)
             if ready:
                 chunk = os.read(terminal, 65536)
@@ -279,6 +261,23 @@ def test_real_pty_edit_hidden_secret_and_generate_or_cancel(tmp_path, finish):
             assert (tmp_path / "generated/k8s/secret.yaml").is_file()
             assert (tmp_path / "generated/helm/afterglow/values-local.yaml").is_file()
         else:
+            if finish == "interrupt" and sys.platform == "linux":
+                # A flushed prompt precedes CPython's stdio read. An earlier
+                # SIGINT can remain pending while fgets blocks; exercise Ctrl-C
+                # at the actual waiting prompt, not that libc readiness gap.
+                proc = Path(f"/proc/{pid}")
+                assert os.readlink(proc / "fd/0") == os.readlink(proc / "fd/1")
+                # /proc reports the host ABI even under amd64 emulation on arm64.
+                read_numbers = {"0", "3", "63"}  # x86-64, i386, asm-generic/arm64
+                deadline = time.monotonic() + 30
+                while True:
+                    syscall = (proc / "syscall").read_text().split()
+                    if len(syscall) > 1 and syscall[0] in read_numbers and syscall[1] == "0x0":
+                        break
+                    assert time.monotonic() < deadline, "PTY child did not block reading terminal stdin"
+                    select.select([], [], [], 0.001)
+                # Other POSIX systems retain their native prompt handshake;
+                # /proc syscall readiness is a Linux-specific stdio requirement.
             os.write(terminal, b"q\n" if finish == "cancel" else b"\x03")
             expect(b"Cancelled. No files written.")
             assert not (tmp_path / "afterglow.conf").exists()

@@ -10,7 +10,8 @@ nav_order: 8
 
 - 사용자 후속 지시로 버전 상향의 완료 범위가 정식 GitHub/GHCR/Helm 발행까지 확대됐다. 운영 Kolla/native/schema 변경은 포함하지 않는다.
 - Source-equivalent dev CI41467016850·41467160186이 실패했고, 후자의 backend는12530passed/3skipped와 기존 PTY interrupt timeout1건이었다. 그 외 버전·frontend·contract·disposable DB job은 통과했다. 실패를 무시하거나 tag를 먼저 생성하지 않는다.
-- PTY timeout에 credential/transcript 없이 foreground pgrp·ISIG/VINTR·pending byte 수·Linux signal/syscall/wait 상태를 기록해 원인을 구분한다. Prompt 관측만으로 input read 준비나 SIGINT 처리를 단정하지 않으며 테스트 시간·성공 조건은 완화하지 않는다.
+- 진단 CI41469295043은 foreground pgrp=child pgrp, ISIG on, VINTR03, SIGINT unblocked/caught, Ctrl-C echo와 fd0 read 대기를 확인했다. 별도 Linux Python3.12.3의 libc fgets gate에서 prompt 출력과 read 사이에 Ctrl-C를 전달하면 대기하고 newline 뒤에만 cancellation이 처리되는 동일 증상을 결정적으로 재현했다.
+- Linux PTY fixture는 prompt 출력만으로 준비를 간주하지 않고 `/proc/<pid>/syscall`에서 실제 terminal fd0 read 진입을 기다린 뒤 동일한 Ctrl-C byte를 보낸다. SIGINT/no-write/hidden-secret 검증과 원래30초 deadline을 유지하며 추가 newline·임의 sleep·skip·성공할 때까지 재실행은 쓰지 않는다. 다른 POSIX는 기존 native prompt handshake를 유지한다. 이는 실제 입력 대기를 시험하는 harness 동기화이며 CPython의 일반 pre-read SIGINT 경합을 고쳤다는 주장이 아니다. 임시 signal diagnostics는 제거하고 JSON/log 증거를 보존한다.
 
 ## 1.32.2 커밋·버전 준비 (2026-11-02, local dev)
 
