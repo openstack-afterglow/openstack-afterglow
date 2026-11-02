@@ -2,8 +2,8 @@
 
 - [x] 현재 완료 source 전체를 보존하고 release 규칙·metadata를 1.32.1로 동기화한다.
 - [x] X.Y.Z와 historical vX.Y.Z의 version apply/check, workflow image/Helm 발행, operator promotion을 검증한다.
-- [ ] 전체 test:gate 및 실제 실행 smoke·architecture guard 뒤 dev에 게시한다.
-- [ ] 정확한 SHA의 CI 성공 뒤 불변 1.32.1 tag와 release notes를 게시하고 image/latest/Helm revision·digest·runtime version을 확인한다.
+- [x] 전체 test:gate 및 실제 실행 smoke·architecture guard 뒤 dev에 게시한다.
+- [x] 정확한 SHA의 CI 성공 뒤 불변 1.32.1 tag와 release notes를 게시하고 image/latest/Helm revision·digest·runtime version을 확인한다.
 - [ ] BLOCKED / 이번 발행 범위 밖: 현재 운영 baseline·native 인증/schema·cold restore·전체 writer 전환 선행 조건 검증.
 - [ ] BLOCKED / 이번 발행 범위 밖: 표준 compute→control Kolla 실행과 public 버전·readiness·인증/화면 수용.
 
@@ -34,3 +34,9 @@ main PR/merge는 pie_root 소유다. 기존 controller1 incident 기록은 추�
 - 사용자가 `Afterglow 발행까지만`을 명시 선택했다. 운영/native/schema/연관서비스 발행은 제외하고 위2운영task는 미완료로 유지한다. Release change를 운영 완료로 archive하지 않는다.
 - 9locale×2theme×20viewport×login/logout720조건 전부 통과, reveal/SSO/reset18·motion18·empty-sessioncleanup gating 확인. Initial ja280 clipping을1CSS선언으로 수정했고 수정 compiled에서 전체 재검증했다. Proof `login-summary-final.json` 및 `logout-fixed-compiled/logout-summary.json`.
 - 최종source9943020.../3942files fullgate221 통과: backend12412/94skip, frontend6428/502files, contract183, realDB167, Ruff820. Native/platform/browser 수용은 synthetic/browser proof와 구분한다.
+
+## Publication Receipt
+
+- Source54494335d36e05200c9c009f04994e32733c3127; sourceCI41401804804, tagimage41402786487, Helm41402786490 success. Immutable `1.32.1` and GitHub latestrelease `1.32.1` published; no v1.32.1tag.
+- All3release/latestindexdigests+OCIrevisionmatch; network-none/read-only/non-root runtime1.32.1 all3linux/amd64images passed. PublishedHelmversion/appVersion1.32.1. Evidence image-publication.json/image-runtime-smoke.json/helm-publication.json under persistentproofroot.
+- Operationaltasks2remainblocked/outofscope byexplicituserdecision. No coldcutover/writerstop/native/schema/Kollamutation; protectedhotbackup is not completecoldrollbackguarantee. Change remainsopen, not falselyarchivedasdeployed.
