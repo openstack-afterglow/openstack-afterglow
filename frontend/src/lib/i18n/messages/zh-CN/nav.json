@@ -75,6 +75,7 @@
 	"items.projectQuotas": "项目配额",
 	"items.monitoringOverview": "综合监控",
 	"items.nodes": "节点",
+	"items.serverTemperatures": "服务器温度",
 	"items.serviceStatus": "服务状态",
 	"items.events": "运维事件",
 	"items.orphans": "孤立资源",

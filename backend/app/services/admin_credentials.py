@@ -1,4 +1,4 @@
-"""Caller-connection-only Keystone credential operations.
+"""Verified administrator inventory and caller-owned application credential creation.
 
 ApplicationCredential.allow_commit in SDK 3.3 is not an API update contract:
 Keystone exposes only list/get/create/delete. Creation is owner/project scoped.

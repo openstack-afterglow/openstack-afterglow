@@ -3,7 +3,7 @@
 //
 // 사용:
 //   node scripts/apply-tag-version.js          # GITHUB_REF 환경변수에서 읽음
-//   node scripts/apply-tag-version.js v1.14.0  # 직접 지정
+//   node scripts/apply-tag-version.js 1.32.1  # 직접 지정 (기존 v 접두사도 허용)
 //
 // 동작:
 //   1) tag 에서 semver 추출
@@ -17,18 +17,14 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const ref = process.env.GITHUB_REF || "";
-let version;
-if (ref.startsWith("refs/tags/v")) {
-	version = ref.slice("refs/tags/v".length);
-} else if (process.argv[2]) {
-	version = process.argv[2].replace(/^v/, "");
-} else {
-	console.error("apply-tag-version: GITHUB_REF=refs/tags/vX.Y.Z 또는 argv[2] 필요");
+const source = ref.startsWith("refs/tags/") ? ref : process.argv[2];
+if (!source) {
+	console.error("apply-tag-version: GITHUB_REF=refs/tags/X.Y.Z 또는 argv[2] 필요");
 	process.exit(1);
 }
-
-if (!/^\d+\.\d+\.\d+/.test(version)) {
-	console.error(`apply-tag-version: 잘못된 버전 형식: ${version}`);
+const version = source.replace(/^refs\/tags\//, "").replace(/^v/, "");
+if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
+	console.error(`apply-tag-version: 잘못된 버전 형식: ${source}`);
 	process.exit(1);
 }
 

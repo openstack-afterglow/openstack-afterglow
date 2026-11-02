@@ -1,0 +1,5 @@
+- [x] Fit login layout to viewport without body clipping.
+- [x] Add matching logout with active/done/server-warning/local-error states.
+- [x] Test20sizes ×5login/4logout states:180cases, no scroll or offscreen controls.
+- [x] Inspect short landscape, portrait and logout warning/error visuals; obtain independent review.
+- [x] Refresh gallery/screenshots, guide, design/architecture and package.

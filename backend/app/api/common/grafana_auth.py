@@ -23,6 +23,7 @@ async def get_grafana_dashboards(
         "grafana_url": settings.grafana_base_url,
         "dashboards": {
             "node": settings.grafana_dashboard_node_uid,
+            "node-temperatures": settings.grafana_dashboard_node_temperatures_uid,
             "rabbitmq": settings.grafana_dashboard_rabbitmq_uid,
             "mysqld": settings.grafana_dashboard_mysqld_uid,
             "proxysql": settings.grafana_dashboard_proxysql_uid,

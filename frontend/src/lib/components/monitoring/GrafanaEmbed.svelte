@@ -12,6 +12,8 @@
 		panelId?: number;
 		vars?: Record<string, string>;
 		range?: string;
+		timezone?: string;
+		refresh?: string;
 		height?: number;
 		desktopHeight?: number;
 		title?: string;
@@ -23,6 +25,8 @@
 		panelId,
 		vars = {},
 		range = 'now-1h',
+		timezone,
+		refresh,
 		height = 360,
 		desktopHeight,
 		title,
@@ -94,7 +98,7 @@
 		const varParams = Object.entries(vars)
 			.map(([k, v]) => `var-${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
 			.join('&');
-		const timeParams = `from=${range}&to=now`;
+		const timeParams = `from=${encodeURIComponent(range)}&to=now${timezone ? `&timezone=${encodeURIComponent(timezone)}` : ''}${refresh ? `&refresh=${encodeURIComponent(refresh)}` : ''}`;
 		// Grafana handles branding inside the cross-origin frame; avoid its sticky kiosk footer.
 		const common = `orgId=1&theme=${$resolvedTheme}&kiosk&hideLogo=1&${timeParams}${varParams ? '&' + varParams : ''}`;
 		if (panelId !== undefined) {

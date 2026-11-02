@@ -293,6 +293,7 @@ export const adminNavSections: NavSection[] = [
       withLabel('items.aodhAlarms', { href: '/admin/monitoring/aodh', icon: navIcons.activity, service: null }),
       withLabel('items.gnocchi', { href: '/admin/monitoring/gnocchi', icon: navIcons.chart, service: null }),
       withLabel('items.nodes', { href: '/admin/monitoring/node', icon: navIcons.instances, service: null }),
+      withLabel('items.serverTemperatures', { href: '/admin/monitoring/temperatures', icon: navIcons.cpu, service: null }),
       { label: 'MySQL', href: '/admin/monitoring/mysql', icon: navIcons.database, service: null },
       { label: 'ProxySQL', href: '/admin/monitoring/proxysql', icon: navIcons.proxy, service: null },
       { label: 'HAProxy', href: '/admin/monitoring/haproxy', icon: navIcons.balance, service: null },

@@ -78,6 +78,7 @@
 	"items.projectQuotas": "Kuota projek",
 	"items.monitoringOverview": "Gambaran keseluruhan pemantauan",
 	"items.nodes": "Nod",
+	"items.serverTemperatures": "Suhu pelayan",
 	"items.serviceStatus": "Status perkhidmatan",
 	"items.events": "Peristiwa operasi",
 	"items.orphans": "Sumber yatim",

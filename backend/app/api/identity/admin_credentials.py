@@ -11,7 +11,7 @@ from keystoneauth1 import exceptions as auth_exc
 from openstack import exceptions as sdk_exc
 
 from app.api.common.errors import public_service_error
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.models.admin_credentials import (
     ApplicationCredentialCreate,
     Identifier,
@@ -85,7 +85,7 @@ async def application_context(
 async def list_applications(
     domain_id: QueryIdentifier,
     user_id: OptionalQueryIdentifier = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
     token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
@@ -97,7 +97,7 @@ async def get_application(
     credential_id: Identifier,
     domain_id: QueryIdentifier,
     user_id: OptionalQueryIdentifier = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
     token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
@@ -123,7 +123,7 @@ async def delete_application(
     credential_id: Identifier,
     domain_id: QueryIdentifier,
     user_id: OptionalQueryIdentifier = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
     token_info=Depends(get_token_info),
 ):
     user_id = user_id or token_info["user_id"]
@@ -133,7 +133,7 @@ async def delete_application(
 
 @router.get("/user-credentials")
 async def list_user_credentials(
-    domain_id: QueryIdentifier, user_id: OptionalQueryIdentifier = None, conn=Depends(get_os_conn)
+    domain_id: QueryIdentifier, user_id: OptionalQueryIdentifier = None, conn=Depends(get_admin_os_conn)
 ):
     return await native(lambda: svc.list_user_credentials(conn, domain_id, user_id))
 
@@ -143,7 +143,7 @@ async def get_user_credential(
     credential_id: Identifier,
     domain_id: QueryIdentifier,
     sensitive: bool = Query(False),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     def fetch():
         resource = svc.get_user_credential(conn, domain_id, credential_id)
@@ -156,18 +156,22 @@ async def get_user_credential(
 
 
 @router.post("/user-credentials", status_code=201)
-async def create_user_credential(body: UserCredentialCreate, domain_id: QueryIdentifier, conn=Depends(get_os_conn)):
+async def create_user_credential(
+    body: UserCredentialCreate, domain_id: QueryIdentifier, conn=Depends(get_admin_os_conn)
+):
     return await native(lambda: svc.create_user_credential(conn, domain_id, body))
 
 
 @router.patch("/user-credentials/{credential_id}")
 async def update_user_credential(
-    credential_id: Identifier, body: UserCredentialUpdate, domain_id: QueryIdentifier, conn=Depends(get_os_conn)
+    credential_id: Identifier, body: UserCredentialUpdate, domain_id: QueryIdentifier, conn=Depends(get_admin_os_conn)
 ):
     return await native(lambda: svc.update_user_credential(conn, domain_id, credential_id, body))
 
 
 @router.delete("/user-credentials/{credential_id}", status_code=204)
-async def delete_user_credential(credential_id: Identifier, domain_id: QueryIdentifier, conn=Depends(get_os_conn)):
+async def delete_user_credential(
+    credential_id: Identifier, domain_id: QueryIdentifier, conn=Depends(get_admin_os_conn)
+):
     await native(lambda: svc.delete_user_credential(conn, domain_id, credential_id))
     return Response(status_code=204, headers=NO_STORE)

@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.api.identity import enrollment_policy as api
 from app.models.domain_iam import DomainEnrollment
 from app.models.domain_quotas import DomainQuotaPolicy
@@ -194,7 +194,7 @@ async def test_policy_api_rejects_nonboolean_visibility_without_saving(policy_db
     app = FastAPI()
     app.include_router(api.router, prefix="/api/v1/admin")
     app.dependency_overrides[require_admin] = lambda: ACTOR
-    app.dependency_overrides[get_os_conn] = lambda: None
+    app.dependency_overrides[get_admin_os_conn] = lambda: None
     body = {
         "revision": 0,
         "public_signup_enabled": True,
@@ -466,7 +466,7 @@ async def test_admin_enrollment_routes_reject_nonadmin_and_revoked_authority(
 
     app = FastAPI()
     app.include_router(api.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: None
+    app.dependency_overrides[get_admin_os_conn] = lambda: None
     monkeypatch.setattr(domain_scope, "domain_context", lambda *args, **kwargs: {})
     monkeypatch.setattr(domain_scope, "assert_token_context", lambda *args, **kwargs: None)
     monkeypatch.setattr(keystone, "validate_token", lambda *args, **kwargs: {"domain_id": "personal"})
@@ -492,7 +492,7 @@ async def test_admin_enrollment_routes_reject_nonadmin_and_revoked_authority(
 async def test_api_requires_fresh_admin_and_secret_free_bounded_pagination(policy_db, monkeypatch):
     app = FastAPI()
     app.include_router(api.router, prefix="/api/v1/admin")
-    app.dependency_overrides[get_os_conn] = lambda: None
+    app.dependency_overrides[get_admin_os_conn] = lambda: None
     app.dependency_overrides[get_token_info] = lambda: {"user_id": "ordinary", "is_system_admin": False}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

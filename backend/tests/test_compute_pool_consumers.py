@@ -132,6 +132,21 @@ async def test_native_project_exhaustion_is_not_replaced_by_pool_headroom():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("gathered", [False, True])
+async def test_unavailable_pool_reports_exact_fail_closed_code(monkeypatch, gathered):
+    failure = compute_pools.ComputePoolUnavailable("compute_pool_native_deadline")
+    monkeypatch.setattr(compute_pools, "project_pool_snapshot", AsyncMock(side_effect=failure))
+    native = {"cores": {"limit": 2, "in_use": 1}, "ram": {"limit": 4096, "in_use": 1024}}
+    projected, summary = await dashboard._with_compute_pool(
+        None, "project-a", native, **({"snapshot": failure} if gathered else {})
+    )
+    assert projected["cores"] is None and projected["ram"] is None
+    assert summary["state"] == "unavailable" and summary["error"] == "compute_pool_native_deadline"
+    _, other = await dashboard._with_compute_pool(None, "project-a", native, snapshot=RuntimeError("transport"))
+    assert other["error"] == "compute_pool_native_unavailable"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("state", ["active", "paused", "unavailable"])
 @pytest.mark.parametrize("cpu_limits", [{}, {"CPU": -1, "MEMORY_MB": -1}], ids=["gpu-only", "unlimited"])
 async def test_full_quotas_preserve_native_project_usage_independently_of_pool(

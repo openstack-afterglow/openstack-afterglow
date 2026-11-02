@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.api.identity import enrollment_policy as api
 from app.models.account_spaces import PersonalProjectIntent
 from app.models.domain_quotas import DomainQuotaOperation
@@ -167,7 +167,7 @@ async def test_quota_endpoints_expose_every_personal_project_and_reject_arbitrar
     app.include_router(api.router, prefix="/api/v1/admin")
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     app.dependency_overrides[get_token_info] = lambda: {**q.actor, "is_system_admin": True}
-    app.dependency_overrides[get_os_conn] = lambda: q.conn
+    app.dependency_overrides[get_admin_os_conn] = lambda: q.conn
     for index in range(101):
         directory.personal_projects[f"unmarked-{index:03d}"] = SimpleNamespace(
             id=f"unmarked-{index:03d}", name="Unmarked", domain_id=q.project["domain_id"], enabled=True

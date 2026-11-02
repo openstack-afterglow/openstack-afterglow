@@ -34,6 +34,52 @@ class SelectTagTests(unittest.TestCase):
         with self.assertRaises(_PROMOTER.PromotionError):
             _PROMOTER.tag_version("v0.2.22-rc1")
 
+    def test_selects_mixed_numeric_and_historical_tags_by_version(self) -> None:
+        self.assertEqual(_PROMOTER.select_tag("0.2.22", "v0.2.22", ["0.2.23", "v0.2.24"]), "v0.2.24")
+        self.assertEqual(_PROMOTER.select_tag("0.2.22", None, ["v0.2.22", "0.2.23"]), "0.2.23")
+
+    def test_equal_version_aliases_prefer_plain_tag_in_either_order(self) -> None:
+        for tags in (["v0.2.23", "0.2.23"], ["0.2.23", "v0.2.23"]):
+            self.assertEqual(_PROMOTER.select_tag("0.2.22", None, tags), "0.2.23")
+            self.assertIsNone(_PROMOTER.select_tag("0.2.23", "0.2.23", tags))
+            self.assertIsNone(_PROMOTER.select_tag("0.2.23", "v0.2.23", tags))
+
+    def test_plain_tags_do_not_downgrade_and_matching_pins_stay_unchanged(self) -> None:
+        self.assertIsNone(_PROMOTER.select_tag("0.2.23", None, ["0.2.22", "v0.2.21"]))
+        self.assertIsNone(_PROMOTER.select_tag("0.2.23", "0.2.23", ["0.2.23"]))
+
+    def test_rejects_malformed_plain_and_historical_tags(self) -> None:
+        for tag in ("0.2", "0.2.23junk", "v0.2.23/extra", "00.2.23", "0.2.23-rc1", "0.2.23+build"):
+            with self.subTest(tag=tag), self.assertRaises(_PROMOTER.PromotionError):
+                _PROMOTER.tag_version(tag)
+
+
+class VerifyTagSourceTests(unittest.TestCase):
+    def test_verifies_exact_tag_identity_and_package_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            operator = Path(directory)
+            for tag in ("1.32.1", "v1.32.1"):
+                (operator / "pyproject.toml").write_text(
+                    f'[tool.uv.sources]\ndrover = {{ git = "https://example.invalid/drover.git", tag = "{tag}" }}\n',
+                    encoding="utf-8",
+                )
+                for resolved_tag, version, error in (
+                    (tag, "1.32.1", None),
+                    ("v1.32.1" if tag == "1.32.1" else "1.32.1", "1.32.1", "not resolved from tag"),
+                    (tag, "1.32.0", "resolves to package version"),
+                ):
+                    with self.subTest(tag=tag, resolved_tag=resolved_tag, version=version):
+                        (operator / "uv.lock").write_text(
+                            f'[[package]]\nname = "drover"\nversion = "{version}"\n'
+                            f'source = {{ git = "https://example.invalid/drover.git?tag={resolved_tag}#{"a" * 40}" }}\n',
+                            encoding="utf-8",
+                        )
+                        if error is None:
+                            _PROMOTER.verify_tag_source(operator, "drover", _PROMOTER.SERVICES["drover"])
+                        else:
+                            with self.assertRaisesRegex(_PROMOTER.PromotionError, error):
+                                _PROMOTER.verify_tag_source(operator, "drover", _PROMOTER.SERVICES["drover"])
+
 
 class PromotionIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -78,15 +124,16 @@ class PromotionIntegrationTests(unittest.TestCase):
         self._git("commit", "-m", "v0.2.22 release", cwd=self.sibling_repo)
         self._git("tag", "v0.2.22", cwd=self.sibling_repo)
 
-        # Commit 2: v0.2.23 (new release tag)
+        # Commit 2: plain SemVer release tag
         (self.sibling_repo / "pyproject.toml").write_text(
             '[project]\nname = "drover"\nversion = "0.2.23"\nrequires-python = ">=3.11"\ndependencies = []\n'
             '[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n',
             encoding="utf-8",
         )
         self._git("add", "pyproject.toml", cwd=self.sibling_repo)
-        self._git("commit", "-m", "v0.2.23 release", cwd=self.sibling_repo)
-        self._git("tag", "v0.2.23", cwd=self.sibling_repo)
+        self._git("commit", "-m", "0.2.23 release", cwd=self.sibling_repo)
+        self._git("tag", "0.2.23", cwd=self.sibling_repo)
+
     def _setup_operator_project(self) -> None:
         self.operator_dir.mkdir(parents=True)
         repo_root = Path(__file__).resolve().parents[1]
@@ -119,7 +166,33 @@ class PromotionIntegrationTests(unittest.TestCase):
         assert package_count == 1, "operator lock must contain exactly one drover package entry"
         (self.operator_dir / "uv.lock").write_text(patched_lock, encoding="utf-8")
 
-    def test_promote_higher_tag_and_installer_lock_derivation(self) -> None:
+    def test_remote_tags_discover_both_styles_and_ignore_prereleases(self) -> None:
+        self._git("tag", "0.2.24-rc1", cwd=self.sibling_repo)
+        service = _PROMOTER.Service("drover", self.sibling_repo.as_uri())
+        self.assertEqual(sorted(_PROMOTER.remote_tags(service, self.base)), ["0.2.23", "v0.2.22"])
+
+    def test_same_commit_annotated_aliases_prefer_plain_tag(self) -> None:
+        self._git("tag", "-a", "v0.2.23", "-m", "Historical alias", "0.2.23", cwd=self.sibling_repo)
+        service = _PROMOTER.Service("drover", self.sibling_repo.as_uri())
+        tags = _PROMOTER.remote_tags(service, self.base)
+        self.assertEqual(sorted(tags), ["0.2.23", "v0.2.22", "v0.2.23"])
+        self.assertEqual(_PROMOTER.select_tag("0.2.22", None, tags), "0.2.23")
+
+    def test_conflicting_plain_and_historical_aliases_fail_closed(self) -> None:
+        self._git("tag", "v0.2.23", "v0.2.22", cwd=self.sibling_repo)
+        service = _PROMOTER.Service("drover", self.sibling_repo.as_uri())
+        with self.assertRaisesRegex(_PROMOTER.PromotionError, "conflicting release tags"):
+            _PROMOTER.remote_tags(service, self.base)
+
+    def test_promote_higher_plain_tag_and_installer_lock_derivation(self) -> None:
+        self._assert_promotion("0.2.23")
+
+    def test_promote_higher_historical_tag_and_installer_lock_derivation(self) -> None:
+        self._git("tag", "v0.2.23", "0.2.23", cwd=self.sibling_repo)
+        self._git("tag", "-d", "0.2.23", cwd=self.sibling_repo)
+        self._assert_promotion("v0.2.23")
+
+    def _assert_promotion(self, release_tag: str) -> None:
         repo_url = f"file://{self.sibling_repo.resolve()}"
         orig_services = dict(_PROMOTER.SERVICES)
         _PROMOTER.SERVICES["drover"] = _PROMOTER.Service("drover", repo_url)
@@ -127,15 +200,15 @@ class PromotionIntegrationTests(unittest.TestCase):
             changed = _PROMOTER.promote(self.operator_dir, ["drover"])
             self.assertTrue(changed)
 
-            # Verify pyproject.toml has drover tag = "v0.2.23" and no drover rev
+            # The operator and lock must retain the exact advertised tag identity.
             pyproject = (self.operator_dir / "pyproject.toml").read_text(encoding="utf-8")
-            self.assertIn(f'drover = {{ git = "{repo_url}", tag = "v0.2.23" }}', pyproject)
+            self.assertIn(f'drover = {{ git = "{repo_url}", tag = "{release_tag}" }}', pyproject)
             self.assertNotIn(f'drover = {{ git = "{repo_url}", rev =', pyproject)
             # Verify uv.lock entry
             lock_text = (self.operator_dir / "uv.lock").read_text(encoding="utf-8")
             self.assertIn("drover", lock_text)
             self.assertIn("0.2.23", lock_text)
-            self.assertIn("?tag=v0.2.23#", lock_text)
+            self.assertIn(f"?tag={release_tag}#", lock_text)
 
             # Verify unconditional verification passes
             _PROMOTER.verify_tag_source(self.operator_dir, "drover", _PROMOTER.SERVICES["drover"])

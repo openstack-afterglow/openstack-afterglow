@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, "..");
 const rootPkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf-8"));
 const version = rootPkg.version;
 
-if (!/^\d+\.\d+\.\d+/.test(version)) {
+if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
 	console.error(`invalid version in root package.json: ${version}`);
 	process.exit(1);
 }
@@ -52,14 +52,14 @@ if (fs.existsSync(chartPath)) {
 // 5) Keep the automatic Kolla image channel; update only an explicit release pin.
 const kollaSamplePath = path.join(root, "deploy/kolla/globals.afterglow.sample.yml");
 let kollaSample = fs.readFileSync(kollaSamplePath, "utf-8");
-if (!/^afterglow_image_tag:\s*"(?:latest|stable|v[^"]+)"/m.test(kollaSample)) {
-	console.error("deploy/kolla/globals.afterglow.sample.yml: afterglow_image_tag line not found");
+if (!/^afterglow_image_tag:\s*"(?:latest|stable|v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"\s*$/m.test(kollaSample)) {
+	console.error("deploy/kolla/globals.afterglow.sample.yml: valid afterglow_image_tag line not found");
 	process.exit(1);
 }
-if (/^afterglow_image_tag:\s*"v[^"]+"/m.test(kollaSample)) {
+if (!/^afterglow_image_tag:\s*"(?:latest|stable)"\s*$/m.test(kollaSample)) {
 	kollaSample = kollaSample.replace(
-		/^afterglow_image_tag:\s*"v[^"]+"/m,
-		`afterglow_image_tag: "v${version}"`
+		/^afterglow_image_tag:\s*"v?\d+\.\d+\.\d+"/m,
+		`afterglow_image_tag: "${version}"`
 	);
 	fs.writeFileSync(kollaSamplePath, kollaSample);
 }

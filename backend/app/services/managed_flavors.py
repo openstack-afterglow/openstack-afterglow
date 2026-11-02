@@ -217,6 +217,26 @@ def _claim_dispatched(state, flavor_id):
     return claim.get("dispatched") is True if isinstance(claim, dict) else bool(claim)
 
 
+_CLAIM_TOKEN = re.compile(r"[0-9a-f]{48}")
+
+
+def _adoptable_claim(flavor, shape):
+    """Return the native ownership token of an exact wanted managed flavor, else None."""
+    description = _field(flavor, "description")
+    prefix = f"afterglow:{OWNER}:"
+    if not isinstance(description, str) or not description.startswith(prefix):
+        return None
+    token = description.removeprefix(prefix)
+    if (
+        not _CLAIM_TOKEN.fullmatch(token)
+        or _field(flavor, "id") != shape["id"]
+        or _field(flavor, "is_public") is not False
+        or _field(flavor, "name") not in _immutable_names(shape)
+    ):
+        return None
+    return token
+
+
 async def _reset_unsent_claim(flavor_id, token):
     """Release only our exact claim after positively rejecting pre-submit work.
 
@@ -1041,8 +1061,20 @@ async def _manual_cpu_flavors(
                     report.append(item)
                     continue
             snapshot, specs, access = await run_sync(_manual_native, compute, fid)
+            if claim is None and specs.get(MARKER) == OWNER and CPU_TOKEN not in specs:
+                # A generated managed flavor outside the current wanted set is
+                # handled (and left unclaimed, hence retained) by the unsupported
+                # managed-flavor path, never adopted as a manual CPU flavor.
+                continue
             if claim is None and (MARKER in specs or CPU_TOKEN in specs):
-                item.update(status="conflict", reason="native ownership marker has no matching durable CPU claim")
+                # Another or lost Afterglow database owns this marker. Its original
+                # token cannot be recovered, so never adopt or mutate it; report it
+                # as ignored instead of blocking the whole reconciliation status.
+                item.update(
+                    status="retained",
+                    control_state="foreign_marker",
+                    reason="Ownership marker without a durable claim; ignored without adoption",
+                )
                 report.append(item)
                 continue
             label = canonical_cpu_display_name(snapshot["name"], snapshot["vcpus"], snapshot["ram"], specs)
@@ -1210,6 +1242,17 @@ async def _reconcile(
         fid = shape["id"]
         occupied_names = native_names | {name for name, owner in reserved_names if owner != fid}
         flavor = existing.get(fid)
+        if flavor is not None and fid not in state["claims"]:
+            # A shared or replaced Afterglow database may lose the durable claim
+            # while native Nova still carries this exact deterministic identity.
+            # Re-adopt ONLY current wanted shapes: unsupported marked flavors stay
+            # unclaimed so the retirement path below cannot strip their grants.
+            adopted = _adoptable_claim(flavor, shape)
+            if adopted is not None:
+                state["claims"][fid] = {"token": adopted, "dispatched": True, "name": _field(flavor, "name")}
+                reserved_names.add((_field(flavor, "name"), fid))
+                await _fence(lease, state["revision"])
+                await _save(state)
         claim = _claim_token(state, fid)
         if (
             flavor is not None

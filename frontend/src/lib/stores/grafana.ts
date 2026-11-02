@@ -5,7 +5,7 @@ import { getMockupRevision, onMockupRevisionChange } from '$lib/mockup/state';
 import type { MockupProfileId } from '$lib/mockup/contracts';
 import { getAuthVerificationEpoch } from '$lib/stores/auth';
 
-export type GrafanaDashboardKey = 'node' | 'rabbitmq' | 'mysqld' | 'proxysql' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu';
+export type GrafanaDashboardKey = 'node' | 'node-temperatures' | 'rabbitmq' | 'mysqld' | 'proxysql' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu';
 
 export interface GrafanaContext {
 	grafanaUrl: string;

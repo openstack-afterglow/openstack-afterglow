@@ -11,9 +11,9 @@ Zun "컨테이너"와 혼동 방지를 위해 변수/응답 키에 object_storag
 from __future__ import annotations
 
 import concurrent.futures
-import contextlib
 import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
@@ -40,15 +40,14 @@ def _is_account_not_found(exc: Exception) -> bool:
     """Ceph RGW에서 Swift 계정이 초기화되지 않은 경우 404를 반환하는지 확인."""
     from openstack.exceptions import ResourceNotFound
 
-    return isinstance(exc, ResourceNotFound) or (hasattr(exc, "status_code") and getattr(exc, "status_code", 0) == 404)
+    return (
+        isinstance(exc, ResourceNotFound)
+        or (getattr(exc, "http_status", None) or getattr(exc, "status_code", None)) == 404
+    )
 
 
 def _is_unauthorized(exc: Exception) -> bool:
-    """Keystone/Swift 401 Unauthorized 검사.
-
-    admin fan-out 시 일부 프로젝트에 admin role 이 없으면 Keystone rescope 가
-    Unauthorized raise. traceback 출력하지 않고 info 로 swallow 하기 위해 분기.
-    """
+    """Recognize a native Keystone/Swift 401 without swallowing other failures."""
     try:
         from keystoneauth1.exceptions.http import Unauthorized
 
@@ -117,6 +116,17 @@ def list_project_containers(
     whether its token may read AUTH_<project_id>. Never mutate the shared proxy while
     parallel account reads are running, and never turn provider denials into emptiness.
     """
+    proxy = _project_account_proxy(conn, project_id)
+    try:
+        return _container_inventory(proxy, include_quarantine, include_trash)
+    except Exception as exc:
+        if _is_account_not_found(exc):
+            return []
+        raise
+
+
+def _project_account_proxy(conn, project_id: str):
+    """Build an isolated account proxy from the verified admin-project endpoint."""
     from openstack.object_store.v1._proxy import Proxy
 
     authenticated_project = getattr(conn, "_afterglow_authenticated_project_id", None)
@@ -145,13 +155,7 @@ def list_project_containers(
     ):
         raise ValueError("Swift administrator account endpoint is unverified")
     target = urlunsplit(parts._replace(path=prefix + "/AUTH_" + quote(project_id, safe="")))
-    proxy = Proxy(session=conn.session, service_type="object-store", endpoint_override=target)
-    try:
-        return _container_inventory(proxy, include_quarantine, include_trash)
-    except Exception as exc:
-        if _is_account_not_found(exc):
-            return []
-        raise
+    return Proxy(session=conn.session, service_type="object-store", endpoint_override=target)
 
 
 def list_containers(
@@ -223,78 +227,65 @@ def count_containers(conn, *, timeout: float | int | None = None, strict: bool =
         return 0
 
 
+@dataclass(frozen=True)
+class AccountContainerCount:
+    container_count: int
+    unreadable_accounts: int
+
+
 def count_containers_all_projects(
-    admin_token: str,
+    conn,
     *,
     per_request_timeout: float = 2.0,
     total_budget: float = 8.0,
     max_workers: int = 8,
-    strict: bool = False,
-) -> int:
-    """admin 토큰으로 모든 프로젝트 fan-out 해서 swift 컨테이너 총 수 반환.
+) -> AccountContainerCount:
+    """Count readable accounts using only the verified admin-project credential.
 
-    admin overview의 cross-project 카운트 용도. swift 계정은 프로젝트별로 분리되므로
-    admin 본인 프로젝트의 conn.object_store만 보면 0이 나올 수 있어 fan-out 필요.
-    한 프로젝트가 401/404여도 해당 프로젝트만 0으로 처리하고 나머지는 합산한다.
-    타임아웃 발생 시 부분합 대신 0을 반환한다.
+    Consume the complete native project inventory, then HEAD each exact account.
+    A 404 is empty; 401/403 is unreadable, never proof of an empty RGW account.
+    Any other error or unfinished read invalidates the entire observation.
     """
-    from app.services import keystone
-
-    try:
-        projects = keystone.list_system_projects(admin_token)
-    except Exception:
-        _logger.warning("admin 프로젝트 목록 조회 실패", exc_info=True)
-        if strict:
-            raise
-        return 0
-
-    if strict and (not isinstance(projects, list) or any(not isinstance(p, dict) or not p.get("id") for p in projects)):
+    projects = list(conn.identity.projects())
+    project_ids = [getattr(project, "id", None) for project in projects]
+    if any(not isinstance(pid, str) or not pid for pid in project_ids) or len(set(project_ids)) != len(project_ids):
         raise ValueError("Invalid project inventory for Swift overview")
-    project_ids = [p["id"] for p in projects if isinstance(p, dict) and p.get("id")]
     if not project_ids:
-        return 0
+        return AccountContainerCount(0, 0)
 
-    def _count_for_project(pid: str) -> int:
-        sub_conn = None
+    def _count_for_project(pid: str) -> AccountContainerCount:
+        proxy = _project_account_proxy(conn, pid)
         try:
-            sub_conn = keystone.get_admin_connection_for_project(pid)
-            if hasattr(sub_conn, "session") and sub_conn.session is not None:
-                sub_conn.session.timeout = per_request_timeout
-            return count_containers(sub_conn, timeout=per_request_timeout, strict=strict)
+            response = proxy.head("/", connect_retries=0, raise_exc=True, timeout=per_request_timeout)
+            _require_swift_success(response, "account HEAD")
+            headers = response.headers
+            value = headers.get("X-Account-Container-Count")
+            if value is None:
+                value = headers.get("x-account-container-count")
+            if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
+                raise ValueError("Invalid Swift container count")
+            return AccountContainerCount(int(value), 0)
         except Exception as exc:
-            if strict:
-                raise
-            if not _is_unauthorized(exc):
-                _logger.debug("프로젝트 %s connection 실패", pid, exc_info=True)
-            return 0
-        finally:
-            if sub_conn is not None:
-                with contextlib.suppress(Exception):
-                    sub_conn.close()
+            if _is_account_not_found(exc):
+                return AccountContainerCount(0, 0)
+            status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
+            if _is_unauthorized(exc) or status == 403:
+                return AccountContainerCount(0, 1)
+            raise
 
     workers = min(max(1, max_workers), len(project_ids))
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
     try:
         futures = [executor.submit(_count_for_project, pid) for pid in project_ids]
-        done, not_done = concurrent.futures.wait(futures, timeout=total_budget)
-
+        _, not_done = concurrent.futures.wait(futures, timeout=total_budget)
         if not_done:
-            _logger.warning(
-                "Swift all-project 카운트 타임아웃 (budget=%s, pending=%d/%d)",
-                total_budget,
-                len(not_done),
-                len(futures),
-            )
-            for f in not_done:
-                f.cancel()
-            if strict:
-                raise TimeoutError("Swift all-project inventory incomplete")
-            return 0
-
-        total = 0
-        for f in futures:
-            total += f.result()
-        return total
+            for future in not_done:
+                future.cancel()
+            raise TimeoutError("Swift all-project inventory incomplete")
+        counts = [future.result() for future in futures]
+        return AccountContainerCount(
+            sum(result.container_count for result in counts), sum(result.unreadable_accounts for result in counts)
+        )
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 

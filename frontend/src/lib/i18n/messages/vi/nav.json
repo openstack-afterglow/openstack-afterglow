@@ -70,6 +70,7 @@
 	"items.projectQuotas": "Hạn ngạch dự án",
 	"items.monitoringOverview": "Tổng quan giám sát",
 	"items.nodes": "Nút",
+	"items.serverTemperatures": "Nhiệt độ máy chủ",
 	"items.serviceStatus": "Trạng thái dịch vụ",
 	"items.events": "Sự kiện vận hành",
 	"items.orphans": "Tài nguyên mồ côi",

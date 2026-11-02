@@ -17,7 +17,7 @@ from openstack.exceptions import ForbiddenException
 from sqlalchemy import Integer, MetaData
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.api.identity.login_monitoring import router
 from app.models.activity import ActivityLog
 from app.services import login_monitoring as service
@@ -53,7 +53,7 @@ async def monitoring(monkeypatch):
     app.include_router(router, prefix="/api/v1/admin/monitoring/logins")
     app.dependency_overrides[get_token_info] = lambda: authority
     app.dependency_overrides[require_admin] = synthetic_verified_admin
-    app.dependency_overrides[get_os_conn] = lambda: conn
+    app.dependency_overrides[get_admin_os_conn] = lambda: conn
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield SimpleNamespace(client=client, redis=redis, factory=factory, conn=conn, authority=authority)
     await redis.close()

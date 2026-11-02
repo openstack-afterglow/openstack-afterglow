@@ -36,11 +36,11 @@ image selection: the five services follow their existing published GHCR
 `latest` channels through `*_image_tag` (`stable` where published). A sibling
 release is promotable only when all of these are true:
 
-1. The sibling has pushed an immutable stable `vX.Y.Z` tag.
+1. The sibling has pushed an immutable stable `X.Y.Z` tag (historical `vX.Y.Z` is also accepted).
 2. The tag and root distribution metadata have exactly the same `X.Y.Z`
    version.
 3. The tag contains the package-owned Kolla role that its root wheel installs.
-4. The generated operator PR contains the matching `tag = "vX.Y.Z"` source,
+4. The generated operator PR contains the exact matching `tag = "X.Y.Z"` (or historical prefixed tag) source,
    a refreshed `uv.lock`, and an architecture-review stamp.
 
 `.github/workflows/promote-kolla-role-tags.yml` polls the three Git-sourced
@@ -83,9 +83,9 @@ the exact release tag—never a branch—and regenerate the lock from this
 directory:
 
 ```bash
-uv add --no-sync --tag vX.Y.Z "drover @ git+https://github.com/openstack-afterglow/drover.git"
-uv add --no-sync --tag vX.Y.Z "lumen @ git+https://github.com/openstack-afterglow/lumen.git"
-uv add --no-sync --tag vX.Y.Z "waygate @ git+https://github.com/openstack-afterglow/waygate.git"
+uv add --no-sync --tag X.Y.Z "drover @ git+https://github.com/openstack-afterglow/drover.git"
+uv add --no-sync --tag X.Y.Z "lumen @ git+https://github.com/openstack-afterglow/lumen.git"
+uv add --no-sync --tag X.Y.Z "waygate @ git+https://github.com/openstack-afterglow/waygate.git"
 uv lock --refresh
 ```
 

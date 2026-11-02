@@ -75,6 +75,7 @@
 	"items.projectQuotas": "プロジェクトクォータ",
 	"items.monitoringOverview": "統合モニタリング",
 	"items.nodes": "ノード",
+	"items.serverTemperatures": "サーバー温度",
 	"items.serviceStatus": "サービス状態",
 	"items.events": "運用イベント",
 	"items.orphans": "孤立リソース",

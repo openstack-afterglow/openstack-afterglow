@@ -360,7 +360,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     if dashboards:
         mon_out["dashboards"] = {
             _s(k): dashboards[k] for k in (
-                "node_uid", "rabbitmq_uid", "mysqld_uid", "proxysql_uid",
+                "node_uid", "node_temperatures_uid", "rabbitmq_uid", "mysqld_uid", "proxysql_uid",
                 "memcached_uid", "etcd_uid", "haproxy_uid", "libvirt_uid",
                 "openstack_uid", "ceph_uid", "instance_cpu_uid", "instance_gpu_uid",
             ) if k in dashboards

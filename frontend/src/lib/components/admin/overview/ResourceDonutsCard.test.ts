@@ -15,6 +15,7 @@ function snapshot(): Overview {
 		ram_gb: { used: 32, total: 64 },
 		disk_gb: { used: 120, total: 1000, volumes: 100, images: 20 },
 		containers_count: 0, file_storage_count: 0, database_instances_count: 0, object_storage_containers_count: 0,
+		object_storage_unreadable_accounts: 0,
 	};
 }
 beforeEach(() => initLocale('en'));

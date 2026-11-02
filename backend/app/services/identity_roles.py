@@ -606,28 +606,32 @@ class _GraphLease:
     async def waiters_pending(self) -> bool:
         """Observe foreground demand only while this lease still owns the graph."""
         await self.assert_owned()
-        try:
-            async with self.redis.pipeline() as pipe:
-                await pipe.watch(self.key)
-                owned = await pipe.get(self.key)
-                if isinstance(owned, bytes):
-                    owned = owned.decode()
-                if self.lost or not isinstance(owned, str) or not hmac.compare_digest(owned, self.owner):
-                    raise HTTPException(status_code=409, detail="Role graph lock expired; reload and retry")
-                seconds, microseconds = await pipe.time()
-                now = seconds + microseconds / 1_000_000
-                pipe.multi()
-                pipe.zremrangebyscore(self.key + ":waiters", "-inf", now)
-                pipe.zcard(self.key + ":waiters")
-                result = await pipe.execute()
-                return bool(result[-1])
-        except HTTPException:
-            raise
-        except WatchError:
-            await self.assert_owned()
-            raise _unavailable("Role graph waiters cannot be verified") from None
-        except Exception:
-            raise _unavailable("Role graph waiters cannot be verified") from None
+        # Our own renewal EXPIRE touches the watched key; a WatchError then means
+        # only that the observation must be repeated while ownership still holds.
+        for _ in range(3):
+            try:
+                async with self.redis.pipeline() as pipe:
+                    await pipe.watch(self.key)
+                    owned = await pipe.get(self.key)
+                    if isinstance(owned, bytes):
+                        owned = owned.decode()
+                    if self.lost or not isinstance(owned, str) or not hmac.compare_digest(owned, self.owner):
+                        raise HTTPException(status_code=409, detail="Role graph lock expired; reload and retry")
+                    seconds, microseconds = await pipe.time()
+                    now = seconds + microseconds / 1_000_000
+                    pipe.multi()
+                    pipe.zremrangebyscore(self.key + ":waiters", "-inf", now)
+                    pipe.zcard(self.key + ":waiters")
+                    result = await pipe.execute()
+                    return bool(result[-1])
+            except HTTPException:
+                raise
+            except WatchError:
+                await self.assert_owned()
+                continue
+            except Exception:
+                raise _unavailable("Role graph waiters cannot be verified") from None
+        raise _unavailable("Role graph waiters cannot be verified")
 
     async def renew(self) -> None:
         while True:

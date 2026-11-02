@@ -75,6 +75,7 @@
 	"items.projectQuotas": "Project quotas",
 	"items.monitoringOverview": "Monitoring overview",
 	"items.nodes": "Nodes",
+	"items.serverTemperatures": "Server temperatures",
 	"items.serviceStatus": "Service status",
 	"items.events": "Operational events",
 	"items.orphans": "Orphaned resources",

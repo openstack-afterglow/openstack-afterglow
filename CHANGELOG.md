@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+## [1.32.1] - 2026-11-02
+
+현재 완료 변경을 통합하는 patch release입니다. 새 정식 tag는 `1.32.1`이며 기존 `vX.Y.Z` 입력 호환은 유지합니다. GitHub 발행과 실제 운영 전환 수용은 OpenSpec release checklist에서 별도로 추적합니다.
+
+### Changed
+- 안정 release `X.Y.Z`를 version apply/check, Docker·Helm tag trigger와 operator Git tag promotion에서 지원합니다. 새 metadata bump는 commit/tag를 만들지 않으며 정확한 SHA의 CI 성공 뒤 정식 tag를 생성합니다. Image version tag는 실제 Git tag 이름을 보존하고 `latest`도 같은 release digest를 가리킵니다.
+
+### Added
+- 관리자 모니터링의 노드 다음에 **서버 온도** 대시보드를 추가합니다. 기존 Grafana의 CPU·메모리·전체 온도 센서를 최근6시간·전체 호스트 필터·자동 새로고침으로 표시하며, 관리자 인가·테마·모바일 탐색을 유지합니다. UID 설정과 Kubernetes/Helm 경로를 함께 제공합니다. 운영 배포는 포함하지 않습니다.
+
+### Fixed
+- 관리자 API의 OpenStack 조회를 fresh system:all 관리자 인가 뒤 검증된 고정 admin-project executor로 통일합니다. Native telemetry·도메인 manager 목록·등록/quota 검토·자격 metadata·라이브러리 base image 조회가 개인 member/system token에 의존하지 않으며 전체 관리자 mount의 전이 인가와 human-token 예외를 회귀 테스트로 고정합니다. Application credential 생성의 owner scope, 도메인 관리자 IAM·compute-pool 경계와 별도 서비스의 human-token 인가는 유지하고 native 정책·운영 배포는 변경하지 않습니다.
+- 관리자 개요의 오브젝트 스토리지 집계가 서비스 계정에 tenant 역할이 없으면 전체 확인 불가로 끝나던 문제를 수정합니다. 검증된 admin-project 자격으로 각 Swift 계정을 HEAD하고 읽을 수 있는 컨테이너 합계와 401/403 미확인 계정 수를 분리하며 9개 언어 카드 보조 문구로 표시합니다. 404만 빈 계정으로 보고 그 외 오류·시간 초과는 전체 확인 불가를 유지하며 native 정책·계정 생성·운영 배포는 변경하지 않습니다.
+- 다른 Afterglow DB로 만들어져 현재 DB에 소유 claim이 없는 표준 managed flavor가 "native ID is not owned" 충돌로 남던 문제를 수정합니다. 현재 승인 정책의 표준·저장 구성(wanted)과 정확히 같은 결정적 ID, 비공개, 동일 형상 이름, `afterglow:domain-compute-v1:<48자리 hex>` 설명을 모두 만족할 때만 그 native token으로 claim을 다시 기록하고, 이후 기존 사양·ACL drift 검사를 그대로 적용합니다. wanted 밖의 marker flavor는 claim을 만들지 않아 retained로 남고 ACL·노출 상태를 바꾸지 않으며, 수동 CPU 소유 hash marker(amphora 등)는 원래 token을 복원할 수 없으므로 claim·변경 없이 `retained`(`control_state=foreign_marker`)로 무시하고 동기화 상태를 막지 않습니다.
+- 대시보드 쿼터 카드의 "Afterglow 정책 확인 불가"가 실제 원인 코드(`compute_pool_native_deadline` 등)를 버리고 항상 `compute_pool_native_unavailable`로 보고되던 것을 수정합니다. 응답 `compute_pool.error`에 원래 fail-closed 코드를 유지하고 프로젝트·코드·원인 예외 형식을 경고 로그로 남깁니다.
+- flavor 자동화 동기화가 자신의 graph lease 갱신(EXPIRE)과 대기열 확인 WATCH가 겹치면 503으로 중단되던 문제를 수정합니다. 소유가 유지되는 동안 최대 3회 다시 관찰합니다.
+
 ## [1.32.0] - 2026-11-02
 
 현재 완료된 변경 전체를 통합한 GitHub minor release입니다. 정확한 commit의 CI 성공 뒤 불변 tag·앱 이미지·Helm chart와 release notes를 게시합니다. 기존 controller1 장애에 따른 운영 배포 보류는 유지하며, 이 발행을 운영 native/schema/service cutover 완료로 해석하지 않습니다.

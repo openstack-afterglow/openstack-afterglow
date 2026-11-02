@@ -19,13 +19,19 @@ KOLLA_SAMPLE_TAG=$(sed -nE \
     's/^afterglow_image_tag:[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' \
     "${ROOT_DIR}/deploy/kolla/globals.afterglow.sample.yml")
 KOLLA_SAMPLE_TAG="${KOLLA_SAMPLE_TAG:-MISSING}"
+RELEASE_VERSION='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 case "$KOLLA_SAMPLE_TAG" in
     latest|stable) KOLLA_SAMPLE_V="" ;;
-    v*) KOLLA_SAMPLE_V="${KOLLA_SAMPLE_TAG#v}" ;;
-    *) KOLLA_SAMPLE_V="MISSING" ;;
+    *)
+        KOLLA_SAMPLE_V="${KOLLA_SAMPLE_TAG#v}"
+        if ! [[ "$KOLLA_SAMPLE_V" =~ $RELEASE_VERSION ]]; then
+            KOLLA_SAMPLE_V="MISSING"
+        fi
+        ;;
 esac
 
-if [ "$ROOT_V" != "$FE_V" ] || [ "$ROOT_V" != "$BE_V" ] \
+if ! [[ "$ROOT_V" =~ $RELEASE_VERSION ]] \
+    || [ "$ROOT_V" != "$FE_V" ] || [ "$ROOT_V" != "$BE_V" ] \
     || [ "$ROOT_V" != "$CHART_V" ] \
     || { [ "$KOLLA_SAMPLE_TAG" != "latest" ] && [ "$KOLLA_SAMPLE_TAG" != "stable" ] \
         && [ "$ROOT_V" != "$KOLLA_SAMPLE_V" ]; }; then
@@ -42,10 +48,15 @@ fi
 
 # GitHub Actions tag push 이벤트에서는 git ref 와도 비교
 GITHUB_REF="${GITHUB_REF:-}"
-if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-    TAG_V="${GITHUB_REF#refs/tags/v}"
+if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+    TAG="${GITHUB_REF#refs/tags/}"
+    TAG_V="${TAG#v}"
+    if ! [[ "$TAG_V" =~ $RELEASE_VERSION ]]; then
+        echo "✗ invalid release tag: $GITHUB_REF" >&2
+        exit 1
+    fi
     if [ "$TAG_V" != "$ROOT_V" ]; then
-        echo "✗ git tag v$TAG_V ≠ package.json $ROOT_V" >&2
+        echo "✗ git tag $TAG ≠ package.json $ROOT_V" >&2
         echo "  태그 푸시 전에 npm version <level> 으로 먼저 bump 하세요" >&2
         exit 1
     fi

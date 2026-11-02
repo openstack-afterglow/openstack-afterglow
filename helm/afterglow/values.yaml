@@ -720,6 +720,7 @@ monitoring:
   grafanaBaseUrl: ""
   dashboards:
     nodeUid: "afterglow-node"
+    nodeTemperaturesUid: "kolla-node-temperatures" # Existing server-temperature dashboard in the configured Grafana
     rabbitmqUid: "afterglow-rabbitmq"
     mysqldUid: "afterglow-mysqld"
     proxysqlUid: "afterglow-proxysql" # Existing ProxySQL dashboard in the configured Grafana

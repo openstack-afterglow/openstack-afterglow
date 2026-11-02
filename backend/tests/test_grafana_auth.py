@@ -57,6 +57,40 @@ async def test_grafana_dashboard_config_precedence(admin_client, grafana_config,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("toml_uid", "env_uid", "expected_uid"),
+    [
+        (None, None, "kolla-node-temperatures"),
+        ("operator-temperatures", None, "operator-temperatures"),
+        (None, "environment-temperatures", "environment-temperatures"),
+        ("operator-temperatures", "environment-temperatures", "environment-temperatures"),
+    ],
+    ids=["default", "toml", "environment", "environment-overrides-toml"],
+)
+async def test_grafana_node_temperatures_config_precedence(
+    admin_client, grafana_config, toml_uid, env_uid, expected_uid
+):
+    config = (
+        '[monitoring]\ngrafana_base_url = "https://grafana.example.com"\n'
+        '[monitoring.dashboards]\nnode_uid = "existing-node"\nproxysql_uid = "existing-proxysql"\n'
+    )
+    if toml_uid is not None:
+        config += f'node_temperatures_uid = "{toml_uid}"\n'
+    grafana_config.write_text(config, encoding="utf-8")
+    if env_uid is not None:
+        os.environ["GRAFANA_DASHBOARD_NODE_TEMPERATURES_UID"] = env_uid
+
+    response = await admin_client.get("/api/v1/grafana/dashboards")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grafana_url"] == "https://grafana.example.com"
+    assert data["dashboards"]["node-temperatures"] == expected_uid
+    assert data["dashboards"]["node"] == "existing-node"
+    assert data["dashboards"]["proxysql"] == "existing-proxysql"
+
+
+@pytest.mark.asyncio
 async def test_grafana_dashboards_without_url_remains_disabled(admin_client, grafana_config):
     grafana_config.write_text('[monitoring.dashboards]\nproxysql_uid = "operator-proxysql"\n', encoding="utf-8")
 

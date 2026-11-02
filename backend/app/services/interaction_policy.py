@@ -84,6 +84,7 @@ STATIC_SEGMENTS = frozenset(
         "proxysql",
         "openstack",
         "node",
+        "temperatures",
         "mysql",
         "memcached",
         "libvirt",

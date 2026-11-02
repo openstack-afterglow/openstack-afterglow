@@ -78,6 +78,7 @@
 	"items.projectQuotas": "Prosjektkvoter",
 	"items.monitoringOverview": "Overvåkingsoversikt",
 	"items.nodes": "Noder",
+	"items.serverTemperatures": "Servertemperaturer",
 	"items.serviceStatus": "Tjenestestatus",
 	"items.events": "Driftshendelser",
 	"items.orphans": "Foreldreløse ressurser",

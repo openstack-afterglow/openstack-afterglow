@@ -1,0 +1,76 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 256"
+  role="img"
+  aria-label="Afterglow"
+>
+  <defs>
+    <linearGradient
+      id="sun"
+      x1="128"
+      y1="53"
+      x2="128"
+      y2="145"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FFD45A"/>
+      <stop offset="0.52" stop-color="#FF8A32"/>
+      <stop offset="1" stop-color="#FF4D28"/>
+    </linearGradient>
+
+    <linearGradient
+      id="reflection"
+      x1="38"
+      y1="160"
+      x2="218"
+      y2="160"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FFB13B"/>
+      <stop offset="0.5" stop-color="#FF7A2C"/>
+      <stop offset="1" stop-color="#FF4D28"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sun -->
+  <path
+    d="
+      M48 139
+      C48 94.8 83.8 59 128 59
+      C172.2 59 208 94.8 208 139
+      H48Z
+    "
+    fill="url(#sun)"
+  />
+
+  <!-- Horizon -->
+  <rect
+    x="38"
+    y="151"
+    width="180"
+    height="14"
+    rx="7"
+    fill="url(#reflection)"
+  />
+
+  <!-- Afterglow reflections -->
+  <rect
+    x="65"
+    y="176"
+    width="126"
+    height="12"
+    rx="6"
+    fill="url(#reflection)"
+    opacity="0.88"
+  />
+
+  <rect
+    x="94"
+    y="199"
+    width="68"
+    height="11"
+    rx="5.5"
+    fill="url(#reflection)"
+    opacity="0.72"
+  />
+</svg>

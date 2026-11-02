@@ -16,7 +16,7 @@ from keystoneauth1 import session
 from keystoneauth1.identity import v3
 from openstack.connection import Connection
 
-from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
 from app.api.identity.admin_credentials import router
 from tests.admin_gate import synthetic_verified_admin
 
@@ -227,6 +227,7 @@ def native_identity():
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/admin")
     app.dependency_overrides[get_os_conn] = lambda: conn
+    app.dependency_overrides[get_admin_os_conn] = lambda: conn
     app.dependency_overrides[get_token_info] = lambda: token_info
     app.dependency_overrides[require_admin] = synthetic_verified_admin
     try:

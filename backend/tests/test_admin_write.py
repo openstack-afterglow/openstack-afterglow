@@ -49,6 +49,7 @@ async def test_admin_access_not_forbidden(admin_client, mock_conn):
                 "file_storage_count": 0,
                 "database_instances_count": 0,
                 "object_storage_containers_count": 0,
+                "object_storage_unreadable_accounts": 0,
             }
         )
         resp = await admin_client.get("/api/v1/admin/overview")

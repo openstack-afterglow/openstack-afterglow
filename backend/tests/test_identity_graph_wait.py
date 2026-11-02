@@ -366,6 +366,34 @@ async def test_waiters_pending_redis_error_is_not_no_demand(graph_env, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_waiters_pending_repeats_after_own_renewal_touches_watched_key(graph_env, monkeypatch):
+    env = graph_env
+    async with identity_roles._graph_lock(env.conn) as lease:
+        seconds, microseconds = await env.redis.time()
+        await env.redis.zadd(env.queue, {"live": seconds + microseconds / 1_000_000 + 30})
+        original = env.redis.pipeline
+        renewed = []
+
+        def pipeline(*args, **kwargs):
+            pipe = original(*args, **kwargs)
+            get = pipe.get
+
+            async def get_then_renew(key):
+                value = await get(key)
+                if not renewed:
+                    # The lease's own renewal EXPIRE lands between WATCH and EXEC.
+                    renewed.append(await env.redis.expire(env.key, 60))
+                return value
+
+            pipe.get = get_then_renew
+            return pipe
+
+        monkeypatch.setattr(env.redis, "pipeline", pipeline)
+        assert await lease.waiters_pending()
+        assert renewed == [True]
+
+
+@pytest.mark.asyncio
 async def test_lost_lease_cannot_report_no_waiters_or_write(graph_env):
     env = graph_env
     async with identity_roles._graph_lock(env.conn) as lease:

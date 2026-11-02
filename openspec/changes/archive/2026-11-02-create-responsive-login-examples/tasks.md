@@ -1,0 +1,4 @@
+- [x] Create responsive login page and four-device gallery.
+- [x] Verify responsive layouts, interactions, light/dark and capture four device views.
+- [x] Obtain independent review and resolve findings.
+- [x] Document and package examples, archive.

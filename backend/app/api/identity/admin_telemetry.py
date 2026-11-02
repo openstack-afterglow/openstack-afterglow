@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.deps import get_os_conn, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, require_admin
 from app.services import telemetry_admin as svc
 
 NO_STORE = {"Cache-Control": "no-store, private", "Pragma": "no-cache", "Referrer-Policy": "no-referrer"}
@@ -69,7 +69,7 @@ async def aodh(
     limit: int = Query(25, ge=1, le=100),
     marker: UUID | None = None,
     state: State | None = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await asyncio.to_thread(svc.aodh, conn, limit, str(marker) if marker else None, state)
 
@@ -79,7 +79,7 @@ async def alarms(
     limit: int = Query(25, ge=1, le=100),
     marker: UUID | None = None,
     state: State | None = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await asyncio.to_thread(
         svc.list_alarms, svc.Transport(conn, "alarming"), limit, str(marker) if marker else None, state
@@ -91,7 +91,7 @@ async def alarm_detail(
     alarm_id: UUID,
     limit: int = Query(25, ge=1, le=100),
     marker: UUID | None = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await asyncio.to_thread(svc.alarm_detail, conn, str(alarm_id), limit, str(marker) if marker else None)
 
@@ -115,7 +115,7 @@ async def delete_alarm(alarm_id: UUID, conn=Depends(get_os_conn)):
 
 
 @router.get("/gnocchi")
-async def gnocchi(conn=Depends(get_os_conn)):
+async def gnocchi(conn=Depends(get_admin_os_conn)):
     return await asyncio.to_thread(svc.gnocchi, conn)
 
 
@@ -124,7 +124,7 @@ async def resources(
     type: str = Query("generic", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$"),
     limit: int = Query(25, ge=1, le=100),
     marker: UUID | None = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await asyncio.to_thread(
         svc.page,
@@ -141,7 +141,7 @@ async def resources(
 async def metrics(
     limit: int = Query(25, ge=1, le=100),
     marker: UUID | None = None,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await asyncio.to_thread(
         svc.page,
@@ -160,7 +160,7 @@ async def measures(
     hours: int = Query(1, ge=1, le=168),
     aggregation: str = Query("mean", min_length=1, max_length=64, pattern=r"^(rate:)?([a-z]+|[0-9]+(\.[0-9]+)?pct)$"),
     granularity: float | None = Query(None, gt=0),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     if granularity is not None and not math.isfinite(granularity):
         raise HTTPException(400, {"code": "telemetry_invalid_input"})

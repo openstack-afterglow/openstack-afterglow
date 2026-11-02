@@ -254,7 +254,7 @@ async def test_foreign_instance_action_and_attached_child_mutations(
 
 
 @pytest.mark.asyncio
-async def test_metrics_never_forward_executor_to_native_telemetry(admin_client, mock_conn, native_detail, monkeypatch):
+async def test_metrics_use_verified_executor_for_native_telemetry(admin_client, mock_conn, native_detail, monkeypatch):
     from app.api.compute import instance_metrics
 
     caller = SimpleNamespace(_afterglow_authenticated_project_id="caller-personal")
@@ -271,8 +271,8 @@ async def test_metrics_never_forward_executor_to_native_telemetry(admin_client, 
     response = await admin_client.get("/api/v1/admin/instances/vm/metrics-batch?metrics=cpu")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert native.call_args.args[0] is caller
-    assert native.call_args.args[0] is not mock_conn
+    assert native.call_args.args[0] is mock_conn
+    assert native.call_args.args[0] is not caller
     assert native.call_args.args[1].project_id == "foreign-project"
 
 
@@ -394,7 +394,7 @@ async def test_server_identifier_mismatch_is_not_accepted(admin_client, mock_con
 
 
 @pytest.mark.asyncio
-async def test_summary_keeps_native_telemetry_on_caller_connection(admin_client, mock_conn, native_detail, monkeypatch):
+async def test_summary_uses_verified_executor_for_native_telemetry(admin_client, mock_conn, native_detail, monkeypatch):
     from app.api.compute import instance_metrics
 
     caller = SimpleNamespace(_afterglow_authenticated_project_id="caller-personal")
@@ -421,8 +421,8 @@ async def test_summary_keeps_native_telemetry_on_caller_connection(admin_client,
     response = await admin_client.get("/api/v1/admin/instances/vm/metrics-summary")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert native.call_args.args[0] is caller
-    assert native.call_args.args[0] is not mock_conn
+    assert native.call_args.args[0] is mock_conn
+    assert native.call_args.args[0] is not caller
 
 
 @pytest.mark.asyncio

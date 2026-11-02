@@ -1,0 +1,9 @@
+- [x] Re-adopt orphaned wanted managed flavors from exact native evidence; keep unsupported and unrecoverable manual CPU hash-marker flavors retained (tests in `test_managed_flavors.py`).
+- [x] Retry waiter observation after own renewal WATCH race (`test_identity_graph_wait.py`, fails before fix).
+- [x] Admin route authority audit and regression test (`test_admin_route_authority.py`); provider reads moved to `get_admin_os_conn` with documented exceptions.
+- [x] Swift overview via admin-project account HEAD with unreadable count (backend + frontend tests).
+- [x] CHANGELOG / ARCHITECTURE updates.
+- [x] Local deploy and live verification against shared DB/Nova: 17 claims re-adopted, 0 native flavor/spec/ACL changes across 275 flavors (`~/.local/share/afterglow-proofs/flavor-{before,after}-adopt-20261102.json`); 6 manual CPU hash-marker conflicts observed at that intermediate step are superseded by the final retained/foreign_marker behavior below.
+- [x] Dashboard compute-pool unavailable summary keeps exact failure code and logs it (`test_compute_pool_consumers.py`).
+- [x] Operational restoration (user-approved, production backend stopped first): 8 GPU profiles reconstructed from existing managed GPU flavors; all 174 deterministic uuid5 IDs/specs matched, dry-run 0 ACL grants/revokes; saved at policy revision 5 under graph lock; next passes adopted 191 claims with 275-flavor Nova diff empty (`~/.local/share/afterglow-proofs/flavor-after-gpu-restore-20261102.json`).
+- [x] Ignore unrecoverable foreign ownership markers as retained/`foreign_marker` (user decision); test `test_orphaned_native_cpu_token_is_ignored_and_never_reclaimed`.

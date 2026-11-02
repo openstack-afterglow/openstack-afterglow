@@ -714,6 +714,7 @@ grafana_base_url = ""           # Grafana 외부 URL (예: https://grafana.examp
 [monitoring.dashboards]
 # Grafana 대시보드 UID. 지정한 Grafana에 해당 UID의 대시보드가 있어야 함.
 node_uid = "afterglow-node"
+node_temperatures_uid = "kolla-node-temperatures"  # 기존 Grafana 서버 온도 대시보드
 rabbitmq_uid = "afterglow-rabbitmq"
 mysqld_uid = "afterglow-mysqld"
 proxysql_uid = "afterglow-proxysql"  # 기존 ProxySQL — MariaDB 접속 경로 대시보드

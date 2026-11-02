@@ -373,6 +373,7 @@ data:
 
     [monitoring.dashboards]
     node_uid = {{ .Values.monitoring.dashboards.nodeUid | quote }}
+    node_temperatures_uid = {{ .Values.monitoring.dashboards.nodeTemperaturesUid | quote }}
     rabbitmq_uid = {{ .Values.monitoring.dashboards.rabbitmqUid | quote }}
     mysqld_uid = {{ .Values.monitoring.dashboards.mysqldUid | quote }}
     proxysql_uid = {{ .Values.monitoring.dashboards.proxysqlUid | quote }}

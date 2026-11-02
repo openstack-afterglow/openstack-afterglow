@@ -907,6 +907,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("")
     lines.append("[monitoring.dashboards]")
     lines.append(f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}")
+    lines.append(f"node_temperatures_uid = {_toml_str(dashboards.get('node_temperatures_uid', 'kolla-node-temperatures'))}")
     lines.append(f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}")
     lines.append(f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}")
     lines.append(f"proxysql_uid = {_toml_str(dashboards.get('proxysql_uid', 'afterglow-proxysql'))}")

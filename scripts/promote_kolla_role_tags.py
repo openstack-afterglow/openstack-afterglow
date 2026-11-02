@@ -29,7 +29,7 @@ SERVICES: dict[str, Service] = {
     "lumen": Service("lumen", "https://github.com/openstack-afterglow/lumen.git"),
     "waygate": Service("waygate", "https://github.com/openstack-afterglow/waygate.git"),
 }
-TAG_RE = re.compile(r"^v(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
+TAG_RE = re.compile(r"^v?(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
 
 
 class PromotionError(RuntimeError):
@@ -39,7 +39,7 @@ class PromotionError(RuntimeError):
 def tag_version(tag: str) -> tuple[int, int, int]:
     match = TAG_RE.fullmatch(tag)
     if not match:
-        raise PromotionError(f"release tag must be stable vX.Y.Z, got {tag!r}")
+        raise PromotionError(f"release tag must be stable X.Y.Z (historical vX.Y.Z is accepted), got {tag!r}")
     return tuple(int(match.group(name)) for name in ("major", "minor", "patch"))
 
 
@@ -51,12 +51,14 @@ def select_tag(current_version: str, configured_tag: str | None, available_tags:
     package never downgrade an operator environment.
     """
 
-    current = tag_version(f"v{current_version}")
+    current = tag_version(current_version)
     candidates = [tag for tag in available_tags if tag_version(tag) >= current]
     if not candidates:
         return None
-    selected = max(candidates, key=tag_version)
-    return None if selected == configured_tag else selected
+    selected = max(candidates, key=lambda tag: (tag_version(tag), not tag.startswith("v")))
+    if configured_tag in candidates and tag_version(configured_tag) == tag_version(selected):
+        return None
+    return selected
 
 
 def run(*args: str, cwd: Path) -> str:
@@ -87,7 +89,7 @@ def lock_version(operator_dir: Path, distribution: str) -> str:
     version = entry.get("version")
     if not isinstance(version, str):
         raise PromotionError(f"lock entry for {distribution!r} has no version")
-    tag_version(f"v{version}")
+    tag_version(version)
     return version
 
 
@@ -109,20 +111,30 @@ def configured_tag(operator_dir: Path, distribution: str) -> str | None:
 
 
 def remote_tags(service: Service, root: Path) -> list[str]:
-    output = run("git", "ls-remote", "--tags", "--refs", service.repository, "refs/tags/v*", cwd=root)
-    tags: list[str] = []
+    output = run("git", "ls-remote", "--tags", service.repository, "refs/tags/[0-9]*", "refs/tags/v*", cwd=root)
+    tags: dict[str, str] = {}
+    peeled: dict[str, str] = {}
     for line in output.splitlines():
-        try:
-            _, ref = line.split("\t", 1)
-        except ValueError as exc:
-            raise PromotionError(f"malformed tag reference from {service.repository}") from exc
-        tag = ref.removeprefix("refs/tags/")
+        match = re.fullmatch(r"([0-9a-f]{40}|[0-9a-f]{64})\trefs/tags/(.+)", line)
+        if not match:
+            raise PromotionError(f"malformed tag reference from {service.repository}")
+        object_id, tag = match.groups()
+        annotated = tag.endswith("^{}")
+        if annotated:
+            tag = tag.removesuffix("^{}")
         try:
             tag_version(tag)
         except PromotionError:
             continue
-        tags.append(tag)
-    return tags
+        (peeled if annotated else tags)[tag] = object_id
+    versions: dict[tuple[int, int, int], tuple[str, str]] = {}
+    for tag, object_id in tags.items():
+        version = tag_version(tag)
+        commit = peeled.get(tag, object_id)
+        if version in versions and versions[version][1] != commit:
+            raise PromotionError(f"conflicting release tags {versions[version][0]} and {tag} in {service.repository}")
+        versions[version] = (tag, commit)
+    return list(tags)
 
 
 def verify_tag_source(operator_dir: Path, service_name: str, service: Service) -> None:

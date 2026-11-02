@@ -21,7 +21,7 @@ from requests import Response
 from requests.exceptions import ConnectionError, ReadTimeout
 from urllib3.response import HTTPResponse
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info
 from app.api.identity.admin_telemetry import router
 from app.services import keystone, telemetry_admin
 
@@ -284,6 +284,7 @@ def api(monkeypatch, auth_directory):
     monkeypatch.setattr(keystone, "validate_token", validate_token)
     app = FastAPI()
     app.include_router(router, prefix=PREFIX)
+    app.dependency_overrides[get_admin_os_conn] = lambda: cloud.conn
     app.dependency_overrides[get_os_conn] = lambda: cloud.conn
     app.dependency_overrides[get_token_info] = lambda: dict(token)
     return SimpleNamespace(app=app, cloud=cloud, token=token, directory=auth_directory, native_checks=native_checks)
@@ -915,7 +916,7 @@ async def test_deadline_exhaustion_during_stream_closes_and_stops_later_native_c
     assert len(api.cloud.calls) == 1 and api.cloud.responses[0].close_count == 1
 
 
-async def test_discovery_uses_caller_catalog_region_interface_without_version_discovery(api, client):
+async def test_discovery_uses_admin_catalog_region_interface_without_version_discovery(api, client):
     api.cloud.endpoints = {"alarming": "https://aodh.example/", "metric": "https://gnocchi.example/v1/"}
     aodh = safe(await client.get(PREFIX + "/aodh"))
     gnocchi = safe(await client.get(PREFIX + "/gnocchi"))

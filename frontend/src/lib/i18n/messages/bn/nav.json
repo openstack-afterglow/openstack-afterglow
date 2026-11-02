@@ -78,6 +78,7 @@
 	"items.projectQuotas": "প্রকল্প কোটা",
 	"items.monitoringOverview": "সমন্বিত মনিটরিং",
 	"items.nodes": "নোড",
+	"items.serverTemperatures": "সার্ভারের তাপমাত্রা",
 	"items.serviceStatus": "সার্ভিস স্ট্যাটাস",
 	"items.events": "অপারেশনাল ইভেন্ট",
 	"items.orphans": "অরফ্যান রিসোর্স",

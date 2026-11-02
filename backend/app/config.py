@@ -335,6 +335,7 @@ def _load_toml() -> dict:
     flat["grafana_base_url"] = mon.get("grafana_base_url", "")
     dashboards = mon.get("dashboards", {})
     flat["grafana_dashboard_node_uid"] = dashboards.get("node_uid", "afterglow-node")
+    flat["grafana_dashboard_node_temperatures_uid"] = dashboards.get("node_temperatures_uid", "kolla-node-temperatures")
     flat["grafana_dashboard_rabbitmq_uid"] = dashboards.get("rabbitmq_uid", "afterglow-rabbitmq")
     flat["grafana_dashboard_mysqld_uid"] = dashboards.get("mysqld_uid", "afterglow-mysqld")
     flat["grafana_dashboard_proxysql_uid"] = dashboards.get("proxysql_uid", "afterglow-proxysql")
@@ -755,6 +756,7 @@ class Settings(BaseSettings):
     monitoring_sd_token: str = ""  # /api/sd/prometheus/targets 인증 토큰
     grafana_base_url: str = ""  # Grafana 외부 URL (예: https://grafana.example.com)
     grafana_dashboard_node_uid: str = "afterglow-node"
+    grafana_dashboard_node_temperatures_uid: str = "kolla-node-temperatures"
     grafana_dashboard_rabbitmq_uid: str = "afterglow-rabbitmq"
     grafana_dashboard_mysqld_uid: str = "afterglow-mysqld"
     grafana_dashboard_proxysql_uid: str = "afterglow-proxysql"

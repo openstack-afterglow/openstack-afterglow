@@ -19,11 +19,14 @@ const kollaSampleText = fs.readFileSync(
 );
 const kollaSampleMatch = kollaSampleText.match(/^afterglow_image_tag:\s*"([^"]+)"/m);
 const kollaSampleTag = kollaSampleMatch ? kollaSampleMatch[1] : "MISSING";
+const releaseVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const kollaSampleV = ["latest", "stable"].includes(kollaSampleTag)
 	? null
-	: kollaSampleTag.startsWith("v") ? kollaSampleTag.slice(1) : "MISSING";
+	: kollaSampleTag.replace(/^v/, "");
 
-const mismatch = new Set([rootV, feV, beV, chartV, ...(kollaSampleV === null ? [] : [kollaSampleV])]).size !== 1;
+const mismatch = !releaseVersion.test(rootV)
+	|| (kollaSampleV !== null && !releaseVersion.test(kollaSampleV))
+	|| new Set([rootV, feV, beV, chartV, ...(kollaSampleV === null ? [] : [kollaSampleV])]).size !== 1;
 if (mismatch) {
 	console.error("✗ version mismatch:");
 	console.error(`  root package.json                     : ${rootV}`);
@@ -37,10 +40,15 @@ if (mismatch) {
 
 // GitHub Actions tag push 이벤트에서는 git ref 와도 비교
 const ref = process.env.GITHUB_REF || "";
-if (ref.startsWith("refs/tags/v")) {
-	const tagV = ref.replace("refs/tags/v", "");
+if (ref.startsWith("refs/tags/")) {
+	const tag = ref.slice("refs/tags/".length);
+	const tagV = tag.replace(/^v/, "");
+	if (!releaseVersion.test(tagV)) {
+		console.error(`✗ invalid release tag: ${ref}`);
+		process.exit(1);
+	}
 	if (tagV !== rootV) {
-		console.error(`✗ git tag v${tagV} ≠ package.json ${rootV}`);
+		console.error(`✗ git tag ${tag} ≠ package.json ${rootV}`);
 		console.error("  태그 푸시 전에 npm version <level> 으로 먼저 bump 하세요");
 		process.exit(1);
 	}

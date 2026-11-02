@@ -767,6 +767,89 @@ async def test_historical_memory_name_never_overrides_exact_ownership_or_hardwar
 
 
 @pytest.mark.asyncio
+async def test_orphaned_wanted_flavor_is_readopted_but_unsupported_marked_flavor_keeps_grants(environment):
+    env = environment
+    env.inventory["hosts"] = [host(cpu=1, ram=4096)]
+    env.policy["hosts"] = copy.deepcopy(env.inventory["hosts"])
+    shape = next(row for row in svc.standard_shapes(env.inventory["hosts"], []) if row["ram"] == 4096)
+    token = "a" * 48
+    # Created by another Afterglow database: exact identity, but no local claim.
+    env.compute.create_flavor(
+        id=shape["id"],
+        name=shape["name"],
+        vcpus=1,
+        ram=4096,
+        disk=0,
+        is_public=False,
+        description=f"afterglow:{svc.OWNER}:{token}",
+    )
+    env.compute.specs[shape["id"]] = copy.deepcopy(shape["extra_specs"])
+    env.compute.access[shape["id"]] = {"p1"}
+    # A marked managed flavor outside the wanted set with an equally valid token.
+    stale = "00000000-0000-4000-8000-000000000001"
+    env.compute.create_flavor(
+        id=stale,
+        name="cpu.4c_12g",
+        vcpus=4,
+        ram=12288,
+        disk=0,
+        is_public=False,
+        description=f"afterglow:{svc.OWNER}:{'b' * 48}",
+    )
+    env.compute.specs[stale] = {**shape["extra_specs"]}
+    env.compute.access[stale] = {"p1", "foreign"}
+    env.compute.events.clear()
+    for _ in range(2):
+        result = await svc.reconcile(object())
+        items = {item["id"]: item for item in result["items"]}
+        assert items[shape["id"]]["status"] == "unchanged"
+        assert items[stale]["status"] == "retained"
+    assert env.state["claims"][shape["id"]] == {"token": token, "dispatched": True, "name": shape["name"]}
+    assert stale not in env.state["claims"] and stale not in env.state["cpu_claims"]
+    assert env.compute.access[stale] == {"p1", "foreign"}
+    assert env.compute.specs[stale].get("afterglow:frontend_visible") == "true"
+    assert not any(
+        event[0] in {"create", "spec_write", "revoke"} and event[1] in {shape["id"], stale}
+        for event in env.compute.events
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    ["short-token", "public", "foreign-name", "manual-description"],
+)
+async def test_orphaned_flavor_readoption_requires_exact_native_identity(environment, change):
+    env = environment
+    env.inventory["hosts"] = [host(cpu=1, ram=4096)]
+    env.policy["hosts"] = copy.deepcopy(env.inventory["hosts"])
+    shape = next(row for row in svc.standard_shapes(env.inventory["hosts"], []) if row["ram"] == 4096)
+    env.compute.create_flavor(
+        id=shape["id"],
+        name="someone-else" if change == "foreign-name" else shape["name"],
+        vcpus=1,
+        ram=4096,
+        disk=0,
+        is_public=False,
+        description={"short-token": f"afterglow:{svc.OWNER}:owned", "manual-description": "manual"}.get(
+            change, f"afterglow:{svc.OWNER}:{'c' * 48}"
+        ),
+    )
+    env.compute.specs[shape["id"]] = copy.deepcopy(shape["extra_specs"])
+    env.compute.access[shape["id"]] = {"existing-project"}
+    if change == "public":
+        env.compute.rows[shape["id"]].is_public = True
+    env.compute.events.clear()
+    result = await svc.reconcile(object())
+    assert next(item for item in result["items"] if item["id"] == shape["id"])["status"] == "conflict"
+    assert shape["id"] not in env.state["claims"]
+    assert env.compute.access[shape["id"]] == {"existing-project"}
+    assert not any(
+        event[0] in {"spec_write", "grant", "revoke"} and event[1] == shape["id"] for event in env.compute.events
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("style", ["legacy-short", "legacy-full", "canonical", "canonical-short", "canonical-full"])
 async def test_owned_gpu_names_and_claims_survive_name_cutover(environment, style):
     env = environment
@@ -1556,17 +1639,22 @@ def test_native_flavor_paging_repeated_rows_fail_closed():
 
 
 @pytest.mark.asyncio
-async def test_orphaned_native_cpu_token_is_not_reclaimed_by_new_durable_owner(environment):
+async def test_orphaned_native_cpu_token_is_ignored_and_never_reclaimed(environment):
     env = environment
     row = manual_cpu(env, specs={svc.CPU_TOKEN: "another-owner"})
+    env.compute.events.clear()
     result = await svc.reconcile(object())
-    assert manual_item(result)["status"] == "conflict"
+    item = manual_item(result)
+    # Unrecoverable foreign markers do not block the run status and are never mutated.
+    assert item["status"] == "retained" and item["control_state"] == "foreign_marker"
+    assert result["status"] == "complete"
+    assert not any(event[1] == row.id for event in env.compute.events if event[0] in {"spec_write", "grant", "revoke"})
     assert row.id not in env.state["cpu_claims"]
     assert env.compute.specs[row.id] == {svc.CPU_TOKEN: "another-owner"}
 
 
 @pytest.mark.asyncio
-async def test_orphaned_legacy_marker_is_one_conflict_without_mutating_native_flavor(environment):
+async def test_orphaned_legacy_marker_is_retained_once_without_mutating_native_flavor(environment):
     env = environment
     row = manual_cpu(env, specs={svc.MARKER: svc.OWNER, "afterglow:access_mode": "domain_quota"})
     original_specs = copy.deepcopy(env.compute.specs[row.id])
@@ -1574,8 +1662,11 @@ async def test_orphaned_legacy_marker_is_one_conflict_without_mutating_native_fl
     env.compute.events.clear()
     result = await svc.reconcile(object())
     matches = [item for item in result["items"] if item["id"] == row.id]
-    assert result["status"] == "unavailable"
-    assert len(matches) == 1 and matches[0]["status"] == "conflict"
+    # An unclaimed generated-flavor marker belongs to the unsupported managed path:
+    # it is reported once as retained and never adopted as a manual CPU flavor.
+    assert result["status"] == "complete"
+    assert len(matches) == 1 and matches[0]["status"] == "retained"
+    assert row.id not in env.state["cpu_claims"] and row.id not in env.state["claims"]
     assert env.compute.specs[row.id] == original_specs
     assert env.compute.access[row.id] == original_access
     assert not any(event[0] in {"spec_write", "grant", "revoke"} and event[1] == row.id for event in env.compute.events)

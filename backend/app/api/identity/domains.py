@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common.errors import public_service_error
-from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.database import get_session
 from app.services import (
     account_spaces,
@@ -142,7 +142,7 @@ async def list_domain_members(domain_id: str, response: Response):
 
 
 @router.post("/domains", status_code=201)
-async def create_domain(req: CreateDomainRequest, conn=Depends(get_os_conn), token_info=Depends(get_token_info)):
+async def create_domain(req: CreateDomainRequest, conn=Depends(get_admin_os_conn), token_info=Depends(get_token_info)):
     result = await domain_projects.create_domain(
         name=req.name, description=req.description, enabled=req.enabled, creator_id=token_info["user_id"]
     )
@@ -160,7 +160,7 @@ async def bootstrap_domain_default(domain_id: str, req: BootstrapDefaultRequest,
 @router.patch("/domains/{domain_id}")
 @identity_roles._complete_mutation
 async def update_domain(
-    domain_id: str, req: UpdateDomainRequest, conn=Depends(get_os_conn), token_info=Depends(get_token_info)
+    domain_id: str, req: UpdateDomainRequest, conn=Depends(get_admin_os_conn), token_info=Depends(get_token_info)
 ):
     attrs = req.model_dump(exclude_unset=True, exclude_none=True)
     if not attrs:
@@ -243,13 +243,13 @@ def _managers(conn, domain_id: str) -> dict:
 
 
 @router.get("/domains/{domain_id}/managers")
-async def list_domain_managers(domain_id: str, conn=Depends(get_os_conn)):
+async def list_domain_managers(domain_id: str, conn=Depends(get_admin_os_conn)):
     return await _native(_managers, conn, domain_id)
 
 
 @router.post("/domains/{domain_id}/managers", status_code=201)
 async def grant_domain_manager(
-    domain_id: str, req: ManagerRequest, conn=Depends(get_os_conn), token_info=Depends(get_token_info)
+    domain_id: str, req: ManagerRequest, conn=Depends(get_admin_os_conn), token_info=Depends(get_token_info)
 ):
     await domain_projects.change_manager(domain_id, req.user_id, req.role_id, remove=False, actor=token_info)
     await _audit(token_info, "domain.manager.grant", domain_id, target_user_id=req.user_id, role_id=req.role_id)
@@ -261,7 +261,7 @@ async def revoke_domain_manager(
     domain_id: str,
     user_id: str = Query(..., min_length=1),
     role_id: str = Query(..., min_length=1),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
     token_info=Depends(get_token_info),
 ):
     await domain_projects.change_manager(domain_id, user_id, role_id, remove=True, actor=token_info)

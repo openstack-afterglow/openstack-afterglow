@@ -6,6 +6,13 @@ Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(
 
 Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
 
+## 정식 release/tag 버전 규칙
+
+새 정식 release/tag는 `1.32.1`처럼 접두사 없는 안정 `X.Y.Z`를 사용한다. 기존 `vX.Y.Z`도 version apply/check, Docker/Helm tag trigger와 operator Git tag promotion에서 호환 입력으로 허용하며 기존 불변 tag를 이동하거나 이름을 바꾸지 않는다. Package/Helm metadata는 접두사를 제외한 같은 numeric version이다. Image version tag는 실제 Git tag 이름을 보존한다(새 tag `1.32.1` → image `:1.32.1`; historical `v1.32.0` → `:v1.32.0`).
+
+`npm run version:bump:patch`(또는 minor/major)는 metadata와 lock만 동기화하며 commit/tag를 만들지 않는다. 전체 gate·실행 smoke·dev 게시·정확한 SHA의 CI 성공을 확인한 뒤 그 SHA에 `git tag -a 1.32.1 <sha> -m '1.32.1'`과 정상 tag push를 수행한다. Tag workflow 완료 뒤 release image·`latest`의 revision/digest 및 Helm version/appVersion을 확인한다. 이 발행 성공은 운영 native/schema·cold restore·전체 writer 전환과 실제 사용자 경로 검증을 대신하지 않는다.
+
+
 ## 리소스 정책 자동 초기화·갱신
 
 DB가 설정된 API는 기존 dispatcher에 `resource-policy-reconciliation`을 등록합니다. 역할 획득 직후 및 매60초마다 native 권위를 읽고 DB의11개 local 정책을 재검증합니다. 올바른 ID는 그대로 두고 표시 이름만 갱신합니다. 행이 없거나 저장된 canonical AZ가 완전한 목록에서 사라진 경우에만 Compute/Cinder 각각의 유일한 사용 가능 AZ를 자동 저장합니다. 여러 후보·불완전 응답·조회 실패 또는 아직 존재하지만 일시 중단된 AZ는 기존 선택을 보존합니다. 명시적으로 지운NULL 행은 새 DB의 부재와 구분하여 다시 채우지 않습니다.

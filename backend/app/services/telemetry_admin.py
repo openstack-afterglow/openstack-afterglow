@@ -1,4 +1,4 @@
-"""Uncached caller-session Aodh management and independent Gnocchi inspection.
+"""Uncached administrator Aodh management and independent Gnocchi inspection.
 
 Catalog endpoints only; action URLs are data, never HTTP destinations. Native
 policy/rule validation remains authoritative. Capabilities are not plugin discovery.

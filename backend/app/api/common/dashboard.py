@@ -223,10 +223,20 @@ def _shared_pool_quota(snapshot: dict, resource: str) -> dict:
 
 async def _with_compute_pool(conn, project_id: str, quota: dict, *, snapshot=None) -> tuple[dict, dict | None]:
     try:
+        if isinstance(snapshot, compute_pools.ComputePoolUnavailable):
+            raise snapshot
         if isinstance(snapshot, BaseException):
             raise compute_pools.ComputePoolUnavailable("compute_pool_native_unavailable") from snapshot
         snapshot = snapshot if snapshot is not None else await compute_pools.project_pool_snapshot(conn, project_id)
-    except compute_pools.ComputePoolUnavailable:
+    except compute_pools.ComputePoolUnavailable as exc:
+        # Keep the exact fail-closed reason so transient dashboard warnings are diagnosable.
+        code = str(exc) if re.fullmatch(r"compute_pool_[a-z_]+", str(exc)) else "compute_pool_native_unavailable"
+        cause = exc.__cause__
+        # The log filter masks every string argument, so the bounded internal
+        # code and exception class name are part of the message itself.
+        _logger.warning(
+            f"Compute pool snapshot unavailable: reason={code} cause={type(cause).__name__ if cause else 'none'}"
+        )
         return {**quota, "cores": None, "ram": None}, {
             "state": "unavailable",
             "policy_ready": False,
@@ -238,7 +248,7 @@ async def _with_compute_pool(conn, project_id: str, quota: dict, *, snapshot=Non
             "project_limits": {},
             "project_usage": {},
             "project_available": {},
-            "error": "compute_pool_native_unavailable",
+            "error": code,
         }
     if snapshot["state"] == "unmanaged":
         return quota, None

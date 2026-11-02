@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.deps import get_os_conn, require_admin
+from app.api.deps import get_admin_os_conn, require_admin
 from app.api.identity.iam import IamRoute
 from app.models.enrollment_policy import EnrollmentPolicyUpdate
 from app.services import enrollment_policy
@@ -23,7 +23,7 @@ async def policy(token_info: dict = Depends(require_admin)):
 async def update_policy(
     req: EnrollmentPolicyUpdate,
     token_info: dict = Depends(require_admin),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await enrollment_policy.update_policy(conn, req.model_dump(), token_info=token_info)
 
@@ -45,7 +45,7 @@ async def personal_projects(
 async def preview_personal_project(
     project_id: str = Path(min_length=1, max_length=64),
     token_info: dict = Depends(require_admin),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await enrollment_policy.preview_personal_quotas(conn, project_id, token_info)
 
@@ -55,7 +55,7 @@ async def apply_personal_project(
     req: PersonalQuotaApply,
     project_id: str = Path(min_length=1, max_length=64),
     token_info: dict = Depends(require_admin),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await enrollment_policy.converge_personal_quotas(conn, project_id, token_info, req.preview_id)
 
@@ -73,7 +73,7 @@ async def requests(
 async def approve(
     request_id: RequestId,
     token_info: dict = Depends(require_admin),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await enrollment_policy.review_request(conn, request_id, "approved", token_info=token_info)
 
@@ -82,6 +82,6 @@ async def approve(
 async def reject(
     request_id: RequestId,
     token_info: dict = Depends(require_admin),
-    conn=Depends(get_os_conn),
+    conn=Depends(get_admin_os_conn),
 ):
     return await enrollment_policy.review_request(conn, request_id, "rejected", token_info=token_info)

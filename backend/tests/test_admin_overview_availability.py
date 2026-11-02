@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.api.identity import admin
+from app.services.swift import AccountContainerCount
 from tests.conftest import patch_redis_cache_miss
 
 
@@ -39,7 +40,7 @@ def _sources(monkeypatch):
         "containers": 0,
         "file_storage": 0,
         "database_instances": 0,
-        "object_storage": 0,
+        "object_storage": AccountContainerCount(0, 0),
     }
     for name, value in values.items():
         monkeypatch.setattr(admin, f"_fetch_overview_{name}", lambda conn, value=value: value)
@@ -58,6 +59,8 @@ async def test_overview_successful_empty_inventory_is_zero(admin_client, monkeyp
     assert data["disk_gb"] == {"total": 0, "used": 0, "volumes": 0, "images": 0}
     assert data["instance_stats"]["total"] == 0
     assert data["containers_count"] == 0
+    assert data["object_storage_containers_count"] == 0
+    assert data["object_storage_unreadable_accounts"] == 0
     assert data["unavailable_sections"] == []
     assert data["disabled_sections"] == []
     assert data["collected_at"]
@@ -96,6 +99,8 @@ async def test_overview_failed_source_is_null_not_zero(admin_client, monkeypatch
         assert data["vcpus"]["used"] is None
         assert data["ram_gb"] == {"total": None, "used": None}
         assert data["running_vms"] is None
+    elif collector == "object_storage":
+        assert data["object_storage_unreadable_accounts"] is None
     assert data["disk_gb"]["volumes"] == 0
 
 
@@ -213,22 +218,52 @@ def test_native_server_overview_consumes_every_page():
     assert "not-trusted.invalid" not in conn.session.get.call_args_list[1].args[0]
 
 
-def test_native_strict_swift_fanout_rejects_partial_count(monkeypatch):
-    from app.services import keystone, swift
+def test_native_swift_overview_uses_admin_project_connection(monkeypatch):
+    from app.services import swift
 
-    monkeypatch.setattr(swift, "_apply_endpoint_override", lambda conn: None)
-    monkeypatch.setattr(keystone, "list_system_projects", lambda token: [{"id": "ok"}, {"id": "failed"}])
-    known = MagicMock()
-    known.object_store.head.return_value.headers = {"X-Account-Container-Count": "2"}
+    monkeypatch.setattr(admin, "get_settings", lambda: SimpleNamespace(service_swift_enabled=True))
+    conn = MagicMock()
+    result = AccountContainerCount(12, 10)
+    count = MagicMock(return_value=result)
+    monkeypatch.setattr(swift, "count_containers_all_projects", count)
+    assert admin._fetch_overview_object_storage(conn) == result
+    count.assert_called_once_with(conn)
 
-    def connection(project_id):
-        if project_id == "failed":
-            raise RuntimeError("scope unavailable")
-        return known
 
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", connection)
-    with pytest.raises(RuntimeError):
-        swift.count_containers_all_projects("admin", strict=True)
+@pytest.mark.asyncio
+@pytest.mark.parametrize("readable_count", [0, 12])
+async def test_overview_unreadable_accounts_preserve_readable_sum(admin_client, monkeypatch, readable_count):
+    patch_redis_cache_miss(monkeypatch)
+    _sources(monkeypatch)
+    monkeypatch.setattr(admin, "_fetch_overview_object_storage", lambda conn: AccountContainerCount(readable_count, 10))
+    response = await admin_client.get("/api/v1/admin/overview")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["object_storage_containers_count"] == readable_count
+    assert data["object_storage_unreadable_accounts"] == 10
+    assert "object_storage" not in data["unavailable_sections"]
+
+
+@pytest.mark.asyncio
+async def test_overview_disabled_swift_has_no_observation(admin_client, monkeypatch):
+    patch_redis_cache_miss(monkeypatch)
+    _sources(monkeypatch)
+    monkeypatch.setattr(
+        admin,
+        "get_settings",
+        lambda: SimpleNamespace(
+            service_zun_enabled=True,
+            service_manila_enabled=True,
+            service_trove_enabled=True,
+            service_swift_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(admin, "_fetch_overview_object_storage", lambda conn: None)
+    data = (await admin_client.get("/api/v1/admin/overview")).json()
+    assert data["object_storage_containers_count"] is None
+    assert data["object_storage_unreadable_accounts"] is None
+    assert data["disabled_sections"] == ["object_storage"]
+    assert "object_storage" not in data["unavailable_sections"]
 
 
 @pytest.mark.asyncio
@@ -329,10 +364,11 @@ def test_placement_overview_normalizes_discovered_trailing_slash():
 
 
 @pytest.mark.asyncio
-async def test_old_cached_overview_cannot_break_new_response_schema(admin_client, monkeypatch):
+@pytest.mark.parametrize("old_key", ["afterglow:admin:overview", "afterglow:admin:overview:v2"])
+async def test_old_cached_overview_cannot_break_new_response_schema(admin_client, monkeypatch, old_key):
     _sources(monkeypatch)
     entries = {
-        "afterglow:admin:overview": json.dumps(
+        old_key: json.dumps(
             {
                 "hypervisor_count": 99,
                 "running_vms": 99,
@@ -357,3 +393,5 @@ async def test_old_cached_overview_cannot_break_new_response_schema(admin_client
     assert data["hypervisor_count"] == 0
     assert data["disk_gb"] == {"total": 0, "used": 0, "volumes": 0, "images": 0}
     assert data["unavailable_sections"] == []
+    assert data["object_storage_unreadable_accounts"] == 0
+    assert "afterglow:admin:overview:v3" in entries

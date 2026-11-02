@@ -213,6 +213,7 @@ monitoring:
   grafanaBaseUrl: "https://grafana.example.com"
   dashboards:
     nodeUid: "afterglow-node"
+    nodeTemperaturesUid: "kolla-node-temperatures"
     rabbitmqUid: "afterglow-rabbitmq"
     mysqldUid: "afterglow-mysqld"
     proxysqlUid: "afterglow-proxysql"

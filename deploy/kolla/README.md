@@ -127,7 +127,7 @@ default dependency merely by being installed.
 
 Palimpsest's exact PyPI requirement and wheel/sdist hashes are recorded in the
 operator manifest/lock, without a Palimpsest Git source. The other root package
-promotions remain bound to immutable `vX.Y.Z` tags and resolved commits.
+promotions remain bound to immutable `X.Y.Z` tags (historical `vX.Y.Z` is also accepted) and resolved commits.
 Frozen synchronization installs that reviewed artifact set; branches, bare Git
 URLs, mutable `latest` labels and tag rewrites are prohibited for Git sources.
 The scheduled workflow covers only the three Git-sourced roots. Palimpsest

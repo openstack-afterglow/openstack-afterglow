@@ -8,7 +8,7 @@ export interface FlavorAutomationStatus {
 	status: 'disabled' | 'idle' | 'running' | 'complete' | 'unavailable';
 	error: string | null;
 	readiness: { verified: boolean; reason: string };
-	items: Array<{ id: string; name: string; display_name?: string | null; origin?: 'managed' | 'adopted_cpu' | 'native'; enforcement?: 'native_private_acl' | 'afterglow_only'; control_state?: 'controlled' | 'unknown' | 'public_external_bypass' | 'excluded' | 'unqualified'; vcpus: number; ram: number; disk: number; gpu_resource_class: string | null; gpu_count: number | null; status: 'created' | 'unchanged' | 'retained' | 'retired' | 'conflict'; projects: number; reason?: string }>;
+	items: Array<{ id: string; name: string; display_name?: string | null; origin?: 'managed' | 'adopted_cpu' | 'native'; enforcement?: 'native_private_acl' | 'afterglow_only'; control_state?: 'controlled' | 'unknown' | 'public_external_bypass' | 'excluded' | 'unqualified' | 'foreign_marker'; vcpus: number; ram: number; disk: number; gpu_resource_class: string | null; gpu_count: number | null; status: 'created' | 'unchanged' | 'retained' | 'retired' | 'conflict'; projects: number; reason?: string }>;
 	diagnostics: Array<{ code: string; message: string }>;
 }
 

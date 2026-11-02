@@ -6,6 +6,24 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.1 plain-tag release qualification (2026-11-02)
+
+- 완료 source를 격리 local dev로 동결했다. 작업 도중 생긴 production authStudio login/logout·test·public-entry 번역은 진행 중인 별도 작업으로 제외하고 원본을 보존했다. 온도 모니터링·관리자 executor/Swift 부분 집계·flavor claim 재채택/foreign marker·FIFO 관측 수정과 완료 정적 로그인 시안을 포함한다.
+- Version CLI regression38개와 operator promotion14개가 통과했다. 실제 version apply→`uv lock` 및 두 checker로 numeric/historical-v tag·tag/CLI 우선순위·metadata mismatch·malformed 입력을 검증했다. Promotion은 실제 remote tag identity를 보존하고 같은 버전의 다른 commit alias를 거부한다.
+- 실제 workflow YAML의 Bash를 실행해 Docker base/final primary/latest/dev/nightly8경우와 Helm numeric/v·잘못된tag5경우를 확인했다(`workflow-shell-smoke.json`). Actionlint는 기존 custom runner `afterglow-arc`를 검사용 config에 등록한 뒤 통과했다. Repo runner 설정이나 검증을 완화하지 않았다.
+- 격리 frontend production build 성공. 이전 서버 온도54조건 actual Chromium/live Grafana proof는 같은 source에 대한 별도 화면 증거다. 새 release 옵션을 기존 embed unit6개가 직접 검증했다고 주장하지 않는다.
+- 사용자가 직접 운영 유지보수 중임을 확인하여 이번 실행은 GitHub1.32.1 발행까지만 수행한다. 현재 stopped backend와 기존 config/schema/key를 보존하며 Kolla reconfigure·재시작·DDL은 실행하지 않는다. 읽기 전용 현재 관측과 후속 선행 조건은 release OpenSpec에 기록한다.
+- 증거 `~/.local/share/afterglow-proofs/release-1.32.1-20261102/`. 전체 gate·exact-SHA CI·image/Helm 발행 수용은 완료 후 아래 receipt에 추가한다.
+- 최종 frozen source에서 CPython3.12.13 + 선언된 `--extra dev`를 설치한 뒤 `uv run --project backend --no-sync npm run test:gate`가 exit0이었다: orchestration208, Kolla JS28, shell installer20(미설치 PowerShell36skip), backend12400passed/106skipped, frontend502files6428tests, contracts183, realDBfunctional167passed/37deselected, Ruff820files. Source00359c71ea52ead952fddaaa1ec138ed6f5fb024cf4cb553d3c171d6ec96e37b/3942files, artifact98. 초기 host python3/tomllib 및 scratch dev extra 누락 실패는 환경을 교정했고 product 검증을 줄이거나 예외를 숨기지 않았다.
+
+
+## 서버 온도 관리자 대시보드 (2026-11-02, source/isolated)
+
+- `/admin/monitoring/temperatures`를 현재 source의 격리 Vite/Chromium으로 실행했다. Afterglow identity/API catalog는 synthetic이고 `osgf.dmslab.re.kr` Grafana/Prometheus는 실제 응답이다. Canonical TOML `grafana_base_url`로 CSP를 허용한 격리 frontend에서 저장된 Prometheus datasource·최근6시간·All job/instance/chip/sensor·auto refresh와 실제 °C 값·그래프를 확인했다. 운영 frontend/backend 배포나 실계정 Keystone 로그인 검증은 아니다.
+- 9locale × light/dark ×390/900/1440px =54조건에서 page overflow0, iframe 최소 높이698.5px와 동일 UID·시간대·refresh·전체 필터를 확인했다. Mobile drawer에서 모니터링→서버 온도 선택 후 drawer 닫힘, desktop command palette의 서버 온도 검색·Enter 진입을 확인했다. 증거 `~/.local/share/afterglow-proofs/node-temperatures-20261102/{responsive-matrix.json,desktop.png}`.
+- Grafana UID precedence8tests·기존 catalog/admin guard5tests·embed6tests 통과. Config target backend611/frontend12tests 통과. 실제 Kubernetes ConfigMap·config2helm·`helm template`을 기본 UID 및 override UID로 렌더링하고 TOML readback을 확인했다. Frontend check0errors/17warnings, i18n0errors/45key-order warnings, scan0hard-coded Korean이다. 무관한 경고/정렬은 수정하지 않았다. 전체 `npm run test:gate`는 이번 작업에서 미실행이며 commit/push·운영 설정/DB/서비스 변경은 없다.
+- Interaction `canonical_page` 실제 호출로 새 고정 경로 보존과 뒤의 opaque 식별자 `:id` 치환을 확인했다. 새 시간대/refresh 옵션은 별도 unit wiring test가 아니라 위 실제 브라우저54조건의 URL assertion으로 검증했다.
+
 ## 1.32.0 GitHub minor qualification (2026-11-02)
 
 - 현재 pending backend/frontend 전체를 독립 검토한 뒤 root/frontend/backend/Helm version을1.32.0으로 동기화했다. Full `npm run test:gate` exit0: backend12375passed/94skipped, frontend501files6422tests, contracts183, disposable realDB functional167passed/37deselected, Ruff819filescheck/format. Source fingerprint `a2448137c9ff8fe5a07cacf39d50d3e8ab152bd0ce68f816781718010b866793`/3900files이며 gate artifact1436이다.

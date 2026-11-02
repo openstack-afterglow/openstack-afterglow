@@ -701,12 +701,12 @@ async def test_empty_collection_email_cannot_hide_an_existing_canonical_owner(di
 
 
 def include_enrollment_admin(app):
-    from app.api.deps import get_os_conn, require_admin
+    from app.api.deps import get_admin_os_conn, require_admin
     from app.api.identity import enrollment_policy as policy_api
 
     app.include_router(policy_api.router, prefix="/api/v1/admin")
     app.dependency_overrides[require_admin] = lambda: manager("system-admin")
-    app.dependency_overrides[get_os_conn] = lambda: None
+    app.dependency_overrides[get_admin_os_conn] = lambda: None
 
 
 async def test_reviewed_email_provisions_personal_home_only_after_approval_with_frozen_quota(

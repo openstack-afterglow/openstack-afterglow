@@ -72,6 +72,8 @@ from app.utils.version import read_app_version
 if TYPE_CHECKING:
     import openstack
 
+    from app.services.swift import AccountContainerCount
+
 _logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -296,15 +298,12 @@ def _fetch_overview_database_instances(conn) -> int | None:
     return len(list_instances_admin_all_projects(conn))
 
 
-def _fetch_overview_object_storage(conn) -> int | None:
+def _fetch_overview_object_storage(conn) -> AccountContainerCount | None:
     if not get_settings().service_swift_enabled:
         return None
     from app.services.swift import count_containers_all_projects
 
-    admin_token = getattr(conn, "_afterglow_token", "") or ""
-    if not admin_token:
-        raise ValueError("Missing admin scope for Swift overview")
-    return count_containers_all_projects(admin_token, strict=True)
+    return count_containers_all_projects(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +422,7 @@ class AdminOverviewResponse(BaseModel):
     file_storage_count: int | None
     database_instances_count: int | None
     object_storage_containers_count: int | None
+    object_storage_unreadable_accounts: int | None
 
 
 @router.get("/overview", dependencies=[Depends(require_admin)], response_model=AdminOverviewResponse)
@@ -503,11 +503,12 @@ async def admin_overview(
                 "containers_count": ctr,
                 "file_storage_count": fs,
                 "database_instances_count": db,
-                "object_storage_containers_count": os_count,
+                "object_storage_containers_count": os_count.container_count if os_count is not None else None,
+                "object_storage_unreadable_accounts": os_count.unreadable_accounts if os_count is not None else None,
             }
 
         return await cached_call(
-            "afterglow:admin:overview:v2", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh
+            "afterglow:admin:overview:v3", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh
         )
     except Exception:
         _logger.warning("admin overview 조회 실패", exc_info=True)
@@ -681,10 +682,9 @@ async def get_monitoring_summary(
         now = int(time.time())
         inventory, telemetry = await asyncio.gather(
             cached_call("afterglow:admin:monitoring", ttl_normal(), _collect, enabled=cm.enabled, refresh=cm.refresh),
-            native_telemetry.system_series(telemetry_conn, start_ts=now - 3600, end_ts=now, step_s=60),
+            native_telemetry.system_series(conn, start_ts=now - 3600, end_ts=now, step_s=60),
         )
-        # Native policy is caller-bound; never put these measurements in the
-        # shared administrator inventory cache.
+        # Keep measurements uncached even with the verified administrator executor.
         return {**inventory, "telemetry": telemetry}
     except Exception:
         _logger.warning("monitoring summary 조회 실패", exc_info=True)

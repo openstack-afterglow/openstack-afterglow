@@ -88,7 +88,7 @@ if [[ -n "$DRY_RUN" ]]; then
 fi
 
 echo ""
-echo "✓ 배포 완료: $RELEASE (v$VERSION) → namespace/$NAMESPACE"
+echo "✓ 배포 완료: $RELEASE ($VERSION) → namespace/$NAMESPACE"
 echo ""
 echo "상태 확인:"
 echo "  kubectl get pods -n $NAMESPACE"

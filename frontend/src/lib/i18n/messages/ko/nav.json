@@ -75,6 +75,7 @@
 	"items.projectQuotas": "프로젝트 쿼터",
 	"items.monitoringOverview": "통합 모니터링",
 	"items.nodes": "노드",
+	"items.serverTemperatures": "서버 온도",
 	"items.serviceStatus": "서비스 상태",
 	"items.events": "운영 이벤트",
 	"items.orphans": "고아 리소스",

@@ -3,7 +3,7 @@ name: Docker Build & Push
 on:
   push:
     branches: [main, dev]
-    tags: ['v*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v*']
     paths-ignore:
       # test.yml + docker-build.yml(main) paths-ignore 합집합
       - 'deploy/k8s/overlays/**/.argocd-source-*.yaml'
@@ -213,7 +213,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Install uv (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/')
         uses: astral-sh/setup-uv@v6
         with:
           # arm64 self-hosted macos runner 는 backend/frontend 잡이 동일
@@ -223,13 +223,13 @@ jobs:
           enable-cache: ${{ matrix.arch == 'amd64' }}
 
       - name: Setup Node (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/')
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Apply tag version (tag push only)
-        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/')
         env:
           GITHUB_REF: ${{ needs.changes.outputs.effective_ref }}
         run: npm run version:apply-tag
@@ -312,7 +312,7 @@ jobs:
         env:
           EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
         run: |
-          if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
+          if [[ "${EFFECTIVE_REF}" == refs/tags/* ]]; then
             echo "base=${EFFECTIVE_REF#refs/tags/}" >> $GITHUB_OUTPUT
           elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
             echo "base=nightly" >> $GITHUB_OUTPUT
@@ -402,7 +402,7 @@ jobs:
         run: |
           # tracked_ref 는 브랜치 태그가 추적하는 브랜치다(:nightly→main, :dev→dev). 실행 ref 와 다를 수 있다
           # (다른 브랜치의 workflow_dispatch 도 :dev 로 간다). stale re-run 가드는 이 브랜치의 끝과 비교한다.
-          if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
+          if [[ "${EFFECTIVE_REF}" == refs/tags/* ]]; then
             VTAG="${EFFECTIVE_REF#refs/tags/}"
             primary="${IMG}:${VTAG}"; extra="${IMG}:latest"; base="${VTAG}"; branch_tag=false; tracked_ref=""
           elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then

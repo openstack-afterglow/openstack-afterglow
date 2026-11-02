@@ -13,6 +13,7 @@ export interface Overview {
 	file_storage_count: number | null;
 	database_instances_count: number | null;
 	object_storage_containers_count: number | null;
+	object_storage_unreadable_accounts: number | null;
 }
 
 export interface VersionInfo {

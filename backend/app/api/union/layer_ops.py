@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import desc, select
 
-from app.api.deps import get_os_conn, require_admin
+from app.api.deps import get_admin_os_conn, get_os_conn, require_admin
 from app.api.union.layer_block_sources import router as block_sources_router
 from app.database import get_session_factory
 from app.models.instance_usage import UsageScheduleRequest
@@ -571,7 +571,7 @@ def _effective_build_ubuntu_base(req: LayerBuildRequest, parent_row, lineage: li
 
 
 @router.get("/base-images", dependencies=[Depends(require_admin)])
-async def list_layer_base_images(conn=Depends(get_os_conn)) -> list[dict]:
+async def list_layer_base_images(conn=Depends(get_admin_os_conn)) -> list[dict]:
     """Active Ubuntu Glance images that can boot layer builder/consumer VMs."""
 
     try:

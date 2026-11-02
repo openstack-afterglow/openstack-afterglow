@@ -19,7 +19,7 @@ from openstack.resource import Resource
 from app.api.common.activity_recorder import rec
 from app.api.compute.instance_metrics import _PrivateMetricsRoute
 from app.api.compute.usage_schedules import admin_router as usage_schedules_admin_router
-from app.api.deps import get_admin_os_conn, get_os_conn, get_token_info, require_admin
+from app.api.deps import get_admin_os_conn, get_token_info, require_admin
 from app.config import get_settings
 from app.models import compute as compute_models
 from app.models.compute import (
@@ -944,14 +944,13 @@ async def get_admin_instance_metrics(
     metrics: str = Query(...),
     range: Literal["15m", "1h", "6h", "24h", "7d"] = "1h",
     conn=Depends(get_admin_os_conn),
-    caller_conn=Depends(get_os_conn),
 ):
     from app.api.compute.instance_metrics import _metric_keys, instance_metrics_batch
 
     response.headers["Cache-Control"] = "no-store"
     keys = _metric_keys(metrics)
     server = await asyncio.to_thread(_server, conn, instance_id)
-    return await instance_metrics_batch(server, keys, range, caller_conn)
+    return await instance_metrics_batch(server, keys, range, conn)
 
 
 @metrics_router.get("/instances/{instance_id}/metrics-summary", dependencies=[Depends(require_admin)])
@@ -960,13 +959,12 @@ async def get_admin_instance_metrics_summary(
     response: Response,
     range: Literal["15m", "1h", "6h", "24h", "7d"] = "7d",
     conn=Depends(get_admin_os_conn),
-    caller_conn=Depends(get_os_conn),
 ):
     from app.api.compute.instance_metrics import instance_metrics_summary
 
     response.headers["Cache-Control"] = "no-store"
     server = await asyncio.to_thread(_server, conn, instance_id)
-    return await instance_metrics_summary(server, range, caller_conn, flavor_conn=conn)
+    return await instance_metrics_summary(server, range, conn, flavor_conn=conn)
 
 
 @router.post("/instances/{instance_id}/start", status_code=204, dependencies=[Depends(_audit_instance_mutation)])
