@@ -12,6 +12,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 사용자의 후속 현재 기준 rebuild/deploy 요청은 앞선 maintenance hold를 대체한다. 새 후보에는 이제 완료된 `AuthStudioShell`의 실제 `/login`·`/logout` 구성도 포함한다. 기존 credential/SSO/recovery/signup·logout cleanup/leave gating과 세션 fence를 유지하고 locale/theme·일시정지 가능한 기존 문자 scene·비밀번호 표시 조작을 공통 shell에 배치한다. 새 native 권위/schema/topology는 없으며 이 후보의 전체 gate·CI·정식 tag/image 재빌드와 운영 수용은 이전 source의 증거를 재사용하지 않고 별도 기록한다.
 
+지역화된 login 제목은 keep-all을 유지하면서 좁은 폭에 한해 `overflow-wrap:anywhere`로 비상 줄바꿈한다. 일본어280px에서 제목의 intrinsic minimum이 grid/form을 키워 조작을 자르던 경로를 실제 compiled browser로 재현·해결했다. 최종 사용자 결정은 Afterglow 발행만이며 운영 Kolla/native/schema·연관서비스 변경은 제외한다.
+
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
 `PRODUCT.md`는 사용자 확인을 거친 범용 클라우드 소비자 우선·클라우드/AI 통합 workspace라는 제품 맥락을 기록하며 구현 정본이나 `DESIGN.md`의 시각 권위를 대체하지 않는다. `.impeccable/config.json`은 랜딩·쇼케이스의 image-first 제작 기본값만, `frontend/.impeccable/live/config.json`은 SvelteKit live entry만 소유한다. Live injection은 init에서 실행하지 않는다. 승인된 개발 CSP 예외는 정확히 `http://localhost:8400`이다. `svelte.config.js`의 development-only script source와 `hooks.server.ts`의 `$app/environment.dev` script/connect source에만 추가하고 nonce/hash·기존 runtime API/WebSocket origins와 production CSP는 보존한다. Backend/API·권한·DB/schema·배포 topology에는 영향이 없다.
@@ -1915,9 +1917,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1c1aa6e44b99da1be307d9cfc92d058ea57ead578fa65524183b06f1a3fd08c3",
-  "reviewed_at": "2026-11-02T06:13:37Z",
-  "summary": "Current1.32.1 reviewed source and completed auth studio integration; removing only the accidental machine-local QA dependency symlink from the tracked tree. Runtime source, manifests, locks and previously passed full gate/build unchanged; user dependency directory preserved. No new schema/native authority/topology."
+  "source_sha256": "9943020ad3b1e81afcb05c28de0f32cdb8496e2a44f29f1685b34b9b363193e5",
+  "reviewed_at": "2026-11-02T06:29:30Z",
+  "summary": "Final1.32.1 publication-only qualification: real9locale/theme browser matrix found Japanese280px heading intrinsic minimum clipping controls despite zero document overflow. Add emergency overflow-wrap:anywhere while retaining keep-all; existing auth/session/SSO/logout, native/schema/topology and release/tag identity unchanged. User explicitly excludes operational rollout; final CI/tag/image/Helm proofs required."
 }
 ```
 <!-- architecture-review:end -->

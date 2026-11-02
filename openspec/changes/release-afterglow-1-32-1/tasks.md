@@ -4,8 +4,8 @@
 - [x] X.Y.Z와 historical vX.Y.Z의 version apply/check, workflow image/Helm 발행, operator promotion을 검증한다.
 - [ ] 전체 test:gate 및 실제 실행 smoke·architecture guard 뒤 dev에 게시한다.
 - [ ] 정확한 SHA의 CI 성공 뒤 불변 1.32.1 tag와 release notes를 게시하고 image/latest/Helm revision·digest·runtime version을 확인한다.
-- [ ] 현재 운영 baseline·native 인증/schema·cold restore·전체 writer 전환 선행 조건을 검증한다.
-- [ ] 표준 compute→control Kolla 전체 그룹 실행과 실제 public 버전·readiness·인증/화면을 확인한다.
+- [ ] BLOCKED / 이번 발행 범위 밖: 현재 운영 baseline·native 인증/schema·cold restore·전체 writer 전환 선행 조건 검증.
+- [ ] BLOCKED / 이번 발행 범위 밖: 표준 compute→control Kolla 실행과 public 버전·readiness·인증/화면 수용.
 
 ## Local Qualification
 
@@ -28,3 +28,9 @@ main PR/merge는 pie_root 소유다. 기존 controller1 incident 기록은 추�
 - 사용자 후속 요청 `현재 기준으로 다시 빌드해서 배포해`가 위 hold를 대체했다. 지금 완료된 authStudio source·test·9locale·문서를 후보에 포함하고 fresh gate·CI·정식 image build부터 다시 검증한다. 1.32.1 tag는 아직 생성되지 않아 불변 tag 이동은 없다.
 - 운영 사전 점검은 최신3controller·effective runtime·schema/auth/storage 상태부터 다시 평가한다. 과거3member 관측을 현재 readiness로 쓰거나 native/schema 조건을 우회하지 않는다.
 - 후속 `현재 변경사항 커밋 먼저 진행해`에 따라 운영 effectful 준비를 정지하고 commit을 우선한다. 현재auth 포함·reviewfix 후보 source6ee8007c4d760fb77e9182312646815282b89661b5ad5377a0ab3e5a82780fa6/3943files는 fullgate163와 productionbuild162를 통과했다. 새exact-SHA CI·정식tag·운영수용은 아직별도이며 먼저commit한다.
+
+## Final Publication-only Decision
+
+- 사용자가 `Afterglow 발행까지만`을 명시 선택했다. 운영/native/schema/연관서비스 발행은 제외하고 위2운영task는 미완료로 유지한다. Release change를 운영 완료로 archive하지 않는다.
+- 9locale×2theme×20viewport×login/logout720조건 전부 통과, reveal/SSO/reset18·motion18·empty-sessioncleanup gating 확인. Initial ja280 clipping을1CSS선언으로 수정했고 수정 compiled에서 전체 재검증했다. Proof `login-summary-final.json` 및 `logout-fixed-compiled/logout-summary.json`.
+- 최종source9943020.../3942files fullgate221 통과: backend12412/94skip, frontend6428/502files, contract183, realDB167, Ruff820. Native/platform/browser 수용은 synthetic/browser proof와 구분한다.

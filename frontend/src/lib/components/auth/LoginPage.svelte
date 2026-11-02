@@ -286,7 +286,7 @@
 
 <style>
 	.login-heading { margin-bottom: 1.25rem; }
-	.login-heading h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.055em; word-break: keep-all; }
+	.login-heading h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.055em; word-break: keep-all; overflow-wrap: anywhere; }
 	.login-heading h1:focus { outline: none; }
 	.login-heading p:last-child { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--color-ink-2); }
 	.login-form { display: flex; flex-direction: column; gap: 0.9rem; }
