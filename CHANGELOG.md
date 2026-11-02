@@ -13,6 +13,7 @@
 
 ### Changed
 - 안정 release `X.Y.Z`를 version apply/check, Docker·Helm tag trigger와 operator Git tag promotion에서 지원합니다. 새 metadata bump는 commit/tag를 만들지 않으며 정확한 SHA의 CI 성공 뒤 정식 tag를 생성합니다. Image version tag는 실제 Git tag 이름을 보존하고 `latest`도 같은 release digest를 가리킵니다.
+- 로그인·로그아웃 화면에 `output/afterglow-login` 테마 디자인을 적용합니다. 공통 `AuthStudioShell`이 상단 브랜드·언어·테마 선택, Afterglow 문자 그래픽(일시정지 가능)과 안내 문구, 오른쪽 폼 패널을 제공하고 화면 크기에 맞춰 그래픽부터 줄입니다. 기존 로그인/SSO/계정 찾기/가입 및 로그아웃 3단계·실패 안내·돌아가기 제한 동작은 그대로이며 비밀번호 표시 토글과 9개 언어 문구를 추가했습니다.
 
 ### Added
 - 관리자 모니터링의 노드 다음에 **서버 온도** 대시보드를 추가합니다. 기존 Grafana의 CPU·메모리·전체 온도 센서를 최근6시간·전체 호스트 필터·자동 새로고침으로 표시하며, 관리자 인가·테마·모바일 탐색을 유지합니다. UID 설정과 Kubernetes/Helm 경로를 함께 제공합니다. 운영 배포는 포함하지 않습니다.

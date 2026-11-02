@@ -1,0 +1,4 @@
+- [x] AuthStudioShell component and login/logout adoption.
+- [x] Nine-locale copy.
+- [x] Existing LoginPage/Logout tests pass (theme store mock extended).
+- [x] Local deploy and headless Chromium verification (mocked auth endpoints, no session): 20 README sizes × ko/en × login initial/error/SSO+signup and logout — 0 document overflow, 0 off-viewport controls; panel scrolls internally only for error at 320×480/653×280 and logout at 653×280. Short landscape uses paired inputs and paired login/SSO. Proof: ~/.local/share/afterglow-proofs/auth-studio-20261102/.

@@ -10,6 +10,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **1.32.1 release 준비 (2026-11-02):** 새 정식 tag는 접두사 없는 `1.32.1`이다. Docker/Helm tag trigger와 version apply/check·operator promotion은 안정 `X.Y.Z`와 historical `vX.Y.Z`를 모두 허용한다. Package/Helm metadata는 numeric version, image version tag는 실제 Git tag 이름이며 `latest`는 해당 release digest다. Metadata bump는 commit/tag를 만들지 않고 exact-SHA CI 뒤 불변 tag를 발행한다. 온도 모니터링·fresh 관리자 executor/Swift 집계·flavor claim 재채택/FIFO 관측 수정은 기존 topology/schema를 유지한다. 이전 controller1 incident·native/schema·cold restore/writer 전환 조건을 해소하기 전 GitHub 발행을 운영 배포 완료로 보지 않는다.
 
+사용자의 후속 현재 기준 rebuild/deploy 요청은 앞선 maintenance hold를 대체한다. 새 후보에는 이제 완료된 `AuthStudioShell`의 실제 `/login`·`/logout` 구성도 포함한다. 기존 credential/SSO/recovery/signup·logout cleanup/leave gating과 세션 fence를 유지하고 locale/theme·일시정지 가능한 기존 문자 scene·비밀번호 표시 조작을 공통 shell에 배치한다. 새 native 권위/schema/topology는 없으며 이 후보의 전체 gate·CI·정식 tag/image 재빌드와 운영 수용은 이전 source의 증거를 재사용하지 않고 별도 기록한다.
+
 Notion worker 종료는 dependency timeout의 일시적 `Task.cancelling()` 상태를 shutdown 요청으로 간주하지 않는다. 각 drain이 자기 취소를 한 번 요청하고 실제 HTTP/SDK 완료까지 shield한 뒤 target/output lease를 해제한다. 공통 dispatcher cleanup은 진입 전 pending 취소와 cleanup 중 취소를 모두 호출자에게 전달하되 자식만 취소된 경우와 구분한다. 이 수정은 새 background role/schema·토큰 권위 cache·운영 설정을 추가하지 않는다.
 
 `PRODUCT.md`는 사용자 확인을 거친 범용 클라우드 소비자 우선·클라우드/AI 통합 workspace라는 제품 맥락을 기록하며 구현 정본이나 `DESIGN.md`의 시각 권위를 대체하지 않는다. `.impeccable/config.json`은 랜딩·쇼케이스의 image-first 제작 기본값만, `frontend/.impeccable/live/config.json`은 SvelteKit live entry만 소유한다. Live injection은 init에서 실행하지 않는다. 승인된 개발 CSP 예외는 정확히 `http://localhost:8400`이다. `svelte.config.js`의 development-only script source와 `hooks.server.ts`의 `$app/environment.dev` script/connect source에만 추가하고 nonce/hash·기존 runtime API/WebSocket origins와 production CSP는 보존한다. Backend/API·권한·DB/schema·배포 topology에는 영향이 없다.
@@ -1913,9 +1915,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1c56a4256a9978a4bae7d3390f8025346d8dfd5cc76aa8420f76fc0a6b0859f4",
-  "reviewed_at": "2026-11-02T05:48:14Z",
-  "summary": "Final1.32.1 completed integration and plain stable release compatibility: exact tag identity preserved for explicit Kolla image pins on numeric/historical-v apply; metadata-only bump defaults plain; malformed/mismatch rejected. Admin-project authority, Swift partial visibility, bounded flavor claim re-adoption/foreign-marker retention, FIFO observer race and temperature Grafana; no new schema/topology. In-flight auth redesign excluded; production maintenance preserved."
+  "source_sha256": "6ee8007c4d760fb77e9182312646815282b89661b5ad5377a0ab3e5a82780fa6",
+  "reviewed_at": "2026-11-02T06:05:06Z",
+  "summary": "Reviewed current1.32.1 rebuild: includes AuthStudioShell/nine locales, single main landmark with preserved skip target, non-conflicting action labels and password concealment on method switches; existing auth/session/SSO/signup/recovery/logout semantics retained. Prior admin/Grafana/flavor and plain/historical tag identity fixes preserved. No new schema/native authority/topology; current native/storage prerequisite and five-service deployment separately qualified."
 }
 ```
 <!-- architecture-review:end -->

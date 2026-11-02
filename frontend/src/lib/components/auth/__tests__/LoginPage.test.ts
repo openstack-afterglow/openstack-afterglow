@@ -18,7 +18,7 @@ vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/stores', () => ({
 	page: writable({ data: { mockup: { active: false } }, url: new URL('http://localhost/login') }),
 }));
-vi.mock('$lib/stores/theme', () => ({ resolvedTheme: readable('dark') }));
+vi.mock('$lib/stores/theme', () => ({ resolvedTheme: readable('dark'), theme: writable('system') }));
 vi.mock('$lib/api/client', () => ({
 	ApiError: class ApiError extends Error {
 		constructor(public status: number, message: string, public code?: string) { super(message); }
@@ -208,12 +208,15 @@ describe('public home-first login', () => {
 		storeMcpConsentTicket('m'.repeat(32)); storePendingInvitation('i'.repeat(32));
 		render(LoginPage);
 		await fillCredentials();
+		await fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+		expect((screen.getByLabelText(/^Password/) as HTMLInputElement).type).toBe('text');
 		const original = get(auth);
 		await openSso();
 		await fireEvent.click(screen.getByRole('button', { name: 'Back to password sign-in' }));
 		const username = screen.getByLabelText(/^Username or email/) as HTMLInputElement;
 		expect(username.value).toBe('alice@example.test');
 		expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe('');
+		expect((screen.getByLabelText(/^Password/) as HTMLInputElement).type).toBe('password');
 		expect(document.activeElement).toBe(username);
 		expect(get(auth)).toEqual(original);
 		expect(pendingMcpConsentTicket()).toBe('m'.repeat(32));

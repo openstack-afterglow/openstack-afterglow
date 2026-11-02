@@ -8,16 +8,18 @@ nav_order: 8
 
 ## 1.32.1 plain-tag release qualification (2026-11-02)
 
-- 완료 source를 격리 local dev로 동결했다. 작업 도중 생긴 production authStudio login/logout·test·public-entry 번역은 진행 중인 별도 작업으로 제외하고 원본을 보존했다. 온도 모니터링·관리자 executor/Swift 부분 집계·flavor claim 재채택/foreign marker·FIFO 관측 수정과 완료 정적 로그인 시안을 포함한다.
+- 첫 후보는 완료 source를 격리 local dev로 동결하고 당시 진행 중인 production authStudio login/logout·test·public-entry 번역을 제외했다. 후속 사용자의 현재 기준 rebuild/deploy 요청과 authStudio checklist 완료에 따라 아래 새 후보는 그 변경도 포함한다. 원본 공유 source는 보존하고 기존 release/tag 호환성 수정도 유지한다.
 - Version CLI regression38개와 operator promotion14개가 통과했다. 실제 version apply→`uv lock` 및 두 checker로 numeric/historical-v tag·tag/CLI 우선순위·metadata mismatch·malformed 입력을 검증했다. Promotion은 실제 remote tag identity를 보존하고 같은 버전의 다른 commit alias를 거부한다.
 - 실제 workflow YAML의 Bash를 실행해 Docker base/final primary/latest/dev/nightly8경우와 Helm numeric/v·잘못된tag5경우를 확인했다(`workflow-shell-smoke.json`). Actionlint는 기존 custom runner `afterglow-arc`를 검사용 config에 등록한 뒤 통과했다. Repo runner 설정이나 검증을 완화하지 않았다.
 - 격리 frontend production build 성공. 이전 서버 온도54조건 actual Chromium/live Grafana proof는 같은 source에 대한 별도 화면 증거다. 새 release 옵션을 기존 embed unit6개가 직접 검증했다고 주장하지 않는다.
-- 사용자가 직접 운영 유지보수 중임을 확인하여 이번 실행은 GitHub1.32.1 발행까지만 수행한다. 현재 stopped backend와 기존 config/schema/key를 보존하며 Kolla reconfigure·재시작·DDL은 실행하지 않는다. 읽기 전용 현재 관측과 후속 선행 조건은 release OpenSpec에 기록한다.
+- 초기에는 사용자가 직접 운영 유지보수 중임을 확인하여 GitHub 발행만 수행하도록 한정했다. 이후 `현재 기준으로 다시 빌드해서 배포해` 요청이 이 hold를 대체했다. 아래 최신 rebuild·운영 preflight·cutover receipt를 이전 source/maintenance 기록과 구분한다.
 - 증거 `~/.local/share/afterglow-proofs/release-1.32.1-20261102/`. 전체 gate·exact-SHA CI·image/Helm 발행 수용은 완료 후 아래 receipt에 추가한다.
 - 첫 frozen source에서 CPython3.12.13 + 선언된 `--extra dev`를 설치한 뒤 `uv run --project backend --no-sync npm run test:gate`가 exit0이었다: orchestration208, Kolla JS28, shell installer20(미설치 PowerShell36skip), backend12400passed/106skipped, frontend502files6428tests, contracts183, realDBfunctional167passed/37deselected, Ruff820files. Source00359c71ea52ead952fddaaa1ec138ed6f5fb024cf4cb553d3c171d6ec96e37b/3942files, artifact98. 초기 host python3/tomllib 및 scratch dev extra 누락 실패는 환경을 교정했고 product 검증을 줄이거나 예외를 숨기지 않았다.
 - 최종 호환성 검토에서 historical-v tag 적용 시 명시 Kolla pin도 실제 `vX.Y.Z` 이미지 identity를 유지하도록 보완했다. Metadata-only bump는 plain pin을 선택한다. 실제 `npm run version:bump:patch`를 disposable Git 저장소에서 실행해1.32.0→1.32.1·세 metadata/lock 동기화·commit0/tag0을 확인했다(`npm-metadata-bump-smoke.json`).
 - 이 보완 후 gate의 기존 shell installer hazard case에서 일회성 PTY timeout20초가 발생했다(artifact108). 같은 무수정 경로에 임시 Python traceback 계측을 넣은 focused 실행은781ms에 통과했고 원인은 확정하지 못했다. Installer/기존 테스트·deadline은 변경하거나 예외로 숨기지 않았으며 임시 계측은 제거한 뒤 전체 gate를 다시 실행한다.
 - 최종 source1c56a4256a9978a4bae7d3390f8025346d8dfd5cc76aa8420f76fc0a6b0859f4/3942files에서 무수정 전체 gate 재실행 exit0(artifact112): orchestration223, KollaJS28, shell20/PowerShell36skip, backend12400/106skip, frontend6428/502files, contract183, realDBfunctional167/37deselected, Ruff820. 일회성 PTY timeout의 원인은 여전히 미확정이며 passing 재실행을 원인 수정으로 주장하지 않는다.
+- 현재 기준 후보는 AuthStudioShell과 실제login/logout을 포함하며 단일main/skip target·동작형 pause/password label·SSO 전환 후 비밀번호 재숨김을 검토·수정했다. 기존 password→SSO→password 회귀에서 실제 input type text→password를 검증했고 LoginPage81tests 통과(artifact147). 새 후보 fullgate exit0(artifact163): source6ee8007c4d760fb77e9182312646815282b89661b5ad5377a0ab3e5a82780fa6/3943files, backend12400/106skip, frontend6428/502files, contract183, realDB167/37deselected, Ruff820. 같은 source production build 성공(artifact162).
+- 이전460e52d0의 CI41396755485는 기존 setup PTY interrupt case가 Cancelled marker에 도달하지 못해 실패했다. 로컬 현재 fullgate의 같은 backend suite는 통과했으나 CI의 원인을 확정하거나 수정했다고 주장하지 않는다. 새 exact-SHA CI 전체 성공 전에는1.32.1tag/정식image를 발행하지 않는다.
 
 
 ## 서버 온도 관리자 대시보드 (2026-11-02, source/isolated)

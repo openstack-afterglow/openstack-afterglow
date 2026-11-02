@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import LoginBrandHeader from '$lib/components/auth/LoginBrandHeader.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
+	import { siteConfig } from '$lib/config/site';
 	import { t } from '$lib/i18n/ns/shell';
+	import { t as tp } from '$lib/i18n/ns/public-entry';
 	import { ensureLogoutStarted, logoutProgress, type LogoutStep } from '$lib/utils/logout';
 
 	const steps = ['shell', 'server', 'local'] as const;
@@ -18,74 +17,90 @@
 		: $logoutProgress.local === 'warning' ? t('logout.pageTitle')
 		: partial ? t('logout.partialTitle') : t('logout.finished'));
 
+	// Authored glyph state marker; status text below remains the accessible source.
+	const art = $derived(!finished ? '[ : : · · ]' : partial || $logoutProgress.local === 'warning' ? '[ ! ]' : '[ + ]');
+
 	onMount(() => { void ensureLogoutStarted(); });
 </script>
 
 <svelte:head><title>{t('logout.pageTitle')}</title></svelte:head>
 
-<div class="logout-page">
-	<div class="logout-locale"><LocaleSelect id="logout-locale" variant="labelled" /></div>
-	<main class="logout-shell" aria-labelledby="logout-title">
-		<LoginBrandHeader />
-		<Card padding="lg">
-			<div class="logout-content">
-				<header class="logout-introduction">
-					<h1 id="logout-title">{heading}</h1>
-					<p>{$logoutProgress.all ? t('logout.allExplanation') : t('logout.explanation')}</p>
-				</header>
-				<dl class="logout-steps" aria-live="polite" aria-busy={!finished}>
-					{#each steps as step (step)}
-						<div class="logout-step" data-step={step} data-state={$logoutProgress[step]}>
-							<dt>{t(`logout.${step}`)}</dt>
-							<dd>
-								{#if $logoutProgress[step] === 'active'}
-									<LoadingState variant="inline" label="" aria-hidden="true" />
-								{/if}
-								<span>{step === 'server' && $logoutProgress.serverNotRequired ? t('logout.notRequired') : t(statusKeys[$logoutProgress[step]])}</span>
-							</dd>
-						</div>
-					{/each}
-				</dl>
-				{#if finished}
-					{#if $logoutProgress.local === 'warning'}
-						<Alert tone="danger">{t('logout.localFailed')}</Alert>
-					{:else if $logoutProgress.server === 'warning'}
-						<Alert tone="warning">{$logoutProgress.all ? t('logout.allPartial') : t('logout.partial')}</Alert>
-					{:else if !partial}
-						<Alert tone="success">{t('logout.done')}</Alert>
-					{/if}
-					{#if $logoutProgress.shell === 'warning'}
-						<Alert tone="warning">{t('logout.shellFailed')}</Alert>
-					{/if}
+<AuthStudioShell variant="logout" localeId="logout-locale" themeId="logout-theme" footerNote={tp('authStudio.logout.footerNote')}>
+	<div class="logout-content">
+		<header class="logout-introduction">
+			<p class="auth-eyebrow" aria-hidden="true">{tp('authStudio.logout.formEyebrow', { site: $siteConfig.site_name.toUpperCase() })}</p>
+			<h1 id="logout-title">{heading}</h1>
+			<p>{$logoutProgress.all ? t('logout.allExplanation') : t('logout.explanation')}</p>
+		</header>
+		<div class="logout-art" aria-hidden="true">{art}</div>
+		<dl class="logout-steps" aria-live="polite" aria-busy={!finished}>
+			{#each steps as step (step)}
+				<div class="logout-step" data-step={step} data-state={$logoutProgress[step]}>
+					<dt>{t(`logout.${step}`)}</dt>
+					<dd>
+						{#if $logoutProgress[step] === 'active'}
+							<LoadingState variant="inline" label="" aria-hidden="true" />
+						{/if}
+						<span>{step === 'server' && $logoutProgress.serverNotRequired ? t('logout.notRequired') : t(statusKeys[$logoutProgress[step]])}</span>
+					</dd>
+				</div>
+			{/each}
+		</dl>
+		{#if finished}
+			<div class="logout-messages">
+				{#if $logoutProgress.local === 'warning'}
+					<p class="logout-status" data-tone="danger" role="alert">{t('logout.localFailed')}</p>
+				{:else if $logoutProgress.server === 'warning'}
+					<p class="logout-status" data-tone="warning" role="status">{$logoutProgress.all ? t('logout.allPartial') : t('logout.partial')}</p>
+				{:else if !partial}
+					<p class="logout-status" data-tone="success" role="status">{t('logout.done')}</p>
 				{/if}
-				<Button href={$logoutProgress.loginHref} size="lg" disabled={!canLeave} class="logout-back">{t('logout.back')}</Button>
+				{#if $logoutProgress.shell === 'warning'}
+					<p class="logout-status" data-tone="warning" role="status">{t('logout.shellFailed')}</p>
+				{/if}
 			</div>
-		</Card>
-	</main>
-</div>
+		{/if}
+		<Button href={$logoutProgress.loginHref} size="lg" disabled={!canLeave} class="logout-back">{t('logout.back')}<span aria-hidden="true">↗</span></Button>
+	</div>
+</AuthStudioShell>
 
 <style>
-	.logout-page {
-		min-height: 100dvh;
-		display: grid;
-		grid-template-rows: auto 1fr;
-		background: var(--color-surface-canvas);
-		color: var(--color-ink-0);
-	}
-	.logout-locale { justify-self: end; margin: 1rem; }
-	.logout-shell { width: min(100%, 30rem); align-self: center; margin: 0 auto; padding: 1rem 1rem 3rem; }
-	.logout-content { display: flex; flex-direction: column; gap: 1.5rem; }
-	.logout-introduction h1 { margin: 0 0 0.5rem; font-size: 1.25rem; line-height: 1.4; font-weight: 600; text-wrap: balance; }
-	.logout-introduction p { margin: 0; color: var(--color-ink-2); font-size: 0.875rem; line-height: 1.6; }
+	.logout-content { display: flex; flex-direction: column; gap: 1rem; }
+	.logout-introduction h1 { margin: 0 0 0.65rem; font-size: 1.8rem; line-height: 1.35; font-weight: 500; letter-spacing: -0.055em; word-break: keep-all; text-wrap: balance; }
+	.logout-introduction p:last-child { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--color-ink-2); }
+	.logout-art { padding: 0.5rem 0; font: 1.2rem var(--font-mono); color: var(--color-warm); white-space: pre; }
 	.logout-steps { margin: 0; }
-	.logout-step { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-block: 0.875rem; border-bottom: 1px solid var(--color-line); font-size: 0.875rem; line-height: 1.5; }
+	.logout-step { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 48px; border-bottom: 1px solid var(--color-line); font-size: 0.8125rem; line-height: 1.5; }
 	.logout-step:first-child { border-top: 1px solid var(--color-line); }
 	.logout-step dt { min-width: 0; }
-	.logout-step dd { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.375rem; max-width: 48%; margin: 0; text-align: end; color: var(--color-ink-2); }
+	.logout-step dd { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.375rem; max-width: 48%; margin: 0; text-align: end; color: var(--color-warm-text); }
+	.logout-step[data-state='pending'] dd { color: var(--color-ink-2); }
 	.logout-step[data-state='warning'] dd { color: var(--color-state-warning-text); }
-	.logout-content :global(.logout-back) { width: 100%; white-space: normal; overflow-wrap: anywhere; }
-	@media (max-width: 767px) {
-		.logout-shell { padding-inline: 0.75rem; }
-		.logout-step { gap: 0.75rem; }
+	.logout-messages { display: flex; flex-direction: column; gap: 0.35rem; }
+	.logout-status { margin: 0; font-size: 0.75rem; line-height: 1.6; color: var(--color-ink-2); }
+	.logout-status[data-tone='warning'] { color: var(--color-state-warning-text); }
+	.logout-status[data-tone='danger'] { color: var(--color-state-danger-text); }
+	.logout-content :global(.logout-back) {
+		width: 100%; min-height: 48px; justify-content: space-between; padding-inline: 1rem;
+		background: var(--color-action-warm); color: var(--color-action-on-warm); border-color: transparent;
+		white-space: normal; overflow-wrap: anywhere;
+	}
+	.logout-content :global(.logout-back:hover:not([aria-disabled='true'])) { background: var(--color-action-warm-hover); }
+	.logout-content :global(.logout-back[aria-disabled='true']) { opacity: 0.55; }
+	@media (min-width: 1600px) { .logout-introduction h1 { font-size: 2rem; } }
+	@media (max-width: 767px) { .logout-introduction h1 { font-size: 1.4rem; } }
+	@media (max-height: 800px) {
+		.logout-content { gap: 0.65rem; }
+		.logout-introduction .auth-eyebrow { display: none; }
+		.logout-introduction h1 { font-size: 1.35rem; line-height: 1.3; margin-bottom: 0.4rem; }
+		.logout-introduction p:last-child { font-size: 0.75rem; }
+		.logout-art { font-size: 1rem; padding: 0; }
+		.logout-step { min-height: 40px; }
+		.logout-status { font-size: 0.6875rem; }
+	}
+	@media (max-height: 620px) {
+		.logout-art, .logout-introduction p:last-child { display: none; }
+		.logout-step { min-height: 36px; }
+		.logout-content :global(.logout-back) { min-height: 44px; }
 	}
 </style>
