@@ -267,12 +267,15 @@ Native 409/412/422의 명시적 거절에는 생성 경로의 세션 회수를 �
 
 `POST /api/v1/admin/users/{user_id}/password/reset-email`은 현재 system-admin만 사용합니다. Strict 본문은 `{}`이며 비밀번호·수신 주소·home은 client가 지정하지 않습니다. 경로3회/분과 같은 cloud/user에 대한 관리자 공통300초 cooldown을 적용합니다. Exact enabled user/home·유일한 canonical 등록 메일·service 계정 제외·실제 system 권위·executor binding·회수 store·검증된 STARTTLS 연결을 변경 전에 확인합니다. SMTP가 비활성/평문이거나 준비되지 않았으면 password를 변경하지 않습니다.
 
+Federated 계정은 명시적 `afterglow_local_password=true`가 확인돼야 합니다. Marker 없는 shadow/legacy 연결 계정과 false marker는 stock Keystone의 최초 local password setter 오류를 피하기 위해 `409 admin_password_reset_external_account`로 거부합니다. 이 거부는 cooldown·감사 fence·native 쓰기·메일·세션 회수 전에 발생하며 기존 credential proof와 세션을 보존합니다. Marker가 없으면 실제 local password를 보유한 연결 계정도 의도적으로 거부합니다. 별도 native 최초 생성 workflow를 이 관리자 reset으로 대체하지 않습니다.
+
 서버는 암호학적 난수32자를 생성하고 원래 관리자 native token으로 `PATCH /v3/users/{id}`를 한 번 호출합니다. `openstack user set --password`와 같은 native setter이며 불필요한 identity/federation metadata는 쓰지 않습니다. 기존 password/email-change/create proof를 supersede하고 비밀 없는 dispatch 감사 기록을 **먼저 commit**합니다. Known 성공만 현재 등록 메일에 password를 보내며 응답·로그·감사·DB에는 password를 남기지 않습니다. Native 성공/불명 결과는 기존 세션·native token/cache 회수를 시도합니다.
 
 **200 `{ "status": "changed", "delivered": true }`**는 native 변경과 SMTP 접수를 확인한 결과이지 실제 받은편지함 도착 보장이 아닙니다. Afterglow는 강제 첫 로그인 만료를 추가하지 않으며 native password/만료 정책은 그대로 적용됩니다. 사용자는 로그인 직후 자신의 비밀번호로 변경해야 합니다. 실제 password가 메일함에 남으므로 사용자 셀프 복구의 일회용 링크보다 위험합니다. 관리자 확인 창과 메일에 이를 안내하고 공개 분실 요청만으로 이 동작을 실행하지 않습니다.
 
 | 응답 | 효과/다음 조치 |
 | --- | --- |
+| 409 `admin_password_reset_external_account` | Federated 계정의 local password marker 미확인; native 쓰기·메일·세션 회수·cooldown 없이 사전 거부 |
 | 400/401/403/404/409/422 `admin_password_reset_native_rejected` | Native 명시적 거절, `changed:false`, password 메일 없음 |
 | 503 `admin_password_reset_email_unavailable` | SMTP/검증 TLS 준비 실패, 변경 전 차단 |
 | 503 `admin_password_reset_email_failed` | `changed:true, delivered:false`; 이전 password는 무효일 수 있으며 관리자 확인 뒤 새 명시 요청 필요 |

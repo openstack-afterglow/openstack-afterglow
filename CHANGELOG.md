@@ -7,10 +7,19 @@
 
 ## [Unreleased]
 
+## [1.32.2] - 2026-11-02
+
+현재 dev 변경의 커밋과 patch metadata 준비입니다. GitHub/GHCR/Helm 발행·운영 배포는 수행하지 않으며 기존1.32.1 artifact와 불변 tag는 보존합니다.
+
 ### Changed
 - 별도 worktree의 개발 완료 조건을 기본 공유 `dev` 정상 merge·통합 검증·작업 디렉터리 정리까지로 명문화합니다. 미반영 결과와 진행 중인 다른 작업·private 설정은 보존합니다.
 
 ### Fixed
+
+- MCP 볼륨·스냅샷·백업 목록이 Cinder non-admin filter allowlist 밖의 `project_id` query를 보내 HTTP400으로 실패하던 로직을 수정합니다. 이미 승인된 프로젝트 자격의 native scope를 사용하고 record·parent 소유권, 제한·비밀 제거·실패 시 거부를 유지합니다. 기본 정책이 backup 소유자 attribute를 숨기는 경우는 계속 거부하며 native 정책을 넓히지 않습니다. 실제 운영 로그에서 별도 Waygate의 delegated-token 재발급403→401도 확인하고 기존 local WIP의 원본 token inspection을 격리 검증했습니다. 다섯 자원의 정확한 조회 필드·누락 CRUD·pagination 한계를 문서화하며 운영 배포는 포함하지 않습니다.
+- 프로젝트 대시보드 CPU·메모리 쿼터 카드가 도메인 전체 사용량을 표시하던 문제를 수정했습니다. 선택 프로젝트 소비와 적용 가능한 native/domain/project 상한을 표시하며, 공유 잔여량은 보조 정보로 유지합니다. 사용량 미확인을 도메인 합계나 0으로 대체하지 않습니다. 운영 배포·실제 쿼터 변경은 포함하지 않습니다.
+- VM 생성 마법사의 "현재 단계의 일부 데이터를 불러오지 못했습니다" 배너가 해당 단계의 실패한 조회 항목(이미지·볼륨·네트워크·키페어·보안 그룹·기본 네트워크)과 원인(HTTP 상태, 응답 시간 초과, 서버 응답 없는 네트워크 실패, 브라우저 처리 오류)을 9개 언어로 표시합니다. 플레이버 오류는 기존 composer 경로가 표시하며 파일 스토리지 오류는 이 배너의 대상이 아닙니다. 같은 프로젝트의 쓰기 요청(플레이버 구성 저장, GitHub 키 조회, cloud-init 저장 등)이 진행 중인 옵션 조회를 무효화하면 해당 조회가 `loading`에 영구히 머물던 문제를 고쳐, 현재 단계에 필요한 조회를 최대 2회 다시 요청하고, 계속 취소되면 "다른 요청과 겹쳐 조회가 반복 취소됨" 오류와 다시 시도 버튼을 표시합니다. 응답 처리 중 브라우저 오류는 네트워크 실패와 구분합니다. Timeout은 원인 경로마다 제한이 다를 수 있어 고정30초로 단정하지 않습니다. 당시 운영 v1.32.0 3개 controller backend 로그의 해당 경로는 모두200(최대 약11초)이었으므로 원래 배너 원인은 여전히 미확정이며 다음 발생 시 화면에서 구분합니다.
+- 관리자 "난수 비밀번호 재설정 및 메일 전송"이 local password가 확인되지 않은 SSO(federated shadow) 계정에서 Keystone 500(`local_user.name` NULL IntegrityError, transaction rollback)을 받아 `outcome_unknown`으로 끝나고 대상 세션만 폐기하던 문제를 수정했습니다. 이제 `afterglow_local_password=true`가 없는 federated 계정은 감사 fence·native 쓰기·세션 폐기 전에 `409 admin_password_reset_external_account`로 거부하고 9개 언어 안내를 표시합니다. Marker 없는 legacy 연결 계정은 실제 local password가 있어도 stock Keystone으로 shadow 사용자와 구분할 수 없어 의도적으로 함께 거부합니다. Stock Keystone API로는 이런 계정에 최초 local password를 만들 수 없습니다.
 - 관리자 모델 목록에서 저장 중에도 연속 드래그·위/아래 이동을 유지합니다. Provider별 최신 순서를 직렬 CAS로 저장하고 전체 reload로 카드·포커스를 끊지 않으며, 오래된 조회와 scope 변경을 차단하고 실패/409에서 확정 순서를 복구합니다.
 
 ## [1.32.1] - 2026-11-02

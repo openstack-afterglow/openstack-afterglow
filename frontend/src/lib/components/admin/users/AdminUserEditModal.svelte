@@ -253,7 +253,8 @@
     } catch (e) {
       if (!current(requestScope)) return;
       const code = e instanceof ApiError ? e.code : undefined;
-      resetMessage = t(code === 'admin_password_reset_email_failed' ? 'userEdit.resetEmailDeliveryFailed'
+      resetMessage = t(code === 'admin_password_reset_external_account' ? 'userEdit.resetEmailExternalAccount'
+        : code === 'admin_password_reset_email_failed' ? 'userEdit.resetEmailDeliveryFailed'
         : code === 'admin_password_reset_sessions_failed' ? 'userEdit.resetEmailSessionsFailed'
         : code === 'admin_password_reset_audit_failed' ? 'userEdit.resetEmailAuditFailed'
         : code === 'admin_password_reset_outcome_unknown' || !(e instanceof ApiError) || e.status >= 500 ? 'userEdit.resetEmailUnknown'

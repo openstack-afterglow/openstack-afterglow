@@ -63,6 +63,7 @@ export interface QuotaItem {
 	domain_id?: string | null;
 	project_limit?: number | null;
 	project_in_use?: number | null;
+	native_project_limit?: number | null;
 }
 export interface ComputePoolSummary {
 	state: 'unmanaged' | 'active' | 'paused' | 'unavailable';

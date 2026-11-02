@@ -656,6 +656,7 @@
 	"userEdit.resetEmailSessionsFailed": "密码已修改，但部分会话无法撤销，可能仍有效。邮件发送也可能失败。管理员须确认送达状态并撤销剩余会话。不会自动再次重置。",
 	"userEdit.resetEmailAuditFailed": "无法确认操作审计记录。密码修改或邮件发送可能已完成。管理员须核实实际结果、邮件送达、会话撤销及审计记录。不会自动重试。",
 	"userEdit.resetEmailUnknown": "无法确认密码修改结果。原密码可能已更改。不会自动重试。管理员须检查结果和会话撤销情况。",
+	"userEdit.resetEmailExternalAccount": "仅限 SSO（外部 IdP）的账户无法使用管理员随机密码重置。密码和会话均未更改，也未发送邮件。用户应使用 SSO 登录，或在验证身份后创建密码。",
 	"userEdit.resetEmailRejected": "请求被拒绝。尚未确认修改和送达成功。请检查权限和注册账户状态。不会自动重试。",
 	"userEdit.resetEmailUnavailable": "需要已启用且有注册邮箱的账户。",
 	"userEdit.resetEmailSending": "正在重置密码并发送邮件…"

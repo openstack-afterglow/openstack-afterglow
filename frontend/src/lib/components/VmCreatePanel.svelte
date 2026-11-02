@@ -96,6 +96,11 @@
 				{#if s.hasCurrentStepError && $wizard.step !== 2}
 					<Alert tone="danger" class="mb-6">
 						{t('panel.stepError')}
+						<ul class="mt-1 list-disc pl-5 text-sm" data-testid="step-error-items">
+							{#each s.currentStepErrors as failure (failure.key)}
+								<li>{t('panel.stepErrorItem', { item: failure.label, reason: failure.message })}</li>
+							{/each}
+						</ul>
 						{#snippet actions()}
 							<Button variant="danger-outline" size="sm" onclick={s.retryCurrentStep}>{t('panel.retry')}</Button>
 						{/snippet}

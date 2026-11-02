@@ -19,17 +19,21 @@
 		error: string | null;
 	} = $props();
 	function value(amount: number | null | undefined, scale = 1) { return amount == null ? tp('unknown') : amount === -1 ? tp('unlimited') : new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }).format(amount / scale); }
+	function projectLimit(item: QuotaItem): number {
+		const limits = [item.limit, item.project_limit, item.native_project_limit]
+			.filter((limit): limit is number => limit != null && limit !== -1);
+		return limits.length ? Math.min(...limits) : -1;
+	}
 </script>
 
 {#snippet computeRow(label: string, item: QuotaItem | null, scale = 1)}
-	{#if item}
+	{#if item && (item.quota_scope !== 'domain' || item.project_in_use != null)}
 		<div class="min-w-0 space-y-1.5">
-			<QuotaBar {label} used={item.in_use / scale} limit={item.limit === -1 ? -1 : item.limit / scale} />
+			<QuotaBar {label} used={(item.quota_scope === 'domain' ? item.project_in_use! : item.in_use) / scale} limit={projectLimit(item) === -1 ? -1 : projectLimit(item) / scale} />
 			{#if item.quota_scope === 'domain'}
 				<p class="break-words text-xs text-ink-2">{tp('domainQuotaTitle')}</p>
 				<dl class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
 					<div><dt class="inline">{tp('remaining')}: </dt><dd class="inline tabular-nums">{value(item.available, scale)}</dd></div>
-					{#if item.project_limit != null}<div><dt class="inline">{tp('projectCaps')}: </dt><dd class="inline tabular-nums">{value(item.project_in_use, scale)} / {value(item.project_limit, scale)}</dd></div>{/if}
 				</dl>
 			{/if}
 		</div>

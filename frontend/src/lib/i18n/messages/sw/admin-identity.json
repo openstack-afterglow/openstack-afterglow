@@ -655,6 +655,7 @@
 	"userEdit.resetEmailSessionsFailed": "Nenosiri limebadilishwa lakini baadhi ya vipindi havikufutwa na vinaweza kubaki hai. Huenda barua pia haikuwasilishwa. Msimamizi athibitishe uwasilishaji na afute vipindi vilivyobaki. Hakuna uwekaji upya wa kiotomatiki.",
 	"userEdit.resetEmailAuditFailed": "Rekodi ya ukaguzi wa operesheni haikuweza kuthibitishwa. Mabadiliko ya nenosiri au uwasilishaji wa barua huenda umekamilika. Msimamizi athibitishe matokeo, uwasilishaji, ufutaji wa vipindi na rekodi ya ukaguzi. Hakuna jaribio la kiotomatiki.",
 	"userEdit.resetEmailUnknown": "Matokeo ya kubadili nenosiri hayajulikani. Nenosiri la awali linaweza kuwa limebadilishwa. Hakuna jaribio la kiotomatiki. Msimamizi akague matokeo na ufutaji wa vipindi.",
+	"userEdit.resetEmailExternalAccount": "Uwekaji upya wa nenosiri nasibu na msimamizi haupatikani kwa akaunti za SSO pekee (IdP ya nje). Hakuna nenosiri wala kipindi kilichobadilishwa na hakuna barua pepe iliyotumwa. Mtumiaji aingie kwa SSO au aunde nenosiri baada ya kuthibitisha utambulisho.",
 	"userEdit.resetEmailRejected": "Ombi limekataliwa. Mabadiliko na uwasilishaji wenye mafanikio havijathibitishwa. Kagua ruhusa na hali ya akaunti iliyosajiliwa. Hakuna jaribio la kiotomatiki.",
 	"userEdit.resetEmailUnavailable": "Akaunti iliyowezeshwa yenye barua pepe iliyosajiliwa inahitajika.",
 	"userEdit.resetEmailSending": "Inaweka upya nenosiri na kuwasilisha barua pepe…"

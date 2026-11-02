@@ -29,14 +29,26 @@ describe('QuotaUsageCard', () => {
 		expect(queryByRole('meter', { name: new RegExp(t('quota.shares')) })).toBeNull();
 	});
 
-	it('shows domain consumption independently from project-cap effective remaining', () => {
-		const scoped = { ...quotas, compute: { ...quotas.compute, cores: { limit: 100, in_use: 60, available: 2, quota_scope: 'domain' as const, domain_id: 'domain-a', project_limit: 8, project_in_use: 6 } } };
+	it.each([
+		{ pool: -1, cap: null, native: -1, expected: tp('unlimited') },
+		{ pool: 100, cap: 8, native: 16, expected: '8' },
+		{ pool: 100, cap: null, native: 10, expected: '10' },
+		{ pool: 4, cap: 8, native: -1, expected: '4' },
+		{ pool: -1, cap: 0, native: -1, expected: '0' },
+	])('shows project consumption with applicable limits: %j', ({ pool, cap, native, expected }) => {
+		const scoped = { ...quotas, compute: { ...quotas.compute, cores: { limit: pool, in_use: 224, available: 2, quota_scope: 'domain' as const, domain_id: 'domain-a', project_limit: cap, project_in_use: 6, native_project_limit: native } } };
 		const view = render(QuotaUsageCard, { quotas: scoped, pending: false, error: null });
-		expect(view.getByText(tp('domainQuotaTitle'))).toBeTruthy();
-		expect(view.container.textContent).toContain('60');
-		const available = view.getByText(`${tp('remaining')}:`).parentElement;
-		expect(available?.textContent).toContain('2');
-		expect(view.getByText(`${tp('projectCaps')}:`).parentElement?.textContent).toContain('6 / 8');
+		const row = view.getByText(tp('cpu')).parentElement;
+		expect(row?.textContent?.replace(/\s+/g, '')).toContain(`6/${expected}`);
+		expect(view.container.textContent).not.toContain('224');
+		expect(view.getByText(`${tp('remaining')}:`).parentElement?.textContent).toContain('2');
+	});
+
+	it('does not substitute domain consumption when project use is unknown', () => {
+		const scoped = { ...quotas, compute: { ...quotas.compute, cores: { limit: -1, in_use: 224, quota_scope: 'domain' as const, project_in_use: null } } };
+		const view = render(QuotaUsageCard, { quotas: scoped, pending: false, error: null });
+		expect(view.getByText(`${tp('cpu')}: ${tp('unknown')}`)).toBeTruthy();
+		expect(view.container.textContent).not.toContain('224');
 	});
 
 	it.each(['paused', 'unavailable'] as const)('masks %s domain compute without inventing zero or hiding storage', state => {

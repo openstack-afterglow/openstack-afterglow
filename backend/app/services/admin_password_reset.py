@@ -60,6 +60,12 @@ async def _subject(user_id, ks, catalog):
         raise _error(503, "identity_unavailable")
     if _field(user, "enabled") is not True or _field(user, "name") == get_settings().os_username:
         raise _error(403, "subject_ineligible")
+    # Stock Keystone cannot add the first local password to a federated shadow
+    # user: its password setter inserts local_user with a NULL name and returns
+    # 500 after a rolled-back transaction. Refuse before the fence, native write
+    # and session revocation; only an explicit local-password marker qualifies.
+    if _field(user, "federated") and _field(user, "afterglow_local_password") is not True:
+        raise _error(409, "external_account")
     domain = await _provider_call(ks.domains.get, home)
     if _field(domain, "id") != home:
         raise _error(503, "identity_unavailable")

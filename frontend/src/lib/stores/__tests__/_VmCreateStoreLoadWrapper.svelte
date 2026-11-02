@@ -24,6 +24,8 @@
 <button data-testid="reset" onclick={() => store.handleReset()}>reset</button>
 <span data-testid="loading">{store.loading ? 'loading' : 'ready'}</span>
 {#if store.hasCurrentStepError}<p role="alert">Configuration lookup failed</p>{/if}
+<span data-testid="step-errors">{JSON.stringify(store.currentStepErrors)}</span>
+<button data-testid="retry" onclick={() => store.retryCurrentStep()}>retry</button>
 <span data-testid="flavor">{store.flavors[0]?.name ?? 'none'}</span>
 <span data-testid="network">{store.wizardState.networkName ?? 'none'}</span>
 <span data-testid="quota">{store.flavorQuota?.cores?.limit ?? 'none'}</span>

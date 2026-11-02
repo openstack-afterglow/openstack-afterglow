@@ -41,6 +41,8 @@ nav_order: 70
 
 메인 UI는 최초 loading·성공 empty·일부 telemetry·실패 상태에서도 같은 metric slot과 recent/aside grid를 유지한다. Background refresh는 확인된 empty/기존 측정값을 skeleton으로 교체하지 않으며 오류는 별도 표시한다. 첫 인스턴스 안내는 실제 성공한 total0에서만 recent section에 나타나고 생성 작업은 인스턴스 페이지로 연결한다. VM 메트릭 페이지는 현재 프로젝트 Nova UUID에 대해 기존 instance metrics API를 사용하며 infrastructure Grafana node dashboard를 사용하지 않는다.
 
+프로젝트 개요 쿼터 카드의 CPU/RAM 사용량은 공유 pool 사용 시에도 선택 프로젝트의 `project_in_use`다. API의 domain-scope `in_use`는 도메인 전체 소비이며 카드 분자로 사용하지 않는다. `native_project_limit`은 overview에도 보존하고, 카드 한도는 native project limit·domain limit·project cap의 유한 최소값(모두 무제한이면 무제한)이다. `available`은 다른 프로젝트 소비도 반영한 실제 공유 잔여량이며 프로젝트 소비나 고정 한도로 합성하지 않는다. 프로젝트 사용량이 미확인이면 도메인 소비·0으로 보정하지 않는다.
+
 ### 엔드포인트 목록
 
 | 메서드 | 경로 | 설명 |

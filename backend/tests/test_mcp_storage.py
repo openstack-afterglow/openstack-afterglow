@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from keystoneauth1.session import Session
+from keystoneauth1.token_endpoint import Token
+from openstack.connection import Connection
+from openstack.exceptions import BadRequestException
 
 from app.services.mcp_control_plane import sdk, storage
 from app.services.mcp_control_plane.storage import (
@@ -25,38 +33,261 @@ from app.services.mcp_control_plane.storage import (
 )
 
 
-@pytest.mark.asyncio
-async def test_volume_list_uses_project_filter_and_returns_only_safe_owned_fields():
-    calls: list[dict[str, object]] = []
-
-    class BlockStorage:
-        def volumes(self, **kwargs):
-            calls.append(kwargs)
-            return [
-                SimpleNamespace(
-                    id="volume-a",
-                    name="data-a",
-                    status="available",
-                    size=20,
-                    project_id="project-a",
-                    created_at="2026-07-27T00:00:00Z",
-                    encryption_key_id="secret",
-                    volume_image_metadata={"credential": "secret"},
-                )
-            ]
-
-    result = await list_project_volumes(SimpleNamespace(block_storage=BlockStorage()), project_id="project-a", limit=50)
-
-    assert calls == [{"details": True, "project_id": "project-a"}]
-    assert result == [
-        {
+@pytest.fixture(params=["volume", "snapshot", pytest.param("backup", id="backup-owner-policy-override")])
+def cinder_list_http(request):
+    """Non-admin HTTP; backup ownership is visible only via explicit policy override."""
+    kind = request.param
+    plural = kind + "s"
+    owner_key = {
+        "volume": "os-vol-tenant-attr:tenant_id",
+        "snapshot": "os-extended-snapshot-attributes:project_id",
+        "backup": "os-backup-project-attr:project_id",
+    }[kind]
+    record = {
+        "id": f"{kind}-a",
+        "name": "data-a",
+        "status": "available",
+        "size": 20,
+        "created_at": "2026-07-27T00:00:00Z",
+        owner_key: "project-a",
+        "metadata": {"credential": "secret"},
+        "encryption_key_id": "secret",
+        "service_metadata": "secret",
+        "volume_image_metadata": {"credential": "secret"},
+    }
+    if kind != "volume":
+        record["volume_id"] = "volume-a"
+    state = SimpleNamespace(
+        kind=kind,
+        plural=plural,
+        owner_key=owner_key,
+        records=[record],
+        parent={
             "id": "volume-a",
-            "name": "data-a",
+            "name": "parent",
             "status": "available",
-            "size_gb": 20,
-            "created_at": "2026-07-27T00:00:00Z",
-        }
+            "size": 20,
+            "os-vol-tenant-attr:tenant_id": "project-a",
+        },
+        requests=[],
+        next_page=False,
+        expose_backup_owner=True,
+        is_admin=False,
+    )
+    root = "/v3"
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def reply(self, status, body):
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            path = parsed.path.rstrip("/")
+            if path in ("/v3", root):
+                self.reply(
+                    200,
+                    {
+                        "version": {
+                            "id": "v3.0",
+                            "status": "CURRENT",
+                            "min_version": "3.0",
+                            "version": "3.70",
+                            "links": [{"rel": "self", "href": endpoint + "/v3/"}],
+                        }
+                    },
+                )
+                return
+            query = parse_qs(parsed.query)
+            microversion = self.headers.get("OpenStack-API-Version")
+            state.requests.append((path, query, microversion))
+            version = tuple(map(int, microversion.split()[-1].split("."))) if microversion else (3, 0)
+            if self.headers.get("X-Auth-Token") != "synthetic-cinder-project-a":
+                self.reply(401, {"unauthorized": {}})
+            elif path == f"{root}/{plural}/detail":
+                # Cinder RESOURCE_FILTER is 3.31; admins bypass its allowlist.
+                # SDK wire version + query, not adapter kwargs, select failure.
+                if "project_id" in query and not state.is_admin and version >= (3, 31):
+                    self.reply(
+                        400,
+                        {
+                            "badRequest": {
+                                "code": 400,
+                                "message": "Invalid filters project_id are found in query options.",
+                            }
+                        },
+                    )
+                    return
+                records = state.records
+                if kind == "backup" and not state.expose_backup_owner and not state.is_admin:
+                    records = [{key: value for key, value in record.items() if key != owner_key} for record in records]
+                body = {plural: records}
+                if state.next_page:
+                    body[plural + "_links"] = [{"rel": "next", "href": endpoint + path + "?marker=next-page"}]
+                self.reply(200, body)
+            elif path == f"{root}/volumes/volume-a":
+                if state.parent is None:
+                    self.reply(404, {"itemNotFound": {"message": "Volume not found"}})
+                else:
+                    self.reply(200, {"volume": state.parent})
+            elif kind == "backup" and path == f"{root}/backups/backup-a":
+                record = dict(state.records[0])
+                if not state.expose_backup_owner and not state.is_admin:
+                    record.pop(owner_key, None)
+                self.reply(200, {"backup": record})
+            else:
+                self.reply(404, {"itemNotFound": {}})
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    endpoint = f"http://127.0.0.1:{server.server_port}"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    conn = Connection(
+        session=Session(auth=Token(endpoint=endpoint, token="synthetic-cinder-project-a")),
+        block_storage_endpoint_override=endpoint + root,
+        block_storage_api_version="3",
+        connect_retries=0,
+        api_timeout=2,
+    )
+    state.operation = {
+        "volume": list_project_volumes,
+        "snapshot": list_project_snapshots,
+        "backup": list_project_backups,
+    }[kind]
+    try:
+        yield conn, state
+    finally:
+        conn.close()
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.asyncio
+async def test_cinder_lists_use_credential_scope_and_redact_native_details(cinder_list_http):
+    conn, state = cinder_list_http
+    result = await state.operation(conn, project_id="project-a", limit=50)
+
+    expected = {
+        "id": f"{state.kind}-a",
+        "name": "data-a",
+        "status": "available",
+        "size_gb": 20,
+        "created_at": "2026-07-27T00:00:00Z",
+    }
+    if state.kind != "volume":
+        expected["source_volume_id"] = "volume-a"
+    assert result == [expected]
+    expected_requests = [(f"/v3/{state.plural}/detail", {})]
+    if state.kind != "volume":
+        expected_requests.append(("/v3/volumes/volume-a", {}))
+    assert [(path, query) for path, query, _version in state.requests] == expected_requests
+    if state.kind == "backup":
+        assert tuple(map(int, state.requests[0][2].split()[-1].split("."))) >= (3, 18)
+
+
+def test_cinder_sdk_project_filter_is_query_not_credential_scope(cinder_list_http):
+    conn, state = cinder_list_http
+    with pytest.raises(BadRequestException, match="Invalid filters project_id"):
+        list(getattr(conn.block_storage, state.plural)(details=True, project_id="project-a"))
+
+    assert [(path, query) for path, query, _version in state.requests] == [
+        (f"/v3/{state.plural}/detail", {"project_id": ["project-a"]})
     ]
+    assert tuple(map(int, state.requests[0][2].split()[-1].split("."))) >= (3, 31)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "project-b"], ids=["missing-owner", "foreign-owner"])
+async def test_cinder_lists_reject_unproven_record_without_partial_result(cinder_list_http, owner):
+    conn, state = cinder_list_http
+    invalid_record = {**state.records[0], "id": f"{state.kind}-b"}
+    if owner is None:
+        invalid_record.pop(state.owner_key)
+    else:
+        invalid_record[state.owner_key] = owner
+    state.records.append(invalid_record)
+
+    with pytest.raises(McpStorageError, match=f"Cinder {state.kind} ownership cannot be proven"):
+        await state.operation(conn, project_id="project-a", limit=50)
+
+    assert sum(path.endswith("/detail") for path, _query, _version in state.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cinder_list_http", ["snapshot", "backup"], indirect=True)
+@pytest.mark.parametrize("owner", [None, "project-b"], ids=["missing-owner", "foreign-owner"])
+async def test_cinder_recovery_lists_require_parent_volume_ownership(cinder_list_http, owner):
+    conn, state = cinder_list_http
+    if owner is None:
+        state.parent.pop("os-vol-tenant-attr:tenant_id")
+    else:
+        state.parent["os-vol-tenant-attr:tenant_id"] = owner
+
+    with pytest.raises(McpStorageError, match="Cinder volume ownership cannot be proven"):
+        await state.operation(conn, project_id="project-a", limit=50)
+
+    assert [(path, query) for path, query, _version in state.requests] == [
+        (f"/v3/{state.plural}/detail", {}),
+        ("/v3/volumes/volume-a", {}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cinder_lists_keep_result_cap_without_fetching_next_page(cinder_list_http):
+    conn, state = cinder_list_http
+    state.records.append({**state.records[0], state.owner_key: "project-b"})
+    state.next_page = True
+
+    result = await state.operation(conn, project_id="project-a", limit=1)
+
+    assert [record["id"] for record in result] == [f"{state.kind}-a"]
+    assert len(state.requests) == (1 if state.kind == "volume" else 2)
+    assert all(query == {} for _path, query, _version in state.requests)
+
+
+@pytest.mark.asyncio
+async def test_cinder_lists_return_empty_provider_result(cinder_list_http):
+    conn, state = cinder_list_http
+    state.records.clear()
+
+    assert await state.operation(conn, project_id="project-a", limit=50) == []
+    assert [(path, query) for path, query, _version in state.requests] == [(f"/v3/{state.plural}/detail", {})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cinder_list_http", ["backup"], indirect=True)
+@pytest.mark.parametrize("operation", ["list", "get"])
+async def test_cinder_default_backup_policy_keeps_missing_owner_fail_closed(cinder_list_http, operation):
+    conn, state = cinder_list_http
+    state.expose_backup_owner = False
+
+    with pytest.raises(McpStorageError, match="Cinder backup ownership cannot be proven"):
+        if operation == "list":
+            await list_project_backups(conn, project_id="project-a", limit=50)
+        else:
+            await get_project_backup(conn, project_id="project-a", backup_id="backup-a")
+
+    path = "/v3/backups/detail" if operation == "list" else "/v3/backups/backup-a"
+    assert [(request_path, query) for request_path, query, _version in state.requests] == [(path, {})]
+    assert tuple(map(int, state.requests[0][2].split()[-1].split("."))) >= (3, 18)
+
+
+@pytest.mark.asyncio
+async def test_cinder_lists_do_not_dispatch_after_deadline(cinder_list_http):
+    conn, state = cinder_list_http
+    with sdk.sdk_deadline(0):
+        with pytest.raises(McpStorageError, match="list is unavailable"):
+            await state.operation(conn, project_id="project-a", limit=50)
+
+    assert state.requests == []
 
 
 @pytest.mark.asyncio
@@ -69,57 +300,6 @@ async def test_volume_get_requires_ownership_proof():
         await get_project_volume(
             SimpleNamespace(block_storage=BlockStorage()), project_id="project-a", volume_id="volume-a"
         )
-
-
-@pytest.mark.asyncio
-async def test_snapshot_list_proves_snapshot_and_parent_volume_ownership_and_redacts_metadata():
-    calls: list[tuple[str, object]] = []
-
-    class BlockStorage:
-        def snapshots(self, **kwargs):
-            calls.append(("snapshots", kwargs))
-            return [
-                SimpleNamespace(
-                    id="snapshot-a",
-                    name="backup-a",
-                    status="available",
-                    size=20,
-                    volume_id="volume-a",
-                    project_id="project-a",
-                    created_at="2026-07-27T00:00:00Z",
-                    encryption_key_id="secret",
-                    metadata={"credential": "secret"},
-                )
-            ]
-
-        def get_volume(self, volume_id):
-            calls.append(("get_volume", volume_id))
-            return SimpleNamespace(
-                id=volume_id,
-                name="data-a",
-                status="available",
-                size=20,
-                project_id="project-a",
-            )
-
-    result = await list_project_snapshots(
-        SimpleNamespace(block_storage=BlockStorage()), project_id="project-a", limit=50
-    )
-
-    assert calls == [
-        ("snapshots", {"details": True, "project_id": "project-a"}),
-        ("get_volume", "volume-a"),
-    ]
-    assert result == [
-        {
-            "id": "snapshot-a",
-            "name": "backup-a",
-            "status": "available",
-            "source_volume_id": "volume-a",
-            "size_gb": 20,
-            "created_at": "2026-07-27T00:00:00Z",
-        }
-    ]
 
 
 @pytest.mark.asyncio
@@ -150,54 +330,6 @@ async def test_snapshot_get_rejects_foreign_parent_volume():
             project_id="project-a",
             snapshot_id="snapshot-a",
         )
-
-
-@pytest.mark.asyncio
-async def test_backup_list_proves_parent_ownership_and_redacts_metadata():
-    calls: list[tuple[str, object]] = []
-
-    class BlockStorage:
-        def backups(self, **kwargs):
-            calls.append(("backups", kwargs))
-            return [
-                SimpleNamespace(
-                    id="backup-a",
-                    name="daily-a",
-                    status="available",
-                    size=20,
-                    volume_id="volume-a",
-                    project_id="project-a",
-                    created_at="2026-07-27T00:00:00Z",
-                    service_metadata={"credential": "secret"},
-                )
-            ]
-
-        def get_volume(self, volume_id):
-            calls.append(("get_volume", volume_id))
-            return SimpleNamespace(
-                id=volume_id,
-                name="data-a",
-                status="available",
-                size=20,
-                project_id="project-a",
-            )
-
-    result = await list_project_backups(SimpleNamespace(block_storage=BlockStorage()), project_id="project-a", limit=50)
-
-    assert calls == [
-        ("backups", {"details": True, "project_id": "project-a"}),
-        ("get_volume", "volume-a"),
-    ]
-    assert result == [
-        {
-            "id": "backup-a",
-            "name": "daily-a",
-            "status": "available",
-            "source_volume_id": "volume-a",
-            "size_gb": 20,
-            "created_at": "2026-07-27T00:00:00Z",
-        }
-    ]
 
 
 @pytest.mark.asyncio

@@ -37,7 +37,8 @@ async def directory(monkeypatch, tmp_path):
                 "name": "Alice <Admin>",
                 "email": "alice@example.test",
                 "enabled": True,
-                "federated": [{"idp_id": "external"}],
+                # Plain local account. Federated targets are covered explicitly:
+                # only a proven local-password marker makes them eligible.
                 "unrelated": {"keep": True},
             }
         },
@@ -352,6 +353,8 @@ async def test_success_exact_native_update_then_automatic_email(directory, caplo
         ("disabled", 403),
         ("noemail", 409),
         ("duplicate", 409),
+        ("external_shadow", 409),
+        ("external_marker_false", 409),
         ("configured_service", 403),
         ("service_role", 403),
         ("raw_service", 403),
@@ -379,6 +382,15 @@ async def test_preflight_prevents_native_writes(directory, case, expected):
         directory.users["target"]["email"] = ""
     elif case == "duplicate":
         directory.users["other"] = {**directory.users["target"], "id": "other", "domain_id": "other-home"}
+    elif case == "external_shadow":
+        # Also the deliberate legacy case: a linked account with a real local
+        # password but no marker is refused because stock Keystone cannot tell
+        # it apart from a shadow user (name filters include shadow users).
+        directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
+        directory.users["target"].pop("afterglow_local_password", None)
+    elif case == "external_marker_false":
+        directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
+        directory.users["target"]["afterglow_local_password"] = False
     elif case == "configured_service":
         directory.users["target"]["name"] = directory.settings.os_username
     elif case == "service_role":
@@ -413,6 +425,13 @@ async def test_preflight_prevents_native_writes(directory, case, expected):
 @pytest.mark.asyncio
 async def test_system_administrator_target_allowed(directory):
     directory.service_roles = ["admin"]
+    assert (await post(directory)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_federated_target_with_local_password_marker_allowed(directory):
+    directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
+    directory.users["target"]["afterglow_local_password"] = True
     assert (await post(directory)).status_code == 200
 
 

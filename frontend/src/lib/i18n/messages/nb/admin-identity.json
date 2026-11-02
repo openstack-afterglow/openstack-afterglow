@@ -655,6 +655,7 @@
 	"userEdit.resetEmailSessionsFailed": "Passordet er endret, men noen økter kunne ikke tilbakekalles og kan være aktive. E-postleveringen kan også ha mislyktes. Administratoren må bekrefte levering og tilbakekalle gjenværende økter. Ingen automatisk ny tilbakestilling.",
 	"userEdit.resetEmailAuditFailed": "Operasjonens revisjonslogg kunne ikke bekreftes. Passordendringen eller e-postleveringen kan allerede være fullført. Administratoren må kontrollere faktisk resultat, levering, tilbakekalling av økter og revisjonslogg. Ingen automatisk gjentakelse.",
 	"userEdit.resetEmailUnknown": "Resultatet av passordendringen er ukjent. Det tidligere passordet kan være endret. Ingen automatisk gjentakelse. Administratoren må kontrollere resultatet og tilbakekalling av økter.",
+	"userEdit.resetEmailExternalAccount": "Administratorens tilfeldige passordtilbakestilling er ikke tilgjengelig for kontoer som bare bruker SSO (ekstern IdP). Ingen passord eller økter ble endret, og ingen e-post ble sendt. Brukeren bør logge inn med SSO eller opprette passord etter identitetsbekreftelse.",
 	"userEdit.resetEmailRejected": "Forespørselen ble avvist. Vellykket endring og levering er ikke bekreftet. Kontroller tillatelser og registrert kontostatus. Ingen automatisk gjentakelse.",
 	"userEdit.resetEmailUnavailable": "En aktivert konto med registrert e-post kreves.",
 	"userEdit.resetEmailSending": "Tilbakestiller passord og leverer e-post…"

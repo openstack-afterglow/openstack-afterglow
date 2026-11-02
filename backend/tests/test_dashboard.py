@@ -288,6 +288,64 @@ async def test_get_dashboard_quotas_overview_returns_narrow_alert_contract(clien
 
 
 @pytest.mark.asyncio
+async def test_overview_preserves_project_usage_and_native_limit_in_shared_pool(client):
+    from types import SimpleNamespace
+
+    compute = {
+        "instances": {"limit": -1, "in_use": 1},
+        "cores": {"limit": 10, "in_use": 6},
+        "ram": {"limit": -1, "in_use": 8192},
+    }
+    snapshot = {
+        "state": "active",
+        "domain_id": "domain-a",
+        "policy_ready": True,
+        "control_scope": "afterglow",
+        "limits": {"CPU": -1, "MEMORY_MB": -1},
+        "usage": {"CPU": 224, "MEMORY_MB": 739328},
+        "available": {"CPU": -1, "MEMORY_MB": -1},
+        "project_limits": {},
+        "project_usage": {"CPU": 6, "MEMORY_MB": 8192},
+        "project_available": {"CPU": -1, "MEMORY_MB": -1},
+    }
+
+    async def through_cache(_key, _ttl, callback, **_kwargs):
+        return await callback()
+
+    with (
+        patch("app.api.common.dashboard.get_settings", return_value=SimpleNamespace(service_manila_enabled=False)),
+        patch("app.api.common.dashboard.cached_call", new=AsyncMock(side_effect=through_cache)),
+        patch("app.api.common.dashboard.nova.get_project_quota", return_value=compute),
+        patch(
+            "app.api.common.dashboard.cinder.get_volume_quota",
+            return_value={
+                "volumes": {"limit": 10, "in_use": 1},
+                "gigabytes": {"limit": 100, "in_use": 1},
+            },
+        ),
+        patch(
+            "app.api.common.dashboard.neutron_svc.get_network_quota",
+            return_value={
+                "floatingip": {"limit": 5, "in_use": 1},
+            },
+        ),
+        patch("app.api.common.dashboard.compute_pools.project_pool_snapshot", new=AsyncMock(return_value=snapshot)),
+    ):
+        response = await client.get("/api/v1/dashboard/quotas?view=overview")
+
+    assert response.status_code == 200
+    cores = response.json()["compute"]["cores"]
+    ram = response.json()["compute"]["ram"]
+    assert (cores["in_use"], cores["project_in_use"], cores["native_project_limit"], cores["available"]) == (
+        224,
+        6,
+        10,
+        4,
+    )
+    assert (ram["in_use"], ram["project_in_use"], ram["native_project_limit"]) == (739328, 8192, -1)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_quota_overview_accepts_sdk_shaped_neutron_details(client, mock_conn):
     from types import SimpleNamespace
 

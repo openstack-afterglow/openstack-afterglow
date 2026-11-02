@@ -542,6 +542,8 @@ SQL/GitHub password/authenticated 연결의200은 `ProviderLinkResponse`이며 �
 
 **관리자 난수 메일:** 기존097/103 journal과 ActivityLog를 사용하고 새 schema/config를 만들지 않습니다. 원 관리자 token의 native `identity:update_user`, 등록 메일의 유일한 canonical addr-spec, SMTP `smtp_use_tls=true`·검증된 STARTTLS/인증/relay 권한·Redis 회수 store를 준비해야 변경할 수 있습니다. SMTP disabled/평문/연결 실패는 변경 전에 차단합니다. Native 성공 뒤 delivery failure는 password 미변경이 아니며 `changed/delivered` 효과·감사·회수 상태를 대조해야 합니다. Unknown 요청은 실제 native 종료/계정을 확인하지 않고 재실행하지 않습니다. 메일함에 password가 남고 강제 만료는 없으므로 사용자 즉시 변경을 안내하며, 공개 분실 요청은 기본 일회용 폼 링크를 유지합니다. Source/local TLS fixture 성공을 운영 mailbox 수신 증거로 대체하지 않습니다.
 
+`afterglow_local_password=true`가 없는 federated(SSO) 계정은 관리자 난수 reset 대상이 아닙니다. Stock Keystone28 user PATCH는 federated shadow 사용자에게 최초 local password를 만들지 못하고 `local_user.name` NULL IntegrityError로 500(rollback)을 반환하므로, Afterglow는 감사 fence·native 쓰기·세션 폐기 전에 `409 admin_password_reset_external_account`로 거부합니다. Marker 없는 legacy 연결 계정은 실제 local password가 있어도 함께 거부됩니다. Stock API의 `users.list(name=)`은 shadow 사용자도 반환하므로 local password 존재 근거가 되지 못합니다. 이런 계정의 최초 비밀번호는 위 first-password 확장 배포 후 프로필 생성 경로만 사용합니다(OpenSpec `deploy-keystone-first-password`).
+
 
 #### 기존 중복·legacy 연결의 검토된 이관
 

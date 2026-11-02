@@ -59,7 +59,9 @@ def _safe_volume(resource: Any, *, project_id: str) -> dict[str, str | int | Non
 
 
 def _list_volumes(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
-    volumes = conn.block_storage.volumes(details=True, project_id=project_id)
+    # The credential already scopes Cinder; project_id is an admin-only list
+    # filter. Keep the detail response and prove each returned record's owner.
+    volumes = conn.block_storage.volumes(details=True)
     safe_volumes: list[dict[str, str | int | None]] = []
     for volume in volumes:
         safe_volumes.append(_safe_volume(volume, project_id=project_id))
@@ -176,7 +178,7 @@ def _safe_snapshot(conn: Any, resource: Any, *, project_id: str) -> dict[str, st
 
 
 def _list_snapshots(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
-    snapshots = conn.block_storage.snapshots(details=True, project_id=project_id)
+    snapshots = conn.block_storage.snapshots(details=True)
     safe_snapshots: list[dict[str, str | int | None]] = []
     for snapshot in snapshots:
         safe_snapshots.append(_safe_snapshot(conn, snapshot, project_id=project_id))
@@ -218,7 +220,7 @@ def _safe_backup(conn: Any, resource: Any, *, project_id: str) -> dict[str, str 
 
 
 def _list_backups(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
-    backups = conn.block_storage.backups(details=True, project_id=project_id)
+    backups = conn.block_storage.backups(details=True)
     safe_backups: list[dict[str, str | int | None]] = []
     for backup in backups:
         safe_backups.append(_safe_backup(conn, backup, project_id=project_id))

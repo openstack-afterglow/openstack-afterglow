@@ -822,6 +822,24 @@ Email 정책 오류는 기존 IAM `{detail:"..."}` 형식을 유지하고 기타
 
 
 
+## MCP 조회 세밀도와 생성·관리 지원 범위
+
+Canonical consumer registry는 일반 dashboard REST API의 자동 공개가 아니라 명시적 allowlist다. 다음은 현재 source의 계약이며, 실제 서비스 활성화와 grant의 승인 프로젝트·read/manage 권한이 노출과 실행을 추가 제한한다. 목록과 상세 GET은 동일한 summary 모델을 사용한다.
+
+| 자원 | list/get 반환 필드 | 별도 연관 조회 | 현재 생성·관리 도구 |
+|---|---|---|---|
+| 인스턴스 | `id`, `name`, `status`, `created_at`, `updated_at` | VM interfaces: `port_id`, `mac_address`; VM volumes: 아래 volume summary | 생성, start/stop/reboot/shelve/unshelve, 삭제, network attach |
+| 볼륨 | `id`, `name`, `status`, `size_gb`, `created_at` | snapshot/backup summary는 `source_volume_id`도 반환 | 빈 볼륨 생성, 볼륨·snapshot·backup 삭제 |
+| 네트워크 | `id`, `name`, `status`, `is_shared`, `is_external`, `visibility` | subnet: `id`, `name`, `network_id`, `cidr`, `ip_version`, `gateway_ip` | 소유 network/subnet 삭제; VM network attach |
+| 컨테이너 | `id`, `name`, `status`, `image`, `created_at` | 없음 | start/stop, 삭제 |
+| 데이터베이스 | `id`, `name`, `status`, `datastore_type`, `datastore_version`, `created_at` | 없음 | restart, 삭제 |
+
+- 각 list의 `limit`은 기본50·최대100이다. Resource data cursor/marker, 이름·상태 filter, 정렬 인자는 제공하지 않는다. VM/Cinder/Neutron은 SDK iteration을 limit에서 중단하고 Trove/Zun은 native 첫 응답 page만 읽는다. 최대100이라는 사실이 그 프로젝트 전체 inventory의 완전성을 뜻하지 않으며, MCP `tools/list`의 schema cursor와는 별개다.
+- 상세 GET도 VM IP/flavor/image/AZ/security group·실측 metric/console, volume type/attachment/encryption 상세, network ports/router/Floating IP/security group, container logs/exec/환경 변수·자원량, DB 접속 주소/flavor/volume/사용자·database·backup을 추가 반환하지 않는다. 비밀 원문과 임의 provider metadata도 반환하지 않는다.
+- Network/container/DB 생성 도구는 아직 없다. Volume attach/detach/extend, snapshot·backup 생성/복원, VM resize와 image/flavor/keypair 선택지 조회도 registry에 없다. 따라서 다섯 자원의 완전한 생성·조회·관리라는 목표는 현재 미충족이며, 위 표는 이번 우선 조회 조사에서 확인한 현황이다.
+- Storage list는 승인된 target-project credential의 native scope로 조회하고 `project_id` query filter를 보내지 않는다. 반환 record의 owner와 snapshot/backup parent-volume owner는 독립적으로 검증한다. Cinder 기본 정책에서 backup project attribute가 생략되면 nonempty backup 조회는 owner 확인 불가로 거부하며, 조회 실패를 빈 목록으로 바꾸거나 관리자 자격으로 재시도하지 않는다.
+- `capabilities_get`은 서비스 활성화 정보이지 각 resource read의 성공 증거가 아니다. Disabled `key_manager`는 secret metadata 도구도 제공하지 않는다. 빈 DB/container 목록의 성공은 실제 nonempty 상세·생성·관리 실행 검증을 대체하지 않는다.
+
 ## MCP 프로젝트 리소스 생성·네트워크 연결
 
 다음 세 도구는 개인 MCP와 Lumen 위임의 같은 canonical registry(`2026-10-11.2`)를 사용한다. 명시적으로 승인된 `manage`/`mcp:write` grant에만 노출·실행되며 `read` grant는 호출 이름을 직접 지정해도 거부한다. 선택적 `project_id`는 승인된 프로젝트만 지정할 수 있고 해당 프로젝트의 restricted application credential로 실행한다. 기본 Lumen 읽기 전용 권한은 확대하지 않는다.

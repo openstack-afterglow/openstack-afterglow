@@ -245,6 +245,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	const hasCurrentStepError = $derived.by(() =>
 		optionKeysForStep(wizardState.step as WizardStepId).some(key => optionStatus[key] === 'error')
 	);
+	// Name each failed lookup and its failure class so a recurring banner is diagnosable.
+	const currentStepErrors = $derived.by(() =>
+		optionKeysForStep(wizardState.step as WizardStepId)
+			.filter(key => optionStatus[key] === 'error')
+			.map(key => ({ key, label: t(`options.item.${key}`), message: optionErrors[key] ?? t('options.clientError') }))
+	);
 	let deploying = $state(false);
 	let deployError = $state('');
 	let currentStep = $state('boot_volume_creating');
@@ -540,10 +546,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 
 	function optionError(error: unknown, includeDetails = false): string {
-		if (!(error instanceof ApiError)) return t('options.serverError');
-		const summary = t('options.loadFailed', { status: error.status });
-		return includeDetails && error.message ? `${summary}: ${error.message}` : summary;
+		if (error instanceof ApiError) {
+			const summary = t('options.loadFailed', { status: error.status });
+			return includeDetails && error.message ? `${summary}: ${error.message}` : summary;
+		}
+		// These failures happen in the browser; the server never answered with an error.
+		if (error instanceof DOMException && error.name === 'TimeoutError') return t('options.timeout');
+		if (error instanceof TypeError) return t('options.network');
+		return t('options.clientError');
 	}
+
+	const MAX_RETIRED_RETRIES = 2;
+	const retiredRetries = new Map<string, number>();
 
 	function loadOption<T>(
 		key: OptionKey,
@@ -563,20 +577,50 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 		optionStatus[key] = 'loading';
 		delete optionErrors[key];
+		let retired = false;
+		const stale = () => destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent();
 		const promise = request(signal)
-			.then(value => {
-				if (destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent()) return;
-				apply(value);
-				optionStatus[key] = 'loaded';
-			})
-			.catch(error => {
-				if (destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent()) return;
-				if (error instanceof DOMException && error.name === 'AbortError') return;
-				optionErrors[key] = optionError(error, key === 'flavors');
-				optionStatus[key] = 'error';
-			})
+			.then(
+				value => {
+					if (stale()) return;
+					try {
+						apply(value);
+					} catch {
+						// A local processing fault is not a network failure.
+						optionErrors[key] = t('options.clientError');
+						optionStatus[key] = 'error';
+						return;
+					}
+					retiredRetries.delete(requestKey);
+					optionStatus[key] = 'loaded';
+				},
+				error => {
+					if (stale()) return;
+					if (error instanceof DOMException && error.name === 'AbortError') {
+						// A same-scope mutation or read-owner change retired this shared read while the
+						// scope stayed current. Never leave it 'loading' forever: retry a bounded number
+						// of times, then surface it so the user can retry explicitly.
+						const attempts = (retiredRetries.get(requestKey) ?? 0) + 1;
+						retiredRetries.set(requestKey, attempts);
+						if (attempts <= MAX_RETIRED_RETRIES) {
+							optionStatus[key] = 'idle';
+							retired = true;
+							return;
+						}
+						retiredRetries.delete(requestKey);
+						optionErrors[key] = t('options.cancelled');
+						optionStatus[key] = 'error';
+						return;
+					}
+					retiredRetries.delete(requestKey);
+					optionErrors[key] = optionError(error, key === 'flavors');
+					optionStatus[key] = 'error';
+				},
+			)
 			.finally(() => {
 				if (optionRequests.get(requestKey) === promise) optionRequests.delete(requestKey);
+				const step = wizardState.step as WizardStepId;
+				if (retired && !destroyed && optionStatus[key] === 'idle' && optionKeysForStep(step).includes(key)) ensureStepData(step);
 			});
 		optionRequests.set(requestKey, promise);
 		return promise;
@@ -1464,6 +1508,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		// UI state
 		get loading() { return loading; },
 		get hasCurrentStepError() { return hasCurrentStepError; },
+		get currentStepErrors() { return currentStepErrors; },
 		get deploying() { return deploying; },
 		get deployError() { return deployError; },
 		get currentStep() { return currentStep; },

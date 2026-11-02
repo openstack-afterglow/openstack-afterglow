@@ -655,6 +655,7 @@
 	"userEdit.resetEmailSessionsFailed": "Mật khẩu đã đổi nhưng không thể thu hồi một số phiên; chúng có thể vẫn hoạt động. Email cũng có thể chưa được gửi. Quản trị viên phải xác minh gửi thư và thu hồi các phiên còn lại. Không tự động đặt lại.",
 	"userEdit.resetEmailAuditFailed": "Không thể xác nhận bản ghi kiểm toán thao tác. Việc đổi mật khẩu hoặc gửi email có thể đã hoàn tất. Quản trị viên phải xác minh kết quả thực tế, gửi thư, thu hồi phiên và bản ghi kiểm toán. Không tự động thử lại.",
 	"userEdit.resetEmailUnknown": "Không rõ kết quả đổi mật khẩu. Mật khẩu cũ có thể đã thay đổi. Không tự động thử lại. Quản trị viên phải kiểm tra kết quả và việc thu hồi phiên.",
+	"userEdit.resetEmailExternalAccount": "Không thể dùng đặt lại mật khẩu ngẫu nhiên của quản trị viên cho tài khoản chỉ dùng SSO (IdP bên ngoài). Mật khẩu và phiên không bị thay đổi và không có email nào được gửi. Người dùng nên đăng nhập bằng SSO hoặc tạo mật khẩu sau khi xác minh danh tính.",
 	"userEdit.resetEmailRejected": "Yêu cầu bị từ chối. Chưa xác nhận đổi và gửi thành công. Hãy kiểm tra quyền và trạng thái tài khoản đã đăng ký. Không tự động thử lại.",
 	"userEdit.resetEmailUnavailable": "Cần tài khoản được bật và có email đã đăng ký.",
 	"userEdit.resetEmailSending": "Đang đặt lại mật khẩu và gửi email…"

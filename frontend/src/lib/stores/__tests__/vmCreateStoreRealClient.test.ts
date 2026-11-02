@@ -5,6 +5,7 @@ import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
 import { api } from '$lib/api/client';
+import { t } from '$lib/i18n/ns/vm-wizard';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/environment', () => ({ browser: true }));
@@ -137,5 +138,106 @@ describe('VM create real API-client scope races', () => {
 		await Promise.resolve(); await Promise.resolve();
 		expect(screen.getByTestId('flavor').textContent).toBe('project-a-new-flavor');
 		expect(JSON.parse(screen.getByTestId('quota-summary').textContent!)).toEqual({ cores: { limit: -1, in_use: 2 } });
+	});
+
+	it('re-reads configuration options retired by a same-scope mutation instead of loading forever', async () => {
+		const pendingNetworks: Array<{ promise: Promise<Response>; resolve: (value: Response) => void }> = [];
+		vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+			const url = new URL(String(input));
+			if (url.pathname === '/api/v1/networks') {
+				const pending = deferred<Response>();
+				pendingNetworks.push(pending);
+				return pending.promise;
+			}
+			if (url.pathname === '/api/v1/networks/default') return Promise.resolve(jsonResponse({ network_id: null }));
+			if (url.pathname === '/api/v1/dashboard/quotas') return Promise.resolve(jsonResponse({}));
+			if (url.pathname === '/api/v1/flavors/compositions') return Promise.resolve(jsonResponse({}));
+			return Promise.resolve(jsonResponse([]));
+		}));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.waitFor(() => expect(pendingNetworks).toHaveLength(1));
+		// A composer save, GitHub lookup or cloud-init save retires every same-scope shared read.
+		await api.post('/api/v1/flavors/compositions', {}, 'same-token', 'project-a');
+		pendingNetworks[0].resolve(jsonResponse([{ id: 'stale', name: 'Stale' }]));
+		await fireEvent.click(screen.getByTestId('step-five'));
+		await vi.waitFor(() => expect(pendingNetworks).toHaveLength(2));
+		pendingNetworks[1].resolve(jsonResponse([{ id: 'net-1', name: 'Default' }]));
+		await vi.waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('ready'));
+		expect(screen.getByTestId('network').textContent).toBe('Default');
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
+	it('stops re-reading after bounded retirements and surfaces a retryable error', async () => {
+		const pendingNetworks: Array<{ promise: Promise<Response>; resolve: (value: Response) => void }> = [];
+		vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+			const url = new URL(String(input));
+			if (url.pathname === '/api/v1/networks') {
+				const pending = deferred<Response>();
+				pendingNetworks.push(pending);
+				return pending.promise;
+			}
+			if (url.pathname === '/api/v1/networks/default') return Promise.resolve(jsonResponse({ network_id: null }));
+			if (url.pathname === '/api/v1/dashboard/quotas') return Promise.resolve(jsonResponse({}));
+			if (url.pathname === '/api/v1/flavors/compositions') return Promise.resolve(jsonResponse({}));
+			return Promise.resolve(jsonResponse([]));
+		}));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await fireEvent.click(screen.getByTestId('step-five'));
+		// Every attempt is retired by a same-scope mutation: 1 initial read + 2 bounded retries.
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			await vi.waitFor(() => expect(pendingNetworks).toHaveLength(attempt));
+			await api.post('/api/v1/flavors/compositions', {}, 'same-token', 'project-a');
+			pendingNetworks[attempt - 1].resolve(jsonResponse([{ id: 'stale', name: 'Stale' }]));
+		}
+		await vi.waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+		expect(pendingNetworks).toHaveLength(3);
+		expect(JSON.parse(screen.getByTestId('step-errors').textContent!)).toEqual([
+			{ key: 'networks', label: t('options.item.networks'), message: t('options.cancelled') },
+		]);
+		// The explicit retry starts a fresh bounded cycle and can succeed.
+		await fireEvent.click(screen.getByTestId('retry'));
+		await vi.waitFor(() => expect(pendingNetworks).toHaveLength(4));
+		pendingNetworks[3].resolve(jsonResponse([{ id: 'net-1', name: 'Default' }]));
+		await vi.waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('ready'));
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
+	it.each([
+		[new TypeError('Failed to fetch'), 'options.network' as const],
+		[new DOMException('signal timed out', 'TimeoutError'), 'options.timeout' as const],
+	])('names the failed lookup and its browser-side failure class (%s)', async (failure, messageKey) => {
+		vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+			const url = new URL(String(input));
+			if (url.pathname === '/api/v1/keypairs') return Promise.reject(failure);
+			if (url.pathname === '/api/v1/networks') return Promise.resolve(jsonResponse([{ id: 'net-1', name: 'Default' }]));
+			if (url.pathname === '/api/v1/networks/default') return Promise.resolve(jsonResponse({ network_id: null }));
+			if (url.pathname === '/api/v1/dashboard/quotas') return Promise.resolve(jsonResponse({}));
+			return Promise.resolve(jsonResponse([]));
+		}));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await fireEvent.click(screen.getByTestId('step-five'));
+		await vi.waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+		expect(JSON.parse(screen.getByTestId('step-errors').textContent!)).toEqual([
+			{ key: 'keypairs', label: t('options.item.keypairs'), message: t(messageKey) },
+		]);
+	});
+
+	it('reports an HTTP failure with its status', async () => {
+		vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+			const url = new URL(String(input));
+			if (url.pathname === '/api/v1/networks/default') return Promise.resolve(new Response('{"detail":"x"}', { status: 503, headers: { 'Content-Type': 'application/json' } }));
+			if (url.pathname === '/api/v1/dashboard/quotas') return Promise.resolve(jsonResponse({}));
+			return Promise.resolve(jsonResponse([]));
+		}));
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await fireEvent.click(screen.getByTestId('step-five'));
+		await vi.waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+		expect(JSON.parse(screen.getByTestId('step-errors').textContent!)).toEqual([
+			{ key: 'defaultNetwork', label: t('options.item.defaultNetwork'), message: t('options.loadFailed', { status: 503 }) },
+		]);
 	});
 });

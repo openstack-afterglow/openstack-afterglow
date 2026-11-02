@@ -13,6 +13,8 @@ nav_order: 20
 
 관리자 사용자 수정의 난수 비밀번호·등록 메일 전송은 `POST /api/v1/admin/users/{user_id}/password/reset-email`입니다. Fresh system-admin·원 executor·활성 exact 사용자/home·유일한 현재 메일·검증 STARTTLS·회수 store를 확인하고32자 난수를 native setter에 한 번 적용합니다. 성공/메일 실패/회수 실패/감사 실패/결과 불명을 구분하며 비밀번호를 응답·로그·감사에 남기지 않습니다. 상세 strict 본문·응답·운영 위험은 [Profile API의 관리자 재설정](profile.md#관리자-난수-비밀번호-재설정등록-메일-전송)을 따릅니다. 공개 분실 요청만으로 이 관리자 동작을 실행하지 않습니다.
 
+Federated 계정의 local password marker가 정확히 `afterglow_local_password=true`가 아니면 `409 admin_password_reset_external_account`로 사전 거부합니다. Stock Keystone으로 shadow 사용자와 구분할 수 없는 marker 없는 legacy 연결 계정도 포함하며 native 쓰기·메일·세션 회수는 하지 않습니다. 최초 local password 생성은 별도 native workflow의 승인·qualification이 필요합니다.
+
 ## 인증 및 권한
 
 | 헤더 | 설명 |

@@ -4,7 +4,9 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.1`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.2`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+
+**1.32.2 source·metadata 준비 (2026-11-02):** 사용자 승인에 따라 현재 dev의 MCP Cinder 목록 query 호환성, federated 계정 비밀번호 reset 사전 차단, VM wizard 조회 진단·bounded 무효화 복구, 프로젝트 quota 소비 표시와 기존 worktree 통합 결과를 커밋 대상으로 검토한다. Root/frontend/backend·Python lock·Helm version/appVersion·명시적 Kolla sample release pin을 기존 도구로 동기화한다. 새 schema·native 정책·서비스 topology·의존성 업그레이드는 없으며, 기본 checkout의 현재 전체 source를 새로 검증한다. 이번 요청은 로컬 커밋·버전 준비까지만이며 push·tag·발행·운영 Kolla/native/schema 변경과 별도 clone의 미검토 변경은 포함하지 않는다. 이전1.32.1의 발행·운영 증거를1.32.2 수용으로 재사용하지 않는다.
 
 **남은 worktree 통합 (2026-11-02, local dev):** 여덟 historical worktree의 실제 delta를 최신 dev와 이력에 대조한다. 누락된 관리자 모델 연속 재정렬은 optimistic 표시·provider별 최신 대기 순서·직렬 CAS·마지막204 확정 순서·model-only background 조회로 통합하며 keyed 카드·포커스·숨은 종류 슬롯·auth/project 수명 fence와 새 `preserveRows`/미확정 등록 계약을 유지한다. 저장 중 추가 이동은 허용하고 다른 행 mutation·필터는 잠그며 실패 복구에서만 이동을 잠근다. 기존 native API/schema·권한 모델·배포 topology는 바꾸지 않는다. GPU1.30.13의 별도 post-release 증거와 archive를 정상 merge하며 오래된 CLI·i18n·Router·Drover·Barbican 스냅샷은 최신 구현을 되돌리지 않고 구체적인 대체 근거를 기록한다. Barbican의 옛 generic-error 계약도 기존 full-app500 handler가 이미 충족하므로 bare-router만의 차이를 새 공개 API 결함으로 오인해 수정하지 않는다. 공유 checkout의 진행 중 최초 비밀번호 설정 작업은 이 통합에 포함하지 않는다. 이 기록은 local source 통합이며 게시된1.32.1 artifact나 운영 수용을 소급 갱신하지 않는다.
 
@@ -659,6 +661,15 @@ VM은 기존 이름 중복·프로젝트 flavor quota/host/GPU admission, image 
 
 Network attach는 exact-project ACTIVE/SHUTOFF server, owned/명시적 shared network를 검증하고 기존 port 재사용 없이 Nova가 새 port를 만들도록 요청한다. 최종 parent/network 상태·owner와 반환 port의 project/network/device binding을 확인하며 SDK deadline fence를 적용한다. 세 도구의 응답은 안전한 ID·현재 status/MAC·timestamp만 포함하고 비밀번호·credential·key 자료는 제외한다. 접수는 VM/volume ready나 guest data-plane 성공이 아니며 uncertain outcome은 `unknown`과 재전송 금지 원장을 유지한다. 상세 계약은 [`docs/api/auth.md`](docs/api/auth.md), 로컬·synthetic 검증 범위는 [`docs/testing.md`](docs/testing.md)를 따른다.
 
+### MCP 조회 범위와 native API 호환성 (2026-11-02)
+
+Consumer registry의 list/get은 같은 제한된 summary schema를 반환하며 상세 GET이 native 전체 응답을 개방하지 않는다. VM은 ID·이름·상태·시각, 볼륨은 여기에 크기, network는 공유/외부망·가시성, container는 image, DB는 datastore 유형/버전만 추가한다. VM interface는 port ID/MAC, subnet은 CIDR/IP version/gateway를 별도 제공한다. 각 resource list는 기본50·최대100이며 data cursor·이름/상태 검색은 없고, Trove/Zun은 native 첫 page만 읽는다. 도구 schema의 `tools/list` pagination과 resource inventory pagination을 혼동하지 않는다. 다섯 자원 모두 생성·조회·관리를 지원하는 완전한 CRUD는 아직 아니며 network/container/DB create는 registry에 없다. 정확한 필드·누락 기능은 [API 계약](docs/api/auth.md#mcp-조회-세밀도와-생성관리-지원-범위)에 기록한다.
+
+`mcp_control_plane/storage.py`의 volume/snapshot/backup list는 이미 target-project restricted credential로 인증한 SDK의 `details=True`만 사용한다. Cinder가 non-admin list filter로 허용하지 않는 `project_id`를 query에 다시 보내지 않는다. 각 native record의 exact owner와 snapshot/backup의 parent-volume owner, result cap·deadline·redaction은 그대로 검증하며 `all_projects`·관리자 fallback·자동 재시도는 없다. 기본 Cinder 정책이 backup project attribute를 숨기면 nonempty backup은 계속 fail-closed이고, 이 수정이 native 정책을 넓히지는 않는다. 새 schema/config/권위·topology·공개 도구 구조는 없다.
+
+실제3controller의 Afterglow1.32.1와 Cinder 로그에서 잘못된 query의 HTTP400을 확인했다. 별도 Waygate0.3.5는 application-credential token을 `v3.Token.get_access`로 재발급하려다 Keystone403→Waygate401이 되는 배포본이었다. 인접 Waygate의 기존 local WIP는 원본 token GET inspection·scope/expiry·restricted-role ceiling을 유지하는 경로이며 별도 실행 검증했다. 이 WIP는 배포 source와 ancestry가 달라 무검토 image 교체로 수용하지 않는다. 사용자는 소스 수정·검증까지만 선택했으며 운영 rollout·정책/DB/키 변경은 없다. 검토 범위와 실제/synthetic 증거는 [testing](docs/testing.md#mcp-조회-실패와-상세도-조사-2026-11-02-source-only)를 따른다.
+
+
 ### 브라우저·MCP 보안 경계 보강
 
 Browser refresh-session JSON의 `started_at`은 로그인 시 기록하고 refresh/rescope의 Redis Lua 원자적 교체가 최초 값과 origin/device/domain/family를 운반한다. Legacy 값은 기존 timeout marker와 서명된 JWT iat의 이른 값으로 채우며 Redis TTL을 연장하지 않는다. 만료된 refresh record를 삭제하여 같은 access/refresh 재요청으로 수명이 재생성되지 않는다. 회전은 현재 record의 존재·사용자·blacklist·deadline을 다시 확인하고 한 요청만 새 JTI/index를 게시한다. Domain federation callback도 실제 request origin/device를 기록한다. Origin이 없는 과거 세션은 strict/subnet에서 거부하고 현재 caller로 origin을 재설정하지 않는다. Logout의 Redis 폐기 실패는503이며 upstream revoke 실패도 완료로 숨기지 않는다.
@@ -911,6 +922,8 @@ Afterglow 부분 통합의 cleanup 순서는 exact managed-rule GET → 부재�
 `/dashboard/usage-report`는 `/api/v1/dashboard/usage-report`와 기존 `/api/v1/dashboard/quotas?view=full`을 병렬로 읽는다. Nova adapter는 SDK의 `total_vcpus_usage` 및 서버별 플레이버·UTC 시작/종료 시각을 보존한다. BFF는 Nova 사용량·쿼터·플레이버, Cinder 쿼터, Afterglow GPU 쿼터를 모아 기간별 vCPU/RAM/GPU 시간과 상위 플레이버/인스턴스를 집계한다. 시작/종료 시각으로 복원한 일별 할당량의 최근 7일 선형 기울기를 현재 쿼터 사용량에 적용해 30일 예상 사용률과 한도 도달일을 계산한다. CPU/GPU 실측 이용률 예측은 아니며, 이력이 없는 블록 스토리지는 현재 쿼터만 표시한다.
 
 쿼터 조회 실패는 compute/storage/GPU별 availability로 구분한다. Nova·Cinder는 `strict=True`로 정규화 전 필수 limit/in_use를 검증하며 빈 quota_set이나 사용량 누락은 실패다. 보고서의 `afterglow:nova:{project_id}:quota:strict`·`afterglow:cinder:{project_id}:quota:strict` 캐시는 기존 sentinel 정규화 결과와 분리한다. 네트워크·스토리지·컴퓨트·선택적 Manila/Swift/Trove 현황은 기존 full quota 계약을 재사용하되 요청 완료를 기다리지 않고 보고서를 먼저 표시한다. 현황 요청 실패는 사용량 표를 가리지 않으며, 보고서의 compute/storage availability가 false인 그룹은 full quota의 정규화된 0/무제한을 표시하지 않는다. RAM 한도 그래프는 MB를 소수 GB로 바꾼 후 비율을 계산한다. 키페어는 사용자별 한도만 표시한다. 이 보고서는 신규 DB·외부 서비스·배포 구성을 추가하지 않는다. 상세 응답·예측 한계는 [`docs/api/dashboard.md`](docs/api/dashboard.md)에 정의한다.
+
+대시보드 `QuotaUsageCard`의 CPU/RAM 주 사용량은 domain-scope snapshot에서도 선택 프로젝트의 `project_in_use`만 표시한다. 도메인 전체 `in_use`를 프로젝트 소비로 대체하지 않으며 project 사용량이 null이면 미확인이다. 한도는 native project·domain ceiling·optional project cap 중 유한 최소값이며 모두 -1/부재일 때 무제한이다. Overview projection은 `native_project_limit`을 보존하고 effective `available`은 공유 풀을 반영한 보조 잔여량으로만 표시한다. 기존 API domain 소비 의미·admission·DB·native quota 쓰기에는 구조 변경이 없다.
 
 관리자 `/api/v1/admin/quotas/{project_id}`는 대상 프로젝트의 Nova·Cinder·Neutron·선택적 Manila 상세 사용량을 서비스별로 독립 조회한다. `limit/in_use`가 없는 응답을 0으로 보정하지 않고 해당 서비스의 `availability=false`와 오류 코드로 돌려준다. `PUT`은 제출한 한도만 공급자별로 적용하고 부분 실패를 구분하며, 성공한 compute/volume 쿼터의 dashboard·기간 보고서 캐시를 무효화한다. 프런트엔드는 선택 프로젝트가 바뀐 뒤 도착한 이전 저장 결과를 버리고, 사용할 수 없는 서비스의 한도를 임의로 제출하지 않는다. 상세 계약은 [`docs/api/admin.md`](docs/api/admin.md#쿼터-관리)를 따른다.
 ### 전역 Cloud Shell 승인·세션
@@ -1205,6 +1218,8 @@ Chooser는 `ImageDigest.compact=true`로 SHA 값의 앞 8자리만 표시하며 
 `VmCreatePanel`은 이미지 부팅의 `wizard.bootVolumeSizeGb`, 기존 볼륨 부팅의 명시적 0을 `SelectFlavor.bootVolumeSizeGb`에 전달한다. standalone picker는 생략된 값만 flavor disk로 해석한다. VM·vCPU·RAM·DISK preview의 기존 할당량과 신규 추가량은 다른 token·범례·현재→생성 후 수치로 구분하고 meter 비율은 유한 범위 안에서 clamp한다. 실제 quota reservation·host capacity·Nova admission 경계는 그대로다. `WizardStep5Config`는 동일 normalized GitHub ID 재선택에서 검증 프로필을 유지하고 다른 ID·scope·늦은 응답의 검증 fence는 유지한다.
 
 `vmCreateStore`가 배포 시작·단계 전환의 `performance.now()` anchor와 단일 1초 interval을 소유한다. SSE가 없어도 총 `elapsedSeconds`와 활성 `stepElapsedSeconds`를 갱신하며 더 큰 유한 server elapsed만 전체 clock을 앞당긴다. 같은 stage 재보고는 anchor를 재시작하지 않고 완료 단계 시간은 고정한다. 성공·실패·EOF·destroy는 interval을 정리하고 retry는 관측 상태를 초기화한다. 폐기된 store의 늦은 완료는 navigation을 하지 않는다. 사용자 SSE/mock/squashfs 성공은 `/dashboard/compute/instances`, 관리자 성공은 `/admin/instances`로 이동한다. local clock은 서버의 실제 세부 실행 시각이나 완료 보장을 뜻하지 않는다.
+
+`vmCreateStore.loadOption`은 단계 옵션 조회 실패를 `ApiError` HTTP 상태, 브라우저 `TimeoutError`, `TypeError` 네트워크 실패, 기타 브라우저 오류로 분류하고 `currentStepErrors`(항목·원인)를 `VmCreatePanel` 단계 오류 배너에 제공한다. 일반 GET의30초와 token refresh의 별도 제한/이전 실패가 같은 timeout 분류로 전달될 수 있어 UI는 고정 경과 시간을 단정하지 않는다. 같은 scope의 mutation이 공유 GET을 무효화해 `AbortError`로 끝난 조회는 scope·generation이 유효하면 `idle`로 되돌린 뒤 현재 단계에 필요할 때 요청 key별 최대 2회 다시 요청하고, 초과하면 `options.cancelled` 오류로 명시적 재시도를 기다린다. `apply` 중 예외는 요청 실패 분류와 분리해 브라우저 처리 오류로 표시한다. scope 변경·destroy 중단은 결과를 버린다.
 
 검증 범위: focused backend 23개, instances domain backend 549개, frontend wizard/store/basic-info 6파일 71개를 통과했다. 실제 FastAPI HTTP·생성 서비스·Nova projection에서 사용자 sync/SSE·관리자 SSE의 canonical login 저장, 목록/상세 응답과 기존 keypair·HA metadata 보존을 확인했다(Keystone/GitHub/capacity/SDK persistence는 합성). 실제 Chromium·native HTTP fixture에서는 repository→태그, 동일 GitHub ID 반복 선택, 무이벤트 중 전체/활성 단계 시간 증가·완료 단계 고정·오래된 server elapsed 무시·성공 후 실제 사용자 목록 URL과 위 HTTP projection의 `@OctoCat`/기존 keypair 표시를 확인했다. 새 부트 볼륨 80GB의 DISK `1024→1104GB`, 390·767·768·1023·1024·1440px × light/dark에서 수치 clipping·가로 overflow 없음도 확인했다. 39자 GitHub login은 실제 InfoSection CSS의 별도 DOM geometry probe로 셀 안 줄바꿈을 확인했다. source의 `InstanceHeader`·`OperationMotion` 기존 문구 검사 2개와 VM 범위 밖 Svelte typecheck 29개 오류는 변경하지 않았다. 전체 gate·실제 OpenStack VM/guest 생성·운영 배포 성공으로 확대하지 않는다. 증거는 `~/.gstack/projects/afterglow/designs/vm-create-selection-progress-20261007/`에 보존한다.
 
@@ -1919,9 +1934,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "317669bf9e0b052e38699dd823498d10099d15c2f165221bbb280c2ba0f6bc52",
-  "reviewed_at": "2026-11-02T08:46:57Z",
-  "summary": "Remaining worktree reconciliation on dev: continuous model ordering uses per-provider latest queues, serial existing CAS/204, model-only value reconciliation and revision/auth/project fences while preserving current registration and UI contracts. GPU1.30.13 historical evidence/archive merged; old CLI/localization/router/Drover/Barbican alternatives verified superseded, including full-app HTTP500 redaction. No native/schema/topology changes; concurrent password-reset work excluded; mandatory canonical-dev merge/verification/cleanup policy recorded."
+  "source_sha256": "c8d56bf68e9c4e37cf9bcf262881e1c6ab7e378cf2cc312ba9051e8d3ebd2b9f",
+  "reviewed_at": "2026-11-02T14:23:12Z",
+  "summary": "1.32.2 current dev: reviewed scoped Cinder lists and owner/parent fences, federated reset refusal before native/session writes, bounded same-scope AbortError recovery and lookup diagnostics without claiming fixed timeout duration, project quota usage/ceilings, continuous model ordering and aligned metadata. API409 docs synchronized. No schema, dependency upgrade, authority/native policy or topology change; no push, tag, publication or deployment."
 }
 ```
 <!-- architecture-review:end -->
