@@ -171,7 +171,7 @@ describe('McpAccessSection', () => {
 		api.delete.mockImplementation(() => { rows = []; return Promise.resolve(); });
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
-		await screen.findByText(record.name);
+		await screen.findByRole('group', { name: t('mcp.observations') });
 		const observations = screen.getByRole('group', { name: t('mcp.observations') });
 		expect(within(observations).getByText(t('mcp.observationHelp'))).toBeTruthy();
 		const summary = within(observations).getByText(t('mcp.observationCount', { count: 2 }));
@@ -194,9 +194,30 @@ describe('McpAccessSection', () => {
 		await screen.findByText(t('mcp.count', { count: 1 }));
 		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
 		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth' ? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token', 'project'));
-		expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(selected === 'oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: record.name }));
+		expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(selected === 'oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: selected === 'oauth' ? `${t('mcp.oauth')} 1` : record.name }));
 		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
 		expect(screen.queryByRole('group', { name: t('mcp.observations') })).toBeNull();
+	});
+
+	it('hides OAuth client and project identifiers while revoking the selected grant', async () => {
+		const records = [
+			{ ...activeToken, id: 'opaque-row-one', grant_id: 'grant-one', name: 'OAuth: afterglow-dcr-private-client', source: 'oauth', projects: [{ id: 'private-project-uuid', name: 'Research' }] },
+			{ ...activeToken, id: 'opaque-row-two', grant_id: 'grant-two', name: 'OAuth: second-private-client', source: 'oauth', access_level: 'manage', expires_at: null, projects: [{ id: 'second-project-uuid', name: 'Systems' }] },
+		];
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path) : path.includes('oauth') ? records : []));
+		api.delete.mockResolvedValue(undefined);
+		const { container } = render(McpAccessSection);
+		await screen.findByText(t('mcp.savedProjects', { projects: 'Systems' }));
+		const cards = container.querySelectorAll('.record');
+		expect(cards).toHaveLength(2);
+		expect(within(cards[1] as HTMLElement).getByText(t('mcp.oauthDetails', { access: t('mcp.manage'), expires: t('mcp.expiryNever') }))).toBeTruthy();
+		expect(container.innerHTML).not.toContain('afterglow-dcr-private-client');
+		expect(container.innerHTML).not.toContain('second-private-client');
+		expect(container.innerHTML).not.toContain('private-project-uuid');
+		expect(container.innerHTML).not.toContain('second-project-uuid');
+		await fireEvent.click(within(cards[1] as HTMLElement).getByRole('button', { name: t('mcp.revokeAccess') }));
+		expect(confirmDialog).toHaveBeenCalledWith(t('mcp.revokeOAuthConfirm', { name: `${t('mcp.oauth')} 2` }));
+		expect(api.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/mcp-oauth/grants/grant-two', 'token', 'project');
 	});
 
 	it('shows no observation separately from an unknown observed client and caps displayed signatures at ten', async () => {
@@ -220,10 +241,10 @@ describe('McpAccessSection', () => {
 			: path.includes('oauth') === (selected === 'oauth') ? Promise.resolve([record]) : other.promise);
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
-		await screen.findByText(record.name);
+		await screen.findByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') });
 		expect(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }).hasAttribute('disabled')).toBe(false);
 		await act(async () => { other.reject(new Error('Unselected private failure')); });
-		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 		expect(screen.queryByText(t('mcp.loadFailed'))).toBeNull();
 		expect(screen.queryByRole('button', { name: t('mcp.retryList') })).toBeNull();
 		await selectMethod(selected === 'oauth' ? 'api' : 'oauth');
@@ -239,7 +260,7 @@ describe('McpAccessSection', () => {
 				? failing ? Promise.reject(new Error('Private own-list error')) : Promise.resolve([record]) : Promise.resolve([]));
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
-		await screen.findByText(record.name);
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
 		const oldAction = screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') });
 		failing = true;
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
@@ -259,7 +280,7 @@ describe('McpAccessSection', () => {
 		}
 		failing = false;
 		await fireEvent.click(retry);
-		await screen.findByText(record.name);
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
 		expect(screen.queryByRole('button', { name: t('mcp.retryList') })).toBeNull();
 	});
 
@@ -289,10 +310,10 @@ describe('McpAccessSection', () => {
 			confirmDialog.mockReturnValue(confirmation.promise);
 			let generation = 'Old';
 			api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
-				: path.includes('oauth') === (selected === 'oauth') ? [{ ...activeToken, name: `${generation} credential` }] : []));
+				: path.includes('oauth') === (selected === 'oauth') ? [{ ...activeToken, name: `${generation} credential`, projects: [{ id: 'project', name: `${generation} project` }] }] : []));
 			render(McpAccessSection);
 			if (selected === 'api') await selectMethod('api');
-			await screen.findByText('Old credential');
+			await screen.findByText(t('mcp.savedProjects', { projects: selected === 'oauth' ? 'Old project' : 'Old project (project)' }));
 			await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
 			generation = 'Fresh';
 			if (boundary === 'refresh') await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
@@ -300,10 +321,10 @@ describe('McpAccessSection', () => {
 			else if (boundary === 'token') setAuth({ token: 'fresh-token' });
 			else setAuth({ token: 'token', userId: 'fresh-user' });
 			if (boundary !== 'refresh') verifyAuth();
-			await screen.findByText('Fresh credential');
+			await screen.findByText(t('mcp.savedProjects', { projects: selected === 'oauth' ? 'Fresh project' : 'Fresh project (project)' }));
 			await act(async () => { confirmation.resolve(true); });
 			expect(api.delete).not.toHaveBeenCalled();
-			expect(screen.getByText('Fresh credential')).toBeTruthy();
+			expect(screen.getByText(t('mcp.savedProjects', { projects: selected === 'oauth' ? 'Fresh project' : 'Fresh project (project)' }))).toBeTruthy();
 			cleanup();
 			setAuth({ token: 'token', userId: 'user', projectId: 'project' });
 			verifyAuth();
@@ -354,7 +375,7 @@ describe('McpAccessSection', () => {
 		const oauthRestriction = screen.getByRole('group', { name: t('mcp.savedRestrictions') });
 		expect(within(oauthRestriction).getByText(t('mcp.savedAccess', { access: t('mcp.manage') }))).toBeTruthy();
 		expect(within(oauthRestriction).getByText(t('mcp.savedAllProjects'))).toBeTruthy();
-		expect(within(oauthRestriction).getByText(t('mcp.savedProjects', { projects: 'Saved other project (other)' }))).toBeTruthy();
+		expect(within(oauthRestriction).getByText(t('mcp.savedProjects', { projects: 'Saved other project' }))).toBeTruthy();
 		expect(within(oauthRestriction).queryByRole('combobox')).toBeNull();
 		expect(within(oauthRestriction).queryByRole('checkbox')).toBeNull();
 		expect(screen.getAllByRole('group', { name: t('mcp.savedRestrictions') })).toHaveLength(1);
@@ -373,11 +394,12 @@ describe('McpAccessSection', () => {
 		if (source === 'oauth') await selectMethod('oauth');
 		const restriction = screen.getByRole('group', { name: t('mcp.savedRestrictions') });
 		expect(within(restriction).getByText(t('mcp.savedSelectedProjects'))).toBeTruthy();
-		expect(within(restriction).getByText(t('mcp.savedProjects', { projects: 'Archived name (saved-one), Other saved name (saved-two)' }))).toBeTruthy();
+		const savedNames = source === 'oauth' ? 'Archived name, Other saved name' : 'Archived name (saved-one), Other saved name (saved-two)';
+		expect(within(restriction).getByText(t('mcp.savedProjects', { projects: savedNames }))).toBeTruthy();
 		expect(restriction.textContent).not.toContain('Other project (other)');
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
 		await screen.findByRole('button', { name: t('mcp.refresh') });
-		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') }).textContent).toContain('Archived name (saved-one), Other saved name (saved-two)');
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') }).textContent).toContain(savedNames);
 	});
 
 	it.each(['empty', 'missing'] as const)('does not invent saved project restrictions when metadata is %s', async (metadata) => {
@@ -404,7 +426,7 @@ describe('McpAccessSection', () => {
 		expect(preview.queryByRole('listitem', { name: 'Other project other' })).toBeNull();
 		expect(preview.getByText('drover-inventory_reader')).toBeTruthy();
 		expect(preview.getByText(tp('mcpConsent.permission.droverInventory'))).toBeTruthy();
-		expect(preview.getByText('lumen-history_reader')).toBeTruthy();
+		expect(preview.queryByText('lumen-history_reader')).toBeNull();
 		expect(preview.queryByText('drover-clusters_editor')).toBeNull();
 		expect(preview.queryByText('lumen-chat_user')).toBeNull();
 		expect(preview.getByText(tp('mcpConsent.preview.service.denied'))).toBeTruthy();
@@ -413,6 +435,21 @@ describe('McpAccessSection', () => {
 		expect(api.get.mock.calls.filter(([path]) => path === '/api/v1/auth/mcp-projects?preview=true')).toHaveLength(1);
 		expect(api.post).not.toHaveBeenCalled();
 		expect(preview.getByText(tp('mcpConsent.preview.help'))).toBeTruthy();
+	});
+
+	it('does not expose Lumen or its API key permissions in account project previews', async () => {
+		const hostile = previewProjects.map((project) => ({ ...project, service_permissions: {
+			...project.service_permissions, lumen: ['lumen-keys_editor', 'lumen-chat_user', 'lumen-mcp_editor'],
+		} }));
+		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('preview=true') ? hostile : accountResponse(path)));
+		await renderApi();
+		await createButton();
+		const preview = within(screen.getByRole('region', { name: t('mcp.previewTitle') }));
+		await waitFor(() => expect(preview.getByText('drover-inventory_reader')).toBeTruthy());
+		expect(preview.queryByText('Lumen')).toBeNull();
+		expect(preview.queryByText('lumen-keys_editor')).toBeNull();
+		expect(preview.queryByText('lumen-chat_user')).toBeNull();
+		expect(preview.queryByText('lumen-mcp_editor')).toBeNull();
 	});
 
 	it('keeps cheap membership and read-only issuance independent of slow native checks while blocking manage', async () => {
@@ -458,11 +495,13 @@ describe('McpAccessSection', () => {
 		await fireEvent.change(screen.getByLabelText(t('mcp.projects')), { target: { value: 'all' } });
 		expect(within(preview.getByRole('listitem', { name: 'Project project' })).getByText(tp('mcpConsent.preview.cloud.manage'))).toBeTruthy();
 		expect(within(preview.getByRole('listitem', { name: 'Other project other' })).getByText(tp('mcpConsent.preview.cloud.read'))).toBeTruthy();
-		expect(preview.getAllByText('lumen-tools_user')).toHaveLength(2);
+		expect(preview.getAllByText('drover-clusters_editor')).toHaveLength(2);
+		expect(preview.queryByText('lumen-tools_user')).toBeNull();
 		expect(button.hasAttribute('disabled')).toBe(false);
 		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'read' } });
+		expect(preview.getAllByText('drover-inventory_reader')).toHaveLength(2);
 		for (const leaf of ['lumen-tools_user', 'lumen-chat_user', 'drover-clusters_editor']) expect(preview.queryByText(leaf)).toBeNull();
-		expect(preview.getAllByText('lumen-history_reader')).toHaveLength(2);
+		expect(preview.queryByText('lumen-history_reader')).toBeNull();
 		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
 		expect(api.get.mock.calls.filter(([path]) => path.includes('preview=true'))).toHaveLength(1);
 		await fireEvent.click(button);
@@ -473,7 +512,7 @@ describe('McpAccessSection', () => {
 
 	it('keeps independent service failure unknown without denying known cloud management', async () => {
 		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('preview=true') ? [{
-			...previewProjects[0], service_errors: { lumen: 'private policy error must not render' },
+			...previewProjects[0], service_errors: { waygate: 'private policy error must not render' },
 		}] : accountResponse(path)));
 		await renderApi();
 		await screen.findByText('drover-inventory_reader');
@@ -496,7 +535,7 @@ describe('McpAccessSection', () => {
 		const button = await createButton();
 		if (outcome === 'failure') await screen.findByText(tp('mcpConsent.preview.unavailable'));
 		expect(screen.getByText(tp('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
-		expect(screen.getAllByText(tp('mcpConsent.preview.service.unavailable'))).toHaveLength(4);
+		expect(screen.getAllByText(tp('mcpConsent.preview.service.unavailable'))).toHaveLength(3);
 		expect(document.body.textContent).not.toContain('private upstream details');
 		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
 		expect(screen.getByText(t('mcp.managePreviewUnknown'))).toBeTruthy();
@@ -1080,7 +1119,7 @@ describe('McpAccessSection', () => {
 		const grant = { ...activeToken, id: 'oauth-1', name: 'OAuth client', source: 'oauth', is_lumen_default: false };
 		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('oauth') ? [grant] : accountResponse(path)));
 		render(McpAccessSection);
-		await screen.findByText('OAuth client');
+		await screen.findByRole('button', { name: t('mcp.revokeAccess') });
 		const methods = screen.getByRole('group', { name: t('mcp.method') });
 		expect(within(methods).getByRole('button', { name: t('mcp.methodOAuth') }).getAttribute('aria-pressed')).toBe('true');
 		expect(within(methods).getByRole('button', { name: t('mcp.methodApiKey') }).getAttribute('aria-pressed')).toBe('false');
@@ -1106,7 +1145,7 @@ describe('McpAccessSection', () => {
 		expect(screen.queryByRole('region', { name: t('mcp.oauthConfig') })).toBeNull();
 		expect(configJson('setup').mcpServers['my-stream-server'].headers.Authorization).toBe(['Bearer', 'YOUR_PERSONAL_MCP_TOKEN'].join(' '));
 		await selectMethod('oauth');
-		expect(screen.getByText('OAuth client')).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('mcp.revokeAccess') })).toBeTruthy();
 		expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull();
 		expect(screen.queryByRole('button', { name: t('mcp.create') })).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
@@ -1525,7 +1564,7 @@ describe('McpAccessSection', () => {
 		async function openAction() {
 			if (action === 'revoke-oauth') render(McpAccessSection);
 			else await renderApi();
-			await screen.findByText(record.name);
+			await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
 			return screen.getByRole('button', { name: t(label[action]) });
 		}
 
@@ -1544,7 +1583,7 @@ describe('McpAccessSection', () => {
 				if (action === 'set-default') expect(api.put).toHaveBeenCalledExactlyOnceWith(path, {}, 'token', 'project');
 				else expect(api.delete).toHaveBeenCalledExactlyOnceWith(path, 'token', 'project');
 			});
-			if (action.startsWith('revoke')) expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(action === 'revoke-oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: record.name }));
+			if (action.startsWith('revoke')) expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(action === 'revoke-oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: action === 'revoke-oauth' ? `${t('mcp.oauth')} 1` : record.name }));
 			else expect(confirmDialog).not.toHaveBeenCalled();
 			for (const button of screen.getAllByRole('button', { name: t(label[action]) })) expect(button.hasAttribute('disabled')).toBe(true);
 			await act(async () => { mutation.resolve(); });
@@ -1564,7 +1603,7 @@ describe('McpAccessSection', () => {
 			api.delete.mockRejectedValue(new Error('Private mutation detail'));
 			await fireEvent.click(await openAction());
 			await screen.findByText(t(errorKey[action]));
-			expect(screen.getByText(record.name)).toBeTruthy();
+			expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 			expect(screen.getByRole('button', { name: t(label[action]) }).hasAttribute('disabled')).toBe(false);
 			expect(document.body.textContent).not.toContain('Private mutation detail');
 		});
@@ -1577,11 +1616,11 @@ describe('McpAccessSection', () => {
 			: path.includes('oauth') ? source === 'oauth' ? [record] : [] : source === 'personal_token' ? [record] : []));
 		if (source === 'oauth') render(McpAccessSection);
 		else await renderApi();
-		await screen.findByText(record.name);
+		await screen.findByRole('button', { name: t(source === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') });
 		await fireEvent.click(screen.getByRole('button', { name: t(source === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
 		expect(confirmDialog).toHaveBeenCalledOnce();
 		expect(api.delete).not.toHaveBeenCalled();
-		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 	});
 
 	it('discards an OAuth revoke confirmation across an A→B→A scope change', async () => {
@@ -1589,18 +1628,18 @@ describe('McpAccessSection', () => {
 		confirmDialog.mockReturnValue(confirmation.promise);
 		let generation = 'Old';
 		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
-			: path.includes('oauth') ? [{ ...activeToken, source: 'oauth', name: `${generation} OAuth client` }] : []));
+			: path.includes('oauth') ? [{ ...activeToken, source: 'oauth', name: `${generation} OAuth client`, projects: [{ id: 'project', name: `${generation} project` }] }] : []));
 		render(McpAccessSection);
-		await screen.findByText('Old OAuth client');
+		await screen.findByText(t('mcp.savedProjects', { projects: 'Old project' }));
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.revokeAccess') }));
 		generation = 'Current';
 		setProject('other', 'Other project');
 		setProject('project', 'Project');
 		verifyAuth();
-		await screen.findByText('Current OAuth client');
+		await screen.findByText(t('mcp.savedProjects', { projects: 'Current project' }));
 		await act(async () => { confirmation.resolve(true); });
 		expect(api.delete).not.toHaveBeenCalled();
-		expect(screen.getByText('Current OAuth client')).toBeTruthy();
+		expect(screen.getByText(t('mcp.savedProjects', { projects: 'Current project' }))).toBeTruthy();
 	});
 
 	it.each(['expired', 'revoked'] as const)('does not offer a %s token as the Lumen default but leaves revoke reachable', async (status) => {
@@ -1620,14 +1659,14 @@ describe('McpAccessSection', () => {
 			: path.includes('oauth') ? source === 'oauth' ? [record] : [] : source === 'personal_token' ? [record] : []));
 		if (source === 'oauth') render(McpAccessSection);
 		else await renderApi();
-		await screen.findByText(record.name);
+		await screen.findByRole('button', { name: t(source === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') });
 		await fireEvent.click(screen.getByRole('button', { name: t(source === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
 		await selectMethod(source === 'oauth' ? 'api' : 'oauth');
 		await selectMethod(source === 'oauth' ? 'oauth' : 'api');
-		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 		await act(async () => { confirmation.resolve(true); });
 		expect(api.delete).not.toHaveBeenCalled();
-		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 	});
 
 	it.each(['set-default', 'clear-default', 'revoke-token', 'revoke-oauth'] as const)('does not publish a late %s failure after method ABA', async (action) => {
@@ -1639,7 +1678,7 @@ describe('McpAccessSection', () => {
 		api.delete.mockReturnValue(mutation.promise);
 		if (action === 'revoke-oauth') render(McpAccessSection);
 		else await renderApi();
-		await screen.findByText(record.name);
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
 		const label = { 'set-default': 'mcp.setLumen', 'clear-default': 'mcp.clearLumen', 'revoke-token': 'mcp.revoke', 'revoke-oauth': 'mcp.revokeAccess' } as const;
 		await fireEvent.click(screen.getByRole('button', { name: t(label[action]) }));
 		await waitFor(() => expect(action === 'set-default' ? api.put : api.delete).toHaveBeenCalledOnce());
@@ -1647,7 +1686,7 @@ describe('McpAccessSection', () => {
 		await selectMethod(action === 'revoke-oauth' ? 'oauth' : 'api');
 		await act(async () => { mutation.reject(new ApiError('Late method mutation error')); });
 		expect(screen.queryByText('Late method mutation error')).toBeNull();
-		expect(screen.getByText(record.name)).toBeTruthy();
+		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
 		expect(screen.getByRole('button', { name: t(label[action]) }).hasAttribute('disabled')).toBe(false);
 	});
 

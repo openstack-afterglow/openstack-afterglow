@@ -27,7 +27,7 @@ export const platformGuides: DocGuide[] = [
 					'운영자 작업: 서비스 활성화·연결, 이미지와 기본 플레이버·외부 네트워크 정책, 클러스터 템플릿 관리, OpenStack 통합 플러그인과 worker 설정.',
 					'CoreOS는 별도 FCOS 이미지 설정이 필요합니다. Stampede는 개발 단계 기능이며 전역 활성화와 노드그룹 min/max 구성이 필요하므로 기본 수동 운영과 구분합니다.'
 				],
-				links: [{ label: 'Drover 클러스터 화면', href: '/dashboard/drover' }, { label: 'IAM · 서비스별 권한', href: '/docs/iam#drover' }]
+				links: [{ label: 'Drover 클러스터 화면', href: '/dashboard/drover' }, { label: 'IAM · 프로젝트 권한', href: '/docs/iam#drover' }]
 			},
 			{
 				id: 'create',
@@ -186,7 +186,7 @@ export const platformGuides: DocGuide[] = [
 					'운영자 작업: 서비스 활성화·주소 연결, Provider 이미지·플레이버·네트워크 정책, DB migration·worker·에이전트 배포와 공인 UDP 도달성 확보.',
 					'현재 네트워크 연결 모드는 SNAT입니다. 일반 사용자가 임의의 NAT 모드나 게이트웨이 이미지·플레이버를 선택하는 UI는 아닙니다.'
 				],
-				links: [{ label: 'Waygate 화면', href: '/dashboard/network/waygate' }, { label: 'IAM · 서비스별 권한', href: '/docs/iam#waygate' }]
+				links: [{ label: 'Waygate 화면', href: '/dashboard/network/waygate' }, { label: 'IAM · 프로젝트 권한', href: '/docs/iam#waygate' }]
 			},
 			{
 				id: 'gateway',
@@ -357,7 +357,7 @@ export const platformGuides: DocGuide[] = [
 					'일반 사용자: 활성 모델 선택, 대화·Studio 사용, 본인 사용량 확인, 본인 일반 API 키 발급·한도 설정·폐기.',
 					'관리자 전용: /admin/chat의 provider credential·서비스 설정, /admin/chat/models의 모델·가격·활성 상태, /admin/chat/quotas의 사용자 쿼터 정책. 사용자 개인 API 키 한도 설정과 구분합니다.'
 				],
-				links: [{ label: 'Lumen 채팅', href: '/dashboard/chat' }, { label: 'IAM · 서비스별 권한', href: '/docs/iam#lumen' }]
+				links: [{ label: 'Lumen 채팅', href: '/dashboard/chat' }, { label: 'IAM · 프로젝트 권한', href: '/docs/iam#lumen' }]
 			},
 			{
 				id: 'models-quota',
@@ -560,7 +560,7 @@ export const platformGuides: DocGuide[] = [
 					'일반 사용자는 서버 빌더에서 임의 RUN을 실행하는 관리자 경로를 사용할 수 없습니다. 서비스 배포·공개 origin·읽기 쉬운 namespace 바인딩은 운영자 설정입니다.'
 				],
 				screenshots: [{ src: '/docs/screenshots/palimpsest-access.webp', alt: 'Palimpsest 패키지 페이지의 관리자·서비스 identity 접근 거부 안내', caption: '현재 관리자 identity가 패키지 접근을 승인할 수 없어 표시된 실제 화면입니다. 일반 프로젝트 사용자 계정과 프로젝트·접근 권한을 확인하세요. 패키지 목록이나 키 발급 성공 화면이 아닙니다.', width: 1440, height: 1000 }],
-				links: [{ label: '프로젝트 패키지 · 내 접근 키', href: '/palimpsest/packages' }, { label: 'IAM · 서비스별 권한', href: '/docs/iam#palimpsest' }]
+				links: [{ label: '프로젝트 패키지 · 내 접근 키', href: '/palimpsest/packages' }, { label: 'IAM · 프로젝트 권한', href: '/docs/iam#palimpsest' }]
 			},
 			{
 				id: 'namespace',

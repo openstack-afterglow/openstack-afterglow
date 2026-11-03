@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
 import { parseChatRunEvent } from '$lib/api/chatContracts';
+import { createRunViewState, reduceRunEvent, type RunActivityItem } from '$lib/api/chatRunReducer';
 import { invalidateChatModels } from '$lib/stores/chatModels';
 import ChatPanel from '../ChatPanel.svelte';
 import { siteConfig } from '$lib/config/site';
@@ -93,6 +94,7 @@ function event(seq: number, type: string, payload: object) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	sessionStorage.clear();
 	mocks.setPageState({});
 	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	setVerifiedLumenActor({
@@ -166,6 +168,393 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it.each(['completed', 'failed', 'canceled'] as const)('restores and pages causal temporary turns while inspecting unpositioned legacy runs separately after %s', async (outcome) => {
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		let settled = false;
+		let changedCursorObserved = false;
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const nativeActivity = (status: 'completed' | 'failed' | 'canceled' | 'running'): RunActivityItem[] => [
+			{ id: 'stage:1', kind: 'stage', seq: 1, createdAt: at, stage: 'queued', toolName: null },
+			...(status === 'running' ? [] : [{
+				id: 'terminal:4', kind: 'terminal' as const, seq: 4, createdAt: at, status,
+				errorCode: status === 'completed' ? null : 'interrupted', message: status === 'completed' ? null : 'recorded interruption'
+			}])
+		];
+		const turn = (index: number, role: 'user' | 'assistant', content: string, runId?: string, status: 'completed' | 'failed' | 'canceled' | 'running' = 'completed') => ({
+			id: `saved:${index}`, role, content, conversation_id: '', parent_id: null, created_at: at,
+			temporary_history_order: [index, 1, 0],
+			...(runId ? { execution: { run_id: runId, status, ...(role === 'assistant' ? { activity: nativeActivity(status) } : {}) } } : {})
+		});
+		const snapshot = (full: boolean) => {
+			const currentStatus = settled ? outcome : 'running';
+			const currentUser = turn(8, 'user', 'current question', 'run-1', currentStatus);
+			const currentAnswer = turn(9, 'assistant', 'current answer', 'run-1', currentStatus);
+			if (!(settled && outcome === 'completed')) {
+				currentUser.id = 'temp:run-1:user';
+				currentAnswer.id = 'temp:run-1:assistant';
+				currentUser.temporary_history_order = [8, 0, 12];
+				currentAnswer.temporary_history_order = [8, 0, 13];
+			}
+			const messages = [
+				turn(0, 'user', 'legacy first question'), turn(1, 'assistant', 'legacy first answer'),
+				turn(2, 'user', 'legacy later question'), turn(3, 'assistant', 'legacy later answer'),
+				turn(4, 'user', 'first question', 'run-A'), turn(5, 'assistant', 'first answer', 'run-A'),
+				turn(6, 'user', 'second question', 'run-B'), turn(7, 'assistant', 'second answer', 'run-B'),
+				currentUser, currentAnswer
+			];
+			if (full) {
+				const failedUser = turn(6, 'user', 'failed question', 'run-F', 'failed');
+				const failedAnswer = turn(6, 'assistant', 'failed answer', 'run-F', 'failed');
+				failedUser.id = 'temp:run-F:user';
+				failedAnswer.id = 'temp:run-F:assistant';
+				failedUser.temporary_history_order = [6, 0, 8];
+				failedAnswer.temporary_history_order = [6, 0, 9];
+				messages.push(failedUser, failedAnswer);
+			}
+			messages.sort((a, b) => a.temporary_history_order[0] - b.temporary_history_order[0] ||
+				a.temporary_history_order[1] - b.temporary_history_order[1] || a.temporary_history_order[2] - b.temporary_history_order[2]);
+			return {
+				temp_thread_id: 'temp-1', messages, active_run: settled ? null : descriptor, active_run_positioned: true,
+				run_history_has_more: !full, run_history_after: full ? null : 'older', run_history_revision: 'revision-before',
+				unpositioned_runs: full ? [{
+					run_id: 'legacy-failed', run_kind: 'completion', status: 'failed', model_name: 'model-1', order_unknown: true,
+					input_parts: [{ type: 'text', text: 'legacy failed question' }], parts: [{ type: 'text', text: 'legacy failed answer' }],
+					activity: [
+						{ id: 'stage:1', kind: 'stage', seq: 1, createdAt: at, stage: 'queued', toolName: null },
+						{ id: 'tool:old-call', kind: 'tool', seq: 2, createdAt: at, callId: 'old-call', name: 'lookup', source: 'builtin', category: '기본 도구',
+							arguments: { query: 'legacy recorded input' }, status: 'completed', content: [{ type: 'text', text: 'legacy recorded result' }], errorCode: null, durationMs: null },
+						{ id: 'terminal:4', kind: 'terminal', seq: 4, createdAt: at, status: 'failed', errorCode: 'interrupted', message: 'legacy interruption' }
+					]
+				}] : []
+			};
+		};
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path.startsWith('/api/v1/chat/temp-threads/temp-1')) {
+				if (path.includes('run_after=older')) {
+					if (outcome === 'completed' && !changedCursorObserved) {
+						changedCursorObserved = true;
+						throw new mocks.ApiError('temporary_history_changed', 409);
+					}
+					return snapshot(true);
+				}
+				return snapshot(settled);
+			}
+			return fallback(path, ...args);
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.stage.changed', { stage: 'queued', tool_name: null });
+			yield event(2, 'message.created', { message_id: 'current-answer', role: 'assistant', parent_id: null });
+			yield event(3, 'part.completed', { message_id: 'current-answer', part_index: 0, part: { type: 'text', text: 'current answer' } });
+			observed.resolve();
+			await finish.promise;
+			settled = true;
+			if (outcome === 'completed') yield event(4, 'run.completed', { status: outcome, message_id: 'current-answer' });
+			else yield event(4, `run.${outcome}`, { status: outcome, message_id: 'current-answer', error_code: 'interrupted', safe_message: 'recorded interruption' });
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await observed.promise;
+		flushAnimationFrames();
+		await tick();
+		const currentRow = screen.getByText('current answer').closest('[data-history-message-id]')!;
+		const currentTimeline = currentRow.querySelector<HTMLDetailsElement>('.execution-timeline')!;
+		currentTimeline.open = false;
+		await fireEvent(currentTimeline, new Event('toggle'));
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+		expect(currentRow.querySelector('.execution-timeline')).toBe(currentTimeline);
+		expect(currentTimeline.open).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: '임시 실행 기록 더 불러오기' }));
+		if (outcome === 'completed') {
+			await waitFor(() => expect(changedCursorObserved).toBe(true));
+			await waitFor(() => expect(screen.getByRole('button', { name: '임시 실행 기록 더 불러오기' }).hasAttribute('disabled')).toBe(false));
+			await fireEvent.click(screen.getByRole('button', { name: '임시 실행 기록 더 불러오기' }));
+		}
+		await screen.findByText('failed question');
+		const expectedQuestions = ['legacy first question', 'legacy later question', 'first question', 'failed question', 'second question', 'current question'];
+		expect([...view.container.querySelectorAll('[data-history-message-id] .user-text')].map((node) => node.textContent)).toEqual(expectedQuestions);
+		expect(view.container.querySelector('[data-history-message-id="temp:run-F:assistant"]')?.textContent).toContain('failed answer');
+		expect(view.container.querySelector('[data-history-message-id="saved:9"], [data-history-message-id="temp:run-1:assistant"]')?.querySelector('.execution-timeline')).toBe(currentTimeline);
+		const detached = view.container.querySelector<HTMLDetailsElement>('[data-temporary-unpositioned]')!;
+		expect(detached.open).toBe(false);
+		await fireEvent.click(detached.querySelector('summary')!);
+		expect(detached.textContent).toContain('대화 내 순서를 확인할 수 없어');
+		expect(detached.textContent).toContain('legacy failed answer');
+		await fireEvent.click(detached.querySelector('.execution-timeline > summary')!);
+		await fireEvent.click(detached.querySelector('.tool-category > summary')!);
+		await fireEvent.click(detached.querySelector<HTMLButtonElement>('.tool-head')!);
+		expect(detached.textContent).toContain('legacy recorded input');
+		expect(detached.textContent).toContain('legacy recorded result');
+		expect(detached.querySelectorAll('.execution-timeline')).toHaveLength(1);
+		expect(screen.queryByRole('button', { name: '임시 실행 기록 더 불러오기' })).toBeNull();
+		view.unmount();
+		const reloaded = render(ChatPanel);
+		await screen.findByText('current answer');
+		expect([...reloaded.container.querySelectorAll('[data-history-message-id] .user-text')].map((node) => node.textContent)).toEqual(expectedQuestions);
+		expect(reloaded.container.querySelectorAll('[data-temporary-run-id="legacy-failed"]')).toHaveLength(1);
+		expect(mocks.followRun).toHaveBeenCalledTimes(1);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it('follows an unpositioned active temporary journal separately without inventing its place in legacy history', async () => {
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		let settled = false;
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/temp-threads/temp-1') return {
+				temp_thread_id: 'temp-1', active_run: settled ? null : descriptor, active_run_positioned: false,
+				messages: [
+					{ id: 'saved-user', role: 'user', content: 'legacy saved question', conversation_id: '', parent_id: null, created_at: at, temporary_history_order: [0, 1, 0] },
+					{ id: 'saved-answer', role: 'assistant', content: 'legacy saved answer', conversation_id: '', parent_id: 'saved-user', created_at: at, temporary_history_order: [1, 1, 0] }
+				],
+				unpositioned_runs: [{
+					run_id: 'run-1', run_kind: 'completion', status: settled ? 'completed' : 'running', model_name: 'model-1', order_unknown: true,
+					input_parts: [{ type: 'text', text: 'unpositioned current question' }],
+					parts: settled ? [{ type: 'text', text: 'unpositioned live answer' }] : [],
+					activity: settled ? [
+						{ id: 'stage:1', kind: 'stage', seq: 1, createdAt: at, stage: 'queued', toolName: null },
+						{ id: 'terminal:4', kind: 'terminal', seq: 4, createdAt: at, status: 'completed', errorCode: null, message: null }
+					] : []
+				}]
+			};
+			return fallback(path, ...args);
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.stage.changed', { stage: 'queued', tool_name: null });
+			yield event(2, 'message.created', { message_id: 'unpositioned-answer', role: 'assistant', parent_id: null });
+			yield event(3, 'part.completed', { message_id: 'unpositioned-answer', part_index: 0, part: { type: 'text', text: 'unpositioned live answer' } });
+			observed.resolve();
+			await finish.promise;
+			settled = true;
+			yield event(4, 'run.completed', { status: 'completed', message_id: 'unpositioned-answer' });
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await observed.promise;
+		flushAnimationFrames();
+		await tick();
+		expect([...view.container.querySelectorAll('[data-history-message-id] .user-text')].map((node) => node.textContent)).toEqual(['legacy saved question']);
+		const detached = view.container.querySelector<HTMLDetailsElement>('[data-temporary-unpositioned]')!;
+		await fireEvent.click(detached.querySelector('summary')!);
+		expect(detached.textContent).toContain('unpositioned live answer');
+		expect(detached.textContent).toContain('대화 내 순서를 확인할 수 없어');
+		const timeline = detached.querySelector<HTMLDetailsElement>('.execution-timeline')!;
+		timeline.open = false;
+		await fireEvent(timeline, new Event('toggle'));
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+		expect(detached.querySelector('.execution-timeline')).toBe(timeline);
+		expect(timeline.open).toBe(false);
+		expect(timeline.querySelector('[data-run-outcome="completed"]')).toBeTruthy();
+		expect(view.container.querySelectorAll('[data-history-message-id]')).toHaveLength(2);
+		view.unmount();
+		const reloaded = render(ChatPanel);
+		await screen.findByText('legacy saved answer');
+		expect(reloaded.container.querySelectorAll('[data-history-message-id]')).toHaveLength(2);
+		expect(reloaded.container.querySelector('[data-temporary-run-id="run-1"]')?.textContent).toContain('unpositioned live answer');
+		expect(mocks.followRun).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops an unpositioned timeline after follow failure without inventing a terminal outcome and resumes on reload', async () => {
+		const fail = Promise.withResolvers<void>();
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		const resumedObserved = Promise.withResolvers<void>();
+		let attachments = 0;
+		const descriptor = { run_id: 'run-1', conversation_id: null, temp_thread_id: 'temp-1', status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/temp-threads/temp-1') return {
+				temp_thread_id: 'temp-1', active_run: descriptor, active_run_positioned: false, messages: [],
+				unpositioned_runs: [{
+					run_id: 'run-1', run_kind: 'completion', status: 'running', model_name: 'model-1', order_unknown: true,
+					input_parts: [{ type: 'text', text: 'unpositioned question' }], parts: [], activity: []
+				}]
+			};
+			return fallback(path, ...args);
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			const attempt = ++attachments;
+			yield event(1, 'run.stage.changed', { stage: 'model_request', tool_name: null });
+			yield event(2, 'message.created', { message_id: 'unpositioned-answer', role: 'assistant', parent_id: null });
+			yield event(3, 'part.completed', { message_id: 'unpositioned-answer', part_index: 0, part: { type: 'text', text: 'retained partial answer' } });
+			if (attempt === 1) {
+				observed.resolve();
+				await fail.promise;
+				throw new Error('journal follow unavailable');
+			}
+			resumedObserved.resolve();
+			await finish.promise;
+			yield event(4, 'run.completed', { status: 'completed', message_id: 'unpositioned-answer' });
+		});
+		sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await observed.promise;
+		flushAnimationFrames();
+		await tick();
+		const detached = view.container.querySelector('[data-temporary-run-id="run-1"]')!;
+		const timeline = detached.querySelector<HTMLDetailsElement>('.execution-timeline')!;
+		expect(timeline.querySelector('li.live')).toBeTruthy();
+		const statusBeforeFailure = detached.querySelector('code:nth-of-type(3)')?.textContent;
+		timeline.open = false;
+		await fireEvent(timeline, new Event('toggle'));
+		fail.resolve();
+		await screen.findByText('journal follow unavailable');
+		await waitFor(() => expect(timeline.querySelector('li.live')).toBeNull());
+		expect(detached.querySelector('.execution-timeline')).toBe(timeline);
+		expect(timeline.open).toBe(false);
+		expect(detached.textContent).toContain('retained partial answer');
+		expect(detached.querySelector('code:nth-of-type(3)')?.textContent).toBe(statusBeforeFailure);
+		expect(timeline.querySelector('[data-run-outcome]')).toBeNull();
+		expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull();
+		view.unmount();
+
+		const reloaded = render(ChatPanel);
+		await resumedObserved.promise;
+		expect(mocks.followRun).toHaveBeenCalledTimes(2);
+		flushAnimationFrames();
+		await tick();
+		const resumed = reloaded.container.querySelector('[data-temporary-run-id="run-1"]')!;
+		await waitFor(() => expect(resumed.querySelector('li.live')).toBeTruthy());
+		finish.resolve();
+		await waitFor(() => expect(resumed.querySelector('[data-run-outcome="completed"]')).toBeTruthy());
+		expect(resumed.querySelector('li.live')).toBeNull();
+		expect(resumed.textContent).toContain('retained partial answer');
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['persistent', 'run.completed'], ['persistent', 'run.failed'], ['persistent', 'run.canceled'],
+		['temporary', 'run.completed'], ['temporary', 'run.failed'], ['temporary', 'run.canceled'],
+		['resumed', 'run.completed'], ['resumed', 'run.failed'], ['resumed', 'run.canceled'],
+		['temporary-resumed', 'run.completed'], ['temporary-resumed', 'run.failed'], ['temporary-resumed', 'run.canceled']
+	] as const)('keeps the actual %s ChatPanel timeline and disclosures through %s and reload', async (mode, terminal) => {
+		const temporary = mode.startsWith('temporary');
+		const resumed = mode.endsWith('resumed');
+		const finish = Promise.withResolvers<void>();
+		const observed = Promise.withResolvers<void>();
+		let settled = false;
+		const descriptor = {
+			run_id: 'run-1', conversation_id: temporary ? null : 'history-chat',
+			temp_thread_id: temporary ? 'temp-1' : null, status: 'running',
+			run_kind: 'completion', events_url: '/events', cancel_url: '/cancel'
+		};
+		const journal = [
+			event(1, 'run.stage.changed', { stage: 'queued', tool_name: null }),
+			event(2, 'message.created', { message_id: 'tool-answer', role: 'assistant', parent_id: null }),
+			event(3, 'context.updated', { state: await mocks.previewContext(), phase: 'compacting', cause: 'automatic', before_tokens: 12000, after_tokens: null }),
+			event(4, 'context.updated', { state: await mocks.previewContext(), phase: 'compacted', cause: 'automatic', before_tokens: 12000, after_tokens: 7000 }),
+			event(5, 'run.stage.changed', { stage: 'model_request', tool_name: null }),
+			event(6, 'run.stage.changed', { stage: 'model_response', tool_name: null }),
+			event(7, 'tool.approval_required', {
+				call_id: 'lookup', name: 'lookup', source: 'builtin', effect: 'read', destination: null,
+				redacted_arguments: { query: '기록한 인자' }, preview: [{ type: 'text', text: '기록한 승인 미리보기' }],
+				expected_state_revision: null, writer_fence: null, expires_at: '2026-07-26T00:10:00Z'
+			}),
+			event(8, 'tool.approval_resolved', { call_id: 'lookup', decision: 'approve', decided_by_user_id: 'user-1', decided_at: at }),
+			event(9, 'run.stage.changed', { stage: 'tool_execution', tool_name: 'lookup' }),
+			event(10, 'tool.call.started', { call_id: 'lookup', name: 'lookup', arguments: { query: '기록한 인자' }, source: 'builtin', category: '기본 도구' }),
+			event(11, 'tool.call.progress', { call_id: 'lookup', name: 'lookup', text: '기록한 도구 진행' }),
+			event(12, 'tool.call.completed', { call_id: 'lookup', name: 'lookup', status: 'completed', content: [{ type: 'text', text: '기록한 도구 결과' }] }),
+			event(13, 'child.created', { child_run_id: 'child-1', call_id: 'delegate', wait_group_id: 'group-1', agent_id: 2, access: 'read', ordinal: 0, status: 'queued' }),
+			event(14, 'child.completed', { child_run_id: 'child-1', call_id: 'delegate', wait_group_id: 'group-1', status: 'completed', summary: '기록한 하위 결과', artifacts: [] }),
+			event(15, 'message.created', { message_id: 'answer', role: 'assistant', parent_id: 'tool-answer' }),
+			event(16, 'run.stage.changed', { stage: 'response_writing', tool_name: null }),
+			event(17, 'part.completed', { message_id: 'answer', part_index: 0, part: { type: 'text', text: '기록한 최종 답변' } }),
+			event(18, 'run.stage.changed', { stage: 'finalizing', tool_name: null }),
+		];
+		const terminalEvent = terminal === 'run.completed'
+			? event(19, terminal, { status: 'completed', message_id: 'answer' })
+			: event(19, terminal, { status: terminal === 'run.failed' ? 'failed' : 'canceled', message_id: 'answer', error_code: 'interrupted', safe_message: '기록한 중단' });
+		const state = [...journal, terminalEvent].reduce(reduceRunEvent, createRunViewState('run-1'));
+		const answer = {
+			id: 'answer', conversation_id: temporary ? '' : 'history-chat', parent_id: 'tool-answer',
+			role: 'assistant', content: '기록한 최종 답변', model_name: 'model-1', created_at: at,
+			execution: { run_id: 'run-1', status: state.status, activity: state.activity }
+		};
+		const persisted = [
+			{ id: 'question', role: 'user', conversation_id: answer.conversation_id, parent_id: null, content: '확인해 주세요', created_at: at },
+			{ id: 'tool-answer', role: 'assistant', conversation_id: answer.conversation_id, parent_id: 'question', content: '', created_at: at, parts: [
+				{ type: 'tool_call', call_id: 'lookup', name: 'lookup', arguments: { query: '기록한 인자' }, status: 'completed' },
+				{ type: 'tool_result', call_id: 'lookup', name: 'lookup', content: [{ type: 'text', text: '기록한 도구 결과' }], is_error: false }
+			] },
+			answer
+		];
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return temporary ? [] : [{ id: 'history-chat', title: '기록 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/history-chat/messages?')) return {
+				messages: settled ? persisted : [], active_leaf_id: settled ? 'answer' : null,
+				history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+			};
+			if (path === '/api/v1/chat/conversations/history-chat/runs?active=true') return resumed && !settled ? [descriptor] : [];
+			if (path === '/api/v1/chat/temp-threads/temp-1') return {
+				temp_thread_id: 'temp-1', messages: settled ? persisted : persisted.slice(0, 1),
+				active_run: settled ? null : descriptor, latest_run: { ...descriptor, status: state.status }
+			};
+			return fallback(path, ...args);
+		});
+		mocks.createRun.mockResolvedValue(descriptor);
+		mocks.followRun.mockImplementation(async function* () {
+			for (const item of journal) yield item;
+			observed.resolve();
+			await finish.promise;
+			settled = true;
+			yield terminalEvent;
+		});
+		if (resumed && temporary) sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const view = render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		if (!temporary) await fireEvent.click(await screen.findByText('기록 대화'));
+		if (!resumed) {
+			if (temporary) await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+			await fireEvent.input(screen.getByRole('textbox'), { target: { value: '확인해 주세요' } });
+			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		}
+		await observed.promise;
+		flushAnimationFrames();
+		await tick();
+		const timeline = view.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
+		expect(timeline).toBeTruthy();
+		expect(view.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
+		const category = timeline.querySelector<HTMLDetailsElement>('.tool-category')!;
+		const tool = timeline.querySelector<HTMLButtonElement>('.tool-card .tool-head')!;
+		timeline.open = true;
+		category.open = true;
+		await fireEvent(timeline, new Event('toggle'));
+		await fireEvent(category, new Event('toggle'));
+		await fireEvent.click(tool);
+		const stepLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
+		finish.resolve();
+		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
+		expect(view.container.querySelector('.execution-timeline')).toBe(timeline);
+		expect(timeline.open && category.open).toBe(true);
+		expect(tool.getAttribute('aria-expanded')).toBe('true');
+		expect(timeline.querySelectorAll('.tool-card')).toHaveLength(1);
+		expect(timeline.querySelector(`[data-run-outcome="${state.status}"]`)).toBeTruthy();
+		expect(timeline.querySelectorAll('ol > li')).toHaveLength(stepLabels.length + 1);
+		expect(timeline.textContent).toContain('기록한 하위 결과');
+		expect(timeline.textContent).toContain('기록한 도구 진행');
+		expect(timeline.textContent).toContain('기록한 인자');
+		expect(timeline.textContent).toContain('기록한 승인 미리보기');
+		const settledLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
+		view.unmount();
+		const revisited = render(ChatPanel);
+		if (!temporary) await fireEvent.click(await screen.findByText('기록 대화'));
+		await screen.findByText('기록한 최종 답변');
+		const restored = revisited.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
+		expect(restored).toBeTruthy();
+		await fireEvent.click(restored.querySelector<HTMLButtonElement>('.tool-card .tool-head')!);
+		expect([...restored.querySelectorAll('ol > li')].map((item) => item.textContent)).toEqual(settledLabels);
+		expect(revisited.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
+		expect(restored.querySelectorAll('.tool-card')).toHaveLength(1);
+		expect(restored.querySelector('.live')).toBeNull();
+	});
+
 	it.each(['run.completed', 'run.failed', 'run.canceled'] as const)('retains completed-only TTFT through conversation creation and %s history reload', async (terminal) => {
 		let now = 1000;
 		const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
@@ -264,24 +653,6 @@ describe('ChatPanel', () => {
 		await tick();
 		expect(screen.getAllByRole('alert').some((item) => item.textContent?.includes('Permission service unavailable'))).toBe(true);
 		expect(mocks.createRun).not.toHaveBeenCalled();
-	});
-	it('marks both locally sent user and assistant messages for one-shot entrance', async () => {
-		const finish = Promise.withResolvers<void>();
-		mocks.followRun.mockImplementation(async function* () {
-			await finish.promise;
-			yield event(1, 'run.completed', { status: 'completed', message_id: null });
-		});
-		const { container } = render(ChatPanel);
-		await screen.findByRole('button', { name: 'Model 1' });
-		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
-		expect(container.querySelectorAll('[data-history-message-id].motion-enter')).toHaveLength(0);
-		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '새 메시지' } });
-		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
-		await waitFor(() => expect(container.querySelectorAll('[data-history-message-id].motion-enter')).toHaveLength(2));
-		expect(container.querySelector('.chat-end')?.textContent).toContain('새 메시지');
-		expect(container.querySelector('.chat-start')?.textContent).toContain('응답을 준비하는 중');
-		finish.resolve();
-		await waitFor(() => expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull());
 	});
 
 	it('refreshes an opened picker after invalidation without replacing a valid selection', async () => {

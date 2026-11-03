@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.models.db import ProjectRole
 from app.services import activity, cache, identity_roles, keystone
 from app.services.cache import keys
-from app.services.service_permissions import ROLE_PRESETS, SERVICE_ROLE_GRADES
+from app.services.service_permissions import ROLE_PRESETS
 
 _logger = logging.getLogger(__name__)
 
@@ -490,8 +490,14 @@ async def list_members(project_id, token_info, *, domain_management=False):
 
 
 def _managed_roles(catalog):
-    """Keep canonical grades bounded while preserving administrator custom edges."""
-    definitions = {row["name"]: row for row in ROLE_PRESETS}
+    """Bound standard project authority while preserving administrator custom edges."""
+    definitions = {row["name"]: row for row in ROLE_PRESETS if row["area"] == "project"}
+    definitions.update(
+        {
+            "member": {"area": "project", "grade": "member"},
+            "reader": {"area": "project", "grade": "reader"},
+        }
+    )
     by_id = {row["id"]: row for row in catalog}
     by_name = {}
     for row in catalog:
@@ -511,22 +517,10 @@ def _managed_roles(catalog):
             allowed = set(order[order.index(name) :]) | {"member", "reader"}
             if name == "project_reader":
                 allowed.discard("member")
+        elif name == "member":
+            allowed = {"reader"}
         else:
-            grades = SERVICE_ROLE_GRADES.get(area, {})
-            order = ["admin", "editor", "user", "reader"]
-            if grade not in order or grade not in grades:
-                continue
-            if name != f"{area}_{grade}":
-                # Fine-grained grants may acquire their own service's read-only
-                # discovery bundle, never another use/write capability.
-                allowed = {name}
-                if grade != "reader":
-                    allowed.add(f"{area}_reader")
-                    allowed.update(grades.get("reader", ()))
-            else:
-                lower = order[order.index(grade) :]
-                allowed = {f"{area}_{level}" for level in lower}
-                allowed.update(leaf for level in lower for leaf in grades.get(level, ()))
+            allowed = set()
         descendant_ids = row["inherited_role_ids"]
         descendants = {by_id[rid]["name"] for rid in descendant_ids}
         bounded_descendants = {
@@ -621,17 +615,23 @@ async def replace_member_roles(
         if not direct_ids <= {row["id"] for row in catalog}:
             raise identity_roles._unavailable("Direct assignment role is absent from the current catalog")
         native_admin_ids = {row["id"] for row in catalog if row["name"].casefold() == "admin"}
-        removable = set(managed) | native_admin_ids
+        retired_ids = {
+            row["id"] for row in catalog if row["name"].casefold() in identity_roles.RETIRED_SERVICE_ROLE_NAMES
+        }
+        removable = set(managed) | native_admin_ids | retired_ids
         current = direct_ids & removable
         requested = set(role_ids)
         if requested & native_admin_ids - direct_ids:
             raise HTTPException(status_code=422, detail="Native admin project grants are removal-only")
+        if requested & retired_ids - direct_ids:
+            raise HTTPException(status_code=422, detail="Retired service project grants are removal-only")
         if len(role_ids) != len(requested) or not requested <= set(managed) | direct_ids:
             raise HTTPException(
                 status_code=422, detail="Select unique safe assignable role IDs; unrelated grants are read-only"
             )
-        # Existing direct admin is removal-only; unrelated native/custom grants
-        # remain immutable even when included in the full direct selection.
+        # Existing direct admin/retired grants are removal-only. Full-selection
+        # edits can preserve them; explicit member removal revokes them. Unrelated
+        # native/custom grants remain immutable.
         desired = requested & removable
         if additive:
             desired |= current
@@ -667,17 +667,21 @@ async def replace_member_roles(
             )
         for rid in desired - current:
             await _provider_call(domain_projects.assert_manager_assignment, project_id, rid, catalog=catalog, ks=ks)
-        for rid in current - desired:
-            if rid in native_admin_ids and identity_roles._manager_bearing_role(catalog, rid):
-                await _provider_call(
-                    domain_projects.assert_managers_remain,
-                    ks=ks,
-                    catalog=catalog,
-                    project_id=project_id,
-                    role_id=rid,
-                    user_id=user_id,
-                    remove_assignment=True,
-                )
+        removed = current - desired
+        # Simulate all revocations together: individually redundant manager
+        # grants can jointly represent the last Default manager.
+        if any(
+            rid in native_admin_ids | retired_ids and identity_roles._manager_bearing_role(catalog, rid)
+            for rid in removed
+        ):
+            await _provider_call(
+                domain_projects.assert_managers_remain,
+                ks=ks,
+                catalog=catalog,
+                project_id=project_id,
+                user_id=user_id,
+                removed_role_ids=removed,
+            )
         for rid in desired:
             if rid in managed and managed[rid]["name"] in _PROJECT_GRADES:
                 _required_project_role(catalog, managed[rid]["name"], require_hierarchy=True)

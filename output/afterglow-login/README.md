@@ -29,3 +29,20 @@ No login, SSO, recovery, help or logout request is connected. Login inputs have 
 Actual adoption must preserve existing app error/readiness states, native IME/autofill, CSRF/auth/session behavior, operator logos, SSO/signup visibility and registered localization. Do not import standalone root/reset defaults into app routes. The current proof is isolated Chromium at normal scale and the documented sizes; native software keyboard, browser zoom/text scaling, nine locales and other browsers remain unverified. Do not hide actual security/error content solely to force a fixed viewport under those conditions.
 
 The ZIP includes responsive HTML/CSS/JS, the original Afterglow symbol, comparison gallery and screenshots. The gallery itself is a scrollable catalog; only login/logout pages have the viewport-fit requirement.
+
+## Extended account and MCP studies — 2026-11-03
+
+The gallery now includes six additional pages, all sharing the original character-only Afterglow scene and responsive shell:
+
+| File | States and local transitions |
+| --- | --- |
+| `signup.html` | Email entry → inbox notice; request error |
+| `verify-email.html` | Link instructions → verified → account setup; expired/invalid link |
+| `account-setup.html` | Username/password → completion; duplicate-name example |
+| `reset-password.html` | Email request → neutral inbox notice; request failure |
+| `new-password.html` | New password/confirmation → completion; mismatch/expired link |
+| `mcp.html` | Client/ID/callback/read scope → project/read permission → approval example; denial/expired request |
+
+The header state selector exposes all22 states. Buttons and Enter submission only navigate between local study steps. Theme and motion controls remain available; `?preview=1` pauses artwork for screenshots. These are intentionally static demonstrations: no credentials are read, validated, logged or persisted; inputs have no name attributes; no email/reset/authentication/MCP request is made. State success is selected manually and is not a claim of real completion. MCP examples show a reserved `.example` callback and one fixed read-only demo project; actual consent must preserve the application's real client identity, return URI, deadline, requested scopes, project selection, authority restrictions and error handling. No client identity or selectable option in this study grants access.
+
+The existing20-size viewport matrix was repeated for all22 new states (440 combinations). Document dimensions and displayed controls, titles, descriptions, status and MCP detail bounds were checked. A9px overflow in the653×280 MCP permission view was corrected with a compact detail row layout; the final matrix had zero failures. No body clipping suppresses content. Artwork gives way before task controls, and multi-step tasks avoid excessively long single forms. Four device classes × two orientations × six pages provide48 new screenshots, plus MCP permissions and expired-email examples. Independent source review approved. Browser checks also passed for local primary-button transitions on all six pages, MCP approval/denial examples, focus transfer to the new heading, and all22 states in light mode at568×320. All64 gallery screenshot files are present. JavaScript syntax checks passed. The full application gate was not run because no runtime source or commit is part of this standalone deliverable. Native mobile keyboards, zoom/text scaling, non-Korean variants and other browser engines remain unverified. Application routes are unchanged by this example bundle.

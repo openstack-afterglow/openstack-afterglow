@@ -13,7 +13,7 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.api.deps import get_os_conn, get_token_info
 from app.api.identity.mcp_access import _mark_transactional_audit, _require_browser_mutation
@@ -43,9 +43,12 @@ _MAX_PUBLIC_BODY = 64 * 1024
 
 
 class OAuthConsentApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_scope: str = Field(default="current", pattern="^(current|selected|all)$")
     project_ids: list[str] | None = None
     access_level: str | None = Field(default=None, pattern="^(read|manage)$")
+    ongoing: StrictBool = False
 
 
 def _require_enabled() -> None:
@@ -385,6 +388,7 @@ async def get_oauth_consent(ticket: str, token_info: dict = Depends(get_token_in
             "redirect_uri": consent.redirect_uri,
             "scopes": consent.scopes,
             "grant_deadline": consent.grant_deadline.isoformat(),
+            "ongoing_supported": True,
         },
         headers=_OAUTH_NO_STORE,
     )
@@ -411,11 +415,15 @@ async def approve_oauth_consent(
             project_scope=body.project_scope if body is not None else "current",
             project_ids=body.project_ids if body is not None else None,
             access_level=body.access_level if body is not None else None,
+            ongoing=body.ongoing if body is not None else False,
         )
     except (McpOAuthAuthorityError, McpAuthorityError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     _mark_transactional_audit()
-    return JSONResponse({"redirect_uri": _redirect_with_code(result)}, headers=_OAUTH_NO_STORE)
+    return JSONResponse(
+        {"redirect_uri": _redirect_with_code(result), "effective_ongoing": result.effective_ongoing},
+        headers=_OAUTH_NO_STORE,
+    )
 
 
 @auth_router.post("/mcp-oauth/consents/{ticket}/deny")

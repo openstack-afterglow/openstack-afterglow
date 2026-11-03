@@ -133,10 +133,10 @@ describe('role dashboard authorization and stale responses', () => {
 		const confirmed = Promise.withResolvers<boolean>();
 		vi.mocked(confirmDialog).mockReturnValueOnce(confirmed.promise);
 		const existing = role('owner-id', { name: 'project_owner' });
-		const fresh = role('chat-id', { name: 'lumen-chat_user' });
+		const fresh = role('member-id', { name: 'project_member' });
 		let catalogs = 0;
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/presets') ? {
-			roles: [{ name: fresh.name, description: 'chat', area: 'lumen-chat', grade: 'user', parent: null }], project_roles: [], implications: [], retired_implications: [{ prior: 'lumen_user', implied: fresh.name }]
+			roles: [{ name: 'lumen-chat_user', description: 'retired snapshot', area: 'lumen-chat', grade: 'user', parent: null }], project_roles: [{ name: fresh.name, description: 'Project resources', area: 'project', grade: 'member', parent: null }], implications: [{ prior: fresh.name, implied: 'member' }], retired_implications: [{ prior: 'lumen_user', implied: 'lumen-chat_user' }]
 		} : ++catalogs === 1 ? [existing] : [existing, fresh]));
 		mocks.post.mockResolvedValue({ created_roles: [fresh.name], created_implications: [], roles: [existing, fresh] });
 		render(Page);
@@ -145,6 +145,8 @@ describe('role dashboard authorization and stale responses', () => {
 		const preview = await screen.findByRole('dialog', { name: '역할 프리셋 미리보기' });
 		expect(within(preview).getByRole('heading', { name: '제거 대상 기존 서비스 상속 연결' })).toBeTruthy();
 		expect(within(preview).getByText('lumen_user → lumen-chat_user')).toBeTruthy();
+		expect(within(preview).getByText('project_member')).toBeTruthy();
+		expect(within(preview).queryByText('lumen-chat_user', { exact: true })).toBeNull();
 		await fireEvent.click(within(preview).getByRole('button', { name: '프리셋 적용' }));
 		expect(mocks.post).not.toHaveBeenCalled();
 		expect(confirmDialog).toHaveBeenCalledTimes(1);
@@ -153,7 +155,7 @@ describe('role dashboard authorization and stale responses', () => {
 		await waitFor(() => expect(catalogs).toBe(2));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(document.body.textContent).toContain('project_owner');
-		expect(document.body.textContent).toContain('lumen-chat_user');
+		expect(document.body.textContent).toContain('project_member');
 		vi.mocked(confirmDialog).mockResolvedValueOnce(true);
 		mocks.post.mockResolvedValueOnce({ created_roles: [], created_implications: [], roles: [existing, fresh] });
 		await fireEvent.click(screen.getByRole('button', { name: '역할 프리셋 미리보기' }));
@@ -162,6 +164,24 @@ describe('role dashboard authorization and stale responses', () => {
 		await waitFor(() => expect(catalogs).toBe(3));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(document.body.textContent).toContain('project_owner');
-		expect(document.body.textContent).toContain('lumen-chat_user');
+		expect(document.body.textContent).toContain('project_member');
+	});
+	it('retains retired metadata while allowing explicit removal of an existing graph edge', async () => {
+		const old = role('old', { name: 'lumen_user', implied_role_ids: ['custom'], inherited_role_ids: ['custom'] });
+		const custom = role('custom', { name: 'lumen-custom_user', parent_role_ids: ['old'] });
+		mocks.get.mockResolvedValue([old, custom]);
+		render(Page);
+		await fireEvent.click((await screen.findAllByRole('button', { name: 'lumen_user 역할 상세' }))[0]);
+		const detail = within(screen.getByRole('dialog', { name: 'lumen_user 역할 상세' }));
+		const selectedMetadata = detail.getByRole('heading', { name: 'lumen_user', level: 2 }).closest('header')!;
+		expect(within(selectedMetadata).getByText('사용 종료 · 읽기 전용')).toBeTruthy();
+		expect(detail.getByRole('button', { name: '이름·설명 편집' })).toMatchObject({ disabled: true });
+		expect(detail.getByRole('button', { name: '역할 삭제' })).toMatchObject({ disabled: true });
+		const edge = detail.getByRole('checkbox', { name: 'lumen-custom_user 직접 상속' });
+		expect(edge).toMatchObject({ checked: true, disabled: false });
+		expect(detail.getByRole('checkbox', { name: 'lumen_user 직접 상속' })).toMatchObject({ disabled: true });
+		await fireEvent.click(edge);
+		expect(mocks.put).not.toHaveBeenCalled();
+		await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/admin/roles/old/implies/custom', 'admin-token', 'project-a'));
 	});
 });

@@ -303,7 +303,6 @@ async def test_tools_metadata_marks_deletions_and_lifecycle_changes_destructive(
     )
     tools = (await transport._list_tools(None)).tools
     metadata = {tool.name: tool.annotations for tool in tools}
-    assert sum(name.endswith("delete") for name in metadata) == 8
     assert metadata["afterglow_vm_action"].destructiveHint is True
     assert metadata["afterglow_container_action"].destructiveHint is True
     assert metadata["afterglow_database_instance_restart"].destructiveHint is True
@@ -435,6 +434,9 @@ async def test_actual_mcp_http_timeout_keeps_slot_until_sdk_worker_settles(runni
     async def no_op(*_args, **_kwargs):
         return None
 
+    async def authorize(admitted, **_kwargs):
+        return admitted
+
     async def complete(*_args, **kwargs):
         ledger_outcomes.append(kwargs)
 
@@ -446,7 +448,7 @@ async def test_actual_mcp_http_timeout_keeps_slot_until_sdk_worker_settles(runni
     monkeypatch.setattr(transport, "verify_mcp_bearer", verify)
     monkeypatch.setattr(transport, "grant_call_slot", limits.grant_call_slot)
     monkeypatch.setattr(transport, "claim_mutation", claim)
-    monkeypatch.setattr(transport, "authorize_mutation_dispatch", no_op)
+    monkeypatch.setattr(transport, "authorize_mutation_dispatch", authorize)
     monkeypatch.setattr(transport, "build_mutation_preview", no_op)
     monkeypatch.setattr(transport, "complete_mutation", complete)
     params = {

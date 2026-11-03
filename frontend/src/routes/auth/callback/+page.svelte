@@ -11,7 +11,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import type { LoginResponse, ProviderLinkResponse } from '$lib/types/auth';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { freshLoginDestination } from '$lib/utils/mcpConsent';
@@ -29,6 +29,15 @@
 	let password = $state('');
 	let active = false;
 	let abandoned = $state(false);
+	const callbackTitle = $derived(
+		abandoned || $logoutInProgress || $projectSwitching ? t('common.backToLogin')
+			: loading ? t('callback.processing')
+			: approval ? t('login.sso.title')
+			: linked ? t('link.completeTitle')
+			: entryTicket ? t(entryTicket.action === 'connect' ? 'entry.connectTitle' : 'entry.createTitle')
+			: ticket ? t('link.title')
+			: t('link.signInAgain'),
+	);
 	// Registration origin remains bound for link results, not fresh session scope.
 	let originDomain: string | null = null;
 	let expectedProvider: string | null = null;
@@ -176,55 +185,58 @@
 	});
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
-	{#if loading && !abandoned && !$logoutInProgress && !$projectSwitching}
-		<LoadingState variant="surface" style="min-height: 100dvh" label={t('callback.processing')} />
-	{:else}
-	<PageShell class="flex justify-center"><div class="w-full max-w-md">
-		{#if abandoned || $logoutInProgress || $projectSwitching}
+<AuthStudioShell
+	variant="account"
+	localeId="callback-locale"
+	themeId="callback-theme"
+	footerNote={t('login.sso.title')}
+>
+	<div class="auth-flow">
+		<header class="auth-flow-heading"><h1>{callbackTitle}</h1></header>
+		{#if loading && !abandoned && !$logoutInProgress && !$projectSwitching}
+			<LoadingState variant="section" label={t('callback.processing')} />
+		{:else if abandoned || $logoutInProgress || $projectSwitching}
 			<Button href={loginPath} class="w-full">{t('common.backToLogin')}</Button>
-		{:else}<div class="bg-surface-raised rounded-xl border border-line-2 p-6 sm:p-8 space-y-4">
+		{:else}
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			{#if approval}
 				<Alert tone={approval === 'pending' ? 'info' : 'warning'} title={t(approval === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle')}>
 					{t(approval === 'pending' ? 'signup.approval.providerPending' : 'signup.approval.providerRejected')}
 				</Alert>
 				<Button href={loginPath} class="w-full">{t('link.signInAgain')}</Button>
-			{:else}
-			{#if linked}
-				<h1 class="text-xl font-semibold text-ink-0">{t('link.completeTitle')}</h1>
+			{:else if linked}
 				<Alert tone="success">{t('link.complete', { domain: linked.domain_name })}</Alert>
 				<Button href={loginPath} class="w-full">{t('link.signInAgain')}</Button>
 			{:else}
-			{#if entryTicket}
-				<h1 class="text-xl font-semibold text-ink-0">{t(entryTicket.action === 'connect' ? 'entry.connectTitle' : 'entry.createTitle')}</h1>
-				<Alert tone="info">{t(entryTicket.action === 'connect' ? 'entry.connectDescription' : 'entry.createDescription')}</Alert>
-				{#if entryTicket.transfer_existing}<Alert tone="warning">{t('entry.transferExisting')}</Alert>{/if}
-				<dl class="space-y-2 text-sm">
-					<div><dt class="text-ink-2">{t('entry.email')}</dt><dd class="text-ink-0 break-words">{entryTicket.email}</dd></div>
-					{#if entryTicket.action === 'connect'}<div><dt class="text-ink-2">{t('entry.username')}</dt><dd class="text-ink-0 break-words">{entryTicket.username}</dd></div>{/if}
-				</dl>
-				<form onsubmit={confirmEntry}>
-					<Button type="submit" disabled={linking} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t(entryTicket.action === 'connect' ? 'entry.connect' : 'entry.create')}{/if}</Button>
-				</form>
-			{:else if ticket}
-				<h1 class="text-xl font-semibold text-ink-0">{t('link.title')}</h1>
-				<Alert tone="info">{t('link.description')}</Alert>
-				<form onsubmit={link} class="space-y-4">
-					<Field for="link-username" label={t('onboarding.name')} required><TextInput id="link-username" bind:value={username} autocomplete="username" disabled={linking} required /></Field>
-					<Field for="link-password" label={t('onboarding.password')} required><TextInput id="link-password" bind:value={password} type="password" autocomplete="current-password" disabled={linking} required /></Field>
-					<Button type="submit" disabled={linking || !username.trim() || !password} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t('link.submit')}{/if}</Button>
-				</form>
-				{#if $auth.token}
-					<p class="text-sm text-ink-2">{t('link.authenticatedHelp')}</p>
-					<Button variant="secondary" class="w-full" disabled={linking || !$authReady || $logoutInProgress || $projectSwitching} onclick={(event) => link(event, true)}>{t('link.authenticated', { username: $auth.username ?? '' })}</Button>
+				{#if entryTicket}
+					<Alert tone="info">{t(entryTicket.action === 'connect' ? 'entry.connectDescription' : 'entry.createDescription')}</Alert>
+					{#if entryTicket.transfer_existing}<Alert tone="warning">{t('entry.transferExisting')}</Alert>{/if}
+					<dl class="auth-flow-fields text-sm">
+						<div><dt class="text-ink-2">{t('entry.email')}</dt><dd class="text-ink-0 break-words">{entryTicket.email}</dd></div>
+						{#if entryTicket.action === 'connect'}<div><dt class="text-ink-2">{t('entry.username')}</dt><dd class="text-ink-0 break-words">{entryTicket.username}</dd></div>{/if}
+					</dl>
+					<form onsubmit={confirmEntry}>
+						<Button type="submit" disabled={linking} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t(entryTicket.action === 'connect' ? 'entry.connect' : 'entry.create')}{/if}</Button>
+					</form>
+				{:else if ticket}
+					<Alert tone="info">{t('link.description')}</Alert>
+					<form onsubmit={link} class="auth-flow">
+						<div class="auth-flow-fields">
+							<Field for="link-username" label={t('onboarding.name')} required><TextInput id="link-username" bind:value={username} autocomplete="username" disabled={linking} required /></Field>
+							<Field for="link-password" label={t('onboarding.password')} required><TextInput id="link-password" bind:value={password} type="password" autocomplete="current-password" disabled={linking} required /></Field>
+						</div>
+						<Button type="submit" disabled={linking || !username.trim() || !password} ariaBusy={linking} class="w-full">{#if linking}<LoadingState variant="control" label={t('callback.processing')} />{:else}{t('link.submit')}{/if}</Button>
+					</form>
+					{#if $auth.token}
+						<p class="text-sm text-ink-2">{t('link.authenticatedHelp')}</p>
+						<Button variant="secondary" class="w-full" disabled={linking || !$authReady || $logoutInProgress || $projectSwitching} onclick={(event) => link(event, true)}>{t('link.authenticated', { username: $auth.username ?? '' })}</Button>
+					{/if}
+					<div class="auth-flow-links"><Button variant="link" href="/recover" disabled={linking}>{t('recovery.title')}</Button></div>
 				{/if}
-				<Button variant="link" href="/recover" disabled={linking}>{t('recovery.title')}</Button>
+				<div class="auth-flow-actions">
+					<Button variant="secondary" href={loginPath} onclick={cancelEntry} disabled={linking && !entryTicket} class="w-full">{t('common.backToLogin')}</Button>
+				</div>
 			{/if}
-			<Button variant="secondary" href={loginPath} onclick={cancelEntry} disabled={linking && !entryTicket} class="w-full">{t('common.backToLogin')}</Button>
-			{/if}
-			{/if}
-		</div>{/if}
-	</div></PageShell>
-	{/if}
-</main>
+		{/if}
+	</div>
+</AuthStudioShell>

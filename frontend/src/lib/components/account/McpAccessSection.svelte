@@ -580,11 +580,11 @@
 		}
 	}
 
-	async function revokeOAuthGrant(owner: AccessScope, record: McpAccessRecord) {
+	async function revokeOAuthGrant(owner: AccessScope, record: McpAccessRecord, label: string) {
 		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
 		const selected = methodSequence;
 		const loaded = loadSequence;
-		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: record.name })))) return;
+		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: label })))) return;
 		if (!isCurrentScope(owner) || selected !== methodSequence || loaded !== loadSequence || !ownsGrant(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
@@ -678,7 +678,7 @@
 	{/if}
 {/snippet}
 
-{#snippet savedRestrictions(record: McpAccessRecord)}
+{#snippet savedRestrictions(record: McpAccessRecord, hideIdentifiers = false)}
 	<div class="saved-restrictions" role="group" aria-label={t('mcp.savedRestrictions')}>
 		<p class="restriction-heading">{t('mcp.savedRestrictions')}</p>
 		<p>{t('mcp.savedAccess', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') })}</p>
@@ -690,7 +690,7 @@
 			<p>{t('mcp.savedCurrentProject')}</p>
 		{/if}
 		{#if record.projects?.length}
-			<p>{t('mcp.savedProjects', { projects: record.projects.map((project) => `${project.name} (${project.id})`).join(', ') })}</p>
+			<p>{t('mcp.savedProjects', { projects: record.projects.map((project) => hideIdentifiers ? project.name : `${project.name} (${project.id})`).join(', ') })}</p>
 		{:else}
 			<p>{t('mcp.savedProjectsUnavailable')}</p>
 		{/if}
@@ -911,15 +911,15 @@
 				<p class="empty">{t('mcp.emptyOAuth')}</p>
 			{:else if grantsScope === owner && oauthGrants.length > 0}
 				<div class="records">
-					{#each oauthGrants as record (record.id)}
+					{#each oauthGrants as record, index (record.id)}
 						<div class="record">
 							<div class="record-main">
-								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
-								<p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: formatDate(record.expires_at) })}</p>
-								{@render savedRestrictions(record)}
+								<div class="record-title"><strong>{t('mcp.oauth')} {index + 1}</strong><StatusChip status={record.status} /></div>
+								<p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: record.expires_at ? formatDate(record.expires_at) : t('mcp.expiryNever') })}</p>
+								{@render savedRestrictions(record, true)}
 								{@render clientObservations(record)}
 							</div>
-							<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
+							<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record, `${t('mcp.oauth')} ${index + 1}`)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
 						</div>
 					{/each}
 				</div>

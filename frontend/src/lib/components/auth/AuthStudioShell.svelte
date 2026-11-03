@@ -8,22 +8,24 @@
 	import { t } from '$lib/i18n/ns/public-entry';
 
 	interface Props {
-		/** `login` or `logout`; selects authored copy and layout variants. */
-		variant: 'login' | 'logout';
+		/** Standalone entry surfaces share artwork, chrome and safe panel scrolling. */
+		variant: 'login' | 'logout' | 'account' | 'consent';
+		wide?: boolean;
 		localeId: string;
 		themeId: string;
 		footerNote: string;
 		children: Snippet;
 	}
 
-	let { variant, localeId, themeId, footerNote, children }: Props = $props();
+	let { variant, wide = false, localeId, themeId, footerNote, children }: Props = $props();
 	let motion = $state(true);
 	const site = $derived($siteConfig.site_name);
+	const copyVariant = $derived(variant === 'logout' ? 'logout' : 'login');
 	const operatorLogo = $derived(site === 'Afterglow' ? '/afterglow-symbol.svg'
 		: ($resolvedTheme === 'dark' ? ($siteConfig.logo_light_path || $siteConfig.logo_path) : ($siteConfig.logo_dark_path || $siteConfig.logo_path)));
 </script>
 
-<div class="auth-studio" data-variant={variant}>
+<div class="auth-studio" data-variant={variant} class:auth-wide={wide}>
 	<header class="auth-topbar">
 		<a class="auth-brand" href="/" aria-label={t('loginBrand.home')}>
 			{#if operatorLogo}<img src={operatorLogo} alt="" height="28" />{/if}
@@ -42,14 +44,14 @@
 				{motion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}
 			</button>
 			<div class="auth-identity-copy">
-				<p class="auth-eyebrow" aria-hidden="true">{t(`authStudio.${variant}.eyebrow`)}</p>
-				<h2>{t(`authStudio.${variant}.headline1`)}<br />{t(`authStudio.${variant}.headline2`)}</h2>
-				<p class="auth-identity-description">{t(`authStudio.${variant}.description1`)}<br />{t(`authStudio.${variant}.description2`, { site })}</p>
-				{#if variant === 'login'}
+				<p class="auth-eyebrow" aria-hidden="true">{t(`authStudio.${copyVariant}.eyebrow`)}</p>
+				<p class="auth-identity-headline">{t(`authStudio.${copyVariant}.headline1`)}<br />{t(`authStudio.${copyVariant}.headline2`)}</p>
+				<p class="auth-identity-description">{t(`authStudio.${copyVariant}.description1`)}<br />{t(`authStudio.${copyVariant}.description2`, { site })}</p>
+				{#if variant !== 'logout'}
 					<div class="auth-service-terms" aria-hidden="true">NOVA <span>/</span> NEUTRON <span>/</span> CINDER <span>/</span> LUMEN</div>
 				{/if}
 			</div>
-			{#if variant === 'login'}<span class="auth-identity-index" aria-hidden="true">: : CLOUD WORKSPACE : :</span>{/if}
+			{#if variant !== 'logout'}<span class="auth-identity-index" aria-hidden="true">: : CLOUD WORKSPACE : :</span>{/if}
 		</section>
 		<section class="auth-panel">
 			<div class="auth-panel-content">
@@ -113,9 +115,9 @@
 	.auth-eyebrow, .auth-panel-content :global(.auth-eyebrow) {
 		margin: 0 0 1rem; font: 0.625rem var(--font-mono); letter-spacing: 0.18em; color: var(--color-warm-2);
 	}
-	.auth-identity h2 {
+	.auth-identity-headline {
 		margin: 0 0 1.1rem; font-size: clamp(1.7rem, 2.6vw, 3rem); font-weight: 400;
-		letter-spacing: -0.055em; line-height: 1.32; word-break: keep-all;
+		letter-spacing: -0.055em; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere;
 	}
 	.auth-identity-description { margin: 0; font-size: 0.8125rem; line-height: 1.9; color: var(--color-ink-2); }
 	.auth-service-terms {
@@ -129,11 +131,26 @@
 	}
 
 	.auth-panel {
-		display: grid; place-items: center; min-width: 0; min-height: 0; overflow-y: auto;
+		display: grid; place-items: safe center; min-width: 0; min-height: 0; overflow-y: auto;
 		padding: clamp(0.75rem, 2.5vh, 2rem) 2rem;
 		background: var(--color-surface-base);
 	}
 	.auth-panel-content { width: 100%; max-width: 380px; }
+	.auth-wide .auth-panel-content { max-width: 560px; }
+	.auth-panel-content :global(.auth-flow) { display: grid; gap: 1.25rem; min-width: 0; overflow-wrap: anywhere; }
+	.auth-panel-content :global(.auth-flow-heading h1) {
+		margin: 0; font-size: clamp(1.4rem, 2vw, 1.8rem); font-weight: 500;
+		line-height: 1.3; letter-spacing: -0.045em; word-break: keep-all; overflow-wrap: anywhere;
+	}
+	.auth-panel-content :global(.auth-flow-heading) { display: grid; gap: 0.65rem; min-width: 0; }
+	.auth-panel-content :global(.auth-flow-heading > p) { margin: 0; font-size: 0.8125rem; line-height: 1.65; color: var(--color-ink-2); }
+	.auth-panel-content :global(.auth-flow-fields) { display: grid; gap: 1rem; min-width: 0; }
+	.auth-panel-content :global(.auth-flow-actions) { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+	.auth-panel-content :global(.auth-flow-actions > *) { flex: 1 1 9rem; min-width: 0; }
+	.auth-panel-content :global(.auth-flow-links) {
+		display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem;
+		border-top: 1px solid var(--color-line); padding-top: 0.75rem;
+	}
 
 	.auth-footer {
 		display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: nowrap;
@@ -155,7 +172,7 @@
 		.auth-layout { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 22%) minmax(0, 1fr); }
 		.auth-identity { border-right: 0; border-bottom: 1px solid var(--color-line); }
 		.auth-identity-copy { bottom: auto; top: 2rem; padding: 0 2.5rem; }
-		.auth-identity h2 { font-size: 1.65rem; }
+		.auth-identity-headline { font-size: 1.65rem; }
 		.auth-identity-description, .auth-service-terms, .auth-identity-index { display: none; }
 		.auth-motion { left: auto; right: 1.5rem; bottom: 0.5rem; }
 		.auth-panel-content { max-width: 440px; }
@@ -173,6 +190,7 @@
 		.auth-panel { padding: 0.75rem 1.25rem; }
 		.auth-panel-content { max-width: 440px; }
 		.auth-footer-note { display: none; }
+		.auth-panel-content :global(.auth-flow) { gap: 0.85rem; }
 		.auth-footer { font-size: 0.5625rem; }
 	}
 	@media (max-height: 800px) {
@@ -181,6 +199,8 @@
 		.auth-identity-copy { bottom: 4rem; }
 		.auth-identity-description, .auth-service-terms, .auth-identity-index { display: none; }
 		.auth-panel { padding: 0.5rem 1.25rem; }
+		.auth-panel-content :global(.auth-flow) { gap: 0.75rem; }
+		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.35rem; }
 	}
 	@media (max-width: 767px) and (max-height: 800px) {
 		.auth-layout { grid-template-rows: minmax(32px, 9%) minmax(0, 1fr); }
@@ -198,6 +218,9 @@
 	@media (max-height: 440px) and (min-width: 480px) {
 		.auth-panel-content { max-width: 760px; }
 		.auth-panel { padding: 4px 1rem; }
+		.auth-panel-content :global(.auth-flow-fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; }
+		.auth-panel-content :global(.auth-flow-heading) { gap: 0.35rem; }
+		.auth-panel-content :global(.auth-flow-heading h1) { font-size: 1.2rem; }
 	}
 	@media (max-width: 380px) {
 		.auth-brand span { display: none; }

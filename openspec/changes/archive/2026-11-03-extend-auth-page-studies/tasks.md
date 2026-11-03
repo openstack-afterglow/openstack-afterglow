@@ -1,0 +1,5 @@
+- [x] Create shared standalone flow pages and explicit demo states
+- [x] Extend gallery, screenshots and package
+- [x] Verify viewport and local interaction behavior
+- [x] Update design/architecture documentation
+- [x] Obtain independent review and archive change

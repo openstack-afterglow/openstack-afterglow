@@ -12,7 +12,7 @@ from app.api.palimpsest import hub, package_keys, packages
 from app.config import get_settings
 from app.models.domain_auth import DomainLoginPolicy
 from app.services import identity_roles, keystone, service_proxy
-from app.services.service_permissions import ROLE_PRESETS
+from app.services.service_permissions import RETIRED_SERVICE_ROLE_NAMES, ROLE_PRESETS
 from tests.test_domain_auth import db as db
 
 PROJECT = "11111111111141118111111111111111"
@@ -50,7 +50,15 @@ async def package_client(monkeypatch):
     app.include_router(hub.router, prefix=BASE + "/hub")
     monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
     monkeypatch.setattr(get_settings(), "service_palimpsest_internal_url", "https://hub.invalid/v1")
-    names = ["admin", "manager", "member", "reader", "service", *(row["name"] for row in ROLE_PRESETS)]
+    names = [
+        "admin",
+        "manager",
+        "member",
+        "reader",
+        "service",
+        *(row["name"] for row in ROLE_PRESETS),
+        *sorted(RETIRED_SERVICE_ROLE_NAMES),
+    ]
     rows = [{"id": "id-" + name, "name": name} for name in names]
 
     async def identity(request: Request):
@@ -91,7 +99,7 @@ async def package_client(monkeypatch):
         actors=[],
         bodies=[],
     )
-    state.grants = ["palimpsest_admin"]
+    state.grants = ["member"]
     state.catalog = identity_roles._catalog(rows, [])
     state.assignment_user_id = USER
     state.project_ids = {PROJECT, FOREIGN}
@@ -475,7 +483,7 @@ async def test_download_requires_matching_verified_version_metadata(package_clie
 
 async def test_native_metadata_denial_prevents_protected_archive_download(package_client):
     client, state, _ = package_client
-    state.grants = ["palimpsest_admin", *PACKAGE_LEAVES]
+    state.grants = ["member"]
     state.status = 403
     state.payload = {"error": {"code": "ACTION_DENIED", "message": "Native version policy denied the caller"}}
     response = await client.get(BASE + f"/packages/versions/{DIGEST}/download", params={"package": "test"})
@@ -986,7 +994,7 @@ async def test_revoked_home_password_policy_blocks_package_and_legacy_hub(packag
 
 @pytest.mark.parametrize("method,path,leaf", LEGACY_ACTIONS)
 @pytest.mark.parametrize("asserted_project", [None, FOREIGN])
-@pytest.mark.parametrize("role_kind", ["grade", "leaf"])
+@pytest.mark.parametrize("role", ["member", "manager", "admin"])
 async def test_legacy_jwt_hub_surface_retains_caller_identity(
     package_client,
     legacy_browser_session,
@@ -994,12 +1002,11 @@ async def test_legacy_jwt_hub_surface_retains_caller_identity(
     path,
     leaf,
     asserted_project,
-    role_kind,
+    role,
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    grade = {INVENTORY: "palimpsest_reader", DOWNLOAD: "palimpsest_user", PUBLISH: "palimpsest_editor"}[leaf]
-    state.grants = [grade if role_kind == "grade" else leaf]
+    state.grants = [role]
     headers = {"authorization": "Bearer " + jwt}
     if asserted_project is not None:
         headers["x-project-id"] = asserted_project
@@ -1018,7 +1025,7 @@ async def test_legacy_jwt_native_action_denial_is_not_replaced_by_token_leaves(
 ):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    state.grants = ["palimpsest_admin", *PACKAGE_LEAVES]
+    state.grants = ["member", *PACKAGE_LEAVES]
     state.status = 403
     state.payload = {"error": {"code": "ACTION_DENIED", "message": f"Native policy denied {leaf}"}}
     headers = {"authorization": "Bearer " + jwt}
@@ -1082,12 +1089,12 @@ async def test_legacy_hub_preserves_native_invalid_identifier_response(
 async def test_legacy_jwt_publish_revocation_uses_current_native_policy(package_client, legacy_browser_session):
     client, state, _ = package_client
     _, jwt = legacy_browser_session
-    state.grants = ["member", "palimpsest_editor"]
+    state.grants = ["member"]
     path = BASE + f"/hub/uploads/{KEY_ID}"
     headers = {"authorization": "Bearer " + jwt}
     response = await client.patch(path, headers=headers, content=b"allowed-chunk")
     assert response.status_code == 200
-    # The same session, grade and issuance-time token leaves remain unchanged.
+    # The same session, standard member role and issued credential remain unchanged.
     # Only the native service's current operator-policy decision is revoked.
     state.status = 403
     state.payload = {"error": {"code": "ACTION_DENIED", "message": "Current native publish authority is required"}}

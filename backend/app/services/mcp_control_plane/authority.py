@@ -163,9 +163,14 @@ def _grant_expiry(*, expires_at: datetime | None, now: datetime, maximum: timede
 
 
 def grant_is_expired(grant: McpDelegatedGrant, *, now: datetime | None = None) -> bool:
-    """Only an explicitly issued personal grant may have no absolute deadline."""
+    """Unbounded OAuth authority requires explicit fresh ongoing approval."""
     if grant.expires_at is None:
-        return grant.source != "personal_token"
+        return grant.source != "personal_token" and not (
+            grant.source == "oauth"
+            and getattr(grant, "oauth_ongoing", False) is True
+            and isinstance(getattr(grant, "issued_role_ceiling", None), dict)
+            and bool(grant.issued_role_ceiling)
+        )
     return _as_utc(grant.expires_at) <= (now or _now())
 
 
@@ -302,6 +307,22 @@ def validate_grant_project(grant: McpDelegatedGrant, project_id: str, *, write: 
         if metadata["id"] == project_id:
             if write and (grant.access_level != "manage" or not metadata["can_write"]):
                 raise McpGrantStateError("MCP project does not allow management")
+            ceiling = getattr(grant, "issued_role_ceiling", None)
+            if ceiling is not None and (
+                not isinstance(ceiling, dict)
+                or set(ceiling) != {project["id"] for project in _approved_project_authority(grant)}
+                or not isinstance(ceiling.get(project_id), list)
+                or not ceiling[project_id]
+                or any(
+                    not isinstance(role, dict)
+                    or set(role) != {"id", "name"}
+                    or any(not isinstance(role[key], str) or not role[key] for key in ("id", "name"))
+                    for role in ceiling[project_id]
+                )
+                or len({role["id"] for role in ceiling[project_id]}) != len(ceiling[project_id])
+                or {role["name"] for role in ceiling[project_id]} != set(metadata["roles"])
+            ):
+                raise McpGrantStateError("MCP issued role ceiling is invalid")
             return metadata
     raise McpGrantStateError("project is outside the MCP approved scope")
 
@@ -537,6 +558,22 @@ async def create_grant_credentials(
                 or {role["id"] for role in returned_roles} != approved_ids
             ):
                 raise McpAuthorityError("Keystone application credential roles do not match the authenticated approval")
+            ceiling = getattr(grant, "issued_role_ceiling", None)
+            if ceiling is not None and (
+                len(returned_roles) != len(project.roles)
+                or any(not isinstance(role.get("name"), str) or not role["name"] for role in returned_roles)
+                or {(role.get("id"), role.get("name")) for role in returned_roles}
+                != {(role["id"], role["name"]) for role in project.roles}
+            ):
+                raise McpAuthorityError("Keystone application credential role identities changed")
+            if grant.oauth_ongoing:
+                await asyncio.to_thread(
+                    _confirm_ongoing_credential,
+                    project.conn,
+                    owner_user_id=owner_user_id,
+                    project=project,
+                    credential_id=created["id"],
+                )
             if created["project_id"] != project.id:
                 raise McpAuthorityError(
                     "Keystone application credential project does not match the authenticated approval"
@@ -663,6 +700,33 @@ def create_restricted_application_credential(
         "roles": getattr(created, "roles", None),
         "project_id": getattr(created, "project_id", None),
     }
+
+
+def _confirm_ongoing_credential(conn: Any, *, owner_user_id: str, project: ApprovedProject, credential_id: str) -> None:
+    """Fresh GET has no seeded role/expiry/unrestricted fields from create."""
+    try:
+        saved = conn.identity.get_application_credential(owner_user_id, credential_id)
+        roles = getattr(saved, "roles", None)
+        if (
+            getattr(saved, "id", None) != credential_id
+            or getattr(saved, "project_id", None) != project.id
+            or getattr(saved, "unrestricted", None) is not False
+            or getattr(saved, "expires_at", None) is not None
+            or not isinstance(roles, list)
+            or len(roles) != len(project.roles)
+            or any(
+                not isinstance(role, dict)
+                or not isinstance(role.get("id"), str)
+                or not isinstance(role.get("name"), str)
+                for role in roles
+            )
+            or {(role["id"], role["name"]) for role in roles} != {(role["id"], role["name"]) for role in project.roles}
+        ):
+            raise McpAuthorityError("Keystone did not confirm restricted non-expiring issued authority")
+    except McpAuthorityError:
+        raise
+    except Exception as exc:
+        raise McpAuthorityError("Keystone ongoing authority could not be confirmed") from exc
 
 
 def delete_and_confirm_application_credential(
@@ -895,6 +959,12 @@ async def resolve_personal_token(
     return grant
 
 
+def schedule_grant_cleanup(grant: McpDelegatedGrant, *, now: datetime | None = None) -> None:
+    """Retain recovery identity and secrets until owner-scoped deletion is confirmed."""
+    if grant.cleanup_pending and grant.orphan_recovery_after is None:
+        grant.orphan_recovery_after = (now or _now()) + PENDING_ORPHAN_RECOVERY_GRACE
+
+
 async def revoke_grant(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -923,6 +993,7 @@ async def revoke_grant(
         for credential in additional:
             credential.cleanup_pending = True
         grant.cleanup_pending = grant.cleanup_pending or bool(additional)
+        schedule_grant_cleanup(grant, now=now)
         tokens = (
             await session.scalars(
                 select(McpPersonalToken).where(McpPersonalToken.grant_id == grant.id).with_for_update()
@@ -1190,11 +1261,15 @@ async def confirm_keystone_cleanup(
                     (credential.project_id, credential.application_credential_id, credential.upstream_credential_name)
                 )
         grace = grant.orphan_recovery_after
+        # Recovery scheduling also covers fully issued revocations. Only an
+        # unactivated issuance can still create a credential after name lookup;
+        # a confirmed-empty home slot must not delay retries of other projects.
+        creation_may_settle = grant.issued_at is None
 
     outcomes = {}
     for project_id, credential_id, name in targets:
         # Unknown results cannot be declared absent while creation may still settle.
-        if credential_id is None and grace is not None and _as_utc(grace) > _now():
+        if credential_id is None and creation_may_settle and grace is not None and _as_utc(grace) > _now():
             outcomes[project_id] = False
             continue
         try:
@@ -1345,6 +1420,7 @@ async def mark_expired_grants_for_cleanup(
             for credential in additional:
                 credential.cleanup_pending = True
             grant.cleanup_pending = grant.cleanup_pending or bool(additional)
+            schedule_grant_cleanup(grant, now=now)
             selection = await session.get(
                 McpLumenSelection,
                 {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},

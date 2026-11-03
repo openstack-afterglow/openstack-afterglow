@@ -8,7 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.database import get_session_factory
-from app.models.mcp_authority import McpLumenSelection, McpPersonalToken
+from app.models.mcp_authority import (
+    McpLumenSelection,
+    McpOAuthToken,
+    McpOAuthTokenFamily,
+    McpPersonalToken,
+    McpToolInvocation,
+)
 from app.services.mcp_control_plane.authority import (
     McpAuthorityError,
     McpGrantNotFoundError,
@@ -41,6 +47,8 @@ class McpPrincipal:
     selection_generation: int | None = None
     owner_project_id: str | None = None
     selection_project_id: str | None = None
+    oauth_family_id: str | None = None
+    oauth_admitted_invocation_id: str | None = None
 
     @property
     def anchor_project_id(self) -> str:
@@ -99,6 +107,52 @@ async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool 
         or (principal.source != "lumen" and principal.source != grant.source)
     ):
         raise McpAuthenticationError("MCP grant source changed before dispatch")
+    if principal.source == "oauth":
+        family = await session.scalar(
+            select(McpOAuthTokenFamily)
+            .where(
+                McpOAuthTokenFamily.id == principal.oauth_family_id,
+                McpOAuthTokenFamily.grant_id == grant.id,
+            )
+            .with_for_update()
+        )
+        if family is None or family.revoked_at is not None:
+            raise McpAuthenticationError("MCP OAuth authority changed before dispatch")
+        if principal.oauth_admitted_invocation_id is not None:
+            admitted = await session.scalar(
+                select(McpToolInvocation)
+                .where(
+                    McpToolInvocation.id == principal.oauth_admitted_invocation_id,
+                    McpToolInvocation.grant_id == grant.id,
+                    McpToolInvocation.status == "dispatch_authorized",
+                )
+                .with_for_update()
+            )
+            if admitted is None:
+                raise McpAuthenticationError("MCP OAuth mutation admission is no longer active")
+        elif write:
+            # Rotation is not revocation. Use the unique current refresh
+            # authority at admission, not the caller's captured generation.
+            current_scopes = (
+                await session.scalars(
+                    select(McpOAuthToken.scopes)
+                    .where(
+                        McpOAuthToken.family_id == family.id,
+                        McpOAuthToken.token_type == "refresh",
+                        McpOAuthToken.generation == family.generation,
+                        McpOAuthToken.rotated_at.is_(None),
+                        McpOAuthToken.revoked_at.is_(None),
+                    )
+                    .limit(2)
+                )
+            ).all()
+            if (
+                len(current_scopes) != 1
+                or not isinstance(current_scopes[0], list)
+                or any(not isinstance(scope, str) for scope in current_scopes[0])
+                or not principal.scopes <= set(current_scopes[0])
+            ):
+                raise McpAuthenticationError("MCP OAuth scope changed before mutation admission")
     try:
         validate_lumen_grant(grant, principal.project_id)
         if principal.source == "lumen":
@@ -130,6 +184,7 @@ async def verify_mcp_bearer(raw_token: str, *, urls: McpOAuthUrls) -> McpPrincip
     if not isinstance(raw_token, str) or not raw_token or raw_token.startswith(("sk-afgl-", "Bearer ")):
         raise McpAuthenticationError("MCP bearer token is invalid")
     try:
+        oauth_proof = {}
         async with _factory()() as session, session.begin():
             if raw_token.startswith("mcp-afgl-"):
                 grant = await resolve_personal_token(session, raw_token)
@@ -141,6 +196,11 @@ async def verify_mcp_bearer(raw_token: str, *, urls: McpOAuthUrls) -> McpPrincip
                 )
                 scopes = frozenset(oauth_scopes)
                 source = "oauth"
+                oauth_proof = {
+                    "oauth_family_id": await session.scalar(
+                        select(McpOAuthTokenFamily.id).where(McpOAuthTokenFamily.grant_id == grant.id)
+                    ),
+                }
     except (McpAuthorityError, McpGrantNotFoundError, McpOAuthAuthorityError) as exc:
         raise McpAuthenticationError("MCP bearer token is invalid") from exc
     return McpPrincipal(
@@ -151,4 +211,5 @@ async def verify_mcp_bearer(raw_token: str, *, urls: McpOAuthUrls) -> McpPrincip
         credential_epoch=grant.credential_epoch,
         scopes=scopes,
         source=source,
+        **oauth_proof,
     )

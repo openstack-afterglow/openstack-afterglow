@@ -14,6 +14,22 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 버전 상향 요청은 정식 발행까지 포함한다. Metadata·commit만으로 완료하지 않고 dev push·정확한 SHA의 CI·불변 numeric tag·GitHub Release·release 이미지/alias·Helm 검증까지 수행한다. 명시적인 준비 전용 요청만 예외이며, 운영 Kolla/native/schema 배포 승인을 자동으로 뜻하지 않는다.
 
+## MCP 지속 OAuth 승인 전제 (source 변경, 미배포)
+
+새 지속 승인 writer·reader·cleanup을 시작하기 전에 원래 암호화 키와 DB를 보존하고 additive SQL `106_mcp_oauth_ongoing.sql`을 적용해야 한다. 기존 finite grant는 변경하지 않으며 기존 연결은 소유자가 한 번 새로 승인해야 한다. 이전 API/worker는 새 nullable OAuth 만료와 role-ID ceiling을 해석하지 못하므로 mixed-version 배포·rollback은 안전하다고 가정하지 않는다. 운영 전 일치하는 cohort의 schema/backup·restore와 실제 Keystone의 비만료 restricted credential 발급/현재 역할 회수/삭제 정책을 별도 검증한다. 코드 변경 자체는 운영 migration·인증 정보 교체·배포를 수행하지 않는다.
+
+공개 client의 refresh token이 장기간 유지되므로 유출 시 지속 접근 위험이 있다. 회수는 로컬 grant/epoch와 dispatch를 즉시 차단하지만 Keystone credential 삭제는 소유자의 유효한 native session과 원장 drain이 있어야 확인할 수 있다. 소유자 미복귀 또는 미정산 생성 시 remote cleanup은 대기할 수 있다. 종료 grant의 로컬 암호문 제거는 lease 조정 뒤 수행하며 expired/missing lease의 unknown 조정은 worker 종료 증거가 아니다. Unknown 원장·재전송 금지는 그대로 남긴다. 로컬 제거를 원격 삭제 성공으로 보고하거나 관리자 자격으로 대체하지 않는다.
+
+## 네 서비스 표준 프로젝트 역할 전환 (source/local, 미배포)
+
+Lumen·Drover·Waygate·Palimpsest와 Afterglow의 새 기본 모델은 현재 native `member` 이상이 프로젝트 리소스를 생성·관리하고 `reader`가 비밀 없는 조회/허용된 콘텐츠를 읽는 방식이다. 별도 서비스 grade/leaf 역할은 새 IAM 배정·preset에서 제외하며 기존 IDs·할당·custom/group/domain inference를 자동 삭제하지 않는다. 실제 native inference로 얻은 core member도 그대로 권위이며 임의의 legacy-root heuristic을 추가하지 않는다.
+
+운영 활성화 전에는 네 native API/worker와 Afterglow의 matching version·현재 적용된 `policy.yaml`/`policy.d`를 함께 검토한다. Kolla는 operator 파일을 덮어쓰지 않으므로 오래된 service-role 검사나 제거된 personal-owner flag를 쓰는 custom override는 새 sample과 별도 비교해야 한다. `{}`로 보안 제약을 무조건 초기화하거나 UI만 먼저 열어 기존 native403을 숨기지 않는다. Role floor·owner/private/project·issued-role-ID/API-key scopes·MCP 명시 동의·provider executor/Trust·unknown-I/O 경계는 유지한다.
+
+Preset 적용은 현재 시스템 관리자의 명시 작업이며 정확히 과거 관리 edge만 제거하고 native role ID·직접 할당·custom edge는 보존한다. 사용 종료된 역할 IDs가 포함된 pending 초대는 새 서버에서422를 반환하므로 표준 프로젝트 역할로 명시 재발급한다. Credential role scope를 자동 재작성하거나 기존 read-only grant를 관리 권한으로 승격하지 않는다. 전역 provider secret·통계·공유 catalog/policy·machine 작업은 genuine human system-admin 전용이다.
+
+2026-11-03 읽기 전용 운영 관측은 세 controller의 Afterglow1.32.4/Lumen0.6.12와 전체 실행 이력 helper 부재, 실제 federated human methods `openid`/`token` 누락 분류 문제를 확인했다. Forwarded project-token 자체의 metadata는 새로 발급/관측하지 않았으며 상세 경계는 `~/.local/share/afterglow-proofs/chat-history-admin-20261103/production-openid-evidence.json`에 기록한다. 이 소스·로컬 이미지 검증은 운영403/화면이 이미 고쳐졌다는 증거가 아니다. Lumen 로컬 Pi3/4 cutover와 migration027/원래 key·SQL/PG cohort 호환성도 별도 승인·복원 qualification이 필요하며 운영 migration·native grant·서비스를 이번에 변경하지 않았다.
+
 ## MCP 혼합 프로젝트 권한·native policy preflight (source only)
 
 전체 프로젝트 혼합 read/manage 위임과 OAuth/개인키 공통 권한 표는 신규 SQL migration을 추가하지 않으며 기존 MCP schema·원래 암호화 키·restricted credential을 보존한다. Backend의 cheap `/auth/mcp-projects`와 명시 `?preview=true` 계약 및 이를 사용하는 frontend를 맞춰 제공한다. 기존 read grant는 자동 승격하지 않으며 추가 관리 권한은 새 명시 승인/발급이 필요하다.

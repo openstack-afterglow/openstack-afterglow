@@ -107,6 +107,20 @@
 		reasoning?: string | null;
 		activityItems?: RunActivityItem[];
 		sessionEntrance?: MessageEntrance;
+		temporary_history_order?: [number, number, number];
+	};
+	type TemporaryRunSnapshot = {
+		run_id: string; run_kind: string; status: string; model_name: string | null;
+		input_parts: ChatPart[]; parts: ChatPart[]; activity: RunActivityItem[]; order_unknown: boolean;
+	};
+	type TemporaryInspection = {
+		run_id: string; run_kind: string; order_unknown: boolean; input_parts: ChatPart[]; message: DisplayMessage;
+	};
+	type TemporarySnapshot = {
+		temp_thread_id: string; messages?: DisplayMessage[];
+		public_history?: { role: 'user' | 'assistant'; parts: ChatPart[] }[];
+		unpositioned_runs?: TemporaryRunSnapshot[]; active_run: unknown | null; active_run_positioned?: boolean;
+		run_history_has_more?: boolean; run_history_after?: string | null; run_history_revision?: string;
 	};
 
 	type AgentActivity = {
@@ -287,6 +301,12 @@
 	let tempMode = $state(false);
 	const hasContextScope = $derived(Boolean(activeConvId || (tempMode && tempThreadId)));
 	let tempMessages = $state<DisplayMessage[]>([]);
+	let tempUnpositionedRuns = $state<TemporaryInspection[]>([]);
+	let tempRunHistoryAfter = $state<string | null>(null);
+	let tempRunHistoryRevision = $state<string | null>(null);
+	let tempRunHistoryHasMore = $state(false);
+	let tempRunHistoryLoading = $state(false);
+	let tempRunHistoryError = $state<string | null>(null);
 	let treeLoading = $state(false); // 분기/재생성 대상 전환 등 트리 재조회 중
 	let historyLoading = $state(false);
 	let historyNewActivity = $state(false);
@@ -468,13 +488,23 @@
 
 	// 현재 대화(또는 예약된 신규 대화)의 프로젝트. 입력창 위 선택기가 표시/변경.
 	const currentWorkspaceId = $derived(activeConv?.workspace_id ?? pendingWorkspaceId);
-	const _TEMP_THREAD_KEY = 'chat:tempThreadId';
+	function tempThreadStorageKey(): string {
+		return `chat:tempThreadId:${$auth.identityDomainId ?? ''}:${$auth.userId ?? ''}:${projectId ?? ''}`;
+	}
 
 	function rememberTempThread(id: string | null) {
+		if (id === null || id !== tempThreadId) {
+			tempUnpositionedRuns = [];
+			tempRunHistoryAfter = null;
+			tempRunHistoryRevision = null;
+			tempRunHistoryHasMore = false;
+			tempRunHistoryLoading = false;
+			tempRunHistoryError = null;
+		}
 		tempThreadId = id;
 		try {
-			if (id) sessionStorage.setItem(_TEMP_THREAD_KEY, id);
-			else sessionStorage.removeItem(_TEMP_THREAD_KEY);
+			if (id) sessionStorage.setItem(tempThreadStorageKey(), id);
+			else sessionStorage.removeItem(tempThreadStorageKey());
 		} catch {
 			// Temporary chat remains usable when browser storage is unavailable.
 		}
@@ -521,7 +551,7 @@
 		if (failedSubmission?.conversationId === activeConvId) return [...activePath, failedSubmission.message];
 		return activePath;
 	});
-	const isEmpty = $derived(displayPath.length === 0);
+	const isEmpty = $derived(displayPath.length === 0 && (!tempMode || tempUnpositionedRuns.length === 0));
 	const expandedComposer = $derived(!isEmpty || input.length >= 160 || /\n[^]*\n/.test(input));
 	let previousComposerEmpty: boolean | null = null;
 	$effect.pre(() => {
@@ -917,6 +947,12 @@
 				if (initialWorkspaceId !== null) clearActiveConversationId(projectId);
 				return;
 			}
+			let savedThread: string | null = null;
+			try { savedThread = sessionStorage.getItem(tempThreadStorageKey()); } catch { /* Storage is optional. */ }
+			if (savedThread) {
+				await restoreTemporaryThread(savedThread, capturedSelectionGeneration);
+				return;
+			}
 			const savedId = loadActiveConversationId(projectId);
 			const savedConversation = savedId ? conversations.find((c) => c.id === savedId) : undefined;
 			const activeConversation = activeRuns
@@ -927,6 +963,121 @@
 			else if (savedId) clearActiveConversationId(projectId);
 		} catch (e) {
 			error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
+		}
+	}
+
+	function mergeTemporarySnapshot(snapshot: TemporarySnapshot, append: boolean): void {
+		const incoming: DisplayMessage[] = snapshot.messages ?? (snapshot.public_history ?? []).map((turn, index) => ({
+			id: `temp:${snapshot.temp_thread_id}:${index}`, role: turn.role, parts: turn.parts,
+			content: turn.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
+			reasoning: turn.parts.filter((part): part is Extract<ChatPart, { type: 'reasoning' }> => part.type === 'reasoning' && part.visibility === 'user').map((part) => part.text).join('\n'),
+			conversation_id: '', parent_id: null, created_at: null
+		}));
+		const messages = new Map<string, DisplayMessage>((append ? tempMessages : []).map((message) => [message.id, message]));
+		for (const message of incoming) {
+			if (message.execution?.run_id) {
+				for (const [id, previous] of messages) {
+					if (id !== message.id && previous.role === message.role && previous.execution?.run_id === message.execution.run_id) messages.delete(id);
+				}
+			}
+			const previous = messages.get(message.id);
+			messages.set(message.id, { ...previous, ...message, execution: message.execution ?? previous?.execution });
+		}
+		tempMessages = [...messages.values()].sort((a, b) => {
+			const left = a.temporary_history_order ?? [Number.MAX_SAFE_INTEGER, 0, 0];
+			const right = b.temporary_history_order ?? [Number.MAX_SAFE_INTEGER, 0, 0];
+			return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+		});
+		const inspections = new Map<string, TemporaryInspection>((append ? tempUnpositionedRuns : []).map((run) => [run.run_id, run]));
+		for (const run of snapshot.unpositioned_runs ?? []) {
+			inspections.set(run.run_id, {
+				run_id: run.run_id, run_kind: run.run_kind, order_unknown: run.order_unknown, input_parts: run.input_parts,
+				message: {
+					id: `inspection:${run.run_id}`, role: 'assistant', conversation_id: '', parent_id: null, created_at: null,
+					model_name: run.model_name, parts: run.parts,
+					content: run.parts.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text').map((part) => part.text).join('\n'),
+					execution: { run_id: run.run_id, status: run.status, activity: run.activity }
+				}
+			});
+		}
+		for (const message of tempMessages) if (message.execution?.run_id) inspections.delete(message.execution.run_id);
+		tempUnpositionedRuns = [...inspections.values()];
+		tempRunHistoryAfter = snapshot.run_history_after ?? null;
+		tempRunHistoryRevision = snapshot.run_history_revision ?? null;
+		tempRunHistoryHasMore = snapshot.run_history_has_more ?? false;
+	}
+
+	async function restoreTemporaryThread(threadId: string, selection: number, append = false): Promise<void> {
+		const requestToken = token;
+		const requestProjectId = projectId;
+		const requestUserId = $auth.userId;
+		const requestHomeId = $auth.identityDomainId;
+		if (!requestToken || !requestProjectId || tempRunHistoryLoading || (append && streaming)) return;
+		const params = new URLSearchParams();
+		if (append && tempRunHistoryAfter) params.set('run_after', tempRunHistoryAfter);
+		if (append && tempRunHistoryRevision) params.set('run_revision', tempRunHistoryRevision);
+		const selectedRun = append ? [...tempMessages].reverse().find((message) => message.execution?.run_id)?.execution?.run_id : null;
+		if (selectedRun) params.set('run_include', selectedRun);
+		tempRunHistoryLoading = true;
+		try {
+			const suffix = params.size ? `?${params}` : '';
+			const snapshot = await api.get<TemporarySnapshot>(
+				`/api/v1/chat/temp-threads/${encodeURIComponent(threadId)}${suffix}`, requestToken, requestProjectId
+			);
+			if (destroyed || selection !== selectionGeneration || token !== requestToken ||
+				projectId !== requestProjectId || $auth.userId !== requestUserId ||
+				$auth.identityDomainId !== requestHomeId || !$authReady || $projectSwitching) return;
+			if (snapshot.temp_thread_id !== threadId) throw new Error(t('panel.errors.loadMessages'));
+			if (append && streaming) return;
+			tempRunHistoryError = null;
+			tempMode = true;
+			activeConvId = null;
+			rememberTempThread(threadId);
+			mergeTemporarySnapshot(snapshot, append);
+			if (append) return;
+			const descriptor = snapshot.active_run ? parseChatRunDescriptor(snapshot.active_run) : null;
+			if (!descriptor) return;
+			if (descriptor.run_kind === 'compaction') {
+				currentRun = descriptor;
+				manualCompacting = true;
+				void followCompactionRun(descriptor, streamGeneration);
+				return;
+			}
+			streaming = true;
+			currentRun = descriptor;
+			if (snapshot.active_run_positioned === false) {
+				let inspection = tempUnpositionedRuns.find((run) => run.run_id === descriptor.run_id);
+				if (!inspection) {
+					tempUnpositionedRuns = [...tempUnpositionedRuns, {
+						run_id: descriptor.run_id, run_kind: descriptor.run_kind, order_unknown: true, input_parts: [],
+						message: newAssistantDraft(null, false)
+					}];
+					inspection = tempUnpositionedRuns[tempUnpositionedRuns.length - 1];
+				}
+				const draft = inspection.message;
+				draft.streaming = true;
+				void followRun(descriptor, draft, (metrics) => { draft.metrics = metrics; }, streamGeneration, null);
+				return;
+			}
+			const previous = tempMessages.find((message) => message.role === 'assistant' && message.execution?.run_id === descriptor.run_id);
+			const base = tempMessages.filter((message) => message.role !== 'assistant' || message.execution?.run_id !== descriptor.run_id);
+			stream = { base, assistant: { ...newAssistantDraft(null, false), temporary_history_order: previous?.temporary_history_order }, conversationId: null, temp: true };
+			const draft = stream.assistant;
+			void followRun(descriptor, draft, (metrics) => {
+				tempMessages = [...base, { ...draft, streaming: false, metrics }];
+			}, streamGeneration, null);
+		} catch (cause) {
+			if (destroyed || selection !== selectionGeneration || token !== requestToken ||
+				projectId !== requestProjectId || $auth.userId !== requestUserId ||
+				$auth.identityDomainId !== requestHomeId || !$authReady || $projectSwitching) return;
+			if (append && cause instanceof ApiError && cause.status === 409) {
+				tempRunHistoryAfter = null;
+				tempRunHistoryRevision = null;
+				tempRunHistoryHasMore = true;
+			}
+			tempRunHistoryError = chatFailureMessage(cause, t('panel.errors.loadMessages'));
+		} finally {
+			if (!destroyed && selection === selectionGeneration && projectId === requestProjectId && $auth.userId === requestUserId) tempRunHistoryLoading = false;
 		}
 	}
 
@@ -1276,6 +1427,7 @@
 		if (!tempMode && activeConvId === conv.id && (historyPages.length > 0 || historyLoading)) return;
 		detachLocalStream();
 		const selection = ++selectionGeneration;
+		rememberTempThread(null);
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
@@ -1306,6 +1458,7 @@
 		leaveProjectsRoute();
 		detachLocalStream();
 		selectionGeneration += 1;
+		rememberTempThread(null);
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
@@ -1715,6 +1868,7 @@
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) return;
 		let runState = createRunViewState(descriptor.run_id);
+		draft.execution = { run_id: descriptor.run_id, status: descriptor.status };
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
@@ -1769,6 +1923,7 @@
 			draft.reasoning = reasoning;
 			draft.citations = runState.sources;
 			draft.activityItems = runState.activity;
+			draft.execution = { ...draft.execution, status: runState.status };
 			draft.toolItems = toolItemsFromState();
 			draft.metrics = latestMetrics;
 			if (next.pending || projectionDirty) scheduleProjection();
@@ -1928,7 +2083,7 @@
 					rememberMetrics();
 					if (stream?.temp && stream.assistant === draft) tempMessages = [...stream.base, draft];
 					error = evt.type === 'run.failed' ? runFailureMessage(evt.payload, descriptor.run_id) : evt.payload.safe_message;
-					endStream();
+					// Keep the same rendered run/disclosures while authoritative history loads.
 					scheduleMetadataRefresh();
 					void executeContextPreview();
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
@@ -1936,6 +2091,8 @@
 						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration);
 						scheduleMetadataRefresh();
 					}
+					if (generation !== streamGeneration || destroyed) return;
+					endStream();
 					return;
 				}
 				scheduleProjection();
@@ -1943,6 +2100,7 @@
 		} catch (caught) {
 			if (destroyed || controller.signal.aborted || generation !== streamGeneration) return;
 			drainReveal();
+			draft.streaming = false;
 			contextCause = null;
 			if (contextPhase === 'compacting') contextPhase = 'ready';
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
@@ -2045,10 +2203,13 @@
 			streaming = true;
 			currentRun = descriptor;
 			setConversationRun(conversationId, true);
-			stream = { base: activePath, assistant: draft, conversationId, temp: false };
+			stream = {
+				base: activePath.filter((message) => message.role === 'user' || message.execution?.run_id !== descriptor.run_id),
+				assistant: draft, conversationId, temp: false
+			};
 			void followRun(
 				descriptor,
-				draft,
+				stream.assistant,
 				async () => {
 					setConversationRun(conversationId, false);
 					if (activeConvId === conversationId && !tempMode) {
@@ -2260,7 +2421,14 @@
 				void executeContextPreview();
 			},
 			submittedAtMs,
-			(descriptor) => rememberTempThread(descriptor.temp_thread_id)
+			(descriptor) => {
+				rememberTempThread(descriptor.temp_thread_id);
+				tempRunHistoryAfter = null;
+				tempRunHistoryRevision = null;
+				tempRunHistoryError = null;
+				const submittedUser = stream?.base.find((message) => message.id === userMsg.id);
+				if (submittedUser) submittedUser.execution = { run_id: descriptor.run_id, status: descriptor.status };
+			}
 		);
 	}
 
@@ -2479,11 +2647,6 @@
 
 	// Keep the drawer closed below the desktop shell breakpoint and inline at desktop sizes.
 	$effect(() => {
-		try {
-			tempThreadId = sessionStorage.getItem(_TEMP_THREAD_KEY);
-		} catch {
-			// Browser storage is optional; no temporary content is persisted here.
-		}
 		if (typeof window === 'undefined') return;
 		const inlineQuery = window.matchMedia('(min-width: 1024px)');
 		sidebarOpen = inlineQuery.matches;
@@ -2676,6 +2839,10 @@
 		<ChatWindow
 			actionsDisabled={!canChat}
 			activePath={displayPath}
+			unpositionedTemporaryRuns={tempMode ? tempUnpositionedRuns : []}
+			hasMoreTemporaryRuns={tempMode && tempRunHistoryHasMore}
+			loadingTemporaryRuns={tempRunHistoryLoading}
+			onLoadTemporaryRuns={tempMode && tempThreadId ? () => restoreTemporaryThread(tempThreadId!, selectionGeneration, true) : undefined}
 			{metricsById}
 			{models}
 			busy={streaming}
@@ -2683,14 +2850,14 @@
 			{modelLocked}
 			{toolActivity}
 			{agentActivity}
-			{error}
+			error={error && tempRunHistoryError ? `${error}\n${tempRunHistoryError}` : error ?? tempRunHistoryError}
 			empty={isEmpty}
 			starterPrompts={lumenStarterPrompts}
 			onStarterPrompt={insertLumenStarterPrompt}
 			conversationKey={activeConvId ?? (tempMode ? tempThreadId ?? 'temporary' : '')}
 			hasBefore={historyHasBefore}
 			hasAfter={historyHasAfter}
-			loadingHistory={historyLoading}
+			loadingHistory={historyLoading || tempRunHistoryLoading}
 			newHistoryActivity={historyNewActivity}
 			onLoadBefore={activeConvId && !tempMode ? () => loadHistoryDirection('before') : undefined}
 			onLoadAfter={activeConvId && !tempMode ? () => loadHistoryDirection('after') : undefined}

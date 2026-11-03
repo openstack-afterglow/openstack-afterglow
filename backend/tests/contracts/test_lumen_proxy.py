@@ -1,6 +1,6 @@
 """Lumen transport contracts with synthetic native identity and upstream I/O.
 
-Project service leaves are synthetic; native account/home/token/system-grant and
+Project membership is synthetic; native account/home/token/system-grant and
 service action guards remain live for administrator transport cases.
 """
 
@@ -28,8 +28,8 @@ from app.services.service_proxy import proxy, proxy_passthrough
 
 @pytest.fixture(autouse=True)
 def current_access(monkeypatch):
-    """Project-scoped current read leaves, not stale token-role authority."""
-    access = {"roles": ["member", "lumen-inventory_reader", "lumen-history_reader"]}
+    """Current native project membership, not stale token-role authority."""
+    access = {"roles": ["member"]}
 
     async def get_project_access(project_id, user_id):
         assert (project_id, user_id) == ("project-1", "user-1")
@@ -726,7 +726,7 @@ async def test_stream_proxy_requires_validated_identity_before_catalog(resource,
 async def test_current_access_failure_never_falls_back_to_token_roles(api_client, monkeypatch):
     async def stale_reader(request: Request):
         token_info = await _authenticated(request)
-        token_info["roles"] = ["admin", "member", "lumen-inventory_reader"]
+        token_info["roles"] = ["admin", "member"]
         return token_info
 
     app.dependency_overrides[get_token_info] = stale_reader

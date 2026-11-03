@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "Kontekstkomprimering startet",
+	"window.detachedTemporaryHistory": "Separate midlertidige kjøringslogger ({count})",
+	"window.temporaryOrderUnknown": "Plasseringen av denne kjøringen i samtalen er ukjent, så loggen vises separat.",
+	"window.moreTemporaryHistory": "Last inn flere midlertidige kjøringslogger",
 	"childTask.title": "Underoppgave {index}",
 	"childTask.requested": "Underoppgave forespurt",
 	"childTask.canceled": "Avbrutt",

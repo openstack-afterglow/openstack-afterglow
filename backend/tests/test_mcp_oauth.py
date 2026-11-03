@@ -134,6 +134,9 @@ async def test_authenticated_consent_details_are_never_cacheable(monkeypatch):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert b"client-id" in response.body
+    import json
+
+    assert json.loads(response.body)["ongoing_supported"] is True
 
 
 def test_public_client_metadata_is_closed_to_public_oauth_contract():
@@ -289,3 +292,84 @@ def test_read_only_oauth_request_cannot_approve_manage():
 
     with pytest.raises(McpOAuthAuthorityError, match="may not expand"):
         _consent_scopes(["mcp:read"], "manage")
+
+
+@pytest.mark.parametrize("value", ["true", "false", 0, 1, None, [], {}])
+def test_ongoing_consent_requires_json_boolean(value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        mcp_api.OAuthConsentApproval(ongoing=value)
+
+
+def test_ongoing_consent_preserves_old_client_finite_default():
+    assert mcp_api.OAuthConsentApproval().ongoing is False
+    assert mcp_api.OAuthConsentApproval(ongoing=True).ongoing is True
+    assert mcp_api.OAuthConsentApproval(ongoing=False).ongoing is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,expected", [(None, False), ({}, False), ({"ongoing": False}, False), ({"ongoing": True}, True)]
+)
+async def test_consent_endpoint_forwards_only_explicit_ongoing_approval(monkeypatch, body, expected):
+    from app.main import app
+
+    approve = AsyncMock(
+        return_value=SimpleNamespace(
+            redirect_uri="https://client.example.test/callback",
+            code="code",
+            state="state",
+            effective_ongoing=expected,
+        )
+    )
+    monkeypatch.setattr(mcp_api, "_require_enabled", lambda: None)
+    monkeypatch.setattr(mcp_api, "_require_browser_mutation", lambda request: None)
+    monkeypatch.setattr(mcp_api, "_session_factory", lambda: object())
+    monkeypatch.setattr(mcp_api, "_mark_transactional_audit", lambda: None)
+    monkeypatch.setattr(mcp_api, "approve_consent_ticket", approve)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        mcp_api.get_token_info,
+        lambda: {"user_id": "owner", "project_id": "project", "roles": []},
+    )
+    monkeypatch.setitem(app.dependency_overrides, mcp_api.get_os_conn, lambda: object())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/auth/mcp-oauth/consents/ticket/approve", json=body)
+    assert response.status_code == 200
+    assert approve.await_args.kwargs["ongoing"] is expected
+    assert response.json()["effective_ongoing"] is expected
+
+
+@pytest.mark.parametrize(
+    "source,ongoing,deadline,ceiling,expired",
+    [
+        ("oauth", False, None, None, True),
+        ("oauth", True, None, None, True),
+        ("oauth", True, None, {}, True),
+        ("oauth", True, None, {"project": [{"id": "reader-id", "name": "reader"}]}, False),
+        ("lumen", True, None, {"project": [{"id": "reader-id", "name": "reader"}]}, True),
+        ("personal_token", False, None, None, False),
+    ],
+)
+def test_unbounded_authority_requires_explicit_source_and_frozen_ceiling(source, ongoing, deadline, ceiling, expired):
+    from app.services.mcp_control_plane.authority import grant_is_expired
+
+    grant = SimpleNamespace(source=source, oauth_ongoing=ongoing, expires_at=deadline, issued_role_ceiling=ceiling)
+    assert grant_is_expired(grant) is expired
+
+
+def test_null_refresh_deadline_does_not_upgrade_finite_oauth():
+    from app.services.mcp_control_plane.oauth_authority import _refresh_is_expired
+
+    now = datetime.now(UTC)
+    token = SimpleNamespace(expires_at=None)
+    grant = SimpleNamespace(source="oauth", oauth_ongoing=False, expires_at=now)
+    assert _refresh_is_expired(token, grant, now) is True
+
+
+def test_consent_rejects_unknown_renewal_fields_instead_of_silent_downgrade():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        mcp_api.OAuthConsentApproval(continual=True)

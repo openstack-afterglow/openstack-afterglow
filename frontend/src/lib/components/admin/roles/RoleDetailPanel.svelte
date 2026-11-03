@@ -9,6 +9,7 @@
 	import RoleBadges from './RoleBadges.svelte';
 	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, matchesRole, sortRoles } from './catalog';
 	import type { ManagedRole } from './types';
+	import { isRetiredRole } from '$lib/utils/roleCatalog';
 	let { role, roles, busy, stale, error, onClose, onEdit, onDelete, onToggle, onSelect }: {
 		role: ManagedRole; roles: ManagedRole[]; busy: boolean; stale: boolean; error: string;
 		onClose: () => void; onEdit: () => void; onDelete: () => void;
@@ -35,7 +36,7 @@
 		{#if stale}<Alert tone="warning">{t('roleDetail.stale')}</Alert>{/if}
 		{#if busy}<LoadingState variant="inline" label={t('roleDetail.busy')} />{/if}
 		<div class="flex flex-wrap gap-2">
-			<Button variant="secondary" disabled={busy || stale} onclick={onEdit}>{t('roleDetail.edit')}</Button>
+			<Button variant="secondary" disabled={busy || stale || isRetiredRole(role)} onclick={onEdit}>{t('roleDetail.edit')}</Button>
 			<Button variant="danger-outline" disabled={busy || stale || !!deleteReason} onclick={onDelete}>{t('roleDetail.delete')}</Button>
 		</div>
 		<p class="text-xs text-ink-2">{deleteReason ?? t('roleDetail.deleteHelp')}</p>

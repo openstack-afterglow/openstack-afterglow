@@ -11,17 +11,14 @@ export const MCP_CONSENT_SERVICES = [
 	{ id: 'drover', name: 'Drover' },
 	{ id: 'palimpsest', name: 'Palimpsest' },
 	{ id: 'waygate', name: 'Waygate' },
-	{ id: 'lumen', name: 'Lumen' },
 ] as const;
 
 // Consent attenuation only: these exact native leaves are read/download access.
-// In particular Lumen *_user executes inference/tools and is NOT read-only.
 // Never expand service grades or derive service authority from can_write.
 const READ_SERVICE_LEAVES: Record<string, true> = {
 	'drover-inventory_reader': true, 'drover-access_user': true,
 	'palimpsest-inventory_reader': true, 'palimpsest-download_user': true,
 	'waygate-inventory_reader': true, 'waygate-connect_user': true,
-	'lumen-inventory_reader': true, 'lumen-history_reader': true,
 };
 
 export function consentCloudAccess(project: McpConsentProject, access: 'read' | 'manage'): 'read' | 'manage' | 'unknown' {
@@ -30,6 +27,7 @@ export function consentCloudAccess(project: McpConsentProject, access: 'read' | 
 }
 
 export function consentServiceAccess(project: McpConsentProject, service: string, access: 'read' | 'manage') {
+	if (service === 'lumen') return { state: 'unavailable' as const, leaves: [] };
 	const leaves = project.service_permissions?.[service];
 	if (Object.hasOwn(project.service_errors ?? {}, service) || !Array.isArray(leaves)
 		|| leaves.some((leaf) => typeof leaf !== 'string' || !leaf.startsWith(`${service}-`))) {
@@ -61,18 +59,6 @@ const SERVICE_PERMISSION_LABEL_KEYS = {
 	'waygate-clients_admin': 'mcpConsent.permission.waygateClientsAdmin',
 	'waygate-gateways_admin': 'mcpConsent.permission.waygateGatewaysAdmin',
 	'waygate-routing_admin': 'mcpConsent.permission.waygateRouting',
-	'lumen-inventory_reader': 'mcpConsent.permission.lumenInventory',
-	'lumen-history_reader': 'mcpConsent.permission.lumenHistoryRead',
-	'lumen-chat_user': 'mcpConsent.permission.lumenChat',
-	'lumen-images_user': 'mcpConsent.permission.lumenImages',
-	'lumen-audio_user': 'mcpConsent.permission.lumenAudio',
-	'lumen-tools_user': 'mcpConsent.permission.lumenTools',
-	'lumen-assets_editor': 'mcpConsent.permission.lumenAssets',
-	'lumen-agents_editor': 'mcpConsent.permission.lumenAgents',
-	'lumen-mcp_editor': 'mcpConsent.permission.lumenMcp',
-	'lumen-keys_editor': 'mcpConsent.permission.lumenKeys',
-	'lumen-history_editor': 'mcpConsent.permission.lumenHistoryEdit',
-	'lumen-resources_admin': 'mcpConsent.permission.lumenResources',
 } as const;
 
 /** Human descriptions never replace the exact native permission identifier. */

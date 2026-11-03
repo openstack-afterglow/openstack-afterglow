@@ -1,4 +1,4 @@
-export interface CredentialRole { id: string; name: string }
+export interface CredentialRole { id: string; name: string; retired?: boolean; assignable?: boolean }
 export interface ApplicationCredential {
   id: string; domain_id: string; user_id: string; name: string; description: string;
   project_id: string | null; expires_at: string | null; unrestricted: boolean;

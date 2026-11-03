@@ -9,7 +9,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
 	import AccountResultDetails from '$lib/components/auth/AccountResultDetails.svelte';
 	import type { DomainAccountResult, DomainInvitationInfo } from '$lib/types/auth';
@@ -165,31 +165,32 @@
 
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
 
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center {loading ? '' : 'py-8'}">
-	{#if loading}
-		<LoadingState variant="surface" style="min-height: 100dvh" label={t('invitation.loading')} />
-	{:else}
-	<PageShell class="flex justify-center">
-	<div class="w-full max-w-md">
-		<h1 class="text-center text-xl font-semibold text-ink-0 mb-6 motion-enter">{t('invitation.title')}</h1>
-
-		<div class="bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 motion-enter" style="--motion-index: 1">
+<AuthStudioShell variant="account" wide localeId="invitation-token-locale" themeId="invitation-token-theme" footerNote={t('invitation.title')}>
+	<div class="auth-flow">
+		<header class="auth-flow-heading">
+			<h1>{t('invitation.title')}</h1>
+		</header>
+		{#if loading}
+			<LoadingState variant="section" label={t('invitation.loading')} />
+		{:else}
 			{#if loadError}
-				<div class="space-y-4">
+				<div class="auth-flow">
 					<Alert tone="danger">{loadError}</Alert>
 					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
 				</div>
 			{:else if approval}
-				<div class="space-y-4">
+				<div class="auth-flow">
 					<Alert tone={approval === 'pending' ? 'info' : 'warning'} title={t(approval === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle')}>
 						{t(approval === 'pending' ? 'signup.approval.invitationPending' : 'signup.approval.invitationRejected')}
 					</Alert>
-					{#if approval === 'pending'}<Button onclick={() => loadInfo(token)} class="w-full">{t('signup.approval.reopenInvitation')}</Button>{/if}
-					<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
-					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
+					<div class="auth-flow-actions">
+						{#if approval === 'pending'}<Button onclick={() => loadInfo(token)} class="w-full">{t('signup.approval.reopenInvitation')}</Button>{/if}
+						<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
+						<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
+					</div>
 				</div>
 			{:else if created}
-				<div class="space-y-4">
+				<div class="auth-flow">
 					<Alert tone="success" title={t('onboarding.created.title')}>
 						{t('onboarding.created.body', { project: created.personal_project_name ?? '' })}
 					</Alert>
@@ -197,7 +198,7 @@
 					<Button href="/login" size="lg" class="w-full">{t('onboarding.created.signIn')}</Button>
 				</div>
 			{:else if accepted}
-				<div class="space-y-4">
+				<div class="auth-flow">
 					<Alert tone="success" title={t('invitation.accepted.title')}>
 						<RichText segments={t.rich('invitation.accepted.body', { domain: info?.domain_name ?? '' })} classes={{ strong: 'text-ink-0' }} />
 					</Alert>
@@ -213,7 +214,7 @@
 				</dl>
 
 				{#if actionError}
-					<Alert tone="danger" class="mb-4">{actionError}</Alert>
+					<Alert tone="danger">{actionError}</Alert>
 				{/if}
 
 				{#if signedIn}
@@ -227,7 +228,7 @@
 					{#if createAbandoned || $logoutInProgress || $projectSwitching}
 						<Button href="/login" class="w-full">{t('common.backToLogin')}</Button>
 					{:else if !accountExists}
-						<h2 class="text-sm font-semibold text-ink-0 mb-3">{t('invitation.createTitle')}</h2>
+						<h2 class="text-sm font-semibold text-ink-0">{t('invitation.createTitle')}</h2>
 						{#key token}<OnboardingAccountForm idPrefix="invitation" submitLabel={t('invitation.create')} onSubmit={createAccount} />{/key}
 					{/if}
 					<div class="invitation-existing">
@@ -237,11 +238,9 @@
 					<Button variant="link" size="sm" href="/recover">{t('recovery.title')}</Button>
 				{/if}
 			{/if}
-		</div>
+		{/if}
 	</div>
-	</PageShell>
-	{/if}
-</main>
+</AuthStudioShell>
 
 <style>
 	.invitation-details {

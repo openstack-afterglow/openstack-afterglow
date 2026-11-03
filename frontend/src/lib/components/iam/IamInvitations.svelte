@@ -5,6 +5,7 @@
 	import { ApiError } from '$lib/api/client';
 	import { domainIam, type IamSession, type IamInvitation, type IamAssignableRoles } from '$lib/api/domainIam';
 	import type { Project } from '$lib/types/project';
+	import { isAssignableRole } from '$lib/utils/roleCatalog';
 	import { t } from '$lib/i18n/ns/domain-iam';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { iamErrorMessage } from './iamError';
@@ -37,7 +38,7 @@
 	let error = $state('');
 	let modalError = $state('');
 	let notice = $state('');
-	const valid = $derived(!roleLoading.length && Object.entries(selected).every(([id, roles]) => catalogs[id] && roles.some(role => catalogs[id].roles.some(row => row.id === role && row.area === 'project' && ['reader', 'member', 'admin'].includes(row.grade ?? '')))));
+	const valid = $derived(!roleLoading.length && Object.entries(selected).every(([id, roles]) => catalogs[id] && roles.some(role => catalogs[id].roles.some(row => row.id === role && ['member', 'reader', 'project_admin', 'project_member', 'project_reader'].includes(row.name.toLowerCase())))));
 	function current() { return live && session.isCurrent(); }
 	function fail(cause: unknown) { if (!current()) return; error = iamErrorMessage(cause, t('saveFailed')); if (cause instanceof ApiError && cause.status === 403) onDenied(); }
 	function close() { revision++; choosing = false; recipient = ''; selected = {}; catalogs = {}; roleLoading = []; modalError = ''; }
@@ -62,7 +63,7 @@
 		try {
 			const result = await client.roles(id);
 			if (current() && choosing && request === revision) {
-				catalogs = { ...catalogs, [id]: { ...result, roles: result.roles.filter(role => role.name.toLowerCase() !== 'admin' && !(role.area === 'project' && role.grade === 'owner')) } };
+				catalogs = { ...catalogs, [id]: { ...result, roles: result.roles.filter(role => isAssignableRole(role) && !(role.area === 'project' && role.grade === 'owner')) } };
 			}
 		} catch (cause) { if (current() && request === revision) { modalError = iamErrorMessage(cause, t('loadFailed')); if (cause instanceof ApiError && cause.status === 403) onDenied(); } }
 		finally { if (current() && request === revision) roleLoading = roleLoading.filter(value => value !== id); }

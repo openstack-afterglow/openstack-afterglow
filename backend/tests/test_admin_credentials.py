@@ -471,6 +471,29 @@ async def test_creation_context_uses_real_native_token_access_fields(native_iden
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["lumen_admin", "drover-access_user", "WAYGATE_USER", "palimpsest-publish_editor"])
+async def test_application_credential_does_not_delegate_retired_service_roles(native_identity, name):
+    app, state, _ = native_identity
+    state["token_roles"].extend(
+        [
+            {"id": "retired-id", "name": name},
+            {"id": "native-admin-id", "name": "admin"},
+            {"id": "custom-id", "name": "custom_operator"},
+        ]
+    )
+    async with scoped_client(app) as client:
+        context = await client.get("/api/v1/admin/application-credentials/context")
+        denied = await client.post(
+            "/api/v1/admin/application-credentials",
+            json={"name": "automation", "role_ids": ["retired-id"]},
+        )
+    assert context.status_code == 200
+    assert {role["id"] for role in context.json()["roles"]} == {"reader-id", "native-admin-id", "custom-id"}
+    assert denied.status_code == 403
+    assert not any(call[0] == "POST" for call in state["calls"])
+
+
+@pytest.mark.asyncio
 async def test_lists_exclude_foreign_and_unproven_owners_before_publication(native_identity):
     app, state, _ = native_identity
     base = state["application"]

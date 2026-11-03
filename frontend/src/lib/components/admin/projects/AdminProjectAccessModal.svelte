@@ -3,6 +3,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { isAssignableRole } from '$lib/utils/roleCatalog';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -28,7 +29,7 @@
 	}
 	interface User { id: string; name: string; domain_id: string; }
 	interface Group { id: string; name: string; description: string; domain_id: string; }
-	interface Role { id: string; name: string; }
+	interface Role { id: string; name: string; retired?: boolean; assignable?: boolean; }
 	interface Principal {
 		key: string;
 		id: string;
@@ -65,9 +66,9 @@
 	let roleBusy = $state<string | null>(null);
 	let removingKey = $state<string | null>(null);
 
-	let readerRole = $derived(allRoles.find((role) => role.name.toLowerCase() === 'reader') ?? null);
+	let readerRole = $derived(allRoles.find((role) => isAssignableRole(role) && role.name.toLowerCase() === 'reader') ?? null);
 	let orderedRoles = $derived(
-		allRoles.filter((role) => role.name.toLowerCase() !== 'admin').sort((a, b) => {
+		allRoles.filter(isAssignableRole).sort((a, b) => {
 			const ai = ROLE_ORDER.indexOf(a.name.toLowerCase());
 			const bi = ROLE_ORDER.indexOf(b.name.toLowerCase());
 			if (ai !== bi) return (ai === -1 ? ROLE_ORDER.length : ai) - (bi === -1 ? ROLE_ORDER.length : bi);
@@ -169,7 +170,7 @@
 	async function toggleRole(role: Role, checked: boolean) {
 		const request = scope;
 		if (!request || !current(request) || !detailPrincipal || roleBusy) return;
-		if (role.name.toLowerCase() === 'admin') return;
+		if (!isAssignableRole(role)) return;
 		if (!checked && role.id === readerRole?.id) return;
 		const principal = detailPrincipal;
 		roleBusy = role.id; detailError = '';
@@ -328,6 +329,9 @@
 			<h3 id="project-access-detail-title" class="text-base font-semibold text-ink-0 mb-1">{t('projectAccess.detailTitle', { name: detailPrincipal.name })}</h3>
 			<p class="text-xs text-ink-2 mb-3">{t('projectAccess.detailHelp')}</p>
 			{#if detailError}<Alert tone="danger" class="mb-3">{detailError}</Alert>{/if}
+			{#each (principals.find(principal => principal.key === detailPrincipal?.key)?.roles ?? []).filter(role => !isAssignableRole(allRoles.find(row => row.id === role.role_id) ?? { name: role.role_name })) as role (role.role_id)}
+				<p class="mb-3 text-xs text-ink-2 [overflow-wrap:anywhere]"><code>{role.role_name}</code> · {t('projectAccess.readOnlyRole')}</p>
+			{/each}
 			<ul class="overflow-y-auto flex-1 min-h-0 divide-y divide-line/30" aria-label={t('projectAccess.roleListLabel')}>
 				{#each orderedRoles as role (role.id)}
 					{@const assigned = detailRoleIds.has(role.id)}

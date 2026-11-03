@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pendingMcpConsentTicket } from '$lib/utils/mcpConsent';
-import { initLocale } from '$lib/i18n/runtime.svelte';
+import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/public-entry';
+import { t as commonT } from '$lib/i18n/ns/common';
 import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
 
 const { api, auth, projectSwitching, goto, page } = vi.hoisted(() => {
@@ -77,12 +78,20 @@ function deferred<T>() {
 function setTicket(value: string) {
 	page.set({ url: new URL(`http://localhost/oauth/mcp/authorize?ticket=${value}`), data: {} });
 }
-function defaultGets(scopes = ['mcp:read'], available = projects) {
-	api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true' ? available : { ...details, scopes }));
+function defaultGets(scopes = ['mcp:read'], available = projects, capability: Record<string, unknown> = { ongoing_supported: true }) {
+	api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true' ? available : { ...details, scopes, ...capability }));
 }
 function approveButton() { return screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') }) as HTMLButtonElement; }
 function checkbox(id: string) { return screen.getByRole('checkbox', { name: new RegExp(id) }) as HTMLInputElement; }
-async function loaded() { await screen.findByRole('combobox', { name: t('mcpConsent.access.label') }); }
+function ongoingCheckbox() { return screen.getByRole('checkbox', { name: t('mcpConsent.duration.ongoingLabel') }) as HTMLInputElement; }
+function finiteDescription() {
+	const deadline = new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(details.grant_deadline));
+	return t('mcpConsent.duration.finite', { deadline });
+}
+async function loaded() {
+	await fireEvent.click(await screen.findByRole('button', { name: commonT('pagination.next') }));
+	await screen.findByRole('combobox', { name: t('mcpConsent.access.label') });
+}
 function preview() { return within(screen.getByRole('region', { name: t('mcpConsent.preview.title') })); }
 function projectPreview(id: string) { return within(preview().getByRole('listitem', { name: new RegExp(id) })); }
 async function chooseAccess(access: 'read' | 'manage') {
@@ -124,7 +133,9 @@ describe('MCP OAuth consent route', () => {
 		projectSwitching.set(false);
 		setTicket(ticket);
 		defaultGets();
-		api.post.mockResolvedValue({ redirect_uri: 'https://client.example.test/approved' });
+		api.post.mockImplementation((_path: string, body: { ongoing?: boolean }) => Promise.resolve({
+			redirect_uri: 'https://client.example.test/approved', effective_ongoing: body.ongoing === true,
+		}));
 		// jsdom's Location.assign is non-configurable. Preserve the real Window for
 		// DOM APIs and storage while observing only this route's external redirect.
 		const realWindow = window;
@@ -142,6 +153,47 @@ describe('MCP OAuth consent route', () => {
 		initLocale('ko');
 	});
 
+	it.each([{}, { ongoing_supported: false }, { ongoing_supported: 'true' }])('uses truthful finite-only consent without confirmed capability %j', async (capability) => {
+		defaultGets(['mcp:read'], projects, capability);
+		api.post.mockResolvedValueOnce({ redirect_uri: 'https://client.example.test/approved' });
+		render(Page);
+		await screen.findByText(t('mcpConsent.duration.unsupported'));
+		expect(screen.queryByText(t('mcpConsent.duration.defaultHelp'))).toBeNull();
+		await loaded();
+		expect(ongoingCheckbox().checked).toBe(false);
+		expect(ongoingCheckbox().disabled).toBe(true);
+		expect(screen.getByText(finiteDescription())).toBeTruthy();
+		expect(screen.queryByText(t('mcpConsent.duration.untilRevoked'))).toBeNull();
+		await fireEvent.click(approveButton());
+		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] }, actor.token, actor.projectId);
+		await waitFor(() => expect(assign).toHaveBeenCalledWith('https://client.example.test/approved'));
+	});
+
+	it.each([{}, { effective_ongoing: false }, { effective_ongoing: 'true' }, { effective_ongoing: null }])('never redirects or replays ongoing approval without exact effective confirmation %j', async (confirmation) => {
+		api.post.mockResolvedValueOnce({ redirect_uri: 'https://client.example.test/approved', ...confirmation });
+		render(Page);
+		await loaded();
+		await fireEvent.click(approveButton());
+		await screen.findByText(t('mcpConsent.error.durationUnconfirmed'));
+		expect(assign).not.toHaveBeenCalled();
+		expect(pendingMcpConsentTicket()).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcpConsent.actions.allowRead') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcpConsent.actions.retry') })).toBeNull();
+		expect(api.post).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not accept a broader ongoing result after explicit finite consent', async () => {
+		api.post.mockResolvedValueOnce({ redirect_uri: 'https://client.example.test/approved', effective_ongoing: true });
+		render(Page);
+		await loaded();
+		await fireEvent.click(ongoingCheckbox());
+		await fireEvent.click(approveButton());
+		await screen.findByText(t('mcpConsent.error.durationUnconfirmed'));
+		expect(assign).not.toHaveBeenCalled();
+		expect(api.post).toHaveBeenCalledTimes(1);
+		expect(pendingMcpConsentTicket()).toBeNull();
+	});
+
 	it('scrubs the ticket and loads fresh authoritative consent and project metadata', async () => {
 		const replaceState = vi.spyOn(history, 'replaceState');
 		render(Page);
@@ -153,6 +205,25 @@ describe('MCP OAuth consent route', () => {
 		expect(checkbox('project-a').checked).toBe(true);
 		expect(checkbox('project-b').checked).toBe(false);
 		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('requires client review before approval and preserves explicit choices when reviewing again', async () => {
+		defaultGets(['mcp:read', 'mcp:write']);
+		render(Page);
+		await screen.findByText(details.redirect_uri);
+		expect(screen.getByText('mcp:write')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('mcpConsent.actions.allowRead') })).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+		await loaded();
+		await fireEvent.click(checkbox('project-b'));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.previous') }));
+		expect(screen.getByText(details.redirect_uri)).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+		await loaded();
+		expect(checkbox('project-a').checked).toBe(true);
+		expect(checkbox('project-b').checked).toBe(true);
+		await fireEvent.click(approveButton());
+		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a', 'project-b'], ongoing: true }, actor.token, actor.projectId);
 	});
 
 	it.each(['login', 'select-project'])('preserves the ticket before the %s redirect', async (destination) => {
@@ -185,11 +256,72 @@ describe('MCP OAuth consent route', () => {
 		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.read'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.service.denied'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText(t('mcpConsent.permission.droverAccess'))).toBeTruthy();
-		expect(projectPreview('project-a').queryByText(t('mcpConsent.permission.lumenChat'))).toBeNull();
+		expect(preview().queryByText('Lumen')).toBeNull();
+		expect(preview().queryByText(/lumen-/)).toBeNull();
+		expect(ongoingCheckbox().checked).toBe(true);
+		expect(screen.getByText(t('mcpConsent.duration.help'))).toBeTruthy();
+		expect(screen.getByText(t('mcpConsent.duration.revocation'))).toBeTruthy();
+		expect(screen.getByText(t('mcpConsent.duration.untilRevoked'))).toBeTruthy();
+		expect(screen.queryByText(finiteDescription())).toBeNull();
 		await fireEvent.click(approveButton());
 		expectDecision('approve', {
-			access_level: 'read', project_scope: 'selected', project_ids: ['project-a'],
+			access_level: 'read', project_scope: 'selected', project_ids: ['project-a'], ongoing: true,
 		}, actor.token, actor.projectId);
+	});
+
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('allows informed finite opt-out in %s without changing the old approval body', async (locale) => {
+		initLocale(locale);
+		render(Page);
+		await screen.findByText(t('mcpConsent.duration.defaultHelp'));
+		expect(screen.getByText(t('mcpConsent.details.deadline'))).toBeTruthy();
+		expect(screen.queryByRole('checkbox')).toBeNull();
+		await loaded();
+		expect(ongoingCheckbox().checked).toBe(true);
+		expect(ongoingCheckbox().getAttribute('aria-label')).not.toContain('mcpConsent.');
+		await fireEvent.click(ongoingCheckbox());
+		expect(ongoingCheckbox().checked).toBe(false);
+		expect(screen.getByText(finiteDescription())).toBeTruthy();
+		expect(screen.queryByText(t('mcpConsent.duration.untilRevoked'))).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.click(approveButton());
+		expectDecision('approve', { access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] }, actor.token, actor.projectId);
+	});
+
+	it('preserves finite opt-out while reviewing again and changing the approved scope', async () => {
+		defaultGets(['mcp:read', 'mcp:write']);
+		render(Page);
+		await loaded();
+		await fireEvent.click(ongoingCheckbox());
+		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.previous') }));
+		await loaded();
+		expect(ongoingCheckbox().checked).toBe(false);
+		await chooseScope('all');
+		await chooseAccess('manage');
+		expect(ongoingCheckbox().checked).toBe(false);
+		expect(screen.getByText(finiteDescription())).toBeTruthy();
+		await fireEvent.click(ongoingCheckbox());
+		expect(ongoingCheckbox().checked).toBe(true);
+		expect(screen.queryByText(finiteDescription())).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
+		expectDecision('approve', { access_level: 'manage', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
+	});
+
+	it.each(transitions)('resets the duration choice to the disclosed default on %s', async (kind) => {
+		render(Page);
+		await loaded();
+		await fireEvent.click(ongoingCheckbox());
+		expect(ongoingCheckbox().checked).toBe(false);
+		await act(() => transition(kind));
+		if (kind === 'logout') await act(() => auth.set(actor));
+		if (kind === 'switching') await act(() => projectSwitching.set(false));
+		await loaded();
+		expect(ongoingCheckbox().checked).toBe(true);
+		expect(screen.getByText(t('mcpConsent.duration.untilRevoked'))).toBeTruthy();
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.click(approveButton());
+		const body = api.post.mock.calls[0][1];
+		expect(body).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: [kind === 'project' ? 'project-b' : 'project-a'], ongoing: true });
 	});
 
 	it('narrows a write request to read with the explicitly selected projects', async () => {
@@ -204,7 +336,7 @@ describe('MCP OAuth consent route', () => {
 		await fireEvent.click(checkbox('project-b'));
 		await fireEvent.click(approveButton());
 		expectDecision('approve', {
-			access_level: 'read', project_scope: 'selected', project_ids: ['project-b'],
+			access_level: 'read', project_scope: 'selected', project_ids: ['project-b'], ongoing: true,
 		}, actor.token, actor.projectId);
 		await waitFor(() => expect(assign).toHaveBeenCalledWith('https://client.example.test/approved'));
 		expect(pendingMcpConsentTicket()).toBeNull();
@@ -216,10 +348,11 @@ describe('MCP OAuth consent route', () => {
 		await loaded();
 		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: access } });
 		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.projects.label') }), { target: { value: 'all' } });
-		expect(screen.queryByRole('checkbox')).toBeNull();
+		expect(screen.queryByRole('checkbox', { name: /project-[ab]/ })).toBeNull();
+		expect(ongoingCheckbox().checked).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: t(access === 'manage' ? 'mcpConsent.actions.allowManage' : 'mcpConsent.actions.allowRead') }));
 		expectDecision('approve', {
-			access_level: access, project_scope: 'all', project_ids: [],
+			access_level: access, project_scope: 'all', project_ids: [], ongoing: true,
 		}, actor.token, actor.projectId);
 	});
 
@@ -233,11 +366,11 @@ describe('MCP OAuth consent route', () => {
 		expect(projectPreview('project-a').getByText(t('mcpConsent.preview.cloud.manage'))).toBeTruthy();
 		expect(projectPreview('project-b').getByText(t('mcpConsent.preview.cloud.read'))).toBeTruthy();
 		expect(projectPreview('project-a').getByText('drover-clusters_editor')).toBeTruthy();
-		expect(projectPreview('project-a').getByText('lumen-chat_user')).toBeTruthy();
+		expect(projectPreview('project-a').queryByText(/lumen-/)).toBeNull();
 		expect(projectPreview('project-b').getByText('palimpsest-publish_editor')).toBeTruthy();
-		expect(projectPreview('project-b').getByText('lumen-keys_editor')).toBeTruthy();
-		expect(projectPreview('project-b').getByText(t('mcpConsent.permission.lumenKeys'))).toBeTruthy();
-		for (const name of ['Drover', 'Palimpsest', 'Waygate', 'Lumen']) {
+		expect(projectPreview('project-b').queryByText(/lumen-/)).toBeNull();
+		expect(preview().queryByText('Lumen')).toBeNull();
+		for (const name of ['Drover', 'Palimpsest', 'Waygate']) {
 			expect(projectPreview('project-a').getByText(name)).toBeTruthy();
 			expect(projectPreview('project-b').getByText(name)).toBeTruthy();
 		}
@@ -245,7 +378,7 @@ describe('MCP OAuth consent route', () => {
 		expect(screen.getByText(t('mcpConsent.manage.body'))).toBeTruthy();
 		expect(api.post).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowManage') }));
-		expectDecision('approve', { access_level: 'manage', project_scope: 'all', project_ids: [] }, actor.token, actor.projectId);
+		expectDecision('approve', { access_level: 'manage', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
 	});
 
 	it('immediately attenuates every project and service when manage changes to read', async () => {
@@ -254,20 +387,21 @@ describe('MCP OAuth consent route', () => {
 		await loaded();
 		await chooseScope('all');
 		await chooseAccess('manage');
-		expect(preview().getByText('lumen-tools_user')).toBeTruthy();
+		expect(preview().getByText('drover-clusters_editor')).toBeTruthy();
+		expect(preview().queryByText(/lumen-/)).toBeNull();
 		await chooseAccess('read');
 		expect(preview().getAllByText(t('mcpConsent.preview.cloud.read'))).toHaveLength(2);
 		expect(preview().queryByText(t('mcpConsent.preview.cloud.manage'))).toBeNull();
 		for (const leaf of ['drover-clusters_editor', 'palimpsest-publish_editor', 'lumen-chat_user', 'lumen-tools_user', 'lumen-keys_editor']) {
 			expect(preview().queryByText(leaf)).toBeNull();
 		}
-		for (const leaf of ['drover-inventory_reader', 'drover-access_user', 'palimpsest-download_user', 'waygate-connect_user', 'lumen-history_reader']) {
+		for (const leaf of ['drover-inventory_reader', 'drover-access_user', 'palimpsest-download_user', 'waygate-connect_user']) {
 			expect(preview().getByText(leaf)).toBeTruthy();
 		}
-		expect(projectPreview('project-b').getByText(t('mcpConsent.preview.service.attenuated'))).toBeTruthy();
+		expect(projectPreview('project-b').getByText('waygate-connect_user')).toBeTruthy();
 		expect(api.post).not.toHaveBeenCalled();
 		await fireEvent.click(approveButton());
-		expectDecision('approve', { access_level: 'read', project_scope: 'all', project_ids: [] }, actor.token, actor.projectId);
+		expectDecision('approve', { access_level: 'read', project_scope: 'all', project_ids: [], ongoing: true }, actor.token, actor.projectId);
 	});
 
 	it('updates selected preview and refuses selected manage readers without losing the explicit selection', async () => {
@@ -302,11 +436,11 @@ describe('MCP OAuth consent route', () => {
 		render(Page);
 		await loaded();
 		await chooseAccess('manage');
-		expect(projectPreview('project-a').getAllByText(t('mcpConsent.preview.service.unavailable'))).toHaveLength(kind === 'missing' ? 4 : 1);
+		expect(projectPreview('project-a').getAllByText(t('mcpConsent.preview.service.unavailable'))).toHaveLength(kind === 'missing' ? 3 : 1);
 		expect(preview().queryByText('drover-clusters_editor')).toBeNull();
 		expect(preview().queryByText('permission_check_unavailable')).toBeNull();
-		if (kind === 'error') expect(preview().getByText('lumen-chat_user')).toBeTruthy();
-		else expect(preview().queryByText(t('mcpConsent.preview.service.denied'))).toBeNull();
+		expect(preview().queryByText(/lumen-/)).toBeNull();
+		if (kind === 'missing') expect(preview().queryByText(t('mcpConsent.preview.service.denied'))).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
 	});
 
@@ -337,15 +471,16 @@ describe('MCP OAuth consent route', () => {
 	});
 
 	it('blocks duplicate decisions while approval is pending', async () => {
-		const decision = deferred<{ redirect_uri: string }>();
+		const decision = deferred<{ redirect_uri: string; effective_ongoing: boolean }>();
 		api.post.mockReturnValueOnce(decision.promise);
 		render(Page);
 		await loaded();
 		await fireEvent.click(approveButton());
+		expect(ongoingCheckbox().disabled).toBe(true);
 		await fireEvent.click(approveButton());
 		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.deny') }));
 		expect(api.post).toHaveBeenCalledTimes(1);
-		await act(async () => decision.resolve({ redirect_uri: 'https://client.example.test/approved' }));
+		await act(async () => decision.resolve({ redirect_uri: 'https://client.example.test/approved', effective_ongoing: true }));
 	});
 
 	it('restores explicit selection when switching back from all projects', async () => {
@@ -416,6 +551,7 @@ describe('MCP OAuth consent route', () => {
 		render(Page);
 		await loaded();
 		await fireEvent.click(checkbox('project-b'));
+		await fireEvent.click(ongoingCheckbox());
 		await fireEvent.change(screen.getByRole('combobox', { name: t('mcpConsent.access.label') }), { target: { value: 'manage' } });
 		api.get.mockImplementation((path: string) => (path === '/api/v1/auth/mcp-projects?preview=true') === (endpoint === 'projects')
 			? Promise.reject(new Error('reload failed')) : Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true' ? projects : details));
@@ -428,6 +564,7 @@ describe('MCP OAuth consent route', () => {
 		await loaded();
 		expect(checkbox('project-a').checked).toBe(true);
 		expect(checkbox('project-b').checked).toBe(false);
+		expect(ongoingCheckbox().checked).toBe(true);
 		expect((screen.getByRole('combobox', { name: t('mcpConsent.access.label') }) as HTMLSelectElement).value).toBe('read');
 	});
 
@@ -446,7 +583,7 @@ describe('MCP OAuth consent route', () => {
 			await fireEvent.click(approveButton());
 			const request = api.post.mock.calls[1];
 			expect(request[0]).toContain(kind === 'ticket' ? otherTicket : ticket);
-			expect(request[1]).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: [kind === 'project' ? 'project-b' : 'project-a'] });
+			expect(request[1]).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: [kind === 'project' ? 'project-b' : 'project-a'], ongoing: true });
 			expect(request[2]).toBe(kind === 'token' ? 'token-b' : actor.token);
 			expect(request[3]).toBe(kind === 'project' ? 'project-b' : actor.projectId);
 		}
@@ -454,7 +591,7 @@ describe('MCP OAuth consent route', () => {
 
 	it.each(['success', 'failure'])('does not finish a replacement decision when an old decision returns %s', async (outcome) => {
 		const old = deferred<{ redirect_uri: string }>();
-		const current = deferred<{ redirect_uri: string }>();
+		const current = deferred<{ redirect_uri: string; effective_ongoing: boolean }>();
 		api.post.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
 		render(Page);
 		await loaded();
@@ -469,7 +606,7 @@ describe('MCP OAuth consent route', () => {
 		expect(assign).not.toHaveBeenCalled();
 		expect(approveButton().disabled).toBe(true);
 		expect(screen.queryByText(t('mcpConsent.error.approveFailed'))).toBeNull();
-		await act(async () => current.resolve({ redirect_uri: 'https://current.example.test' }));
+		await act(async () => current.resolve({ redirect_uri: 'https://current.example.test', effective_ongoing: true }));
 		expect(assign).toHaveBeenCalledWith('https://current.example.test');
 	});
 

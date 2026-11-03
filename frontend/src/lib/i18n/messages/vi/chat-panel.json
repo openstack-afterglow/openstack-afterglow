@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "Đã bắt đầu nén ngữ cảnh",
+	"window.detachedTemporaryHistory": "Bản ghi lượt chạy tạm thời riêng ({count})",
+	"window.temporaryOrderUnknown": "Không xác định được vị trí của lượt chạy này trong cuộc trò chuyện nên bản ghi được hiển thị riêng.",
+	"window.moreTemporaryHistory": "Tải thêm bản ghi lượt chạy tạm thời",
 	"childTask.title": "Tác vụ con {index}",
 	"childTask.requested": "Đã yêu cầu tác vụ con",
 	"childTask.canceled": "Đã hủy",

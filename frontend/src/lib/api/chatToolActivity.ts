@@ -31,7 +31,7 @@ export interface ToolActivityItem {
 	/** 실행 중(결과 대기)인지 여부 */
 	running: boolean;
 	/** 완료 상태. 레거시 기록에 없으면 성공 완료로 표시한다. */
-	status?: 'completed' | 'failed';
+	status?: 'completed' | 'failed' | 'unknown';
 	/** 서버가 안전하게 공개한 실패 코드. */
 	errorCode?: string | null;
 	/** 실행 경과 시간(ms). 라이브와 durable 기록 모두에서 제공될 수 있다. */

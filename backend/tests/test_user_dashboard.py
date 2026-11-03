@@ -85,10 +85,7 @@ class InventoryState:
             {"id": "p-a", "name": "Alpha", "domain_id": "tenant-a"},
             {"id": "p-b", "name": "Beta", "domain_id": "tenant-a"},
         ]
-        self.roles = {
-            p: ["member", "drover-inventory_reader", "waygate-inventory_reader", "palimpsest-inventory_reader"]
-            for p in ("p-a", "p-b")
-        }
+        self.roles = {p: ["member"] for p in ("p-a", "p-b")}
         self.system_grants = []
         self.assignment_errors = {}
         self.settings = SimpleNamespace(
@@ -449,8 +446,10 @@ async def test_summary_requires_authenticated_domain(inventory_http):
 
 
 @pytest.mark.asyncio
-async def test_summary_all_categories_owning_metadata_and_no_secrets(inventory_http):
+@pytest.mark.parametrize("core_role", ["member", "reader"])
+async def test_summary_all_categories_owning_metadata_and_no_secrets(inventory_http, core_role):
     state, client = inventory_http
+    state.roles = {project["id"]: [core_role] for project in state.memberships}
     for category in CATEGORIES - {"packages"}:
         row = {
             "id": category + "-1",
@@ -541,7 +540,7 @@ async def test_summary_rejects_foreign_owners_and_labels_unknown_creator_project
 async def test_summary_distinguishes_disabled_denied_failed_empty_and_partial(inventory_http):
     state, client = inventory_http
     state.settings.service_magnum_enabled = False
-    state.roles["p-a"] = ["member", "palimpsest-inventory_reader"]
+    state.roles["p-a"] = ["member"]
     state.errors["p-a", "k3s_clusters"] = HTTPException(403, "private native policy detail")
     state.errors["p-a", "waygate_gateways"] = HTTPException(403, "private native policy detail")
     state.errors["p-a", "volumes"] = RuntimeError("SECRET-DATABASE-URL")

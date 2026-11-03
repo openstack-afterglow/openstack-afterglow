@@ -48,6 +48,29 @@ async def _load_credential(principal: McpPrincipal) -> tuple[str, str]:
         raise McpConsumerConnectionError("MCP authority storage is unavailable") from exc
 
 
+def _prevent_write_replay(session: object) -> None:
+    """Keep SDK defaults from replaying an ambiguously accepted native write."""
+    from functools import wraps
+
+    from app.services.mcp_control_plane.sdk import check_mutation_dispatch
+
+    original = session.request
+
+    @wraps(original)
+    def request(url, method, **kwargs):
+        if method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+            check_mutation_dispatch()
+            # Proxy.request defaults connect_retries=1 even when Connection is
+            # configured with zero. Enforce at the actual session boundary.
+            kwargs.update(connect_retries=0, status_code_retries=0, allow_reauth=False, redirect=False)
+        response = original(url, method, **kwargs)
+        if method.upper() not in {"GET", "HEAD", "OPTIONS"} and not 200 <= response.status_code < 300:
+            raise McpConsumerConnectionError("MCP native write was not accepted")
+        return response
+
+    session.request = request
+
+
 def _build_connection(application_credential_id: str, application_credential_secret: str, principal: McpPrincipal):
     """Construct without using any manager/admin helper or browser credential."""
     import openstack
@@ -72,6 +95,7 @@ def _build_connection(application_credential_id: str, application_credential_sec
             or not domain_id
         ):
             raise McpConsumerConnectionError("MCP credential domain identity is unavailable")
+        _prevent_write_replay(session)
         conn = openstack.connection.Connection(
             session=session,
             region_name=settings.os_region_name,
@@ -118,6 +142,14 @@ async def _validate_current_roles(conn: object, principal: McpPrincipal) -> None
         # credential still has to pass the fresh native assignment intersection.
         if grant.approved_projects is not None and not set(names) <= set(approved["roles"]):
             raise McpConsumerConnectionError("MCP credential exceeds approved roles")
+        ceiling = getattr(grant, "issued_role_ceiling", None)
+        if ceiling is not None and {(role_id, name) for role_id, name in zip(role_ids, names, strict=True)} != {
+            (role["id"], role["name"]) for role in ceiling[principal.project_id]
+        }:
+            raise McpConsumerConnectionError("MCP credential differs from the issued role ceiling")
+    # Nova flavor ACL inspection is admin-only. A restricted token can still
+    # carry native admin, even though MCP never gains logical system authority.
+    conn._afterglow_compute_admin = any(name.lower() == "admin" for name in names)
 
 
 async def require_native_service_permission(conn: object, project_id: str, service: str, leaf: str) -> None:

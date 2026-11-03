@@ -56,6 +56,21 @@ async def issue(directory, enrollments, *, email="member@test.invalid"):
     return result, email_token(directory.sent[-1])
 
 
+@pytest.mark.parametrize("role", ["member", "reader"])
+async def test_invitation_accepts_standard_native_project_role_without_service_grants(directory, role):
+    await domain_iam.validate_invitation_roles(PROJECT, [rid(role)], manager())
+    assert not directory.sent
+
+
+async def test_pending_legacy_service_invitation_requires_explicit_reissue(directory):
+    directory.add_roles("lumen_user")
+    with pytest.raises(HTTPException) as retired:
+        await domain_iam.validate_invitation_roles(PROJECT, [rid("project_member"), rid("lumen_user")], manager())
+    assert retired.value.status_code == 422
+    assert "re-invite" in retired.value.detail
+    assert not directory.sent
+
+
 @pytest.mark.parametrize("new_account", [False, True])
 async def test_one_email_accepts_both_exact_projects_plus_Default(directory, enrollments, new_account):
     issued, token = await issue(

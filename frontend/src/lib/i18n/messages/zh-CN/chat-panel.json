@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "已开始压缩上下文",
+	"window.detachedTemporaryHistory": "单独的临时运行记录 ({count})",
+	"window.temporaryOrderUnknown": "无法确认此运行在对话中的顺序，因此单独显示其记录。",
+	"window.moreTemporaryHistory": "加载更多临时运行记录",
 	"childTask.title": "子任务 {index}",
 	"childTask.requested": "已请求子任务",
 	"childTask.canceled": "已取消",

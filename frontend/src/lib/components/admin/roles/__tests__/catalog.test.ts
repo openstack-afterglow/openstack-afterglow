@@ -99,3 +99,34 @@ describe('role catalog boundaries', () => {
 		expect(deleteDisabledReason(target)).toBeNull();
 	});
 });
+
+describe('retired role history', () => {
+	it('keeps retired identities visible and prevents new edges without blocking explicit existing-edge removal', () => {
+		const retired = role('old', { name: 'lumen_admin', implied_role_ids: ['custom'] });
+		const custom = role('custom', { name: 'lumen-custom_admin' });
+		const metadataRetired = role('metadata', { name: 'operator_old', retired: true });
+		const graph = buildRoleGraph([retired, custom, metadataRetired]);
+		expect(roleTreeRows([retired, custom], '', 'name', 'asc').some(row => row.parent?.id === retired.id && row.role.id === custom.id)).toBe(true);
+		expect(edgeDisabledReason(graph, retired, custom)).toBeNull();
+		expect(edgeDisabledReason(graph, custom, retired)).toBeTruthy();
+		expect(deleteDisabledReason(retired)).toBeTruthy();
+		expect(deleteDisabledReason(metadataRetired)).toBeTruthy();
+		expect(deleteDisabledReason(custom)).toBeNull();
+	});
+	it('does not allow a custom alias to introduce a retired descendant through transitive metadata', () => {
+		const prior = role('prior');
+		const alias = role('alias', { inherited_role_ids: ['old'] });
+		const retired = role('old', { name: 'drover-access_admin' });
+		expect(edgeDisabledReason(buildRoleGraph([prior, alias, retired]), prior, alias)).toBeTruthy();
+	});
+});
+
+it('permits nonretired custom graph edits beside existing retired descendants', () => {
+	const retired = role('retired', { name: 'waygate_user' });
+	const alias = role('alias', { implied_role_ids: ['custom'], inherited_role_ids: ['retired', 'custom'] });
+	const custom = role('custom', { name: 'waygate-custom_user' });
+	const target = role('target');
+	const graph = buildRoleGraph([alias, custom, target, retired]);
+	expect(edgeDisabledReason(graph, alias, target)).toBeNull();
+	expect(edgeDisabledReason(graph, alias, custom)).toBeNull();
+});

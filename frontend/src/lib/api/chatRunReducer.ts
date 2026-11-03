@@ -71,6 +71,30 @@ export type RunActivityItem =
 			durationMs: number | null;
 			progress?: string[];
 	  }
+	| {
+			id: string;
+			kind: 'approval';
+			seq: number;
+			createdAt: string;
+			callId: string;
+			name: string | null;
+			arguments: Record<string, unknown>;
+			preview: ChatPart[];
+			effect: string | null;
+			destination: string | null;
+			expiresAt: string | null;
+			decision: 'approve' | 'deny' | null;
+			decidedAt: string | null;
+	  }
+	| {
+			id: string;
+			kind: 'terminal';
+			seq: number;
+			createdAt: string;
+			status: 'completed' | 'failed' | 'canceled';
+			errorCode: string | null;
+			message: string | null;
+	  }
 	| (RunChildView & { id: string; kind: 'child'; seq: number; createdAt: string });
 
 export interface RunViewState {
@@ -360,6 +384,29 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 			});
 			break;
 		}
+		case 'tool.approval_required':
+			next.activity = replaceActivity(next.activity, {
+				id: `approval:${event.payload.call_id}`, kind: 'approval', seq: event.seq,
+				createdAt: event.created_at, callId: event.payload.call_id, name: event.payload.name,
+				arguments: event.payload.redacted_arguments, preview: event.payload.preview,
+				effect: event.payload.effect, destination: event.payload.destination, expiresAt: event.payload.expires_at,
+				decision: null, decidedAt: null
+			});
+			break;
+		case 'tool.approval_resolved': {
+			const id = `approval:${event.payload.call_id}`;
+			const existing = next.activity.find(
+				(item): item is Extract<RunActivityItem, { kind: 'approval' }> => item.id === id && item.kind === 'approval'
+			);
+			next.activity = replaceActivity(next.activity, {
+				id, kind: 'approval', seq: existing?.seq ?? event.seq, createdAt: existing?.createdAt ?? event.created_at,
+				callId: event.payload.call_id, name: existing?.name ?? null,
+				arguments: existing?.arguments ?? {}, preview: existing?.preview ?? [],
+				effect: existing?.effect ?? null, destination: existing?.destination ?? null, expiresAt: existing?.expiresAt ?? null,
+				decision: event.payload.decision, decidedAt: event.payload.decided_at
+			});
+			break;
+		}
 		case 'usage.updated':
 			next.usage = {
 				promptTokens: event.payload.prompt_tokens,
@@ -368,14 +415,17 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 			};
 			break;
 		case 'run.completed':
-			next.status = 'completed';
-			next.messageId = event.payload.message_id;
-			break;
 		case 'run.failed':
 		case 'run.canceled':
 			next.status = event.payload.status;
 			next.messageId = event.payload.message_id;
-			next.error = event.payload.safe_message;
+			next.error = event.type === 'run.completed' ? null : event.payload.safe_message;
+			next.activity = [...next.activity, {
+				id: `terminal:${event.seq}`, kind: 'terminal', seq: event.seq, createdAt: event.created_at,
+				status: event.payload.status,
+				errorCode: event.type === 'run.completed' ? null : event.payload.error_code,
+				message: event.type === 'run.completed' ? null : event.payload.safe_message
+			}];
 			break;
 		default:
 			break;

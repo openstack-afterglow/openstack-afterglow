@@ -33,7 +33,7 @@ const defaultRoles = [
 ];
 
 let members: Array<Record<string, unknown>>;
-let roles: Array<{ id: string; name: string }>;
+let roles: Array<{ id: string; name: string; retired?: boolean; assignable?: boolean }>;
 
 function renderModal() {
 	return render(AdminProjectAccessModal, { project, domainId: 'domain-a', onClose: vi.fn() });
@@ -138,9 +138,9 @@ describe('AdminProjectAccessModal', () => {
 
 	it.each([
 		['user', 'admin'], ['user', 'ADMIN'], ['group', 'admin'], ['group', 'ADMIN'],
-	] as const)('omits unassigned native %s %s while permitting service admin', async (type, name) => {
+	] as const)('omits unassigned native %s %s while permitting custom admin', async (type, name) => {
 		members = members.filter((member) => member.role_id !== 'r-admin');
-		roles = [...defaultRoles.map((role) => role.id === 'r-admin' ? { ...role, name } : role), { id: 'r-service-admin', name: 'lumen_admin' }];
+		roles = [...defaultRoles.map((role) => role.id === 'r-admin' ? { ...role, name } : role), { id: 'r-custom-admin', name: 'lumen-custom_admin' }];
 		renderModal();
 		const principalName = type === 'group' ? '[그룹] AGENT' : 'pieroot';
 		await fireEvent.click(await screen.findByRole('button', { name: `${principalName} 권한` }));
@@ -149,12 +149,12 @@ describe('AdminProjectAccessModal', () => {
 		expect(within(dialog).queryByText(name, { exact: true })).toBeNull();
 		expect(mocks.post).not.toHaveBeenCalled();
 		expect(mocks.delete).not.toHaveBeenCalled();
-		const serviceAdmin = within(dialog).getByRole('checkbox', { name: 'lumen_admin' });
-		expect(serviceAdmin).toMatchObject({ checked: false, disabled: false });
-		await fireEvent.click(serviceAdmin);
+		const customAdmin = within(dialog).getByRole('checkbox', { name: 'lumen-custom_admin' });
+		expect(customAdmin).toMatchObject({ checked: false, disabled: false });
+		await fireEvent.click(customAdmin);
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
 			`/api/v1/admin/roles/${type === 'group' ? 'assign-group' : 'assign'}?domain_id=domain-a`,
-			{ [type === 'group' ? 'group_id' : 'user_id']: type === 'group' ? 'g1' : 'u2', project_id: 'p1', role_id: 'r-service-admin', domain_id: 'domain-a' },
+			{ [type === 'group' ? 'group_id' : 'user_id']: type === 'group' ? 'g1' : 'u2', project_id: 'p1', role_id: 'r-custom-admin', domain_id: 'domain-a' },
 			'token',
 			'admin-project',
 		));
@@ -167,10 +167,10 @@ describe('AdminProjectAccessModal', () => {
 		members = [
 			{ ...base, role_id: 'r-admin', role_name: 'admin' },
 			{ ...base, role_id: 'r-reader', role_name: 'reader' },
-			{ ...base, role_id: 'r-service-admin', role_name: 'lumen_admin' },
+			{ ...base, role_id: 'r-custom-admin', role_name: 'lumen-custom_admin' },
 			{ ...base, role_id: 'r-project-admin', role_name: 'project_admin' },
 		];
-		roles = [...defaultRoles, { id: 'r-service-admin', name: 'lumen_admin' }, { id: 'r-project-admin', name: 'project_admin' }];
+		roles = [...defaultRoles, { id: 'r-custom-admin', name: 'lumen-custom_admin' }, { id: 'r-project-admin', name: 'project_admin' }];
 		renderModal();
 		await fireEvent.click(await screen.findByRole('button', { name: `${principalName} 권한` }));
 		const dialog = screen.getByRole('dialog', { name: `${principalName} — 세부 권한` });
@@ -179,9 +179,42 @@ describe('AdminProjectAccessModal', () => {
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
 		expect(members.some((member) => member.role_id === 'r-admin')).toBe(true);
 		expect(within(dialog).getByRole('checkbox', { name: 'reader' })).toMatchObject({ checked: true, disabled: true });
-		expect(within(dialog).getByRole('checkbox', { name: 'lumen_admin' })).toMatchObject({ checked: true, disabled: false });
+		expect(within(dialog).getByRole('checkbox', { name: 'lumen-custom_admin' })).toMatchObject({ checked: true, disabled: false });
 		expect(within(dialog).getByRole('checkbox', { name: 'project_admin' })).toMatchObject({ checked: true, disabled: false });
 		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
+	it.each(['user', 'group'] as const)('preserves retired %s assignments during unrelated edits and revokes them only on explicit principal removal', async type => {
+		const principalName = type === 'group' ? '[그룹] AGENT' : 'pieroot';
+		const base = { user_id: type === 'group' ? 'group:g1' : 'u2', user_name: principalName, type, ...(type === 'group' ? { group_id: 'g1' } : {}) };
+		members = [{ ...base, role_id: 'old', role_name: 'lumen_admin' }];
+		roles = [...defaultRoles,
+			{ id: 'old', name: 'lumen_admin', retired: false, assignable: true },
+			{ id: 'flagged', name: 'operator_retired', retired: true },
+			{ id: 'hidden', name: 'operator_hidden', assignable: false },
+			{ id: 'custom', name: 'lumen-custom_admin' }
+		];
+		renderModal();
+		const remove = await screen.findByRole('button', { name: `${principalName} 제거` }) as HTMLButtonElement;
+		expect(remove.disabled).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: `${principalName} 권한` }));
+		const detail = within(screen.getByRole('dialog', { name: `${principalName} — 세부 권한` }));
+		for (const name of ['lumen_admin', 'operator_retired', 'operator_hidden']) expect(detail.queryByRole('checkbox', { name })).toBeNull();
+		expect(detail.getByText('lumen_admin')).toBeTruthy();
+		await fireEvent.click(detail.getByRole('checkbox', { name: 'lumen-custom_admin' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+			`/api/v1/admin/roles/${type === 'group' ? 'assign-group' : 'assign'}?domain_id=domain-a`,
+			{ [type === 'group' ? 'group_id' : 'user_id']: type === 'group' ? 'g1' : 'u2', project_id: 'p1', role_id: 'custom', domain_id: 'domain-a' },
+			'token', 'admin-project'
+		));
+		expect(mocks.delete).not.toHaveBeenCalled();
+		expect(members.some(row => row.role_id === 'old')).toBe(true);
+		await fireEvent.click(detail.getByRole('button', { name: '닫기' }));
+		await fireEvent.click(remove);
+		await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith(
+			`/api/v1/admin/roles/${type === 'group' ? 'assign-group' : 'assign'}?project_id=p1&role_id=old&${type === 'group' ? 'group_id=g1' : 'user_id=u2'}&domain_id=domain-a`,
+			'token', 'admin-project'
+		));
 	});
 
 	it('announces saving the reader role on a group until the request settles', async () => {

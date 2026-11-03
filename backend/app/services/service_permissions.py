@@ -1,7 +1,7 @@
-"""Role presets and native-service policy capability projections.
+"""Standard project-role presets and native-service capability projections.
 
-Keystone owns identities and native project roles. Each service's oslo.policy
-owns action authorization; a grade is never expanded into token leaf roles here.
+Capability identifiers are wire-level action labels, never assignable IAM roles.
+Keystone owns current project authority; each native service owns action verdicts.
 """
 
 from __future__ import annotations
@@ -13,172 +13,139 @@ from fastapi import HTTPException
 
 CORE_ROLE_NAMES = frozenset({"admin", "manager", "member", "reader"})
 PROJECT_ROLE_NAMES = ("project_owner", "project_admin", "project_member", "project_reader")
-SERVICE_GRADE_ORDER = ("reader", "user", "editor", "admin")
-SERVICE_ROLE_GRADES: dict[str, dict[str, tuple[str, ...]]] = {
-    "waygate": {
-        "reader": ("waygate-inventory_reader",),
-        "user": ("waygate-connect_user",),
-        "editor": ("waygate-clients_editor", "waygate-gateways_editor"),
-        "admin": ("waygate-clients_admin", "waygate-gateways_admin", "waygate-routing_admin"),
-    },
-    "lumen": {
-        "reader": ("lumen-inventory_reader", "lumen-history_reader"),
-        "user": ("lumen-chat_user", "lumen-images_user", "lumen-audio_user", "lumen-tools_user"),
-        "editor": (
-            "lumen-assets_editor",
-            "lumen-agents_editor",
-            "lumen-mcp_editor",
-            "lumen-keys_editor",
-            "lumen-history_editor",
-        ),
-        "admin": ("lumen-resources_admin",),
-    },
-    "drover": {
-        "reader": ("drover-inventory_reader",),
-        "user": ("drover-access_user",),
-        "editor": ("drover-clusters_editor", "drover-workloads_editor"),
-        "admin": ("drover-clusters_admin", "drover-access_admin"),
-    },
-    "palimpsest": {
-        "reader": ("palimpsest-inventory_reader",),
-        "user": ("palimpsest-download_user",),
-        "editor": ("palimpsest-publish_editor", "palimpsest-keys_editor"),
-        "admin": ("palimpsest-keys_admin",),
-    },
+SERVICE_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "waygate": (
+        "waygate-inventory_reader",
+        "waygate-connect_user",
+        "waygate-clients_editor",
+        "waygate-gateways_editor",
+        "waygate-clients_admin",
+        "waygate-gateways_admin",
+        "waygate-routing_admin",
+    ),
+    "lumen": (
+        "lumen-inventory_reader",
+        "lumen-history_reader",
+        "lumen-chat_user",
+        "lumen-images_user",
+        "lumen-audio_user",
+        "lumen-tools_user",
+        "lumen-assets_editor",
+        "lumen-agents_editor",
+        "lumen-mcp_editor",
+        "lumen-keys_editor",
+        "lumen-history_editor",
+        "lumen-resources_admin",
+    ),
+    "drover": (
+        "drover-inventory_reader",
+        "drover-access_user",
+        "drover-clusters_editor",
+        "drover-workloads_editor",
+        "drover-clusters_admin",
+        "drover-access_admin",
+    ),
+    "palimpsest": (
+        "palimpsest-inventory_reader",
+        "palimpsest-download_user",
+        "palimpsest-publish_editor",
+        "palimpsest-keys_editor",
+        "palimpsest-keys_admin",
+    ),
 }
 
-_LEAF_DESCRIPTIONS = {
-    "waygate-inventory_reader": "프로젝트 VPN 서버·클라이언트 상태 조회(비밀 제외)",
-    "waygate-connect_user": "본인에게 할당된 VPN 클라이언트 설정 다운로드",
-    "waygate-clients_editor": "프로젝트 VPN 클라이언트 생성·편집·사용자 할당",
-    "waygate-gateways_editor": "프로젝트 VPN 게이트웨이 생성·편집",
-    "waygate-clients_admin": "프로젝트 VPN 클라이언트 삭제·접속 회수",
-    "waygate-gateways_admin": "프로젝트 VPN 게이트웨이 삭제·키 회전",
-    "waygate-routing_admin": "프로젝트 VPN 네트워크 연결·라우팅·자격 증명 이관",
-    "lumen-inventory_reader": "허용된 Lumen 모델·기능 목록 조회",
-    "lumen-history_reader": "본인 또는 공유가 허용된 대화·실행·결과 조회",
-    "lumen-chat_user": "텍스트 추론·본인 대화 사용",
-    "lumen-images_user": "이미지 생성·편집 사용",
-    "lumen-audio_user": "음성 생성·전사·실시간 음성 사용",
-    "lumen-tools_user": "허용된 도구·MCP·검색 실행",
-    "lumen-assets_editor": "본인 또는 허용된 공유 파일·자산 생성·편집",
-    "lumen-agents_editor": "본인 또는 허용된 공유 에이전트 생성·편집",
-    "lumen-mcp_editor": "본인 또는 허용된 공유 MCP 설정 생성·편집",
-    "lumen-keys_editor": "본인 권한 범위 내 Lumen API 키 발급·편집",
-    "lumen-history_editor": "본인 대화 기록 편집·정리",
-    "lumen-resources_admin": "허용된 프로젝트 Lumen 자산·설정 삭제 및 키 회수",
-    "drover-inventory_reader": "프로젝트 클러스터 상태·이벤트 조회(비밀 제외)",
-    "drover-access_user": "프로젝트 클러스터의 제한된 읽기 전용 접속 설정 다운로드",
-    "drover-clusters_editor": "프로젝트 클러스터 생성·편집·확장",
-    "drover-workloads_editor": "허용된 namespace의 workload 편집·셸 접속",
-    "drover-clusters_admin": "프로젝트 클러스터 삭제·인증서 회전",
-    "drover-access_admin": "프로젝트 클러스터 관리자 접속 설정·셸 관리",
-    "palimpsest-inventory_reader": "허용된 프로젝트 패키지·버전 메타데이터 조회",
-    "palimpsest-download_user": "허용된 프로젝트 패키지·레이어 다운로드",
-    "palimpsest-publish_editor": "프로젝트 패키지·태그·빌드 캐시 게시",
-    "palimpsest-keys_editor": "본인 권한 범위 내 프로젝트 패키지 키 발급",
-    "palimpsest-keys_admin": "본인 프로젝트 패키지 키 회수",
-}
-
-
-def _presets() -> tuple[dict, ...]:
-    rows = [
-        {
-            "name": "project_creator",
-            "description": "Default 프로젝트 역할로 위임하는 도메인 프로젝트 생성 권한",
-            "area": "domain",
-            "grade": "creator",
-            "parent": None,
-        },
-        {
-            "name": "project_owner",
-            "description": "프로젝트 소유권·관리자 위임",
-            "area": "project",
-            "grade": "owner",
-            "parent": None,
-        },
-        {
-            "name": "project_admin",
-            "description": "프로젝트 구성원·서비스 권한 관리",
-            "area": "project",
-            "grade": "admin",
-            "parent": "project_owner",
-        },
-        {
-            "name": "project_member",
-            "description": "프로젝트 일반 구성원·OpenStack member",
-            "area": "project",
-            "grade": "member",
-            "parent": "project_admin",
-        },
-        {
-            "name": "project_reader",
-            "description": "프로젝트 읽기 전용·OpenStack reader",
-            "area": "project",
-            "grade": "reader",
-            "parent": "project_member",
-        },
-    ]
-    titles = {
-        "reader": "메타데이터 조회",
-        "user": "허용된 기능 사용·다운로드",
-        "editor": "생성·편집(관리자 작업 제외)",
-        "admin": "프로젝트 내 전체 서비스 관리",
-    }
-    for service, grades in SERVICE_ROLE_GRADES.items():
-        for grade in SERVICE_GRADE_ORDER:
-            rows.append(
-                {
-                    "name": f"{service}_{grade}",
-                    "description": titles[grade],
-                    "area": service,
-                    "grade": grade,
-                    "parent": None,
-                }
-            )
-            for leaf in grades[grade]:
-                rows.append(
-                    {
-                        "name": leaf,
-                        "description": _LEAF_DESCRIPTIONS[leaf],
-                        "area": service,
-                        "grade": grade,
-                        "parent": None,
-                    }
-                )
-    return tuple(rows)
-
-
-ROLE_PRESETS = _presets()
+ROLE_PRESETS = (
+    {
+        "name": "project_creator",
+        "description": "Default 프로젝트 역할로 위임하는 도메인 프로젝트 생성 권한",
+        "area": "domain",
+        "grade": "creator",
+        "parent": None,
+    },
+    {
+        "name": "project_owner",
+        "description": "프로젝트 소유권·관리자 위임",
+        "area": "project",
+        "grade": "owner",
+        "parent": None,
+    },
+    {
+        "name": "project_admin",
+        "description": "프로젝트 구성원·역할 관리",
+        "area": "project",
+        "grade": "admin",
+        "parent": "project_owner",
+    },
+    {
+        "name": "project_member",
+        "description": "프로젝트 리소스 생성·관리·OpenStack member",
+        "area": "project",
+        "grade": "member",
+        "parent": "project_admin",
+    },
+    {
+        "name": "project_reader",
+        "description": "프로젝트 읽기 전용·OpenStack reader",
+        "area": "project",
+        "grade": "reader",
+        "parent": "project_member",
+    },
+)
 ROLE_IMPLICATIONS = tuple(
     (row["parent"], row["name"]) for row in ROLE_PRESETS if row["area"] == "project" and row["parent"]
 ) + (("project_member", "member"), ("project_reader", "reader"))
 
-# Exact edges emitted by the previous preset, retired only by explicit apply.
-# Native role IDs, assignments, project edges and operator custom edges survive.
-RETIRED_SERVICE_IMPLICATIONS = (
-    tuple(
-        (f"{service}_{SERVICE_GRADE_ORDER[index + 1]}", f"{service}_{grade}")
-        for service in SERVICE_ROLE_GRADES
-        for index, grade in enumerate(SERVICE_GRADE_ORDER[:-1])
-    )
-    + tuple(
-        (f"{service}_{grade}", leaf)
-        for service, grades in SERVICE_ROLE_GRADES.items()
-        for grade, leaves in grades.items()
-        for leaf in leaves
-    )
-    + tuple(
-        (leaf, f"{service}_reader")
-        for service, grades in SERVICE_ROLE_GRADES.items()
-        for grade, leaves in grades.items()
-        if grade != "reader"
-        for leaf in leaves
-    )
+# Historical migration data only. Explicit preset apply may retire exactly these
+# former shipped edges; never delete native role identities or assignments.
+_RETIRED_GRADES = ("reader", "user", "editor", "admin")
+_RETIRED_ACTION_GROUPS = {
+    "waygate": (
+        ("waygate-inventory_reader",),
+        ("waygate-connect_user",),
+        ("waygate-clients_editor", "waygate-gateways_editor"),
+        ("waygate-clients_admin", "waygate-gateways_admin", "waygate-routing_admin"),
+    ),
+    "lumen": (
+        ("lumen-inventory_reader", "lumen-history_reader"),
+        ("lumen-chat_user", "lumen-images_user", "lumen-audio_user", "lumen-tools_user"),
+        ("lumen-assets_editor", "lumen-agents_editor", "lumen-mcp_editor", "lumen-keys_editor", "lumen-history_editor"),
+        ("lumen-resources_admin",),
+    ),
+    "drover": (
+        ("drover-inventory_reader",),
+        ("drover-access_user",),
+        ("drover-clusters_editor", "drover-workloads_editor"),
+        ("drover-clusters_admin", "drover-access_admin"),
+    ),
+    "palimpsest": (
+        ("palimpsest-inventory_reader",),
+        ("palimpsest-download_user",),
+        ("palimpsest-publish_editor", "palimpsest-keys_editor"),
+        ("palimpsest-keys_admin",),
+    ),
+}
+RETIRED_SERVICE_ROLE_NAMES = frozenset(
+    {f"{service}_{grade}" for service in _RETIRED_ACTION_GROUPS for grade in _RETIRED_GRADES}
+    | {name for groups in _RETIRED_ACTION_GROUPS.values() for group in groups for name in group}
 )
-ROLE_LEAVES = frozenset(
-    leaf for grades in SERVICE_ROLE_GRADES.values() for leaves in grades.values() for leaf in leaves
-)
+
+
+def _retired_service_implications():
+    edges = []
+    for service, groups in _RETIRED_ACTION_GROUPS.items():
+        edges.extend(
+            (f"{service}_{upper}", f"{service}_{lower}")
+            for lower, upper in zip(_RETIRED_GRADES, _RETIRED_GRADES[1:], strict=False)
+        )
+        for grade, names in zip(_RETIRED_GRADES, groups, strict=True):
+            for name in names:
+                edges.append((f"{service}_{grade}", name))
+                if grade != "reader":
+                    edges.append((name, f"{service}_reader"))
+    return tuple(edges)
+
+
+RETIRED_SERVICE_IMPLICATIONS = _retired_service_implications()
 
 
 def preset_preview() -> dict:
@@ -193,7 +160,7 @@ def preset_preview() -> dict:
 
 
 def normalize_role_name(name: str) -> str:
-    """Normalize both components before validation; never silently trim spaces."""
+    """Normalize custom names without reviving retired service-role identities."""
     if not isinstance(name, str):
         raise ValueError("Role name must be text")
     if name.casefold() in CORE_ROLE_NAMES:
@@ -206,28 +173,26 @@ def normalize_role_name(name: str) -> str:
     result = "_".join(parts)
     if len(result) > 255:
         raise ValueError("Role name exceeds 255 characters")
+    if result in RETIRED_SERVICE_ROLE_NAMES:
+        raise ValueError("Retired service roles are not assignable; use standard project roles")
     return result
 
 
 def service_permissions(principal: Mapping) -> dict[str, list[str]]:
-    """Expose only capabilities evaluated by the native service for this caller.
-
-    No issuance-time token role, local preset hierarchy or system flag is an
-    authorization fallback when the service policy is unavailable.
-    """
+    """Project only native policy verdicts; never infer them from token/UI roles."""
     projected = principal.get("service_permissions", {})
     if not isinstance(projected, Mapping):
         projected = {}
     return {
-        service: sorted({leaf for leaf in projected.get(service, ()) if leaf in ROLE_LEAVES})
-        for service in SERVICE_ROLE_GRADES
+        service: sorted({action for action in projected.get(service, ()) if action in actions})
+        for service, actions in SERVICE_CAPABILITIES.items()
     }
 
 
-def require_service_permission(principal: Mapping, *leaves: str) -> None:
-    """Require all action entitlements; key scopes/ownership remain native checks."""
+def require_service_permission(principal: Mapping, *actions: str) -> None:
+    """Require native action verdicts; key scopes and ownership stay native checks."""
     permissions = service_permissions(principal)
-    for leaf in leaves:
-        service = leaf.split("-", 1)[0].split("_", 1)[0]
-        if leaf not in permissions.get(service, ()):
-            raise HTTPException(status_code=403, detail=f"서비스 권한이 필요합니다: {leaf}")
+    for action in actions:
+        service = action.split("-", 1)[0].split("_", 1)[0]
+        if action not in permissions.get(service, ()):
+            raise HTTPException(status_code=403, detail=f"서비스 권한이 필요합니다: {action}")

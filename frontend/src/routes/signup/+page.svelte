@@ -1,21 +1,18 @@
 <script lang="ts">
- import LoginBrandHeader from '$lib/components/auth/LoginBrandHeader.svelte';
+ import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
  import AccountEmailRequest from '$lib/components/auth/AccountEmailRequest.svelte';
- import PageShell from '$lib/components/ui/PageShell.svelte';
- import Card from '$lib/components/ui/Card.svelte';
  import Button from '$lib/components/ui/Button.svelte';
- import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
  import { t } from '$lib/i18n/ns/domain-auth';
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas py-8 flex items-center justify-center">
- <PageShell class="flex justify-center"><div class="w-full max-w-md space-y-6">
-  <LocaleSelect id="signup-locale" variant="labelled" />
-  <LoginBrandHeader />
-  <Card class="p-5 sm:p-6 space-y-4">
-   <h1 class="text-xl font-semibold text-ink-0">{t('login.signup.title')}</h1>
-   <AccountEmailRequest signup={true} />
+<AuthStudioShell variant="account" localeId="signup-locale" themeId="signup-theme" footerNote={t('login.signup.title')}>
+ <div class="auth-flow">
+  <header class="auth-flow-heading">
+   <h1>{t('login.signup.title')}</h1>
+  </header>
+  <AccountEmailRequest signup={true} />
+  <div class="auth-flow-links">
    <Button variant="link" href="/login">{t('common.backToLogin')}</Button>
-  </Card>
- </div></PageShell>
-</main>
+  </div>
+ </div>
+</AuthStudioShell>

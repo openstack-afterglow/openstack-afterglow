@@ -2,6 +2,7 @@ import { credentialRequest } from '$lib/api/adminCredentials';
 import { ApiError } from '$lib/api/errors';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as dt } from '$lib/i18n/ns/domain-admin';
+import { isRetiredRole } from '$lib/utils/roleCatalog';
 import type {
   ApplicationCredential, ApplicationCredentialIssued, ApplicationCredentialInput,
   UserCredential, UserCredentialDetail, UserCredentialInput, CredentialAuthority,
@@ -130,7 +131,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
         if (!owns() || ticket !== modalTicket) return;
         assertScope(result);
         if (result.user_id !== a.userId || result.project_id !== a.projectId) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
-        context = result;
+        context = { ...result, roles: result.roles.filter(role => !isRetiredRole(role)) };
       }
       else if (next === 'detail' && item) {
         const result = await credentialRequest<ApplicationCredential | UserCredentialDetail>(`${base}/${encodeURIComponent(item.id)}${kind === 'application' ? query(item.user_id) : ''}`, d, a);
@@ -164,7 +165,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     if ((mode === 'edit' || mode === 'delete') && !detail) return;
     if (mode === 'create' && !canCreate()) return;
     const { a, d, owns } = capture(), ticket = modalTicket, action = mode, id = detail?.id;
-    if (kind === 'application' && action === 'create' && (!context || !draft.role_ids.length)) { modalError = t('credentials.chooseRoles'); return; }
+    if (kind === 'application' && action === 'create' && (!context || !draft.role_ids.length || draft.role_ids.some(id => !context!.roles.some(role => role.id === id)))) { modalError = t('credentials.chooseRoles'); return; }
     busy = true; modalError = '';
     try {
       let result: ApplicationCredentialIssued | UserCredential | undefined;

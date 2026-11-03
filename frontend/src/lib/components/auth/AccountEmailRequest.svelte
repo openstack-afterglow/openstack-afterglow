@@ -42,13 +42,14 @@
 	}
 </script>
 
+<div class="auth-flow">
 {#if loading}
 	<LoadingState variant="section" label={t('onboarding.processing')}  />
 {:else}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if sent}<Alert tone="info">{signup ? t('login.signup.sent') : t('recovery.sent')}</Alert>{/if}
 	{#if !ready}<Alert tone="warning">{t('recovery.notAvailable')}</Alert>{:else}
-		<form bind:this={form} onsubmit={submit} class="space-y-4">
+		<form bind:this={form} onsubmit={submit} class="auth-flow">
 			{#if !signup}
 				<fieldset disabled={sending} class="flex flex-wrap gap-4 text-sm text-ink-1">
 					<legend class="sr-only">{t('recovery.title')}</legend>
@@ -60,7 +61,10 @@
 			<Field for="account-request-email" label={t('login.signup.email')} help={signup ? t('signup.description') : t('recovery.description')} required>
 				<TextInput id="account-request-email" type="email" autocomplete="email" inputmode="email" bind:value={email} disabled={sending} required />
 			</Field>
-			<Button type="submit" disabled={sending} ariaBusy={sending} class="w-full">{#if sending}<LoadingState variant="control" label={t('login.signup.sending')} />{:else}{t('login.signup.submit')}{/if}</Button>
+			<div class="auth-flow-actions">
+				<Button type="submit" disabled={sending} ariaBusy={sending} class="w-full">{#if sending}<LoadingState variant="control" label={t('login.signup.sending')} />{:else}{t('login.signup.submit')}{/if}</Button>
+			</div>
 		</form>
 	{/if}
 {/if}
+</div>

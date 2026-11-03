@@ -36,9 +36,11 @@ from app.services.mcp_control_plane.authority import (
     close_project_authority,
     create_grant_credentials,
     default_grant_lifetime,
+    grant_is_expired,
     lock_owner,
     max_grant_lifetime,
     recover_stale_pending_orphans,
+    schedule_grant_cleanup,
 )
 from app.services.mcp_control_plane.oauth import (
     McpOAuthError,
@@ -91,6 +93,7 @@ class AuthorizationCodeResult:
     code: str
     redirect_uri: str
     state: str | None
+    effective_ongoing: bool = False
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,73 @@ class TokenResult:
     refresh_token: str
     expires_in: int
     scope: str
+
+
+async def _require_human_consent_connection(conn: Any, user_id: str, project_id: str) -> None:
+    """Use native token provenance, never the browser's inferred auth method."""
+    import asyncio
+
+    try:
+        access = await asyncio.to_thread(conn.session.auth.get_access, conn.session)
+        token = access._data["token"]
+        methods = token.get("methods")
+        if (
+            access.user_id != user_id
+            or access.project_id != project_id
+            or not isinstance(methods, list)
+            or not methods
+            or any(not isinstance(method, str) for method in methods)
+            or not set(methods) & {"password", "totp", "mapped", "saml2", "openid", "oidc"}
+            or set(methods) - {"password", "totp", "mapped", "saml2", "openid", "oidc", "token"}
+            or any(
+                key in token
+                for key in (
+                    "application_credential",
+                    "OS-TRUST:trust",
+                    "trust",
+                    "OS-OAUTH1",
+                    "OS-OAUTH1:access_token",
+                    "OS-OAUTH2:access_token",
+                    "oauth2_credential",
+                    "OAuth1",
+                    "oauth1",
+                    "oauth2",
+                    "access_rules",
+                    "bind",
+                )
+            )
+        ):
+            raise McpOAuthAuthorityError("ongoing consent requires fresh human project authentication")
+    except McpOAuthAuthorityError:
+        raise
+    except Exception as exc:
+        raise McpOAuthAuthorityError("human project authentication could not be verified") from exc
+
+
+def _access_expiry(grant: McpDelegatedGrant, now):
+    expiry = now + _access_token_lifetime()
+    return min(expiry, _as_utc(grant.expires_at)) if grant.expires_at is not None else expiry
+
+
+def _refresh_is_expired(token: McpOAuthToken, grant: McpDelegatedGrant, now) -> bool:
+    if token.expires_at is None:
+        return not (grant.source == "oauth" and grant.oauth_ongoing and grant.expires_at is None)
+    return _as_utc(token.expires_at) <= now
+
+
+async def _check_ongoing_client(session: AsyncSession, grant: McpDelegatedGrant, client_id: str | None = None) -> None:
+    if not grant.oauth_ongoing:
+        return
+    if client_id is None:
+        clients = (
+            await session.scalars(select(McpOAuthCode.client_id).where(McpOAuthCode.grant_id == grant.id).limit(2))
+        ).all()
+        if len(clients) != 1:
+            raise McpOAuthAuthorityError("OAuth client binding is unavailable")
+        client_id = clients[0]
+    client = await session.scalar(select(McpOAuthClient).where(McpOAuthClient.client_id == client_id))
+    if client is None or client.revoked_at is not None:
+        raise McpOAuthAuthorityError("OAuth client is inactive")
 
 
 def _consent_scopes(requested: object, access_level: str | None) -> tuple[str, tuple[str, ...]]:
@@ -222,6 +292,7 @@ async def resolve_public_client(session_factory: async_sessionmaker[AsyncSession
             existing.redirect_uris = metadata["redirect_uris"]
             existing.client_id_issued_at = now
             existing.revoked_at = None
+            existing.expires_at = now + _DYNAMIC_CLIENT_LIFETIME
             existing.last_used_at = now
         return existing
 
@@ -362,8 +433,13 @@ async def approve_consent_ticket(
     project_scope: str = "current",
     project_ids: list[str] | None = None,
     access_level: str | None = None,
+    ongoing: bool = False,
 ) -> AuthorizationCodeResult:
     """Commit an OAuth grant and one code only after the restricted credential is durable."""
+    if type(ongoing) is not bool:
+        raise McpOAuthAuthorityError("ongoing must be a boolean")
+    if ongoing:
+        await _require_human_consent_connection(conn, owner_user_id, owner_project_id)
     if (
         getattr(conn, "_afterglow_user_id", None) != owner_user_id
         or getattr(conn, "_afterglow_project_id", None) != owner_project_id
@@ -422,6 +498,20 @@ async def approve_consent_ticket(
                 or _as_utc(request.expires_at) <= reservation_now
             ):
                 raise McpOAuthAuthorityError("authorization ticket is not available")
+            client = await session.scalar(
+                select(McpOAuthClient).where(McpOAuthClient.client_id == request.client_id).with_for_update()
+            )
+            if (
+                client is None
+                or client.revoked_at is not None
+                or _fingerprint(client.metadata_json) != request.client_fingerprint
+                or (
+                    not client.client_id.startswith("https://")
+                    and client.expires_at is not None
+                    and _as_utc(client.expires_at) <= reservation_now
+                )
+            ):
+                raise McpOAuthAuthorityError("OAuth client changed before approval")
             if _as_utc(request.grant_deadline) > reservation_now + max_grant_lifetime():
                 raise McpOAuthAuthorityError("authorization ticket grant deadline is invalid")
             if request.grant_id is not None:
@@ -446,13 +536,19 @@ async def approve_consent_ticket(
                     access_level=chosen_access_level,
                     project_scope=project_scope,
                     approved_projects=[project.metadata() for project in projects],
+                    oauth_ongoing=ongoing,
+                    issued_role_ceiling=(
+                        {project.id: [dict(role) for role in project.roles] for project in projects}
+                        if ongoing
+                        else None
+                    ),
                     status="pending",
-                    expires_at=request.grant_deadline,
+                    expires_at=None if ongoing else request.grant_deadline,
                     cleanup_pending=True,
                     orphan_recovery_after=reservation_now + PENDING_ORPHAN_RECOVERY_GRACE,
                 )
             )
-            deadline = request.grant_deadline
+            deadline = None if ongoing else request.grant_deadline
 
         await create_grant_credentials(
             session_factory,
@@ -486,12 +582,26 @@ async def approve_consent_ticket(
                 or grant.status != "pending"
                 or grant.orphan_recovery_nonce is not None
                 or _as_utc(request.expires_at) <= activation_now
-                or grant.expires_at is None
-                or _as_utc(grant.expires_at) <= activation_now
+                or grant_is_expired(grant, now=activation_now)
             ):
                 raise McpOAuthAuthorityError("authorization ticket changed before activation")
+            client = await session.scalar(
+                select(McpOAuthClient).where(McpOAuthClient.client_id == request.client_id).with_for_update()
+            )
+            if (
+                client is None
+                or client.revoked_at is not None
+                or _fingerprint(client.metadata_json) != request.client_fingerprint
+                or (
+                    not client.client_id.startswith("https://")
+                    and client.expires_at is not None
+                    and _as_utc(client.expires_at) <= activation_now
+                )
+            ):
+                raise McpOAuthAuthorityError("OAuth client changed before activation")
             grant.status = "active"
             grant.issued_at = activation_now
+            grant.consented_at = activation_now
             grant.cleanup_pending = False
             grant.orphan_recovery_after = None
             grant.orphan_recovery_nonce = None
@@ -518,6 +628,7 @@ async def approve_consent_ticket(
                 grant=grant,
                 extra={
                     "source": "oauth",
+                    "ongoing": grant.oauth_ongoing,
                     "access_level": grant.access_level,
                     "project_scope": grant.project_scope,
                     "credential_epoch": grant.credential_epoch,
@@ -526,7 +637,9 @@ async def approve_consent_ticket(
             redirect_uri = request.redirect_uri
             state = request.state
         assert redirect_uri is not None
-        return AuthorizationCodeResult(code=code, redirect_uri=redirect_uri, state=state)
+        return AuthorizationCodeResult(
+            code=code, redirect_uri=redirect_uri, state=state, effective_ongoing=bool(grant.oauth_ongoing)
+        )
     except BaseException:
         if credentials_ready:
             await abandon_grant_credentials(
@@ -580,23 +693,25 @@ async def exchange_authorization_code(
         oauth_code = await session.scalar(
             select(McpOAuthCode).where(McpOAuthCode.code_hash == code_hash).with_for_update()
         )
+        now = _now()
         if (
             oauth_code is None
             or not hmac.compare_digest(oauth_code.code_hash, code_hash)
             or oauth_code.used_at is not None
             or _as_utc(oauth_code.expires_at) <= now
             or grant.status != "active"
-            or grant.expires_at is None
-            or _as_utc(grant.expires_at) <= now
+            or grant.source != "oauth"
+            or grant_is_expired(grant, now=now)
             or oauth_code.client_id != client_id
             or oauth_code.redirect_uri != redirect_uri
             or oauth_code.resource != urls.resource
             or pkce_s256(code_verifier) != oauth_code.code_challenge
         ):
             raise McpOAuthAuthorityError("authorization code is invalid")
+        await _check_ongoing_client(session, grant, client_id)
         access_token = new_oauth_value()
         refresh_token = new_oauth_value()
-        access_expiry = min(now + _access_token_lifetime(), _as_utc(grant.expires_at))
+        access_expiry = _access_expiry(grant, now)
         oauth_code.used_at = now
         session.add_all(
             [
@@ -671,12 +786,14 @@ async def refresh_tokens(
         token = await session.scalar(
             select(McpOAuthToken).where(McpOAuthToken.token_hash == token_hash).with_for_update()
         )
+        now = _now()
         # Consumed codes retain the issuing client beyond code/ticket expiry.
         issuing_clients = (
             await session.scalars(select(McpOAuthCode.client_id).where(McpOAuthCode.grant_id == grant.id).limit(2))
         ).all()
         if len(issuing_clients) != 1 or issuing_clients[0] != client_id:
             raise McpOAuthAuthorityError("refresh token is invalid")
+        await _check_ongoing_client(session, grant, client_id)
         replay = (
             token is None
             or not hmac.compare_digest(token.token_hash, token_hash)
@@ -684,13 +801,13 @@ async def refresh_tokens(
             or token.resource != urls.resource
             or token.rotated_at is not None
             or token.revoked_at is not None
-            or _as_utc(token.expires_at) <= now
+            or _refresh_is_expired(token, grant, now)
             or family is None
             or family.revoked_at is not None
             or token.generation != family.generation
             or grant.status != "active"
-            or grant.expires_at is None
-            or _as_utc(grant.expires_at) <= now
+            or grant.source != "oauth"
+            or grant_is_expired(grant, now=now)
         )
         if replay:
             if family is not None:
@@ -709,12 +826,7 @@ async def refresh_tokens(
                 grant.cleanup_pending = (
                     bool(grant.application_credential_id) or grant.cleanup_pending or bool(additional)
                 )
-            for issued in (
-                await session.scalars(
-                    select(McpOAuthToken).where(McpOAuthToken.family_id == family_hint.id).with_for_update()
-                )
-            ).all():
-                issued.revoked_at = issued.revoked_at or now
+            schedule_grant_cleanup(grant, now=now)
             _audit(
                 session,
                 owner_user_id=grant.owner_user_id,
@@ -733,7 +845,7 @@ async def refresh_tokens(
             family.generation += 1
             access_token = new_oauth_value()
             next_refresh_token = new_oauth_value()
-            access_expiry = min(now + _access_token_lifetime(), _as_utc(grant.expires_at))
+            access_expiry = _access_expiry(grant, now)
             session.add_all(
                 [
                     McpOAuthToken(
@@ -810,12 +922,7 @@ async def revoke_oauth_token(session_factory: async_sessionmaker[AsyncSession], 
         for cred in additional:
             cred.cleanup_pending = True
         grant.cleanup_pending = bool(grant.application_credential_id) or grant.cleanup_pending or bool(additional)
-        for issued in (
-            await session.scalars(
-                select(McpOAuthToken).where(McpOAuthToken.family_id == family_hint.id).with_for_update()
-            )
-        ).all():
-            issued.revoked_at = issued.revoked_at or now
+        schedule_grant_cleanup(grant, now=now)
         _audit(
             session,
             owner_user_id=grant.owner_user_id,
@@ -867,13 +974,15 @@ async def resolve_oauth_access_token(
         or token.token_type != "access"
         or token.resource != resource
         or token.revoked_at is not None
+        or token.expires_at is None
         or _as_utc(token.expires_at) <= now
         or family is None
         or family.revoked_at is not None
         or token.generation != family.generation
         or grant.status != "active"
-        or grant.expires_at is None
-        or _as_utc(grant.expires_at) <= now
+        or grant.source != "oauth"
+        or grant_is_expired(grant, now=now)
     ):
         raise McpOAuthAuthorityError("access token is invalid")
+    await _check_ongoing_client(session, grant)
     return grant, tuple(token.scopes)

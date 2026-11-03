@@ -22,6 +22,9 @@ Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 �
 - `GET /api/v1/chat/runs/{run_id}/sources/{citation_id}`는 현재 owner/project·native read 권한 아래 저장된 관측만 반환한다. Persistent 출처는 root user와 해당 citation-bearing turn을 보존하는 qualified view, temporary/child 출처는 유효한 root 문맥에 묶인다. 원본 view 삭제 후에도 해당 prefix의 fork가 남으면 유지하며, 마지막 문맥 삭제/만료는410이다. SSE event 삭제가 persistent 근거를 새 조회로 대체하지 않는다.
 - `GET /api/v1/chat/assets/{asset_id}/download-link`는 현재 asset read 권한·소유권·clean 상태를 확인한 뒤 `{url, expires_in}`을 반환한다. 명시 다운로드만 안전한 원래 UTF-8 파일명·MIME의 attachment 응답을 서명하여 교차 출처에서도 저장하도록 하며 provider 입력용 URL의 inline 동작은 바꾸지 않는다. 기존 `/download` 인증 스트리밍은 유지하며 성공·실패 응답은 no-store다. 발급된 bearer 링크는 만료 전까지 사용될 수 있어 세션 변경만으로 즉시 회수되지는 않는다.
 - 복사는 원본 Markdown을 유지하고 같은 user turn으로 접은 중간 assistant 출처도 합친다. 실제 Markdown destination을 비교하므로 URL prefix나 code sample 때문에 다른 출처를 누락하지 않는다. 같은 외부 URL의 서로 다른 datasource observation ID도 합치지 않는다. 절대 출처 origin은 admission 때 고정한 `frontend_base_url`뿐이며 업로드 파일만 `source://assets/{asset_id}` fallback을 쓴다. OAuth/Swift/signed credential query·fragment는 저장/추가할 출처 URL이 아니고 일반 anchor/search 값은 유지한다. 운영 RGW 외부 DNS/TLS·서명·CORS/다운로드·만료 수용은 별도다.
+- 저장/임시 대화는 관측한 model/context/tool/approval/child 경과를 실제 journal 순서로 유지하고 완료/실패/취소 뒤 같은 disclosure에서 상세를 열 수 있다. 실패가 assistant 생성 전 끝났다면 기존 user row에 실제 terminal journal을 붙이며 답변을 가상 생성하지 않는다. Persistent 재시도 최신성은 encrypted admission ordinal로 판단하고 같은 초 legacy attempt는 UUID/수정시간으로 추측하지 않는다.
+- `GET /api/v1/chat/temp-threads/{id}`는 기존 `public_history`와 `active_run`/`latest_run`, 표시용 `messages` 외에 `unpositioned_runs`, `active_run_positioned`, `latest_run_order_unknown`, `run_history_has_more`/`run_history_after`/`run_history_revision`을 제공한다. Owner/project/thread/만료 경계 아래 canonical 배열 순서는 그대로 두고 `_temp_history_index`/`_temp_attempt_ordinal`로 입증된 gap에만 미게시 실행을 끼운다. 순서를 입증할 수 없는 legacy는 별도의 접힌 실행 기록에서 입력·실제 경과·답변을 확인하며 대화 뒤에 임의로 붙이지 않는다.
+- 임시 실행 metadata 검사는 `run_limit` 기본40/최대100, UUID inspection cursor `run_after`, source fence `run_revision`, 같은 owned thread의 정확한 `run_include`를 지원한다. Cursor는 시간 순서 근거가 아니다. 현재 active와 정확히 선택/게시된 root 추가 조회도 bounded이며 canonical public history는 보존한다. Canonical history/admission source 변경409에서는 이미 관측한 기록을 남기고 명시적인 새 조회만 허용한다. 모델 요청·추론·취소를 자동 재실행하지 않는다. Scoped session key는 identity home/user/project에 묶이며 늦은 응답에 selection/token/readiness fence를 적용한다.
 
 
 > **활성화 조건:** `afterglow.conf [services] chat = true` 및 `[services] lumen_internal_url` (또는 Keystone 서비스 카탈로그).
@@ -43,20 +46,12 @@ Lumen 텍스트 채팅 상단에는 모델·에이전트 선택과 기록·출�
 
 이미지 Studio의 스타일 썸네일은 provider 옵션이 아니다. 제출 `prompt` 끝에 화면에 표시한 `스타일: …` 지시문을 붙이고, 스타일 식별자도 idempotency fingerprint에 포함한다. 오디오 Studio의 TTS는 선택 모델 capability의 `available_voices`/`available_formats`만 노출하고, 응답 오디오 Blob을 object URL로 재생·다운로드한다. STT는 capability `available_timestamp_granularities`에 `segment`가 있을 때만 `timestamp_granularities: ["segment"]`를 보낸다. 응답 `segments`는 시간순·비중첩·범위를 다시 검사한 뒤 구간 표와 TXT/SRT로 내보내며, 요청한 timing이 빠진 응답은 실패로 처리하고 구간을 추정하지 않는다. Timing을 지원하지 않는 모델은 TXT만 제공한다. 브라우저 CSP는 이 재생에 `media-src 'self' blob:`만 허용한다.
 
-## Lumen 서비스 세부 권한
+## Lumen 표준 프로젝트 권한
 
-Native Lumen의 현재 Keystone 전역 role binding·유효 할당과 실제 `oslo.policy` action이 정본입니다. `lumen_admin/editor/user/reader`는 서비스 `policy.yaml`에서 직접 평가하고 token에 세부 role을 가상 추가하지 않습니다. BFF는 action 규칙을 복제하지 않으며 UI capability는 native 정책 조회 결과를 사용합니다. 프로젝트 owner/admin, `member`, 표시용 역할 배열이나 `can_write`는 기본 Lumen 사용 권한을 대신하지 않습니다. 운영자는 아래 기본 세부 역할과 독립적인 grade·action 규칙을 override할 수 있습니다.
+Native Lumen의 fresh Keystone core role·유효 할당과 실제 `oslo.policy` action이 정본입니다. `reader`는 본인/허용된 모델·asset·대화·실행·키 metadata를 조회하고, `member`·`manager`·`admin`은 해당 프로젝트에서 추론·미디어·도구 실행과 본인/허용된 대화·파일·agent·MCP·키의 생성·관리·삭제를 수행합니다. 별도 `lumen_*` 등급이나 `lumen-*` leaf IAM 역할을 배정할 필요가 없습니다. 기존 capability/action 이름은 API 내부 식별자이며 새 역할 배정 항목이 아닙니다.
 
-| 세부 역할 | 액션 |
-|---|---|
-| `lumen-inventory_reader`, `lumen-history_reader` | 각각 모델/asset 등 비밀 없는 inventory와 본인 대화·실행·memory 이력 |
-| `lumen-chat_user`, `lumen-images_user`, `lumen-audio_user` | 각각 텍스트, 이미지, 오디오·realtime 사용; 서로 독립 |
-| `lumen-tools_user` | 도구·agent 실행·모델에 내장된 필수 검색 |
-| `lumen-assets_editor`, `lumen-agents_editor`, `lumen-mcp_editor`, `lumen-keys_editor` | 해당 리소스 생성·편집 및 키 발급 |
-| `lumen-history_editor` | 본인 대화·memory 관리/삭제 |
-| `lumen-resources_admin` | asset·agent·설정·키의 destructive 삭제/폐기 |
+BFF·UI는 native capability 결과를 사용하고 표시 역할 배열/`can_write`로 장애를 우회하지 않습니다. 현재 core role floor는 operator policy보다 먼저 적용하여 `@`로 reader의 mutation/paid inference를 허용하지 않습니다. Provider/model/pricing/quota 및 전역 통계 API는 project member와 별개인 genuine human system-admin 전용입니다. Original credential/issued-role-ID, API key scope, owner/private content와 frozen budget/approval/tool 권한은 각각 유지됩니다.
 
-서비스 권한 평가 자체에는 native `member`/`reader`를 추가 요구하지 않습니다. 텍스트 전용 정책으로 호환 endpoint의 이미지·오디오·도구 옵션을 사용할 수 없으며 native는 실제 요청·실행 종류의 action을 각각 검사합니다. Image-only/audio-only 실행 취소에 chat 권한을 강요하지 않습니다. Provider/model/pricing/quota 전역 API는 YAML 허용과 별개로 verified human system-admin 경계를 유지합니다.
 
 API-key scope는 발급자의 현재 native 정책 결과를 좁히는 ceiling입니다. 발급에는 keys action과 요청 scope의 현재 권한이 필요하며, 기존 키 사용·새 provider I/O에서도 enabled owner/project·현재 role과 정책을 재검증합니다. Issuer 편집 action만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만 사용 action의 grant 또는 YAML 허용을 회수하면 해당 호출을 거부합니다. 다른 사용자/private content 소유권 검사는 별도로 유지합니다.
 
@@ -106,6 +101,7 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `POST /api/v1/chat/conversations/{id}/completions` | `/v1/conversations/{id}/completions` | 실행을 접수하고 `202` run descriptor 반환; 이후 events URL로 SSE 구독 |
 | `POST /api/v1/chat/conversations/{id}/context-preview` | `/v1/conversations/{id}/context-preview` | 현재 모델·기능·작성 중 입력까지 반영한 context token 예산과 압축 권고를 읽기 전용으로 계산 |
 | `POST /api/v1/chat/conversations/{id}/compactions` | `/v1/conversations/{id}/compactions` | `expected_context_revision`과 `Idempotency-Key`로 수동 압축 run을 접수하고 `202` descriptor 반환 |
+| `GET /api/v1/chat/temp-threads/{id}?run_limit=40` | `/v1/temp-threads/{id}` | 현재 owner/project의 유효 임시 대화와 bounded 실행 이력 검사; `run_after/run_revision/run_include`를 그대로 native에 전달하며 stale continuation은409 |
 | `POST /api/v1/chat/temp-threads/{id}/context-preview` | `/v1/temp-threads/{id}/context-preview` | 임시 대화의 context 예산을 저장 대화와 같은 규칙으로 계산 |
 | `POST /api/v1/chat/temp-threads/{id}/compactions` | `/v1/temp-threads/{id}/compactions` | 임시 대화의 수동 압축 run 접수; thread 만료 시 checkpoint도 함께 삭제 |
 | `GET /api/v1/chat/runs/{run_id}/events` | `/v1/runs/{run_id}/events` | 실시간 실행 이벤트 스트림 (SSE 스트리밍) |

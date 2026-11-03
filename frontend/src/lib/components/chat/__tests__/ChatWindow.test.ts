@@ -13,6 +13,20 @@ const callbacks = {
 };
 
 describe('ChatWindow', () => {
+	it('shows one honest legacy call when canonical and compatibility fields describe the same unfinished tool', () => {
+		const message = {
+			id: 'interrupted', conversation_id: 'conversation', parent_id: null, role: 'assistant' as const,
+			content: '', created_at: null, status: 'canceled' as const,
+			tool_calls: [{ id: 'call-1', name: 'lookup', args: '{"query":"recorded"}' }],
+			parts: [{ type: 'tool_call', call_id: 'call-1', name: 'lookup', arguments: { query: 'recorded' }, status: 'running' }]
+		};
+		const { container, getByText, queryByText } = render(ChatWindow, { activePath: [message], models: [], ...callbacks });
+		expect(container.querySelectorAll('.tool-card')).toHaveLength(1);
+		expect(getByText('확인되지 않음')).toBeTruthy();
+		expect(queryByText('완료')).toBeNull();
+		expect(container.querySelector('.execution-timeline, .running, [role="status"]')).toBeNull();
+	});
+
 	it('waits before offering an empty conversation and retains readable messages during refresh', async () => {
 		const view = render(ChatWindow, {
 			activePath: [], models: [], empty: true, loadingHistory: true,

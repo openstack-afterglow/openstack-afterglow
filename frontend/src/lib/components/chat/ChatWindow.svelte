@@ -11,6 +11,8 @@
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
 	import { toolActivityFromCanonicalParts, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
+	import type { ChatPart } from '$lib/api/chatContracts';
+	import ExecutionTimeline from './ExecutionTimeline.svelte';
 
 	type DisplayMessage = ChatMsg & {
 		streaming?: boolean;
@@ -54,6 +56,12 @@
 		onLoadBefore?: () => Promise<void>;
 		onLoadAfter?: () => Promise<void>;
 		onLoadLatest?: () => Promise<boolean>;
+		unpositionedTemporaryRuns?: {
+			run_id: string; run_kind: string; order_unknown: boolean; input_parts: ChatPart[]; message: DisplayMessage;
+		}[];
+		hasMoreTemporaryRuns?: boolean;
+		loadingTemporaryRuns?: boolean;
+		onLoadTemporaryRuns?: () => Promise<void>;
 		onCopy: (text: string) => void;
 		onRegenerate: (messageId: string, modelName: string) => void;
 		onRetry: (messageId: string) => void;
@@ -83,6 +91,10 @@
 		onLoadBefore,
 		onLoadAfter,
 		onLoadLatest,
+		unpositionedTemporaryRuns = [],
+		hasMoreTemporaryRuns = false,
+		loadingTemporaryRuns = false,
+		onLoadTemporaryRuns,
 		onCopy,
 		onRegenerate,
 		onRetry,
@@ -120,7 +132,7 @@
 			message.execution?.skills ??
 			(message.execution?.skill_ids ?? []).map((id) => ({ id, name: t('window.skillFallback', { id }) }));
 		return [
-			...toolItems,
+			...toolItems.map((item) => !message.streaming && item.running ? { ...item, running: false, status: 'unknown' as const } : item),
 			...skills.map((skill) => ({
 				id: `skill:${skill.id}`,
 				name: skill.name,
@@ -138,13 +150,36 @@
 	}
 
 	const displayedPath = $derived<DisplayMessage[]>(projectMessagesForDisplay(activePath) as DisplayMessage[]);
-	const replyHasProgress = $derived(displayedPath.some((message) => {
+
+	// Keep the same node from the local draft through admission and stored readback.
+	const runPresentationKeys = new Map<string, MessageEntrance | string>();
+	let presentationScope: string | undefined;
+	function messageKey(message: DisplayMessage): MessageEntrance | string {
+		if (presentationScope !== conversationKey) {
+			runPresentationKeys.clear();
+			presentationScope = conversationKey;
+		}
+		const runId = message.role === 'assistant' ? message.execution?.run_id : null;
+		if (!runId) return message.sessionEntrance ?? message.id;
+		if (message.sessionEntrance) runPresentationKeys.set(runId, message.sessionEntrance);
+		return runPresentationKeys.get(runId) ?? `run:${runId}`;
+	}
+	$effect(() => {
+		if (busy || loadingHistory) return;
+		const retainedRuns = new Set(activePath.flatMap((message) => message.execution?.run_id ?? []));
+		for (const runId of runPresentationKeys.keys()) {
+			if (!retainedRuns.has(runId)) runPresentationKeys.delete(runId);
+		}
+	});
+	function messageHasProgress(message: DisplayMessage): boolean {
 		if (!message.streaming) return false;
 		const activity = message.activityItems ?? message.execution?.activity ?? [];
 		const visible = visibleActivityItems(activity, true);
 		return Boolean(message.content.length || visible.some((item) => activityIsRunning(item, activity, true)) ||
 			(!visible.length && (message.reasoning || restoredToolItems(message).some((item) => item.running))));
-	}));
+	}
+	const replyHasProgress = $derived(displayedPath.some(messageHasProgress) ||
+		unpositionedTemporaryRuns.some((run) => messageHasProgress(run.message)));
 	const externalProgress = $derived(!replyHasProgress && Boolean(manualCompactionActivity || agentActivity || toolActivity));
 
 	function scrollToLatest() {
@@ -270,7 +305,7 @@
 						<Button variant="accent" size="xs" onclick={loadLatest}>{t('window.viewLatestResponse')}</Button>
 					</div>
 				{/if}
-				{#each displayedPath as msg (msg.sessionEntrance ?? msg.id)}
+				{#each displayedPath as msg (messageKey(msg))}
 					<div data-history-message-id={msg.id} use:messageEntrance={{ ticket: msg.sessionEntrance, suppressed: loading || loadingHistory || navigatingHistory }}>
 						<ChatMessage
 							message={msg}
@@ -295,6 +330,30 @@
 						/>
 					</div>
 				{/each}
+				{#if unpositionedTemporaryRuns.length}
+					<details class="min-w-0 space-y-3 rounded-lg border border-line p-3" data-temporary-unpositioned>
+						<summary class="flex min-h-11 cursor-pointer items-center text-sm text-ink-2">{t('window.detachedTemporaryHistory', { count: unpositionedTemporaryRuns.length })}</summary>
+						{#each unpositionedTemporaryRuns as run (run.run_id)}
+							<section class="min-w-0 space-y-2 border-t border-line py-3" data-temporary-run-id={run.run_id}>
+								<p class="break-all text-xs text-ink-2"><code>{run.run_id}</code> · <code>{run.run_kind}</code> · <code>{run.message.execution?.status ?? '—'}</code></p>
+								{#if run.order_unknown}<p class="text-sm text-ink-2">{t('window.temporaryOrderUnknown')}</p>{/if}
+								{#if run.input_parts.length}
+									<details>
+										<summary class="flex min-h-11 cursor-pointer items-center text-xs text-ink-2">{t('toolCall.input')}</summary>
+										<div class="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs" role="textbox" tabindex="0" aria-readonly="true" aria-multiline="true" aria-label={t('toolCall.input')}>{JSON.stringify(run.input_parts, null, 2)}</div>
+									</details>
+								{/if}
+								<ExecutionTimeline items={run.message.activityItems ?? run.message.execution?.activity ?? []} active={Boolean(run.message.streaming)} animate={false} />
+								{#if run.message.content}<p class="whitespace-pre-wrap break-words text-sm text-ink-1">{run.message.content}</p>{/if}
+							</section>
+						{/each}
+					</details>
+				{/if}
+				{#if hasMoreTemporaryRuns && onLoadTemporaryRuns}
+					<div class="history-activity">
+						<Button variant="outline" size="sm" disabled={busy || loadingTemporaryRuns} onclick={() => void onLoadTemporaryRuns?.()}>{loadingTemporaryRuns ? t('window.historyLoading') : t('window.moreTemporaryHistory')}</Button>
+					</div>
+				{/if}
 				{#if externalProgress && manualCompactionActivity}
 					<div class="context-activity" role="status" aria-live="polite" aria-atomic="true">
 						<LoadingState variant="inline" label="" aria-hidden="true" />

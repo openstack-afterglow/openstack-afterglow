@@ -410,17 +410,17 @@ describe('account controls follow real pending work', () => {
 	});
 
 	it('re-enables role saving after a rejected mutation and keeps selected grants', async () => {
-		api.get.mockImplementation((path: string) => Promise.resolve(authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { is_owner: true, can_manage_owners: true, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false, roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: [] }] })));
+		api.get.mockImplementation((path: string) => Promise.resolve(authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { is_owner: true, can_manage_owners: true, roles: [{ id: 'chat', name: 'research-chat_user', area: 'research', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false, roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: [] }] })));
 		const pending = deferred<unknown>(); api.put.mockReturnValue(pending.promise);
 		render(ProjectSettingsSection);
 		await fireEvent.click(await screen.findByRole('button', { name: '역할 편집' }));
-		await fireEvent.click(screen.getByRole('checkbox', { name: /lumen-chat_user/ }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: /research-chat_user/ }));
 		const save = screen.getByRole('button', { name: '역할 저장' }) as HTMLButtonElement;
 		await fireEvent.click(save); expect(save.disabled).toBe(true);
 		await fireEvent.click(save); expect(api.put).toHaveBeenCalledTimes(1);
 		pending.reject(new Error('failed'));
 		await waitFor(() => expect(save.disabled).toBe(false));
-		expect((screen.getByRole('checkbox', { name: /lumen-chat_user/ }) as HTMLInputElement).checked).toBe(true);
+		expect((screen.getByRole('checkbox', { name: /research-chat_user/ }) as HTMLInputElement).checked).toBe(true);
 	});
 
 
@@ -464,12 +464,12 @@ describe('account controls follow real pending work', () => {
 	it('uses permissions API ownership and never offers administrator removal to a nonowner', async () => {
 		permissionFixture.set({ permissions: { is_owner: false, is_manager: true, can_write: true, service_permissions: {} }, loading: false, error: '' });
 		const member = { user_id: 'admin', username: 'Project admin', email: '', source: 'direct', is_manager: true, is_owner: false, roles: ['project_admin'], direct_role_ids: ['admin'], direct_roles: [{ id: 'admin', name: 'project_admin', inherited_role_ids: [] }], effective_role_ids: ['admin'], external_role_ids: [] };
-		api.get.mockImplementation((path: string) => Promise.resolve(authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { is_owner: false, can_manage_owners: false, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [member] })));
+		api.get.mockImplementation((path: string) => Promise.resolve(authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { is_owner: false, can_manage_owners: false, roles: [{ id: 'chat', name: 'research-chat_user', area: 'research', grade: 'user', implied_role_ids: [], inherited_role_ids: [] }] } : { items: [member] })));
 		render(ProjectSettingsSection); await screen.findByText('Project admin');
 		expect(screen.queryByRole('button', { name: '멤버 제거' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '역할 편집' }));
 		expect(screen.queryByRole('checkbox', { name: /^project_admin/ })).toBeNull();
-		expect((screen.getByRole('checkbox', { name: /^lumen-chat_user/ }) as HTMLInputElement).disabled).toBe(false);
+		expect((screen.getByRole('checkbox', { name: /^research-chat_user/ }) as HTMLInputElement).disabled).toBe(false);
 	});
 	it('links verified domain managers to IAM invitations rather than calling retired project invitation APIs', async () => {
 		(canManageDomain as Writable<boolean>).set(true);

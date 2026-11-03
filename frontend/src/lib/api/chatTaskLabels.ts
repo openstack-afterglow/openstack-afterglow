@@ -55,9 +55,11 @@ export function taskLabelForStage(stage: RunStage, toolName: string | null): str
 
 export function taskLabelForContext(
 	phase: 'compacting' | 'compacted',
-	cause: ContextUpdatedPayload['cause']
+	cause: ContextUpdatedPayload['cause'],
+	running = true
 ): string {
 	const automatic = cause === 'automatic';
+	if (phase === 'compacting' && !running) return t('task.compactionStarted');
 	if (phase === 'compacting') return automatic ? t('task.autoCompacting') : t('task.compacting');
 	return automatic ? t('task.autoCompacted') : t('task.compacted');
 }

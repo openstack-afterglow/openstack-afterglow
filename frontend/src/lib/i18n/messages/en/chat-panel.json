@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "Context compaction started",
+	"window.detachedTemporaryHistory": "Separate temporary run records ({count})",
+	"window.temporaryOrderUnknown": "The position of this run in the conversation is unknown, so its record is shown separately.",
+	"window.moreTemporaryHistory": "Load more temporary run records",
 	"childTask.title": "Child task {index}",
 	"childTask.requested": "Child task requested",
 	"childTask.canceled": "Canceled",

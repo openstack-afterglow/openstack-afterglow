@@ -363,7 +363,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const permissions = jsonFixture('GET', '/api/v1/projects/current/permissions', undefined, profile, id) as {
 			can_write: boolean; service_permissions: Record<string, string[]>;
 		};
-		return { id, name, can_write: permissions.can_write, service_permissions: permissions.service_permissions, service_errors: {} };
+		const { drover, palimpsest, waygate } = permissions.service_permissions;
+		return { id, name, can_write: permissions.can_write, service_permissions: { drover, palimpsest, waygate }, service_errors: {} };
 	});
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
 	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
@@ -463,19 +464,21 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			redirect_uri: 'http://mock-client.example.test/oauth/callback',
 			scopes: ['mcp:read'],
 			grant_deadline: MOCK_EXPIRES_AT_ISO,
+			ongoing_supported: true,
 		};
 	}
 	const consentDecision = pathname.match(/^\/api\/v1\/auth\/mcp-oauth\/consents\/([^/]+)\/(approve|deny)$/);
 	if (method === 'POST' && consentDecision) {
 		if (consentDecision[1] !== MOCK_MCP_CONSENT_TICKET) mockUnsupported();
 		if (consentDecision[2] === 'approve') {
-			const payload = body as { access_level?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
+			const payload = body as { access_level?: unknown; project_scope?: unknown; project_ids?: unknown; ongoing?: unknown } | null;
 			// This tutorial client requests read only, so manage cannot be approved.
 			if (payload?.access_level !== 'read') mockUnsupported();
+			if (payload?.ongoing !== undefined && typeof payload.ongoing !== 'boolean') mockUnsupported();
 			const ids = payload?.project_ids;
 			if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !state.projects.some((project) => project.id === id)) || (payload?.project_scope === 'selected' ? ids.length === 0 : payload?.project_scope !== 'all' || ids.length !== 0)) mockUnsupported();
 		}
-		return { redirect_uri: `/dashboard/account?${MOCKUP_QUERY_KEY}=on` };
+		return { redirect_uri: `/dashboard/account?${MOCKUP_QUERY_KEY}=on`, ...(consentDecision[2] === 'approve' ? { effective_ongoing: (body as { ongoing?: boolean } | null)?.ongoing === true } : {}) };
 	}
 
 
@@ -894,7 +897,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/share-networks') return [];
 	if (method === 'GET' && pathname === '/api/v1/share-snapshots') return [];
 	if (method === 'GET' && pathname === '/api/v1/security-services') return [];
-	// Explicit tutorial authority fixture; real identities never derive these from member.
+	// Synthetic native-policy projection for the tutorial's standard member graph.
 	if (method === 'GET' && pathname === '/api/v1/projects/current/permissions') return {
 		is_owner: true, is_manager: true, can_write: true,
 		service_permissions: {
@@ -906,15 +909,18 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/assignable-roles$/.test(pathname)) return {
 		is_owner: true, can_manage_owners: true, roles: [
-			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner', implied_role_ids: ['mock-role-member'], inherited_role_ids: ['mock-role-member', 'mock-role-reader'] },
-			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member', implied_role_ids: ['mock-role-reader'], inherited_role_ids: ['mock-role-reader'] },
-			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
+			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner', implied_role_ids: ['mock-role-admin'], inherited_role_ids: ['mock-role-admin', 'mock-role-member', 'mock-role-reader', 'mock-native-member', 'mock-native-reader'] },
+			{ id: 'mock-role-admin', name: 'project_admin', area: 'project', grade: 'admin', implied_role_ids: ['mock-role-member'], inherited_role_ids: ['mock-role-member', 'mock-role-reader', 'mock-native-member', 'mock-native-reader'] },
+			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member', implied_role_ids: ['mock-role-reader', 'mock-native-member'], inherited_role_ids: ['mock-role-reader', 'mock-native-member', 'mock-native-reader'] },
+			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader', implied_role_ids: ['mock-native-reader'], inherited_role_ids: ['mock-native-reader'] },
+			{ id: 'mock-native-member', name: 'member', area: null, grade: null, implied_role_ids: ['mock-native-reader'], inherited_role_ids: ['mock-native-reader'] },
+			{ id: 'mock-native-reader', name: 'reader', area: null, grade: null, implied_role_ids: [], inherited_role_ids: [] },
 		],
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/members$/.test(pathname)) {
 		return { items: [
-			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-owner'], direct_roles: [{ id: 'mock-role-owner', name: 'project_owner', inherited_role_ids: ['mock-role-member', 'mock-role-reader'] }], effective_role_ids: ['mock-role-owner', 'mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
-			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-member'], direct_roles: [{ id: 'mock-role-member', name: 'project_member', inherited_role_ids: ['mock-role-reader'] }], effective_role_ids: ['mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
+			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_admin', 'project_member', 'project_reader', 'member', 'reader'], direct_role_ids: ['mock-role-owner'], direct_roles: [{ id: 'mock-role-owner', name: 'project_owner', inherited_role_ids: ['mock-role-admin', 'mock-role-member', 'mock-role-reader', 'mock-native-member', 'mock-native-reader'] }], effective_role_ids: ['mock-role-owner', 'mock-role-admin', 'mock-role-member', 'mock-role-reader', 'mock-native-member', 'mock-native-reader'], external_role_ids: [], source: 'direct' },
+			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member', 'reader'], direct_role_ids: ['mock-role-member'], direct_roles: [{ id: 'mock-role-member', name: 'project_member', inherited_role_ids: ['mock-role-reader', 'mock-native-member', 'mock-native-reader'] }], effective_role_ids: ['mock-role-member', 'mock-role-reader', 'mock-native-member', 'mock-native-reader'], external_role_ids: [], source: 'direct' },
 		] };
 	}
 	if (method === 'GET' && pathname === '/api/v1/announcements') return [];

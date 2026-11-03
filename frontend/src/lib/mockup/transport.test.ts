@@ -123,8 +123,9 @@ describe('mockup transport', () => {
 		expect(preview).toHaveLength(3);
 		expect(preview[0]).toMatchObject({
 			id: 'mock-project-1', can_write: true, service_errors: {},
-			service_permissions: { drover: expect.arrayContaining(['drover-inventory_reader', 'drover-clusters_editor']), lumen: expect.arrayContaining(['lumen-history_reader', 'lumen-tools_user']) },
+			service_permissions: { drover: expect.arrayContaining(['drover-inventory_reader', 'drover-clusters_editor']) },
 		});
+		expect(preview[0].service_permissions).not.toHaveProperty('lumen');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -177,7 +178,7 @@ describe('mockup transport', () => {
 		expect(record).not.toHaveProperty('token');
 		await api.put(`/api/v1/auth/mcp-tokens/${issued.id}/lumen-default`, {}, token, project);
 		expect(await api.get('/api/v1/chat/cloud-tools', token, project, { refresh: true })).toMatchObject({ project_id: 'mock-project-1', source: 'personal_token', selection_name: 'Scoped tutorial', allowed_projects: [{ id: 'mock-project-2', name: 'sample-project-beta' }] });
-		expect(await api.post(`/api/v1/auth/mcp-oauth/consents/${MOCK_MCP_CONSENT_TICKET}/approve`, { access_level: 'read', project_scope: 'all', project_ids: [] }, token, project, { signal: new AbortController().signal, cache: 'no-store', suppressAuthRedirect: true })).toEqual({ redirect_uri: '/dashboard/account?tutorial=on' });
+		expect(await api.post(`/api/v1/auth/mcp-oauth/consents/${MOCK_MCP_CONSENT_TICKET}/approve`, { access_level: 'read', project_scope: 'all', project_ids: [] }, token, project, { signal: new AbortController().signal, cache: 'no-store', suppressAuthRedirect: true })).toEqual({ redirect_uri: '/dashboard/account?tutorial=on', effective_ongoing: false });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -297,7 +298,7 @@ describe('mockup transport', () => {
 		const decision = await maybeMockJson<{ redirect_uri: string }>(
 			'POST',
 			`/api/v1/auth/mcp-oauth/consents/${MOCK_MCP_CONSENT_TICKET}/approve`,
-			{ access_level: 'read', project_scope: 'selected', project_ids: ['mock-project-1'] },
+			{ access_level: 'read', project_scope: 'selected', project_ids: ['mock-project-1'], ongoing: true },
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
 		);
@@ -306,8 +307,9 @@ describe('mockup transport', () => {
 			client_name: 'Tutorial Desktop MCP',
 			redirect_uri: 'http://mock-client.example.test/oauth/callback',
 			scopes: ['mcp:read'],
+			ongoing_supported: true,
 		}));
-		expect(decision).toEqual({ redirect_uri: '/dashboard/account?tutorial=on' });
+		expect(decision).toEqual({ redirect_uri: '/dashboard/account?tutorial=on', effective_ongoing: true });
 		await expect(
 			maybeMockJson(
 				'GET',

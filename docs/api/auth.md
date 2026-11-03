@@ -828,21 +828,41 @@ Canonical consumer registry는 일반 dashboard REST API의 자동 공개가 아
 
 | 자원 | list/get 반환 필드 | 별도 연관 조회 | 현재 생성·관리 도구 |
 |---|---|---|---|
-| 인스턴스 | `id`, `name`, `status`, `created_at`, `updated_at` | VM interfaces: `port_id`, `mac_address`; VM volumes: 아래 volume summary | 생성, start/stop/reboot/shelve/unshelve, 삭제, network attach |
-| 볼륨 | `id`, `name`, `status`, `size_gb`, `created_at` | snapshot/backup summary는 `source_volume_id`도 반환 | 빈 볼륨 생성, 볼륨·snapshot·backup 삭제 |
-| 네트워크 | `id`, `name`, `status`, `is_shared`, `is_external`, `visibility` | subnet: `id`, `name`, `network_id`, `cidr`, `ip_version`, `gateway_ip` | 소유 network/subnet 삭제; VM network attach |
+| 인스턴스 | `id`, `name`, `status`, `created_at`, `updated_at` | VM interfaces: `port_id`, `mac_address`; VM volumes: 아래 volume summary; port 상세에서 IP·group ID 확인 | 생성, start/stop/reboot/shelve/unshelve, 삭제, 새 네트워크/기존 포트 attach, 인터페이스 detach, 포트별 보안그룹 교체, 데이터 볼륨 attach/detach |
+| 볼륨 | `id`, `name`, `status`, `size_gb`, `created_at` | snapshot/backup summary는 `source_volume_id`도 반환 | 빈 볼륨 생성, 이름·설명 수정, 오프라인 확장, 볼륨·snapshot·backup 삭제 |
+| 네트워크 | `id`, `name`, `status`, `is_shared`, `is_external`, `visibility` | subnet: `id`, `name`, `network_id`, `cidr`, `ip_version`, `gateway_ip`; port와 보안그룹은 별도 안전한 상세 | 소유 network/subnet 생성·수정·삭제, 소유 port CRUD, VM interface 관리 |
 | 컨테이너 | `id`, `name`, `status`, `image`, `created_at` | 없음 | start/stop, 삭제 |
 | 데이터베이스 | `id`, `name`, `status`, `datastore_type`, `datastore_version`, `created_at` | 없음 | restart, 삭제 |
 
 - 각 list의 `limit`은 기본50·최대100이다. Resource data cursor/marker, 이름·상태 filter, 정렬 인자는 제공하지 않는다. VM/Cinder/Neutron은 SDK iteration을 limit에서 중단하고 Trove/Zun은 native 첫 응답 page만 읽는다. 최대100이라는 사실이 그 프로젝트 전체 inventory의 완전성을 뜻하지 않으며, MCP `tools/list`의 schema cursor와는 별개다.
-- 상세 GET도 VM IP/flavor/image/AZ/security group·실측 metric/console, volume type/attachment/encryption 상세, network ports/router/Floating IP/security group, container logs/exec/환경 변수·자원량, DB 접속 주소/flavor/volume/사용자·database·backup을 추가 반환하지 않는다. 비밀 원문과 임의 provider metadata도 반환하지 않는다.
-- Network/container/DB 생성 도구는 아직 없다. Volume attach/detach/extend, snapshot·backup 생성/복원, VM resize와 image/flavor/keypair 선택지 조회도 registry에 없다. 따라서 다섯 자원의 완전한 생성·조회·관리라는 목표는 현재 미충족이며, 위 표는 이번 우선 조회 조사에서 확인한 현황이다.
+- 상세 GET도 VM summary 자체에 flavor/image/AZ/실측 metric/console, volume type/encryption 전체, network router/Floating IP, container logs/exec/환경 변수·자원량, DB 접속 주소/flavor/volume/사용자·database·backup을 추가하지 않는다. Port의 IP·security group은 별도 allowlist schema이며 비밀 원문과 임의 provider metadata는 반환하지 않는다.
+- Container/DB 생성, snapshot·backup 생성/복원, VM resize는 registry에 없다. Flavor/image/keypair 선택지와 아래 network/interface/volume 관리 도구는 기존 summary를 native 전체 응답으로 확장하지 않는다. 이 범위 밖 자원까지 완전한 native CRUD를 제공하는 것은 아니다.
 - Storage list는 승인된 target-project credential의 native scope로 조회하고 `project_id` query filter를 보내지 않는다. 반환 record의 owner와 snapshot/backup parent-volume owner는 독립적으로 검증한다. Cinder 기본 정책에서 backup project attribute가 생략되면 nonempty backup 조회는 owner 확인 불가로 거부하며, 조회 실패를 빈 목록으로 바꾸거나 관리자 자격으로 재시도하지 않는다.
 - `capabilities_get`은 서비스 활성화 정보이지 각 resource read의 성공 증거가 아니다. Disabled `key_manager`는 secret metadata 도구도 제공하지 않는다. 빈 DB/container 목록의 성공은 실제 nonempty 상세·생성·관리 실행 검증을 대체하지 않는다.
 
+### MCP VM 생성 선택지 조회
+
+Canonical registry `2026-11-03.2`의 다음 여섯 도구는 `mcp:read`로 사용할 수 있다. 각 호출의 선택적 `project_id`는 저장된 승인 대상과 현재 역할의 교집합으로 다시 제한되며, 대상의 restricted credential만 사용한다. 목록 조회 성공은 실제 생성 admission·현재 host capacity·게스트 접속 성공을 뜻하지 않는다.
+
+| 도구 | 입력 | 반환하는 안전한 선택 정보 |
+|---|---|---|
+| `afterglow_flavor_list` | `limit`, `marker`, 선택 exact `vcpus`, `ram_mb` | `flavors`, `next_marker`; 각 항목은 `id`, `name`, `vcpus`, `ram_mb`, `disk_gb`, `is_public`, `is_gpu`, `requires_usage_schedule` |
+| `afterglow_flavor_get` | `flavor_id` | 위 flavor 한 항목 |
+| `afterglow_image_list` | `limit`, `marker`, 선택 exact `name`, `visibility: public/private/shared/community` | `images`, `next_marker`; 각 항목은 `id`, `name`, `status`, `visibility`, `min_disk_gb`, `min_ram_mb`, `size_bytes`, `disk_format`, `os_distro`, `os_version`, `os_admin_user` |
+| `afterglow_image_get` | `image_id` | 위 active image 한 항목 |
+| `afterglow_keypair_list` | `limit`, `marker` | `keypairs`, `next_marker`; 각 항목은 `name`, `type`, `fingerprint` |
+| `afterglow_keypair_get` | `key_name` | 위 본인 keypair 한 항목 |
+
+- 새 선택지 목록의 `limit`은 기본50·최대100이고 **한 호출이 검사하는 provider 행 수**를 제한한다. 가시성/CPU/RAM filter로 제외된 행은 결과 수에 포함되지 않으므로 빈 결과에도 `next_marker`가 있을 수 있다. 계속 조회할 때 같은 project/filter와 반환 marker를 사용한다. Marker는 snapshot이나 접근 권한이 아니며 native catalog가 바뀌면 결과도 달라질 수 있다. 기존 VM/volume/network 목록에는 이 marker를 추가하지 않는다.
+- Private flavor는 기존 Nova 목록과 같은 권한 경계를 따른다. 검증된 non-admin restricted token은 Nova의 project-filtered private catalog를 사용하고 admin-only flavor ACL API를 호출하지 않는다. 실제 restricted token에 현재도 유효한 `admin` role이 있을 때만 exact target-project ACL을 추가 검사하며, MCP의 논리 system-admin 권한은 계속 false다. Native admin GET 성공이나 flavor 이름은 접근 허용 증거가 아니다. GPU·사용기간 지정 여부는 기존 helper로 계산하고 raw `extra_specs`·자동화 control marker는 반환하지 않는다. `ram_mb:8192`, `vcpus:4`로 4c/8GiB 후보를 찾은 뒤 GPU 여부·disk·schedule과 실제 생성 admission을 확인한다.
+- Flavor list는 `is_public=True`를 명시하여 public과 해당 token-project의 private ACL만 요청한다. SDK3.3의 기본/생략 값은 native admin에게 global `None` 조회를 보내므로 사용하지 않는다. CPU/RAM이 맞지 않는 행은 ACL·extra-spec 조회 전에 건너뛰며 raw-page marker는 그대로 진행한다. Native admin의 private ACL 추가 검사는 유지한다.
+- Boot image는 `active`이며 target-owned/public/community 또는 target의 `accepted` shared member여야 한다. Exact native member JSON의 `member_id`·`image_id`·`status`로 검증하고 SDK 입력 seed나 무시되는 list query를 사용하지 않는다. Member403/404는 해당 image 제외/상세 거부,5xx는 조회 실패이며 비회원 하나가 healthy catalog를 숨기지 않는다. Foreign private·미수락 공유는 제외/거부하고 endpoint·location·임의 image property를 반환하지 않는다. 기본 목록은 Glance의 기본 visible catalog이며 community가 생략될 수 있으므로 community 검색에는 `visibility:"community"`를 명시한다. Filter/marker를 유지하여 같은 native catalog를 순회한다. `min_disk_gb`는 `boot_volume_size_gb`와, `min_ram_mb`는 flavor RAM과 비교한다.
+- Nova SSH 키는 project 소유가 아니라 **현재 grant 사용자 소유**다. 입력 `user_id`를 받지 않으며 connection의 exact user를 검증한다. Native 목록은 owner를 생략하고 설치된 SDK3.3의 Keypair resource는 microversion2.10으로 제한되어 pagination query를 무시하므로, 같은 compute proxy에 **명시적 Nova2.35**로 bounded list를 요청하고 각 이름의 unseeded 상세 GET으로 provider owner를 증명한다. 2.35 미지원·owner 누락은 안전하게 실패하며 unbounded/관리자 fallback은 없다. Installed SDK가 GET 입력 owner를 body에 보충하는 경로를 쓰지 않는다. 공개키·개인키·인증서 원문은 반환하지 않고, 키 생성/등록이나 실제 SSH 로그인 기능은 추가하지 않는다.
+- 네트워크 선택은 `afterglow_network_list`/`afterglow_network_get`, 새 port로 연결은 기존 `afterglow_vm_network_attach`, 기존 port 연결·제거와 보안그룹 교체는 아래 별도 도구를 사용한다. 변경에는 `mcp:write`와 대상 프로젝트의 write ceiling·idempotency key가 필요하다. Floating IP 관리·guest 명령 실행이나 SSH 연결 검증은 범위가 아니다.
+
 ## MCP 프로젝트 리소스 생성·네트워크 연결
 
-다음 세 도구는 개인 MCP와 Lumen 위임의 같은 canonical registry(`2026-10-11.2`)를 사용한다. 명시적으로 승인된 `manage`/`mcp:write` grant에만 노출·실행되며 `read` grant는 호출 이름을 직접 지정해도 거부한다. 선택적 `project_id`는 승인된 프로젝트만 지정할 수 있고 해당 프로젝트의 restricted application credential로 실행한다. 기본 Lumen 읽기 전용 권한은 확대하지 않는다.
+다음 세 도구는 개인 MCP와 Lumen 위임의 같은 canonical registry(`2026-11-03.2`)를 사용한다. 명시적으로 승인된 `manage`/`mcp:write` grant에만 노출·실행되며 `read` grant는 호출 이름을 직접 지정해도 거부한다. 선택적 `project_id`는 승인된 프로젝트만 지정할 수 있고 해당 프로젝트의 restricted application credential로 실행한다. 기본 Lumen 읽기 전용 권한은 확대하지 않는다.
 
 | 도구 | 필수 입력 | 선택 입력·제한 | 접수 결과 |
 |---|---|---|---|
@@ -856,19 +876,57 @@ VM 생성은 기존 프로젝트 flavor quota·host capacity·GPU admission과 �
 
 이 계약은 로컬 source의 추가 기능이다. MCP handshake/tools discovery 성공과 실제 cloud provisioning 또는 운영 배포 성공은 별개다.
 
+### MCP 네트워크·인터페이스·데이터 볼륨 관리
+
+Canonical registry `2026-11-03.2`는 기존 도구를 보존하고 아래18개 도구를 추가한다. 모든 변경은 `mcp:write`, 승인 프로젝트의 현재 write ceiling, `idempotency_key`가 필요하다. 조회 성공은 변경 권한·native 정책 허용·guest readiness를 보장하지 않는다. Lumen도 같은 registry/preview/원장 경로를 사용하며 기본 read-only grant는 승격하지 않는다.
+
+| 도구 | 주요 입력·동작 |
+|---|---|
+| `afterglow_network_create`, `afterglow_network_update` | 생성 `name`, 수정 `network_id`; `name`, `description`, `admin_state_up`만 관리. 일반 tenant network만 생성하고 shared/provider/external 속성은 입력 불가 |
+| `afterglow_subnet_create`, `afterglow_subnet_update` | 생성 `network_id`, `name`, `cidr`; 수정 `subnet_id`. 이름·설명·gateway·DHCP·DNS 관리; CIDR/IP family 검증, 수정 시 CIDR/parent 이동 불가 |
+| `afterglow_port_list`, `afterglow_port_get` | `limit` 기본50/최대100, 선택 `network_id`; 상세 `port_id`. 안전한 network/status/admin-state/MAC/device binding, fixed IP, security-group ID만 반환 |
+| `afterglow_port_create`, `afterglow_port_update`, `afterglow_port_delete` | 생성 `network_id`, 수정/삭제 `port_id`; 이름·설명·admin-state·fixed IP·security-group ID 관리. 직접 수정/삭제는 unbound 일반 소유 port만 허용 |
+| `afterglow_security_group_list`, `afterglow_security_group_get` | 소유 group의 `id`, `name`, `description`만 조회. `limit` 또는 `security_group_id`; 규칙 원문·shared 타 프로젝트 권한을 노출하지 않음 |
+| `afterglow_vm_interface_attach`, `afterglow_vm_interface_detach` | `server_id`, `port_id`; 소유 ACTIVE/SHUTOFF VM에 기존 unbound port 연결 또는 실제 Nova/Neutron binding이 일치하는 인터페이스 제거 |
+| `afterglow_vm_security_groups_set` | `server_id`, `port_id`, `security_group_ids`; 실제 VM 인터페이스의 group 목록을 원자적으로 교체. 명시적 빈 배열은 모든 group 제거이며 port-security를 끄지 않음 |
+| `afterglow_volume_update`, `afterglow_volume_extend` | `volume_id`; 이름·설명 수정 또는 `size_gb`로 현재 크기보다 큰1–16384GiB 오프라인 확장. 사용 중/연결된 volume의 확장·축소 불가 |
+| `afterglow_vm_volume_attach`, `afterglow_vm_volume_detach` | `server_id`, `volume_id`; 소유 VM의 데이터 디스크 연결/분리. Force·multiattach·boot/root·불명확한 연결 관계는 거부하며 볼륨 자체를 삭제하지 않음 |
+
+- Patch는 **생략과 명시 값을 구분**한다. Gateway 생략은 보존, `gateway_ip:null`은 gateway 해제다. `security_group_ids` 생략은 보존/생성 기본값, `[]`는 명시 제거다. 이 차이는 preview·직렬화·idempotency hash에도 보존한다. 빈 update·미허용 속성·형식이 잘못된 UUID/IP/중복 group은 거부한다.
+- Network/subnet 수정은 exact-owned nonshared/nonexternal parent만 허용한다. 소유 port는 명시적으로 shared인 정상 network에서 생성·연결할 수 있지만 외부망 표시만으로 타 프로젝트 연결 권한을 추정하지 않는다. Fixed subnet의 network·IP family·범위를 검사하고 group은 exact target-project 소유여야 한다.
+- Neutron 변경은 provider의 실제 owner/ID·revision을 검증하고 `revision-if-match` 지원과 `If-Match` 조건을 요구한다. Provider binding·router/DHCP/service port·port-security 비활성화·임의 MAC/device/binding 속성을 받지 않는다. 조건 충돌/지원 누락은 실패이며 자동 재전송하지 않는다.
+- VM interface 제거/보안그룹 교체는 통신을 끊을 수 있다. Interface detach는 Nova 경로이며 Neutron port를 직접 삭제하지 않는다. Nova가 자동 생성 port를 정리할 수 있으므로 port 보존도 보장하지 않는다. 데이터 디스크 분리는 실제 `root_device_name`/명시 boot 정보와 Nova/Cinder 연결을 대조하며 `/dev/vda`를 root로 추정하지 않는다. Root 판별이 불가능하면 거부한다.
+- 변경 접수는 native 비동기 작업 완료나 게스트의 주소 설정·mount/unmount·filesystem 확장·SSH 성공을 뜻하지 않는다. Unknown outcome은 기존 원장에 남기고 새 key로도 자동 replay하지 않는다. 운영 배포·grant/native 정책·schema/config 변경은 별도다.
+
+
+볼륨 장치 관리는 Nova server 원문을 명시2.3으로 조회해 root-device 노출 버전을 확보하고, attachment 원문은 명시2.89로 읽는다. Native2.89 미지원 또는 정책이 실제 root 정보를 감추면 안전하게 거부한다. Nova POST의 legacy `id`는 volume UUID이고 GET의 `attachment_id`는 Cinder attachment UUID라 서로 비교하지 않는다. 원문 `serverId`·volume ID·실제 attachment ID를 양쪽 binding과 검증하며 SDK가 버리는 parent 필드나 URI seed로 모순을 숨기지 않는다. Write3xx도 성공으로 기록하지 않고 unknown 경계로 돌린다.
+
+정상 POST가 `attachment_id`를 생략하더라도, 후속 raw Nova GET의 관측 `attachment_id`와 Cinder binding의 관측 ID가 다르면 연결 성공을 반환하지 않는다. 같은 project/server/volume에 대한 응답이어도 모순은 post-dispatch `unknown`이며 동일 key·새 key의 자동 replay를 모두 금지한다.
+
 ## 개인 MCP 키와 공개 연결 확인
 
 사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. 나란한 OAuth/API 키 선택지에서 선택한 방식의 setup와 저장된 연결/키 목록만 표시한다. 각 `mcp.json`은 전체 복사 버튼을 제공한다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·승인 프로젝트와 restricted Keystone application credential에 묶이며 `read` 또는 명시적 `manage`를 사용한다. 평문 키는 발급 응답 한 번만 반환하고 `Cache-Control: no-store`/`Pragma: no-cache`로 캐싱을 금지한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다.
 
-`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. OAuth/내부 Lumen 위임은 기존 finite TTL 정책을 유지합니다.
+OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `OAuth 연결`과 현재 목록 순번을, 승인 프로젝트는 UUID 없이 이름을 표시한다. 순번은 영구 ID가 아니며 삭제는 정확한 grant ID로 처리한다. 표시를 가린 것이므로 인증된 사용자에게 반환하는 API 응답의 identifier는 변하지 않는다. Client ID는 public OAuth client의 식별자이며 access/refresh token이나 client secret과 구분한다.
+
+
+`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. 내부 Lumen 위임의 기존 finite TTL은 바뀌지 않습니다.
 
 UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
+
+### OAuth 지속 승인과 자동 갱신
+
+현재 서버가 `ongoing_supported=true`를 제공하면 OAuth 동의 화면에서 **취소 전까지 자동 갱신**이 기본 선택된다. 클라이언트가 짧은 access token의 `expires_in`에 맞춰 refresh token을 제출하면 두 token을 회전한다. 승인 화면에서 유한 기간으로 변경할 수도 있다. 오래된 서버는 지원 신호가 없어 유한 승인만 제공하며, 요청한 지속 여부와 응답의 `effective_ongoing`이 다르거나 확인되지 않으면 성공 redirect나 재전송을 하지 않는다.
+
+지속 승인은 새로 검증한 사람의 동의에서만 발급한다. 발급 시 승인된 프로젝트 집합·scope와 각 프로젝트의 실제 role ID/name을 상한으로 고정하고 현재 역할·프로젝트 소유권을 계속 검증한다. Refresh는 scope를 축소할 수 있으나 다시 넓힐 수 없다. 기존 유한 연결은 자동 연장되지 않으며 각 소유자가 한 번 다시 로그인하고 승인해야 지속 방식으로 전환된다. 개인 API 키의 별도 만료 설정은 변경하지 않는다.
+
+Refresh token과 제한된 Keystone application credential은 취소 전까지 오래 유지되므로 유출 시 위험이 지속된다. 계정의 연결 제거 또는 OAuth revoke는 로컬 dispatch를 즉시 중단하지만 원격 Keystone 자격 삭제는 유효한 소유자 native 세션과 정리 조건이 충족된 뒤 확인된다. 미확인·진행 중 작업이 있으면 정리가 보류될 수 있다. Schema106 선행과 rolling/rollback 및 실제 native 정책 제약은 [배포 가이드](../deployment.md#mcp-지속-oauth-승인-전제-source-변경-미배포)를 따른다.
 
 ### 전체 프로젝트의 혼합 권한 동의
 
 `project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않습니다. 실제 대상 scoped token과 현재 역할 교집합에서 `member`/`admin`이 확인된 프로젝트만 저장된 `can_write=true`를 가지며, `reader` 프로젝트도 같은 grant에 읽기 전용으로 포함됩니다. `mcp:write`는 grant의 최대 scope일 뿐이고 mutation은 대상별 저장 ceiling을 다시 검사합니다. 사용자가 `read`를 선택하면 모든 프로젝트의 변경 호출이 금지됩니다. 기존 grant의 승인 목록·ceiling은 자동 확대하지 않습니다.
 
-`GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, 네 서비스의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면 모두 선택한 프로젝트의 cloud 읽기/쓰기와 Drover·Palimpsest·Waygate·Lumen 권한을 제출 전에 같은 component로 표시합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
+`GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, Drover·Palimpsest·Waygate의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. Lumen 서비스·API 키 권한은 MCP 제어 대상이 아니므로 조회하거나 표시하지 않습니다. Lumen이 승인된 클라우드 MCP를 소비하는 별도 bridge는 유지합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면은 같은 component를 사용합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
 
 이 표시는 위임 생성이나 서비스 연결 자체가 아닙니다. 승인은 현재 권한을 다시 읽으며 실행 시에도 restricted credential·대상 소유권·현재 native service policy를 적용합니다. 기존 registry에 없는 서비스 기능을 이 preview가 새 MCP 도구로 공개하지 않습니다. 미확인 서비스나 회수된 권한은 실행을 허용하지 않습니다.
 

@@ -7,7 +7,7 @@
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import OnboardingAccountForm from '$lib/components/auth/OnboardingAccountForm.svelte';
 	import type { DomainAccountResult } from '$lib/types/auth';
@@ -80,22 +80,27 @@
 	onDestroy(() => { live = false; generation++; info = null; created = null; approval = null; });
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center {loading && !abandoned && !$auth.token && !$logoutInProgress && !$projectSwitching ? '' : 'py-8'}">
-	{#if loading && !abandoned && !$auth.token && !$logoutInProgress && !$projectSwitching}
-		<LoadingState variant="surface" style="min-height: 100dvh" label={t('onboarding.processing')} />
-	{:else}
-	<PageShell class="flex justify-center"><div class="w-full max-w-md">
-		<h1 class="text-center text-xl font-semibold text-ink-0 mb-6">{t('registration.title')}</h1>
-		<div class="bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 space-y-4">
+<AuthStudioShell variant="account" wide localeId="registration-token-locale" themeId="registration-token-theme" footerNote={t('registration.title')}>
+	<div class="auth-flow">
+		<header class="auth-flow-heading">
+			<h1>{t('registration.title')}</h1>
+		</header>
+		{#if loading && !abandoned && !$auth.token && !$logoutInProgress && !$projectSwitching}
+			<LoadingState variant="section" label={t('onboarding.processing')} />
+		{:else}
 			{#if abandoned || $auth.token || $logoutInProgress || $projectSwitching}
-				<Button href="/login" class="w-full">{t('common.backToLogin')}</Button>
-				{#if !$auth.token}<Button variant="secondary" href="/signup" class="w-full">{t('signup.approval.restart')}</Button>{/if}
+				<div class="auth-flow-actions">
+					<Button href="/login" class="w-full">{t('common.backToLogin')}</Button>
+					{#if !$auth.token}<Button variant="secondary" href="/signup" class="w-full">{t('signup.approval.restart')}</Button>{/if}
+				</div>
 			{:else if approval}
 				<Alert tone={approval === 'pending' ? 'info' : 'warning'} title={t(approval === 'pending' ? 'signup.approval.pendingTitle' : 'signup.approval.rejectedTitle')}>
 					{t(approval === 'pending' ? 'signup.approval.emailPending' : 'signup.approval.emailRejected')}
 				</Alert>
-				<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
-				<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
+				<div class="auth-flow-actions">
+					<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
+					<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
+				</div>
 			{:else if created}
 				<Alert tone="success" title={t('onboarding.created.title')}>{t('onboarding.created.body', { project: created.personal_project_name ?? '' })}</Alert>
 				<AccountResultDetails result={created} />
@@ -105,15 +110,16 @@
 				{#if info?.account_exists}
 					<Alert tone="info">{t('onboarding.accountExists')}</Alert>
 					<p class="text-sm text-ink-2">{t('signup.existing')}</p>
-					<Button href="/login" class="w-full">{t('onboarding.created.signIn')}</Button>
-					<Button variant="link" href="/recover">{t('recovery.title')}</Button>
+					<div class="auth-flow-actions">
+						<Button href="/login" class="w-full">{t('onboarding.created.signIn')}</Button>
+						<Button variant="link" href="/recover">{t('recovery.title')}</Button>
+					</div>
 				{:else if info}
 					<p class="text-sm text-ink-1 break-all">{info.email}</p>
 					<p class="text-sm text-ink-2">{t('registration.description')}</p>
 					{#key token}<OnboardingAccountForm idPrefix="registration" submitLabel={t('registration.submit')} onSubmit={createAccount} />{/key}
 				{:else}<Button variant="secondary" href="/signup">{t('login.signup.open')}</Button>{/if}
 			{/if}
-		</div>
-	</div></PageShell>
-	{/if}
-</main>
+		{/if}
+	</div>
+</AuthStudioShell>

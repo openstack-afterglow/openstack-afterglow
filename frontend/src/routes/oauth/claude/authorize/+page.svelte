@@ -13,8 +13,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -97,11 +96,15 @@
 	<meta name="referrer" content="no-referrer" />
 </svelte:head>
 
-<main class="authorization-page">
-	<PageShell class="flex justify-center">
-	<Card surface="raised" padding="lg" class="authorization-card motion-stagger">
-		<header>
-			<p class="eyebrow">{t('claudeConsent.eyebrow')}</p>
+<AuthStudioShell
+	variant="consent"
+	wide
+	localeId="claude-consent-locale"
+	themeId="claude-consent-theme"
+	footerNote={t('claudeConsent.eyebrow')}
+>
+	<div class="auth-flow">
+		<header class="auth-flow-heading">
 			<h1>{t('claudeConsent.title')}</h1>
 			<p>{t('claudeConsent.description')}</p>
 		</header>
@@ -110,16 +113,16 @@
 			<Alert tone="success" title={t('claudeConsent.approved.title')}>
 				{#snippet children()}{t('claudeConsent.approved.body')}{/snippet}
 			</Alert>
-			<div class="actions"><Button onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
+			<div class="auth-flow-actions"><Button onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
 		{:else if outcome === 'denied'}
 			<Alert tone="info" title={t('claudeConsent.denied.title')}>
 				{#snippet children()}{t('claudeConsent.denied.body')}{/snippet}
 			</Alert>
-			<div class="actions"><Button variant="secondary" onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
+			<div class="auth-flow-actions"><Button variant="secondary" onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
 		{:else}
 			{#if error}<Alert tone="danger" title={t('claudeConsent.error.title')}>{#snippet children()}{error}{/snippet}</Alert>{/if}
 
-			<section class="details" aria-labelledby="gateway-code-heading">
+			<section class="gateway-consent" aria-labelledby="gateway-code-heading">
 				<div class="scope-summary">
 					<div>
 						<span>{t('claudeConsent.details.scope')}</span>
@@ -131,23 +134,26 @@
 					</div>
 				</div>
 				<form
+					class="gateway-form"
 					onsubmit={(event) => {
 						event.preventDefault();
 						void decide('approve');
 					}}
 				>
-					<Field label={t('claudeConsent.code.label')} for="gateway-code" help={t('claudeConsent.code.help', { example: 'ABCD-2345' })}>
-						<TextInput
-							id="gateway-code"
-							ariaLabel={t('claudeConsent.code.label')}
-							maxlength={9}
-							placeholder="ABCD-2345"
-							bind:value={code}
-						/>
-					</Field>
-					<div class="actions">
+					<div class="auth-flow-fields">
+						<Field label={t('claudeConsent.code.label')} for="gateway-code" help={t('claudeConsent.code.help', { example: 'ABCD-2345' })}>
+							<TextInput
+								id="gateway-code"
+								ariaLabel={t('claudeConsent.code.label')}
+								maxlength={9}
+								placeholder="ABCD-2345"
+								bind:value={code}
+							/>
+						</Field>
+					</div>
+					<div class="auth-flow-actions">
 						{#if deciding}
-							<LoadingState variant="inline" label={t('claudeConsent.actions.processing')} class="decision-activity motion-fade" />
+							<LoadingState variant="inline" label={t('claudeConsent.actions.processing')} class="decision-activity" />
 						{/if}
 						<Button variant="danger-outline" type="button" onclick={() => decide('deny')} disabled={deciding || !code.trim()}>{t('claudeConsent.actions.deny')}</Button>
 						<Button type="submit" disabled={deciding || !code.trim()}>{t('claudeConsent.actions.approve')}</Button>
@@ -159,26 +165,16 @@
 				{#snippet children()}{t('claudeConsent.warning.body')}{/snippet}
 			</Alert>
 		{/if}
-	</Card>
-	</PageShell>
-</main>
+	</div>
+</AuthStudioShell>
 
 <style>
-	.authorization-page { display: grid; min-height: 100dvh; place-items: center; background: var(--color-surface-canvas); }
-	:global(.authorization-card) { width: min(42rem, 100%); display: grid; gap: 1rem; }
-	header h1 { margin: 0; color: var(--color-ink-0); font-size: 1.5rem; }
-	header p { margin: 0.5rem 0 0; color: var(--color-ink-2); line-height: 1.5; }
-	.eyebrow { color: var(--color-accent) !important; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-	.details { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface-sunken); }
-	.scope-summary { display: grid; gap: 0.75rem; }
-	.scope-summary span { display: block; color: var(--color-ink-2); font-size: 0.75rem; }
-	.scope-summary strong { color: var(--color-ink-0); font-size: 0.875rem; }
-	.scopes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-	.actions { display: flex; flex-direction: column-reverse; gap: 0.5rem; margin-top: 1rem; }
-	.actions :global(.decision-activity) { align-self: center; }
-	@media (min-width: 640px) {
-		.scope-summary { align-items: center; grid-template-columns: 1fr auto; }
-		.actions { flex-direction: row; justify-content: flex-end; }
-		.actions :global(.decision-activity) { margin-right: auto; }
-	}
+	.gateway-consent, .gateway-form { display: grid; gap: 1.25rem; min-width: 0; }
+	.scope-summary { display: grid; gap: 0.75rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-line); min-width: 0; }
+	.scope-summary span { display: block; color: var(--color-ink-2); font-size: var(--type-identifier); }
+	.scope-summary strong { display: block; margin-top: 0.25rem; color: var(--color-ink-0); font-size: var(--type-body); font-weight: 500; overflow-wrap: anywhere; }
+	.scopes { display: flex; flex-wrap: wrap; gap: 0.5rem; min-width: 0; }
+	.scopes :global(.chip .label) { white-space: normal; overflow-wrap: anywhere; }
+	.auth-flow-actions :global(button) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+	.auth-flow-actions :global(.decision-activity) { flex-basis: 100%; }
 </style>

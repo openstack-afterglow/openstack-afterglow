@@ -1,0 +1,4 @@
+## Implementation Tasks
+
+- [x] 1. Prove native admin/member default catalog and filtered ACL/spec call bounds with installed SDK over loopback HTTP; correct consumer query/order without changing operator helper. Two real-SDK HTTP regressions failed before; SDK injects None even when argument omitted, so explicit True is required. Focused512passed and standalone actual SDK smoke confirms member ACL0/spec1 and native-admin ACL1/spec1 with private4c/8192MiB candidate.
+- [x] 2. Run focused/native runtime and isolated full gate, update existing docs/evidence, verify shared-owned source identity, remove owned qualification fixtures and archive. Final isolated whole gate exit0: backend12964/106skip, frontend6667/510files, contracts183, realDB168/52deselected, Ruff837. Shared42 failures remain separately recorded; no production mutations/commit/push/deployment.

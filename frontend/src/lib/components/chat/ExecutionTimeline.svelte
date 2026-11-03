@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { t as panelText } from '$lib/i18n/ns/chat-panel';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
@@ -34,7 +36,14 @@
 	}
 
 	function contextLabel(item: Extract<RunActivityItem, { kind: 'context' }>): string {
-		return taskLabelForContext(item.phase, item.cause);
+		// A historical transition is not proof that compaction is still running.
+		return taskLabelForContext(item.phase, item.cause, isLive(item));
+	}
+
+	function observedTime(value: string | null): string {
+		if (value === null) return '—';
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'medium' }).format(date);
 	}
 
 	function isLive(item: RunActivityItem): boolean {
@@ -47,11 +56,11 @@
 			name: item.name,
 			args: JSON.stringify(item.arguments),
 			result: item.content
-				.filter((part) => part.type === 'text')
-				.map((part) => part.text)
+				.filter((part) => part.type !== 'file')
+				.map((part) => part.type === 'text' ? part.text : JSON.stringify(part, null, 2))
 				.join('\n') || null,
-			running: item.status === 'running',
-			status: item.status === 'running' ? undefined : item.status,
+			running: active && item.status === 'running',
+			status: item.status === 'running' ? (active ? undefined : 'unknown') : item.status,
 			errorCode: item.errorCode,
 			durationMs: item.durationMs,
 			progress: item.progress,
@@ -124,11 +133,44 @@
 								{animate}
 							/>
 						{:else if entry.item.kind === 'context'}
-							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{contextLabel(entry.item)}</p>
+							<details class="min-w-0 break-words text-xs">
+								<summary class="stage-label min-h-11">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{contextLabel(entry.item)}</summary>
+								<dl class="grid min-w-0 gap-1 break-all md:grid-cols-[max-content_minmax(0,1fr)]">
+									<dt>phase</dt><dd>{entry.item.phase}</dd>
+									<dt>cause</dt><dd>{entry.item.cause ?? '—'}</dd>
+									<dt>before_tokens</dt><dd>{entry.item.beforeTokens ?? '—'}</dd>
+									<dt>after_tokens</dt><dd>{entry.item.afterTokens ?? '—'}</dd>
+									<dt>created_at</dt><dd>{observedTime(entry.item.createdAt)}</dd>
+								</dl>
+							</details>
 						{:else if entry.item.kind === 'stage'}
 							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{stageLabel(entry.item)}</p>
 						{:else if entry.item.kind === 'child'}
 							<ChildTaskActivity item={entry.item} />
+						{:else if entry.item.kind === 'terminal'}
+							<p class="stage-label" data-run-outcome={entry.item.status}>
+								{panelText(entry.item.status === 'completed' ? 'toolCall.completed' : entry.item.status === 'failed' ? 'toolCall.failed' : 'childTask.canceled')}
+								{#if entry.item.message} · {entry.item.message}{/if}
+								{#if entry.item.errorCode}<code>{entry.item.errorCode}</code>{/if}
+							</p>
+						{:else if entry.item.kind === 'approval'}
+							<details class="min-w-0 break-words text-xs">
+								<summary class="min-h-11">
+									{panelText(entry.item.decision === 'approve' ? 'approval.approve' : entry.item.decision === 'deny' ? 'approval.deny' : 'approval.required')} · {entry.item.name ?? entry.item.callId}
+								</summary>
+								<dl class="grid min-w-0 gap-1 break-all md:grid-cols-[max-content_minmax(0,1fr)]">
+									<dt>call_id</dt><dd>{entry.item.callId}</dd>
+									<dt>effect</dt><dd>{entry.item.effect === 'external_mutation' ? panelText('approval.externalMutation') : entry.item.effect === 'read' ? panelText('childTask.read') : entry.item.effect ? panelText('approval.execution') : '—'}</dd>
+									<dt>destination</dt><dd>{entry.item.destination ?? '—'}</dd>
+									<dt>expires_at</dt><dd>{observedTime(entry.item.expiresAt)}</dd>
+									<dt>decided_at</dt><dd>{observedTime(entry.item.decidedAt)}</dd>
+								</dl>
+								<div class="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 font-mono" role="textbox" aria-readonly="true" aria-multiline="true" tabindex="0" aria-label={panelText('approval.arguments')}>{JSON.stringify(entry.item.arguments, null, 2)}</div>
+								{#each entry.item.preview as part}
+									{#if part.type === 'text'}<p>{part.text}</p>
+									{:else}<div class="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 font-mono" role="textbox" aria-readonly="true" aria-multiline="true" aria-label={panelText('toolCall.result')} tabindex="0">{JSON.stringify(part, null, 2)}</div>{/if}
+								{/each}
+							</details>
 						{:else}
 							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} {animate} />
 						{/if}

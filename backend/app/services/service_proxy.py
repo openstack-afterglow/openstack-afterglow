@@ -328,9 +328,9 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
     This transport must not recurse through browser action authorization or
     exchange a package subject token. Native services own policy evaluation.
     """
-    from app.services.service_permissions import SERVICE_ROLE_GRADES
+    from app.services.service_permissions import SERVICE_CAPABILITIES
 
-    if service_type not in SERVICE_ROLE_GRADES:
+    if service_type not in SERVICE_CAPABILITIES:
         raise HTTPException(status_code=403, detail="Unknown service policy")
     token = token_info.get("token")
     project_id = token_info.get("project_id")
@@ -383,7 +383,7 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
         payload = response.json()
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Invalid native policy response") from exc
-    known = {leaf for leaves in SERVICE_ROLE_GRADES[service_type].values() for leaf in leaves}
+    known = frozenset(SERVICE_CAPABILITIES[service_type])
     if (
         not isinstance(payload, dict)
         or payload.get("service") != service_type

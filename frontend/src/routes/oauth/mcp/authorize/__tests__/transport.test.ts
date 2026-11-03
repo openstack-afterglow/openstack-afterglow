@@ -6,7 +6,8 @@ import { refreshSession } from '$lib/api/client';
 import type * as ApiClient from '$lib/api/client';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/public-entry';
-import { pendingMcpConsentTicket } from '$lib/utils/mcpConsent';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { pendingMcpConsentTicket, postAuthDestination } from '$lib/utils/mcpConsent';
 
 const { goto, page, metadataGet } = vi.hoisted(() => {
 	let value = { url: new URL('http://localhost/oauth/mcp/authorize'), data: {} };
@@ -66,7 +67,12 @@ function changeOwner(kind: typeof changes[number], unmount: () => void) {
 function decisions() {
 	return mockFetch.mock.calls.filter(([url]) => /\/consents\/[^/]+\/(approve|deny)$/.test(String(url)));
 }
+async function reviewPermissions() {
+	await fireEvent.click(await screen.findByRole('button', { name: commonT('pagination.next') }));
+	await screen.findByRole('checkbox', { name: t('mcpConsent.duration.ongoingLabel') });
+}
 async function approve() {
+	await reviewPermissions();
 	await fireEvent.click(await screen.findByRole('button', { name: t('mcpConsent.actions.allowRead') }));
 }
 
@@ -85,7 +91,7 @@ beforeEach(() => {
 			id: `project-${id}`, name: id === 'a' ? 'Current project' : 'Second project',
 			can_write: id === 'a', service_permissions: { drover: [], palimpsest: [], waygate: [], lumen: [] }, service_errors: {},
 		}))
-		: { client_id: 'desktop', client_name: 'Desktop MCP', redirect_uri: 'https://client.example.test/callback', scopes: ['mcp:read', 'mcp:write'], grant_deadline: '2026-12-31T23:59:59Z' });
+		: { client_id: 'desktop', client_name: 'Desktop MCP', redirect_uri: 'https://client.example.test/callback', scopes: ['mcp:read', 'mcp:write'], grant_deadline: '2026-12-31T23:59:59Z', ongoing_supported: true });
 	const realWindow = window;
 	vi.stubGlobal('window', new Proxy(realWindow, {
 		get(target, key) {
@@ -108,18 +114,72 @@ afterEach(() => {
 
 describe('MCP consent real decision transport', () => {
 	it('sends an attenuated read payload with explicit projects and no-store transport', async () => {
-		mockFetch.mockResolvedValueOnce(Response.json({ redirect_uri: 'https://client.example.test/approved' }));
+		mockFetch.mockResolvedValueOnce(Response.json({ redirect_uri: 'https://client.example.test/approved', effective_ongoing: true }));
 		render(Page);
 		await approve();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith('https://client.example.test/approved'));
 		const [url, options] = decisions()[0];
 		expect(String(url)).toContain(`/api/v1/auth/mcp-oauth/consents/${ticket}/approve`);
-		expect(JSON.parse(options.body)).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] });
+		expect(JSON.parse(options.body)).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: ['project-a'], ongoing: true });
 		expect(new Headers(options.headers).get('Authorization')).toBe('Bearer token-a');
 		expect(new Headers(options.headers).get('X-Project-Id')).toBe('project-a');
 		expect(options.cache).toBe('no-store');
 		expect(options.credentials).toBe('include');
 		expect(pendingMcpConsentTicket()).toBeNull();
+	});
+
+	it.each([{}, { effective_ongoing: false }])('omits ongoing from the real transport after finite opt-out %j', async (confirmation) => {
+		mockFetch.mockResolvedValueOnce(Response.json({ redirect_uri: 'https://client.example.test/approved', ...confirmation }));
+		render(Page);
+		await reviewPermissions();
+		await fireEvent.click(screen.getByRole('checkbox', { name: t('mcpConsent.duration.ongoingLabel') }));
+		expect(decisions()).toHaveLength(0);
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.actions.allowRead') }));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith('https://client.example.test/approved'));
+		expect(JSON.parse(decisions()[0][1].body)).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] });
+	});
+
+	it('keeps the old finite GET and approval wire contract truthful during a rolling upgrade', async () => {
+		const currentGet = metadataGet.getMockImplementation()!;
+		metadataGet.mockImplementation(async (path: string) => {
+			const result = await currentGet(path);
+			if (path === '/api/v1/auth/mcp-projects?preview=true') return result;
+			const legacy = { ...result };
+			delete legacy.ongoing_supported;
+			return legacy;
+		});
+		mockFetch.mockResolvedValueOnce(Response.json({ redirect_uri: 'https://client.example.test/approved' }));
+		render(Page);
+		await approve();
+		await waitFor(() => expect(assign).toHaveBeenCalledWith('https://client.example.test/approved'));
+		expect(JSON.parse(decisions()[0][1].body)).toEqual({ access_level: 'read', project_scope: 'selected', project_ids: ['project-a'] });
+	});
+
+	it.each([{}, { effective_ongoing: false }, { effective_ongoing: 'true' }])('halts an unconfirmed ongoing HTTP result without redirect or replay %j', async (confirmation) => {
+		mockFetch.mockResolvedValueOnce(Response.json({ redirect_uri: 'https://client.example.test/approved', ...confirmation }));
+		render(Page);
+		await approve();
+		await screen.findByText(t('mcpConsent.error.durationUnconfirmed'));
+		expect(decisions()).toHaveLength(1);
+		expect(JSON.parse(decisions()[0][1].body).ongoing).toBe(true);
+		expect(assign).not.toHaveBeenCalled();
+		expect(pendingMcpConsentTicket()).toBeNull();
+		expect(postAuthDestination('/dashboard')).toBe('/dashboard');
+		expect(screen.queryByRole('button', { name: t('mcpConsent.actions.allowRead') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcpConsent.actions.retry') })).toBeNull();
+	});
+
+	it('does not treat a revoked authorization rejection as approval or automatically retry it', async () => {
+		mockFetch.mockResolvedValueOnce(Response.json({ detail: 'Authorization revoked' }, { status: 403 }));
+		render(Page);
+		await approve();
+		await screen.findByText('Authorization revoked');
+		expect(decisions()).toHaveLength(1);
+		expect(JSON.parse(decisions()[0][1].body).ongoing).toBe(true);
+		expect(assign).not.toHaveBeenCalled();
+		expect(pendingMcpConsentTicket()).toBe(ticket);
+		expect((screen.getByRole('checkbox', { name: t('mcpConsent.duration.ongoingLabel') }) as HTMLInputElement).disabled).toBe(false);
+		expect(get(auth).userId).toBe(actor.userId);
 	});
 
 	it.each(changes)('cancels a captured payload waiting for refresh after %s', async (kind) => {

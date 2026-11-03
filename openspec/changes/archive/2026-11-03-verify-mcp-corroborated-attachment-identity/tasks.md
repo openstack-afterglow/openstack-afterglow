@@ -1,0 +1,5 @@
+## Implementation Tasks
+
+- [x] Reproduce native Nova GET/Cinder attachment-ID contradiction under normal POST omission. Both MCP/Lumen failed before with unintended success; artifact552/corroboration-before.log.
+- [x] Compare corroborating attachment IDs and prove unknown plus same/new-key no-replay across MCP and Lumen; focused399 passed and standalone original invocation/ledger+installedSDK/nativeHTTP smoke confirmed one native POST, one unknown row, three attempts blocked after first send. Identity/persistence/policy/resources remain synthetic; no production operations.
+- [x] Run focused/full shared gate, update existing docs/changelog/evidence and archive; preserve index and production. Final actual shared-dev whole gate artifact559 exit0: backend13478/94skip, frontend6742/511files, contracts258, realDB168/52deselected, Ruff844. Source92bac6f1065c18659a487bcb2da59148253d59844d8d5cee2be9a3ba422f19e1/4012files; owned two Python hashes unchanged. Owned harness/native servers/test services removed, no cloud/commit/push/deployment or original index writes.

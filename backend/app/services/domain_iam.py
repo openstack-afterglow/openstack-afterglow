@@ -517,6 +517,9 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
         raise HTTPException(422, "Choose unique project role IDs")
     allowed = await project_service.assignable_roles(project_id, token_info, domain_management=True)
     catalog = await _provider_call(identity_roles._trusted_catalog)
+    retired_ids = {row["id"] for row in catalog if row["name"].casefold() in identity_roles.RETIRED_SERVICE_ROLE_NAMES}
+    if set(role_ids) & retired_ids:
+        raise HTTPException(422, "Invitation references retired service roles; re-invite with standard project roles")
     safe = {
         row["id"]
         for row in allowed["roles"]
@@ -528,7 +531,7 @@ async def validate_invitation_roles(project_id, role_ids, token_info):
     for rid in role_ids:
         if by_id[rid]["name"] in project_service._PROJECT_GRADES:
             project_service._required_project_role(catalog, by_id[rid]["name"], require_hierarchy=True)
-    if not any(by_id[rid]["name"] in project_service._PROJECT_GRADES for rid in role_ids):
+    if not any(by_id[rid]["name"] in {*project_service._PROJECT_GRADES, "member", "reader"} for rid in role_ids):
         raise HTTPException(422, "An explicit project membership role is required")
 
 

@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "Pemadatan konteks bermula",
+	"window.detachedTemporaryHistory": "Rekod pelaksanaan sementara berasingan ({count})",
+	"window.temporaryOrderUnknown": "Kedudukan pelaksanaan ini dalam perbualan tidak diketahui, jadi rekodnya dipaparkan berasingan.",
+	"window.moreTemporaryHistory": "Muatkan lagi rekod pelaksanaan sementara",
 	"childTask.title": "Tugas anak {index}",
 	"childTask.requested": "Tugas anak diminta",
 	"childTask.canceled": "Dibatalkan",

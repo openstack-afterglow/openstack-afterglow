@@ -7,7 +7,7 @@ import hmac
 import json
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Literal
 from uuid import uuid4
@@ -17,9 +17,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.database import get_session_factory
 from app.models.mcp_authority import McpToolInvocation
-from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant
+from app.services.mcp_control_plane.authentication import McpAuthenticationError, McpPrincipal, lock_principal_grant
 from app.services.mcp_control_plane.authority import (
     McpAuthorityError,
+    McpGrantStateError,
     _as_utc,
     _now,
     grant_is_expired,
@@ -30,6 +31,14 @@ from app.services.mcp_control_plane.registry import REGISTRY_VERSION, RegistryEn
 
 class McpInvocationError(RuntimeError):
     """The ledger is unavailable or a call cannot cross its durable boundary."""
+
+
+class McpMutationAuthorizationDenied(McpInvocationError):
+    """Authority definitively denied before the durable send boundary changed."""
+
+
+class McpMutationPreDispatchExpired(McpInvocationError):
+    """A never-authorized expired claim was durably committed as failed."""
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -124,7 +133,8 @@ async def claim_mutation(
     now = _now()
     try:
         async with _factory()() as session, session.begin():
-            grant = await lock_principal_grant(session, principal, write=True)
+            checked = replace(principal, oauth_admitted_invocation_id=None)
+            grant = await lock_principal_grant(session, checked, write=True)
             _validate_active_write_grant(grant, principal)
             existing = await session.scalar(
                 select(McpToolInvocation)
@@ -230,14 +240,19 @@ async def fail_pre_dispatch(
 
 async def authorize_mutation_dispatch(
     principal: McpPrincipal, *, invocation_id: str, source: Literal["mcp", "lumen"] = "mcp"
-) -> None:
+) -> McpPrincipal:
     """Cross the no-retry send boundary only while the current grant remains valid."""
     invocation_source = _invocation_source(source)
-    now = _now()
+    expired_before_dispatch = False
     try:
         async with _factory()() as session, session.begin():
-            grant = await lock_principal_grant(session, principal, write=True)
-            _validate_active_write_grant(grant, principal)
+            try:
+                # An earlier admission receipt cannot authorize a new send.
+                checked = replace(principal, oauth_admitted_invocation_id=None)
+                grant = await lock_principal_grant(session, checked, write=True)
+                _validate_active_write_grant(grant, checked)
+            except (McpAuthenticationError, McpGrantStateError, McpInvocationError) as exc:
+                raise McpMutationAuthorizationDenied("MCP mutation authority denied before authorization") from exc
             invocation = await session.scalar(
                 select(McpToolInvocation)
                 .where(
@@ -247,20 +262,31 @@ async def authorize_mutation_dispatch(
                 )
                 .with_for_update()
             )
+            now = _now()
             if (
                 invocation is None
                 or invocation.status != "claimed"
-                or invocation.lease_expires_at is None
-                or _as_utc(invocation.lease_expires_at) <= now
+                or invocation.sent_at is not None
+                or invocation.dispatch_authorized_at is not None
             ):
-                if invocation is not None and invocation.status == "claimed":
-                    invocation.status = "unknown"
-                    invocation.lease_expires_at = None
                 raise McpInvocationError("MCP mutation is no longer dispatchable")
-            invocation.status = "dispatch_authorized"
-            invocation.dispatch_authorized_at = now
-            invocation.lease_expires_at = mutation_lease_expiry()
-            invocation.sent_at = now
+            if invocation.lease_expires_at is None or _as_utc(invocation.lease_expires_at) <= now:
+                invocation.status = "failed"
+                invocation.lease_expires_at = None
+                invocation.error = "MCP mutation preview lease expired before dispatch authorization"
+                expired_before_dispatch = True
+            else:
+                invocation.status = "dispatch_authorized"
+                invocation.dispatch_authorized_at = now
+                invocation.lease_expires_at = mutation_lease_expiry()
+                invocation.sent_at = now
+        # Raise only after the transaction commits. A failed/ambiguous commit
+        # must not masquerade as proof that the terminal record was persisted.
+        if expired_before_dispatch:
+            raise McpMutationPreDispatchExpired("MCP mutation expired before dispatch authorization")
+        return (
+            replace(principal, oauth_admitted_invocation_id=invocation_id) if principal.source == "oauth" else principal
+        )
     except (McpAuthorityError, McpInvocationError):
         raise
     except Exception as exc:

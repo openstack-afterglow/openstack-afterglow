@@ -30,6 +30,7 @@ from app.services.mcp_control_plane.clients import (
 )
 from app.services.mcp_control_plane.ledger import (
     McpInvocationError,
+    McpMutationAuthorizationDenied,
     authorize_mutation_dispatch,
     claim_mutation,
     complete_mutation,
@@ -198,7 +199,15 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             error="MCP pre-dispatch validation failed",
         )
         raise
-    await authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id)
+    try:
+        principal = await authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id)
+    except McpMutationAuthorizationDenied:
+        await fail_pre_dispatch(
+            principal,
+            invocation_id=claim.invocation_id,
+            error="MCP authority denied before dispatch authorization",
+        )
+        raise
     try:
         result = await dispatch(ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed)
         serialized = output_payload(entry, result)

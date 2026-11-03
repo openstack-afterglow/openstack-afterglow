@@ -7,6 +7,27 @@
 
 ## [Unreleased]
 
+## [1.32.5] - 2026-11-04
+
+### Added
+
+- MCP에 flavor·active boot image·본인 SSH keypair의 목록/상세 조회 도구6개를 추가합니다. 승인 프로젝트의 restricted credential로 private flavor ACL·수락된 공유 이미지·provider key owner를 확인하고, bounded marker 조회와 CPU/RAM 선택·GPU/사용기간 표시·boot 요구량을 제공합니다. 공개/개인키 원문·제어 metadata는 반환하지 않습니다. 기존 네트워크 조회·VM 연결 도구와 쓰기 권한·idempotency·unknown 재전송 금지 경계는 재사용합니다. 새 DB/config/native 정책·운영 배포·게스트 SSH 실행 기능은 포함하지 않습니다.
+- Flavor 목록은 설치된 SDK의 기본 global `None` query를 피하도록 native `is_public=True`를 명시해 public과 대상 프로젝트 private catalog만 요청합니다. CPU/RAM 필터를 ACL·extra-spec 조회 전에 적용하고 관리자 대상 ACL 방어·raw-page marker를 유지합니다. 실제 SDK HTTP 회귀로 불필요한 타 프로젝트/다른 사양 조회를 차단하며 운영 배포는 별도입니다.
+- MCP에 네트워크·서브넷 생성/수정, 포트 CRUD, 소유 보안그룹 조회, VM 기존 인터페이스 추가/제거·인터페이스별 보안그룹 교체, 볼륨 이름/설명 수정·오프라인 확장·VM 데이터 볼륨 연결/분리를 추가합니다. 엄격한 프로젝트/parent/binding 검증, Neutron revision 조건, 생략/null 구분, 기존 write 동의·preview·idempotency·unknown 재전송 금지를 유지합니다. Provider/shared network 수정·인프라 port 직접 변경·root/강제 디스크 분리·port-security 비활성화·운영 배포는 포함하지 않습니다.
+
+### Fixed
+
+- VM 볼륨 연결의 Nova POST가 attachment ID를 생략해도 관측된 Nova GET ID를 Cinder binding ID와 직접 대조합니다. 프로젝트·VM·volume이 같아도 attachment ID가 다르면 성공으로 기록하지 않고 unknown·동일/새 key 재전송 금지를 유지합니다.
+- 계정의 OAuth 연결 카드와 삭제 확인에서 client ID 기반 이름과 저장된 프로젝트 UUID를 표시하지 않습니다. 현재 목록 순번·프로젝트 이름·권한·만료와 정확한 grant 삭제는 유지합니다. 인증된 API 응답 자체의 식별자 계약은 변경하지 않습니다.
+- 역할 preset의 서비스 implication 일괄 제거와 여러 관리자 포함 역할의 동시 해제 전에 결과 전체를 검증하여 도메인 마지막 관리자를 보호합니다. 추적 실패한 임시 채팅 이력은 실제 종료를 추정하지 않고 진행 표시만 멈춥니다.
+
+### Changed
+
+- MCP OAuth는 새 소유자 동의에서 취소 전까지 자동 갱신을 기본 제공하고, 기존 유한 승인은 한 번 재동의해야 합니다. 발급 당시 프로젝트·scope·role ID 상한과 현재 역할·회수 검사를 유지하며 SQL106 적용 및 실제 Keystone 비만료 restricted credential 정책 검증이 선행돼야 합니다. MCP 권한 미리보기에서 Lumen 서비스/API 키 제어를 제외하고 Lumen의 cloud MCP 소비는 유지합니다.
+- 로그인 시안의 문자 artwork·브랜드·언어/테마·반응형 셸을 회원가입·이메일 인증/계정 생성·초대·비밀번호 재설정/최초 설정·이메일 변경·외부 로그인 연결·도메인/프로젝트 선택·MCP/Claude 연결 화면에 공통 적용합니다. MCP는 클라이언트/콜백/요청 권한 확인 뒤 실제 프로젝트와 접근 수준을 선택하며, 긴 보안 안내·오류·권한 목록은 자르지 않고 내부 스크롤로 보존합니다. 기존 인증·일회용 토큰·승인/거절·권한 및 비밀번호 제거 경계는 유지합니다.
+- Lumen·Drover·Waygate·Palimpsest의 프로젝트 권한을 표준 `member` 이상 생성·관리·삭제, `reader` 조회/허용된 콘텐츠 읽기로 통합합니다. 별도 서비스 등급·세부 역할 배정/seed와 UI 영역 탭을 제거하고 native capability는 내부 action 계약으로 유지합니다. 전역 system-admin·owner/private/project·원래 credential/키 scope·MCP 동의·budget/unknown 경계는 유지하며 기존 IAM 데이터와 운영 정책을 자동 삭제/교체하지 않습니다. Retired 역할을 담은 pending 초대는 표준 역할로 재발급해야 합니다.
+- 채팅은 스트림의 model/context/tool/승인/하위 작업 경과와 성공·실패·취소 결과를 완료/이력 재조회에도 같은 timeline으로 보존합니다. Draft→admission→authoritative readback의 node identity와 열린 상세를 유지하고, 저장/임시 대화의 같은 초 retry·turn 순서를 immutable admission/gap metadata로 판정합니다. 순서를 입증할 수 없는 이전 임시 실행은 별도로 조회하고 bounded paging/409의 명시 새 조회를 지원하며 추론은 재실행하지 않습니다. 실제 federation method `openid` 누락으로 Lumen 관리자가 provider/statistics403을 받던 원인도 수정하며 운영 반영은 별도입니다.
+
 ## [1.32.4] - 2026-11-03
 
 ### Fixed

@@ -7,7 +7,7 @@ import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), clearAuth: vi.fn(), close: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('$app/stores', () => ({ page: writable({ params: { token: 'recovery_token_12345678901234567890' } }) }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError }));
-vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
+vi.mock('$app/navigation', () => ({ goto: mocks.goto, invalidate: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$lib/stores/cloudShell.svelte', () => ({ cloudShell: { close: mocks.close } }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 vi.mock('$lib/stores/auth', () => ({
@@ -101,6 +101,18 @@ describe('one-use recovery token', () => {
   expect(await screen.findByText('original-alice')).toBeTruthy();
   expect(mocks.get).toHaveBeenCalledWith(`/api/v1/auth/recovery/${token}`, undefined, undefined, expect.objectContaining({ cache: 'no-store', refresh: true, replayOnUnauthorized: false }));
   expect(screen.getByRole('link', { name: 'Back to sign-in' }).getAttribute('href')).toBe('/login');
+  expect(mocks.post).not.toHaveBeenCalled();
+ });
+ it('keeps a consumed username result when changing the open page language without inspecting again', async () => {
+  mocks.get.mockResolvedValue({ kind: 'username', email: 'alice@example.com', username: 'original-alice', identity_domain_id: 'original-home', identity_domain_name: 'Home' });
+  render(Recovery);
+  await screen.findByText('original-alice');
+  await fireEvent.click(document.getElementById('recover-token-locale')!);
+  await fireEvent.click(document.querySelector('button.locale-choice[lang="ko"]')!);
+  await screen.findByRole('heading', { level: 1, name: '계정 찾기' });
+  expect(screen.getByText('original-alice')).toBeTruthy();
+  expect(screen.getByText('original-home')).toBeTruthy();
+  expect(mocks.get).toHaveBeenCalledOnce();
   expect(mocks.post).not.toHaveBeenCalled();
  });
  it('validates matching password, consumes once without replay, and clears secrets before waiting', async () => {

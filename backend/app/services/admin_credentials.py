@@ -11,6 +11,7 @@ from keystoneauth1 import exceptions as auth_exc
 from openstack import exceptions as sdk_exc
 
 from app.models.admin_credentials import ApplicationCredentialCreate
+from app.services.service_permissions import RETIRED_SERVICE_ROLE_NAMES
 
 
 class ScopeDenied(Exception):
@@ -225,6 +226,7 @@ def creation_context(conn, token_info, domain_id):
         "roles": [
             {"id": role_id, "name": role_names[index] if index < len(role_names) else ""}
             for index, role_id in enumerate(role_ids)
+            if index >= len(role_names) or role_names[index].casefold() not in RETIRED_SERVICE_ROLE_NAMES
         ],
     }
 

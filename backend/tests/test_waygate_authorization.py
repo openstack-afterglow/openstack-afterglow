@@ -182,6 +182,8 @@ async def test_current_native_system_grant_admits_platform_policy_then_revocatio
 async def test_stale_system_claim_and_project_admin_never_admit_platform_policy(bff):
     client, directory, upstream, session = bff
     session["system_claim"] = True
+    # A retained legacy grant is known native data, but never system authority.
+    directory.roles.append({"id": "waygate_admin-role", "name": "waygate_admin", "domain_id": None})
     directory.assignments = _project_grants("member", "admin", "waygate_admin")
     assert (await client.get("/api/v1/waygate/admin/resource-policies")).status_code == 403
     assert upstream == []

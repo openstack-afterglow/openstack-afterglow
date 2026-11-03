@@ -181,7 +181,21 @@ async def _execute_tool(
                 principal, invocation_id=claim.invocation_id, error="MCP pre-dispatch validation failed", source="lumen"
             )
             raise
-        await ledger.authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id, source="lumen")
+        try:
+            principal = await ledger.authorize_mutation_dispatch(
+                principal,
+                invocation_id=claim.invocation_id,
+                source="lumen",
+            )
+        except ledger.McpMutationAuthorizationDenied:
+            await ledger.fail_pre_dispatch(
+                principal,
+                invocation_id=claim.invocation_id,
+                error="MCP authority denied before dispatch authorization",
+                source="lumen",
+            )
+            raise
+        context = registry.ConsumerCloudContext(principal=principal)
         try:
             payload = registry.output_payload(entry, await registry.dispatch(context, entry=entry, arguments=parsed))
             await ledger.complete_mutation(principal, invocation_id=claim.invocation_id, result=payload, source="lumen")

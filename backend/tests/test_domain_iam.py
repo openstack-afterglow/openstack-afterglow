@@ -506,7 +506,7 @@ async def test_domain_replacement_rejects_new_native_admin_before_mixed_grants(d
         await project_service.replace_member_roles(
             PROJECT,
             "member",
-            [rid("lumen_user"), rid("admin")],
+            [rid("reader"), rid("admin")],
             manager(),
             domain_management=True,
             additive=additive,
@@ -521,18 +521,18 @@ async def test_domain_replacement_only_removes_existing_direct_native_admin(dire
     directory.direct.extend(assignment("member", name) for name in ("admin", "reader", "unrelated"))
     with pytest.raises(HTTPException) as protected:
         await project_service.replace_member_roles(
-            PROJECT, "member", [rid("project_member"), rid("admin")], manager(), domain_management=True
+            PROJECT, "member", [rid("project_member"), rid("reader"), rid("admin")], manager(), domain_management=True
         )
     assert protected.value.status_code == 403
     assert directory.calls == []
     removed = await project_service.replace_member_roles(
-        PROJECT, "member", [rid("project_member")], manager(), domain_management=True
+        PROJECT, "member", [rid("project_member"), rid("reader")], manager(), domain_management=True
     )
     assert set(removed["direct_role_ids"]) == {rid("project_member"), rid("reader"), rid("unrelated")}
     assert directory.calls == [("revoke", "member", rid("admin"))]
     with pytest.raises(HTTPException) as denied:
         await project_service.replace_member_roles(
-            PROJECT, "member", [rid("project_member"), rid("admin")], manager(), domain_management=True
+            PROJECT, "member", [rid("project_member"), rid("reader"), rid("admin")], manager(), domain_management=True
         )
     assert denied.value.status_code == 422
     assert directory.calls == [("revoke", "member", rid("admin"))]
@@ -543,8 +543,8 @@ async def test_domain_replacement_only_removes_existing_direct_native_admin(dire
     "desired",
     [
         [],
-        ["project_member", "lumen_user"],
-        ["project_member", "admin", "lumen_user"],
+        ["project_member", "reader"],
+        ["project_member", "admin", "reader"],
         ["admin"],
     ],
     ids=["admin-plus-other-removal", "admin-removal-plus-add", "retain-admin-plus-add", "retain-admin-plus-removal"],
@@ -1295,7 +1295,10 @@ async def test_disabled_owner_cannot_satisfy_last_owner_role_removal(directory):
 
 @pytest.mark.asyncio
 async def test_existing_invitation_acceptance_preserves_admin_and_unrelated_managed_roles(directory, enrollments):
+    # Retained native IDs are explicit directory data, not fresh preset roles.
+    directory.add_roles("lumen-chat_user")
     directory.direct.append(assignment("admin", "lumen-chat_user"))
+    directory.direct.append(assignment("admin", "unrelated"))
     result, token = await invite(directory, enrollments, "admin@test.invalid")
     before = project_service._direct_ids(directory.direct, "admin")
     async with enrollments() as session:
@@ -1533,7 +1536,9 @@ async def test_native_membership_mutation_invalidates_domain_qualified_caches(di
 
 @pytest.mark.asyncio
 async def test_failed_existing_acceptance_only_compensates_new_grants(directory, enrollments):
+    directory.add_roles("lumen-chat_user")
     directory.direct.append(assignment("admin", "lumen-chat_user"))
+    directory.direct.append(assignment("admin", "unrelated"))
     before = project_service._direct_ids(directory.direct, "admin")
     result, token = await invite(directory, enrollments, "admin@test.invalid")
     grant = directory.ks.roles.grant

@@ -1,0 +1,7 @@
+## Implementation Tasks
+
+- [x] 1. Implement safe bounded flavor list/get with CPU/RAM selection, private ACL validation and GPU/schedule metadata. Native member catalogs reuse project filtering; verified native admins receive extra exact ACL checks.
+- [x] 2. Implement active visible image list/get with exact native member/image response checks, boot requirements and safe OS metadata, including explicit community visibility discovery.
+- [x] 3. Implement exact-caller SSH key list/get without key material or SDK-seeded ownership evidence. Explicit native2.35 bounded list plus unseeded owner-show avoids SDK3.3 legacy pagination limitations.
+- [x] 4. Register six read-only tools under existing project/grant scope and verify existing network list/get and attach behavior. Final behavior-focused510pass and actual MCP/native SDK smoke27checks/43GET/one synthetic attach dispatch passed; no production mutation.
+- [x] 5. Run focused authority/redaction/pagination regressions, actual installed SDK/MCP runtime smoke and the project gate; update existing documentation, preserve shared changes and archive. Focused510 and MCP/nativeHTTP27checks43GET/one synthetic attach pass. Shared full gate stopped with42 failures in unrelated IAM/dashboard/Waygate families; exact owned7source/test overlay on baseline dev passed the unmodified full gate (backend12962/106skip, frontend6667/510files, contracts183, realDB168/52deselected, Ruff836). Record both boundaries, no production mutation/deployment; cleanup/archive owned qualification artifacts only.

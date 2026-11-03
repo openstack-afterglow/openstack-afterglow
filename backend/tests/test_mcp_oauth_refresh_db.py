@@ -215,6 +215,10 @@ async def mutation_fixture(issued, monkeypatch, *, status="dispatch_authorized",
 
     monkeypatch.setattr(ledger, "get_session_factory", lambda: issued.factory)
     monkeypatch.setattr(operations, "get_session_factory", lambda: issued.factory)
+    async with issued.factory() as session:
+        family_id = await session.scalar(
+            select(McpOAuthTokenFamily.id).where(McpOAuthTokenFamily.grant_id == issued.grant_id)
+        )
     principal = McpPrincipal(
         grant_id=issued.grant_id,
         user_id="owner-" + issued.grant_id,
@@ -222,12 +226,17 @@ async def mutation_fixture(issued, monkeypatch, *, status="dispatch_authorized",
         credential_epoch=1,
         scopes=frozenset(("mcp:read", "mcp:write")),
         source="oauth",
+        oauth_family_id=family_id,
     )
     invocation_id = str(uuid4())
     now = datetime.now(UTC)
     async with issued.factory() as session, session.begin():
         grant = await session.get(McpDelegatedGrant, issued.grant_id)
         grant.access_level = "manage"
+        for issued_token in (
+            await session.scalars(select(McpOAuthToken).where(McpOAuthToken.family_id == family_id))
+        ).all():
+            issued_token.scopes = ["mcp:read", "mcp:write"]
         session.add(
             McpToolInvocation(
                 id=invocation_id,
@@ -389,7 +398,8 @@ async def test_correct_client_replay_still_revokes_but_other_client_does_not(iss
     assert state[1] == before[1] + 1
     assert state[2] is not None
     assert state[4] is not None
-    assert all(revoked_at is not None for _, _, revoked_at in state[5])
+    # Family revocation is authoritative; no unbounded token-row rewrite is required.
+    assert state[5] == before[5]
     denied = await refresh(
         issued_refresh,
         client_id=issued_refresh.client_id,
@@ -705,6 +715,7 @@ async def oauth_consent(issued_refresh, monkeypatch):
             self.session = SimpleNamespace(
                 auth=SimpleNamespace(
                     get_access=lambda session: SimpleNamespace(
+                        _data={"token": {"methods": ["token", "password"]}},
                         user_id=owner,
                         user_domain_id="default",
                         project_domain_id="default",
@@ -742,10 +753,16 @@ async def oauth_consent(issued_refresh, monkeypatch):
                 name=kwargs["name"],
                 project_id=self._afterglow_project_id,
                 roles=[{"id": "role-" + role, "name": role} for role in memberships[self._afterglow_project_id]],
+                unrestricted=kwargs["unrestricted"],
+                expires_at=kwargs.get("expires_at"),
             )
             created.append((self._afterglow_project_id, kwargs["name"], credential.id))
             remote[credential.id] = credential
             return credential
+
+        def get_application_credential(self, user, value):
+            assert user == owner
+            return remote[value]
 
         def find_application_credential(self, user, value, **kwargs):
             assert user == owner
@@ -815,6 +832,7 @@ async def approve_and_exchange(consent, **choices):
         **choices,
     )
     assert result.state == "bound-state"
+    assert result.effective_ongoing is choices.get("ongoing", False)
     exchange = await consent.client.post(
         "/api/v1/mcp/oauth/token",
         data={
@@ -1003,6 +1021,13 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
         omit_anchor=False,
         returned_project=None,
         current_role_names={},
+        methods=["token"],
+        delegated_metadata={},
+        returned_unrestricted=False,
+        returned_expiry=None,
+        omit_create_unrestricted=False,
+        omit_get_unrestricted=False,
+        credential_reads=[],
     )
     endpoint = "https://keystone.example.test/v3"
     production_connect = get_openstack_connection
@@ -1029,7 +1054,8 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
             now = datetime.now(UTC)
             payload = {
                 "token": {
-                    "methods": ["token"],
+                    "methods": state.methods,
+                    **state.delegated_metadata,
                     "issued_at": now.isoformat(),
                     "expires_at": (now + timedelta(hours=1)).isoformat(),
                     "user": {
@@ -1072,7 +1098,8 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
                 assert target in consent.memberships
                 value = json.loads(request.body)["application_credential"]
                 assert value["unrestricted"] is False
-                assert timeutils.parse_isotime(value["expires_at"]).astimezone(UTC) > datetime.now(UTC)
+                if "expires_at" in value:
+                    assert timeutils.parse_isotime(value["expires_at"]).astimezone(UTC) > datetime.now(UTC)
                 # Explicit roles are accepted only for a verified closed subset;
                 # the normal path still detects current-graph expansion hazards.
                 requested = value.get("roles")
@@ -1102,11 +1129,19 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
                         "roles": roles,
                         "project_id": state.returned_project or target,
                         "user_id": consent.owner,
+                        "unrestricted": state.returned_unrestricted,
+                        "expires_at": state.returned_expiry or value.get("expires_at"),
                     }
                     consent.remote[credential["id"]] = credential
                     consent.created.append((target, value["name"], credential["id"]))
                     state.creates.append(value)
-                    payload = {"application_credential": credential}
+                    payload = {
+                        "application_credential": {
+                            key: item
+                            for key, item in credential.items()
+                            if not (state.omit_create_unrestricted and key == "unrestricted")
+                        }
+                    }
                     status = 201
             elif request.method == "DELETE":
                 credential_id = path.rsplit("/", 1)[-1]
@@ -1124,9 +1159,16 @@ async def sdk_oauth_consent(oauth_consent, monkeypatch):
                 }
             elif request.method == "GET":
                 credential = consent.remote.get(path.rsplit("/", 1)[-1])
+                state.credential_reads.append(path.rsplit("/", 1)[-1])
                 status = 200 if credential else 404
                 payload = (
-                    {"application_credential": credential}
+                    {
+                        "application_credential": {
+                            key: item
+                            for key, item in credential.items()
+                            if not (state.omit_get_unrestricted and key == "unrestricted")
+                        }
+                    }
                     if credential
                     else {"error": {"code": 404, "title": "Not Found", "message": "absent"}}
                 )
@@ -1435,3 +1477,1179 @@ async def test_oauth_sdk_wrong_returned_project_cleans_by_saved_id(sdk_oauth_con
         grant = await db.get(McpDelegatedGrant, request.grant_id)
         assert grant.status == "revoked" and grant.cleanup_pending is False
         assert await db.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None
+
+
+async def test_ongoing_native_consent_rotates_past_old_deadline_without_authority_expansion(
+    sdk_oauth_consent, monkeypatch
+):
+    from app.services.mcp_control_plane import oauth_authority
+    from app.services.mcp_control_plane.authority import validate_grant_project
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = sdk_oauth_consent
+    consent.sdk.methods = ["token", "password"]
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, project_scope="all", access_level="manage")
+    assert all("expires_at" not in value and value["unrestricted"] is False for value in consent.sdk.creates)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.expires_at is None and grant.oauth_ongoing is True
+        assert grant.consented_at is not None
+        ceiling = grant.issued_role_ceiling
+        assert ceiling == {
+            "A": [{"id": "role-member", "name": "member"}],
+            "B": [{"id": "role-reader", "name": "reader"}],
+        }
+        original_deadline = await session.scalar(
+            select(McpOAuthAuthorizationRequest.grant_deadline).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+    later = datetime.now(UTC) + timedelta(days=400)
+    monkeypatch.setattr(oauth_authority, "_now", lambda: later)
+    consent.memberships["C"] = ["admin"]
+    await sweep_delegated_authority(consent.factory, now=later)
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    first = await refresh(issued, client_id=issued.client_id, scope="mcp:read")
+    assert first.status_code == 200
+    next_tokens = first.json()
+    assert 0 < next_tokens["expires_in"] <= 3600
+    assert next_tokens["scope"] == "mcp:read"
+    rejected = await refresh(
+        issued, client_id=issued.client_id, token=next_tokens["refresh_token"], scope="mcp:read mcp:write"
+    )
+    assert rejected.status_code == 400
+    second = await refresh(issued, client_id=issued.client_id, token=next_tokens["refresh_token"])
+    assert second.status_code == 200 and second.json()["scope"] == "mcp:read"
+    async with consent.factory() as session, session.begin():
+        grant, scopes = await oauth_authority.resolve_oauth_access_token(
+            session, raw_token=second.json()["access_token"], resource=_URLS.resource
+        )
+        assert grant.id == grant_id and scopes == ("mcp:read",)
+        assert grant.issued_role_ceiling == ceiling and grant.expires_at is None
+        assert [project["id"] for project in grant.approved_projects] == ["A", "B"]
+        with pytest.raises(oauth_authority.McpAuthorityError, match="outside"):
+            validate_grant_project(grant, "C")
+        family = await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id))
+        refresh_rows = (
+            await session.scalars(
+                select(McpOAuthToken).where(McpOAuthToken.family_id == family.id, McpOAuthToken.token_type == "refresh")
+            )
+        ).all()
+        assert len(refresh_rows) == 3 and all(row.expires_at is None for row in refresh_rows)
+        client = await session.scalar(select(McpOAuthClient).where(McpOAuthClient.client_id == consent.client_id))
+        assert client.revoked_at is None
+        assert original_deadline.replace(tzinfo=UTC) < later
+    replay = await refresh(issued, client_id=issued.client_id)
+    assert replay.status_code == 400
+    async with consent.factory() as session, session.begin():
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending
+        with pytest.raises(oauth_authority.McpOAuthAuthorityError):
+            await oauth_authority.resolve_oauth_access_token(
+                session, raw_token=second.json()["access_token"], resource=_URLS.resource
+            )
+
+
+@pytest.mark.parametrize(
+    "methods,delegation",
+    [
+        (["token"], {}),
+        (["application_credential"], {}),
+        (["token", "password", "application_credential"], {}),
+        (["token", "password"], {"OS-TRUST:trust": {"id": "trust"}}),
+        (["token", "openid"], {"application_credential": {"id": "delegated"}}),
+        (["token", "password"], {"OAuth1": {"consumer_id": "delegated"}}),
+        (["token", "password"], {"OS-OAUTH1": {"access_token_id": "delegated"}}),
+        (["token", "password"], {"oauth2_credential": {"id": "delegated"}}),
+        (["token", "password"], {"access_rules": [{"path": "/limited"}]}),
+        (["token", "password"], {"bind": {"kerberos": "bound-user"}}),
+    ],
+)
+async def test_ongoing_native_consent_refuses_unproven_or_delegated_authentication(
+    sdk_oauth_consent, methods, delegation
+):
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError
+
+    consent = sdk_oauth_consent
+    consent.sdk.methods = methods
+    consent.sdk.delegated_metadata = delegation
+    with pytest.raises(McpOAuthAuthorityError, match="human project authentication"):
+        await approve_and_exchange(consent, ongoing=True, access_level="read")
+    assert consent.sdk.creates == [] and consent.remote == {}
+    async with consent.factory() as session:
+        request = await session.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        assert request.status == "pending" and request.grant_id is None
+
+
+@pytest.mark.parametrize("methods", [["token", "mapped"], ["token", "openid"]])
+async def test_ongoing_native_consent_accepts_human_federated_lineage(sdk_oauth_consent, methods):
+    sdk_oauth_consent.sdk.methods = methods
+    _, _, grant_id = await approve_and_exchange(sdk_oauth_consent, ongoing=True, access_level="read")
+    async with sdk_oauth_consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.oauth_ongoing and grant.expires_at is None
+
+
+@pytest.mark.parametrize("failure", ["role-name", "unrestricted", "expiry"])
+async def test_ongoing_native_response_must_match_exact_restricted_unbounded_approval(sdk_oauth_consent, failure):
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+
+    consent = sdk_oauth_consent
+    consent.sdk.methods = ["token", "password"]
+    if failure == "role-name":
+        consent.sdk.override_roles = True
+        consent.sdk.returned_roles = [{"id": "role-member", "name": "admin"}]
+    elif failure == "unrestricted":
+        consent.sdk.returned_unrestricted = True
+    else:
+        consent.sdk.returned_expiry = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    with pytest.raises(McpAuthorityError):
+        await approve_and_exchange(consent, ongoing=True, access_level="read")
+    assert len(consent.created) == 1 and consent.remote == {}
+    assert consent.sdk.deletes == [consent.created[0][2]]
+    async with consent.factory() as session:
+        request = await session.scalar(
+            select(McpOAuthAuthorizationRequest).where(
+                McpOAuthAuthorizationRequest.ticket_hash == hash_oauth_value(consent.ticket)
+            )
+        )
+        grant = await session.get(McpDelegatedGrant, request.grant_id)
+        assert grant.status == "revoked" and not grant.cleanup_pending
+        assert await session.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant.id)) is None
+
+
+async def test_ongoing_dispatch_rechecks_role_ids_even_when_names_are_reused(oauth_consent, monkeypatch):
+    from app.services.mcp_control_plane import authentication, connection
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    monkeypatch.setattr(connection, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    principal = await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+    await connection._validate_current_roles(consent.conn, principal)
+    consent.current_role_overrides["A"] = [{"id": "replacement-member", "name": "member"}]
+    with pytest.raises(connection.McpConsumerConnectionError, match="no longer delegated"):
+        await connection._validate_current_roles(consent.conn, principal)
+    consent.current_role_overrides["A"] = [
+        {"id": "replacement-member", "name": "member"},
+        {"id": "role-member", "name": "member"},
+    ]
+    old_access = consent.conn.session.auth.get_access(consent.conn.session)
+    old_access.role_ids = ["replacement-member"]
+    consent.conn.session.auth.get_access = lambda session: old_access
+    with pytest.raises(connection.McpConsumerConnectionError, match="issued role ceiling"):
+        await connection._validate_current_roles(consent.conn, principal)
+
+
+async def test_ongoing_refresh_replay_race_revokes_winner_and_preserves_frozen_ceiling(oauth_consent):
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, resolve_oauth_access_token
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    results = await asyncio.gather(*[refresh(issued, client_id=issued.client_id) for _ in range(2)])
+    assert sorted(response.status_code for response in results) == [200, 400]
+    winner = next(response.json() for response in results if response.status_code == 200)
+    async with consent.factory() as session, session.begin():
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.credential_epoch == 2
+        assert grant.issued_role_ceiling == {"A": [{"id": "role-member", "name": "member"}]}
+        with pytest.raises(McpOAuthAuthorityError):
+            await resolve_oauth_access_token(session, raw_token=winner["access_token"], resource=_URLS.resource)
+
+
+async def test_ongoing_revoked_client_cannot_refresh_or_dispatch(oauth_consent):
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, resolve_oauth_access_token
+
+    consent = oauth_consent
+    _, tokens, _ = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    async with consent.factory() as session, session.begin():
+        client = await session.scalar(
+            select(McpOAuthClient).where(McpOAuthClient.client_id == consent.client_id).with_for_update()
+        )
+        client.revoked_at = datetime.now(UTC)
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    assert (await refresh(issued, client_id=issued.client_id)).status_code == 400
+    async with consent.factory() as session, session.begin():
+        with pytest.raises(McpOAuthAuthorityError, match="client is inactive"):
+            await resolve_oauth_access_token(session, raw_token=tokens["access_token"], resource=_URLS.resource)
+
+
+async def test_default_finite_native_consent_never_renews_past_original_deadline(sdk_oauth_consent, monkeypatch):
+    from app.services.mcp_control_plane import oauth_authority
+
+    consent = sdk_oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, access_level="read")
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        deadline = grant.expires_at.replace(tzinfo=UTC)
+        assert not grant.oauth_ongoing and grant.issued_role_ceiling is None
+        assert all(value["expires_at"] for value in consent.sdk.creates)
+    monkeypatch.setattr(oauth_authority, "_now", lambda: deadline + timedelta(seconds=1))
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    assert (await refresh(issued, client_id=issued.client_id)).status_code == 400
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.expires_at.replace(tzinfo=UTC) == deadline
+        assert not grant.oauth_ongoing and grant.status != "active"
+
+
+async def test_ongoing_refresh_and_owner_revoke_serialize_without_resurrection(oauth_consent):
+    from app.services.mcp_control_plane.oauth_authority import (
+        McpOAuthAuthorityError,
+        resolve_oauth_access_token,
+        revoke_oauth_token,
+    )
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    refreshed, _ = await asyncio.gather(
+        refresh(issued, client_id=issued.client_id),
+        revoke_oauth_token(consent.factory, token=tokens["access_token"]),
+    )
+    assert refreshed.status_code in {200, 400}
+    async with consent.factory() as session, session.begin():
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending
+        family = await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id))
+        assert family.revoked_at is not None
+        for raw in [
+            tokens["access_token"],
+            *([refreshed.json()["access_token"]] if refreshed.status_code == 200 else []),
+        ]:
+            with pytest.raises(McpOAuthAuthorityError):
+                await resolve_oauth_access_token(session, raw_token=raw, resource=_URLS.resource)
+
+
+async def test_ongoing_refresh_tombstones_survive_until_terminal_retention(oauth_consent):
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+    from app.services.mcp_control_plane.oauth_authority import revoke_oauth_token
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    rotated = await refresh(issued, client_id=issued.client_id)
+    assert rotated.status_code == 200
+    async with consent.factory() as session:
+        original_id = await session.scalar(
+            select(McpOAuthToken.id).where(McpOAuthToken.token_hash == hash_oauth_value(tokens["refresh_token"]))
+        )
+    future = datetime.now(UTC) + timedelta(days=100)
+    await sweep_delegated_authority(consent.factory, now=future)
+    async with consent.factory() as session:
+        old = await session.scalar(
+            select(McpOAuthToken).where(McpOAuthToken.token_hash == hash_oauth_value(tokens["refresh_token"]))
+        )
+        assert old is not None and old.id == original_id and old.expires_at is None and old.rotated_at is not None
+    # The 100-day sweep has legitimately removed expired access hashes.
+    # Revoke with the still-live, unrotated ongoing refresh token instead.
+    await revoke_oauth_token(consent.factory, token=rotated.json()["refresh_token"])
+    await sweep_delegated_authority(consent.factory, now=future)
+    async with consent.factory() as session:
+        assert (
+            await session.scalar(
+                select(McpOAuthToken).where(McpOAuthToken.token_hash == hash_oauth_value(tokens["refresh_token"]))
+            )
+            is None
+        )
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.oauth_ongoing
+
+
+@pytest.mark.parametrize(
+    "omit_create,omit_get,allowed", [(True, False, True), (True, True, False), (False, True, False)]
+)
+async def test_ongoing_restriction_proof_uses_fresh_get_not_seeded_create_fields(
+    sdk_oauth_consent, omit_create, omit_get, allowed
+):
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+
+    consent = sdk_oauth_consent
+    consent.sdk.methods = ["token", "password"]
+    consent.sdk.omit_create_unrestricted = omit_create
+    consent.sdk.omit_get_unrestricted = omit_get
+    if allowed:
+        await approve_and_exchange(consent, ongoing=True, access_level="read")
+    else:
+        with pytest.raises(McpAuthorityError, match="did not confirm"):
+            await approve_and_exchange(consent, ongoing=True, access_level="read")
+        assert consent.remote == {}
+    assert consent.sdk.credential_reads
+
+
+async def test_cimd_client_stale_cleanup_refetch_allows_fresh_legacy_finite_consent(oauth_consent, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.services.mcp_control_plane import oauth_authority
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = oauth_consent
+    client_id = "https://client.example.test/client.json"
+    metadata = {
+        "client_id": client_id,
+        "client_name": "CIMD client",
+        "redirect_uris": ["https://client.example.test/callback"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "token_endpoint_auth_method": "none",
+    }
+    now = datetime.now(UTC)
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpOAuthClient(
+                client_id=client_id,
+                metadata_json=metadata,
+                redirect_uris=metadata["redirect_uris"],
+                client_id_issued_at=now - timedelta(days=40),
+                expires_at=now - timedelta(days=10),
+            )
+        )
+    await sweep_delegated_authority(consent.factory, now=now)
+    async with consent.factory() as session:
+        stale = await session.scalar(select(McpOAuthClient).where(McpOAuthClient.client_id == client_id))
+        assert stale.revoked_at is not None
+    monkeypatch.setattr(oauth_authority, "fetch_cimd", AsyncMock(return_value=metadata))
+    ticket = await oauth_authority.create_authorization_ticket(
+        consent.factory,
+        client_id=client_id,
+        redirect_uri=metadata["redirect_uris"][0],
+        response_type="code",
+        resource=_URLS.resource,
+        urls=_URLS,
+        scope="mcp:read",
+        code_challenge=pkce_s256(consent.verifier),
+        code_challenge_method="S256",
+        state="bound-state",
+    )
+    await oauth_authority.load_consent_ticket(
+        consent.factory,
+        ticket=ticket.ticket,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+    )
+    consent.client_id, consent.ticket = client_id, ticket.ticket
+    _, _, grant_id = await approve_and_exchange(consent, access_level="read")
+    async with consent.factory() as session:
+        refreshed = await session.scalar(select(McpOAuthClient).where(McpOAuthClient.client_id == client_id))
+        assert refreshed.revoked_at is None and refreshed.expires_at.replace(tzinfo=UTC) > now
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.expires_at is not None and not grant.oauth_ongoing
+
+
+async def test_refresh_attenuation_invalidates_captured_write_principal_at_final_dispatch(oauth_consent, monkeypatch):
+    from app.services.mcp_control_plane import authentication, ledger
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="manage")
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(ledger, "get_session_factory", lambda: consent.factory)
+    principal = await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+    assert principal.can_write and principal.oauth_family_id is not None
+    invocation_id = str(uuid4())
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpToolInvocation(
+                id=invocation_id,
+                grant_id=grant_id,
+                source="mcp",
+                tool_name="afterglow_vm_action",
+                idempotency_key="captured-write",
+                arguments_hash="a" * 64,
+                registry_version="test",
+                status="claimed",
+                lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            )
+        )
+    issued = SimpleNamespace(client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"])
+    narrowed = await refresh(issued, client_id=issued.client_id, scope="mcp:read")
+    assert narrowed.status_code == 200
+    with pytest.raises(ledger.McpInvocationError) as denied:
+        await ledger.authorize_mutation_dispatch(principal, invocation_id=invocation_id)
+    assert isinstance(denied.value.__cause__, authentication.McpAuthenticationError)
+    async with consent.factory() as session:
+        invocation = await session.get(McpToolInvocation, invocation_id)
+        assert invocation.status == "claimed" and invocation.sent_at is None
+    fresh = await authentication.verify_mcp_bearer(narrowed.json()["access_token"], urls=_URLS)
+    assert not fresh.can_write and fresh.oauth_family_id == principal.oauth_family_id
+
+
+async def test_ongoing_access_retention_is_bounded_without_rewriting_refresh_tombstones(oauth_consent):
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+    from app.services.mcp_control_plane.oauth_authority import revoke_oauth_token
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    now = datetime.now(UTC)
+    async with consent.factory() as session, session.begin():
+        family = await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id))
+        session.add_all(
+            [
+                McpOAuthToken(
+                    family_id=family.id,
+                    token_hash=hash_oauth_value("expired-access-" + str(uuid4())),
+                    token_type="access",
+                    resource=_URLS.resource,
+                    scopes=["mcp:read"],
+                    generation=1,
+                    expires_at=now - timedelta(days=100),
+                )
+                for _ in range(200)
+            ]
+        )
+        old_hashes = [hash_oauth_value("refresh-tombstone-" + str(uuid4())) for _ in range(200)]
+        session.add_all(
+            [
+                McpOAuthToken(
+                    family_id=family.id,
+                    token_hash=digest,
+                    token_type="refresh",
+                    resource=_URLS.resource,
+                    scopes=["mcp:read"],
+                    generation=0,
+                    expires_at=None,
+                    rotated_at=now - timedelta(days=100),
+                )
+                for digest in old_hashes
+            ]
+        )
+    swept = await sweep_delegated_authority(consent.factory, now=now)
+    assert swept.deleted_access_tokens >= 200 and swept.deleted_refresh_tombstones == 0
+    await revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    async with consent.factory() as session:
+        family = await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id))
+        assert family.revoked_at is not None
+        rows = (await session.scalars(select(McpOAuthToken).where(McpOAuthToken.token_hash.in_(old_hashes)))).all()
+        assert len(rows) == 200
+        assert all(row.revoked_at is None for row in rows)
+
+
+@pytest.mark.parametrize("revoke_path", ["token", "replay", "owner"])
+async def test_terminal_ongoing_grants_schedule_durable_owner_recovery_without_losing_secrets(
+    oauth_consent, monkeypatch, revoke_path
+):
+    from app.services.mcp_control_plane import authority, oauth_authority
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    if revoke_path == "token":
+        await oauth_authority.revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    elif revoke_path == "replay":
+        issued = SimpleNamespace(
+            client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"]
+        )
+        assert (await refresh(issued, client_id=issued.client_id)).status_code == 200
+        assert (await refresh(issued, client_id=issued.client_id)).status_code == 400
+    else:
+        await authority.revoke_grant(
+            consent.factory,
+            grant_id=grant_id,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+        )
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending
+        assert grant.orphan_recovery_after is not None
+        assert grant.application_credential_id and grant.credential_ciphertext
+        credential_id = grant.application_credential_id
+        recover_at = grant.orphan_recovery_after.replace(tzinfo=UTC) + timedelta(seconds=1)
+    assert credential_id in consent.remote
+    monkeypatch.setattr(authority, "_now", lambda: recover_at)
+    recovered = await authority.recover_stale_pending_orphans(
+        consent.factory,
+        conn=consent.conn,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+        username="owner",
+    )
+    assert recovered == 1 and consent.remote == {}
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert not grant.cleanup_pending and grant.credential_ciphertext is None
+        assert grant.application_credential_id is None and grant.orphan_recovery_after is None
+
+
+async def test_owner_recovery_preserves_live_write_lease_and_retries_keystone_failure(oauth_consent, monkeypatch):
+    from app.services.mcp_control_plane import authority, oauth_authority
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="manage")
+    invocation_id = str(uuid4())
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpToolInvocation(
+                id=invocation_id,
+                grant_id=grant_id,
+                source="mcp",
+                tool_name="afterglow_vm_action",
+                idempotency_key="active-lease",
+                arguments_hash="a" * 64,
+                registry_version="test",
+                status="dispatch_authorized",
+                lease_expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
+    await oauth_authority.revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        credential_id, ciphertext = grant.application_credential_id, grant.credential_ciphertext
+        recover_at = grant.orphan_recovery_after.replace(tzinfo=UTC) + timedelta(seconds=1)
+    monkeypatch.setattr(authority, "_now", lambda: recover_at)
+
+    async def recover():
+        return await authority.recover_stale_pending_orphans(
+            consent.factory,
+            conn=consent.conn,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+        )
+
+    assert await recover() == 0 and credential_id in consent.remote
+    async with consent.factory() as session, session.begin():
+        invocation = await session.get(McpToolInvocation, invocation_id, with_for_update=True)
+        invocation.status = "unknown"
+        invocation.lease_expires_at = None
+    original_delete = consent.conn.delete_application_credential
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("synthetic Keystone unavailable")
+
+    monkeypatch.setattr(consent.conn, "delete_application_credential", unavailable)
+    assert await recover() == 0
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.cleanup_pending and grant.application_credential_id == credential_id
+        assert grant.credential_ciphertext == ciphertext and grant.orphan_recovery_after is not None
+    monkeypatch.setattr(consent.conn, "delete_application_credential", original_delete)
+    assert await recover() == 1 and consent.remote == {}
+
+
+async def test_expired_unexchanged_ongoing_code_retires_credential_and_cannot_be_reused(oauth_consent):
+    from app.services.mcp_control_plane import oauth_authority
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = oauth_consent
+    result = await oauth_authority.approve_consent_ticket(
+        consent.factory,
+        ticket=consent.ticket,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+        username="owner",
+        roles=["member"],
+        conn=consent.conn,
+        ongoing=True,
+        access_level="read",
+    )
+    assert result.effective_ongoing is True
+    async with consent.factory() as session:
+        code = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.code_hash == hash_oauth_value(result.code)))
+        grant_id = code.grant_id
+        after_code = code.expires_at.replace(tzinfo=UTC) + timedelta(seconds=1)
+    await sweep_delegated_authority(consent.factory, now=after_code)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == "revoked" and grant.cleanup_pending and grant.orphan_recovery_after is not None
+        assert grant.application_credential_id and grant.credential_ciphertext is None
+        assert await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id)) is None
+    # Existing exchanged families are covered by the past-deadline/cleanup test;
+    # code sweeping must never turn a consumed code into fresh authorization.
+    denied = await consent.client.post(
+        "/api/v1/mcp/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": result.code,
+            "client_id": consent.client_id,
+            "redirect_uri": result.redirect_uri,
+            "resource": _URLS.resource,
+            "code_verifier": consent.verifier,
+        },
+    )
+    assert denied.status_code == 400
+
+
+async def test_expired_code_sweep_does_not_retire_exchanged_ongoing_family(oauth_consent):
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = oauth_consent
+    _, _, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="read")
+    async with consent.factory() as session:
+        code = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == grant_id))
+        after_code = code.expires_at.replace(tzinfo=UTC) + timedelta(seconds=1)
+    await sweep_delegated_authority(consent.factory, now=after_code)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        family = await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == grant_id))
+        assert grant.status == "active" and not grant.cleanup_pending
+        assert family is not None and family.revoked_at is None
+
+
+async def test_terminal_ongoing_ciphertext_is_scrubbed_only_after_successful_drain_and_owner_can_delete(
+    oauth_consent, monkeypatch
+):
+    from app.services.mcp_control_plane import authentication, authority, ledger, oauth_authority
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(
+        consent,
+        ongoing=True,
+        project_scope="all",
+        access_level="manage",
+    )
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(ledger, "get_session_factory", lambda: consent.factory)
+    principal = await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+    invocation_id = str(uuid4())
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpToolInvocation(
+                id=invocation_id,
+                grant_id=grant_id,
+                source="mcp",
+                tool_name="afterglow_vm_action",
+                idempotency_key="scrub-drain",
+                arguments_hash="a" * 64,
+                registry_version="test",
+                status="dispatch_authorized",
+                lease_expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
+    await oauth_authority.revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    await sweep_delegated_authority(consent.factory)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        extra = await session.get(McpProjectCredential, {"grant_id": grant_id, "project_id": "B"})
+        assert grant.credential_ciphertext and extra.credential_ciphertext
+        remote_ids = {grant.application_credential_id, extra.application_credential_id}
+        retry_at = grant.orphan_recovery_after.replace(tzinfo=UTC) + timedelta(seconds=1)
+    # This is the normal post-provider completion path; it works after revoke
+    # without restoring authority or pretending an unknown outcome succeeded.
+    await ledger.complete_mutation(principal, invocation_id=invocation_id, result={"accepted": True})
+    await sweep_delegated_authority(consent.factory)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        extra = await session.get(McpProjectCredential, {"grant_id": grant_id, "project_id": "B"})
+        assert grant.credential_ciphertext is None and extra.credential_ciphertext is None
+        assert {grant.application_credential_id, extra.application_credential_id} == remote_ids
+        assert grant.cleanup_pending and extra.cleanup_pending and grant.orphan_recovery_after is not None
+    assert set(consent.remote) == remote_ids
+    await sweep_delegated_authority(consent.factory)
+    async with consent.factory() as session:
+        retired = (
+            await session.scalars(
+                select(ActivityLog.id).where(
+                    ActivityLog.resource_id == grant_id,
+                    ActivityLog.action == "mcp_grant.secret_retire",
+                )
+            )
+        ).all()
+        assert len(retired) == 1
+    monkeypatch.setattr(authority, "_now", lambda: retry_at)
+    assert (
+        await authority.recover_stale_pending_orphans(
+            consent.factory,
+            conn=consent.conn,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+        )
+        == 1
+    )
+    assert consent.remote == {}
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.application_credential_id is None and not grant.cleanup_pending
+
+
+@pytest.mark.parametrize("state", ["claimed", "dispatch_authorized", "unknown"])
+async def test_terminal_unknown_keeps_outcome_but_not_local_secret_after_no_live_lease(
+    oauth_consent, monkeypatch, state
+):
+    from app.services.mcp_control_plane import authentication, authority, connection, ledger, oauth_authority
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="manage")
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(connection, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(ledger, "get_session_factory", lambda: consent.factory)
+    principal = await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+    already_loaded = await connection._load_credential(principal)
+    invocation_id = str(uuid4())
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpToolInvocation(
+                id=invocation_id,
+                grant_id=grant_id,
+                source="mcp",
+                tool_name="afterglow_vm_action",
+                idempotency_key="unknown-scrub",
+                arguments_hash="a" * 64,
+                registry_version="test",
+                status="dispatch_authorized" if state == "unknown" else state,
+                lease_expires_at=datetime.now(UTC) - timedelta(days=100),
+            )
+        )
+    if state == "unknown":
+        await ledger.complete_mutation(
+            principal,
+            invocation_id=invocation_id,
+            error="Synthetic worker drained with an uncertain provider outcome",
+        )
+    await oauth_authority.revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    with pytest.raises(connection.McpConsumerConnectionError):
+        await connection._load_credential(principal)
+    await sweep_delegated_authority(consent.factory)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        invocation = await session.get(McpToolInvocation, invocation_id)
+        assert grant.cleanup_pending and grant.application_credential_id == already_loaded[0]
+        assert grant.credential_ciphertext is None and grant.orphan_recovery_after is not None
+        assert invocation.status == "unknown" and invocation.result is None
+        retry_at = grant.orphan_recovery_after.replace(tzinfo=UTC) + timedelta(seconds=1)
+    # SQL erasure does not cancel or revoke an already-loaded native session.
+    assert already_loaded[1] and already_loaded[0] in consent.remote
+    monkeypatch.setattr(authority, "_now", lambda: retry_at)
+    assert (
+        await authority.recover_stale_pending_orphans(
+            consent.factory,
+            conn=consent.conn,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+        )
+        == 1
+    )
+    assert consent.remote == {}
+    async with consent.factory() as session:
+        invocation = await session.get(McpToolInvocation, invocation_id)
+        assert invocation.status == "unknown" and invocation.result is None
+
+
+@pytest.mark.parametrize(
+    "stage,change,expected_writes",
+    [
+        ("preview", "same-scope-refresh", 1),
+        ("preview", "narrow-refresh", 0),
+        ("authorized", "same-scope-refresh", 1),
+        ("authorized", "narrow-refresh", 1),
+        ("authorized", "access-expiry", 1),
+        ("authorized", "commit-ambiguity", 0),
+    ],
+)
+async def test_oauth_mutation_linearization_survives_rotation_without_false_unknown(
+    oauth_consent, monkeypatch, stage, change, expected_writes
+):
+    """Real SQL/transport/ledger and loopback HTTP write; identity fixture is synthetic."""
+    import threading
+    from contextlib import asynccontextmanager
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.request import Request, urlopen
+
+    from app.services.mcp_control_plane import authentication, connection, ledger, oauth_authority, registry, transport
+    from app.services.mcp_control_plane.sdk import run_sdk
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="manage")
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(connection, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(ledger, "get_session_factory", lambda: consent.factory)
+    principal = await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+    barrier, release = asyncio.Event(), asyncio.Event()
+    writes = []
+
+    class Provider(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            assert self.path == "/mutation"
+            writes.append(self.rfile.read(int(self.headers["Content-Length"])))
+            payload = b'{"accepted":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    provider = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+    worker = threading.Thread(target=provider.serve_forever, daemon=True)
+    worker.start()
+
+    class Arguments(registry.McpDomainArguments):
+        resource: str
+
+    class Output(registry.McpDomainOutput):
+        accepted: bool
+
+    @asynccontextmanager
+    async def owned_connection(context):
+        # Exercise the real credential-load and role fences which previously
+        # rejected rotation/expiry after the ledger admission had committed.
+        await connection._load_credential(context.principal)
+        await connection._validate_current_roles(consent.conn, context.principal)
+        yield consent.conn
+
+    async def preview(_context, _arguments):
+        if stage == "preview":
+            barrier.set()
+            await release.wait()
+        return registry.McpMutationPreview(
+            resource_identity="synthetic-resource",
+            current_state="ready",
+            intended_transition="change",
+            dependent_resources=[],
+            destructive=False,
+            estimated_effect="one local HTTP write",
+            fingerprint="fixture",
+        )
+
+    def native_write():
+        request = Request(
+            f"http://127.0.0.1:{provider.server_port}/mutation",
+            data=b'{"resource":"fixture"}',
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=5) as response:
+            return Output.model_validate_json(response.read())
+
+    async def handler(context, _arguments):
+        async with context.openstack_connection():
+            return await run_sdk(native_write)
+
+    entry = registry.RegistryEntry(
+        name="afterglow_admission_fixture",
+        description="isolated admission fixture",
+        arguments=Arguments,
+        output=Output,
+        minimum_scope="mcp:write",
+        effect="external_mutation",
+        service_flag=None,
+        timeout_seconds=10,
+        result_max_bytes=1024,
+        handler=handler,
+        preview_builder=preview,
+    )
+    monkeypatch.setattr(registry, "entry_by_name", lambda name: entry if name == entry.name else None)
+    monkeypatch.setattr(transport, "entry_by_name", lambda name: entry if name == entry.name else None)
+    monkeypatch.setattr(registry.ConsumerCloudContext, "openstack_connection", owned_connection)
+    real_authorize = ledger.authorize_mutation_dispatch
+
+    async def authorize(current, **kwargs):
+        admitted = await real_authorize(current, **kwargs)
+        if stage == "authorized":
+            barrier.set()
+            await release.wait()
+        if change == "commit-ambiguity":
+            raise ledger.McpInvocationError("synthetic lost authorization commit receipt")
+        return admitted
+
+    monkeypatch.setattr(transport, "authorize_mutation_dispatch", authorize)
+    arguments = {"resource": "fixture", "project_id": "A", "idempotency_key": "linearization-fixture"}
+    token = transport._current_principal.set(principal)
+    pending = asyncio.create_task(transport._call_tool(entry.name, arguments))
+    transport._current_principal.reset(token)
+    try:
+        await asyncio.wait_for(barrier.wait(), timeout=10)
+        issued = SimpleNamespace(
+            client=consent.client, client_id=consent.client_id, refresh_token=tokens["refresh_token"]
+        )
+        next_tokens = None
+        if change == "access-expiry":
+            async with consent.factory() as session:
+                expires_at = await session.scalar(
+                    select(McpOAuthToken.expires_at).where(
+                        McpOAuthToken.token_hash == hash_oauth_value(tokens["access_token"])
+                    )
+                )
+            after_expiry = expires_at.replace(tzinfo=UTC) + timedelta(seconds=1)
+            monkeypatch.setattr(oauth_authority, "_now", lambda: after_expiry)
+            with pytest.raises(authentication.McpAuthenticationError):
+                await authentication.verify_mcp_bearer(tokens["access_token"], urls=_URLS)
+        else:
+            rotated = await refresh(
+                issued,
+                client_id=issued.client_id,
+                scope="mcp:read" if change == "narrow-refresh" else None,
+            )
+            assert rotated.status_code == 200
+            next_tokens = rotated.json()
+        release.set()
+        if expected_writes:
+            result = await pending
+            assert result == {"accepted": True}
+        elif change == "commit-ambiguity":
+            with pytest.raises(ledger.McpInvocationError) as failure:
+                await pending
+            assert not isinstance(failure.value, ledger.McpMutationAuthorizationDenied)
+        else:
+            with pytest.raises(ledger.McpMutationAuthorizationDenied):
+                await pending
+        assert len(writes) == expected_writes
+        async with consent.factory() as session:
+            invocation = await session.scalar(
+                select(McpToolInvocation).where(
+                    McpToolInvocation.grant_id == grant_id,
+                    McpToolInvocation.idempotency_key == "linearization-fixture",
+                )
+            )
+            expected_state = (
+                "dispatch_authorized"
+                if change == "commit-ambiguity"
+                else ("succeeded" if expected_writes else "failed")
+            )
+            assert invocation.status == expected_state
+            assert (invocation.sent_at is not None) is (bool(expected_writes) or change == "commit-ambiguity")
+        if change == "access-expiry":
+            rotated = await refresh(issued, client_id=issued.client_id)
+            assert rotated.status_code == 200
+            next_tokens = rotated.json()
+        replay_principal = await authentication.verify_mcp_bearer(next_tokens["access_token"], urls=_URLS)
+        token = transport._current_principal.set(replay_principal)
+        try:
+            if change == "narrow-refresh":
+                with pytest.raises(ValueError, match="unavailable"):
+                    await transport._call_tool(entry.name, arguments)
+            elif change == "commit-ambiguity":
+                with pytest.raises(ledger.McpInvocationError):
+                    await transport._call_tool(entry.name, arguments)
+            else:
+                assert await transport._call_tool(entry.name, arguments) == {"accepted": True}
+        finally:
+            transport._current_principal.reset(token)
+        assert len(writes) == expected_writes
+    finally:
+        release.set()
+        if not pending.done():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        await asyncio.to_thread(provider.shutdown)
+        provider.server_close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.parametrize("producer", ["mcp", "lumen"])
+async def test_expired_preview_lease_commits_known_failure_and_requires_new_key(oauth_consent, monkeypatch, producer):
+    from fastapi import HTTPException
+
+    from app.api import mcp_lumen
+    from app.services.mcp_control_plane import authentication, authority, ledger, registry, transport
+
+    consent = oauth_consent
+    issued = await authority.issue_personal_token(
+        consent.factory,
+        conn=consent.conn,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+        username="owner",
+        roles=["member"],
+        display_name="lease proof",
+        access_level="manage",
+    )
+    monkeypatch.setattr(authentication, "get_session_factory", lambda: consent.factory)
+    monkeypatch.setattr(ledger, "get_session_factory", lambda: consent.factory)
+    if producer == "lumen":
+        generation = await authority.set_lumen_selection(
+            consent.factory,
+            owner_user_id=consent.owner,
+            owner_project_id="A",
+            username="owner",
+            grant_id=issued.grant_id,
+        )
+        principal = authentication.McpPrincipal(
+            grant_id=issued.grant_id,
+            user_id=consent.owner,
+            project_id="A",
+            credential_epoch=1,
+            scopes=frozenset({"mcp:read", "mcp:write"}),
+            source="lumen",
+            selection_generation=generation,
+        )
+    else:
+        principal = await authentication.verify_mcp_bearer(issued.token, urls=_URLS)
+    writes, terminalization_calls = [], []
+    first_preview = True
+
+    class Output(registry.McpDomainOutput):
+        accepted: bool
+
+    async def preview(_context, _arguments):
+        nonlocal first_preview
+        if first_preview:
+            first_preview = False
+            async with consent.factory() as session, session.begin():
+                invocation = await session.scalar(
+                    select(McpToolInvocation)
+                    .where(
+                        McpToolInvocation.grant_id == issued.grant_id,
+                        McpToolInvocation.idempotency_key == "expired-preview-key",
+                    )
+                    .with_for_update()
+                )
+                invocation.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        return registry.McpMutationPreview(
+            resource_identity="fixture",
+            current_state="ready",
+            intended_transition="change",
+            dependent_resources=[],
+            destructive=False,
+            estimated_effect=None,
+            fingerprint="fixture",
+        )
+
+    async def handler(_context, _arguments):
+        writes.append("accepted synthetic provider mutation")
+        return Output(accepted=True)
+
+    entry = registry.RegistryEntry(
+        name="afterglow_expired_preview_fixture",
+        description="lease proof",
+        arguments=registry.McpDomainArguments,
+        output=Output,
+        minimum_scope="mcp:write",
+        effect="external_mutation",
+        service_flag=None,
+        timeout_seconds=10,
+        result_max_bytes=1024,
+        handler=handler,
+        preview_builder=preview,
+    )
+    monkeypatch.setattr(transport, "entry_by_name", lambda name: entry if name == entry.name else None)
+    real_fail = ledger.fail_pre_dispatch
+
+    async def fail(*args, **kwargs):
+        terminalization_calls.append(kwargs["invocation_id"])
+        return await real_fail(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "fail_pre_dispatch", fail)
+    monkeypatch.setattr(transport, "fail_pre_dispatch", fail)
+
+    async def invoke(key):
+        if producer == "lumen":
+            return await mcp_lumen._execute_tool(
+                principal,
+                entry=entry,
+                body=mcp_lumen._ExecuteRequest(
+                    snapshot={},
+                    name=entry.name,
+                    arguments={"project_id": "A"},
+                    idempotency_key=key,
+                ),
+            )
+        token = transport._current_principal.set(principal)
+        try:
+            return await transport._call_tool(entry.name, {"project_id": "A", "idempotency_key": key})
+        finally:
+            transport._current_principal.reset(token)
+
+    if producer == "lumen":
+        with pytest.raises(HTTPException) as denied:
+            await invoke("expired-preview-key")
+        assert denied.value.status_code == 409
+        assert isinstance(denied.value.__cause__, ledger.McpMutationPreDispatchExpired)
+    else:
+        with pytest.raises(ledger.McpMutationPreDispatchExpired):
+            await invoke("expired-preview-key")
+    assert writes == [] and terminalization_calls == []
+    async with consent.factory() as session:
+        failed = await session.scalar(
+            select(McpToolInvocation).where(
+                McpToolInvocation.grant_id == issued.grant_id,
+                McpToolInvocation.idempotency_key == "expired-preview-key",
+            )
+        )
+        assert failed.status == "failed" and "lease expired" in failed.error
+        assert failed.sent_at is None and failed.dispatch_authorized_at is None and failed.lease_expires_at is None
+    with pytest.raises(HTTPException if producer == "lumen" else ledger.McpInvocationError):
+        await invoke("expired-preview-key")
+    assert writes == [] and terminalization_calls == []
+    assert await invoke("explicit-new-preview-key") == {"accepted": True}
+    assert await invoke("explicit-new-preview-key") == {"accepted": True}
+    assert len(writes) == 1 and terminalization_calls == []
+
+
+@pytest.mark.parametrize("state", ["claimed", "dispatch_authorized"])
+async def test_local_scrub_candidate_with_missing_live_lease_remains_unresolved(oauth_consent, state):
+    from app.services.mcp_control_plane import oauth_authority
+    from app.services.mcp_control_plane.cleanup import _scrub_terminal_ongoing_secrets
+
+    consent = oauth_consent
+    _, tokens, grant_id = await approve_and_exchange(consent, ongoing=True, access_level="manage")
+    invocation_id = str(uuid4())
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpToolInvocation(
+                id=invocation_id,
+                grant_id=grant_id,
+                source="mcp",
+                tool_name="afterglow_vm_action",
+                idempotency_key="missing-live-lease",
+                arguments_hash="a" * 64,
+                registry_version="test",
+                status=state,
+                lease_expires_at=None,
+            )
+        )
+    await oauth_authority.revoke_oauth_token(consent.factory, token=tokens["access_token"])
+    await _scrub_terminal_ongoing_secrets(consent.factory, now=datetime.now(UTC))
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        invocation = await session.get(McpToolInvocation, invocation_id)
+        assert grant.credential_ciphertext and grant.cleanup_pending
+        assert invocation.status == state and invocation.lease_expires_at is None
+
+
+@pytest.mark.parametrize(
+    "status,nonce,grace_future",
+    [("pending", True, False), ("revoked", True, False), ("revoked", False, True)],
+)
+async def test_local_scrub_preserves_uncertain_unactivated_ongoing_issuance(oauth_consent, status, nonce, grace_future):
+    from app.services.mcp_control_plane.cleanup import sweep_delegated_authority
+    from app.services.mcp_control_plane.crypto import encrypt_application_credential
+
+    consent = oauth_consent
+    grant_id, credential_id = str(uuid4()), "partial-" + str(uuid4())
+    recovery_nonce = str(uuid4()) if nonce else None
+    ciphertext = encrypt_application_credential(
+        "partial-issuance-fixture",
+        grant_id=grant_id,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+    )
+    async with consent.factory() as session, session.begin():
+        session.add(
+            McpDelegatedGrant(
+                id=grant_id,
+                owner_user_id=consent.owner,
+                owner_project_id="A",
+                upstream_credential_name="afterglow-mcp-" + grant_id,
+                display_name="partial issuance SQL snapshot",
+                source="oauth",
+                access_level="manage",
+                project_scope="current",
+                approved_projects=[{"id": "A", "name": "Project A", "roles": ["member"], "can_write": True}],
+                oauth_ongoing=True,
+                issued_role_ceiling={"A": [{"id": "role-member", "name": "member"}]},
+                status=status,
+                expires_at=None,
+                issued_at=None,
+                cleanup_pending=True,
+                application_credential_id=credential_id,
+                credential_ciphertext=ciphertext,
+                orphan_recovery_nonce=recovery_nonce,
+                orphan_recovery_after=datetime.now(UTC) + timedelta(hours=1 if grace_future else -1),
+            )
+        )
+    await sweep_delegated_authority(consent.factory)
+    async with consent.factory() as session:
+        grant = await session.get(McpDelegatedGrant, grant_id)
+        assert grant.status == status and grant.issued_at is None
+        assert grant.credential_ciphertext == ciphertext and grant.application_credential_id == credential_id
+        assert grant.cleanup_pending and grant.orphan_recovery_nonce == recovery_nonce

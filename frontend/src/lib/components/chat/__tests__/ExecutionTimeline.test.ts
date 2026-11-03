@@ -217,12 +217,12 @@ it('shows automatic context compaction start and completion activity', () => {
 			}
 		]
 	});
-	expect(getByText('컨텍스트 자동 압축 중')).toBeTruthy();
+	expect(getByText('컨텍스트 압축 시작')).toBeTruthy();
 	expect(getByText('컨텍스트 자동 압축 완료')).toBeTruthy();
 });
 
-it('hides unfinished context compaction after its run ends', () => {
-	const { queryByText } = render(ExecutionTimeline, {
+it('retains an unfinished recorded context transition without claiming it is still running', () => {
+	const { queryByText, getByText, container } = render(ExecutionTimeline, {
 		active: false,
 		items: [
 			{
@@ -238,4 +238,27 @@ it('hides unfinished context compaction after its run ends', () => {
 		]
 	});
 	expect(queryByText('컨텍스트 자동 압축 중')).toBeNull();
+	expect(getByText('컨텍스트 압축 시작')).toBeTruthy();
+	expect(container.querySelector('.live, [role="status"]')).toBeNull();
+});
+
+it('does not turn a started tool without a result into completed or still-running history', () => {
+	const { container, getByText, queryByText } = render(ExecutionTimeline, {
+		active: false,
+		items: [
+			{
+				id: 'tool:pending', kind: 'tool', seq: 1, createdAt: '2026-11-03T00:00:00Z',
+				callId: 'pending', name: 'lookup', source: 'builtin', category: 'Tools',
+				arguments: { query: 'recorded' }, status: 'running', content: [], errorCode: null, durationMs: null
+			},
+			{
+				id: 'terminal:2', kind: 'terminal', seq: 2, createdAt: '2026-11-03T00:00:01Z',
+				status: 'canceled', errorCode: 'canceled', message: 'recorded cancellation'
+			}
+		]
+	});
+	expect(getByText('확인되지 않음')).toBeTruthy();
+	expect(queryByText('완료')).toBeNull();
+	expect(queryByText('실행 중…')).toBeNull();
+	expect(container.querySelector('.running, .live')).toBeNull();
 });

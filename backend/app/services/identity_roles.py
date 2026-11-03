@@ -29,6 +29,7 @@ from app.services import activity, keystone, session_store
 from app.services.cache import cached_call, invalidate, ttl_slow
 from app.services.service_permissions import (
     RETIRED_SERVICE_IMPLICATIONS,
+    RETIRED_SERVICE_ROLE_NAMES,
     ROLE_IMPLICATIONS,
     ROLE_PRESETS,
     normalize_role_name,
@@ -87,6 +88,8 @@ def _catalog(roles, inferences):
             "description": description,
             "domain_id": domain,
             "protected": name.casefold() in CORE_NAMES | {"project_owner"},
+            "retired": name.casefold() in RETIRED_SERVICE_ROLE_NAMES,
+            "assignable": name.casefold() not in RETIRED_SERVICE_ROLE_NAMES | {"admin"},
             "implied_role_ids": set(),
             "parent_role_ids": set(),
         }
@@ -395,10 +398,16 @@ def _ancestors(catalog, role_id):
 
 def _validate_edge(catalog, prior_id, implied_id):
     prior, implied = _role(catalog, prior_id), _role(catalog, implied_id)
+    if any(row["name"].casefold() in RETIRED_SERVICE_ROLE_NAMES for row in (prior, implied)):
+        raise HTTPException(status_code=409, detail="Retired service roles cannot acquire new implications")
     if _owner_bearing_role(catalog, implied_id):
         raise HTTPException(status_code=409, detail="Owner-bearing implications require explicit project ownership")
     if prior_id == implied_id or prior_id in implied["inherited_role_ids"]:
         raise HTTPException(status_code=409, detail="Role implication would create a cycle")
+    if any(
+        _role(catalog, rid)["name"].casefold() in RETIRED_SERVICE_ROLE_NAMES for rid in implied["inherited_role_ids"]
+    ):
+        raise HTTPException(status_code=409, detail="New implications cannot grant retired service roles")
     if implied_id in prior["implied_role_ids"]:
         raise HTTPException(status_code=409, detail="Role implication already exists")
     if implied["domain_id"] is not None and prior["domain_id"] != implied["domain_id"]:
@@ -828,6 +837,8 @@ async def update_role(conn, token_info, role_id, attrs):
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
         row = _role(catalog, role_id)
+        if row["retired"]:
+            raise HTTPException(status_code=409, detail="Retired service role identities are read-only")
         renamed = "name" in attrs and attrs["name"] != row["name"]
         if renamed and (_owner_bearing_role(catalog, role_id) or attrs["name"].casefold() == "project_owner"):
             raise HTTPException(status_code=409, detail="Owner-bearing role identities cannot be renamed")
@@ -928,7 +939,13 @@ def _without_retired_service_edges(catalog):
         {
             "prior_role": {"id": row["id"]},
             "implies": [
-                {"id": child} for child in row["implied_role_ids"] if (row["name"], by_id[child]["name"]) not in retired
+                {"id": child}
+                for child in row["implied_role_ids"]
+                if not (
+                    row["domain_id"] is None
+                    and by_id[child]["domain_id"] is None
+                    and (row["name"], by_id[child]["name"]) in retired
+                )
             ],
         }
         for row in catalog
@@ -947,53 +964,79 @@ async def apply_role_presets(conn, token_info):
     attempted = False
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
-        bindings = _validate_preset_catalog(_without_retired_service_edges(catalog))
+        projected_catalog = _without_retired_service_edges(catalog)
+        bindings = _validate_preset_catalog(projected_catalog)
         for name in ("member", "reader"):
             matches = [row for row in catalog if row["domain_id"] is None and row["name"].casefold() == name]
             if len(matches) != 1 or matches[0]["domain_id"] is not None or matches[0]["name"] != name:
                 raise HTTPException(status_code=409, detail=f"Existing global native role is required: {name}")
             bindings[name] = matches[0]
+        # Historical service identities are not preset definitions anymore. Bind
+        # only unique, exact global names for the explicit known-edge retirement.
+        retired_names = {name for edge in RETIRED_SERVICE_IMPLICATIONS for name in edge}
+        for name in retired_names:
+            matches = [row for row in catalog if row["domain_id"] is None and row["name"].casefold() == name]
+            if not matches:
+                continue
+            if len(matches) != 1 or matches[0]["name"] != name:
+                raise HTTPException(status_code=409, detail=f"Retired role identity requires review: {name}")
+            bindings[name] = matches[0]
+        from app.services import domain_projects
+
+        await asyncio.to_thread(
+            domain_projects.assert_managers_remain,
+            catalog=catalog,
+            projected_catalog=projected_catalog,
+        )
+        completed = False
         try:
-            for prior_name, implied_name in RETIRED_SERVICE_IMPLICATIONS:
-                if prior_name not in bindings or implied_name not in bindings:
-                    continue
-                prior, child = bindings[prior_name], bindings[implied_name]
-                if child["id"] not in _role(catalog, prior["id"])["implied_role_ids"]:
-                    continue
-                path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
-                attempted = True
-                await _write(lease, _native_edge, conn, "delete", path)
-                catalog = await asyncio.to_thread(load_catalog, conn)
-                if child["id"] in _role(catalog, prior["id"])["implied_role_ids"]:
-                    raise _unavailable("Service implication removal could not be verified")
-                removed_edges.append({"prior": prior_name, "implied": implied_name})
-            _validate_preset_catalog(catalog)
-            for definition in ROLE_PRESETS:
-                name = definition["name"]
-                if name not in bindings:
+            try:
+                for prior_name, implied_name in RETIRED_SERVICE_IMPLICATIONS:
+                    if prior_name not in bindings or implied_name not in bindings:
+                        continue
+                    prior, child = bindings[prior_name], bindings[implied_name]
+                    if child["id"] not in _role(catalog, prior["id"])["implied_role_ids"]:
+                        continue
+                    path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
                     attempted = True
-                    role = await _write(
-                        lease, conn.identity.create_role, name=name, description=definition["description"]
-                    )
-                    rid = _created_id(role)
-                    created_roles.append(name)
+                    await _write(lease, _native_edge, conn, "delete", path)
+                    catalog = await asyncio.to_thread(load_catalog, conn)
+                    if child["id"] in _role(catalog, prior["id"])["implied_role_ids"]:
+                        raise _unavailable("Service implication removal could not be verified")
+                    removed_edges.append({"prior": prior_name, "implied": implied_name})
+                _validate_preset_catalog(catalog)
+                for definition in ROLE_PRESETS:
+                    name = definition["name"]
+                    if name not in bindings:
+                        attempted = True
+                        role = await _write(
+                            lease, conn.identity.create_role, name=name, description=definition["description"]
+                        )
+                        rid = _created_id(role)
+                        created_roles.append(name)
+                        catalog = await asyncio.to_thread(load_catalog, conn)
+                        bindings.update(_validate_preset_catalog(catalog))
+                        if bindings.get(name, {}).get("id") != rid:
+                            raise _unavailable("Created role identity could not be verified")
+                for prior_name, implied_name in ROLE_IMPLICATIONS:
                     catalog = await asyncio.to_thread(load_catalog, conn)
                     bindings.update(_validate_preset_catalog(catalog))
-                    if bindings.get(name, {}).get("id") != rid:
-                        raise _unavailable("Created role identity could not be verified")
-            for prior_name, implied_name in ROLE_IMPLICATIONS:
-                catalog = await asyncio.to_thread(load_catalog, conn)
-                bindings.update(_validate_preset_catalog(catalog))
-                prior, child = bindings[prior_name], bindings[implied_name]
-                if child["id"] in _role(catalog, prior["id"])["implied_role_ids"]:
-                    continue
-                _validate_edge(catalog, prior["id"], child["id"])
-                path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
-                attempted = True
-                await _write(lease, _native_edge, conn, "put", path)
-                created_edges.append({"prior": prior_name, "implied": implied_name})
-            fresh = await asyncio.to_thread(load_catalog, conn)
-            _validate_preset_catalog(fresh)
+                    prior, child = bindings[prior_name], bindings[implied_name]
+                    if child["id"] in _role(catalog, prior["id"])["implied_role_ids"]:
+                        continue
+                    _validate_edge(catalog, prior["id"], child["id"])
+                    path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
+                    attempted = True
+                    await _write(lease, _native_edge, conn, "put", path)
+                    created_edges.append({"prior": prior_name, "implied": implied_name})
+                fresh = await asyncio.to_thread(load_catalog, conn)
+                _validate_preset_catalog(fresh)
+                completed = True
+            finally:
+                if attempted or completed:
+                    # Reconcile no-op retries too: a previous native cutover may
+                    # have completed while its projection synchronization failed.
+                    await _sync_domain_managers(conn, lease, None)
         except HTTPException as exc:
             if attempted:
                 await _finish(
@@ -1073,8 +1116,18 @@ async def _assignment_invalidation(token_info, action, role_id, users, project_i
 
 
 async def _sync_domain_managers(conn, lease, domain_ids, *, ks=None):
+    """Synchronize listed domains, or reconcile all enabled domains for presets."""
     from app.services import domain_projects, keystone
 
+    if domain_ids is None:
+        ks = ks or await asyncio.to_thread(keystone._get_admin_ks_client)
+        domain_ids = set()
+        for domain in await asyncio.to_thread(domain_projects._call, ks.domains.list):
+            domain_id = _field(domain, "id")
+            if not isinstance(domain_id, str) or not domain_id:
+                raise _unavailable("Manager projection domain identity is unavailable")
+            if domain_projects._enabled(domain):
+                domain_ids.add(domain_id)
     if not domain_ids:
         return
     ks = ks or await asyncio.to_thread(keystone._get_admin_ks_client)
@@ -1092,6 +1145,10 @@ async def change_project_assignment(
         catalog = await asyncio.to_thread(load_catalog, conn)
         if not remove and _role(catalog, role_id)["name"].casefold() == "admin":
             raise HTTPException(status_code=422, detail="Native admin project grants are removal-only")
+        if not remove and _role(catalog, role_id)["name"].casefold() in RETIRED_SERVICE_ROLE_NAMES:
+            raise HTTPException(
+                status_code=422, detail="Retired service grants are read-only; use standard project roles"
+            )
         if _owner_bearing_role(catalog, role_id):
             raise HTTPException(status_code=409, detail="Use the project ownership workflow for owner-bearing roles")
         if (user_id is None) == (group_id is None):

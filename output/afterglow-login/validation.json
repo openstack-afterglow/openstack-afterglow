@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-03",
+  "scope": "Standalone examples only",
+  "states": {
+    "signup": 3,
+    "verify-email": 4,
+    "account-setup": 3,
+    "reset-password": 3,
+    "new-password": 4,
+    "mcp": 5
+  },
+  "viewportSizes": [
+    [
+      320,
+      480
+    ],
+    [
+      480,
+      320
+    ],
+    [
+      320,
+      568
+    ],
+    [
+      568,
+      320
+    ],
+    [
+      360,
+      640
+    ],
+    [
+      640,
+      360
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      844,
+      390
+    ],
+    [
+      768,
+      1024
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      820,
+      1180
+    ],
+    [
+      1180,
+      820
+    ],
+    [
+      1366,
+      768
+    ],
+    [
+      768,
+      1366
+    ],
+    [
+      1920,
+      1080
+    ],
+    [
+      1080,
+      1920
+    ],
+    [
+      2560,
+      1440
+    ],
+    [
+      1440,
+      2560
+    ],
+    [
+      280,
+      653
+    ],
+    [
+      653,
+      280
+    ]
+  ],
+  "darkStateViewportCombinations": 440,
+  "failures": [],
+  "lightSample": "All 22 states at 568x320 passed",
+  "interactions": "Six primary transitions, MCP approve/deny, heading focus passed",
+  "independentSourceReview": "Approved",
+  "unverified": [
+    "Native mobile keyboard",
+    "Zoom and text scaling",
+    "Other locales",
+    "Other browser engines",
+    "Real auth/email/consent operations"
+  ]
+}

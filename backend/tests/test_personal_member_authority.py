@@ -47,9 +47,11 @@ async def test_personal_member_can_enter_only_own_workspace_and_cannot_lose_prim
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", ["project_admin", "project_member", "reader", "lumen_admin"])
+@pytest.mark.parametrize("role", ["project_admin", "project_member", "reader", "custom-project-auditor"])
 async def test_system_assignment_cannot_add_other_roles_to_personal_member(directory, enrollments, role, monkeypatch):
+    directory.add_roles("custom-project-auditor")
     project = await account_spaces.ensure_personal_project("foreign")
+    before = list(directory.calls)
     connection = keystone.get_admin_project_connection()
     connection.identity = SimpleNamespace(
         get_project=directory.ks.projects.get,
@@ -74,6 +76,7 @@ async def test_system_assignment_cannot_add_other_roles_to_personal_member(direc
         rid("member")
     }
     assert account_spaces.personal_project("foreign") == project
+    assert directory.calls == before
 
 
 @pytest.mark.asyncio
@@ -104,12 +107,13 @@ async def test_extra_personal_project_keeps_required_member_grant(directory, enr
 
 
 @pytest.mark.asyncio
-async def test_legacy_personal_owner_cannot_add_service_role_through_managed_editor(directory, enrollments):
+async def test_legacy_personal_owner_cannot_add_reader_through_managed_editor(directory, enrollments):
     project = await account_spaces.ensure_personal_project("foreign")
     # Preserve a historical owner project; the generic editor must not use its
-    # established ownership to add new service/project roles to Personal.
+    # established ownership to add new standard project roles to Personal.
     directory.ks.roles.revoke(rid("member"), user="foreign", project=project["id"])
     directory.ks.roles.grant(rid("project_owner"), user="foreign", project=project["id"])
+    before = list(directory.calls)
     actor = {**manager("foreign"), "domain_id": project["domain_id"], "project_id": project["id"]}
     async with identity_roles._graph_lock(keystone.get_admin_project_connection()) as lease:
         snapshot = (
@@ -121,13 +125,14 @@ async def test_legacy_personal_owner_cannot_add_service_role_through_managed_edi
         )
         with pytest.raises(HTTPException) as denied:
             await project_service.replace_member_roles(
-                project["id"], "foreign", [rid("project_owner"), rid("lumen_admin")], actor, _mutation=snapshot
+                project["id"], "foreign", [rid("project_owner"), rid("reader")], actor, _mutation=snapshot
             )
     assert denied.value.status_code == 403
     assert denied.value.detail == "personal_project_roles_are_fixed"
     assert project_service._direct_ids(directory.ks.role_assignments.list(project=project["id"]), "foreign") == {
         rid("project_owner")
     }
+    assert directory.calls == before
 
 
 @pytest.mark.asyncio

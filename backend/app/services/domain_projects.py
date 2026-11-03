@@ -600,6 +600,7 @@ def assert_managers_remain(
     *,
     ks=None,
     catalog=None,
+    projected_catalog=None,
     user_id=None,
     disabled_user_ids=(),
     disabled_domain_id=None,
@@ -609,12 +610,16 @@ def assert_managers_remain(
     project_id=None,
     role_id=None,
     remove_assignment=False,
+    removed_role_ids=(),
     prior_id=None,
     implied_id=None,
     remove_edge=False,
     changed_domain_id=None,
 ):
     """Simulate source grants, group membership and role graph before a write.
+
+    A projected catalog simulates the entire graph change at once while retaining
+    exact native role identities, rather than testing independently safe edges.
 
     The raw-source reconstruction must agree with Keystone's effective managers;
     a provider that omits provenance cannot silently authorize last-manager loss.
@@ -624,7 +629,16 @@ def assert_managers_remain(
         ks = _client(ks)
         catalog = _catalog(ks)
     changed_catalog = catalog
-    if prior_id is not None or implied_id is not None:
+    graph_change = projected_catalog is not None or prior_id is not None or implied_id is not None
+    if projected_catalog is not None:
+        if prior_id is not None or implied_id is not None:
+            raise _unavailable()
+        if {(r["id"], r["name"], r["domain_id"]) for r in catalog} != {
+            (r["id"], r["name"], r["domain_id"]) for r in projected_catalog
+        }:
+            raise _unavailable()
+        changed_catalog = projected_catalog
+    elif prior_id is not None or implied_id is not None:
         if prior_id is None or implied_id is None:
             raise _unavailable()
         identity_roles._role(catalog, prior_id)
@@ -639,18 +653,24 @@ def assert_managers_remain(
                     children.add(implied_id)
             inferences.append({"prior_role": {"id": row["id"]}, "implies": [{"id": rid} for rid in children]})
         changed_catalog = identity_roles._catalog(catalog, inferences)
-        if any(r["domain_id"] is None and r["name"].casefold() == "project_reader" for r in catalog):
+    if graph_change:
+        if projected_catalog is None and any(
+            r["domain_id"] is None and r["name"].casefold() == "project_reader" for r in catalog
+        ):
             _roles(changed_catalog)
         if not any(r["domain_id"] is None and r["name"].casefold() == "manager" for r in catalog):
             return set()
     manager = _canonical(catalog, "manager")["id"]
     disabled = set(disabled_user_ids)
+    removed_roles = set(removed_role_ids)
+    if remove_assignment:
+        removed_roles.add(role_id)
     affected = set()
     changed_roles = {
         r["id"]: {r["id"]} | identity_roles._descendant_ids(changed_catalog, r["id"]) for r in changed_catalog
     }
     old_roles = {r["id"]: {r["id"]} | identity_roles._descendant_ids(catalog, r["id"]) for r in catalog}
-    if prior_id is not None and (
+    if graph_change and (
         {rid for rid, roles in old_roles.items() if manager in roles}
         == {rid for rid, roles in changed_roles.items() if manager in roles}
     ):
@@ -659,7 +679,7 @@ def assert_managers_remain(
     raw = list(_call(ks.role_assignments.list))
     # An inference addition cannot turn an existing domain/system/ordinary project
     # grant into a newly minted manager outside Default.
-    if prior_id is not None and not remove_edge:
+    if graph_change:
         for row in raw:
             meta = _assignment(row, catalog)
             if manager in changed_roles[meta["role_id"]] and manager not in old_roles[meta["role_id"]]:
@@ -682,13 +702,13 @@ def assert_managers_remain(
         project = default_project(domain_id, ks=ks)
         if project is None:
             continue
-        if prior_id is not None:
+        if graph_change:
             _roles(changed_catalog)
         native_project = _exact(ks.projects, project["id"])
         sources = _sources(ks, native_project, catalog, raw)
         if group_id is not None and any(source["group_id"] == group_id for source in sources):
             affected.add(domain_id)
-        if project_id == project["id"] or prior_id is not None:
+        if project_id == project["id"] or graph_change:
             affected.add(domain_id)
         current, retained = set(), set()
         for source in sources:
@@ -707,11 +727,11 @@ def assert_managers_remain(
                     or _field(account, "domain_id") == disabled_domain_id
                     or (source["group_id"] == group_id and (delete_group or uid == remove_group_user_id))
                     or (
-                        remove_assignment
+                        bool(removed_roles)
                         and source["kind"] == "project"
                         and not source["inherited"]
                         and source["scope_id"] == project_id
-                        and source["role_id"] == role_id
+                        and source["role_id"] in removed_roles
                         and (
                             (user_id is not None and source["user_id"] == user_id)
                             or (group_id is not None and source["group_id"] == group_id)

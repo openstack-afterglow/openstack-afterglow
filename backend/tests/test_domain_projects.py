@@ -633,6 +633,183 @@ def test_last_manager_simulation_preserves_independent_group_and_inference_sourc
         domain_projects.assert_managers_remain(disabled_user_ids=("creator",))
 
 
+@pytest.fixture
+def retired_preset_graph(domain_native, monkeypatch):
+    n = domain_native
+    n.role_rows.extend(
+        row(id=f"native-{name}", name=name, domain_id=None)
+        for name in ("project_creator", "waygate_user", "waygate_reader", "lumen_user", "lumen_reader")
+    )
+    n.retired_edges = {
+        ("native-waygate_user", "native-waygate_reader"),
+        ("native-lumen_user", "native-lumen_reader"),
+    }
+    n.edges.extend(
+        {"prior_role": {"id": prior}, "implies": [{"id": child}]} for prior, child in sorted(n.retired_edges)
+    )
+
+    def delete(path):
+        _, _, prior, _, child = path.split("/")
+        n.calls.append(("edge.delete", prior, child))
+        inference = next(edge for edge in n.edges if edge["prior_role"]["id"] == prior)
+        inference["implies"] = [entry for entry in inference["implies"] if entry["id"] != child]
+        return row(raise_for_status=lambda: None)
+
+    n.conn.identity = row(delete=delete)
+    monkeypatch.setattr(identity_roles.activity, "record", AsyncMock())
+    return n
+
+
+def _retired_manager_path(native, service):
+    native.edges.append({"prior_role": {"id": f"native-{service}_reader"}, "implies": [{"id": "alias"}]})
+    return grant(f"native-{service}_user", user="creator", project="default-a")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sources", [("lumen",), ("waygate", "lumen")])
+async def test_preset_retirement_rejects_complete_last_manager_loss_before_any_write(retired_preset_graph, sources):
+    n = retired_preset_graph
+    n.raw = [_retired_manager_path(n, service) for service in sources]
+    before = identity_roles.load_catalog(n.conn)
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+    assert error.value.status_code == 409 and error.value.detail == "last_domain_manager"
+    assert identity_roles.load_catalog(n.conn) == before
+    assert n.calls == []
+    identity_roles.activity.record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unavailable", [False, True])
+async def test_preset_retirement_requires_complete_native_manager_sources(retired_preset_graph, unavailable):
+    n = retired_preset_graph
+    n.raw = [_retired_manager_path(n, "waygate"), grant("manager", user="second", project="default-a")]
+    original = n.role_assignments.list
+
+    def incomplete_sources(**query):
+        if unavailable:
+            raise RuntimeError("native assignment metadata unavailable")
+        return original(**query) if query else []
+
+    n.role_assignments.list = incomplete_sources
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+    assert error.value.status_code == 503
+    assert n.calls == []
+    identity_roles.activity.record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retained", ["same-user", "other-user", "unchanged-role-path"])
+async def test_preset_retirement_preserves_safe_manager_sources_and_syncs_projection(retired_preset_graph, retained):
+    n = retired_preset_graph
+    n.raw = [_retired_manager_path(n, "waygate")]
+    if retained == "unchanged-role-path":
+        inference = next(edge for edge in n.edges if edge["prior_role"]["id"] == "native-waygate_user")
+        inference["implies"].append({"id": "alias"})
+    else:
+        n.raw.append(grant("manager", user="creator" if retained == "same-user" else "second", project="default-a"))
+    await domain_projects.sync_manager_access("tenant-a")
+    n.calls.clear()
+
+    result = await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+
+    assert {(edge["prior"], edge["implied"]) for edge in result["removed_implications"]} == {
+        ("waygate_user", "waygate_reader"),
+        ("lumen_user", "lumen_reader"),
+    }
+    assert n.members["projection-tenant-a"] == ({"second"} if retained == "other-user" else {"creator"})
+    assert ("alias", "manager") in {
+        (edge["prior_role"]["id"], child["id"]) for edge in n.edges for child in edge["implies"]
+    }
+    assert domain_projects.has_manager("creator" if retained != "other-user" else "second", "tenant-a")
+    again = await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+    assert again["removed_implications"] == []
+
+
+@pytest.mark.asyncio
+async def test_preset_retirement_keeps_domain_scoped_same_name_manager_paths(retired_preset_graph):
+    n = retired_preset_graph
+    n.role_rows.extend(
+        [
+            row(id="tenant-service-user", name="waygate_user", domain_id="tenant-a"),
+            row(id="tenant-service-reader", name="waygate_reader", domain_id="tenant-a"),
+        ]
+    )
+    n.edges.extend(
+        [
+            {"prior_role": {"id": "tenant-service-user"}, "implies": [{"id": "tenant-service-reader"}]},
+            {"prior_role": {"id": "tenant-service-reader"}, "implies": [{"id": "alias"}]},
+        ]
+    )
+    n.raw = [grant("tenant-service-user", user="creator", project="default-a")]
+    await domain_projects.sync_manager_access("tenant-a")
+
+    result = await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+
+    assert len(result["removed_implications"]) == 2
+    assert "tenant-service-reader" in identity_roles._role(result["roles"], "tenant-service-user")["implied_role_ids"]
+    assert n.members["projection-tenant-a"] == {"creator"}
+    assert domain_projects.has_manager("creator", "tenant-a")
+
+
+@pytest.mark.asyncio
+async def test_preset_retirement_partial_provider_failure_syncs_actual_manager_projection(retired_preset_graph):
+    n = retired_preset_graph
+    n.raw = [_retired_manager_path(n, "waygate")]
+    second_source = _retired_manager_path(n, "lumen")
+    second_source.user = {"id": "second"}
+    n.raw.extend([second_source, grant("manager", user="ordinary", project="default-a")])
+    await domain_projects.sync_manager_access("tenant-a")
+    assert n.members["projection-tenant-a"] == {"creator", "second", "ordinary"}
+    delete = n.conn.identity.delete
+
+    def fail_second_delete(path):
+        if "native-lumen_user" in path:
+            raise HTTPException(503, "native write unavailable")
+        return delete(path)
+
+    n.conn.identity.delete = fail_second_delete
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+    assert error.value.status_code == 503
+    assert error.value.detail["removed_implications"] == [{"prior": "waygate_user", "implied": "waygate_reader"}]
+    assert n.members["projection-tenant-a"] == {"second", "ordinary"}
+    assert not domain_projects.has_manager("creator", "tenant-a")
+    assert domain_projects.has_manager("ordinary", "tenant-a")
+    assert identity_roles.activity.record.await_args.kwargs["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_preset_retirement_noop_retry_repairs_failed_manager_projection(retired_preset_graph):
+    n = retired_preset_graph
+    n.raw = [_retired_manager_path(n, "waygate"), grant("manager", user="second", project="default-a")]
+    await domain_projects.sync_manager_access("tenant-a")
+    assert n.members["projection-tenant-a"] == {"creator", "second"}
+    remove = n.users.remove_from_group
+
+    def fail_projection_removal(user, group):
+        raise HTTPException(503, "native group write unavailable")
+
+    n.users.remove_from_group = fail_projection_removal
+    with pytest.raises(HTTPException) as error:
+        await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+    assert error.value.status_code == 503
+    assert len(error.value.detail["removed_implications"]) == 2
+    assert n.members["projection-tenant-a"] == {"creator", "second"}
+    assert not domain_projects.has_manager("creator", "tenant-a")
+    n.users.remove_from_group = remove
+
+    result = await identity_roles.apply_role_presets(n.conn, {"user_id": "operator"})
+
+    assert result["removed_implications"] == []
+    assert result["created_implications"] == []
+    assert result["created_roles"] == []
+    assert n.members["projection-tenant-a"] == {"second"}
+    assert domain_projects.has_manager("second", "tenant-a")
+    assert identity_roles.activity.record.await_args.kwargs["status"] == "success"
+
+
 @pytest.mark.parametrize("source", ["domain", "ancestor"])
 def test_inherited_last_manager_simulation_and_unknown_provider_fail_closed(domain_native, source):
     n = domain_native

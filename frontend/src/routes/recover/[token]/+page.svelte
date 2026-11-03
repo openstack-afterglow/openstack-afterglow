@@ -14,7 +14,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/domain-auth';
 	import { t as account } from '$lib/i18n/ns/account';
@@ -139,12 +139,19 @@
 	onDestroy(() => { live = false; generation++; authorityEpoch++; proof = ''; info = null; password = ''; confirm = ''; });
 </script>
 <svelte:head><meta name="referrer" content="no-referrer" /><meta name="robots" content="noindex, nofollow" /></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas {loading ? '' : 'py-8'} flex items-center justify-center">
-	{#if loading}
-		<LoadingState variant="surface" style="min-height: 100dvh" label={t('onboarding.processing')} />
-	{:else}
-	<PageShell class="flex justify-center"><div class="w-full max-w-md bg-surface-raised border border-line-2 rounded-xl p-5 sm:p-6 space-y-4">
-		<h1 class="text-xl font-semibold text-ink-0">{info?.kind === 'password_create' ? account('password.createTitle') : t('recovery.title')}</h1>
+<AuthStudioShell
+	variant="account"
+	localeId="recover-token-locale"
+	themeId="recover-token-theme"
+	footerNote={t('recovery.title')}
+>
+	<div class="auth-flow">
+		<header class="auth-flow-heading">
+			<h1>{info?.kind === 'password_create' ? account('password.createTitle') : t('recovery.title')}</h1>
+		</header>
+		{#if loading}
+			<LoadingState variant="section" label={t('onboarding.processing')} />
+		{:else}
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			{#if changed}<Alert tone="success">{t('recovery.changed')}</Alert>
 			{:else if info?.kind === 'username'}
@@ -155,19 +162,29 @@
 				{#if info.kind === 'password_create'}<Alert tone="warning">{account('password.createWarning')}</Alert>{/if}
 				{#if info.kind === 'password_create' && !creationReady && !submitted}
 					{#if !error}<Alert tone="info">{account('password.createSignInHelp')}</Alert>{/if}
-					<Button onclick={signIn} disabled={busy || $logoutInProgress || $projectSwitching}>{account('password.createSignIn')}</Button>
+					<div class="auth-flow-actions">
+						<Button onclick={signIn} disabled={busy || $logoutInProgress || $projectSwitching}>{account('password.createSignIn')}</Button>
+					</div>
 				{:else}
-				<form onsubmit={complete} class="space-y-4">
-					{#if info.kind === 'password' || info.kind === 'password_create'}
-						<Field for="recover-password" label={t('onboarding.password')} help={t('onboarding.passwordHelp')} required><TextInput id="recover-password" type="password" autocomplete="new-password" bind:value={password} maxlength={1024} disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} required /></Field>
-						<Field for="recover-confirm" label={t('onboarding.passwordConfirm')} required><TextInput id="recover-confirm" type="password" autocomplete="new-password" bind:value={confirm} maxlength={1024} disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} required /></Field>
-					{:else}<Alert tone="info">{t('emailChange.confirm')}</Alert>{/if}
-					<Button type="submit" disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} ariaBusy={busy}>{#if busy}<LoadingState variant="control" label={t('onboarding.processing')} />{:else}{info.kind === 'password_create' ? account('password.createSubmit') : info.kind === 'password' ? t('recovery.reset') : t('emailChange.accept')}{/if}</Button>
-				</form>
+					<form onsubmit={complete} class="auth-flow">
+						{#if info.kind === 'password' || info.kind === 'password_create'}
+							<div class="auth-flow-fields">
+								<Field for="recover-password" label={t('onboarding.password')} help={t('onboarding.passwordHelp')} required><TextInput id="recover-password" type="password" autocomplete="new-password" bind:value={password} maxlength={1024} disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} required /></Field>
+								<Field for="recover-confirm" label={t('onboarding.passwordConfirm')} required><TextInput id="recover-confirm" type="password" autocomplete="new-password" bind:value={confirm} maxlength={1024} disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} required /></Field>
+							</div>
+						{:else}<Alert tone="info">{t('emailChange.confirm')}</Alert>{/if}
+						<div class="auth-flow-actions">
+							<Button type="submit" disabled={busy || submitted || (info.kind === 'password_create' && !creationReady)} ariaBusy={busy}>{#if busy}<LoadingState variant="control" label={t('onboarding.processing')} />{:else}{info.kind === 'password_create' ? account('password.createSubmit') : info.kind === 'password' ? t('recovery.reset') : t('emailChange.accept')}{/if}</Button>
+						</div>
+					</form>
 				{/if}
 			{/if}
-			{#if info?.kind !== 'password_create' || submitted || sessionReady}<Button variant="link" href="/login" disabled={busy}>{t('common.backToLogin')}</Button>{/if}
-			{#if !info || (error && submitted && info.kind !== 'password_create')}<Button variant="link" href="/recover">{t('recovery.requestAnother')}</Button>{/if}
-	</div></PageShell>
-	{/if}
-</main>
+			{#if info?.kind !== 'password_create' || submitted || sessionReady}
+				<div class="auth-flow-links">
+					{#if info?.kind !== 'password_create' || submitted || sessionReady}<Button variant="link" href="/login" disabled={busy}>{t('common.backToLogin')}</Button>{/if}
+					{#if !info || (error && submitted && info.kind !== 'password_create')}<Button variant="link" href="/recover">{t('recovery.requestAnother')}</Button>{/if}
+				</div>
+			{/if}
+		{/if}
+	</div>
+</AuthStudioShell>

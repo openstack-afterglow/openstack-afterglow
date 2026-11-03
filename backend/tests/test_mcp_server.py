@@ -381,6 +381,7 @@ async def test_mutation_rebuilds_ownership_preview_on_both_sides_of_send_boundar
 
     async def authorize(*_args, **_kwargs):
         calls.append("authorize")
+        return _args[0]
 
     async def run(*_args, **_kwargs):
         calls.append("dispatch")

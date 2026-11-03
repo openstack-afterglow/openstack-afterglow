@@ -52,6 +52,8 @@ class McpDelegatedGrant(Base):
     access_level: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
     project_scope: Mapped[str] = mapped_column(VARCHAR(20), nullable=False, default="current", server_default="current")
     approved_projects: Mapped[list | None] = mapped_column(JSON)
+    oauth_ongoing: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False, server_default="0")
+    issued_role_ceiling: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(VARCHAR(10), nullable=False, default="pending")
     application_credential_id: Mapped[str | None] = mapped_column(VARCHAR(128))
     credential_ciphertext: Mapped[str | None] = mapped_column(MEDIUMTEXT)
@@ -76,7 +78,15 @@ class McpDelegatedGrant(Base):
         CheckConstraint("access_level IN ('read', 'manage')", name="chk_mcp_grant_access"),
         CheckConstraint("project_scope IN ('current', 'selected', 'all')", name="chk_mcp_grant_project_scope"),
         CheckConstraint("status IN ('pending', 'active', 'revoked', 'expired')", name="chk_mcp_grant_status"),
-        CheckConstraint("expires_at IS NOT NULL OR source = 'personal_token'", name="chk_mcp_grant_expiry"),
+        CheckConstraint(
+            "expires_at IS NOT NULL OR source = 'personal_token' OR (source = 'oauth' AND oauth_ongoing = 1)",
+            name="chk_mcp_grant_expiry",
+        ),
+        CheckConstraint(
+            "oauth_ongoing = 0 OR (source = 'oauth' AND expires_at IS NULL "
+            "AND COALESCE(LOWER(JSON_TYPE(issued_role_ceiling)) = 'object', 0))",
+            name="chk_mcp_grant_ongoing",
+        ),
         Index("idx_mcp_grants_owner_status", "owner_user_id", "owner_project_id", "status"),
         Index("idx_mcp_grants_expiry", "expires_at", "status"),
     )
@@ -217,7 +227,10 @@ class McpOAuthToken(Base):
     resource: Mapped[str] = mapped_column(VARCHAR(2048), nullable=False)
     scopes: Mapped[list] = mapped_column(JSON, nullable=False)
     generation: Mapped[int] = mapped_column(BIGINT, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql").with_variant(DATETIME(fsp=6), "mariadb"),
+        nullable=True,
+    )
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -225,6 +238,7 @@ class McpOAuthToken(Base):
 
     __table_args__ = (
         CheckConstraint("token_type IN ('access', 'refresh')", name="chk_mcp_oauth_token_type"),
+        CheckConstraint("expires_at IS NOT NULL OR token_type = 'refresh'", name="chk_mcp_oauth_token_expiry"),
         Index("idx_mcp_oauth_tokens_family", "family_id", "token_type", "generation"),
         Index("idx_mcp_oauth_tokens_expiry", "expires_at", "token_type"),
     )

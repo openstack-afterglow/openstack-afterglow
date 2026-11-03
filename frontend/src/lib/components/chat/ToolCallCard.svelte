@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-panel';
+	import { t as commonText } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { downloadChatAsset } from '$lib/api/chatAttachments';
@@ -20,7 +21,7 @@
 	const argsText = $derived(formatToolArgs(item.args));
 	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length) || Boolean(item.progress?.length));
 	const taskName = $derived(taskLabelForTool(item.name));
-	const statusLabel = $derived(item.running ? t('toolCall.running') : item.status === 'failed' ? t('toolCall.failed') : t('toolCall.completed'));
+	const statusLabel = $derived(item.running ? t('toolCall.running') : item.status === 'unknown' ? commonText('quota.unknown') : item.status === 'failed' ? t('toolCall.failed') : t('toolCall.completed'));
 	const durationLabel = $derived(
 		item.durationMs == null
 			? null
@@ -71,6 +72,8 @@
 			<LoadingState variant="control" label="" aria-hidden="true" />
 		{:else if item.status === 'failed'}
 			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" /></svg>
+		{:else if item.status === 'unknown'}
+			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M9 12h6" /></svg>
 		{:else}
 			<svg class="ic" class:motion-pop={animate && sawRunning} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		{/if}

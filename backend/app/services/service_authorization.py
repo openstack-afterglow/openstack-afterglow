@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Collection
 
 from fastapi import HTTPException, Request
 
@@ -44,9 +45,9 @@ async def current_service_principal(request: Request) -> dict:
 
 async def authorize_service_request(service_type: str, request: Request, upstream_path: str) -> None:
     """Validate current browser scope; the native action handler enforces policy."""
-    from app.services.service_permissions import SERVICE_ROLE_GRADES
+    from app.services.service_permissions import SERVICE_CAPABILITIES
 
-    if service_type not in SERVICE_ROLE_GRADES:
+    if service_type not in SERVICE_CAPABILITIES:
         raise HTTPException(status_code=403, detail="알 수 없는 서비스 작업입니다")
     if request.method == "OPTIONS":
         return
@@ -90,12 +91,14 @@ def service_policy_availability() -> dict[str, bool]:
 
 
 async def service_permission_snapshot(
-    token_info: dict, *, timeout: float | None = None
+    token_info: dict, *, timeout: float | None = None, services: Collection[str] | None = None
 ) -> tuple[dict[str, list[str]], dict[str, str]]:
-    """Project native decisions for UI, preserving unavailable versus denied."""
+    """Project native decisions for selected surfaces, defaulting to all configured services."""
     from app.services.service_proxy import get_policy_capabilities
 
     enabled = service_policy_availability()
+    if services is not None:
+        enabled = {service: available for service, available in enabled.items() if service in services}
 
     async def evaluate(service):
         if not enabled[service]:

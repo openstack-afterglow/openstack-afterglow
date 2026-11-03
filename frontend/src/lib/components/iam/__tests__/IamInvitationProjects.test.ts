@@ -54,6 +54,23 @@ describe('multi-project invitation modal', () => {
 		sent.resolve({});
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 	});
+	it.each(['member', 'reader'])('accepts native %s with its returned ID while hiding retired roles and preserving legitimate custom names', async name => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/projects') ? { items: projects } : path.endsWith('/invitations') ? { items: [] } : { roles: [
+			{ id: 'native', name, area: null, grade: null },
+			{ id: 'old', name: 'waygate_admin' },
+			{ id: 'flag', name: 'operator_old', retired: true },
+			{ id: 'hidden', name: 'operator_hidden', assignable: false },
+			{ id: 'custom', name: 'waygate-custom_admin' }
+		] }));
+		api.post.mockResolvedValue({});
+		const modal = await open();
+		await fireEvent.click(modal.getByRole('checkbox', { name: /Project A/ }));
+		await fireEvent.click(await modal.findByRole('checkbox', { name }));
+		for (const retired of ['waygate_admin', 'operator_old', 'operator_hidden']) expect(modal.queryByRole('checkbox', { name: retired })).toBeNull();
+		await fireEvent.click(modal.getByRole('checkbox', { name: 'waygate-custom_admin' }));
+		await fireEvent.click(modal.getByRole('button', { name: t('inviteProjectsSend') }));
+		expect(api.post).toHaveBeenCalledExactlyOnceWith('/api/v1/iam/invitations', { email: 'invitee@example.com', projects: [{ project_id: 'project-a', role_ids: ['native', 'custom'] }] }, 'token', undefined, { replayOnUnauthorized: false });
+	});
 	it('rejects final send after scope invalidation before unmount and clears the private draft on unmount', async () => {
 		let current = true;
 		const view = render(IamInvitations, { session: { ...session, isCurrent: () => current }, onDenied: vi.fn() });

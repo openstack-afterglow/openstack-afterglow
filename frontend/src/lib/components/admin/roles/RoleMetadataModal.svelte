@@ -11,6 +11,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import type { ManagedRole, RoleMetadata } from './types';
 	import { isNativeRole, managedRoleName, normalizeRolePart, splitManagedRole, validRolePart } from './naming';
+	import { isRetiredRole } from '$lib/utils/roleCatalog';
 	let { role, busy, disabled, error, onClose, onSave }: {
 		role: ManagedRole | null; busy: boolean; disabled: boolean; error: string;
 		onClose: () => void; onSave: (metadata: RoleMetadata) => void;
@@ -21,7 +22,9 @@
 	const protectedName = $derived(!!role && (role.protected || isNativeRole(role.name)));
 	const renaming = $derived(!role || area !== (original?.area ?? '') || grade !== (original?.grade ?? ''));
 	const preview = $derived(managedRoleName(area, grade));
-	const valid = $derived(protectedName || !renaming || (validRolePart(normalizeRolePart(area)) && validRolePart(normalizeRolePart(grade))));
+	const readOnly = $derived(!!role && isRetiredRole(role));
+	const retired = $derived(readOnly || (renaming && isRetiredRole({ name: preview })));
+	const valid = $derived(!retired && (protectedName || !renaming || (validRolePart(normalizeRolePart(area)) && validRolePart(normalizeRolePart(grade)))));
 	function submit() {
 		if (busy || disabled || !valid) return;
 		onSave({ ...(!protectedName && renaming ? { name: preview } : {}), description, ...(!role ? { domain_id: domain.trim() || null } : {}) });
@@ -41,16 +44,16 @@
 			<p class="text-sm text-ink-2">{t('roleMetadata.protectedNameHelp')}</p>
 		{:else}
 			<Field label={t('roleMetadata.area')} for={`${id}-area`} required={!role}>
-				<TextInput id={`${id}-area`} bind:value={area} disabled={busy} />
+				<TextInput id={`${id}-area`} bind:value={area} disabled={busy || readOnly} />
 			</Field>
 			<Field label={t('roleMetadata.grade')} for={`${id}-grade`} required={!role} help={t('roleMetadata.gradeHelp')}>
-				<TextInput id={`${id}-grade`} bind:value={grade} disabled={busy} />
+				<TextInput id={`${id}-grade`} bind:value={grade} disabled={busy || readOnly} />
 			</Field>
 			<p class="text-sm text-ink-2" aria-live="polite"><RichText segments={t.rich('roleMetadata.namePreview', { name: renaming ? preview : role?.name ?? '' })} tags={{ name: roleName }} /></p>
-			{#if !valid}<Alert tone="warning">{t('roleMetadata.invalidName')}</Alert>{/if}
+			{#if !valid}<Alert tone="warning">{retired ? t('roleValidation.retired') : t('roleMetadata.invalidName')}</Alert>{/if}
 		{/if}
 		<Field label={t('form.description')} for={`${id}-description`}>
-			<TextareaInput id={`${id}-description`} bind:value={description} disabled={busy} />
+			<TextareaInput id={`${id}-description`} bind:value={description} disabled={busy || readOnly} />
 		</Field>
 		{#if !role}
 			<Field label={t('roleMetadata.domain')} for={`${id}-domain`} help={t('roleMetadata.domainHelp')}>

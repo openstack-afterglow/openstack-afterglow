@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "প্রসঙ্গ সংকোচন শুরু হয়েছে",
+	"window.detachedTemporaryHistory": "পৃথক অস্থায়ী চালনার নথি ({count})",
+	"window.temporaryOrderUnknown": "কথোপকথনে এই চালনার অবস্থান অজানা, তাই নথিটি আলাদাভাবে দেখানো হচ্ছে।",
+	"window.moreTemporaryHistory": "আরও অস্থায়ী চালনার নথি লোড করুন",
 	"childTask.title": "উপকাজ {index}",
 	"childTask.requested": "উপকাজের অনুরোধ করা হয়েছে",
 	"childTask.canceled": "বাতিল হয়েছে",

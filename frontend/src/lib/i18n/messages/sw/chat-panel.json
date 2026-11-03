@@ -1,4 +1,8 @@
 {
+  "task.compactionStarted": "Ufupishaji wa muktadha umeanza",
+  "window.detachedTemporaryHistory": "Rekodi tofauti za utekelezaji wa muda ({count})",
+  "window.temporaryOrderUnknown": "Nafasi ya utekelezaji huu katika mazungumzo haijulikani, kwa hivyo rekodi yake inaonyeshwa kando.",
+  "window.moreTemporaryHistory": "Pakia rekodi zaidi za utekelezaji wa muda",
   "childTask.title": "Kazi ndogo {index}",
   "childTask.requested": "Kazi ndogo imeombwa",
   "childTask.canceled": "Imeghairiwa",

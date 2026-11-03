@@ -57,31 +57,29 @@
 	onDestroy(() => { name = ''; password = ''; confirm = ''; });
 </script>
 
-<form class="onboarding-form" novalidate onsubmit={submit}>
+<form class="onboarding-form auth-flow" novalidate onsubmit={submit}>
 	<p class="text-sm text-ink-2">{t('onboarding.personalOwnership')}</p>
 	<Field label={t('onboarding.name')} for="{idPrefix}-name" help={t('onboarding.nameHelp')} error={nameError} required>
 		<TextInput id="{idPrefix}-name" bind:value={name} autocomplete="username" disabled={submitting || disabled} required ariaInvalid={!!nameError} />
 	</Field>
-	<Field label={t('onboarding.password')} for="{idPrefix}-password" help={t('onboarding.passwordHelp')} error={passwordError} required>
-		<TextInput id="{idPrefix}-password" type="password" bind:value={password} maxlength={PASSWORD_MAX} autocomplete="new-password" disabled={submitting || disabled} required ariaInvalid={!!passwordError} />
-	</Field>
-	<Field label={t('onboarding.passwordConfirm')} for="{idPrefix}-confirm" error={confirmError} required>
-		<TextInput id="{idPrefix}-confirm" type="password" bind:value={confirm} maxlength={PASSWORD_MAX} autocomplete="new-password" disabled={submitting || disabled} required ariaInvalid={!!confirmError} />
-	</Field>
-	<Button type="submit" size="lg" disabled={submitting || disabled} ariaBusy={submitting}>{submitLabel}</Button>
+	<div class="auth-flow-fields">
+		<Field label={t('onboarding.password')} for="{idPrefix}-password" help={t('onboarding.passwordHelp')} error={passwordError} required>
+			<TextInput id="{idPrefix}-password" type="password" bind:value={password} maxlength={PASSWORD_MAX} autocomplete="new-password" disabled={submitting || disabled} required ariaInvalid={!!passwordError} />
+		</Field>
+		<Field label={t('onboarding.passwordConfirm')} for="{idPrefix}-confirm" error={confirmError} required>
+			<TextInput id="{idPrefix}-confirm" type="password" bind:value={confirm} maxlength={PASSWORD_MAX} autocomplete="new-password" disabled={submitting || disabled} required ariaInvalid={!!confirmError} />
+		</Field>
+	</div>
+	<div class="auth-flow-actions">
+		<Button type="submit" size="lg" disabled={submitting || disabled} ariaBusy={submitting}>{submitLabel}</Button>
+	</div>
 	{#if submitting}
 		<LoadingState variant="section" label={t('onboarding.processing')} class="onboarding-activity motion-fade"  />
 	{/if}
 </form>
 
 <style>
-	.onboarding-form {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
 	.onboarding-form :global(.onboarding-activity) {
-		align-self: center;
+		justify-self: center;
 	}
 </style>

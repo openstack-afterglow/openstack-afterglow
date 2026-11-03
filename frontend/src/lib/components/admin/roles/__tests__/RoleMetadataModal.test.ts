@@ -29,3 +29,23 @@ describe('role metadata area/grade form', () => {
 		expect(onSave).toHaveBeenCalledWith({ description: '' });
 	});
 });
+
+describe('retired role metadata', () => {
+	it.each(['lumen_admin', 'drover-access_admin'])('does not recreate the retired identity %s', async name => {
+		const onSave = vi.fn();
+		const [area, grade] = name.split('_');
+		render(RoleMetadataModal, { role: null, busy: false, disabled: false, error: '', onClose: vi.fn(), onSave });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^영역/ }), { target: { value: area } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^등급/ }), { target: { value: grade } });
+		const create = screen.getByRole('button', { name: '만들기' }) as HTMLButtonElement;
+		expect(create.disabled).toBe(true);
+		await fireEvent.submit(create.closest('[role="dialog"]')!.querySelector('form')!);
+		expect(onSave).not.toHaveBeenCalled();
+	});
+	it('does not update existing retired metadata', async () => {
+		const onSave = vi.fn();
+		render(RoleMetadataModal, { role: role('lumen_admin'), busy: false, disabled: false, error: '', onClose: vi.fn(), onSave });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		expect(onSave).not.toHaveBeenCalled();
+	});
+});

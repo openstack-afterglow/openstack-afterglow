@@ -30,6 +30,7 @@
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { isNativeRole } from '$lib/components/admin/roles/naming';
+	import { isRetiredRole } from '$lib/utils/roleCatalog';
 	type RolePreset = { name: string; description: string; area: string; grade: string; parent: string | null };
 	type PresetPreview = { roles: RolePreset[]; implications: { prior: string; implied: string }[]; retired_implications: { prior: string; implied: string }[]; project_roles: RolePreset[] };
 	let preset = $state<PresetPreview | null>(null);
@@ -139,7 +140,7 @@
 	function sortLabel(key: RoleSort): string { return sort === key ? direction === 'asc' ? ' ↑' : ' ↓' : ''; }
 	function selectRole(role: ManagedRole) { selectedId = role.id; actionError = ''; }
 	function openEditor(role: ManagedRole | null) {
-		if (!canMutate) return;
+		if (!canMutate || (role && isRetiredRole(role))) return;
 		editId = role?.id ?? null; editor = role ? 'edit' : 'create'; actionError = '';
 	}
 
@@ -167,7 +168,7 @@
 		}
 	}
 	async function saveMetadata(metadata: RoleMetadata) {
-		if (editor === 'edit' && editRole) {
+		if (editor === 'edit' && editRole && !isRetiredRole(editRole)) {
 			const role = editRole;
 			const body = { description: metadata.description, ...(!role.protected && !isNativeRole(role.name) && metadata.name !== undefined ? { name: metadata.name } : {}) };
 			await mutate((token, project) => api.patch<ManagedRole>(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, body, token, project), t('rolePage.saved'), () => { editor = null; editId = null; });
@@ -296,9 +297,9 @@
 			<div class="space-y-4 min-w-0">
 				<Alert tone="info">{t('rolePresets.previewHelp')}</Alert>
 				{#if actionError || loadError}<Alert tone="danger">{actionError || loadError}</Alert>{/if}
-				<ul class="space-y-2 text-sm">{#each [...preset.project_roles, ...preset.roles] as item}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{/each}</ul>
+				<ul class="space-y-2 text-sm">{#each [...preset.project_roles, ...preset.roles].filter(item => !isRetiredRole(item)) as item}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{/each}</ul>
 				<h3 class="text-sm font-semibold">{t('rolePresets.directImplications')}</h3>
-				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
+				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.implications.filter(edge => !isRetiredRole({ name: edge.prior }) && !isRetiredRole({ name: edge.implied })) as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
 				<h3 class="text-sm font-semibold">{t('rolePresets.retiredImplications')}</h3>
 				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.retired_implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
 			</div>

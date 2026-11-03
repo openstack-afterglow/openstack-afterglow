@@ -408,7 +408,8 @@ async def test_preview_transport_timeout_settles_real_sdk_threads_without_erasin
             scoped.session.auth.get_access = access
         return scoped
 
-    async def policy(principal, *, timeout):
+    async def policy(principal, *, timeout, services):
+        assert set(services) == {"drover", "waygate", "palimpsest"}
         return {"drover": ["drover-inventory_reader"]}, {}
 
     monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
@@ -463,7 +464,7 @@ async def test_project_preview_isolates_unknown_projects_and_independent_service
         assert timeout == 0.01
         assert principal["connection_project_id"] == principal["project_id"]
         assert principal["token"] == "scoped-token-" + principal["project_id"]
-        if principal["project_id"] == provider.c and service == "lumen":
+        if principal["project_id"] == provider.c and service == "palimpsest":
             try:
                 await asyncio.Event().wait()
             finally:
@@ -485,13 +486,15 @@ async def test_project_preview_isolates_unknown_projects_and_independent_service
     assert [row["id"] for row in rows] == [provider.a, provider.b, provider.c]
     a, b, c = rows
     assert a["can_write"] is True and c["can_write"] is True
-    assert a["service_permissions"]["lumen"] == ["lumen-history_reader"]
+    assert "lumen" not in a["service_permissions"]
     assert a["service_errors"] == {"waygate": "permission_check_unavailable"}
     assert b["can_write"] is None
-    assert b["service_permissions"] == {service: [] for service in availability}
-    assert b["service_errors"] == {service: "permission_check_unavailable" for service in availability}
+    mcp_services = {service for service in availability if service != "lumen"}
+    assert b["service_permissions"] == {service: [] for service in mcp_services}
+    assert b["service_errors"] == {service: "permission_check_unavailable" for service in mcp_services}
     assert c["service_permissions"]["drover"] == ["drover-inventory_reader"]
-    assert c["service_errors"] == {"lumen": "permission_check_unavailable"}
+    assert c["service_errors"] == {"palimpsest": "permission_check_unavailable"}
+    assert "lumen" not in c["service_permissions"]
     assert canceled_policy.is_set()
     if failure == "timeout":
         assert canceled_authority.is_set()
@@ -533,7 +536,8 @@ async def test_project_preview_limits_workers_and_never_shares_caller_session(pr
         finally:
             active -= 1
 
-    async def policy(principal, *, timeout):
+    async def policy(principal, *, timeout, services):
+        assert set(services) == {"drover", "waygate", "palimpsest"}
         assert timeout == 5.0
         return {"drover": []}, {}
 
@@ -651,7 +655,8 @@ async def test_preview_never_presents_stale_token_service_roles_as_delegated_per
     )
     monkeypatch.setattr("app.config.get_settings", lambda: settings)
 
-    async def native(principal, *, timeout=None):
+    async def native(principal, *, timeout=None, services):
+        assert set(services) == {"drover", "waygate", "palimpsest"}
         assert timeout == 5.0
         return (
             {
@@ -670,16 +675,17 @@ async def test_preview_never_presents_stale_token_service_roles_as_delegated_per
     assert preview["service_errors"] == {
         service: "permission_check_unavailable"
         for service, enabled in service_authorization.service_policy_availability().items()
-        if enabled
+        if enabled and service != "lumen"
     }
+    assert "lumen" not in preview["service_permissions"]
 
 
-async def test_project_preview_endpoint_preserves_exact_native_policy_and_hides_credentials(
+async def test_project_preview_endpoint_excludes_lumen_without_changing_native_policy(
     client, project_provider, monkeypatch
 ):
     from app.api.deps import get_os_conn, get_token_info
     from app.main import app
-    from app.services import service_proxy
+    from app.services import service_authorization, service_proxy
 
     provider = project_provider
     observed = []
@@ -711,7 +717,7 @@ async def test_project_preview_endpoint_preserves_exact_native_policy_and_hides_
             "drover": ["drover-inventory_reader"],
             "waygate": [],
             "palimpsest": ["palimpsest-download_user"],
-            "lumen": ["lumen-history_reader"],
+            "lumen": ["lumen-history_reader", "lumen-keys_editor"],
         }
         if target == provider.b and service == "drover":
             leaves[service] = ["drover-inventory_reader", "drover-clusters_editor"]
@@ -743,7 +749,6 @@ async def test_project_preview_endpoint_preserves_exact_native_policy_and_hides_
                 "drover": ["drover-inventory_reader"],
                 "waygate": [],
                 "palimpsest": ["palimpsest-download_user"],
-                "lumen": ["lumen-history_reader"],
             },
             "service_errors": {},
         },
@@ -755,12 +760,29 @@ async def test_project_preview_endpoint_preserves_exact_native_policy_and_hides_
                 "drover": ["drover-clusters_editor", "drover-inventory_reader"],
                 "waygate": [],
                 "palimpsest": ["palimpsest-download_user"],
-                "lumen": [],
             },
-            "service_errors": {"lumen": "permission_check_unavailable"},
+            "service_errors": {},
         },
     ]
-    assert len(observed) == 8
+    assert set(observed) == {
+        (project_id, service)
+        for project_id in (provider.a, provider.b)
+        for service in ("drover", "waygate", "palimpsest")
+    }
+    assert len(observed) == 6
+    assert all("lumen" not in row["service_permissions"] and "lumen" not in row["service_errors"] for row in rows)
+    assert service_authorization.service_policy_availability()["lumen"] is True
+    permissions, _ = await service_authorization.service_permission_snapshot(
+        {
+            "token": "scoped-token-" + provider.a,
+            "user_id": provider.user,
+            "project_id": provider.a,
+            "connection_project_id": provider.a,
+            "is_system_admin": False,
+        },
+        timeout=5.0,
+    )
+    assert permissions["lumen"] == ["lumen-history_reader", "lumen-keys_editor"]
     assert "token" not in response.text and "secret" not in response.text and "roles" not in response.text
     assert not provider.created
 

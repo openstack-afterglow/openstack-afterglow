@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from app.api.deps import get_token_info
 from app.api.lumen.proxy import router
-from app.services import identity_roles, project_service, service_authorization, service_proxy
+from app.services import identity_roles, project_service, service_authorization, service_permissions, service_proxy
 from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
 
 
@@ -24,9 +24,7 @@ async def boundary(monkeypatch):
     edges = [
         {"prior_role": {"id": rid(prior)}, "implies": [{"id": rid(implied)}]} for prior, implied in ROLE_IMPLICATIONS
     ]
-    state = SimpleNamespace(
-        grants=["project_member", "lumen_user"], catalog=identity_roles._catalog(rows, edges), admitted=[]
-    )
+    state = SimpleNamespace(grants=["project_member"], catalog=identity_roles._catalog(rows, edges), admitted=[])
 
     def assignments(**kwargs):
         assert kwargs == {"project": "project", "effective": True}
@@ -64,12 +62,12 @@ async def boundary(monkeypatch):
     bff.include_router(router, prefix="/api/v1/chat")
 
     async def authenticated(request: Request):
-        # Old token claims intentionally retain the full service parent after a current downgrade.
+        # Stale project-owner claims must not replace the current directory lookup.
         principal = {
             "token": "synthetic",
             "user_id": "actor",
             "project_id": "project",
-            "roles": ["member", "lumen_admin"],
+            "roles": ["project_owner", "project_admin", "project_member", "member"],
             "is_system_admin": False,
         }
         request.state.token_info = principal
@@ -90,6 +88,175 @@ async def test_directory_outage_does_not_use_stale_token_parent(boundary, monkey
     monkeypatch.setattr(identity_roles, "_trusted_catalog", unavailable)
     assert (await client.get("/api/v1/chat/models")).status_code == 503
     assert state.admitted == []
+
+
+EXPECTED_CAPABILITIES = {
+    "waygate": (
+        "waygate-inventory_reader",
+        "waygate-connect_user",
+        "waygate-clients_editor",
+        "waygate-gateways_editor",
+        "waygate-clients_admin",
+        "waygate-gateways_admin",
+        "waygate-routing_admin",
+    ),
+    "lumen": (
+        "lumen-inventory_reader",
+        "lumen-history_reader",
+        "lumen-chat_user",
+        "lumen-images_user",
+        "lumen-audio_user",
+        "lumen-tools_user",
+        "lumen-assets_editor",
+        "lumen-agents_editor",
+        "lumen-mcp_editor",
+        "lumen-keys_editor",
+        "lumen-history_editor",
+        "lumen-resources_admin",
+    ),
+    "drover": (
+        "drover-inventory_reader",
+        "drover-access_user",
+        "drover-clusters_editor",
+        "drover-workloads_editor",
+        "drover-clusters_admin",
+        "drover-access_admin",
+    ),
+    "palimpsest": (
+        "palimpsest-inventory_reader",
+        "palimpsest-download_user",
+        "palimpsest-publish_editor",
+        "palimpsest-keys_editor",
+        "palimpsest-keys_admin",
+    ),
+}
+
+
+def test_capability_registry_is_separate_from_assignable_project_role_hierarchy():
+    assert service_permissions.SERVICE_CAPABILITIES == EXPECTED_CAPABILITIES
+    expected_roles = {
+        "project_creator",
+        "project_owner",
+        "project_admin",
+        "project_member",
+        "project_reader",
+    }
+    assert {row["name"] for row in ROLE_PRESETS} == expected_roles
+    assert set(ROLE_IMPLICATIONS) == {
+        ("project_owner", "project_admin"),
+        ("project_admin", "project_member"),
+        ("project_member", "project_reader"),
+        ("project_member", "member"),
+        ("project_reader", "reader"),
+    }
+    expected_retired = {
+        f"{service}_{grade}" for service in EXPECTED_CAPABILITIES for grade in ("reader", "user", "editor", "admin")
+    } | {action for actions in EXPECTED_CAPABILITIES.values() for action in actions}
+    assert service_permissions.RETIRED_SERVICE_ROLE_NAMES == expected_retired
+    assert expected_roles.isdisjoint(expected_retired)
+    preview = service_permissions.preset_preview()
+    assert {row["name"] for row in preview["roles"]} == {"project_creator"}
+    assert {row["name"] for row in preview["project_roles"]} == expected_roles - {"project_creator"}
+
+
+@pytest.mark.parametrize("name", sorted(service_permissions.RETIRED_SERVICE_ROLE_NAMES))
+def test_retired_service_role_names_cannot_be_recreated(name):
+    with pytest.raises(ValueError, match="Retired service roles"):
+        service_permissions.normalize_role_name(name.upper())
+
+
+@pytest.mark.parametrize("name", ["project_owner", "project_admin", "project_member", "project_reader", "lumen_custom"])
+def test_standard_and_unrelated_custom_roles_remain_valid(name):
+    assert service_permissions.normalize_role_name(name) == name
+
+
+@pytest.mark.parametrize("projected", [None, [], "lumen-chat_user"])
+def test_invalid_capability_projection_does_not_use_project_or_retired_roles(projected):
+    principal = {
+        "roles": ["project_owner", "member", "lumen_admin", "lumen-chat_user"],
+        "is_system_admin": True,
+        "service_permissions": projected,
+    }
+    assert service_permissions.service_permissions(principal) == {service: [] for service in EXPECTED_CAPABILITIES}
+    with pytest.raises(HTTPException) as denied:
+        service_permissions.require_service_permission(principal, "lumen-chat_user")
+    assert denied.value.status_code == 403
+
+
+def test_native_projection_filters_unknown_cross_service_and_role_names_without_mutation():
+    projected = {
+        "lumen": ["lumen-tools_user", "lumen-chat_user", "lumen-tools_user", "drover-access_user", "lumen_admin"],
+        "drover": ["drover-access_user", "drover-future_admin", "project_owner"],
+        "unknown": ["waygate-connect_user"],
+    }
+    principal = {"roles": ["project_reader"], "service_permissions": projected}
+    assert service_permissions.service_permissions(principal) == {
+        "waygate": [],
+        "lumen": ["lumen-chat_user", "lumen-tools_user"],
+        "drover": ["drover-access_user"],
+        "palimpsest": [],
+    }
+    service_permissions.require_service_permission(principal, "lumen-chat_user", "drover-access_user")
+    with pytest.raises(HTTPException) as denied:
+        service_permissions.require_service_permission(principal, "lumen-chat_user", "waygate-connect_user")
+    assert denied.value.status_code == 403
+    assert projected["lumen"].count("lumen-tools_user") == 2
+    assert projected["unknown"] == ["waygate-connect_user"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "roles",
+    [
+        ["project_owner", "project_admin", "project_member", "project_reader", "member", "reader"],
+        ["lumen_admin", "lumen-chat_user", "drover_admin", "waygate_admin", "palimpsest_admin"],
+    ],
+)
+async def test_native_policy_outage_never_fabricates_capabilities_from_roles(monkeypatch, roles):
+    monkeypatch.setattr(
+        service_authorization,
+        "service_policy_availability",
+        lambda: {service: True for service in EXPECTED_CAPABILITIES},
+    )
+    principal = {"token": "original-subject", "project_id": "project", "roles": roles, "is_system_admin": True}
+    observed = []
+
+    async def unavailable(service, actual):
+        assert actual is principal
+        observed.append(service)
+        raise HTTPException(status_code=503, detail="Native service policy is unavailable")
+
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", unavailable)
+    permissions, errors = await service_authorization.service_permission_snapshot(principal)
+    assert permissions == {service: [] for service in EXPECTED_CAPABILITIES}
+    assert errors == {service: "permission_check_unavailable" for service in EXPECTED_CAPABILITIES}
+    assert set(observed) == set(EXPECTED_CAPABILITIES)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("services", [None, (), ("drover", "waygate"), ("unknown",)])
+async def test_native_policy_snapshot_service_filter_is_opt_in_and_preserves_availability(monkeypatch, services):
+    availability = {"lumen": True, "drover": True, "waygate": False}
+    monkeypatch.setattr(service_authorization, "service_policy_availability", lambda: availability)
+    observed = []
+
+    async def policy(service, principal):
+        assert principal == {"token": "exact-subject"}
+        observed.append(service)
+        return {"capabilities": [service + "-inventory_reader"]}
+
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+    permissions, errors = await service_authorization.service_permission_snapshot(
+        {"token": "exact-subject"}, services=services
+    )
+    expected = {
+        service: [service + "-inventory_reader"] if enabled else []
+        for service, enabled in availability.items()
+        if services is None or service in services
+    }
+    assert permissions == expected and errors == {}
+    assert set(observed) == {service for service in expected if availability[service]}
+    assert service_authorization.service_policy_availability() == {"lumen": True, "drover": True, "waygate": False}
 
 
 @pytest.mark.asyncio

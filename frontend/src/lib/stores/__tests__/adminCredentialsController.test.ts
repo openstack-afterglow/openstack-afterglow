@@ -109,6 +109,28 @@ describe('credential selected-domain and sensitive lifecycle', () => {
     ctrl.draft.role_ids = ['reader-id']; await ctrl.submit();
     expect(request.mock.calls.some(([, , , method]) => method === 'POST')).toBe(false); ctrl.dispose();
   });
+  it('omits retired role scopes but preserves native admin delegation and readonly historical credentials', async () => {
+    const ctrl = await ready();
+    request.mockImplementationOnce(() => Promise.resolve({ ...context, roles: [
+      { id: 'old', name: 'lumen_admin', assignable: true },
+      { id: 'flagged', name: 'operator_old', retired: true },
+      { id: 'native-admin', name: 'admin', assignable: false },
+      { id: 'custom', name: 'lumen-custom_admin' }
+    ] }));
+    await ctrl.open('create');
+    expect(ctrl.context?.roles.map(role => role.id)).toEqual(['native-admin', 'custom']);
+    ctrl.draft.name = 'robot'; ctrl.draft.role_ids = ['old'];
+    await ctrl.submit();
+    expect(request.mock.calls.some(([, , , method]) => method === 'POST')).toBe(false);
+    ctrl.draft.role_ids = ['native-admin']; await ctrl.submit();
+    expect(request.mock.calls.some(([, , , method, body]) => method === 'POST' && body.role_ids[0] === 'native-admin')).toBe(true);
+    ctrl.close();
+    const historical = { ...app, roles: [{ id: 'old', name: 'lumen_admin' }] };
+    request.mockImplementationOnce(() => Promise.resolve(historical));
+    await ctrl.open('detail', historical);
+    expect(ctrl.detail).toEqual(historical);
+    ctrl.dispose();
+  });
   it('rejects an issued secret with foreign provenance before publishing it', async () => {
     const ctrl = await readyApplication(); request.mockImplementationOnce(() => Promise.resolve({ ...app, domain_id: 'foreign', secret: 'foreign-secret' }));
     await ctrl.submit(); expect(ctrl.issued).toBeNull(); expect(ctrl.modalError).toBe(t('credentials.scopeDenied')); ctrl.dispose();

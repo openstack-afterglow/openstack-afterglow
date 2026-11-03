@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/admin-identity';
 import type { ManagedRole, RoleSort, SortDirection } from './types';
+import { isRetiredRole } from '$lib/utils/roleCatalog';
 
 const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const coreRank: Record<string, number | undefined> = { admin: 0, manager: 1, member: 2, reader: 3 };
@@ -55,6 +56,7 @@ export function buildRoleGraph(roles: readonly ManagedRole[]): RoleGraph {
 export function edgeDisabledReason(graph: RoleGraph, prior: ManagedRole, candidate: ManagedRole): string | null {
 	// Existing unsafe edges must remain removable; only creation is constrained here.
 	if (prior.implied_role_ids.includes(candidate.id)) return null;
+	if (isRetiredRole(prior) || isRetiredRole(candidate)) return t('roleValidation.retired');
 	if (prior.id === candidate.id) return t('roleValidation.selfInheritance');
 	if (candidate.domain_id !== null && prior.domain_id !== candidate.domain_id) return t('roleValidation.crossDomain');
 	const descendants = graph.reachable(candidate.id);
@@ -63,6 +65,7 @@ export function edgeDisabledReason(graph: RoleGraph, prior: ManagedRole, candida
 	if (descendants.has(prior.id)) return t('roleValidation.cycle');
 	const targets = [...descendants].map((id) => graph.byId.get(id));
 	if (targets.some((role) => !role)) return t('roleValidation.missingInherited');
+	if (targets.some((role) => role && isRetiredRole(role))) return t('roleValidation.retired');
 	const targetRanks = targets.flatMap((role) => {
 		const rank = privilegeRank(role!.name);
 		return rank === undefined ? [] : [rank];
@@ -86,6 +89,7 @@ export function edgeDisabledReason(graph: RoleGraph, prior: ManagedRole, candida
 }
 
 export function deleteDisabledReason(role: ManagedRole): string | null {
+	if (isRetiredRole(role)) return t('roleValidation.retired');
 	if (role.protected) return t('roleValidation.protectedDeletion');
 	if (role.parent_role_ids.length || role.implied_role_ids.length) return t('roleValidation.linkedDeletion');
 	return null;

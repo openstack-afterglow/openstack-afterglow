@@ -205,7 +205,9 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
 
     # Discovery remains authoritative: a failure is not an empty successful list.
     candidates = await caller_membership_projects(conn, owner_user_id)
-    enabled = service_policy_availability()
+    # Lumen consumes MCP grants through its separate bridge; it is not a
+    # service that an MCP client can control or manage API keys for.
+    enabled = {service: available for service, available in service_policy_availability().items() if service != "lumen"}
 
     def unknown(project):
         return {
@@ -239,7 +241,10 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
                     "is_system_admin": False,
                 },
                 timeout=_PREVIEW_POLICY_TIMEOUT,
+                services=enabled,
             )
+            permissions = {service: leaves for service, leaves in permissions.items() if service != "lumen"}
+            errors = {service: error for service, error in errors.items() if service != "lumen"}
             if scoped._afterglow_delegation_narrowed:
                 # Removed token roles must not masquerade as the future
                 # restricted credential's independent service authority.

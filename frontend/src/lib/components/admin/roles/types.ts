@@ -5,6 +5,8 @@ export interface ManagedRole {
 	domain_id: string | null;
 	protected: boolean;
 	system_only: boolean;
+	retired?: boolean;
+	assignable?: boolean;
 	implied_role_ids: string[];
 	inherited_role_ids: string[];
 	parent_role_ids: string[];

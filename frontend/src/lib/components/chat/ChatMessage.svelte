@@ -88,7 +88,9 @@
 	);
 	// 저장된 assistant 호출 스텝(재로딩) → 호출 카드(인자). role=tool → 결과 카드.
 	const invocationItems = $derived(
-		!isUser && !isTool ? parseAssistantToolCalls(message.tool_calls) : []
+		!isUser && !isTool ? parseAssistantToolCalls(message.tool_calls)
+			.filter((item) => !toolItems.some((restored) => item.id ? restored.id === item.id : restored.name === item.name))
+			.map((item) => !streaming && item.running ? { ...item, running: false, status: 'unknown' as const } : item) : []
 	);
 	const citations = $derived(!isUser && !isTool ? aggregateCitations([message]) : []);
 	const toolResultItem = $derived<ToolActivityItem | null>(
@@ -144,6 +146,9 @@
 	>
 		{#if isUser}
 			<div class="user-text">{message.content}</div>
+			{#if visibleActivity.length}
+				<ExecutionTimeline items={activityItems} active={false} animate={false} />
+			{/if}
 		{:else}
 			{#if citations.length}
 				<section class="sources" aria-label={t('message.sources')}>

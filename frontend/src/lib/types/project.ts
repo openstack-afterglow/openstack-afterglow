@@ -35,6 +35,8 @@ export interface AssignableProjectRole {
 	id: string;
 	name: string;
 	description?: string;
+	retired?: boolean;
+	assignable?: boolean;
 	area: string | null;
 	grade: string | null;
 	implied_role_ids: string[];

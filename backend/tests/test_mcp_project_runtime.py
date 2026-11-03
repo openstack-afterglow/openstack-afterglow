@@ -377,6 +377,55 @@ async def test_consumer_role_ceiling_requires_live_exact_approved_roles(runtime,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("native_role", ["member", "admin", "Admin"])
+async def test_current_native_role_selects_private_flavor_visibility_without_system_escalation(
+    runtime, monkeypatch, native_role
+):
+    from app.services import project_service
+    from app.services.mcp_control_plane.catalog import McpCatalogError, get_project_flavor
+
+    access = SimpleNamespace(user_id="user", project_id="a", role_names=[native_role], role_ids=["role-id"])
+    flavor = {
+        "id": "private4",
+        "name": "cpu.4c_8g",
+        "vcpus": 4,
+        "ram": 8192,
+        "disk": 0,
+        "is_public": False,
+        "extra_specs": {},
+    }
+
+    class Compute:
+        def get_flavor(self, identifier, **kwargs):
+            return flavor
+
+        def get_flavor_access(self, identifier):
+            if native_role.lower() != "admin":
+                raise AssertionError("member reached admin-only flavor ACL API")
+            return [{"tenant_id": "foreign-project"}]
+
+    conn = SimpleNamespace(
+        session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)),
+        compute=Compute(),
+        _afterglow_is_system_admin=False,
+    )
+
+    async def current(project_id, user_id):
+        return [{"id": "role-id", "name": native_role, "inherited_role_ids": []}]
+
+    runtime.grant.approved_projects[0]["roles"] = [native_role]
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current)
+    await connection._validate_current_roles(conn, runtime.principal)
+    if native_role.lower() == "admin":
+        with pytest.raises(McpCatalogError):
+            await get_project_flavor(conn, project_id="a", flavor_id="private4")
+    else:
+        selected = await get_project_flavor(conn, project_id="a", flavor_id="private4")
+        assert (selected["vcpus"], selected["ram_mb"], selected["is_public"]) == (4, 8192, False)
+    assert conn._afterglow_is_system_admin is False
+
+
+@pytest.mark.asyncio
 async def test_unknown_current_authority_closes_connection_without_exposing_provider_error(runtime, monkeypatch):
     from app.services import project_service
 

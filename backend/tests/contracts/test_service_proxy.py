@@ -1,6 +1,7 @@
 """Focused backend unit tests for service proxy layer."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -12,6 +13,7 @@ from app.api.deps import get_token_info
 from app.main import app
 from app.services.service_proxy import (
     get_json,
+    get_policy_capabilities,
     proxy,
     proxy_passthrough,
 )
@@ -19,16 +21,8 @@ from app.services.service_proxy import (
 
 @pytest.fixture(autouse=True)
 def current_access(monkeypatch):
-    """Synthetic current directory projection; the real service action gates still run."""
-    access = {
-        "roles": [
-            "member",
-            "waygate-inventory_reader",
-            "drover-inventory_reader",
-            "lumen-inventory_reader",
-            "lumen-history_reader",
-        ]
-    }
+    """Current project membership only; native services own all action verdicts."""
+    access = {"roles": ["project_member", "member", "project_reader", "reader"]}
     monkeypatch.setattr("app.services.project_service.get_project_access", AsyncMock(return_value=access))
     return access
 
@@ -421,15 +415,13 @@ async def test_proxy_streaming_response():
 
 
 @pytest.mark.asyncio
-async def test_proxy_upstream_error_verbatim(current_access):
+async def test_proxy_upstream_error_verbatim():
     req = _make_request(
         method="DELETE",
         path="/api/v1/drover/clusters/c1",
         token_info={"token": "ks-token-secret", "project_id": "proj-uuid-1"},
         body=b'{"force": true}',
     )
-    current_access["roles"].append("drover-clusters_admin")
-    # Destructive transport tests require this exact CURRENT leaf, not stale token claims.
 
     upstream_response = httpx.Response(
         404,
@@ -448,6 +440,169 @@ async def test_proxy_upstream_error_verbatim(current_access):
     sent_request = mock_send.call_args.args[0]
     sent_body = b"".join([chunk async for chunk in sent_request.stream])
     assert sent_body == b'{"force": true}'
+
+
+@pytest.mark.parametrize("service", ["waygate", "lumen", "drover", "palimpsest"])
+@pytest.mark.parametrize("capabilities", [[], ["inventory"], ["inventory", "inventory"]])
+async def test_policy_capabilities_preserve_exact_native_verdict_and_original_subject(
+    monkeypatch, service, capabilities
+):
+    payload = {
+        "service": service,
+        "capabilities": [f"{service}-inventory_reader" for _ in capabilities],
+        "actions": ["inventory:list"] if capabilities else [],
+    }
+    observed = []
+
+    def upstream(request):
+        observed.append(request)
+        return httpx.Response(200, json=payload)
+
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
+    )
+    monkeypatch.setattr("app.services.service_proxy._configured_internal_endpoint", lambda _: "https://native.test/v1")
+    client_type = httpx.AsyncClient
+    client = client_type(transport=httpx.MockTransport(upstream))
+    monkeypatch.setattr("app.services.service_proxy.httpx.AsyncClient", lambda **_: client)
+    native_access = object()
+    principal = {
+        "token": "exact-original-token",
+        "project_id": "target-project",
+        "connection_project_id": "connection-project",
+        "_live_system_admin": True,
+        "_native_access": native_access,
+        "roles": ["project_owner", "project_admin", "project_member", "member"],
+        "service_permissions": {service: [f"{service}-inventory_reader"]},
+    }
+    with patch("app.services.service_proxy._get_internal_endpoint", return_value="https://native.test/v1") as endpoint:
+        assert await get_policy_capabilities(service, principal) == payload
+    if service == "palimpsest":
+        endpoint.assert_not_called()
+    else:
+        endpoint.assert_called_once_with(
+            "exact-original-token", "connection-project", service, native_access=native_access
+        )
+    assert len(observed) == 1
+    request = observed[0]
+    assert request.method == "GET" and str(request.url) == "https://native.test/v1/policy/capabilities"
+    assert request.headers["x-auth-token"] == "exact-original-token"
+    assert request.headers["x-project-id"] == "connection-project"
+    assert request.headers["x-target-project-id"] == "target-project"
+    assert all(header not in request.headers for header in ("authorization", "x-roles", "x-user-id"))
+    assert client.is_closed
+
+
+@pytest.mark.parametrize("service", ["waygate", "lumen", "drover", "palimpsest"])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "not-object",
+        "wrong-service",
+        "missing-capabilities",
+        "string-capabilities",
+        "nonstring-capability",
+        "foreign-capability",
+        "unknown-capability",
+        "standard-role",
+        "retired-grade",
+        "missing-actions",
+        "string-actions",
+        "nonstring-action",
+        "empty-action",
+        "invalid-json",
+    ],
+)
+async def test_policy_capabilities_reject_malformed_or_unregistered_native_response(monkeypatch, service, invalid):
+    payload = {"service": service, "capabilities": [f"{service}-inventory_reader"], "actions": ["inventory:list"]}
+    if invalid == "not-object":
+        payload = [payload]
+    elif invalid == "wrong-service":
+        payload["service"] = "other-service"
+    elif invalid.startswith("missing-"):
+        payload.pop(invalid.removeprefix("missing-"))
+    elif invalid == "string-capabilities":
+        payload["capabilities"] = f"{service}-inventory_reader"
+    elif invalid == "nonstring-capability":
+        payload["capabilities"] = [True]
+    elif invalid == "foreign-capability":
+        payload["capabilities"] = ["drover-access_user" if service != "drover" else "lumen-chat_user"]
+    elif invalid == "unknown-capability":
+        payload["capabilities"] = [f"{service}-future_admin"]
+    elif invalid == "standard-role":
+        payload["capabilities"] = ["project_owner"]
+    elif invalid == "retired-grade":
+        payload["capabilities"] = [f"{service}_admin"]
+    elif invalid == "string-actions":
+        payload["actions"] = "inventory:list"
+    elif invalid == "nonstring-action":
+        payload["actions"] = [True]
+    elif invalid == "empty-action":
+        payload["actions"] = [""]
+    response = (
+        httpx.Response(200, content=b"{invalid") if invalid == "invalid-json" else httpx.Response(200, json=payload)
+    )
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
+    )
+    monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", lambda *_: "https://native.test/v1")
+    monkeypatch.setattr("app.services.service_proxy._configured_internal_endpoint", lambda _: "https://native.test/v1")
+    client_type = httpx.AsyncClient
+    client = client_type(transport=httpx.MockTransport(lambda _: response))
+    monkeypatch.setattr("app.services.service_proxy.httpx.AsyncClient", lambda **_: client)
+    with pytest.raises(HTTPException) as failure:
+        await get_policy_capabilities(
+            service,
+            {
+                "token": "original-subject",
+                "project_id": "project",
+                "roles": ["project_owner", "member", f"{service}_admin", f"{service}-inventory_reader"],
+                "service_permissions": {service: [f"{service}-inventory_reader"]},
+            },
+        )
+    assert failure.value.status_code == 502
+    assert failure.value.detail == "Invalid native policy response"
+    assert client.is_closed
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 404, 500])
+async def test_policy_capability_http_failure_never_uses_standard_roles_or_cached_projection(monkeypatch, status):
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
+    )
+    monkeypatch.setattr("app.services.service_proxy._get_internal_endpoint", lambda *_: "https://native.test/v1")
+    observed, clients = [], []
+    payload = {"service": "lumen", "capabilities": ["lumen-chat_user"], "actions": ["chat:create"]}
+
+    def upstream(request):
+        observed.append(request)
+        if request.url.params.get("redirected") == "1":
+            return httpx.Response(200, json=payload)
+        headers = {"location": "https://native.test/v1/policy/capabilities?redirected=1"} if status == 301 else {}
+        return httpx.Response(status, json=payload, headers=headers)
+
+    client_type = httpx.AsyncClient
+
+    def make_client(**options):
+        client = client_type(transport=httpx.MockTransport(upstream), **options)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr("app.services.service_proxy.httpx.AsyncClient", make_client)
+    with pytest.raises(HTTPException) as failure:
+        await get_policy_capabilities(
+            "lumen",
+            {
+                "token": "original-subject",
+                "project_id": "project",
+                "roles": ["project_owner", "project_admin", "member"],
+                "service_permissions": {"lumen": ["lumen-chat_user"]},
+            },
+        )
+    assert failure.value.status_code == (status if status in {401, 403} else 503)
+    assert failure.value.detail == "Native service policy is unavailable"
+    assert len(observed) == 1
+    assert len(clients) == 1 and clients[0].is_closed
 
 
 @pytest.mark.asyncio
@@ -562,3 +717,45 @@ async def test_current_access_provider_failure_prevents_upstream(fetch, monkeypa
             await fetch("waygate", request, "/v1/servers")
     assert failure.value.status_code == 503
     endpoint.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outage", ["catalog", "transport"])
+async def test_policy_capability_outage_never_falls_back_to_project_role_hierarchy(monkeypatch, outage):
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_settings", lambda: SimpleNamespace(ssl_verify=True, os_cacert="")
+    )
+    monkeypatch.setattr(
+        "app.services.service_proxy._get_internal_endpoint",
+        lambda *_: None if outage == "catalog" else "https://native.test/v1",
+    )
+    observed = []
+
+    def unavailable(request):
+        observed.append(request)
+        raise httpx.ConnectError("private-native-address", request=request)
+
+    client_type = httpx.AsyncClient
+    client = client_type(transport=httpx.MockTransport(unavailable))
+    constructor = MagicMock(return_value=client)
+    monkeypatch.setattr("app.services.service_proxy.httpx.AsyncClient", constructor)
+    try:
+        with pytest.raises(HTTPException) as failure:
+            await get_policy_capabilities(
+                "drover",
+                {
+                    "token": "original-subject",
+                    "project_id": "project",
+                    "roles": ["project_owner", "project_admin", "project_member", "member"],
+                    "service_permissions": {"drover": ["drover-inventory_reader"]},
+                },
+            )
+        assert failure.value.status_code == 503
+        assert failure.value.detail == "Native service policy is unavailable"
+        if outage == "catalog":
+            constructor.assert_not_called()
+            assert observed == []
+        else:
+            assert len(observed) == 1 and client.is_closed
+    finally:
+        await client.aclose()

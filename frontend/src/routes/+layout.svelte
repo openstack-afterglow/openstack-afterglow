@@ -636,9 +636,11 @@
 {/if}
 <Toast />
 
-<!-- Console layouts own the page remount boundary so their sidebars and VM wizard stay mounted. -->
+<!-- Console and standalone auth flows retain state across locale changes.
+     Remounting an entry page can replay a consumed inspection or discard an
+     in-memory provider/consent ticket. Their translated markup is reactive. -->
 <div class="min-h-[100dvh] bg-surface-canvas text-ink-1 {mockup.active ? 'mockup-active' : ''}">
-	{#if $page.url.pathname === '/dashboard' || $page.url.pathname.startsWith('/dashboard/') || $page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/') || $page.url.pathname.startsWith('/palimpsest/')}
+	{#if $page.url.pathname === '/dashboard' || $page.url.pathname.startsWith('/dashboard/') || $page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/') || $page.url.pathname.startsWith('/palimpsest/') || isOnboardingRoute || (shelllessRoutes.includes($page.url.pathname) && $page.url.pathname !== '/')}
 		{@render children()}
 	{:else}
 		{#key getLocale()}

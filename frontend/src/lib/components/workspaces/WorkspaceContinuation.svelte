@@ -12,8 +12,7 @@
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
 	import { t } from '$lib/i18n/ns/workspace-selector';
 	import { t as tp } from '$lib/i18n/ns/public-entry';
-	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
+	import AuthStudioShell from '$lib/components/auth/AuthStudioShell.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import WorkspaceBrowser from './WorkspaceBrowser.svelte';
@@ -49,14 +48,37 @@
 </script>
 
 <svelte:head><title>{t('title')}</title></svelte:head>
-<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas text-ink-0">
-	<PageShell>
-		<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+<AuthStudioShell
+	variant="account"
+	wide
+	localeId="workspace-entry-locale"
+	themeId="workspace-entry-theme"
+	footerNote={t('title')}
+>
+	<div class="auth-flow">
+		<header class="auth-flow-heading"><h1>{t('title')}</h1></header>
+		<div class="auth-flow-actions">
 			<Button variant="secondary" onclick={continueSession} disabled={busy || !$authReady || !$auth.token || $logoutInProgress || $projectSwitching}>{t('continue')}</Button>
 			<Button variant="secondary" onclick={logout} disabled={busy || $logoutInProgress || $projectSwitching}>{tp('selectProject.logout')}</Button>
 		</div>
 		{#if $authReady && $auth.token && !$logoutInProgress}
-			<div class="flex justify-center"><Card surface="base" padding="none"><WorkspaceBrowser bind:busy mockup={$page.data.mockup?.active === true} onSelected={continueAfterSelection} onClose={continueSession} /></Card></div>
-		{:else}<LoadingState variant="surface" label={t('loading')}  />{/if}
-	</PageShell>
-</main>
+			<div class="workspace-entry-browser">
+				<WorkspaceBrowser bind:busy mockup={$page.data.mockup?.active === true} onSelected={continueAfterSelection} onClose={continueSession} />
+			</div>
+		{:else}
+			<LoadingState variant="section" label={t('loading')} />
+		{/if}
+	</div>
+</AuthStudioShell>
+
+<style>
+	.workspace-entry-browser { min-width: 0; }
+	.workspace-entry-browser :global(.workspace-browser) { width: 100%; height: auto; }
+	/* The standalone shell owns the page heading and scrolling; the chooser
+	   retains its existing grouped content and actions without modal bounds. */
+	.workspace-entry-browser :global(.workspace-browser > header h2) { display: none; }
+	.workspace-entry-browser :global(.workspace-browser > header),
+	.workspace-entry-browser :global(.workspace-browser > div),
+	.workspace-entry-browser :global(.workspace-browser > footer) { padding-inline: 0; }
+	.workspace-entry-browser :global(.workspace-browser > header) { padding-top: 0; }
+</style>

@@ -1,4 +1,8 @@
 {
+	"task.compactionStarted": "コンテキスト圧縮を開始",
+	"window.detachedTemporaryHistory": "個別の一時実行記録 ({count})",
+	"window.temporaryOrderUnknown": "会話内の順序を確認できないため、この実行記録を個別に表示します。",
+	"window.moreTemporaryHistory": "一時実行記録をさらに読み込む",
 	"childTask.title": "子タスク {index}",
 	"childTask.requested": "子タスクを要求済み",
 	"childTask.canceled": "キャンセル済み",

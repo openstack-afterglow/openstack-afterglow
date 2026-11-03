@@ -6,6 +6,28 @@
 
 ---
 
+## 표준 프로젝트 역할과 서비스 권한
+
+Lumen·Drover·Waygate·Palimpsest는 fresh native core `member`/`manager`/`admin`에 프로젝트 생성·관리 권한을, `reader`에 허용된 비밀 없는 조회·콘텐츠 읽기를 제공한다. 서비스별 grade/leaf IAM 역할은 기본 인가나 새 배정의 조건이 아니다. Existing group/domain/custom implication으로 얻은 실제 core 권한은 유지하며 role 이름 substring·브라우저 flag·personal metadata만으로 승격하지 않는다. Native 정책은 이 core floor를 더 좁힐 수 있지만 `@`로 reader에게 mutation/유료 inference/접속 credential 발급을 열 수 없다.
+
+전역 provider secret·통계·공유 catalog·resource policy와 machine/controller 작업은 genuine human system authority를 계속 요구한다. 프로젝트 membership은 다른 사용자/private resource의 소유권, 원래 delegated credential·issued role-ID·API-key action ceiling, 명시적 MCP 동의, budget/approval/sandbox 및 unknown-I/O hold를 해제하지 않는다. 실제 Keystone federation method `openid`는 human 원본으로 인식하지만 Trust/application/OAuth/unknown marker는 그대로 제한한다. 운영 파일·IAM graph·pending 초대의 전환은 자동 적용하지 않는다.
+
+## MCP OAuth 지속 승인과 Lumen 범위
+
+지속 OAuth 승인은 현재 human native 인증을 다시 검증한 명시 승인에서만 만든다. 기존 유한 승인을 소급 연장하거나 application-credential/Trust/OAuth 기반 권위로 새 credential을 만들지 않는다. 승인 당시 프로젝트 집합·role ID/name·read/manage scope를 고정하고 refresh는 기존 범위만 유지하거나 축소하며 실제 현재 역할·리소스 소유권을 매번 재확인한다. Refresh 재사용은 family/grant를 회수한다. 변경의 final authorization 전에 축소된 권한은 거부하고 그 뒤 이미 승인된 전송은 원장 경계에서 유지한다.
+
+지속 restricted credential은 만료가 없으므로 취소 전 장기 유출 위험이 있다. 로컬 grant 폐기는 즉시 dispatch를 막지만 Keystone 삭제는 소유자 native session으로 별도 확인해야 한다. 종료된 grant의 암호문은 원장 lease 조정과 미정산 credential 생성 경계를 확인한 뒤 제거한다. Expired/missing lease는 unknown으로 조정될 수 있으며 이는 worker 종료나 provider 결과의 증거가 아니다. 기존 unknown 원장·재전송 금지와 원격 credential ID·정리 대기는 보존한다. 원격 삭제가 확인되기 전에는 삭제 완료로 표시하지 않는다. MCP permission preview는 Lumen 정책/API 키·제어를 조회하지 않으며 반대 방향인 Lumen→승인된 cloud MCP bridge는 유지한다.
+
+## MCP 네트워크·VM 장치 변경 경계
+
+네트워크·서브넷·포트/VM 인터페이스·보안그룹·데이터 볼륨 변경은 같은 target-project restricted credential과 발급/현재/승인 역할의 교집합, 명시 `mcp:write` 및 원장을 사용한다. Reader의 직접 이름 호출·타 프로젝트 ID·service/shared 가시성만으로 mutation을 허용하지 않는다. SDK GET 입력으로 seed된 owner/ID와 기본 descriptor를 provider 증거로 쓰지 않으며 새 관리 adapter는 실제 응답 필드를 검증한다.
+
+Network/subnet의 shared/provider/external 제어권은 열지 않는다. Port의 router/DHCP/service binding·MAC/binding profile·port-security 비활성화는 입력할 수 없고 직접 수정/삭제는 unbound owned 일반 port에 한정한다. VM에 연결된 port의 보안그룹만 exact server/interface/port 관계를 다시 증명해 원자적으로 교체한다. Neutron revision-if-match 광고·실제 revision/If-Match가 없거나 충돌하면 거부한다. 생략/null/빈 group 목록의 의미는 승인 fingerprint와 원장 직렬화에 보존한다.
+
+VM 디스크는 양쪽 parent/owner·Nova/Cinder attachment와 실제 root 정보로 데이터 디스크임을 확인한다. Multiattach·force·root/불명확한 분리는 제공하지 않는다. Interface/group 변경은 접속 단절, disk detach는 미해제 guest filesystem의 데이터 손상 위험이 있으므로 preview에서 destructive로 표시한다. Native 수락은 guest unmount/readiness가 아니며 uncertain write는 rollback/replay 없이 unknown으로 남긴다. 실제 guest SSH 실행·운영 변경은 이번 source 기능에 포함하지 않는다.
+
+Consumer MCP 전용 Keystone session의 실제 send boundary는 SDK `Proxy.request`가 기본 주입하는 connect retry도 덮어써 mutation의 connect/status retries·401 reauth·redirect를 금지하고 deadline을 다시 검사한다. 응답 유실 뒤 SDK 내부 자동 재전송도 unknown 원장의 의미를 깨므로 금지한다. 일반 native/browser/operator transport는 바꾸지 않는다.
+
 ## Lumen portable sources and private downloads
 
 Source details remain owner/project-scoped native reads, not public sharing. Only configured Lumen `frontend_base_url` supplies persisted source origins; Host and forwarded-host never do. Missing configuration must not produce relative/guessed public citations. `source://` is restricted to a registered uploaded asset with an exact matching asset ID. Source-only post-login continuation validates a bounded local path and preserves existing recovery/invitation/OAuth priority; projectless IAM/admin access is not hijacked. Source requests and late download actions retire with identity/project changes while ordinary bearer renewal preserves settled content. Private sources and signed-link responses are no-store in both native service and BFF. Presigned URLs are bearer capabilities until expiration, not continuously revalidated sessions: issue only after an explicit scoped action, do not persist/copy them, and never rewrite their signed host. A copied stable source link requires current authentication; this change grants no anonymous access or automatic MCP consent.
@@ -128,6 +150,7 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - MCP 삭제/lifecycle action은 destructiveHint=true이다. Metadata는 클라이언트 힌트이고 서버 인가·owner 검사·ledger를 대체하지 않는다. 일회성 PAT 발급 응답은 Cache-Control: no-store와 Pragma: no-cache이다.
 - MCP VM/빈 볼륨 생성·VM network 연결은 `mcp:write`와 승인된 target-project 자격만 사용하며 Lumen 기본 read-only grant를 확대하지 않는다. `readOnlyHint=false`/`destructiveHint=false`는 생성 비용이나 리소스 변경이 없다는 뜻이 아니다. Preview는 조회만 하고 최종 dispatch는 grant·리소스·SDK deadline을 다시 검증한다.
 - Nova keypair owner는 provider 응답의 `user_id`로 증명한다. 설치된 SDK의 `get_keypair(user_id=...)`는 GET query가 아니라 resource body에 입력값을 보충하므로 owner 증명에 사용하지 않는다. 누락·타인 owner는 거부하며 private/public key나 `adminPass`를 결과에 포함하지 않는다.
+- MCP flavor/image/keypair discovery는 `mcp:read`라도 현재 target-project restricted credential과 issued-role/current-role 교집합을 통과해야 한다. Non-admin flavor는 Nova가 project-filter한 catalog를 사용하며, 검증된 native admin token만 admin-only flavor ACL로 exact target access를 추가 확인한다. 이 compute-admin 식별은 논리 system-admin 권한을 부여하지 않는다. Shared image는 target accepted membership을 확인한다. SSH 키 목록·상세는 exact grant 사용자만 허용하고 public/private key 원문을 제외한다. 한 page의 raw scan·marker와 전체 output bytes를 제한하며 key material·control specs·image locations/임의 metadata를 전달하지 않는다. Discovery는 생성 권한·용량·SSH ingress·개인키 보유·실제 로그인 가능성을 증명하지 않는다.
 - VM boot volume은 기본 보존하며 삭제 연동은 명시적 opt-in이다. 입력은 image/flavor/network/크기 등 허용 목록만 사용하고 user data·비밀번호·provider kwargs를 받지 않는다. Network attach는 기존 port를 재사용하지 않고 owned ACTIVE/SHUTOFF parent와 owned/shared network, 새 port의 exact project/network/device binding을 확인한다. 접수 결과는 VM/volume ready나 guest data plane 증거가 아니며 unknown 자동 resend 금지 원장은 세 도구에도 동일하게 적용한다.
 
 ### MCP OAuth와 개인 API 키

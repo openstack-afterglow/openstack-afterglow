@@ -105,6 +105,18 @@ class Membership:
             domains=SimpleNamespace(get=lambda did: SimpleNamespace(id=did, name=did, enabled=True)),
         )
 
+    def add_roles(self, *names, implications=()):
+        edges = [
+            {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
+            for row in self.catalog
+        ]
+        edges.extend(
+            {"prior_role": {"id": rid(prior)}, "implies": [{"id": rid(child)}]} for prior, child in implications
+        )
+        self.catalog = identity_roles._catalog(
+            [*self.catalog, *({"id": rid(name), "name": name} for name in names)], edges
+        )
+
     def assignments(self, project=None, effective=False, user=None, **kwargs):
         if self.fail:
             raise RuntimeError("Keystone unavailable")
@@ -230,13 +242,13 @@ async def test_cross_project_mutation_denied_before_provider(membership):
 @pytest.mark.asyncio
 async def test_mixed_group_and_direct_membership_is_accurate(membership):
     membership.groups["team"] = ["member", "group-only"]
-    membership.direct.append(assignment(None, "lumen_reader", group="team"))
+    membership.direct.append(assignment(None, "project_reader", group="team"))
     rows = (await service.list_members(PROJECT, token()))["items"]
     mixed = next(row for row in rows if row["user_id"] == "member")
     assert mixed["source"] == "mixed"
     assert mixed["direct_role_ids"] == [rid("project_member")]
-    assert rid("lumen_reader") in mixed["effective_role_ids"]
-    assert "lumen_reader" in mixed["roles"]
+    assert rid("project_reader") in mixed["effective_role_ids"]
+    assert "project_reader" in mixed["roles"]
     assert mixed["group_name"] == "group-team"
     assert next(row for row in rows if row["user_id"] == "group-only")["source"] == "group"
 
@@ -244,32 +256,32 @@ async def test_mixed_group_and_direct_membership_is_accurate(membership):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("origin", ["group", "inherited"])
 async def test_member_http_preserves_external_grants_overlapping_direct_parent(membership, origin):
-    membership.direct.append(assignment("member", "lumen_user"))
+    membership.direct.append(assignment("member", "member"))
     if origin == "group":
         membership.groups["team"] = ["member"]
-        membership.direct.append(assignment(None, "lumen_reader", group="team"))
+        membership.direct.append(assignment(None, "reader", group="team"))
     else:
-        membership.inherited.append(assignment("member", "lumen_reader", inherited=True))
+        membership.inherited.append(assignment("member", "reader", inherited=True))
     app = FastAPI()
     app.include_router(router, prefix="/projects")
     app.dependency_overrides[get_token_info] = lambda: token()
-    expected = [rid("lumen_reader")]
+    expected = [rid("reader")]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/projects/{PROJECT}/members")
         assert response.status_code == 200
         mixed = next(row for row in response.json()["items"] if row["user_id"] == "member")
         assert mixed["external_role_ids"] == expected
         assert set(expected) <= set(mixed["effective_role_ids"])
-        assert set(mixed["direct_role_ids"]) == {rid("project_member"), rid("lumen_user")}
+        assert set(mixed["direct_role_ids"]) == {rid("project_member"), rid("member")}
         updated = await client.put(
-            f"/projects/{PROJECT}/members/member/roles", json={"role_ids": [rid("project_member")]}
+            f"/projects/{PROJECT}/members/member/roles", json={"role_ids": [rid("project_reader")]}
         )
         assert updated.status_code == 200
         member = updated.json()
-        assert member["direct_role_ids"] == [rid("project_member")]
+        assert member["direct_role_ids"] == [rid("project_reader")]
         assert member["external_role_ids"] == expected
         assert set(expected) <= set(member["effective_role_ids"])
-        assert rid("lumen_user") not in member["effective_role_ids"]
+        assert rid("member") not in member["effective_role_ids"]
 
 
 @pytest.mark.asyncio
@@ -277,14 +289,16 @@ async def test_direct_replacement_preserves_group_and_unrelated_native_grants(me
     membership.groups["team"] = ["member"]
     membership.direct.extend(
         [
-            assignment(None, "lumen_reader", group="team"),
+            assignment(None, "project_reader", group="team"),
             assignment("member", "unrelated"),
             assignment("member", "reader"),
         ]
     )
-    updated = await service.replace_member_roles(PROJECT, "member", [rid("project_reader")], token("admin"))
+    updated = await service.replace_member_roles(
+        PROJECT, "member", [rid("project_reader"), rid("reader")], token("admin")
+    )
     assert updated["direct_role_ids"] == sorted([rid("project_reader"), rid("reader"), rid("unrelated")])
-    assert "lumen_reader" in updated["roles"]
+    assert "project_reader" in updated["roles"]
     assert updated["source"] == "mixed"
     assert membership.calls == [("grant", "member", rid("project_reader")), ("revoke", "member", rid("project_member"))]
     assert "project_member" not in (await service.get_project_access(PROJECT, "member"))["roles"]
@@ -293,26 +307,29 @@ async def test_direct_replacement_preserves_group_and_unrelated_native_grants(me
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("additive", [False, True])
-async def test_self_service_role_grant_and_reduction_preserve_login(membership, membership_login, additive):
+async def test_self_standard_role_grant_and_reduction_preserve_login(membership, membership_login, additive):
     async def current():
-        return await service.get_project_access(PROJECT, "admin")
+        return {
+            **await service.get_project_access(PROJECT, "admin"),
+            "direct_role_ids": sorted(service._direct_ids(membership.direct, "admin")),
+        }
 
     async def validated():
         return await cache.cached_call("afterglow:session:admin-proof", 300, current)
 
     before = await validated()
-    assert "lumen-chat_user" not in before["roles"]
+    assert rid("reader") not in before["direct_role_ids"]
     await service.replace_member_roles(
         PROJECT,
         "admin",
-        [rid("lumen-chat_user")] if additive else [rid("project_admin"), rid("lumen-chat_user")],
+        [rid("reader")] if additive else [rid("project_admin"), rid("reader")],
         token("admin"),
         additive=additive,
     )
-    assert "lumen-chat_user" in (await validated())["roles"]
+    assert rid("reader") in (await validated())["direct_role_ids"]
     await assert_login_preserved(membership_login, "admin", "unaffected")
     await service.replace_member_roles(PROJECT, "admin", [rid("project_admin")], token("admin"))
-    assert "lumen-chat_user" not in (await validated())["roles"]
+    assert rid("reader") not in (await validated())["direct_role_ids"]
     assert (await service.get_project_access(PROJECT, "admin"))["is_manager"]
     await assert_login_preserved(membership_login, "admin", "unaffected")
 
@@ -421,16 +438,14 @@ async def test_concurrent_owner_revocation_serializes_and_protects_last_owner(me
 
 
 @pytest.mark.asyncio
-async def test_service_grade_assignment_does_not_mint_native_member_authority(membership):
+async def test_native_reader_assignment_does_not_mint_member_or_management_authority(membership):
     membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "member"]
     membership.groups["readers"] = ["member"]
     membership.direct.append(assignment(None, "project_reader", group="readers"))
-    result = await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token())
-    assert "lumen_user" in result["roles"]
-    assert "reader" in result["roles"]
-    assert "member" not in result["roles"]
-    assert "lumen-chat_user" not in result["roles"]
-    assert membership.calls == [("grant", "member", rid("lumen_user"))]
+    result = await service.replace_member_roles(PROJECT, "member", [rid("reader")], token())
+    assert set(result["roles"]) == {"project_reader", "reader"}
+    assert not result["is_manager"] and not result["is_owner"]
+    assert membership.calls == [("grant", "member", rid("reader"))]
 
 
 @pytest.mark.asyncio
@@ -443,14 +458,14 @@ async def test_native_and_unknown_roles_are_never_delegable(membership, role):
 
 
 @pytest.mark.asyncio
-async def test_service_alias_transitively_implying_native_admin_is_not_delegable(membership):
-    reader = next(row for row in membership.catalog if row["name"] == "lumen_reader")
+async def test_standard_reader_transitively_implying_native_admin_is_not_delegable(membership):
+    reader = next(row for row in membership.catalog if row["name"] == "reader")
     reader["inherited_role_ids"].append(rid("admin"))
     reader["system_only"] = True
     roles = (await service.assignable_roles(PROJECT, token()))["roles"]
-    assert rid("lumen_reader") not in {row["id"] for row in roles}
+    assert rid("reader") not in {row["id"] for row in roles}
     with pytest.raises(HTTPException) as invalid:
-        await service.replace_member_roles(PROJECT, "member", [rid("lumen_reader")], token())
+        await service.replace_member_roles(PROJECT, "member", [rid("reader")], token())
     assert invalid.value.status_code == 422
 
 
@@ -458,6 +473,7 @@ async def test_service_alias_transitively_implying_native_admin_is_not_delegable
 @pytest.mark.parametrize("native_name", ["admin", "AdMiN"])
 @pytest.mark.parametrize("domain_management", [False, True])
 async def test_assignable_catalog_omits_native_admin(membership, monkeypatch, native_name, domain_management):
+    membership.add_roles("lumen_admin", "lumen-chat_user")
     next(row for row in membership.catalog if row["id"] == rid("admin"))["name"] = native_name
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/projects")
@@ -481,23 +497,21 @@ async def test_assignable_catalog_omits_native_admin(membership, monkeypatch, na
     assert response.status_code == 200, response.text
     choices = response.json()["roles"]
     assert not any(row["name"].casefold() == "admin" for row in choices)
-    assert {rid("project_admin"), rid("lumen_admin"), rid("lumen-chat_user")} <= {row["id"] for row in choices}
+    choice_ids = {row["id"] for row in choices}
+    assert {
+        rid("project_admin"),
+        rid("project_member"),
+        rid("project_reader"),
+        rid("member"),
+        rid("reader"),
+    } <= choice_ids
+    assert not {rid("lumen_admin"), rid("lumen-chat_user")} & choice_ids
 
 
 @pytest.mark.asyncio
 async def test_hidden_direct_admin_metadata_preserves_external_provenance(membership):
-    membership.catalog = identity_roles._catalog(
-        membership.catalog,
-        [
-            {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
-            for row in membership.catalog
-        ]
-        + [
-            {"prior_role": {"id": rid("admin")}, "implies": [{"id": rid("lumen_user")}]},
-            {"prior_role": {"id": rid("lumen_user")}, "implies": [{"id": rid("lumen-chat_user")}]},
-        ],
-    )
-    membership.direct.extend(assignment("member", name) for name in ("admin", "lumen_user"))
+    membership.add_roles("audit", implications=(("admin", "unrelated"), ("unrelated", "audit")))
+    membership.direct.extend(assignment("member", name) for name in ("admin", "unrelated"))
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/projects")
     app.dependency_overrides[get_token_info] = lambda: token()
@@ -507,7 +521,7 @@ async def test_hidden_direct_admin_metadata_preserves_external_provenance(member
         before = next(row for row in response.json()["items"] if row["user_id"] == "member")
         metadata = next(row for row in before["direct_roles"] if row["id"] == rid("admin"))
         assert metadata["name"] == "admin"
-        assert {rid("lumen_user"), rid("lumen-chat_user")} <= set(metadata["inherited_role_ids"])
+        assert {rid("unrelated"), rid("audit")} <= set(metadata["inherited_role_ids"])
         assert before["external_role_ids"] == [] and before["source"] == "direct"
         updated = await client.put(
             f"/api/v1/projects/{PROJECT}/members/member/roles",
@@ -515,20 +529,18 @@ async def test_hidden_direct_admin_metadata_preserves_external_provenance(member
         )
     assert updated.status_code == 200, updated.text
     result = updated.json()
-    assert rid("lumen_user") not in result["direct_role_ids"]
+    assert rid("unrelated") in result["direct_role_ids"]
     assert metadata in result["direct_roles"]
     assert result["external_role_ids"] == [] and result["source"] == "direct"
-    assert {"admin", "lumen_user", "lumen-chat_user"} <= set(result["roles"])
-    assert membership.calls == [("revoke", "member", rid("lumen_user"))]
+    assert {"admin", "unrelated", "audit"} <= set(result["roles"])
+    assert membership.calls == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("additive", [False, True])
 async def test_mixed_native_admin_request_is_rejected_before_any_membership_write(membership, additive):
     with pytest.raises(HTTPException) as denied:
-        await service.replace_member_roles(
-            PROJECT, "member", [rid("lumen_user"), rid("admin")], token(), additive=additive
-        )
+        await service.replace_member_roles(PROJECT, "member", [rid("member"), rid("admin")], token(), additive=additive)
     assert denied.value.status_code == 422
     assert "removal-only" in denied.value.detail
     assert membership.calls == []
@@ -539,15 +551,17 @@ async def test_mixed_native_admin_request_is_rejected_before_any_membership_writ
 async def test_existing_native_admin_can_be_preserved_revoked_but_not_readded(membership):
     membership.direct.extend(assignment("member", name) for name in ("admin", "reader", "unrelated"))
     kept = await service.replace_member_roles(
-        PROJECT, "member", [rid("project_member"), rid("admin"), rid("lumen_user")], token()
+        PROJECT, "member", [rid("project_member"), rid("admin"), rid("reader"), rid("member")], token()
     )
     assert rid("admin") in kept["direct_role_ids"]
-    assert membership.calls == [("grant", "member", rid("lumen_user"))]
+    assert membership.calls == [("grant", "member", rid("member"))]
     membership.calls.clear()
-    removed = await service.replace_member_roles(PROJECT, "member", [rid("project_member"), rid("lumen_user")], token())
+    removed = await service.replace_member_roles(
+        PROJECT, "member", [rid("project_member"), rid("reader"), rid("member")], token()
+    )
     assert set(removed["direct_role_ids"]) == {
         rid("project_member"),
-        rid("lumen_user"),
+        rid("member"),
         rid("reader"),
         rid("unrelated"),
     }
@@ -555,7 +569,7 @@ async def test_existing_native_admin_can_be_preserved_revoked_but_not_readded(me
     membership.calls.clear()
     with pytest.raises(HTTPException) as denied:
         await service.replace_member_roles(
-            PROJECT, "member", [rid("project_member"), rid("admin"), rid("lumen_user")], token()
+            PROJECT, "member", [rid("project_member"), rid("admin"), rid("reader"), rid("member")], token()
         )
     assert denied.value.status_code == 422
     assert membership.calls == []
@@ -564,16 +578,16 @@ async def test_existing_native_admin_can_be_preserved_revoked_but_not_readded(me
 @pytest.mark.asyncio
 async def test_additive_membership_keeps_existing_native_admin_until_explicit_removal(membership):
     membership.direct.append(assignment("member", "admin"))
-    kept = await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token(), additive=True)
-    assert {rid("admin"), rid("project_member"), rid("lumen_user")} == set(kept["direct_role_ids"])
-    assert membership.calls == [("grant", "member", rid("lumen_user"))]
+    kept = await service.replace_member_roles(PROJECT, "member", [rid("member")], token(), additive=True)
+    assert {rid("admin"), rid("project_member"), rid("member")} == set(kept["direct_role_ids"])
+    assert membership.calls == [("grant", "member", rid("member"))]
     membership.calls.clear()
     removed = await service.replace_member_roles(PROJECT, "member", [], token(), remove=True)
     assert removed["direct_role_ids"] == []
     assert {role_id for action, _, role_id in membership.calls if action == "revoke"} == {
         rid("admin"),
         rid("project_member"),
-        rid("lumen_user"),
+        rid("member"),
     }
 
 
@@ -613,7 +627,7 @@ async def test_membership_http_rejects_new_admin_and_allows_existing_direct_revo
     app.dependency_overrides[get_token_info] = lambda: token()
     path = f"/projects/{PROJECT}/members/member/roles"
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        denied = await client.put(path, json={"role_ids": [rid("admin"), rid("lumen_user")]})
+        denied = await client.put(path, json={"role_ids": [rid("admin"), rid("member")]})
         assert denied.status_code == 422
         assert membership.calls == []
         membership.direct.append(assignment("member", "admin"))
@@ -629,30 +643,74 @@ async def test_membership_http_rejects_new_admin_and_allows_existing_direct_revo
 
 
 @pytest.mark.asyncio
-async def test_native_admin_replacement_preserves_actual_default_last_manager_guard(membership):
+@pytest.mark.parametrize("role", ["admin", "lumen_admin"])
+async def test_removal_only_replacement_preserves_actual_default_last_manager_guard(membership, role):
+    if role != "admin":
+        membership.add_roles(role)
     membership.catalog = identity_roles._catalog(
         membership.catalog,
         [
             {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
             for row in membership.catalog
         ]
-        + [{"prior_role": {"id": rid("admin")}, "implies": [{"id": rid("manager")}]}],
+        + [{"prior_role": {"id": rid(role)}, "implies": [{"id": rid("manager")}]}],
     )
     membership.ks.projects.get = lambda pid: SimpleNamespace(id=pid, name="Default", domain_id="domain", enabled=True)
     membership.ks.projects.list = lambda **kwargs: [membership.ks.projects.get(PROJECT)]
     membership.ks.domains.list = lambda: [membership.ks.domains.get("domain")]
-    membership.direct.append(assignment("member", "admin"))
+    membership.direct.append(assignment("member", role))
     with pytest.raises(HTTPException) as denied:
-        await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token())
+        await service.replace_member_roles(PROJECT, "member", [rid("reader")], token())
     assert denied.value.status_code == 409
     assert denied.value.detail == "last_domain_manager"
     assert membership.calls == []
     membership.direct.append(assignment("second-manager", "manager"))
-    removed = await service.replace_member_roles(PROJECT, "member", [rid("lumen_user")], token())
-    assert rid("admin") not in removed["direct_role_ids"]
+    removed = await service.replace_member_roles(PROJECT, "member", [rid("reader")], token())
+    assert rid(role) not in removed["direct_role_ids"]
     assert rid("project_reader") in removed["direct_role_ids"]
-    assert ("revoke", "member", rid("admin")) in membership.calls
+    assert ("revoke", "member", rid(role)) in membership.calls
     assert ("revoke", "second-manager", rid("manager")) not in membership.calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("roles", [("lumen_admin", "waygate_admin"), ("admin", "lumen_admin")])
+@pytest.mark.parametrize("remove", [False, True])
+async def test_combined_removal_only_grants_preserve_actual_default_last_manager(membership, roles, remove):
+    retired = [name for name in roles if name != "admin"]
+    membership.add_roles(
+        *retired,
+        implications=[(name, "manager") for name in roles],
+    )
+    membership.ks.projects.get = lambda pid: SimpleNamespace(id=pid, name="Default", domain_id="domain", enabled=True)
+    membership.ks.projects.list = lambda **kwargs: [membership.ks.projects.get(PROJECT)]
+    membership.ks.domains.list = lambda: [membership.ks.domains.get("domain")]
+    membership.direct.extend(assignment("member", name) for name in (*roles, "reader", "unrelated"))
+    original = list(membership.direct)
+    requested = [] if remove else [rid("project_member"), rid("reader")]
+
+    with pytest.raises(HTTPException) as denied:
+        await service.replace_member_roles(PROJECT, "member", requested, token(), remove=remove)
+    assert denied.value.status_code == 409
+    assert denied.value.detail == "last_domain_manager"
+    assert membership.direct == original
+    assert membership.calls == []
+
+    membership.direct.append(assignment("second-manager", "manager"))
+    updated = await service.replace_member_roles(PROJECT, "member", requested, token(), remove=remove)
+    expected = {rid("unrelated"), rid("project_reader")}
+    if not remove:
+        expected |= {rid("reader"), rid("project_member")}
+    assert set(updated["direct_role_ids"]) == expected
+    expected_roles = {"reader", "unrelated", "project_reader"}
+    if not remove:
+        expected_roles |= {"project_member", "member"}
+    assert set(updated["roles"]) == expected_roles
+    assert not updated["is_manager"] and not updated["is_owner"]
+    assert {role_id for action, user_id, role_id in membership.calls if action == "revoke" and user_id == "member"} == {
+        rid(name) for name in roles
+    } | ({rid("project_member"), rid("reader")} if remove else set())
+    assert all(user_id == "member" for _, user_id, _ in membership.calls)
+    assert service._direct_ids(membership.direct, "second-manager") == {rid("manager")}
 
 
 @pytest.mark.asyncio
@@ -854,7 +912,7 @@ async def test_migration_http_requires_owner_body_and_system_admin(membership):
 
 
 @pytest.mark.asyncio
-async def test_full_direct_selection_preserves_immutable_native_roles(membership):
+async def test_full_direct_selection_preserves_selected_native_reader(membership):
     membership.direct.append(assignment("member", "reader"))
     result = await service.replace_member_roles(
         PROJECT, "member", [rid("project_reader"), rid("reader")], token("admin")
@@ -864,13 +922,11 @@ async def test_full_direct_selection_preserves_immutable_native_roles(membership
 
 
 @pytest.mark.asyncio
-async def test_nonowner_can_preserve_existing_admin_while_editing_service_roles(membership):
-    result = await service.replace_member_roles(
-        PROJECT, "admin", [rid("project_admin"), rid("lumen-chat_user")], token("admin")
-    )
+async def test_nonowner_can_preserve_existing_admin_while_editing_standard_roles(membership):
+    result = await service.replace_member_roles(PROJECT, "admin", [rid("project_admin"), rid("member")], token("admin"))
     assert result["is_manager"]
-    assert "lumen-chat_user" in result["roles"]
-    assert membership.calls == [("grant", "admin", rid("lumen-chat_user"))]
+    assert rid("member") in result["direct_role_ids"]
+    assert membership.calls == [("grant", "admin", rid("member"))]
 
 
 @pytest.mark.asyncio
@@ -942,7 +998,7 @@ async def test_incomplete_project_hierarchy_invitation_fails_without_granting(me
 
 @pytest.mark.asyncio
 async def test_inherited_and_direct_member_view_preserves_read_only_provenance(membership):
-    membership.inherited.append(assignment("member", "lumen_reader", inherited=True))
+    membership.inherited.append(assignment("member", "project_reader", inherited=True))
     rows = (await service.list_members(PROJECT, token()))["items"]
     member = next(row for row in rows if row["user_id"] == "member")
     assert member["source"] == "mixed"
@@ -950,70 +1006,140 @@ async def test_inherited_and_direct_member_view_preserves_read_only_provenance(m
     removed = await service.replace_member_roles(PROJECT, "member", [], token("admin"), remove=True)
     assert removed["source"] == "inherited"
     assert removed["direct_role_ids"] == []
-    assert "lumen_reader" in removed["roles"]
+    assert "project_reader" in removed["roles"]
 
 
 @pytest.mark.asyncio
-async def test_granular_leaf_assignment_does_not_mint_service_discovery_roles(membership):
+@pytest.mark.parametrize("role", ["member", "reader"])
+async def test_native_standard_roles_are_selectable_and_assignable(membership, role):
     choices = await service.assignable_roles(PROJECT, token("admin"))
-    assert rid("lumen-chat_user") in {row["id"] for row in choices["roles"]}
-    updated = await service.replace_member_roles(
-        PROJECT, "member", [rid("project_member"), rid("lumen-chat_user")], token("admin")
-    )
-    assert {role for role in updated["roles"] if role.startswith("lumen")} == {"lumen-chat_user"}
+    assert rid(role) in {row["id"] for row in choices["roles"]}
+    updated = await service.replace_member_roles(PROJECT, "member", [rid(role)], token("admin"))
+    assert updated["direct_role_ids"] == [rid(role)]
+    assert role in updated["roles"]
+    assert not updated["is_manager"] and not updated["is_owner"]
+    assert not any(name.startswith("lumen") for name in updated["roles"])
 
 
 @pytest.mark.asyncio
-async def test_service_grade_does_not_fabricate_effective_leaf_roles(membership):
-    membership.direct.append(assignment("member", "lumen_user"))
+@pytest.mark.parametrize("role", ["lumen_user", "lumen-chat_user"])
+async def test_retired_direct_grants_are_removal_only_and_preserved_when_selected(membership, role):
+    membership.add_roles(role)
+    membership.direct.append(assignment("member", role))
+    retired = next(row for row in membership.catalog if row["name"] == role)
+    assert retired["retired"] is True and retired["assignable"] is False
+    choices = await service.assignable_roles(PROJECT, token("admin"))
+    assert rid(role) not in {row["id"] for row in choices["roles"]}
+    updated = await service.replace_member_roles(PROJECT, "member", [rid(role)], token("admin"))
+    assert updated["direct_role_ids"] == [rid(role)]
+    assert updated["roles"] == [role]
+    assert not updated["is_manager"] and not updated["is_owner"]
+    assert membership.calls == [("revoke", "member", rid("project_member"))]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["lumen_user", "lumen-chat_user"])
+@pytest.mark.parametrize("method", ["put", "delete"])
+async def test_omitted_retired_direct_grants_are_revoked_by_replacement_and_removal(membership, role, method):
+    membership.add_roles(role)
+    membership.direct.append(assignment("member", role))
+    app = FastAPI()
+    app.include_router(router, prefix="/projects")
+    app.dependency_overrides[get_token_info] = lambda: token("admin")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        path = f"/projects/{PROJECT}/members/member"
+        response = (
+            await client.put(f"{path}/roles", json={"role_ids": []}) if method == "put" else await client.delete(path)
+        )
+    assert response.status_code == 200, response.text
+    updated = response.json() if method == "put" else response.json()["member"]
+    assert updated["direct_role_ids"] == []
+    assert updated["roles"] == []
+    assert not updated["is_manager"] and not updated["is_owner"]
+    assert {role_id for action, _, role_id in membership.calls if action == "revoke"} == {
+        rid("project_member"),
+        rid(role),
+    }
+    assert all(action == "revoke" for action, _, _ in membership.calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["lumen_user", "lumen-chat_user"])
+@pytest.mark.parametrize("additive", [False, True])
+async def test_retired_grade_and_leaf_cannot_be_newly_assigned(membership, role, additive):
+    membership.add_roles(role)
+    with pytest.raises(HTTPException) as invalid:
+        await service.replace_member_roles(
+            PROJECT, "member", [rid("project_member"), rid(role)], token(), additive=additive
+        )
+    assert invalid.value.status_code == 422
+    assert membership.calls == []
+    assert service._direct_ids(membership.direct, "member") == {rid("project_member")}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("origin", ["direct", "group", "inherited"])
+@pytest.mark.parametrize("root", ["lumen_user", "observer"])
+async def test_existing_readonly_graph_keeps_native_core_inference(membership, origin, root):
+    membership.add_roles(root, implications=((root, "member"), ("member", "reader")))
+    membership.direct = [row for row in membership.direct if row.get("user", {}).get("id") != "member"]
+    if origin == "group":
+        membership.groups["legacy-team"] = ["member"]
+        membership.direct.append(assignment(None, root, group="legacy-team"))
+    elif origin == "inherited":
+        membership.inherited.append(assignment("member", root, inherited=True))
+    else:
+        membership.direct.append(assignment("member", root))
     access = await service.get_project_access(PROJECT, "member")
-    assert "lumen_user" in access["roles"]
-    assert "lumen-chat_user" not in access["roles"]
+    assert set(access["roles"]) == {root, "member", "reader"}
+    assert not access["is_manager"] and not access["is_owner"]
+    assert membership.calls == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("problem", ["domain", "duplicate", "case-alias", "unknown-child", "cycle"])
-async def test_effective_service_identity_binding_and_graph_fail_closed(membership, problem):
-    membership.direct.append(assignment("member", "lumen-chat_user"))
-    leaf = next(row for row in membership.catalog if row["name"] == "lumen-chat_user")
+async def test_effective_standard_identity_binding_and_graph_fail_closed(membership, problem):
+    membership.direct.append(assignment("member", "reader"))
+    reader = next(row for row in membership.catalog if row["name"] == "reader")
     if problem == "domain":
-        leaf["domain_id"] = "tenant-domain"
+        reader["domain_id"] = "tenant-domain"
     elif problem == "duplicate":
-        membership.catalog.append({**leaf, "id": "duplicate-global-leaf"})
+        membership.catalog.append({**reader, "id": "duplicate-global-reader"})
     elif problem == "case-alias":
-        membership.catalog.append({**leaf, "id": "uppercase-alias", "name": "LUMEN-CHAT_USER"})
+        membership.catalog.append({**reader, "id": "uppercase-alias", "name": "READER"})
     elif problem == "unknown-child":
-        leaf["implied_role_ids"].append("missing-role-id")
+        reader["implied_role_ids"].append("missing-role-id")
     else:
-        leaf["implied_role_ids"].append(leaf["id"])
+        reader["implied_role_ids"].append(reader["id"])
     with pytest.raises(HTTPException) as unavailable:
         await service.get_project_access(PROJECT, "member")
     assert unavailable.value.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_granular_leaf_cannot_acquire_another_write_leaf(membership):
-    leaf = next(row for row in membership.catalog if row["name"] == "lumen-chat_user")
-    leaf["inherited_role_ids"].append(rid("lumen-images_user"))
-    leaf["implied_role_ids"].append(rid("lumen-images_user"))
+async def test_standard_reader_cannot_acquire_member_authority(membership):
+    reader = next(row for row in membership.catalog if row["name"] == "reader")
+    reader["inherited_role_ids"].append(rid("member"))
+    reader["implied_role_ids"].append(rid("member"))
     choices = await service.assignable_roles(PROJECT, token())
-    assert leaf["id"] not in {row["id"] for row in choices["roles"]}
+    assert reader["id"] not in {row["id"] for row in choices["roles"]}
     with pytest.raises(HTTPException) as invalid:
-        await service.replace_member_roles(PROJECT, "member", [leaf["id"]], token())
+        await service.replace_member_roles(PROJECT, "member", [reader["id"]], token())
     assert invalid.value.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_unassigned_domain_alias_does_not_disable_global_owner_or_service_grants(membership):
-    for name in ("project_owner", "member", "lumen-chat_user"):
+async def test_unassigned_domain_alias_does_not_disable_global_owner_or_standard_grants(membership):
+    for name in ("project_owner", "member", "reader"):
         original = next(row for row in membership.catalog if row["name"] == name)
         membership.catalog.append({**original, "id": "domain-" + name, "domain_id": "domain"})
-    membership.direct.append(assignment("member", "lumen-chat_user"))
+    membership.direct.append(assignment("member", "reader"))
     assert (await service.get_project_access(PROJECT, "owner"))["is_owner"] is True
     access = await service.get_project_access(PROJECT, "member")
-    assert "lumen-chat_user" in access["roles"]
+    assert "reader" in access["roles"]
     choices = await service.assignable_roles(PROJECT, token())
     assert rid("project_owner") not in {row["id"] for row in choices["roles"]}
+    assert {rid("member"), rid("reader")} <= {row["id"] for row in choices["roles"]}
     assert not any(row["id"].startswith("domain-") for row in choices["roles"])
 
 
