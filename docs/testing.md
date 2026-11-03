@@ -11,6 +11,7 @@ nav_order: 8
 - 요청 시점 public 변경을 격리해 검토했다. Native catalog 재교환 회귀는 Drover·Waygate 양쪽에서 수정 전 실패·수정 후 성공했으며, 취소된 role directory의 실제 worker 종료 전 연결을 해제하지 않는 회귀를 추가했다. 관련 backend suite 203 passed/19 skipped.
 - 수정 후 전체 gate 성공: source `6a138c2a9bdf14586a9a2f9bf800fc70dca2995e8a838063db2d985887ba28d7`/3991 files, backend 12741 passed/106 skipped, frontend 510 files/6667 tests, contracts 183, disposable DB 168 passed/52 deselected, Ruff 833 files. 세 linux/amd64 image build와 network-none/read-only non-root version/import smoke 1.32.4를 확인했다. API lifespan 및 native 서비스는 이 image smoke에서 실행하지 않았다.
 - 실제 운영 controller 세 곳의 schema read에서 SQL105 email table 네 개가 없었다. 기존 restricted grant 네 개의 Drover·Waygate policy 조회는 각각 503이며 discovery와 native 응답 중 원인은 이 관측만으로 구분할 수 없다. 원래 key·전체 writer fence·검증된 cold restore와 native 호환성은 운영 cutover 전 별도 확인해야 한다. 운영 DB/schema·서비스는 변경하지 않았다.
+- GitHub source CI 41592545469, tag image CI 41593479663, Helm CI 41593479576 성공. [정식 1.32.4 release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.4)의 세 release/latest digest와 revision, digest-pinned non-root linux/amd64 version 1.32.4, Helm chart version/appVersion 1.32.4를 확인했다. `latest`는 mutable이며 운영 적용 승인이 아니다.
 
 ## MCP 전체 프로젝트 혼합 권한·동의 미리보기 (2026-11-03, source/isolated)
 

@@ -8,6 +8,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 **1.32.4 준비:** MCP 혼합 프로젝트 동의·권한 preview에서 restricted token의 검증된 native catalog를 재사용하여 Keystone 재교환 없이 native 정책을 검사한다. 취소된 프로젝트 역할 조회는 실제 directory read가 종료되기 전 연결과 preview slot을 해제하지 않는다. Native 정책 fallback·새 schema·권한 승격은 없다. SQL105와 native 정책 호환성·복구 조건은 운영 전환 전 별도 검증한다.
 
+**1.32.4 발행:** source `1b495807d31037732d248e598396eb293d0393a5`의 CI 41592545469 성공 뒤 불변 numeric tag와 GitHub Release를 게시했다. Tag image 41593479663·Helm 41593479576 성공, 세 release/latest image digest·revision과 digest-pinned linux/amd64 runtime version, Helm version/appVersion을 확인했다. 운영 SQL105·native policy·복구 선행 조건 미충족으로 Kolla rollout은 수행하지 않았다.
+
 **1.32.3 release qualification (2026-11-03):** b30baf0f 기반 요청 시점184path public snapshot의 SSO native-state 비밀번호 생성/복구, 관리자 SMTP/IMAP·outbox/알림·SQL105, Pi 출처/진행/source navigation와 `$BUILDPLATFORM` frontend asset build를 통합한다. 기존 기능 archive와 API/보안/배포 문서의 native103/first-password-v2·105 schema-before-writer·원래 key·같은 API/worker cohort 및 matching Lumen history/source와 image-only rollback 제한을 유지한다. 별도 격리 clone에서 최종 source 전체 gate·production build·실행 smoke를 검증하고 기본 dev의 동일 snapshot만 커밋·push하여 exact-SHA CI 뒤 정식 numeric tag·Release·세 amd64 image/alias·Helm을 발행한다. 이후 도착한 동시 변경·형제 저장소·main merge·운영 Kolla/native/schema/SMTP 배포는 제외한다.
 
 발행 전 독립 검토의 native wire 호환성 문제는 공통 optional text null/빈값 정규화(citation·image/audio·structured), nullable progress·citation range와 두 대기 stage의 정확한 수용으로 수정한다. 필수 text·safe locator·bounded progress·tool-stage 불변식은 유지한다. 관리자 개별 mail은 기존 Keystone ID 문법1–64자를 사용하고 UUID 표현만 정규화하며64자 SSO ID는 원문으로 보존한다. 새로운 권위·schema·재전송·native 쓰기를 추가하지 않는다.
