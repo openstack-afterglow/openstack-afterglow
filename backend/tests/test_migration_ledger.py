@@ -1,7 +1,9 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from scripts import bootstrap_schema
 from scripts.baseline_migrations import MANIFEST, MIGRATIONS, MigrationLedgerError, baseline_pre037, load_manifest
 
 
@@ -35,3 +37,30 @@ def test_manifest_checksum_drift_is_fail_closed(tmp_path: Path):
 async def test_pre037_baseline_is_disabled_without_complete_schema_verifier():
     with pytest.raises(MigrationLedgerError, match="automatic pre-037 baselining is disabled"):
         await baseline_pre037("mysql+aiomysql://unused")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("logical_id", "106-reidentified"),
+        ("relative_path", "backend/migrations/106_other.sql"),
+        ("sha256", "0" * 64),
+    ],
+)
+def test_sql106_bootstrap_rejects_manifest_identity_drift(monkeypatch, field, value):
+    migrations = [
+        replace(migration, **{field: value}) if migration.logical_id == "106-mcp-oauth-ongoing" else migration
+        for migration in load_manifest()
+    ]
+    monkeypatch.setattr(bootstrap_schema, "load_manifest", lambda: migrations)
+    with pytest.raises(MigrationLedgerError, match="immutable manifest identity"):
+        bootstrap_schema.load_sql106()
+
+
+def test_sql106_bootstrap_rechecks_the_payload_after_manifest_validation(monkeypatch, tmp_path):
+    migrations = load_manifest()
+    (tmp_path / "106_mcp_oauth_ongoing.sql").write_text("-- altered payload\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap_schema, "load_manifest", lambda: migrations)
+    monkeypatch.setattr(bootstrap_schema, "MIGRATIONS", tmp_path)
+    with pytest.raises(MigrationLedgerError, match="immutable payload checksum"):
+        bootstrap_schema.load_sql106()

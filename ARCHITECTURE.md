@@ -4,7 +4,11 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.5`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.6`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+
+**1.32.6 MCP schema 복구:** 운영 1.32.5의 두 MCP 목록 API는 실제 DB에 SQL106의 `oauth_ongoing`·`issued_role_ceiling`이 없어 MariaDB1054로 실패했다. 사용자 승인으로 native Galera가 Synced/Primary/3-member임을 확인하고 MCP11개 테이블을 root0600으로 백업한 뒤 release-pinned SQL106을 직접 적용했다. 원래 grant5개·token52개의 기존 컬럼 해시가 전후 일치하고 세 API의 실제 설정 DB에서 새 컬럼과 nullable `DATETIME(6)`을 확인했다. 재시작·연결 재발급·기존 승인 연장은 하지 않았다.
+
+새 배포의 재발 방지는 Kolla bootstrap이 API 이미지에 포함된 manifest/checksum-검증 SQL106을 서비스 시작 전에 적용·검증하는 경로로 제한한다. 이전 전체 migration을 임의 replay하거나 pre037 baseline을 추정하지 않는다. 이미 호환되는 schema는 검증 후 건너뛰고, 적용·검증 실패는 새 writer 시작을 차단한다. 기존 생성 bootstrap과 DB·키·native 권위는 보존한다. 이 source의 gate·정식 발행·운영 배포 수용은 별도 기록하며 직접 SQL 복구를 새 runner 실행 증거로 대체하지 않는다.
 
 **1.32.5 발행 후보:** 요청 시점 MCP cloud 관리·OAuth 지속 동의·표준 프로젝트 역할·채팅 이력·독립 인증 화면을 통합한다. 역할 preset edge 전체 투영과 복수 direct grant 제거 전체를 native Default 프로젝트의 마지막 관리자 보호에 사전 적용하고, 실패 후 재시도에서 manager projection을 동기화한다. Journal follow 실패 시 임시 inspection은 terminal 추정 없이 streaming 표시만 종료한다. SQL106 schema-before-writer와 원 key·native 서비스 호환·복구 전제는 사용자의 별도 Kolla 전환 범위다.
 
@@ -2001,9 +2005,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3ca09d9c27882b0c82f4f39c3a0f8131f1949341ba5473c36613773416f4e60f",
-  "reviewed_at": "2026-11-03T15:24:01Z",
-  "summary": "1.32.5 integrates MCP and ongoing OAuth, native IAM and chat/auth UI; graph-wide last-manager preflight and combined assignment removal guard preserve native authority; failed journal follow stops only its local streaming indicator; production rollout excluded"
+  "source_sha256": "ba589018624a17909d43acb7d1a458834cbcdf59e4034d31023e0acd599cabeb",
+  "reviewed_at": "2026-11-03T16:35:28Z",
+  "summary": "1.32.6: SQL106-only bootstrap and packaged real-MariaDB fresh/legacy/repeat/refusal qualification; lint corrections preserve constraint grouping and fail-closed startup"
 }
 ```
 <!-- architecture-review:end -->

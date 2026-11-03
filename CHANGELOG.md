@@ -7,6 +7,21 @@
 
 ## [Unreleased]
 
+## [1.32.6] - 2026-11-04
+
+### Fixed
+
+- Kolla의 기존 테이블 생성 전용 bootstrap을 SQL106 전용 schema bootstrap으로 교체합니다. API 이미지에 포함한 manifest·SQL checksum을 확인하고 MariaDB schema lock 아래 기존 테이블의 MCP 지속 승인 column·nullable token 만료·CHECK 제약을 검증·보완하며, 불일치나 적용 실패는 배포를 중단합니다. 과거 migration 일괄 재실행과 무조건 baseline은 허용하지 않습니다.
+- 운영1.32.5의 SQL106 누락은 별도 승인된 직접 SQL 적용으로 복구했습니다. 보호된 MCP 백업과 기존 grant/token 원본 column 보존·세 API의 schema readback을 확인했으며, 사용자 경로 검증과1.32.6 정식 발행·Kolla rollout 결과는 아직 대기 중입니다.
+
+### Deprecated
+
+- 없음.
+
+### Removed
+
+- 없음.
+
 ## [1.32.5] - 2026-11-04
 
 ### Added

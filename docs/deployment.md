@@ -16,6 +16,15 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 모든 정식 GitHub Release 메시지는 한국어와 영어를 모두 포함하고, 각 언어에 **버전·배포일자(시간대 포함)·수정 및 변경 사항·지원 중단 또는 삭제된 기능**을 명시한다. 해당 항목이 없을 때는 한국어 `없음`, 영어 `None`으로 적는다. Release 게시 전 한영 양쪽의 모든 필수 항목과 실제 tag·발행일·변경 내용을 검증하며, 산출물 발행과 운영 Kolla 배포는 구분한다.
 
+## 1.32.6 SQL106 Kolla bootstrap·운영 직접 복구
+
+기존 Kolla bootstrap의 `create_tables()`는 모델 기반 테이블 생성과 일부 과거 opportunistic ALTER를 수행하지만 SQL106을 적용·검증하지 않았다. 1.32.6은 API 이미지에 migration manifest·SQL 파일을 포함하고, Kolla에서 `python -m scripts.bootstrap_schema`를 실행한다. 이 전용 runner는 effective DB 설정을 사용하며 schema별 MariaDB advisory lock 안에서 고정 SQL106의 manifest identity·checksum을 확인한다. 모델을 명시 등록하고 같은 연결의 `metadata.create_all`로 없는 테이블만 생성한 뒤 MCP column·type·nullable 만료·CHECK 제약을 검증한다. 기존 token 만료의 DATETIME precision0..6을 수용하고 SQL106으로 nullable DATETIME(6)로 전환한다. 이미 호환되는 schema는 SQL106을 재적용하지 않는다. 검증·잠금·DDL 실패는 bootstrap을 실패시켜 배포를 중단하며, 과거 ALTER를 재실행하거나 오류를 삼키는 legacy helper와 일반 baseline을 사용하지 않는다. Advisory lock은 해당 MariaDB server-local이며 Galera 전체 분산 lock이 아니다. Kolla의 고정 bootstrap 대상과 `run_once`를 유지한다.
+
+SQL106의 원본 checksum은 `b7ca283cceb76d3ce4c741804e828c0073b6694f5ceb592182041151ca0d6ea6`이다. DDL은 implicit commit되므로 runner 성공이 backup/restore·writer 정지·구형 reader 호환성 검토를 대신하지 않는다. 원 DB·암호화 key·finite grant/token을 보존하고 지속 승인 issuer/reader/cleanup cohort를 맞춘다. 실패 뒤 image-only rollback이나 기존 승인 기한의 자동 연장은 하지 않는다. Afterglow role은 checkout symlink이므로 image 발행뿐 아니라 배포서버의 해당 role source도 같은 검증된 release로 갱신해야 한다. 이번 수정 자체는 sibling operator package 버전 변경을 요구하지 않는다.
+
+**직접 복구 관측(2026-11-03 16:10:03 UTC / 2026-11-04 01:10:03 KST):** 운영1.32.5 revision `92cb744a`의 SQL106 누락에 대해 명시 승인된 native MariaDB Galera TOI 적용을 수행했다. 11개 MCP 테이블의 root-only0600 백업(`/var/backups/afterglow/mcp-before-sql106-20261103T160910Z.sql`,143009bytes, SHA256 `08dbb684cde839c4469201f3ac8f668325bb71e9058d158901e5e58a3102b865`)을 보존했다. 기존 grant5개·token52개의 원본 column row hash는 전후 같고 세 운영 API에서 새 두 column과 nullable DATETIME(6) 만료를 읽었다. 이 schema 복구는1.32.6 발행·배포나 실제 OAuth 사용자 경로 성공을 뜻하지 않는다. 새 runner의 통합 gate·정식 artifact 발행·Kolla rollout과 사용자 경로 수용은 검증 결과가 추가되기 전까지 대기 상태다.
+
+
 ## MCP 지속 OAuth 승인 전제 (source 변경, 미배포)
 
 새 지속 승인 writer·reader·cleanup을 시작하기 전에 원래 암호화 키와 DB를 보존하고 additive SQL `106_mcp_oauth_ongoing.sql`을 적용해야 한다. 기존 finite grant는 변경하지 않으며 기존 연결은 소유자가 한 번 새로 승인해야 한다. 이전 API/worker는 새 nullable OAuth 만료와 role-ID ceiling을 해석하지 못하므로 mixed-version 배포·rollback은 안전하다고 가정하지 않는다. 운영 전 일치하는 cohort의 schema/backup·restore와 실제 Keystone의 비만료 restricted credential 발급/현재 역할 회수/삭제 정책을 별도 검증한다. 코드 변경 자체는 운영 migration·인증 정보 교체·배포를 수행하지 않는다.

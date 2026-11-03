@@ -6,6 +6,15 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.6 SQL106 bootstrap·직접 복구 (2026-11-04)
+
+- Canonical `node scripts/apply-tag-version.js 1.32.6`로 root/frontend/backend·Python lock·Helm version/appVersion을 동기화했다. Frontend npm lock의 root version도 npm version 도구로 동기화했으며 Kolla sample의 자동 `latest` channel은 그대로 유지했다. 이 metadata 작업은 commit/tag/push를 만들지 않는다.
+- `python -m scripts.bootstrap_schema`는 명시 모델 등록·같은 잠금 연결의 `metadata.create_all`과 SQL106만 실행한다. 실제 MariaDB의 구형 precision0 만료·8개 DDL의9개 재시작 경계·fresh/repeat·CHECK·manifest/checksum drift·잠금 경쟁·엄격한 CREATE/DDL 오류·기존 finite row 보존 회귀를 포함한 정확한 두 backend selector24개가 통과했다. 과거 migration replay나 legacy helper의 예외 무시는 사용하지 않는다.
+- 운영 담당의 직접 복구는 2026-11-03 16:10:03 UTC(2026-11-04 01:10:03 KST)에 기존1.32.5 revision `92cb744a`의 원본 SQL106을 native MariaDB Galera TOI로 적용했다. 보호된11-table MCP 백업을 남겼고 grant5개·token52개의 원본 column hash가 전후 같다. 세 실제 API의 schema readback에서 `oauth_ongoing`·`issued_role_ceiling`과 nullable DATETIME(6) token expiry를 확인했다. 이 관측은 새 bootstrap runner 실행·새 image 배포 또는 OAuth 사용자 경로 성공의 증거가 아니다.
+- 운영 API 이미지 안에서 실제 `list_oauth_grants`·`list_personal_tokens`를 기존 소유자의 DB 행에 대해 read-only session으로 실행하여 OAuth3개·개인키0개의 조회와 public-view 직렬화 성공을 확인했다. HTTP 인증을 통과시킨 호출이 아니므로 authenticated endpoint 수용으로 기록하지 않는다. 사용자 Chrome relay는 확장 프로그램 미접속으로 연결되지 않아 실제 화면 검증은 아직 대기다.
+- Canonical Dockerfile의 linux/amd64 API/frontend/worker3개를 빌드했다. Non-root read-only API 이미지의 실제 config-only CLI가 격리 MariaDB11.4에서 fresh 실행·구형 precision0 스키마 전환·반복 실행 모두 exit0, 비호환 Boolean column은 명시 오류와 exit1을 반환했다. 실제 worker crypto runtime smoke도 통과했다. 소유한 격리 DB·서비스·네트워크는 정리했다. 통합 `test:gate`, exact-SHA CI, numeric1.32.6 tag·한영 GitHub Release·image/latest·Helm 발행, Kolla rollout과 실제 사용자 화면 수용은 아직 대기다.
+- 수정 후 최종 전체 gate는 source `ba589018624a17909d43acb7d1a458834cbcdf59e4034d31023e0acd599cabeb`/4067files에서 exit0: backend13523passed/94skip, frontend511files/6782tests, contracts258, 독립 MariaDB/PostgreSQL/Redis functional233passed/54deselected, Ruff/format846files. 첫 전체 실행은 테스트 전부 통과 뒤 새 runner의 lint3건으로 실패했고, loop·조건문·context 정리 후 전체를 새로 통과했다. API 이미지는 이 정리 후 다시 빌드했다. 정식 발행·운영 rollout은 이 source 검증과 구분한다.
+
 ## 1.32.5 GitHub 발행 후보 (2026-11-04)
 
 - 독립 검토에서 native preset edge 일괄 삭제 및 복수 direct grant 제거가 마지막 도메인 관리자를 제거할 수 있음을 확인했다. 전체 projected graph/assignment를 native 쓰기 전에 검증하고 실패 후 재시도에서도 manager projection을 동기화한다. 위치 미확인 임시 채팅의 journal follow 실패는 terminal outcome 추정 없이 streaming 표시를 해제한다. 관련 backend 355 tests, frontend ChatPanel 58 tests가 통과했다. 처음 추가한 회귀의 직접 역할과 implied reader 기대값 및 기존 status selector 기대값을 실제 계약에 맞게 수정했다.

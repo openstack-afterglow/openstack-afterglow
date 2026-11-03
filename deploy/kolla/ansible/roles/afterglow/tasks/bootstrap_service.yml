@@ -1,25 +1,13 @@
 ---
-- name: Bootstrap | Run DB schema initialization
+- name: Bootstrap | Initialize tables and verify SQL106 migration
   become: true
   community.docker.docker_container:
     name: afterglow_bootstrap
     image: "{{ afterglow_backend_image_ref }}"
     command:
       - python
-      - -c
-      - |
-        import asyncio
-        from app.config import get_settings
-        from app.database import close_db, create_tables, init_db
-
-        async def main():
-            try:
-                init_db(get_settings().database_url)
-                await create_tables()
-            finally:
-                await close_db()
-
-        asyncio.run(main())
+      - -m
+      - scripts.bootstrap_schema
     state: started
     detach: false
     network_mode: host

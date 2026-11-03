@@ -85,6 +85,7 @@ COPY --from=backend-builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser backend/pyproject.toml backend/uv.lock ./
 COPY --chown=appuser:appuser backend/tofu/ ./tofu/
 COPY --chown=appuser:appuser backend/scripts/ ./scripts/
+COPY --chown=appuser:appuser backend/migrations/ ./migrations/
 COPY --chown=appuser:appuser backend/app/ ./app/
 
 USER appuser
