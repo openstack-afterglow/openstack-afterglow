@@ -8,6 +8,10 @@
 [![Docker Build](https://github.com/openstack-afterglow/openstack-afterglow/actions/workflows/docker-build.yml/badge.svg)](https://github.com/openstack-afterglow/openstack-afterglow/actions/workflows/docker-build.yml)
 [![License](https://img.shields.io/github/license/openstack-afterglow/openstack-afterglow)](LICENSE)
 
+Frontend: [![Frontend status](https://incidents.betterstack.com/status-badges/v1/monitor/2zi0k.svg)](https://incidents.betterstack.com/?utm_source=status_badge)
+
+Backend: [![Backend status](https://incidents.betterstack.com/status-badges/v1/monitor/3010o.svg)](https://incidents.betterstack.com/?utm_source=status_badge)
+
 Afterglow is an open-source web dashboard for OpenStack clouds. It keeps Horizon's feature completeness and stability while delivering a modern SvelteKit UI/UX, and bundles **k3s-based Kubernetes provisioning** (a Magnum replacement) and a **squashfs/NFS-based Palimpsest library layer** for AI/ML workloads.
 
 ## Live service
