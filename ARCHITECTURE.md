@@ -10,6 +10,12 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 새 배포의 재발 방지는 Kolla bootstrap이 API 이미지에 포함된 manifest/checksum-검증 SQL106을 서비스 시작 전에 적용·검증하는 경로로 제한한다. 이전 전체 migration을 임의 replay하거나 pre037 baseline을 추정하지 않는다. 이미 호환되는 schema는 검증 후 건너뛰고, 적용·검증 실패는 새 writer 시작을 차단한다. 기존 생성 bootstrap과 DB·키·native 권위는 보존한다. 이 source의 gate·정식 발행·운영 배포 수용은 별도 기록하며 직접 SQL 복구를 새 runner 실행 증거로 대체하지 않는다.
 
+**1.32.6 정식 발행:** source `0334564dfb2fdb45bf55d617263ee973e785a45d`의 dev CI41677087194·tag image CI41678603075·Helm CI41678602993이 성공했다. 불변 numeric tag와 한영 GitHub Release를 게시하고 API/frontend/worker의 release/latest digest·revision 일치, digest-pinned read-only/network-none amd64 실행 버전1.32.6과 Helm version/appVersion1.32.6을 검증했다. Kolla 배포와 실제 사용자 화면 수용은 별도 운영 증거이며 발행만으로 완료 처리하지 않는다.
+
+운영에서는 별도 addon deploy가03:30KST에 SQL106 bootstrap·failed0 recap으로 종료한 것을 확인했고, 세 컨트롤러가 정확한1.32.6 revision으로 healthy하며 두 MCP 목록의 실제 인증 HTTP200과 effective DB/Redis/키 보존을 검증했다. 제 compute SSH255·recap 미확보와 별도 전체 deploy.exit2는 전체 인프라 성공과 구분하며 이미 완료된 control 재시작을 반복하지 않았다. 현재 native OVS15개와 compute12대 관련 containers는 정상이다. 공개 UI 시각 확인은 relay 버전 불일치로 제한됐다.
+
+
+
 **1.32.5 발행 후보:** 요청 시점 MCP cloud 관리·OAuth 지속 동의·표준 프로젝트 역할·채팅 이력·독립 인증 화면을 통합한다. 역할 preset edge 전체 투영과 복수 direct grant 제거 전체를 native Default 프로젝트의 마지막 관리자 보호에 사전 적용하고, 실패 후 재시도에서 manager projection을 동기화한다. Journal follow 실패 시 임시 inspection은 terminal 추정 없이 streaming 표시만 종료한다. SQL106 schema-before-writer와 원 key·native 서비스 호환·복구 전제는 사용자의 별도 Kolla 전환 범위다.
 
 **1.32.5 발행:** source `92cb744ab615de699e552dfa3423f3956b5b8f4d`의 CI 41664544663 성공 뒤 불변 numeric tag와 한영 GitHub Release를 게시했다. Tag image CI 41666263431·Helm CI 41666263078 성공, 세 release/latest digest·revision과 digest-pinned linux/amd64 runtime 및 Helm version/appVersion 1.32.5를 검증했다. 사용자가 Kolla 전환을 직접 수행하므로 운영 DB·native 서비스는 변경하지 않았다.

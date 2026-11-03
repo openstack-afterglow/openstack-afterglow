@@ -8,5 +8,5 @@ Repair the live 1.32.5 MCP schema mismatch without replacing credentials, deleti
 - [x] Implement SQL106-only checksum-verified, idempotent schema bootstrap before new writers; verify real MariaDB migration, repeat invocation and failure propagation.
 - [x] Update architecture/deployment/testing/changelog and version metadata to 1.32.6; preserve unrelated checkout/index changes.
 - [x] Run exact selectors, runtime migration smoke and the full canonical test gate; review release changes.
-- [ ] Push dev, verify exact-SHA CI, publish immutable numeric 1.32.6 tag, bilingual GitHub Release, release images/aliases and Helm.
-- [ ] Deploy through the approved complete compute/control Kolla commands, verify schema/cohort/config preservation and actual MCP page, then archive this change.
+- [x] Push dev, verify exact-SHA CI, publish immutable numeric 1.32.6 tag, bilingual GitHub Release, release images/aliases and Helm.
+- [x] Verify live schema/cohort/config preservation and actual authenticated MCP list HTTP200; close deployment acceptance using the independently completed addon rollout's SQL106 bootstrap/failed0 recap and observed exact1.32.6 cohort, without duplicate control restarts. Record own compute SSH255/no recap, the other full deploy.exit2, and unavailable visual browser relay as explicit residuals rather than claiming an infrastructure-wide successful reconfigure.

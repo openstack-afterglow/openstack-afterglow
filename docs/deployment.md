@@ -24,6 +24,9 @@ SQL106의 원본 checksum은 `b7ca283cceb76d3ce4c741804e828c0073b6694f5ceb592182
 
 **직접 복구 관측(2026-11-03 16:10:03 UTC / 2026-11-04 01:10:03 KST):** 운영1.32.5 revision `92cb744a`의 SQL106 누락에 대해 명시 승인된 native MariaDB Galera TOI 적용을 수행했다. 11개 MCP 테이블의 root-only0600 백업(`/var/backups/afterglow/mcp-before-sql106-20261103T160910Z.sql`,143009bytes, SHA256 `08dbb684cde839c4469201f3ac8f668325bb71e9058d158901e5e58a3102b865`)을 보존했다. 기존 grant5개·token52개의 원본 column row hash는 전후 같고 세 운영 API에서 새 두 column과 nullable DATETIME(6) 만료를 읽었다. 이 schema 복구는1.32.6 발행·배포나 실제 OAuth 사용자 경로 성공을 뜻하지 않는다. 새 runner의 통합 gate·정식 artifact 발행·Kolla rollout과 사용자 경로 수용은 검증 결과가 추가되기 전까지 대기 상태다.
 
+**운영 전환 수용:** 1.32.6 정식 발행 뒤 별도 운영자의 2026-11-04 03:23–03:30 KST addon deploy가 새 SQL106 bootstrap과 전체 failed0 recap으로 종료했다. 실제 세 컨트롤러의 API/frontend/worker가 `0334564d`이고 원 DB·Redis·암호화 key fingerprint가 같으며 두 MCP 목록의 실제 인증 HTTP200을 확인했다. 제 compute reconfigure는 SSH255로 recap 미확보이며 다른 전체 deploy.exit2도 별도 미해결이다. 이미 완료된 control 전환은 중복 실행하지 않았다. 현재 compute12대 관련 containers healthy와 native OVS15개 alive/enabled는 현재 상태의 증거일 뿐 실패한 전체 deploy를 성공으로 바꾸지 않는다. UI 시각 수용은 Chrome relay 버전 불일치로 미관측이다.
+
+
 
 ## MCP 지속 OAuth 승인 전제 (source 변경, 미배포)
 
