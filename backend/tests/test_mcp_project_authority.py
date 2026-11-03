@@ -36,6 +36,7 @@ def project_provider(monkeypatch):
     ]
     remote = {}
     created, deleted, discoveries, rescopes = [], [], [], []
+    connections = []
     failures = {}
     blocked = set()
     current_role_overrides = {}
@@ -87,6 +88,7 @@ def project_provider(monkeypatch):
     class Connection:
         def __init__(self, target):
             self.closed = False
+            connections.append(self)
             self.access = SimpleNamespace(
                 user_id=user_id,
                 project_id=target,
@@ -115,7 +117,8 @@ def project_provider(monkeypatch):
         def close(self):
             self.closed = True
 
-    def connect(token, project_id):
+    def connect(token, project_id, *, api_timeout=30):
+        assert api_timeout > 0
         assert token.startswith("scoped-token-")
         rescopes.append((token, project_id))
         return Connection(project_id)
@@ -148,6 +151,7 @@ def project_provider(monkeypatch):
         deleted=deleted,
         discoveries=discoveries,
         rescopes=rescopes,
+        connections=connections,
         failures=failures,
         blocked=blocked,
         current_role_overrides=current_role_overrides,
@@ -372,15 +376,412 @@ async def test_secondary_ciphertext_is_bound_to_exact_target(project_provider):
         authority.decrypt_grant_secret(grant, project_id=provider.b, credential=credential)
 
 
-async def test_project_membership_failure_is_not_an_empty_success(client, monkeypatch):
+async def test_preview_transport_timeout_settles_real_sdk_threads_without_erasing_healthy_rows(
+    project_provider, monkeypatch
+):
+    from app.services import service_authorization
+
+    provider = project_provider
+    slow_ids = {provider.b, provider.c}
+    for index in range(2):
+        project_id = str(uuid4())
+        provider.roles[project_id] = ["reader"]
+        slow_ids.add(project_id)
+        provider.memberships.append({"id": project_id, "name": f"D{index}", "enabled": True, "domain_id": "tenant-a"})
+    provider.memberships.append({"id": provider.c, "name": "C", "enabled": True, "domain_id": "tenant-a"})
+    seen_timeouts, finished = [], set()
+    original_connect = projects.keystone.get_openstack_connection
+    monkeypatch.setattr(projects, "_PREVIEW_PROJECT_TIMEOUT", 0.03)
+
+    def connect(token, project_id, *, api_timeout=30):
+        seen_timeouts.append(api_timeout)
+        assert api_timeout == 0.03
+        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+        if project_id in slow_ids:
+
+            def access(session):
+                threading.Event().wait(api_timeout)
+                finished.add(project_id)
+                assert not scoped.closed
+                raise TimeoutError("private-Keystone-transport-timeout")
+
+            scoped.session.auth.get_access = access
+        return scoped
+
+    async def policy(principal, *, timeout):
+        return {"drover": ["drover-inventory_reader"]}, {}
+
+    monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
+    monkeypatch.setattr(service_authorization, "service_permission_snapshot", policy)
+    rows = await projects.project_permission_preview(provider.conn, provider.user)
+    assert len(rows) == 5 and finished == slow_ids
+    by_id = {row["id"]: row for row in rows}
+    assert by_id[provider.a]["can_write"] is True
+    assert by_id[provider.a]["service_permissions"]["drover"] == ["drover-inventory_reader"]
+    assert all(by_id[project_id]["can_write"] is None for project_id in slow_ids)
+    assert seen_timeouts == [0.03] * 5
+    assert all(conn.closed for conn in provider.connections if conn is not provider.conn)
+    assert not provider.conn.closed
+
+
+@pytest.mark.parametrize("failure", ["rescope", "domain", "authority", "timeout"])
+async def test_project_preview_isolates_unknown_projects_and_independent_service_failures(
+    project_provider, monkeypatch, failure
+):
+    from app.services import service_authorization, service_proxy
+
+    provider = project_provider
+    provider.memberships.append({"id": provider.c, "name": "C", "enabled": True, "domain_id": "tenant-a"})
+    availability = {"lumen": True, "drover": True, "waygate": True, "palimpsest": True}
+    monkeypatch.setattr(service_authorization, "service_policy_availability", lambda: availability)
+    monkeypatch.setattr(projects, "_PREVIEW_PROJECT_TIMEOUT", 0.2)
+    monkeypatch.setattr(projects, "_PREVIEW_POLICY_TIMEOUT", 0.01)
+    original_connect = projects.keystone.get_openstack_connection
+    original_roles = project_service.get_project_delegation_roles
+    canceled_policy = asyncio.Event()
+    canceled_authority = asyncio.Event()
+
+    def connect(token, project_id, *, api_timeout=30):
+        if project_id == provider.b and failure == "rescope":
+            raise RuntimeError("private-endpoint-and-native-token")
+        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+        if project_id == provider.b and failure == "domain":
+            scoped.access.project_domain_id = "foreign-domain"
+        return scoped
+
+    async def current_roles(project_id, user_id):
+        if project_id == provider.b and failure == "authority":
+            raise RuntimeError("private-authority-response")
+        if project_id == provider.b and failure == "timeout":
+            try:
+                await asyncio.Event().wait()
+            finally:
+                canceled_authority.set()
+        return await original_roles(project_id, user_id)
+
+    async def policy(service, principal, *, timeout=None):
+        assert timeout == 0.01
+        assert principal["connection_project_id"] == principal["project_id"]
+        assert principal["token"] == "scoped-token-" + principal["project_id"]
+        if principal["project_id"] == provider.c and service == "lumen":
+            try:
+                await asyncio.Event().wait()
+            finally:
+                canceled_policy.set()
+        if principal["project_id"] == provider.a and service == "waygate":
+            raise RuntimeError("private-service-response")
+        leaves = {
+            "lumen": ["lumen-history_reader"],
+            "drover": ["drover-inventory_reader"],
+            "waygate": [],
+            "palimpsest": [],
+        }
+        return {"service": service, "capabilities": leaves[service], "actions": []}
+
+    monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current_roles)
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+    rows = await projects.project_permission_preview(provider.conn, provider.user)
+    assert [row["id"] for row in rows] == [provider.a, provider.b, provider.c]
+    a, b, c = rows
+    assert a["can_write"] is True and c["can_write"] is True
+    assert a["service_permissions"]["lumen"] == ["lumen-history_reader"]
+    assert a["service_errors"] == {"waygate": "permission_check_unavailable"}
+    assert b["can_write"] is None
+    assert b["service_permissions"] == {service: [] for service in availability}
+    assert b["service_errors"] == {service: "permission_check_unavailable" for service in availability}
+    assert c["service_permissions"]["drover"] == ["drover-inventory_reader"]
+    assert c["service_errors"] == {"lumen": "permission_check_unavailable"}
+    assert canceled_policy.is_set()
+    if failure == "timeout":
+        assert canceled_authority.is_set()
+    assert all(conn.closed for conn in provider.connections if conn is not provider.conn)
+    assert not provider.conn.closed and not provider.created
+    assert "private" not in str(rows) and "token" not in str(rows)
+
+
+async def test_project_preview_limits_workers_and_never_shares_caller_session(project_provider, monkeypatch):
+    from app.services import service_authorization
+
+    provider = project_provider
+    for index in range(4):
+        project_id = str(uuid4())
+        provider.roles[project_id] = ["reader"]
+        provider.memberships.append({"id": project_id, "name": f"C{index}", "enabled": True, "domain_id": "tenant-a"})
+    original_roles = project_service.get_project_delegation_roles
+    original_access = provider.conn.session.auth.get_access
+    caller_reads = 0
+    active, peak = 0, 0
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    def caller_access(session):
+        nonlocal caller_reads
+        caller_reads += 1
+        assert active == 0
+        return original_access(session)
+
+    async def current_roles(project_id, user_id):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        if active == 3:
+            started.set()
+        try:
+            await release.wait()
+            return await original_roles(project_id, user_id)
+        finally:
+            active -= 1
+
+    async def policy(principal, *, timeout):
+        assert timeout == 5.0
+        return {"drover": []}, {}
+
+    provider.conn.session.auth.get_access = caller_access
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current_roles)
+    monkeypatch.setattr(service_authorization, "service_permission_snapshot", policy)
+    task = asyncio.create_task(projects.project_permission_preview(provider.conn, provider.user))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        assert active == 3 and len(provider.rescopes) == 3
+        assert not task.done()
+    finally:
+        release.set()
+    rows = await task
+    assert len(rows) == 6 and peak == 3 and caller_reads == 2
+    owned = [conn for conn in provider.connections if conn is not provider.conn]
+    assert len(owned) == 6 and len({id(conn.session) for conn in owned}) == 6
+    assert {token for token, _ in provider.rescopes} == {"scoped-token-" + provider.a}
+    assert all(conn.closed for conn in owned)
+    assert not provider.conn.closed
+
+
+@pytest.mark.parametrize("phase", ["factory", "access"])
+async def test_project_preview_cancellation_drains_owned_native_workers_before_close(
+    project_provider, monkeypatch, phase
+):
+    provider = project_provider
+    entered = {provider.a: threading.Event(), provider.b: threading.Event()}
+    release = threading.Event()
+    original_connect = projects.keystone.get_openstack_connection
+
+    def connect(token, project_id, *, api_timeout=30):
+        assert api_timeout == 5.0
+        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+
+        def block():
+            entered[project_id].set()
+            assert release.wait(3)
+            assert not scoped.closed
+
+        if phase == "factory":
+            block()
+        else:
+
+            def access(session):
+                block()
+                return scoped.access
+
+            scoped.session.auth.get_access = access
+        return scoped
+
+    monkeypatch.setattr(projects.keystone, "get_openstack_connection", connect)
+    task = asyncio.create_task(projects.project_permission_preview(provider.conn, provider.user))
+    try:
+        for event in entered.values():
+            assert await asyncio.wait_for(asyncio.to_thread(event.wait, 2), timeout=3)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert all(not conn.closed for conn in provider.connections)
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    owned = [conn for conn in provider.connections if conn is not provider.conn]
+    assert len(owned) == 2 and all(conn.closed for conn in owned)
+    assert not provider.conn.closed and not provider.created
+
+
+@pytest.mark.parametrize("preview", [False, True])
+async def test_project_membership_failure_is_not_an_empty_success(client, monkeypatch, preview):
     monkeypatch.setattr(mcp_access, "get_settings", lambda: SimpleNamespace(service_mcp_enabled=True))
 
     async def unavailable(conn, user_id):
         raise authority.McpAuthorityError("Project membership is unavailable")
 
     monkeypatch.setattr(mcp_access, "caller_membership_projects", unavailable)
-    response = await client.get("/api/v1/auth/mcp-projects")
+    monkeypatch.setattr(mcp_access, "project_permission_preview", unavailable)
+    response = await client.get("/api/v1/auth/mcp-projects" + ("?preview=true" if preview else ""))
     assert response.status_code == 400
+
+
+async def test_project_preview_timeout_returns_only_safe_unavailability(client, monkeypatch):
+    monkeypatch.setattr(mcp_access, "get_settings", lambda: SimpleNamespace(service_mcp_enabled=True))
+
+    async def unavailable(conn, user_id):
+        raise TimeoutError("native-token-and-private-endpoint")
+
+    monkeypatch.setattr(mcp_access, "project_permission_preview", unavailable)
+    response = await client.get("/api/v1/auth/mcp-projects?preview=true")
+    assert response.status_code == 503
+    assert "native-token" not in response.text and "private-endpoint" not in response.text
+
+
+@pytest.mark.parametrize("palimpsest_enabled", [True, False])
+async def test_preview_never_presents_stale_token_service_roles_as_delegated_permissions(
+    project_provider, monkeypatch, palimpsest_enabled
+):
+    from app.services import service_authorization
+
+    provider = project_provider
+    provider.conn.access.role_names = ["admin", "member"]
+    provider.conn.access.role_ids = ["role-admin", "role-member"]
+    provider.roles[provider.a] = ["admin", "member"]
+    provider.memberships[:] = provider.memberships[:1]
+    provider.current_role_overrides[provider.a] = [{"id": "role-member", "name": "member", "inherited_role_ids": []}]
+    settings = get_settings().model_copy(
+        update={
+            "os_auth_url": "https://keystone.example.test/v3",
+            "service_k3s_enabled": True,
+            "service_chat_enabled": True,
+            "service_waygate_enabled": True,
+            "service_palimpsest_enabled": palimpsest_enabled,
+        }
+    )
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+
+    async def native(principal, *, timeout=None):
+        assert timeout == 5.0
+        return (
+            {
+                "drover": ["drover-clusters_admin"],
+                "waygate": ["waygate-routing_admin"],
+                "palimpsest": ["palimpsest-keys_admin"],
+                "lumen": ["lumen-resources_admin"],
+            },
+            {},
+        )
+
+    monkeypatch.setattr(service_authorization, "service_permission_snapshot", native)
+    preview = (await projects.project_permission_preview(provider.conn, provider.user))[0]
+    assert preview["can_write"] is True
+    assert all(leaves == [] for leaves in preview["service_permissions"].values())
+    assert preview["service_errors"] == {
+        service: "permission_check_unavailable"
+        for service, enabled in service_authorization.service_policy_availability().items()
+        if enabled
+    }
+
+
+async def test_project_preview_endpoint_preserves_exact_native_policy_and_hides_credentials(
+    client, project_provider, monkeypatch
+):
+    from app.api.deps import get_os_conn, get_token_info
+    from app.main import app
+    from app.services import service_proxy
+
+    provider = project_provider
+    observed = []
+    settings = get_settings().model_copy(
+        update={
+            "os_auth_url": "https://keystone.example.test/v3",
+            "service_mcp_enabled": True,
+            "service_k3s_enabled": True,
+            "service_chat_enabled": True,
+            "service_waygate_enabled": True,
+            "service_palimpsest_enabled": True,
+        }
+    )
+    monkeypatch.setattr("app.config.get_settings", lambda: settings)
+    monkeypatch.setattr(mcp_access, "get_settings", lambda: settings)
+
+    async def policy(service, principal, *, timeout=None):
+        assert timeout == 5.0
+        assert principal["is_system_admin"] is False
+        target = principal["project_id"]
+        assert principal["connection_project_id"] == target
+        assert principal["token"] == "scoped-token-" + target
+        observed.append((target, service))
+        if target == provider.b and service == "lumen":
+            from fastapi import HTTPException
+
+            raise HTTPException(503, "upstream-secret-must-not-leak")
+        leaves = {
+            "drover": ["drover-inventory_reader"],
+            "waygate": [],
+            "palimpsest": ["palimpsest-download_user"],
+            "lumen": ["lumen-history_reader"],
+        }
+        if target == provider.b and service == "drover":
+            leaves[service] = ["drover-inventory_reader", "drover-clusters_editor"]
+        return {"service": service, "capabilities": leaves[service], "actions": []}
+
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+    previous = app.dependency_overrides.copy()
+    app.dependency_overrides[get_os_conn] = lambda: provider.conn
+    app.dependency_overrides[get_token_info] = lambda: {"user_id": provider.user}
+    try:
+        cheap = await client.get("/api/v1/auth/mcp-projects")
+        assert cheap.status_code == 200
+        assert cheap.json() == [{"id": provider.a, "name": "A"}, {"id": provider.b, "name": "B"}]
+        assert cheap.headers["cache-control"] == "no-store"
+        assert not observed and not provider.rescopes
+        response = await client.get("/api/v1/auth/mcp-projects?preview=true")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    rows = response.json()
+    assert rows == [
+        {
+            "id": provider.a,
+            "name": "A",
+            "can_write": True,
+            "service_permissions": {
+                "drover": ["drover-inventory_reader"],
+                "waygate": [],
+                "palimpsest": ["palimpsest-download_user"],
+                "lumen": ["lumen-history_reader"],
+            },
+            "service_errors": {},
+        },
+        {
+            "id": provider.b,
+            "name": "B",
+            "can_write": False,
+            "service_permissions": {
+                "drover": ["drover-clusters_editor", "drover-inventory_reader"],
+                "waygate": [],
+                "palimpsest": ["palimpsest-download_user"],
+                "lumen": [],
+            },
+            "service_errors": {"lumen": "permission_check_unavailable"},
+        },
+    ]
+    assert len(observed) == 8
+    assert "token" not in response.text and "secret" not in response.text and "roles" not in response.text
+    assert not provider.created
+
+
+async def test_all_manage_retains_mixed_project_write_ceilings(project_provider):
+    provider = project_provider
+    metadata = await projects.resolve_project_scope(
+        provider.conn, provider.user, provider.a, ["admin"], project_scope="all", access_level="manage"
+    )
+    assert metadata == [
+        {"id": provider.a, "name": "A", "roles": ["member"], "can_write": True},
+        {"id": provider.b, "name": "B", "roles": ["reader"], "can_write": False},
+    ]
+    grant = SimpleNamespace(approved_projects=metadata, owner_project_id=provider.a, access_level="manage")
+    authority.validate_grant_project(grant, provider.a, write=True)
+    authority.validate_grant_project(grant, provider.b)
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        authority.validate_grant_project(grant, provider.b, write=True)
+    grant.access_level = "read"
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        authority.validate_grant_project(grant, provider.a, write=True)
 
 
 @pytest.fixture(scope="module")
@@ -509,6 +910,23 @@ async def test_manage_reader_rejected_before_any_reservation_or_remote_creation(
             await session.scalars(select(McpDelegatedGrant).where(McpDelegatedGrant.owner_user_id == owner.user))
         ).all() == []
     assert owner.created == []
+
+
+@pytest.mark.db
+async def test_manage_all_issues_reader_credential_without_promoting_its_saved_authority(project_owner):
+    owner = project_owner
+    issued = await issue(owner, access_level="manage", project_scope="all", project_ids=None)
+    async with owner.factory() as session, session.begin():
+        grant = await authority.resolve_personal_token(session, issued.token)
+        assert grant.access_level == "manage"
+        assert authority.grant_scopes(grant.access_level) == ("mcp:read", "mcp:write")
+        assert authority.validate_grant_project(grant, owner.a, write=True)["can_write"] is True
+        assert authority.validate_grant_project(grant, owner.b)["roles"] == ["reader"]
+        with pytest.raises(authority.McpGrantStateError, match="management"):
+            authority.validate_grant_project(grant, owner.b, write=True)
+        credential = await session.get(McpProjectCredential, {"grant_id": grant.id, "project_id": owner.b})
+        assert owner.remote[credential.application_credential_id].roles == [{"id": "role-reader", "name": "reader"}]
+    assert len(owner.created) == 2
 
 
 @pytest.mark.db
@@ -985,3 +1403,31 @@ async def test_current_graph_cannot_expand_delegation_beyond_authenticated_roles
     )
     assert credential["roles"] == prepared[0].roles
     assert "roles" not in provider.created[0][2]
+
+
+async def test_cancelled_project_lookup_waits_for_role_directory_before_closing(project_provider, monkeypatch):
+    provider = project_provider
+    started, release = threading.Event(), threading.Event()
+
+    async def roles(project_id, owner_user_id):
+        def blocking_read():
+            started.set()
+            assert release.wait(10)
+            return [{"id": "role-reader", "name": "reader", "inherited_role_ids": []}]
+
+        return await project_service._provider_call(blocking_read)
+
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", roles)
+    task = asyncio.create_task(projects.project_connection(provider.conn, provider.user, provider.b))
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        target = provider.connections[-1]
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert not task.done()
+        assert not target.closed
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert target.closed

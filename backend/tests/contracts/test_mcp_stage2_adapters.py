@@ -52,6 +52,14 @@ def isolated_authority(monkeypatch):
 
     monkeypatch.setattr("app.services.mcp_control_plane.registry.resolve_principal_target", resolve)
 
+    async def native_policy(conn, project_id, service, leaf):
+        assert leaf == service + "-inventory_reader"
+
+    # These tests isolate provider redaction/ownership; independent policy
+    # denial and exact restricted subjects are covered in project runtime tests.
+    monkeypatch.setattr("app.services.mcp_control_plane.k3s.require_native_service_permission", native_policy)
+    monkeypatch.setattr("app.services.mcp_control_plane.waygate.require_native_service_permission", native_policy)
+
 
 # --- File Storage Tests ---
 

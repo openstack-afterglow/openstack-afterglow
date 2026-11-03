@@ -4,7 +4,9 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.3`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.4`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+
+**1.32.4 준비:** MCP 혼합 프로젝트 동의·권한 preview에서 restricted token의 검증된 native catalog를 재사용하여 Keystone 재교환 없이 native 정책을 검사한다. 취소된 프로젝트 역할 조회는 실제 directory read가 종료되기 전 연결과 preview slot을 해제하지 않는다. Native 정책 fallback·새 schema·권한 승격은 없다. SQL105와 native 정책 호환성·복구 조건은 운영 전환 전 별도 검증한다.
 
 **1.32.3 release qualification (2026-11-03):** b30baf0f 기반 요청 시점184path public snapshot의 SSO native-state 비밀번호 생성/복구, 관리자 SMTP/IMAP·outbox/알림·SQL105, Pi 출처/진행/source navigation와 `$BUILDPLATFORM` frontend asset build를 통합한다. 기존 기능 archive와 API/보안/배포 문서의 native103/first-password-v2·105 schema-before-writer·원래 key·같은 API/worker cohort 및 matching Lumen history/source와 image-only rollback 제한을 유지한다. 별도 격리 clone에서 최종 source 전체 gate·production build·실행 smoke를 검증하고 기본 dev의 동일 snapshot만 커밋·push하여 exact-SHA CI 뒤 정식 numeric tag·Release·세 amd64 image/alias·Helm을 발행한다. 이후 도착한 동시 변경·형제 저장소·main merge·운영 Kolla/native/schema/SMTP 배포는 제외한다.
 
@@ -648,6 +650,8 @@ MCP SDK1.28.1는 cold `tools/call`의 schema cache miss에서 `ListToolsRequest`
 개인 MCP 토큰과 OAuth 인가는 단일 프로젝트 고정에서 벗어나 명시적인 `read` 또는 `manage` 권한과 `current`·`selected`·`all` 프로젝트 범위를 지원한다. 마이그레이션 084는 기존 단일 프로젝트 레코드를 `project_scope='current'`로 보존하는 덧셈식(additive) 스키마를 적용하며, 신규 자식 테이블 `mcp_project_credentials`를 통해 허용된 개별 대상 프로젝트마다 독립된 Keystone application credential을 안전하게 AEAD 암호화하여 저장한다. 기존 단일 프로젝트 grant는 마이그레이션 후에도 조회·실행·폐기 동작이 완전히 유지된다.
 
 인가 검증(`GET /api/v1/auth/mcp-projects`)은 Keystone의 실제 프로젝트 멤버십을 권위 있게 조회하며 빈 성공을 허용하지 않는다. 개인 토큰 생성 시 사용자는 읽기 또는 관리와 전체 또는 일부 프로젝트를 선택할 수 있으며, 빈 프로젝트 선택은 400으로 차단된다. OAuth 동의 화면(`/oauth/mcp/authorize`)은 클라이언트가 `mcp:write`를 요청했더라도 기본값을 안전한 읽기 전용으로 축소(attenuation)하여 제안하고, `mcp:write`가 없는 요청에서는 관리 권한 선택 자체를 비활성화한다. 승인된 접근 권한과 프로젝트 제한은 토큰 교환 및 refresh 회전 전반에서 불변으로 유지된다.
+
+전체 프로젝트 관리 동의는 저장된 `approved_projects[].can_write`를 재사용하는 혼합 위임이다. Reader-only 멤버십을 읽기 전용으로 포함하고 실제 대상 scoped token·현재 역할 교집합의 member/admin만 cloud writer로 유지한다. Global `mcp:write`가 개별 reader 대상의 mutation fence를 우회하지 않고 명시 read consent는 모든 변경을 금지한다. `GET /api/v1/auth/mcp-projects`는 기본 cheap membership 목록을 보존하고 명시 `?preview=true`만 cloud write ceiling과 Drover·Palimpsest·Waygate·Lumen native capability/error를 반환한다. 독립 exact-project SDK worker3개·service call5초 한계와 project/service별 unknown 격리가 한 장애로 전체 목록을 지우지 않게 한다. OAuth와 개인 키 발급 화면은 같은 project permission matrix를 공유하고 계정의 cheap 목록과 preview request lifecycle을 분리한다. 각 서비스 정책은 generic cloud role과 독립적이고 미확인 정책을 허용으로 대체하지 않는다. Preview는 credential 발급·실행 권위를 대신하지 않으며 restricted target credential과 현재 native policy가 최종 dispatch를 제한한다. 신규 schema·native role 변경·서비스 도구 공개·배포 topology 변경은 없다.
 
 Application credential 생성은 browser 표시 역할이 아니라 대상 scoped SDK token의 role ID/name과 현재 effective 할당/검증된 role DAG의 교집합을 사용한다. `project_service.get_project_delegation_roles`는 기존 trusted identity reader로 exact user/project 역할 metadata만 읽으며 credential 발급에는 caller의 정확한 scoped connection만 사용한다. 정상 token은 `roles`를 생략하여 현재 그래프의 새 descendant를 token에 추가하는 explicit-role 경로를 피한다. Stale token 역할을 제거해야 할 때만 모든 descendant도 교집합 안인 closed subset의 ID를 명시한다. Metadata 장애·foreign scope·빈 역할은 거부하고, 발급 중 native 권한 거부는 안전한 domain 오류로 처리한다. 반환 credential의 role ID 집합과 project는 승인 snapshot에 정확히 일치해야 하며 remote ID를 SQL에 먼저 commit한 기존 폐기·확인 경로를 유지한다. Schema·public API·role assignment는 바꾸지 않는다.
 
@@ -1959,9 +1963,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1ebd48228e8989d0ee63c3425ca707fe4620a631a78c1814af8a5b5d271ec038",
-  "reviewed_at": "2026-11-03T03:42:48Z",
-  "summary": "1.32.3 release reviewed SSO native-state recovery, SMTP/IMAP web settings and SQL105 outbox/worker cohorts, Pi source/progress/navigation and native-platform frontend assets. Correct native nullable optional metadata/progress/wait stages and preserve bounded non-UUID Keystone recipient IDs. No operational/schema/native or sibling deployment; exact frozen source qualified by gate and isolated runtime."
+  "source_sha256": "6a138c2a9bdf14586a9a2f9bf800fc70dca2995e8a838063db2d985887ba28d7",
+  "reviewed_at": "2026-11-03T06:45:30Z",
+  "summary": "1.32.4 MCP restricted native catalog uses verified access without token reexchange; project directory SDK reads drain on cancellation; no new native authority or schema"
 }
 ```
 <!-- architecture-review:end -->

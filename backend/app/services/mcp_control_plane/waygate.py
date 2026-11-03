@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.keystone import get_waygate_proxy
+from app.services.mcp_control_plane.connection import require_native_service_permission
 from app.services.mcp_control_plane.sdk import run_sdk
 
 
@@ -45,6 +46,7 @@ async def list_project_waygate_servers(
 ) -> list[dict[str, str | None]]:
     """Return bounded, exact-project Waygate metadata through its catalog service."""
     try:
+        await require_native_service_permission(conn, project_id, "waygate", "waygate-inventory_reader")
         servers = await run_sdk(_list_servers, conn)
         if not isinstance(servers, list):
             raise McpWaygateError("Waygate server list response is invalid")
@@ -62,6 +64,7 @@ async def get_project_waygate_server(
 ) -> dict[str, str | None]:
     """Return one exact-project Waygate server through its catalog service."""
     try:
+        await require_native_service_permission(conn, project_id, "waygate", "waygate-inventory_reader")
         server = await run_sdk(_get_server, conn, server_id)
         if not isinstance(server, dict):
             raise McpWaygateError("Waygate server response is invalid")

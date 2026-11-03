@@ -471,7 +471,7 @@ def get_waygate_proxy(conn: openstack.connection.Connection) -> WaygateProxy:
 
 
 def get_openstack_connection(
-    token: str, project_id: str, *, system_scope: bool = False, native_access=None
+    token: str, project_id: str, *, system_scope: bool = False, native_access=None, api_timeout: float = 30
 ) -> openstack.connection.Connection:
     """
     검증된 토큰으로 openstacksdk Connection 객체 반환.
@@ -500,7 +500,7 @@ def get_openstack_connection(
         # an already scoped token merely to recover its identical service catalog.
         session = native_transport.create_session(
             auth=AccessInfoPlugin(native_access, auth_url=settings.os_auth_url),
-            timeout=30,
+            timeout=api_timeout,
             verify=settings.ssl_verify,
         )
         try:
@@ -508,7 +508,7 @@ def get_openstack_connection(
                 session=session,
                 region_name=settings.os_region_name,
                 interface=settings.os_interface,
-                api_timeout=30,
+                api_timeout=api_timeout,
                 verify=settings.ssl_verify,
                 **_owned_service_connection_options(settings),
             )
@@ -530,7 +530,7 @@ def get_openstack_connection(
         **auth_scope,
         region_name=settings.os_region_name,
         interface=settings.os_interface,
-        api_timeout=30,
+        api_timeout=api_timeout,
         verify=settings.ssl_verify,
         **_owned_service_connection_options(settings),
     )

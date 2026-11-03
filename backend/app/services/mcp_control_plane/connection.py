@@ -13,7 +13,7 @@ from app.database import get_session_factory
 from app.models.mcp_authority import McpProjectCredential
 from app.services import native_transport
 from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant
-from app.services.mcp_control_plane.authority import McpGrantStateError, decrypt_grant_secret
+from app.services.mcp_control_plane.authority import McpGrantStateError, decrypt_grant_secret, validate_grant_project
 from app.services.mcp_control_plane.sdk import run_sdk
 
 
@@ -89,6 +89,68 @@ def _build_connection(application_credential_id: str, application_credential_sec
     return conn
 
 
+async def _validate_current_roles(conn: object, principal: McpPrincipal) -> None:
+    """Fence live assignments and the approval snapshot before provider dispatch."""
+    from app.services.project_service import get_project_delegation_roles
+
+    access = await run_sdk(conn.session.auth.get_access, conn.session)
+    names, role_ids = list(access.role_names or ()), list(access.role_ids or ())
+    if (
+        access.user_id != principal.user_id
+        or access.project_id != principal.project_id
+        or not names
+        or len(names) != len(role_ids)
+        or len(set(role_ids)) != len(role_ids)
+        or any(not isinstance(value, str) or not value for value in [*names, *role_ids])
+    ):
+        raise McpConsumerConnectionError("MCP credential role identity is unavailable")
+    current = await get_project_delegation_roles(principal.project_id, principal.user_id)
+    live = {role["id"]: role["name"] for role in current}
+    if any(live.get(role_id) != name for role_id, name in zip(role_ids, names, strict=True)):
+        raise McpConsumerConnectionError("MCP credential roles are no longer delegated")
+    factory = get_session_factory()
+    if factory is None:
+        raise McpConsumerConnectionError("MCP authority storage is unavailable")
+    async with factory() as session, session.begin():
+        grant = await lock_principal_grant(session, principal)
+        approved = validate_grant_project(grant, principal.project_id)
+        # Pre-migration singleton grants have no role snapshot. Their existing
+        # credential still has to pass the fresh native assignment intersection.
+        if grant.approved_projects is not None and not set(names) <= set(approved["roles"]):
+            raise McpConsumerConnectionError("MCP credential exceeds approved roles")
+
+
+async def require_native_service_permission(conn: object, project_id: str, service: str, leaf: str) -> None:
+    """Evaluate native policy with the exact restricted credential, never a browser fallback."""
+    from fastapi import HTTPException
+
+    from app.services.service_permissions import require_service_permission
+    from app.services.service_proxy import get_policy_capabilities
+
+    try:
+        access = await run_sdk(conn.session.auth.get_access, conn.session)
+        if (
+            access.project_id != project_id
+            or access.user_id != getattr(conn, "_afterglow_user_id", None)
+            or project_id != getattr(conn, "_afterglow_project_id", None)
+        ):
+            raise McpConsumerConnectionError("MCP native policy subject mismatch")
+        native = await get_policy_capabilities(
+            service,
+            {
+                "token": access.auth_token,
+                "user_id": access.user_id,
+                "project_id": project_id,
+                "connection_project_id": project_id,
+                "is_system_admin": False,
+                "_native_access": access,
+            },
+        )
+        require_service_permission({"service_permissions": {service: native["capabilities"]}}, leaf)
+    except HTTPException as exc:
+        raise McpConsumerConnectionError("MCP native service permission is unavailable") from exc
+
+
 @asynccontextmanager
 async def consumer_connection(principal: McpPrincipal) -> AsyncIterator[object]:
     """Yield one connection and always close it without exposing its secret upstream."""
@@ -104,6 +166,12 @@ async def consumer_connection(principal: McpPrincipal) -> AsyncIterator[object]:
     except Exception as exc:
         raise McpConsumerConnectionError("MCP cloud connection is unavailable") from exc
     try:
+        try:
+            await _validate_current_roles(conn, principal)
+        except McpConsumerConnectionError:
+            raise
+        except Exception as exc:
+            raise McpConsumerConnectionError("MCP current delegation is unavailable") from exc
         yield conn
     finally:
         await run_sdk(conn.close, allow_after_cancel=True)

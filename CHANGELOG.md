@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [1.32.4] - 2026-11-03
+
+### Fixed
+
+- MCP native 정책 조회는 검증된 restricted credential의 service catalog를 재사용해 delegated token 재교환을 피합니다. 취소된 권한 미리보기는 role directory read 종료까지 해당 연결과 slot을 소유합니다.
+
+### Changed
+
+- MCP의 전체 프로젝트 관리 동의가 일부 reader-only 프로젝트 때문에 전체 실패하지 않도록 프로젝트별 읽기/쓰기 ceiling을 유지하는 혼합 위임으로 변경합니다. OAuth 승인 전에 각 프로젝트의 cloud 권한과 독립 Drover·Palimpsest·Waygate·Lumen native 서비스 권한/미확인 상태를 표시하며 일반 member/admin을 서비스 권한으로 간주하지 않습니다. Reader 대상 mutation·명시 read consent·restricted credential·현재 역할/서비스 정책의 실패 시 거부를 유지합니다. 기존 grant 자동 승격·신규 schema·서비스 기능 추가·운영 배포는 포함하지 않습니다.
+- 위 권한 미리보기를 OAuth뿐 아니라 개인 API 키 발급에도 공통 적용합니다. 기본 프로젝트 목록은 서비스 정책과 무관한 저비용 조회로 복원하고 명시 preview만 독립 연결 최대3개·서비스별5초 제한으로 평가합니다. 한 프로젝트의 rescope 또는 한 서비스의 지연·오류는 해당 권한의 미확인 상태로 격리하며 읽기 전용 키 발급을 차단하지 않습니다. 미확인 cloud 권한으로 관리 발급을 허용하지 않습니다.
+
+
 ## [1.32.3] - 2026-11-03
 
 현재 완료된 SSO 비밀번호 복구·관리자 웹 이메일·Pi 출처/진행 변경을 통합하는 patch release입니다. 정확한 SHA의 CI 성공 뒤 불변 numeric `1.32.3` tag·GitHub Release·GHCR images/latest·Helm을 발행·검증합니다. SQL105 schema-before-writer·원래 암호화 key·동일 API/worker cohort와 SSO native 확장 및 matching Lumen source/history 선행 조건을 유지하며 운영 Kolla/native/schema/메일 배포는 포함하지 않습니다.

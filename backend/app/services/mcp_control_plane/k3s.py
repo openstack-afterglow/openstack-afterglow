@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.keystone import get_drover_proxy
+from app.services.mcp_control_plane.connection import require_native_service_permission
 from app.services.mcp_control_plane.sdk import run_sdk
 
 
@@ -74,6 +75,7 @@ async def list_project_k3s_clusters(
 ) -> list[dict[str, Any]]:
     """Return exact-project K3s clusters through the caller-scoped Drover catalog."""
     try:
+        await require_native_service_permission(conn, project_id, "drover", "drover-inventory_reader")
         clusters = await run_sdk(_list_clusters, conn, limit)
         if not isinstance(clusters, list):
             raise McpK3sError("K3s cluster list response is invalid")
@@ -91,6 +93,7 @@ async def get_project_k3s_cluster(
 ) -> dict[str, Any]:
     """Return one exact-project K3s cluster through the caller-scoped Drover catalog."""
     try:
+        await require_native_service_permission(conn, project_id, "drover", "drover-inventory_reader")
         cluster = await run_sdk(_get_cluster, conn, cluster_id)
         if not isinstance(cluster, dict):
             raise McpK3sError("K3s cluster response is invalid")

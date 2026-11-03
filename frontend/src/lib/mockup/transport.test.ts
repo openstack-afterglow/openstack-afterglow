@@ -113,6 +113,21 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('enriches only an explicit MCP preview with independent tutorial service authority', async () => {
+		// vi.resetModules recreates the mutable transport singleton for this module-boundary test.
+		const { maybeMockJson } = await import('./transport');
+		const preview = await maybeMockJson<Array<{ id: string; can_write: boolean; service_permissions: Record<string, string[]>; service_errors: Record<string, string> }>>(
+			'GET', '/api/v1/auth/mcp-projects?preview=true', undefined, 'mock-token-tutorial-scoped', 'mock-project-1',
+		);
+		if (!Array.isArray(preview)) throw new Error('Expected the tutorial MCP preview fixture');
+		expect(preview).toHaveLength(3);
+		expect(preview[0]).toMatchObject({
+			id: 'mock-project-1', can_write: true, service_errors: {},
+			service_permissions: { drover: expect.arrayContaining(['drover-inventory_reader', 'drover-clusters_editor']), lumen: expect.arrayContaining(['lumen-history_reader', 'lumen-tools_user']) },
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it('reports managed default and selected personal cloud metadata without an integer tool ID', async () => {
 		// Module-boundary test: reset the mutable transport singleton per scenario.
 		const { maybeMockJson } = await import('./transport');

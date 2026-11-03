@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptAuthVerification, authReady, clearAuth, getAuthVerificationEpoch, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
 import { siteConfig } from '$lib/config/site';
 import { t } from '$lib/i18n/ns/account';
+import { t as tp } from '$lib/i18n/ns/public-entry';
+import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 
 const { api, ApiError, confirmDialog, getBaseUrl } = vi.hoisted(() => ({
@@ -58,9 +60,19 @@ const availableProjects = [
 	{ id: 'project', name: 'Project' },
 	{ id: 'other', name: 'Other project' },
 ];
+const previewProjects: McpConsentProject[] = availableProjects.map((project) => ({
+	...project, can_write: true,
+	service_permissions: {
+		drover: ['drover-inventory_reader', 'drover-clusters_editor'],
+		palimpsest: ['palimpsest-download_user'], waygate: [],
+		lumen: ['lumen-history_reader', 'lumen-chat_user', 'lumen-tools_user'],
+	},
+	service_errors: {},
+}));
 
 function accountResponse(path: string, personalTokens = [activeToken]) {
-	return path.endsWith('/mcp-projects') ? availableProjects : path.includes('oauth') ? [] : personalTokens;
+	return path === '/api/v1/auth/mcp-projects?preview=true' ? previewProjects
+		: path.endsWith('/mcp-projects') ? availableProjects : path.includes('oauth') ? [] : personalTokens;
 }
 async function selectMethod(method: 'oauth' | 'api') {
 	await fireEvent.click(screen.getByRole('button', { name: t(method === 'oauth' ? 'mcp.methodOAuth' : 'mcp.methodApiKey') }));
@@ -155,7 +167,7 @@ describe('McpAccessSection', () => {
 		const unknown: McpClientObservation = { client_name: null, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: null, last_seen_at: null };
 		const record = { ...activeToken, name: 'Shared credential', source: selected === 'oauth' ? 'oauth' : 'personal_token', client_observations: [observed, unknown], token: 'must-not-render-secret' };
 		let rows = [record];
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects : path.includes('oauth') === (selected === 'oauth') ? rows : []));
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path) : path.includes('oauth') === (selected === 'oauth') ? rows : []));
 		api.delete.mockImplementation(() => { rows = []; return Promise.resolve(); });
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
@@ -204,7 +216,7 @@ describe('McpAccessSection', () => {
 	it.each(['oauth', 'api'] as const)('shows selected %s records even while the other list is pending and then fails', async (selected) => {
 		const other = deferred<typeof activeToken[]>();
 		const record = { ...activeToken, name: 'Selected credential', source: selected === 'oauth' ? 'oauth' : 'personal_token' };
-		api.get.mockImplementation((path: string) => path.endsWith('/mcp-projects') ? Promise.resolve(availableProjects)
+		api.get.mockImplementation((path: string) => path.startsWith('/api/v1/auth/mcp-projects') ? Promise.resolve(accountResponse(path))
 			: path.includes('oauth') === (selected === 'oauth') ? Promise.resolve([record]) : other.promise);
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
@@ -222,7 +234,7 @@ describe('McpAccessSection', () => {
 	it.each(['oauth', 'api'] as const)('keeps a selected %s load error truthful and retries inline without stale actions', async (selected) => {
 		let failing = false;
 		const record = { ...activeToken, name: 'Current credential' };
-		api.get.mockImplementation((path: string) => path.endsWith('/mcp-projects') ? Promise.resolve(availableProjects)
+		api.get.mockImplementation((path: string) => path.startsWith('/api/v1/auth/mcp-projects') ? Promise.resolve(accountResponse(path))
 			: path.includes('oauth') === (selected === 'oauth')
 				? failing ? Promise.reject(new Error('Private own-list error')) : Promise.resolve([record]) : Promise.resolve([]));
 		render(McpAccessSection);
@@ -276,7 +288,7 @@ describe('McpAccessSection', () => {
 			const confirmation = deferred<boolean>();
 			confirmDialog.mockReturnValue(confirmation.promise);
 			let generation = 'Old';
-			api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+			api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 				: path.includes('oauth') === (selected === 'oauth') ? [{ ...activeToken, name: `${generation} credential` }] : []));
 			render(McpAccessSection);
 			if (selected === 'api') await selectMethod('api');
@@ -353,7 +365,7 @@ describe('McpAccessSection', () => {
 			...activeToken, source, project_scope: 'selected', project_ids: ['saved-one', 'saved-two'],
 			projects: [{ id: 'saved-one', name: 'Archived name' }, { id: 'saved-two', name: 'Other saved name' }],
 		};
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? source === 'oauth' ? [record] : [] : source === 'personal_token' ? [record] : []));
 		await renderApi();
 		await createButton();
@@ -370,7 +382,7 @@ describe('McpAccessSection', () => {
 
 	it.each(['empty', 'missing'] as const)('does not invent saved project restrictions when metadata is %s', async (metadata) => {
 		const record = { ...activeToken, projects: metadata === 'empty' ? [] : undefined };
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects : path.includes('oauth') ? [] : [record]));
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path) : path.includes('oauth') ? [] : [record]));
 		await renderApi();
 		await createButton();
 		const restriction = screen.getByRole('group', { name: t('mcp.savedRestrictions') });
@@ -379,6 +391,158 @@ describe('McpAccessSection', () => {
 		expect(restriction.textContent).not.toContain('Project (project)');
 	});
 
+
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('shares the selected project permission preview in %s without issuing on selection', async (locale) => {
+		initLocale(locale);
+		await renderApi();
+		await createButton();
+		const preview = within(await screen.findByRole('region', { name: t('mcp.previewTitle') }));
+		expect(screen.getByRole('heading', { name: t('mcp.previewTitle'), level: 3 })).toBeTruthy();
+		expect(preview.getByRole('heading', { name: /Project\s*project/, level: 4 })).toBeTruthy();
+		expect(screen.queryByText(tp('mcpConsent.preview.title'))).toBeNull();
+		expect(preview.getByRole('listitem', { name: 'Project project' })).toBeTruthy();
+		expect(preview.queryByRole('listitem', { name: 'Other project other' })).toBeNull();
+		expect(preview.getByText('drover-inventory_reader')).toBeTruthy();
+		expect(preview.getByText(tp('mcpConsent.permission.droverInventory'))).toBeTruthy();
+		expect(preview.getByText('lumen-history_reader')).toBeTruthy();
+		expect(preview.queryByText('drover-clusters_editor')).toBeNull();
+		expect(preview.queryByText('lumen-chat_user')).toBeNull();
+		expect(preview.getByText(tp('mcpConsent.preview.service.denied'))).toBeTruthy();
+		await fireEvent.click(projectCheckbox('other', 'Other project'));
+		expect(preview.getByRole('listitem', { name: 'Other project other' })).toBeTruthy();
+		expect(api.get.mock.calls.filter(([path]) => path === '/api/v1/auth/mcp-projects?preview=true')).toHaveLength(1);
+		expect(api.post).not.toHaveBeenCalled();
+		expect(preview.getByText(tp('mcpConsent.preview.help'))).toBeTruthy();
+	});
+
+	it('keeps cheap membership and read-only issuance independent of slow native checks while blocking manage', async () => {
+		const pending = deferred<McpConsentProject[]>();
+		api.get.mockImplementation((path: string) => path === '/api/v1/auth/mcp-projects?preview=true'
+			? pending.promise : Promise.resolve(accountResponse(path)));
+		render(McpAccessSection);
+		await screen.findByText(t('mcp.emptyOAuth'));
+		expect(api.get.mock.calls.some(([path]) => path.includes('preview=true'))).toBe(false);
+		await selectMethod('api');
+		const button = await createButton();
+		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects', 'token', 'project', scopedGetOptions);
+		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects?preview=true', 'token', 'project', scopedGetOptions);
+		expect(screen.getByText(tp('mcpConsent.preview.loading'))).toBeTruthy();
+		expect(screen.getByText(tp('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		expect(screen.getByText(t('mcp.managePreviewPending'))).toBeTruthy();
+		expect(screen.queryByText(t('mcp.managePreviewUnknown'))).toBeNull();
+		expect(screen.queryByText(tp('mcpConsent.preview.unknownWrite'))).toBeNull();
+		expect(screen.queryByText(tp('mcpConsent.preview.unavailable'))).toBeNull();
+		expect(button.hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(button.closest('form')!);
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'read' } });
+		await fireEvent.click(button);
+		expect(api.post).toHaveBeenCalledOnce();
+		await act(async () => { pending.resolve(previewProjects); });
+	});
+
+	it('permits mixed manage-all ceilings, refuses selected readers, and attenuates locally without refetching', async () => {
+		const mixed = [previewProjects[0], { ...previewProjects[1], can_write: false }];
+		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('preview=true') ? mixed : accountResponse(path)));
+		await renderApi();
+		const button = await createButton();
+		await screen.findByText('drover-inventory_reader');
+		const preview = within(screen.getByRole('region', { name: t('mcp.previewTitle') }));
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		await fireEvent.click(projectCheckbox('other', 'Other project'));
+		expect(screen.getByText(t('mcp.managePreviewReader'))).toBeTruthy();
+		expect(button.hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(button.closest('form')!);
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.change(screen.getByLabelText(t('mcp.projects')), { target: { value: 'all' } });
+		expect(within(preview.getByRole('listitem', { name: 'Project project' })).getByText(tp('mcpConsent.preview.cloud.manage'))).toBeTruthy();
+		expect(within(preview.getByRole('listitem', { name: 'Other project other' })).getByText(tp('mcpConsent.preview.cloud.read'))).toBeTruthy();
+		expect(preview.getAllByText('lumen-tools_user')).toHaveLength(2);
+		expect(button.hasAttribute('disabled')).toBe(false);
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'read' } });
+		for (const leaf of ['lumen-tools_user', 'lumen-chat_user', 'drover-clusters_editor']) expect(preview.queryByText(leaf)).toBeNull();
+		expect(preview.getAllByText('lumen-history_reader')).toHaveLength(2);
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		expect(api.get.mock.calls.filter(([path]) => path.includes('preview=true'))).toHaveLength(1);
+		await fireEvent.click(button);
+		expect(api.post).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', expect.objectContaining({
+			access_level: 'manage', project_scope: 'all', project_ids: [],
+		}), 'token', 'project', scopedPostOptions);
+	});
+
+	it('keeps independent service failure unknown without denying known cloud management', async () => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('preview=true') ? [{
+			...previewProjects[0], service_errors: { lumen: 'private policy error must not render' },
+		}] : accountResponse(path)));
+		await renderApi();
+		await screen.findByText('drover-inventory_reader');
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		const preview = within(screen.getByRole('region', { name: t('mcp.previewTitle') }));
+		expect(preview.getByText(tp('mcpConsent.preview.service.unavailable'))).toBeTruthy();
+		expect(preview.getByText('drover-clusters_editor')).toBeTruthy();
+		expect(preview.queryByText('lumen-tools_user')).toBeNull();
+		expect(document.body.textContent).not.toContain('private policy error');
+		await fireEvent.click(await createButton());
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it.each(['failure', 'unknown-cloud', 'missing-row'] as const)('preserves read creation but blocks management for preview %s', async (outcome) => {
+		api.get.mockImplementation((path: string) => path.includes('preview=true')
+			? outcome === 'failure' ? Promise.reject(new Error('private upstream details'))
+				: Promise.resolve(outcome === 'missing-row' ? [] : [{ ...previewProjects[0], can_write: null, service_permissions: {}, service_errors: {} }])
+			: Promise.resolve(accountResponse(path)));
+		await renderApi();
+		const button = await createButton();
+		if (outcome === 'failure') await screen.findByText(tp('mcpConsent.preview.unavailable'));
+		expect(screen.getByText(tp('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
+		expect(screen.getAllByText(tp('mcpConsent.preview.service.unavailable'))).toHaveLength(4);
+		expect(document.body.textContent).not.toContain('private upstream details');
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		expect(screen.getByText(t('mcp.managePreviewUnknown'))).toBeTruthy();
+		expect(screen.queryByText(t('mcp.managePreviewPending'))).toBeNull();
+		expect(button.hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(button.closest('form')!);
+		expect(api.post).not.toHaveBeenCalled();
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'read' } });
+		await fireEvent.click(button);
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+	it.each((['token', 'user', 'project-aba', 'reload', 'unmount'] as const)
+		.flatMap((boundary) => (['success', 'failure'] as const).map((outcome) => [boundary, outcome] as const)))('aborts and discards late permission preview after %s (%s)', async (boundary, outcome) => {
+		const pending = deferred<McpConsentProject[]>();
+		let old = true;
+		api.get.mockImplementation((path: string) => path.includes('preview=true')
+			? old ? pending.promise : Promise.resolve(previewProjects.map((project) => ({ ...project, service_permissions: {}, service_errors: {} })))
+			: Promise.resolve(accountResponse(path)));
+		const view = await renderApi();
+		await createButton();
+		await screen.findByText(tp('mcpConsent.preview.loading'));
+		const signal = api.get.mock.calls.find(([path]) => path.includes('preview=true'))![3].signal as AbortSignal;
+		old = false;
+		if (boundary === 'token') setAuth({ token: 'new-token' });
+		else if (boundary === 'user') setAuth({ token: 'token', userId: 'new-user' });
+		else if (boundary === 'project-aba') {
+			setProject('other', 'Other project');
+			setProject('project', 'Project');
+		} else if (boundary === 'reload') await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
+		else { view.unmount(); await renderApi(); }
+		if (boundary === 'token' || boundary === 'user' || boundary === 'project-aba') verifyAuth();
+		await createButton();
+		await waitFor(() => expect(screen.queryByText(tp('mcpConsent.preview.loading'))).toBeNull());
+		expect(signal.aborted).toBe(true);
+		await act(async () => {
+			if (outcome === 'failure') pending.reject(new Error('Stale permission preview failure'));
+			else pending.resolve([{
+				...previewProjects[0], service_permissions: { drover: ['drover-workloads_editor'] },
+			}]);
+		});
+		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });
+		expect(screen.queryByText('drover-workloads_editor')).toBeNull();
+		expect(screen.queryByText(tp('mcpConsent.preview.unavailable'))).toBeNull();
+		expect(api.post).not.toHaveBeenCalled();
+	});
 
 	it('defaults to read access and the authoritative current project payload', async () => {
 		await renderApi();
@@ -625,7 +789,7 @@ describe('McpAccessSection', () => {
 		const oldProjects = deferred<typeof availableProjects>();
 		api.get.mockImplementation((path: string) => path.endsWith('/mcp-projects') ? oldProjects.promise : Promise.resolve(accountResponse(path)));
 		await renderApi();
-		await screen.findByText('Lumen');
+		await screen.findByText('Lumen', { selector: '.record-title strong' });
 		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path)));
 		setAuth({ token: 'fresh-token' });
 		verifyAuth();
@@ -716,13 +880,13 @@ describe('McpAccessSection', () => {
 	it('hides project-owned tokens and issued secrets while the new scope loads', async () => {
 		const tokens = deferred<typeof activeToken[]>();
 		const grants = deferred<typeof activeToken[]>();
-		api.get.mockImplementation((path: string, _token: string, project: string) => path.endsWith('/mcp-projects')
-			? Promise.resolve(availableProjects)
+		api.get.mockImplementation((path: string, _token: string, project: string) => path.startsWith('/api/v1/auth/mcp-projects')
+			? Promise.resolve(accountResponse(path))
 			: project === 'other' ? (path.includes('oauth') ? grants.promise : tokens.promise)
 				: Promise.resolve(accountResponse(path)));
 		await renderApi();
 		await createButton();
-		await screen.findByText('Lumen');
+		await screen.findByText('Lumen', { selector: '.record-title strong' });
 		await fireEvent.click(await createButton());
 		await screen.findByText('mcp-afgl-secret-value');
 		setProject('other', 'Other project');
@@ -732,7 +896,7 @@ describe('McpAccessSection', () => {
 			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-oauth/grants', 'token', 'other', scopedGetOptions);
 		});
 		await waitFor(() => {
-			expect(screen.queryByText('Lumen')).toBeNull();
+			expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull();
 			expect(screen.queryByText('mcp-afgl-secret-value')).toBeNull();
 			expect(screen.queryByRole('button', { name: 'Lumen 해제' })).toBeNull();
 		});
@@ -748,7 +912,7 @@ describe('McpAccessSection', () => {
 		let aReads = 0;
 		confirmDialog.mockReturnValue(confirm.promise);
 		api.get.mockImplementation((path: string, _token: string, project: string) => {
-			if (path.endsWith('/mcp-projects')) return Promise.resolve(availableProjects);
+			if (path.startsWith('/api/v1/auth/mcp-projects')) return Promise.resolve(accountResponse(path));
 			if (path.includes('oauth')) return Promise.resolve([]);
 			if (project === 'other') return bTokens.promise;
 			aReads += 1;
@@ -863,7 +1027,7 @@ describe('McpAccessSection', () => {
 		api.post.mockReturnValue(issuance.promise);
 		const view = await renderApi();
 		await createButton();
-		await screen.findByText('Lumen');
+		await screen.findByText('Lumen', { selector: '.record-title strong' });
 		await fireEvent.input(screen.getByLabelText(t('mcp.tokenLabel')), { target: { value: 'private-saved-key' } });
 		await fireEvent.click(await createButton());
 		if (transition === 'user' || transition === 'token' || transition === 'project-aba') {
@@ -883,7 +1047,7 @@ describe('McpAccessSection', () => {
 		else if (transition === 'unverified-project') setProject('other', 'Other project');
 		else if (transition === 'switching') projectSwitching.set(true);
 		else siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
-		await waitFor(() => expect(screen.queryByText('Lumen')).toBeNull());
+		await waitFor(() => expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull());
 		expect((api.post.mock.calls[0][4].signal as AbortSignal).aborted).toBe(true);
 		await act(async () => { issuance.resolve({ ...activeToken, token: 'late-issued-secret' }); });
 		expect(screen.queryByRole('dialog')).toBeNull();
@@ -925,7 +1089,7 @@ describe('McpAccessSection', () => {
 		expect(screen.queryByRole('heading', { name: t('mcp.personal') })).toBeNull();
 		expect(screen.queryByLabelText(t('mcp.name'))).toBeNull();
 		expect(screen.queryByLabelText(t('mcp.tokenLabel'))).toBeNull();
-		expect(screen.queryByText('Lumen')).toBeNull();
+		expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull();
 		expect(screen.queryByRole('region', { name: t('mcp.config') })).toBeNull();
 		expect(configJson('oauth')).toEqual({ mcpServers: { 'my-stream-server': { type: 'http', url: 'https://api.example.test/api/v1/mcp' } } });
 		expect(api.post).not.toHaveBeenCalled();
@@ -936,14 +1100,14 @@ describe('McpAccessSection', () => {
 		expect(screen.getByRole('heading', { name: t('mcp.personal') })).toBeTruthy();
 		expect(screen.getByRole('heading', { name: t('mcp.setupTitle') })).toBeTruthy();
 		expect(screen.getByLabelText(t('mcp.tokenLabel'))).toBeTruthy();
-		expect(screen.getByText('Lumen')).toBeTruthy();
+		expect(screen.getByText('Lumen', { selector: '.record-title strong' })).toBeTruthy();
 		expect(screen.queryByText('OAuth client')).toBeNull();
 		expect(screen.queryByRole('heading', { name: t('mcp.oauth') })).toBeNull();
 		expect(screen.queryByRole('region', { name: t('mcp.oauthConfig') })).toBeNull();
 		expect(configJson('setup').mcpServers['my-stream-server'].headers.Authorization).toBe(['Bearer', 'YOUR_PERSONAL_MCP_TOKEN'].join(' '));
 		await selectMethod('oauth');
 		expect(screen.getByText('OAuth client')).toBeTruthy();
-		expect(screen.queryByText('Lumen')).toBeNull();
+		expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull();
 		expect(screen.queryByRole('button', { name: t('mcp.create') })).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
 	});
@@ -1367,7 +1531,7 @@ describe('McpAccessSection', () => {
 
 		it('sends the scoped mutation and renders the authoritative reload', async () => {
 			let rows = [record];
-			api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+			api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 				: path.includes('oauth') ? action === 'revoke-oauth' ? rows : [] : action === 'revoke-oauth' ? [] : rows));
 			const mutation = deferred<void>();
 			const mutate = () => mutation.promise.then(() => {
@@ -1394,7 +1558,7 @@ describe('McpAccessSection', () => {
 		});
 
 		it('keeps the record and localizes a failed mutation', async () => {
-			api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+			api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 				: path.includes('oauth') ? action === 'revoke-oauth' ? [record] : [] : action === 'revoke-oauth' ? [] : [record]));
 			api.put.mockRejectedValue(new Error('Private mutation detail'));
 			api.delete.mockRejectedValue(new Error('Private mutation detail'));
@@ -1409,7 +1573,7 @@ describe('McpAccessSection', () => {
 	it.each(['personal_token', 'oauth'] as const)('does not revoke %s access when confirmation is canceled', async (source) => {
 		confirmDialog.mockResolvedValue(false);
 		const record = { ...activeToken, source, name: 'Canceled client' };
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? source === 'oauth' ? [record] : [] : source === 'personal_token' ? [record] : []));
 		if (source === 'oauth') render(McpAccessSection);
 		else await renderApi();
@@ -1424,7 +1588,7 @@ describe('McpAccessSection', () => {
 		const confirmation = deferred<boolean>();
 		confirmDialog.mockReturnValue(confirmation.promise);
 		let generation = 'Old';
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? [{ ...activeToken, source: 'oauth', name: `${generation} OAuth client` }] : []));
 		render(McpAccessSection);
 		await screen.findByText('Old OAuth client');
@@ -1452,7 +1616,7 @@ describe('McpAccessSection', () => {
 		const confirmation = deferred<boolean>();
 		confirmDialog.mockReturnValue(confirmation.promise);
 		const record = { ...activeToken, source, name: 'Method-fenced client' };
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? source === 'oauth' ? [record] : [] : source === 'personal_token' ? [record] : []));
 		if (source === 'oauth') render(McpAccessSection);
 		else await renderApi();
@@ -1469,7 +1633,7 @@ describe('McpAccessSection', () => {
 	it.each(['set-default', 'clear-default', 'revoke-token', 'revoke-oauth'] as const)('does not publish a late %s failure after method ABA', async (action) => {
 		const mutation = deferred<void>();
 		const record = { ...activeToken, name: 'Pending action client', is_lumen_default: action === 'clear-default' };
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? action === 'revoke-oauth' ? [record] : [] : action === 'revoke-oauth' ? [] : [record]));
 		api.put.mockReturnValue(mutation.promise);
 		api.delete.mockReturnValue(mutation.promise);
@@ -1501,7 +1665,7 @@ describe('McpAccessSection', () => {
 		await selectMethod('oauth');
 		await selectMethod('api');
 		expect(api.get).toHaveBeenCalledTimes(reads);
-		expect(screen.getByText('Lumen')).toBeTruthy();
+		expect(screen.getByText('Lumen', { selector: '.record-title strong' })).toBeTruthy();
 		expect(projectCheckbox('project', 'Project').checked).toBe(false);
 		expect(projectCheckbox('other', 'Other project').checked).toBe(true);
 		expect((screen.getByRole('textbox', { name: t('mcp.name') }) as HTMLInputElement).value).toBe('Draft client');
@@ -1533,7 +1697,7 @@ describe('McpAccessSection', () => {
 
 	it('labels a saved non-expiring personal token explicitly', async () => {
 		const record = { ...activeToken, expires_at: null };
-		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/mcp-projects') ? availableProjects
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path)
 			: path.includes('oauth') ? [] : [record]));
 		await renderApi();
 		await screen.findByText(t('mcp.recordDetails', { prefix: activeToken.visible_prefix, access: t('mcp.read'), lastUsed: '—', expires: t('mcp.expiryNever') }));

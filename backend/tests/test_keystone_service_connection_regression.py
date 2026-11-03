@@ -246,3 +246,86 @@ def test_verified_access_cannot_be_reused_for_another_credential_or_project(toke
     with patch("app.services.keystone.get_settings", return_value=_settings()):
         with pytest.raises(ValueError):
             keystone.get_openstack_connection(token, project, native_access=native)
+
+
+@pytest.mark.parametrize("api_timeout", [None, 5.0])
+@pytest.mark.parametrize("verified_access", [False, True])
+def test_caller_connection_timeout_is_transport_bound_and_opt_in(monkeypatch, api_timeout, verified_access):
+    timeouts = []
+
+    def request(_session, method, url, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        response = requests.Response()
+        response.url = url
+        if url.endswith("/auth/tokens"):
+            response.status_code = 201
+            response.headers["X-Subject-Token"] = "verified"
+            response._content = json.dumps(_token_body(project_id="caller-project")).encode()
+        elif url.endswith("/v3"):
+            response.status_code = 200
+            response._content = json.dumps(
+                {"version": {"id": "v3.14", "status": "stable", "links": [{"rel": "self", "href": url + "/"}]}}
+            ).encode()
+        else:
+            response.status_code = 200
+            response._content = b"{}"
+        return response
+
+    monkeypatch.setattr(requests.sessions.Session, "request", request)
+    native = access.create(body=_token_body(project_id="caller-project"), auth_token="verified")
+    options = {"api_timeout": api_timeout} if api_timeout is not None else {}
+    if verified_access:
+        options["native_access"] = native
+    with patch("app.services.keystone.get_settings", return_value=_settings()):
+        conn = keystone.get_openstack_connection("verified", "caller-project", **options)
+    try:
+        conn.session.get("https://identity.internal.test/probe")
+    finally:
+        conn.close()
+    assert timeouts and all(timeout == (30 if api_timeout is None else api_timeout) for timeout in timeouts)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("service", ["drover", "waygate"])
+async def test_restricted_policy_uses_verified_catalog_without_token_exchange(monkeypatch, service):
+    import httpx
+
+    from app.services import service_proxy
+    from app.services.mcp_control_plane.connection import require_native_service_permission
+
+    endpoint = f"https://{service}.catalog.test/v1"
+    native = access.create(
+        body=_token_body(project_id="caller-project", catalog_service=(service, endpoint)),
+        auth_token="restricted-token",
+    )
+    native._data["token"]["user"]["id"] = "user-1"
+    conn = SimpleNamespace(
+        _afterglow_user_id="user-1",
+        _afterglow_project_id="caller-project",
+        session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda _: native)),
+    )
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers):
+            calls.append((url, headers))
+            return httpx.Response(
+                200, json={"service": service, "capabilities": [f"{service}-inventory_reader"], "actions": []}
+            )
+
+    monkeypatch.setattr(service_proxy.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(service_proxy, "get_settings", lambda: _settings(**{f"service_{service}_internal_url": ""}))
+    monkeypatch.setattr(keystone, "get_settings", lambda: _settings(**{f"service_{service}_internal_url": ""}))
+    monkeypatch.setattr(keystone.native_transport, "connect", lambda **kwargs: pytest.fail("delegated token exchanged"))
+    await require_native_service_permission(conn, "caller-project", service, f"{service}-inventory_reader")
+    assert calls[0][0] == f"{endpoint}/policy/capabilities"
+    assert calls[0][1]["x-auth-token"] == "restricted-token"

@@ -56,6 +56,9 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import McpPermissionPreview from './McpPermissionPreview.svelte';
+	import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
+	import { t as tp } from '$lib/i18n/ns/public-entry';
 
 
 
@@ -89,6 +92,11 @@
 	let projectsScope = $state.raw<AccessScope | null>(null);
 	let projects = $state<McpProject[]>([]);
 	let projectsError = $state('');
+	let previewScope = $state.raw<AccessScope | null>(null);
+	let previewController: AbortController | null = null;
+	let permissionProjects = $state<McpConsentProject[]>([]);
+	let previewLoading = $state(false);
+	let previewError = $state(false);
 	let projectScope = $state<'selected' | 'all'>('selected');
 	let selectedProjectIds = $state<string[]>([]);
 	let defaultProjectSelection = true;
@@ -120,6 +128,16 @@
 	let tokenName = $state('Lumen');
 	let accessLevel = $state<'read' | 'manage'>('read');
 	let expiresAt = $state('');
+	const previewById = $derived(new Map(permissionProjects.map((project) => [project.id, project])));
+	const previewProjects = $derived(projects
+		.filter((project) => projectScope === 'all' || selectedProjectIds.includes(project.id))
+		.map((project) => ({ ...previewById.get(project.id), ...project })));
+	const writeCheckPending = $derived(accessLevel === 'manage' && (previewScope !== scope || previewLoading));
+	const unknownWrite = $derived(accessLevel === 'manage' && (previewScope !== scope || previewLoading
+		|| previewProjects.some((project) => typeof project.can_write !== 'boolean')));
+	const selectedReadOnly = $derived(accessLevel === 'manage' && projectScope === 'selected'
+		&& previewProjects.some((project) => project.can_write === false));
+	const canCreate = $derived(validProjectSelection && !unknownWrite && !selectedReadOnly);
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
 	function clearCopies() {
@@ -203,11 +221,46 @@
 		return method === 'oauth' && isCurrentScope(owner) && grantsScope === owner && !grantsLoading && !grantsError && oauthGrants.includes(record);
 	}
 
+	function clearPermissionPreview() {
+		previewController?.abort();
+		previewController = null;
+		previewScope = null;
+		permissionProjects = [];
+		previewLoading = false;
+		previewError = false;
+	}
+
+	async function loadPermissionPreview(owner: AccessScope & { token: string; projectId: string }) {
+		const request = loadSequence;
+		const controller = new AbortController();
+		previewController = controller;
+		previewScope = owner;
+		previewLoading = true;
+		previewError = false;
+		const current = () => isCurrentScope(owner) && request === loadSequence && previewController === controller;
+		try {
+			const available = await api.get<McpConsentProject[]>('/api/v1/auth/mcp-projects?preview=true',
+				owner.token, owner.projectId, {
+					refresh: true, suppressAuthRedirect: true,
+					signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
+				});
+			if (current()) permissionProjects = available;
+		} catch {
+			if (current()) previewError = true;
+		} finally {
+			if (current()) {
+				previewLoading = false;
+				previewController = null;
+			}
+		}
+	}
+
 	function reset() {
 		loadController?.abort();
 		loadController = null;
 		tokensScope = null;
 		grantsScope = null;
+		clearPermissionPreview();
 		invalidateIssuance();
 		projectsScope = null;
 		projects = [];
@@ -303,6 +356,7 @@
 		grantsLoading = true;
 		loading = true;
 		// A reload invalidates both the editable project snapshot and pending issuance.
+		clearPermissionPreview();
 		invalidateIssuance();
 		const token = owner.token;
 		const projectId = owner.projectId;
@@ -370,7 +424,7 @@
 	}
 
 	async function createToken(owner: AccessScope) {
-		if (!isCurrentScope(owner) || method !== 'api' || creating || !tokenName.trim() || !validProjectSelection) return;
+		if (!isCurrentScope(owner) || method !== 'api' || creating || !tokenName.trim() || !canCreate) return;
 		const expiration = expirationPayload(new Date());
 		if (!expiration) {
 			actionError = t('mcp.invalidExpiry');
@@ -556,6 +610,13 @@
 	$effect(() => {
 		const owner = scope;
 		if (isCurrentScope(owner)) untrack(() => void loadAccessFor(owner));
+	});
+
+	$effect(() => {
+		const owner = scope;
+		if (method === 'api' && isCurrentScope(owner) && projectsScope === owner && previewScope !== owner) {
+			untrack(() => void loadPermissionPreview(owner));
+		}
 	});
 
 	$effect(() => {
@@ -758,7 +819,24 @@
 					{#if selectedProjectIds.length === 0}<p class="project-help" role="alert">{t('mcp.projectsRequired')}</p>{/if}
 				{/if}
 			</div>
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !validProjectSelection}>{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
+			{#if projectsReady && previewProjects.length > 0}
+				<div class="token-permission-preview">
+					{#if previewLoading}
+						<LoadingState variant="inline" label={tp('mcpConsent.preview.loading')} />
+					{:else if previewError}
+						<Alert tone="warning">{#snippet children()}{tp('mcpConsent.preview.unavailable')}{/snippet}</Alert>
+					{/if}
+					<McpPermissionPreview projects={previewProjects} {accessLevel} title={t('mcp.previewTitle')} headingLevel={3} />
+					{#if writeCheckPending}
+						<Alert tone="info">{#snippet children()}{t('mcp.managePreviewPending')}{/snippet}</Alert>
+					{:else if unknownWrite || selectedReadOnly}
+						<Alert tone="warning">
+							{#snippet children()}{t(unknownWrite ? 'mcp.managePreviewUnknown' : 'mcp.managePreviewReader')}{/snippet}
+						</Alert>
+					{/if}
+				</div>
+			{/if}
+			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !canCreate}>{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
 			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
@@ -895,7 +973,8 @@
 	.control { box-sizing: border-box; width: 100%; min-width: 0; min-height: 2.5rem; padding: 0.5rem 0.625rem; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-base); color: var(--color-ink-0); font: inherit; }
 	.control:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.token-submit { padding-bottom: 0.0625rem; }
-	.project-selection, .token-submit { grid-column: 1 / -1; min-width: 0; }
+	.project-selection, .token-permission-preview, .token-submit { grid-column: 1 / -1; min-width: 0; }
+	.token-permission-preview { display: grid; gap: 0.75rem; }
 	.project-selection { display: grid; gap: 0.75rem; }
 	.project-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.5rem; }
 	.project-option { display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface-base); }

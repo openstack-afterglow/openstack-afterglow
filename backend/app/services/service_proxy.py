@@ -116,16 +116,21 @@ def _configured_internal_endpoint(service_type: str) -> str | None:
     return endpoint or None
 
 
-def _get_internal_endpoint(token: str, project_id: str, service_type: str) -> str | None:
+def _get_internal_endpoint(
+    token: str, project_id: str, service_type: str, *, api_timeout: float | None = None, native_access=None
+) -> str | None:
     """Resolve a service endpoint from the caller-scoped Keystone catalog."""
     if endpoint := _configured_internal_endpoint(service_type):
         return endpoint
     conn: openstack.connection.Connection | None = None
+    connection_options = {"api_timeout": api_timeout} if api_timeout is not None else {}
+    if native_access is not None:
+        connection_options["native_access"] = native_access
     try:
         conn = (
-            keystone.get_openstack_connection(token, project_id)
+            keystone.get_openstack_connection(token, project_id, **connection_options)
             if project_id
-            else keystone.get_openstack_connection(token, "", system_scope=True)
+            else keystone.get_openstack_connection(token, "", system_scope=True, **connection_options)
         )
         endpoint = conn.session.get_endpoint(service_type=service_type, interface="internal")
         return endpoint.rstrip("/") if endpoint else None
@@ -317,7 +322,7 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
         raise HTTPException(status_code=502, detail=f"{service_type} 응답 형식이 잘못되었습니다") from exc
 
 
-async def get_policy_capabilities(service_type: str, token_info: dict) -> dict:
+async def get_policy_capabilities(service_type: str, token_info: dict, *, timeout: float | None = None) -> dict:
     """Read current operator-policy decisions using the original native subject.
 
     This transport must not recurse through browser action authorization or
@@ -339,7 +344,19 @@ async def get_policy_capabilities(service_type: str, token_info: dict) -> dict:
         endpoint = _package_endpoint(_configured_internal_endpoint(service_type))
         verify = ssl.create_default_context(cafile=settings.os_cacert or None)
     else:
-        endpoint = await asyncio.to_thread(_get_internal_endpoint, token, connection_project, service_type)
+        options = {"native_access": token_info["_native_access"]} if "_native_access" in token_info else {}
+        if timeout is None:
+            endpoint = await asyncio.to_thread(
+                _get_internal_endpoint, token, connection_project, service_type, **options
+            )
+        else:
+            from app.services.mcp_control_plane.sdk import run_sdk
+
+            # Preview alone opts into a bounded transport and owned thread drain.
+            # Ordinary browser/runtime policy consumers retain their existing limits.
+            endpoint = await run_sdk(
+                _get_internal_endpoint, token, connection_project, service_type, api_timeout=timeout, **options
+            )
         verify = settings.ssl_verify
     if not endpoint:
         raise HTTPException(status_code=503, detail="Native service policy is unavailable")
@@ -352,7 +369,9 @@ async def get_policy_capabilities(service_type: str, token_info: dict) -> dict:
         headers["x-target-project-id"] = project_id
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=5.0), verify=verify, follow_redirects=False
+            timeout=httpx.Timeout(timeout if timeout is not None else 30.0, connect=min(timeout or 5.0, 5.0)),
+            verify=verify,
+            follow_redirects=False,
         ) as client:
             response = await client.get(url, headers=headers)
     except httpx.HTTPError as exc:

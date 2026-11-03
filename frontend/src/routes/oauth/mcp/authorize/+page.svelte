@@ -21,6 +21,8 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import McpPermissionPreview from '$lib/components/account/McpPermissionPreview.svelte';
+	import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
 
 	interface ConsentDetails {
 		client_id: string;
@@ -30,7 +32,6 @@
 		grant_deadline: string;
 	}
 
-	interface ConsentProject { id: string; name: string }
 	interface Owner {
 		token: string | null;
 		userId: string | null;
@@ -48,12 +49,18 @@
 	let deciding = $state(false);
 	let error = $state('');
 	let consent = $state<ConsentDetails | null>(null);
-	let projects = $state<ConsentProject[]>([]);
+	let projects = $state<McpConsentProject[]>([]);
 	let accessLevel = $state<'read' | 'manage'>('read');
 	let projectScope = $state<'selected' | 'all'>('selected');
 	let selectedProjectIds = $state<string[]>([]);
-	const canApprove = $derived(!loading && !deciding && consent !== null && projects.length > 0
-		&& (projectScope === 'all' || selectedProjectIds.length > 0));
+	const previewProjects = $derived(projectScope === 'all' ? projects
+		: projects.filter((project) => selectedProjectIds.includes(project.id)));
+	const unknownWrite = $derived(accessLevel === 'manage'
+		&& previewProjects.some((project) => typeof project.can_write !== 'boolean'));
+	const selectedReadOnly = $derived(accessLevel === 'manage' && projectScope === 'selected'
+		&& previewProjects.some((project) => project.can_write === false));
+	const canApprove = $derived(!loading && !deciding && consent !== null && previewProjects.length > 0
+		&& !unknownWrite && !selectedReadOnly);
 	function message(error: unknown, fallback: string) {
 		return error instanceof ApiError ? error.message : fallback;
 	}
@@ -101,7 +108,7 @@
 					`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(request.ticket)}`,
 					request.token, request.projectId, { refresh: true, suppressAuthRedirect: true, signal: request.controller.signal },
 				),
-				api.get<ConsentProject[]>('/api/v1/auth/mcp-projects', request.token, request.projectId,
+				api.get<McpConsentProject[]>('/api/v1/auth/mcp-projects?preview=true', request.token, request.projectId,
 					{ refresh: true, suppressAuthRedirect: true, signal: request.controller.signal }),
 			]);
 			if (!isCurrent(request)) return;
@@ -266,6 +273,14 @@
 			{#if projects.length === 0 || (projectScope === 'selected' && selectedProjectIds.length === 0)}
 				<Alert tone="warning">
 					{#snippet children()}{t('mcpConsent.projects.empty')}{/snippet}
+				</Alert>
+			{/if}
+			{#if previewProjects.length > 0}
+				<McpPermissionPreview projects={previewProjects} {accessLevel} />
+			{/if}
+			{#if unknownWrite || selectedReadOnly}
+				<Alert tone="warning">
+					{#snippet children()}{t(unknownWrite ? 'mcpConsent.preview.unknownWrite' : 'mcpConsent.preview.selectedReadOnly')}{/snippet}
 				</Alert>
 			{/if}
 			<Alert tone={accessLevel === 'manage' ? 'warning' : 'info'} title={accessLevel === 'manage' ? t('mcpConsent.manage.title') : t('mcpConsent.read.title')}>

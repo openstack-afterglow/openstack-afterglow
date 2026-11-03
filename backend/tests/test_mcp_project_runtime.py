@@ -326,6 +326,167 @@ async def test_read_token_and_saved_read_project_reject_mutation(runtime):
 
 
 @pytest.mark.asyncio
+async def test_mixed_manage_reader_is_denied_before_preview_handler_or_ledger(runtime):
+    runtime.grant.project_scope = "all"
+    runtime.grant.approved_projects[1].update(roles=["reader"], can_write=False)
+    called = AsyncMock(side_effect=AssertionError("reader reached cloud provider"))
+    entry = replace(mutation_entry(), handler=called, preview_builder=called)
+    for invoke in (registry.dispatch, registry.build_mutation_preview):
+        with pytest.raises(authority.McpGrantStateError, match="management"):
+            await invoke(
+                registry.ConsumerCloudContext(runtime.principal), entry=entry, arguments=mutation_arguments("b")
+            )
+    with pytest.raises(authority.McpGrantStateError, match="management"):
+        await ledger.claim_mutation(
+            replace(runtime.principal, project_id="b"),
+            entry=entry,
+            arguments={"project_id": "b", "action": "stop"},
+            idempotency_key="mixed-reader",
+        )
+    called.assert_not_awaited()
+    assert not runtime.invocations and not runtime.credential_reads
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["revoked", "unknown", "expanded", "current"])
+async def test_consumer_role_ceiling_requires_live_exact_approved_roles(runtime, monkeypatch, change):
+    from app.services import project_service
+
+    access = SimpleNamespace(user_id="user", project_id="a", role_names=["member"], role_ids=["member-id"])
+    conn = SimpleNamespace(session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)))
+
+    async def current(project_id, user_id):
+        assert (project_id, user_id) == ("a", "user")
+        if change == "unknown":
+            raise RuntimeError("identity-service-secret")
+        if change == "revoked":
+            return [{"id": "reader-id", "name": "reader", "inherited_role_ids": []}]
+        return [{"id": "member-id", "name": "member", "inherited_role_ids": []}]
+
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current)
+    if change == "expanded":
+        runtime.grant.approved_projects[0]["roles"] = ["reader"]
+    if change == "current":
+        await connection._validate_current_roles(conn, runtime.principal)
+    elif change == "unknown":
+        with pytest.raises(RuntimeError, match="identity-service-secret"):
+            await connection._validate_current_roles(conn, runtime.principal)
+    else:
+        with pytest.raises(connection.McpConsumerConnectionError):
+            await connection._validate_current_roles(conn, runtime.principal)
+
+
+@pytest.mark.asyncio
+async def test_unknown_current_authority_closes_connection_without_exposing_provider_error(runtime, monkeypatch):
+    from app.services import project_service
+
+    access = SimpleNamespace(user_id="user", project_id="a", role_names=["member"], role_ids=["member-id"])
+    closed = []
+    conn = SimpleNamespace(
+        session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)),
+        close=lambda: closed.append(True),
+    )
+    monkeypatch.setattr(connection, "_build_connection", lambda *args: conn)
+    monkeypatch.setattr(
+        project_service, "get_project_delegation_roles", AsyncMock(side_effect=RuntimeError("provider-secret"))
+    )
+    with pytest.raises(connection.McpConsumerConnectionError, match="current delegation is unavailable") as exc:
+        async with connection.consumer_connection(runtime.principal):
+            pytest.fail("unknown authority must never reach cloud calls")
+    assert "provider-secret" not in str(exc.value)
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("service", ["drover", "waygate"])
+@pytest.mark.parametrize("operation", ["list", "get"])
+@pytest.mark.parametrize("permission", ["allowed", "denied", "revoked", "unknown"])
+async def test_native_service_policy_uses_exact_delegated_subject_before_provider(
+    runtime, monkeypatch, service, operation, permission
+):
+    from app.services import service_proxy
+    from app.services.mcp_control_plane import k3s, waygate
+
+    # Core reader is sufficient for MCP metadata reads only when the native
+    # service independently grants inventory access; member/admin is not a leaf.
+    runtime.grant.approved_projects[1].update(roles=["reader"], can_write=False)
+    access = SimpleNamespace(user_id="user", project_id="b", auth_token="restricted-native-token")
+    conn = SimpleNamespace(
+        _afterglow_user_id="user",
+        _afterglow_project_id="b",
+        session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)),
+    )
+    observed = []
+    decisions = [service + "-inventory_reader"] if permission in {"allowed", "revoked"} else []
+
+    async def policy(actual_service, subject):
+        assert actual_service == service
+        assert subject == {
+            "token": "restricted-native-token",
+            "user_id": "user",
+            "project_id": "b",
+            "connection_project_id": "b",
+            "is_system_admin": False,
+            "_native_access": access,
+        }
+        if permission == "unknown":
+            raise HTTPException(502, "native-private-error")
+        return {"service": service, "capabilities": decisions, "actions": []}
+
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+
+    def record(*args):
+        observed.append(True)
+        return [] if operation == "list" else {"id": "resource", "project_id": "b", "name": "safe"}
+
+    if service == "drover":
+        adapter = k3s.list_project_k3s_clusters if operation == "list" else k3s.get_project_k3s_cluster
+        monkeypatch.setattr(k3s, "_list_clusters" if operation == "list" else "_get_cluster", record)
+        args, kwargs = ((conn, "b"), {}) if operation == "list" else ((conn, "b", "resource"), {})
+        error = k3s.McpK3sError
+    else:
+        adapter = waygate.list_project_waygate_servers if operation == "list" else waygate.get_project_waygate_server
+        monkeypatch.setattr(waygate, "_list_servers" if operation == "list" else "_get_server", record)
+        args, kwargs = ((conn, "b"), {"limit": 10}) if operation == "list" else ((conn, "b", "resource"), {})
+        error = waygate.McpWaygateError
+    if permission in {"allowed", "revoked"}:
+        result = await adapter(*args, **kwargs)
+        assert "token" not in str(result)
+        assert observed == [True]
+        if permission == "allowed":
+            return
+        decisions.clear()
+        observed.clear()
+    with pytest.raises(error):
+        await adapter(*args, **kwargs)
+    assert observed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", ["user", "project", "logical_project"])
+async def test_native_policy_rejects_foreign_subject_before_capability_request(monkeypatch, mismatch):
+    from app.services import service_proxy
+
+    access = SimpleNamespace(user_id="user", project_id="target", auth_token="restricted-native-token")
+    conn = SimpleNamespace(
+        _afterglow_user_id="user",
+        _afterglow_project_id="target",
+        session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)),
+    )
+    if mismatch == "user":
+        access.user_id = "foreign"
+    elif mismatch == "project":
+        access.project_id = "foreign"
+    else:
+        conn._afterglow_project_id = "foreign"
+    policy = AsyncMock(side_effect=AssertionError("foreign subject reached service"))
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+    with pytest.raises(connection.McpConsumerConnectionError, match="subject mismatch"):
+        await connection.require_native_service_permission(conn, "target", "drover", "drover-inventory_reader")
+    policy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("target", ["a", "b"])
 @pytest.mark.parametrize("change", ["revoked", "expired", "epoch", "pat_revoked"])
 async def test_stale_or_inactive_authority_blocks_every_target(runtime, target, change):

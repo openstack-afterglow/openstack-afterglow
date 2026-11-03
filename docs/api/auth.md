@@ -864,6 +864,18 @@ VM 생성은 기존 프로젝트 flavor quota·host capacity·GPU admission과 �
 
 UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
 
+### 전체 프로젝트의 혼합 권한 동의
+
+`project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않습니다. 실제 대상 scoped token과 현재 역할 교집합에서 `member`/`admin`이 확인된 프로젝트만 저장된 `can_write=true`를 가지며, `reader` 프로젝트도 같은 grant에 읽기 전용으로 포함됩니다. `mcp:write`는 grant의 최대 scope일 뿐이고 mutation은 대상별 저장 ceiling을 다시 검사합니다. 사용자가 `read`를 선택하면 모든 프로젝트의 변경 호출이 금지됩니다. 기존 grant의 승인 목록·ceiling은 자동 확대하지 않습니다.
+
+`GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, 네 서비스의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면 모두 선택한 프로젝트의 cloud 읽기/쓰기와 Drover·Palimpsest·Waygate·Lumen 권한을 제출 전에 같은 component로 표시합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
+
+이 표시는 위임 생성이나 서비스 연결 자체가 아닙니다. 승인은 현재 권한을 다시 읽으며 실행 시에도 restricted credential·대상 소유권·현재 native service policy를 적용합니다. 기존 registry에 없는 서비스 기능을 이 preview가 새 MCP 도구로 공개하지 않습니다. 미확인 서비스나 회수된 권한은 실행을 허용하지 않습니다.
+
+Preview는 독립 SDK 연결의 project worker를 최대3개로 제한하고 각 native service policy 호출을5초로 제한합니다. 단일 프로젝트 rescope/권한 조회 실패는 그 행의 `can_write=null`·서비스 미확인으로, 단일 서비스 지연/실패는 해당 서비스 미확인으로 격리합니다. 멤버십 discovery 자체의 실패는 빈 성공으로 처리하지 않습니다. 전체35초 deadline이 남아 있어 매우 큰/느린 집합의 preview 요청은 실패할 수 있지만 기본 멤버십 목록과 읽기 전용 계정 발급을 함께 실패시키지 않습니다.
+
+
+
 `GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 명시적으로 폐기된 항목을 제외합니다. 아직 폐기하지 않은 만료 항목은 표시하여 사용자가 폐기할 수 있습니다. `DELETE /api/v1/auth/mcp-tokens/{token_id}`와 `DELETE /api/v1/auth/mcp-oauth/grants/{grant_id}`는 본인·현재 프로젝트 소유 항목만 `204`로 폐기하며, 만료 항목도 `revoked`로 전환합니다. 반복 폐기는 같은 결과를 유지합니다. 계정 화면은 성공 뒤 두 목록을 다시 조회하므로 항목·개수·빈 상태가 즉시 갱신되고 새로고침 뒤에도 유지됩니다.
 
 폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 선택된 Lumen 기본 토큰은 해제합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.

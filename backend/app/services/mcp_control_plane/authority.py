@@ -403,7 +403,7 @@ async def _prepare_connection_projects(
             scoped = await project_connection(conn, user_id, project["id"])
             role_snapshot = scoped._afterglow_roles
             can_write = bool({role["name"].casefold() for role in role_snapshot} & {"admin", "member"})
-            if access_level == "manage" and not can_write:
+            if access_level == "manage" and not can_write and project_scope != "all":
                 if scoped is not conn:
                     await asyncio.to_thread(scoped.close)
                 raise McpGrantPrivilegeError("selected project does not allow management")

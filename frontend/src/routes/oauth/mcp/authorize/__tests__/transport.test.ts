@@ -80,8 +80,11 @@ beforeEach(() => {
 	projectSwitching.set(false);
 	setAuth(actor);
 	setTicket(ticket);
-	metadataGet.mockImplementation(async (path: string) => path === '/api/v1/auth/mcp-projects'
-		? [{ id: 'project-a', name: 'Current project' }, { id: 'project-b', name: 'Second project' }]
+	metadataGet.mockImplementation(async (path: string) => path === '/api/v1/auth/mcp-projects?preview=true'
+		? ['a', 'b'].map((id) => ({
+			id: `project-${id}`, name: id === 'a' ? 'Current project' : 'Second project',
+			can_write: id === 'a', service_permissions: { drover: [], palimpsest: [], waygate: [], lumen: [] }, service_errors: {},
+		}))
 		: { client_id: 'desktop', client_name: 'Desktop MCP', redirect_uri: 'https://client.example.test/callback', scopes: ['mcp:read', 'mcp:write'], grant_deadline: '2026-12-31T23:59:59Z' });
 	const realWindow = window;
 	vi.stubGlobal('window', new Proxy(realWindow, {

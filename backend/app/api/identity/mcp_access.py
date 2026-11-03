@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Literal
@@ -30,7 +31,7 @@ from app.services.mcp_control_plane.authority import (
     revoke_grant,
     set_lumen_selection,
 )
-from app.services.mcp_control_plane.projects import caller_membership_projects
+from app.services.mcp_control_plane.projects import caller_membership_projects, project_permission_preview
 from app.services.mcp_control_plane.verification import (
     McpConnectionCheckError,
     verify_personal_mcp_connection,
@@ -57,6 +58,12 @@ class CreateMcpTokenRequest(BaseModel):
 class McpProjectView(BaseModel):
     id: str
     name: str
+
+
+class McpProjectPermissionView(McpProjectView):
+    can_write: bool | None
+    service_permissions: dict[str, list[str]]
+    service_errors: dict[str, str]
 
 
 class McpClientObservationView(BaseModel):
@@ -149,13 +156,21 @@ def _raise_authority_error(exc: McpAuthorityError) -> None:
     raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/mcp-projects", response_model=list[McpProjectView])
-async def get_mcp_projects(request: Request, token_info: dict = Depends(get_token_info), conn=Depends(get_os_conn)):
+@router.get("/mcp-projects", response_model=list[McpProjectPermissionView | McpProjectView])
+async def get_mcp_projects(
+    request: Request,
+    preview: bool = False,
+    token_info: dict = Depends(get_token_info),
+    conn=Depends(get_os_conn),
+):
     _require_mcp_enabled()
     try:
-        projects = await caller_membership_projects(conn, token_info["user_id"])
+        lookup = project_permission_preview if preview else caller_membership_projects
+        projects = await asyncio.wait_for(lookup(conn, token_info["user_id"]), timeout=35)
     except McpAuthorityError as exc:
         _raise_authority_error(exc)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=503, detail="MCP project permissions are unavailable") from exc
     return JSONResponse(projects, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

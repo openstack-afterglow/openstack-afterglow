@@ -14,6 +14,15 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 버전 상향 요청은 정식 발행까지 포함한다. Metadata·commit만으로 완료하지 않고 dev push·정확한 SHA의 CI·불변 numeric tag·GitHub Release·release 이미지/alias·Helm 검증까지 수행한다. 명시적인 준비 전용 요청만 예외이며, 운영 Kolla/native/schema 배포 승인을 자동으로 뜻하지 않는다.
 
+## MCP 혼합 프로젝트 권한·native policy preflight (source only)
+
+전체 프로젝트 혼합 read/manage 위임과 OAuth/개인키 공통 권한 표는 신규 SQL migration을 추가하지 않으며 기존 MCP schema·원래 암호화 키·restricted credential을 보존한다. Backend의 cheap `/auth/mcp-projects`와 명시 `?preview=true` 계약 및 이를 사용하는 frontend를 맞춰 제공한다. 기존 read grant는 자동 승격하지 않으며 추가 관리 권한은 새 명시 승인/발급이 필요하다.
+
+**운영 cutover 전 필수:** 새 K3s·Waygate adapter는 data 조회 전에 restricted application-credential token으로 native `/v1/policy/capabilities`를 평가한다. 실제 배포 Waygate에는 delegated-token 재발급403 기록이 있으며 Drover가 이 policy 요청의 restricted token을 수용하는지도 아직 검증하지 않았다. 기존 K3s 읽기가 성공한다는 사실은 이 신규 preflight의 호환성 증거가 아니다. 승인된 운영 qualification에서 exact native 버전·원래 subject/target·허용/거부 policy 응답을 먼저 확인하고, 불일치 상태에서 Afterglow만 먼저 배포하지 않는다. Browser/admin token fallback이나 policy check 제거로 숨기지 않는다.
+
+권한 preview의 project worker3개와 native transport/policy5초 한계는 서비스별·project별 unknown 상태를 만들며 기본 membership 목록과 read 키 발급은 독립적이다. 전체35초 deadline과 SDK thread drain이 있어 큰 집합/느린 native 종료의 지연 가능성은 남는다. 정책/identity 결정이 합성인 로컬 HTTP/TLS/browser 결과는 운영 Keystone·서비스 정책·실제 grant 성공을 대신하지 않는다. 이 source 변경은 운영 배포·권한 부여·credential 재발급 승인을 포함하지 않는다.
+
+
 
 ## 리소스 정책 자동 초기화·갱신
 

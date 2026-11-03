@@ -357,7 +357,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { tour_id: tourId, status };
 	}
 
-	if (method === 'GET' && pathname === '/api/v1/auth/mcp-projects') return state.projects.map(({ id, name }) => ({ id, name }));
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-projects') return state.projects.map(({ id, name }) => {
+		if (params.get('preview') !== 'true') return { id, name };
+		// Reuse explicit tutorial authority, never derive native leaves from member.
+		const permissions = jsonFixture('GET', '/api/v1/projects/current/permissions', undefined, profile, id) as {
+			can_write: boolean; service_permissions: Record<string, string[]>;
+		};
+		return { id, name, can_write: permissions.can_write, service_permissions: permissions.service_permissions, service_errors: {} };
+	});
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
 	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
 	if (pathname === '/api/v1/chat/cloud-tools' && ['GET', 'POST', 'DELETE'].includes(method)) {

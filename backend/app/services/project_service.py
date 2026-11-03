@@ -188,8 +188,10 @@ _PROJECT_GRADES = {
 
 
 async def _provider_call(fn, *args, **kwargs):
+    from app.services.mcp_control_plane.sdk import run_sdk
+
     try:
-        return await asyncio.to_thread(fn, *args, **kwargs)
+        return await run_sdk(fn, *args, **kwargs)
     except Exception as exc:
         raise identity_roles._provider_error(exc) from exc
 
