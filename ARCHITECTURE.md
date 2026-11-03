@@ -10,6 +10,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 발행 전 독립 검토의 native wire 호환성 문제는 공통 optional text null/빈값 정규화(citation·image/audio·structured), nullable progress·citation range와 두 대기 stage의 정확한 수용으로 수정한다. 필수 text·safe locator·bounded progress·tool-stage 불변식은 유지한다. 관리자 개별 mail은 기존 Keystone ID 문법1–64자를 사용하고 UUID 표현만 정규화하며64자 SSO ID는 원문으로 보존한다. 새로운 권위·schema·재전송·native 쓰기를 추가하지 않는다.
 
+**1.32.3 정식 발행 완료:** sourceeae919b1a144707f07e3fb3f7bab72e5857527a2의 exact-SHA CI41574459955 성공 뒤 불변 numeric1.32.3 tag를 게시했다. Tag image41575327133·Helm41575327117 성공, 세 release/latest digest·revision 일치와 digest-pinned/network-none/read-only/non-root의 실제1.32.3 runtime 및 Helm version/appVersion1.32.3을 확인하고 GitHub latest stable release를 발행했다. Owned qualification clone·QA runtime/tag는 정리했다. 후속 동시 MCP 변경과 운영 Kolla/native/schema/메일 배포는 제외했다.
+
 **1.32.2 source·metadata 준비 (2026-11-02):** 사용자 승인에 따라 현재 dev의 MCP Cinder 목록 query 호환성, federated 계정 비밀번호 reset 사전 차단, VM wizard 조회 진단·bounded 무효화 복구, 프로젝트 quota 소비 표시와 기존 worktree 통합 결과를 커밋 대상으로 검토한다. Root/frontend/backend·Python lock·Helm version/appVersion·명시적 Kolla sample release pin을 기존 도구로 동기화한다. 새 schema·native 정책·서비스 topology·의존성 업그레이드는 없으며, 기본 checkout의 현재 전체 source를 새로 검증한다. 이번 요청은 로컬 커밋·버전 준비까지만이며 push·tag·발행·운영 Kolla/native/schema 변경과 별도 clone의 미검토 변경은 포함하지 않는다. 이전1.32.1의 발행·운영 증거를1.32.2 수용으로 재사용하지 않는다.
 
 **1.32.2 발행 범위 정정 (2026-11-02):** 사용자가 버전 상향은 항상 정식 release 발행까지 포함함을 명시했다. 위 source 준비 제한을 대체하여 검증된 commit의 dev push·exact-SHA CI·불변 numeric tag·GitHub Release·image/alias·Helm 발행을 수행한다. 진행 중인 다른 세션 source와 운영 Kolla/native/schema 변경은 제외하며 runtime/API topology는 변경하지 않는다.
