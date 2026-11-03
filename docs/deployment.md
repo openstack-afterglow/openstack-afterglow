@@ -14,6 +14,8 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 버전 상향 요청은 정식 발행까지 포함한다. Metadata·commit만으로 완료하지 않고 dev push·정확한 SHA의 CI·불변 numeric tag·GitHub Release·release 이미지/alias·Helm 검증까지 수행한다. 명시적인 준비 전용 요청만 예외이며, 운영 Kolla/native/schema 배포 승인을 자동으로 뜻하지 않는다.
 
+모든 정식 GitHub Release 메시지는 한국어와 영어를 모두 포함하고, 각 언어에 **버전·배포일자(시간대 포함)·수정 및 변경 사항·지원 중단 또는 삭제된 기능**을 명시한다. 해당 항목이 없을 때는 한국어 `없음`, 영어 `None`으로 적는다. Release 게시 전 한영 양쪽의 모든 필수 항목과 실제 tag·발행일·변경 내용을 검증하며, 산출물 발행과 운영 Kolla 배포는 구분한다.
+
 ## MCP 지속 OAuth 승인 전제 (source 변경, 미배포)
 
 새 지속 승인 writer·reader·cleanup을 시작하기 전에 원래 암호화 키와 DB를 보존하고 additive SQL `106_mcp_oauth_ongoing.sql`을 적용해야 한다. 기존 finite grant는 변경하지 않으며 기존 연결은 소유자가 한 번 새로 승인해야 한다. 이전 API/worker는 새 nullable OAuth 만료와 role-ID ceiling을 해석하지 못하므로 mixed-version 배포·rollback은 안전하다고 가정하지 않는다. 운영 전 일치하는 cohort의 schema/backup·restore와 실제 Keystone의 비만료 restricted credential 발급/현재 역할 회수/삭제 정책을 별도 검증한다. 코드 변경 자체는 운영 migration·인증 정보 교체·배포를 수행하지 않는다.

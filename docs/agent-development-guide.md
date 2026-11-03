@@ -41,6 +41,7 @@ git merge-base --is-ancestor origin/dev HEAD
 
 - 사용자가 버전 상향을 요청하면 metadata·commit에서 멈추지 않고 dev 정상 push, 정확한 SHA의 CI 성공, 불변 numeric `X.Y.Z` tag, GitHub Release, 해당 release 이미지·alias와 Helm 발행 검증까지 완료한다. 버전 상향은 정식 발행을 포함한다. 단, 사용자가 명시적으로 준비만 요청하면 그 제한을 따른다.
 - 진행 중인 다른 세션 변경은 포함하지 않으며 main PR·merge 소유권과 기존 tag 불변성을 유지한다. 운영 Kolla/native/schema 변경은 버전 발행과 별개로 기존 승인·선행 조건을 따른다.
+- 모든 정식 GitHub Release 본문은 **한국어와 영어 두 언어 모두**에 버전 정보, 배포일자(시간대 포함), 수정·변경 사항, 지원 중단되거나 삭제된 기능을 각각 명시한다. 해당 항목이 없으면 각 언어에 `없음`/`None`이라고 명시하고, 확인되지 않은 지원 중단이나 운영 배포를 추정하지 않는다. 게시 전 항목과 한영 내용을 확인하며 이 규칙은 모든 후속 release에 적용한다.
 
 ### 사용자 요청 “배포”의 완료 계약
 

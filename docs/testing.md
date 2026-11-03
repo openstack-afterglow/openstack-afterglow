@@ -11,6 +11,7 @@ nav_order: 8
 - 독립 검토에서 native preset edge 일괄 삭제 및 복수 direct grant 제거가 마지막 도메인 관리자를 제거할 수 있음을 확인했다. 전체 projected graph/assignment를 native 쓰기 전에 검증하고 실패 후 재시도에서도 manager projection을 동기화한다. 위치 미확인 임시 채팅의 journal follow 실패는 terminal outcome 추정 없이 streaming 표시를 해제한다. 관련 backend 355 tests, frontend ChatPanel 58 tests가 통과했다. 처음 추가한 회귀의 직접 역할과 implied reader 기대값 및 기존 status selector 기대값을 실제 계약에 맞게 수정했다.
 - 최종 source `3ca09d9c27882b0c82f4f39c3a0f8131f1949341ba5473c36613773416f4e60f`/4066 files의 Python3.12 전체 gate 성공: backend 13506 passed/106 skipped, frontend 511 files/6782 tests, contracts 258, disposable DB 220 passed/53 deselected, Ruff 845 files. Frontend check/i18n/build 및 linux/amd64 image build 3개를 완료했다.
 - 격리된 non-root read-only image의 API/worker/frontend version 1.32.5와 실제 compiled signup 화면 390px overflow0을 관측했다. API lifespan, 실제 native policy와 채팅 오류 화면의 packaged end-to-end는 검증하지 않았다. SQL106 schema-before-writer와 원 key·복구·native 서비스 호환은 사용자의 Kolla 작업에서 별도 확인한다. 운영 DB·서비스는 변경하지 않았다.
+- 정확한 source CI 41664544663·tag image CI 41666263431·Helm CI 41666263078 성공. [1.32.5 GitHub Release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.5)의 한국어·영어 버전/발행일/수정/지원 중단 항목과 세 release/latest digest·revision, digest-pinned non-root amd64 runtime version 및 Helm version/appVersion을 확인했다. Kolla 전환은 사용자가 직접 수행한다.
 
 ## MCP OAuth 표시·지속 승인·Lumen 제외 (2026-11-04, source/local)
 
