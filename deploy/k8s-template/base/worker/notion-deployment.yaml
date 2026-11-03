@@ -58,6 +58,18 @@ spec:
                 secretKeyRef:
                   name: afterglow-secrets
                   key: DATABASE_URL
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: SMTP_PASSWORD
+                  optional: true
+            - name: IMAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: IMAP_PASSWORD
+                  optional: true
           volumeMounts:
             - name: afterglow-config-volume
               mountPath: /app/afterglow.conf

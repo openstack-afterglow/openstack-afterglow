@@ -129,7 +129,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY services/afterglow-crypto/pyproject.toml /services/afterglow-crypto/pyproject.toml
 COPY backend/pyproject.toml backend/uv.lock ./
-# worker 의존성 그룹만 설치 (fastapi/uvicorn/boto3 등 API 전용 패키지 제외)
+# worker 그룹만 설치 (공통 FastAPI 예외·SMTP/identity helper 포함; uvicorn/boto3 등 API-only 제외)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --only-group worker \
         --no-install-package afterglow-crypto --link-mode=copy
@@ -169,7 +169,8 @@ CMD ["python", "-m", "app.notion_worker"]
 # Frontend 스테이지
 # ─────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1 AS frontend-builder
+# JS/SSR assets are architecture-independent; keep Bun native under Buildx.
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend-builder
 
 WORKDIR /app
 

@@ -1067,3 +1067,34 @@ async def test_reserved_domains_cannot_issue_invitations(directory, enrollments,
     assert not directory.sent and not directory.creates
     async with enrollments() as session:
         assert not (await session.execute(select(DomainEnrollment))).scalars().all()
+
+
+@pytest.mark.asyncio
+async def test_first_personal_project_creation_is_independent_of_corrupt_mail_settings(
+    directory, enrollments, monkeypatch
+):
+    from app.models.db import RuntimeSetting
+    from app.services import mail_settings
+
+    async with enrollments() as session:
+        connection = await session.connection()
+        await connection.run_sync(lambda sync: RuntimeSetting.__table__.create(sync, checkfirst=True))
+        session.add(
+            RuntimeSetting(
+                setting_key=mail_settings.KEY,
+                value_json={"revision": 1, "override": {"corrupt": True}},
+            )
+        )
+        await session.commit()
+    monkeypatch.setattr(mail_settings, "get_session_factory", lambda: enrollments)
+    monkeypatch.setattr(mail_settings, "is_db_available", lambda: True)
+    monkeypatch.setattr(mail_settings, "is_db_configured", lambda: True)
+    monkeypatch.setattr(mail_settings, "get_settings", lambda: directory.settings)
+    with pytest.raises(HTTPException) as unavailable:
+        await mail_settings.effective_settings()
+    assert unavailable.value.status_code == 503
+    original = vars(directory.users["foreign"]).copy()
+    primary = await account_spaces.ensure_personal_project("foreign")
+    assert primary["enabled"] and len(directory.personal_projects) == 1
+    assert vars(directory.users["foreign"]) == original
+    assert not directory.sent

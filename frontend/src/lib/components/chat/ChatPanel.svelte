@@ -1712,7 +1712,6 @@
 		let latestMetrics: StreamMetrics | null = null;
 		let text = '';
 		let reasoning = '';
-		const citations = new Map<number, Extract<ChatPart, { type: 'citation' }>>();
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) return;
 		let runState = createRunViewState(descriptor.run_id);
@@ -1733,7 +1732,8 @@
 				durationMs: tool.durationMs,
 				running: tool.status === 'running',
 				status: tool.status === 'running' ? undefined : tool.status,
-				errorCode: tool.errorCode
+				errorCode: tool.errorCode,
+				progress: tool.progress,
 			}));
 		}
 
@@ -1767,9 +1767,7 @@
 			const next = reveal.frame(nowMs);
 			draft.content = next.text;
 			draft.reasoning = reasoning;
-			draft.citations = [...citations.entries()]
-				.sort(([left], [right]) => left - right)
-				.map(([, citation]) => citation);
+			draft.citations = runState.sources;
 			draft.activityItems = runState.activity;
 			draft.toolItems = toolItemsFromState();
 			draft.metrics = latestMetrics;
@@ -1830,10 +1828,9 @@
 					reveal.clear();
 					text = '';
 					reasoning = '';
-					citations.clear();
 					draft.content = '';
 					draft.reasoning = '';
-					draft.citations = [];
+					draft.citations = runState.sources;
 				}
 				if (evt.type === 'run.stage.changed') {
 					agentActivity = activityForRunStage(evt.payload.stage, evt.created_at, evt.payload.tool_name);
@@ -1871,18 +1868,16 @@
 							reasoning += delta;
 						}
 					} else {
-						const { part_index: partIndex, part } = evt.payload;
+						const { part } = evt.payload;
 						if (part.type === 'text') {
 							text = textFromParts();
 							reveal.reconcile(text);
 						} else if (part.type === 'reasoning') {
 							reasoning = reasoningFromParts();
-						} else if (part.type === 'citation') {
-							citations.set(partIndex, part);
 						}
 					}
-				} else if (evt.type === 'tool.call.started' || evt.type === 'tool.call.completed') {
-					toolActivity = evt.type === 'tool.call.started' ? taskLabelForTool(evt.payload.name) : null;
+				} else if (evt.type === 'tool.call.started' || evt.type === 'tool.call.progress' || evt.type === 'tool.call.completed') {
+					toolActivity = evt.type === 'tool.call.completed' ? null : taskLabelForTool(evt.payload.name);
 				} else if (evt.type === 'tool.approval_required') {
 					pendingToolApprovals = [
 						...pendingToolApprovals.filter(

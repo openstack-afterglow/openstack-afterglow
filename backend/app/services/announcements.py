@@ -141,6 +141,8 @@ async def create_announcement(
     ends_at: datetime | None,
     created_by_user_id: str,
     created_by_username: str,
+    send_email: bool = False,
+    email_operation_id: str | None = None,
 ) -> dict[str, Any]:
     title = validate_title(title)
     body = validate_body(body)
@@ -161,6 +163,12 @@ async def create_announcement(
         is_active=True,
     )
     try:
+        if send_email:
+            from app.services import mail_delivery
+
+            return await mail_delivery.create_announcement_with_mail(
+                row, actor_id=created_by_user_id, operation_id=email_operation_id
+            )
         async with factory() as session, session.begin():
             session.add(row)
             await session.flush()
@@ -196,7 +204,7 @@ async def update_announcement(announcement_id: int, **patch: Any) -> dict[str, A
     try:
         async with factory() as session, session.begin():
             row = (
-                await session.execute(select(Announcement).where(Announcement.id == announcement_id))
+                await session.execute(select(Announcement).where(Announcement.id == announcement_id).with_for_update())
             ).scalar_one_or_none()
             if row is None:
                 raise AnnouncementNotFoundError(f"공지를 찾을 수 없습니다: {announcement_id}")
@@ -216,6 +224,9 @@ async def update_announcement(announcement_id: int, **patch: Any) -> dict[str, A
                 row.ends_at = patch["ends_at"]
             if "is_active" in patch and patch["is_active"] is not None:
                 row.is_active = bool(patch["is_active"])
+            from app.services.mail_delivery import cancel_announcement_mail
+
+            await cancel_announcement_mail(session, announcement_id)
             await session.flush()
             await session.refresh(row)
             result = _serialize_admin(row)
@@ -230,10 +241,13 @@ async def delete_announcement(announcement_id: int) -> None:
     try:
         async with factory() as session, session.begin():
             row = (
-                await session.execute(select(Announcement).where(Announcement.id == announcement_id))
+                await session.execute(select(Announcement).where(Announcement.id == announcement_id).with_for_update())
             ).scalar_one_or_none()
             if row is None:
                 raise AnnouncementNotFoundError(f"공지를 찾을 수 없습니다: {announcement_id}")
+            from app.services.mail_delivery import cancel_announcement_mail
+
+            await cancel_announcement_mail(session, announcement_id)
             await session.delete(row)
     except SQLAlchemyError as exc:
         mark_db_unhealthy()

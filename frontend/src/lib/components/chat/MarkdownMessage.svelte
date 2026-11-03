@@ -9,12 +9,13 @@
 		content: string;
 		/** 스트리밍 중이면 코드 하이라이트를 미룬다(델타마다 재하이라이트 방지). */
 		streaming?: boolean;
+		citations?: unknown;
 	}
-	let { content, streaming = false }: Props = $props();
+	let { content, streaming = false, citations = [] }: Props = $props();
 
 	let host = $state<HTMLDivElement | null>(null);
 	// 스트리밍 중에는 캐시 미사용(매 델타 partial), 완료 후에는 content-keyed 캐시로 재파싱 방지.
-	const html = $derived(renderMarkdown(content, { cache: !streaming }));
+	const html = $derived(renderMarkdown(content, { cache: !streaming, citations }));
 
 
 	async function copyCode(button: HTMLButtonElement, code: string) {

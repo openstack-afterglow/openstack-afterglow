@@ -15,6 +15,7 @@
   import RichText from '$lib/i18n/RichText.svelte';
   import { domainPath } from '$lib/api/domains';
   import UserDomainManagers from './UserDomainManagers.svelte';
+  import AdminUserEmailComposer from './AdminUserEmailComposer.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
@@ -87,7 +88,8 @@
   let showResetConfirm = $state(false);
   let resetMessage = $state('');
   let resetSucceeded = $state(false);
-  const writeBusy = $derived(updating || revoking || resettingPassword);
+  let emailBusy = $state(false);
+  const writeBusy = $derived(updating || revoking || resettingPassword || emailBusy);
   const resetAvailable = $derived(!!scope && !!user?.email && !!user?.enabled && !writeBusy && !resetAttempted && !!token && $authReady && !$logoutInProgress && !$projectSwitching);
 
   onMount(() => {
@@ -293,6 +295,8 @@
         </div>
         <div class="text-xs text-ink-2 [overflow-wrap:anywhere]">{t('userEdit.userId', { id: user.id })}</div>
       </fieldset>
+
+      <AdminUserEmailComposer {user} {domainId} disabled={updating || revoking || resettingPassword || resetAttempted} onbusy={(value) => { emailBusy = value; }} />
 
       <section class="mt-5 pt-4 border-t border-line space-y-3" aria-labelledby="admin-user-reset-title" aria-busy={resettingPassword}>
         <h3 id="admin-user-reset-title" class="text-sm font-medium text-ink-0">{t('userEdit.resetEmailTitle')}</h3>

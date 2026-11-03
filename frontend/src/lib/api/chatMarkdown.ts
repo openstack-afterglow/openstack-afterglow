@@ -9,6 +9,7 @@
  */
 import { marked, type TokenizerAndRendererExtension } from 'marked';
 import DOMPurify from 'dompurify';
+import { citationAssetFallback, citationHref, normalizeCitations } from './chatCitations';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -88,19 +89,36 @@ marked.use({ extensions: [mathBlockExtension, chatStrongExtension, mathInlineExt
  * plain <pre><code class="language-xxx"> 형태(스트리밍 중에도 안전하게 즉시 렌더).
  * @param opts.cache 완료된 메시지에 한해 결과를 캐시(스트리밍 중에는 false 로 호출).
  */
-export function renderMarkdown(source: string, opts?: { cache?: boolean }): string {
+export function renderMarkdown(source: string, opts?: { cache?: boolean; citations?: unknown }): string {
 	const useCache = opts?.cache ?? false;
-	const key = source ?? '';
+	const citations = normalizeCitations(opts?.citations);
+	const key = JSON.stringify([source ?? '', citations.map((citation) => [citation.citation_id, citation.url, citation.asset_id])]);
 	if (useCache) {
 		const hit = RENDER_CACHE.get(key);
 		if (hit !== undefined) return hit;
 	}
-	const raw = marked.parse(key, { async: false }) as string;
-	const html = DOMPurify.sanitize(raw, {
-		ADD_ATTR: ['target', 'rel', 'data-chat-math'],
-		FORBID_TAGS: ['style', 'form', 'input', 'button'],
-		FORBID_ATTR: ['onerror', 'onload', 'onclick']
+	const raw = marked.parse(source ?? '', { async: false }) as string;
+	// Do not allow arbitrary custom protocols. Only a registered upload's exact
+	// source:// locator is translated to an authenticated local source page.
+	// The hook is synchronous and removed even when sanitization throws.
+	DOMPurify.addHook('uponSanitizeAttribute', (node, event) => {
+		if (node.nodeName !== 'A' || event.attrName !== 'href') return;
+		if (!event.attrValue.startsWith('source:')) return;
+		const citation = citations.find((item) => item.url === event.attrValue && citationAssetFallback(item));
+		const href = citation && citationHref(citation);
+		if (href) event.attrValue = href;
+		else event.keepAttr = false;
 	});
+	let html: string;
+	try {
+		html = DOMPurify.sanitize(raw, {
+			ADD_ATTR: ['target', 'rel', 'data-chat-math'],
+			FORBID_TAGS: ['style', 'form', 'input', 'button'],
+			FORBID_ATTR: ['onerror', 'onload', 'onclick', 'data-citation-id']
+		});
+	} finally {
+		DOMPurify.removeHook('uponSanitizeAttribute');
+	}
 	if (useCache) {
 		if (RENDER_CACHE.size >= RENDER_CACHE_MAX) {
 			const oldest = RENDER_CACHE.keys().next().value;

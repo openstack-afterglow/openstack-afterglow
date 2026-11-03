@@ -6,17 +6,18 @@
 	import AdminLoginBrandingPanel from '$lib/components/admin/AdminLoginBrandingPanel.svelte';
 	import AdminResourcePoliciesPanel from '$lib/components/admin/AdminResourcePoliciesPanel.svelte';
 	import AdminEnrollmentPolicyPanel from '$lib/components/admin/AdminEnrollmentPolicyPanel.svelte';
+	import AdminEmailSettingsPanel from '$lib/components/admin/AdminEmailSettingsPanel.svelte';
 	import { PageHeader, PageShell, Tabs } from '$lib/components/ui';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const destinations = ['branding', 'infrastructure', 'enrollment', 'quotas', 'requests'] as const;
+	const destinations = ['branding', 'infrastructure', 'enrollment', 'quotas', 'requests', 'email'] as const;
 	type Destination = typeof destinations[number];
 	const selected = $derived(destinations.includes(page.url.searchParams.get('tab') as Destination)
 		? page.url.searchParams.get('tab') as Destination : 'branding');
 	const enrollmentSelected = $derived(selected === 'enrollment' || selected === 'quotas' || selected === 'requests');
 	const tabs = $derived(destinations.map(value => ({ value, label: t(`settings.tab.${value}`),
-		panelId: value === 'branding' || value === 'infrastructure' ? `settings-${value}-panel` : 'settings-enrollment-panel' })));
+		panelId: value === 'branding' || value === 'infrastructure' || value === 'email' ? `settings-${value}-panel` : 'settings-enrollment-panel' })));
 	function selectDestination(value: string) {
 		const url = new URL(page.url);
 		url.searchParams.set('tab', value);
@@ -42,6 +43,9 @@
 		</div>
 		<div id="settings-enrollment-panel" role="tabpanel" aria-labelledby={`settings-tabs-${selected}`} hidden={!enrollmentSelected}>
 			<AdminEnrollmentPolicyPanel section={selected === 'quotas' ? 'quotas' : selected === 'requests' ? 'requests' : 'policy'} />
+		</div>
+		<div id="settings-email-panel" role="tabpanel" aria-labelledby="settings-tabs-email" hidden={selected !== 'email'}>
+			<AdminEmailSettingsPanel />
 		</div>
 	</div>
 </PageShell>

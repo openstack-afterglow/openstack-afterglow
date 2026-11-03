@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "注册策略",
 	"settings.tab.quotas": "默认配额",
 	"settings.tab.requests": "注册申请",
+	"settings.tab.email": "电子邮件",
 	"settings.destinations": "常规设置任务",
 	"settings.draftHelp": "切换标签页会保留编辑，不会自动保存。注册策略与默认配额一起保存，请先检查两个标签页中的更改。",
 	"branding.installationIdentity": "此安装环境名为{name}。Afterglow是提供此控制台的产品；请在下方单独配置登录标志。",

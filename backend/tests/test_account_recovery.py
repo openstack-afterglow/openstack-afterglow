@@ -166,6 +166,20 @@ def directory(monkeypatch):
         state.sent.append(message)
         if not state.deliver:
             raise ConnectionError("SMTP unavailable")
+        return {}, "accepted"
+
+    class SMTP:
+        def __init__(self, **kwargs):
+            pass
+
+        async def connect(self):
+            pass
+
+        async def send_message(self, message, **kwargs):
+            return await send(message, **kwargs)
+
+        def close(self):
+            pass
 
     async def redis():
         return state.redis
@@ -187,9 +201,10 @@ def directory(monkeypatch):
     monkeypatch.setattr(keystone, "revoke_token", state.revoked.append)
     monkeypatch.setattr(session_store, "_get_redis", redis)
     monkeypatch.setattr(domain_scope, "invalidate_authority", invalidate)
-    monkeypatch.setattr("aiosmtplib.send", send)
+    monkeypatch.setattr("aiosmtplib.SMTP", SMTP)
 
     def initial_request(credential, method, path, *, body=None):
+        assert credential == "synthetic-admin-token"
         if path.endswith("/capabilities"):
             return 200, {"supported": True, "revision": recovery._INITIAL_PASSWORD_REVISION}
         uid = path.split("/")[1]
@@ -204,12 +219,14 @@ def directory(monkeypatch):
                     "password_state": state.password_states[uid],
                 }
             }
-        if method == "PATCH":
-            user = update_user(uid, **body["user"])
-            return 200, {"user": {"id": user.id, "domain_id": user.domain_id}}
+        assert method == "POST" and path.endswith("/OS-AFTERGLOW/password-reset")
         if state.password_states[uid] != "existing":
             return 409, None
-        if body["user"]["identity_revision"] != state.password_revisions[uid]:
+        if (
+            body["user"]["identity_revision"] != state.password_revisions[uid]
+            or body["user"]["domain_id"] != user.domain_id
+            or body["user"]["email"] != user.email
+        ):
             return 412, None
         update_user(uid, password=body["user"]["password"], afterglow_local_password=True)
         return 204, None
@@ -297,13 +314,15 @@ async def test_requests_are_non_enumerating_and_secret_free(client, directory, r
         assert response.status_code == 202 and response.json() == {"accepted": True}
         assert "no-store" in response.headers["cache-control"]
         assert response.headers["referrer-policy"] == "no-referrer"
-    assert len(directory.sent) == 1
+    expected_kinds = ["username"] if path == "username" else ["password", "password_create", "password_create"]
+    assert len(directory.sent) == len(expected_kinds)
     async with recoveries() as session:
         rows = (await session.execute(select(AccountRecovery))).scalars().all()
-        assert len(rows) == 1
-        record = rows[0]
-        values = [getattr(record, column.name) for column in record.__table__.columns]
-        assert token_from(directory.sent[0]) not in values and PASSWORD not in values
+        assert sorted(record.kind for record in rows) == sorted(expected_kinds)
+        for record in rows:
+            values = [getattr(record, column.name) for column in record.__table__.columns]
+            assert all(token_from(message) not in values for message in directory.sent)
+            assert PASSWORD not in values
 
 
 @pytest.mark.asyncio
@@ -737,14 +756,14 @@ async def test_smtp_error_cannot_disclose_recovery_proof_or_password(directory, 
     async def fail(*args, **kwargs):
         raise RuntimeError(secret)
 
-    monkeypatch.setattr("aiosmtplib.send", fail)
+    monkeypatch.setattr("aiosmtplib.SMTP.send_message", fail)
     assert await email_service.send_email("local@test.invalid", "Account recovery", secret, secret) is False
     assert secret not in caplog.text
     assert "RuntimeError" in caplog.text
 
 
-@pytest.mark.parametrize("marker", [None, True])
-async def test_public_recovery_never_creates_markerless_first_password(directory, client, marker):
+@pytest.mark.parametrize("marker", [None, False, True])
+async def test_public_absent_local_account_never_receives_unusable_creation_proof(directory, client, marker):
     user = directory.users["external"]
     user.federated = []
     user.password = None
@@ -754,9 +773,6 @@ async def test_public_recovery_never_creates_markerless_first_password(directory
         user.afterglow_local_password = marker
     response = await client.post("/api/v1/auth/recovery/password", json={"email": user.email})
     assert response.status_code == 202
-    if directory.sent:
-        token = token_from(directory.sent[-1])
-        await client.post("/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT})
     assert user.password is None and not directory.updates
     assert not directory.sent
 

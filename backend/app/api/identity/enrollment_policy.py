@@ -2,21 +2,30 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_admin_os_conn, require_admin
 from app.api.identity.iam import IamRoute
 from app.models.enrollment_policy import EnrollmentPolicyUpdate
-from app.services import enrollment_policy
+from app.services import enrollment_policy, mail_settings
 
 router = APIRouter(route_class=IamRoute)
 RequestId = Annotated[str, Path(min_length=36, max_length=36)]
 
 
+async def _policy_response(policy):
+    try:
+        ready = await mail_settings.smtp_ready(base_settings=enrollment_policy.get_settings(), require_frontend=True)
+    except HTTPException:
+        # Mail readiness is a display field, not enrollment/quota authority.
+        ready = False
+    return {**policy, "smtp_configured": ready}
+
+
 @router.get("/enrollment-policy")
 async def policy(token_info: dict = Depends(require_admin)):
-    return await enrollment_policy.read_policy()
+    return await _policy_response(await enrollment_policy.read_policy())
 
 
 @router.put("/enrollment-policy")
@@ -25,7 +34,7 @@ async def update_policy(
     token_info: dict = Depends(require_admin),
     conn=Depends(get_admin_os_conn),
 ):
-    return await enrollment_policy.update_policy(conn, req.model_dump(), token_info=token_info)
+    return await _policy_response(await enrollment_policy.update_policy(conn, req.model_dump(), token_info=token_info))
 
 
 class PersonalQuotaApply(BaseModel):

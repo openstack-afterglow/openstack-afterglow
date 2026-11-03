@@ -122,7 +122,7 @@ async def test_absent_policy_preserves_config_auto_and_usable_personal_defaults(
     assert result["public_signup_button_visible"] is True
     assert result["approval_mode"] == "auto"
     assert result["defaults_future_only"] is True
-    assert result["smtp_configured"] is True
+    assert "smtp_configured" not in result
     assert result["personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS
     assert result["personal_quota_source"] == "source_defaults"
     assert result["source_default_personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS

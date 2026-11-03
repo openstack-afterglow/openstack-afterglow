@@ -37,7 +37,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID
 
-from generation_config import config_override_paths, load_config, merge_config, prepare_config, write_files
+from generation_config import (
+    config_override_paths,
+    load_config,
+    merge_config,
+    prepare_config,
+    write_files,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 상수
@@ -77,8 +83,6 @@ def dim(t: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # 설정 로드
 # ─────────────────────────────────────────────────────────────────────────────
-
-
 
 
 def default_config_path() -> Path:
@@ -143,33 +147,64 @@ def _toml_val(v) -> str:
     return _toml_str(str(v))
 
 
-_AUTH_PROVIDER_FIELDS = frozenset({
-    "name", "kind", "enabled", "issuer_url", "authorization_url", "token_url", "api_url",
-    "client_id", "client_secret", "scopes", "keystone_idp_id", "keystone_protocol_id",
-    "federation_token_type", "token_endpoint_auth_method", "organization", "native_mapping",
-})
+_AUTH_PROVIDER_FIELDS = frozenset(
+    {
+        "name",
+        "kind",
+        "enabled",
+        "issuer_url",
+        "authorization_url",
+        "token_url",
+        "api_url",
+        "client_id",
+        "client_secret",
+        "scopes",
+        "keystone_idp_id",
+        "keystone_protocol_id",
+        "federation_token_type",
+        "token_endpoint_auth_method",
+        "organization",
+        "native_mapping",
+    }
+)
 
 
 def _auth_config(cfg: dict) -> dict:
     """Reject unknown structures before projecting secrets; runtime validates semantics."""
-    invalid = ValueError("Invalid auth configuration; check registry fields and selection references")
+    invalid = ValueError(
+        "Invalid auth configuration; check registry fields and selection references"
+    )
     auth = cfg.get("auth", {})
     if not isinstance(auth, dict) or set(auth) - {
-        "providers", "default", "domain", "public_signup_enabled", "public_signup_button_visible", "signup_email_domains",
-        "organization_creation_enabled", "max_organizations_per_user",
+        "providers",
+        "default",
+        "domain",
+        "public_signup_enabled",
+        "public_signup_button_visible",
+        "signup_email_domains",
+        "organization_creation_enabled",
+        "max_organizations_per_user",
     }:
         raise invalid
-    if "public_signup_enabled" in auth and not isinstance(auth["public_signup_enabled"], bool):
+    if "public_signup_enabled" in auth and not isinstance(
+        auth["public_signup_enabled"], bool
+    ):
         raise invalid
-    if "public_signup_button_visible" in auth and not isinstance(auth["public_signup_button_visible"], bool):
+    if "public_signup_button_visible" in auth and not isinstance(
+        auth["public_signup_button_visible"], bool
+    ):
         raise invalid
-    if "organization_creation_enabled" in auth and not isinstance(auth["organization_creation_enabled"], bool):
+    if "organization_creation_enabled" in auth and not isinstance(
+        auth["organization_creation_enabled"], bool
+    ):
         raise invalid
     maximum = auth.get("max_organizations_per_user", 10)
     if type(maximum) is not int or maximum < 0:
         raise invalid
     signup_domains = auth.get("signup_email_domains", [])
-    if not isinstance(signup_domains, list) or any(not isinstance(host, str) for host in signup_domains):
+    if not isinstance(signup_domains, list) or any(
+        not isinstance(host, str) for host in signup_domains
+    ):
         raise invalid
     providers = auth.get("providers", {})
     domains = auth.get("domain", {})
@@ -177,22 +212,35 @@ def _auth_config(cfg: dict) -> dict:
         raise invalid
     for key, provider in providers.items():
         if (
-            not isinstance(key, str) or len(key) > 32 or re.fullmatch(r"[a-z](?:[a-z0-9]|_[a-z0-9])*", key) is None
-            or not isinstance(provider, dict) or set(provider) - _AUTH_PROVIDER_FIELDS
+            not isinstance(key, str)
+            or len(key) > 32
+            or re.fullmatch(r"[a-z](?:[a-z0-9]|_[a-z0-9])*", key) is None
+            or not isinstance(provider, dict)
+            or set(provider) - _AUTH_PROVIDER_FIELDS
         ):
             raise invalid
         for field, value in provider.items():
             if field == "enabled":
                 valid = isinstance(value, bool)
             elif field == "scopes":
-                valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
+                valid = isinstance(value, list) and all(
+                    isinstance(item, str) for item in value
+                )
             elif field == "organization":
                 valid = (
-                    provider.get("kind") == "oidc" and isinstance(value, dict)
+                    provider.get("kind") == "oidc"
+                    and isinstance(value, dict)
                     and set(value) == {"id", "name", "manager_subjects"}
-                    and all(isinstance(value.get(key), str) and value[key].strip() for key in ("id", "name"))
-                    and isinstance(value.get("manager_subjects"), list) and bool(value["manager_subjects"])
-                    and all(isinstance(subject, str) and subject.strip() for subject in value["manager_subjects"])
+                    and all(
+                        isinstance(value.get(key), str) and value[key].strip()
+                        for key in ("id", "name")
+                    )
+                    and isinstance(value.get("manager_subjects"), list)
+                    and bool(value["manager_subjects"])
+                    and all(
+                        isinstance(subject, str) and subject.strip()
+                        for subject in value["manager_subjects"]
+                    )
                 )
             elif field == "native_mapping":
                 valid = (
@@ -200,12 +248,24 @@ def _auth_config(cfg: dict) -> dict:
                     and provider.get("federation_token_type", "id_token") == "id_token"
                     and "organization" not in provider
                     and isinstance(value, dict)
-                    and set(value) == {"mode", "mapping_id", "sha256", "account_domain_id", "personal_domain_id"}
+                    and set(value)
+                    == {
+                        "mode",
+                        "mapping_id",
+                        "sha256",
+                        "account_domain_id",
+                        "personal_domain_id",
+                    }
                     and value.get("mode") == "ephemeral"
                     and all(
                         isinstance(value.get(key), str)
-                        and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value[key]) is not None
-                        for key in ("mapping_id", "account_domain_id", "personal_domain_id")
+                        and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value[key])
+                        is not None
+                        for key in (
+                            "mapping_id",
+                            "account_domain_id",
+                            "personal_domain_id",
+                        )
                     )
                     and isinstance(value.get("sha256"), str)
                     and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is not None
@@ -217,19 +277,24 @@ def _auth_config(cfg: dict) -> dict:
                 raise invalid
     for domain_id in domains:
         if (
-            not isinstance(domain_id, str) or not 1 <= len(domain_id) <= 64
+            not isinstance(domain_id, str)
+            or not 1 <= len(domain_id) <= 64
             or any(char.isspace() or ord(char) < 32 for char in domain_id)
         ):
             raise invalid
     for methods in (auth.get("default", {}), *domains.values()):
-        if not isinstance(methods, dict) or set(methods) - {"allow_providers", "auto_join_email_domains"}:
+        if not isinstance(methods, dict) or set(methods) - {
+            "allow_providers",
+            "auto_join_email_domains",
+        }:
             raise invalid
         selected = methods.get("allow_providers", [])
         auto_join = methods.get("auto_join_email_domains", {})
         if not isinstance(selected, list) or not isinstance(auto_join, dict):
             raise invalid
         if any(
-            not isinstance(hosts, list) or any(not isinstance(host, str) for host in hosts)
+            not isinstance(hosts, list)
+            or any(not isinstance(host, str) for host in hosts)
             for hosts in auto_join.values()
         ):
             raise invalid
@@ -264,7 +329,11 @@ def render_auth_toml(cfg: dict) -> str:
         return ""
     lines = ["[auth]"]
     for field in (
-        "public_signup_enabled", "public_signup_button_visible", "signup_email_domains", "organization_creation_enabled", "max_organizations_per_user",
+        "public_signup_enabled",
+        "public_signup_button_visible",
+        "signup_email_domains",
+        "organization_creation_enabled",
+        "max_organizations_per_user",
     ):
         if field in auth:
             lines.append(f"{field} = {_toml_val(auth[field])}")
@@ -281,7 +350,9 @@ def render_auth_toml(cfg: dict) -> str:
     if "default" in auth:
         lines.extend(("", "[auth.default]"))
         if "allow_providers" in auth["default"]:
-            lines.append(f"allow_providers = {_toml_list_str(auth['default']['allow_providers'])}")
+            lines.append(
+                f"allow_providers = {_toml_list_str(auth['default']['allow_providers'])}"
+            )
         if "auto_join_email_domains" in auth["default"]:
             entries = ", ".join(
                 f"{_toml_str(key)} = {_toml_list_str(hosts)}"
@@ -291,7 +362,9 @@ def render_auth_toml(cfg: dict) -> str:
     for domain_id, methods in auth.get("domain", {}).items():
         lines.extend(("", f"[auth.domain.{_toml_str(domain_id)}]"))
         if "allow_providers" in methods:
-            lines.append(f"allow_providers = {_toml_list_str(methods['allow_providers'])}")
+            lines.append(
+                f"allow_providers = {_toml_list_str(methods['allow_providers'])}"
+            )
         if "auto_join_email_domains" in methods:
             entries = ", ".join(
                 f"{_toml_str(key)} = {_toml_list_str(hosts)}"
@@ -371,9 +444,13 @@ def _derive_public_api_base_for_k8s(cfg: dict) -> str:
 def _validate_k8s_secret_key(secret_key: str) -> None:
     """K8s 배포용 SECRET_KEY가 운영 fail-closed 조건을 만족하는지 확인."""
     if not secret_key:
-        raise ValueError("K8s secret.yaml 생성을 위해 [app].secret_key 또는 SECRET_KEY 값을 설정해야 합니다.")
+        raise ValueError(
+            "K8s secret.yaml 생성을 위해 [app].secret_key 또는 SECRET_KEY 값을 설정해야 합니다."
+        )
     if secret_key == "change-me-in-production":
-        raise ValueError("K8s secret.yaml에는 기본 SECRET_KEY(change-me-in-production)를 사용할 수 없습니다.")
+        raise ValueError(
+            "K8s secret.yaml에는 기본 SECRET_KEY(change-me-in-production)를 사용할 수 없습니다."
+        )
     if len(secret_key) < 32:
         raise ValueError("K8s secret.yaml의 SECRET_KEY는 32자 이상이어야 합니다.")
 
@@ -458,13 +535,15 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
         )
 
     traffic = cfg.get("traffic_analytics", {})
-    lines.extend([
-        f"  MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS: {_yaml_str(json.dumps(mon.get('infrastructure_topology_observers', [])))}",
-        f"  MONITORING_INFRASTRUCTURE_FABRIC__TARGETS: {_yaml_str(json.dumps(mon.get('infrastructure_fabric', {}).get('targets', [])))}",
-        f"  TRAFFIC_ANALYTICS__HMAC_KEY: {_yaml_str(traffic.get('hmac_key', ''))}",
-        f"  TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
-        f"  TRAFFIC_ANALYTICS_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
-    ])
+    lines.extend(
+        [
+            f"  MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS: {_yaml_str(json.dumps(mon.get('infrastructure_topology_observers', [])))}",
+            f"  MONITORING_INFRASTRUCTURE_FABRIC__TARGETS: {_yaml_str(json.dumps(mon.get('infrastructure_fabric', {}).get('targets', [])))}",
+            f"  TRAFFIC_ANALYTICS__HMAC_KEY: {_yaml_str(traffic.get('hmac_key', ''))}",
+            f"  TRAFFIC_ANALYTICS__FRONTEND_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
+            f"  TRAFFIC_ANALYTICS_INGEST_KEY: {_yaml_str(traffic.get('frontend_ingest_key', ''))}",
+        ]
+    )
 
     notion_enc_key = notion.get("config_encryption_key", "")
     if notion_enc_key:
@@ -486,9 +565,20 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
                 f"  SMTP_PASSWORD: {_yaml_str(smtp_password)}",
             ]
         )
+    imap_password = cfg.get("imap", {}).get("password", "")
+    if imap_password:
+        lines.extend(
+            [
+                "",
+                "  # IMAP read-only receipt mailbox password",
+                f"  IMAP_PASSWORD: {_yaml_str(imap_password)}",
+            ]
+        )
 
     ssh_private_key = builder.get("ssh_private_key", "")
-    builder_key_value = _yaml_block_scalar(ssh_private_key) if ssh_private_key else _yaml_str("")
+    builder_key_value = (
+        _yaml_block_scalar(ssh_private_key) if ssh_private_key else _yaml_str("")
+    )
     lines.extend(
         [
             "",
@@ -538,6 +628,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     mon = cfg.get("monitoring", {})
     notion = cfg.get("notion", {})
     smtp = cfg.get("smtp", {})
+    imap = cfg.get("imap", {})
     worker_runtime = cfg.get("worker_runtime", {})
 
     lines = [
@@ -551,15 +642,21 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"debug = {_toml_bool(cfg.get('DEFAULT', {}).get('debug', False))}")
     lines.append("")
     lines.append("[instance_usage]")
-    lines.append(f"scheduler_enabled = {_toml_bool(cfg.get('instance_usage', {}).get('scheduler_enabled', False))}")
+    lines.append(
+        f"scheduler_enabled = {_toml_bool(cfg.get('instance_usage', {}).get('scheduler_enabled', False))}"
+    )
     lines.append("")
 
     # [openstack]
     lines.append("[openstack]")
     lines.append(f"auth_url = {_toml_str(os_cfg.get('auth_url', ''))}")
     lines.append(f"project_name = {_toml_str(os_cfg.get('project_name', 'admin'))}")
-    lines.append(f"project_domain_name = {_toml_str(os_cfg.get('project_domain_name', 'Default'))}")
-    lines.append(f"user_domain_name = {_toml_str(os_cfg.get('user_domain_name', 'Default'))}")
+    lines.append(
+        f"project_domain_name = {_toml_str(os_cfg.get('project_domain_name', 'Default'))}"
+    )
+    lines.append(
+        f"user_domain_name = {_toml_str(os_cfg.get('user_domain_name', 'Default'))}"
+    )
     lines.append(f"region_name = {_toml_str(os_cfg.get('region_name', 'RegionOne'))}")
     lines.append(f"username = {_toml_str(os_cfg.get('username', 'admin'))}")
     lines.append("# password는 secret.yaml의 OS_PASSWORD 환경변수로 주입됩니다")
@@ -579,18 +676,28 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"trash_retention_days = {os_cfg.get('trash_retention_days', 30)}")
     lines.append("")
     lines.append("# Manila NFS 설정")
-    lines.append(f"manila_nfs_root_squash = {_toml_bool(os_cfg.get('manila_nfs_root_squash', True))}")
-    lines.append(f"manila_nfs_sec_flavor = {_toml_str(os_cfg.get('manila_nfs_sec_flavor', 'sys'))}")
-    lines.append(f"manila_cephx_key_timeout_seconds = {os_cfg.get('manila_cephx_key_timeout_seconds', 300)}")
+    lines.append(
+        f"manila_nfs_root_squash = {_toml_bool(os_cfg.get('manila_nfs_root_squash', True))}"
+    )
+    lines.append(
+        f"manila_nfs_sec_flavor = {_toml_str(os_cfg.get('manila_nfs_sec_flavor', 'sys'))}"
+    )
+    lines.append(
+        f"manila_cephx_key_timeout_seconds = {os_cfg.get('manila_cephx_key_timeout_seconds', 300)}"
+    )
     lines.append(f"interface = {_toml_str(os_cfg.get('interface', 'internal'))}")
     lines.append("")
     # [ceph]
     lines.append("[ceph]")
     lines.append(f"rbd_conf_path = {_toml_str(ceph.get('rbd_conf_path', ''))}")
     lines.append(f"rbd_keyring_path = {_toml_str(ceph.get('rbd_keyring_path', ''))}")
-    lines.append(f"rbd_client_name = {_toml_str(ceph.get('rbd_client_name', 'client.afterglow-rbd'))}")
+    lines.append(
+        f"rbd_client_name = {_toml_str(ceph.get('rbd_client_name', 'client.afterglow-rbd'))}"
+    )
     lines.append(f"rbd_cluster_fsid = {_toml_str(ceph.get('rbd_cluster_fsid', ''))}")
-    lines.append(f"rbd_command_timeout_seconds = {ceph.get('rbd_command_timeout_seconds', 30)}")
+    lines.append(
+        f"rbd_command_timeout_seconds = {ceph.get('rbd_command_timeout_seconds', 30)}"
+    )
     lines.append("[ceph.rbd_volume_pools]")
     for backend, pool in sorted((ceph.get("rbd_volume_pools", {}) or {}).items()):
         lines.append(f"{_toml_str(str(backend))} = {_toml_str(str(pool))}")
@@ -607,9 +714,15 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"site_description = {_toml_str(app.get('site_description', ''))}")
     lines.append("")
     lines.append("# 로고 및 파비콘 경로 (frontend/static/ 기준)")
-    lines.append(f"logo_path = {_toml_str(app.get('logo_path', '/afterglow-logo.svg'))}")
-    lines.append(f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/afterglow-logo.svg'))}")
-    lines.append(f"logo_light_path = {_toml_str(app.get('logo_light_path', '/afterglow-logo.svg'))}")
+    lines.append(
+        f"logo_path = {_toml_str(app.get('logo_path', '/afterglow-logo.svg'))}"
+    )
+    lines.append(
+        f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/afterglow-logo.svg'))}"
+    )
+    lines.append(
+        f"logo_light_path = {_toml_str(app.get('logo_light_path', '/afterglow-logo.svg'))}"
+    )
     lines.append(f"favicon_path = {_toml_str(app.get('favicon_path', '/favicon.svg'))}")
     lines.append("")
     lines.append("# 프론트엔드 대시보드 자동 새로고침 간격 (밀리초)")
@@ -619,8 +732,12 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"frontend_base_url = {_toml_str(app.get('frontend_base_url', ''))}")
     lines.append(f"public_api_base = {_toml_str(public_api_base)}")
     lines.append("")
-    lines.append("# 리버스 프록시 신뢰 CIDR — X-Forwarded-For / X-Real-IP 를 신뢰할 주소 범위")
-    lines.append(f"trusted_proxies = {_toml_str(app.get('trusted_proxies', '127.0.0.1/32,::1/128'))}")
+    lines.append(
+        "# 리버스 프록시 신뢰 CIDR — X-Forwarded-For / X-Real-IP 를 신뢰할 주소 범위"
+    )
+    lines.append(
+        f"trusted_proxies = {_toml_str(app.get('trusted_proxies', '127.0.0.1/32,::1/128'))}"
+    )
     lines.append("")
 
     # [logging] (선택)
@@ -639,10 +756,16 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"sentinel_master_name = {_toml_str(REDIS_SENTINEL_MASTER)}")
     lines.append(f"sentinel_hosts = {_toml_str(REDIS_SENTINEL_K8S)}")
     lines.append("# TTL 티어 (초)")
-    lines.append(f"ttl_fast = {cache.get('ttl_fast', 15)}      # 인스턴스, 볼륨, 플로팅IP")
-    lines.append(f"ttl_normal = {cache.get('ttl_normal', 30)}    # 네트워크, 라우터, 대시보드")
+    lines.append(
+        f"ttl_fast = {cache.get('ttl_fast', 15)}      # 인스턴스, 볼륨, 플로팅IP"
+    )
+    lines.append(
+        f"ttl_normal = {cache.get('ttl_normal', 30)}    # 네트워크, 라우터, 대시보드"
+    )
     lines.append(f"ttl_slow = {cache.get('ttl_slow', 60)}      # 키페어, 보안그룹")
-    lines.append(f"ttl_static = {cache.get('ttl_static', 300)}   # 이미지, 플레이버, 토큰 검증")
+    lines.append(
+        f"ttl_static = {cache.get('ttl_static', 300)}   # 이미지, 플레이버, 토큰 검증"
+    )
     lines.append(f"default_ttl_seconds = {cache.get('default_ttl_seconds', 30)}")
     lines.append(f"backend = {_toml_str(cache.get('backend', 'redis'))}")
     lines.append(f"dynamic_threshold_low = {cache.get('dynamic_threshold_low', 5)}")
@@ -660,7 +783,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 604800)}")
     lines.append(f"jwt_access_ttl = {sess.get('jwt_access_ttl', 3600)}")
     lines.append(f"jwt_refresh_ttl = {sess.get('jwt_refresh_ttl', 604800)}")
-    lines.append(f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}")
+    lines.append(
+        f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}"
+    )
     lines.append("")
 
     # [nova]
@@ -740,7 +865,10 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         ("home_size_gib", 5),
         ("cpu", 1.0),
         ("memory_mib", 1024),
-        ("blocked_cidrs", ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"]),
+        (
+            "blocked_cidrs",
+            ["169.254.169.254/32", "fd00:ec2::254/128", "fe80::a9fe:a9fe/128"],
+        ),
         ("idle_timeout_seconds", 1200),
         ("max_session_seconds", 3600),
         ("ticket_ttl_seconds", 60),
@@ -755,7 +883,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
             if key in mcp:
                 lines.append(f"{key} = {_toml_str(mcp[key])}")
         if "lumen_service_token" in mcp:
-            lines.append("# lumen_service_token is injected as LUMEN_MCP_SERVICE_TOKEN from secret.yaml")
+            lines.append(
+                "# lumen_service_token is injected as LUMEN_MCP_SERVICE_TOKEN from secret.yaml"
+            )
         for key in (
             "authorization_ticket_ttl_seconds",
             "access_token_ttl_seconds",
@@ -778,12 +908,18 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [instance_health]
     lines.append("[instance_health]")
-    lines.append(f"callback_base_url = {_toml_str(instance_health.get('callback_base_url', ''))}")
+    lines.append(
+        f"callback_base_url = {_toml_str(instance_health.get('callback_base_url', ''))}"
+    )
     lines.append("")
     # [k3s]
     lines.append("[k3s]")
-    lines.append("# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml")
-    lines.append("# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml")
+    lines.append(
+        "# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml"
+    )
+    lines.append(
+        "# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml"
+    )
     lines.append("")
     # [worker_runtime] (non-secret runtime manager config)
     wr_workers = worker_runtime.get("workers", {})
@@ -805,10 +941,18 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"socket_path = {_toml_str(wr_docker.get('socket_path', ''))}")
     lines.append(f"image = {_toml_str(wr_docker.get('image', ''))}")
     lines.append(f"network = {_toml_str(wr_docker.get('network', ''))}")
-    lines.append(f"config_mount = {_toml_str(wr_docker.get('config_mount', '/app/afterglow.conf'))}")
-    lines.append(f"config_host_path = {_toml_str(wr_docker.get('config_host_path', ''))}")
-    lines.append(f"gpu_config_mount = {_toml_str(wr_docker.get('gpu_config_mount', '/app/config.gpu.toml'))}")
-    lines.append(f"gpu_config_host_path = {_toml_str(wr_docker.get('gpu_config_host_path', ''))}")
+    lines.append(
+        f"config_mount = {_toml_str(wr_docker.get('config_mount', '/app/afterglow.conf'))}"
+    )
+    lines.append(
+        f"config_host_path = {_toml_str(wr_docker.get('config_host_path', ''))}"
+    )
+    lines.append(
+        f"gpu_config_mount = {_toml_str(wr_docker.get('gpu_config_mount', '/app/config.gpu.toml'))}"
+    )
+    lines.append(
+        f"gpu_config_host_path = {_toml_str(wr_docker.get('gpu_config_host_path', ''))}"
+    )
     lines.append(f"logs_mount = {_toml_str(wr_docker.get('logs_mount', '/app/logs'))}")
     lines.append(f"logs_host_path = {_toml_str(wr_docker.get('logs_host_path', ''))}")
     lines.append(
@@ -816,14 +960,18 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     )
     lines.append("")
     lines.append("[worker_runtime.kubernetes]")
-    lines.append(f"namespace = {_toml_str(namespace or wr_k8s.get('namespace', 'afterglow'))}")
+    lines.append(
+        f"namespace = {_toml_str(namespace or wr_k8s.get('namespace', 'afterglow'))}"
+    )
     lines.append(
         f"service_account_token_path = {_toml_str(wr_k8s.get('service_account_token_path', '/var/run/secrets/kubernetes.io/serviceaccount/token'))}"
     )
     lines.append(
         f"service_account_ca_path = {_toml_str(wr_k8s.get('service_account_ca_path', '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'))}"
     )
-    lines.append(f"manage_deployments = {_toml_bool(wr_k8s.get('manage_deployments', False))}")
+    lines.append(
+        f"manage_deployments = {_toml_bool(wr_k8s.get('manage_deployments', False))}"
+    )
     lines.append("")
 
     # [database] (url은 비밀, 나머지는 포함)
@@ -843,7 +991,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         if "unhealthy_seconds" in db:
             lines.append(f"unhealthy_seconds = {db['unhealthy_seconds']}")
         if "db_auto_backup_cron" in db:
-            lines.append(f"db_auto_backup_cron = {_toml_str(db['db_auto_backup_cron'])}")
+            lines.append(
+                f"db_auto_backup_cron = {_toml_str(db['db_auto_backup_cron'])}"
+            )
         lines.append("")
 
     # [cors]
@@ -859,76 +1009,161 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         lines.append(f"port = {smtp.get('port', 587)}")
         lines.append(f"username = {_toml_str(smtp.get('username', ''))}")
         lines.append("# password는 secret.yaml의 SMTP_PASSWORD 환경변수로 주입됩니다")
-        lines.append(f"from_address = {_toml_str(smtp.get('from_address', 'noreply@afterglow.example.com'))}")
+        lines.append(
+            f"from_address = {_toml_str(smtp.get('from_address', 'noreply@afterglow.example.com'))}"
+        )
         lines.append(f"from_name = {_toml_str(smtp.get('from_name', 'Afterglow'))}")
         lines.append(f"use_tls = {_toml_bool(smtp.get('use_tls', True))}")
+        lines.append(f"use_ssl = {_toml_bool(smtp.get('use_ssl', False))}")
+        lines.append(f"security = {_toml_str(smtp.get('security', ''))}")
         lines.append(f"timeout_seconds = {smtp.get('timeout_seconds', 10)}")
         smtp_inv = smtp.get("invitation", {})
         lines.append("")
         lines.append("[smtp.invitation]")
         lines.append(f"token_expiry_days = {smtp_inv.get('token_expiry_days', 7)}")
         lines.append("")
+    if imap.get("host") or imap.get("enabled"):
+        lines.append("[imap]")
+        lines.append(f"enabled = {_toml_bool(imap.get('enabled', False))}")
+        lines.append(f"host = {_toml_str(imap.get('host', ''))}")
+        lines.append(f"port = {imap.get('port', 993)}")
+        lines.append(f"username = {_toml_str(imap.get('username', ''))}")
+        lines.append("# password is injected by IMAP_PASSWORD from secret.yaml")
+        lines.append(f"security = {_toml_str(imap.get('security', 'tls'))}")
+        lines.append(f"mailbox = {_toml_str(imap.get('mailbox', 'INBOX'))}")
+        lines.append(f"timeout_seconds = {imap.get('timeout_seconds', 10)}")
+        lines.append("")
 
     # [monitoring]
     lines.append("[monitoring]")
-    lines.append(f"host_healthcheck_enabled = {_toml_bool(mon.get('host_healthcheck_enabled', True))}")
+    lines.append(
+        f"host_healthcheck_enabled = {_toml_bool(mon.get('host_healthcheck_enabled', True))}"
+    )
     targets = mon.get("host_healthcheck_targets", [])
     # Inline tables keep the targets inside [monitoring], before its child tables.
     rendered_targets = []
     for target in targets:
-        fields = [f"{key} = {_toml_str(target[key])}" for key in ("name", "address", "role")]
+        fields = [
+            f"{key} = {_toml_str(target[key])}" for key in ("name", "address", "role")
+        ]
         fields.append(f"port = {target.get('port', 9100)}")
         rendered_targets.append("{ " + ", ".join(fields) + " }")
     lines.append("host_healthcheck_targets = [" + ", ".join(rendered_targets) + "]")
-    lines.append(f"infrastructure_topology_enabled = {_toml_bool(mon.get('infrastructure_topology_enabled', False))}")
-    lines.append(f"infrastructure_topology_retention_seconds = {mon.get('infrastructure_topology_retention_seconds', 3600)}")
-    lines.append("infrastructure_topology_trace_targets = [" + ", ".join(_toml_str(target) for target in mon.get("infrastructure_topology_trace_targets", [])) + "]")
+    lines.append(
+        f"infrastructure_topology_enabled = {_toml_bool(mon.get('infrastructure_topology_enabled', False))}"
+    )
+    lines.append(
+        f"infrastructure_topology_retention_seconds = {mon.get('infrastructure_topology_retention_seconds', 3600)}"
+    )
+    lines.append(
+        "infrastructure_topology_trace_targets = ["
+        + ", ".join(
+            _toml_str(target)
+            for target in mon.get("infrastructure_topology_trace_targets", [])
+        )
+        + "]"
+    )
     rendered_peers = []
     for target in mon.get("infrastructure_topology_peer_targets", []):
-        fields = [f"{key} = {_toml_str(target[key])}" for key in ("source_host_id", "target_host_id", "address")]
+        fields = [
+            f"{key} = {_toml_str(target[key])}"
+            for key in ("source_host_id", "target_host_id", "address")
+        ]
         fields.append(f"port = {target.get('port', 9100)}")
         rendered_peers.append("{ " + ", ".join(fields) + " }")
-    lines.append("infrastructure_topology_peer_targets = [" + ", ".join(rendered_peers) + "]")
-    lines.append("# infrastructure_topology_observers is injected from MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS in Secret")
-    lines.append(f"prometheus_base_url = {_toml_str(mon.get('prometheus_base_url', 'http://prometheus:9090'))}")
-    lines.append(f"prometheus_username = {_toml_str(mon.get('prometheus_username', ''))}")
-    lines.append("# prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다")
+    lines.append(
+        "infrastructure_topology_peer_targets = [" + ", ".join(rendered_peers) + "]"
+    )
+    lines.append(
+        "# infrastructure_topology_observers is injected from MONITORING_INFRASTRUCTURE_TOPOLOGY_OBSERVERS in Secret"
+    )
+    lines.append(
+        f"prometheus_base_url = {_toml_str(mon.get('prometheus_base_url', 'http://prometheus:9090'))}"
+    )
+    lines.append(
+        f"prometheus_username = {_toml_str(mon.get('prometheus_username', ''))}"
+    )
+    lines.append(
+        "# prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다"
+    )
     lines.append(f"scrape_cidr = {_toml_str(mon.get('scrape_cidr', ''))}")
     lines.append(f"auto_sg_enabled = {_toml_bool(mon.get('auto_sg_enabled', True))}")
-    lines.append(f"node_exporter_sg_name = {_toml_str(mon.get('node_exporter_sg_name', 'node_exporter'))}")
-    lines.append(f"dcgm_exporter_sg_name = {_toml_str(mon.get('dcgm_exporter_sg_name', 'dcgm_exporter'))}")
+    lines.append(
+        f"node_exporter_sg_name = {_toml_str(mon.get('node_exporter_sg_name', 'node_exporter'))}"
+    )
+    lines.append(
+        f"dcgm_exporter_sg_name = {_toml_str(mon.get('dcgm_exporter_sg_name', 'dcgm_exporter'))}"
+    )
     lines.append(f"node_exporter_port = {mon.get('node_exporter_port', 9100)}")
     lines.append(f"dcgm_exporter_port = {mon.get('dcgm_exporter_port', 9400)}")
     lines.append(f"libvirt_exporter_port = {mon.get('libvirt_exporter_port', 9177)}")
-    lines.append(f"gpu_flavor_prefix = {_toml_str(mon.get('gpu_flavor_prefix', 'gpu.'))}")
+    lines.append(
+        f"gpu_flavor_prefix = {_toml_str(mon.get('gpu_flavor_prefix', 'gpu.'))}"
+    )
     lines.append(f"grafana_base_url = {_toml_str(mon.get('grafana_base_url', ''))}")
     lines.append("# sd_token은 secret.yaml의 MONITORING_SD_TOKEN 환경변수로 주입됩니다")
     dashboards = mon.get("dashboards", {})
     lines.append("")
     lines.append("[monitoring.dashboards]")
-    lines.append(f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}")
-    lines.append(f"node_temperatures_uid = {_toml_str(dashboards.get('node_temperatures_uid', 'kolla-node-temperatures'))}")
-    lines.append(f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}")
-    lines.append(f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}")
-    lines.append(f"proxysql_uid = {_toml_str(dashboards.get('proxysql_uid', 'afterglow-proxysql'))}")
-    lines.append(f"memcached_uid = {_toml_str(dashboards.get('memcached_uid', 'afterglow-memcached'))}")
-    lines.append(f"etcd_uid = {_toml_str(dashboards.get('etcd_uid', 'afterglow-etcd'))}")
-    lines.append(f"haproxy_uid = {_toml_str(dashboards.get('haproxy_uid', 'afterglow-haproxy'))}")
-    lines.append(f"libvirt_uid = {_toml_str(dashboards.get('libvirt_uid', 'afterglow-libvirt'))}")
-    lines.append(f"openstack_uid = {_toml_str(dashboards.get('openstack_uid', 'afterglow-openstack'))}")
-    lines.append(f"ceph_uid = {_toml_str(dashboards.get('ceph_uid', 'afterglow-ceph'))}")
-    lines.append(f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}")
-    lines.append(f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}")
+    lines.append(
+        f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}"
+    )
+    lines.append(
+        f"node_temperatures_uid = {_toml_str(dashboards.get('node_temperatures_uid', 'kolla-node-temperatures'))}"
+    )
+    lines.append(
+        f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}"
+    )
+    lines.append(
+        f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}"
+    )
+    lines.append(
+        f"proxysql_uid = {_toml_str(dashboards.get('proxysql_uid', 'afterglow-proxysql'))}"
+    )
+    lines.append(
+        f"memcached_uid = {_toml_str(dashboards.get('memcached_uid', 'afterglow-memcached'))}"
+    )
+    lines.append(
+        f"etcd_uid = {_toml_str(dashboards.get('etcd_uid', 'afterglow-etcd'))}"
+    )
+    lines.append(
+        f"haproxy_uid = {_toml_str(dashboards.get('haproxy_uid', 'afterglow-haproxy'))}"
+    )
+    lines.append(
+        f"libvirt_uid = {_toml_str(dashboards.get('libvirt_uid', 'afterglow-libvirt'))}"
+    )
+    lines.append(
+        f"openstack_uid = {_toml_str(dashboards.get('openstack_uid', 'afterglow-openstack'))}"
+    )
+    lines.append(
+        f"ceph_uid = {_toml_str(dashboards.get('ceph_uid', 'afterglow-ceph'))}"
+    )
+    lines.append(
+        f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}"
+    )
+    lines.append(
+        f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}"
+    )
     lines.append("")
     fabric = mon.get("infrastructure_fabric", {})
     lines.append("[monitoring.infrastructure_fabric]")
     for key, default in (
-        ("revision", 0), ("poll_interval_seconds", 10), ("freshness_seconds", 30),
-        ("timeout_seconds", 2), ("retries", 1), ("concurrency", 4), ("poll_budget_seconds", 30),
-        ("max_ports", 256), ("max_neighbors", 256), ("max_varbinds", 16384), ("retention_seconds", 3600),
+        ("revision", 0),
+        ("poll_interval_seconds", 10),
+        ("freshness_seconds", 30),
+        ("timeout_seconds", 2),
+        ("retries", 1),
+        ("concurrency", 4),
+        ("poll_budget_seconds", 30),
+        ("max_ports", 256),
+        ("max_neighbors", 256),
+        ("max_varbinds", 16384),
+        ("retention_seconds", 3600),
     ):
         lines.append(f"{key} = {fabric.get(key, default)}")
-    lines.append("# AuthPriv target credentials are injected through MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret")
+    lines.append(
+        "# AuthPriv target credentials are injected through MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret"
+    )
     lines.append("")
 
     traffic = cfg.get("traffic_analytics", {})
@@ -936,24 +1171,37 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"enabled = {_toml_bool(traffic.get('enabled', False))}")
     lines.append(f"retention_days = {traffic.get('retention_days', 30)}")
     lines.append(f"geoip_mmdb = {_toml_str(traffic.get('geoip_mmdb', ''))}")
-    for key in ("cluster_cidrs", "backend_trusted_proxy_cidrs", "frontend_trusted_proxy_cidrs"):
-        lines.append(f"{key} = [" + ", ".join(_toml_str(value) for value in traffic.get(key, [])) + "]")
+    for key in (
+        "cluster_cidrs",
+        "backend_trusted_proxy_cidrs",
+        "frontend_trusted_proxy_cidrs",
+    ):
+        lines.append(
+            f"{key} = ["
+            + ", ".join(_toml_str(value) for value in traffic.get(key, []))
+            + "]"
+        )
     lines.append(f"site_country = {_toml_str(traffic.get('site_country', ''))}")
-    lines.append("# hmac_key and frontend_ingest_key are injected through TRAFFIC_ANALYTICS__* Secret environment keys")
+    lines.append(
+        "# hmac_key and frontend_ingest_key are injected through TRAFFIC_ANALYTICS__* Secret environment keys"
+    )
     lines.append("")
-
 
     # [notion]
     if notion.get("config_encryption_key"):
         lines.append("[notion]")
-        lines.append("# config_encryption_key는 secret.yaml의 NOTION_CONFIG_ENCRYPTION_KEY 환경변수로 주입됩니다")
+        lines.append(
+            "# config_encryption_key는 secret.yaml의 NOTION_CONFIG_ENCRYPTION_KEY 환경변수로 주입됩니다"
+        )
         lines.append("")
 
     # [security]
     security = cfg.get("security", {})
     lines.append("[security]")
     lines.append(f"login_max_attempts = {security.get('login_max_attempts', 10)}")
-    lines.append(f"login_lockout_seconds = {security.get('login_lockout_seconds', 300)}")
+    lines.append(
+        f"login_lockout_seconds = {security.get('login_lockout_seconds', 300)}"
+    )
     lines.append(f"login_backoff_base = {security.get('login_backoff_base', 2)}")
     lines.append("")
     lines.append(render_auth_toml(cfg))
@@ -1038,7 +1286,11 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
     lines.extend(
         [
             "  ceph.conf: |",
-            *(["    " + line for line in ceph_conf_content.splitlines()] if ceph_conf_content else ["    "]),
+            *(
+                ["    " + line for line in ceph_conf_content.splitlines()]
+                if ceph_conf_content
+                else ["    "]
+            ),
         ]
     )
 
@@ -1085,17 +1337,26 @@ def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
     tls_hosts = list(routes)
 
     if cfg.get("services", {}).get("mcp", False):
-        resource = cfg.get("mcp", {}).get("public_url") or f"{public_api_base}/api/v1/mcp"
+        resource = (
+            cfg.get("mcp", {}).get("public_url") or f"{public_api_base}/api/v1/mcp"
+        )
         parsed = urlparse(resource)
         mcp_host = parsed.hostname
         mcp_path = parsed.path.rstrip("/") or "/"
         if not mcp_host:
             raise ValueError("mcp.public_url requires an absolute URL with a host")
         if mcp_path == "/" and mcp_host in routes:
-            raise ValueError("mcp.public_url at an origin root requires a dedicated host; it cannot share the web or API host")
+            raise ValueError(
+                "mcp.public_url at an origin root requires a dedicated host; it cannot share the web or API host"
+            )
         mcp_paths = [
             (mcp_path, "Exact", "backend", 8000),
-            ("/oauth/" if mcp_path == "/" else f"{mcp_path}/", "Prefix", "backend", 8000),
+            (
+                "/oauth/" if mcp_path == "/" else f"{mcp_path}/",
+                "Prefix",
+                "backend",
+                8000,
+            ),
             ("/.well-known/", "Prefix", "backend", 8000),
         ]
         mcp_routes = {mcp_host: mcp_paths}
@@ -1120,29 +1381,42 @@ def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
             f"    traefik.ingress.kubernetes.io/service.serverstransport: {namespace}-backend-long-timeout@kubernetescrd",
         ]
         if priority:
-            lines.append(f'    traefik.ingress.kubernetes.io/router.priority: "{priority}"')
+            lines.append(
+                f'    traefik.ingress.kubernetes.io/router.priority: "{priority}"'
+            )
         else:
-            lines.append(f'    cert-manager.io/cluster-issuer: "letsencrypt-{profile}-traefik"')
-        lines.extend([
-            "spec:",
-            "  tls:",
-            "    - hosts:",
-            *(f"        - {_yaml_str(host)}" for host in (list(host_routes) if priority else tls_hosts)),
-            "      secretName: afterglow-tls",
-            "  rules:",
-        ])
+            lines.append(
+                f'    cert-manager.io/cluster-issuer: "letsencrypt-{profile}-traefik"'
+            )
+        lines.extend(
+            [
+                "spec:",
+                "  tls:",
+                "    - hosts:",
+                *(
+                    f"        - {_yaml_str(host)}"
+                    for host in (list(host_routes) if priority else tls_hosts)
+                ),
+                "      secretName: afterglow-tls",
+                "  rules:",
+            ]
+        )
         for host, paths in host_routes.items():
-            lines.extend([f"    - host: {_yaml_str(host)}", "      http:", "        paths:"])
+            lines.extend(
+                [f"    - host: {_yaml_str(host)}", "      http:", "        paths:"]
+            )
             for path, path_type, service, port in paths:
-                lines.extend([
-                    f"          - path: {_yaml_str(path)}",
-                    f"            pathType: {path_type}",
-                    "            backend:",
-                    "              service:",
-                    f"                name: {service}",
-                    "                port:",
-                    f"                  number: {port}",
-                ])
+                lines.extend(
+                    [
+                        f"          - path: {_yaml_str(path)}",
+                        f"            pathType: {path_type}",
+                        "            backend:",
+                        "              service:",
+                        f"                name: {service}",
+                        "                port:",
+                        f"                  number: {port}",
+                    ]
+                )
         documents.append("\n".join(lines))
     return "\n---\n".join(documents) + "\n"
 
@@ -1253,7 +1527,9 @@ def _application_sources(template: Path) -> dict[str, str]:
             if resources and line.lstrip().startswith("- "):
                 name = line.strip()[2:].split(" #", 1)[0].strip()
                 if ":" in name or Path(name).is_absolute() or ".." in Path(name).parts:
-                    raise ValueError("Only local application template resources are supported")
+                    raise ValueError(
+                        "Only local application template resources are supported"
+                    )
                 include(path.parent / name)
 
     include(template / "base")
@@ -1272,23 +1548,30 @@ def render_artifacts(cfg: dict, namespace: str = "afterglow") -> dict[str, str]:
     artifacts = _application_sources(template)
     secret = render_secret(cfg, namespace)
     grafana = render_grafana_deployment(cfg, namespace)
-    artifacts.update({
-        "secret.yaml": secret,
-        "configmap.yaml": render_configmap(cfg, namespace),
-        "ingress.yaml": render_ingress(cfg, namespace),
-        "grafana-deployment.yaml": grafana,
-        "monitoring/grafana/deployment.yaml": grafana,
-        "middleware.yaml": (template / "middleware.yaml").read_text(encoding="utf-8"),
-        "base/namespace.yaml": f"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: {namespace}\n",
-        "kustomization.yaml": (
-            "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
-            f"namespace: {namespace}\nresources:\n"
-            "  - base\n  - secret.yaml\n  - configmap.yaml\n"
-            "  - ingress.yaml\n  - middleware.yaml\n  - monitoring\n"
-        ),
-    })
+    artifacts.update(
+        {
+            "secret.yaml": secret,
+            "configmap.yaml": render_configmap(cfg, namespace),
+            "ingress.yaml": render_ingress(cfg, namespace),
+            "grafana-deployment.yaml": grafana,
+            "monitoring/grafana/deployment.yaml": grafana,
+            "middleware.yaml": (template / "middleware.yaml").read_text(
+                encoding="utf-8"
+            ),
+            "base/namespace.yaml": f"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: {namespace}\n",
+            "kustomization.yaml": (
+                "apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\n"
+                f"namespace: {namespace}\nresources:\n"
+                "  - base\n  - secret.yaml\n  - configmap.yaml\n"
+                "  - ingress.yaml\n  - middleware.yaml\n  - monitoring\n"
+            ),
+        }
+    )
     # Explicit env lists in both workloads must consume the dynamic registry keys.
-    auth_keys = [f"AUTH__PROVIDERS__{key.upper()}__CLIENT_SECRET" for key in _auth_config(cfg).get("providers", {})]
+    auth_keys = [
+        f"AUTH__PROVIDERS__{key.upper()}__CLIENT_SECRET"
+        for key in _auth_config(cfg).get("providers", {})
+    ]
     if auth_keys:
         artifacts["kustomization.yaml"] += "patches:\n"
         for workload in ("backend", "notion-worker"):
@@ -1297,17 +1580,28 @@ def render_artifacts(cfg: dict, namespace: str = "afterglow") -> dict[str, str]:
                 f"  - path: {path}\n    target:\n      kind: Deployment\n      name: {workload}\n"
             )
             lines = [
-                "apiVersion: apps/v1", "kind: Deployment", "metadata:", f"  name: {workload}",
-                "spec:", "  template:", "    spec:", "      containers:",
-                f"        - name: {workload}", "          env:",
+                "apiVersion: apps/v1",
+                "kind: Deployment",
+                "metadata:",
+                f"  name: {workload}",
+                "spec:",
+                "  template:",
+                "    spec:",
+                "      containers:",
+                f"        - name: {workload}",
+                "          env:",
             ]
             for key in auth_keys:
-                lines.extend((
-                    f"            - name: {key}", "              valueFrom:",
-                    "                secretKeyRef:", "                  name: afterglow-secrets",
-                    f"                  key: {key}",
-                    "                  optional: true",
-                ))
+                lines.extend(
+                    (
+                        f"            - name: {key}",
+                        "              valueFrom:",
+                        "                secretKeyRef:",
+                        "                  name: afterglow-secrets",
+                        f"                  key: {key}",
+                        "                  optional: true",
+                    )
+                )
             artifacts[path] = "\n".join(lines) + "\n"
     return artifacts
 
@@ -1369,7 +1663,11 @@ def main() -> None:
             print(render_ingress(cfg, args.namespace))
             return
         contents = {output_dir / name: content for name, content in artifacts.items()}
-        sources = [config_path, *config_override_paths(config_path), *args.override_paths]
+        sources = [
+            config_path,
+            *config_override_paths(config_path),
+            *args.override_paths,
+        ]
         if {path.resolve() for path in sources} & {path.resolve() for path in contents}:
             raise ValueError("Configuration inputs and artifact paths must be distinct")
         if not config_path.exists():
@@ -1377,9 +1675,14 @@ def main() -> None:
         write_files(contents)
     except (OSError, ValueError):
         # Parser exceptions can contain the input literal; never echo it.
-        print("Generation failed; check configuration and output permissions. No secrets displayed.", file=sys.stderr)
+        print(
+            "Generation failed; check configuration and output permissions. No secrets displayed.",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    print(f"Generated Kubernetes application artifacts in {output_dir}. No cluster changes performed.")
+    print(
+        f"Generated Kubernetes application artifacts in {output_dir}. No cluster changes performed."
+    )
 
 
 if __name__ == "__main__":

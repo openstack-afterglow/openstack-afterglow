@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "Registreringspolicy",
 	"settings.tab.quotas": "Standardkvoter",
 	"settings.tab.requests": "Registreringsforespørsler",
+	"settings.tab.email": "E-post",
 	"settings.destinations": "Oppgaver for generelle innstillinger",
 	"settings.draftHelp": "Bytte av fane beholder endringer uten å lagre automatisk. Registreringspolicy og standardkvoter lagres sammen; se gjennom begge fanene før du lagrer.",
 	"branding.installationIdentity": "Denne installasjonen heter {name}. Afterglow er produktet bak konsollen; angi innloggingslogoene separat nedenfor.",

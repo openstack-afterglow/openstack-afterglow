@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
-	import { citationDomain, citationLabel, type Citation } from '$lib/api/chatCitations';
+	import { citationHref, citationLabel, citationSourceLabel, type Citation } from '$lib/api/chatCitations';
 	import { t } from '$lib/i18n/ns/chat-panel';
 
 	interface Props {
@@ -21,13 +21,14 @@
 			{:else}
 				<ol class="mt-4 divide-y divide-line">
 					{#each citations as c, i (`${c.source_kind}:${c.url ?? c.document_index}:${i}`)}
+						{@const href = citationHref(c)}
 						<li class="py-4">
 							<div class="mb-2 flex items-center gap-2 text-xs text-ink-2">
 								<span class="font-mono tabular-nums">{i + 1}</span>
-								<span>{citationDomain(c.url)}</span>
+								<span>{citationSourceLabel(c)}</span>
 							</div>
-							{#if c.url}
-								<a class="source-link" href={c.url} target="_blank" rel="noopener noreferrer nofollow">
+							{#if href}
+								<a class="source-link" {href} target={href.startsWith('/lumen/sources/') ? undefined : '_blank'} rel="noopener noreferrer nofollow">
 									<span class="text-sm font-medium leading-relaxed">{citationLabel(c)}</span>
 									<span class="mt-1 block break-all text-xs font-normal text-ink-2">{c.url}</span>
 								</a>

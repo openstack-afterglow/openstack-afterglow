@@ -13,7 +13,30 @@ nav_order: 20
 
 관리자 사용자 수정의 난수 비밀번호·등록 메일 전송은 `POST /api/v1/admin/users/{user_id}/password/reset-email`입니다. Fresh system-admin·원 executor·활성 exact 사용자/home·유일한 현재 메일·검증 STARTTLS·회수 store를 확인하고32자 난수를 native setter에 한 번 적용합니다. 성공/메일 실패/회수 실패/감사 실패/결과 불명을 구분하며 비밀번호를 응답·로그·감사에 남기지 않습니다. 상세 strict 본문·응답·운영 위험은 [Profile API의 관리자 재설정](profile.md#관리자-난수-비밀번호-재설정등록-메일-전송)을 따릅니다. 공개 분실 요청만으로 이 관리자 동작을 실행하지 않습니다.
 
-Federated 계정의 local password marker가 정확히 `afterglow_local_password=true`가 아니면 `409 admin_password_reset_external_account`로 사전 거부합니다. Stock Keystone으로 shadow 사용자와 구분할 수 없는 marker 없는 legacy 연결 계정도 포함하며 native 쓰기·메일·세션 회수는 하지 않습니다. 최초 local password 생성은 별도 native workflow의 승인·qualification이 필요합니다.
+SSO 계정도 native `first-password-galera-v2`의 actual credential state/revision에 따라 최초 생성·기존 초기화가 가능합니다. 기존 UUID/home/federation을 유지하며 metadata marker는 유무 판단의 권위가 아닙니다. Native 확장·snapshot 불가나 미정산 최초 생성만 `409 admin_password_reset_external_account`로 native 쓰기·메일·세션 회수·cooldown 전에 거부합니다. 운영 활성화에는 matching native 확장·기존103/schema qualification이 필요합니다.
+
+## 웹 이메일 설정·발송·수신 확인
+
+관리자 페이지 **설정 → 이메일**(`/admin/settings?tab=email`)에서 다음 기능을 사용합니다. 모두 fresh system-admin, private/no-store이며 SMTP 비밀번호·IMAP 비밀번호·본문 암호문은 응답/로그에 노출하지 않습니다. 파일값은 초기 기본값이고 DB override를 저장하면 기존 복구/가입/초대/관리자 password 메일에도 즉시 적용합니다. 기존 원본 config 파일은 수정하지 않습니다.
+
+| 메서드·경로 (`/api/v1/admin` 기준) | 본문/의미 |
+| --- | --- |
+| `GET /email/settings` | `{revision,source,smtp,imap,notifications}`; secret 대신 `password_configured` |
+| `PUT /email/settings` | 현재 `revision`과 SMTP/IMAP/notification 전체 draft 저장; secret 생략=보존, `password`=교체, `clear_password:true`=삭제 |
+| `DELETE /email/settings?revision=N` | 파일 기본값 복원; revision tombstone은 증가해 과거 draft 재사용 차단 |
+| `POST /email/connection-check` | `{}`; 저장된 SMTP/IMAP 연결·인증/readonly mailbox 검사. 미저장 draft나 실제 메일 발송 아님 |
+| `POST /email/test-message` | `{operation_id:UUID,recipient_email}`; 명시적 관리자 테스트 주소로 durable intent202 |
+| `POST /email/receipt-check` | `{delivery_id:UUID}`; test delivery의 exact Message-ID를 현재 IMAP 지정 수신함에서 readonly 확인 |
+| `POST /email/messages` | `{operation_id:UUID,user_ids:[Keystone ID…],subject,body}`; 1–100개 선택 사용자 ID(`A-Za-z0-9_.-`, 1–64자)의 현재 유일한 등록 메일로만 발송. UUID 표현은 중복 제거하고64자 federated ID 등 다른 native ID는 원문 보존 |
+| `GET /email/deliveries?limit=50&offset=0` | `{items,total}`; limit1–200, per-recipient 상태·safe code·Message-ID·시각. 본문/암호문 제외 |
+| `GET /email/deliveries/{id}` | 단일 delivery 상태 |
+| `POST /announcements/{id}/email` | `{operation_id:UUID}`; 기존 공지의 현재 적격 audience에 명시적 메일 intent202 |
+
+SMTP는 enabled/host/port/username/password/from_address/from_name/security/timeout_seconds, IMAP은 enabled/host/port/username/password/security/mailbox/timeout_seconds를 관리합니다. Web save는 TLS/STARTTLS, timeout1–30초와 검증된 인증서를 사용합니다. 기존 secret을 새 host/port/account/security에 유지하려면 `reconfirm_password:true`가 필요합니다. Stale revision은409이며 모르는 DB/암호문 상태를 파일 credential로 우회하지 않습니다. 검사는 저장된 revision을 반환하고 수신 확인은 `confirmed/not_found/disabled/failed/not_sent`를 구분합니다. `confirmed`도 **설정된 IMAP 수신함**에서 관측했다는 뜻이며 다른 수신함·스팸 처리·열람 여부까지 증명하지 않습니다.
+
+발송 subject1–200자/body1–10000자는 일반 텍스트이며 HTML representation은 escape합니다. 개별 사용자 수정의 **이메일 작성**은 현재 등록 주소를 표시하고 user ID만 제출하므로 미저장 프로필 email을 수신자로 사용하지 않습니다. 공지 생성의 `send_email:true`와 `email_operation_id:UUID`는 공지+mail intent를 같은 SQL transaction에 저장합니다. 활성/시작/종료·내용/version·all/project/user 범위를 보존하고 실제 활성 dispatch 경계에서 전체 적격 audience를 해석합니다. 그 전 `audience_pending:true`의 cardinality는 미확인이지0이 아닙니다.
+
+Operation 응답은 `{operation_id,kind,status,audience_pending,counts:{pending,dispatching,accepted,failed,unknown,cancelled}}`입니다. `pending`은 큐 접수, `accepted`는 SMTP 접수, IMAP `confirmed`는 별도 수신함 관측입니다. SMTP disabled 동안 intent가 pending으로 남을 수 있습니다. 같은 actor/operation의 동일 요청은 현재 결과를 재사용하고 다른 내용은409입니다. Dispatch 전 SQL fence를 commit하고 unknown/crash send는 자동 재전송하지 않습니다. UI는 explicit refresh로 per-recipient 결과를 확인하며, 결과 불명인 요청을 새 intent로 다시 보내기 전 실제 SMTP 결과를 조사해야 합니다.
 
 ## 인증 및 권한
 

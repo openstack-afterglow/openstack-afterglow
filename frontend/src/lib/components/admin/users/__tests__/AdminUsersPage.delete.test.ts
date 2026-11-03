@@ -8,7 +8,7 @@ import type { User } from '$lib/types/common';
 const viewport = vi.hoisted(() => ({ desktop: true }));
 vi.mock('svelte/reactivity', async original => ({ ...await original<typeof Reactivity>(), MediaQuery: class { get current() { return viewport.desktop; } } }));
 vi.mock('$lib/stores/auth', () => ({
-  auth: writable({ token: 'admin-token', userId: 'admin', sessionId: 'session-a', identityDomainId: 'accounts-home', domainId: 'working-domain', projectId: 'personal-project', isSystemAdmin: true }),
+  auth: writable({ token: 'admin-token', userId: 'admin', sessionId: 'session-a', identityDomainId: 'accounts-home', domainId: 'working-domain', projectId: 'personal-project', isSystemAdmin: true, roles: [] }),
   authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false),
 }));
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delete: vi.fn(), patch: vi.fn() }));

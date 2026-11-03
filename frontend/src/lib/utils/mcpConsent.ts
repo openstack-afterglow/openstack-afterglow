@@ -1,6 +1,7 @@
 import { isOnboardingToken, takePendingInvitationPath } from './domainLogin';
 import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
+import { safeLumenSourcePath } from './lumenSourceNavigation';
 
 const CONSENT_TICKET_KEY = 'afterglow_mcp_oauth_consent_ticket';
 const TICKET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -9,6 +10,38 @@ const CLAUDE_GATEWAY_CODE_KEY = 'afterglow_claude_gateway_user_code';
 const CLAUDE_GATEWAY_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{4}-?[A-HJ-NP-Z2-9]{4}$/;
 const PASSWORD_CREATE_KEY = 'afterglow_password_create_continuation';
 const PASSWORD_CREATE_TTL = 15 * 60 * 1000;
+const LUMEN_SOURCE_KEY = 'afterglow_lumen_source_continuation';
+const LUMEN_SOURCE_TTL = 15 * 60 * 1000;
+
+export function storeLumenSourceContinuation(path: unknown): boolean {
+	const source = safeLumenSourcePath(path);
+	if (!source) return false;
+	try {
+		const store = storage();
+		if (!store) return false;
+		store.setItem(LUMEN_SOURCE_KEY, JSON.stringify({ path: source, expiresAt: Date.now() + LUMEN_SOURCE_TTL }));
+		return true;
+	} catch { return false; }
+}
+
+function takeLumenSourcePath(consume: boolean): string | null {
+	try {
+		const store = storage();
+		const raw = store?.getItem(LUMEN_SOURCE_KEY);
+		if (!raw) return null;
+		const value = JSON.parse(raw) as Record<string, unknown>;
+		if (!value || typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt) || value.expiresAt <= Date.now() || value.expiresAt > Date.now() + LUMEN_SOURCE_TTL) {
+			store?.removeItem(LUMEN_SOURCE_KEY);
+			return null;
+		}
+		const path = safeLumenSourcePath(value.path);
+		if (consume || !path) store?.removeItem(LUMEN_SOURCE_KEY);
+		return path;
+	} catch {
+		try { storage()?.removeItem(LUMEN_SOURCE_KEY); } catch { /* Storage may be unavailable. */ }
+		return null;
+	}
+}
 
 export function clearPasswordCreateContinuation(): void {
 	try { storage()?.removeItem(PASSWORD_CREATE_KEY); } catch { /* No persisted continuation. */ }
@@ -115,7 +148,10 @@ export function postAuthDestination(fallback: string): string {
 	const passwordCreate = takePasswordCreatePath();
 	if (passwordCreate) return passwordCreate;
 	if (pendingMcpConsentTicket()) return '/oauth/mcp/authorize';
-	return hasPendingClaudeGatewayAuthorization() ? '/oauth/claude/authorize' : fallback;
+	if (hasPendingClaudeGatewayAuthorization()) return '/oauth/claude/authorize';
+	const hasProject = Boolean(get(auth).projectId);
+	const source = takeLumenSourcePath(hasProject);
+	return hasProject ? source ?? fallback : fallback;
 }
 
 /** Call only after publishing an exact fresh login; projectless retains intent. */

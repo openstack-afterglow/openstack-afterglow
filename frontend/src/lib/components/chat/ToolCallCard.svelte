@@ -18,7 +18,7 @@
 	let sawRunning = $state(untrack(() => item.running));
 	$effect(() => { if (item.running) sawRunning = true; });
 	const argsText = $derived(formatToolArgs(item.args));
-	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length));
+	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length) || Boolean(item.progress?.length));
 	const taskName = $derived(taskLabelForTool(item.name));
 	const statusLabel = $derived(item.running ? t('toolCall.running') : item.status === 'failed' ? t('toolCall.failed') : t('toolCall.completed'));
 	const durationLabel = $derived(
@@ -86,8 +86,16 @@
 		{/if}
 	</button>
 
+	{#if item.progress?.length}
+		<p class="progress-text" role={item.running ? 'status' : undefined}>{item.progress[item.progress.length - 1]}</p>
+	{/if}
 	{#if open && hasDetail}
 		<div class="tool-detail">
+			{#if item.progress?.length}
+				<ol class="detail-pre">
+					{#each item.progress as text, index (index)}<li>{text}</li>{/each}
+				</ol>
+			{/if}
 			{#if argsText}
 				<div class="detail-block">
 					<div class="detail-label">{t('toolCall.input')}</div>
@@ -137,6 +145,7 @@
 </div>
 
 <style>
+	.progress-text { margin: 0; padding: 0.25rem 0.6rem 0.6rem; color: var(--color-ink-1); white-space: pre-wrap; overflow-wrap: anywhere; }
 	.tool-card {
 		border: 1px solid var(--color-line);
 		border-radius: 0.6rem;

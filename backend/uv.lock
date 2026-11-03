@@ -11,7 +11,7 @@ resolution-markers = [
 
 [[package]]
 name = "afterglow-api"
-version = "1.32.2"
+version = "1.32.3"
 source = { virtual = "." }
 dependencies = [
     { name = "afterglow-crypto" },
@@ -76,6 +76,7 @@ kvm = [
 worker = [
     { name = "afterglow-crypto" },
     { name = "aiomysql" },
+    { name = "aiosmtplib" },
     { name = "apscheduler" },
     { name = "drover-sdk" },
     { name = "fastapi" },
@@ -86,6 +87,7 @@ worker = [
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "python-keystoneclient" },
     { name = "pyyaml" },
     { name = "redis", extra = ["hiredis"] },
@@ -152,6 +154,7 @@ provides-extras = ["kvm", "dev"]
 worker = [
     { name = "afterglow-crypto", directory = "../services/afterglow-crypto" },
     { name = "aiomysql", specifier = ">=0.2.0" },
+    { name = "aiosmtplib", specifier = ">=3.0.0" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=a18f207a0b297160b22747753e2657a9047e205a" },
     { name = "fastapi", specifier = "==0.136.3" },
@@ -162,6 +165,7 @@ worker = [
     { name = "prometheus-client", specifier = ">=0.20.0" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pydantic-settings", specifier = "==2.14.2" },
+    { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "python-keystoneclient", specifier = "==5.4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "redis", extras = ["hiredis"], specifier = "==5.0.0" },

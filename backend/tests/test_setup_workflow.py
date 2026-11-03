@@ -290,3 +290,39 @@ def test_real_pty_edit_hidden_secret_and_generate_or_cancel(tmp_path, finish):
         except ProcessLookupError:
             pass
         os.waitpid(pid, 0)
+
+
+def test_setup_mail_settings_use_shared_generators_and_private_secret_files(tmp_path):
+    password = tmp_path / "imap-password"
+    password.write_text("synthetic-imap-secret", encoding="utf-8")
+    result = invoke(
+        tmp_path,
+        "--non-interactive",
+        "--target",
+        "both",
+        "--set",
+        'smtp.host="smtp.example.test"',
+        "--set",
+        'smtp.security="tls"',
+        "--set",
+        "smtp.use_ssl=true",
+        "--set",
+        'imap.host="imap.example.test"',
+        "--set",
+        'imap.security="starttls"',
+        "--set-file",
+        f"imap.password={password}",
+    )
+    assert result.returncode == 0, result.stderr
+    artifacts = tmp_path / "generated"
+    configmap = yaml.safe_load((artifacts / "k8s/configmap.yaml").read_text())
+    settings = tomllib.loads(configmap["data"]["afterglow.conf"])
+    assert settings["smtp"]["security"] == "tls" and settings["smtp"]["use_ssl"] is True
+    assert settings["imap"]["security"] == "starttls"
+    assert "synthetic-imap-secret" not in str(configmap)
+    secret = yaml.safe_load((artifacts / "k8s/secret.yaml").read_text())
+    assert secret["stringData"]["IMAP_PASSWORD"] == "synthetic-imap-secret"
+    values = yaml.safe_load((artifacts / "helm/afterglow/values-local.yaml").read_text())
+    assert values["secrets"]["imapPassword"] == "synthetic-imap-secret"
+    assert "synthetic-imap-secret" not in result.stdout + result.stderr
+    assert generation_config.private_setting("imap.password") is True

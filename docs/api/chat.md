@@ -9,9 +9,20 @@ nav_order: 64
 > 태그: `chat`
 > 기본 경로: `/api/v1/chat`
 
-Afterglow 백엔드는 독자적인 AI 모델 실행 엔진, LiteLLM 라우팅, LangGraph/LangChain 에이전트 런타임 및 공급자 API 키를 포함하지 않으며, 외부 **Lumen AI API** 서비스의 인증된 **BFF(Backend-For-Frontend) 프록시** 역할을 수행합니다.
+Afterglow 백엔드는 독자적인 AI 모델·에이전트 실행 엔진 및 공급자 API 키를 포함하지 않으며, 외부 **Lumen AI API** 서비스의 인증된 **BFF(Backend-For-Frontend) 프록시** 역할을 수행합니다. Pi 실행 엔진과 내구성 복구는 Lumen이 소유합니다.
 
 직접적인 OpenAI / Anthropic 호환 API 호스팅은 Lumen 서비스가 전담합니다.
+
+## 출처와 진행 이력 (local source, 2026-11-03)
+
+- `source.registered`는 `message_id`와 canonical citation을, `tool.call.progress`는 `call_id/name/text`를 전달한다. Progress는 최대4,000 Unicode code point이며 canonical tool part에 최근32개 실제 업데이트를 보존한다. `child.created`는 요청 시점 정보일 뿐 현재 실행 단계 추정이 아니며, `child.completed`는 실제 완료/실패/취소·summary·artifact metadata다. 내부 사고과정·성공 예측·가상 백분율을 생성하지 않는다.
+- Citation은 web/document/data_source/tool_result/user_input/asset, 서버 발급 `source_id`, 선택적 `asset_id/observed_at/provenance`를 지원한다. Root별128개 출처와64 call/result 쌍·text/reasoning을 수용하는 canonical258 parts, 사용자 입력32 parts를 구별한다. 실제 조회·입력 자료를 모두 최종 답변의 명시적 인용으로 표시하지 않는다.
+- Native SSE는 선택적 citation range·text metadata, image alt text, audio transcript, structured validation error와 tool progress를 명시적 `null`로 직렬화할 수 있다. Optional null/빈 text는 부재로 정규화하되 필수 text·range 쌍·progress 배열 상한·safe locator 검증은 유지한다. `waiting_children`·`waiting_resource`는 tool name 없는 정식 run stage다.
+- Native paged message 응답은 보이는 whole-run 마지막 assistant에 기록된 model/context/tool/child 실행 이력을 제공한다. 페이지 안의 중간 assistant를 마지막으로 추측하거나 보이지 않는 future/sibling 이력을 붙이지 않으며, 실제 전체 prefix가 남은 소유자 fork는 보존한다.
+- `GET /api/v1/chat/runs/{run_id}/sources/{citation_id}`는 현재 owner/project·native read 권한 아래 저장된 관측만 반환한다. Persistent 출처는 root user와 해당 citation-bearing turn을 보존하는 qualified view, temporary/child 출처는 유효한 root 문맥에 묶인다. 원본 view 삭제 후에도 해당 prefix의 fork가 남으면 유지하며, 마지막 문맥 삭제/만료는410이다. SSE event 삭제가 persistent 근거를 새 조회로 대체하지 않는다.
+- `GET /api/v1/chat/assets/{asset_id}/download-link`는 현재 asset read 권한·소유권·clean 상태를 확인한 뒤 `{url, expires_in}`을 반환한다. 명시 다운로드만 안전한 원래 UTF-8 파일명·MIME의 attachment 응답을 서명하여 교차 출처에서도 저장하도록 하며 provider 입력용 URL의 inline 동작은 바꾸지 않는다. 기존 `/download` 인증 스트리밍은 유지하며 성공·실패 응답은 no-store다. 발급된 bearer 링크는 만료 전까지 사용될 수 있어 세션 변경만으로 즉시 회수되지는 않는다.
+- 복사는 원본 Markdown을 유지하고 같은 user turn으로 접은 중간 assistant 출처도 합친다. 실제 Markdown destination을 비교하므로 URL prefix나 code sample 때문에 다른 출처를 누락하지 않는다. 같은 외부 URL의 서로 다른 datasource observation ID도 합치지 않는다. 절대 출처 origin은 admission 때 고정한 `frontend_base_url`뿐이며 업로드 파일만 `source://assets/{asset_id}` fallback을 쓴다. OAuth/Swift/signed credential query·fragment는 저장/추가할 출처 URL이 아니고 일반 anchor/search 값은 유지한다. 운영 RGW 외부 DNS/TLS·서명·CORS/다운로드·만료 수용은 별도다.
+
 
 > **활성화 조건:** `afterglow.conf [services] chat = true` 및 `[services] lumen_internal_url` (또는 Keystone 서비스 카탈로그).
 > 비활성화 상태에서는 `/api/v1/chat` 라우터가 마운트되지 않습니다.

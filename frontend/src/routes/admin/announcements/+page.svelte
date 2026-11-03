@@ -1,7 +1,12 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { onDestroy, onMount } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { onDestroy } from 'svelte';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { createEmailOwner } from '$lib/utils/emailOwner';
+	import { t as tm } from '$lib/i18n/ns/admin-email';
+	import AnnouncementEmailAction from '$lib/components/admin/AnnouncementEmailAction.svelte';
+	import MailOperationResult from '$lib/components/admin/MailOperationResult.svelte';
 	import { createAdminAnnouncementsController } from '$lib/stores/adminAnnouncementsController.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -22,22 +27,21 @@
 	const FALLBACK_SEVERITIES: AnnouncementSeverity[] = ['info', 'warning', 'danger'];
 	const FALLBACK_TARGET_TYPES: AnnouncementTargetType[] = ['all', 'project', 'user'];
 
+	let ownerEpoch = $state(0);
+	let mailBusy = $state(false);
+	let sendEmail = $state(false);
+	let emailAttempt = $state('');
+	let emailUnknown = $state(false);
+	const unavailable = $derived(!$auth.token || !$authReady || !$auth.isSystemAdmin || $logoutInProgress || $projectSwitching);
 	const ctrl = createAdminAnnouncementsController({
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
+		ownerKey: () => sessionScopeKey($auth),
+		ownerEpoch: () => ownerEpoch,
+		allowed: () => !unavailable,
 	});
+	const mutationBusy = $derived(ctrl.creating || ctrl.deleting || ctrl.togglingId !== null || mailBusy || unavailable);
 
-	onMount(() => {
-		void ctrl.load();
-		void ctrl.loadOptions();
-		let key = '';
-		return auth.subscribe(state => {
-			const next = JSON.stringify(state);
-			if (key === next) return;
-			key = next; form.target_id = ''; ctrl.selectDomain('');
-			if (state.token && state.isSystemAdmin) void ctrl.loadDomains();
-		});
-	});
 
 	let form = $state({
 		title: '',
@@ -47,6 +51,10 @@
 		target_id: '',
 		starts_at: '',
 		ends_at: '',
+	});
+	const owner = createEmailOwner(() => {
+		ownerEpoch++; ctrl.invalidateOwner(); resetForm(); mailBusy = false; sendEmail = false; emailAttempt = ''; emailUnknown = false;
+		if (owner.capture()) { void ctrl.load(); void ctrl.loadOptions(); void ctrl.loadDomains(); }
 	});
 	onDestroy(ctrl.dispose);
 	const targetOptions = $derived(
@@ -62,6 +70,7 @@
 
 	function resetForm() {
 		form = { title: '', body: '', severity: 'info', target_type: 'all', target_id: '', starts_at: '', ends_at: '' };
+		sendEmail = false;
 	}
 
 	function onTargetTypeChange() {
@@ -70,6 +79,8 @@
 	}
 
 	async function handleCreate() {
+		if (mutationBusy || emailUnknown) return;
+		const scope = owner.capture(); if (!scope) return;
 		ctrl.createError = '';
 		if (!form.title.trim() || !form.body.trim()) {
 			ctrl.createError = t('announcements.validation.titleBodyRequired');
@@ -79,7 +90,10 @@
 			ctrl.createError = t('announcements.validation.targetRequired');
 			return;
 		}
-		const ok = await ctrl.create({
+		const requestedEmail = sendEmail;
+		const operationId = requestedEmail ? crypto.randomUUID() : '';
+		if (requestedEmail) emailAttempt = operationId;
+		const result = await ctrl.create({
 			title: form.title,
 			body: form.body,
 			severity: form.severity,
@@ -87,20 +101,28 @@
 			target_id: form.target_type === 'all' ? null : form.target_id,
 			starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
 			ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
+			send_email: requestedEmail,
+			...(requestedEmail ? { email_operation_id: operationId } : {}),
 		});
-		if (ok) {
+		if (!scope.current()) return;
+		emailUnknown = result.status === 'indeterminate';
+		if (result.status === 'invalid' || result.status === 'rejected') emailAttempt = '';
+		if (result.status === 'ok') {
 			resetForm();
 			toast.success(t('announcements.toast.sent'));
 		}
 	}
 
 	async function handleToggleActive(a: AnnouncementAdmin) {
+		if (mutationBusy) return;
 		await ctrl.toggleActive(a);
 	}
 
 	async function handleDelete(a: AnnouncementAdmin) {
+		if (mutationBusy) return;
+		const scope = owner.capture(); if (!scope) return;
 		const confirmed = await confirmDialog(t('announcements.deleteDialog.body', { title: a.title }));
-		if (!confirmed) return;
+		if (!confirmed || !scope.current() || mutationBusy) return;
 		ctrl.deleteTarget = a;
 		await ctrl.confirmDelete();
 		if (ctrl.deleteError) toast.error(ctrl.deleteError);
@@ -149,6 +171,10 @@
 		{#if ctrl.createError}
 			<Alert tone="danger" class="mb-4">{ctrl.createError}</Alert>
 		{/if}
+		{#if emailUnknown}<Alert tone="warning" class="mb-4">{tm('unknown')}</Alert>{/if}
+		{#if emailAttempt && !ctrl.emailOperation}<p class="mb-3 text-sm font-mono [overflow-wrap:anywhere]">{tm('operation', { id: emailAttempt })}</p>{/if}
+		{#if ctrl.emailOperation}<MailOperationResult operation={ctrl.emailOperation} />{/if}
+		<fieldset disabled={mutationBusy || emailUnknown} class="min-w-0">
 		<div class="space-y-4">
 			<div>
 				<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="announcement-title">{t('announcements.form.titleLabel')}</label>
@@ -246,12 +272,15 @@
 					/>
 				</div>
 			</div>
+			<label class="flex min-h-11 items-center gap-3 text-sm text-ink-1"><input id="announcement-send-email" type="checkbox" bind:checked={sendEmail} />{tm('sendWithAnnouncement')}</label>
+			<p class="text-sm text-ink-2">{tm('schedule')}</p>
 		</div>
 		<div class="flex justify-end mt-5">
-			<Button variant="accent" disabled={ctrl.creating} ariaBusy={ctrl.creating} onclick={handleCreate}>
+			<Button variant="accent" disabled={mutationBusy || emailUnknown} ariaBusy={ctrl.creating} onclick={handleCreate}>
 				{#if ctrl.creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
 			</Button>
 		</div>
+		</fieldset>
 	</Card>
 
 	<Card padding="lg">
@@ -279,11 +308,12 @@
 							{#snippet actions()}
 								<button
 									onclick={() => handleToggleActive(a)}
-									disabled={ctrl.togglingId === a.id}
+									disabled={mutationBusy}
 									class="rounded border px-3 py-2 text-xs transition-colors disabled:opacity-40"
 									style={activeStyle(a.is_active)}
 								>{a.is_active ? t('announcements.status.active') : t('announcements.status.inactive')}</button>
-								<Button variant="danger" size="sm" onclick={() => handleDelete(a)}>{t('announcements.actions.delete')}</Button>
+								<Button variant="danger" size="sm" disabled={mutationBusy} onclick={() => handleDelete(a)}>{t('announcements.actions.delete')}</Button>
+								<AnnouncementEmailAction announcement={a} disabled={mutationBusy} onbusy={(value) => { mailBusy = value; }} />
 							{/snippet}
 						</CompactResourceCard>
 					{/each}
@@ -313,16 +343,18 @@
 								<td class="py-2.5 pr-4">
 									<button
 										onclick={() => handleToggleActive(a)}
-										disabled={ctrl.togglingId === a.id}
+										disabled={mutationBusy}
 										class="px-2 py-0.5 rounded text-xs border transition-colors disabled:opacity-40"
 										style={activeStyle(a.is_active)}
 									>{a.is_active ? t('announcements.status.active') : t('announcements.status.inactive')}</button>
 								</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-2)] whitespace-nowrap">{a.created_by_username}</td>
 								<td class="py-2.5">
+									<AnnouncementEmailAction announcement={a} disabled={mutationBusy} onbusy={(value) => { mailBusy = value; }} />
 									<button
 										onclick={() => handleDelete(a)}
 										aria-label={t('announcements.actions.delete')}
+										disabled={mutationBusy}
 										class="p-1.5 text-[var(--color-ink-3)] hover:text-[var(--color-state-danger)] transition-colors rounded-md hover:bg-[var(--color-surface-sunken)]"
 									>
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>

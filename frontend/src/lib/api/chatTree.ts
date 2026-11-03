@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/chat-panel';
 import type { ModelCapabilities } from './chatContracts';
+import { aggregateCitations } from './chatCitations';
 import {
 	mergeToolActivity,
 	parseAssistantToolCalls,
@@ -129,7 +130,7 @@ export function projectMessagesForDisplay(path: readonly ChatMessage[]): ChatMes
 			projected.push(...segment);
 		} else {
 			const finalAssistant = assistants[assistants.length - 1];
-			projected.push({ ...finalAssistant, tool_items: tools });
+			projected.push({ ...finalAssistant, tool_items: tools, citations: aggregateCitations(assistants) });
 		}
 		segment = [];
 	};

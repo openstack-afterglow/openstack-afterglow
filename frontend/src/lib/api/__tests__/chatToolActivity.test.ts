@@ -103,3 +103,11 @@ describe('formatToolArgs', () => {
 		expect(formatToolArgs('not json')).toBe('not json');
 	});
 });
+
+it('restores canonical tool progress after event retention and preserves it through its result', () => {
+	const items = toolActivityFromCanonicalParts([
+		{ type: 'tool_call', call_id: 't1', name: 'read', arguments: {}, status: 'completed', progress: ['Read first page', 'Read second page'] },
+		{ type: 'tool_result', call_id: 't1', name: 'read', content: [{ type: 'text', text: 'Result' }], is_error: false }
+	]);
+	expect(items).toEqual([expect.objectContaining({ id: 't1', running: false, progress: ['Read first page', 'Read second page'], result: 'Result' })]);
+});

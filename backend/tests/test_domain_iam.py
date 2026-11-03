@@ -328,6 +328,19 @@ def directory(monkeypatch):
         state.sent.append(message)
         return {}, "accepted"
 
+    class SMTP:
+        def __init__(self, **kwargs):
+            pass
+
+        async def connect(self):
+            pass
+
+        async def send_message(self, message, **kwargs):
+            return await smtp_send(message, **kwargs)
+
+        def close(self):
+            pass
+
     state.quota_limits = {}
     state.quota_writes = []
 
@@ -361,7 +374,7 @@ def directory(monkeypatch):
     monkeypatch.setattr(project_service.cache, "invalidate", AsyncMock())
     monkeypatch.setattr(project_service.activity, "record", AsyncMock())
     monkeypatch.setattr(domain_auth, "get_policy", get_policy)
-    monkeypatch.setattr("aiosmtplib.send", smtp_send)
+    monkeypatch.setattr("aiosmtplib.SMTP", SMTP)
     # Role/member authority uses actual Default native grants above. Projection
     # provider operations are exercised in test_domain_projects, not SMTP tests.
     monkeypatch.setattr(domain_projects, "sync_manager_access", AsyncMock())

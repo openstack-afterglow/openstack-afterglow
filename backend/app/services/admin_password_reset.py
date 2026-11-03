@@ -13,9 +13,9 @@ import secrets
 import string
 from datetime import UTC, datetime
 from email.message import EmailMessage
+from email.utils import formataddr
 from urllib.parse import quote
 
-import aiosmtplib
 from fastapi import HTTPException
 from sqlalchemy import update
 
@@ -23,12 +23,15 @@ from app.config import get_settings
 from app.models.account_recovery import AccountRecovery
 from app.models.activity import ActivityLog
 from app.services import (
+    account_recovery,
     domain_auth,
     domain_iam,
     domain_projects,
     domain_scope,
+    email_service,
     identity_roles,
     keystone,
+    mail_settings,
     project_service,
     session_store,
 )
@@ -60,12 +63,6 @@ async def _subject(user_id, ks, catalog):
         raise _error(503, "identity_unavailable")
     if _field(user, "enabled") is not True or _field(user, "name") == get_settings().os_username:
         raise _error(403, "subject_ineligible")
-    # Stock Keystone cannot add the first local password to a federated shadow
-    # user: its password setter inserts local_user with a NULL name and returns
-    # 500 after a rolled-back transaction. Refuse before the fence, native write
-    # and session revocation; only an explicit local-password marker qualifies.
-    if _field(user, "federated") and _field(user, "afterglow_local_password") is not True:
-        raise _error(409, "external_account")
     domain = await _provider_call(ks.domains.get, home)
     if _field(domain, "id") != home:
         raise _error(503, "identity_unavailable")
@@ -113,28 +110,24 @@ async def _subject(user_id, ks, catalog):
 
 async def _smtp_ready():
     settings = get_settings()
+    try:
+        smtp = (await mail_settings.effective_settings(base_settings=settings)).smtp
+    except HTTPException:
+        raise _error(503, "email_unavailable") from None
     if not (
-        settings.smtp_enabled
-        and settings.smtp_host
-        and settings.smtp_from_address
+        smtp.enabled
+        and smtp.host
+        and smtp.from_address
         and settings.frontend_base_url
-        and settings.smtp_use_tls is True
+        and smtp.security in {"starttls", "tls"}
     ):
         raise _error(503, "email_unavailable")
-    # Preserve the configured SMTP timeout/auth, but credential-bearing mail
-    # requires verified STARTTLS even if ordinary notification mail allows less.
-    client = aiosmtplib.SMTP(
-        hostname=settings.smtp_host,
-        port=settings.smtp_port,
-        username=settings.smtp_username or None,
-        password=settings.smtp_password or None,
-        use_tls=False,
-        start_tls=settings.smtp_use_tls,
-        validate_certs=True,
-        timeout=settings.smtp_timeout_seconds,
-    )
+    # Bind this native mutation to the exact TLS-verified preflight transport.
+    client = email_service.smtp_client(smtp)
+    client._afterglow_smtp = smtp
     try:
-        await client.connect()  # Includes configured TLS negotiation and login.
+        async with asyncio.timeout(smtp.timeout_seconds):
+            await client.connect()
     except Exception:
         client.close()
         raise _error(503, "email_unavailable") from None
@@ -170,16 +163,20 @@ def _native_update(credential, user_id, password):
 
 async def _deliver(client, user, email, password):
     settings = get_settings()
+    smtp = client._afterglow_smtp
     login_url = settings.frontend_base_url.rstrip("/") + "/login"
     username = _field(user, "name", "")
     advice = (
-        "Your administrator changed your account password. Sign in and change it immediately in your profile. "
+        "Your administrator created a local password if none existed, or replaced the existing password. "
+        "For SSO accounts, a local password can bypass the IdP's MFA and allow sign-in after the IdP account is disabled. "
+        "The password remains in this mailbox and is exposed to anyone with mailbox access. "
+        "Sign in and change it immediately in your profile. "
         "Afterglow does not force a first-login expiry; native password policy still applies. "
         "If this was unexpected, contact your administrator immediately."
     )
     message = EmailMessage()
     message["Subject"] = "Account password reset"
-    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_address}>"
+    message["From"] = formataddr((smtp.from_name, smtp.from_address))
     message["To"] = email
     message.set_content(f"{advice}\n\nUsername: {username}\nPassword: {password}\nConsole login: {login_url}\n")
     message.add_alternative(
@@ -189,7 +186,8 @@ async def _deliver(client, user, email, password):
         subtype="html",
     )
     try:
-        refused, _ = await client.send_message(message, recipients=[email], sender=settings.smtp_from_address)
+        async with asyncio.timeout(smtp.timeout_seconds):
+            refused, _ = await client.send_message(message, recipients=[email], sender=smtp.from_address)
         return not refused
     except Exception:
         # SMTP diagnostics can echo DATA. Never log or chain the exception.
@@ -278,21 +276,44 @@ async def reset_password_email(user_id, actor, conn, session):
             credential = getattr(conn, "_afterglow_token", None)
             if not isinstance(credential, str) or not credential:
                 raise _error(503, "authority_unavailable")
+            external = account_recovery._external_credential(user)
+            native_identity = None
+            if external:
+                if await account_recovery._creation_unsettled(user_id, session):
+                    raise _error(409, "external_account")
+                try:
+                    credential = await account_recovery._initial_support(ks)
+                    native_identity = await account_recovery._initial_identity(credential, user)
+                except HTTPException:
+                    # Unsupported or unprovable external state is a pre-dispatch
+                    # refusal, not an ambiguous password write.
+                    raise _error(409, "external_account") from None
             await identity_roles._session_ready({user_id})
             client = await _smtp_ready()
-            redis = await session_store._get_redis()
-            subject_key = hashlib.sha256(f"{get_settings().os_auth_url.rstrip('/')}\0{user_id}".encode()).hexdigest()
-            if not await redis.set("afterglow:admin-password-reset:" + subject_key, "1", nx=True, ex=_COOLDOWN_SECONDS):
-                raise _error(429, "rate_limited")
             await lease.assert_owned()
             current, current_email = await _subject(user_id, ks, catalog)
             if (
                 _field(current, "domain_id") != _field(user, "domain_id")
                 or _field(current, "email") != _field(user, "email")
                 or current_email != email
+                or account_recovery._external_credential(current) != external
             ):
                 raise _error(409, "identity_changed")
             user = current
+            if external:
+                try:
+                    current_identity = await account_recovery._initial_identity(credential, user)
+                except HTTPException:
+                    raise _error(409, "external_account") from None
+                if any(
+                    current_identity[key] != native_identity[key]
+                    for key in ("id", "domain_id", "email", "identity_revision", "password_state")
+                ):
+                    raise _error(409, "identity_changed")
+            redis = await session_store._get_redis()
+            subject_key = hashlib.sha256(f"{get_settings().os_auth_url.rstrip('/')}\0{user_id}".encode()).hexdigest()
+            if not await redis.set("afterglow:admin-password-reset:" + subject_key, "1", nx=True, ex=_COOLDOWN_SECONDS):
+                raise _error(429, "rate_limited")
             await lease.assert_owned()
             password = _random_password()
             try:
@@ -303,22 +324,46 @@ async def reset_password_email(user_id, actor, conn, session):
             await lease.assert_owned()
             status, payload = None, None
             try:
-                status, payload = await asyncio.to_thread(_native_update, credential, user_id, password)
+                if external:
+                    operation = (
+                        "initial-password" if native_identity["password_state"] == "absent" else "password-reset"
+                    )
+                    status, payload = await asyncio.to_thread(
+                        account_recovery._initial_request,
+                        credential,
+                        "POST",
+                        f"users/{quote(user_id, safe='')}/OS-AFTERGLOW/{operation}",
+                        body={
+                            "user": {
+                                "password": password,
+                                "domain_id": native_identity["domain_id"],
+                                "email": native_identity["email"],
+                                "identity_revision": native_identity["identity_revision"],
+                            }
+                        },
+                    )
+                else:
+                    status, payload = await asyncio.to_thread(_native_update, credential, user_id, password)
             except Exception:
                 pass
-            if status in {400, 401, 403, 404, 409, 422}:
+            rejected = {409, 412, 422} if external else {400, 401, 403, 404, 409, 412, 422}
+            if status in rejected:
                 recorded = await _audit(session, audit, "rejected", changed=False)
                 if not recorded:
                     raise _error(503, "audit_failed", changed=False, delivered=False)
                 raise _error(status, "native_rejected", changed=False, delivered=False)
             result = payload.get("user") if isinstance(payload, dict) else None
             known = (
-                status == 200
-                and isinstance(result, dict)
-                and result.get("id") == user_id
-                and result.get("domain_id") == _field(user, "domain_id")
-                and result.get("email") == _field(user, "email")
-                and result.get("afterglow_local_password") is True
+                status == 204
+                if external
+                else (
+                    status == 200
+                    and isinstance(result, dict)
+                    and result.get("id") == user_id
+                    and result.get("domain_id") == _field(user, "domain_id")
+                    and result.get("email") == _field(user, "email")
+                    and result.get("afterglow_local_password") is True
+                )
             )
             delivered = False
             if known:

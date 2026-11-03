@@ -6,6 +6,11 @@
 
 ---
 
+## Lumen portable sources and private downloads
+
+Source details remain owner/project-scoped native reads, not public sharing. Only configured Lumen `frontend_base_url` supplies persisted source origins; Host and forwarded-host never do. Missing configuration must not produce relative/guessed public citations. `source://` is restricted to a registered uploaded asset with an exact matching asset ID. Source-only post-login continuation validates a bounded local path and preserves existing recovery/invitation/OAuth priority; projectless IAM/admin access is not hijacked. Source requests and late download actions retire with identity/project changes while ordinary bearer renewal preserves settled content. Private sources and signed-link responses are no-store in both native service and BFF. Presigned URLs are bearer capabilities until expiration, not continuously revalidated sessions: issue only after an explicit scoped action, do not persist/copy them, and never rewrite their signed host. A copied stable source link requires current authentication; this change grants no anonymous access or automatic MCP consent.
+
+
 ## Dependency 보안 floor
 
 1.30.0 후보의 dependency 보안 갱신은 application policy와 별도다. Vulnerable range를 벗어난 최소 compatible package만 갱신하며 lock을 무시한 설치나 unrelated `--upgrade` 전체 갱신을 하지 않는다.
@@ -64,7 +69,7 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 ### 이메일 소유 기반 복구·프로필 이메일 변경
 
 - Public username/password 요청은 유효한 email이면 계정 부재/중복/부적격·SMTP 비활성/실패·directory/DB/Redis 장애·주소 budget 거부에도 동일202 `{accepted:true}`입니다. Schema/invalid email422 및 IP route-limit429는 별도이며202는 실물 메일 전달 증거가 아닙니다. 주소 budget은 hashed Redis key60초로 종류/IP 사이에 공유합니다.
-- Global unique canonical email과 enabled native user/home만 대상입니다. Password recovery는 로컬/외부/매핑·metadata 유무와 무관하게 actual native existing history와 발급 revision이 필수이며 existing-only transaction으로만 reset합니다. NULL-revision legacy proof는410이고 stock 관리자 PATCH fallback은 없습니다. Native guard 불가는202/no-mail입니다. Metadata 없는 무비밀번호 mapped 계정도 공개 복구로 최초 생성의 새 provider 증명을 우회할 수 없습니다. 사람 system admin/manager는 가능하고 operational/service 계정은 제외합니다. Canonical 정규화는 SMTP parser의 mailbox 재해석을 거부합니다.
+- Global unique canonical email과 enabled native user/home만 대상입니다. Password recovery는 actual native state/revision과 password admission을 검사합니다. `existing`은 existing-only reset, SSO 연결의 `absent`는 `password_create` 메일 proof와 같은 사용자의 새 SSO 로그인으로만 생성합니다. Markerless mapped 프로필은 현재 federated actor를 증명하며 공개 요청은 marker false만으로 SSO를 추정하지 않습니다. 일반 local absent에는 생성 링크를 보내지 않고 unknown/확장 불가는202/no-mail입니다. NULL-revision 기존 proof는410, stock PATCH fallback은 없으며 미정산 생성은 새 발급·기존 reset 완료도 차단합니다. 사람 system admin/manager는 가능하고 operational/service 계정은 제외합니다. Canonical 정규화는 SMTP mailbox 재해석을 거부합니다.
 - Migration097 `account_recoveries`는 SHA-256 token hash·exact user/home/original email·kind/status/expiry만 보존하며 password/평문 token은 저장하지 않습니다. 발급부터1시간·1회용, 전달 완료 `pending`만 redeem합니다. Username GET은 소비하며 password/email-change inspection은 소비하지 않습니다. 매번 현재 identity/email·유일 소유권·eligibility를 다시 검사합니다.
 - 본인 email 변경은 access bearer와 exact home current-password 재인증, global unique 새 주소와 현재 email 정책, 기존 주소의 token/신규 주소 없는 알림 및 신규 주소 proof 전달을 요구합니다. 일반 profile PATCH는 email 변경에409 `email_verification_required`이며 직접 소유권을 바꾸지 않습니다. Manager/system-admin의 별도 관리 경로 권한을 본인 profile 우회로 쓰지 않습니다.
 - Password/email native dispatch 전 SQL에 `dispatching`을 commit하고 다른 pending mutation proof를 supersede합니다. Native 거부·timeout·취소·crash도 replay 불가입니다. 성공/불명확 outcome 모두 captured Afterglow/native sessions 회수를 시도하며 unknown502 `recovery_outcome_unknown`/회수 실패503 `recovery_sessions_failed`를 성공으로 숨기지 않습니다. `dispatching/outcome_unknown/sessions_failed` journal을 보존해 운영자가 exact native 효과와 회수를 조사합니다. Automatic native rollback/reset/replay는 없습니다.
@@ -86,11 +91,19 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 ### 관리자 난수 password·등록 메일 전달 (source-only)
 
 - Fresh system-admin과 원 native executor binding만 exact user의 `/admin/users/{id}/password/reset-email`을 호출합니다. Client는 password·수신 메일·home을 지정하지 않습니다. 같은 graph lease에서 enabled target/home·유일한 현재 canonical mailbox·effective/raw user/group service 역할을 검사하고 SMTP STARTTLS 인증서 검증·연결 및 Redis 회수 store를 먼저 준비합니다. 평문 SMTP는 변경 전 거부합니다.
-- Federated 계정은 `afterglow_local_password=true`가 명시적으로 확인돼야 관리자 reset 대상입니다. Marker 부재/false이면 `409 admin_password_reset_external_account`로 cooldown·감사 fence·native 쓰기·메일·세션 회수 전에 거부합니다. Stock Keystone이 shadow와 구분하지 못하는 marker 없는 legacy 연결 계정도 보수적으로 거부하며 기존 세션/credential proof는 보존합니다. 별도 native 최초 password 생성 workflow를 관리자 setter로 우회하지 않습니다.
-- 암호학적 난수32자를 native 관리자 PATCH로 한 번 쓰며 native 정책/hash/history/회수를 유지합니다. Password는 메일 전송 중 메모리와 native setter에만 제공하고 응답/UI·SQL·감사·로그에 저장하지 않습니다. Native HTTP의 redirect·401 reauthentication·connection/status retry·body logging을 끄며 SMTP 오류는 MIME나 원 exception을 로그로 전달하지 않습니다. 중앙 일반 메일 서비스도 예외 type만 기록합니다.
+- SSO는 marker로 금지하거나 허가하지 않고 native capability와 authoritative state/revision으로 초기 생성·기존 reset을 선택합니다. Native 확장·snapshot 불가 또는 미정산 최초 생성은 `409 admin_password_reset_external_account`로 cooldown·감사 dispatch fence·native 쓰기·메일·세션 회수 전에 거부합니다. Snapshot을 dispatch 전에 재검증하고 native transaction의 exact user/home/email/revision CAS가 ABA·직접 native 경합을 최종 거부합니다. Stock PATCH로 최초 생성을 우회하지 않습니다.
+- 암호학적 난수32자는 일반 local의 native 관리자 PATCH 또는 SSO의 configured nondelegated service credential 조건부 create/reset POST로 한 번 씁니다. Native 정책/hash/history/회수와 원 UUID/home/federation을 보존합니다. Password는 메일 전송 중 메모리와 native setter에만 제공하고 응답/UI·SQL·감사·로그에 저장하지 않습니다. HTTP redirect·재인증·connection/status retry·body logging을 끄고 SMTP 오류는 MIME·원 exception을 전달하지 않습니다. SSO409/412/422만 명시적 pre-write 거절이며 그 외 불명 결과는 회수를 시도하고 재전송하지 않습니다.
 - Native dispatch 전에 이전 pending credential/email proof를 supersede하고 nonsecret AuditLog를 commit합니다. Native 명시 거절·unknown·known changed/mail-failed·sessions-failed·audit-failed를 구분하며 성공/불명 결과 모두 세션/cache 회수를 시도합니다. 결과 불명은 자동 재전송·rollback을 하지 않습니다. 경로3회/분·같은 cloud/user의 관리자 공통300초 cooldown과 UI pending/owner/ABA fence는 identity authority를 대신하지 않습니다.
-- Credential 메일은 mailbox에 실제 password가 남는 보안 tradeoff이며 공개 분실 요청의 기본 경로는 더 안전한 일회용 폼 링크입니다. 관리자 명시 확인에서 위험을 표시하고 즉시 사용자 변경을 권합니다. **강제 첫 로그인 만료/one-time password는 구현하지 않으며** 실제 SMTP 접수는 받은편지함 수신 보장이 아닙니다. 운영 적용과 real mailbox/Keystone qualification은 별도입니다.
+- Credential 메일은 mailbox에 실제 password가 남는 보안 tradeoff이며 공개 분실 요청의 기본 경로는 더 안전한 일회용 폼 링크입니다. 관리자 확인문9locale와 발송 메일은 **password absent면 최초 생성, existing이면 교체**를 설명하고 **SSO local password의 IdP MFA·IdP 계정 비활성화 우회 가능성**을 경고합니다. 확인 전에는 쓰지 않으며 즉시 사용자 변경을 권합니다. 강제 첫 로그인 만료/one-time password는 구현하지 않고 SMTP 접수는 받은편지함 수신 보장이 아닙니다. 운영 적용과 real mailbox/Keystone qualification은 별도입니다.
 
+
+### 웹 SMTP/IMAP·공지/알림 메일
+
+- Transport 저장·진단·테스트·발송 이력은 fresh system-admin 전용이다. RuntimeSetting의 private mail key와 SMTP/IMAP secret은 목적별 AEAD로 암호화하고 읽기는 configured 여부만 반환한다. 송신 내용은 delivery UUID와 결합한 v3 ciphertext이며 raw body·password·SMTP diagnostic을 응답/로그/감사에 남기지 않는다. 기존 root encryption key를 공유하는 API/worker와 backup/rotation 절차가 필요하다. Revision CAS와 reset tombstone, secret 생략/명시 삭제, 새 목적지에 기존 secret 유지 동의를 분리한다.
+- Web save는 TLS/STARTTLS·검증된 인증서·1–30초 timeout만 허용한다. Legacy file의 무인증 plaintext relay는 기존 설정으로 남을 수 있지만 plaintext AUTH는 거부하고 관리자 password 메일은 TLS를 요구한다. IMAP은 지정 mailbox의 readonly EXAMINE·bounded UID SEARCH·HEADER PEEK만 사용한다. 정확한 단일 Message-ID를 대조하고 본문·seen/expunge를 건드리지 않으며 timeout/취소 때 active socket을 닫고 thread를 drain한다. SMTP accepted와 configured-mailbox confirmed는 다른 사실이며 실제 최종 수신자 mailbox와 같다는 설정 검증은 운영자 책임이다.
+- 개별 메일은 user ID의 현재 enabled human/home·유일한 canonical 등록 주소만 사용한다. Service 계정은 제외하고 client의 주소 override를 받지 않는다. 공지는 시작/종료·활성/내용/version·all/project/user의 현재 전체 audience와 dispatch-time 접근을 검사한다. User/home-bound preference와 global gate는 queued 공지/알림에도 재적용하고 explicit direct admin message는 일반 opt-out과 독립이다. 미해석 audience는 cardinality 미확인으로 표시한다.
+- Actor+operation/hash·stable Message-ID·SQL pending→dispatching CAS가 중복 의도/경쟁을 fence한다. SMTP 확정 거절/접수와 unknown을 구분하고 crashed/unknown send는 자동 replay하지 않는다. 이미 진행/접수된 SMTP와 외부 IAM 변경을 하나의 원자 transaction으로 묶거나 메일을 회수하지 못한다. 수신자가 변경·회수됐거나 policy가 꺼지면 아직 pending인 메시지를 cancel한다.
+- 자동 메일은 opt-in의 현재 VM 오류·native quota·usage reminder와 활성화 초 뒤 safe failure event만 대상으로 하며 arbitrary error prose·토큰·브라우저/IAM/read event를 복사하지 않는다. 기존 activity timestamp의 초 정밀도에 구독 경계를 맞춰 같은 초의 새 오류를 버리지 않는다. Persistent marker가 중복을, 유한 cohort 재방문이 늦은 commit/일시 실패 page의 누락·기아를 방지한다. 브라우저 GET/polling 자체는 발송하지 않고 실패한 관측을 healthy/0으로 바꾸지 않는다. SQL105·동일 API/worker cohort·운영 mail/native 권한 수용은 별도 배포 조건이다.
 
 ### 브라우저 access/refresh 복구
 

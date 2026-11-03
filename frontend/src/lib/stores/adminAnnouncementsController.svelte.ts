@@ -3,15 +3,22 @@ import { t } from '$lib/i18n/ns/admin-system';
 import { domainsApi, domainPath } from '$lib/api/domains';
 import type { AdminDomain } from '$lib/api/domains';
 import { t as td } from '$lib/i18n/ns/domain-admin';
+import { mailDispatchFailure } from '$lib/api/email';
+import { t as tm } from '$lib/i18n/ns/admin-email';
+
 import type {
 	AnnouncementAdmin,
 	AnnouncementCreatePayload,
 	AnnouncementOptions,
 } from '$lib/types/announcements';
+export type AnnouncementCreateResult = { status: 'ok' | 'invalid' | 'rejected' | 'indeterminate' };
 
 export interface AdminAnnouncementsControllerOpts {
 	token: () => string | undefined;
 	projectId: () => string | undefined;
+	ownerKey?: () => string;
+	ownerEpoch?: () => number;
+	allowed?: () => boolean;
 }
 
 interface PickerUser {
@@ -51,6 +58,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 
 	let creating = $state(false);
 	let createError = $state('');
+	let emailOperation = $state<AnnouncementAdmin['email_operation']>(null);
 
 	let togglingId = $state<number | null>(null);
 
@@ -60,10 +68,21 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 
 	const tok = opts.token;
 	const pid = opts.projectId;
+	const ownerStamp = () => JSON.stringify([opts.ownerKey?.() ?? tok(), pid(), opts.ownerEpoch?.() ?? 0]);
+	const allowed = () => !disposed && (opts.allowed?.() ?? true);
+
+	function invalidateOwner() {
+		loadGeneration++; domainsGeneration++; usersGeneration++; projectsGeneration++;
+		announcements = []; allUsers = []; allProjects = []; domains = []; domainId = '';
+		loading = false; refreshing = false; domainsLoading = false; usersLoading = false; projectsLoading = false;
+		error = ''; domainsError = ''; usersError = ''; projectsError = ''; createError = '';
+		creating = false; togglingId = null; deleting = false; deleteTarget = null; deleteError = '';
+		emailOperation = null;
+	}
 
 	async function load(owner?: () => boolean) {
-		const generation = ++loadGeneration, token = tok(), projectId = pid();
-		const current = () => !disposed && generation === loadGeneration && token === tok() && projectId === pid();
+		const generation = ++loadGeneration, token = tok(), projectId = pid(), stamp = ownerStamp();
+		const current = () => allowed() && generation === loadGeneration && stamp === ownerStamp();
 		if (!current() || (owner && !owner())) return;
 		if (announcements.length === 0) loading = true;
 		else refreshing = true;
@@ -89,12 +108,12 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 
 	async function loadDomains() {
 		const generation = ++domainsGeneration;
-		const token = tok(), projectId = pid();
+		const token = tok(), projectId = pid(), stamp = ownerStamp();
 		domains = [];
 		domainsLoading = true; domainsError = '';
 		try {
 			const response = await domainsApi.list({ token, projectId });
-			if (!disposed && generation === domainsGeneration && token === tok() && projectId === pid()) domains = response.items;
+			if (allowed() && generation === domainsGeneration && stamp === ownerStamp()) domains = response.items;
 		} catch (e) {
 			if (!disposed && generation === domainsGeneration) domainsError = e instanceof ApiError ? e.message : td('scope.loadFailed');
 		} finally { if (!disposed && generation === domainsGeneration) domainsLoading = false; }
@@ -110,8 +129,8 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 	async function loadUsers() {
 		if (!domainId || usersLoading || disposed) return;
 		const generation = ++usersGeneration;
-		const selectedDomain = domainId, token = tok(), projectId = pid();
-		const owns = () => !disposed && generation === usersGeneration && selectedDomain === domainId && token === tok() && projectId === pid();
+		const selectedDomain = domainId, token = tok(), projectId = pid(), stamp = ownerStamp();
+		const owns = () => allowed() && generation === usersGeneration && selectedDomain === domainId && stamp === ownerStamp();
 		usersLoading = true; usersError = ''; allUsers = [];
 		try {
 			let marker: string | null = null;
@@ -135,8 +154,8 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 
 	async function loadProjects() {
 		if (!domainId || projectsLoading || disposed) return;
-		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = ++projectsGeneration;
-		const owns = () => !disposed && selectedDomain === domainId && generation === projectsGeneration && token === tok() && projectId === pid();
+		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = ++projectsGeneration, stamp = ownerStamp();
+		const owns = () => allowed() && selectedDomain === domainId && generation === projectsGeneration && stamp === ownerStamp();
 		projectsLoading = true; projectsError = ''; allProjects = [];
 		try {
 			const rows = await api.get<PickerProject[]>(domainPath('/api/v1/admin/projects/names', selectedDomain), token, projectId);
@@ -148,59 +167,70 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 		} finally { if (owns()) projectsLoading = false; }
 	}
 
-	async function create(payload: AnnouncementCreatePayload): Promise<boolean> {
-		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = usersGeneration, projectGeneration = projectsGeneration;
-		const owns = () => !disposed && token === tok() && projectId === pid() && selectedDomain === domainId && generation === usersGeneration && projectGeneration === projectsGeneration;
+	async function create(payload: AnnouncementCreatePayload): Promise<AnnouncementCreateResult> {
+		const selectedDomain = domainId, token = tok(), projectId = pid(), generation = usersGeneration, projectGeneration = projectsGeneration, stamp = ownerStamp();
+		const owns = () => allowed() && stamp === ownerStamp() && selectedDomain === domainId && generation === usersGeneration && projectGeneration === projectsGeneration;
+		if (!owns() || creating || deleting || togglingId !== null) return { status: 'invalid' };
 		if ((payload.target_type === 'user' && (!domainId || usersLoading || usersError || !allUsers.some(user => user.id === payload.target_id)))
 			|| (payload.target_type === 'project' && (!domainId || projectsLoading || projectsError || !allProjects.some(project => project.id === payload.target_id && project.domain_id === domainId)))) {
 			createError = td('scope.required');
-			return false;
+			return { status: 'invalid' };
 		}
 		creating = true;
 		createError = '';
 		try {
-			await api.post('/api/v1/admin/announcements', payload, token, projectId);
-			if (!owns()) return false;
+			const created = await api.post<AnnouncementAdmin>('/api/v1/admin/announcements', payload, token, projectId, { cache: 'no-store', replayOnUnauthorized: false });
+			if (owns()) emailOperation = created?.email_operation ?? null;
+			if (!owns()) return { status: 'invalid' };
 			await load(owns);
-			return owns();
+			return { status: owns() ? 'ok' : 'invalid' };
 		} catch (e) {
-			if (owns()) createError = e instanceof ApiError ? e.message : t('announcements.error.createFailed');
-			return false;
+			const failure = mailDispatchFailure(e);
+			if (owns()) createError = `${tm(failure.message)}${failure.code ? ` (${failure.code})` : ''}`;
+			return { status: failure.status };
 		} finally {
 			if (owns()) creating = false;
 		}
 	}
 
 	async function toggleActive(target: AnnouncementAdmin): Promise<void> {
+		if (!allowed() || creating || deleting || togglingId !== null) return;
+		const stamp = ownerStamp(), token = tok(), projectId = pid();
+		const owns = () => allowed() && stamp === ownerStamp();
 		togglingId = target.id;
 		error = '';
 		try {
-			await api.patch(`/api/v1/admin/announcements/${target.id}`, { is_active: !target.is_active }, tok(), pid());
-			await load();
+			await api.patch(`/api/v1/admin/announcements/${target.id}`, { is_active: !target.is_active }, token, projectId, { replayOnUnauthorized: false });
+			if (owns()) await load(owns);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : t('announcements.error.toggleFailed');
+			if (owns()) error = e instanceof ApiError ? e.message : t('announcements.error.toggleFailed');
 		} finally {
-			togglingId = null;
+			if (owns()) togglingId = null;
 		}
 	}
 
 	async function confirmDelete(): Promise<void> {
-		if (!deleteTarget) return;
+		if (!deleteTarget || !allowed() || creating || deleting || togglingId !== null) return;
+		const stamp = ownerStamp(), token = tok(), projectId = pid(), target = deleteTarget;
+		const owns = () => allowed() && stamp === ownerStamp();
 		deleting = true;
 		deleteError = '';
 		try {
-			await api.delete(`/api/v1/admin/announcements/${deleteTarget.id}`, tok(), pid());
+			await api.delete(`/api/v1/admin/announcements/${target.id}`, token, projectId, { replayOnUnauthorized: false });
+			if (!owns()) return;
 			deleteTarget = null;
-			await load();
+			await load(owns);
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : t('announcements.error.deleteFailed');
+			if (owns()) deleteError = e instanceof ApiError ? e.message : t('announcements.error.deleteFailed');
 		} finally {
-			deleting = false;
+			if (owns()) deleting = false;
 		}
 	}
 
 	return {
 		get announcements() { return announcements; },
+		get emailOperation() { return emailOperation; },
+		invalidateOwner,
 		get loading() { return loading; },
 		get refreshing() { return refreshing; },
 		get error() { return error; },

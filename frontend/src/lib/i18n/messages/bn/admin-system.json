@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "নিবন্ধন নীতি",
 	"settings.tab.quotas": "ডিফল্ট কোটা",
 	"settings.tab.requests": "নিবন্ধনের অনুরোধ",
+	"settings.tab.email": "ইমেইল",
 	"settings.destinations": "সাধারণ সেটিংসের কাজ",
 	"settings.draftHelp": "ট্যাব বদলালে সম্পাদনা বজায় থাকে, স্বয়ংক্রিয়ভাবে সংরক্ষণ হয় না। নিবন্ধন নীতি ও ডিফল্ট কোটা একসঙ্গে সংরক্ষিত হয়; সংরক্ষণের আগে উভয় ট্যাবের পরিবর্তন দেখুন।",
 	"branding.installationIdentity": "এই ইনস্টলেশনের নাম {name}। Afterglow এই কনসোলের মূল পণ্য; নিচে আলাদাভাবে সাইন-ইন লোগো ঠিক করুন।",

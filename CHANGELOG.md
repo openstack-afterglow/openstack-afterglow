@@ -7,6 +7,26 @@
 
 ## [Unreleased]
 
+## [1.32.3] - 2026-11-03
+
+현재 완료된 SSO 비밀번호 복구·관리자 웹 이메일·Pi 출처/진행 변경을 통합하는 patch release입니다. 정확한 SHA의 CI 성공 뒤 불변 numeric `1.32.3` tag·GitHub Release·GHCR images/latest·Helm을 발행·검증합니다. SQL105 schema-before-writer·원래 암호화 key·동일 API/worker cohort와 SSO native 확장 및 matching Lumen source/history 선행 조건을 유지하며 운영 Kolla/native/schema/메일 배포는 포함하지 않습니다.
+
+### Fixed
+
+- Native Lumen SSE의 optional null/빈 metadata(citation·image/audio·structured·tool progress)와 child/resource 대기 stage를 정식 계약대로 수용해 정상 스트림이 재접속 후 끊기던 경로를 수정합니다. 필수값·출처 안전성·배열 상한 검증은 유지합니다.
+- 관리자 개별 이메일이 UUID가 아닌64자 federated Keystone 사용자 ID를422로 거부하던 문제를 수정합니다. Native ID 원문·현재 메일 유일성·권위/dispatch fence와 UUID 중복 제거를 유지합니다.
+
+### Changed
+
+- Lumen 대시보드는 실제 model/context 단계·도구 progress·하위 작업 요청/결과와 웹/자료원/도구 결과/입력/파일 출처를 표시합니다. Native paged history와 소유자 fork의 보이는 whole-run 마지막 응답에 이력을 복원하고, user turn으로 접은 중간 출처도 Markdown 복사에 보존합니다. URL prefix/code sample 대신 정확한 Markdown destination을 비교하고 같은 URL의 별도 datasource 관측을 지키며 OAuth/Swift/API-key 서명·bearer 링크를 출처에서 제외합니다. 업로드 파일만 등록된 `source://assets/ID` fallback을 쓰고, 다운로드는 현재 권한으로 임시 서명을 새로 발급합니다. 직접 링크의 로그인 복귀·scope/readiness ABA·만료/거부·no-store 보호를 유지합니다. Frontend asset builder는 architecture-neutral JS/SSR만 native BuildKit platform에서 만들어 ARM host의 x64 Bun emulation crash를 피하고, 실제 runtime/npm 의존성은 각 target architecture에 설치합니다. 로컬 검증이며 운영 배포·RGW 수용은 별도입니다.
+
+- Lumen 출처의 손상된 AES-GCM 태그가 전체 만료 정리를 중단하지 않도록 소유자별 rollback을 유지하고, 명시 삭제는503으로 원자적 거부합니다. 파일 다운로드는 서버가 안전한 UTF-8 원래 이름의 attachment 응답을 서명해 교차 출처에서도 페이지 이탈 없이 저장하며 provider 입력 URL은 바꾸지 않습니다. 하위 작업은 ko/en/ja/zh-CN·390/1280px·두 테마를 추가 검증했고, Pi 데이터가 기록된 뒤 구형 history/SSE reader로 이미지 하향만 하는 rollback은 지원하지 않음을 명시합니다. 로컬 검증이며 운영 반영은 별도입니다.
+
+- SSO 계정도 실제 native credential state/revision에 따라 로컬 비밀번호를 생성·초기화할 수 있습니다. 등록 이메일의 공개/프로필 복구는 기존 비밀번호를 일회용 링크로 초기화하고, 비밀번호가 없는 SSO는 메일 발급 뒤 같은 계정의 새 SSO 로그인을 거쳐 최초 생성합니다. 관리자 난수·등록 메일 action도 marker-only 금지 대신 native 조건부 create/reset을 사용하며 원 UUID/home/federation·권한·메일 유일성·감사·회수·unknown 재전송 금지를 유지합니다. Keystone `first-password-galera-v2` 확장/기존103·native schema가 준비되지 않았거나 미정산 최초 생성이 있으면 쓰기 전에 거부하고9개 언어로 전제를 안내합니다. 운영 배포·native/DB 변경은 포함하지 않습니다.
+
+- 관리자 **설정 → 이메일**에서 SMTP/IMAP 설정 저장·파일 기본값 복원·연결 검사·테스트 발송·readonly 수신 확인을 제공합니다. Secret은 암호화·masked·revision CAS로 관리하고 기존 복구/가입/초대/password 메일에도 적용합니다. 사용자별 등록 주소 메일 작성, 명시적 공지 메일과 현재 audience/예약, global·본인 opt-in의 리소스 오류/quota/사용기간 알림 및 안전한 미래 event 메일을 추가합니다. SQL105 outbox·unique operation/event marker·dispatch fence와 API/worker email-delivery role이 accepted/failed/unknown/cancelled를 구분하며 SMTP 접수와 IMAP 수신 관측을 혼동하거나 불명 send를 자동 재전송하지 않습니다.9locale UI·private/no-store·authority/owner fence를 유지합니다. 기존 master key·105 schema-before-writer·동일 cohort가 필요하고 운영 DB/메일/서비스 반영은 별도입니다.
+- 관리자 난수 비밀번호 확인문9locale와 발송 메일이 최초 생성/기존 교체를 정확히 구분하고 SSO local password의 IdP MFA·계정 비활성화 우회 및 메일함 노출 위험을 명시합니다. 수신 확인은 독립 GreenMail 서버의 검증된 SMTPS/IMAPS에서 exact Message-ID·substring 후보 거부·읽음 상태 보존까지 추가 검증하며 운영 메일 반영을 뜻하지 않습니다.
+
 ## [1.32.2] - 2026-11-02
 
 현재 dev의 완료된 변경을 통합하는 patch release입니다. 정확한 SHA의 CI 성공 뒤 numeric `1.32.2` tag·GitHub Release·GHCR image/alias·Helm을 발행하고 검증합니다. 기존1.32.1 불변 tag와 artifact를 보존하며 운영 Kolla/native/schema 배포는 포함하지 않습니다.

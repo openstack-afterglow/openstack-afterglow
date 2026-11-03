@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "Enrollment policy",
 	"settings.tab.quotas": "Default quotas",
 	"settings.tab.requests": "Signup requests",
+	"settings.tab.email": "Email",
 	"settings.destinations": "General settings tasks",
 	"settings.draftHelp": "Switching tabs keeps edits and never saves automatically. Enrollment policy and default quotas share one save; review changes in both tabs before saving.",
 	"branding.installationIdentity": "The installation is named {name}. Afterglow is the product behind this console; configure the sign-in logos separately below.",

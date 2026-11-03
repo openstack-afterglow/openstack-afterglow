@@ -6,6 +6,7 @@ import type { PublicSiteConfig } from '$lib/types/siteConfig';
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE_SECONDS, isLocale, resolveLocale } from '$lib/i18n/locales';
 import { isDocsPath } from '$lib/docs/paths';
 import { docsLocaleFromUrl } from '$lib/docs/locales';
+import { lumenSourceLoginPath } from '$lib/utils/lumenSourceNavigation';
 import {
 	MOCKUP_COOKIE,
 	MOCKUP_QUERY_KEY,
@@ -250,7 +251,7 @@ const securityHandle: Handle = async ({ event, resolve: resolveEvent }) => {
 	if (!sessionCookie) {
 		return new Response(null, {
 			status: 302,
-			headers: { Location: '/login' },
+			headers: { Location: lumenSourceLoginPath(path) },
 		});
 	}
 

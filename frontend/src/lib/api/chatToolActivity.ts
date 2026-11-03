@@ -9,6 +9,8 @@
  * UI 위험 로직이라 순수 함수로 격리해 단위 테스트한다.
  */
 
+import { isBoundedToolProgress } from './chatProgress';
+
 export interface ToolActivityFile {
 	assetId: string;
 	name: string;
@@ -36,6 +38,8 @@ export interface ToolActivityItem {
 	durationMs?: number | null;
 	/** Durable generated files owned by the current run principal. */
 	files?: ToolActivityFile[];
+	/** Factual server-reported progress, retained when a tool settles. */
+	progress?: string[];
 }
 
 function asArray(value: unknown): unknown[] {
@@ -115,7 +119,8 @@ export function toolActivityFromCanonicalParts(value: unknown): ToolActivityItem
 			} catch {
 				args = null;
 			}
-			items.set(id, { id, name, args, result: null, running: part.status === 'running' || part.status === 'pending' });
+			const progress = asArray(part.progress).filter(isBoundedToolProgress).slice(-32);
+			items.set(id, { id, name, args, result: null, running: part.status === 'running' || part.status === 'pending', ...(part.status === 'failed' || part.status === 'denied' ? { status: 'failed' as const } : {}), ...(progress.length ? { progress } : {}) });
 		} else if (type === 'tool_result') {
 			const resultParts = asArray(part.content);
 			const content = resultParts
@@ -146,6 +151,8 @@ export function toolActivityFromCanonicalParts(value: unknown): ToolActivityItem
 				args: existing?.args ?? null,
 				result: content || null,
 				running: false,
+				...(part.is_error === true || existing?.status === 'failed' ? { status: 'failed' as const } : {}),
+				...(existing?.progress ? { progress: existing.progress } : {}),
 				...(files.length > 0 ? { files } : {})
 			});
 		}

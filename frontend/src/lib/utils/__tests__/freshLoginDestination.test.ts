@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'fresh-token', federated: true, sessionId: 'fresh-session', userId: 'user', identityDomainId: 'home', projectId: null, domainId: 'home' }) }));
 import { auth } from '$lib/stores/auth';
-import { freshLoginDestination, postAuthDestination, storeMcpConsentTicket, pendingMcpConsentTicket, storePasswordCreateContinuation } from '../mcpConsent';
+import { freshLoginDestination, postAuthDestination, storeMcpConsentTicket, pendingMcpConsentTicket, storePasswordCreateContinuation, storeLumenSourceContinuation, clearMcpConsentTicket, beginClaudeGatewayAuthorization, clearClaudeGatewayAuthorization } from '../mcpConsent';
 import { storePendingInvitation, takePendingInvitationPath } from '../domainLogin';
 
 beforeEach(() => {
@@ -66,5 +66,39 @@ describe('fresh established login continuation', () => {
 		sessionStorage.setItem('afterglow_password_create_continuation', value);
 		expect(freshLoginDestination('/dashboard')).toBe('/dashboard');
 		expect(sessionStorage.getItem('afterglow_password_create_continuation')).toBeNull();
+	});
+});
+
+describe('source-only login continuation', () => {
+	const path = '/lumen/sources/runs/run-1/citation-1';
+	it('retains a source through project selection and consumes it exactly once', () => {
+		expect(storeLumenSourceContinuation(path)).toBe(true);
+		expect(freshLoginDestination('/select-project')).toBe('/select-project');
+		auth.update(state => ({ ...state, projectId: 'selected-project' }));
+		expect(postAuthDestination('/dashboard')).toBe(path);
+		expect(postAuthDestination('/dashboard')).toBe('/dashboard');
+	});
+	it('preserves invitation, recovery, MCP and Claude continuation priorities ahead of sources', () => {
+		storeLumenSourceContinuation(path);
+		storePendingInvitation('i'.repeat(32));
+		storePasswordCreateContinuation('p'.repeat(32));
+		storeMcpConsentTicket('m'.repeat(32));
+		beginClaudeGatewayAuthorization();
+		expect(freshLoginDestination('/dashboard')).toBe(`/invitations/${'i'.repeat(32)}`);
+		expect(postAuthDestination('/dashboard')).toBe(`/recover/${'p'.repeat(32)}?reauthenticated=1`);
+		expect(postAuthDestination('/dashboard')).toBe('/oauth/mcp/authorize');
+		clearMcpConsentTicket();
+		expect(postAuthDestination('/dashboard')).toBe('/oauth/claude/authorize');
+		clearClaudeGatewayAuthorization();
+		auth.update(state => ({ ...state, projectId: 'selected-project' }));
+		expect(postAuthDestination('/dashboard')).toBe(path);
+	});
+	it('rejects invalid or expired source intent without broadening login redirects', () => {
+		for (const value of ['https://evil.example', '//evil.example', '/dashboard', '/lumen/sources/runs/../private', '/lumen/sources/runs/run-1/%2e%2e', `${path}\n`]) expect(storeLumenSourceContinuation(value)).toBe(false);
+		storeLumenSourceContinuation(path);
+		const key = 'afterglow_lumen_source_continuation';
+		sessionStorage.setItem(key, JSON.stringify({ path, expiresAt: Date.now() - 1 }));
+		expect(postAuthDestination('/dashboard')).toBe('/dashboard');
+		expect(sessionStorage.getItem(key)).toBeNull();
 	});
 });

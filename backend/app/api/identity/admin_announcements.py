@@ -7,11 +7,13 @@ app/api/common/announcements.py 참조.
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_token_info, require_admin
+from app.api.identity.account_recovery import RecoveryRoute
 from app.services.announcements import (
     SEVERITIES,
     TARGET_TYPES,
@@ -24,7 +26,7 @@ from app.services.announcements import (
     update_announcement,
 )
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(route_class=RecoveryRoute, dependencies=[Depends(require_admin)])
 
 
 class AnnouncementCreateRequest(BaseModel):
@@ -35,6 +37,8 @@ class AnnouncementCreateRequest(BaseModel):
     target_id: str | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
+    send_email: bool = Field(default=False, strict=True)
+    email_operation_id: UUID | None = None
 
 
 class AnnouncementUpdateRequest(BaseModel):
@@ -62,6 +66,7 @@ class AnnouncementAdminResponse(BaseModel):
     starts_at: str | None
     ends_at: str | None
     is_active: bool
+    email_operation: dict | None = None
 
 
 @router.get("", response_model=list[AnnouncementAdminResponse])
@@ -78,6 +83,8 @@ async def create_announcement_endpoint(
     payload: AnnouncementCreateRequest,
     token_info: dict = Depends(get_token_info),
 ):
+    if payload.send_email and payload.email_operation_id is None:
+        raise HTTPException(status_code=422, detail={"code": "mail_operation_id_required"})
     try:
         return await create_announcement(
             title=payload.title,
@@ -89,11 +96,18 @@ async def create_announcement_endpoint(
             ends_at=payload.ends_at,
             created_by_user_id=token_info.get("user_id", ""),
             created_by_username=token_info.get("username", ""),
+            **(
+                {"send_email": True, "email_operation_id": str(payload.email_operation_id)}
+                if payload.send_email
+                else {}
+            ),
         )
     except AnnouncementValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AnnouncementStorageUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError:
+        raise HTTPException(status_code=503, detail={"code": "mail_payload_unavailable"}) from None
 
 
 @router.patch("/{announcement_id}", response_model=AnnouncementAdminResponse)

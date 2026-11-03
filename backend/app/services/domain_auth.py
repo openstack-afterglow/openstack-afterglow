@@ -248,10 +248,11 @@ class LoginPolicy:
     configured: bool = False
 
 
-def smtp_configured() -> bool:
-    """Truthful SMTP readiness, matching the email transport's own precondition."""
-    settings = get_settings()
-    return bool(settings.smtp_enabled and settings.smtp_host)
+async def smtp_configured() -> bool:
+    """Resolve the same saved SMTP authority as every mail sender."""
+    from app.services import mail_settings
+
+    return await mail_settings.smtp_ready(base_settings=get_settings())
 
 
 def enforce_email(policy: LoginPolicy, email: object, *, signup: bool = False) -> str:
@@ -398,10 +399,14 @@ async def policy_view(domain_id: str) -> dict[str, Any]:
         raise
     except SQLAlchemyError as exc:
         raise _storage_failure(exc) from exc
-    return _policy_public(policy, sum(1 for row in rows if _usable(row)))
+    return await _policy_public(policy, sum(1 for row in rows if _usable(row)))
 
 
-def _policy_public(policy: LoginPolicy, usable_count: int) -> dict[str, Any]:
+async def _policy_public(policy: LoginPolicy, usable_count: int) -> dict[str, Any]:
+    try:
+        ready = await smtp_configured()
+    except HTTPException:
+        ready = False
     return {
         "domain_id": policy.domain_id,
         "password_enabled": policy.password_enabled,
@@ -410,7 +415,7 @@ def _policy_public(policy: LoginPolicy, usable_count: int) -> dict[str, Any]:
         "signup_email_domains": list(policy.signup_email_domains),
         "revision": policy.revision,
         "configured": policy.configured,
-        "smtp_configured": smtp_configured(),
+        "smtp_configured": ready,
         "usable_provider_count": usable_count,
     }
 
@@ -435,7 +440,7 @@ async def update_policy(
             raise DomainAuthInvalid(
                 "Signup email domains must also be allowed for login", code="signup_domain_not_allowed"
             )
-        if not smtp_configured():
+        if not await smtp_configured():
             raise DomainAuthConflict("SMTP is not configured; signup cannot verify email", code="smtp_not_configured")
     try:
         async with _factory()() as session, session.begin():
@@ -466,7 +471,7 @@ async def update_policy(
         raise DomainAuthConflict("Login policy changed; reload and retry", code="revision_conflict") from exc
     except SQLAlchemyError as exc:
         raise _storage_failure(exc) from exc
-    return _policy_public(policy, usable)
+    return await _policy_public(policy, usable)
 
 
 # ── provider secrets ────────────────────────────────────────────────────────
@@ -1192,10 +1197,17 @@ async def public_methods(domain_id: str) -> dict[str, Any]:
     except SQLAlchemyError as exc:
         raise _storage_failure(exc) from exc
     providers = _public_providers(domain_id, rows)
+    signup_ready = False
+    if policy.signup_enabled and policy.signup_email_domains:
+        try:
+            signup_ready = await smtp_configured()
+        except HTTPException:
+            # Mail is required for signup, never for existing password/SSO login.
+            pass
     return {
         "password_enabled": policy.password_enabled,
         "providers": providers,
-        "signup_enabled": bool(policy.signup_enabled and policy.signup_email_domains and smtp_configured()),
+        "signup_enabled": bool(policy.signup_enabled and policy.signup_email_domains and signup_ready),
     }
 
 

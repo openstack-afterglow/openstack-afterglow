@@ -64,6 +64,14 @@ spec:
                   name: afterglow-secrets
                   key: NOTION_CONFIG_ENCRYPTION_KEY
                   optional: true
+            {{- range $key := list "SMTP_PASSWORD" "IMAP_PASSWORD" }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: afterglow-secrets
+                  key: {{ $key }}
+                  optional: true
+            {{- end }}
             {{- range .Values.auth.providerKeys }}
             - name: {{ printf "AUTH__PROVIDERS__%s__CLIENT_SECRET" (upper .) }}
               valueFrom:

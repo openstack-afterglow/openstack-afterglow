@@ -500,3 +500,24 @@ describe('public home-first login', () => {
 		expect(sessionStorage.getItem('afterglow_provider_login')).toBeNull();
 	});
 });
+
+describe('portable registered-source login entry', () => {
+	it('returns a fresh password login to the exact canonical source page', async () => {
+		const path = '/lumen/sources/runs/run-1/citation-1';
+		loginPage.set({ data: { mockup: { active: false } }, url: new URL(`http://localhost/login?lumen_source=${encodeURIComponent(path)}`) });
+		mocks.post.mockResolvedValueOnce(response);
+		render(LoginPage);
+		const { password, button } = await fillCredentials();
+		password.form!.requestSubmit(button);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith(path));
+		expect(sessionStorage.getItem('afterglow_lumen_source_continuation')).toBeNull();
+	});
+	it('ignores external source parameters and keeps the existing login destination', async () => {
+		loginPage.set({ data: { mockup: { active: false } }, url: new URL('http://localhost/login?lumen_source=https%3A%2F%2Fevil.example') });
+		mocks.post.mockResolvedValueOnce(response);
+		render(LoginPage);
+		const { password, button } = await fillCredentials();
+		password.form!.requestSubmit(button);
+		await waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/dashboard'));
+	});
+});

@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "登録ポリシー",
 	"settings.tab.quotas": "既定のクォータ",
 	"settings.tab.requests": "登録申請",
+	"settings.tab.email": "メール",
 	"settings.destinations": "一般設定のタスク",
 	"settings.draftHelp": "タブを切り替えても編集内容は保持され、自動保存されません。登録ポリシーと既定のクォータは一緒に保存されるため、両方の変更を確認してください。",
 	"branding.installationIdentity": "この環境の名前は{name}です。Afterglowはこのコンソールを提供する製品です。ログインロゴは以下で別途設定します。",

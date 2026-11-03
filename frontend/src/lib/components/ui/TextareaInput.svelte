@@ -6,6 +6,7 @@
 		placeholder?: string;
 		disabled?: boolean;
 		required?: boolean;
+		maxlength?: number;
 		ariaLabel?: string;
 		ariaDescribedBy?: string;
 		ariaInvalid?: boolean;
@@ -19,6 +20,7 @@
 		placeholder,
 		disabled = false,
 		required = false,
+		maxlength,
 		ariaLabel,
 		ariaDescribedBy,
 		ariaInvalid = false,
@@ -27,7 +29,7 @@
 	const describedBy = $derived(ariaDescribedBy ?? (id ? `${id}-message` : undefined));
 </script>
 
-<textarea {id} {rows} bind:value {placeholder} {disabled} {required} aria-label={ariaLabel} aria-describedby={describedBy} aria-invalid={ariaInvalid || undefined} class="control textarea-input {className}"></textarea>
+<textarea {id} {rows} bind:value {placeholder} {disabled} {required} {maxlength} aria-label={ariaLabel} aria-describedby={describedBy} aria-invalid={ariaInvalid || undefined} class="control textarea-input {className}"></textarea>
 
 <style>
 	.control {

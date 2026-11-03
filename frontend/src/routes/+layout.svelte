@@ -53,6 +53,8 @@
 	import { isDocsPath } from '$lib/docs/paths';
 	import { documentationNavItem } from '$lib/config/nav';
 	import { isProjectAgnosticPath } from '$lib/config/routes';
+	import { lumenSourceLoginPath } from '$lib/utils/lumenSourceNavigation';
+	import { storeLumenSourceContinuation } from '$lib/utils/mcpConsent';
 	import './layout.css';
 
 	let { children, data } = $props();
@@ -332,12 +334,13 @@
 	$effect(() => {
 		if (!mockupClientReady) return;
 		if (!$logoutInProgress && !$isLoggedIn && !isDocumentationRoute && !publicRoutes.includes($page.url.pathname) && !isOnboardingRoute) {
-			goto('/login', { replaceState: true });
+			goto(lumenSourceLoginPath($page.url.pathname), { replaceState: true });
 		}
 	});
 
 	$effect(() => {
 		if (!$logoutInProgress && $page.url.pathname !== '/logout' && $authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnostic && !isOnboardingRoute) {
+			storeLumenSourceContinuation($page.url.pathname);
 			goto('/select-project');
 		}
 	});

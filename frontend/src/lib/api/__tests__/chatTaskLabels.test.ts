@@ -13,9 +13,11 @@ describe('taskLabelForTool', () => {
 });
 
 describe('taskLabelForStage', () => {
-	it('only promotes task-bearing stages', () => {
+	it('names observed lifecycle stages without presenting them as private reasoning', () => {
 		expect(taskLabelForStage('tool_execution', 'managed_web_search')).not.toBeNull();
 		expect(taskLabelForStage('awaiting_input', null)).not.toBeNull();
-		expect(taskLabelForStage('model_response', null)).toBeNull();
+		expect(taskLabelForStage('model_response', null)).toBe('모델 응답 수신');
+		expect(taskLabelForStage('model_request', null)).toBe('모델 요청 전송');
+		expect(taskLabelForStage('response_writing', null)).toBe('답변 작성');
 	});
 });

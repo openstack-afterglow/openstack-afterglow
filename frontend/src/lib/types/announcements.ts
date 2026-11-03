@@ -1,3 +1,5 @@
+import type { MailOperation } from '$lib/api/email';
+
 export type AnnouncementSeverity = 'info' | 'warning' | 'danger';
 export type AnnouncementTargetType = 'all' | 'project' | 'user';
 
@@ -29,6 +31,7 @@ export interface AnnouncementAdmin {
 	starts_at: string | null;
 	ends_at: string | null;
 	is_active: boolean;
+	email_operation?: MailOperation | null;
 }
 
 export interface AnnouncementCreatePayload {
@@ -39,6 +42,8 @@ export interface AnnouncementCreatePayload {
 	target_id?: string | null;
 	starts_at?: string | null;
 	ends_at?: string | null;
+	send_email?: boolean;
+	email_operation_id?: string;
 }
 
 export interface AnnouncementUpdatePayload {

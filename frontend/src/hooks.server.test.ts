@@ -580,3 +580,21 @@ describe('traffic reporter disabled', () => {
 		expect(send).not.toHaveBeenCalled(); expect(publicRequest.event.getClientAddress).not.toHaveBeenCalled();
 	});
 });
+
+describe('portable source authentication redirects', () => {
+	it.each(['/lumen/sources/runs/run-1/citation-1', '/lumen/sources/assets/e83a2892-41f0-4ca2-a453-4e23118f32ba'])('retains only the canonical source path through login: %s', async (path) => {
+		const { handle } = await loadHandle();
+		const request = createRequest(`https://frontend.example.com${path}?ignored=secret`, {}, path);
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe(`/login?lumen_source=${encodeURIComponent(path)}`);
+		expect(response.headers.get('Location')).not.toContain('secret');
+		expect(request.resolve).not.toHaveBeenCalled();
+	});
+	it('does not turn malformed source-like paths into login return targets', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('https://frontend.example.com/lumen/sources/runs/run-1/%252e%252e');
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		expect(response.headers.get('Location')).toBe('/login');
+	});
+});

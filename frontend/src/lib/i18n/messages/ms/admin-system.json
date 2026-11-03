@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "Dasar pendaftaran",
 	"settings.tab.quotas": "Kuota lalai",
 	"settings.tab.requests": "Permohonan pendaftaran",
+	"settings.tab.email": "E-mel",
 	"settings.destinations": "Tugas tetapan umum",
 	"settings.draftHelp": "Menukar tab mengekalkan suntingan tanpa menyimpan secara automatik. Dasar pendaftaran dan kuota lalai disimpan bersama; semak perubahan kedua-dua tab sebelum menyimpan.",
 	"branding.installationIdentity": "Pemasangan ini bernama {name}. Afterglow ialah produk di sebalik konsol ini; tetapkan logo log masuk secara berasingan di bawah.",

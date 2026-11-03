@@ -39,11 +39,18 @@ export function taskLabelForTool(toolName: string): string {
 	return humanizeIdentifier(toolName) || t('task.tool');
 }
 
-/** Only task-bearing run stages may be presented as live user activity. */
+/** Labels describe observed executor stages, never private model reasoning. */
 export function taskLabelForStage(stage: RunStage, toolName: string | null): string | null {
 	if (stage === 'tool_execution' && toolName) return t('task.inProgress', { task: taskLabelForTool(toolName) });
 	if (stage === 'awaiting_input') return t('task.awaitingApproval');
-	return null;
+	switch (stage) {
+		case 'queued': return t('task.stageQueued');
+		case 'model_request': return t('task.stageModelRequest');
+		case 'model_response': return t('task.stageModelResponse');
+		case 'response_writing': return t('task.stageResponseWriting');
+		case 'finalizing': return t('task.stageFinalizing');
+		default: return null;
+	}
 }
 
 export function taskLabelForContext(

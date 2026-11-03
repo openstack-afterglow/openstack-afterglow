@@ -109,6 +109,7 @@ secrets:
   trafficAnalyticsFrontendIngestKey: ""
   notionConfigEncryptionKey: ""
   smtpPassword: ""
+  imapPassword: ""
   # Nested AUTH__PROVIDERS__<KEY>__CLIENT_SECRET environment names -> secret values.
   authProviders: {}
   # 멀티라인 PEM 키: |로 시작하는 블록 스칼라로 입력
@@ -680,13 +681,25 @@ smtp:
   fromAddress: "noreply@afterglow.example.com"
   fromName: "Afterglow"
   useTls: true
+  useSsl: false
+  security: "" # Explicit starttls/tls/none; empty preserves legacy useTls/useSsl mapping.
   timeoutSeconds: 10
   invitation:
     tokenExpiryDays: 7
 
+# Optional read-only test receipt mailbox; credentials are always in secrets.
+imap:
+  enabled: false
+  host: ""
+  port: 993
+  username: ""
+  security: "tls"
+  mailbox: "INBOX"
+  timeoutSeconds: 10
 # -----------------------------------------------------------------------------
 # [monitoring]
 # -----------------------------------------------------------------------------
+
 monitoring:
   enabled: true
   hostHealthcheckEnabled: true

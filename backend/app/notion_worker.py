@@ -362,6 +362,8 @@ async def main() -> None:
     from app.database import close_db, init_db, is_db_available
     from app.services import native_transport
     from app.services.db_auto_backup import run_scheduler
+    from app.services.mail_delivery import scheduler_loop as mail_delivery_loop
+    from app.services.work_dispatcher import run_roles
 
     settings = get_settings()
     if settings.database_url:
@@ -379,6 +381,7 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(_run_target_worker()),
         asyncio.create_task(run_scheduler(settings.database_db_auto_backup_cron)),
+        asyncio.create_task(run_roles({"email-delivery": mail_delivery_loop}), name="email-delivery-roles"),
     ]
     try:
         await asyncio.gather(*tasks)

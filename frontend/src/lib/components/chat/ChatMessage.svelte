@@ -16,7 +16,7 @@
 		toolNameFromResultMeta,
 		type ToolActivityItem
 	} from '$lib/api/chatToolActivity';
-	import { citationDomain, citationLabel, normalizeCitations } from '$lib/api/chatCitations';
+	import { aggregateCitations, citationHref, citationLabel, citationSourceLabel, copyMarkdownWithCitations } from '$lib/api/chatCitations';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 
 	interface Props {
@@ -90,7 +90,7 @@
 	const invocationItems = $derived(
 		!isUser && !isTool ? parseAssistantToolCalls(message.tool_calls) : []
 	);
-	const citations = $derived(!isUser && !isTool ? normalizeCitations(message.citations) : []);
+	const citations = $derived(!isUser && !isTool ? aggregateCitations([message]) : []);
 	const toolResultItem = $derived<ToolActivityItem | null>(
 		isTool
 			? {
@@ -117,7 +117,7 @@
 	let copied = $state(false);
 
 	function copy() {
-		onCopy(message.content);
+		onCopy(isUser ? message.content : copyMarkdownWithCitations(message.content, citations));
 		copied = true;
 		setTimeout(() => (copied = false), 1400);
 	}
@@ -153,19 +153,20 @@
 					</div>
 					<ol class="sources-list">
 						{#each citations as c, i (`${c.source_kind}:${c.url ?? c.document_index}:${i}`)}
+							{@const href = citationHref(c)}
 							<li>
-								{#if c.url}
-									<a href={c.url} target="_blank" rel="noopener noreferrer nofollow" title={c.url}>
+								{#if href}
+									<a {href} target={href.startsWith('/lumen/sources/') ? undefined : '_blank'} rel="noopener noreferrer nofollow" title={c.url}>
 										<span class="src-num">{i + 1}</span>
 										<span class="src-label">{citationLabel(c)}</span>
-										<span class="src-domain">{citationDomain(c.url)}</span>
+										<span class="src-domain">{citationSourceLabel(c)}</span>
 										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
 									</a>
 								{:else}
 									<div class="source-document" title={c.snippet ?? undefined}>
 										<span class="src-num">{i + 1}</span>
 										<span class="src-label">{citationLabel(c)}</span>
-										<span class="src-domain">{t('message.inputDocument')}</span>
+										<span class="src-domain">{citationSourceLabel(c)}</span>
 										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
 									</div>
 								{/if}
@@ -191,7 +192,7 @@
 					</div>
 				{/if}
 			{/if}
-			<MarkdownMessage content={message.content} {streaming} />
+			<MarkdownMessage content={message.content} {streaming} {citations} />
 			{#if streaming && message.content.length === 0 && !hasProgress}
 				<LoadingState variant="inline" label={t('message.preparingResponse')} />
 			{/if}

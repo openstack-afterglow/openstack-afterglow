@@ -26,7 +26,15 @@ class _PrivateProviderRoute(APIRoute):
 
         async def private_response(request: Request) -> Response:
             path = request.url.path.rstrip("/")
-            private = path == "/api/v1/chat/admin/providers" or path.startswith("/api/v1/chat/admin/providers/")
+            parts = path.removeprefix("/api/v1/chat/").split("/")
+            source_response = (len(parts) == 3 and parts[0] == "assets" and parts[2] == "download-link") or (
+                len(parts) == 4 and parts[0] == "runs" and parts[2] == "sources"
+            )
+            private = (
+                source_response
+                or path == "/api/v1/chat/admin/providers"
+                or path.startswith("/api/v1/chat/admin/providers/")
+            )
             try:
                 response = await handler(request)
             except HTTPException as exc:

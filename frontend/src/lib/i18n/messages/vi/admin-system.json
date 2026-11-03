@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "Chính sách đăng ký",
 	"settings.tab.quotas": "Hạn ngạch mặc định",
 	"settings.tab.requests": "Yêu cầu đăng ký",
+	"settings.tab.email": "Email",
 	"settings.destinations": "Tác vụ cài đặt chung",
 	"settings.draftHelp": "Đổi thẻ giữ lại nội dung chỉnh sửa và không tự lưu. Chính sách đăng ký và hạn ngạch mặc định được lưu cùng nhau; hãy kiểm tra thay đổi ở cả hai thẻ trước khi lưu.",
 	"branding.installationIdentity": "Bản cài đặt này có tên {name}. Afterglow là sản phẩm cung cấp bảng điều khiển này; cấu hình riêng logo đăng nhập bên dưới.",

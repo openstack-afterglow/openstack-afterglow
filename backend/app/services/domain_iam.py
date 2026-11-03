@@ -1041,7 +1041,11 @@ async def signup_options(*, session=None):
     from app.services.account_recovery import recovery_enabled
 
     policy = await enrollment_policy.read_policy(session=session)
-    ready = recovery_enabled()
+    try:
+        ready = await recovery_enabled()
+    except HTTPException:
+        # Hide unavailable signup/recovery without disabling existing SSO login.
+        ready = False
     return {
         "signup_enabled": bool(policy["public_signup_enabled"] and ready),
         "signup_button_visible": bool(
@@ -1061,7 +1065,7 @@ async def _public_signup_email(email, *, session=None):
         raise HTTPException(403, "signup_disabled")
     from app.services.account_recovery import recovery_enabled
 
-    if not recovery_enabled():
+    if not await recovery_enabled():
         raise HTTPException(503, "smtp_not_configured")
     try:
         email = normalize_email(email)

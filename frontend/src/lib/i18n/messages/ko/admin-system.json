@@ -5,6 +5,7 @@
 	"settings.tab.enrollment": "가입 정책",
 	"settings.tab.quotas": "기본 쿼터",
 	"settings.tab.requests": "가입 요청",
+	"settings.tab.email": "이메일",
 	"settings.destinations": "일반 설정 작업",
 	"settings.draftHelp": "탭을 바꿔도 편집 내용은 유지되며 자동 저장하지 않습니다. 가입 정책과 기본 쿼터는 한 번에 저장되므로 두 탭의 변경 사항을 함께 확인하세요.",
 	"branding.installationIdentity": "설치 이름은 {name}입니다. Afterglow는 이 콘솔을 제공하는 제품이며, 로그인 로고는 아래에서 별도로 설정합니다.",

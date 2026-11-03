@@ -16,8 +16,8 @@ it('enters streamed steps and pops live completion without replaying stored hist
 	expect(stored.container.querySelector('.motion-enter, .motion-pop')).toBeNull();
 });
 
-it('shows user-facing tasks while hiding backend lifecycle stages', async () => {
-	const { getByText, queryByText } = render(ExecutionTimeline, {
+it('shows observed model lifecycle steps alongside tools without inventing reasoning', async () => {
+	const { getByText } = render(ExecutionTimeline, {
 		active: true,
 		items: [
 			{
@@ -70,8 +70,8 @@ it('shows user-facing tasks while hiding backend lifecycle stages', async () => 
 		]
 	});
 
-	expect(queryByText('모델 응답을 처리함')).toBeNull();
-	expect(queryByText('응답을 작성함')).toBeNull();
+	expect(getByText('모델 응답 수신')).toBeTruthy();
+	expect(getByText('답변 작성')).toBeTruthy();
 	await fireEvent.click(getByText('추론 과정'));
 	expect(getByText('검색 범위를 정리합니다.')).toBeTruthy();
 	await fireEvent.click(getByText('웹 검색'));

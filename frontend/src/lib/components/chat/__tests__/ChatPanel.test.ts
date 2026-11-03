@@ -1331,3 +1331,39 @@ describe('ChatPanel cloud catalogue lifecycle', () => {
 		expect(screen.queryByRole('menuitem', { name: '클라우드 리소스' })).toBeNull();
 	});
 });
+
+it('shows registered sources and factual tool progress before final text, then deduplicates final citations', async () => {
+	const observed = Promise.withResolvers<void>();
+	const finish = Promise.withResolvers<void>();
+	const citation = { type: 'citation', citation_id: 'source-1', source_kind: 'web', url: 'https://example.org/queried', title: 'Queried page', snippet: 'Retrieved evidence' };
+	mocks.followRun.mockImplementation(async function* () {
+		yield event(1, 'message.created', { message_id: 'answer', role: 'assistant', parent_id: null });
+		yield event(2, 'source.registered', { message_id: 'answer', citation });
+		yield event(3, 'tool.call.started', { call_id: 'search-1', name: 'managed_web_search', arguments: { query: 'evidence' } });
+		yield event(4, 'tool.call.progress', { call_id: 'search-1', name: 'managed_web_search', text: 'Read 2 selected pages' });
+		observed.resolve();
+		await finish.promise;
+		yield event(5, 'tool.call.completed', { call_id: 'search-1', name: 'managed_web_search', content: [{ type: 'text', text: 'Retrieved evidence' }], status: 'completed' });
+		yield event(6, 'part.completed', { message_id: 'answer', part_index: 1, part: citation });
+		yield event(7, 'part.completed', { message_id: 'answer', part_index: 0, part: { type: 'text', text: 'Final answer' } });
+		yield event(8, 'run.completed', { status: 'completed', message_id: 'answer' });
+	});
+	const view = render(ChatPanel);
+	try {
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Find evidence' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await observed.promise;
+		await waitFor(() => { flushAnimationFrames(); expect(screen.getByRole('link', { name: /Queried page/ })).toBeTruthy(); });
+		expect(screen.queryByText('Final answer')).toBeNull();
+		expect(screen.getByText('Read 2 selected pages')).toBeTruthy();
+		finish.resolve();
+		await waitFor(() => { flushAnimationFrames(); expect(screen.queryByRole('button', { name: '생성 중단' })).toBeNull(); });
+		expect(screen.getAllByRole('link', { name: /Queried page/ })).toHaveLength(1);
+		expect(screen.getByText('Final answer')).toBeTruthy();
+	} finally {
+		finish.resolve();
+		view.unmount();
+	}
+});

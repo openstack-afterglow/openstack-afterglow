@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { auth } from '$lib/stores/auth';
 import {
 	beginClaudeGatewayAuthorization,
 	clearClaudeGatewayAuthorization,
@@ -8,12 +9,14 @@ import {
 	postAuthDestination,
 	storeClaudeGatewayUserCode,
 	storeMcpConsentTicket,
+	storeLumenSourceContinuation,
 } from './mcpConsent';
 
 const ticket = 'A'.repeat(43);
 
 afterEach(() => {
 	sessionStorage.clear();
+	auth.update((value) => ({ ...value, projectId: null }));
 });
 
 describe('MCP OAuth consent handoff', () => {
@@ -58,4 +61,14 @@ describe('Claude gateway authorization handoff', () => {
 		clearClaudeGatewayAuthorization();
 		expect(postAuthDestination('/dashboard')).toBe('/dashboard');
 	});
+});
+
+it('preserves source intent while a projectless administrator continues to IAM', () => {
+	const path = '/lumen/sources/runs/run-1/source-1';
+	auth.update((value) => ({ ...value, projectId: null }));
+	expect(storeLumenSourceContinuation(path)).toBe(true);
+	expect(postAuthDestination('/dashboard/iam/users')).toBe('/dashboard/iam/users');
+	auth.update((value) => ({ ...value, projectId: 'project-1' }));
+	expect(postAuthDestination('/dashboard')).toBe(path);
+	expect(postAuthDestination('/dashboard')).toBe('/dashboard');
 });

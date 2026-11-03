@@ -96,17 +96,27 @@ def creation(directory, monkeypatch):
                     "password_state": state.password_states[user.id],
                 }
             }
+        assert method == "POST"
+        assert path in {
+            "users/external/OS-AFTERGLOW/initial-password",
+            "users/external/OS-AFTERGLOW/password-reset",
+        }
         state.posts.append((path, body))
         if state.before_post is not None:
             state.before_post()
         if (
             body["user"]["identity_revision"] != state.identity_revision
+            or body["user"]["domain_id"] != state.users["external"].domain_id
             or body["user"]["email"] != state.users["external"].email
         ):
             return 412, None
         if state.post_status is None:
             raise TimeoutError("Transport must never expose the submitted password")
         if state.post_status == 204:
+            expected_state = "existing" if path.endswith("/password-reset") else "absent"
+            if state.password_states["external"] != expected_state:
+                return 409, None
+            state.users["external"].password = body["user"]["password"]
             state.users["external"].afterglow_local_password = True
             state.password_states["external"] = "existing"
         return state.post_status, {"error": {"reason": state.post_reason}} if state.post_status == 409 else None
@@ -222,6 +232,149 @@ async def test_delivered_proof_and_current_same_actor_create_exactly_once(creati
     assert len(creation.posts) == 1
     assert len(creation.provider_checks) >= 3
     assert (await creation_client.get(BASE + "/capability")).json() == {"mode": "change"}
+
+
+@pytest.mark.parametrize("source", ["public", "profile"])
+async def test_mailbox_recovery_creates_then_resets_original_sso_identity(
+    creation, creation_client, recoveries, source
+):
+    user = creation.users["external"]
+    original = (user.id, user.domain_id, user.email, list(user.federated))
+    if source == "public":
+        response = await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email.upper()})
+    else:
+        response = await creation_client.post(BASE + "/recovery/request", json={})
+    assert response.status_code == 202 and response.json() == {"accepted": True}
+    token = token_from(creation.sent[-1])
+    row = await persisted(recoveries, token)
+    assert row.kind == "password_create" and row.native_identity_revision == "5"
+    inspected = await creation_client.get("/api/v1/auth/recovery/" + token)
+    assert inspected.status_code == 200 and inspected.json()["kind"] == "password_create"
+    # An email link is never an unauthenticated or existing-password write.
+    refused = await creation_client.post(
+        "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
+    )
+    assert refused.status_code == 410
+    assert (await complete(creation_client, token)).status_code == 403
+    assert not creation.posts and (await persisted(recoveries, token)).status == "pending"
+    creation.clock += timedelta(seconds=1)
+    creation.current_session["started_at"] = creation.clock.timestamp()
+    assert (await complete(creation_client, token)).status_code == 200
+    assert creation.posts[-1][0] == "users/external/OS-AFTERGLOW/initial-password"
+    assert user.password == REPLACEMENT
+    assert (user.id, user.domain_id, user.email, user.federated) == original
+    creation.redis.addresses.clear()
+    # Native state wins even if the marker is stale after successful creation.
+    user.afterglow_local_password = False
+    response = await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})
+    assert response.status_code == 202
+    reset_token = token_from(creation.sent[-1])
+    assert (await persisted(recoveries, reset_token)).kind == "password"
+    response = await creation_client.post(
+        "/api/v1/auth/recovery/password/complete",
+        json={"token": reset_token, "new_password": REPLACEMENT + "-reset"},
+    )
+    assert response.status_code == 200
+    assert user.password == REPLACEMENT + "-reset"
+    assert creation.posts[-1][0] == "users/external/OS-AFTERGLOW/password-reset"
+    assert (user.id, user.domain_id, user.email, user.federated) == original
+    assert len(creation.posts) == 2 and not creation.updates
+
+
+@pytest.mark.parametrize(
+    "actor_change,expected_status,expected_detail",
+    [
+        ("wrong_owner", 403, {"code": "password_create_session_mismatch"}),
+        ("unauthenticated", 401, "login required"),
+        ("stale", 403, {"code": "password_create_reauthentication_required"}),
+    ],
+)
+async def test_public_creation_proof_requires_fresh_same_sso_actor(
+    creation, creation_client, recoveries, actor_change, expected_status, expected_detail
+):
+    response = await creation_client.post(
+        "/api/v1/auth/recovery/password", json={"email": creation.users["external"].email}
+    )
+    assert response.status_code == 202
+    token = token_from(creation.sent[-1])
+    creation.clock += timedelta(seconds=1)
+    creation.current_session["started_at"] = creation.clock.timestamp()
+    if actor_change == "wrong_owner":
+        creation.actor["user_id"] = "local"
+    elif actor_change == "unauthenticated":
+        creation.actor = None
+    else:
+        creation.clock += timedelta(seconds=901)
+    response = await complete(creation_client, token)
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == expected_detail
+    assert not creation.posts and (await persisted(recoveries, token)).status == "pending"
+
+
+@pytest.mark.parametrize("password_state", ["absent", "existing"])
+@pytest.mark.parametrize(
+    "failure", [None, "support", "ambiguous", "service", "disabled", "home", "policy", "unsettled", "redis"]
+)
+async def test_public_password_recovery_admits_only_eligible_native_state(
+    creation, creation_client, recoveries, monkeypatch, password_state, failure
+):
+    user = creation.users["external"]
+    creation.password_states[user.id] = password_state
+    if failure == "support":
+        creation.support = False
+    elif failure == "ambiguous":
+        creation.users["local"].email = user.email.upper()
+    elif failure == "service":
+        creation.ks.role_assignments.list = lambda user, effective: [
+            {"user": {"id": user}, "role": {"id": "service"}, "scope": {"system": {"all": True}}}
+        ]
+    elif failure == "disabled":
+        user.enabled = False
+    elif failure == "home":
+        creation.ks.domains.get = lambda home: SimpleNamespace(id=home, enabled=False)
+    elif failure == "policy":
+        creation.password_enabled = False
+    elif failure == "redis":
+
+        async def unavailable(*args, **kwargs):
+            raise ConnectionError("Redis unavailable")
+
+        monkeypatch.setattr(creation.redis, "set", unavailable)
+    elif failure == "unsettled":
+        async with recoveries() as session:
+            await recovery._issue("password_create", user, user.email, session, native_identity_revision="5")
+            row = await session.get(AccountRecovery, recovery._digest(token_from(creation.sent[-1])))
+            row.status = "outcome_unknown"
+            await session.commit()
+        creation.sent.clear()
+    response = await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})
+    assert response.status_code == 202 and response.json() == {"accepted": True}
+    assert not creation.posts
+    if failure is None:
+        assert len(creation.sent) == 1
+        row = await persisted(recoveries, token_from(creation.sent[-1]))
+        assert row.kind == ("password_create" if password_state == "absent" else "password")
+        assert row.status == "pending" and row.native_identity_revision == "5"
+    else:
+        assert not creation.sent
+
+
+async def test_unsettled_creation_blocks_previously_issued_password_reset(creation, creation_client, recoveries):
+    user = creation.users["external"]
+    creation.password_states[user.id] = "existing"
+    assert (await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})).status_code == 202
+    token = token_from(creation.sent[-1])
+    async with recoveries() as session:
+        await recovery._issue("password_create", user, user.email, session, native_identity_revision="5")
+        row = await session.get(AccountRecovery, recovery._digest(token_from(creation.sent[-1])))
+        row.status = "dispatching"
+        await session.commit()
+    response = await creation_client.post(
+        "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "password_create_reconciliation_required"
+    assert not creation.posts and (await persisted(recoveries, token)).status == "pending"
 
 
 @pytest.mark.parametrize(

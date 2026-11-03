@@ -1,49 +1,94 @@
-"""이메일 전송 서비스 (aiosmtplib 기반)."""
+"""Central bounded SMTP transport; acceptance is not mailbox receipt."""
 
+import asyncio
 import html
 import logging
+from dataclasses import dataclass
 from datetime import datetime
+from email.message import EmailMessage
+from email.utils import formataddr
+
+import aiosmtplib
+
+import app.config
+from app.services import mail_settings
 
 _logger = logging.getLogger(__name__)
 
 
-async def send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
-    """비동기 SMTP 이메일 전송. 실패 시 False 반환 (best-effort)."""
-    from app.config import get_settings
+@dataclass(frozen=True)
+class TransportResult:
+    status: str
+    code: str | None = None
 
-    settings = get_settings()
-    if not settings.smtp_enabled or not settings.smtp_host:
-        _logger.warning("SMTP 미설정 — 이메일 전송 건너뜀 (to=%s, subject=%s)", to, subject)
-        return False
 
+def smtp_client(smtp):
+    """Explicit TLS modes prevent opportunistic plaintext authentication."""
+    if smtp.security not in {"tls", "starttls", "none"} or (
+        smtp.security == "none" and (smtp.username or smtp.password)
+    ):
+        raise ValueError("mail_transport_security_invalid")
+    return aiosmtplib.SMTP(
+        hostname=smtp.host,
+        port=smtp.port,
+        username=smtp.username or None,
+        password=smtp.password or None,
+        use_tls=smtp.security == "tls",
+        start_tls=smtp.security == "starttls",
+        validate_certs=True,
+        timeout=smtp.timeout_seconds,
+    )
+
+
+async def send_message(message, *, smtp=None):
+    """Send once. Lost final DATA acknowledgement is unknown, never retried."""
+    smtp = (
+        smtp
+        if smtp is not None
+        else (await mail_settings.effective_settings(base_settings=app.config.get_settings())).smtp
+    )
+    if not smtp.enabled or not smtp.host:
+        return TransportResult("failed", "smtp_disabled")
+    client = None
+    dispatching = False
     try:
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
-        import aiosmtplib
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_address}>"
-        msg["To"] = to
-        msg.attach(MIMEText(text_body, "plain", "utf-8"))
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
-
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            username=settings.smtp_username or None,
-            password=settings.smtp_password or None,
-            use_tls=False,
-            start_tls=settings.smtp_use_tls,
-            timeout=settings.smtp_timeout_seconds,
-        )
-        _logger.info("이메일 전송 완료: to=%s, subject=%s", to, subject)
-        return True
+        client = smtp_client(smtp)
+        async with asyncio.timeout(smtp.timeout_seconds):
+            await client.connect()
+        dispatching = True
+        async with asyncio.timeout(smtp.timeout_seconds):
+            refused, _ = await client.send_message(message, sender=smtp.from_address)
+        return TransportResult("failed", "smtp_recipient_rejected") if refused else TransportResult("accepted")
+    except aiosmtplib.SMTPResponseException:
+        return TransportResult("failed", "smtp_rejected")
+    except aiosmtplib.SMTPRecipientsRefused:
+        return TransportResult("failed", "smtp_recipient_rejected")
     except Exception as exc:
-        # SMTP exceptions can contain MIME bodies, recovery proofs or credentials.
-        _logger.error("이메일 전송 실패: to=%s, subject=%s, error_type=%s", to, subject, type(exc).__name__)
+        # Provider diagnostics may echo credentials and DATA. Log only the class.
+        _logger.warning("Mail transport failed (%s)", type(exc).__name__)
+        return TransportResult(
+            "unknown" if dispatching else "failed", "smtp_outcome_unknown" if dispatching else "smtp_connection_failed"
+        )
+    finally:
+        if client is not None:
+            client.close()
+
+
+async def send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
+    """Legacy proof flows remain delivery-before-pending and best-effort Boolean."""
+    try:
+        smtp = (await mail_settings.effective_settings(base_settings=app.config.get_settings())).smtp
+        if not smtp.enabled or not smtp.host:
+            return False
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = formataddr((smtp.from_name, smtp.from_address))
+        message["To"] = to
+        message.set_content(text_body)
+        message.add_alternative(html_body, subtype="html")
+        return (await send_message(message, smtp=smtp)).status == "accepted"
+    except Exception as exc:
+        _logger.warning("Mail unavailable (%s)", type(exc).__name__)
         return False
 
 

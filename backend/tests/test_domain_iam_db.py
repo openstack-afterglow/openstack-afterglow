@@ -11,8 +11,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.account_spaces import PersonalProjectIntent, SharedDomainIntent
+from app.models.db import RuntimeSetting
 from app.models.domain_iam import DomainEnrollment
-from app.services import account_spaces, domain_iam, project_service
+from app.services import account_spaces, domain_iam, mail_settings, project_service
 from tests import test_domain_iam as scenarios
 from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_iam import PASSWORD, email_token, manager
@@ -43,12 +44,15 @@ async def enrollment_db(directory, monkeypatch):
             DomainQuotaPolicy,
             PersonalProjectIntent,
             SharedDomainIntent,
+            RuntimeSetting,
         ):
             await conn.run_sync(lambda sync, model=model: model.__table__.create(sync, checkfirst=True))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr("app.database.get_session_factory", lambda: factory)
     monkeypatch.setattr("app.services.enrollment_policy.get_session_factory", lambda: factory)
     monkeypatch.setattr(account_spaces, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(mail_settings, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(mail_settings, "is_db_available", lambda: True)
     ids = []
     async with factory() as session:
         existing_policies = set((await session.execute(select(DomainQuotaPolicy.domain_id))).scalars())

@@ -1,11 +1,13 @@
 """Actual HTTP/SQL credential-state behavior; native directory/SMTP are synthetic."""
 
+from datetime import timedelta
+
 import pytest
 
 from app.services import account_recovery as recovery
 from tests.test_account_recovery import REPLACEMENT, persisted, seed_sessions, token_from
 from tests.test_account_recovery import directory as directory
-from tests.test_profile_password_creation import BASE
+from tests.test_profile_password_creation import BASE, COMPLETE
 from tests.test_profile_password_creation import creation as creation
 from tests.test_profile_password_creation import creation_client as creation_client
 from tests.test_profile_password_creation import recoveries as recoveries
@@ -71,10 +73,31 @@ async def test_profile_recovery_uses_only_current_registered_mailbox(creation, c
     assert replay.status_code == 410
 
 
-async def test_forgotten_password_cannot_create_first_external_password(creation, creation_client):
+@pytest.mark.parametrize("native_metadata", ["federated", "markerless"])
+async def test_profile_recovery_absent_password_requires_mailbox_and_fresh_sso(
+    creation, creation_client, recoveries, native_metadata
+):
+    user = creation.users["external"]
+    if native_metadata == "markerless":
+        user.federated = []
+        del user.afterglow_local_password
     response = await creation_client.post(BASE + "/recovery/request", json={})
     assert response.status_code == 202 and response.json() == {"accepted": True}
-    assert not creation.sent and not creation.posts
+    token = token_from(creation.sent[-1])
+    row = await persisted(recoveries, token)
+    assert row.kind == "password_create" and row.user_id == user.id
+    assert row.native_identity_revision == "5"
+    inspected = await creation_client.get("/api/v1/auth/recovery/" + token)
+    assert inspected.status_code == 200 and inspected.json()["kind"] == "password_create"
+    response = await creation_client.post(COMPLETE, json={"token": token, "new_password": REPLACEMENT})
+    assert response.status_code == 403 and not creation.posts
+    assert (await persisted(recoveries, token)).status == "pending"
+    creation.clock += timedelta(seconds=1)
+    creation.current_session["started_at"] = creation.clock.timestamp()
+    response = await creation_client.post(COMPLETE, json={"token": token, "new_password": REPLACEMENT})
+    assert response.status_code == 200 and response.json() == {"status": "created"}
+    assert creation.posts[-1][0] == "users/external/OS-AFTERGLOW/initial-password"
+    assert user.id == "external" and user.domain_id == "home"
 
 
 @pytest.mark.parametrize(
@@ -153,10 +176,53 @@ async def test_mapped_session_without_native_federation_marker_uses_observed_sta
         assert creation.posts[-1][0] == "users/external/OS-AFTERGLOW/password-reset"
 
 
-async def test_stable_external_metadata_cannot_use_local_recovery_to_create_password(creation, creation_client):
+async def test_stable_external_metadata_routes_mail_to_creation_not_unauthenticated_reset(
+    creation, creation_client, recoveries
+):
     user = creation.users["external"]
     user.federated = []
     del user.afterglow_local_password
     user.afterglow_external_identities = [{"issuer": "https://provider.test.invalid", "subject": "subject"}]
     assert (await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})).status_code == 202
-    assert not creation.sent and not creation.posts
+    token = token_from(creation.sent[-1])
+    assert (await persisted(recoveries, token)).kind == "password_create"
+    response = await creation_client.post(
+        "/api/v1/auth/recovery/password/complete", json={"token": token, "new_password": REPLACEMENT}
+    )
+    assert response.status_code == 410 and not creation.posts
+    creation.actor = None
+    response = await creation_client.post(COMPLETE, json={"token": token, "new_password": REPLACEMENT})
+    assert response.status_code == 401 and not creation.posts
+    assert (await persisted(recoveries, token)).status == "pending"
+
+
+@pytest.mark.parametrize("native_state", ["absent", "existing"])
+@pytest.mark.parametrize("marker", [None, False, True, "false"])
+async def test_public_mail_recovery_selects_native_state_not_local_password_metadata(
+    creation, creation_client, recoveries, native_state, marker
+):
+    user = creation.users["external"]
+    if marker is None:
+        del user.afterglow_local_password
+    else:
+        user.afterglow_local_password = marker
+    creation.password_states[user.id] = native_state
+    response = await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})
+    assert response.status_code == 202
+    row = await persisted(recoveries, token_from(creation.sent[-1]))
+    assert row.kind == ("password_create" if native_state == "absent" else "password")
+    assert row.native_identity_revision == "5"
+    assert not creation.posts
+
+
+async def test_creation_mail_budget_is_shared_across_public_profile_and_explicit_setup(
+    creation, creation_client, recoveries
+):
+    user = creation.users["external"]
+    assert (await creation_client.post("/api/v1/auth/recovery/password", json={"email": user.email})).status_code == 202
+    token = token_from(creation.sent[-1])
+    assert (await creation_client.post(BASE + "/recovery/request", json={})).status_code == 202
+    refused = await creation_client.post(BASE + "/create/request", json={})
+    assert refused.status_code == 429
+    assert len(creation.sent) == 1 and not creation.posts
+    assert (await persisted(recoveries, token)).status == "pending"

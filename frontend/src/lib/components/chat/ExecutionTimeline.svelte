@@ -8,6 +8,7 @@
 	import { taskLabelForContext, taskLabelForStage } from '$lib/api/chatTaskLabels';
 	import ToolCategoryGroup from './ToolCategoryGroup.svelte';
 	import ThinkingBlock from './ThinkingBlock.svelte';
+	import ChildTaskActivity from './ChildTaskActivity.svelte';
 
 	interface Props {
 		items: RunActivityItem[];
@@ -53,6 +54,7 @@
 			status: item.status === 'running' ? undefined : item.status,
 			errorCode: item.errorCode,
 			durationMs: item.durationMs,
+			progress: item.progress,
 			files: item.content.flatMap((part) =>
 				part.type === 'file'
 					? [{
@@ -125,6 +127,8 @@
 							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{contextLabel(entry.item)}</p>
 						{:else if entry.item.kind === 'stage'}
 							<p class="stage-label">{#if isLive(entry.item)}<LoadingState variant="inline" label="" aria-hidden="true" /> {/if}{stageLabel(entry.item)}</p>
+						{:else if entry.item.kind === 'child'}
+							<ChildTaskActivity item={entry.item} />
 						{:else}
 							<ThinkingBlock text={entry.item.text} active={active && entry.item.active} {animate} />
 						{/if}

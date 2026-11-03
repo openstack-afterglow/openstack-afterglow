@@ -23,8 +23,8 @@ from app.api.identity import admin_password_reset as endpoint
 from app.database import get_session
 from app.models.account_recovery import AccountRecovery
 from app.models.activity import ActivityLog
+from app.services import account_recovery, domain_iam, domain_scope, keystone, native_operation, session_store
 from app.services import admin_password_reset as reset
-from app.services import domain_iam, domain_scope, keystone, native_operation, session_store
 
 
 @pytest_asyncio.fixture
@@ -37,8 +37,7 @@ async def directory(monkeypatch, tmp_path):
                 "name": "Alice <Admin>",
                 "email": "alice@example.test",
                 "enabled": True,
-                # Plain local account. Federated targets are covered explicitly:
-                # only a proven local-password marker makes them eligible.
+                # Plain local accounts keep the ordinary administrator PATCH.
                 "unrelated": {"keep": True},
             }
         },
@@ -55,6 +54,16 @@ async def directory(monkeypatch, tmp_path):
         events=[],
         updates=[],
         mail=[],
+        writes=[],
+        reads=[],
+        capability_status=200,
+        capability={"supported": True, "revision": "first-password-galera-v2"},
+        password_state="existing",
+        identity_revision="7",
+        identity_snapshots=[],
+        guarded_status=204,
+        before_write=None,
+        after_smtp_preflight=None,
         audits=[],
         sessions=["target-session"],
         cooldown=set(),
@@ -118,6 +127,7 @@ async def directory(monkeypatch, tmp_path):
         return state.group_system if "group" in kwargs else state.raw_system
 
     state.ks = SimpleNamespace(
+        session=SimpleNamespace(get_token=lambda: "dummy-native-service-token"),
         users=SimpleNamespace(get=get_user),
         domains=SimpleNamespace(get=lambda did: {"id": did, "enabled": True}),
         role_assignments=SimpleNamespace(list=assignments),
@@ -162,6 +172,8 @@ async def directory(monkeypatch, tmp_path):
             state.events.append("smtp-preflight")
             if state.smtp_unavailable:
                 raise RuntimeError("dummy smtp auth failed")
+            if state.after_smtp_preflight is not None:
+                state.after_smtp_preflight()
 
         async def send_message(self, message, *, recipients, sender):
             state.events.append("mail")
@@ -188,18 +200,47 @@ async def directory(monkeypatch, tmp_path):
             self.session = SimpleNamespace(close=lambda: state.events.append("transport-close"))
 
         def request(self, url, method, **kwargs):
+            guarded = "/OS-AFTERGLOW/" in url
+            if method == "GET":
+                state.reads.append((url, method, kwargs))
+                if url.endswith("/capabilities"):
+                    return Response(state.capability_status, state.capability)
+                identity = {key: state.users["target"][key] for key in ("id", "domain_id", "email")}
+                identity.update(identity_revision=state.identity_revision, password_state=state.password_state)
+                if state.identity_snapshots:
+                    identity.update(state.identity_snapshots.pop(0))
+                return Response(200, {"user": identity})
             state.events.append("native")
             state.updates.append((url, method, kwargs))
             state.entered.set()
             if state.native_gate:
                 assert state.release.wait(5), "test did not release dummy native request"
-            uid = url.rsplit("/", 1)[-1]
-            if state.response_status == 200:
+            uid = "target" if guarded else url.rsplit("/", 1)[-1]
+            status = state.guarded_status if guarded else state.response_status
+            if guarded:
+                if state.before_write is not None:
+                    state.before_write()
+                body = kwargs["json"]["user"]
+                expected_state = "absent" if url.endswith("/initial-password") else "existing"
+                if (
+                    body["domain_id"] != state.users[uid]["domain_id"]
+                    or body["email"] != state.users[uid]["email"]
+                    or body["identity_revision"] != state.identity_revision
+                    or state.password_state != expected_state
+                ):
+                    return Response(412, None)
+                if status == 204:
+                    state.writes.append(copy.deepcopy(body))
+                    state.users[uid].update(password=body["password"], afterglow_local_password=True)
+                    state.password_state = "existing"
+                    state.identity_revision = str(int(state.identity_revision) + 1)
+            elif status == 200:
+                state.writes.append(copy.deepcopy(kwargs["json"]["user"]))
                 state.users[uid].update(kwargs["json"]["user"])
             if state.native_unknown:
                 raise RuntimeError("native secret: " + kwargs["json"]["user"]["password"])
             body = state.response_override or {"user": copy.deepcopy(state.users[uid])}
-            return Response(state.response_status, body)
+            return Response(status, body)
 
     def transport(**kwargs):
         assert kwargs == {"timeout": 30, "verify": True}
@@ -233,6 +274,7 @@ async def directory(monkeypatch, tmp_path):
         return {"user_id": "actor", "identity_domain_id": "actor-home", "domain_id": "selected-workspace", "roles": []}
 
     monkeypatch.setattr(reset, "get_settings", lambda: settings)
+    monkeypatch.setattr(account_recovery, "get_settings", lambda: settings)
     monkeypatch.setattr(domain_iam, "_iam_write", mutation)
     monkeypatch.setattr(domain_iam, "_find_accounts", find_accounts)
     monkeypatch.setattr(session_store, "_get_redis", redis)
@@ -243,7 +285,7 @@ async def directory(monkeypatch, tmp_path):
     monkeypatch.setattr(keystone, "_is_system_admin", lambda *args, **kwargs: state.admin)
     monkeypatch.setattr(keystone, "validate_token", native_proof)
     monkeypatch.setattr(native_operation, "NativeOperation", Operation)
-    monkeypatch.setattr(reset.aiosmtplib, "SMTP", SMTP)
+    monkeypatch.setattr("aiosmtplib.SMTP", SMTP)
     monkeypatch.setattr(keystone.native_transport, "create_session", transport)
 
     class Session(AsyncSession):
@@ -343,6 +385,7 @@ async def test_success_exact_native_update_then_automatic_email(directory, caplo
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize(
     "case,expected",
     [
@@ -353,8 +396,6 @@ async def test_success_exact_native_update_then_automatic_email(directory, caplo
         ("disabled", 403),
         ("noemail", 409),
         ("duplicate", 409),
-        ("external_shadow", 409),
-        ("external_marker_false", 409),
         ("configured_service", 403),
         ("service_role", 403),
         ("raw_service", 403),
@@ -367,7 +408,9 @@ async def test_success_exact_native_update_then_automatic_email(directory, caplo
         ("lease_lost", 503),
     ],
 )
-async def test_preflight_prevents_native_writes(directory, case, expected):
+async def test_preflight_prevents_native_writes(directory, case, expected, external):
+    if external:
+        directory.users["target"]["federated"] = [{"idp_id": "gitlab"}]
     if case == "not_admin":
         directory.actor["is_system_admin"] = False
     elif case == "revoked_admin":
@@ -382,15 +425,6 @@ async def test_preflight_prevents_native_writes(directory, case, expected):
         directory.users["target"]["email"] = ""
     elif case == "duplicate":
         directory.users["other"] = {**directory.users["target"], "id": "other", "domain_id": "other-home"}
-    elif case == "external_shadow":
-        # Also the deliberate legacy case: a linked account with a real local
-        # password but no marker is refused because stock Keystone cannot tell
-        # it apart from a shadow user (name filters include shadow users).
-        directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
-        directory.users["target"].pop("afterglow_local_password", None)
-    elif case == "external_marker_false":
-        directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
-        directory.users["target"]["afterglow_local_password"] = False
     elif case == "configured_service":
         directory.users["target"]["name"] = directory.settings.os_username
     elif case == "service_role":
@@ -429,10 +463,49 @@ async def test_system_administrator_target_allowed(directory):
 
 
 @pytest.mark.asyncio
-async def test_federated_target_with_local_password_marker_allowed(directory):
-    directory.users["target"]["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
-    directory.users["target"]["afterglow_local_password"] = True
-    assert (await post(directory)).status_code == 200
+@pytest.mark.parametrize("password_state", ["absent", "existing"])
+@pytest.mark.parametrize(
+    "metadata", ["federated_missing", "federated_false", "federated_true", "external", "marker_false"]
+)
+async def test_external_native_state_selects_guarded_create_or_reset(directory, password_state, metadata, caplog):
+    user = directory.users["target"]
+    if metadata.startswith("federated"):
+        user["federated"] = [{"idp_id": "gitlab", "protocols": [{"protocol_id": "openid"}]}]
+        if metadata != "federated_missing":
+            user["afterglow_local_password"] = metadata == "federated_true"
+    elif metadata == "external":
+        user["afterglow_external_identities"] = [{"provider": "gitlab", "subject": "stable-owner"}]
+    else:
+        user["afterglow_local_password"] = False
+    before = copy.deepcopy(user)
+    directory.password_state = password_state
+    response = await post(directory)
+    assert response.status_code == 200 and response.json() == {"status": "changed", "delivered": True}
+    assert_private(response)
+    assert len(directory.updates) == len(directory.writes) == len(directory.mail) == 1
+    url, method, options = directory.updates[0]
+    operation = "initial-password" if password_state == "absent" else "password-reset"
+    assert url == f"https://identity.example.test/v3/users/target/OS-AFTERGLOW/{operation}"
+    assert method == "POST"
+    password = options["json"]["user"]["password"]
+    assert options["json"] == {
+        "user": {"password": password, "domain_id": "home", "email": "alice@example.test", "identity_revision": "7"}
+    }
+    assert options["headers"] == {"X-Auth-Token": "dummy-native-service-token"}
+    assert options["authenticated"] is options["allow_reauth"] is options["redirect"] is options["log"] is False
+    assert options["connect_retries"] == options["status_code_retries"] == 0
+    assert len(directory.reads) == 3
+    assert directory.users["target"]["password"] == password
+    assert all(
+        directory.users["target"][key] == value for key, value in before.items() if key != "afterglow_local_password"
+    )
+    message, recipients, _ = directory.mail[0]
+    assert (
+        recipients == ["alice@example.test"] and password in message.get_body(preferencelist=("plain",)).get_content()
+    )
+    assert not directory.sessions and directory.audits[-1]["extra"]["outcome"] == "changed"
+    assert directory.events.index("commit") < directory.events.index("native")
+    assert password not in response.text + caplog.text + json.dumps(directory.audits)
 
 
 @pytest.mark.asyncio
@@ -454,9 +527,15 @@ async def test_only_empty_object_accepted_without_input_echo(directory, body):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422])
-async def test_explicit_native_rejection_is_not_changed_or_emailed(directory, status):
-    directory.response_status = status
+@pytest.mark.parametrize(
+    "external,status",
+    [(False, status) for status in (400, 401, 403, 404, 409, 412, 422)]
+    + [(True, status) for status in (409, 412, 422)],
+)
+async def test_explicit_native_rejection_is_not_changed_or_emailed(directory, status, external):
+    if external:
+        directory.users["target"]["afterglow_local_password"] = False
+    directory.response_status = directory.guarded_status = status
     response = await post(directory)
     assert response.status_code == status
     assert response.json()["detail"] == {
@@ -464,7 +543,7 @@ async def test_explicit_native_rejection_is_not_changed_or_emailed(directory, st
         "changed": False,
         "delivered": False,
     }
-    assert len(directory.updates) == 1 and not directory.mail and directory.sessions
+    assert len(directory.updates) == 1 and not directory.writes and not directory.mail and directory.sessions
     assert directory.audits[-1]["extra"]["outcome"] == "rejected"
 
 
@@ -497,8 +576,11 @@ async def test_unknown_outcome_revokes_without_mail_or_replay(directory, case, c
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize("case", ["mail_exception", "recipient_refused", "sessions", "cache", "mail_and_sessions"])
-async def test_partial_effects_are_truthful_and_secret_free(directory, case, caplog):
+async def test_partial_effects_are_truthful_and_secret_free(directory, case, caplog, external):
+    if external:
+        directory.users["target"]["federated"] = [{"idp_id": "gitlab"}]
     directory.mail_failed = case in {"mail_exception", "mail_and_sessions"}
     directory.mail_refused = case == "recipient_refused"
     directory.revoke_failed = case in {"sessions", "mail_and_sessions"}
@@ -510,6 +592,7 @@ async def test_partial_effects_are_truthful_and_secret_free(directory, case, cap
     assert detail["code"] == "admin_password_reset_" + ("sessions_failed" if cleanup_failure else "email_failed")
     assert detail["delivered"] is (case in {"sessions", "cache"})
     assert len(directory.updates) == len(directory.mail) == 1 and not directory.sessions
+    assert len(directory.writes) == 1
     assert "invalidate" in directory.events
     password = directory.updates[0][2]["json"]["user"]["password"]
     assert password not in response.text + caplog.text + json.dumps(directory.audits)
@@ -541,7 +624,10 @@ async def test_http_rate_limit_is_private_and_three_per_minute(directory):
 
 
 @pytest.mark.asyncio
-async def test_cancelled_http_owner_drains_native_email_and_session_cleanup(directory):
+@pytest.mark.parametrize("external", [False, True])
+async def test_cancelled_http_owner_drains_native_email_and_session_cleanup(directory, external):
+    if external:
+        directory.users["target"]["afterglow_local_password"] = False
     directory.native_gate = True
     actor = {**directory.actor, "_live_system_admin": True}
     session = directory.factory()
@@ -589,8 +675,11 @@ async def seed_proofs(directory):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize("unknown", [False, True])
-async def test_old_password_and_email_proofs_consumed_before_reset_even_if_unknown(directory, unknown):
+async def test_old_password_and_email_proofs_consumed_before_reset_even_if_unknown(directory, unknown, external):
+    if external:
+        directory.users["target"]["afterglow_local_password"] = False
     await seed_proofs(directory)
     directory.native_unknown = unknown
     response = await post(directory)
@@ -606,7 +695,10 @@ async def test_old_password_and_email_proofs_consumed_before_reset_even_if_unkno
 
 
 @pytest.mark.asyncio
-async def test_durable_dispatch_fence_failure_prevents_mutation(directory):
+@pytest.mark.parametrize("external", [False, True])
+async def test_durable_dispatch_fence_failure_prevents_mutation(directory, external):
+    if external:
+        directory.users["target"]["afterglow_local_password"] = False
     await seed_proofs(directory)
     directory.fail_commits = {1}
     response = await post(directory)
@@ -624,12 +716,16 @@ async def test_durable_dispatch_fence_failure_prevents_mutation(directory):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external", [False, True])
 @pytest.mark.parametrize("outcome", ["changed", "unknown", "rejected"])
-async def test_final_audit_failure_preserves_truthful_effects_and_dispatch_fence(directory, outcome):
+async def test_final_audit_failure_preserves_truthful_effects_and_dispatch_fence(directory, outcome, external):
+    if external:
+        directory.users["target"]["afterglow_local_password"] = False
     await seed_proofs(directory)
     directory.fail_commits = {2}
     directory.native_unknown = outcome == "unknown"
     directory.response_status = 403 if outcome == "rejected" else 200
+    directory.guarded_status = 409 if outcome == "rejected" else 204
     response = await post(directory)
     detail = response.json()["detail"]
     assert response.status_code == (502 if outcome == "unknown" else 503)
@@ -647,3 +743,215 @@ async def test_final_audit_failure_preserves_truthful_effects_and_dispatch_fence
         assert proof.status == "superseded"
         audit = (await session.execute(select(ActivityLog))).scalar_one()
         assert audit.status == "started" and audit.extra == {"outcome": "dispatching"}
+
+
+async def assert_external_predispatch_refusal(directory, response, code="external_account"):
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"code": "admin_password_reset_" + code}
+    assert_private(response)
+    assert not directory.updates and not directory.writes and not directory.mail
+    assert directory.sessions == ["target-session"] and not directory.cooldown
+    assert "revoke" not in directory.events and "invalidate" not in directory.events
+    async with directory.factory() as session:
+        proofs = (await session.execute(select(AccountRecovery))).scalars().all()
+        assert all(row.status in {"pending", "delivery_pending"} and row.consumed_at is None for row in proofs)
+        assert not (await session.execute(select(ActivityLog))).scalars().all()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    ["unsupported", "old_revision", "capability_missing", "capability_error", "missing_service_credential"],
+)
+async def test_external_unavailable_native_refuses_before_cooldown_and_fence(directory, case):
+    directory.users["target"]["federated"] = [{"idp_id": "gitlab"}]
+    await seed_proofs(directory)
+    if case == "unsupported":
+        directory.capability["supported"] = False
+    elif case == "old_revision":
+        directory.capability["revision"] = "first-password-galera-v1"
+    elif case == "capability_missing":
+        directory.capability_status = 404
+    elif case == "capability_error":
+        directory.capability_status = 503
+    else:
+        directory.ks.session.get_token = lambda: ""
+    response = await post(directory)
+    await assert_external_predispatch_refusal(directory, response)
+    assert "smtp-preflight" not in directory.events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["initial", "revalidation"])
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        {"id": "foreign-user"},
+        {"domain_id": "foreign-home"},
+        {"email": "foreign@example.test"},
+        {"password_state": "unknown"},
+        {"password_state": None},
+        {"identity_revision": None},
+        {"identity_revision": "07"},
+        {"identity_revision": "18446744073709551616"},
+    ],
+)
+async def test_external_invalid_or_foreign_snapshot_has_no_effects(directory, snapshot, stage):
+    directory.users["target"]["afterglow_external_identities"] = [{"provider": "gitlab", "subject": "target"}]
+    directory.identity_snapshots = ([{}] if stage == "revalidation" else []) + [snapshot]
+    await seed_proofs(directory)
+    response = await post(directory)
+    await assert_external_predispatch_refusal(directory, response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["home", "email", "email_aba", "state", "classification"])
+async def test_external_identity_changes_between_snapshots_refuse_before_fence(directory, case):
+    user = directory.users["target"]
+    user["federated"] = [{"idp_id": "gitlab"}]
+    await seed_proofs(directory)
+
+    def change_identity():
+        if case == "home":
+            user["domain_id"] = "foreign-home"
+        elif case == "email":
+            user["email"] = "new@example.test"
+        elif case == "email_aba":
+            original = user["email"]
+            user["email"] = "temporary@example.test"
+            directory.identity_revision = "8"
+            user["email"] = original
+            directory.identity_revision = "9"
+        elif case == "state":
+            directory.password_state = "absent"
+        else:
+            user.pop("federated")
+
+    directory.after_smtp_preflight = change_identity
+    response = await post(directory)
+    await assert_external_predispatch_refusal(directory, response, "identity_changed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["home", "email", "revision_aba", "password_created"])
+async def test_external_native_cas_refuses_post_snapshot_races_without_revocation(directory, case):
+    user = directory.users["target"]
+    user["federated"] = [{"idp_id": "gitlab"}]
+    directory.password_state = "absent"
+    await seed_proofs(directory)
+
+    def race():
+        if case == "home":
+            user["domain_id"] = "foreign-home"
+        elif case == "email":
+            user["email"] = "new@example.test"
+        elif case == "revision_aba":
+            original = user["email"]
+            user["email"] = "temporary@example.test"
+            directory.identity_revision = "8"
+            user["email"] = original
+            directory.identity_revision = "9"
+        else:
+            directory.password_state = "existing"
+
+    directory.before_write = race
+    response = await post(directory)
+    assert response.status_code == 412 and response.json()["detail"] == {
+        "code": "admin_password_reset_native_rejected",
+        "changed": False,
+        "delivered": False,
+    }
+    assert len(directory.updates) == 1 and not directory.writes and not directory.mail
+    assert directory.sessions == ["target-session"]
+    assert "revoke" not in directory.events and "invalidate" not in directory.events
+    assert user["federated"] == [{"idp_id": "gitlab"}] and "password" not in user
+    async with directory.factory() as session:
+        proof = await session.get(AccountRecovery, f"{0:064x}")
+        assert proof.status == "superseded"
+        audit = (await session.execute(select(ActivityLog))).scalar_one()
+        assert audit.extra["outcome"] == "rejected" and audit.extra["changed"] is False
+    assert (await post(directory)).status_code == 429
+    assert len(directory.updates) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password_state", ["absent", "existing"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "timeout_after_commit",
+        "redirect",
+        "server_error",
+        "unexpected_success",
+        "bad_request",
+        "unauthorized",
+        "forbidden",
+        "not_found",
+    ],
+)
+async def test_external_unknown_outcome_never_mails_or_replays(directory, password_state, case, caplog):
+    directory.users["target"]["federated"] = [{"idp_id": "gitlab"}]
+    directory.password_state = password_state
+    await seed_proofs(directory)
+    if case == "timeout_after_commit":
+        directory.native_unknown = True
+    else:
+        directory.guarded_status = {
+            "redirect": 307,
+            "server_error": 500,
+            "unexpected_success": 200,
+            "bad_request": 400,
+            "unauthorized": 401,
+            "forbidden": 403,
+            "not_found": 404,
+        }[case]
+    response = await post(directory)
+    assert response.status_code == 502
+    assert response.json()["detail"] == {
+        "code": "admin_password_reset_outcome_unknown",
+        "delivered": False,
+        "sessions_revoked": True,
+        "audit_recorded": True,
+    }
+    assert len(directory.updates) == 1 and not directory.mail and not directory.sessions
+    assert len(directory.writes) == (1 if case == "timeout_after_commit" else 0)
+    if case == "timeout_after_commit":
+        assert directory.users["target"]["password"] == directory.writes[0]["password"]
+    async with directory.factory() as session:
+        proof = await session.get(AccountRecovery, f"{0:064x}")
+        assert proof.status == "superseded"
+        audit = (await session.execute(select(ActivityLog))).scalar_one()
+        assert audit.extra["outcome"] == "outcome_unknown" and audit.extra["changed"] is None
+    password = directory.updates[0][2]["json"]["user"]["password"]
+    assert password not in response.text + caplog.text + json.dumps(directory.audits)
+    assert (await post(directory)).status_code == 429
+    assert len(directory.updates) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password_state", ["absent", "existing"])
+@pytest.mark.parametrize("status", ["dispatching", "outcome_unknown", "sessions_failed"])
+async def test_external_unsettled_creation_requires_reconciliation_before_any_effect(directory, password_state, status):
+    directory.users["target"]["federated"] = [{"idp_id": "gitlab"}]
+    directory.password_state = password_state
+    await seed_proofs(directory)
+    async with directory.factory() as session:
+        proof = await session.get(AccountRecovery, f"{2:064x}")
+        proof.status = status
+        proof.consumed_at = datetime.now(UTC)
+        await session.commit()
+    response = await post(directory)
+    assert response.status_code == 409 and response.json()["detail"] == {
+        "code": "admin_password_reset_external_account"
+    }
+    assert_private(response)
+    assert not directory.updates and not directory.writes and not directory.mail and not directory.cooldown
+    assert directory.sessions == ["target-session"]
+    assert "smtp-preflight" not in directory.events and "revoke" not in directory.events
+    assert "invalidate" not in directory.events
+    async with directory.factory() as session:
+        proofs = (await session.execute(select(AccountRecovery).order_by(AccountRecovery.token_hash))).scalars().all()
+        assert [row.status for row in proofs] == ["pending", "pending", status, "pending", "pending"]
+        assert proofs[2].consumed_at is not None
+        assert proofs[0].consumed_at is proofs[1].consumed_at is None
+        assert not (await session.execute(select(ActivityLog))).scalars().all()

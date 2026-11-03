@@ -1,6 +1,12 @@
 /** Canonical chat wire contract and runtime parsers. No transport may bypass these parsers. */
 
 import { t } from '$lib/i18n/ns/chat-panel';
+import { normalizeCitations, type CitationSourceKind } from './chatCitations';
+
+import { isBoundedToolProgress } from './chatProgress';
+
+/** 64 tool calls + 64 results + 128 registered root sources + text/reasoning. */
+export const MAX_CANONICAL_CHAT_PARTS = 2 * 64 + 128 + 2;
 
 export interface ModelCapabilities {
 	streaming?: boolean;
@@ -48,9 +54,9 @@ export type ChatPart =
 	| { type: 'video'; asset_id: string; mime_type: string; name: string; duration_ms: number; width: number; height: number }
 	| { type: 'document'; asset_id: string; mime_type: string; name: string; page_count: number }
 	| { type: 'file'; asset_id: string; mime_type: string; name: string; size_bytes: number }
-	| { type: 'tool_call'; call_id: string; name: string; arguments: Record<string, unknown>; status: 'pending' | 'running' | 'completed' | 'failed' | 'denied' }
+	| { type: 'tool_call'; call_id: string; name: string; arguments: Record<string, unknown>; status: 'pending' | 'running' | 'completed' | 'failed' | 'denied'; progress?: string[] }
 	| { type: 'tool_result'; call_id: string; name: string; content: ChatPart[]; is_error: boolean }
-	| { type: 'citation'; citation_id: string; source_kind: 'web' | 'document'; url?: string; document_index?: number; title?: string; snippet?: string; start_index?: number; end_index?: number }
+	| { type: 'citation'; citation_id: string; source_kind: CitationSourceKind; source_id?: string; asset_id?: string; observed_at?: string; provenance?: Record<string, unknown>; url?: string; document_index?: number; title?: string; snippet?: string; start_index?: number; end_index?: number }
 	| { type: 'structured'; schema_name: string; schema_version: string; value: unknown; valid: boolean; validation_error?: string }
 	| { type: 'reasoning'; text: string; visibility: 'user' };
 
@@ -234,9 +240,28 @@ interface EventBase<T extends string, P> {
 	payload: P;
 }
 
-export type RunStage = 'queued' | 'model_request' | 'model_response' | 'tool_execution' | 'response_writing' | 'awaiting_input' | 'finalizing';
+export type RunStage = 'queued' | 'model_request' | 'model_response' | 'tool_execution' | 'response_writing' | 'awaiting_input' | 'waiting_children' | 'waiting_resource' | 'finalizing';
 
-export type ToolActivitySource = 'builtin' | 'managed' | 'custom_http' | 'mcp' | 'workspace' | 'agent';
+export type ToolActivitySource = 'builtin' | 'managed' | 'custom_http' | 'mcp' | 'workspace' | 'agent' | 'plugin';
+
+export interface ChildCreatedPayload {
+	child_run_id: string;
+	call_id: string;
+	wait_group_id: string;
+	agent_id: number;
+	access: 'read' | 'write';
+	ordinal: number;
+	status: 'queued' | 'waiting_resource';
+}
+export interface ChildCompletedPayload {
+	child_run_id: string;
+	call_id: string;
+	wait_group_id: string;
+	status: 'completed' | 'failed' | 'canceled';
+	error_code: string | null;
+	summary: string;
+	artifacts: Extract<ChatPart, { type: 'file' }>[];
+}
 
 
 
@@ -248,11 +273,15 @@ export type ChatRunEvent =
 	| EventBase<'message.created', { message_id: string; role: 'assistant' | 'tool'; parent_id: string | null }>
 	| EventBase<'part.delta', { message_id: string; part_index: number; part_type: 'text' | 'reasoning'; delta: string }>
 	| EventBase<'part.completed', { message_id: string; part_index: number; part: ChatPart }>
+	| EventBase<'source.registered', { message_id: string; citation: Extract<ChatPart, { type: 'citation' }> }>
 	| EventBase<'tool.call.started', { call_id: string; name: string; arguments: Record<string, unknown>; source: ToolActivitySource; category: string }>
+	| EventBase<'tool.call.progress', { call_id: string; name: string; text: string }>
 	| EventBase<'tool.call.completed', { call_id: string; name: string; content: ChatPart[]; status: 'completed' | 'failed'; error_code: string | null; source: ToolActivitySource; category: string }>
-	| EventBase<'tool.approval_required', { call_id: string; name: string; source: 'builtin' | 'managed' | 'custom_http' | 'mcp' | 'workspace' | 'agent'; effect: 'read' | 'workspace_write' | 'process' | 'external_mutation'; destination: string | null; redacted_arguments: Record<string, unknown>; preview: ChatPart[]; expected_state_revision: number | null; writer_fence: number | null; expires_at: string }>
+	| EventBase<'tool.approval_required', { call_id: string; name: string; source: ToolActivitySource; effect: 'read' | 'workspace_write' | 'process' | 'external_mutation'; destination: string | null; redacted_arguments: Record<string, unknown>; preview: ChatPart[]; expected_state_revision: number | null; writer_fence: number | null; expires_at: string }>
 	| EventBase<'tool.approval_resolved', { call_id: string; decision: 'approve' | 'deny'; decided_by_user_id: string | null; decided_at: string }>
 	| EventBase<'interaction.resolved', { interaction_id: string; status: 'answered' | 'timeout' | 'canceled'; response: { option_ids: string[]; text: string | null } | null }>
+	| EventBase<'child.created', ChildCreatedPayload>
+	| EventBase<'child.completed', ChildCompletedPayload>
 	| EventBase<'usage.updated', { components: UsageComponent[]; prompt_tokens: number; completion_tokens: number; raw_cost: string; credited_cost: string }>
 	| EventBase<'run.completed', { status: 'completed'; message_id: string | null }>
 	| EventBase<'run.failed', { status: 'failed'; message_id: string | null; error_code: string; safe_message: string }>
@@ -271,7 +300,7 @@ function record(value: unknown, label: string): Record<string, unknown> {
 }
 
 function text(value: unknown, label: string, { optional = false }: { optional?: boolean } = {}): string | undefined {
-	if (value === undefined && optional) return undefined;
+	if (optional && (value === undefined || value === null || value === '')) return undefined;
 	if (typeof value !== 'string' || value.length === 0) throw new ChatContractError(`${label} must be a non-empty string`);
 	return value;
 }
@@ -301,7 +330,9 @@ function chatPart(value: unknown, depth: number, display: boolean): DisplayChatP
 		case 'tool_call': {
 			const status = text(source.status, 'tool status')!;
 			if (!['pending', 'running', 'completed', 'failed', 'denied'].includes(status)) throw new ChatContractError('invalid tool status');
-			return { type, call_id: text(source.call_id, 'call_id')!, name: text(source.name, 'name')!, arguments: record(source.arguments, 'arguments'), status: status as 'pending' | 'running' | 'completed' | 'failed' | 'denied' };
+			const progress = source.progress ?? undefined;
+			if (progress !== undefined && (!Array.isArray(progress) || progress.length > 32 || progress.some((value) => !isBoundedToolProgress(value)))) throw new ChatContractError('invalid persisted tool progress');
+			return { type, call_id: text(source.call_id, 'call_id')!, name: text(source.name, 'name')!, arguments: record(source.arguments, 'arguments'), status: status as 'pending' | 'running' | 'completed' | 'failed' | 'denied', ...(progress !== undefined ? { progress: progress as string[] } : {}) };
 		}
 		case 'tool_result': {
 			if (!Array.isArray(source.content) || source.content.length > 32) throw new ChatContractError('tool result content must be a bounded array');
@@ -312,15 +343,13 @@ function chatPart(value: unknown, depth: number, display: boolean): DisplayChatP
 			}), is_error: bool(source.is_error, 'is_error') };
 		}
 		case 'citation': {
-			const sourceKind = source.source_kind === 'document' ? 'document' : source.source_kind === 'web' || source.source_kind === undefined ? 'web' : null;
-			if (sourceKind === null) throw new ChatContractError('invalid citation source_kind');
-			const url = text(source.url, 'url', { optional: true });
-			const documentIndex = source.document_index === undefined ? undefined : integer(source.document_index, 'document_index');
-			if ((sourceKind === 'web' && !url) || (sourceKind === 'document' && documentIndex === undefined)) {
-				throw new ChatContractError('citation is missing its source locator');
-			}
-			const startIndex = source.start_index === undefined ? undefined : integer(source.start_index, 'start_index');
-			const endIndex = source.end_index === undefined ? undefined : integer(source.end_index, 'end_index');
+			const normalized = normalizeCitations([source])[0];
+			if (!normalized) throw new ChatContractError('citation is missing a safe source locator');
+			const { source_kind: sourceKind, url, document_index: documentIndex } = normalized;
+			const startIndex = source.start_index === undefined || source.start_index === null ? undefined : integer(source.start_index, 'start_index');
+			const endIndex = source.end_index === undefined || source.end_index === null ? undefined : integer(source.end_index, 'end_index');
+			const title = text(source.title, 'title', { optional: true });
+			const snippet = text(source.snippet, 'snippet', { optional: true });
 			if ((startIndex === undefined) !== (endIndex === undefined) || (startIndex !== undefined && endIndex !== undefined && startIndex > endIndex)) {
 				throw new ChatContractError('invalid citation inline range');
 			}
@@ -328,10 +357,14 @@ function chatPart(value: unknown, depth: number, display: boolean): DisplayChatP
 				type,
 				citation_id: text(source.citation_id, 'citation_id')!,
 				source_kind: sourceKind,
+				...(normalized.source_id ? { source_id: normalized.source_id } : {}),
+				...(normalized.asset_id ? { asset_id: normalized.asset_id } : {}),
+				...(normalized.observed_at ? { observed_at: normalized.observed_at } : {}),
+				...(normalized.provenance ? { provenance: normalized.provenance } : {}),
 				...(url ? { url } : {}),
 				...(documentIndex !== undefined ? { document_index: documentIndex } : {}),
-				...(text(source.title, 'title', { optional: true }) ? { title: text(source.title, 'title', { optional: true })! } : {}),
-				...(text(source.snippet, 'snippet', { optional: true }) ? { snippet: text(source.snippet, 'snippet', { optional: true })! } : {}),
+				...(title ? { title } : {}),
+				...(snippet ? { snippet } : {}),
 				...(startIndex !== undefined ? { start_index: startIndex, end_index: endIndex! } : {})
 			};
 		}
@@ -342,7 +375,7 @@ function chatPart(value: unknown, depth: number, display: boolean): DisplayChatP
 }
 
 export function parseChatPartsStrict(value: unknown): ChatPart[] {
-	if (!Array.isArray(value) || value.length > 32) throw new ChatContractError('chat parts must be a bounded array');
+	if (!Array.isArray(value) || value.length > MAX_CANONICAL_CHAT_PARTS) throw new ChatContractError('chat parts must be a bounded array');
 	return value.map((part) => {
 		const parsed = chatPart(part, 0, false);
 		if (parsed.type === 'unknown') throw new ChatContractError('unknown part is not accepted');
@@ -351,7 +384,7 @@ export function parseChatPartsStrict(value: unknown): ChatPart[] {
 }
 
 export function parseChatPartsForDisplay(value: unknown): DisplayChatPart[] {
-	if (!Array.isArray(value) || value.length > 32) throw new ChatContractError('chat parts must be a bounded array');
+	if (!Array.isArray(value) || value.length > MAX_CANONICAL_CHAT_PARTS) throw new ChatContractError('chat parts must be a bounded array');
 	return value.map((part) => chatPart(part, 0, true));
 }
 
@@ -563,7 +596,7 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 		}
 		case 'run.stage.changed': {
 			exact(payload, ['stage', 'tool_name'], 'run.stage.changed payload');
-			const stage = enumValue(payload.stage, ['queued', 'model_request', 'model_response', 'tool_execution', 'response_writing', 'awaiting_input', 'finalizing'] as const, 'run stage');
+			const stage = enumValue(payload.stage, ['queued', 'model_request', 'model_response', 'tool_execution', 'response_writing', 'awaiting_input', 'waiting_children', 'waiting_resource', 'finalizing'] as const, 'run stage');
 			const toolName = nullableText(payload.tool_name, 'tool_name');
 			if ((stage === 'tool_execution') !== (toolName !== null)) throw new ChatContractError('tool stage and tool name differ');
 			return { ...base, type, payload: { stage, tool_name: toolName } };
@@ -586,11 +619,17 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 			exact(payload, ['message_id', 'part_index', 'part'], 'part.completed payload');
 			return { ...base, type, payload: { message_id: text(payload.message_id, 'message_id')!, part_index: integer(payload.part_index, 'part_index'), part: parseChatPartsStrict([payload.part])[0] } };
 		}
+		case 'source.registered': {
+			exact(payload, ['message_id', 'citation'], 'source.registered payload');
+			const citation = parseChatPartsStrict([payload.citation])[0];
+			if (citation.type !== 'citation') throw new ChatContractError('source.registered requires a citation');
+			return { ...base, type, payload: { message_id: text(payload.message_id, 'message_id')!, citation } };
+		}
 		case 'tool.call.started': {
 			exactOptional(payload, ['call_id', 'name', 'arguments'], ['source', 'category'], 'tool.call.started payload');
 			const source = payload.source === undefined
 				? 'builtin'
-				: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent'] as const, 'tool source');
+				: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent', 'plugin'] as const, 'tool source');
 			return {
 				...base,
 				type,
@@ -603,12 +642,18 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 				}
 			};
 		}
+		case 'tool.call.progress': {
+			exact(payload, ['call_id', 'name', 'text'], 'tool.call.progress payload');
+			const progress = text(payload.text, 'tool progress')!;
+			if (!isBoundedToolProgress(progress)) throw new ChatContractError('tool progress must contain 1–4000 characters');
+			return { ...base, type, payload: { call_id: text(payload.call_id, 'call_id')!, name: text(payload.name, 'tool name')!, text: progress } };
+		}
 		case 'tool.call.completed': {
 			exactOptional(payload, ['call_id', 'name', 'content', 'status'], ['error_code', 'source', 'category'], 'tool.call.completed payload');
 			const errorCode = payload.error_code === undefined || payload.error_code === null ? null : text(payload.error_code, 'tool error code')!;
 			const source = payload.source === undefined
 				? 'builtin'
-				: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent'] as const, 'tool source');
+				: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent', 'plugin'] as const, 'tool source');
 			return {
 				...base,
 				type,
@@ -623,6 +668,43 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 				}
 			};
 		}
+		case 'child.created': {
+			exact(payload, ['child_run_id', 'call_id', 'wait_group_id', 'agent_id', 'access', 'ordinal', 'status'], 'child.created payload');
+			const child_run_id = text(payload.child_run_id, 'child_run_id')!;
+			const call_id = text(payload.call_id, 'call_id')!;
+			const wait_group_id = text(payload.wait_group_id, 'wait_group_id')!;
+			if ([...child_run_id].length > 36 || [...call_id].length > 190 || [...wait_group_id].length > 36) throw new ChatContractError('invalid child identity length');
+			const agent_id = integer(payload.agent_id, 'child agent_id');
+			if (agent_id < 1) throw new ChatContractError('child agent_id must be positive');
+			return { ...base, type, payload: {
+				child_run_id, call_id, wait_group_id, agent_id,
+				access: enumValue(payload.access, ['read', 'write'] as const, 'child access'),
+				ordinal: integer(payload.ordinal, 'child ordinal'),
+				status: enumValue(payload.status, ['queued', 'waiting_resource'] as const, 'initial child status')
+			} };
+		}
+		case 'child.completed': {
+			exactOptional(payload, ['child_run_id', 'call_id', 'wait_group_id', 'status'], ['error_code', 'summary', 'artifacts'], 'child.completed payload');
+			const child_run_id = text(payload.child_run_id, 'child_run_id')!;
+			const call_id = text(payload.call_id, 'call_id')!;
+			const wait_group_id = text(payload.wait_group_id, 'wait_group_id')!;
+			if ([...child_run_id].length > 36 || [...call_id].length > 190 || [...wait_group_id].length > 36) throw new ChatContractError('invalid child identity length');
+			const error_code = payload.error_code === undefined || payload.error_code === null ? null : payload.error_code;
+			if (error_code !== null && (typeof error_code !== 'string' || [...error_code].length > 100)) throw new ChatContractError('invalid child error_code');
+			const summary = payload.summary === undefined ? '' : payload.summary;
+			if (typeof summary !== 'string' || [...summary].length > 8192) throw new ChatContractError('invalid child summary');
+			const rawArtifacts = payload.artifacts === undefined ? [] : payload.artifacts;
+			if (!Array.isArray(rawArtifacts) || rawArtifacts.length > 20) throw new ChatContractError('invalid child artifacts');
+			const artifacts = parseChatPartsStrict(rawArtifacts).map((part) => {
+				if (part.type !== 'file') throw new ChatContractError('child artifacts must be file parts');
+				return part;
+			});
+			return { ...base, type, payload: {
+				child_run_id, call_id, wait_group_id,
+				status: enumValue(payload.status, ['completed', 'failed', 'canceled'] as const, 'terminal child status'),
+				error_code, summary, artifacts
+			} };
+		}
 		case 'tool.approval_required': {
 			exact(payload, ['call_id', 'name', 'source', 'effect', 'destination', 'redacted_arguments', 'preview', 'expected_state_revision', 'writer_fence', 'expires_at'], 'tool.approval_required payload');
 			const expiresAt = text(payload.expires_at, 'expires_at')!;
@@ -634,7 +716,7 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 				payload: {
 					call_id: text(payload.call_id, 'call_id')!,
 					name: text(payload.name, 'tool name')!,
-					source: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent'] as const, 'tool source'),
+					source: enumValue(payload.source, ['builtin', 'managed', 'custom_http', 'mcp', 'workspace', 'agent', 'plugin'] as const, 'tool source'),
 					effect: enumValue(payload.effect, ['read', 'workspace_write', 'process', 'external_mutation'] as const, 'tool effect'),
 					destination: nullableText(payload.destination, 'tool destination'),
 					redacted_arguments: record(payload.redacted_arguments, 'redacted tool arguments'),

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { copyMarkdownWithCitations } from '../chatCitations';
 import {
 	lastAssistantModel,
 	projectMessagesForDisplay,
@@ -92,6 +93,33 @@ describe('projectMessagesForDisplay', () => {
 				}
 			]
 		});
+	});
+	it('retains intermediate canonical sources on the final bubble without crossing a user-turn boundary', () => {
+		const sourceUrl = 'https://cloud.example.test/lumen/sources/runs/run-one/src_observation';
+		const laterUrl = 'https://cloud.example.test/lumen/sources/runs/run-two/src_later';
+		const source = {
+			type: 'citation', source_kind: 'tool_result', citation_id: 'src_observation', source_id: 'src_observation',
+			url: sourceUrl, title: 'Recorded VM observation', snippet: 'Three running VMs.',
+			observed_at: '2026-11-03T00:00:00Z', provenance: { call_id: 'vm-read', tool_name: 'vm_list' }
+		};
+		const path = [
+			msg('question-one', 'user', null, '2026-11-03T00:00:00Z'),
+			{ ...msg('read-one', 'assistant', 'question-one', '2026-11-03T00:00:01Z'), parts: [
+				source,
+				{ type: 'tool_call', call_id: 'vm-read', name: 'vm_list', arguments: {}, status: 'completed' },
+				{ type: 'tool_result', call_id: 'vm-read', name: 'vm_list', content: [{ type: 'text', text: 'Three running VMs.' }], is_error: false }
+			] },
+			{ ...msg('answer-one', 'assistant', 'read-one', '2026-11-03T00:00:02Z'), content: 'There are three running VMs.' },
+			msg('question-two', 'user', 'answer-one', '2026-11-03T00:00:03Z'),
+			{ ...msg('answer-two', 'assistant', 'question-two', '2026-11-03T00:00:04Z'), parts: [
+				{ ...source, citation_id: 'src_later', source_id: 'src_later', url: laterUrl }
+			] }
+		];
+		const answer = projectMessagesForDisplay(path).find((message) => message.id === 'answer-one')!;
+		const copied = copyMarkdownWithCitations(answer.content, answer.citations);
+		expect(copied).toContain(sourceUrl);
+		expect(copied).not.toContain(laterUrl);
+		expect(answer.citations).toEqual([expect.objectContaining({ source_id: 'src_observation', observed_at: source.observed_at, provenance: source.provenance })]);
 	});
 });
 

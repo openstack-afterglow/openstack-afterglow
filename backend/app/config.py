@@ -375,9 +375,23 @@ def _load_toml() -> dict:
     flat["smtp_from_address"] = smtp.get("from_address", "noreply@afterglow.example.com")
     flat["smtp_from_name"] = smtp.get("from_name", "Afterglow")
     flat["smtp_use_tls"] = smtp.get("use_tls", True)
+    flat["smtp_use_ssl"] = smtp.get("use_ssl", False)
+    flat["smtp_security"] = smtp.get("security", "")
     flat["smtp_timeout_seconds"] = smtp.get("timeout_seconds", 10)
     smtp_inv = smtp.get("invitation", {})
     flat["smtp_invitation_token_expiry_days"] = smtp_inv.get("token_expiry_days", 7)
+    imap = data.get("imap", {})
+    for name, default in {
+        "enabled": False,
+        "host": "",
+        "port": 993,
+        "username": "",
+        "password": "",
+        "security": "tls",
+        "mailbox": "INBOX",
+        "timeout_seconds": 10,
+    }.items():
+        flat["imap_" + name] = imap.get(name, default)
 
     cors = data.get("cors", {})
     flat["cors_origins"] = cors.get("origins", "http://localhost:3080,http://localhost")
@@ -831,8 +845,20 @@ class Settings(BaseSettings):
     smtp_from_address: str = "noreply@afterglow.example.com"
     smtp_from_name: str = "Afterglow"
     smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    smtp_security: str = ""
     smtp_timeout_seconds: int = 10
     smtp_invitation_token_expiry_days: int = 7
+
+    # Optional read-only test receipt mailbox.
+    imap_enabled: bool = False
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_username: str = ""
+    imap_password: str = ""
+    imap_security: str = "tls"
+    imap_mailbox: str = "INBOX"
+    imap_timeout_seconds: int = 10
 
     # 프론트엔드 기본 URL (초대 이메일 링크 생성에 사용)
     frontend_base_url: str = ""

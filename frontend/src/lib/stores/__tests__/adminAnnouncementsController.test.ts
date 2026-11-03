@@ -23,8 +23,8 @@ describe('announcement scoped user recipients', () => {
     mocks.get.mockResolvedValue([]);
     mocks.post.mockResolvedValue({});
     const payload = { title: 'Maintenance', body: 'Notice', severity: 'info' as const, target_type: 'all' as const, target_id: null, starts_at: null, ends_at: null };
-    expect(await ctrl.create(payload)).toBe(true);
-    expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/announcements', payload, 'token', 'project');
+    expect(await ctrl.create(payload)).toEqual({ status: 'ok' });
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/announcements', payload, 'token', 'project', { cache: 'no-store', replayOnUnauthorized: false });
     ctrl.dispose();
   });
   it('publishes only a complete selected-domain directory and drops an old domain result', async () => {
@@ -75,7 +75,7 @@ describe('announcement scoped user recipients', () => {
     const ctrl = createAdminAnnouncementsController(options);
     await ctrl.loadProjects();
     expect(mocks.get).not.toHaveBeenCalled();
-    expect(await ctrl.create({ title: 'Maintenance', body: 'Notice', severity: 'info', target_type: 'project', target_id: 'project-a', starts_at: null, ends_at: null })).toBe(false);
+    expect(await ctrl.create({ title: 'Maintenance', body: 'Notice', severity: 'info', target_type: 'project', target_id: 'project-a', starts_at: null, ends_at: null })).toEqual({ status: 'invalid' });
     expect(mocks.post).not.toHaveBeenCalled(); ctrl.dispose();
   });
   it('filters project recipients by exact domain and drops late project responses after domain ABA', async () => {
@@ -106,7 +106,7 @@ describe('announcement scoped user recipients', () => {
     const pending = Promise.withResolvers<unknown>(); mocks.post.mockReturnValueOnce(pending.promise);
     const saving = ctrl.create({ title: 'Maintenance', body: 'Notice', severity: 'info', target_type: 'project', target_id: 'target', starts_at: null, ends_at: null });
     ctrl.selectDomain('', 'project'); pending.resolve({});
-    expect(await saving).toBe(false); expect(ctrl.allProjects).toEqual([]); ctrl.dispose();
+    expect(await saving).toEqual({ status: 'invalid' }); expect(ctrl.allProjects).toEqual([]); ctrl.dispose();
   });
   it.each(['domain', 'authority'] as const)('drops creation success and refreshed rows when %s changes during the post-create GET', async transition => {
     let token = 'token';
@@ -121,6 +121,45 @@ describe('announcement scoped user recipients', () => {
     if (transition === 'authority') token = 'replacement-token';
     ctrl.selectDomain('', 'project');
     refresh.resolve([{ id: 99, title: 'Obsolete refresh' }]);
-    expect(await saving).toBe(false); expect(ctrl.announcements).toEqual([]); expect(ctrl.error).toBe(''); ctrl.dispose();
+    expect(await saving).toEqual({ status: 'invalid' }); expect(ctrl.announcements).toEqual([]); expect(ctrl.error).toBe(''); ctrl.dispose();
+  });
+});
+
+describe('announcement email intent and logical owner', () => {
+  const payload = { title: 'Scheduled maintenance', body: 'Plain text', severity: 'info' as const, target_type: 'all' as const, starts_at: '2099-01-01T00:00:00Z', send_email: true, email_operation_id: 'd06803e9-63c6-4a4f-a1ad-af62f2b08250' };
+  const emailOperation = { operation_id: payload.email_operation_id, kind: 'announcement', status: 'pending', counts: { pending: 2, dispatching: 0, accepted: 0, failed: 0, unknown: 0, cancelled: 0 } };
+  it('preserves explicit scheduled email intent and publishes the durable operation receipt', async () => {
+    const ctrl = createAdminAnnouncementsController(options);
+    mocks.post.mockResolvedValue({ id: 42, email_operation: emailOperation }); mocks.get.mockResolvedValue([]);
+    expect(await ctrl.create(payload)).toEqual({ status: 'ok' });
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/announcements', payload, 'token', 'project', { cache: 'no-store', replayOnUnauthorized: false });
+    expect(ctrl.emailOperation).toEqual(emailOperation); ctrl.dispose();
+  });
+  it('preserves accepted creation through same-owner bearer renewal and uses the fresh token for readback', async () => {
+    let token = 'token';
+    const ctrl = createAdminAnnouncementsController({ token: () => token, projectId: options.projectId, ownerKey: () => 'logical-login', ownerEpoch: () => 1 });
+    const pending = Promise.withResolvers<unknown>(); mocks.post.mockReturnValueOnce(pending.promise); mocks.get.mockResolvedValue([]);
+    const saving = ctrl.create(payload); token = 'renewed-token'; pending.resolve({ id: 42, email_operation: emailOperation });
+    expect(await saving).toEqual({ status: 'ok' }); expect(ctrl.emailOperation).toEqual(emailOperation);
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/announcements', 'renewed-token', 'project'); ctrl.dispose();
+  });
+  it('discards late email receipts after synchronous logical-owner ABA and never overlaps creation', async () => {
+    let epoch = 1;
+    const ctrl = createAdminAnnouncementsController({ ...options, ownerKey: () => 'logical-login', ownerEpoch: () => epoch });
+    const pending = Promise.withResolvers<unknown>(); mocks.post.mockReturnValueOnce(pending.promise);
+    const saving = ctrl.create(payload); expect(await ctrl.create(payload)).toEqual({ status: 'invalid' }); expect(mocks.post).toHaveBeenCalledTimes(1);
+    epoch++; ctrl.invalidateOwner(); epoch++; ctrl.invalidateOwner();
+    pending.resolve({ id: 42, email_operation: emailOperation });
+    expect(await saving).toEqual({ status: 'invalid' }); expect(ctrl.emailOperation).toBeNull(); expect(ctrl.announcements).toEqual([]); ctrl.dispose();
+  });
+  it.each([
+    [new ApiError(422, 'private-validation-text', 'mail_invalid_schedule'), 'rejected'],
+    [new ApiError(503, 'private-identity-text', 'mail_identity_unavailable'), 'rejected'],
+    [new ApiError(503, 'private-storage-text', 'mail_storage_unavailable'), 'indeterminate'],
+    [new Error('private-network-text'), 'indeterminate'],
+  ] as const)('distinguishes rejected intents from uncertain enqueue without displaying raw errors', async (error, status) => {
+    const ctrl = createAdminAnnouncementsController(options); mocks.post.mockRejectedValueOnce(error);
+    expect(await ctrl.create(payload)).toEqual({ status });
+    expect(ctrl.createError).not.toContain('private-'); expect(ctrl.creating).toBe(false); ctrl.dispose();
   });
 });

@@ -1506,3 +1506,100 @@ def test_one_issuer_organization_cannot_have_two_manager_allowlists():
                 }
             }
         )
+
+
+def test_smtp_implicit_tls_and_imap_runtime_config_mapping(isolated_debug_config_dir, monkeypatch):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(
+        '[smtp]\nenabled = true\nhost = "smtp.example.test"\nport = 465\nuse_ssl = true\nsecurity = "tls"\n'
+        '[imap]\nenabled = true\nhost = "imap.example.test"\nport = 143\nsecurity = "starttls"\n'
+        'username = "receipt-user"\nmailbox = "Receipts"\ntimeout_seconds = 7\npassword = "file-imap-secret"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("IMAP_PASSWORD", "environment-imap-secret")
+    settings = app_config.get_settings()
+    assert settings.smtp_use_ssl is True and settings.smtp_security == "tls" and settings.smtp_port == 465
+    assert settings.imap_enabled is True and settings.imap_host == "imap.example.test"
+    assert settings.imap_security == "starttls" and settings.imap_port == 143
+    assert settings.imap_username == "receipt-user" and settings.imap_mailbox == "Receipts"
+    assert settings.imap_timeout_seconds == 7 and settings.imap_password == "environment-imap-secret"
+
+
+def test_mail_config_producers_separate_passwords_and_preserve_transport_modes():
+    cfg = {
+        "smtp": {
+            "enabled": True,
+            "host": "smtp.example.test",
+            "port": 465,
+            "security": "tls",
+            "use_ssl": True,
+            "password": "private-smtp-secret",
+        },
+        "imap": {
+            "enabled": True,
+            "host": "imap.example.test",
+            "port": 143,
+            "security": "starttls",
+            "username": "inbox",
+            "password": "private-imap-secret",
+            "mailbox": "Receipts",
+            "timeout_seconds": 7,
+        },
+    }
+    values = config2helm.convert(cfg, include_secrets=True)
+    assert values["secrets"]["smtpPassword"] == "private-smtp-secret"
+    assert values["secrets"]["imapPassword"] == "private-imap-secret"
+    assert values["smtp"]["useSsl"] is True and values["smtp"]["security"] == "tls"
+    assert values["imap"]["security"] == "starttls" and values["imap"]["mailbox"] == "Receipts"
+    assert "private-" not in config2helm.render_values(cfg, include_secrets=False)
+    configmap = generate_k8s.render_configmap(cfg)
+    assert "private-" not in configmap
+    parsed = tomllib.loads(yaml.safe_load(configmap)["data"]["afterglow.conf"])
+    assert parsed["smtp"]["security"] == "tls" and parsed["smtp"]["use_ssl"] is True
+    assert parsed["imap"]["security"] == "starttls" and parsed["imap"]["mailbox"] == "Receipts"
+    cfg["app"] = {"secret_key": "synthetic-signing-key-0123456789abcdef"}
+    secret = yaml.safe_load(generate_k8s.render_secret(cfg))
+    assert secret["stringData"]["SMTP_PASSWORD"] == "private-smtp-secret"
+    assert secret["stringData"]["IMAP_PASSWORD"] == "private-imap-secret"
+
+
+def test_mail_helm_roundtrip_injects_api_and_worker_passwords(tmp_path):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the mail transport contract")
+    cfg = {
+        "smtp": {
+            "host": "smtp.example.test",
+            "enabled": True,
+            "security": "tls",
+            "use_ssl": True,
+            "password": "private-smtp-secret",
+        },
+        "imap": {
+            "host": "imap.example.test",
+            "enabled": True,
+            "security": "starttls",
+            "password": "private-imap-secret",
+        },
+    }
+    values = tmp_path / "mail-values.yaml"
+    values.write_text(config2helm.render_values(cfg), encoding="utf-8")
+    rendered = subprocess.run(
+        [helm, "template", "afterglow", str(ROOT / "helm/afterglow"), "-f", str(values)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    documents = list(yaml.safe_load_all(rendered.stdout))
+    configmap = next(
+        item for item in documents if item and item["kind"] == "ConfigMap" and "afterglow.conf" in item.get("data", {})
+    )
+    assert "private-" not in json.dumps(configmap)
+    parsed = tomllib.loads(configmap["data"]["afterglow.conf"])
+    assert parsed["smtp"]["security"] == "tls" and parsed["imap"]["security"] == "starttls"
+    for name in ("backend", "notion-worker"):
+        deployment = next(
+            item for item in documents if item and item["kind"] == "Deployment" and item["metadata"]["name"] == name
+        )
+        environment = {item["name"]: item for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]}
+        for key in ("SMTP_PASSWORD", "IMAP_PASSWORD"):
+            assert environment[key]["valueFrom"]["secretKeyRef"]["key"] == key

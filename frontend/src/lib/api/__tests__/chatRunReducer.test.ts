@@ -16,6 +16,31 @@ function event(seq: number, type: string, payload: object, createdAt = at) {
 	});
 }
 
+describe('durable source and progress events', () => {
+	it('publishes registered sources before the final answer and deduplicates completed citation parts by ID', () => {
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'web', url: 'https://example.org', title: 'Queried source' };
+		let state = reduceRunEvent(createRunViewState('run-1'), event(1, 'source.registered', { message_id: '42', citation }));
+		expect(state.sources).toEqual([citation]);
+		expect(state.parts).toEqual([]);
+		state = reduceRunEvent(state, event(2, 'message.created', { message_id: '42', role: 'assistant', parent_id: null }));
+		state = reduceRunEvent(state, event(3, 'part.completed', { message_id: '42', part_index: 0, part: citation }));
+		state = reduceRunEvent(state, event(4, 'message.created', { message_id: '43', role: 'assistant', parent_id: '42' }));
+		expect(state.sources).toEqual([citation]);
+	});
+	it('retains ordered factual tool progress after completion without turning it into reasoning', () => {
+		let state = reduceRunEvent(createRunViewState('run-1'), event(1, 'tool.call.started', { call_id: 't1', name: 'search', arguments: {} }));
+		state = reduceRunEvent(state, event(2, 'tool.call.progress', { call_id: 't1', name: 'search', text: 'Read 3 results' }));
+		state = reduceRunEvent(state, event(3, 'tool.call.progress', { call_id: 't1', name: 'search', text: 'Fetched selected page' }));
+		state = reduceRunEvent(state, event(4, 'tool.call.completed', { call_id: 't1', name: 'search', status: 'completed', content: [{ type: 'text', text: 'Result' }] }));
+		expect(state.tools.t1.progress).toEqual(['Read 3 results', 'Fetched selected page']);
+		expect(state.activity).toEqual([expect.objectContaining({ kind: 'tool', progress: ['Read 3 results', 'Fetched selected page'], status: 'completed' })]);
+		expect(state.activity.some((item) => item.kind === 'reasoning')).toBe(false);
+	});
+	it('rejects progress that cannot be attributed to an active matching call', () => {
+		expect(() => reduceRunEvent(createRunViewState('run-1'), event(1, 'tool.call.progress', { call_id: 'missing', name: 'search', text: 'Done' }))).toThrow('matching call');
+	});
+});
+
 describe('chat run reducer', () => {
 	it('accumulates ordered deltas and replaces them with canonical completed parts', () => {
 		let state = createRunViewState('run-1');
@@ -198,4 +223,14 @@ describe('chat run reducer', () => {
 		expect(reduceRunEvent(afterStarted, event(1, 'run.started', started))).toBe(afterStarted);
 		expect(() => reduceRunEvent(afterStarted, event(3, 'run.started', started))).toThrow(Error);
 	});
+});
+
+it('retains native plugin output and progress instead of rejecting the live stream', () => {
+	const identity = { call_id: 'plugin-call', name: 'plugin__owned__inspect', source: 'plugin', category: 'Extension' };
+	let state = reduceRunEvent(createRunViewState('run-1'), event(1, 'tool.call.started', { ...identity, arguments: { target: 'dataset' } }));
+	state = reduceRunEvent(state, event(2, 'tool.call.progress', { call_id: identity.call_id, name: identity.name, text: 'Dataset received' }));
+	state = reduceRunEvent(state, event(3, 'tool.call.completed', { ...identity, status: 'completed', error_code: null, content: [{ type: 'text', text: 'Rows: 12' }] }));
+	expect(state.tools['plugin-call']).toMatchObject({ source: 'plugin', status: 'completed', progress: ['Dataset received'], content: [{ type: 'text', text: 'Rows: 12' }] });
+	expect(state.error).toBeNull();
+	expect(state.activity).toEqual([expect.objectContaining({ source: 'plugin', kind: 'tool', status: 'completed' })]);
 });

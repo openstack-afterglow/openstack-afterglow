@@ -373,7 +373,6 @@ describe('explicit administrator randomized password email', () => {
 		await fireEvent.input(screen.getByLabelText('이메일'), { target: { value: 'unsaved@example.test' } });
 		await fireEvent.click(await screen.findByRole('button', { name: action }));
 		expect(screen.getByText(`대상: Alice · UUID: ${alice.id} · 현재 등록 이메일: alice@example.test`)).toBeTruthy();
-		expect(screen.getByText(/실제 새 비밀번호가 이메일에 남아/)).toBeTruthy();
 		const confirm = screen.getByRole('button', { name: action });
 		await fireEvent.click(confirm); await fireEvent.click(confirm);
 		expect(mocks.post).toHaveBeenCalledOnce();
@@ -391,7 +390,6 @@ describe('explicit administrator randomized password email', () => {
 		['admin_password_reset_sessions_failed', 503, '비밀번호는 변경되었지만 일부 세션을 폐기하지 못했습니다.'],
 		['admin_password_reset_outcome_unknown', 502, '비밀번호 변경 결과를 확인할 수 없습니다.'],
 		['admin_password_reset_audit_failed', 503, '작업의 감사 기록을 확인하지 못했습니다.'],
-		['admin_password_reset_external_account', 409, 'SSO(외부 IdP) 전용 계정에는 관리자 난수 비밀번호 재설정을 적용할 수 없습니다.'],
 	] as const)('distinguishes %s and leaves the dialog open without a repeat action', async (code, status, message) => {
 		mocks.post.mockRejectedValue(new ApiError(status, 'private-password-or-error', code));
 		renderModal(); await confirmReset();

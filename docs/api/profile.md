@@ -32,7 +32,7 @@ nav_order: 11
 | `POST` | `/api/v1/profile/password` | 비밀번호 변경 (5회/분) |
 | `GET` | `/api/v1/profile/password/capability` | 표시용 비밀번호 기능 상태 (`change`·`create`·`unavailable`) |
 | `POST` | `/api/v1/profile/password/create/request` | 본인의 등록 이메일로 최초 생성 증명 발급 (3회/분) |
-| `POST` | `/api/v1/profile/password/recovery/request` | 본인의 등록 메일로 기존 비밀번호 변경 폼 링크 요청 (3회/분) |
+| `POST` | `/api/v1/profile/password/recovery/request` | 본인 등록 메일로 기존 비밀번호 복구 또는 SSO 최초 생성 링크 요청 (3회/분) |
 | `POST` | `/api/v1/auth/recovery/password/create/complete` | 일회용 이메일 증명과 새 외부 로그인 세션으로 최초 생성 (5회/분) |
 | `GET` | `/api/v1/profile/activity` | 본인 활동 로그 조회 (cross-project) |
 | `GET` | `/api/v1/profile/image` | 본인 사진 선택·표시 데이터 조회 (private, no-store) |
@@ -40,8 +40,16 @@ nav_order: 11
 | `PUT` | `/api/v1/profile/image/upload` | bounded raw raster 업로드·정규화·저장 |
 | `GET` | `/api/v1/profile/login-preference` | 본인 로그인 작업공간 선호 조회 (private, no-store) |
 | `PUT` | `/api/v1/profile/login-preference` | `{remember_last_workspace:boolean}` 저장; target은 현재 검증된 scope에서 서버가 결정 |
+| `GET` | `/api/v1/profile/email-notifications` | 현재 immutable user/home의 이메일 알림 선호 조회 |
+| `PUT` | `/api/v1/profile/email-notifications` | `{announcements:boolean,resource_alerts:boolean}` strict 저장 |
 
 ---
+## 이메일 알림 선호
+
+계정 **프로필 → 이메일 알림**에서 공지·리소스 알림을 선택합니다. `GET/PUT /api/v1/profile/email-notifications`는 현재 검증된 user/home만 사용하며 다른 사용자 ID·email·home을 지정하지 못합니다. 기본은 `announcements:true, resource_alerts:false`이고 public/no-cache 데이터가 아니라 private/no-store 응답입니다.
+
+공지는 관리자 명시 이메일 요청과 global announcement policy, 현재 audience 접근·사용자 선호를 모두 따릅니다. Resource alert는 global gate와 본인 opt-in이 모두 필요하고 미래의 safe failure event 및 현재 VM 오류·native quota 임박/가득 참·사용기간 알림을 전달합니다. Opt-in 시각 전에 일어난 event를 새 구독의 history mail로 재발송하지 않고, 권한/home/email 변경이나 opt-out은 아직 pending인 delivery를 거부합니다. 이미 SMTP에 접수된 메일은 회수하지 못합니다. 명시적인 개별 관리자 메시지는 일반 알림 opt-out과 독립입니다.
+
 ## 로그인 작업공간 선호
 
 기본 `{remember_last_workspace:false}`는 관리자도 자신의 verified personal primary로 로그인합니다. PUT true는 현재 활성·접근 가능한 domain/project를 fresh native 확인한 뒤 exact user+immutable home별 Redis에 저장합니다. 임의 target/user/home 필드는422이고 프로젝트 없는 상태는409입니다. 이후 성공한 scope publication만 활성 선호의 pair를 갱신하며 opt-out을 atomic하게 보존합니다. 다음 password/provider 로그인에서 저장 pair를 다시 검증하고 철회·삭제·비활성은 personal fallback, directory/Redis 장애는503입니다. 선호는 권한이 아니며 Redis persistence/복구 정책에 따라 보존됩니다. False 저장은 선택 프로젝트 접근을 잃은 뒤에도 가능합니다.
@@ -183,13 +191,13 @@ nav_order: 11
 - `create`: native `password_state: absent`와 exact identity revision, recovery/SMTP·본인 provider 세션·메일 유일성·정책·회수 준비·미정산 작업 부재를 확인한 경우입니다. 현재 보존 history가 없다는 뜻이며 기존 비밀번호를 덮어쓰지 않습니다.
 - Native 상태/확장을 확인할 수 없으면 `{ "mode": "change", "reason": "password_state_unknown" }`으로 현재 비밀번호 경로만 유지합니다. 이 응답은 비밀번호 존재 확인이나 최초 생성 허가가 아니며 UI는 관리자 확인을 안내합니다. Identity/정책 등 다른 부적격 조건은 `unavailable`입니다.
 
-매핑 세션은 native 사용자 응답의 `federated` 배열이 비어 있거나 local-password marker가 없어도 신뢰된 server-side `auth_method=federated`에 따라 actual native state를 조회합니다. 공개/프로필 password recovery는 계정 종류·metadata 유무와 무관하게 actual existing history와 native revision을 필수로 요구합니다. Metadata 부재를 로컬 password 존재 증명으로 쓰지 않습니다.
+매핑 세션은 native `federated` 배열·local-password marker가 없어도 server-side `auth_method=federated`에 따라 actual native state를 조회합니다. 공개/프로필 recovery도 native state/revision이 최종 기준이며 `existing`은 기존 복구, SSO의 `absent`는 같은 계정의 새 SSO 로그인까지 필요한 생성 proof로 분기합니다. Metadata 부재만으로 password 존재·최초 생성 권한을 판단하지 않습니다.
 
 ### POST /api/v1/profile/password/recovery/request
 
 인증된 본인의 **현재 등록 메일**로만 복구를 요청합니다. Strict 본문 `{}`이며 대상 이메일·user/home을 지정할 수 없습니다. 경로3회/분·주소별60초 제한, no-store/private/no-referrer와 항상202 `{ "accepted": true }`를 사용해 계정·메일 가용성을 공개하지 않습니다. 접수는 발송·수신 확인이 아닙니다. 링크는 새 비밀번호 입력 폼을 열며 비밀번호 자체를 보내지 않습니다. 메일 접근 불가·미수신 시 관리자 문의를 안내합니다.
 
-모든 password recovery는 실제 native existing history와 발급 revision을 저장합니다. 완료 시 exact user/home/email/revision을 확인하고 조건부 native `/users/{id}/OS-AFTERGLOW/password-reset`을 한 번 호출합니다. 현재 history absent를 거부하므로 메일만으로 최초 생성·새 provider 증명을 우회하지 않습니다. Local 관리자 PATCH fallback도 없고 기존 NULL-revision password proof는410입니다. Native guard 불가는202/no-mail을 유지하며 관리자 문의를 안내합니다. 이 제한은 현재 password를 아는 사용자의 self-service 변경이나 관리자 명시 난수 reset과 별개입니다.
+Existing password recovery는 발급 revision과 exact user/home/email/actual history를 native `/users/{id}/OS-AFTERGLOW/password-reset`에서 검사합니다. Absent SSO는 `password_create` proof를 등록 메일로 보내고 아래 create-complete의 같은 사용자·새 provider session 검사를 적용합니다. Public 요청은 federation/stable external 연결을 요구하며 markerless mapped 프로필은 현재 federated owner를 검증합니다. 일반 local absent에는 생성 링크를 보내지 않습니다. 두 경로 모두 password admission·미정산 생성 fence를 확인하고 native guard 불가는202/no-mail, NULL-revision 기존 proof는410이며 stock PATCH fallback은 없습니다.
 
 최초 설정의 exact native token GET은 native `TokenNotFound`의 알려진 만료/회수404만401 `password_create_session_invalid`로 구분합니다. Service token401/403·일반 endpoint/proxy404·전송/해석 장애는503 `password_create_session_unavailable`이며 사용자 증명이 무효라고 단정하지 않습니다. 반환된 native user/home을 비교하고 SDK가 입력 token을 다시 넣는 `auth_token` echo는 권위로 사용하지 않습니다.
 
@@ -267,16 +275,16 @@ Native 409/412/422의 명시적 거절에는 생성 경로의 세션 회수를 �
 
 `POST /api/v1/admin/users/{user_id}/password/reset-email`은 현재 system-admin만 사용합니다. Strict 본문은 `{}`이며 비밀번호·수신 주소·home은 client가 지정하지 않습니다. 경로3회/분과 같은 cloud/user에 대한 관리자 공통300초 cooldown을 적용합니다. Exact enabled user/home·유일한 canonical 등록 메일·service 계정 제외·실제 system 권위·executor binding·회수 store·검증된 STARTTLS 연결을 변경 전에 확인합니다. SMTP가 비활성/평문이거나 준비되지 않았으면 password를 변경하지 않습니다.
 
-Federated 계정은 명시적 `afterglow_local_password=true`가 확인돼야 합니다. Marker 없는 shadow/legacy 연결 계정과 false marker는 stock Keystone의 최초 local password setter 오류를 피하기 위해 `409 admin_password_reset_external_account`로 거부합니다. 이 거부는 cooldown·감사 fence·native 쓰기·메일·세션 회수 전에 발생하며 기존 credential proof와 세션을 보존합니다. Marker가 없으면 실제 local password를 보유한 연결 계정도 의도적으로 거부합니다. 별도 native 최초 생성 workflow를 이 관리자 reset으로 대체하지 않습니다.
+SSO(federated/stable external identity/명시적 no-local marker) 계정은 marker true/false 대신 native `first-password-galera-v2` capability와 exact user/home/email/state/revision을 확인합니다. `absent`면 atomic create, `existing`이면 conditional reset을 사용합니다. 확장·snapshot 불가 또는 미정산 최초 생성은 `409 admin_password_reset_external_account`로 cooldown·감사 dispatch fence·native 쓰기·메일·세션 회수 전에 거부합니다. 이 코드는 SSO 자체의 영구 금지가 아니라 안전한 native 전제 미충족입니다.
 
-서버는 암호학적 난수32자를 생성하고 원래 관리자 native token으로 `PATCH /v3/users/{id}`를 한 번 호출합니다. `openstack user set --password`와 같은 native setter이며 불필요한 identity/federation metadata는 쓰지 않습니다. 기존 password/email-change/create proof를 supersede하고 비밀 없는 dispatch 감사 기록을 **먼저 commit**합니다. Known 성공만 현재 등록 메일에 password를 보내며 응답·로그·감사·DB에는 password를 남기지 않습니다. Native 성공/불명 결과는 기존 세션·native token/cache 회수를 시도합니다.
+서버는 암호학적 난수32자를 생성합니다. 일반 local은 원 native executor의 `PATCH /v3/users/{id}`, SSO는 configured service credential의 조건부 `POST /v3/users/{id}/OS-AFTERGLOW/initial-password` 또는 `/password-reset`을 한 번 호출합니다. SSO 본문은 password와 서버가 읽은 exact home/email/revision이고 원 UUID/federation을 보존합니다. 기존 password/email-change/create proof를 supersede하고 비밀 없는 dispatch 감사 기록을 **먼저 commit**합니다. Known 성공만 등록 메일로 password를 보내며 응답·로그·감사·DB에는 password를 남기지 않습니다. 성공/불명 결과는 세션·native token/cache 회수를 시도합니다.
 
 **200 `{ "status": "changed", "delivered": true }`**는 native 변경과 SMTP 접수를 확인한 결과이지 실제 받은편지함 도착 보장이 아닙니다. Afterglow는 강제 첫 로그인 만료를 추가하지 않으며 native password/만료 정책은 그대로 적용됩니다. 사용자는 로그인 직후 자신의 비밀번호로 변경해야 합니다. 실제 password가 메일함에 남으므로 사용자 셀프 복구의 일회용 링크보다 위험합니다. 관리자 확인 창과 메일에 이를 안내하고 공개 분실 요청만으로 이 동작을 실행하지 않습니다.
 
 | 응답 | 효과/다음 조치 |
 | --- | --- |
-| 409 `admin_password_reset_external_account` | Federated 계정의 local password marker 미확인; native 쓰기·메일·세션 회수·cooldown 없이 사전 거부 |
-| 400/401/403/404/409/422 `admin_password_reset_native_rejected` | Native 명시적 거절, `changed:false`, password 메일 없음 |
+| 409 `admin_password_reset_external_account` | SSO native capability/state 검증 불가 또는 미정산 최초 생성; 쓰기·메일·세션 회수·cooldown 없이 사전 거부 |
+| `admin_password_reset_native_rejected` | SSO 조건부409/412/422 또는 일반 local PATCH의 명시적400/401/403/404/409/412/422 거절; `changed:false`, password 메일 없음 |
 | 503 `admin_password_reset_email_unavailable` | SMTP/검증 TLS 준비 실패, 변경 전 차단 |
 | 503 `admin_password_reset_email_failed` | `changed:true, delivered:false`; 이전 password는 무효일 수 있으며 관리자 확인 뒤 새 명시 요청 필요 |
 | 503 `admin_password_reset_sessions_failed` | `changed:true`, 실제 `delivered`; 다른 세션이 남아 있을 수 있어 별도 회수 필요 |

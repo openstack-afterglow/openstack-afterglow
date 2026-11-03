@@ -27,6 +27,7 @@ from app.services import (
     email_service,
     identity_roles,
     keystone,
+    mail_settings,
     project_service,
     session_store,
 )
@@ -58,11 +59,8 @@ def _email(value):
     return result
 
 
-def recovery_enabled():
-    settings = get_settings()
-    return bool(
-        settings.smtp_enabled and settings.smtp_host and settings.smtp_from_address and settings.frontend_base_url
-    )
+async def recovery_enabled():
+    return await mail_settings.smtp_ready(base_settings=get_settings(), require_frontend=True)
 
 
 async def _address_allowed(email):
@@ -72,13 +70,13 @@ async def _address_allowed(email):
     return bool(await redis.set("afterglow:recovery:address:" + _digest(email), "1", nx=True, ex=60))
 
 
-async def _eligible(user, ks, catalog):
+async def _eligible(user, ks, catalog, *, allow_absent=False):
     uid, home = _field(user, "id"), _field(user, "domain_id")
     if not uid or not home or _field(user, "enabled") is not True:
         return False
     if _field(user, "name") == get_settings().os_username:
         return False
-    if _external_credential(user):
+    if not allow_absent and _external_credential(user):
         credential = await _initial_support(ks)
         if (await _initial_identity(credential, user))["password_state"] != "existing":
             return False
@@ -159,26 +157,45 @@ async def _issue(kind, user, email, session, *, native_identity_revision=None):
 
 
 @identity_roles._complete_mutation
-async def request_recovery(kind, email, session):
+async def request_recovery(kind, email, session, *, token_info=None):
     if kind not in {"username", "password"}:
         raise _error(422, "invalid_recovery_kind")
     email = _email(email)
     try:
-        if not recovery_enabled() or not await _address_allowed(email):
+        if not await recovery_enabled() or not await _address_allowed(email):
             return dict(_ACCEPTED)
         await session.rollback()
         async with domain_iam._iam_write() as (lease, ks, catalog):
             user = await _unique(email)
-            if user is not None and await _eligible(user, ks, catalog):
+            if user is not None and await _eligible(user, ks, catalog, allow_absent=kind == "password"):
                 revision = None
+                proof_kind = kind
                 if kind == "password":
+                    uid, home = _field(user, "id"), _field(user, "domain_id")
+                    await domain_iam.password_policy(home, email)
+                    if await _creation_unsettled(uid, session):
+                        return dict(_ACCEPTED)
                     credential = await _initial_support(ks)
                     identity = await _initial_identity(credential, user)
-                    if identity["password_state"] != "existing":
-                        return dict(_ACCEPTED)
+                    if identity["password_state"] == "absent":
+                        # A marker saying "no password" is not federation proof.
+                        # Mapped SSO owners can instead prove their live provider
+                        # session even when native metadata has no association.
+                        if token_info is not None:
+                            owner = await _creation_actor(token_info, ks, catalog)
+                            if _field(owner, "id") != uid or _field(owner, "domain_id") != home:
+                                return dict(_ACCEPTED)
+                        elif not (_field(user, "federated") or _field(user, "afterglow_external_identities")):
+                            return dict(_ACCEPTED)
+                        await _creation_subject(uid, home, ks, catalog)
+                        await identity_roles._session_ready({uid})
+                        proof_kind = "password_create"
                     revision = identity["identity_revision"]
                 await lease.assert_owned()
-                await _issue(kind, user, email, session, native_identity_revision=revision)
+                if proof_kind == "password_create":
+                    await _issue_creation(user, email, revision, session)
+                else:
+                    await _issue(proof_kind, user, email, session, native_identity_revision=revision)
     except Exception:
         await session.rollback()
         # Valid request shape always has the same response, including ambiguous
@@ -195,7 +212,7 @@ async def request_profile_password_recovery(token_info, session):
         user = await _provider_call(ks.users.get, uid)
         if _field(user, "id") != uid or _field(user, "domain_id") != home or _field(user, "enabled") is not True:
             return dict(_ACCEPTED)
-        return await request_recovery("password", _field(user, "email"), session)
+        return await request_recovery("password", _field(user, "email"), session, token_info=token_info)
     except Exception:
         await session.rollback()
         return dict(_ACCEPTED)
@@ -220,7 +237,7 @@ async def _locked(token, session, kind=None):
     return row
 
 
-async def _bound(row, ks, catalog):
+async def _bound(row, ks, catalog, session):
     try:
         user = await _provider_call(ks.users.get, row.user_id)
     except HTTPException as exc:
@@ -231,10 +248,13 @@ async def _bound(row, ks, catalog):
         _field(user, "id") != row.user_id
         or _field(user, "domain_id") != row.identity_domain_id
         or _field(user, "email") != row.original_email
-        or not await _eligible(user, ks, catalog)
+        or not await _eligible(user, ks, catalog, allow_absent=row.kind == "password")
     ):
         raise _error(410, "recovery_invalid")
     if row.kind == "password":
+        await domain_iam.password_policy(row.identity_domain_id, row.email)
+        if await _creation_unsettled(row.user_id, session):
+            raise _error(409, "password_create_reconciliation_required")
         if not _valid_identity_revision(row.native_identity_revision):
             raise _error(410, "recovery_invalid")
         credential = await _initial_support(ks)
@@ -254,7 +274,9 @@ async def inspect(token, session):
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _locked(token, session)
         user = (
-            await _creation_bound(row, ks, catalog) if row.kind == "password_create" else await _bound(row, ks, catalog)
+            await _creation_bound(row, ks, catalog)
+            if row.kind == "password_create"
+            else await _bound(row, ks, catalog, session)
         )
         home = await _provider_call(ks.domains.get, row.identity_domain_id)
         result = {
@@ -276,7 +298,7 @@ async def request_email_change(email, current_password, token_info, session):
     email = _email(email)
     if not current_password or len(current_password) > 1024:
         raise _error(422, "invalid_password")
-    if not recovery_enabled():
+    if not await recovery_enabled():
         return dict(_ACCEPTED)
     await session.rollback()
     async with domain_iam._iam_write() as (lease, ks, catalog):
@@ -327,7 +349,7 @@ async def complete(token, session, *, new_password=None, kind="password"):
     await session.rollback()
     async with domain_iam._iam_write() as (lease, ks, catalog):
         row = await _locked(token, session, kind)
-        user = await _bound(row, ks, catalog)
+        user = await _bound(row, ks, catalog, session)
         credential = None
         if kind == "password":
             credential = await _initial_support(ks)
@@ -661,7 +683,7 @@ async def password_capability(token_info, session):
             return {"mode": "change", "reason": "password_state_unknown"}
         if identity["password_state"] == "existing":
             return {"mode": "change"}
-        if not recovery_enabled() or await _creation_unsettled(uid, session, lock=False):
+        if not await recovery_enabled() or await _creation_unsettled(uid, session, lock=False):
             return {"mode": "unavailable"}
         conn = await _provider_call(keystone.get_admin_project_connection)
         catalog = await _provider_call(identity_roles.load_catalog, conn)
@@ -675,9 +697,22 @@ async def password_capability(token_info, session):
             await asyncio.to_thread(conn.close)
 
 
+async def _issue_creation(user, email, revision, session):
+    await session.execute(
+        update(AccountRecovery)
+        .where(
+            AccountRecovery.user_id == _field(user, "id"),
+            AccountRecovery.kind == "password_create",
+            AccountRecovery.status == "pending",
+        )
+        .values(status="superseded", consumed_at=_now())
+    )
+    return await _issue("password_create", user, email, session, native_identity_revision=revision)
+
+
 @identity_roles._complete_mutation
 async def request_password_creation(token_info, session):
-    if not recovery_enabled():
+    if not await recovery_enabled():
         raise _error(503, "password_create_email_unavailable")
     await session.rollback()
     async with domain_iam._iam_write() as (lease, ks, catalog):
@@ -695,16 +730,7 @@ async def request_password_creation(token_info, session):
         if not await _address_allowed(email):
             raise _error(429, "password_create_rate_limited")
         await lease.assert_owned()
-        await session.execute(
-            update(AccountRecovery)
-            .where(
-                AccountRecovery.user_id == uid,
-                AccountRecovery.kind == "password_create",
-                AccountRecovery.status == "pending",
-            )
-            .values(status="superseded", consumed_at=_now())
-        )
-        if not await _issue("password_create", user, email, session, native_identity_revision=revision):
+        if not await _issue_creation(user, email, revision, session):
             raise _error(503, "password_create_email_unavailable")
     return dict(_ACCEPTED)
 

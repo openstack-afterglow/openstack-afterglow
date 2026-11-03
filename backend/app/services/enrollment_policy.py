@@ -98,9 +98,6 @@ def _policy_dto(row):
         "defaults_future_only": True,
         "personal_quota_source": "administrator" if row is not None else "source_defaults",
         "source_default_personal_quotas": dict(PERSONAL_DEFAULT_QUOTAS),
-        "smtp_configured": bool(
-            settings.smtp_enabled and settings.smtp_host and settings.smtp_from_address and settings.frontend_base_url
-        ),
     }
 
 

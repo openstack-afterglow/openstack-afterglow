@@ -189,6 +189,8 @@ from app.api.identity.admin_identity import router as admin_identity_router
 from app.api.identity.admin_images import router as admin_images_router
 from app.api.identity.admin_infrastructure_topology import router as admin_infrastructure_topology_router
 from app.api.identity.admin_instances import router as admin_instances_router
+from app.api.identity.admin_mail_delivery import router as admin_mail_delivery_router
+from app.api.identity.admin_mail_settings import router as admin_mail_settings_router
 from app.api.identity.admin_notion import router as admin_notion_router
 from app.api.identity.admin_orphans import router as admin_orphans_router
 from app.api.identity.admin_password_reset import router as admin_password_reset_router
@@ -212,6 +214,7 @@ from app.api.identity.onboarding import router as onboarding_router
 from app.api.identity.organization_bindings import router as organization_bindings_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
+from app.api.identity.profile_mail import router as profile_mail_router
 from app.api.identity.profile_password import admin_router as admin_profile_password_router
 from app.api.identity.profile_password import router as profile_password_router
 from app.api.identity.projects import router as projects_router
@@ -310,6 +313,7 @@ async def creation_validation_exception_handler(request: Request, exc: RequestVa
             "/api/v1/admin/user-credentials",
             "/api/v1/admin/users",
             "/api/v1/profile/password",
+            "/api/v1/admin/email",
         )
     )
     sensitive_creation = request.method == "POST" and path in {
@@ -793,6 +797,8 @@ async def credential_response_cache_policy(request: Request, call_next):
             "/api/v1/admin/application-credentials",
             "/api/v1/admin/user-credentials",
             "/api/v1/admin/users",
+            "/api/v1/admin/email",
+            "/api/v1/profile/email-notifications",
             "/api/v1/auth",
             "/api/v1/iam",
             "/api/v1/admin/domains",
@@ -834,6 +840,8 @@ app.include_router(gpu_quota_requests_router, prefix="/api/v1", tags=["gpu-quota
 app.include_router(managed_flavors_router, prefix="/api/v1", tags=["flavor-automation"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
 app.include_router(admin_password_reset_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(admin_mail_settings_router, prefix="/api/v1/admin", tags=["admin-email"])
+app.include_router(admin_mail_delivery_router, prefix="/api/v1/admin", tags=["admin-email"])
 app.include_router(organization_bindings_router, prefix="/api/v1/admin", tags=["organization-bindings"])
 app.include_router(admin_domains_router, prefix="/api/v1/admin", tags=["admin-domains"])
 app.include_router(admin_credentials_router, prefix="/api/v1/admin", tags=["admin-credentials"])
@@ -851,6 +859,7 @@ app.include_router(admin_images_router, prefix="/api/v1/admin", tags=["admin-ima
 app.include_router(admin_resource_policies_router, prefix="/api/v1/admin", tags=["admin-resource-policies"])
 app.include_router(profile_router, prefix="/api/v1/profile", tags=["profile"])
 app.include_router(profile_password_router, prefix="/api/v1/profile", tags=["profile"])
+app.include_router(profile_mail_router, prefix="/api/v1/profile", tags=["profile"])
 app.include_router(admin_profile_password_router, prefix="/api/v1/admin/identity", tags=["admin-identity"])
 app.include_router(profile_activity_router, prefix="/api/v1/profile/activity", tags=["profile-activity"])
 app.include_router(admin_activity_router, prefix="/api/v1/admin", tags=["admin-activity"])
@@ -1494,6 +1503,9 @@ async def start_background_workers():
         from app.services.flavor_discovery import discovery_loop as flavor_discovery_loop
 
         roles["flavor-discovery"] = flavor_discovery_loop
+        from app.services.mail_delivery import scheduler_loop as mail_delivery_loop
+
+        roles["email-delivery"] = mail_delivery_loop
     if _db_cfg.openstack_notifications_enabled:
         if not _db_cfg.database_url:
             raise RuntimeError("OpenStack notification collection requires a persistent database")

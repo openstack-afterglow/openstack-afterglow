@@ -2,11 +2,96 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ChatContractError,
+	MAX_CANONICAL_CHAT_PARTS,
 	parseChatPartsForDisplay,
 	parseChatPartsStrict,
 	parseChatRunEvent,
 	parseContextState
 } from '../chatContracts';
+
+describe('portable source and Pi progress contracts', () => {
+	const base = { event_id: 'run-1:1', run_id: 'run-1', seq: 1, created_at: '2026-11-02T00:00:00Z' };
+	it('parses immediate registered sources and preserves server-issued provenance', () => {
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'tool_result', source_id: 's1', url: 'https://console.example/lumen/sources/runs/run-1/c1', observed_at: base.created_at, provenance: { tool_name: 'read' } };
+		expect(parseChatRunEvent({ ...base, type: 'source.registered', payload: { message_id: 'm1', citation } })).toMatchObject({ type: 'source.registered', payload: { citation } });
+		expect(() => parseChatRunEvent({ ...base, type: 'source.registered', payload: { message_id: 'm1', citation: { type: 'text', text: 'not evidence' } } })).toThrow(ChatContractError);
+	});
+	it.each([null, ''])('accepts native nullable citation metadata (%s) without losing its locator', (metadata) => {
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'user_input', source_id: 'input-1', url: 'https://console.example/lumen/sources/runs/run-1/c1', title: metadata, snippet: metadata, asset_id: null, document_index: null, start_index: null, end_index: null, observed_at: null, provenance: null };
+		expect(parseChatRunEvent({ ...base, type: 'source.registered', payload: { message_id: 'm1', citation } })).toMatchObject({ payload: { citation: { type: 'citation', citation_id: 'c1', source_kind: 'user_input', source_id: 'input-1', url: citation.url } } });
+	});
+	it('accepts a completed native tool call with null progress', () => {
+		const part = { type: 'tool_call', call_id: 't1', name: 'read', arguments: {}, status: 'completed', progress: null };
+		expect(parseChatRunEvent({ ...base, type: 'part.completed', payload: { message_id: 'm1', part_index: 0, part } })).toMatchObject({ payload: { part: { type: 'tool_call', call_id: 't1', name: 'read', arguments: {}, status: 'completed' } } });
+	});
+	it.each(['waiting_children', 'waiting_resource'])('accepts native %s stage without a fabricated tool name', (stage) => {
+		expect(parseChatRunEvent({ ...base, type: 'run.stage.changed', payload: { stage, tool_name: null } })).toMatchObject({ payload: { stage, tool_name: null } });
+		expect(() => parseChatRunEvent({ ...base, type: 'run.stage.changed', payload: { stage, tool_name: 'read' } })).toThrow(ChatContractError);
+	});
+	it.each([null, ''])('normalizes nullable image, audio and structured metadata, including nested images (%s)', (metadata) => {
+		const image = { type: 'image', asset_id: 'asset-1', mime_type: 'image/png', name: 'chart.png', width: 2, height: 3 };
+		const audio = { type: 'audio', asset_id: 'asset-2', mime_type: 'audio/wav', name: 'clip.wav', duration_ms: 250 };
+		const structured = { type: 'structured', schema_name: 'summary', schema_version: '1', value: { result: 'ok' }, valid: true };
+		const parts = [{ ...image, alt_text: metadata }, { ...audio, transcript: metadata }, { ...structured, validation_error: metadata }];
+		expect(parseChatPartsStrict(parts)).toEqual([image, audio, structured]);
+		const nested = { type: 'tool_result', call_id: 't1', name: 'read', is_error: false, content: [parts[0]] };
+		expect(parseChatPartsStrict([nested])).toEqual([{ ...nested, content: [image] }]);
+	});
+	it('still rejects null required text and malformed optional metadata or half-ranges', () => {
+		expect(() => parseChatPartsStrict([{ type: 'text', text: null }])).toThrow(ChatContractError);
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'web', url: 'https://example.org' };
+		expect(() => parseChatPartsStrict([{ ...citation, title: 3 }])).toThrow(ChatContractError);
+		expect(() => parseChatPartsStrict([{ ...citation, start_index: 1, end_index: null }])).toThrow(ChatContractError);
+	});
+	it.each(['?auth=public', '#api-key', '#section', '#authorization', '#token', '#key', '?q=password+reset'])('keeps backend-valid source URL metadata parseable: %s', (suffix) => {
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'web', url: `https://example.org/document${suffix}` };
+		expect(parseChatRunEvent({ ...base, type: 'source.registered', payload: { message_id: 'm1', citation } })).toMatchObject({ type: 'source.registered', payload: { citation } });
+	});
+	it.each(['?api-key=secret', '?api%2Dkey=secret', '#api-key=secret'])('rejects native credential-bearing source URL metadata: %s', (suffix) => {
+		const citation = { type: 'citation', citation_id: 'c1', source_kind: 'web', url: `https://example.org/document${suffix}` };
+		expect(() => parseChatRunEvent({ ...base, type: 'source.registered', payload: { message_id: 'm1', citation } })).toThrow(ChatContractError);
+	});
+	it.each(['', 'x'.repeat(4001)])('rejects empty or unbounded progress (%s)', (text) => {
+		expect(() => parseChatRunEvent({ ...base, type: 'tool.call.progress', payload: { call_id: 't1', name: 'read', text } })).toThrow(ChatContractError);
+	});
+	it('accepts bounded factual progress with exact keys only', () => {
+		expect(parseChatRunEvent({ ...base, type: 'tool.call.progress', payload: { call_id: 't1', name: 'read', text: 'Read 2 files' } })).toMatchObject({ type: 'tool.call.progress' });
+		expect(() => parseChatRunEvent({ ...base, type: 'tool.call.progress', payload: { call_id: 't1', name: 'read', text: 'Read 2 files', secret: 'no' } })).toThrow(ChatContractError);
+	});
+});
+
+describe('bounded canonical assistant history', () => {
+	it('retains 40 sources without truncating canonical server parts', () => {
+		const parts = Array.from({ length: 40 }, (_, index) => ({ type: 'citation', citation_id: `c${index}`, source_kind: 'web', url: `https://example.org/${index}` }));
+		expect(parseChatPartsStrict(parts)).toHaveLength(40);
+		expect(parseChatPartsForDisplay(parts)).toHaveLength(40);
+		expect(() => parseChatPartsStrict(Array.from({ length: MAX_CANONICAL_CHAT_PARTS + 1 }, () => ({ type: 'text', text: 'x' })))).toThrow(ChatContractError);
+	});
+	it('accepts the derived legal 64-tool / 128-source response and rejects exactly one part beyond it', () => {
+		const parts: unknown[] = [
+			{ type: 'text', text: 'Final answer' },
+			{ type: 'reasoning', text: 'User-visible reasoning', visibility: 'user' },
+			...Array.from({ length: 128 }, (_, index) => ({ type: 'citation', citation_id: `c${index}`, source_kind: 'web', url: `https://example.org/${index}` })),
+			...Array.from({ length: 64 }, (_, index) => [
+				{ type: 'tool_call', call_id: `t${index}`, name: 'read', arguments: {}, status: 'completed' },
+				{ type: 'tool_result', call_id: `t${index}`, name: 'read', content: [], is_error: false }
+			]).flat()
+		];
+		expect(MAX_CANONICAL_CHAT_PARTS).toBe(258);
+		expect(parts).toHaveLength(MAX_CANONICAL_CHAT_PARTS);
+		expect(parseChatPartsStrict(parts)).toHaveLength(MAX_CANONICAL_CHAT_PARTS);
+		expect(parseChatPartsForDisplay(parts)).toHaveLength(MAX_CANONICAL_CHAT_PARTS);
+		const overBound = [...parts, { type: 'text', text: 'One extra part' }];
+		expect(() => parseChatPartsStrict(overBound)).toThrow(ChatContractError);
+		expect(() => parseChatPartsForDisplay(overBound)).toThrow(ChatContractError);
+	});
+	it('retains bounded historical tool progress and rejects malformed progress', () => {
+		const part = { type: 'tool_call', call_id: 't1', name: 'read', arguments: {}, status: 'completed', progress: ['Read file'] };
+		expect(parseChatPartsStrict([part])).toEqual([part]);
+		expect(() => parseChatPartsStrict([{ ...part, progress: ['x'.repeat(4001)] }])).toThrow(ChatContractError);
+		expect(() => parseChatPartsStrict([{ ...part, progress: Array.from({ length: 33 }, () => 'Read file') }])).toThrow(ChatContractError);
+	});
+});
 
 describe('chatContracts', () => {
 
@@ -314,4 +399,27 @@ describe('chatContracts', () => {
 			})
 		).toMatchObject({ type, payload });
 	});
+});
+
+it('preserves whitespace and uses Unicode code points consistently for live and saved tool output', () => {
+	const base = { event_id: 'run-1:1', run_id: 'run-1', seq: 1, created_at: '2026-11-03T00:00:00Z', type: 'tool.call.progress' };
+	for (const text of [' \n\t', '📄'.repeat(4000)]) {
+		expect(parseChatRunEvent({ ...base, payload: { call_id: 't1', name: 'read', text } })).toMatchObject({ payload: { text } });
+		expect(parseChatPartsStrict([{ type: 'tool_call', call_id: 't1', name: 'read', arguments: {}, status: 'completed', progress: [text] }])[0]).toMatchObject({ progress: [text] });
+	}
+	expect(() => parseChatRunEvent({ ...base, payload: { call_id: 't1', name: 'read', text: '📄'.repeat(4001) } })).toThrow(ChatContractError);
+});
+
+it('accepts the native plugin source for tool lifecycle and approval without opening arbitrary source kinds', () => {
+	const base = { event_id: 'run-1:1', run_id: 'run-1', seq: 1, created_at: '2026-11-03T00:00:00Z' };
+	const identity = { call_id: 'plugin-call', name: 'plugin__owned__inspect', source: 'plugin', category: 'Plugin' };
+	const events = [
+		{ type: 'tool.call.started', payload: { ...identity, arguments: {} } },
+		{ type: 'tool.call.completed', payload: { ...identity, content: [{ type: 'text', text: 'Observed result' }], status: 'completed', error_code: null } },
+		{ type: 'tool.approval_required', payload: { call_id: identity.call_id, name: identity.name, source: 'plugin', effect: 'workspace_write', destination: null, redacted_arguments: {}, preview: [], expected_state_revision: null, writer_fence: null, expires_at: '2026-11-04T00:00:00Z' } },
+	];
+	for (const event of events) {
+		expect(parseChatRunEvent({ ...base, ...event })).toMatchObject({ payload: { source: 'plugin' } });
+		expect(() => parseChatRunEvent({ ...base, ...event, payload: { ...event.payload, source: 'unregistered-executor' } })).toThrow(ChatContractError);
+	}
 });

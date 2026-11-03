@@ -783,9 +783,23 @@ password = ""               # SMTP 인증 비밀번호 (secret.yaml에서 주입
 from_address = "noreply@afterglow.example.com"
 from_name = "Afterglow"
 use_tls = true              # STARTTLS 사용 여부
+use_ssl = false             # Implicit TLS (465); when true it supersedes legacy use_tls.
+security = ""               # Optional explicit "starttls", "tls", or "none"; web settings require TLS.
+timeout_seconds = 10         # Bounded 1..30 seconds. Never authenticate on plaintext SMTP.
 
 [smtp.invitation]
 token_expiry_days = 7       # 초대 링크 유효 기간 (일)
+
+[imap]
+# Optional read-only test receipt verification, not a mailbox/webmail client.
+enabled = false
+host = ""
+port = 993
+username = ""
+password = ""               # Inject IMAP_PASSWORD through Secret, never ConfigMap.
+security = "tls"             # "tls" (993) or "starttls" (143), with certificate verification.
+mailbox = "INBOX"
+timeout_seconds = 10
 
 
 [cors]

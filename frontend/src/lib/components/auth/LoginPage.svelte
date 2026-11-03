@@ -16,8 +16,9 @@
 	import type { SignupOptions } from '$lib/types/enrollmentPolicy';
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { loginDestination } from '$lib/utils/authFlow';
-	import { freshLoginDestination, postAuthDestination } from '$lib/utils/mcpConsent';
+	import { freshLoginDestination, postAuthDestination, storeLumenSourceContinuation } from '$lib/utils/mcpConsent';
 	import { isSafeAuthorizeUrl, storePendingProviderLogin } from '$lib/utils/domainLogin';
+	import { LUMEN_SOURCE_QUERY } from '$lib/utils/lumenSourceNavigation';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { t as td } from '$lib/i18n/ns/domain-auth';
 
@@ -57,6 +58,7 @@
 
 	onMount(() => {
 		active = true;
+		storeLumenSourceContinuation($page.url.searchParams.get(LUMEN_SOURCE_QUERY));
 		// Subscribe synchronously so A -> B -> A identity/reauth changes cannot revive a response.
 		let owner = '';
 		const unsubscribe = derived([auth, logoutInProgress, projectSwitching, page], ([state, loggingOut, switching, entry]) =>

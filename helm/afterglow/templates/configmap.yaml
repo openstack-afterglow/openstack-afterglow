@@ -332,7 +332,7 @@ data:
     [cors]
     origins = {{ .Values.cors.origins | quote }}
 
-    {{- if .Values.smtp.enabled }}
+    {{- if or .Values.smtp.enabled .Values.smtp.host }}
 
     [smtp]
     enabled = {{ .Values.smtp.enabled }}
@@ -343,10 +343,24 @@ data:
     from_address = {{ .Values.smtp.fromAddress | quote }}
     from_name = {{ .Values.smtp.fromName | quote }}
     use_tls = {{ .Values.smtp.useTls }}
+    use_ssl = {{ .Values.smtp.useSsl }}
+    security = {{ .Values.smtp.security | quote }}
     timeout_seconds = {{ .Values.smtp.timeoutSeconds }}
 
     [smtp.invitation]
     token_expiry_days = {{ .Values.smtp.invitation.tokenExpiryDays }}
+    {{- end }}
+
+    {{- if or .Values.imap.enabled .Values.imap.host }}
+    [imap]
+    enabled = {{ .Values.imap.enabled }}
+    host = {{ .Values.imap.host | quote }}
+    port = {{ .Values.imap.port }}
+    username = {{ .Values.imap.username | quote }}
+    # password is injected by IMAP_PASSWORD from secret.yaml
+    security = {{ .Values.imap.security | quote }}
+    mailbox = {{ .Values.imap.mailbox | quote }}
+    timeout_seconds = {{ .Values.imap.timeoutSeconds }}
     {{- end }}
 
     [monitoring]

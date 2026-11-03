@@ -1,16 +1,31 @@
 import { t } from '$lib/i18n/ns/chat-diagnostics';
-import type { ChatPart, ChatRunEvent, ChatRunKind, ChatRunStatus, ContextUpdatedPayload, RunStage, UsageComponent } from './chatContracts';
+import type { ChatPart, ChatRunEvent, ChatRunKind, ChatRunStatus, ContextUpdatedPayload, RunStage, ToolActivitySource, UsageComponent } from './chatContracts';
 
 export interface RunToolView {
 	callId: string;
 	name: string;
-	source: 'builtin' | 'managed' | 'custom_http' | 'mcp' | 'workspace' | 'agent';
+	source: ToolActivitySource;
 	category: string;
 	arguments: Record<string, unknown>;
 	status: 'running' | 'completed' | 'failed';
 	content: ChatPart[];
 	errorCode: string | null;
 	durationMs: number | null;
+	progress?: string[];
+}
+
+export interface RunChildView {
+	childRunId: string;
+	callId: string;
+	waitGroupId: string;
+	agentId: number | null;
+	access: 'read' | 'write' | null;
+	ordinal: number | null;
+	initialStatus: 'queued' | 'waiting_resource' | null;
+	status: 'requested' | 'completed' | 'failed' | 'canceled';
+	errorCode: string | null;
+	summary: string;
+	artifacts: Extract<ChatPart, { type: 'file' }>[];
 }
 
 export type RunActivityItem =
@@ -47,14 +62,16 @@ export type RunActivityItem =
 			createdAt: string;
 			callId: string;
 			name: string;
-			source: 'builtin' | 'managed' | 'custom_http' | 'mcp' | 'workspace' | 'agent';
+			source: ToolActivitySource;
 			category: string;
 			arguments: Record<string, unknown>;
 			status: 'running' | 'completed' | 'failed';
 			content: ChatPart[];
 			errorCode: string | null;
 			durationMs: number | null;
-	  };
+			progress?: string[];
+	  }
+	| (RunChildView & { id: string; kind: 'child'; seq: number; createdAt: string });
 
 export interface RunViewState {
 	runId: string;
@@ -64,7 +81,9 @@ export interface RunViewState {
 	messageId: string | null;
 	parts: ChatPart[];
 	partsByMessage: Record<string, ChatPart[]>;
+	sources: Extract<ChatPart, { type: 'citation' }>[];
 	tools: Record<string, RunToolView>;
+	children: Record<string, RunChildView>;
 	usage: { promptTokens: number; completionTokens: number; components: UsageComponent[] } | null;
 	activity: RunActivityItem[];
 	context: ContextUpdatedPayload | null;
@@ -83,7 +102,9 @@ export function createRunViewState(runId: string): RunViewState {
 		messageId: null,
 		parts: [],
 		partsByMessage: {},
+		sources: [],
 		tools: {},
+		children: {},
 		usage: null,
 		activity: [],
 		context: null,
@@ -191,6 +212,12 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 			}
 			break;
 		}
+		case 'source.registered': {
+			const citation = event.payload.citation;
+			const index = next.sources.findIndex((item) => item.citation_id === citation.citation_id);
+			next.sources = index < 0 ? [...next.sources, citation] : next.sources.map((item, i) => i === index ? citation : item);
+			break;
+		}
 		case 'part.completed': {
 			const parts = replacePart(
 				next.partsByMessage[event.payload.message_id] ?? [],
@@ -199,6 +226,11 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 			);
 			next.partsByMessage = { ...next.partsByMessage, [event.payload.message_id]: parts };
 			if (event.payload.message_id === next.messageId) next.parts = parts;
+			if (event.payload.part.type === 'citation') {
+				const citation = event.payload.part;
+				const index = next.sources.findIndex((item) => item.citation_id === citation.citation_id);
+				next.sources = index < 0 ? [...next.sources, citation] : next.sources.map((item, i) => i === index ? citation : item);
+			}
 			if (event.payload.part.type === 'reasoning') {
 				const id = `reasoning:${event.payload.message_id}:${event.payload.part_index}`;
 				const existing = next.activity.find(
@@ -213,6 +245,35 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 					active: false
 				});
 			}
+			break;
+		}
+		case 'child.created': {
+			const payload = event.payload;
+			const existing = next.children[payload.child_run_id];
+			if (existing && (existing.callId !== payload.call_id || existing.waitGroupId !== payload.wait_group_id || existing.status !== 'requested')) throw new Error('child task identity conflict');
+			if (existing) break;
+			const child: RunChildView = {
+				childRunId: payload.child_run_id, callId: payload.call_id, waitGroupId: payload.wait_group_id,
+				agentId: payload.agent_id, access: payload.access, ordinal: payload.ordinal,
+				initialStatus: payload.status, status: 'requested', errorCode: null, summary: '', artifacts: []
+			};
+			next.children = { ...next.children, [payload.child_run_id]: child };
+			next.activity = replaceActivity(next.activity, { ...child, id: `child:${payload.child_run_id}`, kind: 'child', seq: event.seq, createdAt: event.created_at });
+			break;
+		}
+		case 'child.completed': {
+			const payload = event.payload;
+			const existing = next.children[payload.child_run_id];
+			if (existing && (existing.callId !== payload.call_id || existing.waitGroupId !== payload.wait_group_id)) throw new Error('child task identity conflict');
+			const first = next.activity.find((item) => item.kind === 'child' && item.childRunId === payload.child_run_id);
+			const child: RunChildView = {
+				childRunId: payload.child_run_id, callId: payload.call_id, waitGroupId: payload.wait_group_id,
+				agentId: existing?.agentId ?? null, access: existing?.access ?? null, ordinal: existing?.ordinal ?? null,
+				initialStatus: existing?.initialStatus ?? null, status: payload.status,
+				errorCode: payload.error_code, summary: payload.summary, artifacts: payload.artifacts
+			};
+			next.children = { ...next.children, [payload.child_run_id]: child };
+			next.activity = replaceActivity(next.activity, { ...child, id: `child:${payload.child_run_id}`, kind: 'child', seq: first?.seq ?? event.seq, createdAt: first?.createdAt ?? event.created_at });
 			break;
 		}
 		case 'tool.call.started':
@@ -246,6 +307,15 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 				durationMs: null
 			});
 			break;
+		case 'tool.call.progress': {
+			const tool = next.tools[event.payload.call_id];
+			if (!tool || tool.name !== event.payload.name || tool.status !== 'running') throw new Error('tool progress has no active matching call');
+			const progress = tool.progress?.at(-1) === event.payload.text ? tool.progress : [...(tool.progress ?? []), event.payload.text].slice(-32);
+			next.tools = { ...next.tools, [event.payload.call_id]: { ...tool, progress } };
+			next.activity = next.activity.map((item) => item.kind === 'tool' && item.callId === event.payload.call_id
+				? { ...item, progress } : item);
+			break;
+		}
 		case 'tool.call.completed': {
 			const existing = next.tools[event.payload.call_id];
 			const existingActivity = next.activity.find(
@@ -268,7 +338,8 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 					status: event.payload.status,
 					content: event.payload.content,
 					errorCode: event.payload.error_code,
-					durationMs
+					durationMs,
+					...(existing?.progress ? { progress: existing.progress } : {}),
 				}
 			};
 			next.activity = replaceActivity(next.activity, {
@@ -284,7 +355,8 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 				status: event.payload.status,
 				content: event.payload.content,
 				errorCode: event.payload.error_code,
-				durationMs
+				durationMs,
+				...(existingActivity?.progress ? { progress: existingActivity.progress } : {}),
 			});
 			break;
 		}
