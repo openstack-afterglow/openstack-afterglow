@@ -6,11 +6,19 @@ set -euo pipefail
 # Usage: ./deploy/kolla/install.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO_DIR="${AFTERGLOW_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${AFTERGLOW_REPO_DIR:-}"
+if [[ -z "$REPO_DIR" && "$SCRIPT_DIR" == */deploy/kolla ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 
 log()  { echo "[afterglow-install] $*"; }
 warn() { echo "[afterglow-install] WARNING: $*" >&2; }
 die()  { echo "[afterglow-install] ERROR: $*" >&2; exit 1; }
+if [[ -n "$REPO_DIR" ]]; then
+  [[ "$REPO_DIR" == /* ]] || die "AFTERGLOW_REPO_DIR must be an absolute checkout path."
+  REPO_DIR="${REPO_DIR%/}"
+fi
 
 # ── 1. kolla-ansible 설치 경로 및 실행 파일 탐지 ─────────────────────────────
 detect_kolla_bin() {
@@ -145,19 +153,88 @@ STOCK_SITE="$KOLLA_DIR/ansible/site.yml"
 [[ -r "$KOLLA_CONFIG_DIR/globals.yml" ]] || die "Kolla globals.yml을 읽을 수 없습니다: $KOLLA_CONFIG_DIR/globals.yml"
 [[ -f "$STOCK_SITE" ]] || die "Kolla stock site.yml을 찾을 수 없습니다: $STOCK_SITE"
 
-# Verify the package-installed Drover role and its distribution metadata.
+# Resolve private package assets using the active Kolla interpreter. The wheel
+# never writes into Kolla's stable symlink paths or an operator's checkout.
 KOLLA_PYTHON=$(command -v python3) || die "python3 실행 파일을 찾을 수 없습니다"
-if [[ "$KOLLA_ANSIBLE_BIN" == /* ]]; then
+case "$KOLLA_DIR" in
+  */local/share/kolla-ansible)
+    candidate_kolla_python="${KOLLA_DIR%/local/share/kolla-ansible}/bin/python" ;;
+  */share/kolla-ansible)
+    candidate_kolla_python="${KOLLA_DIR%/share/kolla-ansible}/bin/python" ;;
+  *) candidate_kolla_python="" ;;
+esac
+if [[ -x "$candidate_kolla_python" ]]; then
+  KOLLA_PYTHON="$candidate_kolla_python"
+elif [[ "$KOLLA_ANSIBLE_BIN" == /* ]]; then
   candidate_kolla_python="$(dirname "$KOLLA_ANSIBLE_BIN")/python"
   [[ -x "$candidate_kolla_python" ]] && KOLLA_PYTHON="$candidate_kolla_python"
 fi
-OPERATOR_LOCK="${AFTERGLOW_OPERATOR_LOCK:-$REPO_DIR/deploy/kolla/operator/uv.lock}"
-[[ -r "$OPERATOR_LOCK" ]] || die "Operator lockfile not found at $OPERATOR_LOCK"
+AFTERGLOW_PACKAGE_ROOT=$(
+  "$KOLLA_PYTHON" - <<'PY'
+import os
+import sysconfig
+from importlib.metadata import PackageNotFoundError, distribution
+from pathlib import Path
+
+root = Path(sysconfig.get_path("data")) / "share/afterglow/kolla"
+try:
+    distribution("openstack-afterglow")
+except PackageNotFoundError:
+    pass
+else:
+    raise SystemExit(
+        "Legacy openstack-afterglow distribution is still installed. "
+        "It shares private assets with afterglow-kolla; uninstalling it later can delete the new package's files. "
+        "Uninstall openstack-afterglow from this Kolla environment, then force-reinstall "
+        "afterglow-kolla from the intended release or source before rerunning install.sh."
+    )
+dist = distribution("afterglow-kolla")
+owned = {Path(os.path.abspath(dist.locate_file(item))) for item in dist.files or ()}
+required = (
+    "ansible/roles/afterglow/tasks/main.yml",
+    "ansible/roles/afterglow/tasks/deploy.yml",
+    "ansible/roles/afterglow/defaults/main.yml",
+    "ansible/roles/afterglow/templates/afterglow.conf.j2",
+    "site.yml",
+    "read_locked_version.py",
+    "normalize_stock_globals.py",
+    "patch_stock_site.py",
+    "operator/uv.lock",
+)
+for relative in required:
+    path = root / relative
+    if path not in owned or not path.is_file():
+        raise SystemExit(f"afterglow-kolla distribution does not own installed asset: {path}")
+    for ancestor in (path, *path.parents):
+        if ancestor.is_symlink():
+            raise SystemExit(f"Refusing symlinked package asset: {ancestor}")
+        if ancestor == root:
+            break
+print(root)
+PY
+) || die "Install the root afterglow-kolla package into the active Kolla environment with no legacy openstack-afterglow distribution remaining before running install.sh."
+AFTERGLOW_ROLE_TARGET="$AFTERGLOW_PACKAGE_ROOT/ansible/roles/afterglow"
+AFTERGLOW_SITE_TARGET="$AFTERGLOW_PACKAGE_ROOT/site.yml"
+AFTERGLOW_ROLE_LINK="$ROLES_DIR/afterglow"
+AFTERGLOW_SITE_LINK="$KOLLA_DIR/ansible/afterglow-site.yml"
+AFTERGLOW_LEGACY_ROLE_TARGET="${AFTERGLOW_LEGACY_ROLE_TARGET:-}"
+AFTERGLOW_LEGACY_SITE_TARGET="${AFTERGLOW_LEGACY_SITE_TARGET:-}"
+if [[ -n "$REPO_DIR" ]]; then
+  AFTERGLOW_LEGACY_ROLE_TARGET="${AFTERGLOW_LEGACY_ROLE_TARGET:-$REPO_DIR/deploy/kolla/ansible/roles/afterglow}"
+  AFTERGLOW_LEGACY_SITE_TARGET="${AFTERGLOW_LEGACY_SITE_TARGET:-$REPO_DIR/deploy/kolla/site.yml}"
+fi
+for legacy_target_name in AFTERGLOW_LEGACY_ROLE_TARGET AFTERGLOW_LEGACY_SITE_TARGET; do
+  legacy_target="${!legacy_target_name}"
+  [[ -z "$legacy_target" || "$legacy_target" == /* ]] ||
+    die "$legacy_target_name must be an absolute exact legacy symlink target."
+done
+OPERATOR_LOCK="${AFTERGLOW_OPERATOR_LOCK:-}"
+[[ -n "$OPERATOR_LOCK" && -r "$OPERATOR_LOCK" ]] || die "Set AFTERGLOW_OPERATOR_LOCK to the readable operator uv.lock used to sync this Kolla environment."
 
 get_locked_version() {
   local dist="$1"
   local ver
-  ver=$("$KOLLA_PYTHON" "$REPO_DIR/deploy/kolla/read_locked_version.py" "$OPERATOR_LOCK" "$dist" 2>/dev/null || true)
+  ver=$("$KOLLA_PYTHON" "$AFTERGLOW_PACKAGE_ROOT/read_locked_version.py" "$OPERATOR_LOCK" "$dist" 2>/dev/null || true)
   if [[ -z "$ver" ]]; then
     die "Failed to determine expected version for $dist from $OPERATOR_LOCK"
   fi
@@ -263,16 +340,57 @@ installed_palimpsest_version=$(
   die "Expected palimpsest-client==$PALIMPSEST_VERSION in the active Kolla environment, found '${installed_palimpsest_version:-not installed}'."
 log "Palimpsest role verified at $PALIMPSEST_ROLE_DIR (palimpsest-client==$installed_palimpsest_version)"
 
-# Role symlink (Afterglow source role only)
-create_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/afterglow" "$ROLES_DIR/afterglow" "afterglow role"
+# Preflight both stable paths before changing either. Match link text exactly:
+# an unrelated link that happens to resolve to the same file is not ours.
+check_afterglow_link() {
+  local target="$1" link_path="$2" legacy_target="$3"
+  if [[ -e "$link_path" || -L "$link_path" ]]; then
+    [[ -L "$link_path" ]] || die "Refusing to replace foreign path: $link_path"
+    local current_target
+    current_target=$(readlink "$link_path")
+    if [[ "$current_target" != "$target" ]] &&
+       [[ -z "$legacy_target" || "$current_target" != "$legacy_target" ]]; then
+      die "Refusing to replace foreign symlink: $link_path -> $current_target. Set AFTERGLOW_LEGACY_ROLE_TARGET and AFTERGLOW_LEGACY_SITE_TARGET to the exact known old targets, or AFTERGLOW_REPO_DIR for a single old checkout."
+    fi
+  fi
+}
 
-# Aggregate playbook symlink (afterglow-site.yml)
-create_symlink_safe "$REPO_DIR/deploy/kolla/site.yml" "$KOLLA_DIR/ansible/afterglow-site.yml" "aggregate afterglow-site.yml playbook"
+install_afterglow_link() {
+  local target="$1" link_path="$2" legacy_target="$3"
+  check_afterglow_link "$target" "$link_path" "$legacy_target"
+  if [[ -L "$link_path" && "$(readlink "$link_path")" == "$target" ]]; then
+    log "Package asset link already installed: $link_path"
+    return 0
+  fi
+  # os.replace replaces the symlink itself, including a link to a directory;
+  # portable mv implementations can instead follow that directory symlink.
+  "$KOLLA_PYTHON" - "$target" "$link_path" "$legacy_target" <<'PY'
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+target, link, legacy = sys.argv[1:]
+with tempfile.TemporaryDirectory(prefix=".afterglow-link-", dir=Path(link).parent) as directory:
+    temporary = Path(directory) / "link"
+    os.symlink(target, temporary)
+    if os.path.lexists(link):
+        if not os.path.islink(link) or os.readlink(link) not in {target, legacy}:
+            raise SystemExit(f"Refusing changed foreign path: {link}")
+    os.replace(temporary, link)
+PY
+  log "Package asset link installed: $link_path -> $target"
+}
+
+check_afterglow_link "$AFTERGLOW_ROLE_TARGET" "$AFTERGLOW_ROLE_LINK" "$AFTERGLOW_LEGACY_ROLE_TARGET"
+check_afterglow_link "$AFTERGLOW_SITE_TARGET" "$AFTERGLOW_SITE_LINK" "$AFTERGLOW_LEGACY_SITE_TARGET"
+install_afterglow_link "$AFTERGLOW_ROLE_TARGET" "$AFTERGLOW_ROLE_LINK" "$AFTERGLOW_LEGACY_ROLE_TARGET"
+install_afterglow_link "$AFTERGLOW_SITE_TARGET" "$AFTERGLOW_SITE_LINK" "$AFTERGLOW_LEGACY_SITE_TARGET"
 
 # A prior manual installation appended the complete plugin globals as a second
 # YAML document. Kolla accepts only one document for -e @globals.yml. Remove
 # that exact duplicate only after proving it matches the plugin-owned source.
-"$KOLLA_PYTHON" "$REPO_DIR/deploy/kolla/normalize_stock_globals.py" \
+"$KOLLA_PYTHON" "$AFTERGLOW_PACKAGE_ROOT/normalize_stock_globals.py" \
   "$KOLLA_CONFIG_DIR/globals.yml" \
   "$PLUGIN_GLOBALS" \
   "$KOLLA_CONFIG_DIR/globals.yml.before-afterglow-dedup" || \
@@ -294,15 +412,15 @@ mkdir -p "$(dirname "$DEFAULT_INVENTORY")" "$GLOBALS_D"
 create_symlink_safe "$MULTINODE_INVENTORY" "$DEFAULT_INVENTORY" "Kolla default multinode inventory"
 create_symlink_safe "$PLUGIN_GLOBALS" "$GLOBALS_D/90-openstack-afterglow-globals.yml" "Afterglow globals.d override"
 create_symlink_safe "$PLUGIN_SECRETS" "$GLOBALS_D/91-openstack-afterglow-secrets.yml" "Afterglow secrets globals.d override"
-python3 "$REPO_DIR/deploy/kolla/patch_stock_site.py" install "$STOCK_SITE" || \
+"$KOLLA_PYTHON" "$AFTERGLOW_PACKAGE_ROOT/patch_stock_site.py" install "$STOCK_SITE" || \
   die "Afterglow stock site.yml import 설치 실패"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo " Afterglow and package-installed sibling roles (Drover, Lumen, Waygate, Palimpsest) integration wiring installed."
+echo " Afterglow and sibling package-owned Kolla assets integrated."
 echo " The installer owns only its marked stock site.yml import, default"
-echo " inventory link, globals.d links, source role link (afterglow), and aggregate"
-echo " playbook link. Drover, Lumen, Waygate, and Palimpsest roles are package-owned."
+echo " inventory link, globals.d links, and stable Afterglow role/playbook links."
+echo " All service role contents and the aggregate playbook are package-owned."
 echo ""
 echo " Activate the Kolla virtualenv, then from $KOLLA_CONFIG_DIR deploy with:"
 echo " kolla-ansible deploy -i multinode"

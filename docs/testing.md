@@ -6,6 +6,11 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Kolla 배포 자산 개발 태그
+
+Python 3.11 격리 환경에서 wheel의 pip 설치·업그레이드와 서로 다른 checkout에서 온 role/site 링크 이관을 확인했다. Sibling 역할 메타데이터는 합성이며 운영 배포 증거가 아니다.
+
+
 ## MCP member 권한·클라이언트 식별 (2026-11-04, source/local)
 
 - 기존 source의 `member` cloud 관리 허용을 유지하면서 프로젝트 native 관리 가능 여부와 read/manage 연결 상한을 분리했다. Read key·reader·unknown은 관리로 승격하지 않고 independently confirmed service leaves와 Lumen 제외를 유지한다. Request-local 검증된 AccessInfo가 preview policy catalog 조회로 전달되지 않던 경로를 복구했다.

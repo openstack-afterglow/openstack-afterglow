@@ -21,6 +21,22 @@ test("Claude workflow accepts explicit conversation mentions without automated r
 const testWorkflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "test.yml"), "utf8")
 const dockerWorkflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "docker-build.yml"), "utf8")
 
+test("development tags cannot trigger release images or Helm while stable tags can", () => {
+	for (const name of ["docker-build.yml", "helm-release.yml"]) {
+		const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", name), "utf8")
+		const line = /^    tags: \[(.+)\]$/m.exec(workflow)
+		assert.ok(line, `${name} must declare tag filters`)
+		const filters = [...line[1].matchAll(/'([^']+)'/g)].map((match) => match[1])
+		const triggered = (tag) => filters.reduce((included, pattern) => {
+			const negative = pattern.startsWith("!")
+			return path.matchesGlob(tag, negative ? pattern.slice(1) : pattern) ? !negative : included
+		}, false)
+		assert.equal(triggered("1.32.6-dev"), false, name)
+		assert.equal(triggered("1.32.7"), true, name)
+		assert.equal(triggered("v1.32.7"), true, name)
+	}
+})
+
 /** `jobs:` 아래 2칸 들여쓴 job 블록을 다음 job 시작 전까지 잘라낸다. */
 function jobBlock(workflow, name) {
 	const start = workflow.indexOf(`\n  ${name}:\n`)

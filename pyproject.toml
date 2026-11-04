@@ -1,10 +1,75 @@
+[build-system]
+requires = ["hatchling>=1.20"]
+build-backend = "hatchling.build"
+
 [project]
-name = "afterglow"
-version = "0.1.0"
-description = "Add your description here"
+name = "afterglow-kolla"
+dynamic = ["version"]
+description = "Afterglow Kolla-Ansible integration assets and operator tooling"
 readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
+requires-python = ">=3.11"
+dependencies = []
+
+# Preserve the checkout's default uv sync CLI tools without adding runtime
+# dependencies to the Kolla deployment-assets wheel.
+[dependency-groups]
+dev = [
     "python-openstackclient>=10.0.0",
     "urllib3>=2.8.0",
+]
+
+[tool.hatch.version]
+path = "package.json"
+pattern = '"version":\s*"(?P<version>[^"]+)"'
+
+# This root distribution owns deployment data, not the separate afterglow-api.
+# Keep package data outside Kolla's existing role paths: legacy installs may
+# still have checkout symlinks there, which pip must never write through.
+[tool.hatch.build.targets.wheel]
+# Select only the installed data namespace, with no importable project package.
+# bypass-selection would also exclude directory entries from shared-data.
+include = ["/share/afterglow/kolla/**"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"deploy/kolla/ansible/roles/afterglow" = "share/afterglow/kolla/ansible/roles/afterglow"
+"deploy/kolla/site.yml" = "share/afterglow/kolla/site.yml"
+"deploy/kolla/playbooks" = "share/afterglow/kolla/playbooks"
+"deploy/kolla/inventory" = "share/afterglow/kolla/inventory"
+"deploy/kolla/ansible.cfg" = "share/afterglow/kolla/ansible.cfg"
+"deploy/kolla/globals.afterglow.sample.yml" = "share/afterglow/kolla/globals.afterglow.sample.yml"
+"deploy/kolla/passwords.afterglow.additions.yml" = "share/afterglow/kolla/passwords.afterglow.additions.yml"
+"deploy/kolla/install.sh" = "share/afterglow/kolla/install.sh"
+"deploy/kolla/uninstall.sh" = "share/afterglow/kolla/uninstall.sh"
+"deploy/kolla/read_locked_version.py" = "share/afterglow/kolla/read_locked_version.py"
+"deploy/kolla/normalize_stock_globals.py" = "share/afterglow/kolla/normalize_stock_globals.py"
+"deploy/kolla/patch_stock_site.py" = "share/afterglow/kolla/patch_stock_site.py"
+"deploy/kolla/operator/pyproject.toml" = "share/afterglow/kolla/operator/pyproject.toml"
+"deploy/kolla/operator/uv.lock" = "share/afterglow/kolla/operator/uv.lock"
+"deploy/kolla/operator/README.md" = "share/afterglow/kolla/operator/README.md"
+"deploy/kolla/operator/afterglow_kolla_operator" = "share/afterglow/kolla/operator/afterglow_kolla_operator"
+
+# An explicit source allowlist excludes local settings, data, virtualenvs,
+# frontend builds, and the unrelated interactive root setup.py configuration CLI.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/pyproject.toml",
+    "/package.json",
+    "/README.md",
+    "/LICENSE",
+    "/deploy/kolla/ansible/roles/afterglow/**",
+    "/deploy/kolla/site.yml",
+    "/deploy/kolla/playbooks/**",
+    "/deploy/kolla/inventory/**",
+    "/deploy/kolla/ansible.cfg",
+    "/deploy/kolla/globals.afterglow.sample.yml",
+    "/deploy/kolla/passwords.afterglow.additions.yml",
+    "/deploy/kolla/install.sh",
+    "/deploy/kolla/uninstall.sh",
+    "/deploy/kolla/read_locked_version.py",
+    "/deploy/kolla/normalize_stock_globals.py",
+    "/deploy/kolla/patch_stock_site.py",
+    "/deploy/kolla/operator/pyproject.toml",
+    "/deploy/kolla/operator/uv.lock",
+    "/deploy/kolla/operator/README.md",
+    "/deploy/kolla/operator/afterglow_kolla_operator/**",
 ]

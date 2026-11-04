@@ -5,6 +5,8 @@
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
 Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
+개발용 `afterglow-kolla` Git 태그 `1.32.6-dev`의 설치 및 기존 Kolla 링크 이관은 `deploy/kolla/README.md`를 따른다. 패키지 설치는 서비스 배포가 아니다.
+
 
 ## 정식 release/tag 버전 규칙
 

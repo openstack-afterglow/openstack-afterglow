@@ -52,6 +52,48 @@ function createInstalledServiceFixtures(directory, rolesDir, pythonPath, customP
 		fs.mkdirSync(distInfo, { recursive: true })
 		fs.writeFileSync(path.join(distInfo, "METADATA"), `Metadata-Version: 2.1\nName: ${distribution}\nVersion: ${version}\n`)
 	}
+	const packageRoot = path.join(directory, "share", "afterglow", "kolla")
+	for (const relativePath of [
+		"ansible/roles/afterglow",
+		"site.yml",
+		"install.sh",
+		"uninstall.sh",
+		"read_locked_version.py",
+		"normalize_stock_globals.py",
+		"patch_stock_site.py",
+		"operator/uv.lock",
+	]) {
+		const destination = path.join(packageRoot, relativePath)
+		fs.mkdirSync(path.dirname(destination), { recursive: true })
+		fs.cpSync(path.join(rootDir, "deploy", "kolla", relativePath), destination, { recursive: true })
+	}
+	const packageVersion = JSON.parse(readRepoFile("package.json")).version
+	const packageDistInfo = path.join(metadataDir, `afterglow_kolla-${packageVersion}.dist-info`)
+	fs.mkdirSync(packageDistInfo, { recursive: true })
+	fs.writeFileSync(
+		path.join(packageDistInfo, "METADATA"),
+		`Metadata-Version: 2.1\nName: afterglow-kolla\nVersion: ${packageVersion}\n`
+	)
+	const records = []
+	function recordAssets(assetDirectory) {
+		for (const entry of fs.readdirSync(assetDirectory, { withFileTypes: true })) {
+			const asset = path.join(assetDirectory, entry.name)
+			if (entry.isDirectory()) recordAssets(asset)
+			else records.push(`"${path.relative(metadataDir, asset).replaceAll('"', '""')}",,`)
+		}
+	}
+	recordAssets(packageRoot)
+	fs.writeFileSync(path.join(packageDistInfo, "RECORD"), `${records.join("\n")}\n`)
+	// Model the Kolla environment's data prefix without installing into the
+	// interpreter used by the test runner or consulting a published distribution.
+	fs.writeFileSync(
+		path.join(metadataDir, "sitecustomize.py"),
+		`import sysconfig\n_original_get_path = sysconfig.get_path\n` +
+		`def _fixture_get_path(name, *args, **kwargs):\n` +
+		`    if name == "data":\n        return ${JSON.stringify(directory)}\n` +
+		`    return _original_get_path(name, *args, **kwargs)\n` +
+		`sysconfig.get_path = _fixture_get_path\n`
+	)
 	fs.mkdirSync(path.dirname(pythonPath), { recursive: true })
 	fs.writeFileSync(pythonPath, '#!/usr/bin/env bash\nexport PYTHONPATH="${KOLLA_TEST_METADATA:?}"\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n', { mode: 0o755 })
 	return metadataDir
@@ -68,6 +110,48 @@ function runGlobalsNormalizer(normalizer, ...args) {
 		{ encoding: "utf8" }
 	)
 }
+
+test("root wheel and sdist-built wheel include the complete Kolla role", () => {
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-package-test-"))
+	try {
+		const direct = path.join(directory, "direct")
+		const fromSource = path.join(directory, "from-source")
+		for (const [args, output] of [
+			[["build", "--wheel", "--sdist", "--out-dir", direct], direct],
+			[["build", "--wheel", "--out-dir", fromSource, path.join(direct, `afterglow_kolla-${JSON.parse(readRepoFile("package.json")).version}.tar.gz`)], fromSource],
+		]) {
+			const result = spawnSync("uv", args, { cwd: rootDir, encoding: "utf8", timeout: 120000 })
+			assert.equal(result.status, 0, result.stderr)
+			assert.ok(fs.readdirSync(output).some(name => name.endsWith(".whl")))
+		}
+		const script = `import email, json, pathlib, sys, zipfile
+root, direct, source = map(pathlib.Path, sys.argv[1:])
+version = json.loads((root / "package.json").read_text())["version"]
+role = root / "deploy/kolla/ansible/roles/afterglow"
+expected = {p.relative_to(role).as_posix(): p.read_bytes() for p in role.rglob("*") if p.is_file() and "__pycache__" not in p.parts and not p.name.endswith(".pyc")}
+prefix = "share/afterglow/kolla/ansible/roles/afterglow/"
+for directory in (direct, source):
+    wheels = list(directory.glob("*.whl"))
+    assert len(wheels) == 1, wheels
+    assert wheels[0].name == f"afterglow_kolla-{version}-py3-none-any.whl", wheels[0].name
+    with zipfile.ZipFile(wheels[0]) as archive:
+        names = archive.namelist()
+        metadata_path = f"afterglow_kolla-{version}.dist-info/METADATA"
+        metadata = email.message_from_bytes(archive.read(metadata_path))
+        assert metadata["Name"] == "afterglow-kolla", metadata["Name"]
+        assert metadata["Version"] == version, metadata["Version"]
+        for name, content in expected.items():
+            matches = [entry for entry in names if entry.endswith(prefix + name)]
+            assert len(matches) == 1 and archive.read(matches[0]) == content, name
+        assert any(entry.endswith("share/afterglow/kolla/site.yml") for entry in names)
+        assert any(entry.endswith("share/afterglow/kolla/install.sh") for entry in names)
+`
+		const verified = spawnSync("python3", ["-c", script, rootDir, direct, fromSource], { encoding: "utf8", timeout: 30000 })
+		assert.equal(verified.status, 0, verified.stderr)
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true })
+	}
+})
 
 test("Afterglow health checks use probe tools present in published images", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
@@ -182,7 +266,7 @@ test("Kolla installer safely patches the standard playbook import", () => {
 		assert.match(uninstall, /MULTINODE_INVENTORY="\$KOLLA_CONFIG_DIR\/multinode"/)
 		assert.ok(
 			uninstall.indexOf("patch_stock_site.py\" remove") <
-				uninstall.indexOf('afterglow-site.yml" "aggregate afterglow-site.yml playbook"')
+				uninstall.indexOf('remove_afterglow_link "$AFTERGLOW_SITE_TARGET"')
 		)
 		assert.match(readRepoFile("deploy/kolla/install.sh"), /globals\.d/)
 		assert.match(readRepoFile("deploy/kolla/install.sh"), /patch_stock_site\.py" install/)
@@ -273,6 +357,7 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 	const commandEnvironment = {
 		...process.env,
 		AFTERGLOW_REPO_DIR: rootDir,
+		AFTERGLOW_OPERATOR_LOCK: path.join(rootDir, "deploy/kolla/operator/uv.lock"),
 		KOLLA_ANSIBLE_BIN: fakeKollaBinary,
 		KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
 		KOLLA_ANSIBLE_DIR: kollaAnsiblePath,
@@ -567,6 +652,7 @@ test("Installer and uninstaller preserve root-package roles and operator files",
 		const commandEnvironment = {
 			...process.env,
 			AFTERGLOW_REPO_DIR: rootDir,
+			AFTERGLOW_OPERATOR_LOCK: path.join(rootDir, "deploy/kolla/operator/uv.lock"),
 			KOLLA_ANSIBLE_BIN: fakeKollaBinary,
 			KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
 			KOLLA_TEST_METADATA: metadataDir,
@@ -593,19 +679,159 @@ test("Installer and uninstaller preserve root-package roles and operator files",
 		snapshot(rolesDir)
 		snapshot(metadataDir)
 		snapshot(pluginConfigRoot)
+		const packageRoot = path.join(temporaryDirectory, "share/afterglow/kolla")
+		snapshot(packageRoot)
+		const roleLink = path.join(rolesDir, "afterglow")
+		const siteLink = path.join(kollaAnsiblePath, "ansible/afterglow-site.yml")
+		const roleTarget = path.join(packageRoot, "ansible/roles/afterglow")
+		const siteTarget = path.join(packageRoot, "site.yml")
+		// Only exact checkout-owned legacy links may migrate to package assets.
+		fs.symlinkSync(path.join(rootDir, "deploy/kolla/ansible/roles/afterglow"), roleLink)
+		fs.symlinkSync(path.join(rootDir, "deploy/kolla/site.yml"), siteLink)
 		const installer = path.join(rootDir, "deploy/kolla/install.sh")
 		const uninstaller = path.join(rootDir, "deploy/kolla/uninstall.sh")
-		for (const command of [installer, installer]) {
-			const result = spawnSync("bash", [command], { encoding: "utf8", env: commandEnvironment })
+		// The renamed wheel must not coexist with the old distribution's RECORD:
+		// uninstalling either owner could otherwise delete the same private assets.
+		const packageVersion = JSON.parse(readRepoFile("package.json")).version
+		const packageDistInfo = path.join(metadataDir, `afterglow_kolla-${packageVersion}.dist-info`)
+		const legacyDistInfo = path.join(metadataDir, `openstack_afterglow-${packageVersion}.dist-info`)
+		fs.mkdirSync(legacyDistInfo)
+		const legacyMetadata = `Metadata-Version: 2.1\nName: openstack-afterglow\nVersion: ${packageVersion}\n`
+		const sharedRecord = fs.readFileSync(path.join(packageDistInfo, "RECORD"))
+		fs.writeFileSync(path.join(legacyDistInfo, "METADATA"), legacyMetadata)
+		fs.writeFileSync(path.join(legacyDistInfo, "RECORD"), sharedRecord)
+		const originalStockSite = fs.readFileSync(path.join(kollaAnsiblePath, "ansible/site.yml"))
+		for (const renamedInstalled of [true, false]) {
+			const savedDistInfo = path.join(temporaryDirectory, "saved-renamed-metadata")
+			if (!renamedInstalled) fs.renameSync(packageDistInfo, savedDistInfo)
+			for (const command of [installer, path.join(packageRoot, "install.sh")]) {
+				const refusal = spawnSync("bash", [command], { encoding: "utf8", env: commandEnvironment })
+				assert.notEqual(refusal.status, 0, `legacy distribution must be refused with renamedInstalled=${renamedInstalled}`)
+				assert.match(refusal.stderr, /Legacy openstack-afterglow distribution is still installed\./)
+				assert.match(refusal.stderr, /afterglow-kolla/)
+				assert.equal(fs.readlinkSync(roleLink), path.join(rootDir, "deploy/kolla/ansible/roles/afterglow"))
+				assert.equal(fs.readlinkSync(siteLink), path.join(rootDir, "deploy/kolla/site.yml"))
+				assert.deepEqual(fs.readFileSync(path.join(kollaAnsiblePath, "ansible/site.yml")), originalStockSite)
+				assert.throws(() => fs.lstatSync(path.join(kollaConfigPath, "globals.d")), { code: "ENOENT" })
+				assert.throws(() => fs.lstatSync(path.join(kollaConfigPath, "ansible")), { code: "ENOENT" })
+				assert.equal(fs.readFileSync(path.join(legacyDistInfo, "METADATA"), "utf8"), legacyMetadata)
+				assert.deepEqual(fs.readFileSync(path.join(legacyDistInfo, "RECORD")), sharedRecord)
+				for (const [file, content] of originalFiles) {
+					const actualFile = !renamedInstalled && file.startsWith(`${packageDistInfo}${path.sep}`)
+						? path.join(savedDistInfo, path.relative(packageDistInfo, file))
+						: file
+					assert.deepEqual(fs.readFileSync(actualFile), content, file)
+				}
+			}
+			if (!renamedInstalled) fs.renameSync(savedDistInfo, packageDistInfo)
+		}
+		fs.rmSync(legacyDistInfo, { recursive: true })
+		for (const [command, environment] of [
+			[installer, commandEnvironment],
+			[path.join(packageRoot, "install.sh"), { ...commandEnvironment, AFTERGLOW_REPO_DIR: "" }],
+		]) {
+			const result = spawnSync("bash", [command], { encoding: "utf8", env: environment })
 			assert.equal(result.status, 0, result.stderr)
 		}
-		assert.equal(fs.readlinkSync(path.join(rolesDir, "afterglow")), path.join(rootDir, "deploy/kolla/ansible/roles/afterglow"))
-		const result = spawnSync("bash", [uninstaller], { encoding: "utf8", env: commandEnvironment })
+		assert.equal(fs.readlinkSync(roleLink), roleTarget)
+		assert.equal(fs.readlinkSync(siteLink), siteTarget)
+		const result = spawnSync("bash", [path.join(packageRoot, "uninstall.sh")], {
+			encoding: "utf8", env: { ...commandEnvironment, AFTERGLOW_REPO_DIR: "" },
+		})
 		assert.equal(result.status, 0, result.stderr)
 		assert.throws(() => fs.lstatSync(path.join(rolesDir, "afterglow")), { code: "ENOENT" })
 		for (const role of ["drover", "lumen", "waygate", "palimpsest"]) {
 			assert.equal(fs.lstatSync(path.join(rolesDir, role)).isSymbolicLink(), false)
 		}
+		for (const [file, content] of originalFiles) assert.deepEqual(fs.readFileSync(file), content, file)
+		assert.throws(() => fs.lstatSync(siteLink), { code: "ENOENT" })
+		const stockSite = path.join(kollaAnsiblePath, "ansible/site.yml")
+		const stockContent = fs.readFileSync(stockSite, "utf8")
+		// Real operators may have migrated the role and site from different
+		// release checkouts. Explicit targets must authorize each exact link.
+		const legacyRoleTarget = path.join(temporaryDirectory, "legacy-role-release/deploy/kolla/ansible/roles/afterglow")
+		const legacySiteTarget = path.join(temporaryDirectory, "legacy-site-release/deploy/kolla/site.yml")
+		fs.mkdirSync(legacyRoleTarget, { recursive: true })
+		fs.mkdirSync(path.dirname(legacySiteTarget), { recursive: true })
+		fs.writeFileSync(path.join(legacyRoleTarget, "operator-owned"), "preserve old role\n")
+		fs.writeFileSync(legacySiteTarget, "preserve old site\n")
+		const mixedEnvironment = {
+			...commandEnvironment,
+			AFTERGLOW_REPO_DIR: "",
+			AFTERGLOW_LEGACY_ROLE_TARGET: legacyRoleTarget,
+			AFTERGLOW_LEGACY_SITE_TARGET: legacySiteTarget,
+		}
+		for (const migration of [false, true]) {
+			fs.symlinkSync(legacyRoleTarget, roleLink)
+			fs.symlinkSync(legacySiteTarget, siteLink)
+			for (const variable of ["AFTERGLOW_LEGACY_ROLE_TARGET", "AFTERGLOW_LEGACY_SITE_TARGET"]) {
+				for (const value of ["relative-target", path.join(temporaryDirectory, "unapproved-target")]) {
+					for (const command of [installer, uninstaller]) {
+						const refusal = spawnSync("bash", [command], {
+							encoding: "utf8", env: { ...mixedEnvironment, [variable]: value },
+						})
+						assert.notEqual(refusal.status, 0, `${variable}=${value} must be refused`)
+						assert.equal(fs.readlinkSync(roleLink), legacyRoleTarget)
+						assert.equal(fs.readlinkSync(siteLink), legacySiteTarget)
+						assert.equal(fs.readFileSync(stockSite, "utf8"), stockContent)
+					}
+				}
+			}
+			if (migration) {
+				const installed = spawnSync("bash", [path.join(packageRoot, "install.sh")], {
+					encoding: "utf8", env: mixedEnvironment,
+				})
+				assert.equal(installed.status, 0, installed.stderr)
+				assert.equal(fs.readlinkSync(roleLink), roleTarget)
+				assert.equal(fs.readlinkSync(siteLink), siteTarget)
+			}
+			const removed = spawnSync("bash", [path.join(packageRoot, "uninstall.sh")], {
+				encoding: "utf8", env: mixedEnvironment,
+			})
+			assert.equal(removed.status, 0, removed.stderr)
+			assert.throws(() => fs.lstatSync(roleLink), { code: "ENOENT" })
+			assert.throws(() => fs.lstatSync(siteLink), { code: "ENOENT" })
+			assert.equal(fs.readFileSync(path.join(legacyRoleTarget, "operator-owned"), "utf8"), "preserve old role\n")
+			assert.equal(fs.readFileSync(legacySiteTarget, "utf8"), "preserve old site\n")
+			for (const [file, content] of originalFiles) assert.deepEqual(fs.readFileSync(file), content, file)
+		}
+		for (const [foreignLink, foreignTarget, ownedLink, ownedTarget] of [
+			[roleLink, roleTarget, siteLink, siteTarget],
+			[siteLink, siteTarget, roleLink, roleTarget],
+		]) {
+			for (const kind of ["relative-alias", "dangling", "regular-path"]) {
+				fs.symlinkSync(ownedTarget, ownedLink)
+				let linkText
+				if (kind === "regular-path") {
+					if (foreignLink === roleLink) fs.mkdirSync(foreignLink)
+					else fs.writeFileSync(foreignLink, "operator-owned playbook\n")
+				} else {
+					linkText = kind === "relative-alias"
+						? path.relative(path.dirname(foreignLink), foreignTarget)
+						: path.join(temporaryDirectory, "missing-foreign-asset")
+					fs.symlinkSync(linkText, foreignLink)
+				}
+				for (const command of [installer, uninstaller]) {
+					const refusal = spawnSync("bash", [command], { encoding: "utf8", env: commandEnvironment })
+					assert.notEqual(refusal.status, 0, `${kind} must be refused: ${foreignLink}`)
+					assert.match(refusal.stderr, /Refusing to (?:replace|remove) foreign (?:path|symlink)/)
+					assert.equal(fs.readlinkSync(ownedLink), ownedTarget, "preflight must preserve the other link")
+					if (linkText) assert.equal(fs.readlinkSync(foreignLink), linkText)
+					else if (foreignLink === roleLink) assert.equal(fs.lstatSync(foreignLink).isDirectory(), true)
+					else assert.equal(fs.readFileSync(foreignLink, "utf8"), "operator-owned playbook\n")
+					assert.equal(fs.readFileSync(stockSite, "utf8"), stockContent)
+				}
+				fs.rmSync(foreignLink, { recursive: true, force: true })
+				fs.unlinkSync(ownedLink)
+			}
+		}
+		// A known legacy installation can also be uninstalled without migration.
+		fs.symlinkSync(path.join(rootDir, "deploy/kolla/ansible/roles/afterglow"), roleLink)
+		fs.symlinkSync(path.join(rootDir, "deploy/kolla/site.yml"), siteLink)
+		const legacyUninstall = spawnSync("bash", [uninstaller], { encoding: "utf8", env: commandEnvironment })
+		assert.equal(legacyUninstall.status, 0, legacyUninstall.stderr)
+		assert.throws(() => fs.lstatSync(roleLink), { code: "ENOENT" })
+		assert.throws(() => fs.lstatSync(siteLink), { code: "ENOENT" })
 		for (const [file, content] of originalFiles) assert.deepEqual(fs.readFileSync(file), content, file)
 	} finally {
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
@@ -654,8 +880,20 @@ test("Installer rejects stale package versions and accepts promoted operator loc
 		fs.writeFileSync(path.join(kollaConfigPath, "globals.yml"), "kolla_base: true\n")
 		fs.writeFileSync(path.join(pluginConfigRoot, "globals.yml"), "enable_afterglow: true\n", { mode: 0o640 })
 		fs.writeFileSync(path.join(pluginConfigRoot, "secrets.yml"), "afterglow_secret: test\n", { mode: 0o600 })
-
 		const installer = path.join(rootDir, "deploy/kolla/install.sh")
+
+		// An absent operator lock must not silently select the wheel's bundled snapshot.
+		const missingLock = spawnSync("bash", [installer], { encoding: "utf8", env: { ...commandEnvironment, AFTERGLOW_OPERATOR_LOCK: "" } })
+		assert.notEqual(missingLock.status, 0)
+		assert.match(missingLock.stderr, /Set AFTERGLOW_OPERATOR_LOCK/)
+		assert.equal(fs.existsSync(path.join(rolesDir, "afterglow")), false)
+
+		// The bundled lock is older than the lock actually used for this environment.
+		const bundledLock = path.join(temporaryDirectory, "share/afterglow/kolla/operator/uv.lock")
+		const bundled = fs.readFileSync(bundledLock, "utf8")
+		const olderBundled = bundled.replace(`name = "drover"\nversion = "${promotedVersion}"`, `name = "drover"\nversion = "${staleVersion}"`)
+		assert.notEqual(olderBundled, bundled, "fixture must actually contain an older bundled pin")
+		fs.writeFileSync(bundledLock, olderBundled)
 
 		// 1. Run install.sh with stale installed metadata against the promoted lock -> MUST FAIL!
 		const staleResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
@@ -705,6 +943,7 @@ test("Installer refuses a leftover retired palimpsest-local distribution", () =>
 		const commandEnvironment = {
 			...process.env,
 			AFTERGLOW_REPO_DIR: rootDir,
+			AFTERGLOW_OPERATOR_LOCK: path.join(rootDir, "deploy/kolla/operator/uv.lock"),
 			KOLLA_ANSIBLE_BIN: fakeKollaBinary,
 			KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
 			KOLLA_TEST_METADATA: metadataDir,
