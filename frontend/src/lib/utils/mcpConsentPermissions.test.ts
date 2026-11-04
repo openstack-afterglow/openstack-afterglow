@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MCP_CONSENT_SERVICES, consentCloudAccess, consentServiceAccess, consentServiceLabelKey, type McpConsentProject } from './mcpConsentPermissions';
+import { MCP_CONSENT_SERVICES, consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey, type McpConsentProject } from './mcpConsentPermissions';
 
 const nativeLeaves = {
 	drover: ['drover-inventory_reader', 'drover-access_user', 'drover-clusters_editor', 'drover-workloads_editor', 'drover-clusters_admin', 'drover-access_admin'],
@@ -14,6 +14,20 @@ const readLeaves = {
 const project: McpConsentProject = { id: 'p', name: 'Project', can_write: false, service_permissions: nativeLeaves, service_errors: {} };
 
 describe('MCP consent permission attenuation', () => {
+	it.each([
+		[true, 'read', 'manage', 'read'],
+		[true, 'manage', 'manage', 'manage'],
+		[false, 'read', 'read', 'read'],
+		[false, 'manage', 'read', 'read'],
+		[undefined, 'read', 'unknown', 'unknown'],
+		[undefined, 'manage', 'unknown', 'unknown'],
+		[null, 'manage', 'unknown', 'unknown'],
+	] as const)('separates native cloud capability %s from selected %s access', (canWrite, selected, native, effective) => {
+		const row = { ...project, can_write: canWrite };
+		expect(nativeCloudAccess(row)).toBe(native);
+		expect(consentCloudAccess(row, selected)).toBe(effective);
+	});
+
 	it.each(Object.keys(nativeLeaves) as Array<keyof typeof nativeLeaves>)('keeps %s native authority independent from core cloud write and never expands grades', (service) => {
 		expect(consentServiceAccess(project, service, 'manage')).toEqual({ state: 'allowed', leaves: nativeLeaves[service] });
 		expect(consentCloudAccess(project, 'manage')).toBe('read');

@@ -156,7 +156,7 @@ describe('McpAccessSection', () => {
 		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	});
 
-	it.each((['ko', 'en', 'ja', 'zh-CN'] as const).flatMap((locale) => (['oauth', 'api'] as const).map((method) => [locale, method] as const)))('renders grant-owned escaped client details and credential-wide removal in %s via %s', async (locale, selected) => {
+	it.each((['ko', 'en', 'ja', 'zh-CN'] as const).flatMap((locale) => (['oauth', 'api'] as const).map((method) => [locale, method] as const)))('shows grant-owned escaped client identity with details closed and credential-wide removal in %s via %s', async (locale, selected) => {
 		initLocale(locale);
 		const hostile = '<img src=x onerror="window.clientLeak=1">';
 		const observed = {
@@ -174,20 +174,23 @@ describe('McpAccessSection', () => {
 		await screen.findByRole('group', { name: t('mcp.observations') });
 		const observations = screen.getByRole('group', { name: t('mcp.observations') });
 		expect(within(observations).getByText(t('mcp.observationHelp'))).toBeTruthy();
-		const summary = within(observations).getByText(t('mcp.observationCount', { count: 2 }));
-		const details = summary.closest('details')!;
+		expect(within(observations).getByText(tp('mcpClients.count', { count: 2 }))).toBeTruthy();
+		const summaries = observations.querySelectorAll('summary');
+		expect(summaries).toHaveLength(2);
+		const details = summaries[0].closest('details')!;
 		expect(details.open).toBe(false);
-		await fireEvent.click(summary);
+		expect(within(summaries[0]).getByText(hostile)).toBeTruthy();
+		expect(summaries[0].textContent).toContain(observed.client_version);
+		expect(observations.querySelector('img,script')).toBeNull();
+		expect(within(summaries[1]).getByText(t('mcp.unknownClient'))).toBeTruthy();
+		expect(within(summaries[1]).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.unknown') }))).toBeTruthy();
+		expect(summaries[1].closest('details')!.open).toBe(false);
+		await fireEvent.click(summaries[0]);
 		expect(details.open).toBe(true);
-		expect(within(details).getByText(hostile)).toBeTruthy();
-		expect(details.textContent).toContain(observed.client_version);
 		expect(within(details).getByText(t('mcp.clientInference', { product: observed.product, kind: t('mcp.clientKind.agent') }))).toBeTruthy();
 		expect(within(details).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.client_info') }))).toBeTruthy();
 		expect(within(details).getByText(t('mcp.clientPlatform', { browser: observed.browser, os: observed.os }))).toBeTruthy();
-		expect(details.querySelector('img,script')).toBeNull();
-		expect(within(details).getByText(t('mcp.unknownClient'))).toBeTruthy();
-		expect(within(details).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.unknown') }))).toBeTruthy();
-		expect(within(details).getByText(t('mcp.clientPlatform', { browser: t('mcp.unknown'), os: t('mcp.unknown') }))).toBeTruthy();
+		expect(within(details).getAllByText(hostile)).toHaveLength(1);
 		const date = (value: string) => new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 		expect(within(details).getByText(t('mcp.clientDates', { first: date(observed.first_seen_at), last: date(observed.last_seen_at) }))).toBeTruthy();
 		expect(document.body.textContent).not.toContain('must-not-render-secret');
@@ -201,8 +204,8 @@ describe('McpAccessSection', () => {
 
 	it('hides OAuth client and project identifiers while revoking the selected grant', async () => {
 		const records = [
-			{ ...activeToken, id: 'opaque-row-one', grant_id: 'grant-one', name: 'OAuth: afterglow-dcr-private-client', source: 'oauth', projects: [{ id: 'private-project-uuid', name: 'Research' }] },
-			{ ...activeToken, id: 'opaque-row-two', grant_id: 'grant-two', name: 'OAuth: second-private-client', source: 'oauth', access_level: 'manage', expires_at: null, projects: [{ id: 'second-project-uuid', name: 'Systems' }] },
+			{ ...activeToken, id: 'opaque-row-one', grant_id: 'grant-one', name: 'OAuth: afterglow-dcr-private-client', source: 'oauth', projects: [{ id: 'private-project-uuid', name: 'Research' }], client_observations: [{ client_name: 'Codex', client_version: '1.2.3', product: 'Codex', kind: 'agent', identity_source: 'client_info', browser: null, os: 'macOS', first_seen_at: null, last_seen_at: null } satisfies McpClientObservation] },
+			{ ...activeToken, id: 'opaque-row-two', grant_id: 'grant-two', name: 'OAuth: second-private-client', source: 'oauth', access_level: 'manage', expires_at: null, projects: [{ id: 'second-project-uuid', name: 'Systems' }], client_observations: [{ client_name: 'Claude Code', client_version: '2.0', product: 'Claude Code', kind: 'agent', identity_source: 'client_info', browser: null, os: 'Linux', first_seen_at: null, last_seen_at: null } satisfies McpClientObservation] },
 		];
 		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects') ? accountResponse(path) : path.includes('oauth') ? records : []));
 		api.delete.mockResolvedValue(undefined);
@@ -211,6 +214,9 @@ describe('McpAccessSection', () => {
 		const cards = container.querySelectorAll('.record');
 		expect(cards).toHaveLength(2);
 		expect(within(cards[1] as HTMLElement).getByText(t('mcp.oauthDetails', { access: t('mcp.manage'), expires: t('mcp.expiryNever') }))).toBeTruthy();
+		expect(within(cards[0] as HTMLElement).getByText('Codex', { selector: 'summary strong' })).toBeTruthy();
+		expect(within(cards[1] as HTMLElement).getByText('Claude Code', { selector: 'summary strong' })).toBeTruthy();
+		for (const details of container.querySelectorAll('details')) expect(details.open).toBe(false);
 		expect(container.innerHTML).not.toContain('afterglow-dcr-private-client');
 		expect(container.innerHTML).not.toContain('second-private-client');
 		expect(container.innerHTML).not.toContain('private-project-uuid');
@@ -220,6 +226,76 @@ describe('McpAccessSection', () => {
 		expect(api.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/mcp-oauth/grants/grant-two', 'token', 'project');
 	});
 
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('shows an allowlisted product fallback and its header evidence without claiming the key name as identity in %s', async (locale) => {
+		initLocale(locale);
+		const observation: McpClientObservation = {
+			client_name: null, client_version: null, product: 'Chrome', kind: 'browser',
+			identity_source: 'user_agent', browser: 'Chrome', os: 'macOS',
+			first_seen_at: null, last_seen_at: null,
+		};
+		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, client_observations: [observation] }])));
+		await renderApi();
+		const group = await screen.findByRole('group', { name: t('mcp.observations') });
+		const summary = group.querySelector('summary')!;
+		expect(summary.closest('details')!.open).toBe(false);
+		expect(within(summary).getByText('Chrome', { selector: 'strong' })).toBeTruthy();
+		expect(summary.textContent).toContain(t('mcp.clientVersion', { version: t('mcp.unknown') }));
+		expect(within(summary).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.user_agent') }))).toBeTruthy();
+		expect(within(group).getByText(tp('mcpClients.count', { count: 1 }))).toBeTruthy();
+		expect(group.textContent).not.toContain('Lumen');
+	});
+
+	it('labels a self-reported name separately from header-inferred product evidence', async () => {
+		const observation: McpClientObservation = {
+			client_name: 'custom-agent', client_version: '1.2.3', product: 'Chrome', kind: 'browser',
+			identity_source: 'user_agent', browser: 'Chrome', os: 'Linux',
+			first_seen_at: null, last_seen_at: null,
+		};
+		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, client_observations: [observation] }])));
+		await renderApi();
+		const group = await screen.findByRole('group', { name: t('mcp.observations') });
+		const summary = group.querySelector('summary')!;
+		const nameLine = summary.querySelector('strong')!.parentElement!;
+		expect(summary.closest('details')!.open).toBe(false);
+		expect(nameLine.textContent).toContain('custom-agent');
+		expect(nameLine.textContent).toContain(t('mcp.clientSource.client_info'));
+		expect(nameLine.textContent).not.toContain(t('mcp.clientSource.user_agent'));
+		const inference = within(summary.closest('details')!).getByText(t('mcp.clientInference', { product: 'Chrome', kind: t('mcp.clientKind.browser') })).parentElement!;
+		expect(within(inference).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.user_agent') }))).toBeTruthy();
+		expect(inference.textContent).not.toContain('custom-agent');
+	});
+
+	it('keeps sanitized hostile client information unknown and ignores non-public observation fields', async () => {
+		// The API allowlist discards hostile clientInfo and raw headers before this projection.
+		const observation = {
+			client_name: null, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown',
+			browser: null, os: null, first_seen_at: null, last_seen_at: null,
+			raw_client_info: '<script>private-client-info</script>', user_agent: 'private-raw-user-agent',
+			token: 'private-observation-token', fingerprint: 'private-observation-hash',
+		} satisfies McpClientObservation & Record<string, unknown>;
+		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, client_observations: [observation] }])));
+		const { container } = await renderApi();
+		const group = await screen.findByRole('group', { name: t('mcp.observations') });
+		const summary = group.querySelector('summary')!;
+		expect(summary.closest('details')!.open).toBe(false);
+		expect(within(summary).getByText(t('mcp.unknownClient'))).toBeTruthy();
+		expect(within(summary).getByText(t('mcp.clientEvidence', { source: t('mcp.clientSource.unknown') }))).toBeTruthy();
+		expect(group.textContent).not.toContain('Lumen');
+		for (const hidden of ['private-client-info', 'private-raw-user-agent', 'private-observation-token', 'private-observation-hash']) {
+			expect(container.innerHTML).not.toContain(hidden);
+		}
+	});
+
+	it('treats legacy null client observations as not observed, not as the credential name', async () => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects')
+			? accountResponse(path) : path.includes('oauth') ? [] : [{ ...activeToken, client_observations: null }]));
+		await renderApi();
+		const group = await screen.findByRole('group', { name: t('mcp.observations') });
+		expect(within(group).getByText(t('mcp.noObservations'))).toBeTruthy();
+		expect(group.querySelector('details')).toBeNull();
+		expect(group.textContent).not.toContain('Lumen');
+	});
+
 	it('shows no observation separately from an unknown observed client and caps displayed signatures at ten', async () => {
 		await renderApi();
 		const noObservation = await screen.findByText(t('mcp.noObservations'));
@@ -227,9 +303,12 @@ describe('McpAccessSection', () => {
 		const observations = Array.from({ length: 11 }, (_, index): McpClientObservation => ({ client_name: `Observed ${index}`, client_version: null, product: null, kind: 'unknown', identity_source: 'unknown', browser: null, os: null, first_seen_at: null, last_seen_at: null }));
 		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, client_observations: observations }])));
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
-		const summary = await screen.findByText(t('mcp.observationCount', { count: 10 }));
-		await fireEvent.click(summary);
-		expect(within(summary.closest('details')!).getAllByRole('listitem')).toHaveLength(10);
+		await screen.findByText(tp('mcpClients.count', { count: 10 }));
+		const group = screen.getByRole('group', { name: t('mcp.observations') });
+		expect(within(group).getAllByRole('listitem')).toHaveLength(10);
+		expect(group.querySelectorAll('summary')).toHaveLength(10);
+		for (const details of group.querySelectorAll('details')) expect(details.open).toBe(false);
+		expect(within(group).getByText('Observed 0', { selector: 'summary strong' })).toBeTruthy();
 		expect(screen.queryByText('Observed 10')).toBeNull();
 		expect(screen.queryByText(t('mcp.noObservations'))).toBeNull();
 		expect(screen.getByText(t('mcp.count', { count: 1 }))).toBeTruthy();

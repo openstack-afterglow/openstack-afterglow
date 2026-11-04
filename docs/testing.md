@@ -6,6 +6,18 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## MCP member 권한·클라이언트 식별 (2026-11-04, source/local)
+
+- 기존 source의 `member` cloud 관리 허용을 유지하면서 프로젝트 native 관리 가능 여부와 read/manage 연결 상한을 분리했다. Read key·reader·unknown은 관리로 승격하지 않고 independently confirmed service leaves와 Lumen 제외를 유지한다. Request-local 검증된 AccessInfo가 preview policy catalog 조회로 전달되지 않던 경로를 복구했다.
+- Backend 관련 selector277passed/19deselected, 새 실제 loopback HTTP+설치 SDK 회귀4passed. Target rescope만 허용하고 restricted token 재교환을403으로 거부하는 독립 HTTP fixture에서 native Drover capability와 mixed member/reader 저장 ceiling·명시 read 제한을 관측했다. `_native_access` 누락 fault injection은 해당 회귀를 실제 실패시켜 기존 경로의 문제를 재현했으며 source/운영 파일은 되돌리지 않았다.
+- Frontend4files317tests, Svelte check0errors/기존17warnings, i18n0errors/기존45key-order warnings, scoped Ruff/format과 변경 UI의 Impeccable detector가 통과했다. JSDOM canvas 미구현 메시지는 기존 로딩 scene 경로의 출력이며 테스트를 억제하지 않았다.
+- 실제 Vite snapshot+별도 managed Chromium의 tutorial fixture로 ko/en/ja/zh-CN×390/1280px×light/dark16조건을 검증했다. 닫힌 OAuth client name/version과 raw identifier 비표시, member read→manage·mixed reader/unknown·unknown 관리 발급 차단·read 허용을 관측했고 가로 overflow0이다. 별도 synthetic manage key 발급 뒤 기존 read key가 그대로임을 확인했다. 원격 글꼴 차단 외 runtime error는 없었으며 실제 로그인/native 서비스 권한 수용 증거로 확대하지 않는다.
+- 이후 내부 구현 용어를 9개 언어의 `프로젝트의 클라우드 권한` 문구로 정리하고 같은 실제 frontend에서 9locale×390/1280px×light/dark36조건을 추가 확인했다. 새 프로젝트 권한 label·내부 label 비표시·가로 overflow0을 검증했으며, 한국어 mobile 새 문구 스크린샷과 `copy-review-qualification.json`을 별도 보존했다. 앞의16조건은 권한·클라이언트 동작 검증이고 추가36조건은 문구 변경 검증이다.
+- 운영 기존 로그의 native policy `/v1/policy/capabilities`는 Drover3노드404(3/3/2회), Palimpsest controller1은403(3회)이었다. Waygate 원인은 로그만으로 확정하지 않았다. 이 독립적인 native 호환성/거부를 catalog 재사용이나 member label 수정으로 해결했다고 주장하지 않는다. 이번 요청에서는 운영/IAM·native policy·schema·버전을 변경하거나 배포하지 않았다.
+- 최종 gate는 committed base `15a475836a5b7842c1f1f023d144d042e8c3a9a7`에 문구 정리를 포함한 이번17개 source만 얹은 격리 snapshot에서 수행했다. Python3.12.13 전체 gate가 source `3bcd4317cdd98a252e635e61d45b96cd04b38dbc116a7dac3f6a71c5601b6c91`/4069files로 exit0: backend13515passed/106skip, frontend512files/6804tests, contracts258, DB233passed/54deselected, Ruff/format847files. Production frontend build와 격리 working architecture check를 통과했고17개 source가 공유 checkout과 hash 일치했다. 다른 작업의 source와 공유 working architecture stamp를 보존하며 이번 source·문서만 선택하여 커밋한다.
+
+- 첫 격리 gate는 다른 작업 `ag-experience-20261104-7d91`가 PostgreSQL5434를 사용해 functional datastore 시작에서 실패했다. 해당 서비스를 건드리지 않고 정본 Compose test service를 별도 project의 Docker 할당 loopback port로 기동해 전체 gate를 새로 통과했다. 소유한 browser/Vite·snapshot·test containers/network는 정리하며, 최종 범위 증거·동작16조건·추가 문구36조건·스크린샷·전체 로그는 `~/.local/share/afterglow-proofs/mcp-member-client-20261104/`에 보존한다. 이는 진행 중인 다른 source나 운영/native 호환성 검증이 아니다.
+
 ## 1.32.6 SQL106 bootstrap·직접 복구 (2026-11-04)
 
 - Canonical `node scripts/apply-tag-version.js 1.32.6`로 root/frontend/backend·Python lock·Helm version/appVersion을 동기화했다. Frontend npm lock의 root version도 npm version 도구로 동기화했으며 Kolla sample의 자동 `latest` channel은 그대로 유지했다. 이 metadata 작업은 commit/tag/push를 만들지 않는다.

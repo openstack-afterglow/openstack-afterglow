@@ -21,9 +21,16 @@ const READ_SERVICE_LEAVES: Record<string, true> = {
 	'waygate-inventory_reader': true, 'waygate-connect_user': true,
 };
 
-export function consentCloudAccess(project: McpConsentProject, access: 'read' | 'manage'): 'read' | 'manage' | 'unknown' {
+/** Native project capability, independent of a key's selected access ceiling. */
+export function nativeCloudAccess(project: McpConsentProject): 'read' | 'manage' | 'unknown' {
 	if (typeof project.can_write !== 'boolean') return 'unknown';
-	return access === 'manage' && project.can_write ? 'manage' : 'read';
+	return project.can_write ? 'manage' : 'read';
+}
+
+export function consentCloudAccess(project: McpConsentProject, access: 'read' | 'manage'): 'read' | 'manage' | 'unknown' {
+	const native = nativeCloudAccess(project);
+	if (native === 'unknown') return 'unknown';
+	return access === 'manage' ? native : 'read';
 }
 
 export function consentServiceAccess(project: McpConsentProject, service: string, access: 'read' | 'manage') {

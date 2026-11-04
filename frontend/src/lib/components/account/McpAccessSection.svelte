@@ -633,20 +633,26 @@
 			<p>{t('mcp.noObservations')}</p>
 		{:else}
 			<p>{t('mcp.observationHelp')}</p>
-			<details>
-				<summary class="min-h-11 py-3 md:min-h-0 md:py-0 cursor-pointer text-xs text-ink-1 focus-visible:outline-2 focus-visible:outline-accent">{t('mcp.observationCount', { count: observations.length })}</summary>
-				<ul class="client-list">
-					{#each observations as observation}
-						<li>
-							<p><strong>{observation.client_name || t('mcp.unknownClient')}</strong> · {t('mcp.clientVersion', { version: observation.client_version || t('mcp.unknown') })}</p>
-							<p>{t('mcp.clientInference', { product: observation.product || t('mcp.unknown'), kind: t(`mcp.clientKind.${observation.kind}`) })}</p>
-							<p>{t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</p>
+			<p>{tp('mcpClients.count', { count: observations.length })}</p>
+			<ul class="client-list">
+				{#each observations as observation}
+					<li>
+						<details>
+							<summary class="client-summary min-h-11 py-3 md:min-h-0 md:py-0 cursor-pointer text-xs text-ink-1 focus-visible:outline-2 focus-visible:outline-accent">
+								<span><strong>{observation.client_name || observation.product || t('mcp.unknownClient')}</strong> · <span>{observation.client_name ? t('mcp.clientSource.client_info') : t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</span></span>
+								<span class="client-evidence">{t('mcp.clientVersion', { version: observation.client_version || t('mcp.unknown') })}{#if observation.client_version && !observation.client_name}{' · '}{t('mcp.clientSource.client_info')}{/if}</span>
+							</summary>
+							{#if observation.client_name}
+								<span class="client-evidence"><span>{t('mcp.clientInference', { product: observation.product || t('mcp.unknown'), kind: t(`mcp.clientKind.${observation.kind}`) })}</span> · <span>{t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</span></span>
+							{:else}
+								<span class="client-evidence">{t(`mcp.clientKind.${observation.kind}`)}</span>
+							{/if}
 							<p>{t('mcp.clientPlatform', { browser: observation.browser || t('mcp.unknown'), os: observation.os || t('mcp.unknown') })}</p>
 							<p>{t('mcp.clientDates', { first: formatObservationDate(observation.first_seen_at), last: formatObservationDate(observation.last_seen_at) })}</p>
-						</li>
-					{/each}
-				</ul>
-			</details>
+						</details>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</div>
 {/snippet}
@@ -988,6 +994,9 @@
 	.client-list { display: grid; gap: 0.5rem; list-style: none; margin: 0.5rem 0 0; padding: 0; }
 	.client-list li { padding-left: 0.75rem; border-left: 1px solid var(--color-line); }
 	.client-list strong { color: var(--color-ink-1); }
+	.client-summary { overflow-wrap: anywhere; line-height: 1.5; }
+	.client-summary > span:first-child { color: var(--color-ink-1); }
+	.client-evidence { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-weight: 400; }
 	.subheading { margin-bottom: 0.5rem; }
 	.subheading h3 { font-size: 0.875rem; }
 	.subheading span { color: var(--color-ink-2); font-size: 0.75rem; }

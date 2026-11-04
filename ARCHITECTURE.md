@@ -6,6 +6,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.6`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
+**MCP member 권한·클라이언트 식별 (source/local):** 프로젝트의 native cloud 관리 가능 여부와 키/동의의 선택된 접근 상한을 분리해 표시한다. 검증된 `member`의 기존 관리 허용·현재 역할/저장 프로젝트/발급 role ceiling 교집합은 유지하며 read key·reader·unknown을 쓰기로 승격하지 않는다. 프로젝트 preview는 검증한 request-local `AccessInfo` catalog를 독립 native 정책 조회에 전달해 불필요한 동일 token 재교환을 피한다. Native 서비스의404/403·미확인을 관리 허용으로 바꾸지는 않는다. 연결 카드에서는 기존 정제 관측의 이름·버전·신고/추정 근거를 접지 않은 요약에 표시하고, 플랫폼·날짜·제품 추론은 상세에 둔다. Client ID·프로젝트 UUID masking과 exact grant 폐기·Lumen MCP 제외는 유지한다. 새 schema·권위 cache·운영 배포는 없다.
+
 **1.32.6 MCP schema 복구:** 운영 1.32.5의 두 MCP 목록 API는 실제 DB에 SQL106의 `oauth_ongoing`·`issued_role_ceiling`이 없어 MariaDB1054로 실패했다. 사용자 승인으로 native Galera가 Synced/Primary/3-member임을 확인하고 MCP11개 테이블을 root0600으로 백업한 뒤 release-pinned SQL106을 직접 적용했다. 원래 grant5개·token52개의 기존 컬럼 해시가 전후 일치하고 세 API의 실제 설정 DB에서 새 컬럼과 nullable `DATETIME(6)`을 확인했다. 재시작·연결 재발급·기존 승인 연장은 하지 않았다.
 
 새 배포의 재발 방지는 Kolla bootstrap이 API 이미지에 포함된 manifest/checksum-검증 SQL106을 서비스 시작 전에 적용·검증하는 경로로 제한한다. 이전 전체 migration을 임의 replay하거나 pre037 baseline을 추정하지 않는다. 이미 호환되는 schema는 검증 후 건너뛰고, 적용·검증 실패는 새 writer 시작을 차단한다. 기존 생성 bootstrap과 DB·키·native 권위는 보존한다. 이 source의 gate·정식 발행·운영 배포 수용은 별도 기록하며 직접 SQL 복구를 새 runner 실행 증거로 대체하지 않는다.
@@ -2011,9 +2013,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ba589018624a17909d43acb7d1a458834cbcdf59e4034d31023e0acd599cabeb",
-  "reviewed_at": "2026-11-03T16:35:28Z",
-  "summary": "1.32.6: SQL106-only bootstrap and packaged real-MariaDB fresh/legacy/repeat/refusal qualification; lint corrections preserve constraint grouping and fail-closed startup"
+  "source_sha256": "3bcd4317cdd98a252e635e61d45b96cd04b38dbc116a7dac3f6a71c5601b6c91",
+  "reviewed_at": "2026-11-04T00:57:25Z",
+  "summary": "MCP member project permissions versus connection ceiling, visible sanitized client observations and validated native catalog reuse; consumer wording corrected in nine locales; no unrelated WIP"
 }
 ```
 <!-- architecture-review:end -->

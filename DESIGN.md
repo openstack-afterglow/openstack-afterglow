@@ -15,6 +15,8 @@ Authenticated dashboard data belongs to the logical login, user, identity/workin
 OAuth 연결 카드는 client ID나 저장된 프로젝트 UUID 대신 지역화된 OAuth 이름+현재 목록 순번과 프로젝트 이름을 표시한다. 만료·접근 권한·클라이언트 관측과 exact grant 제거는 유지하고 확인창에도 같은 순번을 사용한다. 순번은 목록의 현재 표시 순서이지 영구 식별자가 아니다. 개인 API 키 발급·일회성 평문·키 관리 카드는 바꾸지 않는다.
 
 
+MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member가 read key를 선택해도 프로젝트의 관리 가능 상태는 남고 연결의 읽기 제한만 바뀐다. Reader와 unknown을 관리로 추정하지 않으며 service policy 미확인은 그대로 독립 경고다. 클라이언트 이름·버전·신고/추정 출처는 각 관측의 닫힌 summary에서도 읽을 수 있고 플랫폼·시각·제품/종류 추론만 펼친다. 이름 없는 관측은 allowlisted product 또는 명시 unknown, 기록 없는 grant는 미관측이다. 표시 이름·key 이름으로 실제 클라이언트·온라인 세션을 만들어내지 않으며9locale와 모바일 줄바꿈을 유지한다.
+
 Automatic rejection of an expired or invalid tab clears only that tab's credentials/readiness and returns it to login. It must not broadcast a logout marker or delete the shared non-authoritative SSR presence cookie. Explicit logout, logout-all and security revocation retain browser-wide broadcast behavior; credentials are never shared between tabs.
 
 명시 로그아웃은 지연되는 서버 정리보다 먼저 공개 `/logout`으로 이동하고 console chrome·tutorial·인증 복구 modal을 표시하지 않는다. 기존 LoginBrandHeader·Card·ActivityIndicator·Alert·Button과 theme/type/surface tokens로 세 작업의 실제 상태를 한 열에 표시한다. 완료 화면은 자동으로 사라지지 않으며 로그인 복귀는 사용자의 명시 동작이다. 서버 폐기 미확인은 warning, local credential 제거 미확인은 danger와 창 닫기 안내로 구분하고 가짜 progress·최소 대기·새 palette/motion을 추가하지 않는다. Mobile/tablet/desktop과9locale에서 줄바꿈·44px 작업 접근성을 유지한다.

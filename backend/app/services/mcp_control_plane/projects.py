@@ -128,6 +128,9 @@ async def _validated_project_connection(scoped: Any, caller: _CallerScope, proje
     scoped._afterglow_project_name = access.project_name or project_id
     scoped._afterglow_authenticated_project_id = project_id
     scoped._afterglow_token = access.auth_token
+    # Keep this request's exact validated catalog for independent policy reads.
+    # Re-exchanging its scoped token can be forbidden for restricted credentials.
+    scoped._afterglow_native_access = access
     scoped._afterglow_roles = delegated_roles
     scoped._afterglow_delegation_narrowed = len(delegated_roles) != len(roles)
     scoped._afterglow_is_system_admin = False
@@ -239,6 +242,7 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
                     "project_id": project["id"],
                     "connection_project_id": project["id"],
                     "is_system_admin": False,
+                    "_native_access": scoped._afterglow_native_access,
                 },
                 timeout=_PREVIEW_POLICY_TIMEOUT,
                 services=enabled,

@@ -914,6 +914,8 @@ OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `O
 
 UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
 
+권한 preview는 프로젝트의 `can_write`에 따른 native cloud capability와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 현재 검증된 `member`는 cloud 관리 가능하며, `manage`를 명시 선택한 키·동의만 그 ceiling까지 쓸 수 있다. 기존 read grant는 자동 확대하지 않는다. 전체 프로젝트의 reader는 읽기 제한을, null/missing metadata는 unknown을 유지하고 native 서비스의 독립 정책 오류를 cloud member라는 이유로 허용하지 않는다. Preview는 해당 요청에서 검증한 exact target-token/project `AccessInfo` catalog를 재사용하며 별도 native 정책 조회용 token 재교환이나 관리자 fallback을 하지 않는다.
+
 ### OAuth 지속 승인과 자동 갱신
 
 현재 서버가 `ongoing_supported=true`를 제공하면 OAuth 동의 화면에서 **취소 전까지 자동 갱신**이 기본 선택된다. 클라이언트가 짧은 access token의 `expires_in`에 맞춰 refresh token을 제출하면 두 token을 회전한다. 승인 화면에서 유한 기간으로 변경할 수도 있다. 오래된 서버는 지원 신호가 없어 유한 승인만 제공하며, 요청한 지속 여부와 응답의 `effective_ongoing`이 다르거나 확인되지 않으면 성공 redirect나 재전송을 하지 않는다.
@@ -941,6 +943,8 @@ Preview는 독립 SDK 연결의 project worker를 최대3개로 제한하고 각
 ### 관측된 클라이언트와 연결 제거
 
 두 목록 GET은 `Cache-Control: no-store`/`Pragma: no-cache`와 각 grant의 `client_observations` 배열을 반환합니다. 현재 로그인 사용자와 발급 당시 anchor project의 소유 범위만 조회하며, 다른 프로젝트 실행 허용 목록을 사용자 목록 소유권으로 바꾸지 않습니다. 관측이 없는 기존/새 grant는 빈 배열입니다.
+
+각 연결의 이름·버전은 상세를 펼치기 전에도 표시한다. 신고 이름이 없으면 정제 product 추정 또는 명시 unknown을 사용하고 grant/key 표시 이름이나 raw OAuth client ID를 클라이언트 이름으로 대체하지 않는다. 이름·버전은 항상 클라이언트 신고이며 `identity_source`는 제품·종류 추론의 근거다. 서로 다른 근거를 섞어 이름까지 User-Agent에서 확인한 것으로 표시하지 않는다. 플랫폼·관측 시각·제품 추론은 별도 상세에 있고, 관측 없는 credential은 연결 제품을 추정하지 않는다.
 
 | 관측 field | 의미 |
 |---|---|

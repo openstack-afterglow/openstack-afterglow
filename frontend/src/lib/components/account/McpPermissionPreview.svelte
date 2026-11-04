@@ -2,7 +2,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import {
-		consentCloudAccess, consentServiceAccess, consentServiceLabelKey,
+		consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey,
 		MCP_CONSENT_SERVICES, type McpConsentProject,
 	} from '$lib/utils/mcpConsentPermissions';
 
@@ -21,11 +21,21 @@
 	<ul class="preview-projects">
 		{#each projects as project (project.id)}
 			{@const cloudAccess = consentCloudAccess(project, accessLevel)}
+			{@const cloudCapability = nativeCloudAccess(project)}
 			<li class="preview-project" aria-label={`${project.name} ${project.id}`}>
 				<div class="preview-project-heading">
 					<svelte:element this={headingLevel === 3 ? 'h4' : 'h3'} class="project-name">{project.name}<code>{project.id}</code></svelte:element>
-					<StatusChip status={cloudAccess} label={t(`mcpConsent.preview.cloud.${cloudAccess}`)} />
 				</div>
+				<dl class="cloud-permissions">
+					<div class="cloud-permission" data-cloud-authority="native">
+						<dt>{t('mcpConsent.preview.nativeCloud')}</dt>
+						<dd><StatusChip status={cloudCapability} label={t(`mcpConsent.preview.nativeCloudAccess.${cloudCapability}`)} /></dd>
+					</div>
+					<div class="cloud-permission" data-cloud-authority="effective">
+						<dt>{t('mcpConsent.preview.effectiveCloud')}</dt>
+						<dd><StatusChip status={cloudAccess} label={t(`mcpConsent.preview.cloud.${cloudAccess}`)} /></dd>
+					</div>
+				</dl>
 				<dl class="service-permissions">
 					{#each MCP_CONSENT_SERVICES as service (service.id)}
 						{@const native = consentServiceAccess(project, service.id, accessLevel)}
@@ -60,6 +70,11 @@
 	.preview-project-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
 	.project-name { min-width: 0; margin: 0; color: var(--color-ink-0); font-size: var(--type-body); overflow-wrap: anywhere; }
 	.project-name code { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-size: var(--type-identifier); font-weight: 400; }
+	.cloud-permissions { display: grid; gap: 0.5rem; margin: 0.75rem 0 0; font-size: var(--type-support); }
+	.cloud-permission { display: grid; grid-template-columns: minmax(0, 12rem) minmax(0, 1fr); align-items: start; gap: 0.75rem; }
+	.cloud-permission dt { color: var(--color-ink-1); overflow-wrap: anywhere; }
+	.cloud-permission dd { min-width: 0; margin: 0; }
+	.cloud-permission :global(.chip .label) { white-space: normal; overflow-wrap: anywhere; }
 	.service-permissions { display: grid; gap: 0.75rem; margin: 0.75rem 0 0; font-size: var(--type-support); }
 	.service-permission { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr); gap: 0.75rem; }
 	.service-permission dt { color: var(--color-ink-1); font-weight: 600; overflow-wrap: anywhere; }
@@ -69,8 +84,7 @@
 	.permission-leaves span { color: var(--color-ink-1); }
 	.permission-leaves code { color: var(--color-ink-2); font-size: var(--type-identifier); }
 	.permission-unavailable { color: var(--color-state-warning-text); }
-	.preview-project-heading :global(.chip .label) { white-space: normal; overflow-wrap: anywhere; }
 	@media (max-width: 767px) {
-		.service-permission { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
+		.cloud-permission, .service-permission { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
 	}
 </style>
