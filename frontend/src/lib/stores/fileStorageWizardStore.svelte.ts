@@ -1,10 +1,12 @@
 import { setContext, getContext } from 'svelte';
 import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
+import { authDisplayContext } from '$lib/stores/authDisplayContext';
 import { api, ApiError } from '$lib/api/client';
 import { apiMut } from '$lib/api/mutations';
 import type { FileStorage } from '$lib/types/fileStorage';
 import { t } from '$lib/i18n/ns/file-storage';
+import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, experienceDiscarded, type ExperienceContext, type ExperienceAction } from '$lib/utils/experience';
 
 export type WizardStep = 1 | 2 | 3;
 
@@ -32,11 +34,14 @@ export interface FsWizardOptions {
 export function createFileStorageWizardStore(opts: FsWizardOptions) {
 	let token = $state<string | undefined>(get(auth).token ?? undefined);
 	let projectId = $state<string | undefined>(get(auth).projectId ?? undefined);
+	let displayOwner = $state(get(authDisplayContext).key);
 	$effect(() => {
-		return auth.subscribe((v) => {
+		const unsubscribeOwner = authDisplayContext.subscribe((value) => { displayOwner = value.key; });
+		const unsubscribeAuth = auth.subscribe((v) => {
 			token = v.token ?? undefined;
 			projectId = v.projectId ?? undefined;
 		});
+		return () => { unsubscribeOwner(); unsubscribeAuth(); };
 	});
 
 	let step = $state<WizardStep>(1);
@@ -84,7 +89,22 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 	let ruleError = $state('');
 	let copiedKey = $state<string | null>(null);
 	let copiedExport = $state<string | null>(null);
+	let metadataGeneration = 0;
+	let disposed = false;
 
+	function observe(action: ExperienceAction, parent?: ExperienceContext) {
+		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' ? beginExperienceLoad('file_storage', 'shared.wizard') : beginExperienceAction('file_storage', action, 'shared.wizard'));
+		return {
+			ctx, client: api.withExperience(ctx),
+			applied(state: 'ready' | 'empty' | 'error', isCurrentState?: () => boolean) {
+				if (!ctx) return;
+				// Create acceptance is an applied form result, never resource readiness.
+				if (ctx.action !== 'create' || state === 'error') experienceState(ctx, state, step);
+				// Only lifecycle-owned metadata can assert a post-tick mounted result.
+				void experienceApplied(ctx, {}, isCurrentState);
+			},
+		};
+	}
 
 	const shareNetworksOn = () => opts.fileStorageShareNetworksEnabled?.() ?? true;
 	function reset() {
@@ -97,17 +117,30 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 	}
 
 	async function openWizard() {
+		const generation = ++metadataGeneration;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestOwner = displayOwner;
+		const owns = () => !disposed && generation === metadataGeneration && opts.open()
+			&& displayOwner === requestOwner && projectId === requestProject;
 		opts.setOpen(true);
+		const observation = observe('open');
+		experienceState(observation.ctx, 'loading', 1);
 		reset();
 		// Promise.allSettled 로 types/networks 를 독립적으로 로드
 		// — networks 실패가 share type 목록을 날리지 않도록
 		const loadShareNetworks = shareNetworksOn();
 		const [typesResult, networksResult] = await Promise.allSettled([
-			api.get<ShareTypeMeta[]>('/api/v1/file-storage/types', token, projectId),
+			observation.client.get<ShareTypeMeta[]>('/api/v1/file-storage/types', requestToken, requestProject),
 			loadShareNetworks
-				? api.get<ShareNetwork[]>('/api/v1/share-networks', token, projectId)
+				? observation.client.get<ShareNetwork[]>('/api/v1/share-networks', requestToken, requestProject)
 				: Promise.resolve([] as ShareNetwork[]),
 		]);
+		if (!owns()) {
+			experienceDiscarded(observation.ctx, disposed ? 'unmounted' : !opts.open() ? 'aborted'
+				: displayOwner !== requestOwner || projectId !== requestProject ? 'scope_changed' : 'stale');
+			return;
+		}
 		if (typesResult.status === 'fulfilled') {
 			shareTypes = typesResult.value;
 			if (shareTypes.length > 0) {
@@ -123,12 +156,20 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			wizardError = t('wizard.error.loadShareTypes');
 		}
 		shareNetworks = loadShareNetworks && networksResult.status === 'fulfilled' ? networksResult.value : [];
+		observation.applied(typesResult.status === 'rejected' || (loadShareNetworks && networksResult.status === 'rejected') ? 'error' : shareTypes.length ? 'ready' : 'empty', owns);
 	}
 
 	function closeWizard() {
+		invalidateMetadata();
+		const observation = observe('close');
 		opts.setOpen(false);
+		experienceState(observation.ctx, 'disabled', step);
+		void experienceApplied(observation.ctx, {}, () => !disposed && !opts.open());
 		if (createdFs) opts.onCreated();
 	}
+
+	function invalidateMetadata() { metadataGeneration += 1; }
+	function dispose() { disposed = true; invalidateMetadata(); }
 
 	function addMeta() { metaEntries = [...metaEntries, { key: '', value: '' }]; }
 	function removeMeta(i: number) { metaEntries = metaEntries.filter((_, idx) => idx !== i); }
@@ -151,9 +192,10 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			step = 2;
 		}
 		if (neutronNetworks.length === 0) {
-			api.get<NeutronNetwork[]>('/api/v1/networks', token, projectId)
-				.then((r) => (neutronNetworks = r))
-				.catch(() => (neutronNetworks = []));
+			const observation = observe('load');
+			observation.client.get<NeutronNetwork[]>('/api/v1/networks', token, projectId)
+				.then((r) => { neutronNetworks = r; observation.applied(r.length ? 'ready' : 'empty'); })
+				.catch(() => { neutronNetworks = []; observation.applied('error'); });
 		}
 	}
 
@@ -163,12 +205,14 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 		inlineNetForm.neutron_subnet_id = ''; subnets = [];
 		if (!inlineNetForm.neutron_net_id) return;
 		loadingSubnets = true;
+		const observation = observe('load');
 		try {
-			const detail = await api.get<{ id: string; subnet_details: Subnet[] }>(
+			const detail = await observation.client.get<{ id: string; subnet_details: Subnet[] }>(
 				`/api/v1/networks/${inlineNetForm.neutron_net_id}`, token, projectId,
 			);
 			subnets = detail.subnet_details ?? [];
-		} catch { subnets = []; }
+			observation.applied(subnets.length ? 'ready' : 'empty');
+		} catch { subnets = []; observation.applied('error'); }
 		finally { loadingSubnets = false; }
 	}
 
@@ -176,8 +220,9 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 		if (!shareNetworksOn()) return;
 		if (!inlineNetForm.name.trim() || !inlineNetForm.neutron_net_id || !inlineNetForm.neutron_subnet_id) return;
 		inlineNetCreating = true; inlineNetError = '';
+		const observation = observe('create');
 		try {
-			const net = await api.post<ShareNetwork>('/api/v1/share-networks', {
+			const net = await observation.client.post<ShareNetwork>('/api/v1/share-networks', {
 				name: inlineNetForm.name, description: inlineNetForm.description,
 				neutron_net_id: inlineNetForm.neutron_net_id, neutron_subnet_id: inlineNetForm.neutron_subnet_id,
 			}, token, projectId);
@@ -185,8 +230,10 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			selectedNetworkId = net.id;
 			showInlineNetCreate = false;
 			inlineNetForm = { name: '', description: '', neutron_net_id: '', neutron_subnet_id: '' };
+			observation.applied('ready');
 		} catch (e) {
 			inlineNetError = e instanceof ApiError ? e.message : t('wizard.error.createNetwork');
+			observation.applied('error');
 		} finally { inlineNetCreating = false; }
 	}
 
@@ -199,6 +246,8 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			wizardError = t('wizard.error.networkRequired'); return;
 		}
 		creating = true; wizardError = '';
+		const observation = observe('create');
+		experienceState(observation.ctx, 'loading', step);
 		try {
 			const body: Record<string, unknown> = {
 				name: fsForm.name, size_gb: fsForm.size_gb,
@@ -213,34 +262,43 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 				body.metadata = metadata;
 			}
 			const created = await apiMut(t('wizard.mutation.createFileStorage'),
-				() => api.post<FileStorage>('/api/v1/file-storage', body, token, projectId),
+				() => observation.client.post<FileStorage>('/api/v1/file-storage', body, token, projectId),
 			);
 			createdFs = created;
+			// Accepted response assigned locally; availability remains a separate resource read.
+			observation.applied('ready');
 			try {
-				accessRules = await api.get<AccessRule[]>(
+				accessRules = await observation.client.get<AccessRule[]>(
 					`/api/v1/file-storage/${created.id}/access-rules`, token, projectId,
 				);
-			} catch { accessRules = []; }
+				observation.applied(accessRules.length ? 'ready' : 'empty');
+			} catch { accessRules = []; observation.applied('error'); }
 			step = 3;
+			// This is the accepted wizard result, not evidence of share availability.
+			observation.applied('ready');
 		} catch (e) {
 			wizardError = e instanceof ApiError ? e.message : t('wizard.error.createFileStorage');
+			observation.applied('error');
 		} finally { creating = false; }
 	}
 
 	async function addAccessRule() {
 		if (!createdFs || !ruleForm.access_to.trim()) return;
 		addingRule = true; ruleError = '';
+		const observation = observe('create');
 		try {
 			const access_type = createdFs.share_proto === 'NFS' ? 'ip' : 'cephx';
-			const rule = await api.post<AccessRule>(
+			const rule = await observation.client.post<AccessRule>(
 				`/api/v1/file-storage/${createdFs.id}/access-rules`,
 				{ access_to: ruleForm.access_to.trim(), access_level: ruleForm.access_level, access_type },
 				token, projectId,
 			);
 			accessRules = [...accessRules, rule];
 			ruleForm = { access_to: '', access_level: 'rw' };
+			observation.applied('ready');
 		} catch (e) {
 			ruleError = e instanceof ApiError ? e.message : t('wizard.error.addRule');
+			observation.applied('error');
 		} finally { addingRule = false; }
 	}
 
@@ -287,7 +345,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 		get copiedKey() { return copiedKey; },
 		get copiedExport() { return copiedExport; },
 
-		openWizard, closeWizard,
+		openWizard, closeWizard, invalidateMetadata, dispose,
 		addMeta, removeMeta,
 		goStep2, backToStep1,
 		onInlineNetworkChange, createInlineNetwork,

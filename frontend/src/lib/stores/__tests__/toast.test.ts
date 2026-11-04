@@ -111,4 +111,24 @@ describe('toast store', () => {
 		vi.advanceTimersByTime(999_999);
 		expect(get(toast)).toHaveLength(1);
 	});
+
+	it('retains producer metadata without re-resolving stored text or retaining a mutable metadata reference', async () => {
+		// The suite resets modules before each test to isolate the module-owned timers/store.
+		const { toast } = await import('../toast');
+		const metadata = {
+			key: 'common:actions.confirm', locale: 'en' as const, catalog_revision: 'a'.repeat(64),
+			tone: 'success' as const, restoration: 'restored' as const,
+		};
+		toast.success('private formatted resource name', undefined, undefined, { context: undefined, message: metadata });
+		metadata.key = 'changed-after-formatting';
+		const stored = get(toast)[0];
+		expect(stored.experience?.message.key).toBe('common:actions.confirm');
+		expect(stored.experience?.message.locale).toBe('en');
+		expect(Object.isFrozen(stored.experience?.message)).toBe(true);
+		expect(JSON.stringify(stored.experience)).not.toContain('private formatted resource name');
+		toast.error('legacy arbitrary error');
+		expect(get(toast)[1].experience).toBeUndefined();
+		toast.error('private error', undefined, undefined, { context: undefined, message: { ...metadata, tone: 'success' } });
+		expect(get(toast)[2].experience?.message.tone).toBe('danger');
+	});
 });

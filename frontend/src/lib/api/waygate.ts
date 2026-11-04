@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ExperienceContext } from '$lib/utils/experience';
 import type {
 	WaygateServer,
 	WaygateServerCreateRequest,
@@ -17,9 +18,11 @@ const BASE = '/api/v1/waygate/servers';
 
 export async function listServers(
 	token: string | undefined,
-	projectId: string | undefined
+	projectId: string | undefined,
+	experience?: ExperienceContext
 ): Promise<WaygateServer[]> {
-	return api.get<WaygateServer[]>(BASE, token, projectId);
+	const request = experience ? api.withExperience(experience) : api;
+	return request.get<WaygateServer[]>(BASE, token, projectId);
 }
 
 export async function createServer(

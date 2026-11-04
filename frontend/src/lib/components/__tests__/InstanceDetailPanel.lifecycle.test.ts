@@ -25,7 +25,7 @@ vi.mock('$lib/stores/auth', () => ({
 	authReady: writable(true), logoutInProgress: writable(false), projectSwitching: writable(false),
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, withExperience() { return this; } }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/instanceDetailController.svelte', () => ({
 	createInstanceDetailController: (...args: unknown[]) => { mocks.createController(...args); return mocks.controller; },
 	provideInstanceDetailController: vi.fn(),

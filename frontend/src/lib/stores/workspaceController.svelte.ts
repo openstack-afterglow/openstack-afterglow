@@ -7,6 +7,7 @@ import type { AvailableDomain, CreatedDomain, SessionTokenResponse } from '$lib/
 import { domainAuthState, sessionScopeKey } from '$lib/utils/authSession';
 import { cloudShell } from './cloudShell.svelte';
 import { emptyWorkspacePreferences, readWorkspacePreferences, saveWorkspacePreferences, workspacePreferenceKey, type ResourceKind, type ResourcePreference } from './workspacePreferences';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceContext } from '$lib/utils/experience';
 
 export interface WorkspaceProject { id: string; name: string; description?: string; domain_id?: string }
 export interface WorkspaceInventory {
@@ -152,51 +153,63 @@ export function createWorkspaceController(onSelected: () => void) {
 		});
 		return () => { mounted = false; unsubscribe(); invalidate(); };
 	}
+	function observeSharedRead(promise: Promise<void>, experience?: ExperienceContext): Promise<void> {
+		if (!experience) return promise;
+		const request = capture(), sequence = browseSequence;
+		return promise.then(() => {
+			if (!current(request) || sequence !== browseSequence) experienceDiscarded(experience, !mounted ? 'unmounted' : 'stale');
+			else recordExperience(experience, 'result.received', { transport: 'shared', stage: 'response' });
+		});
+	}
 	// Start from the active server-selected workspace, never the identity home or a display preference.
-	function refresh(target = domainId || get(auth).domainId || ''): Promise<void> {
-		if (!mounted || busy || !get(authReady) || get(logoutInProgress) || !get(auth).token || get(projectSwitching)) return Promise.resolve();
-		if (activeRead?.target === target && activeRead.forceRefresh) { activeRead.settlesUncertain = true; return activeRead.promise; }
+	function refresh(target = domainId || get(auth).domainId || '', experience?: ExperienceContext): Promise<void> {
+		if (!mounted || busy || !get(authReady) || get(logoutInProgress) || !get(auth).token || get(projectSwitching)) { experienceDiscarded(experience, !mounted ? 'unmounted' : 'stale'); return Promise.resolve(); }
+		if (activeRead?.target === target && activeRead.forceRefresh) { activeRead.settlesUncertain = true; return observeSharedRead(activeRead.promise, experience); }
 		clearSnapshots();
-		return load(target, true, true, true);
+		return load(target, true, true, true, experience);
 	}
-	function selectDomain(target: string): Promise<void> {
-		if (activeRead?.target === target) return activeRead.promise;
-		if (!directoryValid || !domains.some(row => row.id === target)) return Promise.resolve();
-		return load(target, !directorySnapshot || directorySnapshot.expiresAt <= Date.now());
+	function selectDomain(target: string, experience?: ExperienceContext): Promise<void> {
+		if (activeRead?.target === target) return observeSharedRead(activeRead.promise, experience);
+		if (!directoryValid || !domains.some(row => row.id === target)) { experienceDiscarded(experience, 'stale'); return Promise.resolve(); }
+		return load(target, !directorySnapshot || directorySnapshot.expiresAt <= Date.now(), false, false, experience);
 	}
-	function load(target: string, recheckDirectory: boolean, settlesUncertain = false, forceRefresh = false): Promise<void> {
-		if (!mounted || busy || !get(authReady) || get(logoutInProgress) || !get(auth).token || get(projectSwitching)) return Promise.resolve();
-		if (activeRead?.target === target && (!forceRefresh || activeRead.forceRefresh) && (activeRead.recheckDirectory || !recheckDirectory)) { activeRead.settlesUncertain ||= settlesUncertain; return activeRead.promise; }
+	function load(target: string, recheckDirectory: boolean, settlesUncertain = false, forceRefresh = false, parentExperience?: ExperienceContext): Promise<void> {
+		if (!mounted || busy || !get(authReady) || get(logoutInProgress) || !get(auth).token || get(projectSwitching)) { experienceDiscarded(parentExperience, !mounted ? 'unmounted' : 'stale'); return Promise.resolve(); }
+		if (activeRead?.target === target && (!forceRefresh || activeRead.forceRefresh) && (activeRead.recheckDirectory || !recheckDirectory)) { activeRead.settlesUncertain ||= settlesUncertain; return observeSharedRead(activeRead.promise, parentExperience); }
 		reads?.abort(); reads = new AbortController();
 		const request = capture(); const sequence = ++browseSequence; const signal = reads.signal;
 		const token = get(auth).token!;
 		const owner = snapshotOwner; const epoch = snapshotEpoch;
 		const valid = () => current(request) && owner === snapshotOwner && epoch === snapshotEpoch && sequence === browseSequence && !signal.aborted;
+		const experience = parentExperience ?? (forceRefresh ? beginExperienceAction('iam', 'refresh', 'resource.list') : beginExperienceLoad('iam', 'resource.list'));
 		const cached = workspaceSnapshots.get(target);
 		const displayRows = directorySnapshot && retained(directorySnapshot.expiresAt) ? directorySnapshot.rows : null;
 		const canDisplay = !forceRefresh && displayRows && displayRows.some(row => row.id === target) && cached && retained(cached.expiresAt);
 		if (canDisplay) {
 			domains = structuredClone(displayRows); directoryValid = true; domainId = target;
 			inventory = structuredClone(cached.inventory); ready = true; error = '';
+			experienceState(experience, cached.inventory.projects.length ? 'ready' : 'empty');
+			void experienceApplied(experience, { transport: 'cache' }, valid);
 			if (!recheckDirectory && cached.expiresAt > Date.now()) { loading = false; return Promise.resolve(); }
 		} else {
 			ready = false; inventory = null;
 			if (recheckDirectory) { domains = []; directoryValid = false; }
 		}
 		loading = true; domainId = target; error = '';
+		experienceState(experience, 'loading');
 		// Handle speculative failures immediately, including when the directory rejects or chooses a fallback.
 		const workspace = (selected: string) => {
 			const cached = workspaceSnapshots.get(selected);
 			if (!recheckDirectory && cached && cached.expiresAt > Date.now()) return Promise.resolve({ ok: true as const, result: structuredClone(cached.inventory) });
-			return api.get<WorkspaceInventory>(`/api/v1/auth/workspaces?domain_id=${encodeURIComponent(selected)}`, token, undefined, { refresh: forceRefresh, suppressAuthRedirect: true, signal })
+			return api.withExperience(experience).get<WorkspaceInventory>(`/api/v1/auth/workspaces?domain_id=${encodeURIComponent(selected)}`, token, undefined, { refresh: forceRefresh, suppressAuthRedirect: true, signal })
 				.then(result => ({ ok: true as const, result }), () => ({ ok: false as const }));
 		};
 		async function run() {
 			try {
-				const directory = recheckDirectory ? api.get<AvailableDomain[]>('/api/v1/auth/domains', token, undefined, { refresh: forceRefresh, suppressAuthRedirect: true, signal }) : null;
+				const directory = recheckDirectory ? api.withExperience(experience).get<AvailableDomain[]>('/api/v1/auth/domains', token, undefined, { refresh: forceRefresh, suppressAuthRedirect: true, signal }) : null;
 				const pending = target ? workspace(target) : null;
 				const rows = directory ? await directory : directorySnapshot && directorySnapshot.expiresAt > Date.now() ? structuredClone(directorySnapshot.rows) : domains;
-				if (!valid()) return;
+				if (!valid()) { experienceDiscarded(experience, !mounted ? 'unmounted' : signal.aborted ? 'aborted' : 'stale'); return; }
 				if (!validDomains(rows)) throw new Error('Invalid domain directory');
 				domains = rows.map(displayDomain); directoryValid = true;
 				if (recheckDirectory) {
@@ -207,9 +220,12 @@ export function createWorkspaceController(onSelected: () => void) {
 				if (domainId !== selected || !rows.some(row => row.id === target)) { inventory = null; ready = false; }
 				domainId = selected;
 				if (recheckDirectory && activeRead) activeRead.target = selected;
-				if (!selected) { ready = true; persistSnapshots(); if (settlesUncertain || activeRead?.settlesUncertain) uncertain = false; return; }
+				if (!selected) {
+					ready = true; persistSnapshots(); if (settlesUncertain || activeRead?.settlesUncertain) uncertain = false;
+					experienceState(experience, 'empty'); void experienceApplied(experience, {}, valid); return;
+				}
 				const response = await (selected === target && pending ? pending : workspace(selected));
-				if (!valid() || domainId !== selected) return;
+				if (!valid() || domainId !== selected) { experienceDiscarded(experience, !mounted ? 'unmounted' : signal.aborted ? 'aborted' : 'stale'); return; }
 				if (!response.ok) throw new Error('Workspace unavailable');
 				const result = response.result;
 				if (!validInventory(result, selected)) throw new Error('Invalid workspace directory');
@@ -221,8 +237,14 @@ export function createWorkspaceController(onSelected: () => void) {
 				}
 				persistSnapshots();
 				if (settlesUncertain || activeRead?.settlesUncertain) uncertain = false;
+				experienceState(experience, result.projects.length ? 'ready' : 'empty');
+				void experienceApplied(experience, {}, () => valid() && domainId === selected);
 			} catch {
-				if (valid()) { clearSnapshots(); error = 'loadFailed'; domains = []; directoryValid = false; inventory = null; ready = false; reads?.abort(); }
+				if (valid()) {
+					clearSnapshots(); error = 'loadFailed'; domains = []; directoryValid = false; inventory = null; ready = false; reads?.abort();
+					experienceState(experience, 'error');
+					void experienceApplied(experience, {}, () => current(request) && sequence === browseSequence);
+				} else experienceDiscarded(experience, !mounted ? 'unmounted' : signal.aborted ? 'aborted' : 'stale');
 			} finally {
 				if (current(request) && sequence === browseSequence) { loading = false; activeRead = null; }
 			}
@@ -245,19 +267,21 @@ export function createWorkspaceController(onSelected: () => void) {
 		ordered.forEach((row, order) => { next[row.id] = { ...next[row.id], order }; });
 		preferences = { ...preferences, [kind]: next }; storageFailed = !saveWorkspacePreferences(preferenceKey, preferences);
 	}
-	async function select(projectId: string | null) {
+	async function select(projectId: string | null, parentExperience?: ExperienceContext) {
 		const target = domainId; const directory = inventory;
 		if (!ready || loading || busy || !directory || get(projectSwitching) || !get(auth).token || !domains.some(row => row.id === target)
 			|| (projectId === null && directory.domain.kind === 'personal') || (projectId !== null && !directory.projects.some(row => row.id === projectId))) return;
 		if (target === get(auth).domainId && projectId === get(auth).projectId) { onSelected(); return; }
 		const request = capture(); const savedKey = preferenceKey;
+		const experience = parentExperience ?? beginExperienceAction('iam', 'select', 'page');
 		mutation = new AbortController(); const signal = mutation.signal;
 		busy = true; ownsSwitch = true; projectSwitching.set(true); error = '';
+		experienceState(experience, 'loading');
 		try {
 			await cloudShell.close('project-switch', { keepDock: false });
-			if (!current(request) || signal.aborted || domainId !== target) return;
-			const response = await api.post<SessionTokenResponse>(projectId === null ? '/api/v1/auth/token/domain' : '/api/v1/auth/token/workspace', { domain_id: target, ...(projectId === null ? {} : { project_id: projectId }) }, get(auth).token!, undefined, { ...mutationOptions, signal });
-			if (!current(request) || signal.aborted || domainId !== target) return;
+			if (!current(request) || signal.aborted || domainId !== target) { experienceDiscarded(experience, signal.aborted ? 'aborted' : 'scope_changed'); return; }
+			const response = await api.withExperience(experience).post<SessionTokenResponse>(projectId === null ? '/api/v1/auth/token/domain' : '/api/v1/auth/token/workspace', { domain_id: target, ...(projectId === null ? {} : { project_id: projectId }) }, get(auth).token!, undefined, { ...mutationOptions, signal });
+			if (!current(request) || signal.aborted || domainId !== target) { experienceDiscarded(experience, signal.aborted ? 'aborted' : 'scope_changed'); return; }
 			// Synchronize the mapper's membership snapshot without publishing an intermediate session.
 			const next = domainAuthState(response, { ...get(auth), availableDomains: domains }, target);
 			if (projectId !== null && next.projectId !== projectId) throw new Error('Unexpected project scope');
@@ -265,24 +289,34 @@ export function createWorkspaceController(onSelected: () => void) {
 			const nextPreferences = { ...preferences, domains: { ...preferences.domains, [target]: { ...preferences.domains[target], visited } }, projects: { ...preferences.projects } };
 			if (next.projectId) nextPreferences.projects[next.projectId] = { ...nextPreferences.projects[next.projectId], visited };
 			saveWorkspacePreferences(savedKey, nextPreferences);
+			// The destination auth owner starts a new segment; never relabel its publication as the old owner's DOM.
+			recordExperience(experience, 'telemetry.gap', { reason: 'scope_changed', count: 1 });
 			setAuth(next);
 			onSelected();
-		} catch { if (current(request) && !signal.aborted) error = 'switchFailed'; }
+		} catch {
+			if (current(request) && !signal.aborted) { error = 'switchFailed'; experienceState(experience, 'error'); void experienceApplied(experience, {}, () => current(request)); }
+			else experienceDiscarded(experience, signal.aborted ? 'aborted' : 'scope_changed');
+		}
 		finally { busy = false; ownsSwitch = false; projectSwitching.set(false); }
 	}
-	async function createDomain(name: string, description: string): Promise<boolean> {
+	async function createDomain(name: string, description: string, parentExperience?: ExperienceContext): Promise<boolean> {
 		if (!ready || loading || busy || uncertain || !get(auth).canCreateDomain || !get(auth).token || get(projectSwitching)) return false;
 		const request = capture(); mutation = new AbortController(); const signal = mutation.signal;
+		const experience = parentExperience ?? beginExperienceAction('iam', 'create', 'resource.list');
 		busy = true; error = '';
+		experienceState(experience, 'loading');
 		try {
-			const row = await api.post<CreatedDomain>('/api/v1/auth/domains', { name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }, get(auth).token!, undefined, { ...mutationOptions, signal });
-			if (!current(request) || signal.aborted || !get(auth).canCreateDomain) return false;
+			const row = await api.withExperience(experience).post<CreatedDomain>('/api/v1/auth/domains', { name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }, get(auth).token!, undefined, { ...mutationOptions, signal });
+			if (!current(request) || signal.aborted || !get(auth).canCreateDomain) { experienceDiscarded(experience, signal.aborted ? 'aborted' : 'scope_changed'); return false; }
 			if (!row?.id || typeof row.name !== 'string' || row.enabled !== true || !row.default_project_id) throw new Error('Invalid created domain');
 			busy = false;
-			await refresh(row.id);
+			await refresh(row.id, experience);
 			return current(request) && ready;
 		} catch (cause) {
-			if (current(request) && !signal.aborted) { uncertain = !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 408); error = uncertain ? 'createUncertain' : 'createRejected'; }
+			if (current(request) && !signal.aborted) {
+				uncertain = !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 408); error = uncertain ? 'createUncertain' : 'createRejected';
+				experienceState(experience, 'error'); void experienceApplied(experience, {}, () => current(request));
+			} else experienceDiscarded(experience, signal.aborted ? 'aborted' : 'scope_changed');
 			return false;
 		} finally { if (current(request)) busy = false; }
 	}

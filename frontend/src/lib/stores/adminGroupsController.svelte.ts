@@ -4,6 +4,7 @@ import type { Group, GroupCandidates, GroupMember, User } from '$lib/types/admin
 import { domainsApi, type AdminDomain } from '$lib/api/domains';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as td } from '$lib/i18n/ns/domain-admin';
+import { beginExperienceAction, beginExperienceLoad, experienceState, experienceApplied, experienceDiscarded, type ExperienceContext } from '$lib/utils/experience';
 
 export interface AdminGroupsControllerOpts {
   token: () => string | undefined;
@@ -86,25 +87,34 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     await loadAttempt(false);
   }
 
-  async function loadAttempt(replacement: boolean) {
+  async function loadAttempt(replacement: boolean, inherited?: ExperienceContext) {
+    const experience = inherited ?? beginExperienceLoad('iam', 'resource.list');
+    const request = experience ? api.withExperience(experience) : api;
     const scope = capture();
-    if (!scope.owns()) { loading = false; return; }
+    if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); loading = false; return; }
     const generation = ++listGeneration;
     const owns = () => scope.owns() && generation === listGeneration;
     if (groups.length === 0) loading = true;
     else refreshing = true;
     error = '';
+    experienceState(experience, 'loading');
     try {
-      const res = await api.get<Group[]>(scope.path('/api/v1/admin/groups'), scope.token, scope.projectId);
-      if (!owns()) return;
+      const res = await request.get<Group[]>(scope.path('/api/v1/admin/groups'), scope.token, scope.projectId);
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
       if (res.some((group) => group.domain_id !== scope.domainId)) throw new Error('foreign domain');
       groups = res;
+      experienceState(experience, res.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch (e) {
       if (owns() && !replacement && e instanceof DOMException && e.name === 'AbortError') {
-        await loadAttempt(true);
+        experienceDiscarded(experience, 'aborted');
+        await loadAttempt(true, experience);
       } else if (owns()) {
         groups = []; error = message(e, 'groupController.loadFailed');
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, owns);
       }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 
@@ -114,71 +124,103 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   }
 
   async function loadSourceDomains(refresh = false) {
+    await loadSourceDomainsWithExperience(refresh);
+  }
+
+  async function loadSourceDomainsWithExperience(refresh = false, inherited?: ExperienceContext) {
     const scope = capture();
-    if (!scope.owns() || sourceDomainsLoading || (sourceDomainsLoaded && !refresh)) return;
+    if (!scope.owns()) { experienceDiscarded(inherited, 'scope_changed'); return; }
+    if (sourceDomainsLoading || (sourceDomainsLoaded && !refresh)) return;
     const generation = ++sourceDomainsGeneration;
     const owns = () => scope.owns() && generation === sourceDomainsGeneration;
+    const experience = inherited ?? beginExperienceLoad('iam', 'resource.list');
+    experienceState(experience, 'loading');
     sourceDomainsLoading = true; sourceDomainsError = '';
     try {
-      const res = await domainsApi.list(scope, { refresh });
-      if (!owns()) return;
+      const res = await domainsApi.list(scope, { refresh, ...(experience ? { experience } : {}) });
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
       sourceDomains = res.items.filter((domain) => domain.enabled === true && domain.id !== scope.domainId);
       sourceDomainsLoaded = true;
+      experienceState(experience, sourceDomains.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch (e) {
       if (owns()) {
         sourceDomains = []; sourceDomainsLoaded = false;
         sourceDomainsError = message(e, 'groupCard.sourceDomainsFailed');
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, owns);
       }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) sourceDomainsLoading = false; }
   }
 
   async function selectUserDomain(value: string) {
     if (!expandedGroup || addMemberSaving[expandedGroup] || value === userDomainId
       || (value !== '' && !sourceDomains.some((domain) => domain.id === value))) return;
+    const experience = beginExperienceAction('iam', 'select', 'resource.list');
+    const scope = capture();
     userDomainId = value;
     clearCandidates();
-    await loadUsers();
+    const source = sourceGeneration;
+    void experienceApplied(experience, {}, () => scope.owns() && source === sourceGeneration);
+    await loadUsersWithExperience(experience);
   }
 
   async function loadUsers() {
+    await loadUsersWithExperience();
+  }
+
+  async function loadUsersWithExperience(inherited?: ExperienceContext) {
     const scope = capture();
     const groupId = expandedGroup;
-    if (!scope.owns() || !groupId || !ownsGroup(groupId)) return;
+    if (!scope.owns() || !groupId || !ownsGroup(groupId)) { experienceDiscarded(inherited, 'scope_changed'); return; }
     const sourceId = userDomainId;
     const source = sourceGeneration;
     const generation = ++usersGeneration;
     const owns = () => scope.owns() && generation === usersGeneration && source === sourceGeneration
       && expandedGroup === groupId && userDomainId === sourceId && ownsGroup(groupId);
+    const experience = inherited ?? beginExperienceLoad('iam', 'resource.list');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     usersLoading = true;
     usersOwns = null;
     usersError = '';
     allUsers = [];
     try {
       const res = sourceId
-        ? await api.get<GroupCandidates>(`${scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/candidates`)}&user_domain_id=${encodeURIComponent(sourceId)}`, scope.token, scope.projectId, { cache: 'no-store' })
-        : await api.get<{ domain_id: string; items: User[] }>(`/api/v1/admin/domains/${encodeURIComponent(scope.domainId)}/members`, scope.token, scope.projectId, { refresh: true });
-      if (!owns()) return;
+        ? await request.get<GroupCandidates>(`${scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/candidates`)}&user_domain_id=${encodeURIComponent(sourceId)}`, scope.token, scope.projectId, { cache: 'no-store' })
+        : await request.get<{ domain_id: string; items: User[] }>(`/api/v1/admin/domains/${encodeURIComponent(scope.domainId)}/members`, scope.token, scope.projectId, { refresh: true });
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
       if (res.domain_id !== scope.domainId || (sourceId && (!('user_domain_id' in res)
         || res.user_domain_id !== sourceId || res.items.some((user) => user.domain_id !== sourceId)))) throw new Error('foreign domain');
       allUsers = res.items; usersOwns = owns;
+      experienceState(experience, allUsers.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch (e) {
       if (owns()) {
         allUsers = []; usersOwns = null;
         usersError = e instanceof ApiError ? e.message : td('groups.usersFailed');
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, owns);
       }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) usersLoading = false; }
   }
 
   async function createGroup(name: string, description: string): Promise<boolean> {
     const scope = capture();
     if (!scope.owns() || creating) return false;
+    const experience = beginExperienceAction('iam', 'create', 'resource.list');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     creating = true; createError = '';
     try {
-      await api.post(scope.path('/api/v1/admin/groups'), { name, description: description || null, domain_id: scope.domainId }, scope.token, scope.projectId);
-      if (!scope.owns()) return false;
-      await load();
+      await request.post(scope.path('/api/v1/admin/groups'), { name, description: description || null, domain_id: scope.domainId }, scope.token, scope.projectId);
+      if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); return false; }
+      await loadAttempt(false, experience);
+      if (!scope.owns()) experienceDiscarded(experience, 'scope_changed');
       return scope.owns();
-    } catch (e) { if (scope.owns()) createError = message(e, 'groupController.createFailed'); return false; }
+    } catch (e) { if (scope.owns()) { createError = message(e, 'groupController.createFailed'); experienceState(experience, 'error'); void experienceApplied(experience, {}, scope.owns); } else experienceDiscarded(experience, 'scope_changed'); return false; }
     finally { if (scope.owns()) creating = false; }
   }
 
@@ -186,13 +228,17 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     const scope = capture();
     if (!scope.owns() || !editGroup || !ownsGroup(editGroup.id) || updating) return false;
     const target = editGroup.id;
+    const experience = beginExperienceAction('iam', 'update', 'resource.list');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     updating = true; editError = '';
     try {
-      await api.patch(scope.path(`/api/v1/admin/groups/${encodeURIComponent(target)}`), { name: form.name, description: form.description || null }, scope.token, scope.projectId);
-      if (!scope.owns()) return false;
-      await load();
+      await request.patch(scope.path(`/api/v1/admin/groups/${encodeURIComponent(target)}`), { name: form.name, description: form.description || null }, scope.token, scope.projectId);
+      if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); return false; }
+      await loadAttempt(false, experience);
+      if (!scope.owns()) experienceDiscarded(experience, 'scope_changed');
       return scope.owns();
-    } catch (e) { if (scope.owns()) editError = message(e, 'groupController.updateFailed'); return false; }
+    } catch (e) { if (scope.owns()) { editError = message(e, 'groupController.updateFailed'); experienceState(experience, 'error'); void experienceApplied(experience, {}, scope.owns); } else experienceDiscarded(experience, 'scope_changed'); return false; }
     finally { if (scope.owns()) updating = false; }
   }
 
@@ -200,42 +246,64 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     const scope = capture();
     if (!scope.owns() || !deleteGroup || !ownsGroup(deleteGroup.id) || deleting) return;
     const target = deleteGroup.id;
+    const experience = beginExperienceAction('iam', 'delete', 'resource.list');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     deleting = true; deleteError = '';
     try {
-      await api.delete(scope.path(`/api/v1/admin/groups/${encodeURIComponent(target)}`), scope.token, scope.projectId);
-      if (!scope.owns()) return;
+      await request.delete(scope.path(`/api/v1/admin/groups/${encodeURIComponent(target)}`), scope.token, scope.projectId);
+      if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); return; }
       deleteGroup = null;
-      await load();
-    } catch (e) { if (scope.owns()) deleteError = message(e, 'groupController.deleteFailed'); }
+      void experienceApplied(experience, {}, scope.owns);
+      await loadAttempt(false, experience);
+    } catch (e) { if (scope.owns()) { deleteError = message(e, 'groupController.deleteFailed'); experienceState(experience, 'error'); void experienceApplied(experience, {}, scope.owns); } else experienceDiscarded(experience, 'scope_changed'); }
     finally { if (scope.owns()) deleting = false; }
   }
 
   async function loadGroupMembers(groupId: string) {
+    await loadGroupMembersWithExperience(groupId);
+  }
+
+  async function loadGroupMembersWithExperience(groupId: string, inherited?: ExperienceContext) {
     const scope = capture();
-    if (!scope.owns() || !ownsGroup(groupId)) return;
+    if (!scope.owns() || !ownsGroup(groupId)) { experienceDiscarded(inherited, 'scope_changed'); return; }
+    const experience = inherited ?? beginExperienceLoad('iam', 'resource.detail');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     const generation = (memberGenerations[groupId] ?? 0) + 1;
     memberGenerations[groupId] = generation;
     const owns = () => scope.owns() && memberGenerations[groupId] === generation;
     membersLoading = { ...membersLoading, [groupId]: true };
     membersError = { ...membersError, [groupId]: '' };
     try {
-      const res = await api.get<GroupMember[]>(scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users`), scope.token, scope.projectId);
-      if (owns()) groupMembers = { ...groupMembers, [groupId]: res };
+      const res = await request.get<GroupMember[]>(scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users`), scope.token, scope.projectId);
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
+      groupMembers = { ...groupMembers, [groupId]: res };
+      experienceState(experience, res.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch (e) {
       if (owns()) {
         groupMembers = { ...groupMembers, [groupId]: [] };
         membersError = { ...membersError, [groupId]: e instanceof ApiError ? e.message : td('groups.membersFailed') };
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, owns);
       }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) membersLoading = { ...membersLoading, [groupId]: false }; }
   }
 
   async function toggleMembers(g: Group) {
     if (!ownsGroup(g.id)) return;
+    const experience = beginExperienceAction('iam', 'select', 'resource.detail');
+    const scope = capture();
     clearCandidates();
     userDomainId = '';
-    if (expandedGroup === g.id) { expandedGroup = null; return; }
+    const source = sourceGeneration;
+    const owns = () => scope.owns() && source === sourceGeneration;
+    if (expandedGroup === g.id) { expandedGroup = null; void experienceApplied(experience, {}, owns); return; }
     expandedGroup = g.id;
-    await Promise.all([loadGroupMembers(g.id), loadUsers(), loadSourceDomains()]);
+    void experienceApplied(experience, {}, owns);
+    await Promise.all([loadGroupMembersWithExperience(g.id, experience), loadUsersWithExperience(experience), loadSourceDomainsWithExperience(false, experience)]);
   }
 
   async function addMember(groupId: string, userId: string): Promise<boolean> {
@@ -247,16 +315,21 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       || membersLoading[groupId] || membersError[groupId]
       || !allUsers.some((user) => user.id === userId && user.enabled)
       || groupMembers[groupId]?.some((user) => user.id === userId) || addMemberSaving[groupId]) return false;
+    const experience = beginExperienceAction('iam', 'attach', 'resource.detail');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     addMemberSaving = { ...addMemberSaving, [groupId]: true };
     addMemberError = { ...addMemberError, [groupId]: '' };
     try {
       const path = scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users/${encodeURIComponent(userId)}`);
-      await api.put(sourceId ? `${path}&user_domain_id=${encodeURIComponent(sourceId)}` : path, {}, scope.token, scope.projectId);
-      if (!owns()) return false;
-      await loadGroupMembers(groupId);
+      await request.put(sourceId ? `${path}&user_domain_id=${encodeURIComponent(sourceId)}` : path, {}, scope.token, scope.projectId);
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return false; }
+      await loadGroupMembersWithExperience(groupId, experience);
+      if (!owns()) experienceDiscarded(experience, 'stale');
       return owns();
     } catch (e) {
-      if (owns()) addMemberError = { ...addMemberError, [groupId]: message(e, 'groupController.addFailed') };
+      if (owns()) { addMemberError = { ...addMemberError, [groupId]: message(e, 'groupController.addFailed') }; experienceState(experience, 'error'); void experienceApplied(experience, {}, owns); }
+      else experienceDiscarded(experience, 'stale');
       return false;
     } finally { if (scope.owns()) addMemberSaving = { ...addMemberSaving, [groupId]: false }; }
   }
@@ -264,12 +337,17 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   async function removeMember(groupId: string, userId: string) {
     const scope = capture();
     if (!scope.owns() || !ownsGroup(groupId) || !groupMembers[groupId]?.some((user) => user.id === userId)) return;
+    const experience = beginExperienceAction('iam', 'detach', 'resource.detail');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
     addMemberError = { ...addMemberError, [groupId]: '' };
     try {
-      await api.delete(scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users/${encodeURIComponent(userId)}`), scope.token, scope.projectId);
-      if (scope.owns()) await loadGroupMembers(groupId);
+      await request.delete(scope.path(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/users/${encodeURIComponent(userId)}`), scope.token, scope.projectId);
+      if (scope.owns()) await loadGroupMembersWithExperience(groupId, experience);
+      else experienceDiscarded(experience, 'scope_changed');
     } catch (e) {
-      if (scope.owns()) addMemberError = { ...addMemberError, [groupId]: e instanceof ApiError ? e.message : td('groups.removeFailed') };
+      if (scope.owns()) { addMemberError = { ...addMemberError, [groupId]: e instanceof ApiError ? e.message : td('groups.removeFailed') }; experienceState(experience, 'error'); void experienceApplied(experience, {}, scope.owns); }
+      else experienceDiscarded(experience, 'scope_changed');
     }
   }
 

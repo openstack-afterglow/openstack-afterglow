@@ -5,8 +5,12 @@
 	import Modal from './Modal.svelte';
 	import { t } from '$lib/i18n/ns/common';
 	import LoadingState from './LoadingState.svelte';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 
 	interface Props {
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 		open: boolean;
 		title: string;
 		onClose?: () => void;
@@ -19,6 +23,8 @@
 	}
 
 	let {
+		experience,
+		experienceMessage,
 		open = $bindable(false),
 		title,
 		onClose,
@@ -38,7 +44,7 @@
 	}
 </script>
 
-<Modal bind:open {onClose} dismissible={!submitting} labelledBy={titleId}>
+<Modal bind:open {onClose} dismissible={!submitting} labelledBy={titleId} {experience} {experienceMessage}>
 	<div class="form-modal-frame">
 		<Card surface="modal" padding="lg">
 			<h2 id={titleId} class="form-modal-title">{title}</h2>

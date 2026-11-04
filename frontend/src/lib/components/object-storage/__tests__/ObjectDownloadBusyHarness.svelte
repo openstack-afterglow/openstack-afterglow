@@ -13,6 +13,7 @@
 		containerName: () => 'sample-artifacts',
 		token: () => undefined,
 		projectId: () => 'project-a',
+		ownerKey: () => 'download-fixture-owner',
 	});
 	provideObjectBrowser(store);
 </script>

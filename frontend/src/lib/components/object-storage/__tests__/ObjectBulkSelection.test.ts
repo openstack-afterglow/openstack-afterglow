@@ -1,5 +1,6 @@
 vi.mock('$lib/api/client', () => ({
 	api: {
+		withExperience() { return this; },
 		get: vi.fn(async (path: string) => path.includes('/trash') ? [] : [{ name: 'alpha', count: 1, bytes: 1, content_type: 'text/plain', last_modified: '', etag: '' }, { name: 'beta', count: 1, bytes: 1, content_type: 'text/plain', last_modified: '', etag: '' }]),
 		post: vi.fn(async (path: string) => path.includes('bulk-delete') ? { deleted: ['alpha'], failed: [{ name: 'beta', error: 'blocked' }] } : {}),
 		delete: vi.fn(async () => {}),

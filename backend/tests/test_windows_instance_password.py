@@ -379,6 +379,60 @@ async def test_explicit_linux_native_password_preserves_custom_userdata_and_hist
 
 
 @pytest.mark.asyncio
+async def test_cancelled_sse_keeps_admission_until_native_thread_drains(password_cloud, mock_conn):
+    import asyncio
+    import threading
+    from contextlib import suppress
+
+    from app.api.compute import instances
+    from app.services import flavor_eligibility
+
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    original = mock_conn.compute.create_server.side_effect
+
+    def delayed_create(**body):
+        loop.call_soon_threadsafe(entered.set)
+        release.wait(5)
+        return original(**body)
+
+    mock_conn.compute.create_server.side_effect = delayed_create
+    response = await instances.create_instance_async(
+        CreateInstanceRequest(**BASE, admin_pass=PASSWORD),
+        conn=mock_conn,
+        token_info={"user_id": "test-user-123", "is_system_admin": False},
+    )
+
+    async def consume():
+        async for _ in response.body_iterator:
+            pass
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        flavor_eligibility.release_admission.assert_not_awaited()
+        password_cloud.rollback.assert_not_awaited()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+        flavor_eligibility.release_admission.assert_awaited_once()
+        assert len(password_cloud.bodies) == 1
+        password_cloud.rollback.assert_not_awaited()
+        password_cloud.activity.assert_not_awaited()
+    finally:
+        release.set()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("route", ROUTES)
 async def test_absent_password_does_not_require_boot_metadata(client, mock_conn, password_cloud, route):
     mock_conn.image.get_image.side_effect = AssertionError("No password must not perform metadata lookup")

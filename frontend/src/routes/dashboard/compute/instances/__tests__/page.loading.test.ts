@@ -6,7 +6,7 @@ import type { Instance } from '$lib/types/compute';
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: vi.fn(), delete: vi.fn() },
+	api: { get: mockGet, post: vi.fn(), delete: vi.fn(), withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 500; },
 }));
 vi.mock('$lib/stores/auth', () => ({

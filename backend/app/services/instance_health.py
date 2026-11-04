@@ -14,9 +14,17 @@ _INSTANCE_PREFIX = "afterglow:health:instance:"
 _RESULT_PREFIX = "afterglow:health:result:"
 # 절대 만료 7일 — sliding window 제거 (이전: 30일 sliding 으로 사실상 영구 토큰).
 # VM userdata 가 노출돼도 7일 후 토큰이 만료되어 cephx rotate 권한 무효화.
-# 인스턴스가 7일 이상 살아있으면 health_check.sh 의 재발급 흐름이 새 토큰을 받음.
+# 만료된 baked credential은 자동 갱신하지 않는다. 별도 소유자 인증 없이는 재발급 불가.
 _TOKEN_TTL = 86400 * 7
 _RESULT_TTL = 1800  # 30분
+
+
+class HealthStoreUnavailable(RuntimeError):
+    """A coordination-store fault, never evidence that a credential is invalid."""
+
+    def __init__(self, reason: str = "health_store_unavailable"):
+        self.reason = reason
+        super().__init__(reason)
 
 
 async def _redis():
@@ -45,19 +53,25 @@ async def issue_report_token(instance_id: str, project_id: str) -> str:
 async def verify_report_token(token: str) -> dict | None:
     """토큰 검증. 성공 시 {instance_id, project_id} 반환.
 
-    sliding TTL 갱신은 제거 (이전: 매 호출마다 r.expire(7d) 로 사실상 영구 토큰).
-    토큰은 발급 후 절대 만료 7일 — 만료 전 인스턴스 부팅 시 재발급되도록 cloud-init
-    측에서 처리.
+    TTL은 발급 후 절대 만료 7일이며 검증/콜백/재부팅으로 연장하지 않는다.
+    저장소 장애는 미등록/만료 credential과 구분하여 호출자에게 전달한다.
     """
     try:
         r = await _redis()
         raw = await r.get(f"{_TOKEN_PREFIX}{token}")
-        if not raw:
-            return None
-        return json.loads(raw)
     except Exception:
-        _logger.warning("instance_health: 토큰 검증 실패", exc_info=True)
+        raise HealthStoreUnavailable() from None
+    if raw is None:
         return None
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict) or any(
+            not isinstance(data.get(key), str) or not data[key] for key in ("instance_id", "project_id")
+        ):
+            raise ValueError
+    except (TypeError, ValueError, UnicodeDecodeError):
+        raise HealthStoreUnavailable("health_credential_record_invalid") from None
+    return data
 
 
 async def revoke_report_token_by_instance(instance_id: str) -> None:
@@ -71,7 +85,7 @@ async def revoke_report_token_by_instance(instance_id: str) -> None:
             await r.delete(f"{_TOKEN_PREFIX}{token}")
         await r.delete(f"{_INSTANCE_PREFIX}{instance_id}")
     except Exception:
-        _logger.warning("instance_health: 토큰 폐기 실패 (instance=%s)", instance_id, exc_info=True)
+        _logger.warning("instance_health failure reason=health_credential_revoke_unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +99,7 @@ async def store_health_result(instance_id: str, report: InstanceHealthReport) ->
         r = await _redis()
         await r.setex(f"{_RESULT_PREFIX}{instance_id}", _RESULT_TTL, report.model_dump_json())
     except Exception:
-        _logger.warning("instance_health: Redis 저장 실패 (instance=%s)", instance_id, exc_info=True)
+        raise HealthStoreUnavailable() from None
 
 
 async def get_health_result(instance_id: str) -> InstanceHealth | None:
@@ -98,7 +112,7 @@ async def get_health_result(instance_id: str) -> InstanceHealth | None:
         report = InstanceHealthReport.model_validate_json(raw)
         return _evaluate(instance_id, report)
     except Exception:
-        _logger.warning("instance_health: Redis 조회 실패 (instance=%s)", instance_id, exc_info=True)
+        _logger.warning("instance_health failure reason=health_result_read_unavailable")
         return None
 
 

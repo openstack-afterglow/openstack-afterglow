@@ -7,6 +7,7 @@ parse their own bodies so cross-origin requests are rejected before parsing.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 from urllib.parse import urlencode, urlsplit
@@ -24,6 +25,7 @@ from app.services.mcp_control_plane.authority import McpAuthorityError
 from app.services.mcp_control_plane.oauth import McpOAuthError, oauth_urls
 from app.services.mcp_control_plane.oauth_authority import (
     McpOAuthAuthorityError,
+    McpOAuthFailureReason,
     approve_consent_ticket,
     create_authorization_ticket,
     deny_consent_ticket,
@@ -40,6 +42,11 @@ auth_router = APIRouter()
 
 _OAUTH_NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 _MAX_PUBLIC_BODY = 64 * 1024
+_logger = logging.getLogger(__name__)
+
+
+def _log_token_rejection(reason: McpOAuthFailureReason) -> None:
+    _logger.warning("MCP OAuth request rejected", extra={"diagnostic_reason": reason.value})
 
 
 class OAuthConsentApproval(BaseModel):
@@ -126,19 +133,21 @@ async def _public_form(request: Request) -> dict[str, str]:
     _reject_public_origin(request)
     body = await request.body()
     if len(body) > _MAX_PUBLIC_BODY:
-        raise McpOAuthAuthorityError("request body is too large")
+        raise McpOAuthAuthorityError("request body is too large", reason=McpOAuthFailureReason.INVALID_SHAPE)
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
-        raise McpOAuthAuthorityError("request must use application/x-www-form-urlencoded")
+        raise McpOAuthAuthorityError(
+            "request must use application/x-www-form-urlencoded", reason=McpOAuthFailureReason.INVALID_SHAPE
+        )
     try:
         from urllib.parse import parse_qsl
 
         pairs = parse_qsl(body.decode("utf-8", "strict"), keep_blank_values=True, strict_parsing=True)
     except (UnicodeDecodeError, ValueError) as exc:
-        raise McpOAuthAuthorityError("request form is invalid") from exc
+        raise McpOAuthAuthorityError("request form is invalid", reason=McpOAuthFailureReason.INVALID_SHAPE) from exc
     values: dict[str, str] = {}
     for key, value in pairs:
         if key in values or len(key) > 128 or len(value) > 4096:
-            raise McpOAuthAuthorityError("request form is invalid")
+            raise McpOAuthAuthorityError("request form is invalid", reason=McpOAuthFailureReason.INVALID_SHAPE)
         values[key] = value
     return values
 
@@ -286,8 +295,10 @@ async def oauth_token(request: Request):
     try:
         form = await _public_form(request)
         if request.headers.get("authorization"):
+            _log_token_rejection(McpOAuthFailureReason.AUTHENTICATION_FAILED)
             return _oauth_authorization_error("public clients must not use HTTP Authorization")
         if "client_secret" in form:
+            _log_token_rejection(McpOAuthFailureReason.CLIENT_INVALID)
             return _oauth_error("public clients must not send client_secret", error="invalid_client")
         grant_type = form.get("grant_type")
         if grant_type == "authorization_code":
@@ -310,11 +321,14 @@ async def oauth_token(request: Request):
                 scope=form.get("scope"),
             )
         else:
+            _log_token_rejection(McpOAuthFailureReason.INVALID_SHAPE)
             return _oauth_error("grant_type is unsupported", error="unsupported_grant_type")
     except HTTPException:
         raise
     except (McpOAuthAuthorityError, McpOAuthError) as exc:
-        return _oauth_error(str(exc), error="invalid_grant")
+        reason = exc.reason if isinstance(exc, McpOAuthAuthorityError) else McpOAuthFailureReason.AUTHORITY_REJECTED
+        _log_token_rejection(reason)
+        return _oauth_error("OAuth grant is invalid", error="invalid_grant")
     return JSONResponse(
         {
             "access_token": result.access_token,

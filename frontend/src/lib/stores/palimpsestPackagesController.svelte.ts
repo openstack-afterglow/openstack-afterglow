@@ -4,6 +4,7 @@ import type { PackageIdentity, ProjectContext, PackageSummary, PackageVersion, P
 import type { KeyAction } from '$lib/api/palimpsestPackages';
 import { get } from 'svelte/store';
 import { serviceCapabilities, serviceDenials } from './servicePermissions';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 type MessageKey = Parameters<typeof t>[0];
 // Store local message keys separately from opaque server errors; translate only when rendered.
@@ -17,6 +18,7 @@ function requestError(error: unknown, fallback: MessageKey): StoredError {
 }
 
 type Lane = 'context' | 'inventory' | 'metadata' | 'detail' | 'version' | 'keys' | 'register' | 'issue' | 'revoke' | 'download';
+const LANE_STEPS: Readonly<Record<Lane, number>> = { context: 0, inventory: 1, metadata: 2, detail: 3, version: 4, keys: 5, register: 6, issue: 7, revoke: 8, download: 9 };
 export function createPalimpsestPackagesController(identity: () => PackageIdentity | null, api = packageApi, can: (leaf: string) => boolean = (leaf) => get(serviceCapabilities)(leaf), denied: (leaf: string) => boolean = (leaf) => get(serviceDenials)(leaf)) {
   let context = $state<ProjectContext | null>(null);
   let inventory = $state<PackageSummary[] | null>(null);
@@ -97,7 +99,19 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     if (!bound || !samePackageIdentity(bound, identity()) || issueDenied() || issued?.key.actions.some(delegationDenied) || issuingActions?.some(delegationDenied)) discardSecret();
     if (!canIssue() && !canRevoke()) keys = null;
   }
-  async function run<T>(lane: Lane, work: (actor: PackageIdentity, signal: AbortSignal) => Promise<T>, apply: (value: T) => void, namespaceRequired = true) {
+  function laneValue(lane: Lane) {
+    switch (lane) {
+      case 'context': return context;
+      case 'inventory': return inventory;
+      case 'metadata': return latestVersions;
+      case 'detail': return detail;
+      case 'version': return version;
+      case 'keys': return keys;
+      case 'issue': return issued;
+      default: return null; // Register/revoke refresh their actual owner; download has no rendered result.
+    }
+  }
+  async function run<T>(lane: Lane, work: (actor: PackageIdentity, signal: AbortSignal) => Promise<T>, apply: (value: T, experience: ExperienceContext | undefined) => void, namespaceRequired = true, parentExperience?: ExperienceContext) {
     const actor = identity();
     if (disposed || !actor || !bound || !samePackageIdentity(actor, bound) || (namespaceRequired && !context?.namespace)) return;
     if (lane === 'register' || lane === 'issue' || lane === 'revoke') {
@@ -107,13 +121,30 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     requests.set(lane, request);
     const currentGeneration = generation;
     const namespace = context?.namespace;
+    const experience = parentExperience ?? (lane === 'register' || lane === 'issue' || lane === 'revoke' || lane === 'download'
+      ? beginExperienceAction('palimpsest', lane === 'register' || lane === 'issue' ? 'create' : lane === 'revoke' ? 'delete' : 'export', 'resource.list')
+      : beginExperienceLoad('palimpsest', lane === 'detail' || lane === 'version' ? 'resource.detail' : 'resource.list'));
+    const step = LANE_STEPS[lane];
+    experienceState(experience, 'loading', step);
     busy[lane] = true; errors[lane] = '';
     const owns = () => !disposed && !request.signal.aborted && currentGeneration === generation && requests.get(lane) === request && samePackageIdentity(actor, identity());
     try {
-      const value = await work(actor, request.signal);
-      if (owns() && canPublishLane(lane) && (!namespaceRequired || namespace === context?.namespace)) apply(value);
+      const value = await work({ ...actor, experience }, request.signal);
+      if (owns() && canPublishLane(lane) && (!namespaceRequired || namespace === context?.namespace)) {
+        apply(value, experience);
+        const appliedValue = laneValue(lane);
+        if (appliedValue !== null) {
+          experienceState(experience, Array.isArray(appliedValue) && !appliedValue.length ? 'empty' : 'ready', step);
+          void experienceApplied(experience, {}, () => !disposed && currentGeneration === generation && !request.signal.aborted && samePackageIdentity(actor, identity()) && laneValue(lane) === appliedValue && canPublishLane(lane) && (!namespaceRequired || namespace === context?.namespace));
+        }
+      } else experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale');
     } catch (error) {
-      if (owns()) errors[lane] = requestError(error, 'error.request');
+      if (owns()) {
+        errors[lane] = requestError(error, 'error.request'); experienceState(experience, 'error', step);
+        const appliedError = errors[lane];
+        void experienceApplied(experience, {}, () => !disposed && currentGeneration === generation && !request.signal.aborted && samePackageIdentity(actor, identity()) && errors[lane] === appliedError && canPublishLane(lane) && (!namespaceRequired || namespace === context?.namespace));
+      }
+      else experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale');
     } finally {
       if (owns()) { busy[lane] = false; requests.delete(lane); }
     }
@@ -127,7 +158,7 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     assertOwner(key);
     if (!bound || key.owner_user_id !== bound.userId) throw new LocalizedError('error.keyOwner');
   }
-  async function hydrateLatest() {
+  async function hydrateLatest(experience?: ExperienceContext) {
     const actor = identity();
     if (!canRead() || !actor || !bound || !samePackageIdentity(actor, bound) || !context?.namespace || !inventory) return;
     requests.get('metadata')?.abort();
@@ -143,13 +174,15 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
       while (owns() && canRead() && namespace === context?.namespace && index < pending.length) {
         const item = pending[index++];
         try {
-          const history = await api.versions(identity()!, request.signal, item.name, undefined, 1);
-          if (!owns() || !canRead() || namespace !== context?.namespace) return;
+          const history = await api.versions({ ...identity()!, experience }, request.signal, item.name, undefined, 1);
+          if (!owns() || !canRead() || namespace !== context?.namespace) { experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale'); return; }
           assertOwner(history);
           if (history.package !== item.name) throw new LocalizedError('error.versionPackage');
           const value = history.items[0] ?? null;
           if (value) { assertOwner(value); if (value.package !== item.name) throw new LocalizedError('error.versionPackage'); }
           latestVersions[item.package_id] = { version: value, error: value ? '' : new LocalizedError('error.noLatest') };
+          const applied = latestVersions[item.package_id];
+          void experienceApplied(experience, {}, () => !disposed && !request.signal.aborted && epoch === generation && canRead() && namespace === context?.namespace && latestVersions[item.package_id] === applied && samePackageIdentity(actor, identity()));
         } catch (error) {
           if (owns() && canRead() && namespace === context?.namespace) latestVersions[item.package_id] = { version: null, error: requestError(error, 'error.latest') };
         }
@@ -158,30 +191,31 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     await Promise.all(Array.from({ length: Math.min(4, pending.length) }, () => worker()));
     if (owns()) { busy.metadata = false; requests.delete('metadata'); }
   }
-  async function loadInventory(more = false) {
+  async function loadInventory(more = false, parentExperience?: ExperienceContext) {
     if (!canRead()) return;
     if (!more) {
       requests.get('metadata')?.abort(); requests.delete('metadata'); busy.metadata = false;
       inventory = null; nextCursor = null; latestVersions = {};
     }
     let metadata: Promise<void> | undefined;
-    await run('inventory', (actor, signal) => api.inventory(actor, signal, more ? nextCursor ?? undefined : undefined), (page) => {
+    await run('inventory', (actor, signal) => api.inventory(actor, signal, more ? nextCursor ?? undefined : undefined), (page, experience) => {
       assertOwner(page);
       page.items.forEach((item) => assertOwner(item));
       inventory = more ? [...inventory ?? [], ...page.items] : page.items;
       nextCursor = page.next_cursor;
-      metadata = hydrateLatest();
-    });
+      metadata = hydrateLatest(experience);
+    }, true, parentExperience);
     await metadata;
   }
-  async function loadContext() {
+  async function loadContext(parentExperience?: ExperienceContext) {
+    const experience = parentExperience ?? beginExperienceLoad('palimpsest', 'resource.list');
     await run('context', (actor, signal) => api.context(actor, signal), (value) => {
       assertOwner(value, false);
       if (context && context.namespace !== value.namespace) reset();
       context = value;
       syncCapabilities();
-    }, false);
-    if (canRead() && context?.namespace && !busy.inventory) void loadInventory();
+    }, false, experience);
+    if (canRead() && context?.namespace && !busy.inventory) void loadInventory(false, experience);
   }
   function bindIdentity() {
     const current = identity();
@@ -192,9 +226,9 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
   }
   async function register() {
     if (!context || context.namespace || !canPublish()) return;
-    await run('register', (actor, signal) => api.register(actor, signal), (value) => {
+    await run('register', (actor, signal) => api.register(actor, signal), (value, experience) => {
       assertOwner(value, false);
-      void loadContext();
+      void loadContext(experience);
     }, false);
   }
   function closeDetail() {

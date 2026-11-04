@@ -128,6 +128,13 @@ async def create_tables() -> None:
         EmailOperation,
         EmailPreference,
     )
+    from app.models.experience import (  # noqa: F401
+        ExperienceAggregate,
+        ExperienceCatalog,
+        ExperienceHold,
+        ExperienceOperationLink,
+        ExperienceRecord,
+    )
     from app.models.gpu_quota_requests import GpuQuotaRequest  # noqa: F401
     from app.models.organization_provisioning import OrganizationBinding  # noqa: F401
 

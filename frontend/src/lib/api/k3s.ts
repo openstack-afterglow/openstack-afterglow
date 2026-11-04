@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ExperienceContext } from '$lib/utils/experience';
 import type {
 	K3sClusterAuthorization,
 	K3sClusterReauthorization,
@@ -10,9 +11,10 @@ export async function listNodeInterfaces(
 	clusterId: string,
 	vmId: string,
 	token: string | undefined,
-	projectId: string | undefined
+	projectId: string | undefined,
+	experience?: ExperienceContext
 ): Promise<K3sInterfaceInfo[]> {
-	return api.get<K3sInterfaceInfo[]>(
+	return api.withExperience(experience).get<K3sInterfaceInfo[]>(
 		`/api/v1/k3s/clusters/${clusterId}/nodes/${vmId}/interfaces`,
 		token,
 		projectId
@@ -24,9 +26,10 @@ export async function attachNodeInterface(
 	vmId: string,
 	netId: string,
 	token: string | undefined,
-	projectId: string | undefined
+	projectId: string | undefined,
+	experience?: ExperienceContext
 ): Promise<K3sInterfaceInfo> {
-	return api.post<K3sInterfaceInfo>(
+	return api.withExperience(experience).post<K3sInterfaceInfo>(
 		`/api/v1/k3s/clusters/${clusterId}/nodes/${vmId}/interfaces`,
 		{ net_id: netId },
 		token,
@@ -39,9 +42,10 @@ export async function detachNodeInterface(
 	vmId: string,
 	portId: string,
 	token: string | undefined,
-	projectId: string | undefined
+	projectId: string | undefined,
+	experience?: ExperienceContext
 ): Promise<void> {
-	return api.delete<void>(
+	return api.withExperience(experience).delete<void>(
 		`/api/v1/k3s/clusters/${clusterId}/nodes/${vmId}/interfaces/${portId}`,
 		token,
 		projectId

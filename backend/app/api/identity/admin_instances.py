@@ -39,6 +39,7 @@ from app.services import cinder, cloudinit, instance_usage, keystone, manila, ne
 from app.services import instance_orchestration as instance_orch
 from app.services.cache import invalidate
 from app.services.cache import invalidation as cache_invalidation
+from app.services.experience_context import capture_experience_context
 from app.services.instance_names import ensure_unique_instance_name
 from app.services.instance_password import (
     PASSWORD_METADATA_ERROR,
@@ -49,6 +50,7 @@ from app.services.instance_password import (
 )
 from app.services.ssh_access import github_ssh_metadata
 from app.services.volume_protection import register_volume_protection, rollback_volume_protection
+from app.services.work_dispatcher import close_connection, drain_task, open_connection, run_native
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -316,12 +318,13 @@ async def admin_create_instance_async(
     from app.api.compute.instances import _verify_github_ssh
 
     settings = get_settings()
+    experience = capture_experience_context(feature="compute", action="create", component="compute.create")
     # Preserve the ordinary GitHub-only path without creating a target connection.
     if req.admin_pass is None:
         req = await _verify_github_ssh(req, token_info=token_info)
 
     try:
-        conn = await asyncio.to_thread(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
+        conn = await open_connection(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
     except Exception:
         if req.admin_pass is not None:
             raise HTTPException(status_code=500, detail=PASSWORD_PROVISIONING_ERROR) from None
@@ -329,17 +332,20 @@ async def admin_create_instance_async(
 
     async def close_preflight_connection():
         try:
-            await asyncio.to_thread(conn.close)
+            await close_connection(conn)
         except Exception:
             if req.admin_pass is None:
                 raise
             logger.warning("Admin password request connection close failed")
 
     try:
-        sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
+        sse_flavors = await run_native(nova.list_flavors, conn, experience=experience)
         sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
         if sse_flavor is None:
             raise HTTPException(status_code=400, detail="Invalid flavor ID")
+    except asyncio.CancelledError:
+        await close_preflight_connection()
+        raise
     except Exception:
         await close_preflight_connection()
         if req.admin_pass is not None:
@@ -353,7 +359,10 @@ async def admin_create_instance_async(
         raise
 
     try:
-        password_plan = await asyncio.to_thread(preflight_password, conn, req)
+        password_plan = await run_native(preflight_password, conn, req, experience=experience)
+    except asyncio.CancelledError:
+        await close_preflight_connection()
+        raise
     except HTTPException as exc:
         await close_preflight_connection()
         if exc.detail not in (PASSWORD_METADATA_ERROR, WINDOWS_PASSWORD_CONFLICT, WINDOWS_PASSWORD_UNSUPPORTED):
@@ -366,12 +375,17 @@ async def admin_create_instance_async(
     try:
         if req.admin_pass is not None:
             req = await _verify_github_ssh(req, token_info=token_info)
-        req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
+        req = req.model_copy(
+            update={"name": await run_native(ensure_unique_instance_name, conn, req.name, experience=experience)}
+        )
         if not req.network_id:
             req = req.model_copy(update={"network_id": await instance_orch.resolve_default_network(conn, settings)})
         compute_availability_zone, volume_availability_zone = await instance_orch.resolve_availability_zones(
             conn, req.availability_zone
         )
+    except asyncio.CancelledError:
+        await close_preflight_connection()
+        raise
     except Exception as exc:
         await close_preflight_connection()
         if req.admin_pass is not None:
@@ -396,6 +410,9 @@ async def admin_create_instance_async(
         # Password metadata and incompatible options have been rejected before
         # quota reservations or any boot-volume/server mutation.
         admission = await admit_flavor(conn, req.project_id, sse_flavor, availability_zone=compute_availability_zone)
+    except asyncio.CancelledError:
+        await close_preflight_connection()
+        raise
     except (FlavorEligibilityDenied, GpuQuotaDenied) as exc:
         await close_preflight_connection()
         detail = PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else str(exc)
@@ -437,7 +454,7 @@ async def admin_create_instance_async(
         try:
             if req.boot_volume_id:
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 20, "기존 부팅 볼륨 검증 중...")
-                boot_vol = await asyncio.to_thread(cinder.get_volume, conn, req.boot_volume_id)
+                boot_vol = await run_native(cinder.get_volume, conn, req.boot_volume_id, experience=experience)
                 if boot_vol.status != "available":
                     raise HTTPException(400, f"부팅 볼륨 상태가 'available'이 아닙니다: {boot_vol.status}")
                 if not boot_vol.bootable:
@@ -447,20 +464,22 @@ async def admin_create_instance_async(
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부팅 볼륨 검증 완료")
             else:
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 20, "부트 볼륨 생성 중...")
-                boot_vol = await asyncio.to_thread(
+                boot_vol = await run_native(
                     cinder.create_volume_from_image,
                     conn,
                     name=f"{req.name}-boot",
                     image_id=req.image_id,
                     size_gb=req.boot_volume_size_gb or settings.boot_volume_size_gb,
                     availability_zone=volume_availability_zone,
+                    experience=experience,
                 )
                 boot_volume_id = boot_vol.id
-                await asyncio.to_thread(
+                await run_native(
                     cinder.rename_volume,
                     conn,
                     boot_volume_id,
                     f"{req.name}-boot-{boot_volume_id[:8]}",
+                    experience=experience,
                 )
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부트 볼륨 생성 완료")
 
@@ -487,7 +506,7 @@ async def admin_create_instance_async(
             meta = github_ssh_metadata(req.github_username)
             meta.update(usage_metadata)
             instance_usage.require_creation_schedule_current(meta)
-            server = await asyncio.to_thread(
+            server = await run_native(
                 nova.create_server,
                 conn,
                 name=req.name,
@@ -504,6 +523,7 @@ async def admin_create_instance_async(
                     False if boot_volume_was_provided else req.delete_boot_volume_on_termination
                 ),
                 security_groups=_sse_effective_sgs,
+                experience=experience,
             )
             server_id = server.id
             yield send_progress(ProgressStep.SERVER_CREATING, 95, "Nova 서버 생성 완료")
@@ -512,27 +532,30 @@ async def admin_create_instance_async(
             for nv in req.new_volumes or []:
                 if not nv.name:
                     continue
-                new_vol = await asyncio.to_thread(cinder.create_empty_volume, conn, nv.name, nv.size_gb)
+                new_vol = await run_native(cinder.create_empty_volume, conn, nv.name, nv.size_gb, experience=experience)
                 created_volume_ids.append(new_vol.id)
-                await asyncio.to_thread(
+                await run_native(
                     conn.compute.create_volume_attachment,
                     server_id,
                     volume_id=new_vol.id,
+                    experience=experience,
                 )
             for vol_id in req.additional_volume_ids or []:
-                await asyncio.to_thread(conn.compute.create_volume_attachment, server_id, volume_id=vol_id)
+                await run_native(
+                    conn.compute.create_volume_attachment, server_id, volume_id=vol_id, experience=experience
+                )
             yield send_progress(ProgressStep.ATTACHING_VOLUME, 100, "볼륨 연결 완료")
 
             if req.network_id:
-                all_nets = await asyncio.to_thread(neutron.list_networks, conn)
+                all_nets = await run_native(neutron.list_networks, conn, experience=experience)
                 selected_net = next((n for n in all_nets if n.id == req.network_id), None)
                 if selected_net and not selected_net.is_external:
                     ext_net = next((n for n in all_nets if n.is_external), None)
                     if ext_net:
                         yield send_progress(ProgressStep.FLOATING_IP_CREATING, 100, "Floating IP 할당 중...")
-                        fip = await asyncio.to_thread(neutron.create_floating_ip, conn, ext_net.id)
+                        fip = await run_native(neutron.create_floating_ip, conn, ext_net.id, experience=experience)
                         floating_ip_id = fip.id
-                        await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
+                        await run_native(neutron.associate_floating_ip, conn, fip.id, server_id, experience=experience)
                         yield send_progress(ProgressStep.FLOATING_IP_CREATING, 100, "Floating IP 할당 완료")
 
             if req.auto_snapshot or req.auto_backup:
@@ -584,7 +607,7 @@ async def admin_create_instance_async(
 
             if server_id:
                 try:
-                    srv = conn.compute.get_server(server_id)
+                    srv = await run_native(conn.compute.get_server, server_id, experience=experience)
                     raw_fault = getattr(srv, "fault", None)
                     if raw_fault:
                         fault_msg = (
@@ -635,14 +658,20 @@ async def admin_create_instance_async(
                 error_message=error_detail[:500],
             )
         finally:
+            interrupted = False
             try:
-                await release_admission(admission)
+                release = asyncio.create_task(release_admission(admission))
+                interrupted = await drain_task(release)
+                release.result()
             except Exception:
                 logger.warning("GPU quota reservation release failed", exc_info=req.admin_pass is None)
-            try:
-                await asyncio.to_thread(conn.close)
-            except Exception:
-                pass
+            finally:
+                try:
+                    await close_connection(conn)
+                except Exception:
+                    pass
+            if interrupted:
+                raise asyncio.CancelledError
 
     return StreamingResponse(
         progress_generator(),

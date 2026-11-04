@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
+	import { siteConfig } from '$lib/config/site';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button, Card, SearchSelect, SelectInput, TextInput } from '$lib/components/ui';
 	import type { SearchSelectOption } from '$lib/components/ui';
@@ -13,6 +16,11 @@
 		is_shared?: boolean;
 	}
 
+	interface ResourceCatalog {
+		key: string;
+		options?: ResourceOption[];
+		error?: { status: number; detail: string };
+	}
 	type PolicyState = 'configured' | 'missing' | 'stale' | 'unavailable';
 
 	interface ResourcePolicy {
@@ -37,7 +45,22 @@
 		title: string;
 		help_text: string;
 		value: string | boolean | null;
-		state: 'configured' | 'missing';
+		state: 'configured' | 'missing' | 'unavailable';
+	}
+
+	interface ServiceError {
+		service: 'drover' | 'waygate';
+		status: number;
+	}
+
+	interface PolicyResponse {
+		policies: ResourcePolicy[];
+		errors: ServiceError[];
+	}
+
+	interface RuntimeResponse {
+		settings: RuntimeSetting[];
+		errors: ServiceError[];
 	}
 
 	interface Props {
@@ -74,7 +97,7 @@
 			required_when: null,
 			external_only: false,
 			shared_only: false,
-			state: 'missing',
+			state: 'unavailable',
 			resource_id: null,
 			resource_name: null,
 			...overrides
@@ -116,30 +139,49 @@
 			key: 'k3s.version',
 			get title() { return t('policies.runtime.versionTitle'); },
 			get help_text() { return t('policies.runtime.versionHelp'); },
-			value: '',
-			state: 'missing'
+			value: null,
+			state: 'unavailable'
 		},
 		{
 			key: 'notion.sync_enabled',
 			get title() { return t('policies.runtime.notionTitle'); },
 			get help_text() { return t('policies.runtime.notionHelp'); },
-			value: false,
-			state: 'missing'
+			value: null,
+			state: 'unavailable'
 		}
 	];
 
 	let { token, projectId }: Props = $props();
+	let previousApiBase: string | undefined;
+	let backendRevision = 0;
+	const catalogBackendRevision = derived(siteConfig, ({ runtime }) => {
+		// Observe every backend transition synchronously, including same-tick A → B → A.
+		if (runtime.api_base !== previousApiBase) {
+			previousApiBase = runtime.api_base;
+			backendRevision += 1;
+		}
+		return backendRevision;
+	});
+	const catalogContext = $derived(JSON.stringify([projectId, $authDisplayContext.key, $catalogBackendRevision]));
 	let policies = $state<ResourcePolicy[]>(policyDefinitions.map((policy) => ({ ...policy })));
 	let runtimeSettings = $state<RuntimeSetting[]>(runtimeDefinitions.map((setting) => ({ ...setting })));
 	let options = $state<Record<string, ResourceOption[]>>({});
 	let selections = $state<Record<string, string>>({});
 	let runtimeValues = $state<Record<string, string>>({});
 	let catalogLoading = $state<Record<string, boolean>>({});
+	let catalogErrors = $state<Record<string, boolean>>({});
+	let catalogErrorStatuses = $state<Record<string, number | undefined>>({});
+	let policyServiceErrors = $state<ServiceError[]>([]);
+	let loadedPolicyKeys = $state<Record<string, boolean>>({});
+	let loadedRuntimeKeys = $state<Record<string, boolean>>({});
+	let valuesOwner = $state('');
+	let runtimeServiceErrors = $state<ServiceError[]>([]);
 	let loadingValues = $state(true);
 	let saving = $state<string | null>(null);
 	let error = $state('');
 	let notice = $state('');
 	let draftScope: DraftScope = { policies: {}, runtime: {} };
+	let generation = 0;
 
 	function isObjectRecord(value: unknown): value is Record<string, unknown> {
 		return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -212,6 +254,7 @@
 	}
 
 	function setPolicySelection(key: string, value: string) {
+		if (!policyAvailable(key)) return;
 		selections = { ...selections, [key]: value };
 		draftScope = {
 			...draftScope,
@@ -221,6 +264,7 @@
 	}
 
 	function setRuntimeValue(key: string, value: string) {
+		if (!runtimeAvailable(key)) return;
 		runtimeValues = { ...runtimeValues, [key]: value };
 		draftScope = { ...draftScope, runtime: { ...draftScope.runtime, [key]: value } };
 		persistDrafts();
@@ -233,36 +277,108 @@
 		persistDrafts();
 	}
 
-	function mergePolicyValues(loaded: ResourcePolicy[]) {
+	function policyService(key: string): ServiceError['service'] | null {
+		return key.startsWith('k3s.') ? 'drover' : key.startsWith('waygate.') ? 'waygate' : null;
+	}
+
+	function serviceError(key: string, errors: ServiceError[]): ServiceError | undefined {
+		return errors.find((error) => error.service === policyService(key));
+	}
+
+	function serviceUnavailable(error: { service: ServiceError['service']; status?: number }): string {
+		const name = error.service === 'drover' ? 'Drover' : 'Waygate';
+		return `${name} · ${t('policies.state.unavailable')}${error.status === undefined ? '' : ` (HTTP ${error.status})`}`;
+	}
+
+	function catalogFailure(policy: ResourcePolicy): string {
+		const service = policyService(policy.key);
+		return service
+			? serviceUnavailable({ service, status: catalogErrorStatuses[policy.key] })
+			: t('policies.catalogFailed');
+	}
+
+	function policyAvailable(key: string): boolean {
+		return valuesOwner === catalogContext && Boolean(loadedPolicyKeys[key]);
+	}
+
+	function runtimeAvailable(key: string): boolean {
+		return valuesOwner === catalogContext && Boolean(loadedRuntimeKeys[key]);
+	}
+
+	function runtimeCanSave(setting: RuntimeSetting): boolean {
+		return runtimeAvailable(setting.key) && (setting.key !== 'notion.sync_enabled' ||
+			runtimeValues[setting.key] === 'true' || runtimeValues[setting.key] === 'false');
+	}
+
+	function mergePolicyValues({ policies: loaded, errors }: PolicyResponse) {
 		const byKey = new Map(loaded.map((policy) => [policy.key, policy]));
-		policies = policyDefinitions.map((definition) => ({ ...definition, ...(byKey.get(definition.key) ?? {}) }));
+		loadedPolicyKeys = Object.fromEntries(loaded
+			.filter((policy) => !serviceError(policy.key, errors))
+			.map((policy) => [policy.key, true]));
+		policies = policyDefinitions.map<ResourcePolicy>((definition) => loadedPolicyKeys[definition.key]
+			? { ...definition, ...byKey.get(definition.key) }
+			: { ...definition, state: 'unavailable' });
+		policyServiceErrors = errors;
 		selections = Object.fromEntries(
-			policies.map((policy) => [policy.key, draftScope.policies[policy.key] ?? policy.resource_id ?? ''])
+			policies.filter((policy) => loadedPolicyKeys[policy.key])
+				.map((policy) => [policy.key, draftScope.policies[policy.key] ?? policy.resource_id ?? ''])
 		);
 	}
 
-	function mergeRuntimeValues(loaded: RuntimeSetting[]) {
+	function mergeRuntimeValues({ settings: loaded, errors }: RuntimeResponse) {
 		const byKey = new Map(loaded.map((setting) => [setting.key, setting]));
-		runtimeSettings = runtimeDefinitions.map((definition) => ({ ...definition, ...(byKey.get(definition.key) ?? {}) }));
+		loadedRuntimeKeys = Object.fromEntries(loaded
+			.filter((setting) => setting.state !== 'unavailable' && !serviceError(setting.key, errors))
+			.map((setting) => [setting.key, true]));
+		runtimeSettings = runtimeDefinitions.map<RuntimeSetting>((definition) => loadedRuntimeKeys[definition.key]
+			? { ...definition, ...byKey.get(definition.key) }
+			: { ...definition, state: 'unavailable' });
+		runtimeServiceErrors = errors;
 		runtimeValues = Object.fromEntries(
-			runtimeSettings.map((setting) => [
+			runtimeSettings.filter((setting) => loadedRuntimeKeys[setting.key]).map((setting) => [
 				setting.key,
 				draftScope.runtime[setting.key] ??
-					String(setting.value ?? (setting.key === 'notion.sync_enabled' ? false : ''))
+					String(setting.value ?? '')
 			])
 		);
 	}
 
+	function requestCurrent(epoch: number, owner: string, project: string | undefined): boolean {
+		return epoch === generation && owner === catalogContext && project === projectId;
+	}
+
 	async function loadPolicies() {
+		const requestGeneration = ++generation;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestOwner = catalogContext;
+		loadingValues = true;
+		valuesOwner = '';
+		loadedPolicyKeys = {};
+		loadedRuntimeKeys = {};
+		policyServiceErrors = [];
+		runtimeServiceErrors = [];
+		options = {};
+		catalogLoading = {};
+		catalogErrors = {};
+		catalogErrorStatuses = {};
+		selections = {};
+		runtimeValues = {};
+		policies = policyDefinitions.map((policy) => ({ ...policy }));
+		runtimeSettings = runtimeDefinitions.map((setting) => ({ ...setting }));
+		saving = null;
+		notice = '';
 		loadDrafts();
 		error = '';
 		const [policyResult, runtimeResult] = await Promise.allSettled([
-			api.get<ResourcePolicy[]>('/api/v1/admin/resource-policies', token, projectId),
-			api.get<RuntimeSetting[]>('/api/v1/admin/runtime-settings', token, projectId)
+			api.get<PolicyResponse>('/api/v1/admin/resource-policies', requestToken, requestProject, { cache: 'no-store' }),
+			api.get<RuntimeResponse>('/api/v1/admin/runtime-settings', requestToken, requestProject, { cache: 'no-store' })
 		]);
+		if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
+		valuesOwner = requestOwner;
 		if (policyResult.status === 'fulfilled') {
 			mergePolicyValues(policyResult.value);
-			void loadAllCatalogs(policies);
+			void loadCatalogs(policies, requestGeneration);
 		} else {
 			error = policyResult.reason instanceof ApiError
 				? t('policies.loadFailedDetail', { message: policyResult.reason.message })
@@ -277,32 +393,68 @@
 		}
 		loadingValues = false;
 	}
-	async function loadOptions(policy: ResourcePolicy) {
-		if (options[policy.key] || catalogLoading[policy.key]) return;
-		catalogLoading = { ...catalogLoading, [policy.key]: true };
-		try {
-			const catalog = await api.get<{ options: ResourceOption[] }>(
-				`/api/v1/admin/resource-policies/catalog/${encodeURIComponent(policy.key)}`,
-				token,
-				projectId
-			);
-			options = { ...options, [policy.key]: catalog.options };
-			const current = selections[policy.key] ?? '';
-			if (!current && catalog.options.length === 1) {
-				setPolicySelection(policy.key, catalog.options[0].id);
-				notice = t('policies.onlyOption', { title: policyCopy(policy).title });
-			}
-		} catch (cause) {
-			error = cause instanceof ApiError ? t('policies.catalogFailedDetail', { message: cause.message }) : t('policies.catalogFailed');
-		} finally {
-			const next = { ...catalogLoading };
-			delete next[policy.key];
-			catalogLoading = next;
-		}
+
+	async function loadCatalogs(loadedPolicies: ResourcePolicy[], requestGeneration: number) {
+		const available = loadedPolicies.filter((policy) => policyAvailable(policy.key));
+		const remote = available.filter((policy) => policy.key.startsWith('k3s.') || policy.key.startsWith('waygate.'));
+		const local = available.filter((policy) => !remote.includes(policy));
+		// Remote reads retain independent timeout/error boundaries and never
+		// inherit the local batch's query string.
+		await Promise.allSettled([
+			loadCatalogGroup(local, requestGeneration),
+			...remote.map((policy) => loadCatalogGroup([policy], requestGeneration, true))
+		]);
 	}
 
-	async function loadAllCatalogs(loadedPolicies: ResourcePolicy[]) {
-		await Promise.allSettled(loadedPolicies.map((policy) => loadOptions(policy)));
+	async function loadCatalogGroup(loadedPolicies: ResourcePolicy[], requestGeneration: number, remote = false) {
+		const pending = loadedPolicies.filter((policy) => policyAvailable(policy.key) && !options[policy.key] && !catalogLoading[policy.key]);
+		if (!pending.length) return;
+		const requestToken = token;
+		const requestProject = projectId;
+		const requestOwner = catalogContext;
+		catalogLoading = { ...catalogLoading, ...Object.fromEntries(pending.map((policy) => [policy.key, true])) };
+		catalogErrors = { ...catalogErrors, ...Object.fromEntries(pending.map((policy) => [policy.key, false])) };
+		catalogErrorStatuses = { ...catalogErrorStatuses, ...Object.fromEntries(pending.map((policy) => [policy.key, undefined])) };
+		try {
+			const query = new URLSearchParams(pending.map((policy) => ['keys', policy.key]));
+			const result = remote
+				? { catalogs: [await api.get<ResourceCatalog>(
+					`/api/v1/admin/resource-policies/catalog/${encodeURIComponent(pending[0].key)}`,
+					requestToken, requestProject, { cache: 'no-store' }
+				)] }
+				: await api.get<{ catalogs: ResourceCatalog[] }>(
+					`/api/v1/admin/resource-policies/catalog?${query}`,
+					requestToken, requestProject, { cache: 'no-store' }
+				);
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
+			const byKey = new Map(result.catalogs.map((catalog) => [catalog.key, catalog]));
+			for (const policy of pending) {
+				const catalog = byKey.get(policy.key);
+				if (!catalog || catalog.error || !catalog.options) {
+					catalogErrors = { ...catalogErrors, [policy.key]: true };
+					catalogErrorStatuses = { ...catalogErrorStatuses, [policy.key]: catalog?.error?.status };
+					continue;
+				}
+				options = { ...options, [policy.key]: catalog.options };
+				const current = selections[policy.key] ?? '';
+				if (!current && catalog.options.length === 1) {
+					setPolicySelection(policy.key, catalog.options[0].id);
+					notice = t('policies.onlyOption', { title: policyCopy(policy).title });
+				}
+			}
+		} catch (cause) {
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
+			catalogErrors = { ...catalogErrors, ...Object.fromEntries(pending.map((policy) => [policy.key, true])) };
+			catalogErrorStatuses = { ...catalogErrorStatuses, ...Object.fromEntries(pending.map((policy) => [
+				policy.key, cause instanceof ApiError ? cause.status : undefined
+			])) };
+		} finally {
+			if (requestCurrent(requestGeneration, requestOwner, requestProject)) {
+				const next = { ...catalogLoading };
+				for (const policy of pending) delete next[policy.key];
+				catalogLoading = next;
+			}
+		}
 	}
 
 	function policyOptions(policy: ResourcePolicy): SearchSelectOption[] {
@@ -325,6 +477,10 @@
 	}
 
 	async function save(policy: ResourcePolicy) {
+		if (!policyAvailable(policy.key) || loadingValues) return;
+		const requestGeneration = generation;
+		const requestOwner = catalogContext;
+		const requestProject = projectId;
 		saving = policy.key;
 		error = '';
 		notice = '';
@@ -335,17 +491,23 @@
 				token,
 				projectId
 			);
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
 			policies = policies.map((item) => (item.key === updated.key ? { ...item, ...updated } : item));
 			clearDraft('policies', policy.key);
 			notice = t('policies.saved', { title: policyCopy(policy).title });
 		} catch (cause) {
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
 			error = cause instanceof ApiError ? t('policies.saveFailedDetail', { message: cause.message }) : t('policies.saveFailed');
 		} finally {
-			saving = null;
+			if (requestCurrent(requestGeneration, requestOwner, requestProject)) saving = null;
 		}
 	}
 
 	async function saveRuntimeSetting(setting: RuntimeSetting) {
+		if (!runtimeCanSave(setting) || loadingValues) return;
+		const requestGeneration = generation;
+		const requestOwner = catalogContext;
+		const requestProject = projectId;
 		saving = setting.key;
 		error = '';
 		notice = '';
@@ -356,13 +518,15 @@
 				token,
 				projectId
 			);
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
 			runtimeSettings = runtimeSettings.map((item) => (item.key === updated.key ? updated : item));
 			clearDraft('runtime', setting.key);
 			notice = t('policies.runtimeSaved', { title: runtimeCopy(setting).title });
 		} catch (cause) {
+			if (!requestCurrent(requestGeneration, requestOwner, requestProject)) return;
 			error = cause instanceof ApiError ? t('policies.runtimeSaveFailedDetail', { message: cause.message }) : t('policies.runtimeSaveFailed');
 		} finally {
-			saving = null;
+			if (requestCurrent(requestGeneration, requestOwner, requestProject)) saving = null;
 		}
 	}
 
@@ -381,7 +545,11 @@
 		);
 	}
 
-	onMount(loadPolicies);
+	$effect(() => {
+		catalogContext;
+		untrack(() => void loadPolicies());
+		return () => { generation += 1; };
+	});
 </script>
 
 <Card padding="lg" surface="subtle">
@@ -390,6 +558,9 @@
 			<h2>{t('policies.title')}</h2>
 			<p>{t('policies.description')}</p>
 		</div>
+		<Button variant="secondary" size="sm" onclick={() => void loadPolicies()} disabled={loadingValues}>
+			{t('branding.refresh')}
+		</Button>
 	</div>
 
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
@@ -402,29 +573,35 @@
 			<p>{t('policies.runtimeDescription')}</p>
 		</div>
 		{#each runtimeSettings as setting (setting.key)}
+			{@const failure = serviceError(setting.key, runtimeServiceErrors)}
 			<div class="runtime-row">
 				<div class="policy-copy">
 					<strong>{runtimeCopy(setting).title}</strong>
 					<span>{runtimeCopy(setting).help_text}</span>
 					<code class="selection-id">{setting.key}</code>
+					{#if setting.state === 'missing' || setting.state === 'unavailable'}<span>{t(`policies.state.${setting.state}`)}</span>{/if}
+					{#if failure}<Alert tone="danger">{serviceUnavailable(failure)}</Alert>{/if}
 				</div>
 				{#if setting.key === 'notion.sync_enabled'}
 					<SelectInput
-						value={runtimeValues[setting.key] ?? 'false'}
+						value={runtimeValues[setting.key] ?? ''}
+						disabled={!runtimeAvailable(setting.key)}
 						onchange={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLSelectElement).value)}
 						ariaLabel={t('policies.selectLabel', { title: runtimeCopy(setting).title })}
 					>
+						<option value="">{t(runtimeAvailable(setting.key) ? 'policies.state.missing' : 'policies.state.unavailable')}</option>
 						<option value="true">{t('policies.enabled')}</option>
 						<option value="false">{t('policies.disabled')}</option>
 					</SelectInput>
 				{:else}
 					<TextInput
 						value={runtimeValues[setting.key] ?? ''}
+						disabled={!runtimeAvailable(setting.key)}
 						oninput={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLInputElement).value)}
 						ariaLabel={t('policies.valueLabel', { title: runtimeCopy(setting).title })}
 					/>
 				{/if}
-				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={saving === setting.key} ariaBusy={saving === setting.key}>
+				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={!runtimeCanSave(setting) || loadingValues || saving === setting.key} ariaBusy={saving === setting.key}>
 					{#if saving === setting.key}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving === setting.key ? t('policies.saving') : t('policies.save')}
 				</Button>
 			</div>
@@ -436,6 +613,7 @@
 			<h3 id={`policy-group-${group}`}>{group}</h3>
 			<div class="policy-list">
 				{#each groupPolicies as policy (policy.key)}
+					{@const failure = serviceError(policy.key, policyServiceErrors)}
 					<section class="policy-row">
 						<div class="policy-copy">
 							<strong>{policyCopy(policy).title}</strong>
@@ -452,14 +630,17 @@
 								searchPlaceholder={t('policies.searchPlaceholder')}
 								emptyText={t('policies.empty')}
 								loading={Boolean(catalogLoading[policy.key])}
+								disabled={!policyAvailable(policy.key)}
 								ariaLabel={t('policies.searchLabel', { title: policyCopy(policy).title })}
-								onopen={() => void loadOptions(policy)}
+								onopen={() => void loadCatalogs([policy], generation)}
 								onchange={(value) => setPolicySelection(policy.key, value === CLEAR_OPTION_ID ? '' : value)}
 							/>
+							{#if failure}<Alert tone="danger">{serviceUnavailable(failure)}</Alert>{/if}
+							{#if catalogErrors[policy.key]}<Alert tone="danger">{catalogFailure(policy)}</Alert>{/if}
 							{#if selections[policy.key]}<span class="selection-id">{selections[policy.key]}</span>{/if}
 						</div>
 						<div class="actions">
-							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={saving === policy.key} ariaBusy={saving === policy.key}>
+							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={!policyAvailable(policy.key) || loadingValues || saving === policy.key} ariaBusy={saving === policy.key}>
 								{#if saving === policy.key}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{saving === policy.key ? t('policies.saving') : t('policies.save')}
 							</Button>
 						</div>
@@ -484,5 +665,5 @@
 	.policy-copy strong { color: var(--color-ink-0); font-size: 0.86rem; }
 	.selection-id { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
 	.actions { display: flex; gap: 0.4rem; }
-	@media (max-width: 767px) { .runtime-row, .policy-row { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
+	@media (max-width: 1023px) { .runtime-row, .policy-row { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
 </style>

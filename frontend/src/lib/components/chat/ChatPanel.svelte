@@ -12,7 +12,8 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/chat-panel';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { intlLocale, resolveExperienceMessage } from '$lib/i18n/runtime.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, experienceMessage, type ExperienceContext } from '$lib/utils/experience';
 	import koreanChatMessages from '$lib/i18n/messages/ko/chat-panel.json';
 	import {
 		cancelChatRun,
@@ -23,7 +24,7 @@
 		ChatHttpError,
 		type ChatRunDescriptor
 	} from '$lib/api/chatStream';
-	import { createRunViewState, reduceRunEvent, type RunActivityItem } from '$lib/api/chatRunReducer';
+	import { createRunViewState, reduceRunEvent, chatRunExperienceState, type RunActivityItem } from '$lib/api/chatRunReducer';
 	import {
 		computeMetrics,
 		estimateTokens,
@@ -1094,11 +1095,13 @@
 		const requestToken = token;
 		const requestProject = projectId;
 		if (!requestToken || !requestProject || destroyed) return;
+		const experience = beginExperienceLoad('lumen', 'resource.list');
+		experienceState(experience, 'loading', 0);
 		modelsRefreshing = true;
 		modelsError = '';
 		try {
-			const loaded = await api.get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
-			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) return;
+			const loaded = await api.withExperience(experience).get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
+			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) { experienceDiscarded(experience, 'stale'); return; }
 			models = loaded;
 			if (!models.some((model) => model.model_name === selectedModel)) {
 				let last: string | null = null;
@@ -1110,12 +1113,18 @@
 				selectedModel = last && models.some((model) => model.model_name === last)
 					? last : models[0]?.model_name ?? '';
 			}
+			experienceState(experience, models.length ? 'ready' : 'empty', 0);
+			void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject);
 		} catch (caught) {
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
 				// ApiError.message may be an unparsed proxy body; never display it here.
 				modelsError = caught instanceof ApiError
 					? t('panel.errors.refreshModelsHttp', { status: caught.status })
 					: t('panel.errors.refreshModels');
+				experienceState(experience, 'error', 0);
+				experienceMessage(experience, { ...resolveExperienceMessage('chat-panel', caught instanceof ApiError ? 'panel.errors.refreshModelsHttp' : 'panel.errors.refreshModels'), tone: 'danger' });
+				const displayedError = modelsError;
+				void experienceApplied(experience, {}, () => !destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject && modelPickerOpen && modelsError === displayedError);
 			}
 		} finally {
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
@@ -1157,9 +1166,10 @@
 		convId: string,
 		params: URLSearchParams,
 		requestToken: string,
-		requestProjectId: string
+		requestProjectId: string,
+		experience?: ExperienceContext
 	): Promise<MessagesResponse> {
-		const response = await api.get<MessagesResponse>(
+		const response = await api.withExperience(experience).get<MessagesResponse>(
 			`/api/v1/chat/conversations/${convId}/messages?${params}`,
 			requestToken,
 			requestProjectId
@@ -1168,7 +1178,8 @@
 	}
 
 	async function replaceHistoryWindow(
-		selection = selectionGeneration
+		selection = selectionGeneration,
+		experience = beginExperienceLoad('lumen', 'resource.detail')
 	): Promise<boolean> {
 		const convId = activeConvId;
 		const requestToken = token;
@@ -1176,15 +1187,21 @@
 		if (!convId || !requestToken || !requestProjectId || historyLoading) return false;
 		const mutationEpoch = localMutationEpoch;
 		historyLoading = true;
+		experienceState(experience, 'loading', 1);
 		try {
 			const params = new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) });
-			const page = await requestMessagePage(convId, params, requestToken, requestProjectId);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
+			const page = await requestMessagePage(convId, params, requestToken, requestProjectId, experience);
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) { experienceDiscarded(experience, 'stale'); return false; }
 			applyHistoryPages([page], true);
+			experienceState(experience, allMessages.length ? 'ready' : 'empty', 1);
+			void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId));
 			return true;
 		} catch (cause) {
 			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
 				error = cause instanceof Error ? cause.message : t('panel.errors.loadHistory');
+				experienceState(experience, 'error', 1);
+				const displayedError = error;
+				void experienceApplied(experience, {}, () => historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId) && error === displayedError);
 			}
 			return false;
 		} finally {
@@ -1192,9 +1209,9 @@
 		}
 	}
 
-	async function loadMessages(convId: string, selection = selectionGeneration): Promise<boolean> {
+	async function loadMessages(convId: string, selection = selectionGeneration, experience?: ExperienceContext): Promise<boolean> {
 		if (activeConvId !== convId) return false;
-		return replaceHistoryWindow(selection);
+		return replaceHistoryWindow(selection, experience);
 	}
 
 	async function loadHistoryDirection(direction: 'before' | 'after'): Promise<void> {
@@ -1250,14 +1267,15 @@
 
 	async function refreshHistoryAfterRun(
 		conversationId: string,
-		selection = selectionGeneration
+		selection = selectionGeneration,
+		experience?: ExperienceContext
 	): Promise<boolean> {
 		if (activeConvId !== conversationId || tempMode) return false;
 		if (historyHasAfter || historyLoading) {
 			historyNewActivity = true;
 			return false;
 		}
-		const loaded = await loadMessages(conversationId, selection);
+		const loaded = await loadMessages(conversationId, selection, experience);
 		return loaded;
 	}
 
@@ -1591,7 +1609,7 @@
 		}, 400);
 	}
 
-	async function executeContextPreview(options?: { emptyDraft?: boolean }): Promise<ContextState | null> {
+	async function executeContextPreview(options?: { emptyDraft?: boolean; experience?: ExperienceContext }): Promise<ContextState | null> {
 		if (streaming || destroyed || !token || !projectId) return null;
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) {
@@ -1609,12 +1627,15 @@
 		previewAbortController = controller;
 		const generation = ++previewGeneration;
 		const snapshot = previewSnapshot(Boolean(options?.emptyDraft));
+		const experience = options?.experience ?? beginExperienceLoad('lumen', 'resource.detail');
+		experienceState(experience, 'loading', 2);
 
 		contextLoading = true;
 		try {
 			const state = await previewChatContext(snapshot.path, snapshot.body, {
 				token,
 				projectId,
+				experience,
 				signal: controller.signal
 			});
 
@@ -1624,6 +1645,7 @@
 				generation !== previewGeneration ||
 				!isCurrentPreviewSnapshot(snapshot.key)
 			) {
+				experienceDiscarded(experience, controller.signal.aborted ? 'aborted' : 'stale');
 				return null;
 			}
 
@@ -1634,6 +1656,8 @@
 			} else if (contextPhase === 'compacting' && !manualCompacting) {
 				contextPhase = 'ready';
 			}
+			experienceState(experience, 'ready', 2);
+			void experienceApplied(experience, {}, () => !destroyed && !controller.signal.aborted && generation === previewGeneration && isCurrentPreviewSnapshot(snapshot.key));
 			return state;
 		} catch (caught) {
 			if (
@@ -1697,7 +1721,9 @@
 		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
 		if (!hasScope) return;
 
-		const previewState = await executeContextPreview({ emptyDraft: true });
+		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
+		experienceState(experience, 'loading', 3);
+		const previewState = await executeContextPreview({ emptyDraft: true, experience });
 		if (!previewState) return;
 		if (!previewState.can_compact) {
 			contextError = t('panel.compact.noHistory');
@@ -1730,14 +1756,18 @@
 			const descriptor = await createChatRun(path, body, {
 				token,
 				projectId,
+				experience,
 				idempotencyKey: crypto.randomUUID()
 			});
 			if (destroyed || generation !== streamGeneration) {
 				manualCompacting = false;
+				experienceDiscarded(experience, 'stale');
 				return;
 			}
 			currentRun = descriptor;
-			await followCompactionRun(descriptor, generation);
+			const appliedRun = currentRun;
+			void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && currentRun === appliedRun);
+			await followCompactionRun(descriptor, generation, experience);
 		} catch (caught) {
 			manualCompacting = false;
 			contextPhase = 'failed';
@@ -1745,24 +1775,25 @@
 			if (caught instanceof ChatHttpError && caught.status === 409) {
 				contextError = t('panel.context.changed');
 				scheduleMetadataRefresh();
-				void executeContextPreview();
+				void executeContextPreview({ experience });
 			} else {
 				contextError = chatFailureMessage(caught, t('panel.errors.compactionFailed'));
 			}
 		}
 	}
 
-	async function followCompactionRun(descriptor: ChatRunDescriptor, generation: number) {
+	async function followCompactionRun(descriptor: ChatRunDescriptor, generation: number, experience = beginExperienceLoad('lumen', 'shared.stream')) {
 		if (compactionFollowRunId === descriptor.run_id) return;
 		compactionFollowRunId = descriptor.run_id;
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) {
+			experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale');
 			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
 			return;
 		}
 		try {
-			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
-				if (destroyed || generation !== streamGeneration) return;
+			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal, experience })) {
+				if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, 'stale'); return; }
 				if (evt.type === 'context.updated') {
 					contextState = evt.payload.state;
 					contextPhase = evt.payload.phase;
@@ -1779,10 +1810,12 @@
 					if (currentRun?.run_id === descriptor.run_id) currentRun = null;
 					contextPhase = 'compacted';
 					contextCause = null;
+					experienceState(experience, 'ready', 4);
+					void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && contextPhase === 'compacted' && currentRun === null);
 					scheduleMetadataRefresh();
-					void executeContextPreview();
+					void executeContextPreview({ experience });
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
-						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration);
+						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration, experience);
 					}
 					return;
 				} else if (evt.type === 'run.failed' || evt.type === 'run.canceled') {
@@ -1793,28 +1826,31 @@
 					if (evt.type === 'run.failed') {
 						contextError = runFailureMessage(evt.payload, descriptor.run_id);
 					}
+					experienceState(experience, evt.type === 'run.failed' ? 'error' : 'disabled', 4);
+					void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration);
 					return;
 				}
 			}
 		} catch (caught) {
-			if (destroyed || controller.signal.aborted || generation !== streamGeneration) return;
+			if (destroyed || controller.signal.aborted || generation !== streamGeneration) { experienceDiscarded(experience, destroyed ? 'unmounted' : controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			// A lost follower is not proof that the durable run ended. Keep the
 			// descriptor and cancel affordance until a snapshot says otherwise.
 			contextPhase = 'failed';
 			contextCause = null;
 			contextError = chatFailureMessage(caught, t('panel.errors.compactionInterrupted'));
+			experienceDiscarded(experience, 'unknown');
 		} finally {
 			streamAttachment.release(controller);
 			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
 		}
 	}
 
-	async function ensureConversation(): Promise<string | null> {
+	async function ensureConversation(experience?: ExperienceContext): Promise<string | null> {
 		if (!canChat) return null;
 		if (activeConvId) return activeConvId;
 		if (!token || !projectId) return null;
 		const wsId = pendingWorkspaceId;
-		const conv = await api.post<Conversation>(
+		const conv = await api.withExperience(experience).post<Conversation>(
 			'/api/v1/chat/conversations',
 			{
 				title: null,
@@ -1832,7 +1868,7 @@
 		if (projectId) saveActiveConversationId(projectId, conv.id);
 		conversations = [conv, ...conversations.filter((c) => c.id !== conv.id)];
 		checkAndStartPendingTitlePolling();
-		void executeContextPreview();
+		void executeContextPreview({ experience });
 		return conv.id;
 	}
 
@@ -1856,7 +1892,8 @@
 		draft: DisplayMessage,
 		onDone: (metrics: StreamMetrics | null) => Promise<void> | void,
 		generation: number,
-		submittedAtMs: number | null
+		submittedAtMs: number | null,
+		experience = beginExperienceLoad('lumen', 'shared.stream')
 	) {
 		let firstTokenMs: number | null = null;
 		let ttftSeconds: number | null = null;
@@ -1866,7 +1903,7 @@
 		let text = '';
 		let reasoning = '';
 		const controller = new AbortController();
-		if (!streamAttachment.attach(controller, generation)) return;
+		if (!streamAttachment.attach(controller, generation)) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return; }
 		let runState = createRunViewState(descriptor.run_id);
 		draft.execution = { run_id: descriptor.run_id, status: descriptor.status };
 		const reveal = createChatRevealBuffer({
@@ -1876,6 +1913,7 @@
 		let projectionDirty = false;
 		let projectionImmediate = false;
 		let lastProjectionAt = Number.NEGATIVE_INFINITY;
+		let observedStatus: typeof runState.status | undefined;
 
 		function toolItemsFromState() {
 			return Object.values(runState.tools).map((tool) => ({
@@ -1926,6 +1964,12 @@
 			draft.execution = { ...draft.execution, status: runState.status };
 			draft.toolItems = toolItemsFromState();
 			draft.metrics = latestMetrics;
+			if (observedStatus !== runState.status) {
+				observedStatus = runState.status;
+				const projectedStatus = observedStatus;
+				experienceState(experience, chatRunExperienceState(projectedStatus), 4);
+				void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && (stream?.assistant === draft || tempUnpositionedRuns.some((run) => run.message === draft) || tempMessages.some((message) => message === draft)) && draft.execution?.status === projectedStatus);
+			}
 			if (next.pending || projectionDirty) scheduleProjection();
 		}
 
@@ -1966,8 +2010,8 @@
 				.join('');
 
 		try {
-			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
-				if (destroyed || generation !== streamGeneration) return;
+			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal, experience })) {
+				if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, 'stale'); return; }
 				const receivedAtMs = performance.now();
 				runState = reduceRunEvent(runState, evt);
 				if (evt.type === 'message.created') {
@@ -2072,7 +2116,7 @@
 					if (generation !== streamGeneration || destroyed) return;
 					endStream();
 					scheduleMetadataRefresh();
-					void executeContextPreview();
+					void executeContextPreview({ experience });
 					return;
 				} else if (evt.type === 'run.failed' || evt.type === 'run.canceled') {
 					pendingToolApprovals = pendingToolApprovals.filter((approval) => approval.runId !== descriptor.run_id);
@@ -2085,10 +2129,10 @@
 					error = evt.type === 'run.failed' ? runFailureMessage(evt.payload, descriptor.run_id) : evt.payload.safe_message;
 					// Keep the same rendered run/disclosures while authoritative history loads.
 					scheduleMetadataRefresh();
-					void executeContextPreview();
+					void executeContextPreview({ experience });
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
 						setConversationRun(descriptor.conversation_id, false);
-						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration);
+						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration, experience);
 						scheduleMetadataRefresh();
 					}
 					if (generation !== streamGeneration || destroyed) return;
@@ -2098,12 +2142,14 @@
 				scheduleProjection();
 			}
 		} catch (caught) {
-			if (destroyed || controller.signal.aborted || generation !== streamGeneration) return;
+			if (destroyed || controller.signal.aborted || generation !== streamGeneration) { experienceDiscarded(experience, destroyed ? 'unmounted' : controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			drainReveal();
 			draft.streaming = false;
 			contextCause = null;
 			if (contextPhase === 'compacting') contextPhase = 'ready';
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+			// A disconnected follower leaves the native outcome unknown, not failed or cancelled.
+			experienceDiscarded(experience, 'unknown');
 			endStream();
 		} finally {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -2134,23 +2180,31 @@
 		onDone: (metrics: StreamMetrics | null) => Promise<void> | void,
 		submittedAtMs: number,
 		onStarted?: (descriptor: ChatRunDescriptor) => void,
-		idempotencyKey?: string
+		idempotencyKey?: string,
+		experience = beginExperienceAction('lumen', 'submit', 'shared.stream')
 	): Promise<boolean> {
 		const generation = streamGeneration;
+		let admissionAttempted = false;
+		experienceState(experience, 'loading', 3);
 		try {
 			const denied = chatRequestPermission(body, $serviceCapabilities);
 			if (denied) throw new Error(permissionReason(denied));
 			const modelId = (body as { model_id?: string } | null)?.model_id;
 			if (!canTools && models.find((model) => model.model_name === modelId)?.capabilities?.web_search_required) throw new Error(permissionReason('lumen-tools_user'));
-			const descriptor = await createChatRun(path, body, { token, projectId, idempotencyKey });
-			if (destroyed || generation !== streamGeneration) return false;
+			admissionAttempted = true;
+			const descriptor = await createChatRun(path, body, { token, projectId, idempotencyKey, experience });
+			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, 'stale'); return false; }
 			currentRun = descriptor;
 			onStarted?.(descriptor);
-			await followRun(descriptor, draft, onDone, generation, submittedAtMs);
+			const appliedRun = currentRun;
+			void experienceApplied(experience, {}, () => !destroyed && generation === streamGeneration && currentRun === appliedRun);
+			await followRun(descriptor, draft, onDone, generation, submittedAtMs, experience);
 			return true;
 		} catch (caught) {
-			if (destroyed || generation !== streamGeneration) return false;
+			if (destroyed || generation !== streamGeneration) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return false; }
 			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
+			experienceState(experience, 'error', 3);
+			if (admissionAttempted && !((caught instanceof ChatHttpError || caught instanceof ApiError) && caught.status >= 400 && caught.status < 500)) experienceDiscarded(experience, 'unknown');
 			endStream();
 			return false;
 		}
@@ -2159,8 +2213,9 @@
 	async function resumeActiveRun(conversationId: string) {
 		if (!token || !projectId || tempMode || currentRun) return;
 		const generation = streamGeneration;
+		const experience = beginExperienceLoad('lumen', 'shared.stream');
 		try {
-			const payload = await api.get<unknown[]>(
+			const payload = await api.withExperience(experience).get<unknown[]>(
 				`/api/v1/chat/conversations/${conversationId}/runs?active=true`,
 				token,
 				projectId
@@ -2192,7 +2247,7 @@
 				contextPhase = 'compacting';
 				contextCause = 'manual';
 				setConversationRun(conversationId, true);
-				void followCompactionRun(descriptor, generation).finally(() => {
+				void followCompactionRun(descriptor, generation, experience).finally(() => {
 					setConversationRun(conversationId, false);
 				});
 				return;
@@ -2214,14 +2269,15 @@
 					setConversationRun(conversationId, false);
 					if (activeConvId === conversationId && !tempMode) {
 						const selection = selectionGeneration;
-						await refreshHistoryAfterRun(conversationId, selection);
+						await refreshHistoryAfterRun(conversationId, selection, experience);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
-					void executeContextPreview();
+					void executeContextPreview({ experience });
 				},
 				generation,
-				null
+				null,
+				experience
 			);
 		} catch {
 			// A completed/deleted run or a transient list failure must not block opening the conversation.
@@ -2272,9 +2328,10 @@
 			error = t('panel.errors.uploadPending');
 			return;
 		}
+		const experience = beginExperienceAction('lumen', 'submit', 'shared.stream');
 		const submittedAtMs = performance.now();
 		if (!tempMode && activeConvId && historyHasAfter) {
-			const loadedLatest = await replaceHistoryWindow();
+			const loadedLatest = await replaceHistoryWindow(selectionGeneration, experience);
 			if (!loadedLatest) return;
 		}
 		input = '';
@@ -2282,13 +2339,13 @@
 		attachments = [];
 		const clientTimezone = browserTimezone();
 
-		if (tempMode) return sendTemp(text, inputParts, submittedAtMs);
+		if (tempMode) return sendTemp(text, inputParts, submittedAtMs, experience);
 
 		invalidateContextPreview();
 		streaming = true;
 		let convId: string | null;
 		try {
-			convId = await ensureConversation();
+			convId = await ensureConversation(experience);
 		} catch (e) {
 			error = chatFailureMessage(e, t('panel.errors.createConversation'));
 			endStream();
@@ -2357,15 +2414,16 @@
 				setConversationRun(convId!, false);
 				if (activeConvId === convId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(convId!, selection);
+					await refreshHistoryAfterRun(convId!, selection, experience);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
-				void executeContextPreview();
+				void executeContextPreview({ experience });
 			},
 			submittedAtMs,
 			() => setConversationRun(convId!, true),
-			idempotencyKey
+			idempotencyKey,
+			experience
 		);
 		if (!started) {
 			failedSubmission = {
@@ -2385,7 +2443,8 @@
 	async function sendTemp(
 		text: string,
 		inputParts: UserInputPart[],
-		submittedAtMs: number
+		submittedAtMs: number,
+		experience?: ExperienceContext
 	) {
 		const userMsg: DisplayMessage = {
 			id: tempId(),
@@ -2418,7 +2477,7 @@
 				// 임시 채팅은 저장되지 않으므로 완료된 답변을 로컬 배열에 확정(계측값 포함)
 				tempMessages = [...history, { ...live, streaming: false, metrics }];
 				void loadUsage();
-				void executeContextPreview();
+				void executeContextPreview({ experience });
 			},
 			submittedAtMs,
 			(descriptor) => {
@@ -2428,7 +2487,9 @@
 				tempRunHistoryError = null;
 				const submittedUser = stream?.base.find((message) => message.id === userMsg.id);
 				if (submittedUser) submittedUser.execution = { run_id: descriptor.run_id, status: descriptor.status };
-			}
+			},
+			undefined,
+			experience
 		);
 	}
 
@@ -2440,6 +2501,7 @@
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
+		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		const submittedAtMs = performance.now();
 		invalidateContextPreview();
 		streaming = true;
@@ -2461,20 +2523,23 @@
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(conversationId, selection);
+					await refreshHistoryAfterRun(conversationId, selection, experience);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
-				void executeContextPreview();
+				void executeContextPreview({ experience });
 			},
 			submittedAtMs,
-			() => setConversationRun(conversationId, true)
+			() => setConversationRun(conversationId, true),
+			undefined,
+			experience
 		);
 	}
 
 	async function retryFailedTurn(messageId: string) {
 		if (!canChat) return;
 		if (streaming || tempMode || !token || !projectId) return;
+		const experience = beginExperienceAction('lumen', 'retry', 'shared.stream');
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
 			const submittedAtMs = performance.now();
@@ -2484,7 +2549,7 @@
 			let convId = submission.conversationId || activeConvId;
 			if (!convId) {
 				try {
-					convId = await ensureConversation();
+					convId = await ensureConversation(experience);
 				} catch (e) {
 					error = chatFailureMessage(e, t('panel.errors.createConversation'));
 					endStream();
@@ -2517,15 +2582,16 @@
 					setConversationRun(convId!, false);
 					if (activeConvId === convId && !tempMode) {
 						const selection = selectionGeneration;
-						await refreshHistoryAfterRun(convId!, selection);
+						await refreshHistoryAfterRun(convId!, selection, experience);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
-					void executeContextPreview();
+					void executeContextPreview({ experience });
 				},
 				submittedAtMs,
 				() => setConversationRun(convId!, true),
-				submission.idempotencyKey
+				submission.idempotencyKey,
+				experience
 			);
 			if (started) failedSubmission = null;
 			return;
@@ -2555,14 +2621,16 @@
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					await refreshHistoryAfterRun(conversationId, selection);
+					await refreshHistoryAfterRun(conversationId, selection, experience);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
-				void executeContextPreview();
+				void executeContextPreview({ experience });
 			},
 			submittedAtMs,
-			() => setConversationRun(conversationId, true)
+			() => setConversationRun(conversationId, true),
+			undefined,
+			experience
 		);
 	}
 
@@ -2635,10 +2703,14 @@
 
 	async function stop() {
 		if (!currentRun || !token || !projectId) return;
+		const experience = beginExperienceAction('lumen', 'cancel', 'shared.stream');
 		try {
-			await cancelChatRun(currentRun, { token, projectId });
+			// The durable run journal, not this response, owns terminal cancellation.
+			await cancelChatRun(currentRun, { token, projectId, experience });
 		} catch (caught) {
 			error = caught instanceof Error ? caught.message : t('panel.errors.stopRun');
+			experienceState(experience, 'error', 4);
+			if (!((caught instanceof ChatHttpError || caught instanceof ApiError) && caught.status >= 400 && caught.status < 500)) experienceDiscarded(experience, 'unknown');
 		}
 	}
 	function copy(text: string) {

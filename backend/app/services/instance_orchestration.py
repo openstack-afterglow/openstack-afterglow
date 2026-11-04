@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
+
+from app.services.work_dispatcher import close_connection, open_connection, run_native
 
 if TYPE_CHECKING:
     import openstack
@@ -27,7 +28,7 @@ async def resolve_default_network(
     project_id = conn._afterglow_project_id
     project_network_id = await get_default_network_id(project_id)
     if project_network_id:
-        network = await asyncio.to_thread(conn.network.get_network, project_network_id)
+        network = await run_native(conn.network.get_network, project_network_id)
         if network is None:
             raise RuntimeError("project default network is unavailable")
         return project_network_id
@@ -79,7 +80,7 @@ async def compute_effective_security_groups(
         if "default" not in sgs:
             sgs.append("default")
         try:
-            _ne = await asyncio.to_thread(
+            _ne = await run_native(
                 neutron.ensure_node_exporter_sg,
                 conn,
                 project_id,
@@ -92,7 +93,7 @@ async def compute_effective_security_groups(
             logger.warning("node_exporter SG 자동 attach 실패, 계속 진행", exc_info=True)
         if gpu_available:
             try:
-                _dc = await asyncio.to_thread(
+                _dc = await run_native(
                     neutron.ensure_dcgm_exporter_sg,
                     conn,
                     project_id,
@@ -124,7 +125,7 @@ async def rollback_instance(
 
     if floating_ip_id:
         try:
-            await asyncio.to_thread(neutron.delete_floating_ip, conn, floating_ip_id)
+            await run_native(neutron.delete_floating_ip, conn, floating_ip_id)
         except Exception as e:
             logger.error(
                 "Rollback - Floating IP 삭제 실패: %s",
@@ -133,7 +134,7 @@ async def rollback_instance(
 
     if server_id:
         try:
-            await asyncio.to_thread(nova.delete_server, conn, server_id)
+            await run_native(nova.delete_server, conn, server_id)
         except Exception as e:
             logger.error(
                 "Rollback - 서버 삭제 실패: %s",
@@ -143,7 +144,7 @@ async def rollback_instance(
     for vol_id in [boot_volume_id, upper_volume_id, *(additional_volume_ids or [])]:
         if vol_id:
             try:
-                await asyncio.to_thread(cinder.delete_volume, conn, vol_id)
+                await run_native(cinder.delete_volume, conn, vol_id)
             except Exception as e:
                 logger.error(
                     "Rollback - 볼륨 삭제 실패 %s: %s",
@@ -151,22 +152,27 @@ async def rollback_instance(
                     safe_error_message if safe_error_message is not None else str(e),
                 )
 
+    svc_conn = None
     try:
-        svc_conn = await asyncio.to_thread(keystone.get_service_project_connection)
-    except RuntimeError:
-        svc_conn = conn
-    for file_storage_id, access_id in access_ids:
         try:
-            await asyncio.to_thread(manila.revoke_access_rule, svc_conn, file_storage_id, access_id)
-        except Exception as e:
-            logger.error(
-                "Rollback - access rule 삭제 실패: %s",
-                safe_error_message if safe_error_message is not None else str(e),
-            )
+            svc_conn = await open_connection(keystone.get_service_project_connection)
+        except RuntimeError:
+            svc_conn = conn
+        for file_storage_id, access_id in access_ids:
+            try:
+                await run_native(manila.revoke_access_rule, svc_conn, file_storage_id, access_id)
+            except Exception as e:
+                logger.error(
+                    "Rollback - access rule 삭제 실패: %s",
+                    safe_error_message if safe_error_message is not None else str(e),
+                )
+    finally:
+        if svc_conn is not None and svc_conn is not conn:
+            await close_connection(svc_conn)
 
     for file_storage_id in file_storage_ids:
         try:
-            await asyncio.to_thread(manila.delete_file_storage, conn, file_storage_id)
+            await run_native(manila.delete_file_storage, conn, file_storage_id)
         except Exception as e:
             logger.error(
                 "Rollback - 파일 스토리지 삭제 실패 %s: %s",

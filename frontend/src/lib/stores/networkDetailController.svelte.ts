@@ -1,9 +1,10 @@
-import { getContext, setContext } from 'svelte';
+import { getContext, setContext, untrack } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { NetworkDetail, NetworkRouterInfo, RouterListItem } from '$lib/types/networks';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/network-resources';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 interface Options {
 	networkId: () => string;
@@ -46,33 +47,41 @@ function createNetworkDetailController(opts: Options) {
 		fetchNetwork();
 	});
 
-	async function fetchNetwork(force = false) {
+	async function fetchNetwork(force = false, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.detail')) {
+		if (untrack(() => loading)) experienceState(experience, 'loading');
 		try {
-			network = await api.get<NetworkDetail>(`${opts.apiBase()}/${opts.networkId()}`, opts.token(), opts.projectId(), { refresh: force });
+			network = await api.withExperience(experience).get<NetworkDetail>(`${opts.apiBase()}/${opts.networkId()}`, opts.token(), opts.projectId(), { refresh: force });
+			if (experience?.action !== 'create') experienceState(experience, network ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('network.errors.load');
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			loading = false;
 		}
 	}
 	async function toggleSubnetForm() {
 		if (!canManageNetwork) return;
+		const experience = beginExperienceAction('network', showSubnetForm ? 'close' : 'open', 'resource.detail');
 		if (!showSubnetForm && !allRouters.length) {
 			try {
-				allRouters = await api.get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
+				allRouters = await api.withExperience(experience).get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
 			} catch {
 				allRouters = [];
 			}
 		}
 		showSubnetForm = !showSubnetForm;
+		if (experience) void experienceApplied(experience);
 	}
 
 
 	async function openRouterConnect() {
 		if (!canManageNetwork) return;
+		const experience = beginExperienceAction('network', 'open', 'resource.detail');
 		if (!allRouters.length) {
 			try {
-				allRouters = await api.get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
+				allRouters = await api.withExperience(experience).get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
 			} catch {
 				allRouters = [];
 			}
@@ -80,24 +89,28 @@ function createNetworkDetailController(opts: Options) {
 		selectedRouterId = managedRouters[0]?.id ?? '';
 		selectedSubnetId = network?.subnet_details[0]?.id ?? '';
 		showRouterConnect = true;
+		if (experience) void experienceApplied(experience);
 	}
 
 	async function connectRouter() {
 		if (!canManageNetwork || !selectedRouterId || !selectedSubnetId || !managedRouters.some((router) => router.id === selectedRouterId)) return;
 		connectingRouter = true;
+		const experience = beginExperienceAction('network', 'attach', 'resource.detail');
 		try {
 			const subnet = network?.subnet_details.find(s => s.id === selectedSubnetId);
 			const autoGateway = !subnet?.gateway_ip;
-			await api.post(
+			await api.withExperience(experience).post(
 				`/api/v1/routers/${selectedRouterId}/interfaces`,
 				{ subnet_id: selectedSubnetId, auto_gateway: autoGateway },
 				opts.token(),
 				opts.projectId()
 			);
 			showRouterConnect = false;
-			await fetchNetwork();
+			await fetchNetwork(false, experience);
 		} catch (e) {
 			toast.error(t('network.errors.connectRouter', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			connectingRouter = false;
 		}
@@ -107,8 +120,9 @@ function createNetworkDetailController(opts: Options) {
 		if (!canManageNetwork || !network) return false;
 		addingSubnet = true;
 		subnetError = '';
+		const experience = beginExperienceAction('network', 'create', 'resource.detail');
 		try {
-			const subnet = await api.post<{ id: string; gateway_ip: string | null }>(
+			const subnet = await api.withExperience(experience).post<{ id: string; gateway_ip: string | null }>(
 				`${opts.apiBase()}/${network.id}/subnets`,
 				{
 					name: form.name?.trim() || `${network.name}-subnet`,
@@ -122,7 +136,7 @@ function createNetworkDetailController(opts: Options) {
 			showSubnetForm = false;
 			if (form.routerId && managedRouters.some((router) => router.id === form.routerId)) {
 				try {
-					await api.post(
+					await api.withExperience(experience).post(
 						`/api/v1/routers/${form.routerId}/interfaces`,
 						{ subnet_id: subnet.id, auto_gateway: !subnet.gateway_ip },
 						opts.token(),
@@ -131,12 +145,16 @@ function createNetworkDetailController(opts: Options) {
 					toast.success(t('network.toast.subnetCreatedConnected'));
 				} catch (e) {
 					toast.error(t('network.errors.subnetCreatedConnectFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+					experienceState(experience, 'error');
+					if (experience) void experienceApplied(experience);
 				}
 			}
-			await fetchNetwork();
+			await fetchNetwork(false, experience);
 			return true;
 		} catch (e) {
 			subnetError = e instanceof ApiError ? e.message : t('network.errors.createSubnet');
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 			return false;
 		} finally {
 			addingSubnet = false;
@@ -152,11 +170,14 @@ function createNetworkDetailController(opts: Options) {
 			return;
 		}
 		if (!(await confirmDialog(t('network.routers.disconnectConfirm', { name: router.name || router.id.slice(0, 8) }), { confirmLabel: t('network.routers.disconnectLabel') }))) return;
+		const experience = beginExperienceAction('network', 'detach', 'resource.detail');
 		try {
-			await api.delete(`/api/v1/routers/${router.id}/interfaces/${targetSubnet}`, opts.token(), opts.projectId());
-			await fetchNetwork();
+			await api.withExperience(experience).delete(`/api/v1/routers/${router.id}/interfaces/${targetSubnet}`, opts.token(), opts.projectId());
+			await fetchNetwork(false, experience);
 		} catch (e) {
 			toast.error(t('network.errors.disconnectRouter', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		}
 	}
 

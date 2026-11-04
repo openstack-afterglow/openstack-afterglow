@@ -8,7 +8,7 @@ import { createWorkspaceController, type WorkspaceInventory } from '../workspace
 import type { AvailableDomain, CreatedDomain } from '$lib/types/auth';
 
 vi.mock('$app/environment', () => ({ browser: true }));
-vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: vi.fn(), post: vi.fn(), withExperience() { return this; } } }));
 vi.mock('$lib/stores/cloudShell.svelte', () => ({ cloudShell: { close: vi.fn().mockResolvedValue(undefined) } }));
 
 const home = { id: 'home', name: 'Home' };

@@ -371,6 +371,11 @@ async def test_vm_interfaces_reject_foreign_attached_port():
     assert calls == ["port-a"]
 
 
+_CREATE_NETWORK = "22222222-2222-4222-8222-222222222222"
+_CREATE_GROUP_A = "44444444-4444-4444-8444-444444444444"
+_CREATE_GROUP_B = "55555555-5555-4555-8555-555555555555"
+
+
 @pytest.fixture
 def create_cloud(monkeypatch):
     from app.services import resource_policy_store
@@ -386,13 +391,15 @@ def create_cloud(monkeypatch):
     }
     flavor = {"id": "1", "name": "cpu.nano", "vcpus": 2, "ram": 4096, "disk": 0, "extra_specs": {}}
     network = {
-        "id": "network-a",
+        "id": _CREATE_NETWORK,
         "project_id": "project-a",
         "status": "ACTIVE",
         "is_admin_state_up": True,
         "is_shared": False,
+        "is_router_external": False,
+        "port_security_enabled": True,
     }
-    keypair = {"name": "my-key", "user_id": "user-a", "private_key": "provider-secret"}
+    keypair = {"name": "my-key", "user_id": "user-a", "type": "ssh", "private_key": "provider-secret"}
     state = {
         "servers": {},
         "volumes": [],
@@ -404,14 +411,20 @@ def create_cloud(monkeypatch):
         "admissions": 0,
         "eligibility_checks": 0,
         "create_bodies": [],
+        "security_groups": {
+            group_id: {"id": group_id, "name": "default", "project_id": "project-a"}
+            for group_id in (_CREATE_GROUP_A, _CREATE_GROUP_B)
+        },
+        "group_reads": [],
     }
 
     class Compute:
         def get_flavor(self, _id, **_kwargs):
             return flavor.copy()
 
-        def get_keypair(self, _name, **_kwargs):
-            return keypair
+        def get(self, path, **_kwargs):
+            assert path == "/os-keypairs/my-key"
+            return SimpleNamespace(status_code=200, json=lambda: {"keypair": keypair})
 
         def servers(self, **_kwargs):
             return list(state["servers"].values())
@@ -470,10 +483,22 @@ def create_cloud(monkeypatch):
     monkeypatch.setattr(compute.flavor_eligibility, "admit_flavor", admit)
     monkeypatch.setattr(compute.flavor_eligibility, "release_admission", release)
     monkeypatch.setattr(resource_policy_store, "resolve_policies", zones)
+
+    def network_get(path, **_kwargs):
+        if path == f"/networks/{_CREATE_NETWORK}":
+            return SimpleNamespace(status_code=200, json=lambda: {"network": network})
+        assert path.startswith("/security-groups/")
+        group_id = path.removeprefix("/security-groups/")
+        state["group_reads"].append(group_id)
+        return SimpleNamespace(
+            status_code=200 if group_id in state["security_groups"] else 404,
+            json=lambda: {"security_group": state["security_groups"].get(group_id)},
+        )
+
     conn = SimpleNamespace(
         compute=Compute(),
         image=SimpleNamespace(get_image=lambda _id: image),
-        network=SimpleNamespace(get_network=lambda _id: network),
+        network=SimpleNamespace(get_network=lambda _id: network, get=network_get),
     )
     arguments = dict(
         project_id="project-a",
@@ -481,9 +506,10 @@ def create_cloud(monkeypatch):
         name="my-vm",
         image_id="image-a",
         flavor_id="1",
-        network_id="network-a",
+        network_id=_CREATE_NETWORK,
         boot_volume_size_gb=20,
         key_name="my-key",
+        security_group_ids=[_CREATE_GROUP_A, _CREATE_GROUP_B],
     )
     return conn, arguments, state, image, flavor, network, keypair
 
@@ -495,6 +521,8 @@ async def test_vm_create_accepts_one_owned_volume_boot_without_exposing_credenti
     arguments["delete_boot_volume_on_termination"] = delete_with_server
     preview = await preview_project_server_create(conn, **arguments)
     assert preview["boot_volume_size_gb"] == 20
+    assert preview["key_name"] == "my-key"
+    assert preview["security_group_ids"] == [_CREATE_GROUP_A, _CREATE_GROUP_B]
     assert state["servers"] == {} and state["volumes"] == [] and state["reservations"] == set()
     result = await request_project_server_create(conn, **arguments)
     assert result == {
@@ -506,6 +534,10 @@ async def test_vm_create_accepts_one_owned_volume_boot_without_exposing_credenti
         "requested_action": "create",
     }
     assert state["volumes"] == [{"source_image": "image-a", "size": 20, "delete_with_server": delete_with_server}]
+    assert len(state["create_bodies"]) == 1
+    assert state["create_bodies"][0]["key_name"] == "my-key"
+    assert state["create_bodies"][0]["security_groups"] == [{"name": _CREATE_GROUP_A}, {"name": _CREATE_GROUP_B}]
+    assert state["group_reads"] == [_CREATE_GROUP_A, _CREATE_GROUP_B] * 3
     assert state["reservations"] == set()
 
 
@@ -604,6 +636,19 @@ async def test_vm_create_rechecks_expiry_after_quota_before_first_native_create(
         ("boot_volume_size_gb", 0),
         ("boot_volume_size_gb", 16385),
         ("boot_volume_size_gb", True),
+        ("boot_volume_size_gb", None),
+        ("key_name", None),
+        ("key_name", ""),
+        ("key_name", " "),
+        ("security_group_ids", None),
+        ("security_group_ids", []),
+        ("security_group_ids", [_CREATE_GROUP_A, _CREATE_GROUP_A]),
+        ("security_group_ids", ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"]),
+        ("security_group_ids", ["not-a-uuid"]),
+        ("security_group_ids", [""]),
+        ("security_group_ids", [None]),
+        ("security_group_ids", _CREATE_GROUP_A),
+        ("security_group_ids", [f"aaaaaaaa-aaaa-4aaa-8aaa-{index:012x}" for index in range(33)]),
         ("boot_volume_size_gb", "20"),
         ("availability_zone", "nova:host"),
         ("availability_zone", " "),
@@ -613,8 +658,10 @@ async def test_vm_create_rechecks_expiry_after_quota_before_first_native_create(
 async def test_vm_create_rejects_invalid_creation_input_without_resources(create_cloud, field, value):
     conn, arguments, state, *_ = create_cloud
     arguments[field] = value
-    with pytest.raises(McpComputeError):
-        await request_project_server_create(conn, **arguments)
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
     assert state["servers"] == {} and state["volumes"] == [] and state["reservations"] == set()
 
 
@@ -631,16 +678,127 @@ async def test_vm_create_rejects_invalid_creation_input_without_resources(create
         ("flavor", {"extra_specs": None}),
         ("network", {"project_id": "foreign"}),
         ("network", {"status": "DOWN"}),
+        ("network", {"id": "different"}),
+        ("network", {"port_security_enabled": False}),
+        ("network", {"port_security_enabled": None}),
+        ("network", {"port_security_enabled": "true"}),
         ("keypair", {"user_id": "foreign"}),
         ("keypair", {"user_id": None}),
+        ("keypair", {"name": "different"}),
+        ("keypair", {"type": "x509"}),
+        ("keypair", {"type": "unknown"}),
+        ("keypair", {"type": None}),
     ],
 )
 async def test_vm_create_rejects_ineligible_or_foreign_dependencies(create_cloud, dependency, changes):
     conn, arguments, state, image, flavor, network, keypair = create_cloud
     {"image": image, "flavor": flavor, "network": network, "keypair": keypair}[dependency].update(changes)
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["servers"] == {} and state["volumes"] == [] and state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["missing", "provider-error"])
+async def test_vm_create_unknown_or_unreadable_key_never_reaches_admission(create_cloud, failure):
+    conn, arguments, state, *_ = create_cloud
+
+    def get_keypair(_path, **_kwargs):
+        if failure == "provider-error":
+            raise RuntimeError("provider-secret")
+        return SimpleNamespace(status_code=404, json=lambda: {"error": "unknown keypair"})
+
+    conn.compute.get = get_keypair
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError) as rejected:
+            await operation(conn, **arguments)
+        assert "provider-secret" not in str(rejected.value)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+
+
+@pytest.mark.asyncio
+async def test_vm_create_network_without_port_security_proof_never_reaches_admission(create_cloud):
+    conn, arguments, state, _, _, network, _ = create_cloud
+    network.pop("port_security_enabled")
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider_group",
+    [
+        None,
+        {"id": _CREATE_GROUP_A, "project_id": "foreign"},
+        {"id": _CREATE_GROUP_A},
+        {"id": _CREATE_GROUP_A, "project_id": None},
+        {"id": _CREATE_GROUP_A, "project_id": "project-a", "tenant_id": "foreign"},
+        {"id": _CREATE_GROUP_A, "project_id": "foreign", "tenant_id": "project-a"},
+        {"id": _CREATE_GROUP_B, "project_id": "project-a"},
+        {"project_id": "project-a"},
+    ],
+)
+async def test_vm_create_requires_exact_project_owned_security_group_before_admission(create_cloud, provider_group):
+    conn, arguments, state, *_ = create_cloud
+    state["security_groups"][_CREATE_GROUP_A] = provider_group
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+    assert state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+async def test_vm_create_admission_cannot_replace_preflight_selected_groups_in_place(create_cloud):
+    conn, arguments, state, *_ = create_cloud
+    state["after_admission"] = lambda: arguments["security_group_ids"].__setitem__(slice(None), [_CREATE_GROUP_B])
+    result = await request_project_server_create(conn, **arguments)
+    assert result["status"] == "BUILD"
+    assert state["admissions"] == 1
+    assert len(state["create_bodies"]) == 1
+    assert state["create_bodies"][0]["security_groups"] == [{"name": _CREATE_GROUP_A}, {"name": _CREATE_GROUP_B}]
+    assert state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["missing", "foreign", "missing-owner", "different-id"])
+async def test_vm_create_revalidates_selected_security_groups_after_admission(create_cloud, failure):
+    conn, arguments, state, *_ = create_cloud
+
+    def change_group():
+        if failure == "missing":
+            state["security_groups"].pop(_CREATE_GROUP_B)
+        elif failure == "foreign":
+            state["security_groups"][_CREATE_GROUP_B]["project_id"] = "foreign"
+        elif failure == "missing-owner":
+            state["security_groups"][_CREATE_GROUP_B].pop("project_id")
+        else:
+            state["security_groups"][_CREATE_GROUP_B]["id"] = _CREATE_GROUP_A
+
+    state["after_admission"] = change_group
     with pytest.raises(McpComputeError):
         await request_project_server_create(conn, **arguments)
-    assert state["servers"] == {} and state["volumes"] == [] and state["reservations"] == set()
+    assert state["admissions"] == 1
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
+    assert state["reservations"] == set()
+
+
+@pytest.mark.asyncio
+async def test_vm_create_never_substitutes_default_group_for_unknown_selection(create_cloud):
+    conn, arguments, state, *_ = create_cloud
+    arguments["security_group_ids"] = ["66666666-6666-4666-8666-666666666666"]
+    for operation in (preview_project_server_create, request_project_server_create):
+        with pytest.raises(McpComputeError):
+            await operation(conn, **arguments)
+    assert state["admissions"] == state["eligibility_checks"] == 0
+    assert state["create_bodies"] == [] and state["servers"] == {} and state["volumes"] == []
 
 
 @pytest.mark.asyncio
@@ -687,7 +845,11 @@ async def test_vm_create_preserves_quota_capacity_failure_before_native_write(cr
         ("flavor", {"vcpus": 12}),
         ("flavor", {"extra_specs": {"afterglow:usage_schedule_required": "true"}}),
         ("network", {"project_id": "foreign"}),
+        ("network", {"port_security_enabled": False}),
+        ("network", {"port_security_enabled": None}),
         ("keypair", {"user_id": "foreign"}),
+        ("keypair", {"type": "x509"}),
+        ("keypair", {"type": None}),
     ],
 )
 async def test_vm_create_revalidates_dependencies_after_admission(create_cloud, dependency, changes):
@@ -763,7 +925,10 @@ async def test_vm_create_cancellation_drains_policy_and_releases_late_gpu_reserv
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provider_owner", [None, "foreign-user", "user-a"])
-async def test_vm_create_native_sdk_keypair_requires_provider_owner_not_seeded_attribute(create_cloud, provider_owner):
+@pytest.mark.parametrize("key_proof", ["ssh", "x509", None, "unknown", "missing-name"])
+async def test_vm_create_native_sdk_keypair_requires_provider_owner_not_seeded_attribute(
+    create_cloud, provider_owner, key_proof
+):
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -780,6 +945,11 @@ async def test_vm_create_native_sdk_keypair_requires_provider_owner_not_seeded_a
 
         def do_GET(self):
             key = {"name": "my-key", "public_key": "synthetic-public"}
+            if key_proof == "missing-name":
+                key.pop("name")
+                key["type"] = "ssh"
+            elif key_proof is not None:
+                key["type"] = key_proof
             if provider_owner is not None:
                 key["user_id"] = provider_owner
             if "/os-keypairs/" in self.path:
@@ -811,14 +981,164 @@ async def test_vm_create_native_sdk_keypair_requires_provider_owner_not_seeded_a
         compute_default_microversion="2.10",
     )
     try:
-        conn.compute.get_keypair = native.compute.get_keypair
-        if provider_owner != "user-a":
-            with pytest.raises(McpComputeError, match="keypair ownership"):
+        conn.compute.get = native.compute.get
+        if provider_owner != "user-a" or key_proof != "ssh":
+            with pytest.raises(McpComputeError):
                 await request_project_server_create(conn, **arguments)
             assert state["servers"] == {} and state["volumes"] == []
         else:
             result = await request_project_server_create(conn, **arguments)
             assert result["status"] == "BUILD" and state["servers"][result["id"]]["project_id"] == "project-a"
+    finally:
+        native.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "group_failure", [None, "missing-id", "missing-owner", "foreign-owner", "mismatched-id", "unknown"]
+)
+async def test_vm_create_native_sdk_serializes_explicit_selections_only_after_group_proof(create_cloud, group_failure):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from keystoneauth1.noauth import NoAuth
+    from keystoneauth1.session import Session
+    from openstack.connection import Connection
+
+    conn, arguments, state, _, _, network, keypair = create_cloud
+    requests = []
+    group_reads = []
+    if group_failure == "missing-id":
+        state["security_groups"][_CREATE_GROUP_A].pop("id")
+    elif group_failure == "missing-owner":
+        state["security_groups"][_CREATE_GROUP_A].pop("project_id")
+    elif group_failure == "foreign-owner":
+        state["security_groups"][_CREATE_GROUP_A]["project_id"] = "foreign"
+    elif group_failure == "mismatched-id":
+        state["security_groups"][_CREATE_GROUP_A]["id"] = _CREATE_GROUP_B
+    elif group_failure == "unknown":
+        state["security_groups"].pop(_CREATE_GROUP_A)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def respond(self, payload, status=200):
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/v2.1/os-keypairs/my-key":
+                self.respond({"keypair": keypair})
+            elif self.path == "/v2.1/servers/server-new":
+                self.respond(
+                    {
+                        "server": {
+                            "id": "server-new",
+                            "name": "my-vm",
+                            "status": "BUILD",
+                            "tenant_id": "project-a",
+                            "created": "2026-11-04T00:00:00Z",
+                        }
+                    }
+                )
+            elif self.path == f"/v2.0/networks/{_CREATE_NETWORK}":
+                self.respond({"network": network})
+            elif self.path.startswith("/v2.0/security-groups/"):
+                group_id = self.path.removeprefix("/v2.0/security-groups/")
+                group_reads.append(group_id)
+                self.respond(
+                    {"security_group": state["security_groups"].get(group_id)},
+                    200 if group_id in state["security_groups"] else 404,
+                )
+            elif self.path.rstrip("/") == "/v2.0":
+                self.respond(
+                    {
+                        "version": {
+                            "id": "v2.0",
+                            "status": "CURRENT",
+                            "links": [{"rel": "self", "href": f"http://127.0.0.1:{self.server.server_port}/v2.0/"}],
+                        }
+                    }
+                )
+            elif self.path in {"/v2.1", "/v2.1/"}:
+                self.respond(
+                    {
+                        "version": {
+                            "id": "v2.1",
+                            "status": "CURRENT",
+                            "version": "2.96",
+                            "min_version": "2.1",
+                            "links": [{"rel": "self", "href": f"http://127.0.0.1:{self.server.server_port}/v2.1/"}],
+                        }
+                    }
+                )
+            else:
+                self.respond({"error": "unexpected GET"}, 404)
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append((self.path, body))
+            if self.path != "/v2.1/servers":
+                self.respond({"error": "unexpected POST"}, 404)
+                return
+            self.respond({"server": {"id": "server-new", "adminPass": "provider-secret"}}, 202)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    native = Connection(
+        session=Session(auth=NoAuth(), timeout=2),
+        compute_endpoint_override=f"http://127.0.0.1:{server.server_port}/v2.1",
+        compute_api_version="2",
+        compute_default_microversion="2.10",
+        network_endpoint_override=f"http://127.0.0.1:{server.server_port}/v2.0",
+        network_api_version="2",
+    )
+    try:
+        conn.compute.create_server = native.compute.create_server
+        conn.compute.get_server = native.compute.get_server
+        conn.compute.get = native.compute.get
+        conn.network.get = native.network.get
+        if group_failure is not None:
+            with pytest.raises(McpComputeError):
+                await request_project_server_create(conn, **arguments)
+            assert requests == []
+            assert state["admissions"] == state["eligibility_checks"] == 0
+            assert state["reservations"] == set()
+            return
+        result = await request_project_server_create(conn, **arguments)
+        assert result["id"] == "server-new" and result["status"] == "BUILD"
+        assert "provider-secret" not in str(result)
+        assert len(requests) == 1
+        path, payload = requests[0]
+        assert path == "/v2.1/servers"
+        body = payload["server"]
+        assert body["key_name"] == "my-key"
+        assert body["security_groups"] == [{"name": _CREATE_GROUP_A}, {"name": _CREATE_GROUP_B}]
+        assert body["networks"] == [{"uuid": _CREATE_NETWORK}]
+        assert body["flavorRef"] == "1"
+        assert body["block_device_mapping_v2"] == [
+            {
+                "uuid": "image-a",
+                "source_type": "image",
+                "destination_type": "volume",
+                "boot_index": 0,
+                "volume_size": 20,
+                "delete_on_termination": False,
+            }
+        ]
+        assert "user_data" not in body and "adminPass" not in body
+        assert state["reservations"] == set()
+        assert group_reads == [_CREATE_GROUP_A, _CREATE_GROUP_B] * 2
     finally:
         native.close()
         server.shutdown()

@@ -597,6 +597,295 @@ async def test_cancelled_factory_drains_actual_thread_and_closes_before_lease_re
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("native", [False, True])
+async def test_repeated_cancel_during_diagnostic_keeps_thread_connection_and_lease(coordination, monkeypatch, native):
+    from app.services import experience_context
+
+    redis, prefix = coordination
+    entered = asyncio.Event()
+    diagnostic_entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    sequence = []
+    call_contexts = []
+    parent_span = "00000000-0000-4000-8000-000000000001"
+
+    def sdk_call():
+        loop.call_soon_threadsafe(entered.set)
+        release.wait(5)
+        sequence.append("sdk-returned")
+
+    async def diagnostic(_context, _type, *, stage, status, **_kwargs):
+        sequence.append((stage, status))
+        if stage != "cleanup":
+            call_contexts.append(_context)
+        if status == "cancel_requested":
+            diagnostic_entered.set()
+            await asyncio.sleep(0.02)
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+    async with bd.WorkDispatcher(redis, prefix) as worker:
+        assert await worker.publish(["target"])
+        member, token = await worker.claim(90)
+
+        async def consumer():
+            async with bd.work_lease(worker, member, token):
+                bd.bind_worker_experience({"actor": {}, "span_id": parent_span}, "operation")
+                try:
+                    await (bd.run_native if native else bd.run_sync)(sdk_call)
+                finally:
+                    sequence.append("connection-closed")
+
+        task = asyncio.create_task(consumer())
+        try:
+            await asyncio.wait_for(entered.wait(), 2)
+            task.cancel()
+            await asyncio.wait_for(diagnostic_entered.wait(), 2)
+            task.cancel()
+            await asyncio.sleep(0.03)
+            assert not task.done()
+            assert "connection-closed" not in sequence
+            assert await redis.get(f"{prefix}:lease:{member}") == token
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, 2)
+            stage = "native" if native else "blocking"
+            assert sequence.index("sdk-returned") < sequence.index((stage + ".drain", "observed"))
+            assert sequence.index((stage + ".drain", "observed")) < sequence.index("connection-closed")
+            assert not await redis.exists(f"{prefix}:lease:{member}")
+            assert len(call_contexts) == 3
+            assert len({context["span_id"] for context in call_contexts}) == 1
+            assert call_contexts[0]["span_id"] != parent_span
+            assert all(context["parent_span_id"] == parent_span for context in call_contexts)
+        finally:
+            release.set()
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+
+@pytest.mark.asyncio
+async def test_delivery_binding_restores_role_or_job_context_after_error(coordination, monkeypatch):
+    from app.services import experience_context
+
+    redis, prefix = coordination
+    observed = []
+
+    async def diagnostic(context, _type, **fields):
+        observed.append((context, fields.get("operation_id")))
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+    original = {"source": "worker", "actor": {"user_id": "job-owner"}}
+    async with bd.WorkDispatcher(redis, prefix) as worker:
+        assert await worker.publish(["target"])
+        member, token = await worker.claim(90)
+        async with bd.work_lease(worker, member, token) as lease:
+            bd.bind_worker_experience(original, "job")
+            for actor in ("first-owner", "second-owner"):
+                delivery = {"source": "worker", "actor": {"user_id": actor}}
+                with pytest.raises(ValueError), bd.worker_experience_scope(delivery, actor):
+                    await bd.run_sync(lambda: None)
+                    assert lease.experience_context == delivery
+                    raise ValueError("delivery stopped")
+                assert lease.experience_context == original
+                assert lease.experience_operation_id == "job"
+        assert observed[-1] == (original, "job")
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_failure_diagnostic_does_not_start_consumer_compensation(coordination, monkeypatch):
+    from app.services import experience_context
+
+    redis, prefix = coordination
+    logging_failure = asyncio.Event()
+    sequence = []
+
+    def native():
+        sequence.append("native-returned-error")
+        raise ValueError("provider rejected")
+
+    async def diagnostic(context, _type, *, stage, status, **fields):
+        if status == "outcome_unknown":
+            logging_failure.set()
+            await asyncio.sleep(0.02)
+        sequence.append((stage, status))
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+    async with bd.WorkDispatcher(redis, prefix) as worker:
+        assert await worker.publish(["target"])
+        member, token = await worker.claim(90)
+
+        async def consumer():
+            async with bd.work_lease(worker, member, token):
+                bd.bind_worker_experience({"actor": {}}, "operation")
+                try:
+                    await bd.run_native(native)
+                except Exception:
+                    sequence.append("consumer-compensation")
+
+        task = asyncio.create_task(consumer())
+        await asyncio.wait_for(logging_failure.wait(), 2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+        assert "consumer-compensation" not in sequence
+        assert ("native", "cancel_requested") in sequence
+        assert ("native.drain", "observed") in sequence
+        assert not await redis.exists(f"{prefix}:lease:{member}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("logging_phase", ["start", "return"])
+@pytest.mark.parametrize("leased", [False, True])
+async def test_cancelled_diagnostic_delivers_already_completed_native_result_before_cancellation(
+    coordination, monkeypatch, logging_phase, leased
+):
+    from app.services import experience_context
+
+    redis, prefix = coordination
+    native_returned = threading.Event()
+    logging_entered = asyncio.Event()
+    tracked_ids = []
+    statuses = []
+    second_commands = []
+    closed = []
+    after_close = []
+
+    class Connection:
+        def close(self):
+            closed.append(True)
+
+    def second_native():
+        second_commands.append(True)
+
+    def native():
+        native_returned.set()
+        return "actual-native-id"
+
+    async def diagnostic(context, _type, *, stage, status, **fields):
+        statuses.append((stage, status))
+        target = "running" if logging_phase == "start" else "observed"
+        if stage == "native" and status == target:
+            assert await asyncio.to_thread(native_returned.wait, 2)
+            # Let the completed thread's Future callbacks reach its owned task.
+            await asyncio.sleep(0.02)
+            logging_entered.set()
+            await asyncio.sleep(0.02)
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+    async with bd.WorkDispatcher(redis, prefix) as worker:
+        assert await worker.publish(["target"])
+        member, token = await worker.claim(90)
+
+        async def consumer():
+            async with AsyncExitStack() as stack:
+                if leased:
+                    await stack.enter_async_context(bd.work_lease(worker, member, token))
+                    bd.bind_worker_experience({"actor": {}}, "operation")
+                try:
+                    resource_id = await bd.run_native(native, experience={"actor": {}})
+                    tracked_ids.append(resource_id)
+                    await bd.run_native(second_native, experience={"actor": {}})
+                finally:
+                    await bd.close_connection(Connection())
+                    after_close.append(True)
+
+        task = asyncio.create_task(consumer())
+        await asyncio.wait_for(logging_entered.wait(), 2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+        assert tracked_ids == ["actual-native-id"]
+        assert second_commands == []
+        assert closed == [True]
+        assert after_close == [True]
+        assert ("native", "observed") in statuses
+        assert ("native", "cancel_requested") not in statuses
+        assert ("native.drain", "observed") not in statuses
+        if leased:
+            assert not await redis.exists(f"{prefix}:lease:{member}")
+
+
+@pytest.mark.asyncio
+async def test_consumed_deferred_cancellation_does_not_fence_later_request_work(monkeypatch):
+    from app.services import experience_context
+
+    logging_entered = asyncio.Event()
+    seen = []
+
+    async def diagnostic(context, _type, *, stage, status, **fields):
+        if stage == "native" and status == "observed" and not logging_entered.is_set():
+            logging_entered.set()
+            await asyncio.sleep(0.02)
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+
+    async def consumer():
+        seen.append(await bd.run_native(lambda: "first", experience={"actor": {}}))
+        with suppress(asyncio.CancelledError):
+            await asyncio.sleep(0)
+        seen.append(await bd.run_native(lambda: "later", experience={"actor": {}}))
+
+    task = asyncio.create_task(consumer())
+    await asyncio.wait_for(logging_entered.wait(), 2)
+    task.cancel()
+    await asyncio.wait_for(task, 2)
+    assert seen == ["first", "later"]
+    assert task.cancelling() > 0  # An old count is not a pending cancellation.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", ["asyncio_timeout", "anyio_cancel_scope"])
+async def test_scoped_owner_cancelled_during_completion_diagnostic_never_starts_next_native_call(monkeypatch, owner):
+    """진단 shield에 가려진 소유 scope 취소도 반환된 ID는 기록하고 다음 SDK 호출은 시작하지 않는다."""
+    import anyio
+
+    from app.services import experience_context
+
+    cancel_owner = []
+    fired = []
+    tracked_ids = []
+    second_commands = []
+    closed = []
+
+    class Connection:
+        def close(self):
+            closed.append(True)
+
+    async def diagnostic(context, _type, *, stage, status, **fields):
+        if stage == "native" and status == "observed" and not fired:
+            fired.append(True)
+            cancel_owner[0]()
+            await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(experience_context, "emit_experience", diagnostic)
+
+    async def owned_calls():
+        try:
+            tracked_ids.append(await bd.run_native(lambda: "actual-native-id", experience={"actor": {}}))
+            await bd.run_native(lambda: second_commands.append(True), experience={"actor": {}})
+        finally:
+            await bd.close_connection(Connection())
+
+    async def consumer():
+        if owner == "asyncio_timeout":
+            async with asyncio.timeout(None) as scope:
+                cancel_owner.append(lambda: scope.reschedule(asyncio.get_running_loop().time()))
+                await owned_calls()
+        else:
+            with anyio.CancelScope() as scope:
+                cancel_owner.append(scope.cancel)
+                await owned_calls()
+
+    task = asyncio.create_task(consumer())
+    _, pending = await asyncio.wait({task}, timeout=3)
+    assert not pending
+    assert tracked_ids == ["actual-native-id"]
+    assert second_commands == []
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
 async def test_role_runner_late_three_members_distribute_then_recover_graceful_departure(coordination, monkeypatch):
     redis, prefix = coordination
     monkeypatch.setattr(bd, "HEARTBEAT_SECONDS", 0.01)
@@ -921,3 +1210,57 @@ async def test_leader_crash_does_not_revoke_healthy_executor_before_successor_sc
     finally:
         await executor.__aexit__(None, None, None)
         await leader.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_experience_lease_cleanup_waits_for_cancelled_native_drain(coordination, monkeypatch):
+    from app.services import experience_context
+
+    redis, prefix = coordination
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    sequence = []
+
+    async def emit(context, event_type, **fields):
+        assert context == {"source": "worker", "actor": {"user_id": "owner", "project_id": "project"}}
+        assert fields["stage"] == "cleanup"
+        assert fields["status"] == "observed"
+        assert fields["operation_id"] == "actual-build-id"
+        sequence.append("lease-cleanup")
+
+    monkeypatch.setattr(experience_context, "emit_experience", emit)
+
+    def native():
+        loop.call_soon_threadsafe(entered.set)
+        release.wait(5)
+        sequence.append("native-settled")
+
+    async with bd.WorkDispatcher(redis, prefix, worker_id="experience-owner") as worker:
+        await worker.publish(["actual-build"])
+        member, token = await worker.claim(90)
+
+        async def consume():
+            async with bd.work_lease(worker, member, token):
+                bd.bind_worker_experience(
+                    {"source": "worker", "actor": {"user_id": "owner", "project_id": "project"}}, "actual-build-id"
+                )
+                await bd.run_sync(native)
+
+        task = asyncio.create_task(consume())
+        try:
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            assert "lease-cleanup" not in sequence
+            assert await redis.get(f"{prefix}:lease:{member}") == token
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert sequence == ["native-settled", "lease-cleanup"]
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task

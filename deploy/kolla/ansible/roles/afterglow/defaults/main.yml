@@ -72,6 +72,7 @@ afterglow_frontend_port: 3080
 afterglow_backend_listen_address: "{{ 'api' | kolla_address(inventory_hostname) }}"
 afterglow_frontend_listen_address: "{{ 'api' | kolla_address(inventory_hostname) }}"
 afterglow_backend_listen_port: 18000
+afterglow_backend_workers: 1
 afterglow_frontend_listen_port: 18081
 
 # Host networking must trust only actual HAProxy peers, not every caller.
@@ -224,7 +225,7 @@ afterglow_services:
     enabled: "{{ enable_afterglow_backend | bool }}"
     image: "{{ afterglow_backend_image_ref }}"
     network_mode: host
-    command: ["uvicorn", "app.middleware.traffic_address:create_app", "--factory", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}", "--no-proxy-headers"]
+    command: ["uvicorn", "app.middleware.traffic_address:create_app", "--factory", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}", "--workers", "{{ afterglow_backend_workers | string }}", "--no-proxy-headers"]
     restart_policy: unless-stopped
     groups: ["0"]
     volumes: >-

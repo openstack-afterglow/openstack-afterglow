@@ -5,6 +5,7 @@ import { auth } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
 import { toast } from '$lib/stores/toast';
 import type { DbFlavor, DbInstance, DbBackup } from '$lib/types/database';
+import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
 
 interface DbDatastore {
 	id: string;
@@ -134,6 +135,19 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 		'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500';
 	const labelCls = 'block text-xs text-gray-400 mb-1';
 
+	function observe(action: ExperienceAction, parent?: ExperienceContext) {
+		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' ? beginExperienceLoad('database', 'shared.wizard') : beginExperienceAction('database', action, 'shared.wizard'));
+		return {
+			ctx, client: api.withExperience(ctx),
+			applied(state: 'ready' | 'empty' | 'error') {
+				if (!ctx) return;
+				// The accepted create response is not evidence that Trove is available.
+				if (ctx.action !== 'create' || state === 'error') experienceState(ctx, state);
+				// There is no mounted-result assertion in this store; do not invent DOM proof.
+				void experienceApplied(ctx);
+			},
+		};
+	}
 	function resetForm() {
 		activeTab = 0;
 		name = '';
@@ -163,46 +177,60 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 		error = '';
 		const t = token;
 		const p = projectId;
+		const observation = observe('load');
+		const client = observation.client;
+		experienceState(observation.ctx, 'loading');
+		let metadataFailed = false;
 		try {
 			[flavors, datastores] = await Promise.all([
-				api.get<DbFlavor[]>('/api/v1/database-instances/flavors', t, p),
-				api.get<DbDatastore[]>('/api/v1/database-instances/datastores', t, p),
+				client.get<DbFlavor[]>('/api/v1/database-instances/flavors', t, p),
+				client.get<DbDatastore[]>('/api/v1/database-instances/datastores', t, p),
 			]);
 			if (flavors.length) flavorId = String(flavors[0].id);
 			if (datastores.length) {
 				datastoreType = datastores[0].name;
 				datastoreVersion = datastores[0].versions[0]?.name ?? '';
 			}
+			observation.applied(flavors.length && datastores.length ? 'ready' : 'empty');
 		} catch {
 			error = tr('wizard.metadataFailed');
+			metadataFailed = true;
+			observation.applied('error');
 		}
+		const networkLoad = observe('load', observation.ctx);
+		const zoneLoad = observe('load', observation.ctx);
+		const volumeTypeLoad = observe('load', observation.ctx);
+		const configurationLoad = observe('load', observation.ctx);
+		const instanceLoad = observe('load', observation.ctx);
+		const backupLoad = observe('load', observation.ctx);
 		await Promise.allSettled([
-			api
+			networkLoad.client
 				.get<DbNetwork[]>('/api/v1/networks', t, p)
-				.then((v) => (networks = v.filter((n) => !n.is_external && !n.is_shared)))
+				.then((v) => { networks = v.filter((n) => !n.is_external && !n.is_shared); networkLoad.applied(networks.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api
+			zoneLoad.client
 				.get<DbAZ[]>('/api/v1/instances/availability-zones', t, p)
-				.then((v) => (availabilityZones = v))
+				.then((v) => { availabilityZones = v; zoneLoad.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api
+			volumeTypeLoad.client
 				.get<DbVolumeType[]>('/api/v1/database-instances/volume-types', t, p)
-				.then((v) => (volumeTypes = v))
+				.then((v) => { volumeTypes = v; volumeTypeLoad.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api
+			configurationLoad.client
 				.get<DbConfiguration[]>('/api/v1/database-instances/configurations', t, p)
-				.then((v) => (configurations = v))
+				.then((v) => { configurations = v; configurationLoad.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api
+			instanceLoad.client
 				.get<DbInstance[]>('/api/v1/database-instances', t, p)
-				.then((v) => (instances = v))
+				.then((v) => { instances = v; instanceLoad.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api
+			backupLoad.client
 				.get<DbBackup[]>('/api/v1/database-instances/backups', t, p)
-				.then((v) => (backups = v))
+				.then((v) => { backups = v; backupLoad.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
 		]);
 		loading = false;
+		observation.applied(metadataFailed ? 'error' : flavors.length && datastores.length ? 'ready' : 'empty');
 	}
 
 	// open 전이 시 자동 초기화 + 로드 (원본 $effect와 동일 동작)
@@ -239,6 +267,8 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 
 	async function createInstance() {
 		if (!canCreate) return;
+		const observation = observe('create');
+		experienceState(observation.ctx, 'loading');
 		creating = true;
 		createError = '';
 		const t = token;
@@ -271,8 +301,10 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 			replica_count: replicaOf && replicaCount > 1 ? replicaCount : null,
 		};
 		try {
-			await api.post('/api/v1/database-instances', body, t, p);
+			await observation.client.post('/api/v1/database-instances', body, t, p);
 			opts.setOpen(false);
+			// The form accepted the request; this does not assert instance availability.
+			observation.applied('ready');
 			opts.onCreated();
 			if (isPublic) {
 				toast.success(
@@ -281,6 +313,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 			}
 		} catch (e) {
 			createError = e instanceof ApiError ? e.message : tr('wizard.createFailed');
+			observation.applied('error');
 		} finally {
 			creating = false;
 		}

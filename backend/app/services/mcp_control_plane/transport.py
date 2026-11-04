@@ -149,6 +149,11 @@ async def _list_tools(request: types.ListToolsRequest) -> types.ListToolsResult:
 @_server.call_tool(validate_input=True)
 async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     principal = current_principal()
+    from app.services.experience_context import capture_experience_context, emit_experience
+
+    experience = capture_experience_context(feature="mcp", component="page")
+    if experience is not None:
+        experience = {**experience, "actor": {"user_id": principal.user_id, "project_id": principal.anchor_project_id}}
     entry = entry_by_name(name)
     if entry is None or not entry.allowed_for(principal):
         raise ValueError("MCP tool is unavailable")
@@ -162,6 +167,12 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         raise
     principal, parsed = await bind_entry_target(principal, entry=entry, arguments=parsed)
     normalized = parsed.model_dump(mode="json")
+    if experience is not None:
+        experience = {
+            **experience,
+            "actor": {"user_id": principal.user_id, "project_id": principal.anchor_project_id},
+            "action": "inspect" if entry.effect == "read" else "submit",
+        }
     if entry.effect == "read":
         try:
             result = await dispatch(ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed)
@@ -200,6 +211,9 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         )
         raise
     try:
+        await emit_experience(
+            experience, "stage.started", stage="mcp.dispatch", status="running", operation_id=claim.invocation_id
+        )
         principal = await authorize_mutation_dispatch(principal, invocation_id=claim.invocation_id)
     except McpMutationAuthorizationDenied:
         await fail_pre_dispatch(
@@ -440,6 +454,13 @@ async def mcp_asgi_app(scope: Scope, receive: Receive, send: Send) -> None:
         await _reject(scope, receive, send, status_code=503, detail="MCP transport is unavailable")
         return
     initialization = _initialization_observation(messages, headers.get("user-agent"))
+    from app.services.experience_context import experience_enabled
+
+    if experience_enabled():
+        scope.setdefault("state", {})["experience_actor"] = {
+            "user_id": principal.user_id,
+            "project_id": principal.anchor_project_id,
+        }
     token = _current_principal.set(principal)
     try:
         try:

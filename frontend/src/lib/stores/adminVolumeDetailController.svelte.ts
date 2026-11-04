@@ -2,6 +2,7 @@ import { t } from '$lib/i18n/ns/admin-storage';
 import { getContext, setContext, untrack } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { AdminVolumeDetail, VolumeDeleteDiagnostic, VolumeDeleteRecoveryResult } from '$lib/types/volume';
+import { beginExperienceAction, beginExperienceLoad, experienceState, experienceApplied, experienceDiscarded, type ExperienceContext } from '$lib/utils/experience';
 
 interface Options {
 	volumeId: () => string;
@@ -48,12 +49,19 @@ function createAdminVolumeDetailController(opts: Options) {
 		untrack(() => { void fetchVolume(); });
 	});
 
+	// There is no existing mounted/result-generation guard here. Observe the
+	// assignments as they occur, without claiming DOM commitment or adding one.
 	async function fetchVolume() {
+		const experience = beginExperienceLoad('admin', 'resource.detail');
+		const request = experience ? api.withExperience(experience) : api;
+		experienceState(experience, 'loading');
 		try {
-			const currentVolume = await api.get<AdminVolumeDetail>(`/api/v1/admin/volumes/${opts.volumeId()}`, opts.token(), opts.projectId());
+			const currentVolume = await request.get<AdminVolumeDetail>(`/api/v1/admin/volumes/${opts.volumeId()}`, opts.token(), opts.projectId());
 			volume = currentVolume;
+			experienceState(experience, currentVolume ? 'ready' : 'empty');
+			void experienceApplied(experience);
 			if (diagnosticStatuses[(currentVolume.status || '').toLowerCase()]) {
-				await fetchDeleteDiagnostic();
+				await fetchDeleteDiagnosticWithExperience(undefined, experience);
 			} else {
 				deleteDiagnostic = null;
 				diagnosticError = '';
@@ -61,25 +69,38 @@ function createAdminVolumeDetailController(opts: Options) {
 			}
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('volumeDetail.loadFailed');
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function fetchDeleteDiagnostic(requestOpts?: { refresh?: boolean }): Promise<void> {
+		await fetchDeleteDiagnosticWithExperience(requestOpts);
+	}
+
+	async function fetchDeleteDiagnosticWithExperience(requestOpts?: { refresh?: boolean }, inherited?: ExperienceContext): Promise<void> {
 		const volumeId = opts.volumeId();
-		if (!volumeId) return;
+		if (!volumeId) { experienceDiscarded(inherited, 'scope_changed'); return; }
+		const experience = inherited ?? beginExperienceAction('admin', 'inspect', 'resource.detail');
+		const request = experience ? api.withExperience(experience) : api;
+		experienceState(experience, 'loading');
 		diagnosticLoading = true;
 		diagnosticError = '';
 		try {
-			deleteDiagnostic = await api.get<VolumeDeleteDiagnostic>(
+			deleteDiagnostic = await request.get<VolumeDeleteDiagnostic>(
 				`/api/v1/admin/volumes/${volumeId}/delete-diagnostics`,
 				opts.token(),
 				opts.projectId(),
 				requestOpts
 			);
+			experienceState(experience, deleteDiagnostic ? 'ready' : 'empty');
+			void experienceApplied(experience);
 		} catch (e) {
 			diagnosticError = e instanceof ApiError ? e.message : t('diagnostic.loadFailed');
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
 		} finally {
 			diagnosticLoading = false;
 		}
@@ -88,10 +109,13 @@ function createAdminVolumeDetailController(opts: Options) {
 	async function recoverDelete(): Promise<VolumeDeleteRecoveryResult | null> {
 		const volumeId = opts.volumeId();
 		if (!volumeId) return null;
+		const experience = beginExperienceAction('admin', 'recover', 'resource.detail');
+		const request = experience ? api.withExperience(experience) : api;
+		experienceState(experience, 'loading');
 		recovering = true;
 		diagnosticError = '';
 		try {
-			const result = await api.post<VolumeDeleteRecoveryResult>(
+			const result = await request.post<VolumeDeleteRecoveryResult>(
 				`/api/v1/admin/volumes/${volumeId}/recover-delete`,
 				{},
 				opts.token(),
@@ -99,6 +123,8 @@ function createAdminVolumeDetailController(opts: Options) {
 			);
 			recoveryResult = result;
 			deleteDiagnostic = result.diagnostic;
+			experienceState(experience, 'ready');
+			void experienceApplied(experience);
 			if (result.status === 'deleted' || result.status === 'already_deleted') {
 				opts.onRefresh?.();
 				opts.onClose?.();
@@ -112,6 +138,8 @@ function createAdminVolumeDetailController(opts: Options) {
 			return result;
 		} catch (e) {
 			diagnosticError = e instanceof ApiError ? e.message : t('diagnostic.recoveryFailed');
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
 			return null;
 		} finally {
 			recovering = false;

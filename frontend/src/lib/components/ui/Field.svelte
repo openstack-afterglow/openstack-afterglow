@@ -1,7 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 
 	interface Props {
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 		label: string;
 		for?: string;
 		help?: string;
@@ -11,10 +16,10 @@
 		children: Snippet;
 	}
 
-	let { label, for: forId, help, error, required = false, class: className = '', children }: Props = $props();
+	let { label, for: forId, help, error, required = false, class: className = '', children, experience, experienceMessage }: Props = $props();
 </script>
 
-<div class="field {className}">
+<div use:experiencePresentation={{ context: experience, message: experienceMessage, state: error ? 'error' : 'ready' }} class="field {className}">
 	<label class="field-label" for={forId}>
 		<span>{label}</span>
 		{#if required}

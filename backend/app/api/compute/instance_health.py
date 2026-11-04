@@ -14,6 +14,26 @@ router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 
+def _callback_error(status_code: int, reason: str, detail: str) -> HTTPException:
+    _logger.warning("Instance callback rejected", extra={"diagnostic_reason": reason})
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+async def _callback_identity(request: Request, instance_id: str) -> dict:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not auth[len("Bearer ") :].strip():
+        raise _callback_error(401, "health_credential_missing", "Bearer 토큰 필요")
+    try:
+        token_data = await health_svc.verify_report_token(auth[len("Bearer ") :])
+    except health_svc.HealthStoreUnavailable as exc:
+        raise _callback_error(503, exc.reason, "헬스 인증 저장소를 사용할 수 없습니다") from None
+    if token_data is None:
+        raise _callback_error(401, "health_credential_expired_or_unknown", "유효하지 않은 토큰")
+    if token_data.get("instance_id") != instance_id:
+        raise _callback_error(403, "health_credential_instance_mismatch", "토큰이 해당 인스턴스에 귀속되지 않음")
+    return token_data
+
+
 @router.post("/{instance_id}/health/report", status_code=204)
 @limiter.limit("30/minute")
 async def report_health(
@@ -22,18 +42,11 @@ async def report_health(
     body: InstanceHealthReport,
 ):
     """VM 내부 헬스체크 스크립트에서 주기적으로 POST. Bearer 토큰으로 인증."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer 토큰 필요")
-    token = auth[len("Bearer ") :]
-
-    token_data = await health_svc.verify_report_token(token)
-    if not token_data:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰")
-    if token_data.get("instance_id") != instance_id:
-        raise HTTPException(status_code=403, detail="토큰이 해당 인스턴스에 귀속되지 않음")
-
-    await health_svc.store_health_result(instance_id, body)
+    await _callback_identity(request, instance_id)
+    try:
+        await health_svc.store_health_result(instance_id, body)
+    except health_svc.HealthStoreUnavailable as exc:
+        raise _callback_error(503, exc.reason, "헬스 보고 저장소를 사용할 수 없습니다") from None
 
 
 @router.get("/{instance_id}/health", response_model=InstanceHealth)
@@ -74,16 +87,7 @@ async def rotate_cephx_credentials(
     """
     from app.services import manila
 
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer 토큰 필요")
-    token = auth[len("Bearer ") :]
-
-    token_data = await health_svc.verify_report_token(token)
-    if not token_data:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰")
-    if token_data.get("instance_id") != instance_id:
-        raise HTTPException(status_code=403, detail="토큰이 해당 인스턴스에 귀속되지 않음")
+    token_data = await _callback_identity(request, instance_id)
 
     settings = get_settings()
     if settings.union_cephx_rotate_hours == 0:
@@ -103,8 +107,8 @@ async def rotate_cephx_credentials(
         new_rule = await asyncio.to_thread(manila.rotate_cephx_access_rule, conn, share_id, access_id)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        _logger.warning("CephX 키 회전 실패 (instance=%s): %s", instance_id, e)
+    except Exception:
+        _logger.warning("instance_health failure reason=health_cephx_rotation_unavailable")
         raise HTTPException(status_code=502, detail="Manila CephX 키 회전 실패")
 
     return {

@@ -4,12 +4,22 @@ import { initLocale } from '$lib/i18n/runtime.svelte';
 import { ApiError } from '$lib/api/errors';
 import type * as ClientModule from '$lib/api/client';
 import type * as DomainsModule from '$lib/api/domains';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), list: vi.fn() }));
+import type * as ExperienceModule from '$lib/utils/experience';
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), list: vi.fn(), withExperience: vi.fn(),
+  begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn(),
+}));
 vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: mocks }));
 vi.mock('$lib/api/domains', async (importOriginal) => ({ ...(await importOriginal<typeof DomainsModule>()), domainsApi: { list: mocks.list } }));
+vi.mock('$lib/utils/experience', async (importOriginal) => ({
+  ...(await importOriginal<typeof ExperienceModule>()),
+  beginExperienceAction: mocks.begin, beginExperienceLoad: mocks.begin, experienceState: mocks.state,
+  experienceApplied: mocks.applied, experienceDiscarded: mocks.discarded,
+}));
 const options = { token: () => 'token', projectId: () => 'project' };
 beforeEach(() => {
   vi.resetAllMocks(); initLocale('en');
+  mocks.withExperience.mockReturnValue(mocks);
   mocks.list.mockResolvedValue({ items: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] });
   mocks.get.mockResolvedValue({ items: [], next_marker: null });
 });
@@ -122,6 +132,73 @@ describe('announcement scoped user recipients', () => {
     ctrl.selectDomain('', 'project');
     refresh.resolve([{ id: 99, title: 'Obsolete refresh' }]);
     expect(await saving).toEqual({ status: 'invalid' }); expect(ctrl.announcements).toEqual([]); expect(ctrl.error).toBe(''); ctrl.dispose();
+  });
+
+  it('passes the passive domain context through the directory helper', async () => {
+    const experience = { actionId: 'domain-directory' };
+    mocks.begin.mockReturnValue(experience);
+    const ctrl = createAdminAnnouncementsController(options);
+    await ctrl.loadDomains();
+    expect(mocks.list).toHaveBeenCalledWith({ token: 'token', projectId: 'project' }, { experience });
+    expect(mocks.applied).toHaveBeenCalledWith(experience, {}, expect.any(Function));
+    ctrl.dispose();
+  });
+
+  it.each(['user', 'project'] as const)('does not treat a %s retry button MouseEvent as an inherited context', async target => {
+    const ctrl = createAdminAnnouncementsController(options);
+    await ctrl.loadDomains();
+    mocks.get.mockResolvedValue(target === 'user' ? { items: [], next_marker: null } : []);
+    ctrl.selectDomain('a', target);
+    await vi.waitFor(() => expect(target === 'user' ? ctrl.usersLoading : ctrl.projectsLoading).toBe(false));
+    vi.clearAllMocks();
+    const experience = { actionId: 'manual-retry' };
+    mocks.begin.mockReturnValue(experience);
+    const retry: (event: MouseEvent) => Promise<void> = target === 'user' ? ctrl.loadUsers : ctrl.loadProjects;
+    await retry(new MouseEvent('click'));
+    expect(mocks.withExperience).toHaveBeenCalledExactlyOnceWith(experience);
+    expect(mocks.begin).toHaveBeenCalledExactlyOnceWith('iam', 'resource.list');
+    ctrl.dispose();
+  });
+
+  it('discards a superseded primary load rather than applying obsolete or empty state', async () => {
+    const oldExperience = { actionId: 'old' }, currentExperience = { actionId: 'current' };
+    mocks.begin.mockReturnValueOnce(oldExperience).mockReturnValueOnce(currentExperience);
+    const pending = Promise.withResolvers<unknown>();
+    mocks.get.mockReturnValueOnce(pending.promise).mockResolvedValueOnce([{ id: 2 }]);
+    const ctrl = createAdminAnnouncementsController(options);
+    const oldLoad = ctrl.load(); await ctrl.load();
+    pending.resolve([{ id: 1, title: 'private-obsolete-title' }]); await oldLoad;
+    expect(ctrl.announcements.map(row => row.id)).toEqual([2]);
+    expect(mocks.discarded).toHaveBeenCalledWith(oldExperience, 'stale');
+    expect(mocks.applied.mock.calls.filter(call => call[0] === oldExperience)).toEqual([]);
+    expect(mocks.applied).toHaveBeenCalledWith(currentExperience, {}, expect.any(Function));
+    expect(JSON.stringify([mocks.state.mock.calls, mocks.discarded.mock.calls])).not.toContain('private-obsolete-title');
+    ctrl.dispose();
+  });
+
+  it('carries the create context through readback while keeping mutation replay options unchanged', async () => {
+    const experience = { actionId: 'create' };
+    mocks.begin.mockReturnValue(experience); mocks.post.mockResolvedValue({}); mocks.get.mockResolvedValue([]);
+    const ctrl = createAdminAnnouncementsController(options);
+    const payload = { title: 'private-title', body: 'private-body', severity: 'info' as const, target_type: 'all' as const, target_id: null, starts_at: null, ends_at: null };
+    expect(await ctrl.create(payload)).toEqual({ status: 'ok' });
+    expect(mocks.begin).toHaveBeenCalledExactlyOnceWith('admin', 'create', 'resource.list');
+    expect(mocks.withExperience.mock.calls).toEqual([[experience], [experience]]);
+    expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/announcements', payload, 'token', 'project', { cache: 'no-store', replayOnUnauthorized: false });
+    expect(mocks.state).toHaveBeenLastCalledWith(experience, 'empty');
+    expect(JSON.stringify([mocks.begin.mock.calls, mocks.state.mock.calls, mocks.applied.mock.calls])).not.toMatch(/private-title|private-body/);
+    ctrl.dispose();
+  });
+
+  it('describes uncertain writes as an error view, never as an inferred failed business operation', async () => {
+    const experience = { actionId: 'unknown-write' };
+    mocks.begin.mockReturnValue(experience); mocks.post.mockRejectedValue(new TypeError('private-transport-error'));
+    const ctrl = createAdminAnnouncementsController(options);
+    const result = await ctrl.create({ title: 'private-title', body: 'private-body', severity: 'info', target_type: 'all', target_id: null, starts_at: null, ends_at: null });
+    expect(result.status).toBe('indeterminate');
+    expect(mocks.state).toHaveBeenLastCalledWith(experience, 'error');
+    expect(JSON.stringify([mocks.state.mock.calls, mocks.applied.mock.calls])).not.toMatch(/private-|failed|succeeded/);
+    ctrl.dispose();
   });
 });
 

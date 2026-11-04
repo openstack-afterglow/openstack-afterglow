@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
-	let { step, totalSteps, stepName, adminMode = false, adminProjectName = null, onReset, onClose }: {
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
+	let { step, totalSteps, stepName, adminMode = false, adminProjectName = null, onReset, onClose, experience, experienceMessage }: {
 		step: number;
 		totalSteps: number;
 		stepName: string;
@@ -9,6 +12,8 @@
 		adminProjectName?: string | null;
 		onReset: () => void;
 		onClose: () => void;
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 	} = $props();
 </script>
 
@@ -20,7 +25,7 @@
 				<span class="text-sm font-normal text-warm-text ml-2">{t('header.adminProject', { name: adminProjectName ?? '' })}</span>
 			{/if}
 		</h1>
-		<div class="step-progress text-[12.5px] text-ink-2 font-mono uppercase tracking-[0.06em] mt-1.5">
+		<div use:experiencePresentation={{ context: experience, message: experienceMessage, state: 'ready', step }} class="step-progress text-[12.5px] text-ink-2 font-mono uppercase tracking-[0.06em] mt-1.5">
 			<RichText segments={t.rich('header.step', { step, total: totalSteps, name: stepName })} classes={{ strong: 'font-semibold' }} />
 		</div>
 	</div>

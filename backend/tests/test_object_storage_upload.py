@@ -279,9 +279,11 @@ async def test_upload_without_browser_checksum_is_accepted(client, mock_conn, mo
 
 @pytest.mark.asyncio
 async def test_upload_rejects_nonexistent_container(client, mock_conn, monkeypatch):
+    from openstack.exceptions import HttpException
+
     monkeypatch.setattr(
         "app.api.object_storage.upload.swift_svc.get_container_metadata",
-        MagicMock(side_effect=Exception("not found")),
+        MagicMock(side_effect=HttpException("not found", http_status=404)),
     )
 
     resp = await client.post(
@@ -289,6 +291,24 @@ async def test_upload_rejects_nonexistent_container(client, mock_conn, monkeypat
         files={"file": ("x.bin", b"x", "application/octet-stream")},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_preflight_outage_is_not_reported_as_missing(client, mock_conn, monkeypatch):
+    """컨테이너 preflight 중 장애는 404가 아닌 살균된 503."""
+    from openstack.exceptions import HttpException
+
+    monkeypatch.setattr(
+        "app.api.object_storage.upload.swift_svc.get_container_metadata",
+        MagicMock(side_effect=HttpException("PRIVATE_NATIVE_UPLOAD_BODY", http_status=503)),
+    )
+
+    resp = await client.post(
+        "/api/v1/object-storage/other-bucket/upload",
+        files={"file": ("x.bin", b"x", "application/octet-stream")},
+    )
+    assert resp.status_code == 503
+    assert "PRIVATE_NATIVE_UPLOAD_BODY" not in resp.text
 
 
 @pytest.mark.asyncio

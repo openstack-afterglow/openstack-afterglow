@@ -17,7 +17,7 @@ vi.mock('$lib/stores/auth', () => {
 	};
 });
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: mockPost },
+	api: { get: mockGet, post: mockPost, withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 409; },
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));

@@ -77,6 +77,7 @@ vi.mock('$app/stores', async () => {
 vi.mock('$lib/api/client', () => ({
 	ApiError: class extends Error {},
 	api: {
+		withExperience() { return this; },
 		get: vi.fn().mockImplementation(async (path: string) => path === '/api/v1/projects/current/permissions'
 			? { is_owner: false, is_manager: false, can_write: false, service_permissions: { drover: ['drover-inventory_reader', 'drover-workloads_editor'] } }
 			: { id: 'cluster', name: 'Cluster', user_id: 'user', is_system_admin: true, roles: ['admin'], domain_id: 'domain-1', domain_name: 'Domain', identity_domain_id: 'domain-1', identity_domain_name: 'Domain' }),

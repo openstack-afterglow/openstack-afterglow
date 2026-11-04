@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$lib/api/client', () => ({
 	api: {
+		withExperience() { return this; },
 		get: vi.fn(),
 	},
 }));

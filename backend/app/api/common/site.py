@@ -43,6 +43,7 @@ class PublicSiteConfigResponse(BaseModel):
     favicon_path: str
     services: SiteServicesResponse
     mcp_url: str = ""
+    experience_enabled: bool = False
 
 
 class BrandingSlotResponse(BaseModel):

@@ -124,6 +124,7 @@ def configured_public_site_config(settings: Settings | None = None) -> dict[str,
         "logo_light_path": s.logo_light_path,
         "favicon_path": s.favicon_path,
         "mcp_url": _mcp_url(s),
+        "experience_enabled": s.experience_enabled,
         "services": {
             "magnum": s.service_magnum_enabled,
             "manila": s.service_manila_enabled,

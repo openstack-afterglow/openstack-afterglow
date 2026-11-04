@@ -2,8 +2,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import OnboardingAccountForm from '../OnboardingAccountForm.svelte';
+import type * as ExperienceModule from '$lib/utils/experience';
+import type { ExperienceContext } from '$lib/utils/experience';
+const experience = vi.hoisted(() => ({ begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn() }));
+vi.mock('$lib/utils/experience', async importOriginal => {
+	const actual = await importOriginal<typeof ExperienceModule>();
+	return {
+		...actual, beginExperienceAction: experience.begin, experienceState: experience.state,
+		experienceApplied: experience.applied, experienceDiscarded: experience.discarded,
+	};
+});
 
-beforeEach(() => initLocale('en'));
+beforeEach(() => { vi.resetAllMocks(); initLocale('en'); });
 afterEach(cleanup);
 
 describe('new human account credentials', () => {
@@ -36,4 +46,23 @@ describe('new human account credentials', () => {
 		pending.resolve();
 		await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''));
 	});
+});
+
+it.each(['error', 'discarded'] as const)('does not overwrite the parent account %s outcome when local submitting cleanup completes', async outcome => {
+	const context = Object.freeze({ segmentId: 'account-segment' }) as unknown as ExperienceContext;
+	experience.begin.mockReturnValue(context);
+	const onSubmit = vi.fn(async (_account: { name: string; password: string }, received?: ExperienceContext) => {
+		expect(received).toBe(context);
+		if (outcome === 'error') experience.state(received, 'error');
+		else experience.discarded(received, 'stale');
+	});
+	render(OnboardingAccountForm, { idPrefix: 'registration', submitLabel: 'Create account', onSubmit });
+	for (const [label, value] of [['Username', 'alice'], ['Password', 'long-enough-password'], ['Confirm password', 'long-enough-password']]) {
+		await fireEvent.input(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } });
+	}
+	await fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+	await waitFor(() => expect((screen.getByRole('button', { name: 'Create account' }) as HTMLButtonElement).disabled).toBe(false));
+	expect(onSubmit).toHaveBeenCalledOnce();
+	expect(experience.state.mock.calls.some(([, state]) => state === 'ready')).toBe(false);
+	expect(experience.applied).not.toHaveBeenCalled();
 });

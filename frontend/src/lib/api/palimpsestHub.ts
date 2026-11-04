@@ -127,7 +127,7 @@ async function scoped<T>(identity: PackageIdentity, signal: AbortSignal, timeout
 async function response(path: string, identity: PackageIdentity, signal: AbortSignal): Promise<Response> {
   const result = await fetchWithAuth(path, {
     method: 'GET', signal, credentials: 'include', cache: 'no-store', redirect: 'error',
-  }, identity.token, identity.projectId);
+  }, identity.token, identity.projectId, { experience: identity.experience });
   signal.throwIfAborted();
   if (!result.ok) {
     const envelope = await result.json().catch(() => null);

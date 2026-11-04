@@ -9,6 +9,7 @@ import type { K3sProgressController } from '$lib/stores/k3sProgress.svelte';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { k3sPermissions } from './k3sPermissions';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 export interface K3sClusterListOpts {
   token: () => string | undefined;
@@ -28,28 +29,42 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
   let creating = $state(false);
   let createError = $state('');
   let inflight: AbortController | null = null;
+  function captureOwner() {
+    const projectId = opts.projectId();
+    const userId = opts.userId();
+    return () => opts.projectId() === projectId && opts.userId() === userId;
+  }
+  function applied(ctx: ExperienceContext | undefined, state: 'ready' | 'empty' | 'error') {
+    experienceState(ctx, state);
+    // There is no controller teardown hook to establish a live DOM owner.
+    void experienceApplied(ctx, {});
+  }
 
-  async function fetchClusters(fetchOpts?: { refresh?: boolean }) {
+  async function fetchClusters(fetchOpts?: { refresh?: boolean }, context?: ExperienceContext) {
+    const ctx = context ?? (fetchOpts?.refresh ? beginExperienceAction('k3s', 'refresh', 'resource.list') : beginExperienceLoad('k3s', 'resource.list'));
+    experienceState(ctx, 'loading');
     inflight?.abort();
     const ctrl = new AbortController();
     inflight = ctrl;
     try {
       const qs = showDeleted ? '?include_deleted=true' : '';
-      const data = await api.get<K3sCluster[]>(
+      const data = await api.withExperience(ctx).get<K3sCluster[]>(
         `/api/v1/k3s/clusters${qs}`,
         opts.token(), opts.projectId(),
         { ...(fetchOpts ?? {}), signal: ctrl.signal },
       );
-      if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted) { experienceDiscarded(ctx, 'aborted'); return; }
       clusters = data;
       error = '';
+      applied(ctx, clusters.length ? 'ready' : 'empty');
     } catch (e) {
-      if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted) { experienceDiscarded(ctx, 'aborted'); return; }
       if (e instanceof ApiError && e.status === 503) {
         error = t('list.serviceUnavailable');
       } else {
         error = e instanceof ApiError ? t('list.lookupFailed', { status: e.status }) : t('list.serverError');
       }
+      applied(ctx, 'error');
     } finally {
       if (inflight === ctrl) inflight = null;
       loading = false;
@@ -62,9 +77,11 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     master_count: number; stampede_enabled?: boolean;
   }) {
     if (!get(k3sPermissions).editClusters) return;
+    const ctx = beginExperienceAction('k3s', 'create', 'shared.stream');
+    const current = captureOwner();
     creating = true;
     createError = '';
-    opts.progress.begin('create', t('list.preparingCreate'));
+    opts.progress.begin('create', t('list.preparingCreate'), ctx);
     const clusterName = form.name;
     let prevStep = '';
     try {
@@ -80,9 +97,9 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         stampede_enabled: form.stampede_enabled ?? true,
       };
       for await (const msg of streamK3sProgress('/api/v1/k3s/clusters/async', {
-        method: 'POST', body, token: opts.token(), projectId: opts.projectId(),
+        method: 'POST', body, token: opts.token(), projectId: opts.projectId(), experience: ctx,
       })) {
-        opts.progress.apply(msg);
+        opts.progress.apply(msg, ctx);
         if (msg.step !== prevStep && !opts.progress.visible && msg.step !== 'completed' && msg.step !== 'failed') {
           const stepLabel = K3S_CREATE_STEPS.find(s => s.id === msg.step)?.label ?? msg.step;
           toast.info(t('list.stepProgress', { name: clusterName, step: stepLabel }));
@@ -95,11 +112,11 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         }
       }
     } catch (e) {
-      opts.progress.failWith(String(e));
+      opts.progress.failWith(String(e), ctx);
     } finally {
-      opts.progress.end();
+      opts.progress.end(ctx, current);
       creating = false;
-      await fetchClusters();
+      await fetchClusters(undefined, ctx);
     }
   }
 
@@ -109,23 +126,25 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     const projectId = opts.projectId();
     if (!(await confirmDialog(t('list.confirmDelete', { name })))) return;
     if (!get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId) return;
+    const ctx = beginExperienceAction('k3s', 'delete', 'shared.stream');
+    const current = captureOwner();
     deleting = id;
-    opts.progress.begin('delete');
+    opts.progress.begin('delete', '', ctx);
     try {
       for await (const msg of streamK3sProgress(`/api/v1/k3s/clusters/${id}/delete-async`, {
-        method: 'POST', token: opts.token(), projectId: opts.projectId(),
+        method: 'POST', token: opts.token(), projectId: opts.projectId(), experience: ctx,
       })) {
-        opts.progress.apply(msg);
+        opts.progress.apply(msg, ctx);
         if (msg.step === 'completed') toast.success(t('list.deleteCompleted', { name, seconds: opts.progress.elapsedSeconds }));
         else if (msg.step === 'failed') toast.error(t('list.deleteFailed', { error: msg.error || t('list.unknownError') }));
       }
     } catch (e) {
-      opts.progress.failWith(String(e));
+      opts.progress.failWith(String(e), ctx);
       toast.error(t('list.deleteFailed', { error: String(e) }));
     } finally {
-      opts.progress.end();
+      opts.progress.end(ctx, current);
       deleting = null;
-      await fetchClusters();
+      await fetchClusters(undefined, ctx);
     }
   }
 
@@ -134,13 +153,22 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     if (!grade) return;
     const userId = opts.userId();
     const projectId = opts.projectId();
+    const ctx = beginExperienceAction('k3s', 'export', 'resource.detail');
+    const currentOwner = captureOwner();
+    const currentGrade = () => {
+      const current = get(k3sPermissions);
+      return currentOwner() && (grade === 'editor' ? current.workloads : current.credentials);
+    };
+    experienceState(ctx, 'loading');
     try {
-      const { blob } = await api.downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
+      const { blob } = await api.withExperience(ctx).downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
       // A native-authorized response must not disclose credentials after the requested grade is revoked.
       const current = get(k3sPermissions);
-      if ((grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId) return;
+      if ((grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId) { experienceDiscarded(ctx, 'scope_changed'); return; }
       downloadBlobAs(blob, `kubeconfig-${name}.yaml`);
+      if (currentGrade()) experienceState(ctx, 'ready');
     } catch (e) {
+      if (currentGrade()) experienceState(ctx, 'error');
       if (e instanceof ApiError && e.status === 404) {
         toast.warning(t('list.kubeconfigPending'));
       } else {
@@ -160,7 +188,8 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
 
   function toggleDeleted() {
     showDeleted = !showDeleted;
-    fetchClusters();
+    const ctx = beginExperienceAction('k3s', 'select', 'resource.list');
+    void fetchClusters(undefined, ctx);
   }
 
   return {

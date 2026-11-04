@@ -46,7 +46,7 @@ async function request<T>(path: string, identity: PackageIdentity, signal: Abort
   const result = await fetchWithAuth(path, {
     method: 'GET', signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     credentials: 'include', cache: 'no-store', redirect: 'error',
-  }, identity.token, identity.projectId);
+  }, identity.token, identity.projectId, { experience: identity.experience });
   if (!result.ok) {
     const envelope = await result.json().catch(() => null);
     const detail = envelope?.error ?? envelope?.detail;

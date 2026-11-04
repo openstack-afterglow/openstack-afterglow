@@ -124,6 +124,35 @@ async def claim_mutation(
     idempotency_key: object,
     source: Literal["mcp", "lumen"] = "mcp",
 ) -> MutationClaim:
+    """Observe only a committed claim; never rebind a replayed invocation."""
+    claim = await _claim_mutation(
+        principal, entry=entry, arguments=arguments, idempotency_key=idempotency_key, source=source
+    )
+    if claim.state == "claimed":
+        from app.services.experience_context import (
+            bind_experience_operation,
+            capture_experience_context,
+            emit_experience,
+        )
+
+        context = capture_experience_context(feature="mcp", action="submit", component="page")
+        if context is not None:
+            context = {**context, "actor": {"user_id": principal.user_id, "project_id": principal.anchor_project_id}}
+        await bind_experience_operation(context, "mcp_invocation", claim.invocation_id)
+        await emit_experience(
+            context, "operation.accepted", stage="mcp.admission", status="accepted", operation_id=claim.invocation_id
+        )
+    return claim
+
+
+async def _claim_mutation(
+    principal: McpPrincipal,
+    *,
+    entry: RegistryEntry,
+    arguments: object,
+    idempotency_key: object,
+    source: Literal["mcp", "lumen"] = "mcp",
+) -> MutationClaim:
     """Claim one key under the grant lock; all stale claims become non-retryable."""
     invocation_source = _invocation_source(source)
     if entry.effect != "external_mutation":
@@ -340,6 +369,19 @@ async def complete_mutation(
         raise
     except Exception as exc:
         raise McpInvocationError("MCP mutation completion is unavailable") from exc
+    from app.services.experience_context import capture_experience_context, emit_experience
+
+    context = capture_experience_context(feature="mcp", action="submit", component="page")
+    if context is not None:
+        context = {**context, "actor": {"user_id": principal.user_id, "project_id": principal.anchor_project_id}}
+    await emit_experience(
+        context,
+        "stage.completed",
+        stage="mcp.dispatch",
+        status="accepted" if result is not None else "outcome_unknown",
+        operation_id=invocation_id,
+        reason=None if result is not None else "unknown",
+    )
 
 
 def _factory() -> async_sessionmaker:
@@ -363,12 +405,13 @@ async def record_read_invocation(
     if entry.effect != "read" or status not in {"succeeded", "failed"}:
         raise McpInvocationError("read invocation audit state is invalid")
     now = _now()
+    invocation_id = str(uuid4())
     try:
         async with _factory()() as session, session.begin():
             await lock_principal_grant(session, principal)
             session.add(
                 McpToolInvocation(
-                    id=str(uuid4()),
+                    id=invocation_id,
                     grant_id=principal.grant_id,
                     source=invocation_source,
                     tool_name=entry.name,
@@ -380,6 +423,17 @@ async def record_read_invocation(
                     created_at=now,
                 )
             )
+        from app.services.experience_context import (
+            bind_experience_operation,
+            capture_experience_context,
+            emit_experience,
+        )
+
+        context = capture_experience_context(feature="mcp", action="inspect", component="page")
+        if context is not None:
+            context = {**context, "actor": {"user_id": principal.user_id, "project_id": principal.anchor_project_id}}
+        await bind_experience_operation(context, "mcp_invocation", invocation_id)
+        await emit_experience(context, "stage.completed", stage="readback", status=status, operation_id=invocation_id)
     except (McpAuthorityError, McpInvocationError):
         raise
     except Exception as exc:

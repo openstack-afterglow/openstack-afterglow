@@ -679,3 +679,163 @@ async def test_restore_from_backup_unauthenticated():
             json={"backup_id": "bk-1", "name": "restored", "flavor_id": "fl-1", "volume_size": 10},
         )
     assert resp.status_code == 401
+
+
+def test_instance_readback_rejects_failed_raw_proxy_response():
+    from app.services import trove
+
+    conn = MagicMock()
+    response = conn.database.get.return_value
+    response.raise_for_status.side_effect = RuntimeError("read unavailable")
+    with pytest.raises(RuntimeError, match="read unavailable"):
+        trove.get_instance(conn, "inst-1")
+    conn.database.get.assert_called_once_with("/instances/inst-1")
+    response.json.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 503, 504])
+def test_flavor_read_rejects_native_failure_before_json(status):
+    from httpx import HTTPStatusError, Request, Response
+
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        status, text="PRIVATE_NATIVE_FLAVOR_CANARY", request=Request("GET", "http://native.invalid/flavors")
+    )
+    with pytest.raises(HTTPStatusError) as raised:
+        trove.list_flavors(conn)
+    assert raised.value.response.status_code == status
+    conn.database.get.assert_called_once_with("/flavors")
+
+
+def test_flavor_read_propagates_transport_failure():
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.side_effect = ConnectionError("native unavailable")
+    with pytest.raises(ConnectionError):
+        trove.list_flavors(conn)
+
+
+def test_flavor_read_preserves_valid_empty_catalog():
+    from httpx import Request, Response
+
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        200, json={"flavors": []}, request=Request("GET", "http://native.invalid/flavors")
+    )
+    assert trove.list_flavors(conn) == []
+
+
+def test_flavor_read_keeps_existing_allowlist_and_identifier_contract():
+    from httpx import Request, Response
+
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        200,
+        json={
+            "flavors": [
+                {"id": "1", "name": "cpu.2c_2g", "ram": 2048, "vcpus": 2, "disk": 10},
+                {"str_id": "2", "name": "cpu.4c_8g", "ram": 8192, "vcpus": 4, "disk": 20},
+                {"id": "3", "name": "unapproved"},
+                {"name": "cpu.8c_16g"},
+            ]
+        },
+        request=Request("GET", "http://native.invalid/flavors"),
+    )
+    assert trove.list_flavors(conn) == [
+        {"id": "1", "name": "cpu.2c_2g", "ram": 2048, "vcpus": 2, "disk": 10},
+        {"id": "2", "name": "cpu.4c_8g", "ram": 8192, "vcpus": 4, "disk": 20},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_flavor_endpoint_does_not_reuse_legacy_fake_empty_cache(client, mock_conn):
+    from httpx import Request, Response
+
+    from app.services import cache
+    from app.services.cache import keys
+
+    legacy_key = keys.project_key("trove", "test-project-123", "flavors")
+    assert await cache.cached_call(legacy_key, 300, lambda: [], enabled=True) == []
+    mock_conn.database.get.return_value = Response(
+        503, text="PRIVATE_NATIVE_FLAVOR_CANARY", request=Request("GET", "http://native.invalid/flavors")
+    )
+    result = await client.get("/api/v1/database-instances/flavors?cache=true")
+    assert result.status_code == 500
+    assert "PRIVATE_NATIVE_FLAVOR_CANARY" not in result.text
+    mock_conn.database.get.assert_called_once_with("/flavors")
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 503, 504])
+def test_datastore_read_rejects_native_failure_before_json(status):
+    """Upstream 실패를 빈 목록으로 숨기지 않고 JSON 해석 전에 raise한다."""
+    from httpx import HTTPStatusError, Request, Response
+
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        status, text="PRIVATE_NATIVE_DATASTORE_CANARY", request=Request("GET", "http://native.invalid/datastores")
+    )
+    with pytest.raises(HTTPStatusError) as raised:
+        trove.list_datastores(conn)
+    assert raised.value.response.status_code == status
+    conn.database.get.assert_called_once_with("/datastores")
+
+
+def test_datastore_read_propagates_transport_failure():
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.side_effect = ConnectionError("native unavailable")
+    with pytest.raises(ConnectionError):
+        trove.list_datastores(conn)
+
+
+def test_datastore_read_preserves_valid_empty_catalog():
+    from httpx import Request, Response
+
+    from app.services import trove
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        200, json={"datastores": []}, request=Request("GET", "http://native.invalid/datastores")
+    )
+    assert trove.list_datastores(conn) == []
+
+
+@pytest.mark.asyncio
+async def test_list_datastores_error_is_not_empty_success(client, mock_conn):
+    """GET /datastores 장애 → 500. 빈 목록 200으로 위장하지 않는다."""
+    with patch("app.services.trove.list_datastores", new=MagicMock(side_effect=Exception("PRIVATE_DATASTORE_CANARY"))):
+        resp = await client.get("/api/v1/database-instances/datastores")
+    assert resp.status_code == 500
+    assert "PRIVATE_DATASTORE_CANARY" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# fail-closed 회귀: 백업 owner 확인은 장애를 부재(404)로 위장하지 않는다
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,expected", [(404, 404), (401, 404), (403, 404), (500, 503), (503, 503)])
+async def test_assert_db_backup_owner_preserves_denial_without_inventing_absence(status, expected):
+    """백업 조회 실패: 401/403/404 → opaque 404, 그 외 → 503."""
+    from fastapi import HTTPException
+    from openstack.exceptions import HttpException
+
+    from app.api.database.instances import _assert_db_backup_owner
+
+    conn = MagicMock()
+    conn.database.get_backup.side_effect = HttpException("PRIVATE_NATIVE_BACKUP_BODY", http_status=status)
+    with pytest.raises(HTTPException) as raised:
+        await _assert_db_backup_owner(conn, "bk-1", {"user_id": "u"})
+    assert raised.value.status_code == expected
+    assert "PRIVATE_NATIVE_BACKUP_BODY" not in str(raised.value.detail)

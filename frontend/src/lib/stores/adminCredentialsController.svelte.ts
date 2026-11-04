@@ -3,6 +3,7 @@ import { ApiError } from '$lib/api/errors';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as dt } from '$lib/i18n/ns/domain-admin';
 import { isRetiredRole } from '$lib/utils/roleCatalog';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 import type {
   ApplicationCredential, ApplicationCredentialIssued, ApplicationCredentialInput,
   UserCredential, UserCredentialDetail, UserCredentialInput, CredentialAuthority,
@@ -57,7 +58,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   function reset() {
     ++epoch; ++listTicket; ++directoryTicket; close();
     items = []; users = []; selectedUser = ''; error = ''; directoryError = ''; loading = false; directoryLoading = false;
-    if (allowed()) { void load(); void loadUsers(); }
+    if (allowed()) { void loadAttempt(); void loadUsers(); }
   }
   function setScope(next: string) {
     if (next === domainId) return;
@@ -71,13 +72,16 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   async function loadUsers() {
     if (!allowed()) return;
     const { a, d, owns } = capture(), ticket = ++directoryTicket;
+    const experience = beginExperienceLoad('admin', 'resource.list');
+    const current = () => owns() && ticket === directoryTicket;
     directoryLoading = true; directoryError = ''; users = [];
+    experienceState(experience, 'loading');
     try {
       const all: CredentialUser[] = [], seen = new Set<string>(), markers = new Set<string>();
       let marker: string | null = null;
       do {
-        const page: { items: CredentialUser[]; next_marker: string | null } = await credentialRequest(`/api/v1/admin/users?limit=100${marker ? `&marker=${encodeURIComponent(marker)}` : ''}`, d, a);
-        if (!owns() || ticket !== directoryTicket) return;
+        const page: { items: CredentialUser[]; next_marker: string | null } = await credentialRequest(`/api/v1/admin/users?limit=100${marker ? `&marker=${encodeURIComponent(marker)}` : ''}`, d, a, 'GET', undefined, experience);
+        if (!current()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
         for (const user of page.items) {
           assertScope(user);
           if (!seen.has(user.id)) { seen.add(user.id); all.push(user); }
@@ -87,34 +91,53 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
         marker = page.next_marker;
       } while (marker);
       users = all;
+      experienceState(experience, users.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, current);
       if (selectedUser && !all.some(user => user.id === selectedUser)) {
         ++listTicket; selectedUser = ''; close(); items = []; loading = false; error = '';
-        if (kind === 'user') void load();
+        if (kind === 'user') void loadAttempt();
       }
       if (kind === 'application' && !selectedUser && all.some(user => user.id === a.userId)) {
         selectedUser = a.userId!;
-        void load();
+        void loadAttempt();
       }
-    } catch (e) { if (owns() && ticket === directoryTicket) directoryError = failure(e); }
+    } catch (e) {
+      if (current()) { directoryError = failure(e); experienceState(experience, 'error'); void experienceApplied(experience, {}, current); }
+      else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
+    }
     finally { if (owns() && ticket === directoryTicket) directoryLoading = false; }
   }
   async function selectUser(id: string) {
     if (id && !users.some(user => user.id === id)) return;
-    ++listTicket; selectedUser = id; close(); items = []; loading = false; error = ''; await load();
+    const experience = beginExperienceAction('admin', 'select', 'resource.list');
+    ++listTicket; selectedUser = id; close(); items = []; loading = false; error = '';
+    if (kind === 'application' && !id) { experienceState(experience, 'disabled'); void experienceApplied(experience); return; }
+    await loadAttempt(experience);
   }
-  async function load() {
+  function load() {
+    return loadAttempt(beginExperienceAction('admin', 'refresh', 'resource.list'));
+  }
+  async function loadAttempt(parentExperience?: ExperienceContext) {
     if (!allowed() || (kind === 'application' && !selectedUser)) return;
     const { a, d, owns } = capture(), ticket = ++listTicket;
+    const experience = parentExperience ?? beginExperienceLoad('admin', 'resource.list');
+    const current = () => owns() && ticket === listTicket;
     loading = true; error = '';
+    experienceState(experience, 'loading');
     try {
-      const result = await credentialRequest<{ items: (ApplicationCredential | UserCredential)[] }>(base + query(), d, a);
-      if (!owns() || ticket !== listTicket) return;
+      const result = await credentialRequest<{ items: (ApplicationCredential | UserCredential)[] }>(base + query(), d, a, 'GET', undefined, experience);
+      if (!current()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
       for (const item of result.items) {
         assertScope(item);
         if (selectedUser && item.user_id !== selectedUser) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
       }
       items = result.items;
-    } catch (e) { if (owns() && ticket === listTicket) { items = []; error = failure(e); } }
+      experienceState(experience, items.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, current);
+    } catch (e) {
+      if (current()) { items = []; error = failure(e); experienceState(experience, 'error'); void experienceApplied(experience, {}, current); }
+      else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
+    }
     finally { if (owns() && ticket === listTicket) loading = false; }
   }
   async function open(next: 'create' | 'detail' | 'delete', item?: ApplicationCredential | UserCredential) {
@@ -124,39 +147,56 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     draft.user_id = selectedUser;
     if (next === 'delete') return;
     const { a, d, owns } = capture(), ticket = modalTicket;
+    const experience = beginExperienceAction('admin', next === 'detail' ? 'inspect' : 'open', 'resource.detail');
+    const current = () => owns() && ticket === modalTicket;
     busy = true;
+    experienceState(experience, 'loading');
     try {
       if (next === 'create' && kind === 'application') {
-        const result = await credentialRequest<CredentialCreationContext>(`${base}/context`, d, a);
-        if (!owns() || ticket !== modalTicket) return;
+        const result = await credentialRequest<CredentialCreationContext>(`${base}/context`, d, a, 'GET', undefined, experience);
+        if (!current()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
         assertScope(result);
         if (result.user_id !== a.userId || result.project_id !== a.projectId) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
         context = { ...result, roles: result.roles.filter(role => !isRetiredRole(role)) };
       }
       else if (next === 'detail' && item) {
-        const result = await credentialRequest<ApplicationCredential | UserCredentialDetail>(`${base}/${encodeURIComponent(item.id)}${kind === 'application' ? query(item.user_id) : ''}`, d, a);
-        if (!owns() || ticket !== modalTicket) return;
+        const result = await credentialRequest<ApplicationCredential | UserCredentialDetail>(`${base}/${encodeURIComponent(item.id)}${kind === 'application' ? query(item.user_id) : ''}`, d, a, 'GET', undefined, experience);
+        if (!current()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
         assertScope(result);
         if (result.id !== item.id || result.user_id !== item.user_id) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
         detail = result;
       }
-    } catch (e) { if (owns() && ticket === modalTicket) modalError = failure(e); }
+      experienceState(experience, 'ready');
+      void experienceApplied(experience, {}, current);
+    } catch (e) {
+      if (current()) { modalError = failure(e); experienceState(experience, 'error'); void experienceApplied(experience, {}, current); }
+      else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
+    }
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }
   async function reveal(edit = false) {
     if (!allowed() || kind !== 'user' || !detail || busy) return;
     const { a, d, owns } = capture(), ticket = ++modalTicket, id = detail.id, userId = detail.user_id, projectId = detail.project_id;
+    const experience = beginExperienceAction('admin', 'inspect', 'resource.detail');
+    const current = () => owns() && ticket === modalTicket;
     busy = true; modalError = '';
+    experienceState(experience, 'loading');
     try {
-      const result = await credentialRequest<UserCredentialDetail>(`${base}/${encodeURIComponent(id)}?sensitive=true`, d, a);
-      if (!owns() || ticket !== modalTicket) return;
+      const result = await credentialRequest<UserCredentialDetail>(`${base}/${encodeURIComponent(id)}?sensitive=true`, d, a, 'GET', undefined, experience);
+      if (!current()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
       assertScope(result);
       if (result.id !== id || result.user_id !== userId || result.project_id !== projectId) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
       detail = result;
       if (edit) {
         mode = 'edit'; draft.user_id = result.user_id; draft.project_id = result.project_id ?? ''; draft.type = result.type; draft.blob = result.blob ?? '';
       }
-    } catch (e) { if (owns() && ticket === modalTicket) modalError = failure(e); }
+      // Only lifecycle metadata is collected: credential detail and issued material never enter replay.
+      experienceState(experience, 'ready');
+      void experienceApplied(experience, {}, current);
+    } catch (e) {
+      if (current()) { modalError = failure(e); experienceState(experience, 'error'); void experienceApplied(experience, {}, current); }
+      else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
+    }
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }
   async function submit() {
@@ -167,16 +207,18 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     const { a, d, owns } = capture(), ticket = modalTicket, action = mode, id = detail?.id;
     if (kind === 'application' && action === 'create' && (!context || !draft.role_ids.length || draft.role_ids.some(id => !context!.roles.some(role => role.id === id)))) { modalError = t('credentials.chooseRoles'); return; }
     busy = true; modalError = '';
+    const experience = beginExperienceAction('admin', action === 'edit' ? 'update' : action, 'resource.detail');
+    experienceState(experience, 'loading');
     try {
       let result: ApplicationCredentialIssued | UserCredential | undefined;
-      if (action === 'delete' && id) await credentialRequest(`${base}/${encodeURIComponent(id)}${kind === 'application' ? query(detail!.user_id) : ''}`, d, a, 'DELETE');
+      if (action === 'delete' && id) await credentialRequest(`${base}/${encodeURIComponent(id)}${kind === 'application' ? query(detail!.user_id) : ''}`, d, a, 'DELETE', undefined, experience);
       else {
         const body: ApplicationCredentialInput | UserCredentialInput = kind === 'application'
           ? { name: draft.name, description: draft.description, role_ids: draft.role_ids, ...(draft.expires_at ? { expires_at: new Date(draft.expires_at).toISOString() } : {}) }
           : { user_id: draft.user_id, project_id: draft.project_id || null, type: draft.type, blob: draft.blob };
-        result = await credentialRequest(base + (action === 'edit' && id ? `/${encodeURIComponent(id)}` : ''), d, a, action === 'edit' ? 'PATCH' : 'POST', body);
+        result = await credentialRequest(base + (action === 'edit' && id ? `/${encodeURIComponent(id)}` : ''), d, a, action === 'edit' ? 'PATCH' : 'POST', body, experience);
       }
-      if (!owns() || ticket !== modalTicket) return;
+      if (!owns() || ticket !== modalTicket) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
       if (result) {
         assertScope(result);
         const userId = kind === 'application' ? a.userId : draft.user_id;
@@ -185,12 +227,17 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
       }
       close();
       if (kind === 'application' && action === 'create') { issued = result as ApplicationCredentialIssued; mode = 'issued'; }
-      void load();
+      const settledTicket = modalTicket;
+      experienceState(experience, 'ready');
+      void experienceApplied(experience, {}, () => owns() && settledTicket === modalTicket);
+      void loadAttempt(experience);
     } catch (e) {
       if (owns() && ticket === modalTicket) {
         modalError = failure(e);
-        if (e instanceof ApiError && e.code === 'credential_rollback_failed') void load();
-      }
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, () => owns() && ticket === modalTicket);
+        if (e instanceof ApiError && e.code === 'credential_rollback_failed') void loadAttempt(experience);
+      } else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
     }
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }

@@ -1346,3 +1346,58 @@ def test_monitoring_group_substituted_owner_blocks_rule_creation():
     with pytest.raises(ValueError, match="unexpected project"):
         ensure_node_exporter_sg(conn, "target-project", scrape_cidr="192.0.2.0/24")
     conn.network.create_security_group_rule.assert_not_called()
+
+
+def test_admin_topology_snapshot_reads_ports_once_for_router_compute_and_floating_ips():
+    from types import SimpleNamespace
+
+    from app.services.neutron import get_topology_snapshot
+
+    conn = _topology_conn()
+    router_port = SimpleNamespace(
+        id="router-port",
+        device_id="r-gw",
+        device_owner="network:router_interface",
+        network_id="net-1",
+        mac_address=None,
+        fixed_ips=[{"ip_address": "10.0.0.1", "subnet_id": "subnet-1"}],
+    )
+    compute_port = SimpleNamespace(
+        id="compute-port",
+        device_id="vm",
+        device_owner="compute:nova",
+        network_id="net-1",
+        mac_address="fa:16:3e:00:00:01",
+        fixed_ips=[{"ip_address": "10.0.0.5", "subnet_id": "subnet-1"}],
+    )
+    conn.network.ports.return_value = [router_port, compute_port]
+    conn.network.ips.return_value = [
+        SimpleNamespace(
+            id="fip",
+            floating_ip_address="203.0.113.10",
+            fixed_ip_address="10.0.0.5",
+            status="ACTIVE",
+            port_id="compute-port",
+            floating_network_id="external",
+            project_id="proj-1",
+        )
+    ]
+    topo, index, subnets = get_topology_snapshot(conn)
+    assert topo.routers[0].connected_subnet_ids == ["subnet-1"]
+    assert topo.routers[0].interface_ips == [{"ip_address": "10.0.0.1", "subnet_id": "subnet-1"}]
+    assert index[("vm", "10.0.0.5")]["port_id"] == "compute-port"
+    assert ("r-gw", "10.0.0.1") not in index
+    assert topo.floating_ips[0].instance_id == "vm"
+    assert subnets == conn.network.subnets.return_value
+    conn.network.ports.assert_called_once()
+    conn.network.subnets.assert_called_once()
+    conn.compute.servers.assert_not_called()
+
+
+def test_admin_topology_snapshot_does_not_hide_port_provider_failure():
+    from app.services.neutron import get_topology_snapshot
+
+    conn = _topology_conn()
+    conn.network.ports.side_effect = RuntimeError("provider unavailable")
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        get_topology_snapshot(conn)

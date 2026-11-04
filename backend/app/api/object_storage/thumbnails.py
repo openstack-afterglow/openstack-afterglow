@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.api.common.owner_check import native_resource_read_failure
 from app.api.deps import get_os_conn
 from app.services import cache, thumbnails
 
@@ -34,8 +35,12 @@ async def get_object_thumbnail(
 
     try:
         meta = await asyncio.to_thread(swift.get_object_metadata, conn, container_name, object_name)
-    except Exception:
-        raise HTTPException(status_code=404, detail="오브젝트를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="오브젝트를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
     content_type = (meta.get("content_type") or "").split(";", 1)[0].strip().lower()
     size = int(meta.get("bytes") or 0)

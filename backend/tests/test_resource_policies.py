@@ -229,3 +229,120 @@ async def test_consume_network_auth_and_outage_do_not_become_missing_400(admin_c
             )
     assert failure.value is error
     run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batch_discovery_shares_native_reads_only_inside_execution_scope(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    admin_conn = SimpleNamespace(network=SimpleNamespace())
+    service_conn = SimpleNamespace(network=SimpleNamespace(), close=MagicMock())
+    connect = MagicMock(return_value=service_conn)
+
+    async def discovery(conn, spec):
+        assert conn is admin_conn
+        return connect() if spec.execution_scope == "service" else conn
+
+    def network(resource_id, *, shared=False, external=False):
+        return SimpleNamespace(
+            id=resource_id,
+            name=resource_id,
+            is_shared=shared,
+            is_external=external,
+            is_router_external=external,
+        )
+
+    reads = []
+
+    def networks(conn):
+        reads.append(conn)
+        return (
+            [network("shared", shared=True), network("external", external=True), network("private")]
+            if conn is admin_conn
+            else [network("service-private"), network("service-external", external=True)]
+        )
+
+    share_types = MagicMock(
+        return_value=[
+            {"id": "ceph", "name": "CephFS", "is_public": True, "supported_protocols": ["CEPHFS"]},
+            {"id": "nfs", "name": "NFS", "is_public": True, "supported_protocols": ["NFS"]},
+            {"id": "private", "is_public": False, "supported_protocols": ["CEPHFS", "NFS"]},
+        ]
+    )
+    monkeypatch.setattr(resource_policies, "discovery_connection", discovery)
+    admin_conn.network.networks = lambda: networks(admin_conn)
+    service_conn.network.networks = lambda: networks(service_conn)
+    monkeypatch.setattr(resource_policies.manila, "list_share_types", share_types)
+    result = await resource_policies.discover_options_batch(
+        admin_conn,
+        [
+            "nova.default_network",
+            "nova.default_external_network",
+            "builder.network",
+            "builder.floating_network",
+            "manila.cephfs_share_type",
+            "manila.nfs_share_type",
+        ],
+    )
+    assert [option["id"] for option in result["nova.default_network"]] == ["shared"]
+    assert [option["id"] for option in result["nova.default_external_network"]] == ["external"]
+    assert [option["id"] for option in result["builder.network"]] == ["service-private", "service-external"]
+    assert [option["id"] for option in result["builder.floating_network"]] == ["service-external"]
+    assert [option["id"] for option in result["manila.cephfs_share_type"]] == ["ceph"]
+    assert [option["id"] for option in result["manila.nfs_share_type"]] == ["nfs"]
+    assert len(reads) == 2
+    assert {id(read) for read in reads} == {id(admin_conn), id(service_conn)}
+    connect.assert_called_once()
+    service_conn.close.assert_called_once()
+    share_types.assert_called_once_with(admin_conn)
+    # A subsequent request may not inherit stale native catalogs.
+    await resource_policies.discover_options_batch(admin_conn, ["nova.default_network"])
+    assert len(reads) == 3
+    assert reads[-1] is admin_conn
+
+
+@pytest.mark.asyncio
+async def test_batch_discovery_retains_partial_failure_without_duplicate_failed_reads(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    outage = RuntimeError("private upstream response")
+    networks = MagicMock(side_effect=outage)
+    conn = SimpleNamespace(network=SimpleNamespace(networks=networks))
+    monkeypatch.setattr(resource_policies.manila, "list_share_types", lambda _conn: [])
+    result = await resource_policies.discover_options_batch(
+        conn,
+        [
+            "nova.default_network",
+            "nova.default_external_network",
+            "manila.nfs_share_type",
+            "unknown",
+        ],
+    )
+    assert result["nova.default_network"] is outage
+    assert result["nova.default_external_network"] is outage
+    assert result["manila.nfs_share_type"] == []
+    assert isinstance(result["unknown"], resource_policies.ResourcePolicyValidationError)
+    networks.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_discovery_never_reuses_catalog_to_validate_a_save(monkeypatch):
+    from types import SimpleNamespace
+
+    conn = _NetworkConnection(
+        [
+            SimpleNamespace(
+                id="network",
+                name="Shared",
+                is_shared=True,
+                is_router_external=False,
+            )
+        ]
+    )
+    conn.network.networks = lambda: list(conn.network._networks.values())
+    assert (await resource_policies.discover_options_batch(conn, ["nova.default_network"]))["nova.default_network"]
+    conn.network._networks.clear()
+    with pytest.raises(resource_policies.ResourcePolicyValidationError, match="unavailable"):
+        await resource_policies.validate_selection(conn, "nova.default_network", "network")

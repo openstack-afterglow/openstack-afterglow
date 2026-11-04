@@ -9,7 +9,7 @@ vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhos
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet },
+	api: { get: mockGet, withExperience: () => ({ get: mockGet }) },
 }));
 
 

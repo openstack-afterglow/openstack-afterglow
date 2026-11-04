@@ -20,7 +20,9 @@
 	import { isSafeAuthorizeUrl, storePendingProviderLogin } from '$lib/utils/domainLogin';
 	import { LUMEN_SOURCE_QUERY } from '$lib/utils/lumenSourceNavigation';
 	import { t } from '$lib/i18n/ns/public-entry';
-	import { t as td } from '$lib/i18n/ns/domain-auth';
+	import { t as translateDomain } from '$lib/i18n/ns/domain-auth';
+	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type AuthExperience } from './authExperience';
+	const td = translateDomain;
 
 	// Entry redirects belong only to the session present when this page was created.
 	const initialAuth = get(auth);
@@ -41,6 +43,13 @@
 	let generation = 0;
 	let active = false;
 	let publishing = false;
+	let discoveryExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
+	$effect(() => {
+		const key = !sso || providersLoading || !discoveryExperience ? null : providersError ? 'login.providers.unavailable' : !providers.length ? 'login.sso.empty' : null;
+		if (key) td(key);
+		presentNotice('discovery', discoveryExperience, 'domain-auth', key, providersError ? 'warning' : 'info');
+	});
 	const busy = $derived(loading || providerLoading !== null || $logoutInProgress || $projectSwitching);
 	const providerNameCounts = $derived.by(() => {
 		const counts = new Map<string, number>();
@@ -78,38 +87,49 @@
 	});
 
 	async function discoverProviders() {
+		const observation = beginAuthExperience('auth.login', 'load', () => active);
+		discoveryExperience = observation;
+		observation.state('loading');
 		// Public discovery belongs to this mounted page, not a credential/authorize attempt.
 		try {
 			const options = await api.get<LoginOptions>('/api/v1/auth/login-options', undefined, undefined,
-				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
-			if (!active) return;
+				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false, ...observation.options });
+			if (!active) { observation.discard('unmounted'); return; }
 			providers = options.providers;
+			observation.state(providers.length ? 'ready' : 'empty');
 		} catch {
-			if (active) providersError = true;
+			if (active) { providersError = true; observation.state('error'); }
+			else observation.discard('unmounted');
 		} finally {
-			if (active) providersLoading = false;
+			if (active) { providersLoading = false; void observation.applied(); }
 		}
 	}
 
 	async function discoverSignup() {
+		const observation = beginAuthExperience('auth.signup', 'load', () => active);
 		// Visibility is public page-lifetime discovery, never an enrollment permission.
 		try {
 			const options = await api.get<SignupOptions>('/api/v1/auth/signup/options', undefined, undefined,
-				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false });
+				{ cache: 'no-store', suppressAuthRedirect: true, replayOnUnauthorized: false, ...observation.options });
 			if (active) signupButtonVisible = options.signup_button_visible === true
 				&& options.signup_enabled === true && options.smtp_configured === true;
 		} catch {
 			if (active) signupButtonVisible = false;
 		}
+		if (!active) observation.discard('unmounted');
+		else { observation.state(signupButtonVisible ? 'ready' : 'disabled'); void observation.applied(); }
 	}
 
 	async function selectMethod(useSso: boolean) {
 		if (!active || busy) return;
+		const observation = beginAuthExperience('auth.login', 'select', () => active && sso === useSso);
 		password = '';
 		passwordVisible = false;
 		error = '';
 		personalRecovery = false;
 		sso = useSso;
+		observation.state('ready', useSso ? 1 : 0);
+		void observation.applied();
 		await tick();
 		if (active && sso === useSso) document.getElementById(useSso ? 'login-sso-title' : 'login-username')?.focus();
 	}
@@ -118,7 +138,8 @@
 		void api.post('/api/v1/auth/logout', {}, token, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false }).catch(() => {});
 	}
 
-	function passwordErrorMessage(e: unknown): string {
+	function passwordErrorMessage(e: unknown, observation: AuthExperience): string {
+		const td = observedAuthText(observation, 'domain-auth', translateDomain);
 		if (!(e instanceof ApiError)) return td('login.password.unavailable');
 		if (e.code === 'personal_project_retry_available') return td('login.personalRecovery.retryHelp');
 		if (e.code === 'personal_project_recovery_required') return td('login.personalRecovery.operatorHelp');
@@ -129,9 +150,14 @@
 		return td('login.password.failed', { status: e.status });
 	}
 	async function login() {
-		if (!active || busy || sso || !username || !password) return;
+		if (!active || busy || sso) return;
 		const current = generation;
+		const owns = () => active && current === generation;
+		const observation = beginAuthExperience('auth.login', 'sign_in', owns);
+		const text = observedAuthText(observation, 'domain-auth', td);
+		if (!username || !password) { observation.validation('required'); return; }
 		loading = true;
+		observation.state('loading');
 		error = '';
 		let data: LoginResponse;
 		try {
@@ -140,19 +166,21 @@
 				{ username, password },
 				undefined,
 				undefined,
-				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options },
 			);
 		} catch (e) {
-			if (!active || current !== generation) return;
+			if (!owns()) { observation.discard(active ? 'stale' : 'unmounted'); return; }
 			loading = false;
 			if (e instanceof ApiError && (e.code === 'personal_project_retry_available' || e.code === 'personal_project_recovery_required')) {
 				personalRecovery = true;
 				password = '';
 			}
-			error = passwordErrorMessage(e);
+			error = passwordErrorMessage(e, observation);
+			observation.state('error'); void observation.applied();
 			return;
 		}
 		if (!active || current !== generation) {
+			observation.discard(active ? 'stale' : 'unmounted');
 			discardIssuedSession(data.token);
 			return;
 		}
@@ -162,18 +190,26 @@
 		} catch {
 			discardIssuedSession(data.token);
 			loading = false;
-			error = td('login.sessionMismatch');
+			error = text('login.sessionMismatch');
+			observation.validation('authority'); observation.state('error'); void observation.applied();
 			return;
 		}
 		password = '';
+		// Only the still-anonymous draft clearing is applied here; publication changes owner.
+		void observation.applied();
 		publishing = true;
 		try { setLoginAuth(mapped.state); } finally { publishing = false; }
+		beginAuthExperience('auth.login', 'load', () => active).state('loading');
 		await goto(freshLoginDestination(mapped.target));
 	}
 
 	async function startProvider(provider: LoginProviderOption) {
 		if (!active || busy || !sso) return;
 		const current = generation;
+		const owns = () => active && current === generation;
+		const observation = beginAuthExperience('auth.provider', 'sign_in', owns);
+		const text = observedAuthText(observation, 'domain-auth', td);
+		observation.state('loading');
 		providerLoading = provider;
 		error = '';
 		try {
@@ -182,20 +218,22 @@
 				{},
 				undefined,
 				undefined,
-				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options },
 			);
-			if (!active || current !== generation) return;
+			if (!owns()) { observation.discard(active ? 'stale' : 'unmounted'); return; }
 			if (!isSafeAuthorizeUrl(res.authorize_url)) {
 				providerLoading = null;
-				error = td('login.provider.invalidUrl');
+				error = text('login.provider.invalidUrl');
+				observation.validation('policy'); observation.state('error'); void observation.applied();
 				return;
 			}
 			storePendingProviderLogin({ domainId: provider.domain_id, providerId: provider.id });
 			window.location.assign(res.authorize_url);
 		} catch {
-			if (!active || current !== generation) return;
+			if (!owns()) { observation.discard(active ? 'stale' : 'unmounted'); return; }
 			providerLoading = null;
-			error = td('login.provider.unavailable');
+			error = text('login.provider.unavailable');
+			observation.state('error'); void observation.applied();
 		}
 	}
 

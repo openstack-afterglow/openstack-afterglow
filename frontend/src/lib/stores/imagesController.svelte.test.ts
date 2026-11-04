@@ -10,6 +10,7 @@ vi.mock('$lib/api/client', () => ({
     get: vi.fn(),
     delete: vi.fn(),
     post: vi.fn(),
+    withExperience() { return this; },
   },
 }));
 

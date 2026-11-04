@@ -13,7 +13,7 @@ vi.mock('$lib/stores/auth', () => ({
 	canWrite: writable(true),
 }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, put: mockPut },
+	api: { get: mockGet, put: mockPut, withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 400; },
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({

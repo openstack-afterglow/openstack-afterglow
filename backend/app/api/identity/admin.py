@@ -62,7 +62,7 @@ from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, tt
 from app.services.cache import invalidation as cache_invalidation
 from app.services.flavor_presentation import canonical_cpu_display_name
 from app.services.keystone import get_drover_proxy
-from app.services.octavia import get_topology_lbs
+from app.services.octavia import TopologyLoadBalancersUnavailable, get_topology_lbs
 
 # FastAPI-free 인벤토리 유틸리티로 이동됨 — admin.py 내부 호출 + 하위 호환 재export.
 from app.services.openstack_inventory import _fetch_hypervisors_raw, list_servers_complete
@@ -1464,14 +1464,19 @@ async def get_admin_container(
     """관리자용 컨테이너 단건 조회."""
     if not get_settings().service_zun_enabled:
         raise HTTPException(status_code=503, detail="Zun 서비스가 비활성화되어 있습니다")
+    from app.api.common.owner_check import native_resource_read_failure
     from app.services.zun import ZunServiceUnavailable, get_container
 
     try:
         return await asyncio.to_thread(get_container, conn, container_id)
     except ZunServiceUnavailable:
         raise HTTPException(status_code=503, detail="컨테이너 서비스를 사용할 수 없습니다")
-    except Exception:
-        raise HTTPException(status_code=404, detail="컨테이너를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="컨테이너를 찾을 수 없습니다",
+            unavailable_detail="컨테이너 서비스에 연결할 수 없습니다",
+        )
 
 
 @router.get("/containers/{container_id}/logs", dependencies=[Depends(require_admin)])
@@ -1670,8 +1675,11 @@ async def admin_topology(
     scope: AdminResourceScope = Depends(admin_resource_scope),
 ):
     """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지 (네트워크에 provider 세그먼트 메타 포함)."""
+    fresh_subnets: list | None = None
 
     def _fetch():
+        nonlocal fresh_subnets
+
         # Trove 미배포/조회 실패는 정상 → 전부 is_database=False.
         def _db_ips() -> set:
             try:
@@ -1680,14 +1688,14 @@ async def admin_topology(
                 _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
                 return set()
 
-        # 서로 의존하지 않는 OpenStack 조회는 동시에 수행한다 — 직렬 호출은 응답 시간이 그대로 합산된다.
-        # port_index: (device_id, ip) → {network_id, port_id, mac_address}
-        topo, port_index, db_ips, servers = run_parallel(
-            lambda: neutron.get_topology(conn, include_provider=True),
-            lambda: neutron.build_compute_port_index(conn),
+        # The network snapshot reuses one native port listing for router interfaces
+        # and compute NICs; ownership rows remain local to this request.
+        snapshot, db_ips, servers = run_parallel(
+            lambda: neutron.get_topology_snapshot(conn),
             _db_ips,
             lambda: list(conn.compute.servers(details=True, all_projects=True)),
         )
+        topo, port_index, fresh_subnets = snapshot
 
         def _ip_entry(server_id: str, net_name: str, addr: dict) -> dict:
             port = port_index.get((server_id, addr["addr"]), {})
@@ -1721,6 +1729,9 @@ async def admin_topology(
                 )
             )
         topo.instances = instances
+        names = {instance.id: instance.name for instance in instances}
+        for floating_ip in topo.floating_ips:
+            floating_ip.instance_name = names.get(floating_ip.instance_id)
         topo.load_balancers = get_topology_lbs(
             conn,
             project_id=None,
@@ -1729,10 +1740,16 @@ async def admin_topology(
         return topo.model_dump()
 
     try:
-        result = await cached_call(
-            "afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh
+        result, directory = await asyncio.gather(
+            cached_call("afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh),
+            asyncio.to_thread(inventory_directory, conn),
+            return_exceptions=True,
         )
-        directory = await asyncio.to_thread(inventory_directory, conn)
+        # Settle both reads before releasing the request-owned connection.
+        if isinstance(result, BaseException):
+            raise result
+        if isinstance(directory, BaseException):
+            raise directory
         result = {
             **result,
             "networks": [{**network, **directory.owner(network)} for network in result.get("networks", [])],
@@ -1743,11 +1760,11 @@ async def admin_topology(
             key: scope.filter(result.get(key, []))
             for key in ("networks", "routers", "instances", "floating_ips", "load_balancers")
         }
-        subnet_ids = {
-            subnet.id
-            for subnet in await asyncio.to_thread(lambda: list(conn.network.subnets()))
-            if scope.includes(subnet)
-        }
+        # A cache hit still needs fresh native ownership; a miss already collected
+        # the exact same request's subnets and must not enumerate them twice.
+        if fresh_subnets is None:
+            fresh_subnets = await asyncio.to_thread(lambda: list(conn.network.subnets()))
+        subnet_ids = {subnet.id for subnet in fresh_subnets if scope.includes(subnet)}
         scoped["networks"] = [
             {
                 **network,
@@ -1760,6 +1777,9 @@ async def admin_topology(
         return scoped
     except HTTPException:
         raise
+    except TopologyLoadBalancersUnavailable as exc:
+        _logger.warning("Octavia topology is unavailable", exc_info=True)
+        raise HTTPException(503, "topology_load_balancers_unavailable") from exc
     except Exception:
         _logger.exception("토폴로지 조회 실패")
         raise HTTPException(status_code=500, detail="토폴로지 조회 실패")

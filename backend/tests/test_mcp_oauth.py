@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -18,6 +19,7 @@ from app.services.mcp_control_plane.oauth import (
     validate_redirect_uris,
     validate_scopes,
 )
+from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, McpOAuthFailureReason
 
 
 def test_oauth_urls_require_https_production_public_base():
@@ -373,3 +375,70 @@ def test_consent_rejects_unknown_renewal_fields_instead_of_silent_downgrade():
 
     with pytest.raises(ValidationError):
         mcp_api.OAuthConsentApproval(continual=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", list(McpOAuthFailureReason))
+async def test_token_operational_reasons_are_private_and_secret_free(monkeypatch, caplog, reason):
+    from app.main import app
+    from app.utils.log import SensitiveDataFilter
+    from app.utils.structured_logging import JSONFormatter
+
+    secret = "DO-NOT-LOG-secret-client-or-token"
+    monkeypatch.setattr(mcp_api, "_require_enabled", lambda: None)
+    monkeypatch.setattr(mcp_api, "_session_factory", lambda: object())
+    monkeypatch.setattr(mcp_api, "_urls", lambda: oauth_urls("https://api.example.test", production=True))
+    monkeypatch.setattr(
+        mcp_api,
+        "refresh_tokens",
+        AsyncMock(side_effect=McpOAuthAuthorityError(secret, reason=reason)),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/mcp/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": secret,
+                "client_id": secret,
+                "resource": "https://private.example.test/" + secret,
+            },
+        )
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_grant", "error_description": "OAuth grant is invalid"}
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "reason" not in response.headers
+    assert secret not in caplog.text
+    records = [record for record in caplog.records if record.name == "app.api.mcp"]
+    sanitizer = SensitiveDataFilter()
+    formatter = JSONFormatter()
+    diagnostics = []
+    for record in records:
+        sanitizer.filter(record)
+        serialized = formatter.format(record)
+        assert secret not in serialized
+        diagnostics.append(json.loads(serialized)["diagnostic_reason"])
+    assert diagnostics == [reason.value]
+    assert all(record.exc_info is None for record in records)
+
+
+@pytest.mark.asyncio
+async def test_token_malformed_form_has_bounded_reason_and_no_payload_logging(monkeypatch, caplog):
+    from app.main import app
+
+    monkeypatch.setattr(mcp_api, "_require_enabled", lambda: None)
+    refresh = AsyncMock()
+    monkeypatch.setattr(mcp_api, "refresh_tokens", refresh)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/mcp/oauth/token",
+            content="grant_type=refresh_token&refresh_token=private-payload&refresh_token=duplicate-secret",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_grant", "error_description": "OAuth grant is invalid"}
+    records = [record for record in caplog.records if record.name == "app.api.mcp"]
+    assert [record.diagnostic_reason for record in records] == [McpOAuthFailureReason.INVALID_SHAPE.value]
+    assert "private-payload" not in caplog.text
+    assert "duplicate-secret" not in caplog.text
+    refresh.assert_not_awaited()

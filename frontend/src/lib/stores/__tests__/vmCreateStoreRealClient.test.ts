@@ -6,6 +6,9 @@ import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
 import { api } from '$lib/api/client';
 import { t } from '$lib/i18n/ns/vm-wizard';
+import { get } from 'svelte/store';
+import { goto } from '$app/navigation';
+import { captureFlowExperience } from './experienceFlowHarness';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/environment', () => ({ browser: true }));
@@ -30,6 +33,7 @@ function jsonResponse(value: unknown): Response {
 describe('VM create real API-client scope races', () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		vi.mocked(goto).mockClear();
 		api.clearPrefetchCache();
 		resetWizard();
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
@@ -239,5 +243,122 @@ describe('VM create real API-client scope races', () => {
 		expect(JSON.parse(screen.getByTestId('step-errors').textContent!)).toEqual([
 			{ key: 'defaultNetwork', label: t('options.item.defaultNetwork'), message: t('options.loadFailed', { status: 503 }) },
 		]);
+	});
+
+	it('links the shared capacity read to the create action, awaits admission, and observes actual SSE state without content', async () => {
+		const createFlavor = {
+			id: 'source-flavor', name: 'source-flavor', vcpus: 1, ram: 1024, disk: 20,
+			eligibility: {
+				selectable: true, blockers: [],
+				requirements: { instances: 1, cores: 1, ram_mb: 1024, gpus: {} },
+				remaining: { instances: 5, cores: 8, ram_mb: 8192, gpus: {} },
+				capacity: { status: 'available', checked_at: '2026-10-01T00:00:00Z', candidate_hosts: 1, cpu_resource_class: 'VCPU', remaining_vcpus: 8, remaining_ram_mb: 8192 },
+			},
+		};
+		const requests: { path: string; headers: Headers }[] = [];
+		const capacity = Promise.withResolvers<Response>();
+		let stream!: ReadableStreamDefaultController<Uint8Array>;
+		let holdCapacity = false;
+		const transport: typeof fetch = async (input, init) => {
+			const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'https://afterglow.test');
+			const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+			requests.push({ path: `${url.pathname}${url.search}`, headers });
+			if (url.pathname === '/api/v1/flavors') {
+				if (holdCapacity) return capacity.promise;
+				return jsonResponse([createFlavor]);
+			}
+			if (url.pathname === '/api/v1/instances/async') return new Response(new ReadableStream<Uint8Array>({
+				start(controller) { stream = controller; },
+			}), { headers: { 'Content-Type': 'text/event-stream', 'X-Request-Id': `req-${'a'.repeat(32)}` } });
+			return jsonResponse(url.pathname === '/api/v1/dashboard/quotas' ? {} : []);
+		};
+		const captured = captureFlowExperience('/dashboard/compute/instances', () => get(auth), transport);
+		try {
+			render(VmCreateStoreLoadWrapper);
+			await fireEvent.click(screen.getByTestId('init'));
+			await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('source-flavor'));
+			await fireEvent.click(screen.getByTestId('select-first-flavor'));
+			await fireEvent.click(screen.getByTestId('step-six'));
+			const beforeSubmit = requests.length;
+			holdCapacity = true;
+			await fireEvent.click(screen.getByTestId('deploy'));
+			await vi.waitFor(() => expect(requests.slice(beforeSubmit).some(request => request.path.includes('capacity=create'))).toBe(true));
+			expect(requests.some(request => request.path === '/api/v1/instances/async')).toBe(false);
+			capacity.resolve(jsonResponse([createFlavor]));
+			await vi.waitFor(() => expect(requests.some(request => request.path === '/api/v1/instances/async')).toBe(true));
+			const checked = requests.slice(beforeSubmit).find(request => request.path.includes('capacity=create'))!;
+			const post = requests.find(request => request.path === '/api/v1/instances/async')!;
+			const actionId = post.headers.get('X-Afterglow-Experience-Action');
+			expect(actionId).toMatch(/^[a-f0-9-]{36}$/);
+			expect(checked.headers.has('X-Afterglow-Experience-Action')).toBe(false);
+			expect(post.headers.get('X-Afterglow-Experience-Segment')).toBe(checked.headers.get('X-Afterglow-Experience-Segment'));
+			expect(post.headers.get('X-Afterglow-Experience-Span')).not.toBe(checked.headers.get('X-Afterglow-Experience-Span'));
+			const encoder = new TextEncoder();
+			stream.enqueue(encoder.encode('data: {"step":"server_creating","progress":70,"message":"private-progress-message"}\n\n'));
+			await vi.waitFor(() => expect(screen.getByTestId('deploy-step').textContent).toBe('server_creating'));
+			stream.enqueue(encoder.encode('data: {"step":"completed","progress":100,"message":"private-completion-message"}\n\n'));
+			await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/dashboard/compute/instances'));
+			const events = await captured.flush();
+			const linked = events.filter(event => event.action_id === actionId);
+			expect(linked.some(event => event.event_type === 'result.received' && event.payload.physical_span_id === checked.headers.get('X-Afterglow-Experience-Span'))).toBe(true);
+			expect(linked.some(event => event.event_type === 'result.received' && event.payload.http_status === 200)).toBe(true);
+			expect(linked.some(event => event.event_type === 'result.received' && event.payload.stage === 'state')).toBe(true);
+			expect(linked.some(event => event.event_type === 'result.committed')).toBe(true);
+			expect(JSON.stringify(events)).not.toContain('private-progress-message');
+			expect(JSON.stringify(events)).not.toContain('private-completion-message');
+			stream.close();
+		} finally {
+			captured.collector.destroy();
+			vi.restoreAllMocks();
+		}
+	});
+
+	it('links server-rejected submission to validation without retrying or recording rejected input', async () => {
+		const createFlavor = {
+			id: 'validated-flavor', name: 'validated-flavor', vcpus: 1, ram: 1024, disk: 20,
+			eligibility: {
+				selectable: true, blockers: [],
+				requirements: { instances: 1, cores: 1, ram_mb: 1024, gpus: {} },
+				remaining: { instances: 5, cores: 8, ram_mb: 8192, gpus: {} },
+				capacity: { status: 'available', checked_at: '2026-10-01T00:00:00Z', candidate_hosts: 1, cpu_resource_class: 'VCPU', remaining_vcpus: 8, remaining_ram_mb: 8192 },
+			},
+		};
+		const rejectedInput = 'PRIVATE-VM-VALIDATION-INPUT';
+		const submissions: Headers[] = [];
+		const transport: typeof fetch = async (input, init) => {
+			const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'https://afterglow.test');
+			if (url.pathname === '/api/v1/flavors') return jsonResponse([createFlavor]);
+			if (url.pathname === '/api/v1/instances/async') {
+				submissions.push(new Headers(init?.headers));
+				return new Response(JSON.stringify({ detail: [{ type: 'less_than_equal', loc: ['body', 'root_volume_size'], input: rejectedInput }] }), {
+					status: 422, headers: { 'Content-Type': 'application/json', 'X-Request-Id': `req-${'b'.repeat(32)}` },
+				});
+			}
+			return jsonResponse(url.pathname === '/api/v1/dashboard/quotas' ? {} : []);
+		};
+		const captured = captureFlowExperience('/dashboard/compute/instances', () => get(auth), transport);
+		try {
+			render(VmCreateStoreLoadWrapper);
+			await fireEvent.click(screen.getByTestId('init'));
+			await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('validated-flavor'));
+			await fireEvent.click(screen.getByTestId('select-first-flavor'));
+			await fireEvent.click(screen.getByTestId('step-six'));
+			await fireEvent.click(screen.getByTestId('deploy'));
+			await vi.waitFor(() => expect(submissions).toHaveLength(1));
+			await vi.waitFor(() => expect(screen.getByTestId('deploying').textContent).toBe('idle'));
+			const actionId = submissions[0].get('X-Afterglow-Experience-Action');
+			expect(actionId).toMatch(/^[a-f0-9-]{36}$/);
+			const events = await captured.flush();
+			expect(submissions).toHaveLength(1);
+			const linked = events.filter(event => event.action_id === actionId);
+			expect(linked.some(event => event.event_type === 'validation.rejected' && event.payload.reason === 'policy')).toBe(true);
+			expect(linked.some(event => event.event_type === 'view.state_changed' && event.payload.state === 'error')).toBe(true);
+			expect(linked.some(event => event.event_type === 'view.state_changed' && event.payload.state === 'ready')).toBe(false);
+			expect(JSON.stringify(events)).not.toContain(rejectedInput);
+			expect(goto).not.toHaveBeenCalled();
+		} finally {
+			captured.collector.destroy();
+			vi.restoreAllMocks();
+		}
 	});
 });

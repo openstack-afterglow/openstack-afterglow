@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import HTTPException
 
@@ -352,6 +353,18 @@ def _creation_schedule(
     return schedule
 
 
+def _creation_group_ids(value: Any) -> list[str]:
+    from app.services.mcp_control_plane.instance_management import _group_ids
+
+    try:
+        groups = _group_ids(value)
+    except ValueError as exc:
+        raise McpComputeError("Nova create security-group IDs are malformed") from exc
+    if not groups:
+        raise McpComputeError("Nova create requires at least one security group")
+    return groups
+
+
 def _prepare_server_create(
     conn: Any,
     *,
@@ -362,12 +375,14 @@ def _prepare_server_create(
     flavor_id: str,
     network_id: str,
     boot_volume_size_gb: int,
+    key_name: str,
+    security_group_ids: list[str],
     delete_boot_volume_on_termination: bool,
-    key_name: str | None,
     availability_zone: str | None,
     usage_schedule: UsageScheduleRequest | None = None,
 ) -> tuple[dict[str, Any], FlavorInfo, dict[str, str]]:
-    from app.services.mcp_control_plane.network import validate_project_attachment_network
+    from app.services.mcp_control_plane.instance_management import _get_security_group
+    from app.services.mcp_control_plane.network_management import _alias, _network
 
     _create_text(name, name="name", maximum=63)
     if normalize_requested_instance_name(name) != name:
@@ -379,6 +394,10 @@ def _prepare_server_create(
     availability_zone = _create_zone(availability_zone)
     for identifier, label in ((image_id, "image ID"), (flavor_id, "flavor ID"), (network_id, "network ID")):
         _create_text(identifier, name=label, maximum=255)
+    groups = _creation_group_ids(security_group_ids)
+    _create_text(key_name, name="keypair name", maximum=255)
+    if any(char in key_name for char in "/\\?#%") or any(ord(char) < 32 or ord(char) == 127 for char in key_name):
+        raise McpComputeError("Nova create keypair name contains reserved characters")
 
     image = conn.image.get_image(image_id)
     if image is None or _field(image, "id") != image_id or _field(image, "status") != "active":
@@ -414,14 +433,34 @@ def _prepare_server_create(
         if type(required) is not int or required < 0 or required > available:
             raise McpComputeError("Glance boot image requirements are not satisfied")
 
-    network = validate_project_attachment_network(conn, project_id=project_id, network_id=network_id)
-    if key_name is not None:
-        _create_text(key_name, name="keypair name", maximum=255)
-        # SDK get_keypair(user_id=...) seeds the resource body, not a query;
-        # omitted provider ownership must not inherit a caller-supplied proof.
-        keypair = conn.compute.get_keypair(key_name)
-        if keypair is None or _field(keypair, "name") != key_name or _field(keypair, "user_id") != user_id:
-            raise McpComputeError("Nova keypair ownership cannot be proven")
+    native_network, network = _network(conn, project_id, network_id, attachment=True)
+    if _alias(native_network, "is_port_security_enabled", "port_security_enabled") is not True:
+        raise McpComputeError("Neutron network port security must be explicitly enabled")
+    for group_id in groups:
+        _get_security_group(conn, project_id=project_id, security_group_id=group_id)
+    # Keypair.name inherits the requested name and Keypair.type defaults to ssh
+    # in the SDK; only original provider JSON can prove these selections.
+    check_mutation_dispatch()
+    key_response = conn.compute.get(
+        f"/os-keypairs/{quote(key_name, safe='')}",
+        microversion="2.10",
+        redirect=False,
+        allow_reauth=False,
+        raise_exc=False,
+        connect_retries=0,
+        status_code_retries=0,
+    )
+    if type(key_response.status_code) is not int or key_response.status_code != 200:
+        raise McpComputeError("Nova SSH keypair is unavailable")
+    key_payload = key_response.json()
+    keypair = key_payload.get("keypair") if isinstance(key_payload, Mapping) else None
+    if (
+        not isinstance(keypair, Mapping)
+        or keypair.get("name") != key_name
+        or keypair.get("user_id") != user_id
+        or keypair.get("type") != "ssh"
+    ):
+        raise McpComputeError("Nova SSH keypair identity, ownership or type cannot be proven")
     ensure_unique_instance_name(conn, name)
     return (
         {
@@ -432,6 +471,7 @@ def _prepare_server_create(
             "boot_volume_size_gb": boot_volume_size_gb,
             "delete_boot_volume_on_termination": delete_boot_volume_on_termination,
             "key_name": key_name,
+            "security_group_ids": groups,
             "availability_zone": availability_zone,
             "network_visibility": network["visibility"],
             "usage_schedule": usage_schedule.model_dump(mode="json") if usage_schedule is not None else None,
@@ -474,13 +514,15 @@ async def preview_project_server_create(
     flavor_id: str,
     network_id: str,
     boot_volume_size_gb: int,
+    key_name: str,
+    security_group_ids: list[str],
     delete_boot_volume_on_termination: bool = False,
-    key_name: str | None = None,
     availability_zone: str | None = None,
     usage_schedule: UsageScheduleRequest | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Read native dependencies and existing quota/capacity policy without reservations."""
     try:
+        groups = _creation_group_ids(security_group_ids)
         schedule = _creation_schedule(usage_schedule)
         zone = await _server_create_zone(conn, availability_zone)
         plan, flavor, _ = await run_sdk(
@@ -494,6 +536,7 @@ async def preview_project_server_create(
             network_id=network_id,
             boot_volume_size_gb=boot_volume_size_gb,
             key_name=key_name,
+            security_group_ids=groups,
             availability_zone=zone,
             delete_boot_volume_on_termination=delete_boot_volume_on_termination,
             usage_schedule=schedule,
@@ -524,6 +567,10 @@ def _create_server(conn: Any, *, project_id: str, expected_flavor: FlavorInfo, *
         "name": plan["name"],
         "flavor_id": plan["flavor_id"],
         "networks": [{"uuid": plan["network_id"]}],
+        # Nova resolves UUIDs before names; do not substitute mutable group names.
+        # Keep Nova responsible for port allocation and its failure cleanup.
+        "security_groups": [{"name": group_id} for group_id in plan["security_group_ids"]],
+        "key_name": plan["key_name"],
         "availability_zone": plan["availability_zone"],
         "metadata": metadata,
         "block_device_mapping": [
@@ -537,8 +584,6 @@ def _create_server(conn: Any, *, project_id: str, expected_flavor: FlavorInfo, *
             }
         ],
     }
-    if plan["key_name"] is not None:
-        body["key_name"] = plan["key_name"]
     check_mutation_dispatch()
     created = conn.compute.create_server(**body)
     server_id = _required_string(created, "id")
@@ -570,14 +615,16 @@ async def request_project_server_create(
     flavor_id: str,
     network_id: str,
     boot_volume_size_gb: int,
+    key_name: str,
+    security_group_ids: list[str],
     delete_boot_volume_on_termination: bool = False,
-    key_name: str | None = None,
     availability_zone: str | None = None,
     usage_schedule: UsageScheduleRequest | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Admit one VM and send one asynchronous Nova image-to-volume boot request."""
     admission_task = None
     try:
+        groups = _creation_group_ids(security_group_ids)
         schedule = _creation_schedule(usage_schedule)
         zone = await _server_create_zone(conn, availability_zone)
         arguments = dict(
@@ -588,6 +635,7 @@ async def request_project_server_create(
             network_id=network_id,
             boot_volume_size_gb=boot_volume_size_gb,
             key_name=key_name,
+            security_group_ids=groups,
             availability_zone=zone,
             usage_schedule=schedule,
         )

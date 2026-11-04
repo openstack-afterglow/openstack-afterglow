@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy, untrack } from 'svelte';
 	import { createFileStorageWizardStore, provideFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import FileStorageWizardStep1 from './FileStorageWizardStep1.svelte';
 	import FileStorageWizardStep2 from './FileStorageWizardStep2.svelte';
@@ -23,6 +24,13 @@
 		fileStorageShareNetworksEnabled: () => $betaFeatures.fileStorageShareNetworks,
 	});
 	provideFsWizard(s);
+
+	$effect(() => {
+		if (!open) return;
+		untrack(() => { void s.openWizard(); });
+		return s.invalidateMetadata;
+	});
+	onDestroy(s.dispose);
 </script>
 
 {#if open}

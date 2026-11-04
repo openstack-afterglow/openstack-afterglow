@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import { onDestroy, onMount } from 'svelte';
-	import { wizard, closeWizard } from '$lib/stores/wizard';
+	import { wizard } from '$lib/stores/wizard';
 	import { createVmCreateStore, provideVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import FlavorComposer from '$lib/components/wizard/FlavorComposer.svelte';
 	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
@@ -71,7 +71,7 @@
 	});
 </script>
 
-<SlidePanel onClose={closeWizard} ariaLabel={t('panel.label')} dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl" closePlacement={fullAreaLoading ? 'overlay' : 'flow'}>
+<SlidePanel onClose={s.close} ariaLabel={t('panel.label')} dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl" closePlacement={fullAreaLoading ? 'overlay' : 'flow'}>
 	<div class="h-full min-h-0 flex flex-col" class:bg-surface-canvas={!fullAreaLoading}>
 		<div data-vm-preparation-surface={fullAreaLoading ? '' : undefined} class={fullAreaLoading ? 'relative min-h-0 flex-1' : 'min-h-0 flex-1 overflow-y-auto p-4 md:p-8'}>
 			{#if s.needsProjectSelect}
@@ -90,7 +90,7 @@
 					{adminMode}
 					adminProjectName={s.adminSelectedProjectName}
 					onReset={s.handleReset}
-					onClose={closeWizard}
+					onClose={s.close}
 				/>
 
 				{#if s.hasCurrentStepError && $wizard.step !== 2}
@@ -158,7 +158,7 @@
 				canNext={s.canNext}
 				composer={$wizard.step === 2 ? composer : undefined}
 				windowsUnsupported={s.windowsUnsupported}
-				onCancel={closeWizard}
+				onCancel={s.close}
 				onPrev={s.prevStep}
 				onNext={s.nextStep}
 				onDeploy={s.deploy}

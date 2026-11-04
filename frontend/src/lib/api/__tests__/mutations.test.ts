@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { initLocale, KEY_DEBUG_STORAGE_KEY, restoreKeyDebugMode } from '$lib/i18n/runtime.svelte';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhost:8000' } }));
 
@@ -16,6 +18,12 @@ const { apiMut } = await import('../mutations');
 
 beforeEach(() => {
 	vi.clearAllMocks();
+});
+
+afterEach(() => {
+	initLocale('ko');
+	localStorage.removeItem(KEY_DEBUG_STORAGE_KEY);
+	restoreKeyDebugMode();
 });
 
 describe('apiMut', () => {
@@ -68,5 +76,40 @@ describe('apiMut', () => {
 			apiMut('작업', () => Promise.reject(err), { progress: true })
 		).rejects.toThrow(err);
 		expect(mockToast.remove).toHaveBeenCalledWith('toast-info');
+	});
+
+	it('captures actual producer locale and static template identity without private label/error parameters', async () => {
+		const experience = { segmentId: 'explicit-context' } as ExperienceContext;
+		initLocale('en');
+		await apiMut('private-resource-name', () => Promise.resolve('accepted'), { experience, progress: true });
+		const progressMetadata = mockToast.info.mock.calls[0][3].message;
+		const completedMetadata = mockToast.success.mock.calls[0][3].message;
+		expect(progressMetadata).toMatchObject({ key: 'shared:mutation.progress', locale: 'en', restoration: 'redacted' });
+		expect(completedMetadata).toMatchObject({ key: 'shared:mutation.completed', locale: 'en', restoration: 'redacted' });
+		initLocale('ko');
+		expect(completedMetadata.locale).toBe('en');
+		expect(JSON.stringify(completedMetadata)).not.toContain('private-resource-name');
+
+		await expect(apiMut('private label', () => Promise.reject(new ApiError(400, 'private server error')), { experience })).rejects.toThrow();
+		const failureMetadata = mockToast.error.mock.calls[0][3].message;
+		expect(failureMetadata).toMatchObject({ key: 'shared:mutation.failed', locale: 'ko', restoration: 'redacted' });
+		expect(JSON.stringify(failureMetadata)).not.toContain('private server error');
+	});
+
+	it('does not reverse-match a custom preformatted success message', async () => {
+		const experience = { segmentId: 'explicit-context' } as ExperienceContext;
+		await apiMut('private label', () => Promise.resolve(1), { experience, successMessage: 'private custom message' });
+		expect(mockToast.success.mock.calls[0][3].message).toMatchObject({ key: null, locale: 'unknown', restoration: 'unavailable' });
+	});
+
+	it('keeps key-debug presentations unavailable rather than claiming a redacted template', async () => {
+		const experience = { segmentId: 'explicit-context' } as ExperienceContext;
+		localStorage.setItem(KEY_DEBUG_STORAGE_KEY, 'keys');
+		restoreKeyDebugMode();
+		await apiMut('private label', () => Promise.resolve(1), { experience, progress: true });
+		expect(mockToast.info.mock.calls[0][3].message).toMatchObject({ key: null, locale: 'unknown', restoration: 'unavailable' });
+		expect(mockToast.success.mock.calls[0][3].message).toMatchObject({ key: null, locale: 'unknown', restoration: 'unavailable' });
+		await expect(apiMut('private label', () => Promise.reject(new ApiError(400, 'private failure')), { experience })).rejects.toThrow();
+		expect(mockToast.error.mock.calls[0][3].message).toMatchObject({ key: null, locale: 'unknown', restoration: 'unavailable' });
 	});
 });

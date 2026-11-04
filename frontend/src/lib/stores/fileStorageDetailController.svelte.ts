@@ -4,6 +4,7 @@ import { api, ApiError } from '$lib/api/client';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import type { FileStorage, AccessRule } from '$lib/types/fileStorage';
+import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, type ExperienceContext, type ExperienceAction } from '$lib/utils/experience';
 
 export const statusColor: Record<string, string> = {
 	available: 'text-green-400 bg-green-900/30',
@@ -38,54 +39,77 @@ function createFileStorageDetailController(opts: Options) {
 	let revokingId = $state<string | null>(null);
 	let copiedKey = $state<string | null>(null);
 
-	async function fetchFileStorage(requestOpts?: { refresh?: boolean }) {
+	function observe(action: ExperienceAction, parent?: ExperienceContext) {
+		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' ? beginExperienceLoad('file_storage', 'resource.detail') : beginExperienceAction('file_storage', action, 'resource.detail'));
+		return {
+			ctx, client: api.withExperience(ctx),
+			applied(state: 'ready' | 'empty' | 'error') {
+				if (!ctx) return;
+				if (ctx.action !== 'create' || state === 'error') experienceState(ctx, state);
+				// This controller exposes no mounted/result-generation assertion.
+				void experienceApplied(ctx);
+			},
+		};
+	}
+
+	async function fetchFileStorage(requestOpts?: { refresh?: boolean }, parent?: ExperienceContext) {
+		const observation = observe('load', parent);
+		experienceState(observation.ctx, 'loading');
 		// 초기 로드일 때만 스켈레톤 표시 — 이미 데이터가 있으면 백그라운드 새로고침
 		if (fileStorage === null) loading = true;
 		error = '';
 		try {
-			fileStorage = await api.get<FileStorage>(
+			fileStorage = await observation.client.get<FileStorage>(
 				`/api/v1/file-storage/${opts.fileStorageId()}`,
 				opts.token(),
 				opts.projectId(),
 				requestOpts
 			);
+			observation.applied(fileStorage ? 'ready' : 'empty');
 		} catch (e) {
 			error = e instanceof ApiError ? t('detail.loadFailedWithMessage', { status: e.status, message: e.message }) : t('errors.server');
+			observation.applied('error');
 		} finally {
 			loading = false;
 		}
 	}
 
-	async function fetchAccessRules(requestOpts?: { refresh?: boolean }) {
+	async function fetchAccessRules(requestOpts?: { refresh?: boolean }, parent?: ExperienceContext) {
+		const observation = observe('load', parent);
+		experienceState(observation.ctx, 'loading');
 		// 초기 로드일 때만 로딩 표시 — 이미 규칙이 있으면 백그라운드 새로고침
 		if (accessRules.length === 0) accessLoading = true;
 		accessError = '';
 		try {
-			accessRules = await api.get<AccessRule[]>(
+			accessRules = await observation.client.get<AccessRule[]>(
 				`/api/v1/file-storage/${opts.fileStorageId()}/access-rules`,
 				opts.token(),
 				opts.projectId(),
 				requestOpts
 			);
+			observation.applied(accessRules.length ? 'ready' : 'empty');
 		} catch (e) {
 			accessRules = [];
 			accessError = e instanceof ApiError ? t('detail.accessLoadFailedWithMessage', { status: e.status, message: e.message }) : t('detail.accessLoadFailed');
+			observation.applied('error');
 		} finally {
 			accessLoading = false;
 		}
 	}
 
-	async function fetchAll(requestOpts?: { refresh?: boolean }) {
-		await Promise.allSettled([fetchFileStorage(requestOpts), fetchAccessRules(requestOpts)]);
+	async function fetchAll(requestOpts?: { refresh?: boolean }, parent?: ExperienceContext) {
+		const ctx = parent ?? beginExperienceLoad('file_storage', 'resource.detail');
+		await Promise.allSettled([fetchFileStorage(requestOpts, ctx), fetchAccessRules(requestOpts, ctx)]);
 	}
 
 	async function addAccessRule() {
 		if (!fileStorage || !ruleForm.access_to.trim()) return;
+		const observation = observe('create');
 		addingRule = true;
 		ruleError = '';
 		const access_type = fileStorage.share_proto === 'NFS' ? 'ip' : 'cephx';
 		try {
-			await api.post(
+			await observation.client.post(
 				`/api/v1/file-storage/${fileStorage.id}/access-rules`,
 				{ access_to: ruleForm.access_to.trim(), access_level: ruleForm.access_level, access_type },
 				opts.token(),
@@ -93,10 +117,12 @@ function createFileStorageDetailController(opts: Options) {
 			);
 			ruleForm = { access_to: '', access_level: 'ro' };
 			showAddRule = false;
+			observation.applied('ready');
 			if (opts.onMutated) await opts.onMutated();
-			else await fetchAccessRules();
+			else await fetchAccessRules(undefined, observation.ctx);
 		} catch (e) {
 			ruleError = e instanceof ApiError ? e.message : t('errors.create');
+			observation.applied('error');
 		} finally {
 			addingRule = false;
 		}
@@ -105,19 +131,23 @@ function createFileStorageDetailController(opts: Options) {
 	async function revokeAccessRule(accessId: string) {
 		if (!fileStorage) return;
 		if (!(await confirmDialog(t('detail.revokeConfirm')))) return;
+		const observation = observe('delete');
 		revokingId = accessId;
+		let failed = false;
 		try {
-			await api.delete(
+			await observation.client.delete(
 				`/api/v1/file-storage/${fileStorage.id}/access-rules/${accessId}`,
 				opts.token(),
 				opts.projectId()
 			);
 			if (opts.onMutated) await opts.onMutated();
-			else await fetchAccessRules();
+			else await fetchAccessRules(undefined, observation.ctx);
 		} catch (e) {
 			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
+			failed = true;
 		} finally {
 			revokingId = null;
+			observation.applied(failed ? 'error' : 'ready');
 		}
 	}
 
@@ -136,15 +166,19 @@ function createFileStorageDetailController(opts: Options) {
 	async function deleteFileStorage() {
 		if (!fileStorage) return;
 		if (!(await confirmDialog(t('detail.deleteConfirm', { name: fileStorage.name || fileStorage.id })))) return;
+		const observation = observe('delete');
 		deleting = true;
+		let failed = false;
 		try {
-			await api.delete(`/api/v1/file-storage/${fileStorage.id}`, opts.token(), opts.projectId());
+			await observation.client.delete(`/api/v1/file-storage/${fileStorage.id}`, opts.token(), opts.projectId());
 			await opts.onDeleted?.();
 			opts.onClose?.();
 		} catch (e) {
 			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
+			failed = true;
 		} finally {
 			deleting = false;
+			observation.applied(failed ? 'error' : 'ready');
 		}
 	}
 

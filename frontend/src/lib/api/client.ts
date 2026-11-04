@@ -19,6 +19,7 @@ import {
 	onMockupRevisionChange,
 } from '$lib/mockup/state';
 import type { MockupProfileId } from '$lib/mockup/contracts';
+import { beginExperienceRequest, experienceRequest, experienceRequestReference, recordExperience, type ExperienceContext } from '$lib/utils/experience';
 export { ApiError } from '$lib/api/errors';
 
 function stripTrailingSlash(value: string): string {
@@ -505,17 +506,26 @@ export function fetchWithAuth(
 	options: RequestInit = {},
 	token?: string,
 	projectId?: string,
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void },
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; experience?: ExperienceContext; onExperienceDispatch?: (ctx: ExperienceContext) => void },
 ): Promise<Response> {
 	const baseUrl = reqOpts?.baseUrl ?? getBaseUrl();
+	// A stale caller token must not inherit the later login's passive browser owner.
+	const observed = !token || isLiveRequestScope(requestScopeKey(token))
+		? reqOpts?.experience ?? beginExperienceRequest(options.method, new Headers(options.headers).get('Accept') === 'text/event-stream' ? 'shared.stream' : 'page')
+		: undefined;
+	let attempt = 0;
 	return withAuthRecovery(
-		(currentToken) => {
+		async (currentToken) => {
 			// Preflight token rotation may outlive a caller's editor or observation scope.
 			reqOpts?.beforeDispatch?.();
-			return fetch(`${baseUrl}${path}`, {
+			const span = experienceRequest(observed, ++attempt);
+			if (span.context) reqOpts?.onExperienceDispatch?.(span.context);
+			const response = await fetch(`${baseUrl}${path}`, {
 				...options,
-				headers: _buildHeaders(currentToken, projectId, options.headers, options.method),
+				headers: { ..._buildHeaders(currentToken, projectId, options.headers, options.method), ...span.headers },
 			});
+			if (span.context) recordExperience(span.context, 'result.received', { ...experienceRequestReference(response), stage: 'response' });
+			return response;
 		},
 		token,
 		{
@@ -545,7 +555,7 @@ async function request<T>(
 	token?: string,
 	projectId?: string,
 	// Fix 3: caller가 401을 직접 처리하는 경우 전역 로그아웃 리다이렉트를 억제할 수 있음
-	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number }
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number; experience?: ExperienceContext; onExperienceDispatch?: (ctx: ExperienceContext) => void }
 ): Promise<T> {
 	options.signal?.throwIfAborted();
 	const method = (options.method ?? 'GET').toString().toUpperCase();
@@ -610,6 +620,7 @@ export interface PrefetchOptions {
 	ttlMs?: number;
 	signal?: AbortSignal;
 	suppressAuthRedirect?: boolean;
+	experience?: ExperienceContext;
 }
 
 export interface PrefetchInvalidation {
@@ -638,14 +649,19 @@ interface WarmEntry {
 	expiresAt: number;
 }
 
+export interface ApiReadOptions { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; experience?: ExperienceContext }
+export interface ApiMutationOptions { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number; experience?: ExperienceContext }
+interface PhysicalObservation { spanId?: string; independent?: boolean; received?: boolean }
+const speculativeObservations = new WeakMap<Promise<void>, PhysicalObservation>();
 interface OrdinaryPending {
 	raw: Promise<unknown>;
+	physical?: PhysicalObservation;
 	joined: boolean;
 	valid: boolean;
 	snapshotReady: boolean;
 	snapshot: unknown;
 	cloneFailed: boolean;
-	retry: () => Promise<unknown>;
+	retry: (physical?: PhysicalObservation) => Promise<unknown>;
 }
 
 const MAX_WARM_ENTRIES = 64;
@@ -804,14 +820,32 @@ function dispatchJsonGet<T>(
 	projectId: string | undefined,
 	signal: AbortSignal | undefined,
 	suppressAuthRedirect: boolean,
+	experience?: ExperienceContext,
+	physical?: PhysicalObservation,
 ): Promise<T> {
 	return request<T>(
 		requestPath,
 		{ method: 'GET', signal },
 		token,
 		projectId,
-		{ suppressAuthRedirect, baseUrl },
+		{ suppressAuthRedirect, baseUrl, experience, onExperienceDispatch: ctx => { if (physical) physical.spanId = ctx.spanId; } },
 	);
+}
+
+/** A consumer can observe a shared/cache result without claiming its own network dispatch. */
+function observeRead<T>(experience: ExperienceContext | undefined, pending: Promise<T>, transport: 'network' | 'cache' | 'shared', physical?: PhysicalObservation): Promise<T> {
+	if (!experience) return pending;
+	return pending.then(value => {
+		recordExperience(experience, 'result.received', { transport: physical?.independent ? 'network' : transport, stage: 'response', ...(physical?.spanId ? { physical_span_id: physical.spanId } : {}) });
+		return value;
+	}, error => {
+		// A decoded HTTP failure was received too; link it without treating a
+		// network rejection or an aborted consumer as a received response.
+		if (error instanceof ApiError && physical?.spanId) {
+			recordExperience(experience, 'result.received', { transport: physical.independent ? 'network' : transport, stage: 'response', http_status: error.status, physical_span_id: physical.spanId });
+		}
+		throw error;
+	});
 }
 
 function dispatchIndependentOrdinary<T>(
@@ -821,11 +855,13 @@ function dispatchIndependentOrdinary<T>(
 	token: string | undefined,
 	projectId: string | undefined,
 	suppressAuthRedirect: boolean,
+	physical?: PhysicalObservation,
 ): Promise<T> {
 	advanceFamilyEpoch(familyKey);
+	if (physical) physical.independent = true;
 	return trackFamilyDispatch(
 		familyKey,
-		dispatchJsonGet<T>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect),
+		dispatchJsonGet<T>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect, undefined, physical),
 	);
 }
 
@@ -845,8 +881,14 @@ async function resolveOrdinaryLeader<T>(entry: OrdinaryPending): Promise<T> {
 	}
 }
 
-async function resolveOrdinaryWaiter<T>(entry: OrdinaryPending): Promise<T> {
-	const value = await entry.raw;
+async function resolveOrdinaryWaiter<T>(entry: OrdinaryPending, physical?: PhysicalObservation): Promise<T> {
+	let value: unknown;
+	try {
+		value = await entry.raw;
+	} catch (error) {
+		if (physical) physical.spanId = entry.physical?.spanId;
+		throw error;
+	}
 	if (!entry.valid) throw new DOMException(t('client.operationAborted'), 'AbortError');
 	try {
 		if (entry.cloneFailed) throw new DOMException('Result is not cloneable', 'DataCloneError');
@@ -854,9 +896,11 @@ async function resolveOrdinaryWaiter<T>(entry: OrdinaryPending): Promise<T> {
 			entry.snapshot = structuredClone(value);
 			entry.snapshotReady = true;
 		}
-		return structuredClone(entry.snapshot) as T;
+		const snapshot = structuredClone(entry.snapshot) as T;
+		if (physical) physical.spanId = entry.physical?.spanId;
+		return snapshot;
 	} catch {
-		return entry.retry() as Promise<T>;
+		return entry.retry(physical) as Promise<T>;
 	}
 }
 
@@ -868,6 +912,7 @@ function getOrdinary<T>(
 	projectId: string | undefined,
 	signal: AbortSignal | undefined,
 	suppressAuthRedirect: boolean,
+	experience?: ExperienceContext,
 ): Promise<T> {
 	if (signal?.aborted) {
 		return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
@@ -877,14 +922,15 @@ function getOrdinary<T>(
 	const forced = forcedPending?.get(pendingKey);
 	if (forced) {
 		forced.joined = true;
-		return waitForRefresh(resolveOrdinaryWaiter<T>(forced), signal);
+		const physical: PhysicalObservation = {};
+		return observeRead(experience, waitForRefresh(resolveOrdinaryWaiter<T>(forced, physical), signal), 'shared', physical);
 	}
 
 	if (browser) {
 		const warm = validWarmEntry(familyKey);
 		if (warm) {
 			try {
-				return Promise.resolve(structuredClone(warm.snapshot) as T);
+				return observeRead(experience, Promise.resolve(structuredClone(warm.snapshot) as T), 'cache');
 			} catch {
 				warmEntries?.delete(familyKey);
 			}
@@ -902,22 +948,25 @@ function getOrdinary<T>(
 	const pending = ordinaryPending?.get(pendingKey);
 	if (pending) {
 		pending.joined = true;
-		return waitForRefresh(resolveOrdinaryWaiter<T>(pending), signal);
+		const physical: PhysicalObservation = {};
+		return observeRead(experience, waitForRefresh(resolveOrdinaryWaiter<T>(pending, physical), signal), 'shared', physical);
 	}
 	const retryMetadata = familyMetadata?.get(familyKey);
 
 	advanceFamilyEpoch(familyKey);
+	const physical: PhysicalObservation = {};
 	const entry: OrdinaryPending = {
 		raw: trackFamilyDispatch(
 			familyKey,
-			dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect),
+			dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect, undefined, physical),
 		),
 		joined: false,
+		physical,
 		valid: true,
 		snapshotReady: false,
 		snapshot: undefined,
 		cloneFailed: false,
-		retry: () => {
+		retry: (retryPhysical) => {
 			if (retryMetadata) familyMetadata?.set(familyKey, retryMetadata);
 			return dispatchIndependentOrdinary(
 				familyKey,
@@ -925,7 +974,7 @@ function getOrdinary<T>(
 				baseUrl,
 				token,
 				projectId,
-				suppressAuthRedirect,
+				suppressAuthRedirect, retryPhysical,
 			);
 		},
 	};
@@ -933,7 +982,7 @@ function getOrdinary<T>(
 	void entry.raw.finally(() => {
 		if (ordinaryPending?.get(pendingKey) === entry) ordinaryPending.delete(pendingKey);
 	}).catch(() => undefined);
-	return waitForRefresh(resolveOrdinaryLeader<T>(entry), signal);
+	return observeRead(experience, waitForRefresh(resolveOrdinaryLeader<T>(entry), signal), 'network', physical);
 }
 
 function getForced<T>(
@@ -944,32 +993,36 @@ function getForced<T>(
 	projectId: string | undefined,
 	signal: AbortSignal | undefined,
 	suppressAuthRedirect: boolean,
+	experience?: ExperienceContext,
 ): Promise<T> {
 	if (!browser) return dispatchJsonGet<T>(requestPath, baseUrl, token, projectId, signal, suppressAuthRedirect);
 	const pendingKey = JSON.stringify([familyKey, suppressAuthRedirect]);
 	const pending = forcedPending?.get(pendingKey);
 	if (pending) {
 		pending.joined = true;
-		return waitForRefresh(resolveOrdinaryWaiter<T>(pending), signal);
+		const physical: PhysicalObservation = {};
+		return observeRead(experience, waitForRefresh(resolveOrdinaryWaiter<T>(pending, physical), signal), 'shared', physical);
 	}
 	const previous = ordinaryPending?.get(pendingKey)?.raw;
 	const epoch = logicalReadEpoch;
 	warmEntries?.delete(familyKey);
 	advanceFamilyEpoch(familyKey);
+	const physical: PhysicalObservation = {};
 	const raw = trackFamilyDispatch(familyKey, (async () => {
 		if (previous) await previous.catch(() => undefined);
 		if (epoch !== logicalReadEpoch) throw new DOMException(t('client.operationAborted'), 'AbortError');
-		return dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect);
+		return dispatchJsonGet<unknown>(requestPath, baseUrl, token, projectId, undefined, suppressAuthRedirect, undefined, physical);
 	})());
 	const entry: OrdinaryPending = {
 		raw, joined: false, valid: true, snapshotReady: false, snapshot: undefined, cloneFailed: false,
-		retry: () => dispatchIndependentOrdinary(familyKey, requestPath, baseUrl, token, projectId, suppressAuthRedirect),
+		physical,
+		retry: (retryPhysical) => dispatchIndependentOrdinary(familyKey, requestPath, baseUrl, token, projectId, suppressAuthRedirect, retryPhysical),
 	};
 	forcedPending?.set(pendingKey, entry);
 	void raw.finally(() => {
 		if (forcedPending?.get(pendingKey) === entry) forcedPending.delete(pendingKey);
 	}).catch(() => undefined);
-	return waitForRefresh(resolveOrdinaryLeader<T>(entry), signal);
+	return observeRead(experience, waitForRefresh(resolveOrdinaryLeader<T>(entry), signal), 'network', physical);
 }
 
 async function prefetchJson<T>(
@@ -983,7 +1036,10 @@ async function prefetchJson<T>(
 	const normalized = normalizeGetPath(path, scope, false);
 	if (normalized.refresh) return;
 	const familyKey = registerFamily(scope, normalized.logicalUrl);
-	if (validWarmEntry(familyKey)) return;
+	if (validWarmEntry(familyKey)) {
+		recordExperience(opts.experience, 'result.received', { transport: 'cache', stage: 'response' });
+		return;
+	}
 
 	const ttlMs = opts.ttlMs === undefined || !Number.isFinite(opts.ttlMs)
 		? DEFAULT_PREFETCH_TTL_MS
@@ -995,7 +1051,10 @@ async function prefetchJson<T>(
 		: null;
 	if (pendingKey) {
 		const pending = sharedSpeculativePending?.get(pendingKey);
-		if (pending) return pending;
+		if (pending) return pending.then(() => {
+			const physical = speculativeObservations.get(pending);
+			if (physical?.received) recordExperience(opts.experience, 'result.received', { transport: 'shared', stage: 'response', ...(physical.spanId ? { physical_span_id: physical.spanId } : {}) });
+		});
 	}
 	if ((activeSpeculativeLeaders?.size ?? 0) >= MAX_SPECULATIVE_LEADERS) {
 		pruneFamily(familyKey);
@@ -1005,14 +1064,16 @@ async function prefetchJson<T>(
 	const publicationEpoch = advanceFamilyEpoch(familyKey);
 	retainFamily(familyKey);
 	let leader!: Promise<void>;
+	const physical: PhysicalObservation = {};
 	leader = dispatchJsonGet<T>(
 		normalized.requestPath,
 		scope.baseUrl,
 		token,
 		projectId,
 		opts.signal,
-		suppressAuthRedirect,
+		suppressAuthRedirect, undefined, physical,
 	).then((value) => {
+		physical.received = true;
 		if (opts.signal?.aborted || ttlMs === 0 || familyEpochs?.get(familyKey) !== publicationEpoch) return;
 		try {
 			publishWarmEntry(familyKey, structuredClone(value), Date.now() + ttlMs);
@@ -1029,8 +1090,12 @@ async function prefetchJson<T>(
 		releaseFamily(familyKey);
 	});
 	activeSpeculativeLeaders?.add(leader);
+	speculativeObservations.set(leader, physical);
 	if (pendingKey) sharedSpeculativePending?.set(pendingKey, leader);
-	return leader;
+	if (!opts.experience) return leader;
+	return leader.then(() => {
+		if (physical.received) recordExperience(opts.experience, 'result.received', { transport: 'network', stage: 'response', ...(physical.spanId ? { physical_span_id: physical.spanId } : {}) });
+	});
 }
 
 export function beginMutationCacheFence(
@@ -1065,26 +1130,34 @@ function uploadWithAuthProgress<T>(
 	token?: string,
 	projectId?: string,
 	contentType?: string,
+	experience?: ExperienceContext,
 ): { promise: Promise<T>; abort: () => void } {
 	const scope = captureRequestScope(token, projectId);
 	invalidateExactScope(scope);
 	const controller = new AbortController();
 	let activeXhr: XMLHttpRequest | undefined;
+	const observed = !token || isLiveRequestScope(requestScopeKey(token)) ? experience ?? beginExperienceRequest(method) : undefined;
+	let attempt = 0;
 	const promise = withAuthRecovery(
 		(currentToken) => new Promise<XMLHttpRequest>((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
 			activeXhr = xhr;
 			xhr.open(method, `${scope.baseUrl}${path}`);
-			if (currentToken) xhr.setRequestHeader('Authorization', `Bearer ${currentToken}`);
-			if (projectId) xhr.setRequestHeader('X-Project-Id', projectId);
-			const page = auditPage();
-			if (page && currentToken) xhr.setRequestHeader('X-Afterglow-Page', page);
-			if (contentType) xhr.setRequestHeader('Content-Type', contentType);
+			const span = experienceRequest(observed, ++attempt);
+			const headers = { ..._buildHeaders(currentToken, projectId, undefined, method), ...span.headers };
+			if (contentType) headers['Content-Type'] = contentType;
+			for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value);
 			xhr.timeout = 0;
 			xhr.upload.onprogress = (event) => {
 				if (event.lengthComputable) onProgress({ loaded: event.loaded, total: event.total });
 			};
-			xhr.onload = () => resolve(xhr);
+			xhr.onload = () => {
+				if (span.context) {
+					const requestId = xhr.getResponseHeader('X-Request-Id');
+					recordExperience(span.context, 'result.received', { http_status: xhr.status, transport: 'network', stage: 'response', ...(requestId && /^req-[a-f0-9]{32}$/.test(requestId) ? { request_id: requestId } : {}) });
+				}
+				resolve(xhr);
+			};
 			xhr.onerror = () => reject(new Error(t('client.networkError')));
 			xhr.onabort = () => reject(new ApiError(0, t('client.uploadCanceled')));
 			xhr.send(body);
@@ -1134,11 +1207,12 @@ if (browser) {
 }
 
 export const api = {
+	withExperience: bindExperienceApi,
 	get: <T>(
 		path: string,
 		token?: string,
 		projectId?: string,
-		opts?: { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }
+		opts?: ApiReadOptions
 	): Promise<T> => {
 		if (opts?.signal?.aborted) {
 			return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
@@ -1154,7 +1228,7 @@ export const api = {
 		// Token inspection can consume authority on GET. Do not warm, coalesce, cache or replay it.
 		if (opts?.cache === 'no-store') {
 			return publish(request<T>(path, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
-				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.replayOnUnauthorized ?? false,
+				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.replayOnUnauthorized ?? false, experience: opts.experience,
 			}));
 		}
 		const normalized = normalizeGetPath(path, scope, opts?.refresh);
@@ -1162,7 +1236,7 @@ export const api = {
 		const suppressAuthRedirect = opts?.suppressAuthRedirect ?? false;
 		if (normalized.refresh) {
 			return publish(getForced<T>(familyKey, normalized.requestPath, scope.baseUrl,
-				token, projectId, opts?.signal, suppressAuthRedirect));
+				token, projectId, opts?.signal, suppressAuthRedirect, opts?.experience));
 		}
 		return publish(getOrdinary<T>(
 			familyKey,
@@ -1171,50 +1245,50 @@ export const api = {
 			token,
 			projectId,
 			opts?.signal,
-			suppressAuthRedirect,
+			suppressAuthRedirect, opts?.experience,
 		));
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number }) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch, timeoutMs: opts?.timeoutMs })
+			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
-	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void }) => {
+	put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch })
+			request<T>(path, { method: 'PUT', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
-	putBlob: <T>(path: string, body: Blob, token?: string, projectId?: string, opts?: { signal?: AbortSignal; replayOnUnauthorized?: boolean }) => {
+	putBlob: <T>(path: string, body: Blob, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PUT', body, headers: { 'Content-Type': body.type || 'application/octet-stream' }, signal: opts?.signal, cache: 'no-store' }, token, projectId, { baseUrl: scope.baseUrl, replayOnUnauthorized: opts?.replayOnUnauthorized })
+			request<T>(path, { method: 'PUT', body, headers: { 'Content-Type': body.type || 'application/octet-stream' }, signal: opts?.signal, cache: 'no-store' }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
-	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean }) => {
+	patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized })
+			request<T>(path, { method: 'PATCH', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
-	delete: <T>(path: string, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void }) => {
+	delete: <T>(path: string, token?: string, projectId?: string, opts?: ApiMutationOptions) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'DELETE', signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect, replayOnUnauthorized: opts?.replayOnUnauthorized, beforeDispatch: opts?.beforeDispatch })
+			request<T>(path, { method: 'DELETE', signal: opts?.signal, cache: opts?.cache }, token, projectId, { ...opts, baseUrl: scope.baseUrl })
 		);
 	},
 
-	upload: <T>(path: string, formData: FormData, token?: string, projectId?: string): Promise<T> => {
+	upload: <T>(path: string, formData: FormData, token?: string, projectId?: string, opts?: { experience?: ExperienceContext; replayOnUnauthorized?: boolean }): Promise<T> => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, async () => {
 			const res = await fetchWithAuth(path, {
 				method: 'POST',
 				body: formData,
 				signal: AbortSignal.timeout(300_000),
-			}, token, projectId, { baseUrl: scope.baseUrl });
+			}, token, projectId, { ...opts, baseUrl: scope.baseUrl });
 			if (!res.ok) {
 				let detail = res.statusText;
 				try {
@@ -1236,8 +1310,9 @@ export const api = {
 		onProgress: (event: { loaded: number; total: number }) => void,
 		token?: string,
 		projectId?: string,
+		opts?: { experience?: ExperienceContext },
 	): { promise: Promise<T>; abort: () => void } =>
-		uploadWithAuthProgress<T>('POST', path, formData, onProgress, token, projectId),
+		uploadWithAuthProgress<T>('POST', path, formData, onProgress, token, projectId, undefined, opts?.experience),
 
 	putWithProgress: <T>(
 		path: string,
@@ -1246,8 +1321,9 @@ export const api = {
 		onProgress: (event: { loaded: number; total: number }) => void,
 		token?: string,
 		projectId?: string,
+		opts?: { experience?: ExperienceContext },
 	): { promise: Promise<T>; abort: () => void } =>
-		uploadWithAuthProgress<T>('PUT', path, blob, onProgress, token, projectId, contentType || 'application/octet-stream'),
+		uploadWithAuthProgress<T>('PUT', path, blob, onProgress, token, projectId, contentType || 'application/octet-stream', opts?.experience),
 
 	/** 절대 URL에 PUT (RGW presigned 등). 인증 헤더·Content-Type 미부착, ETag 반환.
 	 * presigned upload_part는 X-Amz-SignedHeaders=host 만 서명하므로 Content-Type을 보내면
@@ -1293,13 +1369,13 @@ export const api = {
 		}).finally(() => invalidateExactScope(scope));
 	},
 
-	downloadBlob: async (path: string, token?: string, projectId?: string): Promise<{ blob: Blob; filename: string }> => {
+	downloadBlob: async (path: string, token?: string, projectId?: string, opts?: { experience?: ExperienceContext }): Promise<{ blob: Blob; filename: string }> => {
 		const mock = await maybeMockBlob('GET', path, token, projectId);
 		if (mock !== symbolNoMatch) return { blob: mock, filename: 'afterglow-mockup-kubeconfig.yaml' };
 		const res = await fetchWithAuth(path, {
 			method: 'GET',
 			signal: AbortSignal.timeout(300_000),
-		}, token, projectId);
+		}, token, projectId, opts);
 		if (!res.ok) {
 			let detail = res.statusText;
 			try { detail = (await res.json())?.detail || detail; } catch { /* empty */ }
@@ -1327,7 +1403,8 @@ export const api = {
 		token?: string,
 		projectId?: string,
 		onMessage?: (data: T) => void,
-		onError?: (error: Error) => void
+		onError?: (error: Error) => void,
+		opts?: { experience?: ExperienceContext },
 	): void => {
 		const scope = captureRequestScope(token, projectId);
 		invalidateExactScope(scope);
@@ -1351,7 +1428,7 @@ export const api = {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
 			body: JSON.stringify(body)
-		}, token, projectId, { baseUrl: scope.baseUrl }).then(async (response) => {
+		}, token, projectId, { ...opts, baseUrl: scope.baseUrl }).then(async (response) => {
 			if (!response.ok) {
 				const text = await response.text();
 				throw new ApiError(response.status, text || response.statusText);
@@ -1389,3 +1466,22 @@ export const api = {
 		});
 	}
 };
+
+/** Bind only this explicit observation context; retain all business defaults and caller options. */
+function bindExperienceApi(experience: ExperienceContext | undefined) {
+	return {
+		get: <T>(path: string, token?: string, projectId?: string, opts?: ApiReadOptions): Promise<T> => api.get<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.post<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		put: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.put<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		patch: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.patch<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		delete: <T>(path: string, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.delete<T>(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		upload: <T>(path: string, body: FormData, token?: string, projectId?: string, opts?: { experience?: ExperienceContext; replayOnUnauthorized?: boolean }): Promise<T> => api.upload<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		putBlob: <T>(path: string, body: Blob, token?: string, projectId?: string, opts?: ApiMutationOptions): Promise<T> => api.putBlob<T>(path, body, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		prefetch: (path: string, token?: string, projectId?: string, opts?: PrefetchOptions): Promise<void> => api.prefetch(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		downloadBlob: (path: string, token?: string, projectId?: string, opts?: { experience?: ExperienceContext }): Promise<{ blob: Blob; filename: string }> => api.downloadBlob(path, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		uploadWithProgress: <T>(path: string, body: FormData, progress: (event: { loaded: number; total: number }) => void, token?: string, projectId?: string, opts?: { experience?: ExperienceContext }): { promise: Promise<T>; abort: () => void } => api.uploadWithProgress<T>(path, body, progress, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		putWithProgress: <T>(path: string, body: Blob, contentType: string, progress: (event: { loaded: number; total: number }) => void, token?: string, projectId?: string, opts?: { experience?: ExperienceContext }): { promise: Promise<T>; abort: () => void } => api.putWithProgress<T>(path, body, contentType, progress, token, projectId, { ...opts, experience: opts?.experience ?? experience }),
+		postSse: <T>(path: string, body: unknown, token?: string, projectId?: string, onMessage?: (data: T) => void, onError?: (error: Error) => void, opts?: { experience?: ExperienceContext }): void => api.postSse<T>(path, body, token, projectId, onMessage, onError, { ...opts, experience: opts?.experience ?? experience }),
+		clearPrefetchCache,
+	};
+}

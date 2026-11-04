@@ -23,6 +23,8 @@ Trove 기반 관리형 데이터베이스(DBaaS)를 프로비저닝하고 관리
 
 개별 인스턴스와 그 하위 리소스(databases/users/backups/floating-ip/auto-backup)는 `instance_id` 소유권을 검증합니다. 소유하지 않았거나 존재하지 않는 인스턴스는 `404` 로 응답합니다.
 
+소유권 확인 또는 확인 후 상세 readback에서 Trove가401/403/404를 반환하면 존재 여부를 공개하지 않는404를 유지합니다. Transport 오류·native5xx·예상 밖 read 오류는 정제된503으로 구분하며 upstream 본문·URL·credential을 전달하지 않습니다. Raw REST 상세 응답도 JSON 해석 전에 HTTP 실패를 검사합니다. 소비자 상세 화면은503을 “없음”으로 표시하지 않고 조회 실패와 수동 새로고침을 유지합니다.
+
 ---
 
 ## 목차
@@ -51,6 +53,8 @@ Trove 기반 관리형 데이터베이스(DBaaS)를 프로비저닝하고 관리
 | `GET` | `/api/v1/database-instances/volume-types` | 볼륨 타입 목록 (Cinder) |
 
 인스턴스를 만들려면 최소한 `flavor_id`(flavors), `datastore_type`/`datastore_version`(datastores)이 필요합니다. `volume_type`·`configuration_id` 는 선택입니다.
+
+flavors/datastores/configurations 목록 조회가 upstream 실패로 끝나면 빈 목록 200이 아니라 500으로 응답합니다. 관련 캐시 키는 http-checked-v2 네임스페이스를 사용합니다.
 
 ---
 

@@ -7,7 +7,7 @@ import { t } from '$lib/i18n/ns/usage-schedule';
 import type { UsageScheduleInfo } from '$lib/types/instanceUsage';
 import { calendarMonthAfter, fromLocalDateTime, toLocalDateTime } from '$lib/utils/instanceUsage';
 
-const transport = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
+const transport = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), withExperience() { return this; } }));
 vi.mock('$lib/api/client', () => ({
 	api: transport,
 	ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } },

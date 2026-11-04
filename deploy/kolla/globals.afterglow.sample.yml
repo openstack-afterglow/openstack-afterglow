@@ -93,6 +93,9 @@ afterglow_public_haproxy_router_port: 18082
 afterglow_backend_port: 8000
 afterglow_frontend_port: 3080
 afterglow_backend_listen_port: 18000
+# Uvicorn processes per backend host; default 1. Assess DB pools and stream
+# interruption before increasing this value and reconfiguring.
+afterglow_backend_workers: 1
 afterglow_frontend_listen_port: 18081
 afterglow_public_api_base: "https://cloud.dmslab.re.kr"
 afterglow_mcp_public_url: "https://cloud.dmslab.re.kr/mcp"

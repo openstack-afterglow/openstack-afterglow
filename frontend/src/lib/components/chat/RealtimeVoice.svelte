@@ -8,6 +8,7 @@
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	// A refreshed token is the same actor, even while exact grants are unavailable.
 	const scope = $derived($authReady && !$projectSwitching && $auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
@@ -37,6 +38,7 @@
 	let nextPlayback = 0;
 	let pendingRequest: AbortController | null = null;
 	let pendingIntent: { fingerprint: string; key: string } | null = null;
+	let connectionExperience: ExperienceContext | undefined;
 	const model = $derived(models.find((item) => String(item.id) === selected));
 	const readiness = $derived(realtimeReadiness(model, capabilities));
 	const fingerprint = $derived(JSON.stringify([ownerKey, selected, voice]));
@@ -64,7 +66,10 @@
 		nextPlayback = context?.currentTime ?? 0;
 	}
 	function stop(clearError = true, preserveIntent = false) {
+		const wasConnected = connected;
 		generation++;
+		const experience = connectionExperience;
+		connectionExperience = undefined;
 		pendingRequest?.abort();
 		pendingRequest = null;
 		if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'session.close' }));
@@ -87,31 +92,45 @@
 		activeProvider = '';
 		if (!preserveIntent) pendingIntent = null;
 		if (clearError) error = '';
+		if (wasConnected) {
+			experienceState(experience, 'disabled', 4);
+			void experienceApplied(experience, {}, () => !connected && !connecting);
+		}
 	}
 	async function loadModels(requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.list') };
+		experienceState(requestScope.experience, 'loading', 0);
 		loading = true;
 		try {
 			const list = await realtimeVoiceApi.models(requestScope);
-			if (!canPublish(epoch)) return;
+			if (!canPublish(epoch)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			models = list.filter((item) => item.model_kind === 'realtime' && Number.isSafeInteger(item.id) && item.id > 0);
 			selected = models[0] ? String(models[0].id) : '';
+			experienceState(requestScope.experience, models.length ? 'ready' : 'empty', 0);
+			const appliedModels = models;
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && models === appliedModels);
 		} catch {
-			if (canPublish(epoch)) error = t('realtimeVoice.modelsLoadFailed');
+			if (canPublish(epoch)) { error = t('realtimeVoice.modelsLoadFailed'); experienceState(requestScope.experience, 'error', 0); }
 		} finally {
 			if (epoch === generation) loading = false;
 		}
 	}
 	async function loadCapabilities(current: RealtimeModel, requestScope: RealtimeScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.detail') };
+		experienceState(requestScope.experience, 'loading', 1);
 		capabilityLoading = true;
 		try {
 			const response = await realtimeVoiceApi.capabilities(current.id, requestScope);
-			if (!canPublish(epoch) || selected !== String(current.id)) return;
+			if (!canPublish(epoch) || selected !== String(current.id)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = response;
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
+			experienceState(requestScope.experience, 'ready', 1);
+			const appliedCapabilities = capabilities;
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && selected === String(current.id) && capabilities === appliedCapabilities);
 		} catch {
-			if (canPublish(epoch) && selected === String(current.id)) error = t('realtimeVoice.routeUnverified');
+			if (canPublish(epoch) && selected === String(current.id)) { error = t('realtimeVoice.routeUnverified'); experienceState(requestScope.experience, 'error', 1); }
 		} finally {
 			if (epoch === generation && selected === String(current.id)) capabilityLoading = false;
 		}
@@ -189,7 +208,7 @@
 		playback.push(source);
 		source.onended = () => { playback = playback.filter((item) => item !== source); source.disconnect(); };
 	}
-	async function captureAudio(stream: MediaStream, rate: number, epoch: number) {
+	async function captureAudio(stream: MediaStream, rate: number, epoch: number, experience: ExperienceContext | undefined) {
 		const active = new AudioContext({ sampleRate: rate });
 		context = active;
 		await active.audioWorklet.addModule('/audio/pcm16-capture.js');
@@ -209,15 +228,17 @@
 		connected = true;
 		connecting = false;
 		pendingIntent = null;
+		experienceState(experience, 'ready', 3);
+		void experienceApplied(experience, {}, () => canPublish(epoch) && connected);
 	}
-	function onFrame(event: MessageEvent, epoch: number) {
+	function onFrame(event: MessageEvent, epoch: number, experience: ExperienceContext | undefined) {
 		if (epoch !== generation || activeOwner !== ownerKey || !scope || typeof event.data !== 'string' || event.data.length > 64 * 1024) return;
 		try {
 			const packet = JSON.parse(event.data);
 			switch (packet.type) {
 				case 'session.ready':
 					if (media && [16000, 24000].includes(packet.input_sample_rate_hz) && packet.output_sample_rate_hz === 24000) {
-						void captureAudio(media, packet.input_sample_rate_hz, epoch).catch(() => { if (epoch === generation && activeOwner === ownerKey && scope) { error = t('realtimeVoice.microphoneStreamFailed'); stop(false); } });
+						void captureAudio(media, packet.input_sample_rate_hz, epoch, experience).catch(() => { if (epoch === generation && activeOwner === ownerKey && scope) { error = t('realtimeVoice.microphoneStreamFailed'); experienceState(experience, 'error', 5); stop(false); } });
 					} else { error = t('realtimeVoice.sessionFormatMismatch'); stop(false); }
 					break;
 				case 'audio.output.delta': play(packet.delta, packet.sample_rate_hz); break;
@@ -225,7 +246,7 @@
 				case 'transcript.output.delta': if (audioAllowed && typeof packet.delta === 'string') outputTranscript = (outputTranscript + packet.delta).slice(-4096); break;
 				case 'session.interrupted': flushPlayback(); break;
 				case 'session.closed': stop(); break;
-				case 'error': error = t('realtimeVoice.providerFailed'); stop(false); break;
+				case 'error': error = t('realtimeVoice.providerFailed'); experienceState(experience, 'error', 5); stop(false); break;
 			}
 		} catch {
 			error = t('realtimeVoice.invalidResponse');
@@ -242,6 +263,9 @@
 		error = '';
 		const epoch = generation;
 		const currentFingerprint = fingerprint;
+		const experience = beginExperienceAction('lumen', 'start', 'shared.stream');
+		connectionExperience = experience;
+		experienceState(experience, 'loading', 2);
 		try {
 			const acquired = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
 			if (!canPublish(epoch)) { acquired.getTracks().forEach((track) => track.stop()); if (epoch === generation) stop(true, true); return; }
@@ -251,18 +275,20 @@
 			pendingIntent = { fingerprint: currentFingerprint, key };
 			pendingRequest = new AbortController();
 			if (!audioAllowed || !scope) { stop(true, true); return; }
-			const session = await realtimeVoiceApi.createSession(model.id, voice, scope, key, pendingRequest.signal);
-			if (!canPublish(epoch)) { if (epoch === generation) stop(true, true); return; }
+			const session = await realtimeVoiceApi.createSession(model.id, voice, { ...scope, experience }, key, pendingRequest.signal);
+			if (!canPublish(epoch)) { experienceDiscarded(experience, 'stale'); if (epoch === generation) stop(true, true); return; }
 			activeProvider = session.provider_type;
 			socket = realtimeVoiceApi.connect(session);
-			socket.onmessage = (event) => onFrame(event, epoch);
-			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); stop(false, !connected); } };
-			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); stop(false, !connected); } };
+			socket.onmessage = (event) => onFrame(event, epoch, experience);
+			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); experienceState(experience, connected ? 'disabled' : 'error', connected ? 4 : 5); stop(false, !connected); } };
+			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); experienceState(experience, 'error', 5); stop(false, !connected); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
 			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = t('realtimeVoice.microphoneDenied');
 			else if (cause instanceof ApiError && cause.status === 402) error = t('realtimeVoice.quotaInsufficient');
 			else error = t('realtimeVoice.sessionFailed');
+			experienceState(experience, 'error', 5);
+			if (!(cause instanceof DOMException && cause.name === 'NotAllowedError') && !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(experience, 'unknown');
 			stop(false, !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500));
 		} finally {
 			if (epoch === generation) connecting = false;

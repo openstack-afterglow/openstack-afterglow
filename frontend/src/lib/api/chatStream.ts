@@ -6,6 +6,7 @@ import { requireLumenCapability } from './lumenAccess';
 import { chatRequestPermission, permissionReason } from './lumenPermissions';
 import { ApiError } from './errors';
 import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
+import type { ExperienceContext } from '$lib/utils/experience';
 export type { ChatRunDescriptor, ContextState } from './chatContracts';
 
 export class ChatProtocolError extends Error {
@@ -41,12 +42,14 @@ export interface CreateChatRunOptions {
 	projectId?: string;
 	signal?: AbortSignal;
 	idempotencyKey?: string;
+	experience?: ExperienceContext;
 }
 
 export interface PreviewChatContextOptions {
 	token?: string;
 	projectId?: string;
 	signal?: AbortSignal;
+	experience?: ExperienceContext;
 }
 
 export interface FollowChatRunOptions {
@@ -54,6 +57,7 @@ export interface FollowChatRunOptions {
 	projectId?: string;
 	afterSeq?: number;
 	signal?: AbortSignal;
+	experience?: ExperienceContext;
 }
 
 type SseFrame = { id?: string; event?: string; data: string };
@@ -191,7 +195,7 @@ async function errorFrom(response: Response): Promise<ChatHttpError> {
 export async function createChatRun(
 	path: string,
 	body: unknown,
-	{ token, projectId, signal, idempotencyKey = crypto.randomUUID() }: CreateChatRunOptions = {}
+	{ token, projectId, signal, idempotencyKey = crypto.randomUUID(), experience }: CreateChatRunOptions = {}
 ): Promise<ChatRunDescriptor> {
 	requireLumenCapability('lumen-chat_user', token, projectId);
 	const denied = chatRequestPermission(body, get(serviceCapabilities));
@@ -205,7 +209,7 @@ export async function createChatRun(
 		},
 		body: JSON.stringify(body),
 		signal
-	}, token, projectId);
+	}, token, projectId, { experience });
 	if (response.status !== 202) throw await errorFrom(response);
 	return parseChatRunDescriptor(await response.json());
 }
@@ -213,7 +217,7 @@ export async function createChatRun(
 export async function previewChatContext(
 	path: string,
 	body: unknown,
-	{ token, projectId, signal }: PreviewChatContextOptions = {}
+	{ token, projectId, signal, experience }: PreviewChatContextOptions = {}
 ): Promise<ContextState> {
 	const response = await fetchWithAuth(path, {
 		method: 'POST',
@@ -223,7 +227,7 @@ export async function previewChatContext(
 		},
 		body: JSON.stringify(body),
 		signal
-	}, token, projectId);
+	}, token, projectId, { experience });
 	if (!response.ok) throw await errorFrom(response);
 	return parseContextState(await response.json());
 }
@@ -285,7 +289,7 @@ function eventsUrlWithAfterSeq(eventsUrl: string, afterSeq: number): string {
  */
 export async function* followChatRun(
 	descriptor: ChatRunDescriptor,
-	{ token, projectId, afterSeq = 0, signal }: FollowChatRunOptions = {}
+	{ token, projectId, afterSeq = 0, signal, experience }: FollowChatRunOptions = {}
 ): AsyncGenerator<ChatRunEvent> {
 	let lastSeq = afterSeq;
 	let attempts = 0;
@@ -296,7 +300,7 @@ export async function* followChatRun(
 			response = await fetchWithAuth(eventsUrlWithAfterSeq(descriptor.events_url, lastSeq), {
 				headers: { ...headers(), ...(lastSeq ? { 'Last-Event-ID': `${descriptor.run_id}:${lastSeq}` } : {}) },
 				signal
-			}, token, projectId);
+			}, token, projectId, { experience });
 		} catch (error) {
 			if (signal?.aborted || error instanceof ApiError) throw error;
 			if (attempts >= waits.length) throw new ChatProtocolError(t('stream.disconnected'));
@@ -334,13 +338,13 @@ export async function* followChatRun(
 
 export async function cancelChatRun(
 	descriptor: ChatRunDescriptor,
-	{ token, projectId, signal }: Omit<CreateChatRunOptions, 'idempotencyKey'> = {}
+	{ token, projectId, signal, experience }: Omit<CreateChatRunOptions, 'idempotencyKey'> = {}
 ): Promise<void> {
 	const response = await fetchWithAuth(descriptor.cancel_url, {
 		method: 'POST',
 		headers: headers(),
 		signal
-	}, token, projectId);
+	}, token, projectId, { experience });
 	if (!response.ok) throw await errorFrom(response);
 }
 

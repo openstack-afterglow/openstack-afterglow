@@ -29,6 +29,7 @@
 	"browser.files": "ファイル",
 	"browser.trash": "ゴミ箱",
 	"browser.viewLabel": "オブジェクトブラウザーの表示",
+	"browser.loadFailed": "オブジェクトを読み込めませんでした。更新して再試行してください。",
 	"uploadQueue.readFailed": "ファイルを読み込めませんでした",
 	"uploadQueue.hashFailed": "整合性ハッシュの計算に失敗しました",
 	"uploadQueue.failed": "アップロードに失敗しました",

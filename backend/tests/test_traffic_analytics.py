@@ -1,5 +1,6 @@
 """Traffic privacy/security and pass-through observation. No external network needed."""
 
+import asyncio
 import json
 import time
 from types import SimpleNamespace
@@ -10,6 +11,9 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
+from redis.exceptions import AuthenticationError, MaxConnectionsError, OutOfMemoryError, ResponseError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.api.common import traffic_analytics as api
 from app.api.deps import get_token_info, require_admin
@@ -33,8 +37,12 @@ def settings(monkeypatch):
     for module in (api, service, middleware):
         monkeypatch.setattr(module, "get_settings", lambda: settings)
     service._pending_drops.clear()
+    service._pending_drop_reasons.clear()
+    service._failure_log_at.clear()
     yield settings
     service._pending_drops.clear()
+    service._pending_drop_reasons.clear()
+    service._failure_log_at.clear()
 
 
 def event(**changes):
@@ -137,6 +145,108 @@ async def test_redis_outage_is_unknown_and_recovered_drops(settings, monkeypatch
     measures = json.loads(args[args[1] + 6])
     assert measures["dropped_events"] == 1
     assert service._pending_drops["backend"] == 0
+
+
+@pytest.mark.parametrize(
+    "failure,reason",
+    [
+        (TimeoutError("NEVER-ECHO"), "timeout"),
+        (RedisTimeoutError("NEVER-ECHO"), "timeout"),
+        (ConnectionError("NEVER-ECHO"), "connection"),
+        # Pinned redis-py 5 does not type pool exhaustion separately from I/O.
+        (RedisConnectionError("Too many connections"), "connection"),
+        (RedisConnectionError("No connection available."), "connection"),
+        (MaxConnectionsError("NEVER-ECHO"), "capacity"),
+        (OutOfMemoryError("NEVER-ECHO"), "capacity"),
+        (AuthenticationError("NEVER-ECHO"), "rejected"),
+        (ResponseError("NEVER-ECHO"), "rejected"),
+        (ValueError("NEVER-ECHO"), "unknown"),
+    ],
+)
+async def test_failures_have_finite_recovered_reason_counts(settings, monkeypatch, failure, reason):
+    redis = SimpleNamespace(eval=AsyncMock(side_effect=failure))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    assert not await service.record_event(event(), "backend")
+    assert redis.eval.await_count == 1  # An uncertain Lua write is never replayed.
+    unavailable = await service.snapshot("backend", "24h")
+    assert unavailable["state"] == "unavailable"
+    assert unavailable["coverage"]["drop_reasons"] == {reason: 1}
+    assert "NEVER-ECHO" not in repr(unavailable)
+    redis.eval.side_effect = None
+    redis.eval.return_value = 1
+    assert await service.record_event(event(), "backend")
+    args = redis.eval.call_args.args
+    measures = json.loads(args[args[1] + 6])
+    assert measures["dropped_events"] == measures["drop_reason_" + reason] == 1
+    assert measures["requests"] == 1
+    assert not service._pending_drop_reasons.get("backend")
+    assert "NEVER-ECHO" not in repr(args)
+
+
+async def test_duplicate_restores_detached_drops_until_a_new_acceptance(settings, monkeypatch):
+    service._pending_drops["frontend"] = 3
+    service._pending_drop_reasons["frontend"]["connection"] = 3
+    redis = SimpleNamespace(eval=AsyncMock(side_effect=[0, -1, 1]))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    assert await service.record_event(event(), "frontend")  # Exact duplicate.
+    assert service._pending_drops["frontend"] == 3
+    assert not await service.record_event(event(), "frontend")  # Capacity, no partial write.
+    assert service._pending_drops["frontend"] == 4
+    assert await service.record_event(event(), "frontend")
+    args = redis.eval.call_args.args
+    measures = json.loads(args[args[1] + 6])
+    assert measures["requests"] == 1 and measures["dropped_events"] == 4
+    assert measures["drop_reason_connection"] == 3 and measures["drop_reason_capacity"] == 1
+    assert service._pending_drops["frontend"] == 0
+    assert not service._pending_drop_reasons.get("frontend")
+
+
+async def test_cancelled_write_restores_coverage_and_propagates(settings, monkeypatch):
+    service._pending_drops["backend"] = 2
+    service._pending_drop_reasons["backend"]["timeout"] = 2
+    redis = SimpleNamespace(eval=AsyncMock(side_effect=asyncio.CancelledError))
+    monkeypatch.setattr(service, "_get_redis", AsyncMock(return_value=redis))
+    with pytest.raises(asyncio.CancelledError):
+        await service.record_event(event(), "backend")
+    assert service._pending_drops["backend"] == 3
+    assert dict(service._pending_drop_reasons["backend"]) == {"timeout": 2, "unknown": 1}
+    assert redis.eval.await_count == 1
+
+
+@pytest.mark.parametrize("reasons", [{"private-url": 1}, {"timeout": -1}, {"capacity": 1_000_001}, {"timeout": 2}])
+def test_reporter_reasons_are_finite_bounded_and_cannot_exceed_loss(reasons):
+    with pytest.raises(ValidationError):
+        event(reporter_dropped_events=1, reporter_drop_reasons=reasons)
+
+
+@pytest.mark.parametrize("stage", ["redis_acquire", "aggregate"])
+async def test_failure_logs_bound_stage_reason_and_rate_without_payload(settings, monkeypatch, caplog, stage):
+    from app.utils.log import SensitiveDataFilter
+    from app.utils.structured_logging import JSONFormatter
+
+    failure = RedisTimeoutError("redis://secret-user:secret-pass@private.invalid/?token=NEVER-ECHO")
+    redis = SimpleNamespace(eval=AsyncMock(side_effect=failure))
+    acquire = AsyncMock(side_effect=failure) if stage == "redis_acquire" else AsyncMock(return_value=redis)
+    monkeypatch.setattr(service, "_get_redis", acquire)
+    with caplog.at_level("WARNING", logger=service.__name__):
+        for _ in range(3):
+            assert not await service.record_event(event(peer_ip="8.8.8.8", peer_verified=True), "backend")
+    records = [record for record in caplog.records if record.name == service.__name__]
+    assert len(records) == 1
+    record = records[0]
+    assert SensitiveDataFilter().filter(record)
+    serialized = JSONFormatter().format(record)
+    payload = json.loads(serialized)
+    assert payload["traffic_source"] == "backend"
+    assert payload["failure_stage"] == stage and payload["failure_reason"] == "timeout"
+    expected_scope = "client_initialization" if stage == "redis_acquire" else "pool_connect_command_reply"
+    assert payload["stage_scope"] == expected_scope
+    assert isinstance(payload["elapsed_ms"], (float, int)) and payload["elapsed_ms"] >= 0
+    assert not any(value in serialized for value in ("NEVER-ECHO", "secret-pass", "private.invalid", "8.8.8.8"))
+    assert service._pending_drops["backend"] == 3
+    assert dict(service._pending_drop_reasons["backend"]) == {"timeout": 3}
+    assert acquire.await_count == 3
+    assert redis.eval.await_count == (3 if stage == "aggregate" else 0)
 
 
 async def test_unknown_sizes_are_not_false_zero(settings, monkeypatch):
@@ -258,6 +368,88 @@ async def test_middleware_metrics_failure_and_analytics_exclusion(settings, monk
     assert record.await_count == 1
 
 
+@pytest.mark.parametrize("complete", [True, False])
+@pytest.mark.parametrize("status", [200, 503])
+@pytest.mark.parametrize(
+    "path,excluded",
+    [
+        ("/api/v1/activity/experience-events", True),
+        ("/api/v1/activity/experience-events/", True),
+        ("/api/v1/activity/experience-contract", True),
+        ("/api/v1/activity/experience-contract/", True),
+        ("/api/v1/activity/experience-events-extra", False),
+        ("/api/v1/activity/experience-contract/history", False),
+        ("/api/v1/activity", False),
+    ],
+)
+async def test_semantic_self_reporting_is_excluded_without_hiding_activity(
+    settings, monkeypatch, status, path, excluded, complete
+):
+    record = AsyncMock(return_value=True)
+    domain = AsyncMock(return_value=True)
+    monkeypatch.setattr(middleware, "record_event", record)
+    monkeypatch.setattr(middleware, "record_domain_request", domain)
+    receive = AsyncMock()
+    send = AsyncMock()
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": status, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok", "more_body": not complete})
+
+    await middleware.TrafficAnalyticsMiddleware(app)(asgi_scope(path), receive, send)
+    assert send.await_count == 2
+    assert send.call_args_list[0].args[0]["status"] == status
+    receive.assert_not_awaited()
+    assert record.await_count == domain.await_count == int(not (excluded and complete and 200 <= status < 300))
+
+
+@pytest.mark.parametrize(
+    "path,method,status,complete,raises,excluded",
+    [
+        ("/api/health", "GET", 200, True, False, True),
+        ("/api/v1/health", "HEAD", 204, True, False, True),
+        ("/api/v1/health", "GET", 503, True, False, False),
+        ("/api/v1/health", "GET", 302, True, False, False),
+        ("/api/v1/health", "POST", 200, True, False, False),
+        ("/api/v1/health/detail", "GET", 200, True, False, False),
+        ("/api/v1/instances/health", "GET", 200, True, False, False),
+        ("/api/v1/health", "GET", 200, False, False, False),
+        ("/api/v1/health", "GET", 200, True, True, False),
+    ],
+)
+async def test_only_completed_successful_exact_probes_are_excluded(
+    settings, monkeypatch, path, method, status, complete, raises, excluded
+):
+    record = AsyncMock(return_value=True)
+    domain = AsyncMock(return_value=True)
+    monkeypatch.setattr(middleware, "record_event", record)
+    monkeypatch.setattr(middleware, "record_domain_request", domain)
+    receive = AsyncMock()
+    output = []
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": status, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok", "more_body": not complete})
+        if raises:
+            raise RuntimeError("original application error")
+
+    async def send(message):
+        output.append(message)
+
+    scope = asgi_scope(path)
+    scope["method"] = method
+    if raises:
+        with pytest.raises(RuntimeError, match="original application error"):
+            await middleware.TrafficAnalyticsMiddleware(app)(scope, receive, send)
+    else:
+        await middleware.TrafficAnalyticsMiddleware(app)(scope, receive, send)
+    assert len(output) == 2 and output[0]["status"] == status
+    receive.assert_not_awaited()
+    assert record.await_count == domain.await_count == int(not excluded)
+    if not excluded:
+        assert record.call_args.args[0].response_bytes == (2 if complete else None)
+
+
 async def test_ingest_writer_scope_freshness_bounds_and_no_validation_echo(settings, monkeypatch):
     app = FastAPI()
     app.include_router(api.ingest_router, prefix="/ingest")
@@ -279,7 +471,9 @@ async def test_ingest_writer_scope_freshness_bounds_and_no_validation_echo(setti
         assert record.call_args.args[1] == "frontend"
         assert record.call_args.args[0].peer_ip == "8.8.8.8"
         record.return_value = False
-        assert (await client.post("/ingest/events", headers=headers, json=data)).status_code == 503
+        response = await client.post("/ingest/events", headers=headers, json=data)
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
 
 
 async def test_admin_aggregate_requires_verified_system_admin(settings, monkeypatch):

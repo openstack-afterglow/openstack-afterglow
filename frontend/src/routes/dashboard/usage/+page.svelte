@@ -7,6 +7,7 @@
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import {
 		Alert,
@@ -97,38 +98,54 @@
 		const options = { signal: controller.signal };
 		const ownsRequest = () => generation === loadGeneration
 			&& context === requestContext && visibleContext === requestContext;
+		const experience = beginExperienceLoad('monitoring', 'page');
+		const trendExperience = beginExperienceLoad('monitoring', 'resource.detail');
 		loading = !data;
 		trendLoading = !trendData;
 		error = null;
 		trendError = false;
-		const statsPromise = api.get<UsageStats>(
+		if (loading) experienceState(experience, 'loading');
+		if (trendLoading) experienceState(trendExperience, 'loading');
+		const statsPromise = api.withExperience(experience).get<UsageStats>(
 			`/api/v1/dashboard/usage-stats?range=${requestPeriod}`,
 			requestToken,
 			requestProjectId,
 			options,
 		);
-		const trendPromise = api.get<TrendData>(
+		const trendPromise = api.withExperience(trendExperience).get<TrendData>(
 			`/api/v1/dashboard/metrics/trend?range=${requestTrendRange}`,
 			requestToken,
 			requestProjectId,
 			options,
 		).then((value) => {
-			if (ownsRequest()) trendData = value.range === requestTrendRange ? value : null;
+			if (!ownsRequest()) { experienceDiscarded(trendExperience, 'stale'); return; }
+			trendData = value.range === requestTrendRange ? value : null;
 		}).catch(() => {
 			if (ownsRequest()) {
 				trendData = null;
 				trendError = true;
 			}
+			else experienceDiscarded(trendExperience, 'stale');
 		}).finally(() => {
-			if (ownsRequest()) trendLoading = false;
+			if (ownsRequest()) {
+				trendLoading = false;
+				experienceState(trendExperience, trendError || !trendData ? 'error' : [trendData.vcpu, trendData.memory, trendData.storage, trendData.network].some((series) => series.data.length > 0) ? 'ready' : 'empty');
+				void experienceApplied(trendExperience, {}, ownsRequest);
+			}
 		});
 		try {
 			const value = await statsPromise;
-			if (ownsRequest()) data = value.range === requestPeriod ? value : null;
+			if (!ownsRequest()) { experienceDiscarded(experience, 'stale'); return; }
+			data = value.range === requestPeriod ? value : null;
 		} catch (loadError) {
 			if (ownsRequest()) error = loadError instanceof Error ? loadError.message : t('usage.loadFailed');
+			else experienceDiscarded(experience, 'stale');
 		} finally {
-			if (ownsRequest()) loading = false;
+			if (ownsRequest()) {
+				loading = false;
+				experienceState(experience, error || !data ? 'error' : data.top_instances.length === 0 ? 'empty' : 'ready');
+				void experienceApplied(experience, {}, ownsRequest);
+			}
 		}
 		void trendPromise;
 	}

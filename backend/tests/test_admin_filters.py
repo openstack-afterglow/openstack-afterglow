@@ -282,13 +282,31 @@ async def test_admin_topology_exposes_provider_meta_and_port_meta(admin_client, 
     )
 
     with (
-        patch("app.api.identity.admin.neutron.get_topology", return_value=topo_data) as get_topology,
+        patch(
+            "app.api.identity.admin.neutron.get_topology_snapshot",
+            return_value=(
+                topo_data,
+                {
+                    ("inst-1", "10.0.0.5"): {
+                        "network_id": "net-a-id",
+                        "port_id": "port-1",
+                        "mac_address": "fa:16:3e:00:00:01",
+                    },
+                    ("inst-1", "10.0.1.7"): {
+                        "network_id": "net-b-id",
+                        "port_id": "port-2",
+                        "mac_address": "fa:16:3e:00:00:02",
+                    },
+                },
+                [],
+            ),
+        ) as get_topology,
         patch("app.api.identity.admin.cached_call", new=AsyncMock(side_effect=lambda key, ttl, fn, **kw: fn())),
     ):
         resp = await admin_client.get("/api/v1/admin/topology")
 
     assert resp.status_code == 200
-    get_topology.assert_called_once_with(mock_conn, include_provider=True)
+    get_topology.assert_called_once_with(mock_conn)
     data = resp.json()
 
     network = data["networks"][0]
@@ -332,7 +350,7 @@ async def test_admin_topology_flavor_image_null_when_not_dict(admin_client, mock
     mock_conn.network.ports.return_value = []
 
     with (
-        patch("app.api.identity.admin.neutron.get_topology", return_value=AdminTopologyData()),
+        patch("app.api.identity.admin.neutron.get_topology_snapshot", return_value=(AdminTopologyData(), {}, [])),
         patch("app.api.identity.admin.cached_call", new=AsyncMock(side_effect=lambda key, ttl, fn, **kw: fn())),
     ):
         resp = await admin_client.get("/api/v1/admin/topology")
@@ -350,7 +368,7 @@ async def test_admin_topology_http_exception_propagates(admin_client, mock_conn)
 
     with (
         patch(
-            "app.api.identity.admin.neutron.get_topology",
+            "app.api.identity.admin.neutron.get_topology_snapshot",
             side_effect=HTTPException(status_code=503, detail="인증 서비스 지연"),
         ),
         patch("app.api.identity.admin.cached_call", new=AsyncMock(side_effect=lambda key, ttl, fn, **kw: fn())),
@@ -391,7 +409,7 @@ async def test_admin_topology_flags_database_instances(admin_client, mock_conn):
     mock_conn.network.ports.return_value = []
 
     with (
-        patch("app.api.identity.admin.neutron.get_topology", return_value=AdminTopologyData()),
+        patch("app.api.identity.admin.neutron.get_topology_snapshot", return_value=(AdminTopologyData(), {}, [])),
         patch(
             "app.api.identity.admin.trove.topology_database_ips",
             return_value={"10.0.0.11", "203.0.113.11"},
@@ -418,7 +436,7 @@ async def test_admin_topology_database_flag_fails_soft(admin_client, mock_conn):
     mock_conn.network.ports.return_value = []
 
     with (
-        patch("app.api.identity.admin.neutron.get_topology", return_value=AdminTopologyData()),
+        patch("app.api.identity.admin.neutron.get_topology_snapshot", return_value=(AdminTopologyData(), {}, [])),
         patch(
             "app.api.identity.admin.trove.topology_database_ips",
             side_effect=RuntimeError("Trove mgmt 미지원"),
@@ -517,3 +535,56 @@ async def test_admin_topology_directory_failure_is_not_unknown_ownership_success
         response = await admin_client.get("/api/v1/admin/topology")
     assert response.status_code == 503
     assert response.json()["detail"] == "inventory_directory_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_admin_topology_reuses_request_subnets_but_rechecks_cached_ownership(admin_client, mock_conn):
+    from types import SimpleNamespace
+
+    from app.models.storage import AdminTopologyData, AdminTopologyNetwork, SubnetDetail
+
+    network = AdminTopologyNetwork(
+        id="net",
+        name="net",
+        status="ACTIVE",
+        project_id="project-a",
+        subnet_details=[
+            SubnetDetail(id="subnet-a", name="a", cidr="10.0.0.0/24", ip_version=4, dhcp_enabled=True),
+            SubnetDetail(id="subnet-b", name="b", cidr="10.1.0.0/24", ip_version=4, dhcp_enabled=True),
+        ],
+    )
+    raw_subnets = [
+        SimpleNamespace(id="subnet-a", project_id="project-a"),
+        SimpleNamespace(id="subnet-b", project_id="project-b"),
+    ]
+    cached = {}
+
+    async def cache(_key, _ttl, fetch, **_kwargs):
+        if not cached:
+            cached.update(fetch())
+        return cached
+
+    with (
+        patch("app.api.identity.admin.cached_call", side_effect=cache),
+        patch(
+            "app.api.identity.admin.neutron.get_topology_snapshot",
+            return_value=(AdminTopologyData(networks=[network]), {}, raw_subnets),
+        ) as snapshot,
+        patch("app.api.identity.admin.get_topology_lbs", return_value=[]),
+        patch("app.api.identity.admin.trove.topology_database_ips", return_value=set()),
+    ):
+        mock_conn.compute.servers.return_value = []
+        first = await admin_client.get("/api/v1/admin/topology?project_id=project-a")
+        assert first.status_code == 200
+        assert [row["id"] for row in first.json()["networks"][0]["subnet_details"]] == ["subnet-a"]
+        mock_conn.network.subnets.assert_not_called()
+        # The structural cache must not preserve a previous ownership decision.
+        mock_conn.network.subnets.return_value = [
+            SimpleNamespace(id="subnet-a", project_id="project-b"),
+            SimpleNamespace(id="subnet-b", project_id="project-a"),
+        ]
+        second = await admin_client.get("/api/v1/admin/topology?project_id=project-a")
+    assert second.status_code == 200
+    assert [row["id"] for row in second.json()["networks"][0]["subnet_details"]] == ["subnet-b"]
+    snapshot.assert_called_once()
+    mock_conn.network.subnets.assert_called_once_with()

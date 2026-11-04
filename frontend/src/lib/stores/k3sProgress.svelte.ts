@@ -1,5 +1,7 @@
 import { t } from '$lib/i18n/ns/drover';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
+import { K3S_CREATE_STEPS, K3S_DELETE_STEPS } from '$lib/components/k3sSteps';
+import { beginExperienceAction, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceContext } from '$lib/utils/experience';
 
 export type K3sProgressMode = 'create' | 'delete';
 
@@ -17,6 +19,13 @@ export function createK3sProgress() {
 
 	let timerHandle: ReturnType<typeof setInterval> | null = null;
 	let timerStart = 0;
+	let context: ExperienceContext | undefined;
+
+	function observe(ctx: ExperienceContext | undefined, state: 'loading' | 'ready' | 'error', stage?: number) {
+		experienceState(ctx, state, stage);
+		// A shared progress controller has no component teardown contract.
+		void experienceApplied(ctx, {});
+	}
 
 	function startTimer() {
 		timerStart = performance.now();
@@ -44,15 +53,18 @@ export function createK3sProgress() {
 		get lastStepSeen() { return lastStepSeen; },
 		get isTerminal() { return step === 'completed' || step === 'failed'; },
 
-		begin(m: K3sProgressMode, initialMsg = '') {
+		begin(m: K3sProgressMode, initialMsg = '', ctx?: ExperienceContext) {
+			context = ctx ?? beginExperienceAction('k3s', m, 'shared.stream');
 			mode = m; visible = true;
 			step = ''; pct = 0; msg = initialMsg; error = '';
 			createdClusterId = null; elapsedSeconds = 0;
 			stepTimings = {}; lastStepSeen = '';
 			startTimer();
+			experienceState(context, 'loading', 0);
 		},
 
-		apply(message: K3sSseProgressMessage) {
+		apply(message: K3sSseProgressMessage, ctx = context) {
+			const previousStep = step;
 			step = message.step;
 			pct = message.progress;
 			msg = message.message;
@@ -63,14 +75,24 @@ export function createK3sProgress() {
 			}
 			if (message.cluster_id) createdClusterId = message.cluster_id;
 			if (step === 'failed') error = message.error || t('progress.unknownError');
+			const stages = mode === 'create' ? K3S_CREATE_STEPS : K3S_DELETE_STEPS;
+			const index = stages.findIndex(stage => stage.id === step);
+			if (step !== previousStep) {
+				if (step === 'failed') observe(ctx, 'error');
+				else if (index >= 0) observe(ctx, step === 'completed' ? 'ready' : 'loading', index + 1);
+			}
 		},
 
-		failWith(err: string) {
+		failWith(err: string, ctx = context) {
 			step = 'failed'; error = err;
+			observe(ctx, 'error');
 		},
 
-		end() {
+		end(ctx = context, isCurrent: () => boolean = () => true) {
 			stopTimer();
+			if (ctx !== context || !isCurrent()) experienceDiscarded(ctx, 'stale');
+			// A clean create EOF may intentionally hand off at waiting_callback.
+			else if (mode === 'delete' && step !== 'completed' && step !== 'failed') recordExperience(ctx, 'telemetry.gap', { reason: 'transport_failed' });
 		},
 	};
 }

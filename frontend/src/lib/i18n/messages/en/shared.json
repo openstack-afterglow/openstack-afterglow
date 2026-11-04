@@ -1,4 +1,10 @@
 {
+	"support.label": "Support code",
+	"support.copy": "Copy support code",
+	"support.copied": "Support code copied",
+	"support.help": "Share this code with support. It is not a password and grants no access. A code does not guarantee that records were stored.",
+	"support.partial": "Diagnostic delivery is unconfirmed or partial. Missing records do not mean that nothing happened.",
+	"support.unavailable": "Copy unavailable. Select and copy the code above manually.",
 	"loadingState.label": "Loading",
 	"progressBar.failed": "Deployment failed",
 	"projectSelector.switchFailed": "Failed to switch projects",

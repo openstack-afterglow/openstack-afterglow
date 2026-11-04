@@ -6,7 +6,7 @@ import type { Instance } from '$lib/types/compute';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get }, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get, withExperience() { return this; } }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'admin-token', projectId: 'personal', userId: 'actor', isSystemAdmin: true }),
 	canWrite: writable(true),

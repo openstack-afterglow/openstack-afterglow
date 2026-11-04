@@ -4,8 +4,10 @@ import type { HubMe, HubLayer, HubLayerDetail, HubBuild, HubExport, HubFilters }
 import type { PackageIdentity } from '$lib/api/palimpsestPackages';
 import { projectPermissions, serviceCapabilities } from './servicePermissions';
 import { t } from '$lib/i18n/ns/palimpsest-hub';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 export type HubLane = 'me' | 'inventory' | 'detail' | 'download' | 'builds' | 'exports';
+const LANE_STEPS: Readonly<Record<HubLane, number>> = { me: 0, inventory: 1, detail: 2, download: 3, builds: 4, exports: 5 };
 type Failure = { message?: string; key?: Parameters<typeof t>[0] };
 const permissionsReady = () => {
   const state = get(projectPermissions);
@@ -65,7 +67,17 @@ export function createPalimpsestHubController(
     if (error instanceof HubClientError) return { key: error.code === 'too-large' ? 'error.size' : `error.${error.code}` as Parameters<typeof t>[0] };
     return error instanceof Error && error.message ? { message: error.message } : { key: 'error.request' };
   }
-  async function run<T>(lane: HubLane, work: (actor: PackageIdentity, signal: AbortSignal) => Promise<T>, apply: (value: T) => void): Promise<boolean> {
+  function laneValue(lane: HubLane) {
+    switch (lane) {
+      case 'me': return me;
+      case 'inventory': return inventory;
+      case 'detail': return detail;
+      case 'builds': return builds;
+      case 'exports': return exports;
+      default: return null;
+    }
+  }
+  async function run<T>(lane: HubLane, work: (actor: PackageIdentity, signal: AbortSignal) => Promise<T>, apply: (value: T) => void, parentExperience?: ExperienceContext): Promise<boolean> {
     if (!allowed(lane)) return false;
     cancel(lane);
     const actor = { ...bound! }; // Never let a mutable identity object change an in-flight actor.
@@ -73,30 +85,42 @@ export function createPalimpsestHubController(
     const request = new AbortController();
     requests.set(lane, request); busy[lane] = true; delete failures[lane];
     const owns = () => current() && epoch === generation && sameHubIdentity(actor, identity()) && requests.get(lane) === request && !request.signal.aborted;
+    const experience = parentExperience ?? (lane === 'download' ? beginExperienceAction('palimpsest', 'export', 'resource.detail') : beginExperienceLoad('palimpsest', lane === 'detail' ? 'resource.detail' : 'resource.list'));
+    const step = LANE_STEPS[lane];
+    experienceState(experience, 'loading', step);
     try {
-      const value = await work(actor, request.signal);
-      if (!owns() || !allowed(lane)) return false;
-      apply(value); observed[lane] = now(); return true;
+      const value = await work({ ...actor, experience }, request.signal);
+      if (!owns() || !allowed(lane)) { experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale'); return false; }
+      apply(value); observed[lane] = now();
+      experienceState(experience, Array.isArray(value) && !value.length ? 'empty' : 'ready', step);
+      const appliedValue = laneValue(lane);
+      void experienceApplied(experience, {}, lane === 'download' ? undefined : () => current() && epoch === generation && sameHubIdentity(actor, identity()) && !request.signal.aborted && allowed(lane) && laneValue(lane) === appliedValue);
+      return true;
     } catch (error) {
-      if (owns() && allowed(lane)) failures[lane] = failure(error);
+      if (owns() && allowed(lane)) {
+        failures[lane] = failure(error); experienceState(experience, 'error', step);
+        const appliedFailure = failures[lane];
+        void experienceApplied(experience, {}, lane === 'download' ? undefined : () => current() && epoch === generation && sameHubIdentity(actor, identity()) && !request.signal.aborted && allowed(lane) && failures[lane] === appliedFailure);
+      }
+      else experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale');
       return false;
     } finally {
       if (owns()) { requests.delete(lane); busy[lane] = false; }
     }
   }
-  async function loadInventory() {
+  async function loadInventory(experience?: ExperienceContext) {
     const query = { ...filters }, page = offset;
     await run('inventory', (actor, signal) => api.layers(actor, signal, query, page), (rows) => {
       inventory = rows.slice(0, HUB_PAGE_SIZE); hasNext = rows.length > HUB_PAGE_SIZE;
-    });
+    }, experience);
   }
-  async function loadBuilds() {
-    await run('builds', (actor, signal) => api.builds(actor, signal), (rows) => { builds = rows; });
+  async function loadBuilds(experience?: ExperienceContext) {
+    await run('builds', (actor, signal) => api.builds(actor, signal), (rows) => { builds = rows; }, experience);
   }
-  async function loadExports() {
-    await run('exports', (actor, signal) => api.exports(actor, signal), (rows) => { exports = rows; });
+  async function loadExports(experience?: ExperienceContext) {
+    await run('exports', (actor, signal) => api.exports(actor, signal), (rows) => { exports = rows; }, experience);
   }
-  async function loadMe() {
+  async function loadMe(experience = beginExperienceLoad('palimpsest', 'resource.list')) {
     const digest = selected;
     me = null;
     const loaded = await run('me', (actor, signal) => api.me(actor, signal), (value) => {
@@ -104,12 +128,12 @@ export function createPalimpsestHubController(
         throw new HubClientError('response');
       }
       me = value;
-    });
+    }, experience);
     if (loaded) {
       // Refresh detail before independent jobs can finish; a later explicit
       // download must not be cancelled by trailing work from this refresh.
-      const selectedDetail = digest && canInventory() && selected === digest ? openDetail(digest) : Promise.resolve();
-      await Promise.all([loadInventory(), loadBuilds(), loadExports(), selectedDetail]);
+      const selectedDetail = digest && canInventory() && selected === digest ? openDetail(digest, experience) : Promise.resolve();
+      await Promise.all([loadInventory(experience), loadBuilds(experience), loadExports(experience), selectedDetail]);
     }
   }
   function bindIdentity() {
@@ -152,12 +176,12 @@ export function createPalimpsestHubController(
     closeDetail(); inventory = null; hasNext = false; offset = Math.max(0, offset + direction * HUB_PAGE_SIZE);
     await loadInventory();
   }
-  async function openDetail(digest: string) {
+  async function openDetail(digest: string, experience = beginExperienceAction('palimpsest', 'inspect', 'resource.detail')) {
     closeDetail(); selected = digest;
     await run('detail', (actor, signal) => api.detail(actor, signal, digest), (value) => {
       if (value.blob_digest !== digest) throw new HubClientError('response');
       detail = value; // Hub, not row.project_id equality, governs public/shared visibility.
-    });
+    }, experience);
   }
   async function download(): Promise<Blob | null> {
     const layer = detail;

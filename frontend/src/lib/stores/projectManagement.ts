@@ -2,6 +2,7 @@ import { derived, readable } from 'svelte/store';
 import { auth, authReady, logoutInProgress, projectSwitching } from './auth';
 import { api } from '$lib/api/client';
 import { sessionScopeKey } from '$lib/utils/authSession';
+import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 export interface ProjectManagementCapability {
 	domain_id: string;
@@ -35,17 +36,24 @@ export const projectManagement = readable<ProjectManagementState>(empty, set => 
 		const target = scope;
 		if (!target) return;
 		const pending = ++generation;
+		const experience = beginExperienceLoad('iam', 'page');
+		const current = () => scope === target && generation === pending;
 		set({ scope: target, capability, checking: true, error: '' });
+		experienceState(experience, 'loading');
 		try {
-			const result = await api.get<ProjectManagementCapability>(`/api/v1/projects/capabilities?domain_id=${encodeURIComponent(target.domainId)}`, target.token(), undefined, { cache: 'no-store', suppressAuthRedirect: true });
-			if (scope !== target || generation !== pending) return;
+			const result = await api.withExperience(experience).get<ProjectManagementCapability>(`/api/v1/projects/capabilities?domain_id=${encodeURIComponent(target.domainId)}`, target.token(), undefined, { cache: 'no-store', suppressAuthRedirect: true });
+			if (!current()) { experienceDiscarded(experience, scope !== target ? 'scope_changed' : 'stale'); return; }
 			if (result.domain_id !== target.domainId || !['organization', 'legacy', 'personal'].includes(result.domain_kind) || typeof result.is_domain_manager !== 'boolean' || typeof result.can_create_project !== 'boolean') throw new Error('Invalid project capability response');
 			capability = result;
 			set({ scope: target, capability, checking: false, error: '' });
+			experienceState(experience, 'ready');
+			void experienceApplied(experience);
 		} catch (cause) {
-			if (scope !== target || generation !== pending) return;
+			if (!current()) { experienceDiscarded(experience, scope !== target ? 'scope_changed' : 'stale'); return; }
 			capability = null;
 			set({ scope: target, capability: null, checking: false, error: cause instanceof Error ? cause.message : 'Project capability unavailable' });
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
 		}
 	}
 	refresh = load;

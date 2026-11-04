@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkDetail } from '$lib/types/networks';
+import { tick } from 'svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({
 	ApiError: class ApiError extends Error {},
-	api: mocks,
+	api: { ...mocks, withExperience: () => mocks },
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn() }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
@@ -34,6 +35,27 @@ describe('NetworkDetailPanel subnet creation', () => {
 				: network,
 		));
 		mocks.post.mockResolvedValue({ id: 'subnet-app', gateway_ip: '10.10.0.1' });
+	});
+
+	it.each(['networkId', 'apiBase', 'token', 'projectId'] as const)('keeps a settled network visible without reloading and still follows %s changes', async changed => {
+		const initial = Promise.withResolvers<NetworkDetail>();
+		const next = Promise.withResolvers<NetworkDetail>();
+		mocks.get.mockReturnValueOnce(initial.promise).mockReturnValue(next.promise);
+		const props = { networkId: network.id, apiBase: '/api/v1/networks', token: 'first-token', projectId: 'project-1' };
+		const view = render(NetworkDetailPanel, props);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
+		initial.resolve(network);
+		await tick(); await tick();
+		expect(mocks.get).toHaveBeenCalledOnce();
+		await screen.findByRole('heading', { level: 2, name: network.name });
+		const changedProps = { ...props, [changed]: { networkId: 'net-next', apiBase: '/api/v1/admin/networks', token: 'next-token', projectId: 'project-2' }[changed] };
+		await view.rerender(changedProps);
+		await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
+		expect(screen.queryByRole('heading', { level: 2, name: network.name })).toBeNull();
+		next.resolve({ ...network, id: changedProps.networkId, name: 'next-network', project_id: changedProps.projectId });
+		await screen.findByRole('heading', { level: 2, name: 'next-network' });
+		await tick(); await tick();
+		expect(mocks.get).toHaveBeenCalledTimes(2);
 	});
 
 	it('posts an optional-name subnet to the user network route', async () => {

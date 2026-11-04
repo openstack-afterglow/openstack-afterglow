@@ -2,6 +2,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { t } from '$lib/i18n/ns/common';
 	import { enter, fadeMotion, reflow } from '$lib/utils/motion';
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
 </script>
 
 {#if $toast.length > 0}
@@ -12,6 +13,7 @@
 >
 	{#each $toast as item (item.id)}
 		<div
+			use:experiencePresentation={{ context: item.experience?.context, message: item.experience?.message }}
 			class="toast-item toast-{item.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-[var(--shadow-overlay-compact)] pointer-events-auto"
 			in:enter|global={{ x: 24, y: 0 }}
 			out:fadeMotion|global

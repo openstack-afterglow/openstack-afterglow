@@ -1,4 +1,6 @@
 import { writable } from 'svelte/store';
+import type { ExperienceContext } from '$lib/utils/experience';
+import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -7,12 +9,19 @@ export interface ToastAction {
 	onClick: () => void;
 }
 
+/** Producer-captured at formatting time, never inferred from the message string. */
+export interface ToastExperience {
+	context: ExperienceContext | undefined;
+	message: ExperienceMessageMetadata;
+}
+
 export interface Toast {
 	id: string;
 	type: ToastType;
 	message: string;
 	duration: number;
 	action?: ToastAction;
+	experience?: ToastExperience;
 }
 
 function createToastStore() {
@@ -41,12 +50,16 @@ function createToastStore() {
 		for (const [id, c] of countdowns) if (c.handle === null) arm(id, c.remaining);
 	}
 
-	function addToast(type: ToastType, message: string, duration = 4000, action?: ToastAction): string {
+	function addToast(type: ToastType, message: string, duration = 4000, action?: ToastAction, experience?: ToastExperience): string {
 		const id = crypto.randomUUID();
 		// WCAG 2.2.1 의 "turn off": 오류는 실패한 작업과 해결 단계를 담으므로(DESIGN.md) 시간 제한을
 		// 두지 않고 사용자가 직접 닫는다. 나머지는 pause/resume 으로 "adjust" 요건을 만족한다.
 		const effective = type === 'error' ? 0 : duration;
-		update(toasts => [...toasts, { id, type, message, duration: effective, action }]);
+		const captured = experience ? Object.freeze({
+			context: experience.context,
+			message: Object.freeze({ ...experience.message, tone: type === 'error' ? 'danger' as const : type }),
+		}) : undefined;
+		update(toasts => [...toasts, { id, type, message, duration: effective, action, ...(captured ? { experience: captured } : {}) }]);
 		if (effective <= 0) return id;
 		if (holders.size > 0) countdowns.set(id, { handle: null, remaining: effective, startedAt: Date.now() });
 		else arm(id, effective);
@@ -85,10 +98,10 @@ function createToastStore() {
 
 	return {
 		subscribe,
-		success: (msg: string, duration?: number, action?: ToastAction) => addToast('success', msg, duration, action),
-		error: (msg: string, duration = 6000, action?: ToastAction) => addToast('error', msg, duration, action),
-		warning: (msg: string, duration?: number, action?: ToastAction) => addToast('warning', msg, duration, action),
-		info: (msg: string, duration?: number, action?: ToastAction) => addToast('info', msg, duration, action),
+		success: (msg: string, duration?: number, action?: ToastAction, experience?: ToastExperience) => addToast('success', msg, duration, action, experience),
+		error: (msg: string, duration = 6000, action?: ToastAction, experience?: ToastExperience) => addToast('error', msg, duration, action, experience),
+		warning: (msg: string, duration?: number, action?: ToastAction, experience?: ToastExperience) => addToast('warning', msg, duration, action, experience),
+		info: (msg: string, duration?: number, action?: ToastAction, experience?: ToastExperience) => addToast('info', msg, duration, action, experience),
 		remove: removeToast,
 		pause,
 		resume,

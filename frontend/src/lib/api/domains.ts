@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 export interface AdminDomain {
   id: string;
@@ -32,9 +33,12 @@ export function domainPath(path: string, domainId: string): string {
   return `${pathname}?${params}`;
 }
 export const domainsApi = {
-  list: ({ token, projectId }: AdminAuthority, opts?: { refresh?: boolean }) => opts?.refresh
-    ? api.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId, { refresh: true })
-    : api.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId),
+  list: ({ token, projectId }: AdminAuthority, opts?: { refresh?: boolean; experience?: ExperienceContext }) => {
+    const request = opts?.experience ? api.withExperience(opts.experience) : api;
+    return opts?.refresh
+      ? request.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId, { refresh: true })
+      : request.get<{ items: AdminDomain[] }>('/api/v1/admin/domains', token, projectId);
+  },
   create: (draft: DomainDraft, { token, projectId }: AdminAuthority) => api.post<AdminDomain>('/api/v1/admin/domains', draft, token, projectId),
   update: (id: string, draft: DomainDraft, { token, projectId }: AdminAuthority) => api.patch<AdminDomain>(`/api/v1/admin/domains/${encodeURIComponent(id)}`, draft, token, projectId),
   monitoring: (id: string, window: DomainWindow, { token, projectId }: AdminAuthority) => api.get<DomainMonitoring>(`/api/v1/admin/domains/${encodeURIComponent(id)}/monitoring?window=${window}`, token, projectId),

@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/api/client', () => ({
 	api: {
+		withExperience() { return this; },
 		get: mocks.get,
 		post: mocks.post,
 		patch: mocks.patch,

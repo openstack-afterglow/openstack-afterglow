@@ -6,6 +6,7 @@ import { t as td } from '$lib/i18n/ns/domain-admin';
 import { api, ApiError } from '$lib/api/client';
 import type { Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
 import { t } from '$lib/i18n/ns/admin-identity';
+import { beginExperienceAction, beginExperienceLoad, experienceState, experienceApplied, experienceDiscarded, type ExperienceContext } from '$lib/utils/experience';
 
 export interface AdminQuotasControllerOpts {
   token: () => string | undefined;
@@ -114,43 +115,63 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
   async function loadDomains() {
     const context = captureContext(false), generation = ++domainsGeneration;
     const owns = () => context.owns() && generation === domainsGeneration;
+    const experience = beginExperienceLoad('iam', 'resource.list');
+    experienceState(experience, 'loading');
     domainsLoading = true; domainsError = '';
     try {
-      const response = await domainsApi.list(context);
-      if (owns()) domains = response.items;
+      const response = experience ? await domainsApi.list(context, { experience }) : await domainsApi.list(context);
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
+      domains = response.items;
+      experienceState(experience, domains.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch (error) {
-      if (owns()) { domains = []; domainsError = error instanceof ApiError ? error.message : td('scope.loadFailed'); }
+      if (owns()) { domains = []; domainsError = error instanceof ApiError ? error.message : td('scope.loadFailed'); experienceState(experience, 'error'); void experienceApplied(experience, {}, owns); }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) domainsLoading = false; }
   }
 
   async function loadProjects() {
     const context = captureContext(false), generation = ++directoryGeneration;
     const owns = () => context.owns() && generation === directoryGeneration;
+    const experience = beginExperienceLoad('iam', 'resource.list');
+    experienceState(experience, 'loading');
     if (directory.length === 0) loading = true;
     else refreshing = true;
     projectsError = '';
     try {
-      const result = await projectNames.loadMetadata(context.token, context.projectId, opts.userId?.());
-      if (!owns()) return;
+      const result = experience
+        ? await projectNames.loadMetadata(context.token, context.projectId, opts.userId?.(), false, experience)
+        : await projectNames.loadMetadata(context.token, context.projectId, opts.userId?.());
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
       directory = [...result.projects];
       if (result.failed) projectsError = t('quotaPage.unavailable');
       if (selectedProjectId && !projects.some(project => project.id === selectedProjectId)) {
         selectedProjectId = ''; clearProjectResults();
       }
+      experienceState(experience, result.failed ? 'error' : directory.length ? 'ready' : 'empty');
+      void experienceApplied(experience, {}, owns);
     } catch {
-      if (owns()) { directory = []; selectedProjectId = ''; clearProjectResults(); projectsError = t('quotaPage.unavailable'); }
+      if (owns()) { directory = []; selectedProjectId = ''; clearProjectResults(); projectsError = t('quotaPage.unavailable'); experienceState(experience, 'error'); void experienceApplied(experience, {}, owns); }
+      else experienceDiscarded(experience, 'stale');
     } finally { if (owns()) { loading = false; refreshing = false; } }
   }
 
 
   async function loadQuotas(opts?: { preserveStatus?: boolean; background?: boolean }): Promise<boolean> {
+    return loadQuotasWithExperience(opts);
+  }
+
+  async function loadQuotasWithExperience(opts?: { preserveStatus?: boolean; background?: boolean }, inherited?: ExperienceContext): Promise<boolean> {
     const targetProjectId = selectedProjectId;
     const context = captureContext();
     const requestToken = tok();
     const requestProjectId = pid();
     const generation = ++quotaGeneration;
     const owns = () => generation === quotaGeneration && context.owns() && selectedProjectId === targetProjectId;
-    if (!targetProjectId) { quotas = null; quotaLoading = false; return false; }
+    const experience = inherited ?? beginExperienceLoad('admin', 'resource.detail');
+    const request = experience ? api.withExperience(experience) : api;
+    if (!targetProjectId) { quotas = null; quotaLoading = false; experienceState(experience, 'disabled'); void experienceApplied(experience, {}, owns); return false; }
+    experienceState(experience, 'loading');
     if (!opts?.background) quotaLoading = true;
     if (!opts?.preserveStatus) {
       saveError = '';
@@ -158,14 +179,20 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       sectionErrors = {};
       sectionSuccesses = {};
     }
-    const quotaPromise = api.get<Quotas>(`/api/v1/admin/quotas/${targetProjectId}`, requestToken, requestProjectId);
+    const quotaPromise = request.get<Quotas>(`/api/v1/admin/quotas/${targetProjectId}`, requestToken, requestProjectId);
     try {
       const loadedQuotas = await quotaPromise;
-      if (!owns()) return false;
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return false; }
       quotas = loadedQuotas;
+      experienceState(experience, loadedQuotas.errors && Object.keys(loadedQuotas.errors).length ? 'error' : 'ready');
+      void experienceApplied(experience, {}, owns);
       return true;
     } catch {
-      if (owns() && !opts?.background) quotas = null;
+      if (owns()) {
+        if (!opts?.background) quotas = null;
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, owns);
+      } else experienceDiscarded(experience, 'stale');
       return false;
     } finally {
       if (owns()) quotaLoading = false;
@@ -193,6 +220,9 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     if (Object.keys(changes).length === 0) {
       return { success: false };
     }
+    const experience = beginExperienceAction('admin', 'update', 'resource.detail');
+    const request = experience ? api.withExperience(experience) : api;
+    experienceState(experience, 'loading');
 
     const payload = changes;
 
@@ -208,7 +238,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     saveSuccess = '';
 
     try {
-      const res = await api.put<QuotaUpdateResponse>(
+      const res = await request.put<QuotaUpdateResponse>(
         `/api/v1/admin/quotas/${targetProjectId}`,
         payload,
         requestToken,
@@ -216,33 +246,43 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       );
 
       if (!owns()) {
+        experienceDiscarded(experience, 'stale');
         return { success: false };
       }
 
       const sectionErr = res.errors?.[section];
       if (res.updated?.includes(section) && !sectionErr) {
-        const refreshed = await loadQuotas({ preserveStatus: true, background: true });
-        if (!validContext()) return { ...res, success: false };
+        const refreshed = await loadQuotasWithExperience({ preserveStatus: true, background: true }, experience);
+        if (!validContext()) { experienceDiscarded(experience, 'scope_changed'); return { ...res, success: false }; }
         if (refreshed) {
           sectionSuccesses = { ...sectionSuccesses, [section]: t('quotaController.saved') };
           saveSuccess = t('quotaController.saved');
+          experienceState(experience, 'ready');
+          void experienceApplied(experience, {}, validContext);
           return { ...res, success: true, refreshed: true };
         }
         const refreshError = t('quotaController.refreshFailed');
         sectionErrors = { ...sectionErrors, [section]: refreshError };
         saveError = refreshError;
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, validContext);
         return { ...res, success: true, refreshed: false, refreshError };
       }
       const errMsg = sectionErr || Object.values(res.errors ?? {}).join(', ') || t('quotaController.partialSaveFailed');
       sectionErrors = { ...sectionErrors, [section]: errMsg };
       saveError = errMsg;
+      experienceState(experience, 'error');
+      void experienceApplied(experience, {}, owns);
       return { ...res, success: false };
     } catch (e) {
       if (validContext()) {
         const errMsg = e instanceof ApiError ? e.message : t('quotaController.saveFailed');
         sectionErrors = { ...sectionErrors, [section]: errMsg };
         saveError = errMsg;
+        experienceState(experience, 'error');
+        void experienceApplied(experience, {}, validContext);
       }
+      else experienceDiscarded(experience, 'scope_changed');
       return { success: false };
     } finally {
       if (validContext()) {

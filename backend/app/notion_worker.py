@@ -6,17 +6,14 @@ are independent of discovery; each target and every shared output are leased.
 
 import asyncio
 import logging
-import os
 import re
 import secrets
 import signal
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-logging.basicConfig(
-    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+from app.utils import structured_logging
+
 _logger = logging.getLogger("notion.worker")
 _CHECK_INTERVAL = 60
 _POLL_INTERVAL = 2
@@ -274,7 +271,8 @@ async def _run_notion_target_sync(target: dict) -> None:
 
 async def _execute_target(dispatcher, member: str, owner: str) -> None:
     from app.services import notion_sync
-    from app.services.work_dispatcher import DispatcherUnavailable, work_lease
+    from app.services.experience_context import emit_experience, experience_scope, unlinked_worker_context
+    from app.services.work_dispatcher import DispatcherUnavailable, bind_worker_experience, work_lease
 
     async with work_lease(dispatcher, member, owner, seconds=_LEASE_SECONDS) as lease:
         target = await _current_target(member)
@@ -296,16 +294,35 @@ async def _execute_target(dispatcher, member: str, owner: str) -> None:
 
             with notion_sync.worker_policy(policy_check):
                 await notion_sync.worker_checkpoint()
-                execution = asyncio.create_task(_run_notion_target_sync(target))
+                experience = unlinked_worker_context(feature="admin", action="refresh", component="page")
+                bind_worker_experience(experience)
+                await emit_experience(
+                    experience, "worker.claimed", stage="notion.sync", status="running", reason="unlinked"
+                )
+                with experience_scope(experience):
+                    execution = asyncio.create_task(_run_notion_target_sync(target))
                 watchers = [asyncio.create_task(lease.revoked.wait()), asyncio.create_task(output_revoked.wait())]
+                outcome = "outcome_unknown"
+                reason = "unlinked"
                 try:
                     done, _ = await asyncio.wait([execution, *watchers], return_when=asyncio.FIRST_COMPLETED)
                     if execution in done:
                         execution.result()
+                        outcome = "observed"
                     else:
                         raise DispatcherUnavailable("Notion execution ownership revoked")
+                except DispatcherUnavailable:
+                    reason = "lease_lost"
+                    raise
+                except asyncio.CancelledError:
+                    reason = "aborted"
+                    raise
                 finally:
                     await _drain([execution, *watchers])
+                    # Only after the actual SDK/HTTP child and watchers settle.
+                    await emit_experience(
+                        experience, "worker.state_changed", stage="notion.sync", status=outcome, reason=reason
+                    )
 
 
 async def _scan(dispatcher) -> None:
@@ -407,6 +424,7 @@ async def main() -> None:
 
 
 async def _main_async() -> None:
+    structured_logging.setup_logging(entrypoint="worker")
     loop = asyncio.get_running_loop()
     task = asyncio.create_task(main())
     for shutdown_signal in (signal.SIGTERM, signal.SIGINT):

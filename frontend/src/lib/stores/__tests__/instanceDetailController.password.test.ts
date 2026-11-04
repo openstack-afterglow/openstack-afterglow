@@ -12,7 +12,7 @@ vi.mock('$lib/stores/auth', () => {
 	return { auth, canWrite: derived(auth, value => value.isSystemAdmin || value.roles.includes('member')) };
 });
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: mockPost },
+	api: { get: mockGet, post: mockPost, withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 503; },
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({

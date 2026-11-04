@@ -9,7 +9,7 @@ import UsageScheduleReminders from '$lib/components/instance/UsageScheduleRemind
 import { loadUsageSchedules } from '$lib/api/usageSchedules';
 
 const transport = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: transport, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { ...transport, withExperience: () => transport }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/auth', async () => {
 	const { writable } = await import('svelte/store');
 	// Vitest hoists this factory before static import bindings initialize; load the store inside it.

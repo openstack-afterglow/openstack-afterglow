@@ -310,6 +310,10 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 - 전역 UI interaction은 button/link/submit/navigation과 구조화된 client 오류를 관측하되 입력/선택 값·DOM text/label·원본 URL/query/hash·비밀번호·token·request/response body·exception message/stack을 수집하지 않는다. Source route template·control role/순번·정제 destination·client UUID만 받으며 임의 actor/project/status/성공 신호는 body에서 거부한다. Browser source의 observed는 사용자 동작 신고이지 서버 성공·신원·권한 proof가 아니다.
 - 인증된 observation의 actor/scope는 기존 검증 경계에서 정하고 잘못된 bearer를 익명으로 낮추지 않는다. 익명 로그인 실패·공개 페이지 관측은 신원 미확인으로 보존하며 제출한 임의 username을 실제 계정으로 귀속하지 않는다. 서버 request/stage는 별도 correlation·HTTP 상태·기간·안전한 오류 class/code만 기록하고 명시 business failure와 SSE의 terminal 결과를 HTTP200으로 덮어쓰지 않는다.
 - Collector는 메모리 buffer/batch/body/rate 한도를 적용하며 auth/scope/ABA 교체 때 다른 계정으로 재귀속하지 않는다. 전송 실패는 무한 재시도·자동 로그인 복구를 유발하지 않고 누락 가능성을 표시한다. DB 불능·종료·offline·차단기·브라우저 crash에서 손실될 수 있으므로 lossless 감사/사용자 화면 녹화·입력 재생 기능으로 취급하지 않는다. 과거 비수집 사건을 소급 생성하거나 새 retention 정책·운영 collector를 자동 활성화하지 않는다.
+- 의미 기반 v2는 기본 꺼짐인 별도 SQL107 진단 저장소다. Browser envelope는 strict event/registry/schema와32KiB/20개/분당60회 경계로 제한하고 actor/source/server 시각은 검증된 서버 경계에서만 부여한다. Client UUID·HTTP/SSE 성공·support code가 신원·업무 terminal·자원 readiness·사람의 인지 증거를 대신하지 않는다. Owner/project/권위/ABA/tutorial 전환은 queue와 후행 결과를 fence하며 취소 요청과 실제 native drain을 구분한다.
+- V2 열람·최근 구간 검색·export는 fresh 관리자 권위와 현재 domain/project 교집합을 limit 전에 적용한다. 익명 열람은 별도 operator opt-in·현재 전역 관리자·unscoped 요청이 모두 필요하다. SQL 또는 disclosure 감사 commit 실패 시 내용을 먼저 반환하지 않는다. 진단 조회/ingest 자체는 recursive request audit를 만들지 않으며 실제 열람 감사는 별도로 남긴다.
+- 한국어 replay는 저장된 정적 catalog와 구조 metadata만 escaped text로 렌더링하고 raw HTML/script/URL·operation/API 재실행을 허용하지 않는다. 입력·선택 원문·DOM/스크린샷·채팅·terminal·credential·body/query·자유형 예외문구·번역 parameter를 수집하지 않는다. 정확한 build/catalog/실제 표시 locale가 없으면 미확인/복원 불가로 남기며 최신 문구로 과거를 바꾸지 않는다.
+- 진단 기본 보존은 detail30일·집계90일이며 CLI는 기본 dry-run이다. Exact-owner 구간 hold와 삭제는 SQL maintenance transaction으로 직렬화하고 참조 중인 catalog는 FK로 보호한다. 운영 delete job은 자동 활성화하지 않는다. Backup/export 사본은 원본 삭제와 함께 자동 소거되지 않으므로 운영자가 별도 만료·hold·접근 정책을 적용한다. 이 정책은 기존 보안 감사·메일/claim unknown 원장 삭제 권한이 아니다.
 
 ---
 

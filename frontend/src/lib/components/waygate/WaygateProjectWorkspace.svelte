@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { t } from '$lib/i18n/ns/waygate';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
@@ -53,6 +53,7 @@
 	import type { Network, NetworkDetail, SubnetDetail } from '$lib/types/networks';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	let { scope, admin = false }: { scope: WaygateProjectScope; admin?: boolean } = $props();
 	// The parent keys this entire workspace by scope; credentials never change in place.
@@ -191,27 +192,37 @@
 
 	let serverRequest = 0;
 	let serverInFlight: Promise<WaygateServer[]> | null = null;
-	async function fetchServers(afterMutation = false) {
+	let listOwnerDestroyed = false;
+	onDestroy(() => { listOwnerDestroyed = true; });
+	async function fetchServers(afterMutation = false, inheritedExperience?: ExperienceContext) {
 		if (!isCurrent()) return;
 		while (serverInFlight) {
 			if (!afterMutation) return;
 			serverRequest += 1;
 			await serverInFlight.catch(() => {});
-			if (!isCurrent()) return;
+			if (!isCurrent()) { experienceDiscarded(inheritedExperience, 'scope_changed'); return; }
 		}
 		const request = ++serverRequest;
-		const pending = waygateApi.listServers(token, projectId);
+		const experience = inheritedExperience ?? beginExperienceLoad('waygate', 'resource.list');
+		experienceState(experience, 'loading');
+		const pending = waygateApi.listServers(token, projectId, experience);
 		serverInFlight = pending;
 		try {
 			const next = await pending;
-			if (!isCurrent() || request !== serverRequest) return;
+			if (!isCurrent() || request !== serverRequest) { experienceDiscarded(experience, 'stale'); return; }
 			servers = reconcileById(servers, next);
 			if (selection.count > 0) selection.retain(servers.map((server) => server.id));
 			if (selectedServerId && !servers.some((server) => server.id === selectedServerId)) closePanel();
 			error = '';
+			experienceState(experience, servers.length ? 'ready' : 'empty');
+			const appliedServers = servers;
+			void experienceApplied(experience, {}, () => !listOwnerDestroyed && isCurrent() && request === serverRequest && servers === appliedServers && !error);
 		} catch (e) {
-			if (!isCurrent() || request !== serverRequest) return;
+			if (!isCurrent() || request !== serverRequest) { experienceDiscarded(experience, 'stale'); return; }
 			error = e instanceof ApiError ? t('project.error.fetchStatus', { status: e.status }) : t('project.error.server');
+			experienceState(experience, 'error');
+			const appliedError = error;
+			void experienceApplied(experience, {}, () => !listOwnerDestroyed && isCurrent() && request === serverRequest && error === appliedError);
 		} finally {
 			if (serverInFlight === pending) serverInFlight = null;
 			if (isCurrent() && request === serverRequest) loading = false;
@@ -222,7 +233,7 @@
 		if (!isCurrent()) return;
 		refreshing = true;
 		try {
-			await fetchServers(true);
+			await fetchServers(true, beginExperienceAction('waygate', 'refresh', 'resource.list'));
 		} finally {
 			if (isCurrent()) refreshing = false;
 		}
@@ -1092,13 +1103,13 @@
 	<div data-tour={!loading && !error ? 'waygate-ready' : undefined}>
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else if servers.length === 0}
+	{:else if servers.length === 0 && !error}
 		<div class="text-center py-20 text-[var(--color-ink-3)]">
 			<div class="text-5xl mb-4">{t('project.empty.icon')}</div>
 			<div class="text-lg">{t('project.empty.servers')}</div>
 			<p class="text-sm text-[var(--color-ink-3)] mt-2">{t('project.empty.serversHelp')}</p>
 		</div>
-	{:else}
+	{:else if servers.length > 0}
   <ResponsiveTable>
    {#snippet cards()}
     {#if can.deleteGateway}<div class="responsive-card-toolbar"><SelectionToolbar label={t('project.server.label')} ariaLabel={t('project.selection.all')} checked={allSelected} indeterminate={indeterminate} selectedCount={selectedCount} disabled={busy || selectableIds.size === 0} onToggle={() => { if (isCurrent() && can.deleteGateway) selection.toggleAll(selectableIds); }} /></div>{/if}

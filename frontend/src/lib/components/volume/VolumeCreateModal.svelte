@@ -6,13 +6,20 @@
 	import { t } from '$lib/i18n/ns/volume';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button } from '$lib/components/ui';
+	import { onDestroy } from 'svelte';
+	import { resolveExperienceMessage } from '$lib/i18n/runtime.svelte';
+	import { unavailableExperienceMessage } from '$lib/i18n/experienceMessages';
+	import {
+		beginExperienceAction, experienceApplied, experienceDiscarded, experienceMessage,
+		experienceState, recordExperience, type ExperienceContext,
+	} from '$lib/utils/experience';
 
 	let {
 		open = $bindable(false),
 		onCreated,
 	}: {
 		open: boolean;
-		onCreated: () => void;
+		onCreated: (context?: ExperienceContext, createdVolumeId?: string) => void | Promise<void>;
 	} = $props();
 
 	const token = $derived($auth.token ?? undefined);
@@ -22,26 +29,82 @@
 	let creating = $state(false);
 	let createError = $state('');
 
+	let activeContext: ExperienceContext | undefined;
+	let modalRevision = 0;
+	let destroyed = false;
+	let wasOpen = false;
+	$effect(() => {
+		if (wasOpen && !open && activeContext) {
+			modalRevision += 1;
+			recordExperience(activeContext, 'view.exposure_changed', { visibility: 'hidden' });
+		}
+		wasOpen = open;
+	});
+
 	async function createVolume() {
-		if (!form.name.trim() || form.size_gb < 1) return;
+		const context = beginExperienceAction('block_storage', 'create', 'block_storage.create');
+		if (!form.name.trim() || form.size_gb < 1) {
+			recordExperience(context, 'validation.rejected', { reason: !form.name.trim() ? 'required' : 'format' });
+			return;
+		}
+		const revision = modalRevision;
+		const actor = $auth.userId;
+		const project = projectId;
+		const owns = () => !destroyed && actor === $auth.userId && project === projectId;
+		const visible = () => owns() && open && revision === modalRevision;
+		activeContext = context;
 		creating = true;
 		createError = '';
+		experienceState(context, 'loading', 1);
 		try {
-			await apiMut(t('createModal.mutationLabel'), () => api.post('/api/v1/volumes', form, token, projectId));
+			const created = await apiMut(t('createModal.mutationLabel'), () =>
+				api.post<{ id?: string }>('/api/v1/volumes', form, token, project, context ? { experience: context } : undefined), { experience: context });
+			const appliedContext = owns() ? context : undefined;
+			if (!owns()) experienceDiscarded(context, destroyed ? 'unmounted' : 'scope_changed');
+			if (!created?.id) experienceDiscarded(appliedContext, 'unknown');
+			experienceState(appliedContext, 'loading', 2);
+			const appliedRevision = modalRevision;
+			if (activeContext === context) activeContext = undefined;
 			open = false;
 			form = { name: '', size_gb: 10 };
-			onCreated();
+			// A 201 and closing the modal are not native availability or list application.
+			void onCreated(owns() ? appliedContext : undefined, created?.id);
+			void experienceApplied(appliedContext, undefined, () => owns() && !open && appliedRevision === modalRevision).then(() => {
+				if (owns() && !open && appliedRevision === modalRevision) recordExperience(appliedContext, 'view.exposure_changed', { visibility: 'hidden' });
+			});
 		} catch (e) {
+			if (!owns()) experienceDiscarded(context, destroyed ? 'unmounted' : 'scope_changed');
 			createError = e instanceof ApiError ? e.message : t('createModal.createFailed');
+			if (owns()) {
+				// UI errors still render normally; ambiguous transport outcomes never become native failure.
+				if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 499) experienceState(context, 'error', 1);
+				else experienceDiscarded(context, 'unknown');
+			}
+			if (visible()) {
+				experienceMessage(context, e instanceof ApiError
+					? unavailableExperienceMessage('danger')
+					: { ...resolveExperienceMessage('volume', 'createModal.createFailed'), tone: 'danger' });
+				void experienceApplied(context, undefined, visible);
+			}
 		} finally {
 			creating = false;
+			if (activeContext === context) activeContext = undefined;
 		}
 	}
 
 	function close() {
+		modalRevision += 1;
+		const context = activeContext ?? beginExperienceAction('block_storage', 'close', 'block_storage.create');
+		recordExperience(context, 'view.exposure_changed', { visibility: 'hidden' });
 		open = false;
 		createError = '';
 	}
+
+	onDestroy(() => {
+		destroyed = true;
+		experienceDiscarded(activeContext, 'unmounted');
+		activeContext = undefined;
+	});
 </script>
 
 {#if open}

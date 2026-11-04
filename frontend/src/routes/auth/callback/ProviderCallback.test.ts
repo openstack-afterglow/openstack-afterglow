@@ -10,11 +10,27 @@ import { storePendingInvitation, storePendingProviderLogin, takePendingInvitatio
 import { pendingMcpConsentTicket, storeMcpConsentTicket } from '$lib/utils/mcpConsent';
 import { createAuthVerificationController } from '$lib/utils/authVerification';
 import Page from './+page.svelte';
+import type * as ExperienceModule from '$lib/utils/experience';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+	get: vi.fn(), post: vi.fn(), goto: vi.fn(), experienceBegin: vi.fn(), experienceApplied: vi.fn(),
+	experienceDiscarded: vi.fn(), experienceMessage: vi.fn(), experienceState: vi.fn(),
+}));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/stores', () => ({ page: writable({ url: new URL('http://localhost/auth/callback?code=code&state=state'), data: {} }) }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, post: mocks.post }, ApiError }));
+vi.mock('$lib/utils/experience', async importOriginal => {
+	const actual = await importOriginal<typeof ExperienceModule>();
+	return {
+		...actual,
+		beginExperienceAction: mocks.experienceBegin,
+		beginExperienceLoad: mocks.experienceBegin,
+		experienceApplied: mocks.experienceApplied,
+		experienceDiscarded: mocks.experienceDiscarded,
+		experienceMessage: mocks.experienceMessage,
+		experienceState: mocks.experienceState,
+	};
+});
 import { page } from '$app/stores';
 const callbackPage = page as unknown as Writable<{ url: URL; data: object }>;
 const response = {
@@ -34,6 +50,7 @@ beforeEach(() => {
 	storePendingProviderLogin({ domainId: 'team', providerId: 'provider' });
 	mocks.post.mockResolvedValue(response);
 	mocks.goto.mockResolvedValue(undefined);
+	mocks.experienceApplied.mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); clearAuth(); sessionStorage.clear(); initLocale('ko'); });
 
@@ -563,5 +580,53 @@ describe('Accounts provider entry confirmation', () => {
 		await fireEvent.click(screen.getByRole('link', { name: t('common.backToLogin') }));
 		expect(mocks.post).toHaveBeenCalledOnce(); expect(get(auth).token).toBeNull();
 		expect(screen.queryByText(t('entry.transferExisting'))).toBeNull();
+	});
+});
+
+describe('one-use callback semantic observations', () => {
+	const context = Object.freeze({ segmentId: 'anonymous-segment', actionId: 'callback-action' });
+
+	it('carries explicit context but never waits for diagnostic DOM completion before publishing an issued session', async () => {
+		mocks.experienceBegin.mockReturnValue(context);
+		mocks.experienceApplied.mockReturnValue(new Promise<void>(() => {}));
+		render(Page);
+		await waitFor(() => expect(get(auth).token).toBe(response.token));
+		expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/providers/callback', { code: 'code', state: 'state' }, undefined, undefined,
+			expect.objectContaining({ experience: context, replayOnUnauthorized: false, cache: 'no-store' }));
+		expect(mocks.experienceApplied).toHaveBeenCalled();
+		expect(mocks.experienceBegin).toHaveBeenLastCalledWith('auth', 'auth.callback');
+		expect(mocks.goto).toHaveBeenCalledWith('/dashboard', { replaceState: true });
+	});
+
+	it('formats a late error in the actual current locale without re-exchanging a pending one-use code', async () => {
+		mocks.experienceBegin.mockReturnValue(context);
+		const pending = Promise.withResolvers<never>();
+		mocks.post.mockReturnValueOnce(pending.promise);
+		render(Page);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+		initLocale('ko'); await tick();
+		expect(mocks.post).toHaveBeenCalledOnce();
+		pending.reject(new ApiError(503, 'private-provider-text'));
+		await screen.findByRole('alert');
+		expect(mocks.experienceMessage).toHaveBeenCalledWith(context,
+			expect.objectContaining({ key: 'domain-auth:callback.unavailable', locale: 'ko', restoration: 'restored' }));
+		expect(JSON.stringify(mocks.experienceMessage.mock.calls)).not.toContain('private-provider-text');
+		expect(mocks.post).toHaveBeenCalledOnce();
+	});
+
+	it('observes an actual ABA discard without applying or relabelling the issued session', async () => {
+		mocks.experienceBegin.mockReturnValue(context);
+		const pending = Promise.withResolvers<typeof response>();
+		mocks.post.mockImplementation((path: string) => path.endsWith('/providers/callback') ? pending.promise : Promise.resolve({}));
+		render(Page);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+		logoutInProgress.set(true); logoutInProgress.set(false);
+		pending.resolve(response);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/logout', {}, response.token, undefined,
+			expect.objectContaining({ replayOnUnauthorized: false })));
+		expect(mocks.experienceDiscarded).toHaveBeenCalledWith(context, 'stale');
+		expect(mocks.experienceApplied).not.toHaveBeenCalled();
+		expect(get(auth).token).toBeNull();
+		expect(mocks.goto).not.toHaveBeenCalled();
 	});
 });

@@ -17,6 +17,7 @@ from redis.asyncio import ConnectionPool, Redis
 
 from app.api.common import traffic_analytics as api
 from app.api.deps import get_token_info, require_admin
+from app.middleware import traffic_analytics as middleware
 from app.models.traffic_analytics import TrafficAnalyticsSettings, TrafficEvent
 from app.services import traffic_analytics as service
 from app.services.cache import _get_redis
@@ -66,11 +67,15 @@ async def analytics(monkeypatch, tmp_path):
     redis = await _get_redis()
     monkeypatch.setattr(service, "_get_redis", lambda: _get_redis())
     service._pending_drops.clear()
+    service._pending_drop_reasons.clear()
+    service._failure_log_at.clear()
     yield redis, settings
     keys = [key async for key in redis.scan_iter(match=prefix + ":*")]
     if keys:
         await redis.delete(*keys)
     service._pending_drops.clear()
+    service._pending_drop_reasons.clear()
+    service._failure_log_at.clear()
 
 
 def observation(**changes):
@@ -179,6 +184,7 @@ async def test_bounded_minute_capacity_rejects_without_partial_aggregation(analy
     assert data["networks"][0]["requests"] == 1
     assert data["networks"][0]["network"] == "10.8.0.0/16"
     assert data["coverage"]["dropped_events"] == 1
+    assert data["coverage"]["drop_reasons"] == {"capacity": 1}
     external = await service.snapshot("frontend", "24h", "external")
     internal = await service.snapshot("frontend", "24h", "internal")
     assert external["coverage"]["dropped_events"] == internal["coverage"]["dropped_events"] == 1
@@ -423,3 +429,95 @@ async def test_same_private_aggregation_range_does_not_expand_cluster_authority(
         selected = await service.snapshot("frontend", "24h", origin)
         assert selected["networks"][0]["network"] == "172.30.0.0/16"
         assert selected["networks"][0]["requests"] == 1
+
+
+async def test_committed_but_unacknowledged_write_stays_partial_without_replay(analytics, monkeypatch):
+    redis, _ = analytics
+    original = redis.eval
+    calls = 0
+    acquire = service._get_redis
+
+    async def disconnected():
+        raise ConnectionError("pre-existing unacknowledged loss")
+
+    monkeypatch.setattr(service, "_get_redis", disconnected)
+    assert not await service.record_event(observation(), "frontend")
+    monkeypatch.setattr(service, "_get_redis", acquire)
+
+    async def committed_then_disconnected(*args):
+        nonlocal calls
+        calls += 1
+        await original(*args)
+        raise TimeoutError("private transport evidence must not escape")
+
+    monkeypatch.setattr(redis, "eval", committed_then_disconnected)
+    assert not await service.record_event(
+        observation(reporter_dropped_events=1, reporter_drop_reasons={"capacity": 1}), "frontend"
+    )
+    assert calls == 1
+    monkeypatch.setattr(redis, "eval", original)
+    assert await service.record_event(
+        observation(reporter_dropped_events=2, reporter_drop_reasons={"capacity": 1, "timeout": 1}),
+        "frontend",
+    )
+    data = await service.snapshot("frontend", "24h")
+    assert data["state"] == "partial"
+    assert data["totals"]["requests"] == 2
+    # The uncertain write committed the first pending loss. Its subsequent
+    # recovery carries that evidence again; requests remain exact, losses are
+    # deliberately conservative, and both backend/reporter coverage stay partial.
+    assert data["coverage"]["dropped_events"] == 3
+    assert data["coverage"]["drop_reasons"] == {"connection": 2, "timeout": 1}
+    assert data["coverage"]["reporter_dropped_events"] == 3
+    assert data["coverage"]["reporter_drop_reasons"] == {"capacity": 2, "timeout": 1}
+    assert "conservative failure evidence" in data["coverage"]["unique_method"]
+    assert "private transport evidence" not in repr(data)
+    for origin in ("internal", "external", "unknown"):
+        selected = await service.snapshot("frontend", "24h", origin)
+        assert selected["coverage"]["drop_reasons"] == {"connection": 2, "timeout": 1}
+        assert selected["coverage"]["reporter_drop_reasons"] == {"capacity": 2, "timeout": 1}
+
+
+async def test_http_probe_filter_and_ingest_self_exclusion_keep_exact_business_counts(analytics, monkeypatch):
+    from fastapi.responses import JSONResponse
+
+    _, settings = analytics
+    monkeypatch.setattr(api, "get_settings", lambda: settings)
+    monkeypatch.setattr(middleware, "get_settings", lambda: settings)
+    app = FastAPI()
+    app.add_middleware(middleware.TrafficAnalyticsMiddleware)
+    app.include_router(api.ingest_router, prefix="/api/v1/monitoring/traffic")
+
+    @app.get("/api/v1/health")
+    async def health(fail: bool = False):
+        return JSONResponse({"ok": not fail}, status_code=503 if fail else 200)
+
+    @app.get("/api/v1/health/detail")
+    async def detail():
+        return {"ok": True}
+
+    @app.get("/api/v1/servers")
+    async def business():
+        return {"servers": []}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(12):
+            assert (await client.get("/api/v1/health")).status_code == 200
+        assert (await client.get("/api/v1/health?fail=true")).status_code == 503
+        assert (await client.get("/api/v1/health/detail")).status_code == 200
+        assert (await client.get("/api/v1/servers")).status_code == 200
+        headers = {"Authorization": "Bearer " + settings.traffic_analytics.frontend_ingest_key.get_secret_value()}
+        assert (
+            await client.post(
+                "/api/v1/monitoring/traffic/events",
+                headers=headers,
+                json=observation().model_dump(mode="json"),
+            )
+        ).status_code == 200
+    backend = await service.snapshot("backend", "24h")
+    frontend = await service.snapshot("frontend", "24h")
+    assert backend["totals"]["requests"] == 3
+    assert backend["totals"]["success"] == 2 and backend["totals"]["errors"] == 1
+    assert backend["coverage"]["dropped_events"] == 0
+    assert frontend["totals"]["requests"] == 1
+    assert "completed successful" in backend["coverage"]["description"]

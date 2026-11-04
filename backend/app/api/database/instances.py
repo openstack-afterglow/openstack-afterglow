@@ -9,7 +9,7 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
-from app.api.common.owner_check import assert_resource_owner
+from app.api.common.owner_check import assert_resource_owner, native_resource_read_failure
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.models.database import (
     CreateBackupRequest,
@@ -123,8 +123,12 @@ async def _assert_db_instance_owner(
     instance_id 가 caller-owned 면 간접적으로 보호된다."""
     try:
         inst = await asyncio.to_thread(conn.database.get_instance, instance_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="DB 인스턴스를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="DB 인스턴스를 찾을 수 없습니다",
+            unavailable_detail="DB 인스턴스 서비스에 연결할 수 없습니다",
+        ) from exc
     assert_resource_owner(inst, conn, token_info, not_found_detail="DB 인스턴스를 찾을 수 없습니다")
 
 
@@ -142,7 +146,7 @@ async def list_db_flavors(
     from app.services import trove
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, "flavors")
+    key = keys.project_key("trove", pid, "flavors", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_static(), lambda: trove.list_flavors(conn), enabled=cm.enabled, refresh=cm.refresh
@@ -160,7 +164,7 @@ async def list_datastores(
     from app.services import trove
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, "datastores")
+    key = keys.project_key("trove", pid, "datastores", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_static(), lambda: trove.list_datastores(conn), enabled=cm.enabled, refresh=cm.refresh
@@ -178,7 +182,7 @@ async def list_db_configurations(
     from app.services import trove
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, "configurations")
+    key = keys.project_key("trove", pid, "configurations", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_slow(), lambda: trove.list_configurations(conn), enabled=cm.enabled, refresh=cm.refresh
@@ -218,8 +222,12 @@ async def _assert_db_backup_owner(
     """Trove backup owner 검증."""
     try:
         bk = await asyncio.to_thread(conn.database.get_backup, backup_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail="백업을 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="백업을 찾을 수 없습니다",
+            unavailable_detail="백업 서비스에 연결할 수 없습니다",
+        ) from exc
     assert_resource_owner(bk, conn, token_info, not_found_detail="백업을 찾을 수 없습니다")
 
 
@@ -235,7 +243,7 @@ async def list_all_backups(
     from app.services import trove
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, "backups")
+    key = keys.project_key("trove", pid, "backups", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_slow(), lambda: trove.list_backups(conn), enabled=cm.enabled, refresh=cm.refresh
@@ -312,7 +320,7 @@ async def list_database_instances(
         raise HTTPException(403, "Administrator inventory requires the administrator endpoint")
 
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, "instances")
+    key = keys.project_key("trove", pid, "instances", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_normal(), lambda: trove.list_instances(conn), enabled=cm.enabled, refresh=cm.refresh
@@ -409,8 +417,12 @@ async def get_database_instance(
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-    except Exception:
-        raise HTTPException(status_code=404, detail="DB 인스턴스를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="DB 인스턴스를 찾을 수 없습니다",
+            unavailable_detail="DB 인스턴스 서비스에 연결할 수 없습니다",
+        ) from exc
     if inst.get("deleted"):
         raise HTTPException(status_code=404, detail="DB 인스턴스를 찾을 수 없습니다")
     return inst
@@ -491,7 +503,7 @@ async def list_instance_databases(
 
     await _assert_db_instance_owner(conn, instance_id, token_info)
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, f"instances:{instance_id}:databases")
+    key = keys.project_key("trove", pid, f"instances:{instance_id}:databases", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key,
@@ -563,7 +575,7 @@ async def list_instance_users(
 
     await _assert_db_instance_owner(conn, instance_id, token_info)
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, f"instances:{instance_id}:users")
+    key = keys.project_key("trove", pid, f"instances:{instance_id}:users", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_normal(), lambda: trove.list_users(conn, instance_id), enabled=cm.enabled, refresh=cm.refresh
@@ -719,7 +731,7 @@ async def list_instance_backups(
 
     await _assert_db_instance_owner(conn, instance_id, token_info)
     pid = getattr(conn, "_afterglow_project_id", "unknown")
-    key = keys.project_key("trove", pid, f"instances:{instance_id}:backups")
+    key = keys.project_key("trove", pid, f"instances:{instance_id}:backups", sub="http-checked-v2")
     try:
         return await cache.cached_call(
             key, cache.ttl_slow(), lambda: trove.list_backups(conn, instance_id), enabled=cm.enabled, refresh=cm.refresh

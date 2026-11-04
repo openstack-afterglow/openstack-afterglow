@@ -1,5 +1,6 @@
 import { api, ApiError, getWebSocketUrl } from '$lib/api/client';
 import { t } from '$lib/i18n/ns/containers-shell';
+import { beginExperienceAction, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 type MessageKey = Parameters<typeof t>[0];
 
@@ -58,7 +59,7 @@ interface TerminalSink {
 }
 
 interface CloudShellDependencies {
-	issueTicket(identity: CloudShellIdentity): Promise<TicketResponse>;
+	issueTicket(identity: CloudShellIdentity, experience?: ExperienceContext): Promise<TicketResponse>;
 	deleteWorkspace(identity: CloudShellIdentity): Promise<void>;
 	webSocketUrl(path: string): string;
 	createWebSocket(url: string): WebSocketLike;
@@ -98,8 +99,8 @@ export interface CloudShellController {
 }
 
 const defaultDependencies: CloudShellDependencies = {
-	issueTicket: (identity) =>
-		api.post<TicketResponse>('/api/v1/cloud-shell/tickets', {}, identity.token, identity.projectId),
+	issueTicket: (identity, experience) =>
+		api.post<TicketResponse>('/api/v1/cloud-shell/tickets', {}, identity.token, identity.projectId, { experience }),
 	deleteWorkspace: (identity) =>
 		api.delete('/api/v1/cloud-shell/workspace', identity.token, identity.projectId),
 	webSocketUrl: (path) => getWebSocketUrl(path),
@@ -196,6 +197,7 @@ export function createCloudShellController(
 	let socket: WebSocketLike | null = null;
 	let terminalSink: TerminalSink | null = null;
 	let connectionSerial = 0;
+	let connectionExperience: ExperienceContext | undefined;
 
 	function setError(message: MessageKey, code = '') {
 		phase = 'error';
@@ -203,6 +205,7 @@ export function createCloudShellController(
 		error = message;
 		errorCode = code;
 		statusStep = '';
+		experienceState(connectionExperience, 'error', 3);
 	}
 
 	function clearSessionState() {
@@ -260,7 +263,7 @@ export function createCloudShellController(
 		if (!visible) statusStep = '';
 	}
 
-	function handleControl(control: ServerControl) {
+	function handleControl(control: ServerControl, experience: ExperienceContext | undefined, serial: number) {
 		if (control.type === 'status') {
 			const serverPhase = control.phase ?? '';
 			statusStep = STEP_LABEL[serverPhase] ?? 'shell.step.preparing';
@@ -276,6 +279,8 @@ export function createCloudShellController(
 			idleTimeoutSeconds =
 				typeof control.idle_timeout_seconds === 'number' ? control.idle_timeout_seconds : null;
 			workspaceState = 'available';
+			experienceState(experience, 'ready', 1);
+			void experienceApplied(experience, {}, () => serial === connectionSerial && phase === 'ready');
 			queueMicrotask(() => {
 				terminalSink?.fit();
 				terminalSink?.focus();
@@ -298,10 +303,10 @@ export function createCloudShellController(
 		}
 	}
 
-	async function handleMessage(data: unknown) {
+	async function handleMessage(data: unknown, experience: ExperienceContext | undefined, serial: number) {
 		if (typeof data === 'string') {
 			try {
-				handleControl(JSON.parse(data) as ServerControl);
+				handleControl(JSON.parse(data) as ServerControl, experience, serial);
 			} catch {
 				setError('shell.error.protocol', 'protocol_error');
 				disconnectSocket('destroy');
@@ -325,6 +330,9 @@ export function createCloudShellController(
 		if (phase !== 'consent' || !identity) return;
 		const approvedIdentity = { ...identity };
 		const approvalSerial = ++connectionSerial;
+		const experience = beginExperienceAction('container', 'start', 'shared.stream');
+		connectionExperience = experience;
+		experienceState(experience, 'loading', 0);
 		phase = 'ticketing';
 		visible = true;
 		view = 'normal';
@@ -335,8 +343,8 @@ export function createCloudShellController(
 		terminalEpoch += 1;
 		terminalSink?.clear();
 		try {
-			const ticket = await dependencies.issueTicket(approvedIdentity);
-			if (!identity || identity.userId !== approvedIdentity.userId || identity.sessionId !== approvedIdentity.sessionId || identity.projectId !== approvedIdentity.projectId || approvalSerial !== connectionSerial || phase !== 'ticketing') return;
+			const ticket = await dependencies.issueTicket(approvedIdentity, experience);
+			if (!identity || identity.userId !== approvedIdentity.userId || identity.sessionId !== approvedIdentity.sessionId || identity.projectId !== approvedIdentity.projectId || approvalSerial !== connectionSerial || phase !== 'ticketing') { experienceDiscarded(experience, 'stale'); return; }
 			const separator = ticket.websocket_path.includes('?') ? '&' : '?';
 			const url = dependencies.webSocketUrl(
 				`${ticket.websocket_path}${separator}ticket=${encodeURIComponent(ticket.ticket)}`,
@@ -353,7 +361,7 @@ export function createCloudShellController(
 			};
 			nextSocket.onmessage = (event) => {
 				if (socket !== nextSocket || serial !== connectionSerial) return;
-				void handleMessage(event.data);
+				void handleMessage(event.data, experience, serial);
 			};
 			nextSocket.onerror = () => {
 				if (socket !== nextSocket || serial !== connectionSerial || phase === 'ending') return;
@@ -367,12 +375,16 @@ export function createCloudShellController(
 					phase = 'closed';
 					statusStep = 'shell.step.closed';
 					clearSessionState();
+					experienceState(experience, 'disabled', 2);
+					void experienceApplied(experience, {}, () => serial === connectionSerial && phase === 'closed');
 					return;
 				}
 				if (event.code === 1000 || event.code === 1001) {
 					phase = 'closed';
 					statusStep = 'shell.step.closed';
 					clearSessionState();
+					experienceState(experience, 'disabled', 2);
+					void experienceApplied(experience, {}, () => serial === connectionSerial && phase === 'closed');
 					return;
 				}
 				setError(CLOSE_ERROR[event.code] ?? 'shell.error.unexpectedClose', errorCode);
@@ -388,6 +400,8 @@ export function createCloudShellController(
 		options: { keepDock?: boolean } = {},
 	) {
 		const keepDock = options.keepDock ?? reason === 'user';
+		const experience = reason === 'user' ? beginExperienceAction('container', 'close', 'shared.stream') : connectionExperience;
+		connectionExperience = undefined;
 		if (phase !== 'closed') {
 			phase = 'ending';
 			statusStep = 'shell.step.ending';
@@ -398,6 +412,9 @@ export function createCloudShellController(
 		statusStep = keepDock ? 'shell.step.closed' : '';
 		visible = keepDock;
 		view = 'normal';
+		experienceState(experience, 'disabled', 2);
+		const serial = connectionSerial;
+		void experienceApplied(experience, {}, () => serial === connectionSerial && phase === 'closed');
 		await Promise.resolve();
 	}
 

@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/svelte';
-const { api } = vi.hoisted(() => ({ api: { get: vi.fn() } }));
+const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), withExperience() { return this; } } }));
 vi.mock('$lib/api/client', () => ({ api }));
 vi.mock('../auth', () => ({
 	auth: writable({ token: 'token-a', sessionId: 'login-a', userId: 'user', identityDomainId: 'home', domainId: 'domain', projectId: null, isDomainManager: false, isSystemAdmin: false }),

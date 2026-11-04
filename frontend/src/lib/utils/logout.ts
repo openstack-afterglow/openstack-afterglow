@@ -6,6 +6,7 @@ import { AUTH_STORAGE_KEY, auth, clearAuth, exitMockAuth, isMockAuthActive, logo
 import { cloudShell } from '$lib/stores/cloudShell.svelte';
 import { MOCKUP_SESSION_KEY, MOCKUP_STORAGE_KEY } from '$lib/mockup/contracts';
 import { sessionScopeKey } from './authSession';
+import { beginExperienceLoad, recordExperience, type ExperienceContext } from './experience';
 
 export type LogoutStep = 'pending' | 'active' | 'done' | 'warning';
 export interface LogoutProgress {
@@ -69,12 +70,13 @@ function clearLocalCredentials(mock: boolean, broadcast: boolean): boolean {
 	return confirmed;
 }
 
-function beginLogout(all: boolean, navigate: boolean, broadcast = true): Promise<void> {
+function beginLogout(all: boolean, navigate: boolean, broadcast = true, experience?: ExperienceContext): Promise<void> {
 	if (inFlight) return inFlight;
 	const state = get(auth);
 	const mock = isMockAuthActive();
 	const owner = sessionScopeKey(state);
 	const ownsSession = () => isMockAuthActive() === mock && sessionScopeKey(get(auth)) === owner;
+	const context = experience ?? beginExperienceLoad('auth', 'page');
 	logoutInProgress.set(true);
 	const pendingRefresh = beginSessionRevocation();
 	// Attach immediately: navigation/render may outlast a rejected refresh.
@@ -95,8 +97,12 @@ function beginLogout(all: boolean, navigate: boolean, broadcast = true): Promise
 				if (!ownsSession()) throw new Error('Logout session replaced');
 				await cloudShell.close('logout', { keepDock: false });
 				progress.update(value => ({ ...value, shell: 'done' }));
+				if (ownsSession()) recordExperience(context, 'view.state_changed', { state: 'loading', step: 1 });
 			} catch {
 				progress.update(value => ({ ...value, shell: 'warning' }));
+				if (ownsSession()) {
+					recordExperience(context, 'view.state_changed', { state: 'error', step: 0 });
+				}
 			}
 			progress.update(value => ({ ...value, server: 'active' }));
 			await settledRefresh;
@@ -108,14 +114,21 @@ function beginLogout(all: boolean, navigate: boolean, broadcast = true): Promise
 			} else {
 				try {
 					await api.post(all ? '/api/v1/auth/logout-all' : '/api/v1/auth/logout', {}, current.token,
-						current.projectId ?? undefined, { suppressAuthRedirect: true });
+						current.projectId ?? undefined, { suppressAuthRedirect: true, ...(context ? { experience: context } : {}) });
 					progress.update(value => ({ ...value, server: 'done' }));
+					if (ownsSession()) recordExperience(context, 'view.state_changed', { state: 'loading', step: 2 });
 				} catch {
 					progress.update(value => ({ ...value, server: 'warning' }));
+					if (ownsSession()) {
+						recordExperience(context, 'view.state_changed', { state: 'error', step: 1 });
+					}
 				}
 			}
 		} catch {
 			progress.update(value => ({ ...value, shell: value.shell === 'done' ? 'done' : 'warning', server: 'warning' }));
+			if (ownsSession()) {
+				recordExperience(context, 'view.state_changed', { state: 'error', step: 1 });
+			}
 		} finally {
 			// Never discard a rotated refresh credential, or a later unrelated login.
 			await settledRefresh;
@@ -138,18 +151,18 @@ function beginLogout(all: boolean, navigate: boolean, broadcast = true): Promise
  * `broadcast: false` is for automatic sign-out (authentication service unreachable):
  * each tab owns its refresh session and reaches its own limit, so other tabs are not signed out.
  */
-export function startLogout({ all = false, broadcast = true }: { all?: boolean; broadcast?: boolean } = {}): Promise<void> {
+export function startLogout({ all = false, broadcast = true, experience }: { all?: boolean; broadcast?: boolean; experience?: ExperienceContext } = {}): Promise<void> {
 	if (inFlight) return inFlight;
 	if (completed && !get(auth).token) {
 		void goto('/logout', { replaceState: true }).catch(() => undefined);
 		return completed;
 	}
-	return beginLogout(all, true, broadcast);
+	return beginLogout(all, true, broadcast, experience);
 }
 
 /** Direct route access starts once; locale/component remounts retain the settled result. */
-export function ensureLogoutStarted(): Promise<void> {
+export function ensureLogoutStarted(experience?: ExperienceContext): Promise<void> {
 	if (inFlight) return inFlight;
 	if (completed && completedOwner === sessionScopeKey(get(auth))) return completed;
-	return beginLogout(false, false);
+	return beginLogout(false, false, true, experience);
 }

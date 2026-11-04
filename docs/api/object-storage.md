@@ -136,6 +136,8 @@ Native account404만 빈 계정으로 인정합니다. 401/403과 native 서버/
 
 컨테이너 메타데이터(오브젝트 수, 총 바이트 등)를 반환합니다. 없으면 `404`.
 
+컨테이너 메타데이터·오브젝트 단건(download/metadata/preview/thumbnail)·업로드 컨테이너 preflight 조회에서 provider 부재·거부(401/403/404)는 opaque 404로 유지하고, 그 외 transport·5xx·예상 밖 오류는 upstream 본문 없이 정제된 503으로 구분합니다. 컨테이너 목록은 계정 미초기화 404와 권한 없음 401만 빈 목록으로 인정하고, 휴지통 목록은 휴지통 버킷 부재 404만 빈 목록으로 인정합니다. 계정 메타데이터는 strict 읽기로 장애를 500으로 노출합니다.
+
 ### DELETE /api/v1/object-storage/{container}
 
 컨테이너를 삭제합니다.

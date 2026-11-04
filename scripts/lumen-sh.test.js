@@ -171,7 +171,8 @@ async function catalogRequests() {
 // Python's stdlib works on both supported OSes, unlike platform-specific script(1).
 const ptyDriver = String.raw`
 import errno, fcntl, json, os, pty, select, signal, subprocess, sys, termios, time
-request = json.load(sys.stdin)
+# Frame the control request explicitly; waiting for pipe EOF can stall before PTY setup.
+request = json.loads(sys.stdin.buffer.readline())
 master, slave = pty.openpty()
 status_read, status_write = os.pipe()
 release_read, release_write = os.pipe()
@@ -312,7 +313,7 @@ function install(f, options = {}) {
 		endOwnerAfterStatus: options.endOwnerAfterStatus ?? false,
 	}
 	const result = spawnSync("python3", ["-c", ptyDriver], {
-		input: JSON.stringify(request), env: f.env, encoding: "utf8", timeout: 20000, maxBuffer: 1024 * 1024,
+		input: JSON.stringify(request) + "\n", env: f.env, encoding: "utf8", timeout: 20000, maxBuffer: 1024 * 1024,
 	})
 	assert.equal(result.error, undefined)
 	assert.equal(result.status, 0, result.stderr)

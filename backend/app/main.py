@@ -1,93 +1,12 @@
 # ---------------------------------------------------------------------------
-# Structured JSON logging
+# Shared API / worker structured logging
 # ---------------------------------------------------------------------------
-import json
 import logging
 import os
-from datetime import UTC, datetime
 
-from app.utils.log import (
-    WARNING_LOG_NAMESPACES,
-    SensitiveDataFilter,
-    exception_metadata,
-    is_sensitive,
-    mask_str,
-    sanitize_log_value,
-)
+from app.utils import structured_logging
 
-_STANDARD_LOG_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
-
-
-class _JSONFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        entry: dict = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": mask_str(record.getMessage()),
-        }
-        for k, v in record.__dict__.items():
-            if k not in _STANDARD_LOG_KEYS and k != "message":
-                entry[k] = "***" if is_sensitive(k) else sanitize_log_value(v)
-        if record.levelno == logging.DEBUG:
-            entry["source"] = {"module": record.module, "function": record.funcName, "line": record.lineno}
-        if record.exc_info and record.exc_info[0]:
-            entry["exception"] = exception_metadata(record.exc_info)
-        return json.dumps(entry, ensure_ascii=False)
-
-
-def _setup_logging() -> None:
-    from app.config import get_settings
-    from app.utils.auth_diagnostics import RequestDiagnosticHandler
-    from app.utils.daily_size_handler import DailySizeHandler
-
-    cfg = get_settings()
-
-    sensitive_filter = SensitiveDataFilter()
-    formatter = _JSONFormatter()
-    root = logging.getLogger()
-    root.handlers.clear()
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    stream_handler.addFilter(sensitive_filter)
-    root.addHandler(stream_handler)
-    root.addHandler(RequestDiagnosticHandler())
-
-    try:
-        file_handler = DailySizeHandler(
-            log_directory=cfg.log_directory,
-            max_bytes=cfg.log_max_bytes,
-            encoding="utf-8",
-        )
-        file_handler.setFormatter(formatter)
-        file_handler.addFilter(sensitive_filter)
-        root.addHandler(file_handler)
-    except OSError:
-        pass  # 로그 디렉터리 생성/접근 불가 시 파일 핸들러 없이 진행
-
-    level = getattr(logging, cfg.log_level.upper(), logging.INFO)
-    root.setLevel(level)
-    # Enable only Afterglow diagnostics, not third-party HTTP/SDK wire dumps.
-    logging.getLogger("app").setLevel(logging.DEBUG if cfg.debug else logging.NOTSET)
-    for namespace in WARNING_LOG_NAMESPACES:
-        logging.getLogger(namespace).setLevel(logging.WARNING)
-    # Uvicorn installs non-propagating handlers before importing this module.
-    # Its WebSocket handshake messages contain the full query-bearing URL.
-    for namespace in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        logger = logging.getLogger(namespace)
-        for handler in logger.handlers:
-            handler.addFilter(sensitive_filter)
-    logging.getLogger(__name__).debug(
-        "logging configuration",
-        extra={
-            "application_level": "DEBUG" if cfg.debug else logging.getLevelName(level),
-            "root_level": logging.getLevelName(level),
-        },
-    )
-
-
-_setup_logging()
+structured_logging.setup_logging(entrypoint="api")
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -140,6 +59,7 @@ from app.api.common import (
     tutorial_status_router,
     user_dashboard_router,
 )
+from app.api.common.experience import router as experience_router
 from app.api.common.interactions import router as interactions_router
 from app.api.common.metrics import record_request as _record_request
 
@@ -182,6 +102,7 @@ from app.api.identity.admin_activity import router as admin_activity_router
 from app.api.identity.admin_announcements import router as admin_announcements_router
 from app.api.identity.admin_credentials import router as admin_credentials_router
 from app.api.identity.admin_dashboard import router as admin_dashboard_router
+from app.api.identity.admin_experience import router as admin_experience_router
 from app.api.identity.admin_flavors import router as admin_flavors_router
 from app.api.identity.admin_gpu import router as admin_gpu_router
 from app.api.identity.admin_host_health import router as admin_host_health_router
@@ -225,6 +146,7 @@ from app.api.mcp_lumen import router as mcp_lumen_router
 from app.api.monitoring.host_observations import HostObservationBodyLimit
 from app.api.monitoring.host_observations import router as host_observations_router
 from app.api.union.layer_ops import router as admin_libraries_router
+from app.middleware.experience import ExperienceMiddleware
 from app.middleware.traffic_analytics import TrafficAnalyticsMiddleware
 from app.services.mcp_control_plane.transport import (
     install_mcp_route,
@@ -261,6 +183,7 @@ _mark("api.k3s_network_storage")
 # ---------------------------------------------------------------------------
 from app.api.deps import get_token_info
 from app.rate_limit import limiter
+from app.utils.request_logging import ProbeCompletionLogMiddleware, is_successful_probe, log_request
 from app.utils.version import read_app_version
 
 _mark("misc")
@@ -552,25 +475,22 @@ async def request_logging_middleware(request: Request, call_next):
         method = _safe_method(request.method)
         path = _route_template(request)
         _record_request(method, path, status, duration_ms)
-        _logger.info(
-            "request",
-            extra={"method": method, "path": path, "status": status, "duration_ms": round(duration_ms, 2)},
-        )
-        if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(
-                "request diagnostic",
-                extra={
-                    "method": method,
-                    "path": path,
-                    "status": status,
-                    "duration_ms": round(duration_ms, 2),
-                    "route_matched": path != "<unmatched>",
-                    "outcome": "server_error" if status >= 500 else "client_error" if status >= 400 else "completed",
-                },
+        # Successful probe headers alone are not completion proof. The outer
+        # ASGI observer logs them after the final send, including broken streams.
+        if not is_successful_probe(method, path, status):
+            request_id = getattr(request.state, "request_id", None) or getattr(
+                request.state, "experience_request_id", None
             )
+            log_request(_logger, method, path, status, duration_ms, request_id)
 
 
-_CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, X-Afterglow-Interaction-Id, Authorization, Idempotency-Key, Last-Event-ID"
+_CORS_ALLOW_HEADERS = (
+    "Content-Type, X-Project-Id, X-Afterglow-Page, X-Afterglow-Interaction-Id, "
+    "Authorization, Idempotency-Key, Last-Event-ID, "
+    "X-Afterglow-Experience-Segment, X-Afterglow-Experience-Page-View, "
+    "X-Afterglow-Experience-Action, X-Afterglow-Experience-Event, "
+    "X-Afterglow-Experience-Trace, X-Afterglow-Experience-Span, X-Afterglow-Experience-Attempt"
+)
 _CORS_ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 
@@ -631,7 +551,14 @@ async def activity_audit_middleware(request: Request, call_next):
     from app.utils.auth_diagnostics import safe_error_type
 
     path = request.url.path
-    if not path.startswith("/api/") or path.rstrip("/") == "/api/v1/activity/interactions":
+    if not path.startswith("/api/") or path.rstrip("/") in {
+        "/api/v1/activity/interactions",
+        "/api/v1/activity/experience-events",
+        "/api/v1/activity/experience-contract",
+        "/api/v1/admin/experiences",
+        "/api/v1/admin/experiences/export",
+        "/api/v1/admin/experiences/segments",
+    }:
         return await call_next(request)
     started = time.perf_counter()
     is_mut = request.method in ("POST", "PUT", "PATCH", "DELETE")
@@ -645,9 +572,12 @@ async def activity_audit_middleware(request: Request, call_next):
     metadata = {"method": _safe_method(request.method)}
     if correlation:
         metadata["interaction_id"] = correlation
+    request_id = getattr(request.state, "experience_request_id", None)
+    if not isinstance(request_id, str) or not re.fullmatch(r"req-[a-f0-9]{32}", request_id):
+        request_id = f"req-{uuid4().hex}"
     holder: dict = {
         "logged": False,
-        "request_id": f"req-{uuid4().hex}",
+        "request_id": request_id,
         "service": service_for_resource(mapped[0]) if mapped else "keystone" if auth_request else "afterglow",
         "source": "afterglow",
         "page": page,
@@ -655,6 +585,10 @@ async def activity_audit_middleware(request: Request, call_next):
         "request": request,
         "started": started,
     }
+    request.state.request_id = request_id
+    # Share only the existing holder; experience reads its verified actor/ID,
+    # never request/body/diagnostic contents. No additional auth or DB lookup.
+    request.state.experience_audit_context = holder
 
     async def record_outcome(status_code: int, *, streaming: bool = False, error_type: str | None = None) -> None:
         failed = status_code >= 400
@@ -812,6 +746,8 @@ async def credential_response_cache_policy(request: Request, call_next):
 
 app.add_middleware(HostObservationBodyLimit)
 app.add_middleware(TrafficAnalyticsMiddleware)
+app.add_middleware(ExperienceMiddleware)
+app.add_middleware(ProbeCompletionLogMiddleware)
 
 # Identity
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
@@ -864,6 +800,8 @@ app.include_router(admin_profile_password_router, prefix="/api/v1/admin/identity
 app.include_router(profile_activity_router, prefix="/api/v1/profile/activity", tags=["profile-activity"])
 app.include_router(admin_activity_router, prefix="/api/v1/admin", tags=["admin-activity"])
 app.include_router(interactions_router, prefix="/api/v1/activity", tags=["activity"])
+app.include_router(experience_router, prefix="/api/v1/activity", tags=["experience"])
+app.include_router(admin_experience_router, prefix="/api/v1/admin", tags=["experience"])
 app.include_router(admin_orphans_router, prefix="/api/v1/admin", tags=["admin-orphans"])
 app.include_router(admin_announcements_router, prefix="/api/v1/admin/announcements", tags=["admin-announcements"])
 app.include_router(projects_router, prefix="/api/v1/projects", tags=["projects"])

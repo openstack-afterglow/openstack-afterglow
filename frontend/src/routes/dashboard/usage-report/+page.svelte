@@ -7,6 +7,7 @@
 	import { api } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import { formatDate, formatSize } from '$lib/utils/format';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tp } from '$lib/i18n/ns/compute-pools';
@@ -155,6 +156,8 @@
 		}
 		const requestToken = token, requestProjectId = projectId, requestPeriod = period;
 		const owns = () => serial === requestSerial && token === requestToken && projectId === requestProjectId && period === requestPeriod;
+		const experience = beginExperienceLoad('monitoring', 'page');
+		const inventoryExperience = beginExperienceLoad('monitoring', 'resource.list');
 		if (requestToken !== reportToken || requestProjectId !== reportProjectId) {
 			data = null;
 			inventory = null;
@@ -164,27 +167,41 @@
 		reportProjectId = requestProjectId;
 		loading = !data;
 		error = null;
+		if (loading) experienceState(experience, 'loading');
 		// Refreshes keep the current inventory on screen; only a first load (or a project switch) shows the skeleton.
-		if (!inventory) inventoryState = 'loading';
-		void api.get<DashboardQuotas>('/api/v1/dashboard/quotas', requestToken, requestProjectId).then(
+		if (!inventory) {
+			inventoryState = 'loading';
+			experienceState(inventoryExperience, 'loading');
+		}
+		void api.withExperience(inventoryExperience).get<DashboardQuotas>('/api/v1/dashboard/quotas', requestToken, requestProjectId).then(
 			(quotas) => {
-				if (!owns()) return;
+				if (!owns()) { experienceDiscarded(inventoryExperience, 'stale'); return; }
 				inventory = quotas;
 				inventoryState = 'ready';
+				experienceState(inventoryExperience, 'ready');
+				void experienceApplied(inventoryExperience);
 			},
 			() => {
-				if (!owns()) return;
+				if (!owns()) { experienceDiscarded(inventoryExperience, 'stale'); return; }
 				inventory = null;
 				inventoryState = 'error';
+				experienceState(inventoryExperience, 'error');
+				void experienceApplied(inventoryExperience);
 			},
 		);
 		try {
-			const report = await api.get<UsageReport>(`/api/v1/dashboard/usage-report?range=${requestPeriod}`, requestToken, requestProjectId);
+			const report = await api.withExperience(experience).get<UsageReport>(`/api/v1/dashboard/usage-report?range=${requestPeriod}`, requestToken, requestProjectId);
 			if (owns()) data = report;
+			else experienceDiscarded(experience, 'stale');
 		} catch (reason) {
 			if (owns()) error = reason instanceof Error ? reason.message : t('usageReport.loadFailed');
+			else experienceDiscarded(experience, 'stale');
 		} finally {
-			if (owns()) loading = false;
+			if (owns()) {
+				loading = false;
+				experienceState(experience, error ? 'error' : (data?.instance_usage?.length ?? 0) === 0 ? 'empty' : 'ready');
+				void experienceApplied(experience);
+			}
 		}
 	}
 
@@ -196,11 +213,18 @@
 		}
 		const requestToken = token, requestProjectId = projectId;
 		const owns = () => serial === chatUsageSerial && token === requestToken && projectId === requestProjectId;
+		const experience = beginExperienceLoad('monitoring', 'resource.detail');
 		try {
-			const usage = await api.get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProjectId);
-			if (owns()) chatUsage = usage;
+			const usage = await api.withExperience(experience).get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProjectId);
+			if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
+			chatUsage = usage;
+			experienceState(experience, 'ready');
+			void experienceApplied(experience);
 		} catch {
-			if (owns()) chatUsage = null;
+			if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
+			chatUsage = null;
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
 		}
 	}
 

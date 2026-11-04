@@ -23,6 +23,20 @@ describe('traffic snapshot schema and unknown coverage', () => {
 		expect(() => parseTrafficSnapshot({ ...observations(), coverage: { ...observations().coverage, geo_source: 'header' } }, 'backend', '24h')).toThrow();
 		expect(() => parseTrafficSnapshot({ ...observations(), coverage: { ...observations().coverage, geo_source: 'offline_cidr' } }, 'backend', '24h')).toThrow();
 	});
+	it('accepts additive finite loss reasons while rejecting payload-shaped or invalid counters', () => {
+		const input = observations();
+		input.coverage.drop_reasons = { timeout: 2, connection: 1, capacity: 1, rejected: 1, unknown: 1 };
+		input.coverage.reporter_drop_reasons = { timeout: 1 };
+		expect(parseTrafficSnapshot(input, 'backend', '24h')).toBe(input);
+		for (const field of ['drop_reasons', 'reporter_drop_reasons']) {
+			for (const value of [{ 'https://private.invalid/?token=secret': 1 }, { timeout: -1 }, { connection: 1.5 }, { capacity: Infinity }, null]) {
+				const invalid = { ...input, coverage: { ...input.coverage, [field]: value } };
+				expect(() => parseTrafficSnapshot(invalid, 'backend', '24h')).toThrow('Invalid traffic schema');
+			}
+		}
+		// Older retained snapshots have no reason attribution; do not invent it.
+		expect(parseTrafficSnapshot(observations(), 'backend', '24h').coverage.drop_reasons).toBeUndefined();
+	});
     it('fences origin selections and rejects forged reason/cardinality dimensions', () => {
         expect(() => parseTrafficSnapshot(observations(), 'backend', '24h', 'external')).toThrow();
         const selected = observations({ origin: 'external', origins: { internal: 0, external: 10, unknown: 0, legacy_unclassified: 0 }, routes: [] });

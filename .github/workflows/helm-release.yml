@@ -3,7 +3,7 @@ name: Helm Chart Release
 on:
   push:
     branches: [main]
-    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v*', '!*-dev']
   workflow_dispatch:
     inputs:
       version:

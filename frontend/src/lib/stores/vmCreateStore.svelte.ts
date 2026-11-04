@@ -32,6 +32,12 @@ import {
 	normalizeGithubUsername,
 	normalizeRequestedInstanceName,
 } from '$lib/utils/instanceCreate';
+import { resolveExperienceMessage } from '$lib/i18n/runtime.svelte';
+import { unavailableExperienceMessage } from '$lib/i18n/experienceMessages';
+import {
+	beginExperienceAction, experienceApplied, experienceDiscarded, experienceMessage,
+	experienceState, recordExperience, type ExperienceContext,
+} from '$lib/utils/experience';
 
 interface ProgressMessage {
 	step: string;
@@ -212,6 +218,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let destroyed = false;
 
 	let deployController: AbortController | null = null;
+	let deployContext: ExperienceContext | undefined;
 	function resetFlavorRefresh() {
 		flavorRefreshSeq += 1;
 		flavorRefreshController?.abort();
@@ -685,7 +692,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	/** Flavor eligibility and host capacity for the current target project's create admission snapshot. */
 	// Never prefetch capacity URLs: client.ts getOrdinary serves warm entries before dispatch, and only prefetchJson publishes them.
-	function flavorRequestScope(): {
+	function flavorRequestScope(experience?: ExperienceContext): {
 		key: string;
 		request: (signal?: AbortSignal, refresh?: boolean) => Promise<FlavorOption[]>;
 		isCurrent: () => boolean;
@@ -693,7 +700,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		const { token, projectId } = authScope();
 		const mergeSaved = async (catalog: Promise<FlavorOption[]>, signal?: AbortSignal): Promise<FlavorOption[]> => {
 			if (savedFlavorIds.size === 0) return catalog;
-			const [rows, saved] = await Promise.all([catalog, flavorComposerApi.history({ token: token ?? '', projectId: projectId ?? '', targetProjectId: opts.adminMode() ? adminSelectedProjectId! : projectId!, admin: opts.adminMode() }, signal ?? projectLoadController.signal)]);
+			const [rows, saved] = await Promise.all([catalog, flavorComposerApi.history({ token: token ?? '', projectId: projectId ?? '', targetProjectId: opts.adminMode() ? adminSelectedProjectId! : projectId!, admin: opts.adminMode() }, signal ?? projectLoadController.signal, experience)]);
 			// Own freshly assessed history supersedes discovery metadata for the same native UUID.
 			// Missing/withdrawn history cannot fall back to a previously saved or catalog snapshot.
 			return [...rows.filter(row => !savedFlavorIds.has(row.id)), ...saved.items.filter(row => savedFlavorIds.has(row.id))];
@@ -708,7 +715,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}&capacity=create`,
 					token,
 					projectId,
-					refresh ? { signal, refresh: true } : { signal },
+					{ signal, ...(refresh ? { refresh: true } : {}), ...(experience ? { experience } : {}) },
 				), signal),
 				isCurrent: () => targetIsCurrent(targetProjectId, generation),
 			};
@@ -716,7 +723,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		return {
 			key: `public:${projectId ?? ''}`,
 			request: (signal, refresh) => mergeSaved(api.get<FlavorOption[]>('/api/v1/flavors?capacity=create', token, projectId,
-				refresh ? { signal, refresh: true } : { signal }), signal),
+				{ signal, ...(refresh ? { refresh: true } : {}), ...(experience ? { experience } : {}) }), signal),
 			isCurrent: () => authProjectIsCurrent(projectId, generation),
 		};
 	}
@@ -741,9 +748,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	 * fresh snapshot for the unchanged target project was applied. Periodic rounds never overlap a
 	 * pending load or refresh; manual and submit refreshes supersede an older refresh.
 	 */
-	async function refreshFlavorOptions(mode: 'manual' | 'periodic' | 'submit' = 'manual'): Promise<boolean> {
+	async function refreshFlavorOptions(mode: 'manual' | 'periodic' | 'submit' = 'manual', experience?: ExperienceContext): Promise<boolean> {
 		if (destroyed) return false;
-		const scope = flavorRequestScope();
+		const scope = flavorRequestScope(experience);
 		if (!scope) return false;
 		if (mode === 'periodic' && (
 			flavorRefreshing || flavorBackgroundRefreshing
@@ -765,7 +772,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		if (!background) flavorRefreshError = null;
 		try {
 			const value = await scope.request(controller.signal, mode === 'manual');
-			if (!isCurrent()) return false;
+			if (!isCurrent()) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return false; }
 			flavors = value;
 			optionStatus.flavors = 'loaded';
 			// Keep the prior UUID for the explicit warning, but readiness derives from
@@ -773,10 +780,11 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			// Never silently substitute a different flavor after capacity/ACL changes.
 			delete optionErrors.flavors;
 			flavorRefreshError = null;
+			await experienceApplied(experience, undefined, isCurrent);
 			return true;
 		} catch (error) {
-			if (!isCurrent()) return false;
-			if (error instanceof DOMException && error.name === 'AbortError') return false;
+			if (!isCurrent()) { experienceDiscarded(experience, destroyed ? 'unmounted' : 'stale'); return false; }
+			if (error instanceof DOMException && error.name === 'AbortError') { experienceDiscarded(experience, 'aborted'); return false; }
 			const message = optionError(error, true);
 			if (background) {
 				flavorBackgroundRefreshError = message;
@@ -1201,17 +1209,32 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 
 	async function deploy() {
-		if (destroyed || deploying || submitChecking || !rootAuthReady || !writeAllowed) return;
+		if (destroyed || deploying || submitChecking) return;
+		const context = beginExperienceAction('compute', 'create', 'compute.create');
+		if (!rootAuthReady || !writeAllowed) {
+			recordExperience(context, 'validation.rejected', { reason: 'authority' });
+			return;
+		}
+		deployContext = context;
+		const reject = (reason: 'required' | 'policy' | 'format' | 'capacity', step: WizardStepId) => {
+			recordExperience(context, 'validation.rejected', { reason });
+			if (!compositionNavigationLocked()) {
+				const target = nearestVisibleStep(step);
+				goTo(step);
+				void experienceApplied(context, undefined, () => !destroyed && get(wizard).step === target);
+			}
+			if (deployContext === context) deployContext = undefined;
+		};
 		if (!bootMetadataReady(get(wizard))) {
-			goTo(1);
+			reject('required', 1);
 			return;
 		}
 		if (!bootVolumeSizeValid(get(wizard)) || !volumeProtectionValid(get(wizard))) {
-			goTo(5);
+			reject('policy', 5);
 			return;
 		}
 		if (isWindowsImageMetadata(metadataFor(get(wizard))) && !configurationReady(get(wizard), get(wizardPassword))) {
-			goTo(5);
+			reject('format', 5);
 			return;
 		}
 		// Revalidate the selected flavor against the create-capacity snapshot right before the mutation.
@@ -1224,9 +1247,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		const checkedAdminMode = opts.adminMode();
 		const checkedWindowsAccount = windowsPasswordAccount(metadataFor(checked));
 		submitChecking = true;
+		experienceState(context, 'loading', 1);
 		let refreshed = false;
 		try {
-			refreshed = await refreshFlavorOptions('submit');
+			refreshed = await refreshFlavorOptions('submit', context);
 		} finally {
 			submitChecking = false;
 		}
@@ -1247,41 +1271,70 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			|| checked.bootVolumeId !== get(wizard).bootVolumeId
 			|| checkedWindowsAccount !== windowsPasswordAccount(metadataFor(get(wizard)))
 		) {
+			experienceDiscarded(context, destroyed ? 'unmounted' : checkedGeneration !== loadGeneration
+				|| checkedTargetProjectId !== adminSelectedProjectId || checkedAuthProjectId !== get(auth).projectId ? 'scope_changed' : 'stale');
+			if (deployContext === context) deployContext = undefined;
 			return;
 		}
 		const admitted = flavors.find(candidate => candidate.id === checked.flavorId);
 		if (!refreshed || !admitted || flavorCreateBlock(admitted) !== null) {
 			// SelectFlavor explains the refresh failure or the newly blocked selection; the user chooses again.
-			goTo(2);
+			reject('capacity', 2);
 			return;
 		}
 		if (!bootMetadataReady(get(wizard))) {
-			goTo(1);
+			reject('required', 1);
 			return;
 		}
 		if (!bootVolumeSizeValid(get(wizard)) || !volumeProtectionValid(get(wizard))) {
-			goTo(5);
+			reject('policy', 5);
 			return;
 		}
 		if (isWindowsImageMetadata(metadataFor(get(wizard))) && !configurationReady(get(wizard), get(wizardPassword))) {
-			goTo(5);
+			reject('format', 5);
 			return;
 		}
 		if (requiresUsageSchedule(admitted) && (!get(wizard).usageSchedule || usageDraftError(get(wizard).usageSchedule!))) {
-			goTo(5);
+			reject('policy', 5);
 			return;
 		}
 		deployController?.abort();
 		deployController = new AbortController();
+		const controller = deployController;
 		deployError = '';
 		deploying = true;
 		currentStep = 'boot_volume_creating';
 		progress = 0;
 		progressMessage = t('deploy.starting');
 		startDeploymentClock();
+		experienceState(context, 'loading', 2);
+		experienceMessage(context, { ...resolveExperienceMessage('vm-wizard', 'deploy.starting'), tone: 'info' });
 
 		const baseUrl = getBaseUrl();
 		const authState = get(auth);
+		const ownsDeployment = () => !destroyed && deployController === controller && !controller.signal.aborted
+			&& checkedGeneration === loadGeneration && checkedTargetProjectId === adminSelectedProjectId
+			&& authState.userId === get(auth).userId && authState.projectId === get(auth).projectId
+			&& authState.domainId === get(auth).domainId;
+		let observing = true;
+		const discardDeployment = () => {
+			if (observing) experienceDiscarded(context, destroyed ? 'unmounted' : controller.signal.aborted ? 'aborted' : 'scope_changed');
+			observing = false;
+		};
+		const observeProgress = async (data: ProgressMessage) => {
+			if (!ownsDeployment()) discardDeployment();
+			if (observing) recordExperience(context, 'result.received', { stage: 'state' });
+			reportProgress(data);
+			if (!observing) return;
+			// Fixed source stages only. These are browser observations, not native/worker proof.
+			const step = ALL_PROGRESS_STEPS.findIndex(candidate => candidate.id === data.step);
+			if (step >= 0) experienceState(context, data.step === 'failed' ? 'error' : data.step === 'completed' ? 'ready' : 'loading', step + 3);
+			experienceMessage(context, unavailableExperienceMessage(data.step === 'failed' ? 'danger' : 'info'));
+			await experienceApplied(context, undefined, () => ownsDeployment() && currentStep === data.step && progress === data.progress);
+			if (ownsDeployment()) recordExperience(context, 'view.exposure_changed', {
+				visibility: typeof document === 'undefined' || document.visibilityState !== 'visible' ? 'hidden' : 'visible',
+			});
+		};
 		const endpoint = opts.adminMode()
 			? '/api/v1/admin/instances/async'
 			: '/api/v1/instances/async';
@@ -1337,6 +1390,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				reportProgress(data);
 			}
 			stopDeploymentClock();
+			deployContext = undefined;
 			toast.success(t('toast.created'));
 			// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 			if (!destroyed) {
@@ -1354,9 +1408,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
 				body: requestBody,
-				signal: deployController.signal,
-			}, authState.token ?? undefined, authState.projectId ?? undefined, { baseUrl });
-			if (destroyed) return;
+				signal: controller.signal,
+			}, authState.token ?? undefined, authState.projectId ?? undefined, { baseUrl, experience: context });
+			if (destroyed) { discardDeployment(); return; }
+			if (!ownsDeployment()) discardDeployment();
 			if (!response.ok) {
 				const text = await response.text();
 				throw new ApiError(response.status, text || response.statusText);
@@ -1368,10 +1423,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			while (true) {
 				const { done, value } = await reader.read();
 				if (destroyed) {
+					discardDeployment();
+					// Cancels only this browser read; native outcome and cancellation drain remain unknown.
 					await reader.cancel();
 					return;
 				}
-				if (done) break;
+				if (done) { experienceDiscarded(observing ? context : undefined, 'unknown'); break; }
 				buffer += decoder.decode(value, { stream: true });
 				const lines = buffer.split('\n');
 				buffer = lines.pop() || '';
@@ -1379,15 +1436,19 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					if (line.startsWith('data: ')) {
 						try {
 							const data = JSON.parse(line.slice(6)) as ProgressMessage;
-							reportProgress(data);
+							await observeProgress(data);
+							if (destroyed) { discardDeployment(); return; }
 							if (data.step === 'completed') {
 								toast.success(t('toast.created'));
+								experienceMessage(observing ? context : undefined, { ...resolveExperienceMessage('vm-wizard', 'toast.created'), tone: 'success' });
+								deployContext = undefined;
 								// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 								if (!destroyed) {
 									resetWizard();
 									adminSelectedProjectId = null;
 									adminSelectedProjectName = null;
 									closeWizard();
+									recordExperience(observing ? context : undefined, 'view.exposure_changed', { visibility: 'hidden' });
 									goto(opts.adminMode() ? '/admin/instances' : '/dashboard/compute/instances');
 								}
 								return;
@@ -1396,6 +1457,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 								deployError = data.error || data.message;
 								toast.error(t('toast.createFailed', { error: deployError }));
 								deploying = false;
+								experienceMessage(observing ? context : undefined, { ...resolveExperienceMessage('vm-wizard', 'toast.createFailed'), tone: 'danger', restoration: 'redacted' });
+								await experienceApplied(observing ? context : undefined, undefined, () => ownsDeployment() && !deploying && currentStep === 'failed');
+								deployContext = undefined;
 								return;
 							}
 						} catch { /* JSON 파싱 실패 시 무시 */ }
@@ -1403,13 +1467,22 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				}
 			}
 		} catch (e) {
-			if (destroyed) return;
+			if (destroyed) { discardDeployment(); return; }
+			if (!ownsDeployment()) discardDeployment();
+			if (e instanceof ApiError && e.status === 422) {
+				recordExperience(observing ? context : undefined, 'validation.rejected', { reason: 'policy' });
+			}
+			if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 499) experienceState(observing ? context : undefined, 'error', 2);
+			else experienceDiscarded(observing ? context : undefined, 'unknown');
 			deployError = e instanceof ApiError
 				? t('deploy.failed', { message: e.message })
 				: t('deploy.connectionError', { message: e instanceof Error ? e.message : t('deploy.unknownError') });
 			deploying = false;
+			experienceMessage(observing ? context : undefined, { ...resolveExperienceMessage('vm-wizard', e instanceof ApiError ? 'deploy.failed' : 'deploy.connectionError'), tone: 'danger', restoration: 'redacted' });
+			await experienceApplied(observing ? context : undefined, undefined, () => ownsDeployment() && !deploying);
 		} finally {
 			stopDeploymentClock();
+			if (deployContext === context) deployContext = undefined;
 		}
 	}
 
@@ -1430,9 +1503,18 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		void loadFlavorOptions();
 		void loadFlavorQuota();
 	});
+	function close() {
+		const context = deployContext ?? beginExperienceAction('compute', 'close', 'compute.create');
+		experienceDiscarded(deployContext, 'aborted');
+		recordExperience(context, 'view.exposure_changed', { visibility: 'hidden' });
+		deployContext = undefined;
+		closeWizard();
+	}
 	function destroy() {
 		if (destroyed) return;
 		destroyed = true;
+		experienceDiscarded(deployContext, 'unmounted');
+		deployContext = undefined;
 		composer.destroy();
 		clearWizardPassword();
 		initialized = false;
@@ -1557,6 +1639,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		// Lifecycle
 		init,
 		destroy,
+		close,
 		// Data loading
 		ensureStepData,
 		retryCurrentStep,

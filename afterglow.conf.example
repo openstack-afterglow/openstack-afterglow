@@ -746,6 +746,17 @@ retention_seconds = 3600
 # target의 username/auth_key/priv_key는 보호된 operator TOML 또는
 # MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret JSON에만 둡니다. ConfigMap/공개 frontend에는 금지.
 
+[experience]
+# 별도 SQL 진단 저장소·명시적 action context를 쓰는 의미 기반 경험 관측입니다.
+# SQL107/API·worker·frontend 호환 검증 및 수집/보존 정책 승인 뒤에만 켭니다.
+# 입력값·DOM·URL/query·채팅·terminal·credential 원문은 수집하지 않습니다.
+enabled = false
+# fresh global admin + unscoped query + 명시적 include_anonymous 조건이 모두 필요합니다.
+anonymous_read_enabled = false
+detail_retention_days = 30
+aggregate_retention_days = 90
+# 보존 기간 설정은 운영 삭제 job을 활성화하지 않습니다. 보존 hold·backup 만료도 별도 확인합니다.
+
 [traffic_analytics]
 # 관리자 국가별/경로별 트래픽, IP 기반 고유 방문 추정. 쿠키/요청 body/토큰/원문 IP를 저장하지 않습니다.
 enabled = false

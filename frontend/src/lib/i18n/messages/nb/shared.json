@@ -1,4 +1,10 @@
 {
+	"support.label": "Støttekode",
+	"support.copy": "Kopier støttekode",
+	"support.copied": "Støttekoden er kopiert",
+	"support.help": "Del denne koden med brukerstøtte. Den er ikke et passord og gir ingen tilgang. Koden garanterer ikke at oppføringer er lagret.",
+	"support.partial": "Levering av diagnostikk er ubekreftet eller ufullstendig. Manglende oppføringer betyr ikke at ingenting skjedde.",
+	"support.unavailable": "Kan ikke kopiere. Merk og kopier koden ovenfor manuelt.",
 	"loadingState.label": "Laster",
 	"progressBar.failed": "Kunne ikke sette i drift",
 	"projectSelector.switchFailed": "Kunne ikke bytte prosjekt",

@@ -16,7 +16,8 @@ from typing import Any
 
 from openstack.exceptions import ResourceNotFound
 
-from app.services import glance, manila, neutron, nova
+from app.services import glance, manila, nova
+from app.services.work_dispatcher import run_native
 
 
 @dataclass(frozen=True)
@@ -170,10 +171,25 @@ def _zone_option(zone: object) -> dict[str, Any] | None:
     return _option(name, name)
 
 
-def _share_type_options(conn: object, spec: PolicySpec) -> list[dict[str, Any]]:
+def _discovery_read(cache: dict | None, kind: str, load):
+    """Share only native read results within one request and execution scope."""
+    if cache is None:
+        return load()
+    if kind not in cache:
+        try:
+            cache[kind] = load()
+        except Exception as exc:
+            cache[kind] = exc
+    value = cache[kind]
+    if isinstance(value, Exception):
+        raise value
+    return value
+
+
+def _share_type_options(conn: object, spec: PolicySpec, cache: dict | None = None) -> list[dict[str, Any]]:
     protocol = "CEPHFS" if spec.key == "manila.cephfs_share_type" else "NFS"
     options: list[dict[str, Any]] = []
-    for share_type in manila.list_share_types(conn):
+    for share_type in _discovery_read(cache, "share_type", lambda: manila.list_share_types(conn)):
         if not bool(share_type.get("is_public", share_type.get("is_default", True))):
             continue
         if protocol not in {item.upper() for item in share_type.get("supported_protocols", [])}:
@@ -184,7 +200,7 @@ def _share_type_options(conn: object, spec: PolicySpec) -> list[dict[str, Any]]:
     return options
 
 
-def _discover_sync(conn, spec: PolicySpec) -> list[dict[str, Any]]:
+def _discover_sync(conn, spec: PolicySpec, cache: dict | None = None) -> list[dict[str, Any]]:
     if spec.resource_kind == "project":
         return [
             _option(project.id, project.name, domain_id=getattr(project, "domain_id", None))
@@ -216,10 +232,10 @@ def _discover_sync(conn, spec: PolicySpec) -> list[dict[str, Any]]:
             _option(
                 network.id,
                 network.name,
-                is_external=bool(network.is_external),
+                is_external=bool(network.is_router_external),
                 is_shared=bool(getattr(network, "is_shared", False)),
             )
-            for network in neutron.list_networks(conn)
+            for network in _discovery_read(cache, "network", lambda: list(conn.network.networks()))
             if spec.execution_scope != "tenant" or _is_tenant_network(network)
         ]
         return [
@@ -240,7 +256,7 @@ def _discover_sync(conn, spec: PolicySpec) -> list[dict[str, Any]]:
             _option(item.get("id"), item.get("name")) for item in manila.list_share_networks(conn) if item.get("id")
         ]
     if spec.resource_kind == "share_type":
-        return _share_type_options(conn, spec)
+        return _share_type_options(conn, spec, cache)
     if spec.resource_kind == "compute_availability_zone":
         return [option for zone in conn.compute.availability_zones() if (option := _zone_option(zone)) is not None]
     if spec.resource_kind == "volume_availability_zone":
@@ -268,6 +284,59 @@ async def discover_options(conn, key: str) -> list[dict[str, Any]]:
         if owns_connection:
             with suppress(Exception):
                 await asyncio.to_thread(execution_conn.close)
+
+
+async def discover_options_batch(conn, keys: list[str]) -> dict[str, list[dict[str, Any]] | Exception]:
+    """Read each native collection once per execution scope; never reuse on save.
+
+    Independent per-key failures stay explicit. Service project discovery owns a
+    single connection for this request only, separate from the backend admin one.
+    """
+    results: dict[str, list[dict[str, Any]] | Exception] = {}
+    connections: dict[str, Any] = {}
+    groups: dict[tuple[str, str], list[PolicySpec]] = {}
+    limit = asyncio.Semaphore(4)
+
+    async def discover_group(scope: str, specs: list[PolicySpec]):
+        # One worker owns each scope/kind cache, so concurrent readers cannot
+        # race to enumerate the same native collection twice.
+        async with limit:
+            cache: dict = {}
+            for spec in specs:
+                try:
+                    results[spec.key] = await asyncio.to_thread(_discover_sync, connections[scope], spec, cache)
+                except Exception as exc:
+                    results[spec.key] = exc
+
+    try:
+        for key in dict.fromkeys(keys):
+            try:
+                spec = get_spec(key)
+                scope = spec.execution_scope
+                if scope not in connections:
+                    try:
+                        connections[scope] = await discovery_connection(conn, spec)
+                    except Exception as exc:
+                        connections[scope] = exc
+                execution_conn = connections[scope]
+                if isinstance(execution_conn, Exception):
+                    raise execution_conn
+                groups.setdefault((scope, spec.resource_kind), []).append(spec)
+            except Exception as exc:
+                results[key] = exc
+        await asyncio.gather(*(discover_group(scope, specs) for (scope, _kind), specs in groups.items()))
+        return results
+    finally:
+        closed: set[int] = set()
+        for execution_conn in connections.values():
+            if (
+                execution_conn is not conn
+                and not isinstance(execution_conn, Exception)
+                and id(execution_conn) not in closed
+            ):
+                closed.add(id(execution_conn))
+                with suppress(Exception):
+                    await asyncio.to_thread(execution_conn.close)
 
 
 def _validate_catalog_value(conn: object, spec: PolicySpec, resource_id: str) -> dict[str, Any]:
@@ -326,7 +395,7 @@ def _validate_existing_sync(conn, spec: PolicySpec, resource_id: str) -> dict[st
 
 
 async def validate_existing_selection(conn, key: str, resource_id: str) -> dict[str, Any]:
-    return await asyncio.to_thread(_validate_existing_sync, conn, get_spec(key), resource_id)
+    return await run_native(_validate_existing_sync, conn, get_spec(key), resource_id)
 
 
 async def validate_selection(conn, key: str, resource_id: str | None) -> dict[str, Any] | None:

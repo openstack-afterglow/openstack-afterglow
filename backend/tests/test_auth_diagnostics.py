@@ -19,10 +19,12 @@ from keystoneauth1.exceptions.http import Unauthorized
 from app import config
 from app.api.identity import auth
 from app.api.identity import domain_auth as domain_routes
-from app.main import _setup_logging, app
+from app.main import app
 from app.models.auth import LoginRequest
 from app.services.domain_auth import DomainAuthDenied
 from app.utils.auth_diagnostics import authentication_operation, authentication_step
+from app.utils.daily_size_handler import DailySizeHandler
+from app.utils.structured_logging import setup_logging
 
 _BODY_SECRET = "body-credential-never-log-74ed"
 _QUERY_SECRET = "query-credential-never-log-27ab"
@@ -60,12 +62,15 @@ def diagnostic_logging(tmp_path, monkeypatch):
         isolated = settings.model_copy(update={"debug": debug, "log_level": "INFO", "log_directory": str(directory)})
         monkeypatch.setattr("sys.stderr", stream)
         with patch.object(config, "get_settings", return_value=isolated):
-            _setup_logging()
+            setup_logging(entrypoint="api")
 
         def outputs():
             for handler in root.handlers:
                 handler.flush()
-            files = sorted(directory.glob("backend-*.log"))
+            active_directory = next(
+                handler.log_directory for handler in root.handlers if isinstance(handler, DailySizeHandler)
+            )
+            files = sorted(active_directory.glob("backend-*.log"))
             assert files, "The production file handler must emit an actual log file"
             return (stream.getvalue(), "".join(path.read_text(encoding="utf-8") for path in files))
 

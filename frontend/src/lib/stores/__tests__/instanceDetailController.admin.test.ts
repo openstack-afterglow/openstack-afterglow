@@ -8,7 +8,7 @@ vi.mock('$lib/stores/auth', () => {
 	const auth = writable({ token: 'token', userId: 'actor', projectId: 'personal', roles: ['member'], isSystemAdmin: true });
 	return { auth, canWrite: derived(auth, state => state.isSystemAdmin || state.roles.includes('member')) };
 });
-vi.mock('$lib/api/client', () => ({ api: { get, post, delete: remove, patch }, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get, post, delete: remove, patch, withExperience() { return this; } }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, setBoost: vi.fn() }) }));

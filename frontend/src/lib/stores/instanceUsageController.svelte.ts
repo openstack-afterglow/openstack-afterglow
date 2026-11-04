@@ -6,6 +6,7 @@ import { t } from '$lib/i18n/ns/usage-schedule';
 import type { UsageScheduleDraft, UsageScheduleInfo } from '$lib/types/instanceUsage';
 import { defaultUsageDraft, scheduleDraft, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
 import { sessionScopeKey } from '$lib/utils/authSession';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 interface UsageRequestOwner {
 	id: string;
@@ -55,7 +56,10 @@ export function createInstanceUsageController(options: {
 	function path(owner: UsageRequestOwner) {
 		return `/api/v1/${owner.admin ? 'admin/' : ''}instances/${encodeURIComponent(owner.id)}/usage-schedule`;
 	}
-	async function refresh() {
+	function refresh() {
+		return refreshAttempt(beginExperienceAction('monitoring', 'refresh', 'resource.detail'));
+	}
+	async function refreshAttempt(parentExperience?: ExperienceContext) {
 		if (saving) return;
 		controller?.abort();
 		generation += 1;
@@ -66,17 +70,24 @@ export function createInstanceUsageController(options: {
 		error = '';
 		if (!owner.id || !owner.project || !owner.token) return;
 		controller = new AbortController();
+		const experience = parentExperience ?? beginExperienceLoad('monitoring', 'resource.detail');
 		loading = true;
+		experienceState(experience, 'loading');
 		try {
-			const result = await api.get<UsageScheduleInfo | null>(path(owner), owner.token,
+			const result = await api.withExperience(experience).get<UsageScheduleInfo | null>(path(owner), owner.token,
 				owner.admin ? owner.headerProject : owner.project, { signal: controller.signal, cache: 'no-store' });
-			if (!current(owner)) return;
+			if (!current(owner)) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
 			if (result && result.instance_id !== owner.id) throw new Error('Schedule identity mismatch');
 			schedule = result;
 			draft = result ? recoveryDraft ?? scheduleDraft(result) : defaultUsageDraft();
 			confirmed = true;
+			experienceState(experience, result ? 'ready' : 'empty');
+			void experienceApplied(experience, {}, () => current(owner));
 		} catch (cause) {
-			if (current(owner)) error = cause instanceof ApiError ? cause.message : t('loadFailed');
+			if (current(owner)) {
+				error = cause instanceof ApiError ? cause.message : t('loadFailed');
+				experienceState(experience, 'error'); void experienceApplied(experience, {}, () => current(owner));
+			} else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
 		} finally {
 			if (current(owner)) loading = false;
 		}
@@ -97,23 +108,29 @@ export function createInstanceUsageController(options: {
 			return;
 		}
 		saving = true;
+		const experience = beginExperienceAction('monitoring', 'update', 'resource.detail');
+		experienceState(experience, 'loading');
 		error = '';
 		saved = false;
 		controller = new AbortController();
 		try {
-			const result = await api.put<UsageScheduleInfo>(path(owner), payload, owner.token,
+			const result = await api.withExperience(experience).put<UsageScheduleInfo>(path(owner), payload, owner.token,
 				owner.admin ? owner.headerProject : owner.project, { signal: controller.signal, replayOnUnauthorized: false });
-			if (!current(owner) || !options.canWrite()) return;
+			if (!current(owner) || !options.canWrite()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'scope_changed'); return; }
 			if (result.instance_id !== owner.id) throw new Error('Schedule identity mismatch');
 			schedule = result;
 			draft = scheduleDraft(result);
 			saved = true;
+			experienceState(experience, 'ready');
+			void experienceApplied(experience, {}, () => current(owner) && options.canWrite());
 			options.onUpdated?.();
 		} catch (cause) {
-			if (!current(owner)) return;
+			if (!current(owner)) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
 			// An error may follow a native write. Keep the draft, but require an explicit fresh read before another write.
 			confirmed = false;
 			error = cause instanceof ApiError ? cause.message : t('saveFailed');
+			experienceState(experience, 'error');
+			void experienceApplied(experience, {}, () => current(owner));
 		} finally {
 			if (current(owner)) saving = false;
 		}
@@ -124,7 +141,7 @@ export function createInstanceUsageController(options: {
 			generation += 1;
 			controller?.abort();
 			schedule = null; draft = defaultUsageDraft(); loading = false; saving = false; confirmed = false; error = ''; saved = false;
-			void refresh();
+			void refreshAttempt();
 		});
 	});
 	onDestroy(() => { disposed = true; generation += 1; controller?.abort(); unsubscribe(); });

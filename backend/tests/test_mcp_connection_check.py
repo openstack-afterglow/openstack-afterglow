@@ -302,7 +302,7 @@ async def test_malformed_endpoint_response_fails_immediately_as_protocol_error(c
 
 @pytest.mark.asyncio
 async def test_origin_root_resource_serves_discovery_oauth_and_challenge(
-    client, root_mcp, running_transport, monkeypatch
+    client, root_mcp, running_transport, monkeypatch, caplog
 ):
     protected = await client.get("/.well-known/oauth-protected-resource")
     assert protected.status_code == 200
@@ -340,7 +340,7 @@ async def test_origin_root_resource_serves_discovery_oauth_and_challenge(
 
     monkeypatch.setattr(mcp_api, "_session_factory", lambda: _NoRows)
 
-    async def exchange(resource: str) -> str:
+    async def exchange(resource: str) -> dict:
         response = await client.post(
             "/oauth/token",
             data={
@@ -352,13 +352,21 @@ async def test_origin_root_resource_serves_discovery_oauth_and_challenge(
                 "code_verifier": "v" * 43,
             },
         )
-        return response.json()["error_description"]
+        assert response.status_code == 400
+        assert response.json()["error"] == "invalid_grant"
+        return response.json()
 
     # WHATWG URL clients send the origin-root resource with "/"; both forms are the same
     # resource and pass the audience gate, while any other resource is refused.
-    assert await exchange(ROOT_RESOURCE) == "authorization code is invalid"
-    assert await exchange(f"{ROOT_RESOURCE}/") == "authorization code is invalid"
-    assert await exchange(f"{ROOT_RESOURCE}/api/v1/mcp") == "resource must exactly match this MCP server"
+    caplog.clear()
+    root_failure = await exchange(ROOT_RESOURCE)
+    assert await exchange(f"{ROOT_RESOURCE}/") == root_failure
+    assert await exchange(f"{ROOT_RESOURCE}/api/v1/mcp") == root_failure
+    assert [
+        record.diagnostic_reason
+        for record in caplog.records
+        if record.name == "app.api.mcp" and hasattr(record, "diagnostic_reason")
+    ] == ["credential_unknown", "credential_unknown", "resource_mismatch"]
 
     monkeypatch.setattr(main, "_get_allowed_origins", lambda: {"https://app.example.test"})
     preflight = await client.options(

@@ -1,4 +1,10 @@
 {
+	"support.label": "Msimbo wa usaidizi",
+	"support.copy": "Nakili msimbo wa usaidizi",
+	"support.copied": "Msimbo wa usaidizi umenakiliwa",
+	"support.help": "Shiriki msimbo huu na wahudumu wa usaidizi. Si nenosiri na hautoi ruhusa ya kuingia. Msimbo hauhakikishi kuwa rekodi zimehifadhiwa.",
+	"support.partial": "Utumaji wa rekodi za uchunguzi haujathibitishwa au haujakamilika. Kukosekana kwa rekodi hakumaanishi kuwa hakuna kilichotokea.",
+	"support.unavailable": "Haiwezekani kunakili. Chagua na unakili msimbo ulio juu mwenyewe.",
 	"loadingState.label": "Inapakia",
 	"progressBar.failed": "Uwekaji umeshindwa",
 	"projectSelector.switchFailed": "Imeshindwa kubadilisha mradi",

@@ -4,11 +4,18 @@ import { writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '../instanceDetailController.svelte';
 
-const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
+const { mockGet, replay } = vi.hoisted(() => ({
+	mockGet: vi.fn(),
+	replay: { load: vi.fn(), begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn(), record: vi.fn() },
+}));
 
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: vi.fn(), put: vi.fn(), delete: vi.fn() },
+	api: { get: mockGet, post: vi.fn(), put: vi.fn(), delete: vi.fn(), withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 500; },
+}));
+vi.mock('$lib/utils/experience', () => ({
+	beginExperienceLoad: replay.load, beginExperienceAction: replay.begin, experienceState: replay.state,
+	experienceApplied: replay.applied, experienceDiscarded: replay.discarded, recordExperience: replay.record,
 }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project' }),
@@ -46,6 +53,9 @@ function resolvedAncillary(path: string): unknown {
 
 describe('instance detail loading graph', () => {
 	beforeEach(() => {
+		vi.clearAllMocks();
+		replay.load.mockReturnValue({ action: 'load' });
+		replay.applied.mockResolvedValue(undefined);
 		mockGet.mockReset();
 	});
 
@@ -139,5 +149,23 @@ describe('instance detail loading graph', () => {
 		oldPrimary.resolve(instance('old-id', 'old-instance'));
 		await Promise.resolve();
 		expect(screen.getByTestId('detail-instance').textContent).toBe('new-instance');
+	});
+	it('emits one primary-owner applied observation per detail poll without multiplying fanout tails', async () => {
+		const networks = Promise.withResolvers<unknown[]>();
+		mockGet.mockImplementation((path: string) => path === '/api/v1/instances/instance-1'
+			? Promise.resolve(instance('instance-1', 'private-native-canary'))
+			: path === '/api/v1/networks' ? networks.promise : Promise.resolve(resolvedAncillary(path)));
+		let controller: InstanceDetailController | null = null;
+		render(Probe, { source: { id: 'instance-1', projectId: 'project' }, onReady: value => { controller = value; } });
+		await vi.waitFor(() => expect(controller).not.toBeNull());
+		await controller!.fetchInstance('instance-1', { silent: true });
+		expect(screen.getByTestId('detail-instance').textContent).toBe('private-native-canary');
+		expect(replay.applied).toHaveBeenCalledTimes(1);
+		networks.resolve([]);
+		await vi.waitFor(() => expect(replay.applied).toHaveBeenCalledTimes(1));
+		await controller!.fetchInstance('instance-1', { silent: true });
+		await vi.waitFor(() => expect(replay.applied).toHaveBeenCalledTimes(2));
+		expect(mockGet).toHaveBeenCalledTimes(16);
+		expect(JSON.stringify([...replay.state.mock.calls, ...replay.applied.mock.calls])).not.toContain('canary');
 	});
 });

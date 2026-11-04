@@ -24,6 +24,7 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { sortInstances, type InstanceSort } from '$lib/components/instance/list/instanceSort';
 	import { getStatusLabel } from '$lib/config/statusColors';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	let instances = $state<Instance[]>([]);
 	let sort = $state<InstanceSort>(null);
@@ -47,6 +48,7 @@
 	const selection = createResourceSelection();
 	let bulkActioning = $state(false);
 	let loadGeneration = 0;
+	let viewAssignment = 0;
 	let scopeRevision = $state(0);
 	let instancesRevision = $state(-1);
 	const unsubscribeAuth = auth.subscribe(() => { scopeRevision += 1; });
@@ -69,20 +71,26 @@
 
 	const { swrGet, swrSet } = createSwr(() => `${$auth.userId ?? ''}:${$auth.projectId ?? ''}:${scopeRevision}`);
 
-	async function fetchInstances(opts?: { refresh?: boolean }) {
+	async function fetchInstances(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.list')) {
 		const path = '/api/v1/instances';
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const generation = ++loadGeneration;
 		const requestRevision = scopeRevision;
+		const current = () => generation === loadGeneration && requestRevision === scopeRevision
+			&& ($auth.token ?? undefined) === requestToken && ($auth.projectId ?? undefined) === requestProjectId;
+		if (loading || refreshing) experienceState(experience, 'loading');
 		const cached = swrGet<Instance[]>(path);
 		if (cached && instances.length === 0) {
 			instances = cached;
 			instancesRevision = requestRevision;
 			selection.retain(cached.map((instance) => instance.id));
+			const assignment = ++viewAssignment;
+			experienceState(experience, cached.length ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience, { transport: 'cache' }, () => current() && viewAssignment === assignment);
 		}
-		const listPromise = api.get<Instance[]>(path, requestToken, requestProjectId, opts);
-		const summaryPromise = fetchSummaryBatch(requestToken, requestProjectId, generation, opts);
+		const listPromise = api.withExperience(experience).get<Instance[]>(path, requestToken, requestProjectId, opts);
+		const summaryPromise = fetchSummaryBatch(requestToken, requestProjectId, generation, opts, experience);
 		try {
 			const fetchedInstances = await listPromise;
 			if (
@@ -90,12 +98,15 @@
 				|| requestRevision !== scopeRevision
 				|| ($auth.token ?? undefined) !== requestToken
 				|| ($auth.projectId ?? undefined) !== requestProjectId
-			) return;
+			) { experienceDiscarded(experience, 'stale'); return; }
 			instances = fetchedInstances;
 			instancesRevision = requestRevision;
 			selection.retain(fetchedInstances.map((instance) => instance.id));
 			swrSet(path, instances);
 			error = '';
+			const assignment = ++viewAssignment;
+			experienceState(experience, instances.length ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience, {}, () => current() && viewAssignment === assignment);
 		} catch (e) {
 			if (
 				generation === loadGeneration
@@ -104,7 +115,10 @@
 				&& ($auth.projectId ?? undefined) === requestProjectId
 			) {
 				error = e instanceof ApiError ? t('list.queryFailed', { status: e.status, message: e.message }) : t('list.serverError');
-			}
+				const assignment = ++viewAssignment;
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, () => current() && viewAssignment === assignment);
+			} else experienceDiscarded(experience, 'stale');
 		} finally {
 			if (generation === loadGeneration && requestRevision === scopeRevision
 				&& ($auth.token ?? undefined) === requestToken && ($auth.projectId ?? undefined) === requestProjectId) {
@@ -119,11 +133,12 @@
 		requestProjectId: string | undefined,
 		generation: number,
 		opts?: { refresh?: boolean },
+		experience?: ExperienceContext,
 	) {
 		if (!requestToken) return;
 		const requestRevision = scopeRevision;
 		try {
-			const resp = await api.get<{
+			const resp = await api.withExperience(experience).get<{
 				monitoring_available: boolean;
 				instances: Record<string, { cpu_avg: number | null; mem_avg: number | null; underutilized: boolean }>;
 			}>('/api/v1/instances/metrics-summary-batch', requestToken, requestProjectId, opts);
@@ -144,10 +159,10 @@
 		}
 	}
 
-	async function forceRefresh() {
+	async function forceRefresh(experience?: ExperienceContext) {
 		refreshing = true;
 		try {
-			await fetchInstances({ refresh: true });
+			await fetchInstances({ refresh: true }, experience);
 		} finally {
 			refreshing = false;
 		}
@@ -178,11 +193,15 @@
 
 	async function startInstance(id: string) {
 		if (!targetsAllowed([id], 'start')) return;
+		const experience = beginExperienceAction('compute', 'start', 'resource.list');
 		try {
-			await apiMut(t('list.startInstance'), () => api.post(`/api/v1/instances/${id}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.startInstance'), () => api.withExperience(experience).post(`/api/v1/instances/${id}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			ar.setBoost(4);
-			await fetchInstances();
-		} catch { /* error toast shown by apiMut */ }
+			await fetchInstances(undefined, experience);
+		} catch {
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 	}
 
 	async function stopInstance(id: string) {
@@ -192,11 +211,15 @@
 		if (!targetsAllowed([id], 'stop')) return;
 		if (!await confirmDialog(`${t('list.confirmStop')}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
 		if (revision !== scopeRevision || !targetsAllowed([id], 'stop')) return;
+		const experience = beginExperienceAction('compute', 'stop', 'resource.list');
 		try {
-			await apiMut(t('list.stopInstance'), () => api.post(`/api/v1/instances/${id}/stop`, {}, token, projectId));
+			await apiMut(t('list.stopInstance'), () => api.withExperience(experience).post(`/api/v1/instances/${id}/stop`, {}, token, projectId));
 			ar.setBoost(4);
-			await fetchInstances();
-		} catch { /* error toast shown by apiMut */ }
+			await fetchInstances(undefined, experience);
+		} catch {
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 	}
 
 	async function bulkAction(action: 'start' | 'stop' | 'delete') {
@@ -225,12 +248,13 @@
 		if (!owns()) return;
 
 		bulkActioning = true;
+		const experience = beginExperienceAction('compute', action, 'resource.list');
 		const results: { id: string; ok: boolean }[] = [];
 		for (let index = 0; index < ids.length; index += 50) {
 			if (!owns()) break;
 			const chunk = ids.slice(index, index + 50);
 			try {
-				const response = await api.post<{ results: { id: string; ok: boolean }[] }>(
+				const response = await api.withExperience(experience).post<{ results: { id: string; ok: boolean }[] }>(
 					'/api/v1/instances/bulk-action',
 					{ action, instance_ids: chunk },
 					token,
@@ -255,13 +279,17 @@
 			delete: 'list.bulkDeleteFailed',
 		} as const;
 		if (successfulIds.length > 0) toast.success(t(successKeys[action], { count: successfulIds.length }));
-		if (failureCount > 0) toast.error(t(failureKeys[action], { count: failureCount }));
+		if (failureCount > 0) {
+			toast.error(t(failureKeys[action], { count: failureCount }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 
 		try {
 			if ($auth.projectId === projectId) {
 				selection.remove(successfulIds);
 				ar.setBoost(4);
-				await fetchInstances();
+				await fetchInstances(undefined, experience);
 			}
 		} finally {
 			bulkActioning = false;
@@ -278,10 +306,14 @@
 		if (!owns()) return;
 		if (!await confirmDialog(`${t('list.confirmShelve')}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
 		if (!owns()) return;
+		const experience = beginExperienceAction('compute', 'update', 'resource.list');
 		try {
-			await apiMut(t('list.shelveInstance'), () => api.post(`/api/v1/instances/${id}/shelve`, {}, token, projectId));
-			await fetchInstances();
-		} catch { /* error toast shown by apiMut */ }
+			await apiMut(t('list.shelveInstance'), () => api.withExperience(experience).post(`/api/v1/instances/${id}/shelve`, {}, token, projectId));
+			await fetchInstances(undefined, experience);
+		} catch {
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 	}
 
 	async function unshelveInstance(id: string) {
@@ -291,10 +323,14 @@
 		if (!targetsAllowed([id], 'unshelve')) return;
 		if (!await confirmDialog(t('list.confirmUnshelve'))) return;
 		if (revision !== scopeRevision || !targetsAllowed([id], 'unshelve')) return;
+		const experience = beginExperienceAction('compute', 'update', 'resource.list');
 		try {
-			await apiMut(t('list.unshelveInstance'), () => api.post(`/api/v1/instances/${id}/unshelve`, {}, token, projectId));
-			await fetchInstances();
-		} catch { /* error toast shown by apiMut */ }
+			await apiMut(t('list.unshelveInstance'), () => api.withExperience(experience).post(`/api/v1/instances/${id}/unshelve`, {}, token, projectId));
+			await fetchInstances(undefined, experience);
+		} catch {
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 	}
 
 	async function deleteInstance(id: string, name: string) {
@@ -307,18 +343,25 @@
 		if (!owns()) return;
 		if (!await confirmDialog(`${t('list.confirmDelete', { name })}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
 		if (!owns()) return;
+		const experience = beginExperienceAction('compute', 'delete', 'resource.list');
 		try {
-			await apiMut(t('list.deleteInstance'), () => api.delete(`/api/v1/instances/${id}`, token, projectId));
-			await fetchInstances();
-		} catch { /* error toast shown by apiMut */ }
+			await apiMut(t('list.deleteInstance'), () => api.withExperience(experience).delete(`/api/v1/instances/${id}`, token, projectId));
+			await fetchInstances(undefined, experience);
+		} catch {
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
+		}
 	}
 
 	async function openConsole(id: string) {
+		const experience = beginExperienceAction('compute', 'open', 'resource.list');
 		try {
-			const data = await api.get<{ url: string }>(`/api/v1/instances/${id}/console`, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			const data = await api.withExperience(experience).get<{ url: string }>(`/api/v1/instances/${id}/console`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			window.open(data.url, '_blank', 'noopener,noreferrer');
 		} catch {
 			toast.error(t('list.consoleUrlFailed'));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		}
 	}
 
@@ -383,7 +426,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={refreshing}
-				onManualRefresh={forceRefresh}
+				onManualRefresh={() => forceRefresh(beginExperienceAction('compute', 'refresh', 'resource.list'))}
 			/>
 		{/snippet}
 	</ResourceToolbar>
@@ -396,7 +439,7 @@
 	{#if loading || (instances.length > 0 && instancesRevision !== scopeRevision)}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('list.title') })} />
 	{:else if error && instances.length === 0}
-		<Button variant="secondary" onclick={forceRefresh}>{t('list.retry')}</Button>
+		<Button variant="secondary" onclick={() => forceRefresh(beginExperienceAction('compute', 'retry', 'resource.list'))}>{t('list.retry')}</Button>
 	{:else if instances.length === 0}
 		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')} />
 	{:else if filteredInstances.length === 0}

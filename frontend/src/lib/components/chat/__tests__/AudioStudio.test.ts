@@ -7,6 +7,9 @@ import type * as AudioModule from '$lib/api/audioStudio';
 import AudioStudio from '../AudioStudio.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { tick } from 'svelte';
+import * as experience from '$lib/utils/experience';
+import { captureFlowExperience, type CapturedFlowExperience } from '$lib/stores/__tests__/experienceFlowHarness';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), speech: vi.fn(), upload: vi.fn(), transcribe: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: calls.goto }));
@@ -38,6 +41,33 @@ async function chooseAudio(file: File) {
 	await screen.findByText('검사된 입력: voice.wav');
 }
 
+const readCases = [
+	{ read: 'models', kind: 'tts', step: 0 },
+	{ read: 'models', kind: 'stt', step: 1 },
+	{ read: 'capabilities', kind: 'tts', step: 2 },
+	{ read: 'capabilities', kind: 'stt', step: 3 }
+] as const;
+function deferRead(read: 'models' | 'capabilities', kind: 'tts' | 'stt') {
+	const pending = Promise.withResolvers<never>();
+	let deferred = false;
+	if (read === 'models') calls.models.mockImplementation(async (requested: 'tts' | 'stt') => {
+		if (requested === kind && !deferred) { deferred = true; return pending.promise; }
+		return [model(requested)];
+	});
+	else calls.capabilities.mockImplementation(async (requested: 'tts' | 'stt', id: number) => {
+		if (requested === kind && !deferred) { deferred = true; return pending.promise; }
+		return capability(requested, id);
+	});
+	return pending;
+}
+function readContext(read: 'models' | 'capabilities', kind: 'tts' | 'stt') {
+	const call = calls[read].mock.calls.find(([requested]) => requested === kind)!;
+	return (call[read === 'models' ? 1 : 2] as AudioModule.AudioScope).experience!;
+}
+function spanEvents(captured: CapturedFlowExperience, context: experience.ExperienceContext) {
+	return captured.events.filter((event) => 'span_id' in event && event.span_id === context.spanId);
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	created = [];
@@ -57,6 +87,136 @@ beforeEach(() => {
 afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Audio Studio', () => {
+	it.each(readCases)('commits the mounted $kind $read error without serializing raw error or draft', async ({ read, kind, step }) => {
+		const pending = deferRead(read, kind);
+		const captured = captureFlowExperience('/dashboard/chat/audio', () => user('project-1'));
+		const view = render(AudioStudio);
+		try {
+			await waitFor(() => expect(calls[read]).toHaveBeenCalledWith(kind, ...(read === 'models' ? [expect.anything()] : [expect.any(Number), expect.anything()])));
+			const context = readContext(read, kind);
+			await fireEvent.input(screen.getByRole('textbox', { name: /읽을 텍스트/ }), { target: { value: 'PRIVATE-AUDIO-DRAFT-CANARY' } });
+			pending.reject(new Error('PRIVATE-AUDIO-READ-ERROR-CANARY'));
+			await screen.findByText('PRIVATE-AUDIO-READ-ERROR-CANARY');
+			await tick();
+			await captured.flush();
+			const events = spanEvents(captured, context);
+			expect(events.map((event) => event.event_type)).toEqual(['view.state_changed', 'view.state_changed', 'result.applied', 'result.committed']);
+			expect(events.map((event) => event.payload)).toEqual([{ state: 'loading', step }, { state: 'error', step }, { stage: 'state' }, { stage: 'dom' }]);
+			expect(JSON.stringify(captured.events)).not.toMatch(/PRIVATE-AUDIO-(?:DRAFT|READ-ERROR)-CANARY/);
+			expect(calls[read].mock.calls.filter(([requested]) => requested === kind)).toHaveLength(1);
+			expect(calls.speech).not.toHaveBeenCalled();
+			expect(calls.upload).not.toHaveBeenCalled();
+			expect(calls.transcribe).not.toHaveBeenCalled();
+		} finally { view.unmount(); captured.collector.destroy(); }
+	});
+
+	describe.each(readCases)('$kind $read error ownership', ({ read, kind }) => {
+		it.each(['project', 'user', 'unmount'] as const)('ignores a failed response after %s', async (transition) => {
+			const pending = deferRead(read, kind);
+			// Keep the collector owner fixed: the component fence must reject the old read itself.
+			const captured = captureFlowExperience('/dashboard/chat/audio', () => user('project-1'));
+			const view = render(AudioStudio);
+			try {
+				await waitFor(() => expect(calls[read].mock.calls.some(([requested]) => requested === kind)).toBe(true));
+				const context = readContext(read, kind);
+				if (transition === 'unmount') view.unmount();
+				else {
+					setVerifiedLumenActor(transition === 'project' ? user('project-2') : { ...user('project-1'), userId: 'other-owner' });
+					await tick();
+				}
+				pending.reject(new Error('PRIVATE-STALE-AUDIO-ERROR'));
+				await tick();
+				await tick();
+				await captured.flush();
+				expect(spanEvents(captured, context).map((event) => event.event_type)).toEqual(['view.state_changed']);
+				expect(screen.queryByText('PRIVATE-STALE-AUDIO-ERROR')).toBeNull();
+			} finally { if (transition !== 'unmount') view.unmount(); captured.collector.destroy(); }
+		});
+
+		it.each(['project', 'user', 'unmount'] as const)('does not commit an applied error when %s occurs before the DOM tick', async (transition) => {
+			const pending = deferRead(read, kind);
+			const captured = captureFlowExperience('/dashboard/chat/audio', () => user('project-1'));
+			const view = render(AudioStudio);
+			let unmounted = false;
+			const apply = experience.experienceApplied;
+			try {
+				await waitFor(() => expect(calls[read].mock.calls.some(([requested]) => requested === kind)).toBe(true));
+				const context = readContext(read, kind);
+				vi.spyOn(experience, 'experienceApplied').mockImplementation((candidate, ...args) => {
+					const result = apply(candidate, ...args);
+					if (candidate === context) {
+						if (transition === 'unmount') { view.unmount(); unmounted = true; }
+						else setVerifiedLumenActor(transition === 'project' ? user('project-2') : { ...user('project-1'), userId: 'other-owner' });
+					}
+					return result;
+				});
+				pending.reject(new Error('PRIVATE-APPLIED-AUDIO-ERROR'));
+				await tick();
+				await tick();
+				await captured.flush();
+				const events = spanEvents(captured, context);
+				expect(events.map((event) => event.event_type)).toEqual(['view.state_changed', 'view.state_changed', 'result.applied', 'result.discarded']);
+				expect(events.at(-1)?.payload).toEqual({ stage: 'dom', reason: 'stale' });
+			} finally { if (!unmounted) view.unmount(); captured.collector.destroy(); }
+		});
+	});
+
+	it.each(['tts', 'stt'] as const)('does not apply an obsolete %s capability error after selecting another model', async (kind) => {
+		const pending = deferRead('capabilities', kind);
+		calls.models.mockImplementation(async (requested: 'tts' | 'stt') => [model(requested), { ...model(requested), id: 29, display_name: 'Other audio model' }]);
+		calls.capabilities.mockImplementation(async (requested: 'tts' | 'stt', id: number) => requested === kind && id !== 29 ? pending.promise : capability(requested, id));
+		const captured = captureFlowExperience('/dashboard/chat/audio', () => user('project-1'));
+		const view = render(AudioStudio);
+		try {
+			if (kind === 'stt') await fireEvent.click(screen.getByRole('tab', { name: '음성 → 텍스트' }));
+			await waitFor(() => expect(calls.capabilities.mock.calls.some(([requested]) => requested === kind)).toBe(true));
+			const context = readContext('capabilities', kind);
+			await fireEvent.change(screen.getByLabelText(t(kind === 'tts' ? 'audioStudio.speechModel' : 'audioStudio.transcriptionModel')), { target: { value: '29' } });
+			await waitFor(() => expect(calls.capabilities).toHaveBeenCalledWith(kind, 29, expect.anything()));
+			pending.reject(new Error('PRIVATE-OBSOLETE-AUDIO-ERROR'));
+			await tick();
+			await tick();
+			await captured.flush();
+			expect(spanEvents(captured, context).map((event) => event.event_type)).toEqual(['view.state_changed']);
+			expect(screen.queryByText('PRIVATE-OBSOLETE-AUDIO-ERROR')).toBeNull();
+		} finally { view.unmount(); captured.collector.destroy(); }
+	});
+
+	it.each(['tts', 'stt'] as const)('rejects the first %s capability failure after A→B→A has committed the newer A read', async (kind) => {
+		const pending = Promise.withResolvers<AudioModule.AudioCapabilities>();
+		const firstModel = model(kind);
+		calls.models.mockImplementation(async (requested: 'tts' | 'stt') => [model(requested), { ...model(requested), id: 29, display_name: 'Other audio model' }]);
+		let firstRead = true;
+		calls.capabilities.mockImplementation(async (requested: 'tts' | 'stt', id: number) => {
+			if (requested === kind && id === firstModel.id && firstRead) { firstRead = false; return pending.promise; }
+			return capability(requested, id);
+		});
+		const captured = captureFlowExperience('/dashboard/chat/audio', () => user('project-1'));
+		const view = render(AudioStudio);
+		try {
+			if (kind === 'stt') await fireEvent.click(screen.getByRole('tab', { name: t('audioStudio.speechToText') }));
+			await waitFor(() => expect(calls.capabilities).toHaveBeenCalledWith(kind, firstModel.id, expect.anything()));
+			const staleContext = readContext('capabilities', kind);
+			const selector = screen.getByLabelText(t(kind === 'tts' ? 'audioStudio.speechModel' : 'audioStudio.transcriptionModel'));
+			await fireEvent.change(selector, { target: { value: '29' } });
+			await waitFor(() => expect(calls.capabilities).toHaveBeenCalledWith(kind, 29, expect.anything()));
+			await fireEvent.change(selector, { target: { value: String(firstModel.id) } });
+			await waitFor(() => expect(calls.capabilities.mock.calls.filter(([requested, id]) => requested === kind && id === firstModel.id)).toHaveLength(2));
+			await screen.findByText(t(kind === 'tts' ? 'audioStudio.speechReady' : 'audioStudio.transcriptionReady'));
+			await tick();
+			const currentCall = calls.capabilities.mock.calls.filter(([requested, id]) => requested === kind && id === firstModel.id).at(-1)!;
+			const currentContext = (currentCall[2] as AudioModule.AudioScope).experience!;
+			pending.reject(new Error('PRIVATE-ABA-AUDIO-ERROR'));
+			await tick();
+			await tick();
+			await captured.flush();
+			expect(spanEvents(captured, currentContext).map((event) => event.event_type)).toEqual(['view.state_changed', 'view.state_changed', 'result.applied', 'result.committed']);
+			expect(spanEvents(captured, staleContext).map((event) => event.event_type)).toEqual(['view.state_changed']);
+			expect(screen.queryByText('PRIVATE-ABA-AUDIO-ERROR')).toBeNull();
+			expect(screen.getByText(t(kind === 'tts' ? 'audioStudio.speechReady' : 'audioStudio.transcriptionReady'))).toBeTruthy();
+		} finally { view.unmount(); captured.collector.destroy(); }
+	});
+
 	it('denies speech generation without the independent audio leaf', async () => {
 		grantLumen('lumen-chat_user', 'lumen-images_user');
 		render(AudioStudio);

@@ -29,6 +29,7 @@
 	"browser.files": "文件",
 	"browser.trash": "回收站",
 	"browser.viewLabel": "对象浏览器视图",
+	"browser.loadFailed": "无法加载对象。请刷新后重试。",
 	"uploadQueue.readFailed": "无法读取文件",
 	"uploadQueue.hashFailed": "完整性哈希计算失败",
 	"uploadQueue.failed": "上传失败",

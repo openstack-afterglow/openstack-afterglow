@@ -7,7 +7,7 @@ import type { VolumeBackup } from '$lib/types/volume';
 const { mockGet, mockPost } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPost: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({
-  api: { get: mockGet, prefetch: vi.fn(), post: mockPost, delete: vi.fn() },
+  api: { get: mockGet, prefetch: vi.fn(), post: mockPost, delete: vi.fn(), withExperience() { return this; } },
   ApiError: class ApiError extends Error { status = 500; },
 }));
 vi.mock('$lib/stores/auth', () => ({

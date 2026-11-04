@@ -16,7 +16,9 @@
 	import { loginAuthState, sessionScopeKey, type LoginAuthMapping } from '$lib/utils/authSession';
 	import { freshLoginDestination } from '$lib/utils/mcpConsent';
 	import { takePendingProviderLogin, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
-	import { t } from '$lib/i18n/ns/domain-auth';
+	import { t as translate } from '$lib/i18n/ns/domain-auth';
+	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
+	const t = translate;
 
 	let error = $state('');
 	let approval = $state<SignupApprovalState | null>(null);
@@ -29,6 +31,15 @@
 	let password = $state('');
 	let active = false;
 	let abandoned = $state(false);
+	let viewExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
+	$effect(() => {
+		const key = !viewExperience || loading || abandoned || $logoutInProgress || $projectSwitching ? null
+			: approval ? approval === 'pending' ? 'signup.approval.providerPending' : 'signup.approval.providerRejected'
+			: linked ? 'link.complete' : entryTicket ? entryTicket.action === 'connect' ? 'entry.connectDescription' : 'entry.createDescription' : ticket ? 'link.description' : null;
+		if (key) t(key, { domain: '' });
+		presentNotice('result', viewExperience, 'domain-auth', key, linked ? 'success' : approval === 'rejected' ? 'warning' : 'info');
+	});
 	const callbackTitle = $derived(
 		abandoned || $logoutInProgress || $projectSwitching ? t('common.backToLogin')
 			: loading ? t('callback.processing')
@@ -53,7 +64,8 @@
 		account_ambiguous: 'callback.accountAmbiguous', account_disabled: 'callback.accountDisabled',
 		invalid_entry_token: 'callback.invalidState',
 	};
-	function callbackErrorMessage(e: unknown): string {
+	function callbackErrorMessage(e: unknown, observation: AuthExperience): string {
+		const t = observedAuthText(observation, 'domain-auth', translate);
 		if (!(e instanceof ApiError)) return t('callback.unavailable');
 		const key = e.code ? CODE_MESSAGES[e.code] : undefined;
 		if (key) return t(key);
@@ -63,67 +75,87 @@
 		if (e.status === 503 || e.status === 0) return t('callback.unavailable');
 		return t('callback.failed', { status: e.status });
 	}
-	function terminalApproval(e: unknown): boolean {
+	function terminalApproval(e: unknown, observation: AuthExperience): boolean {
 		const decision = e instanceof ApiError ? signupApprovalState(e) : null;
 		if (!decision) return false;
 		approval = decision; ticket = null; entryTicket = null; linked = null; password = ''; username = ''; error = ''; loading = false; linking = false;
+		observation.state('ready');
+		viewExperience = observation;
 		return true;
 	}
 	function discard(token: string) {
 		void api.post('/api/v1/auth/logout', {}, token, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false }).catch(() => {});
 	}
-	async function publish(data: LoginResponse) {
-		if (!active || abandoned) { discard(data.token); return; }
+	async function publish(data: LoginResponse, observation: AuthExperience) {
+		if (!active || abandoned) { observation.discard(active ? 'stale' : 'unmounted'); discard(data.token); return; }
+		const text = observedAuthText(observation, 'domain-auth', t);
 		let mapped: LoginAuthMapping;
 		try { mapped = loginAuthState(data, { federated: true }); }
-		catch { discard(data.token); error = t('callback.foreignDomain'); loading = false; return; }
+		catch { discard(data.token); error = text('callback.foreignDomain'); loading = false; observation.validation('authority'); observation.state('error'); void observation.applied(); return; }
 		ticket = null; entryTicket = null; password = ''; username = '';
+		// Do not delay the one-use exchange handoff for diagnostic DOM observation.
+		void observation.applied();
 		setLoginAuth(mapped.state);
+		beginAuthExperience('auth.callback', 'load', () => active).state('loading');
 		await goto(freshLoginDestination(mapped.target), { replaceState: true });
 	}
 	async function confirmEntry(event: Event) {
 		event.preventDefault();
 		if (!entryTicket || linking || !active || abandoned) return;
+		const observation = beginAuthExperience('auth.callback', 'approve', () => active && !abandoned);
+		observation.state('loading', 1);
 		const body = { entry_token: entryTicket.entry_token, action: entryTicket.action };
 		linking = true; error = '';
+		let rendered = false;
 		try {
-			const data = await api.post<LoginResponse>('/api/v1/auth/providers/entry', body, undefined, undefined, { signal: AbortSignal.timeout(120_000), suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
-			await publish(data);
+			const data = await api.post<LoginResponse>('/api/v1/auth/providers/entry', body, undefined, undefined, { signal: AbortSignal.timeout(120_000), suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options });
+			await publish(data, observation);
 		} catch (e) {
 			if (active && !abandoned) {
-				if (terminalApproval(e)) return;
-				error = callbackErrorMessage(e);
+				if (terminalApproval(e, observation)) { rendered = true; return; }
+				error = callbackErrorMessage(e, observation); observation.state('error'); rendered = true;
 			}
-		} finally { entryTicket = null; if (active) linking = false; }
+			else observation.discard(active ? 'stale' : 'unmounted');
+		} finally { entryTicket = null; if (active) { linking = false; if (rendered && !abandoned) void observation.applied(); } }
 	}
 	function cancelEntry() {
 		if (!entryTicket) return;
+		const observation = beginAuthExperience('auth.callback', 'cancel', () => active);
 		entryTicket = null; abandoned = true; error = ''; linking = false;
+		observation.state('disabled'); void observation.applied();
 	}
 	async function link(event: Event, authenticated = false) {
 		event.preventDefault();
 		if (!ticket || linking || !active || abandoned) return;
 		if (authenticated ? (!$auth.token || !$authReady || $logoutInProgress || $projectSwitching) : (!username.trim() || !password)) return;
 		const authority = authorityGeneration;
+		const owns = () => active && !abandoned && (!authenticated || authority === authorityGeneration);
+		const observation = beginAuthExperience('auth.callback', 'verify', owns);
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 2);
 		const body = authenticated ? { link_token: ticket.link_token } : { link_token: ticket.link_token, username: username.trim(), password };
 		password = ''; linking = true; error = '';
+		let rendered = false;
 		try {
-			const data = await api.post<ProviderLinkResponse>(authenticated ? '/api/v1/auth/providers/link/authenticated' : '/api/v1/auth/providers/link', body, authenticated ? $auth.token ?? undefined : undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
-			if (!active || abandoned) return;
+			const data = await api.post<ProviderLinkResponse>(authenticated ? '/api/v1/auth/providers/link/authenticated' : '/api/v1/auth/providers/link', body, authenticated ? $auth.token ?? undefined : undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options });
+			if (!active || abandoned) { observation.discard(active ? 'stale' : 'unmounted'); return; }
 			ticket = null;
-			if (authenticated && authority !== authorityGeneration) { error = t('callback.invalidState'); return; }
+			if (authenticated && authority !== authorityGeneration) { error = text('callback.invalidState'); observation.discard('scope_changed'); return; }
 			if (data.linked !== true || data.domain_id !== originDomain || !data.domain_name?.trim() || !data.provider_id || (expectedProvider && data.provider_id !== expectedProvider)) {
-				error = t('callback.foreignDomain'); return;
+				error = text('callback.foreignDomain'); observation.validation('authority'); observation.state('error'); rendered = true; return;
 			}
 			username = '';
 			linked = data;
+			viewExperience = observation; observation.state('ready');
+			rendered = true;
 		} catch (e) {
 			if (active && !abandoned) {
-				if (terminalApproval(e)) return;
-				error = callbackErrorMessage(e);
+				if (terminalApproval(e, observation)) { rendered = true; return; }
+				error = callbackErrorMessage(e, observation); observation.state('error'); rendered = true;
 				ticket = null;
 			}
-		} finally { if (active) linking = false; }
+			else observation.discard(active ? 'stale' : 'unmounted');
+		} finally { if (active) { linking = false; if (rendered && owns()) void observation.applied(); } }
 	}
 	onMount(() => {
 		active = true;
@@ -147,6 +179,10 @@
 		void complete();
 		return () => { active = false; settleReadiness?.(); ticket = null; entryTicket = null; approval = null; password = ''; username = ''; unsubscribe(); unsubscribeAuthority(); };
 		async function complete() {
+			const observation = beginAuthExperience('auth.callback', 'load', () => active && !abandoned);
+			viewExperience = observation;
+			const text = observedAuthText(observation, 'domain-auth', t);
+			observation.state('loading', 0);
 			const params = $page.url.searchParams;
 			const code = params.get('code');
 			const state = params.get('state');
@@ -155,31 +191,33 @@
 			originDomain = pending?.domainId ?? null;
 			expectedProvider = pending?.providerId ?? null;
 			try { history.replaceState(history.state, '', '/auth/callback'); } catch { /* API one-use state remains authoritative. */ }
-			if ($logoutInProgress || $projectSwitching) { abandoned = true; loading = false; return; }
+			if ($logoutInProgress || $projectSwitching) { abandoned = true; loading = false; observation.discard('scope_changed'); return; }
 			if (awaitingReadiness) await new Promise<void>(resolve => { settleReadiness = resolve; });
 			settleReadiness = null;
-			if (!active || abandoned) return;
-			if (providerError || !code || !state) { error = t(providerError ? 'callback.providerDenied' : 'callback.invalidRequest'); loading = false; return; }
+			if (!active || abandoned) { observation.discard(active ? 'stale' : 'unmounted'); return; }
+			if (providerError || !code || !state) { error = text(providerError ? 'callback.providerDenied' : 'callback.invalidRequest'); loading = false; observation.validation('format'); observation.state('error'); void observation.applied(); return; }
 			const guardKey = `afterglow-provider-callback:${state}`;
 			try {
-				if (sessionStorage.getItem(guardKey)) { error = t('callback.invalidState'); loading = false; return; }
+				if (sessionStorage.getItem(guardKey)) { error = text('callback.invalidState'); loading = false; observation.validation('policy'); observation.state('error'); void observation.applied(); return; }
 				sessionStorage.setItem(guardKey, '1');
 			} catch { /* The server enforces one-use state. */ }
 			try {
 				// Federation includes several bounded native exchanges; never replay a timed-out code.
-				const data = await api.post<LoginResponse>('/api/v1/auth/providers/callback', { code, state }, undefined, undefined, { signal: AbortSignal.timeout(120_000), suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
-				await publish(data);
+				const data = await api.post<LoginResponse>('/api/v1/auth/providers/callback', { code, state }, undefined, undefined, { signal: AbortSignal.timeout(120_000), suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options });
+				await publish(data, observation);
 			} catch (e) {
-				if (!active || abandoned) return;
-				if (terminalApproval(e)) return;
+				if (!active || abandoned) { observation.discard(active ? 'stale' : 'unmounted'); return; }
+				if (terminalApproval(e, observation)) { void observation.applied(); return; }
 				if (e instanceof ApiError && e.status === 409 && e.code === 'account_entry_required' && e.entryTicket) {
-					if (originDomain && e.entryTicket.domain_id !== originDomain) error = t('callback.foreignDomain');
+					if (originDomain && e.entryTicket.domain_id !== originDomain) error = text('callback.foreignDomain');
 					else entryTicket = e.entryTicket;
 				} else if (e instanceof ApiError && e.status === 409 && e.code === 'account_link_required' && e.linkTicket) {
-					if (originDomain && e.linkTicket.domain_id !== originDomain) error = t('callback.foreignDomain');
+					if (originDomain && e.linkTicket.domain_id !== originDomain) error = text('callback.foreignDomain');
 					else { ticket = e.linkTicket; originDomain = ticket.domain_id; }
-				} else error = callbackErrorMessage(e);
+				} else error = callbackErrorMessage(e, observation);
 				loading = false;
+				observation.state(error ? 'error' : 'ready', entryTicket ? 1 : ticket ? 2 : 0);
+				void observation.applied();
 			}
 		}
 	});

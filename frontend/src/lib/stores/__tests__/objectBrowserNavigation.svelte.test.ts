@@ -5,6 +5,7 @@ const listing: Record<string, unknown[]> = {
 
 vi.mock('$lib/api/client', () => ({
 	api: {
+		withExperience() { return this; },
 		get: vi.fn(async (path: string) => listing[new URL(path, 'http://t').searchParams.get('prefix') ?? ''] ?? []),
 		post: vi.fn(async () => ({})),
 		delete: vi.fn(async () => {}),
@@ -27,6 +28,7 @@ function withStore(run: (store: ReturnType<typeof createObjectBrowserStore>) => 
 			containerName: () => 'sample-artifacts',
 			token: () => 'token',
 			projectId: () => 'project-a',
+			ownerKey: () => 'navigation-fixture-owner',
 		});
 		flushSync();
 		run(store);

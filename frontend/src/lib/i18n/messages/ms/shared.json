@@ -1,4 +1,10 @@
 {
+	"support.label": "Kod sokongan",
+	"support.copy": "Salin kod sokongan",
+	"support.copied": "Kod sokongan disalin",
+	"support.help": "Kongsi kod ini dengan sokongan. Ia bukan kata laluan dan tidak memberi akses. Kod tidak menjamin rekod telah disimpan.",
+	"support.partial": "Penghantaran rekod diagnostik belum disahkan atau tidak lengkap. Ketiadaan rekod tidak bermaksud tiada apa-apa berlaku.",
+	"support.unavailable": "Tidak dapat menyalin. Pilih dan salin kod di atas secara manual.",
 	"loadingState.label": "Sedang memuatkan",
 	"progressBar.failed": "Atur guna gagal",
 	"projectSelector.switchFailed": "Gagal menukar projek",

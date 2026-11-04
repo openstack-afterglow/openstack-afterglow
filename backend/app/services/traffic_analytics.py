@@ -9,9 +9,20 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
+import logging
 import time
 from collections import defaultdict
 from typing import Literal
+
+from redis.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    MaxConnectionsError,
+    OutOfMemoryError,
+    ResponseError,
+)
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.config import get_settings
 from app.models.traffic_analytics import LegacyTrafficEvent, OriginFilter, TrafficEvent
@@ -89,6 +100,53 @@ COUNTERS = (
     "reporter_dropped_events",
 )
 _pending_drops: dict[str, int] = defaultdict(int)
+DROP_REASONS = ("timeout", "connection", "capacity", "rejected", "unknown")
+_pending_drop_reasons: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+logger = logging.getLogger(__name__)
+_failure_log_at: dict[tuple[str, str, str], float] = {}
+
+
+def _log_failure(source: Source, stage: Literal["redis_acquire", "aggregate"], reason: str, started: float):
+    # At most one line per source/stage/finite reason per minute, per worker.
+    # Conservative failure evidence remains in coverage, not one line per probe.
+    now = time.monotonic()
+    key = (source, stage, reason)
+    previous = _failure_log_at.get(key)
+    if previous is not None and now - previous < 60:
+        return
+    _failure_log_at[key] = now
+    elapsed_ms = max(0, (now - started) * 1000)
+    # _get_redis builds a lazy client. "aggregate" includes pool checkout,
+    # Sentinel discovery/connect, command execution and reply; it is not Lua timing.
+    stage_scope = "client_initialization" if stage == "redis_acquire" else "pool_connect_command_reply"
+    logger.warning(
+        "Traffic aggregation observation failed",
+        extra={
+            "traffic_source": source,
+            "failure_stage": stage,
+            "stage_scope": stage_scope,
+            "failure_reason": reason,
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+
+
+def _failure_reason(error: Exception) -> str:
+    # Classify only exception types, never dependency messages or event fields.
+    if isinstance(error, (TimeoutError, RedisTimeoutError)):
+        return "timeout"
+    if isinstance(error, (MaxConnectionsError, OutOfMemoryError)):
+        return "capacity"
+    if isinstance(error, (AuthenticationError, AuthorizationError)):
+        return "rejected"
+    if isinstance(error, (ConnectionError, OSError, RedisConnectionError)):
+        # redis-py 5 also uses plain ConnectionError for pool exhaustion.
+        # It is indistinguishable by type; never parse exception text to guess.
+        return "connection"
+    if isinstance(error, ResponseError):
+        return "rejected"
+    return "unknown"
+
 
 # Every key uses a common Redis Cluster hash tag. Event time is limited by ingress;
 # expiries are absolute so late reports cannot extend historical retention.
@@ -207,6 +265,19 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
     pending = _pending_drops[source]
     # Detach before awaiting so concurrent successful writers never count the same drops.
     _pending_drops[source] = 0
+    pending_reasons = _pending_drop_reasons.pop(source, {})
+    failure_stage: Literal["redis_acquire", "aggregate"] | None = None
+    write_started = 0.0
+
+    def restore(reason: str | None = None):
+        _pending_drops[source] += pending + int(reason is not None)
+        for key, count in pending_reasons.items():
+            _pending_drop_reasons[source][key] += count
+        if reason is not None:
+            _pending_drop_reasons[source][reason] += 1
+            if failure_stage is not None:
+                _log_failure(source, failure_stage, reason, write_started)
+
     try:
         import json
 
@@ -254,6 +325,12 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
                 "reporter_dropped_events": event.reporter_dropped_events,
             }
         )
+        for reason, count in pending_reasons.items():
+            if count:
+                measures["drop_reason_" + reason] = count
+        for reason, count in event.reporter_drop_reasons.items():
+            if count:
+                measures["reporter_drop_reason_" + reason] = count
         if geo_reason != "located":
             measures["geo_reason_" + geo_reason] = 1
         if origin_reason != "classified":
@@ -264,8 +341,11 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
         keys.extend(f"{KEY_PREFIX}:{source}:dedupe:{minute - offset}" for offset in range(1, 6))
         keys.append(visitors + ":" + origin)
         expiry = hour * 3600 + settings.retention_days * 86400
+        write_started = time.monotonic()
+        failure_stage = "redis_acquire"
         async with asyncio.timeout(0.25):
             redis = await _get_redis()
+            failure_stage = "aggregate"
             result = await redis.eval(
                 AGGREGATE_LUA,
                 len(keys),
@@ -283,10 +363,18 @@ async def record_event(event: TrafficEvent | LegacyTrafficEvent, source: Source)
             )
         if int(result) == 1:
             return True
-        _pending_drops[source] += pending + int(int(result) < 0)
-        return int(result) == 0  # An exact duplicate was already accepted.
-    except Exception:
-        _pending_drops[source] += pending + 1
+        if int(result) == 0:
+            restore()  # Dedupe did not persist this attempt's detached coverage.
+            return True
+        restore("capacity" if int(result) == -1 else "rejected")
+        return False
+    except asyncio.CancelledError:
+        # Cancellation may follow a committed Lua call. Never replay that write;
+        # retain the unacknowledged observation as uncertain coverage.
+        restore("unknown")
+        raise
+    except Exception as error:
+        restore(_failure_reason(error))
         return False
 
 
@@ -343,9 +431,9 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
     now = time.time()
     geo = country_lookup(settings.geoip_mmdb)
     description = (
-        "Backend ASGI requests only; excludes analytics endpoints, WebSockets and requests outside this app."
+        "Backend ASGI requests only; excludes analytics endpoints, WebSockets and requests outside this app. New observations exclude completed successful semantic telemetry /api/v1/activity/experience-events and /api/v1/activity/experience-contract, and completed successful GET/HEAD /api/health and /api/v1/health probes; failed or incomplete diagnostic requests remain observed. Retained history may still include prior diagnostic noise."
         if source == "backend"
-        else "SvelteKit server requests only; HTML GET successes are SSR pageviews. SPA navigation, CDN/static bypasses and edge traffic are not observed."
+        else "SvelteKit server requests only; new observations exclude traffic ingestion itself, completed successful semantic telemetry /api/v1/activity/experience-events and /api/v1/activity/experience-contract, and completed successful GET/HEAD /health and analytics snapshot requests. Failed or incomplete diagnostic requests remain observed; retained history may include prior diagnostic noise. HTML GET successes are SSR pageviews. SPA navigation, CDN/static bypasses and edge traffic are not observed."
     )
     result = {
         "state": "disabled" if not settings.enabled else "unavailable",
@@ -367,9 +455,11 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
             "legacy_unclassified_requests": None,
             "classification_policy": "Only configured cluster CIDRs are internal. Global noncluster addresses are external; other or unverified addresses are unknown. Original socket provenance and exact right-to-left trusted proxy CIDRs are required. Legacy writers/buckets cannot be reclassified. Current DB metadata is not historical dataset attribution; replacing DBs/CIDRs affects only new events. Coverage timestamps describe the selected source, not the origin filter.",
             "site_country": settings.site_country or None,
-            "unique_method": "IP-derived HMAC + Redis HyperLogLog (~0.81% standard error); not people. NAT/shared IPs undercount; changing IPs overcount. Source estimates are independent. No tracking cookie, user agent, body, token, URL/query or raw IP retained. Legacy identities retain their original method. Drops include recovered observations and this worker only; lost/restarted workers and disconnected reporters are not knowable.",
+            "unique_method": "IP-derived HMAC + Redis HyperLogLog (~0.81% standard error); not people. NAT/shared IPs undercount; changing IPs overcount. Source estimates are independent. No tracking cookie, user agent, body, token, URL/query or raw IP retained. Legacy identities retain their original method. Backend and reporter drops/reasons are conservative failure evidence, not exact lost-request or failed-attempt counts: a timeout/disconnect may follow a committed write, and carrying its prior loss coverage forward can count that evidence again. Never subtract drops from requests or retry writes. Finite reason counters describe recovered evidence and this worker's pending failures only; old losses may have no reason. Lost/restarted workers and disconnected reporters are not knowable.",
             "dropped_events": None,
             "reporter_dropped_events": None,
+            "drop_reasons": dict(_pending_drop_reasons[source]),
+            "reporter_drop_reasons": {},
             "observed_since": None,
             "last_observed_at": None,
         },
@@ -452,6 +542,17 @@ async def snapshot(source: Source, period: str, origin: OriginFilter = "all") ->
             result["coverage"].update(
                 dropped_events=int(source_totals.get("dropped_events", 0)) + _pending_drops[source],
                 reporter_dropped_events=int(source_totals.get("reporter_dropped_events", 0)),
+                drop_reasons={
+                    reason: int(source_totals.get("drop_reason_" + reason, 0))
+                    + _pending_drop_reasons[source].get(reason, 0)
+                    for reason in DROP_REASONS
+                    if source_totals.get("drop_reason_" + reason) or _pending_drop_reasons[source].get(reason)
+                },
+                reporter_drop_reasons={
+                    reason: int(source_totals.get("reporter_drop_reason_" + reason, 0))
+                    for reason in DROP_REASONS
+                    if source_totals.get("reporter_drop_reason_" + reason)
+                },
             )
         if totals:
             result["origins"] = selected_origins

@@ -8,7 +8,9 @@
 	import { createAuthVerificationController } from '$lib/utils/authVerification';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { installInteractionAudit, type InteractionAuditController } from '$lib/utils/interactionAudit';
-	import { isTourActive } from '$lib/tutorial/engine';
+	import { installExperienceCollector, type ExperienceCollectorController } from '$lib/utils/experience';
+	import { EXPERIENCE_CATALOG_REVISION } from '$lib/i18n/experienceCatalogRevision';
+	import { isTourActive, onTourActivityChange } from '$lib/tutorial/engine';
 	import { resolvedTheme } from '$lib/stores/theme';
 	import { api, getBaseUrl, refreshSession } from '$lib/api/client';
 	import { startLogout } from '$lib/utils/logout';
@@ -117,6 +119,34 @@
 	}
 
 	replaceSiteConfig(initialSiteConfig);
+
+	// Install before child setup/effects so their first real requests can capture a context.
+	// Read only the existing mock selector here; its normal bootstrap remains one-shot on mount.
+	let experienceCollector: ExperienceCollectorController | undefined;
+	let experienceBootstrapSuppressed = false;
+	if (typeof window !== 'undefined') {
+		const requested = location.pathname === '/logout' ? 'off' : get(page).url.searchParams.get(MOCKUP_QUERY_KEY);
+		experienceBootstrapSuppressed = isMockupProfileId(requested);
+		if (!experienceBootstrapSuppressed && requested !== 'off') {
+			try { experienceBootstrapSuppressed = isMockupProfileId(sessionStorage.getItem(MOCKUP_SESSION_KEY)); }
+			catch { experienceBootstrapSuppressed = true; }
+		}
+		experienceCollector = installExperienceCollector({
+			frontendBuild: __APP_VERSION__,
+			catalogRevision: EXPERIENCE_CATALOG_REVISION,
+			getOwner: () => get(auth),
+			getRoute: () => get(page).route.id,
+			getBaseUrl,
+			isSuppressed: () => experienceBootstrapSuppressed || mockup.active || isMockAuthActive() || isTourActive(),
+			isEnabled: () => get(siteConfig).experience_enabled === true,
+			subscribeOwner: (changed) => {
+				const stopAuth = auth.subscribe(changed);
+				const stopSite = siteConfig.subscribe(changed);
+				const stopTour = onTourActivityChange(changed);
+				return () => { stopAuth(); stopSite(); stopTour(); };
+			},
+		});
+	}
 
 	async function refreshPublicSiteConfig() {
 		const serial = ++brandRefreshSerial;
@@ -357,6 +387,7 @@
 	});
 	afterNavigate(({ from, to }) => {
 		if (from) interactionAudit?.navigate(from.route.id, to?.route.id ?? null);
+		if (from) experienceCollector?.navigate(to?.route.id ?? null);
 	});
 
 	onMount(() => {
@@ -391,12 +422,19 @@
 			enteredMockProfile = clientMockProfile;
 		}
 		mockupClientReady = true;
+		experienceBootstrapSuppressed = false;
+		experienceCollector?.syncOwner();
+		experienceCollector?.navigate(get(page).route.id);
 		interactionAudit = installInteractionAudit({
 			getOwner: () => get(auth),
 			getRoute: () => get(page).route.id,
 			getBaseUrl,
 			isSuppressed: () => mockup.active || isMockAuthActive() || isTourActive(),
-			subscribeOwner: (changed) => auth.subscribe(changed),
+			subscribeOwner: (changed) => {
+				const stopAuth = auth.subscribe(changed);
+				const stopTour = onTourActivityChange(changed);
+				return () => { stopAuth(); stopTour(); };
+			},
 		});
 		interactionAudit.navigate(get(page).route.id);
 		if (bootstrapUrl) void goto(bootstrapUrl, { replaceState: true });
@@ -422,6 +460,8 @@
 	});
 
 	onDestroy(() => {
+		experienceCollector?.destroy();
+		experienceCollector = undefined;
 		authVerification.dispose();
 		void cloudShell.close('destroy', { keepDock: false });
 	});

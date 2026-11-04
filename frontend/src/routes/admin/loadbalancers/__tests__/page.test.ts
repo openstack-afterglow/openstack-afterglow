@@ -1,5 +1,6 @@
 vi.mock('$lib/api/client', () => ({
   api: {
+    withExperience() { return this; },
     get: vi.fn(async (path: string) => {
       if (path === '/api/v1/admin/all-loadbalancers') {
         return [

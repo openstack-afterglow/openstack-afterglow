@@ -2,7 +2,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import type { LoadBalancer } from '$lib/types/loadbalancer';
@@ -21,6 +21,7 @@
   import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
   import { t } from '$lib/i18n/ns/network-pages';
   import { CompactResourceCard, Button } from '$lib/components/ui';
+  import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 
   let selectedLbId = $state<string | null>(null);
@@ -39,6 +40,9 @@
   let error = $state('');
   let selection = createResourceSelection();
   let busy = $state(false);
+  let stateVersion = 0;
+  let live = true;
+  onDestroy(() => { live = false; });
   let selectableIds = $derived(new Set(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb)).map((lb) => lb.id)));
   const selectedCount = $derived([...selectableIds].filter((id) => selection.ids.has(id)).length);
   const allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
@@ -51,28 +55,43 @@
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     busy = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.list');
     try {
-      const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/loadbalancers/${id}`, tokenSnapshot, projectSnapshot));
+      const results = await executeBulkMutations(ids, (id) => api.withExperience(experience).delete(`/api/v1/loadbalancers/${id}`, tokenSnapshot, projectSnapshot));
       const succeeded = results.filter((result) => result.ok).map((result) => result.id);
       if (projectSnapshot === ($auth.projectId ?? undefined)) selection.remove(succeeded);
       if (succeeded.length > 0) toast.success(t('loadBalancers.toast.deleteRequested', { count: succeeded.length }));
       const failedCount = results.length - succeeded.length;
-      if (failedCount > 0) toast.error(t('loadBalancers.toast.deleteFailed', { count: failedCount }));
-      if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchLoadbalancers({ refresh: true });
+      if (failedCount > 0) {
+        toast.error(t('loadBalancers.toast.deleteFailed', { count: failedCount }));
+        experienceState(experience, 'error');
+        if (experience) void experienceApplied(experience);
+      }
+      if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchLoadbalancers({ refresh: true }, experience);
     } finally {
       busy = false;
     }
   }
 
-  async function fetchLoadbalancers(opts?: { refresh?: boolean }) {
+  async function fetchLoadbalancers(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.list')) {
+    const projectId = $auth.projectId, userId = $auth.userId;
+    let appliedVersion = 0;
+    const current = () => live && appliedVersion === stateVersion && $auth.projectId === projectId && $auth.userId === userId;
+    if (loading) experienceState(experience, 'loading');
     try {
-      loadbalancers = await api.get<LoadBalancer[]>('/api/v1/loadbalancers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
+      loadbalancers = await api.withExperience(experience).get<LoadBalancer[]>('/api/v1/loadbalancers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
       if (selection.count > 0) {
         selection.retain(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb)).map((lb) => lb.id));
       }
       error = '';
+      appliedVersion = ++stateVersion;
+      experienceState(experience, loadbalancers.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience, {}, current);
     } catch (e) {
       error = e instanceof ApiError ? t('loadBalancers.error.fetchFailed', { status: e.status }) : t('loadBalancers.error.server');
+      appliedVersion = ++stateVersion;
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience, {}, current);
     } finally {
       loading = false;
     }
@@ -104,7 +123,7 @@
         bind:intervalSeconds={ar.intervalSeconds}
         intervalOptions={ar.intervalOptions}
         refreshing={loading}
-        onManualRefresh={() => fetchLoadbalancers({ refresh: true })}
+        onManualRefresh={() => fetchLoadbalancers({ refresh: true }, beginExperienceAction('network', 'refresh', 'resource.list'))}
       />
       <a href="/dashboard/network/loadbalancers/new" class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('loadBalancers.actions.create')}</a>
     {/snippet}

@@ -1,6 +1,7 @@
 import { fetchWithAuth, ApiError } from '$lib/api/client';
+import type { ExperienceContext } from '$lib/utils/experience';
 
-export interface PackageIdentity { token: string; projectId: string; userId: string }
+export interface PackageIdentity { token: string; projectId: string; userId: string; experience?: ExperienceContext }
 export interface ProjectContext {
   project_id: string;
   project_name: string;
@@ -73,7 +74,7 @@ async function response(path: string, identity: PackageIdentity, signal: AbortSi
     credentials: 'include', cache: 'no-store', redirect: 'error',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-  }, identity.token, identity.projectId);
+  }, identity.token, identity.projectId, { experience: identity.experience });
   if (!result.ok) {
     const envelope = await result.json().catch(() => null);
     const message = envelope?.error?.message ?? envelope?.detail ?? result.statusText;

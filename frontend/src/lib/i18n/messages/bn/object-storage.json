@@ -28,6 +28,7 @@
 	"browser.files": "ফাইল",
 	"browser.trash": "ট্র্যাশ",
 	"browser.viewLabel": "অবজেক্ট ব্রাউজারের দৃশ্য",
+	"browser.loadFailed": "অবজেক্ট লোড করা যায়নি। আবার চেষ্টা করতে রিফ্রেশ করুন।",
 	"uploadQueue.readFailed": "ফাইলটি পড়া যায়নি",
 	"uploadQueue.hashFailed": "অখণ্ডতা যাচাইয়ের হ্যাশ গণনা ব্যর্থ হয়েছে",
 	"uploadQueue.failed": "আপলোড ব্যর্থ হয়েছে",

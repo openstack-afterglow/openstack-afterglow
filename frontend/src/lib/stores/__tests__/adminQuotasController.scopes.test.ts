@@ -5,13 +5,22 @@ import { auth, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import type { AdminQuotasController } from '../adminQuotasController.svelte';
 import type { Quotas, QuotaUpdateResponse } from '$lib/types/quotas';
 import Probe from './_AdminQuotasControllerProbe.svelte';
+import type * as ExperienceModule from '$lib/utils/experience';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), metadata: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+	get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), metadata: vi.fn(), withExperience: vi.fn(),
+	begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn(),
+}));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mocks.get, post: mocks.post, put: mocks.put, delete: mocks.delete },
+	api: { get: mocks.get, post: mocks.post, put: mocks.put, delete: mocks.delete, withExperience: mocks.withExperience },
 	ApiError: class ApiError extends Error {},
 }));
 vi.mock('$lib/stores/projectNames', () => ({ projectNames: { loadMetadata: mocks.metadata } }));
+vi.mock('$lib/utils/experience', async (importOriginal) => ({
+	...(await importOriginal<typeof ExperienceModule>()),
+	beginExperienceAction: mocks.begin, beginExperienceLoad: mocks.begin, experienceState: mocks.state,
+	experienceApplied: mocks.applied, experienceDiscarded: mocks.discarded,
+}));
 
 const projects = [
 	{ id: 'p-a', name: 'Same name', domain_id: 'd-a' },
@@ -36,6 +45,7 @@ async function setup() {
 describe('admin quota independent domain and project scope', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		mocks.withExperience.mockReturnValue(mocks);
 		projectSwitching.set(false); logoutInProgress.set(false);
 		auth.set({ ...initialAuth, token: 'token-a', userId: 'admin', projectId: 'admin-project', sessionId: 'session-a', isSystemAdmin: true });
 		mocks.metadata.mockResolvedValue({ projects, failed: false });
@@ -97,6 +107,45 @@ describe('admin quota independent domain and project scope', () => {
 		pending.resolve({ ...quota, project_id: 'p-b' });
 		await loading;
 		expect(controller.quotas?.project_id).toBe('p-b');
+	});
+
+	it('passes the passive directory context into metadata and domain request helpers', async () => {
+		const experience = { actionId: 'directory' };
+		mocks.begin.mockReturnValue(experience);
+		const { controller } = await setup();
+		expect(mocks.metadata).toHaveBeenCalledWith('token-a', 'admin-project', undefined, false, experience);
+		await controller.loadDomains();
+		expect(mocks.withExperience).toHaveBeenCalledWith(experience);
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/domains', 'token-a', 'admin-project');
+	});
+
+	it('records stale quota rounds as discarded and applies only the winning assignment', async () => {
+		const { controller } = await setup();
+		controller.selectedProjectId = 'p-a';
+		const oldExperience = { actionId: 'old' }, currentExperience = { actionId: 'current' };
+		mocks.begin.mockReturnValueOnce(oldExperience).mockReturnValueOnce(currentExperience);
+		const pending = Promise.withResolvers<Quotas>();
+		mocks.get.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(quota);
+		const oldLoad = controller.loadQuotas();
+		await controller.loadQuotas(); pending.resolve({ ...quota, project_id: 'obsolete-private-id' }); await oldLoad;
+		expect(mocks.discarded).toHaveBeenCalledWith(oldExperience, 'stale');
+		expect(mocks.applied.mock.calls.filter(call => call[0] === oldExperience)).toEqual([]);
+		expect(mocks.applied).toHaveBeenCalledWith(currentExperience, {}, expect.any(Function));
+		expect(JSON.stringify([mocks.state.mock.calls, mocks.applied.mock.calls, mocks.discarded.mock.calls])).not.toContain('obsolete-private-id');
+	});
+
+	it('carries the save context into readback and records a readback failure as error, not empty success', async () => {
+		const { controller } = await setup();
+		controller.selectedProjectId = 'p-a'; await controller.loadQuotas();
+		vi.clearAllMocks();
+		const experience = { actionId: 'save' };
+		mocks.begin.mockReturnValue(experience); mocks.get.mockRejectedValue(new Error('private-native-readback'));
+		const result = await controller.saveSectionQuotas('compute', { cores: 17 });
+		expect(result.success).toBe(true); expect(result.refreshed).toBe(false);
+		expect(mocks.begin).toHaveBeenCalledExactlyOnceWith('admin', 'update', 'resource.detail');
+		expect(mocks.withExperience.mock.calls).toEqual([[experience], [experience]]);
+		expect(mocks.state).toHaveBeenLastCalledWith(experience, 'error');
+		expect(JSON.stringify([mocks.state.mock.calls, mocks.applied.mock.calls])).not.toMatch(/private-native-readback|failed|succeeded/);
 	});
 
 	it('rejects late quota and save responses after project A→B→A', async () => {

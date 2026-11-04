@@ -7,6 +7,7 @@ export interface PublicSiteConfig {
 	favicon_path: string;
 	refresh_interval_ms: number;
 	mcp_url?: string;
+	experience_enabled?: boolean;
 	services: {
 		magnum: boolean;
 		manila: boolean;

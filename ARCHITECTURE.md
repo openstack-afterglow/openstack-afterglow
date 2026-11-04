@@ -5,8 +5,15 @@
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
 이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.6`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+Kolla backend launcher는 `afterglow_backend_workers` 양의 정수로 호스트당 Uvicorn 프로세스 수를 지정하며 기본값은 1이다. 프로세스별 connection pool·cache·startup 작업과 스트림 중단 가능성을 고려해야 하며 설정 변경만으로 운영에 적용되지 않는다. 기존 ASGI factory 및 proxy trust 경계는 유지한다.
+Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·installer를 환경의 `share/afterglow/kolla`에 소유한다. 예전 `openstack-afterglow` distribution이 설치된 환경은 동일 자산의 이중 소유를 막도록 이전 패키지를 먼저 제거하고 새 artifact를 설치·재설치해야 하며, installer는 이전 metadata가 남으면 거부한다. 안정 Kolla 경로는 설치된 자산을 가리키는 링크이며 정확히 식별한 구 checkout 링크만 이관한다. Role/site가 다른 checkout을 가리키면 `AFTERGLOW_LEGACY_ROLE_TARGET`·`AFTERGLOW_LEGACY_SITE_TARGET`에 각각 전체 절대 링크 text를 지정하고, 미지정 target만 `AFTERGLOW_REPO_DIR`에서 도출한다. 두 경로를 모두 preflight하며 source checkout·설정·foreign 경로는 보존한다. 패키지 갱신은 이미 연결된 파일을 갱신하지만 최초 stock-site import와 Kolla 재설치 후 복원은 별도 installer가 필요하다. 패키지 설치는 서비스 배포가 아니며 아직 미발행 소스다.
+
+**MCP VM 생성 명시 선택 (source/local):** `afterglow_vm_create`는 이미지·flavor·네트워크·부팅 볼륨 크기·현재 사용자 SSH 키와 대상 프로젝트 보안그룹을 모두 명시해야 한다. Preview와 native 쓰기 전에 provider 소유권을 재검증하고 선택 내용을 승인 fingerprint에 포함한다. 기존 VM·권한은 변경하지 않으며 이 source 변경은 운영 배포가 아니다.
 
 **MCP member 권한·클라이언트 식별 (source/local):** 프로젝트의 native cloud 관리 가능 여부와 키/동의의 선택된 접근 상한을 분리해 표시한다. 검증된 `member`의 기존 관리 허용·현재 역할/저장 프로젝트/발급 role ceiling 교집합은 유지하며 read key·reader·unknown을 쓰기로 승격하지 않는다. 프로젝트 preview는 검증한 request-local `AccessInfo` catalog를 독립 native 정책 조회에 전달해 불필요한 동일 token 재교환을 피한다. Native 서비스의404/403·미확인을 관리 허용으로 바꾸지는 않는다. 연결 카드에서는 기존 정제 관측의 이름·버전·신고/추정 근거를 접지 않은 요약에 표시하고, 플랫폼·날짜·제품 추론은 상세에 둔다. Client ID·프로젝트 UUID masking과 exact grant 폐기·Lumen MCP 제외는 유지한다. 새 schema·권위 cache·운영 배포는 없다.
+
+
+
 
 **1.32.6 MCP schema 복구:** 운영 1.32.5의 두 MCP 목록 API는 실제 DB에 SQL106의 `oauth_ongoing`·`issued_role_ceiling`이 없어 MariaDB1054로 실패했다. 사용자 승인으로 native Galera가 Synced/Primary/3-member임을 확인하고 MCP11개 테이블을 root0600으로 백업한 뒤 release-pinned SQL106을 직접 적용했다. 원래 grant5개·token52개의 기존 컬럼 해시가 전후 일치하고 세 API의 실제 설정 DB에서 새 컬럼과 nullable `DATETIME(6)`을 확인했다. 재시작·연결 재발급·기존 승인 연장은 하지 않았다.
 
@@ -25,6 +32,42 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 **독립 인증 화면 통합 (2026-11-03, source/local):** `AuthStudioShell`의 account/consent 구성으로 signup·recover(일회용 비밀번호 reset/create·이메일 변경·사용자 이름 확인 포함)·registration·invitation·provider callback·MCP/Claude 동의·domain/project continuation을 통합한다. 기존 문자 artwork·일반 브랜드 문구·operator logo·locale/theme를 재사용하고 각 route는 단일 task heading/content만 소유한다. `WorkspaceContinuation`은 기존 두 selector route의 공통 구현을 유지한다. MCP는 실제 client/ID/callback/requested scope/deadline 확인과 프로젝트/접근 수준 선택을 명시 단계로 나누고 이전 이동 시 선택을 보존하며, scope/actor/ticket 변경은 기존 취소와 함께 첫 단계로 초기화한다. API/native 권위·session fence·secret clearing·동의 payload·schema/배포 topology에는 변화가 없다. `safe center`와 panel-owned overflow가 긴 보안 문구/권한 목록의 시작과 작업을 보존하며 연구용 fake state나 단일 demo project를 실제 흐름에 넣지 않는다. 검증 범위와 운영 미반영은 `docs/testing.md`에 별도 기록한다.
 
 새 locale chooser가 일회용 flow를 재생성하지 않도록 root의 legacy `{#key locale}` 경계에서 shellless entry와 onboarding token route를 제외한다. 번역은 reactive markup으로 갱신하고 consumed username 결과·created/accepted 결과·provider ticket·MCP 단계/선택은 기존 mounted owner에 보존한다. 기존 navigation·session/authority fence와 API 일회용 소비 규칙은 변경하지 않는다.
+
+**직전24시간 운영 마찰 조치·의미 기반 경험 v2 (source/local, 기본 꺼짐):** 기존 `activity_logs` 업무 감사와 별개로 `models/experience.py`, `services/experience.py`, SQL107의 여섯 `experience_*` 테이블이 bounded diagnostic sink를 구성한다. Strict browser ingest의 actor/source/수신 시각은 기존 인증 경계가 결정하고 UUID·sequence·monotonic/UTC·source registry·build/catalog revision만 인과 참조로 사용한다. `middleware/experience.py`는 원문 body 없이 실제 ASGI 요청 pair를 기록하고 `services/experience_context.py`는 명시 context와 exact-owner durable operation link를 지원하는 Afterglow worker에 전달한다. 형제 서비스 미지원 내부 span은 미확인이다. 새 업무 권위·API retry·토큰 연장·native unknown replay는 없다.
+
+Frontend `utils/experience.ts`는 명시 async context, passive load/human action, cache/shared physical request, received/applied/guarded DOM commit/exposure/discard를 구분한다. Root collector는200개 queue·20개/32KiB batch·60초 deadline·최대2회 진단 전송과 owner/project/권위/tutorial ABA fence를 적용한다. Metadata가 없는 DOM·텍스트/입력·채팅·terminal·URL/query·parameter를 추출하지 않는다. 정적 메시지는 실제 producer locale와 immutable catalog revision을 보존하며 참조 중 catalog를 FK/transaction으로 유지한다. Source owner의 명시 state/DOM proof가 없으면 tail은 unknown이고 화면 노출도 사람 인지 proof가 아니다.
+
+소유한 blocking/native 호출은 `work_dispatcher.run_sync/run_native` 공통 drain 엔진을 공유한다. 계측된 각 호출은 시작·반환 관측·취소 요청·실제 `blocking.drain|native.drain`을 구분하는 명시적 child span 하나를 갖는다. 반환값이나 종료된 SDK 호출은 provider의 최종 성공·guest 준비·native 취소를 뜻하지 않는다. 요청에 묶인 consumer/admin VM 생성은 도달 가능한 소유 SDK 작업이 끝날 때까지 admission/connection을 유지하며, 클라이언트 연결 종료·서버 종료도 호출의 실제 종료까지 기다린다(지연 2초 fixture는 취소 350ms 뒤 약 2초에 drain된다). drain은 별도 상한을 두지 않으므로 대기 시간은 호출 자체의 timeout에만 의존한다. 이미 반환된 native ID가 있는 상태에서 진단이 취소되면 호출자가 그 결과를 먼저 기록한 뒤 새 소유 SDK 작업 전에 보류된 취소를 전달한다. 소유 anyio scope의 레벨 취소가 진단 shield에 가려져도 `checkpoint()`가 새 SDK 작업 전에 이를 드러내므로 취소된 scope에서 다음 native 변경이 시작되지 않는다. 펜스가 없는 connection cleanup은 계속 허용된다. Job 수명 worker binding과 delivery별 중첩 binding은 구분되며 후자가 전자를 복원하여 role cleanup이 마지막 delivery에 귀속되지 않는다. 메일 transport와 terminal SQL 정산은 반복 취소에서도 함께 drain하고 알 수 없는 SMTP DATA는 재전송하지 않는다. SMTP 결과가 반환되면 업무 최종 상태를 먼저 durable하게 기록한 뒤 best-effort 완료 진단을 남기므로, 진단 취소가 이미 accepted된 메일을 `unknown`으로 강등하지 않는다.
+
+기존 관리자 events의 `ExperienceReplayPanel`은 fresh admin/domain/project scope의 최근 구간 metadata 탐색·exact segment/action 조회·escaped 한국어 해설·static JSON export를 제공한다. 각 열람은 별도 감사 commit 후 공개하며 진단 자체의 recursive audit는 제외한다. 익명 열람은 별도 operator flag·현재 global admin·unscoped 요청을 모두 요구한다. `ExperienceSupportCode`는 활성 tab의 AuthStudio form footer와 console navigation/drawer에서만 exact segment를 사람이 복사하게 하고 저장 성공을 보장하지 않는다. API 계약은 [관리자 이벤트 문서](docs/api/events.md#의미-기반-경험-관측-v2--기본-꺼짐), schema/hold/backup/opt-in은 [배포 문서](docs/deployment.md#의미-기반-경험-관측-v2의-전환과-보존)를 따른다.
+
+Replay catalog는 이미 scope·sanitize된 bounded window의 ID만 한 번에 읽고 각 사건의 revision/key/locale을 독립적으로 검증한다. 반복 message가 row별 catalog 조회를 만들지 않으며 다른 row의 올바른 catalog 일치가 불일치 message를 복원 성공으로 표시하게 만들지 않는다. 현재 reader의 schema/context 검증을 통과하지 못하는 저장 row(예: writer 버전이 섞인 row)는 projection에서 제외하고 coverage reason `missing_context`로만 알리며 내용은 export하지 않는다.
+
+Shared GET은 독립 physical request span과 실제 소비자 owner를 분리한다. 정상 응답뿐 아니라 decode된 HTTP 실패도 각 owner의 `result.received`에 기존 physical span과 numeric status를 연결하고 동일 예외를 다시 던진다. Transport/abort에는 응답을 합성하지 않으며 coalescing·cache·scope fence·업무 dispatch 횟수는 바꾸지 않는다. Waygate 목록은 passive polling과 명시 refresh, 실제 loading/ready/empty/error·guarded DOM 적용을 구분한다. File wizard는 실제 bound-open lifecycle에서 owner 초기화를 한 번 실행하고 close/unmount/scope-stale metadata를 폐기한다.
+
+Palimpsest Hub·package·asset·catalog와 Lumen chat·image/audio Studio의 읽기 오류도 실제 할당된 오류 state에 `result.applied`를 연결하고 Svelte tick 뒤 현재 owner·요청 세대·선택·오류 identity를 다시 확인한 경우에만 DOM commit으로 기록한다. 닫힌 ChatPanel 모델 선택창은 오류 state를 보존해도 DOM commit을 만들지 않는다. 생성·전송·transcription·upload·realtime의 불확실한 업무 결과를 읽기 오류 관측으로 성공 처리하거나 재실행하지 않는다. Mounted component/collector 회귀와 compiled browser/API/SQL 수용은 별도 증거다.
+
+Audio Studio capability 조회는 owner epoch·선택 model ID 외에 kind별 단조 증가 요청 ticket을 확인한다. 모델 A→B→A에서 첫 A의 늦은 성공·실패·finally가 최신 A의 capability·오류·loading 또는 DOM 관측을 덮지 못한다. 요청 재시도·음성 생성/전사 동작이나 새 권위를 추가하지 않는다.
+
+SQL107은 `events/catalogs/operation_links/holds/aggregates/maintenance`를 additive로 생성·검증한다. 기본 detail30일/aggregate90일이며 삭제 CLI는 explicit DB·dry-run·exact-owner hold/release·bounded batch를 사용한다. Maintenance row lock/write로 hold와 적용 삭제를 직렬화하고 실제 다중 Galera 동시성·운영 복원 수용은 별도 전제다. 격리 native MariaDB의 hold→bounded 삭제→새 DB 복원·원 catalog/FK 유지와 구1.32.6 ORM writer/새 schema, 새 API/구 schema의 진단503·기존 health200 경계를 실제 실행했다. 운영 schema/수집/삭제 job을 자동 활성화하지 않으며 기존 보안 감사·SMTP/claim unknown 원장은 건드리지 않는다. 구 reader/writer의 부재 관측을 전체 경험 복원으로 승격하지 않는다.
+
+조회 효율 수정은 동일 요청의 Neutron ports/FIPs/subnets를 재사용하고 local 정책 resource catalog를 scope/kind별로 묶는다. Remote Waygate/Drover는 독립 per-key 계약과 fresh 권위를 유지한다. Octavia는 설치 SDK3.3의 `loadbalancer_id` query와 provider `loadbalancers` 관계를 사용하고 bounded8-way child fan-out을 실제 drain한다. Native 일부 조회 실패를 빈 정상 그래프로 가장하지 않으며 fixed-IP edge는 동일 project의 유일 후보만 연결한다. 격리 native SDK/HTTP fixture의 before/after는 운영 latency 수용과 구분한다.
+
+UI 관측 코드는 기존 reactive business dependency를 만들지 않는다. Network detail의 관측용 `loading` 읽기는 untrack하여 응답 완료가 초기 effect의 재조회 조건이 되지 않게 하고 기존 network/API base/token/project reload를 보존한다. 관리자 정책 catalog는 bearer byte가 아닌 full logical display-context·project·synchronous API-base revision을 reload/read/save identity로 사용한다. 검증된 갱신은 settled metadata·미저장 draft를 유지하고 role/readiness/base/project ABA 뒤의 오래된 응답·save success를 표시하지 않는다. 업무 쓰기 결과를 되돌리거나 재전송하지 않는다.
+
+DB 상세의 초기 effect는 instance/token/project 입력만 추적하고 controller reset/load는 untrack한다. 빈 flavor 응답 등 내부 state assignment가 자동 새로고침 OFF 상태에서도 무한 GET을 만드는 것을 차단하며 실제 입력 변경은 재조회한다. Trove owner 확인과 raw 상세 readback은 absence/opaque denial404와 unavailable503을 구분하고 소비자 화면도 조회 불가를 not-found로 가장하지 않는다. Native raw REST는 JSON 해석 전에 status를 검사하며 원문 오류를 노출하지 않는다.
+
+Trove 목록 계열은 upstream 실패를 빈 목록으로 숨기지 않고 호출자 500으로 전파한다. flavors/datastores/configurations/backups/instances/subresource 캐시 키는 http-checked-v2 네임스페이스로 레거시 항목과 격리한다.
+
+Object browser의 읽기 실패는 빈 목록으로 바꾸지 않고 같은 owner의 마지막 유효 행/cache를 유지하며 실패한 directory와 정상 sibling 결과를 구분한다. 실제 read/cache/meta 할당과 finally는 logical auth display-owner·동기 API-base epoch·명시 container/project/mode/prefix 세대로 fence한다. Reset effect는 원시 props 객체가 아니라 안정적인 primitive identity만 추적하여 정상 검증 갱신의 prop 재발행이 filter·cache·pending 결과를 지우지 않게 한다. 닫힌 file wizard의 metadata도 같은 논리 owner와 열림 세대로 제한한다. 오류 Alert는 정확한 failure context와 실제 렌더 언어의 catalog key를 전달하며 비어 있음·동기화 성공을 합성하지 않는다.
+
+Swift 컨테이너 목록은 계정 미초기화 404와 권한 없음 401만 빈 목록으로 인정하고 그 외 장애는 전파한다. 컨테이너 목록 캐시 키는 http-checked-v2로 격리한다. 휴지통 목록은 휴지통 버킷 부재 404만 빈 목록으로 인정한다. 계정 메타데이터 라우트는 strict 읽기로 장애를 500으로 노출한다. 오브젝트 단건과 썸네일, 업로드 컨테이너 preflight, 백업 owner 확인은 401/403/404만 opaque 404로 유지하고 그 외는 정제된 503으로 구분한다.
+
+관리자 Zun 단건 조회도 소비자와 같은 `native_resource_read_failure`를 사용한다. Native401/403/404는 정적 opaque404로 유지하고 그 외 native HTTP·transport·예상 밖 실패는 원문·header 없이503으로 구분한다. 기존 `require_admin`·고정 관리자 executor 및 service-disabled503은 바꾸지 않는다. Native503→관리자404로 표시되던 실제 격리 HTTP 경계의 누락을 교정한 것이며 자원 부재를 추정하지 않는다.
+
+관리자 resource-policy/runtime-setting 합성 목록은 각각 `{policies,errors}`·`{settings,errors}`를 반환한다. 중앙 fresh admin/auth 및 local store/connection 실패는 원래 top-level 거부를 유지하고, 기대한 native HTTP 실패·목록 형식502만 service/status로 분리해 정상 local/다른 service 값을 보존한다. Remote detail/header/token/URL은 복사하지 않는다. Native 개별 proxy·쓰기 검증은 그대로이며 old-array fallback이 없어 matching API/frontend가 필요하다. Service 및 remote per-key 오류는 해당 서비스의 조회 불가로 설명하며 OpenStack 장애로 오인하지 않는다. Panel과 Notion consumer는 미수신/실패 unknown, 알려진 null/unset, 명시 true/false를 구분한다. Panel의 unset은 명시 선택 전 저장하지 않고 Notion target/runtime은 독립 적용한다. Owner epoch·read sequence·write revision을 분리해 late read가 성공한 write를 덮거나 pending-save lock을 해제하지 않는다. Panel refresh는 읽기만 수행하고 draft·logical owner/authority/base-ABA fence를 유지한다.
+
+API/standalone worker는 `utils/structured_logging.py`의 public `JSONFormatter/setup_logging`을 공유한다. Explicit `api|worker|unknown`, source/process/runtime/PID와 고정 진단 사유·실제 numeric driver code만 추가하고 pytest sink와 dependency DEBUG를 분리한다. Worker CLI 초기화는 단순 module import가 API handler를 지우지 않게 한다. Operational probe의 request sampling은 실제 final-send/정상 반환 뒤에만 적용하며 metrics·실패·불완전·취소 로그는 보존한다. Coordination store 장애는 instance-health credential401/거짓204가 아니라503이며 기존7일 절대 수명·키를 유지한다. Traffic250ms deadline과 불명 쓰기 무재실행 경계는 바꾸지 않는다.
 
 **1.32.4 준비:** MCP 혼합 프로젝트 동의·권한 preview에서 restricted token의 검증된 native catalog를 재사용하여 Keystone 재교환 없이 native 정책을 검사한다. 취소된 프로젝트 역할 조회는 실제 directory read가 종료되기 전 연결과 preview slot을 해제하지 않는다. Native 정책 fallback·새 schema·권한 승격은 없다. SQL105와 native 정책 호환성·복구 조건은 운영 전환 전 별도 검증한다.
 
@@ -2013,9 +2056,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3bcd4317cdd98a252e635e61d45b96cd04b38dbc116a7dac3f6a71c5601b6c91",
-  "reviewed_at": "2026-11-04T00:57:25Z",
-  "summary": "MCP member project permissions versus connection ceiling, visible sanitized client observations and validated native catalog reuse; consumer wording corrected in nine locales; no unrelated WIP"
+  "source_sha256": "3b539f55fd730d05876aad1340429df7c3d70b4884ba32b0fbf7b121aeb253b5",
+  "reviewed_at": "2026-11-04T07:45:30Z",
+  "summary": "직전24시간 운영 마찰 source/local 검토: strict native 읽기 및 관리자 Zun false404 누락, Palimpsest/Lumen failed-read 적용·DOM 경계, Audio capability 요청 ABA, SDK/anyio drain·SMTP terminal 보존. 공유 구현·계약·schema·tests는 전체 gate3b539f55와 일치하고 문서만 후속 갱신. 운영 배포·IAM·SQL107·보존 활성화 없음; 공유 index 보존."
 }
 ```
 <!-- architecture-review:end -->

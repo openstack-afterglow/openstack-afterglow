@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.common.admin_resource_scope import AdminResourceScope, field, inventory_directory, resolve_scope
+from app.api.common.owner_check import native_resource_read_failure
 from app.api.deps import CacheMode, cache_mode, get_admin_os_conn, get_os_conn, get_token_info
 from app.models.storage import (
     BulkDeleteRequest,
@@ -180,7 +181,7 @@ async def get_object_storage_account(
     from app.services import swift
 
     try:
-        return await asyncio.to_thread(swift.get_account_metadata, conn)
+        return await asyncio.to_thread(swift.get_account_metadata, conn, strict=True)
     except Exception:
         raise HTTPException(status_code=500, detail="오브젝트 스토리지 계정 정보 조회 실패")
 
@@ -320,7 +321,10 @@ async def list_object_storage_containers(
     if include_trash:
         cache_parts.append("t")
     cache_sub = "|".join(cache_parts) or None
-    key = keys.project_key("swift", pid, "containers", sub=cache_sub)
+    # 레거시 장애-위장 빈 목록([]) 캐시와 격리: fail-closed 전환 이후 항목만 사용한다.
+    key = keys.project_key(
+        "swift", pid, "containers", sub=f"http-checked-v2:{cache_sub}" if cache_sub else "http-checked-v2"
+    )
     try:
         containers = await cache.cached_call(
             key,
@@ -413,8 +417,12 @@ async def get_object_storage_container(
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-    except Exception:
-        raise HTTPException(status_code=404, detail="컨테이너를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="컨테이너를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
 
 @router.delete("/{container_name}", status_code=204)
@@ -715,8 +723,12 @@ async def download_object(
         return StreamingResponse(_iter(), media_type=content_type, headers=headers)
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=404, detail="오브젝트를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="오브젝트를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
     finally:
         await asyncio.to_thread(conn.close)
 
@@ -759,8 +771,12 @@ async def get_object_metadata(
 
     try:
         return await asyncio.to_thread(swift.get_object_metadata, conn, container_name, object_name)
-    except Exception:
-        raise HTTPException(status_code=404, detail="오브젝트를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="오브젝트를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
 
 @router.get("/{container_name}/objects/{object_name:path}/preview")
@@ -795,8 +811,13 @@ async def preview_object(
                 yield chunk
 
         return StreamingResponse(_iter(), media_type=content_type, headers=headers)
-    except Exception:
-        raise HTTPException(status_code=404, detail="오브젝트를 찾을 수 없습니다")
+
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="오브젝트를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,8 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import McpPermissionPreview from '$lib/components/account/McpPermissionPreview.svelte';
 	import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
+	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
+	import { recordExperience } from '$lib/utils/experience';
 
 	interface ConsentDetails {
 		client_id: string;
@@ -39,13 +41,16 @@
 		projectId: string | null;
 		switching: boolean;
 	}
-	interface RequestContext { token: string; projectId: string; ticket: string; controller: AbortController }
+	interface RequestContext { token: string; projectId: string; ticket: string; controller: AbortController; experience: AuthExperience }
 
 	let owner: Owner | null = null;
 	let ticket = $state<string | null>(null);
 	let activeRequest: RequestContext | null = null;
 	let decisionController: AbortController | null = null;
 	let mounted = false;
+	let ownerEpoch = 0;
+	let reviewExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
 	let loading = $state(true);
 	let deciding = $state(false);
 	let error = $state('');
@@ -67,9 +72,42 @@
 		&& previewProjects.some((project) => project.can_write === false));
 	const canApprove = $derived(!loading && !deciding && consent !== null && reviewStep === 'permissions'
 		&& previewProjects.length > 0 && !unknownWrite && !selectedReadOnly && !decisionUnconfirmed);
-	function message(error: unknown, fallback: string) {
-		return error instanceof ApiError ? error.message : fallback;
+	function message(error: unknown, fallback: string, observation: AuthExperience) {
+		if (error instanceof ApiError) { observation.unknownMessage(); return error.message; }
+		return fallback;
 	}
+
+	function observeChoice() {
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('mcp.consent', 'select', () => mounted && epoch === ownerEpoch && consent !== null, 'mcp');
+		reviewExperience = observation;
+		recordChoice(observation);
+		void observation.applied();
+	}
+	function recordChoice(observation: AuthExperience) {
+		const selection = previewProjects.length === 0 ? 'none'
+			: projectScope === 'all' || previewProjects.length === projects.length ? 'all' : 'some';
+		recordExperience(observation.context, 'view.state_changed', {
+			state: 'ready', step: reviewStep === 'client' ? 0 : 1,
+			access: selection === 'none' ? 'none' : accessLevel, selection,
+		});
+	}
+	$effect(() => {
+		const visible = consent !== null && !loading && !decisionUnconfirmed && reviewExperience !== undefined;
+		const key = !visible ? null : reviewStep === 'client' ? ongoingSupported ? 'mcpConsent.duration.defaultHelp' : 'mcpConsent.duration.unsupported'
+			: accessLevel === 'manage' ? 'mcpConsent.manage.body' : 'mcpConsent.read.body';
+		if (key) t(key);
+		presentNotice('body', reviewExperience, 'public-entry', key, reviewStep === 'permissions' && accessLevel === 'manage' ? 'warning' : 'info');
+		const duration = !visible || reviewStep !== 'permissions' ? null : ongoing ? 'mcpConsent.duration.untilRevoked' : 'mcpConsent.duration.finite';
+		if (duration) t(duration, { deadline: '' });
+		presentNotice('duration', reviewExperience, 'public-entry', duration, ongoing ? 'warning' : 'info');
+		const empty = visible && reviewStep === 'permissions' && !previewProjects.length ? 'mcpConsent.projects.empty' : null;
+		if (empty) t(empty);
+		presentNotice('empty', reviewExperience, 'public-entry', empty, 'warning');
+		const warning = !visible || reviewStep !== 'permissions' ? null : unknownWrite ? 'mcpConsent.preview.unknownWrite' : selectedReadOnly ? 'mcpConsent.preview.selectedReadOnly' : null;
+		if (warning) t(warning);
+		presentNotice('authority', reviewExperience, 'public-entry', warning, 'warning');
+	});
 
 	function formatDeadline(value: string) {
 		return new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value));
@@ -77,7 +115,12 @@
 
 	async function showStep(step: 'client' | 'permissions') {
 		if (deciding) return;
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('mcp.consent', 'select', () => mounted && epoch === ownerEpoch && reviewStep === step, 'mcp');
 		reviewStep = step;
+		reviewExperience = observation;
+		recordChoice(observation);
+		void observation.applied();
 		await tick();
 		heading?.focus();
 	}
@@ -103,7 +146,8 @@
 	}
 
 	// Store subscriptions invalidate synchronously, including a batched A → B → A.
-	function reload() {
+	function reload(action: 'load' | 'retry' = 'load') {
+		const epoch = ++ownerEpoch;
 		clearSelection();
 		loading = Boolean(ticket);
 		if (!ticket) return;
@@ -112,42 +156,56 @@
 		if (!owner.token) { void goto('/login'); return; }
 		if (!owner.projectId) { void goto('/select-project'); return; }
 		if (!owner.userId) return;
-		const request = { token: owner.token, projectId: owner.projectId, ticket, controller: new AbortController() };
+		const experience = beginAuthExperience('mcp.consent', action, () => mounted && epoch === ownerEpoch, 'mcp');
+		experience.state('loading', 0);
+		const request = { token: owner.token, projectId: owner.projectId, ticket, controller: new AbortController(), experience };
 		activeRequest = request;
 		void loadConsent(request);
 	}
 
 	async function loadConsent(request: RequestContext) {
+		let rendered = false;
 		try {
 			const [details, availableProjects] = await Promise.all([
 				api.get<ConsentDetails>(
 					`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(request.ticket)}`,
-					request.token, request.projectId, { refresh: true, suppressAuthRedirect: true, signal: request.controller.signal },
+					request.token, request.projectId, { refresh: true, suppressAuthRedirect: true, signal: request.controller.signal, ...request.experience.options },
 				),
 				api.get<McpConsentProject[]>('/api/v1/auth/mcp-projects?preview=true', request.token, request.projectId,
-					{ refresh: true, suppressAuthRedirect: true, signal: request.controller.signal }),
+					{ refresh: true, suppressAuthRedirect: true, signal: request.controller.signal, ...request.experience.options }),
 			]);
-			if (!isCurrent(request)) return;
+			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			consent = details;
 			ongoing = details.ongoing_supported === true;
 			projects = availableProjects;
 			selectedProjectIds = availableProjects.some((project) => project.id === request.projectId)
 				? [request.projectId] : [];
+			request.experience.state(availableProjects.length ? 'ready' : 'empty', 0);
+			reviewExperience = request.experience;
+			recordChoice(request.experience);
+			rendered = true;
 		} catch (errorValue) {
-			if (!isCurrent(request)) return;
+			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			clearSelection();
-			error = message(errorValue, t('mcpConsent.error.loadFailed'));
+			const text = observedAuthText(request.experience, 'public-entry', t);
+			error = message(errorValue, errorValue instanceof ApiError ? '' : text('mcpConsent.error.loadFailed'), request.experience);
 			loading = false;
+			request.experience.state('error'); rendered = true;
 		} finally {
 			if (isCurrent(request)) loading = false;
+			if (rendered) void request.experience.applied();
 		}
 	}
 
 	async function decide(decision: 'approve' | 'deny') {
 		const request = activeRequest;
 		if (!request || !isCurrent(request) || !consent || loading || deciding || decisionUnconfirmed) return;
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('mcp.consent', decision, () => mounted && epoch === ownerEpoch, 'mcp');
+		const text = observedAuthText(observation, 'public-entry', t);
 		if (decision === 'approve' && (!canApprove || (ongoing && !ongoingSupported)
-			|| (accessLevel === 'manage' && !consent.scopes.includes('mcp:write')))) return;
+			|| (accessLevel === 'manage' && !consent.scopes.includes('mcp:write')))) { observation.validation('authority'); return; }
+		observation.state('loading', reviewStep === 'client' ? 0 : 1);
 		const requestedOngoing = decision === 'approve' && ongoing;
 		const body = decision === 'deny' ? {} : {
 			access_level: accessLevel,
@@ -159,36 +217,42 @@
 		decisionController = controller;
 		deciding = true;
 		error = '';
+		let rendered = false;
 		try {
 			const result = await api.post<{ redirect_uri: string; effective_ongoing?: boolean }>(
 				`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(request.ticket)}/${decision}`,
 				body, request.token, request.projectId,
 				{
 					signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
-					suppressAuthRedirect: true, cache: 'no-store',
+					suppressAuthRedirect: true, cache: 'no-store', ...observation.options,
 				},
 			);
-			if (!isCurrent(request) || controller.signal.aborted) return;
+			if (!isCurrent(request) || controller.signal.aborted) { observation.discard(controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			if (decision === 'approve' && (requestedOngoing ? result.effective_ongoing !== true
 				: result.effective_ongoing !== undefined && result.effective_ongoing !== false)) {
 				clearMcpConsentTicket();
 				ticket = null;
 				decisionUnconfirmed = true;
-				error = t('mcpConsent.error.durationUnconfirmed');
+				error = text('mcpConsent.error.durationUnconfirmed');
+				observation.state('error'); rendered = true;
 				return;
 			}
 			clearMcpConsentTicket();
 			ticket = null;
 			clearSelection();
+			// Browser approval/denial received is not remote client readiness or redirect commit.
+			rendered = true;
 			window.location.assign(result.redirect_uri);
 		} catch (errorValue) {
-			if (!isCurrent(request)) return;
-			error = message(errorValue, decision === 'approve' ? t('mcpConsent.error.approveFailed') : t('mcpConsent.error.denyFailed'));
+			if (!isCurrent(request)) { observation.discard(controller.signal.aborted ? 'aborted' : 'stale'); return; }
+			error = message(errorValue, errorValue instanceof ApiError ? '' : text(decision === 'approve' ? 'mcpConsent.error.approveFailed' : 'mcpConsent.error.denyFailed'), observation);
+			observation.state('error'); rendered = true;
 		} finally {
 			if (isCurrent(request) && decisionController === controller) {
 				decisionController = null;
 				deciding = false;
 			}
+			if (rendered) void observation.applied();
 		}
 	}
 
@@ -213,20 +277,29 @@
 				// URL cleanup is defense in depth; the backend still validates the ticket.
 			}
 			if (!valid) {
+				ownerEpoch++;
+				const observation = beginAuthExperience('mcp.consent', 'load', () => mounted, 'mcp');
 				clearMcpConsentTicket();
 				ticket = null;
 				clearSelection();
 				loading = false;
-				error = t('mcpConsent.error.invalidRequest');
+				const text = observedAuthText(observation, 'public-entry', t);
+				error = text('mcpConsent.error.invalidRequest');
+				observation.validation('format'); observation.state('error'); void observation.applied();
 				return;
 			}
 			if (ticket === queryTicket) return;
 			ticket = queryTicket;
 			reload();
 		});
-		if (!ticket && !error) error = t('mcpConsent.error.missingOrExpired');
+		if (!ticket && !error) {
+			const observation = beginAuthExperience('mcp.consent', 'load', () => mounted, 'mcp');
+			error = observedAuthText(observation, 'public-entry', t)('mcpConsent.error.missingOrExpired');
+			observation.state('error'); void observation.applied();
+		}
 		return () => {
 			mounted = false;
+			ownerEpoch++;
 			clearSelection();
 			unsubscribeOwner();
 			unsubscribePage();
@@ -283,14 +356,14 @@
 			<div class="choices auth-flow-fields">
 				<Field label={t('mcpConsent.access.label')} for="mcp-consent-access" help={requestsManage ? t('mcpConsent.access.help') : t('mcpConsent.access.manageUnavailable')}>
 					<SelectInput id="mcp-consent-access" value={accessLevel} disabled={deciding}
-						onchange={(event) => { accessLevel = (event.target as HTMLSelectElement).value === 'manage' && requestsManage ? 'manage' : 'read'; }}>
+						onchange={(event) => { accessLevel = (event.target as HTMLSelectElement).value === 'manage' && requestsManage ? 'manage' : 'read'; observeChoice(); }}>
 						<option value="read">{t('mcpConsent.access.read')}</option>
 						<option value="manage" disabled={!requestsManage}>{t('mcpConsent.access.manage')}</option>
 					</SelectInput>
 				</Field>
 				<Field label={t('mcpConsent.projects.label')} for="mcp-consent-project-scope" help={t('mcpConsent.projects.help')}>
 					<SelectInput id="mcp-consent-project-scope" value={projectScope} disabled={deciding || projects.length === 0}
-						onchange={(event) => { projectScope = (event.target as HTMLSelectElement).value === 'all' ? 'all' : 'selected'; }}>
+						onchange={(event) => { projectScope = (event.target as HTMLSelectElement).value === 'all' ? 'all' : 'selected'; observeChoice(); }}>
 						<option value="selected">{t('mcpConsent.projects.selected')}</option>
 						<option value="all">{t('mcpConsent.projects.all')}</option>
 					</SelectInput>
@@ -306,6 +379,7 @@
 									if (deciding) return;
 									selectedProjectIds = selectedProjectIds.includes(project.id)
 										? selectedProjectIds.filter((id) => id !== project.id) : [...selectedProjectIds, project.id];
+									observeChoice();
 								}} />
 							<span>{project.name}<code>{project.id}</code></span>
 						</div>
@@ -332,7 +406,7 @@
 				<legend>{t('mcpConsent.duration.title')}</legend>
 				<div class="duration-option">
 					<SelectionCheckbox ariaLabel={t('mcpConsent.duration.ongoingLabel')} checked={ongoing} disabled={deciding || !ongoingSupported}
-						onclick={() => { if (!deciding && ongoingSupported) ongoing = !ongoing; }} />
+						onclick={() => { if (!deciding && ongoingSupported) { ongoing = !ongoing; observeChoice(); } }} />
 					<span>{t('mcpConsent.duration.ongoingLabel')}</span>
 				</div>
 				<p id="mcp-consent-duration-help" class="duration-help">{t(ongoingSupported ? 'mcpConsent.duration.help' : 'mcpConsent.duration.unsupported')}</p>
@@ -352,7 +426,7 @@
 			{/if}
 		{/if}
 		{#if error && !consent && ticket}
-			<Button variant="secondary" onclick={reload}>{t('mcpConsent.actions.retry')}</Button>
+			<Button variant="secondary" onclick={() => reload('retry')}>{t('mcpConsent.actions.retry')}</Button>
 		{/if}
 	</div>
 </AuthStudioShell>

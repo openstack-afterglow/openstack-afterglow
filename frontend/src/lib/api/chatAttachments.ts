@@ -5,6 +5,7 @@
 import { fetchWithAuth } from './client';
 import { requireLumenCapability } from './lumenAccess';
 import { t } from '$lib/i18n/ns/chat-settings';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 /** Backend asset metadata plus local upload state. */
 export interface ChatAttachment {
@@ -60,18 +61,20 @@ interface UploadOptions {
 	token?: string;
 	projectId?: string;
 	signal?: AbortSignal;
+	experience?: ExperienceContext;
 }
 
 interface DownloadOptions {
 	token?: string;
 	projectId?: string;
 	signal?: AbortSignal;
+	experience?: ExperienceContext;
 }
 
 /** Upload a supported image or PDF through the scanned asset pipeline. */
 export async function uploadChatAttachment(
 	file: File,
-	{ token, projectId, signal }: UploadOptions = {}
+	{ token, projectId, signal, experience }: UploadOptions = {}
 ): Promise<AttachmentRef> {
 	requireLumenCapability('lumen-assets_editor', token, projectId);
 	const form = new FormData();
@@ -81,7 +84,7 @@ export async function uploadChatAttachment(
 		method: 'POST',
 		body: form,
 		signal
-	}, token, projectId);
+	}, token, projectId, { experience });
 	if (!res.ok) {
 		let detail = res.statusText;
 		try {
@@ -101,13 +104,14 @@ export async function uploadChatAttachment(
 /** Stream an owned asset through the authenticated same-origin BFF. */
 export async function downloadChatAsset(
 	assetId: string,
-	{ token, projectId, signal }: DownloadOptions = {}
+	{ token, projectId, signal, experience }: DownloadOptions = {}
 ): Promise<Blob> {
 	const res = await fetchWithAuth(
 		`/api/v1/chat/assets/${encodeURIComponent(assetId)}/download`,
 		{ signal },
 		token,
-		projectId
+		projectId,
+		{ experience }
 	);
 	if (!res.ok) throw new Error(t('attachments.downloadFailed', { status: res.status }));
 	return res.blob();

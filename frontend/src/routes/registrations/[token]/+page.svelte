@@ -14,6 +14,8 @@
 	import { isOnboardingToken, onboardingErrorKey, registrationConflictKind, signupApprovalState, type SignupApprovalState } from '$lib/utils/domainLogin';
 	import { t } from '$lib/i18n/ns/domain-auth';
 	import AccountResultDetails from '$lib/components/auth/AccountResultDetails.svelte';
+	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type ExperienceContext } from '$lib/components/auth/authExperience';
+	import type { AuthExperience } from '$lib/components/auth/authExperience';
 
 	interface RegistrationInfo { email: string; account_exists: boolean; identity_domain_id?: string; identity_domain_name?: string }
 	const token = $derived(($page.params as Record<string, string>)['token'] ?? '');
@@ -25,6 +27,15 @@
 	let loading = $state(true);
 	let live = true;
 	let generation = 0;
+	let viewExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
+	$effect(() => {
+		const key = !viewExperience || loading || abandoned || $auth.token || $logoutInProgress || $projectSwitching ? null
+			: approval ? approval === 'pending' ? 'signup.approval.emailPending' : 'signup.approval.emailRejected'
+			: created ? 'onboarding.created.body' : info?.account_exists ? 'onboarding.accountExists' : null;
+		if (key) t(key, { project: '' });
+		presentNotice('result', viewExperience, 'domain-auth', key, created ? 'success' : approval === 'rejected' ? 'warning' : 'info');
+	});
 	onMount(() => {
 		let previous = '';
 		return derived([auth, authReady, logoutInProgress, projectSwitching], ([state, ready, loggingOut, switching]) =>
@@ -37,44 +48,63 @@
 		});
 	});
 	$effect(() => { const current = token; untrack(() => void inspect(current)); });
-	async function inspect(current: string) {
+	async function inspect(current: string, experience?: ExperienceContext) {
 		const boundary = ++generation;
+		const owns = () => live && !abandoned && boundary === generation;
+		const observation = beginAuthExperience('auth.signup', 'load', owns, 'account', experience);
+		viewExperience = observation;
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 0);
 		created = null; info = null; approval = null; error = ''; loading = true;
-		if (abandoned || $auth.token || $logoutInProgress || $projectSwitching) { loading = false; return; }
-		if (!isOnboardingToken(current)) { error = t('onboarding.linkInvalid'); loading = false; return; }
+		if (abandoned || $auth.token || $logoutInProgress || $projectSwitching) { loading = false; observation.discard('scope_changed'); return; }
+		if (!isOnboardingToken(current)) { error = text('onboarding.linkInvalid'); loading = false; observation.validation('format'); observation.state('error'); void observation.applied(); return; }
 		try {
-			const result = await api.get<RegistrationInfo>(`/api/v1/auth/registrations/${encodeURIComponent(current)}`, undefined, undefined, { refresh: true, suppressAuthRedirect: true, cache: 'no-store' });
-			if (live && !abandoned && boundary === generation) info = result;
+			const result = await api.get<RegistrationInfo>(`/api/v1/auth/registrations/${encodeURIComponent(current)}`, undefined, undefined, { refresh: true, suppressAuthRedirect: true, cache: 'no-store', ...observation.options });
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
+			info = result;
+			observation.state('ready', 1);
 		} catch (e) {
-			if (live && !abandoned && boundary === generation) {
+			if (owns()) {
 				approval = e instanceof ApiError ? signupApprovalState(e) : null;
-				if (!approval) error = t(onboardingErrorKey(e instanceof ApiError ? e.status : null));
-			}
-		} finally { if (live && boundary === generation) loading = false; }
+				if (!approval) error = text(onboardingErrorKey(e instanceof ApiError ? e.status : null));
+				observation.state(approval ? 'ready' : 'error');
+			} else observation.discard(live ? 'stale' : 'unmounted');
+		} finally { if (owns()) { loading = false; void observation.applied(); } }
 	}
-	async function createAccount(account: { name: string; password: string }) {
+	async function createAccount(account: { name: string; password: string }, experience?: ExperienceContext) {
 		if (!info || info.account_exists || approval || abandoned || $auth.token || $logoutInProgress || $projectSwitching) return;
 		const current = token;
 		const boundary = generation;
+		const owns = () => live && !abandoned && current === token && boundary === generation;
+		const observation = beginAuthExperience('auth.signup', 'create', owns, 'account', experience);
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 1);
 		error = '';
 		try {
-			const result = await api.post<DomainAccountResult>('/api/v1/auth/registrations/accept', { token: current, ...account }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false });
-			if (live && !abandoned && current === token && boundary === generation) { created = result; info = null; }
+			const result = await api.post<DomainAccountResult>('/api/v1/auth/registrations/accept', { token: current, ...account }, undefined, undefined, { suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options });
+			if (owns()) { created = result; info = null; viewExperience = observation; observation.state('ready', 2); void observation.applied(); }
+			else observation.discard(live ? 'stale' : 'unmounted');
 		} catch (e) {
-			if (!live || abandoned || current !== token || boundary !== generation) return;
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			approval = e instanceof ApiError ? signupApprovalState(e) : null;
-			if (approval) { info = null; created = null; return; }
+			if (approval) { info = null; created = null; viewExperience = observation; observation.state('ready'); void observation.applied(); return; }
 			const conflict = e instanceof ApiError ? registrationConflictKind(e) : null;
-			if (conflict === 'username') { error = t('onboarding.usernameUnavailable'); return; }
-			if (conflict === 'email' && info) { info = { ...info, account_exists: true }; return; }
-			if (conflict === 'recovery') { info = null; error = t('onboarding.unavailable'); return; }
+			if (conflict === 'username') { error = text('onboarding.usernameUnavailable'); observation.state('error'); void observation.applied(); return; }
+			if (conflict === 'email' && info) { info = { ...info, account_exists: true }; viewExperience = observation; observation.state('ready'); void observation.applied(); return; }
+			if (conflict === 'recovery') { info = null; error = text('onboarding.unavailable'); observation.state('error'); void observation.applied(); return; }
 			// A newly detected existing email is never treated as permission to create/reset.
 			if (e instanceof ApiError && e.status === 409) {
-				await inspect(current);
-				if (live && !abandoned && current === token && boundary === generation - 1 && info && !info.account_exists) error = t('onboarding.invalidInput');
+				await inspect(current, observation.context);
+				if (live && !abandoned && current === token && boundary === generation - 1 && info && !info.account_exists) {
+					const inspectedGeneration = generation;
+					const inspected = beginAuthExperience('auth.signup', 'load', () => live && !abandoned && current === token && inspectedGeneration === generation, 'account', observation.context);
+					error = observedAuthText(inspected, 'domain-auth', t)('onboarding.invalidInput');
+					inspected.state('error'); void inspected.applied();
+				}
 				return;
 			}
-			error = t(onboardingErrorKey(e instanceof ApiError ? e.status : null));
+			error = text(onboardingErrorKey(e instanceof ApiError ? e.status : null));
+			observation.state('error'); void observation.applied();
 		}
 	}
 	onDestroy(() => { live = false; generation++; info = null; created = null; approval = null; });

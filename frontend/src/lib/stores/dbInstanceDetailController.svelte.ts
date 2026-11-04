@@ -6,6 +6,7 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import type { DbInstance, DbFlavor, DbDatabase, DbUser, DbBackup } from '$lib/types/database';
 import type { FloatingIp } from '$lib/types/networks';
+import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
 
 export interface DbInstanceDetailControllerOpts {
 	instanceId: () => string;
@@ -17,6 +18,7 @@ export interface DbInstanceDetailControllerOpts {
 export function createDbInstanceDetailController(opts: DbInstanceDetailControllerOpts) {
 	// Domain state
 	let instance = $state<DbInstance | null>(null);
+	let instanceReadError = $state('');
 	let databases = $state<DbDatabase[]>([]);
 	let users = $state<DbUser[]>([]);
 	let backups = $state<DbBackup[]>([]);
@@ -56,6 +58,18 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	let autoBackupConfig = $state<AutoBackupConfig | null>(null);
 	let loadingAutoBackup = $state(false);
 	let savingAutoBackup = $state(false);
+	function observe(action: ExperienceAction, parent?: ExperienceContext) {
+		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' ? beginExperienceLoad('database', 'resource.detail') : beginExperienceAction('database', action, 'resource.detail'));
+		return {
+			ctx, client: api.withExperience(ctx),
+			applied(state: 'ready' | 'empty' | 'error') {
+				if (!ctx) return;
+				if (ctx.action !== 'create' || state === 'error') experienceState(ctx, state);
+				// Preserve actual assignments; this controller has no mounted-result guard.
+				void experienceApplied(ctx);
+			},
+		};
+	}
 
 	// Derived
 	const instanceFips = $derived.by(() => {
@@ -91,51 +105,60 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	);
 
 	async function loadAutoBackupConfig() {
+		const observation = observe('load');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		loadingAutoBackup = true;
 		try {
-			const cfg = await api.get<AutoBackupConfig>(`/api/v1/database-instances/${id}/auto-backup`, tok, proj);
+			const cfg = await observation.client.get<AutoBackupConfig>(`/api/v1/database-instances/${id}/auto-backup`, tok, proj);
 			autoBackupConfig = cfg;
+			observation.applied('ready');
 		} catch {
 			autoBackupConfig = null;
+			observation.applied('error');
 		} finally {
 			loadingAutoBackup = false;
 		}
 	}
 
 	async function saveAutoBackupConfig(max_daily: number, max_weekly: number, max_monthly: number) {
+		const observation = observe('update');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		savingAutoBackup = true;
 		try {
-			const cfg = await api.put<AutoBackupConfig>(
+			const cfg = await observation.client.put<AutoBackupConfig>(
 				`/api/v1/database-instances/${id}/auto-backup`,
 				{ max_daily, max_weekly, max_monthly },
 				tok, proj
 			);
 			autoBackupConfig = cfg;
+			observation.applied('ready');
 			toast.success(tr('auto.saved'));
 		} catch (e) {
 			toast.error(tr('errors.autoSave', { error: e instanceof ApiError ? e.message : String(e) }));
+			observation.applied('error');
 		} finally {
 			savingAutoBackup = false;
 		}
 	}
 
 	async function disableAutoBackup() {
+		const observation = observe('delete');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		savingAutoBackup = true;
 		try {
-			await api.delete(`/api/v1/database-instances/${id}/auto-backup`, tok, proj);
+			await observation.client.delete(`/api/v1/database-instances/${id}/auto-backup`, tok, proj);
 			autoBackupConfig = null;
+			observation.applied('empty');
 			toast.success(tr('auto.disabled'));
 		} catch (e) {
 			toast.error(tr('errors.autoDisable', { error: e instanceof ApiError ? e.message : String(e) }));
+			observation.applied('error');
 		} finally {
 			savingAutoBackup = false;
 		}
@@ -151,41 +174,57 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	});
 
 	// Handlers
-	async function loadAll() {
+	async function loadAll(parent?: ExperienceContext) {
+		const ctx = parent ?? beginExperienceLoad('database', 'resource.detail');
+		const detail = observe('load', ctx);
+		const dbs = observe('load', ctx);
+		const userList = observe('load', ctx);
+		const backupList = observe('load', ctx);
+		const floating = observe('load', ctx);
+		const auto = observe('load', ctx);
+		const flavorList = observe('load', ctx);
+		experienceState(ctx, 'loading');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
+		instanceReadError = '';
 		loading = true;
 		await Promise.allSettled([
-			api.get<DbInstance>(`/api/v1/database-instances/${id}`, tok, proj)
-				.then(v => { instance = v; loading = false; })
-				.catch(() => { instance = null; loading = false; }),
-			api.get<DbDatabase[]>(`/api/v1/database-instances/${id}/databases`, tok, proj)
-				.then(v => { databases = v; })
+			detail.client.get<DbInstance>(`/api/v1/database-instances/${id}`, tok, proj)
+				.then(v => { instance = v; instanceReadError = ''; loading = false; detail.applied(v ? 'ready' : 'empty'); })
+				.catch((error) => {
+					instance = null;
+					instanceReadError = error instanceof ApiError && error.status === 404 ? '' : tr('instances.loadFailed');
+					loading = false;
+					detail.applied(instanceReadError ? 'error' : 'empty');
+				}),
+			dbs.client.get<DbDatabase[]>(`/api/v1/database-instances/${id}/databases`, tok, proj)
+				.then(v => { databases = v; dbs.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api.get<DbUser[]>(`/api/v1/database-instances/${id}/users`, tok, proj)
-				.then(v => { users = v; })
+			userList.client.get<DbUser[]>(`/api/v1/database-instances/${id}/users`, tok, proj)
+				.then(v => { users = v; userList.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj)
-				.then(v => { backups = v; })
+			backupList.client.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj)
+				.then(v => { backups = v; backupList.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
 			flavors.length === 0
-				? api.get<DbFlavor[]>('/api/v1/database-instances/flavors', tok, proj)
-					.then(v => { flavors = v; })
+				? flavorList.client.get<DbFlavor[]>('/api/v1/database-instances/flavors', tok, proj)
+					.then(v => { flavors = v; flavorList.applied(v.length ? 'ready' : 'empty'); })
 					.catch(() => {})
 				: Promise.resolve(),
-			api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj)
-				.then(v => { floatingIps = v; })
+			floating.client.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj)
+				.then(v => { floatingIps = v; floating.applied(v.length ? 'ready' : 'empty'); })
 				.catch(() => {}),
-			api.get<AutoBackupConfig>(`/api/v1/database-instances/${id}/auto-backup`, tok, proj)
-				.then(v => { autoBackupConfig = v; })
-				.catch(() => { autoBackupConfig = null; }),
+			auto.client.get<AutoBackupConfig>(`/api/v1/database-instances/${id}/auto-backup`, tok, proj)
+				.then(v => { autoBackupConfig = v; auto.applied('ready'); })
+				.catch(() => { autoBackupConfig = null; auto.applied('error'); }),
 		]);
 		loading = false;
 	}
 
 	function reset() {
 		instance = null;
+		instanceReadError = '';
 		databases = [];
 		users = [];
 		backups = [];
@@ -194,14 +233,16 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	}
 
 	async function attachFip() {
+		const observation = observe('attach');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		attachingFip = true; fipError = '';
 		try {
-			await api.post(`/api/v1/database-instances/${id}/floating-ip`, {}, tok, proj);
-			floatingIps = await api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
-		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); }
+			await observation.client.post(`/api/v1/database-instances/${id}/floating-ip`, {}, tok, proj);
+			floatingIps = await observation.client.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
+			observation.applied(floatingIps.length ? 'ready' : 'empty');
+		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); observation.applied('error'); }
 		finally { attachingFip = false; }
 	}
 
@@ -210,14 +251,16 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const tok = opts.token();
 		const proj = opts.projectId();
 		if (!(await confirmDialog(deleteFip ? tr('connection.deleteConfirm') : tr('connection.detachConfirm')))) return;
+		const observation = observe('detach');
 		detachingFip = true; fipError = '';
 		try {
-			await api.delete(
+			await observation.client.delete(
 				`/api/v1/database-instances/${id}/floating-ip${deleteFip ? '?delete=true' : ''}`,
 				tok, proj
 			);
-			floatingIps = await api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
-		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); }
+			floatingIps = await observation.client.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
+			observation.applied(floatingIps.length ? 'ready' : 'empty');
+		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); observation.applied('error'); }
 		finally { detachingFip = false; }
 	}
 
@@ -226,25 +269,29 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const tok = opts.token();
 		const proj = opts.projectId();
 		if (!(await confirmDialog(tr('instances.deleteConfirm', { name: String(instance?.name) })))) return;
+		const observation = observe('delete');
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/database-instances/${id}`, tok, proj);
+			await observation.client.delete(`/api/v1/database-instances/${id}`, tok, proj);
 			opts.onDeleted?.();
 		} catch (e) {
 			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 			deleting = false;
+			observation.applied('error');
 		}
 	}
 
 	async function enableRoot() {
+		const observation = observe('update');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		enablingRoot = true;
 		try {
-			rootInfo = await api.post<{ name: string; password: string }>(
+			rootInfo = await observation.client.post<{ name: string; password: string }>(
 				`/api/v1/database-instances/${id}/root`, {}, tok, proj
 			);
+			observation.applied('ready');
 		} catch (e) {
 			toast.error(tr('errors.root', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
@@ -253,6 +300,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	}
 
 	async function createDb(name: string) {
+		const observation = observe('create');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
@@ -262,10 +310,11 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			const payload = isMysqlLike
 				? { name, character_set: 'utf8mb4', collate: 'utf8mb4_unicode_ci' }
 				: { name };
-			await api.post(`/api/v1/database-instances/${id}/databases`, payload, tok, proj);
-			databases = await api.get<DbDatabase[]>(`/api/v1/database-instances/${id}/databases`, tok, proj);
+			await observation.client.post(`/api/v1/database-instances/${id}/databases`, payload, tok, proj);
+			databases = await observation.client.get<DbDatabase[]>(`/api/v1/database-instances/${id}/databases`, tok, proj);
+			observation.applied(databases.length ? 'ready' : 'empty');
 			return true;
-		} catch (e) { dbError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
+		} catch (e) { dbError = e instanceof ApiError ? e.message : tr('errors.failed'); observation.applied('error'); return false; }
 		finally { creatingDb = false; }
 	}
 
@@ -274,29 +323,33 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const tok = opts.token();
 		const proj = opts.projectId();
 		if (!(await confirmDialog(tr('databases.deleteConfirm', { name: name })))) return;
+		const observation = observe('delete');
 		deletingDb = name;
 		try {
-			await api.delete(`/api/v1/database-instances/${id}/databases/${encodeURIComponent(name)}`, tok, proj);
+			await observation.client.delete(`/api/v1/database-instances/${id}/databases/${encodeURIComponent(name)}`, tok, proj);
 			databases = databases.filter(d => d.name !== name);
+			observation.applied(databases.length ? 'ready' : 'empty');
 		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingDb = null; }
 	}
 
 	async function createUser(newUser: { name: string; password: string; host: string; dbNames: string[] }) {
+		const observation = observe('create');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		creatingUser = true; userError = '';
 		try {
-			await api.post(`/api/v1/database-instances/${id}/users`, {
+			await observation.client.post(`/api/v1/database-instances/${id}/users`, {
 				name: newUser.name,
 				password: newUser.password,
 				host: newUser.host || '%',
 				databases: newUser.dbNames,
 			}, tok, proj);
-			users = await api.get<DbUser[]>(`/api/v1/database-instances/${id}/users`, tok, proj);
+			users = await observation.client.get<DbUser[]>(`/api/v1/database-instances/${id}/users`, tok, proj);
+			observation.applied(users.length ? 'ready' : 'empty');
 			return true;
-		} catch (e) { userError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
+		} catch (e) { userError = e instanceof ApiError ? e.message : tr('errors.failed'); observation.applied('error'); return false; }
 		finally { creatingUser = false; }
 	}
 
@@ -307,31 +360,36 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const host = u.host || '%';
 		const label = host !== '%' ? `${u.name}@${host}` : u.name;
 		if (!(await confirmDialog(tr('users.deleteConfirm', { name: label })))) return;
+		const observation = observe('delete');
 		deletingUser = label;
 		try {
 			const url = `/api/v1/database-instances/${id}/users/${encodeURIComponent(u.name)}`
 				+ `?host=${encodeURIComponent(host)}`;
-			await api.delete(url, tok, proj);
+			await observation.client.delete(url, tok, proj);
 			users = users.filter(x => !(x.name === u.name && x.host === u.host));
+			observation.applied(users.length ? 'ready' : 'empty');
 		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingUser = null; }
 	}
 
 	async function createBackup(name: string, description: string) {
+		const observation = observe('create');
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
 		creatingBackup = true; backupError = '';
 		try {
-			await api.post(`/api/v1/database-instances/${id}/backups`, { name, description }, tok, proj);
-			backups = await api.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj);
+			await observation.client.post(`/api/v1/database-instances/${id}/backups`, { name, description }, tok, proj);
+			backups = await observation.client.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj);
+			observation.applied(backups.length ? 'ready' : 'empty');
 			return true;
 		} catch (e) {
 			// POST가 타임아웃 등으로 실패해도 Trove에 백업이 실제로 생성됐을 수 있음.
 			// 목록을 재조회해 해당 이름의 백업이 존재하면 성공으로 처리한다.
 			try {
-				const refreshed = await api.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj);
+				const refreshed = await observation.client.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj);
 				backups = refreshed;
+				observation.applied(backups.length ? 'ready' : 'empty');
 				if (refreshed.some(b => b.name === name)) {
 					// 백업이 Trove에 실제로 생성됨 — 오류 표시 없이 성공 반환
 					return true;
@@ -340,6 +398,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			backupError = e instanceof ApiError
 				? e.message
 				: tr('backups.timeout');
+			observation.applied('error');
 			return false;
 		} finally { creatingBackup = false; }
 	}
@@ -350,30 +409,38 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			? tr('backups.deleteLast')
 			: tr('backups.deleteConfirm');
 		if (!(await confirmDialog(msg))) return;
+		const observation = observe('delete');
 		const tok = opts.token();
 		const proj = opts.projectId();
 		deletingBackup = backupId;
 		try {
-			await api.delete(`/api/v1/database-instances/backups/${backupId}`, tok, proj);
+			await observation.client.delete(`/api/v1/database-instances/backups/${backupId}`, tok, proj);
 			backups = backups.filter(b => b.id !== backupId);
+			observation.applied(backups.length ? 'ready' : 'empty');
 		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingBackup = null; }
 	}
 
 	async function restoreBackup(backupId: string, name: string, flavorId: string, volumeSize: number) {
+		const observation = observe('create');
 		const tok = opts.token();
 		const proj = opts.projectId();
 		restoringBackup = backupId;
+		let rejected = false;
 		try {
-			await api.post('/api/v1/database-instances/restore', {
+			await observation.client.post('/api/v1/database-instances/restore', {
 				backup_id: backupId, name,
 				flavor_id: flavorId,
 				volume_size: volumeSize,
 			}, tok, proj);
 			toast.success(tr('restore.started'));
 			opts.onDeleted?.();
-		} catch (e) { toast.error(tr('errors.restore', { error: e instanceof ApiError ? e.message : String(e) })); }
-		finally { restoringBackup = null; }
+		} catch (e) { rejected = true; toast.error(tr('errors.restore', { error: e instanceof ApiError ? e.message : String(e) })); }
+		finally {
+			restoringBackup = null;
+			// The restore form is idle after acceptance; the restored instance is not proven ready.
+			observation.applied(rejected ? 'error' : 'ready');
+		}
 	}
 
 	return {
@@ -382,6 +449,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 
 		// State getters
 		get instance() { return instance; },
+		get instanceReadError() { return instanceReadError; },
 		get databases() { return databases; },
 		get users() { return users; },
 		get backups() { return backups; },

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 	refresh: undefined as undefined | (() => Promise<void>),
 }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mocks.get, post: mocks.post, delete: mocks.delete },
+	api: { get: mocks.get, post: mocks.post, delete: mocks.delete, withExperience() { return this; } },
 	ApiError: class extends Error { status = 500; },
 }));
 vi.mock('$app/stores', () => ({ page: writable({ url: new URL('http://localhost/dashboard/compute/instances'), data: {} }) }));

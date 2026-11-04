@@ -24,12 +24,17 @@ const endpoint = '/api/v1/activity/interactions';
 const selector = 'button,a[href],input[type="button"],input[type="submit"],input[type="reset"],input[type="image"],input[type="checkbox"],input[type="radio"],summary,[role="button"],[role="link"],[role="combobox"],[role="checkbox"],[role="switch"],[role="option"]';
 
 // Shared finite source-segment policy with the ingestion validator. Unknown segments never leave the browser.
-const segments = new Set('dashboard admin account activity auth callback login signup recover invitations registrations docs select-project select-domain oauth claude mcp authorize settings create palimpsest packages volumes snapshots backups compute instances console-log images keypairs network networks topology loadbalancers new routers floating-ips security-groups waygate usage observability drover notifications sessions beta usage-report iam projects users my-resources secrets containers clusters database file-storage security-services manage project-settings chat tools realtime audio object-storage buckets quotas flavors domains libraries monitoring traffic aodh gnocchi logins rabbitmq proxysql openstack node mysql memcached libvirt haproxy etcd ceph resources orphans ports system-admins hypervisors announcements roles subnets events stats models groups user-credentials application-credentials infrastructure-topology services notion layers gpu'.split(' '));
+const segments = new Set('dashboard admin account activity auth callback login logout signup recover invitations registrations docs select-project select-domain oauth claude mcp authorize settings create palimpsest packages volumes snapshots backups compute instances console-log images keypairs network networks topology loadbalancers new routers floating-ips security-groups waygate usage observability drover notifications sessions beta usage-report iam projects users my-resources secrets containers clusters database file-storage security-services manage project-settings chat tools realtime audio object-storage buckets quotas flavors domains libraries monitoring traffic aodh gnocchi logins rabbitmq proxysql openstack node mysql memcached libvirt haproxy etcd ceph resources orphans ports system-admins hypervisors announcements roles subnets events stats models groups user-credentials application-credentials infrastructure-topology services notion layers gpu'.split(' '));
 export function auditRoute(route: string | null | undefined): string {
 	if (!route || route.length > 255 || !route.startsWith('/')) return '/:id';
 	const parts = route.split('/').filter(Boolean).filter(part => !/^\([^)]*\)$/.test(part));
 	if (parts.length > 12 || !/^\/[A-Za-z0-9_:/\[\]{}.=\-]*$/.test('/' + parts.join('/'))) return '/:id';
 	return '/' + parts.map(part => segments.has(part) ? part : ':id').join('/');
+}
+const publicRoots: Partial<Record<string, true>> = { login: true, signup: true, recover: true, invitations: true, registrations: true, docs: true, auth: true, oauth: true };
+/** Diagnostic observation permission only; this does not grant route/API access. */
+export function publicAuditRoute(route: string): boolean {
+	return route === '/' || route === '/logout' || publicRoots[route.split('/')[1] ?? ''] === true;
 }
 function ownerKey(owner: InteractionOwner): string {
 	return JSON.stringify([!!owner.token, owner.sessionId ?? (owner.token ? owner.token : null), owner.userId, owner.identityDomainId, owner.domainId, owner.projectId]);
@@ -147,7 +152,8 @@ export function installInteractionAudit(options: {
 		try {
 			const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
 			const api = new URL(options.getBaseUrl(), window.location.origin);
-			eligible = url.origin === api.origin && url.pathname.startsWith('/api/v1/') && url.pathname !== endpoint;
+			eligible = url.origin === api.origin && url.pathname.startsWith('/api/v1/') && url.pathname !== endpoint
+				&& !/^\/api\/v1\/activity\/experience-(?:events|contract)\/?$/.test(url.pathname);
 		} catch { /* Unknown destinations are not telemetry inputs. */ }
 		const captured = !suppressed && eligible ? { revision, page: auditRoute(options.getRoute()), id: context?.revision === revision ? context.id : undefined } : null;
 		let requestInit = init;

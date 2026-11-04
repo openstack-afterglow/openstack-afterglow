@@ -6,20 +6,29 @@ import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/shell';
 import { ensureLogoutStarted, logoutProgress, type LogoutProgress } from '$lib/utils/logout';
 import Page from './+page.svelte';
+import { clearAuth, setLoginAuth } from '$lib/stores/auth';
+import type * as ExperienceModule from '$lib/utils/experience';
 
-const mocks = vi.hoisted(() => ({ ensure: vi.fn(), goto: vi.fn() }));
+const mocks = vi.hoisted(() => ({ ensure: vi.fn(), goto: vi.fn(), experienceBegin: vi.fn(), experienceApplied: vi.fn(), experienceState: vi.fn(), experienceMessage: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$lib/utils/logout', async () => {
 	const { writable } = await import('svelte/store');
 	return { ensureLogoutStarted: mocks.ensure, logoutProgress: writable({ phase: 'idle', all: false, shell: 'pending', server: 'pending', local: 'pending', serverNotRequired: false, loginHref: '/login' }) };
+});
+vi.mock('$lib/utils/experience', async importOriginal => {
+	const actual = await importOriginal<typeof ExperienceModule>();
+	return {
+		...actual, beginExperienceAction: mocks.experienceBegin, beginExperienceLoad: mocks.experienceBegin,
+		experienceApplied: mocks.experienceApplied, experienceState: mocks.experienceState, experienceMessage: mocks.experienceMessage,
+	};
 });
 
 const progress = logoutProgress as Writable<LogoutProgress>;
 const pending: LogoutProgress = { phase: 'running', all: false, shell: 'pending', server: 'pending', local: 'pending', serverNotRequired: false, loginHref: '/login' };
 const complete: LogoutProgress = { ...pending, phase: 'complete', shell: 'done', server: 'done', local: 'done' };
 
-beforeEach(() => { vi.resetAllMocks(); initLocale('ko'); progress.set({ ...pending }); mocks.ensure.mockResolvedValue(undefined); });
-afterEach(() => { cleanup(); initLocale('ko'); });
+beforeEach(() => { vi.resetAllMocks(); clearAuth(); initLocale('ko'); progress.set({ ...pending }); mocks.ensure.mockResolvedValue(undefined); mocks.experienceApplied.mockResolvedValue(undefined); });
+afterEach(() => { cleanup(); clearAuth(); initLocale('ko'); });
 
 function backAction(): HTMLAnchorElement { return screen.getByText(t('logout.back')).closest('a')!; }
 
@@ -90,5 +99,34 @@ describe('dedicated logout page', () => {
 	it('returns tutorial sessions to explicit tutorial-off login', () => {
 		progress.set({ ...complete, serverNotRequired: true, loginHref: '/login?tutorial=off' }); render(Page);
 		expect(backAction().getAttribute('href')).toBe('/login?tutorial=off');
+	});
+});
+
+describe('logout source observations', () => {
+	it('preserves unconfirmed server cleanup and fences a replaced post-tick progress snapshot', async () => {
+		const context = Object.freeze({ segmentId: 'logout-segment' });
+		mocks.experienceBegin.mockReturnValue(context);
+		render(Page);
+		progress.set({ ...complete, server: 'warning' }); await tick();
+		expect(mocks.experienceState).toHaveBeenLastCalledWith(context, 'error', 2);
+		expect(mocks.experienceMessage).toHaveBeenCalledWith(context, expect.objectContaining({ key: 'shell:logout.partial', tone: 'warning', locale: 'ko' }));
+		expect(mocks.experienceMessage.mock.calls.some(([, metadata]) => metadata.key === 'shell:logout.done')).toBe(false);
+		const guard = mocks.experienceApplied.mock.calls.at(-1)![2] as () => boolean;
+		progress.set({ ...complete, local: 'warning' });
+		expect(guard()).toBe(false);
+		expect(mocks.ensure).toHaveBeenCalledOnce();
+	});
+
+	it('starts an independent anonymous observation after actual auth clearing instead of relabelling the prior logout owner', async () => {
+		setLoginAuth({ token: 'private-token', userId: 'private-user', sessionId: 'private-session', domainId: 'private-domain' });
+		mocks.experienceBegin.mockImplementation(() => Object.freeze({ segmentId: `segment-${mocks.experienceBegin.mock.calls.length}` }));
+		render(Page); await tick();
+		const original = mocks.ensure.mock.calls[0][0];
+		clearAuth(); progress.set(complete); await tick();
+		const presented = mocks.experienceMessage.mock.calls.find(([, metadata]) => metadata.key === 'shell:logout.done')?.[0];
+		expect(presented).toBeTruthy(); expect(presented).not.toBe(original);
+		expect(original.segmentId).toBe('segment-1');
+		expect(JSON.stringify(mocks.experienceMessage.mock.calls)).not.toContain('private-token');
+		expect(mocks.ensure).toHaveBeenCalledOnce();
 	});
 });

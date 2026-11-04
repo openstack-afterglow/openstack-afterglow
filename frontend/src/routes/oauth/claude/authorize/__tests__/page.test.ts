@@ -69,6 +69,7 @@ describe('Claude gateway authorization route', () => {
 			{ user_code: 'ABCD-2345', action: 'approve' },
 			'mock-token',
 			'mock-project-1',
+			{},
 		);
 		expect(postAuthDestination('/dashboard')).toBe('/dashboard');
 	});
@@ -87,6 +88,7 @@ describe('Claude gateway authorization route', () => {
 			{ user_code: 'WXYZ-6789', action: 'approve' },
 			'mock-token',
 			'mock-project-1',
+			{},
 		));
 	});
 });

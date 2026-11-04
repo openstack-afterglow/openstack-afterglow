@@ -3,6 +3,7 @@
 	import { api } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import { t } from '$lib/i18n/ns/instance';
@@ -62,33 +63,48 @@
 	let summaryStats: Record<string, StatInfo> = $state({});
 	let showNative = $state(false);
 
-	async function loadAll() {
+	async function loadAll(refresh = false) {
 		const request = { token, projectId, instanceId, range, isGpu, adminMode, epoch: authEpoch, generation: ++generation };
 		const current = () => request.generation === generation && request.token === token
 			&& request.projectId === projectId && request.instanceId === instanceId && request.range === range
 			&& request.isGpu === isGpu && request.adminMode === adminMode && request.epoch === authEpoch;
 		if (!request.token || !request.instanceId || (!request.adminMode && !request.projectId)) return;
 		const keys = [...baseMetrics, ...nativeMetrics, ...(request.isGpu ? gpuMetrics : [])];
-		void api.get<{ monitoring_available: boolean; stats: Record<string, StatInfo> }>(
+		const experience = request.adminMode ? undefined : refresh ? beginExperienceAction('monitoring', 'refresh', 'resource.detail') : beginExperienceLoad('monitoring', 'resource.detail');
+		const summaryExperience = request.adminMode ? undefined : refresh ? experience : beginExperienceLoad('monitoring', 'resource.detail');
+		if (keys.some((key) => metrics[key].data === null)) experienceState(experience, 'loading');
+		void (request.adminMode ? api : api.withExperience(summaryExperience)).get<{ monitoring_available: boolean; stats: Record<string, StatInfo> }>(
 			`/api/v1/${request.adminMode ? 'admin/' : ''}instances/${request.instanceId}/metrics-summary?range=${request.range}`,
 			request.token, request.projectId,
 		).then((resp) => {
-			if (current()) summaryStats = resp.monitoring_available ? resp.stats : {};
-		}).catch(() => { if (current()) summaryStats = {}; });
+			if (!current()) { experienceDiscarded(summaryExperience, 'stale'); return; }
+			summaryStats = resp.monitoring_available ? resp.stats : {};
+			experienceState(summaryExperience, resp.monitoring_available ? 'ready' : 'disabled');
+			void experienceApplied(summaryExperience, {}, current);
+		}).catch(() => {
+			if (!current()) { experienceDiscarded(summaryExperience, 'stale'); return; }
+			summaryStats = {};
+			experienceState(summaryExperience, 'error');
+			void experienceApplied(summaryExperience, {}, current);
+		});
 		try {
-			const resp = await api.get<{ metrics: Record<string, MetricResponse> }>(
+			const resp = await (request.adminMode ? api : api.withExperience(experience)).get<{ metrics: Record<string, MetricResponse> }>(
 				`/api/v1/${request.adminMode ? 'admin/' : ''}instances/${request.instanceId}/metrics-batch?metrics=${keys.join(',')}&range=${request.range}`,
 				request.token, request.projectId,
 			);
-			if (!current()) return;
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			for (const key of keys) {
 				const result = resp.metrics[key];
 				metrics[key] = result ? { ...result, data: result.series } : { data: [], error: null, status: 'not_collected' };
 			}
+			experienceState(experience, keys.some((key) => metrics[key].error) ? 'error' : keys.some((key) => hasValues(metrics[key].data)) ? 'ready' : 'empty');
+			void experienceApplied(experience, {}, current);
 		} catch (e: unknown) {
-			if (!current()) return;
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			const error = e instanceof Error ? e.message : String(e);
 			for (const key of keys) metrics[key] = { data: [], error, status: 'unavailable' };
+			experienceState(experience, 'error');
+			void experienceApplied(experience, {}, current);
 		}
 	}
 
@@ -232,7 +248,7 @@
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
-				onManualRefresh={loadAll}
+				onManualRefresh={() => loadAll(true)}
 			/>
 		</div>
 		{/if}

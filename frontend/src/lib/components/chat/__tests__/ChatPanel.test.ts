@@ -11,6 +11,7 @@ import ChatPanel from '../ChatPanel.svelte';
 import { siteConfig } from '$lib/config/site';
 import { projectSwitching } from '$lib/stores/auth';
 import type { CloudToolsCatalogue } from '$lib/api/chatContracts';
+import { experienceHealth, installExperienceCollector, type ExperienceCollectorController } from '$lib/utils/experience';
 
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
@@ -40,6 +41,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/api/client', () => ({
 	api: {
+		// Keep the client binding interface while these component tests own endpoint results.
+		withExperience() { return this; },
 		get: mocks.get,
 		post: mocks.post,
 		patch: mocks.patch,
@@ -73,10 +76,10 @@ vi.mock('$lib/api/chatStream', () => ({
 let nextAnimationFrame = 0;
 const animationFrames = new Map<number, FrameRequestCallback>();
 
-function flushAnimationFrames() {
+function flushAnimationFrames(timestamp?: number) {
 	const queued = [...animationFrames.values()];
 	animationFrames.clear();
-	for (const callback of queued) callback(performance.now());
+	for (const callback of queued) callback(timestamp ?? performance.now());
 }
 
 const at = '2026-07-26T00:00:00Z';
@@ -432,11 +435,30 @@ describe('ChatPanel', () => {
 		['temporary', 'run.completed'], ['temporary', 'run.failed'], ['temporary', 'run.canceled'],
 		['resumed', 'run.completed'], ['resumed', 'run.failed'], ['resumed', 'run.canceled'],
 		['temporary-resumed', 'run.completed'], ['temporary-resumed', 'run.failed'], ['temporary-resumed', 'run.canceled']
-	] as const)('keeps the actual %s ChatPanel timeline and disclosures through %s and reload', async (mode, terminal) => {
+	] as const)('keeps the actual %s ChatPanel timeline and disclosures through %s and reload without collecting raw chat content', async (mode, terminal) => {
 		const temporary = mode.startsWith('temporary');
 		const resumed = mode.endsWith('resumed');
 		const finish = Promise.withResolvers<void>();
 		const observed = Promise.withResolvers<void>();
+		const streamed = Promise.withResolvers<void>();
+		const continueStream = Promise.withResolvers<void>();
+		const canaries = {
+			prompt: 'CHAT_PROMPT_PRIVATE_8f9a',
+			credential: 'CHAT_CREDENTIAL_PRIVATE_b28c',
+			stream: 'CHAT_STREAM_PRIVATE_c71d',
+			output: 'CHAT_OUTPUT_PRIVATE_d24e',
+			arguments: 'CHAT_ARGUMENTS_PRIVATE_e53f',
+			preview: 'CHAT_PREVIEW_PRIVATE_f86a',
+			progress: 'CHAT_PROGRESS_PRIVATE_a19b',
+			result: 'CHAT_RESULT_PRIVATE_b42c',
+			child: 'CHAT_CHILD_PRIVATE_c75d',
+			error: 'CHAT_ERROR_PRIVATE_d08e'
+		};
+		const prompt = `확인해 주세요 ${canaries.prompt} Bearer ${canaries.credential}`;
+		const streamedAnswer = `기록한 스트림 ${canaries.stream}`;
+		const finalAnswer = `${streamedAnswer} 기록한 최종 답변 ${canaries.output}`;
+		const toolArguments = { query: `기록한 인자 ${canaries.arguments}` };
+		const toolResult = `기록한 도구 결과 ${canaries.result}`;
 		let settled = false;
 		const descriptor = {
 			run_id: 'run-1', conversation_id: temporary ? null : 'history-chat',
@@ -452,35 +474,36 @@ describe('ChatPanel', () => {
 			event(6, 'run.stage.changed', { stage: 'model_response', tool_name: null }),
 			event(7, 'tool.approval_required', {
 				call_id: 'lookup', name: 'lookup', source: 'builtin', effect: 'read', destination: null,
-				redacted_arguments: { query: '기록한 인자' }, preview: [{ type: 'text', text: '기록한 승인 미리보기' }],
+				redacted_arguments: toolArguments, preview: [{ type: 'text', text: `기록한 승인 미리보기 ${canaries.preview}` }],
 				expected_state_revision: null, writer_fence: null, expires_at: '2026-07-26T00:10:00Z'
 			}),
 			event(8, 'tool.approval_resolved', { call_id: 'lookup', decision: 'approve', decided_by_user_id: 'user-1', decided_at: at }),
 			event(9, 'run.stage.changed', { stage: 'tool_execution', tool_name: 'lookup' }),
-			event(10, 'tool.call.started', { call_id: 'lookup', name: 'lookup', arguments: { query: '기록한 인자' }, source: 'builtin', category: '기본 도구' }),
-			event(11, 'tool.call.progress', { call_id: 'lookup', name: 'lookup', text: '기록한 도구 진행' }),
-			event(12, 'tool.call.completed', { call_id: 'lookup', name: 'lookup', status: 'completed', content: [{ type: 'text', text: '기록한 도구 결과' }] }),
+			event(10, 'tool.call.started', { call_id: 'lookup', name: 'lookup', arguments: toolArguments, source: 'builtin', category: '기본 도구' }),
+			event(11, 'tool.call.progress', { call_id: 'lookup', name: 'lookup', text: `기록한 도구 진행 ${canaries.progress}` }),
+			event(12, 'tool.call.completed', { call_id: 'lookup', name: 'lookup', status: 'completed', content: [{ type: 'text', text: toolResult }] }),
 			event(13, 'child.created', { child_run_id: 'child-1', call_id: 'delegate', wait_group_id: 'group-1', agent_id: 2, access: 'read', ordinal: 0, status: 'queued' }),
-			event(14, 'child.completed', { child_run_id: 'child-1', call_id: 'delegate', wait_group_id: 'group-1', status: 'completed', summary: '기록한 하위 결과', artifacts: [] }),
+			event(14, 'child.completed', { child_run_id: 'child-1', call_id: 'delegate', wait_group_id: 'group-1', status: 'completed', summary: `기록한 하위 결과 ${canaries.child}`, artifacts: [] }),
 			event(15, 'message.created', { message_id: 'answer', role: 'assistant', parent_id: 'tool-answer' }),
 			event(16, 'run.stage.changed', { stage: 'response_writing', tool_name: null }),
-			event(17, 'part.completed', { message_id: 'answer', part_index: 0, part: { type: 'text', text: '기록한 최종 답변' } }),
-			event(18, 'run.stage.changed', { stage: 'finalizing', tool_name: null }),
+			event(17, 'part.delta', { message_id: 'answer', part_index: 0, part_type: 'text', delta: streamedAnswer }),
+			event(18, 'part.completed', { message_id: 'answer', part_index: 0, part: { type: 'text', text: finalAnswer } }),
+			event(19, 'run.stage.changed', { stage: 'finalizing', tool_name: null }),
 		];
 		const terminalEvent = terminal === 'run.completed'
-			? event(19, terminal, { status: 'completed', message_id: 'answer' })
-			: event(19, terminal, { status: terminal === 'run.failed' ? 'failed' : 'canceled', message_id: 'answer', error_code: 'interrupted', safe_message: '기록한 중단' });
+			? event(20, terminal, { status: 'completed', message_id: 'answer' })
+			: event(20, terminal, { status: terminal === 'run.failed' ? 'failed' : 'canceled', message_id: 'answer', error_code: 'interrupted', safe_message: `기록한 중단 ${canaries.error}` });
 		const state = [...journal, terminalEvent].reduce(reduceRunEvent, createRunViewState('run-1'));
 		const answer = {
 			id: 'answer', conversation_id: temporary ? '' : 'history-chat', parent_id: 'tool-answer',
-			role: 'assistant', content: '기록한 최종 답변', model_name: 'model-1', created_at: at,
+			role: 'assistant', content: finalAnswer, model_name: 'model-1', created_at: at,
 			execution: { run_id: 'run-1', status: state.status, activity: state.activity }
 		};
 		const persisted = [
-			{ id: 'question', role: 'user', conversation_id: answer.conversation_id, parent_id: null, content: '확인해 주세요', created_at: at },
+			{ id: 'question', role: 'user', conversation_id: answer.conversation_id, parent_id: null, content: prompt, created_at: at },
 			{ id: 'tool-answer', role: 'assistant', conversation_id: answer.conversation_id, parent_id: 'question', content: '', created_at: at, parts: [
-				{ type: 'tool_call', call_id: 'lookup', name: 'lookup', arguments: { query: '기록한 인자' }, status: 'completed' },
-				{ type: 'tool_result', call_id: 'lookup', name: 'lookup', content: [{ type: 'text', text: '기록한 도구 결과' }], is_error: false }
+				{ type: 'tool_call', call_id: 'lookup', name: 'lookup', arguments: toolArguments, status: 'completed' },
+				{ type: 'tool_result', call_id: 'lookup', name: 'lookup', content: [{ type: 'text', text: toolResult }], is_error: false }
 			] },
 			answer
 		];
@@ -488,7 +511,7 @@ describe('ChatPanel', () => {
 		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
 			if (path === '/api/v1/chat/conversations') return temporary ? [] : [{ id: 'history-chat', title: '기록 대화', model_name: 'model-1', workspace_id: null }];
 			if (path.includes('/history-chat/messages?')) return {
-				messages: settled ? persisted : [], active_leaf_id: settled ? 'answer' : null,
+				messages: settled ? persisted : resumed ? persisted.slice(0, 1) : [], active_leaf_id: settled ? 'answer' : resumed ? 'question' : null,
 				history_revision: 1, has_before: false, has_after: false, before_cursor: null, after_cursor: null
 			};
 			if (path === '/api/v1/chat/conversations/history-chat/runs?active=true') return resumed && !settled ? [descriptor] : [];
@@ -500,24 +523,66 @@ describe('ChatPanel', () => {
 		});
 		mocks.createRun.mockResolvedValue(descriptor);
 		mocks.followRun.mockImplementation(async function* () {
-			for (const item of journal) yield item;
+			for (const item of journal) {
+				yield item;
+				if (item.type === 'part.delta') {
+					streamed.resolve();
+					await continueStream.promise;
+				}
+			}
 			observed.resolve();
 			await finish.promise;
 			settled = true;
 			yield terminalEvent;
 		});
 		if (resumed && temporary) sessionStorage.setItem('chat:tempThreadId:domain-1:user-1:project-1', 'temp-1');
+		const wireEvents: { event_type: string; trace_id: string; feature: string; component: string; payload: { state?: string; step?: number; stage?: string; reason?: string } }[] = [];
+		const wireBodies: string[] = [];
+		const originalFetch = window.fetch;
+		let collector: ExperienceCollectorController | undefined;
+		// $lib/api/client and $lib/api/chatStream are mocked, as is collector HTTP acceptance.
+		// ChatPanel's state/applied/committed instrumentation, reveal/reducer/render path
+		// and collector serialization are real; API/stream experience binding is not exercised.
+		{
+			window.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				if (String(input).endsWith('/experience-contract')) return Response.json({ schema_version: 2, enabled: true, redaction_revision: 1, max_batch_events: 20, max_body_bytes: 32768 });
+				if (!String(input).endsWith('/experience-events')) throw new Error('Unexpected replay fixture transport');
+				const body = String(init?.body);
+				wireBodies.push(body);
+				const batch = JSON.parse(body);
+				wireEvents.push(...batch.events);
+				return Response.json({ schema_version: 2, accepted: batch.events.length, duplicates: 0 }, { status: 201 });
+			});
+			collector = installExperienceCollector({
+				getOwner: () => get(auth), getRoute: () => '/dashboard/chat',
+				getBaseUrl: () => 'http://localhost:8000', isEnabled: () => true, isSuppressed: () => false,
+				subscribeOwner: (changed) => auth.subscribe(changed),
+			});
+		}
+		try {
 		const view = render(ChatPanel);
 		await screen.findByRole('button', { name: 'Model 1' });
 		if (!temporary) await fireEvent.click(await screen.findByText('기록 대화'));
 		if (!resumed) {
 			if (temporary) await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
-			await fireEvent.input(screen.getByRole('textbox'), { target: { value: '확인해 주세요' } });
+			const composer = screen.getByRole('textbox') as HTMLTextAreaElement;
+			await fireEvent.input(composer, { target: { value: prompt } });
+			expect(composer.value).toBe(prompt);
 			await fireEvent.click(screen.getByRole('button', { name: '전송' }));
 		}
-		await observed.promise;
+		await streamed.promise;
 		flushAnimationFrames();
 		await tick();
+		await waitFor(() => expect(view.container.textContent).toContain(canaries.stream));
+		expect(view.container.textContent).not.toContain(canaries.output);
+		expect(view.container.textContent).toContain(canaries.prompt);
+		expect(view.container.textContent).toContain(canaries.credential);
+		continueStream.resolve();
+		await observed.promise;
+		// The manual RAF fixture must advance past ChatPanel's 50ms projection pacing.
+		flushAnimationFrames(performance.now() + 50);
+		await tick();
+		await waitFor(() => expect(view.container.textContent).toContain(canaries.output));
 		const timeline = view.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
 		expect(timeline).toBeTruthy();
 		expect(view.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
@@ -541,11 +606,39 @@ describe('ChatPanel', () => {
 		expect(timeline.textContent).toContain('기록한 도구 진행');
 		expect(timeline.textContent).toContain('기록한 인자');
 		expect(timeline.textContent).toContain('기록한 승인 미리보기');
+		for (const key of ['arguments', 'preview', 'progress', 'result', 'child'] as const) {
+			expect(timeline.textContent).toContain(canaries[key]);
+		}
+		if (terminal !== 'run.completed') expect(view.container.textContent).toContain(canaries.error);
 		const settledLabels = [...timeline.querySelectorAll('ol > li')].map((item) => item.textContent);
+		expect(collector).toBeDefined();
+		if (collector) {
+			await tick();
+			for (let batch = 0; batch < 10 && get(experienceHealth).queued; ++batch) await collector.flush();
+			expect(get(experienceHealth).status).toBe('ready');
+			expect(get(experienceHealth).queued).toBe(0);
+			expect(wireBodies.length).toBeGreaterThan(0);
+			const streamEvents = wireEvents.filter((row) => row.feature === 'lumen' && row.component === 'shared.stream');
+			const projection = streamEvents.find((row) => row.event_type === 'view.state_changed' && row.payload.step === 4);
+			expect(projection).toBeTruthy();
+			const projectedTrace = streamEvents.filter((row) => row.trace_id === projection!.trace_id);
+			expect(projectedTrace.some((row) => row.event_type === 'result.applied')).toBe(true);
+			expect(projectedTrace.some((row) => row.event_type === 'result.committed')).toBe(true);
+			for (const canary of Object.values(canaries)) expect(wireBodies.join('\n')).not.toContain(canary);
+			if (temporary && terminal !== 'run.completed') {
+				const terminalIndex = wireEvents.findLastIndex((row) => row.event_type === 'view.state_changed' && row.payload.step === 4 && row.payload.state === (terminal === 'run.failed' ? 'error' : 'disabled'));
+				expect(terminalIndex).toBeGreaterThanOrEqual(0);
+				const terminalTrace = wireEvents[terminalIndex].trace_id;
+				const tail = wireEvents.slice(terminalIndex + 1).filter((row) => row.trace_id === terminalTrace);
+				expect(tail.some((row) => row.event_type === 'result.applied')).toBe(true);
+				expect(tail.some((row) => row.event_type === 'result.committed')).toBe(true);
+				expect(tail.some((row) => row.event_type === 'result.discarded' && row.payload.stage === 'dom')).toBe(false);
+			}
+		}
 		view.unmount();
 		const revisited = render(ChatPanel);
 		if (!temporary) await fireEvent.click(await screen.findByText('기록 대화'));
-		await screen.findByText('기록한 최종 답변');
+		await screen.findByText(finalAnswer);
 		const restored = revisited.container.querySelector<HTMLDetailsElement>('.execution-timeline')!;
 		expect(restored).toBeTruthy();
 		await fireEvent.click(restored.querySelector<HTMLButtonElement>('.tool-card .tool-head')!);
@@ -553,6 +646,16 @@ describe('ChatPanel', () => {
 		expect(revisited.container.querySelectorAll('.execution-timeline')).toHaveLength(1);
 		expect(restored.querySelectorAll('.tool-card')).toHaveLength(1);
 		expect(restored.querySelector('.live')).toBeNull();
+		if (collector) {
+			await tick();
+			for (let batch = 0; batch < 10 && get(experienceHealth).queued; ++batch) await collector.flush();
+			expect(get(experienceHealth).queued).toBe(0);
+			for (const canary of Object.values(canaries)) expect(wireBodies.join('\n')).not.toContain(canary);
+		}
+		} finally {
+			collector?.destroy();
+			window.fetch = originalFetch;
+		}
 	});
 
 	it.each(['run.completed', 'run.failed', 'run.canceled'] as const)('retains completed-only TTFT through conversation creation and %s history reload', async (terminal) => {
@@ -1737,4 +1840,85 @@ it('shows registered sources and factual tool progress before final text, then d
 		finish.resolve();
 		view.unmount();
 	}
+});
+
+describe('ChatPanel failed-read presentation evidence', () => {
+	it.each([
+		['models', 'visible'], ['models', 'hidden'], ['models', 'unmounted'], ['models', 'owner-changed'],
+		['history', 'visible'], ['history', 'unmounted'], ['history', 'owner-changed']
+	] as const)('records only the current %s failure DOM when %s', async (read, lifetime) => {
+		const pending = Promise.withResolvers<never>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const canary = 'PRIVATE-CHAT-READ-ERROR-CANARY';
+		const isTarget = (path: string) => read === 'models'
+			? path === '/api/v1/chat/models'
+			: path.includes('/failed-history/messages?');
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (isTarget(path)) return pending.promise;
+			if (path === '/api/v1/chat/conversations') return [{ id: 'failed-history', title: '읽기 실패 대화', model_name: 'model-1', workspace_id: null }];
+			return fallback(path, ...args);
+		});
+		type Row = { event_type: string; trace_id: string; feature: string; component: string; payload: { state?: string; step?: number; stage?: string; reason?: string } };
+		const rows: Row[] = [];
+		const bodies: string[] = [];
+		const originalFetch = window.fetch;
+		window.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			if (String(input).endsWith('/experience-contract')) return Response.json({ schema_version: 2, enabled: true, redaction_revision: 1, max_batch_events: 20, max_body_bytes: 32768 });
+			if (!String(input).endsWith('/experience-events')) throw new Error('Unexpected failed-read fixture transport');
+			const body = String(init?.body);
+			bodies.push(body);
+			const batch = JSON.parse(body);
+			rows.push(...batch.events);
+			return Response.json({ schema_version: 2, accepted: batch.events.length, duplicates: 0 }, { status: 201 });
+		});
+		// Endpoint results are controlled; mounted state, Svelte tick and serialization are real.
+		const collector = installExperienceCollector({
+			getOwner: () => get(auth), getRoute: () => '/dashboard/chat',
+			getBaseUrl: () => 'http://localhost:8000', isEnabled: () => true, isSuppressed: () => false,
+			subscribeOwner: (changed) => auth.subscribe(changed)
+		});
+		const view = render(ChatPanel);
+		try {
+			if (read === 'history') await fireEvent.click(await screen.findByText('읽기 실패 대화'));
+			else if (lifetime === 'visible') await fireEvent.click(await screen.findByTitle('모델 선택'));
+			await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => isTarget(String(path)))).toBe(true));
+			await collector.flush();
+			const loading = rows.find((row) => row.feature === 'lumen' && row.event_type === 'view.state_changed' && row.payload.state === 'loading' && row.payload.step === (read === 'models' ? 0 : 1));
+			expect(loading).toBeDefined();
+			if (lifetime === 'unmounted') view.unmount();
+			if (lifetime === 'owner-changed') {
+				setVerifiedLumenActor({ ...get(auth), projectId: 'other-project', projectName: 'Other project' });
+				await tick();
+			}
+			pending.reject(new mocks.ApiError(canary, 503));
+			await tick();
+			await tick();
+			if (lifetime === 'visible') {
+				const displayed = read === 'models'
+					? '모델 목록을 갱신하지 못했습니다 (HTTP 503). 목록 새로고침으로 다시 시도하세요.'
+					: canary;
+				await screen.findByText(displayed);
+			}
+			for (let batch = 0; batch < 10 && get(experienceHealth).queued; ++batch) await collector.flush();
+			const trace = rows.filter((row) => row.trace_id === loading!.trace_id);
+			if (lifetime === 'visible' || lifetime === 'hidden') {
+				expect(trace.some((row) => row.event_type === 'view.state_changed' && row.payload.state === 'error')).toBe(true);
+				expect(trace.some((row) => row.event_type === 'result.applied')).toBe(true);
+			}
+			expect(trace.some((row) => row.event_type === 'result.committed')).toBe(lifetime === 'visible');
+			if (lifetime === 'hidden') {
+				expect(trace.some((row) => row.event_type === 'result.discarded' && row.payload.stage === 'dom')).toBe(true);
+				expect(screen.queryByText(/모델 목록을 갱신하지 못했습니다/)).toBeNull();
+			}
+			if (lifetime === 'unmounted' || lifetime === 'owner-changed') {
+				expect(trace.some((row) => row.event_type === 'result.applied')).toBe(false);
+			}
+			expect(bodies.join('\n')).not.toContain(canary);
+			expect(mocks.createRun).not.toHaveBeenCalled();
+		} finally {
+			view.unmount();
+			collector.destroy();
+			window.fetch = originalFetch;
+		}
+	});
 });

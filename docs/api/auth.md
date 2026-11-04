@@ -866,13 +866,15 @@ Canonical registry `2026-11-03.2`의 다음 여섯 도구는 `mcp:read`로 사�
 
 | 도구 | 필수 입력 | 선택 입력·제한 | 접수 결과 |
 |---|---|---|---|
-| `afterglow_vm_create` | `name`, `image_id`, `flavor_id`, `network_id` | VM 이름 1–63자·영숫자로 시작·영숫자/`_`/`-`만 허용. `boot_volume_size_gb` 기본50·1–16384GiB, `key_name`, host 지정을 허용하지 않는 `availability_zone`, `delete_boot_volume_on_termination` 기본false | 안전한 server ID·이름·현재 status·timestamp와 `requested_action: "create"`; ACTIVE/guest readiness 보장 아님 |
+| `afterglow_vm_create` | `name`, `image_id`, `flavor_id`, `network_id`, `boot_volume_size_gb`, `key_name`, `security_group_ids` | VM 이름 1–63자·영숫자로 시작·영숫자/`_`/`-`만 허용. 부팅 볼륨 1–16384GiB, 현재 사용자 소유 SSH 키, 대상 프로젝트 소유 보안그룹 1개 이상을 명시한다. 선택 `availability_zone`은 host 지정을 허용하지 않으며 `delete_boot_volume_on_termination` 기본값은 false다. | 안전한 server ID·이름·현재 status·timestamp와 `requested_action: "create"`; ACTIVE/guest readiness 보장 아님 |
 | `afterglow_volume_create` | `name`, 정수 `size_gb` | 공백 아닌 이름 1–255자, 1–16384GiB, 선택 `availability_zone` | 빈 Cinder volume ID·이름·현재 status·size·timestamp와 `requested_action: "create"`; `creating`은 사용 가능 상태 아님 |
 | `afterglow_vm_network_attach` | `server_id`, `network_id` | 대상 프로젝트의 ACTIVE/SHUTOFF server와 owned 또는 명시적으로 shared network만 허용. 기존 `port_id`·fixed IP·security group override는 받지 않음 | 검증된 server/network/new port ID·MAC과 `requested_action: "attach_network"`; guest 내부 설정·통신 성공 보장 아님 |
 
 MCP 변경 호출은 `idempotency_key`를 함께 보내며 같은 key/arguments의 완료 결과는 재사용한다. Lumen `/api/v1/mcp/lumen/preview`는 리소스를 만들지 않고 `/execute`가 별도 key로 원장을 사용한다. 실행 직전에 grant·대상·리소스 상태와 SDK deadline을 다시 검증한다. 결과가 불확실하면 `unknown`으로 남기며 동일 grant/source/tool/arguments는 새 key로도 자동 재전송하지 않는다. 실제 provider 상태를 확인해야 한다.
 
-VM 생성은 기존 프로젝트 flavor quota·host capacity·GPU admission과 이름 중복 규칙을 재사용한다. Active Glance image의 공개/공유/owner 가시성·min disk/RAM과 network를 검증하고 선택 keypair의 owner는 Nova 응답으로 증명해야 한다. Nova image→volume boot mapping으로 disk=0 flavor도 지원하며 boot volume은 기본 보존한다. 삭제 연동은 `delete_boot_volume_on_termination=true`를 명시할 때만 적용한다. `user_data`·비밀번호·임의 provider 속성을 받지 않고 응답에도 application credential, private key, `adminPass`를 포함하지 않는다.
+VM 생성은 기존 프로젝트 flavor quota·host capacity·GPU admission과 이름 중복 규칙을 재사용한다. Active Glance image의 공개/공유/owner 가시성·min disk/RAM과 network를 검증하고 필수 keypair의 현재 사용자 소유와 각 보안그룹의 대상 프로젝트 소유를 provider 응답으로 증명해야 한다. `afterglow_keypair_list`와 `afterglow_security_group_list`에서 선택할 수 있다. 생성 전 확인과 실행에서 다시 검증하며 선택 내용은 preview에 포함한다. Nova image→volume boot mapping으로 disk=0 flavor도 지원하며 boot volume은 기본 보존한다. 삭제 연동은 `delete_boot_volume_on_termination=true`를 명시할 때만 적용한다. `user_data`·비밀번호·임의 provider 속성을 받지 않고 응답에도 application credential, private key, `adminPass`를 포함하지 않는다.
+
+네트워크의 port security가 명시적으로 활성화된 경우만 생성한다. SSH 키의 이름·사용자·`ssh` 유형과 보안그룹 ID·프로젝트는 원본 provider 응답으로 확인하며 정보 누락 시 거부한다. Nova 2025.2는 요청 보안그룹 값을 UUID 우선·이름 차순으로 해석한다. 따라서 마지막 검증 이후 provider에서 그룹이 삭제되고 같은 UUID 문자열의 이름으로 다른 그룹이 생기는 동시 변경이나 네트워크 설정 변경은 원자적으로 차단하지 못한다. 생성 접수는 실제 포트의 최종 보안그룹이나 guest 준비 상태의 증거가 아니다.
 
 이 계약은 로컬 source의 추가 기능이다. MCP handshake/tools discovery 성공과 실제 cloud provisioning 또는 운영 배포 성공은 별개다.
 
@@ -909,12 +911,13 @@ Canonical registry `2026-11-03.2`는 기존 도구를 보존하고 아래18개 �
 
 OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `OAuth 연결`과 현재 목록 순번을, 승인 프로젝트는 UUID 없이 이름을 표시한다. 순번은 영구 ID가 아니며 삭제는 정확한 grant ID로 처리한다. 표시를 가린 것이므로 인증된 사용자에게 반환하는 API 응답의 identifier는 변하지 않는다. Client ID는 public OAuth client의 식별자이며 access/refresh token이나 client secret과 구분한다.
 
+권한 preview는 프로젝트의 `can_write`에 따른 native cloud capability와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 현재 검증된 `member`는 cloud 관리 가능하며, `manage`를 명시 선택한 키·동의만 그 ceiling까지 쓸 수 있다. 기존 read grant는 자동 확대하지 않는다. 전체 프로젝트의 reader는 읽기 제한을, null/missing metadata는 unknown을 유지하고 native 서비스의 독립 정책 오류를 cloud member라는 이유로 허용하지 않는다. Preview는 해당 요청에서 검증한 exact target-token/project `AccessInfo` catalog를 재사용하며 별도 native 정책 조회용 token 재교환이나 관리자 fallback을 하지 않는다.
+
+
 
 `GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. 내부 Lumen 위임의 기존 finite TTL은 바뀌지 않습니다.
 
 UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
-
-권한 preview는 프로젝트의 `can_write`에 따른 native cloud capability와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 현재 검증된 `member`는 cloud 관리 가능하며, `manage`를 명시 선택한 키·동의만 그 ceiling까지 쓸 수 있다. 기존 read grant는 자동 확대하지 않는다. 전체 프로젝트의 reader는 읽기 제한을, null/missing metadata는 unknown을 유지하고 native 서비스의 독립 정책 오류를 cloud member라는 이유로 허용하지 않는다. Preview는 해당 요청에서 검증한 exact target-token/project `AccessInfo` catalog를 재사용하며 별도 native 정책 조회용 token 재교환이나 관리자 fallback을 하지 않는다.
 
 ### OAuth 지속 승인과 자동 갱신
 
@@ -945,6 +948,7 @@ Preview는 독립 SDK 연결의 project worker를 최대3개로 제한하고 각
 두 목록 GET은 `Cache-Control: no-store`/`Pragma: no-cache`와 각 grant의 `client_observations` 배열을 반환합니다. 현재 로그인 사용자와 발급 당시 anchor project의 소유 범위만 조회하며, 다른 프로젝트 실행 허용 목록을 사용자 목록 소유권으로 바꾸지 않습니다. 관측이 없는 기존/새 grant는 빈 배열입니다.
 
 각 연결의 이름·버전은 상세를 펼치기 전에도 표시한다. 신고 이름이 없으면 정제 product 추정 또는 명시 unknown을 사용하고 grant/key 표시 이름이나 raw OAuth client ID를 클라이언트 이름으로 대체하지 않는다. 이름·버전은 항상 클라이언트 신고이며 `identity_source`는 제품·종류 추론의 근거다. 서로 다른 근거를 섞어 이름까지 User-Agent에서 확인한 것으로 표시하지 않는다. 플랫폼·관측 시각·제품 추론은 별도 상세에 있고, 관측 없는 credential은 연결 제품을 추정하지 않는다.
+
 
 | 관측 field | 의미 |
 |---|---|

@@ -5,9 +5,9 @@ import { createTrafficReporter, observeResponse, reporterConfig, trafficCategory
 
 const config = { url: 'http://backend:8000/api/v1/monitoring/traffic/events', key: 'k'.repeat(32), peerIsSocket: false };
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-function event(method = 'GET', route: string | null = '/admin/instances/[id]'): RequestEvent {
+function event(method = 'GET', route: string | null = '/admin/instances/[id]', path = '/admin/instances/private-id'): RequestEvent {
 	return {
-		route: { id: route }, request: new Request('https://example.test/admin/instances/private-id?token=secret', {
+		route: { id: route }, request: new Request(`https://example.test${path}?token=secret`, {
 			method, headers: { cookie: 'session=secret', 'user-agent': 'secret-agent', 'x-forwarded-for': '1.2.3.4', 'cf-ipcountry': 'US' },
 			...(method === 'POST' ? { body: 'private content' } : {}),
 		}),
@@ -171,6 +171,101 @@ describe('server reporter transport and privacy', () => {
 		const handle = createTrafficReporter(config, { fetch: send, maxInflight: 1, timeoutMs: 50 });
 		await invoke(handle); await vi.advanceTimersByTimeAsync(50); expect(send.mock.calls[0][1]!.signal!.aborted).toBe(true);
 		await invoke(handle); expect(payload(send, 1).reporter_dropped_events).toBe(1); await settle();
+	});
+	it('excludes only exact completed successful diagnostic reads and ingestion itself', async () => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		const handle = createTrafficReporter(config, { fetch: send });
+		for (const path of ['/health', '/api/v1/admin/monitoring/traffic']) {
+			for (const method of ['GET', 'HEAD']) {
+				const response = await invoke(handle, new Response('ok'), event(method, path, path));
+				expect(await response.text()).toBe('ok');
+			}
+		}
+		for (const status of [200, 503]) {
+			const response = new Response(null, { status });
+			expect(await invoke(handle, response, event('POST', null, '/api/v1/monitoring/traffic/events'))).toBe(response);
+		}
+		expect(send).not.toHaveBeenCalled();
+		for (const [method, path, status] of [
+			['GET', '/health', 503], ['GET', '/health', 302], ['POST', '/health', 200],
+			['GET', '/health/detail', 200], ['GET', '/healthcare', 200],
+			['GET', '/api/v1/admin/monitoring/traffic', 403],
+			['GET', '/api/v1/monitoring/traffic/events-extra', 200],
+			['GET', '/dashboard/instances/health', 200],
+		] as const) {
+			await invoke(handle, new Response(null, { status }), event(method, null, path));
+			await settle();
+		}
+		expect(send).toHaveBeenCalledTimes(8);
+		expect(send.mock.calls.map((_, index) => payload(send, index).status)).toEqual([503, 302, 200, 200, 200, 403, 200, 200]);
+		expect(send.mock.calls.every((_, index) => payload(send, index).reporter_dropped_events === 0)).toBe(true);
+	});
+	it.each(['/health', '/api/v1/activity/experience-events', '/api/v1/activity/experience-contract'])('keeps cancelled partial diagnostics and original errors at %s', async path => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		const cancel = vi.fn();
+		const handle = createTrafficReporter(config, { fetch: send });
+		const response = await invoke(handle, new Response(new ReadableStream<Uint8Array>({
+			pull(controller) { controller.enqueue(new Uint8Array(2)); }, cancel,
+		}, { highWaterMark: 0 })), event('GET', path, path));
+		const reader = response.body!.getReader(); await reader.read(); await reader.cancel('disconnected');
+		await settle();
+		expect(cancel).toHaveBeenCalledWith('disconnected');
+		expect(payload(send)).toMatchObject({ status: 200, response_bytes: null, reporter_dropped_events: 0 });
+		const failure = new Error('private downstream failure');
+		await expect(handle({ event: event('GET', path, path), resolve: async () => { throw failure; } })).rejects.toBe(failure);
+		expect(payload(send, 1)).toMatchObject({ status: 500, response_bytes: null });
+	});
+	it('carries each failure reason exactly once across rejected recovery without raw failure text', async () => {
+		vi.useFakeTimers();
+		const pending = Promise.withResolvers<Response>();
+		const send = vi.fn<typeof fetch>()
+			.mockImplementationOnce(() => pending.promise)
+			.mockRejectedValueOnce(new TypeError('https://private.invalid/?token=secret'))
+			.mockResolvedValueOnce(new Response(null, { status: 503 }))
+			.mockResolvedValue(new Response(null, { status: 202 }));
+		const handle = createTrafficReporter(config, { fetch: send, maxInflight: 1, timeoutMs: 50 });
+		await invoke(handle); await invoke(handle); // One inflight, one capacity loss.
+		await vi.advanceTimersByTimeAsync(50);
+		await invoke(handle); await settle(); // Network failure carrying two prior losses.
+		await invoke(handle); await settle(); // Rejected recovery carrying all three.
+		await invoke(handle); await settle();
+		expect(send).toHaveBeenCalledTimes(4);
+		expect(payload(send, 3)).toMatchObject({
+			reporter_dropped_events: 4,
+			reporter_drop_reasons: { capacity: 1, timeout: 1, connection: 1, rejected: 1 },
+		});
+		expect(JSON.stringify(payload(send, 3))).not.toMatch(/private|token|secret/);
+		// A late success from the timed-out POST must not emit a second report.
+		pending.resolve(new Response(null, { status: 202 })); await settle();
+		await invoke(handle); await settle();
+		expect(payload(send, 4).reporter_dropped_events).toBe(0);
+		expect(payload(send, 4).reporter_drop_reasons).toBeUndefined();
+	});
+	it('never reports a same-origin configured ingestion target through its own hook', async () => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		const handle = createTrafficReporter({ ...config, url: 'https://example.test/internal-ingest' }, { fetch: send });
+		const response = new Response(null, { status: 503 });
+		expect(await invoke(handle, response, event('POST', null, '/internal-ingest'))).toBe(response);
+		expect(send).not.toHaveBeenCalled();
+	});
+	it.each([200, 503])('excludes only exact semantic self-transports with status %s', async status => {
+		const send = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+		const handle = createTrafficReporter({ ...config, peerIsSocket: true }, { fetch: send });
+		for (const path of ['/api/v1/activity/experience-events', '/api/v1/activity/experience-contract']) {
+			for (const suffix of ['', '/']) {
+				const request = event('POST', null, path + suffix);
+				const response = new Response(null, { status });
+				expect(await invoke(handle, response, request)).toBe(response);
+				expect(request.getClientAddress).toHaveBeenCalledOnce();
+				await settle();
+			}
+		}
+		expect(send).toHaveBeenCalledTimes(status === 200 ? 0 : 4);
+		for (const path of ['/api/v1/activity', '/api/v1/activity/experience-events-extra', '/api/v1/activity/experience-contract/history']) {
+			await invoke(handle, new Response(null, { status }), event('POST', null, path));
+			await settle();
+		}
+		expect(send).toHaveBeenCalledTimes(status === 200 ? 3 : 7);
 	});
 	it('retains only fixed categories derived from route IDs, never actual dynamic URLs', () => {
 		expect(trafficCategory('/(app)/dashboard/compute/[id]')).toBe('/dashboard'); expect(trafficCategory(null)).toBe('__unmatched__');

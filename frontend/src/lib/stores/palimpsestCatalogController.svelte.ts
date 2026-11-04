@@ -3,6 +3,7 @@ import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores
 import { catalogApi, type CatalogSource, type CatalogLayerPage, type CatalogLayerDetail } from '$lib/api/palimpsestCatalog';
 import type { PackageIdentity } from '$lib/api/palimpsestPackages';
 import { ApiError } from '$lib/api/errors';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 export type CatalogFailure = 'denied' | 'unavailable' | 'failed' | 'notFound' | 'invalidResponse';
 export function createPalimpsestCatalogController() {
@@ -66,16 +67,26 @@ export function createPalimpsestCatalogController() {
     const actor = identity, generation = epoch, ticket = ++listTicket, requestedSource = source, requestedQuery = query;
     listAbort?.abort(); const abort = new AbortController(); listAbort = abort;
     loading = true; page = null; error = null; closeDetail();
+    const experience = beginExperienceLoad('palimpsest', 'resource.list');
+    experienceState(experience, 'loading', 0);
     try {
-      const result = await catalogApi.layers(actor, abort.signal, requestedSource, requestedQuery, offset);
-      if (!owns(generation, actor) || ticket !== listTicket) return;
+      const result = await catalogApi.layers({ ...actor, experience }, abort.signal, requestedSource, requestedQuery, offset);
+      if (!owns(generation, actor) || ticket !== listTicket) { experienceDiscarded(experience, abort.signal.aborted ? 'aborted' : 'stale'); return; }
       if (result.source !== requestedSource || result.offset !== offset || !Array.isArray(result.items)
         || (result.has_more && (!Number.isSafeInteger(result.next_offset) || result.next_offset! <= offset))) {
-        error = 'invalidResponse'; return;
+        error = 'invalidResponse'; experienceState(experience, 'error', 0);
+        void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === listTicket);
+        return;
       }
       page = result;
+      experienceState(experience, result.items.length ? 'ready' : 'empty', 0);
+      void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === listTicket);
     } catch (cause) {
-      if (owns(generation, actor) && ticket === listTicket) error = failure(cause);
+      if (owns(generation, actor) && ticket === listTicket) {
+        error = failure(cause); experienceState(experience, 'error', 0);
+        void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === listTicket);
+      }
+      else experienceDiscarded(experience, abort.signal.aborted ? 'aborted' : 'stale');
     } finally {
       if (owns(generation, actor) && ticket === listTicket) loading = false;
     }
@@ -100,15 +111,25 @@ export function createPalimpsestCatalogController() {
     closeDetail(); selected = id; detailLoading = true;
     const actor = identity, generation = epoch, ticket = detailTicket, requestedSource = source;
     const abort = new AbortController(); detailAbort = abort;
+    const experience = beginExperienceAction('palimpsest', 'inspect', 'resource.detail');
+    experienceState(experience, 'loading', 1);
     try {
-      const result = await catalogApi.detail(actor, abort.signal, requestedSource, id);
-      if (!owns(generation, actor) || ticket !== detailTicket) return;
+      const result = await catalogApi.detail({ ...actor, experience }, abort.signal, requestedSource, id);
+      if (!owns(generation, actor) || ticket !== detailTicket) { experienceDiscarded(experience, abort.signal.aborted ? 'aborted' : 'stale'); return; }
       if (result.id !== id || !Array.isArray(result.ancestors) || !Array.isArray(result.children) || !Array.isArray(result.bundles)) {
-        detailError = 'invalidResponse'; return;
+        detailError = 'invalidResponse'; experienceState(experience, 'error', 1);
+        void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === detailTicket);
+        return;
       }
       detail = result;
+      experienceState(experience, 'ready', 1);
+      void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === detailTicket);
     } catch (cause) {
-      if (owns(generation, actor) && ticket === detailTicket) detailError = failure(cause, true);
+      if (owns(generation, actor) && ticket === detailTicket) {
+        detailError = failure(cause, true); experienceState(experience, 'error', 1);
+        void experienceApplied(experience, {}, () => owns(generation, actor) && ticket === detailTicket);
+      }
+      else experienceDiscarded(experience, abort.signal.aborted ? 'aborted' : 'stale');
     } finally {
       if (owns(generation, actor) && ticket === detailTicket) detailLoading = false;
     }

@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.common.activity_recorder import rec
+from app.api.common.owner_check import native_resource_read_failure
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.models.storage import CreateAccessRuleRequest, CreateFileStorageRequest, FileStorageInfo
 from app.rate_limit import limiter
@@ -39,8 +40,12 @@ def _assert_share_owner(share, conn, token_info: dict) -> None:
 def _fetch_and_assert_share_owner(conn, file_storage_id: str, token_info: dict, resolve_user: bool = False):
     try:
         share = manila.get_file_storage(conn, file_storage_id, resolve_user=resolve_user)
-    except Exception:
-        raise HTTPException(status_code=404, detail="파일 스토리지를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="파일 스토리지를 찾을 수 없습니다",
+            unavailable_detail="파일 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
     _assert_share_owner(share, conn, token_info)
     return share
 

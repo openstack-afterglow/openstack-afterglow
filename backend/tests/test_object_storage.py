@@ -70,6 +70,77 @@ async def test_delete_container_unauthenticated():
     assert resp.status_code in (401, 404, 405)
 
 
+@pytest.mark.asyncio
+async def test_get_bucket_metadata_read_returns_actual_scoped_metadata(client, mock_conn):
+    metadata = {"name": "lookup-bucket", "count": 3, "bytes": 2048}
+    with patch("app.services.swift.get_container_metadata", return_value=metadata) as lookup:
+        response = await client.get("/api/v1/object-storage/lookup-bucket")
+
+    assert response.status_code == 200
+    assert response.json() == metadata
+    lookup.assert_called_once_with(mock_conn, "lookup-bucket")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_get_bucket_metadata_native_read_status_preserves_denial_without_inventing_absence(
+    client, mock_conn, status
+):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.services.swift.get_container_metadata",
+        side_effect=HttpException("PRIVATE_NATIVE_BUCKET_BODY", http_status=status),
+    ) as lookup:
+        response = await client.get("/api/v1/object-storage/lookup-bucket")
+
+    lookup.assert_called_once_with(mock_conn, "lookup-bucket")
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert response.json() == {
+        "detail": (
+            "컨테이너를 찾을 수 없습니다" if expected == 404 else "오브젝트 스토리지 서비스에 연결할 수 없습니다"
+        )
+    }
+    assert "PRIVATE_NATIVE_BUCKET_BODY" not in response.text
+    assert "PRIVATE_NATIVE_BUCKET_BODY" not in str(response.headers)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["connection", "timeout", "unexpected"])
+async def test_get_bucket_metadata_transport_and_unexpected_read_failures_are_sanitized_unavailable(
+    client, failure_kind
+):
+    from requests.exceptions import ConnectionError, Timeout
+
+    error_type = {"connection": ConnectionError, "timeout": Timeout, "unexpected": RuntimeError}[failure_kind]
+    with patch("app.services.swift.get_container_metadata", side_effect=error_type("PRIVATE_NATIVE_BUCKET_BODY")):
+        response = await client.get("/api/v1/object-storage/lookup-bucket")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "오브젝트 스토리지 서비스에 연결할 수 없습니다"}
+    assert "PRIVATE_NATIVE_BUCKET_BODY" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404])
+async def test_get_bucket_metadata_keeps_local_lookup_denial_opaque_without_forwarding_provider_headers(client, status):
+    from fastapi import HTTPException
+
+    error = HTTPException(
+        status,
+        "PRIVATE_NATIVE_BUCKET_BODY",
+        headers={"X-Native-Private": "PRIVATE_HEADER"},
+    )
+    with patch("app.services.swift.get_container_metadata", side_effect=error):
+        response = await client.get("/api/v1/object-storage/lookup-bucket")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "컨테이너를 찾을 수 없습니다"}
+    assert "X-Native-Private" not in response.headers
+    assert "PRIVATE_HEADER" not in str(response.headers)
+
+
 # ---------------------------------------------------------------------------
 # 오브젝트 업로드
 # ---------------------------------------------------------------------------
@@ -1717,3 +1788,192 @@ async def test_owned_trash_cleanup_stops_after_first_accepted_delete(_fake_redis
         keys = [key async for key in redis.scan_iter(match=f"{prefix}:*")]
         if keys:
             await redis.delete(*keys)
+
+
+# ---------------------------------------------------------------------------
+# 단건 오브젝트 조회 실패 분류 (absence vs outage)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_get_object_metadata_native_read_status_preserves_denial_without_inventing_absence(
+    client, mock_conn, status
+):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.services.swift.get_object_metadata",
+        side_effect=HttpException("PRIVATE_NATIVE_OBJECT_BODY", http_status=status),
+    ) as lookup:
+        response = await client.get("/api/v1/object-storage/lookup-bucket/objects/doc.txt/metadata")
+
+    lookup.assert_called_once_with(mock_conn, "lookup-bucket", "doc.txt")
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert response.json() == {
+        "detail": (
+            "오브젝트를 찾을 수 없습니다" if expected == 404 else "오브젝트 스토리지 서비스에 연결할 수 없습니다"
+        )
+    }
+    assert "PRIVATE_NATIVE_OBJECT_BODY" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["connection", "timeout", "unexpected"])
+async def test_get_object_metadata_transport_and_unexpected_read_failures_are_sanitized_unavailable(
+    client, failure_kind
+):
+    from requests.exceptions import ConnectionError, Timeout
+
+    error_type = {"connection": ConnectionError, "timeout": Timeout, "unexpected": RuntimeError}[failure_kind]
+    with patch("app.services.swift.get_object_metadata", side_effect=error_type("PRIVATE_NATIVE_OBJECT_BODY")):
+        response = await client.get("/api/v1/object-storage/lookup-bucket/objects/doc.txt/metadata")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "오브젝트 스토리지 서비스에 연결할 수 없습니다"}
+    assert "PRIVATE_NATIVE_OBJECT_BODY" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_preview_object_native_read_status_preserves_denial_without_inventing_absence(client, mock_conn, status):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.services.swift.stream_object",
+        side_effect=HttpException("PRIVATE_NATIVE_OBJECT_BODY", http_status=status),
+    ) as lookup:
+        response = await client.get("/api/v1/object-storage/lookup-bucket/objects/doc.txt/preview")
+
+    lookup.assert_called_once_with(mock_conn, "lookup-bucket", "doc.txt")
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert "PRIVATE_NATIVE_OBJECT_BODY" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_preview_object_streams_inline_bytes(client, mock_conn):
+    """preview 성공 경로: StreamingResponse + inline Content-Disposition 유지."""
+
+    def fake_chunks():
+        yield b"hello"
+
+    with patch("app.services.swift.stream_object", return_value=(fake_chunks(), "text/plain", 5)):
+        response = await client.get("/api/v1/object-storage/c/objects/o.txt/preview")
+
+    assert response.status_code == 200
+    assert "inline" in response.headers.get("content-disposition", "")
+    assert response.content == b"hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_download_object_native_read_status_preserves_denial_without_inventing_absence(client, mock_conn, status):
+    from openstack.exceptions import HttpException
+
+    with (
+        patch(
+            "app.api.object_storage.containers._resolve_swift_conn",
+            new=AsyncMock(return_value=mock_conn),
+        ),
+        patch(
+            "app.services.swift.stream_object",
+            side_effect=HttpException("PRIVATE_NATIVE_OBJECT_BODY", http_status=status),
+        ),
+    ):
+        response = await client.get("/api/v1/object-storage/lookup-bucket/objects/doc.txt/download?token=t")
+
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert "PRIVATE_NATIVE_OBJECT_BODY" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# fail-closed 회귀: 목록/계정 조회는 장애를 빈 값으로 위장하지 않는다
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+def test_list_containers_installed_sdk_outage_is_not_an_empty_account(status):
+    """설치된 SDK가 받은 5xx 계정 목록 응답은 호출자 오류이며 빈 계정이 아니다."""
+    from app.services.swift import list_containers
+
+    conn, swift = _swift_conn({})
+    swift.fail_when = lambda method, container, key, query: status if not container else None
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(Exception) as raised:
+        list_containers(conn)
+    assert raised.value.status_code == status
+    assert len([request for request in swift.requests if not request[1]]) == 1
+
+
+@pytest.mark.parametrize("status", [401, 404])
+def test_list_containers_installed_sdk_uninitialized_or_denied_account_is_empty(status):
+    """계정 미초기화(404)·권한 없음(401)만 빈 목록으로 인정한다."""
+    from app.services.swift import list_containers
+
+    conn, swift = _swift_conn({})
+    swift.fail_when = lambda method, container, key, query: status if not container else None
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert list_containers(conn) == []
+
+
+def test_list_containers_installed_sdk_valid_empty_account_is_one_read():
+    from app.services.swift import list_containers
+
+    conn, swift = _swift_conn({})
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert list_containers(conn) == []
+    assert len([request for request in swift.requests if not request[1]]) == 1
+
+
+@pytest.mark.parametrize("status", [500, 503])
+def test_list_trash_objects_installed_sdk_outage_is_not_an_empty_trash(status):
+    """휴지통 버킷 조회 장애는 빈 휴지통이 아니라 호출자 오류이다."""
+    from app.services.swift import list_trash_objects
+
+    conn, swift = _swift_conn({}, container="bucket-trash")
+    swift.fail_when = lambda method, container, key, query: status if container == "bucket-trash" else None
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(Exception) as raised:
+        list_trash_objects(conn, "bucket")
+    assert raised.value.status_code == status
+
+
+def test_list_trash_objects_installed_sdk_missing_trash_bucket_is_empty():
+    """삭제 이력이 없어 휴지통 버킷이 없는(404) 경우만 빈 목록이다."""
+    from app.services.swift import list_trash_objects
+
+    conn, swift = _swift_conn({})
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert list_trash_objects(conn, "bucket") == []
+
+
+@pytest.mark.asyncio
+async def test_account_route_fails_closed_with_installed_sdk(client, mock_conn):
+    """GET /account는 설치된 SDK가 받은 5xx를 0-카운터 200이 아니라 500으로 노출한다."""
+    from app.services import swift
+
+    conn, provider = _swift_conn({})
+    provider.fail_when = lambda method, container, key, query: 503 if not container else None
+    real = swift.get_account_metadata
+    with patch("app.services.swift.get_account_metadata", side_effect=lambda _conn, **kwargs: real(conn, **kwargs)):
+        resp = await client.get("/api/v1/object-storage/account")
+    assert resp.status_code == 500
+    assert "container_count" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_container_list_does_not_serve_legacy_fake_empty_cache(client, mock_conn):
+    """장애를 빈 목록으로 캐시하던 레거시 항목이 현재 provider 장애를 가리지 않는다."""
+    from openstack.exceptions import HttpException
+
+    from app.services import cache
+    from app.services.cache import keys
+
+    legacy_key = keys.project_key("swift", mock_conn._afterglow_project_id, "containers")
+    assert await cache.cached_call(legacy_key, 300, lambda: [], enabled=True) == []
+    mock_conn.object_store.containers.side_effect = HttpException("PRIVATE_NATIVE_SWIFT_BODY", http_status=503)
+    with patch("app.services.swift._apply_endpoint_override"):
+        resp = await client.get("/api/v1/object-storage?cache=true")
+    assert resp.status_code == 500
+    assert "PRIVATE_NATIVE_SWIFT_BODY" not in resp.text

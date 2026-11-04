@@ -9,6 +9,7 @@
   import { getTerminalTheme } from '$lib/utils/terminalTheme';
   import { getLocale } from '$lib/i18n/runtime.svelte';
   import { localizeTerminal } from '$lib/utils/terminalLocale';
+  import { beginExperienceAction, experienceApplied, experienceState } from '$lib/utils/experience';
 
   interface Props {
     open: boolean;
@@ -26,6 +27,7 @@
   let terminal: import('@xterm/xterm').Terminal | null = null;
   let fitAddon: import('@xterm/addon-fit').FitAddon | null = null;
   let ws: WebSocket | null = null;
+  let disposed = false;
 
   $effect(() => {
     if (open && terminal === null) {
@@ -72,6 +74,9 @@
   async function connectWs() {
     if (!terminal || wsConnecting) return;
     wsConnecting = true;
+    const experience = beginExperienceAction('container', 'start', 'shared.stream');
+    const requestContainer = containerId, requestProject = projectId;
+    experienceState(experience, 'loading', 0);
 
     let ticket: string;
     try {
@@ -80,10 +85,12 @@
         {},
         token,
         projectId,
+        { experience },
       );
       ticket = res.ticket;
     } catch {
       wsConnecting = false;
+      experienceState(experience, 'error', 3);
       terminal?.write(`\r\n\x1b[31m${t('instances.terminal.ticketFailed')}\x1b[0m\r\n`);
       return;
     }
@@ -98,6 +105,8 @@
     socket.onopen = () => {
       wsConnecting = false;
       wsConnected = true;
+      experienceState(experience, 'ready', 1);
+      void experienceApplied(experience, {}, () => !disposed && open && ws === socket && wsConnected && requestContainer === containerId && requestProject === projectId);
     };
 
     socket.onmessage = (event) => {
@@ -108,12 +117,15 @@
       terminal?.write(`\r\n\x1b[31m${t('instances.terminal.connectionError')}\x1b[0m\r\n`);
       wsConnected = false;
       wsConnecting = false;
+      experienceState(experience, 'error', 3);
     };
 
     socket.onclose = () => {
       wsConnected = false;
       wsConnecting = false;
       terminal?.write(`\r\n\x1b[33m${t('instances.terminal.connectionClosed')}\x1b[0m\r\n`);
+      experienceState(experience, 'disabled', 2);
+      void experienceApplied(experience, {}, () => !disposed && !wsConnected && requestContainer === containerId && requestProject === projectId);
     };
 
     terminal!.onData((data) => {
@@ -124,6 +136,7 @@
   }
 
   function closeConsole() {
+    const experience = beginExperienceAction('container', 'close', 'shared.stream');
     open = false;
     ws?.close();
     ws = null;
@@ -132,9 +145,12 @@
     fitAddon = null;
     wsConnected = false;
     wsConnecting = false;
+    experienceState(experience, 'disabled', 2);
+    void experienceApplied(experience, {}, () => !disposed && !open && !wsConnected);
   }
 
   onDestroy(() => {
+    disposed = true;
     ws?.close();
     terminal?.dispose();
   });

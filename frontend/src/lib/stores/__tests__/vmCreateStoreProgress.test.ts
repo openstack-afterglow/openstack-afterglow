@@ -5,6 +5,8 @@ import { auth, authReady } from '../auth';
 import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
+import { get } from 'svelte/store';
+import { captureFlowExperience, type CapturedFlowExperience } from './experienceFlowHarness';
 
 const mocks = vi.hoisted(() => ({ apiGet: vi.fn(), fetchWithAuth: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -147,5 +149,111 @@ describe('VM deployment live timing', () => {
 		await start(true);
 		await send('completed', 1);
 		expect(goto).toHaveBeenCalledWith('/admin/instances');
+	});
+});
+
+describe('VM creation semantic experience from the real store and SSE consumer', () => {
+	let captured: CapturedFlowExperience;
+	beforeEach(() => {
+		captured = captureFlowExperience('/dashboard/compute/instances', () => get(auth));
+	});
+	afterEach(() => captured.collector.destroy());
+
+	it('retains one action across awaited capacity admission and actual progress application, without payload text', async () => {
+		await start();
+		const capacity = mocks.apiGet.mock.calls.find(call => call[3]?.experience);
+		const postContext = mocks.fetchWithAuth.mock.calls[0][4].experience;
+		expect(capacity?.[3].experience).toBe(postContext);
+		await captured.flush();
+		expect(captured.events.some(event => event.payload.state === 'ready')).toBe(false);
+		await send('server_creating', 1);
+		expect(screen.getByTestId('deploy-step').textContent).toBe('server_creating');
+		await send('completed', 2);
+		const events = await captured.flush();
+		const action = events.find(event => event.event_type === 'action.started' && event.feature === 'compute')!;
+		const linked = events.filter(event => event.action_id === action.action_id);
+		expect(linked.filter(event => event.event_type === 'action.started')).toHaveLength(1);
+		const received = linked.findIndex(event => event.event_type === 'result.received' && event.payload.stage === 'state');
+		const applied = linked.findIndex((event, index) => index > received && event.event_type === 'result.applied');
+		const committed = linked.findIndex((event, index) => index > applied && event.event_type === 'result.committed');
+		expect(received).toBeGreaterThan(-1);
+		expect(applied).toBeGreaterThan(received);
+		expect(committed).toBeGreaterThan(applied);
+		expect(linked.some(event => event.event_type === 'view.state_changed' && event.payload.state === 'ready' && event.payload.step === 9)).toBe(true);
+		expect(linked.some(event => event.event_type === 'view.exposure_changed' && event.payload.visibility === 'hidden')).toBe(true);
+		expect(JSON.stringify(events)).not.toContain('server_creating');
+		expect(JSON.stringify(events)).not.toContain('elapsed_seconds');
+		expect(JSON.stringify(events)).not.toContain('token');
+	});
+
+	it('does not turn an unterminated SSE EOF into ready, failed, or a replay', async () => {
+		await start();
+		await send('server_creating', 1);
+		controller.close();
+		await vi.advanceTimersByTimeAsync(0);
+		const events = await captured.flush();
+		expect(events.some(event => event.event_type === 'result.discarded' && event.payload.reason === 'unknown')).toBe(true);
+		expect(events.some(event => event.event_type === 'view.state_changed' && ['ready', 'error'].includes(event.payload.state ?? ''))).toBe(false);
+		expect(mocks.fetchWithAuth).toHaveBeenCalledTimes(1);
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('discards a destroyed stream as unknown native outcome without applying a late completed frame', async () => {
+		await start();
+		await send('server_creating', 1);
+		await fireEvent.click(screen.getByTestId('destroy'));
+		await captured.flush();
+		const committedBefore = captured.events.filter(event => event.event_type === 'result.committed').length;
+		await send('completed', 2);
+		const events = await captured.flush();
+		expect(events.some(event => event.event_type === 'result.discarded' && event.payload.reason === 'unmounted')).toBe(true);
+		expect(events.filter(event => event.event_type === 'result.committed')).toHaveLength(committedBefore);
+		expect(events.some(event => event.event_type === 'view.state_changed' && event.payload.state === 'ready')).toBe(false);
+		expect(mocks.fetchWithAuth).toHaveBeenCalledTimes(1);
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('keeps the existing completion flow after project change while dropping stale observations', async () => {
+		await start();
+		await captured.flush();
+		const commitsBefore = captured.events.filter(event => event.event_type === 'result.committed').length;
+		auth.update(value => ({ ...value, projectId: 'another-project' }));
+		await vi.advanceTimersByTimeAsync(0);
+		await send('server_creating', 1);
+		await send('completed', 2);
+		await captured.flush();
+		expect(goto).toHaveBeenCalledWith('/dashboard/compute/instances');
+		expect(captured.events.filter(event => event.event_type === 'result.committed')).toHaveLength(commitsBefore);
+		expect(captured.events.some(event => event.payload.state === 'ready')).toBe(false);
+		expect(mocks.fetchWithAuth).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the existing 503 error UI but does not call the ambiguous native outcome failed', async () => {
+		mocks.fetchWithAuth.mockResolvedValueOnce(new Response('gateway unavailable', { status: 503 }));
+		await start();
+		const events = await captured.flush();
+		expect(screen.getByTestId('deploying').textContent).toBe('idle');
+		expect(events.some(event => event.event_type === 'result.discarded' && event.payload.reason === 'unknown')).toBe(true);
+		expect(events.some(event => event.payload.state === 'error' || event.payload.state === 'ready')).toBe(false);
+		expect(mocks.fetchWithAuth).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects a superseded capacity recheck before POST and records only a discarded source result', async () => {
+		render(VmCreateStoreLoadWrapper);
+		await fireEvent.click(screen.getByTestId('init'));
+		await vi.advanceTimersByTimeAsync(0);
+		await fireEvent.click(screen.getByTestId('select-first-flavor'));
+		const capacity = Promise.withResolvers<unknown>();
+		mocks.apiGet.mockImplementationOnce(() => capacity.promise);
+		void fireEvent.click(screen.getByTestId('deploy'));
+		await vi.advanceTimersByTimeAsync(0);
+		await fireEvent.click(screen.getByTestId('refresh-manual'));
+		await vi.advanceTimersByTimeAsync(0);
+		capacity.resolve([flavor]);
+		await vi.advanceTimersByTimeAsync(0);
+		const events = await captured.flush();
+		expect(events.some(event => event.event_type === 'result.discarded' && event.payload.reason === 'stale')).toBe(true);
+		expect(mocks.fetchWithAuth).not.toHaveBeenCalled();
+		expect(goto).not.toHaveBeenCalled();
 	});
 });

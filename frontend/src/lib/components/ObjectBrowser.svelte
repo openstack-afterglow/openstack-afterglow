@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { derived, get } from 'svelte/store';
+	import { auth } from '$lib/stores/auth';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
+	import { siteConfig } from '$lib/config/site';
 	import { createObjectBrowserStore, provideObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
@@ -16,9 +20,11 @@
 	import NewDirModal from '$lib/components/object-storage/NewDirModal.svelte';
 	import RenameModal from '$lib/components/object-storage/RenameModal.svelte';
 	import MoveModal from '$lib/components/object-storage/MoveModal.svelte';
-	import { PageShell, Tabs } from '$lib/components/ui';
+	import { Alert, PageShell, Tabs } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { resolveExperienceMessage } from '$lib/i18n/runtime.svelte';
 	import { createArrivals } from '$lib/components/object-storage/arrivals';
+	import { beginExperienceAction } from '$lib/utils/experience';
 
 	interface Props {
 		mode: 'user' | 'admin';
@@ -28,6 +34,37 @@
 	}
 
 	let { mode, containerName, token, projectId }: Props = $props();
+	const loadFailureMessage = $derived({
+		text: t('browser.loadFailed'),
+		metadata: resolveExperienceMessage('object-storage', 'browser.loadFailed'),
+	});
+	let previousApiBase: string | undefined;
+	let backendRevision = 0;
+	const backendEpoch = derived(siteConfig, ({ runtime }) => {
+		if (runtime.api_base !== previousApiBase) {
+			previousApiBase = runtime.api_base;
+			backendRevision += 1;
+		}
+		return backendRevision;
+	});
+	const displayOwner = $derived(JSON.stringify([$authDisplayContext.key, $backendEpoch]));
+	let previousToken = untrack(() => token);
+	let previousOwner = untrack(() => displayOwner);
+	let previouslyVerified = untrack(() => token === get(auth).token && get(authDisplayContext).ready);
+	let opaqueCredentialRevision = $state(0);
+	$effect(() => {
+		const nextToken = token, nextOwner = displayOwner;
+		// Auth can publish a verified rotation before the bound token prop updates.
+		if (nextToken === previousToken && nextOwner === previousOwner) return;
+		const verified = nextToken === get(auth).token && get(authDisplayContext).ready;
+		if (nextToken !== previousToken && !(verified && previouslyVerified && nextOwner === previousOwner)) {
+			opaqueCredentialRevision = untrack(() => opaqueCredentialRevision) + 1;
+		}
+		previousToken = nextToken;
+		previousOwner = nextOwner;
+		previouslyVerified = verified;
+	});
+	const sourceOwner = $derived(JSON.stringify([displayOwner, opaqueCredentialRevision]));
 
 	let showTrash = $state(false);
 	const gridArrivals = createArrivals();
@@ -49,6 +86,7 @@
 		containerName: () => containerName,
 		token: () => token,
 		projectId: () => projectId,
+		ownerKey: () => sourceOwner,
 	});
 	provideObjectBrowser(s);
 	onDestroy(() => s.disposeThumbnails());
@@ -64,10 +102,11 @@
 	);
 
 	function onManualRefresh() {
+		const experience = beginExperienceAction('object_storage', 'refresh', 'resource.list');
 		if (mode === 'user') {
-			s.refreshAll();
-			s.loadContainerMeta();
-		} else s.load();
+			s.refreshAll({ experience });
+			s.loadContainerMeta(experience);
+		} else s.load({ experience });
 	}
 
 	function onUploadSuccess() {
@@ -144,6 +183,9 @@
 		<div id="object-files-panel" role="tabpanel" aria-labelledby="object-browser-tabs-files" tabindex="0">
 		<ObjectBrowserToolbar {ar} {onManualRefresh} />
 		<ObjectBulkActionBar {mode} />
+		{#if s.loadError}
+			<Alert tone="danger" experience={s.loadErrorExperience} experienceMessage={loadFailureMessage.metadata}>{loadFailureMessage.text}</Alert>
+		{/if}
 
 		{#if s.showUpload}
 			<UploadModal
@@ -162,6 +204,7 @@
 		<MoveModal bulk />
 		<ObjectPreviewModal />
 
+		{#if s.loading || !s.loadError || s.visibleObjectCount > 0}
 		<div class="flex flex-col gap-4 lg:flex-row lg:gap-6">
 			<div class="flex-1 min-w-0 relative">
 				{#if mode !== 'user'}
@@ -174,6 +217,7 @@
 			</div>
 			<ObjectMetaPanel />
 		</div>
+		{/if}
 		</div>
 	{/if}
 </PageShell>

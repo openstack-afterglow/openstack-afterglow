@@ -414,6 +414,12 @@ data:
     retention_seconds = {{ .Values.monitoring.infrastructureFabric.retentionSeconds }}
     # AuthPriv targets are injected by MONITORING_INFRASTRUCTURE_FABRIC__TARGETS Secret.
 
+    [experience]
+    enabled = {{ .Values.experience.enabled }}
+    anonymous_read_enabled = {{ .Values.experience.anonymousReadEnabled }}
+    detail_retention_days = {{ .Values.experience.detailRetentionDays }}
+    aggregate_retention_days = {{ .Values.experience.aggregateRetentionDays }}
+
     [traffic_analytics]
     enabled = {{ .Values.trafficAnalytics.enabled }}
     retention_days = {{ .Values.trafficAnalytics.retentionDays }}

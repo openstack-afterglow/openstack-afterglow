@@ -116,6 +116,7 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     sec = cfg.get("security", {})
     traffic = cfg.get("traffic_analytics", {})
     ceph = cfg.get("ceph", {})
+    experience = cfg.get("experience", {})
 
     # Namespace selects no domain. Route only the operator's configured origins,
     # using the same frontend/CORS/API precedence as generated Kubernetes.
@@ -590,6 +591,18 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     }
     if traffic_out:
         out["trafficAnalytics"] = traffic_out
+    experience_out = {
+        _s(k): experience[k]
+        for k in (
+            "enabled",
+            "anonymous_read_enabled",
+            "detail_retention_days",
+            "aggregate_retention_days",
+        )
+        if k in experience
+    }
+    if experience_out:
+        out["experience"] = experience_out
 
     # ── notion ─────────────────────────────────────────────────────────────
     if notion:

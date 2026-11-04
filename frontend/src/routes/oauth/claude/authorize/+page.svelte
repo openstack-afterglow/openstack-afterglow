@@ -18,6 +18,9 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
+	import { derived } from 'svelte/store';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { beginAuthExperience, observedAuthText, type AuthExperience } from '$lib/components/auth/authExperience';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -27,19 +30,28 @@
 	let deciding = $state(false);
 	let error = $state('');
 	let outcome = $state<'approved' | 'denied' | null>(null);
+	let mounted = false;
+	let ownerEpoch = 0;
+	let outcomeExperience = $state.raw<AuthExperience>();
 
-	function errorMessage(value: unknown): string {
-		return value instanceof ApiError ? value.message : t('claudeConsent.error.requestFailed');
+	function errorMessage(value: unknown, observation: AuthExperience): string {
+		if (value instanceof ApiError) { observation.unknownMessage(); return value.message; }
+		return observedAuthText(observation, 'public-entry', t)('claudeConsent.error.requestFailed');
 	}
 
 	async function decide(action: 'approve' | 'deny') {
 		if (!token || !projectId || deciding) return;
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('mcp.consent', action, () => mounted && epoch === ownerEpoch, 'mcp');
+		const text = observedAuthText(observation, 'public-entry', t);
 		if (!storeClaudeGatewayUserCode(code)) {
-			error = t('claudeConsent.error.checkCode');
+			error = text('claudeConsent.error.checkCode');
+			observation.validation('format'); observation.state('error'); void observation.applied();
 			return;
 		}
 
 		deciding = true;
+		observation.state('loading');
 		error = '';
 		try {
 			const normalizedCode = pendingClaudeGatewayUserCode();
@@ -49,26 +61,41 @@
 				{ user_code: normalizedCode, action },
 				token,
 				projectId,
+				observation.options,
 			);
 			outcome = action === 'approve' ? 'approved' : 'denied';
 			clearClaudeGatewayAuthorization();
+			// The source response confirms only this browser decision, not a remote client session.
+			outcomeExperience = observation;
+			observation.state('ready');
 		} catch (value) {
-			error = errorMessage(value);
+			error = errorMessage(value, observation);
+			observation.state('error');
 		} finally {
 			deciding = false;
+			void observation.applied();
 		}
 	}
 
 	function leave() {
 		clearClaudeGatewayAuthorization();
+		beginAuthExperience('mcp.consent', 'navigate', () => mounted, 'mcp').state('loading');
 		void goto('/dashboard/chat/settings');
 	}
 
 	onMount(() => {
+		mounted = true;
+		const observation = beginAuthExperience('mcp.consent', 'load', () => mounted, 'mcp');
+		const text = observedAuthText(observation, 'public-entry', t);
+		let previous = '';
+		const unsubscribe = derived(auth, state => sessionScopeKey(state)).subscribe(key => {
+			if (previous && previous !== key) ownerEpoch++;
+			previous = key;
+		});
 		beginClaudeGatewayAuthorization();
 		const queryCode = $page.url.searchParams.get('user_code');
 		if (queryCode && !storeClaudeGatewayUserCode(queryCode)) {
-			error = t('claudeConsent.error.invalidUrlCode');
+			error = text('claudeConsent.error.invalidUrlCode'); observation.validation('format');
 		}
 		if (queryCode) {
 			try {
@@ -79,6 +106,8 @@
 		}
 		code = pendingClaudeGatewayUserCode() ?? '';
 		ready = true;
+		observation.state(error ? 'error' : 'ready'); void observation.applied();
+		return () => { mounted = false; ownerEpoch++; unsubscribe(); };
 	});
 
 	$effect(() => {
@@ -88,6 +117,12 @@
 			return;
 		}
 		if (!projectId) void goto('/select-project');
+	});
+
+	$effect(() => {
+		if (!outcome || !outcomeExperience) return;
+		const key = outcome === 'approved' ? 'claudeConsent.approved.body' : 'claudeConsent.denied.body';
+		t(key); outcomeExperience.message('public-entry', key, outcome === 'approved' ? 'success' : 'info');
 	});
 </script>
 

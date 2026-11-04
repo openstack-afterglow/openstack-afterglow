@@ -5,6 +5,7 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import type { LoadBalancerDetail, Listener, Pool, Member, LbStatusNode } from '$lib/types/loadbalancer';
 import { isDroverLoadBalancer, loadBalancerDeleteConfirmation } from '$lib/utils/droverLoadBalancer';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 export function provisioningColor(status: string): string {
   return status === 'ERROR' ? 'text-red-400' : 'text-gray-400';
@@ -63,16 +64,17 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       .catch(e => { selectedPoolMembers = []; membersError = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed'); });
   });
 
-  async function fetchAll(force = false) {
+  async function fetchAll(force = false, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.detail')) {
     const id = opts.lbId();
     const t = opts.token();
     const pid = opts.projectId();
+    experienceState(experience, 'loading');
     loading = true;
     try {
       const [lbData, listenersData, poolsData] = await Promise.all([
-        api.get<LoadBalancerDetail>(`${readBase()}/${id}`, t, pid, { refresh: force }),
-        api.get<Listener[]>(`${readBase()}/${id}/listeners`, t, pid, { refresh: force }),
-        api.get<Pool[]>(`${readBase()}/${id}/pools`, t, pid, { refresh: force }),
+        api.withExperience(experience).get<LoadBalancerDetail>(`${readBase()}/${id}`, t, pid, { refresh: force }),
+        api.withExperience(experience).get<Listener[]>(`${readBase()}/${id}/listeners`, t, pid, { refresh: force }),
+        api.withExperience(experience).get<Pool[]>(`${readBase()}/${id}/pools`, t, pid, { refresh: force }),
       ]);
       lb = lbData;
       listeners = listenersData;
@@ -80,15 +82,19 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       error = '';
       statusTree = null;
       if (lbData.status === 'ERROR') {
-        await api
+        await api.withExperience(experience)
           .get<LbStatusNode>(`${readBase()}/${id}/status`, t, pid, { refresh: force })
           .then((tree) => {
             statusTree = tree;
           })
           .catch(() => { statusTree = null; });
       }
+      if (experience?.action !== 'create') experienceState(experience, lb ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience);
     } catch (e) {
       error = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed');
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       loading = false;
     }
@@ -98,8 +104,9 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!canMutate) return false;
     if (form) listenerForm = { ...form };
     saving = true;
+    const experience = beginExperienceAction('network', 'create', 'resource.detail');
     try {
-      await api.post(
+      await api.withExperience(experience).post(
         `/api/v1/loadbalancers/${opts.lbId()}/listeners`,
         listenerForm,
         opts.token(),
@@ -107,10 +114,12 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       showAddListener = false;
       listenerForm = { protocol: 'HTTP', protocol_port: 80, name: '' };
-      await fetchAll();
+      await fetchAll(false, experience);
       return true;
     } catch (e) {
       toast.error(tr('lb.errors.createListenerFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
       return false;
     } finally {
       saving = false;
@@ -121,15 +130,18 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!canMutate) return;
     if (!(await confirmDialog(tr('lb.confirm.deleteListener')))) return;
     saving = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.detail');
     try {
-      await api.delete(
+      await api.withExperience(experience).delete(
         `/api/v1/loadbalancers/${opts.lbId()}/listeners/${listenerId}`,
         opts.token(),
         opts.projectId(),
       );
-      await fetchAll();
+      await fetchAll(false, experience);
     } catch (e) {
       toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       saving = false;
     }
@@ -144,8 +156,9 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!canMutate) return false;
     if (form) poolForm = { ...form };
     saving = true;
+    const experience = beginExperienceAction('network', 'create', 'resource.detail');
     try {
-      await api.post(
+      await api.withExperience(experience).post(
         `/api/v1/loadbalancers/${opts.lbId()}/pools`,
         poolForm,
         opts.token(),
@@ -153,10 +166,12 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       showAddPool = false;
       poolForm = { protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' };
-      await fetchAll();
+      await fetchAll(false, experience);
       return true;
     } catch (e) {
       toast.error(tr('lb.errors.createPoolFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
       return false;
     } finally {
       saving = false;
@@ -167,16 +182,19 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!canMutate) return;
     if (!(await confirmDialog(tr('lb.confirm.deletePool')))) return;
     saving = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.detail');
     try {
-      await api.delete(
+      await api.withExperience(experience).delete(
         `/api/v1/loadbalancers/${opts.lbId()}/pools/${poolId}`,
         opts.token(),
         opts.projectId(),
       );
       if (selectedPoolId === poolId) selectedPoolId = null;
-      await fetchAll();
+      await fetchAll(false, experience);
     } catch (e) {
       toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       saving = false;
     }
@@ -196,8 +214,9 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!selectedPoolId) return false;
     if (form) memberForm = { ...form };
     saving = true;
+    const experience = beginExperienceAction('network', 'attach', 'resource.detail');
     try {
-      await api.post(
+      await api.withExperience(experience).post(
         `/api/v1/loadbalancers/${opts.lbId()}/pools/${selectedPoolId}/members`,
         memberForm,
         opts.token(),
@@ -205,14 +224,18 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       showAddMember = false;
       memberForm = { address: '', protocol_port: 80, weight: 1, name: '' };
-      selectedPoolMembers = await api.get<Member[]>(
+      selectedPoolMembers = await api.withExperience(experience).get<Member[]>(
         `${readBase()}/${opts.lbId()}/pools/${selectedPoolId}/members`,
         opts.token(),
         opts.projectId(),
       );
+      experienceState(experience, selectedPoolMembers.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience);
       return true;
     } catch (e) {
       toast.error(tr('lb.errors.addMemberFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
       return false;
     } finally {
       saving = false;
@@ -223,15 +246,20 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!canMutate) return;
     if (!selectedPoolId || !(await confirmDialog(tr('lb.confirm.removeMember')))) return;
     saving = true;
+    const experience = beginExperienceAction('network', 'detach', 'resource.detail');
     try {
-      await api.delete(
+      await api.withExperience(experience).delete(
         `/api/v1/loadbalancers/${opts.lbId()}/pools/${selectedPoolId}/members/${memberId}`,
         opts.token(),
         opts.projectId(),
       );
       selectedPoolMembers = selectedPoolMembers.filter((m) => m.id !== memberId);
+      experienceState(experience, selectedPoolMembers.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience);
     } catch (e) {
       toast.error(tr('lb.errors.removeFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       saving = false;
     }
@@ -249,11 +277,14 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     if (!(await confirmDialog(message)))
       return;
     saving = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.detail');
     try {
-      await api.delete(`/api/v1/loadbalancers/${id}`, opts.token(), opts.projectId());
+      await api.withExperience(experience).delete(`/api/v1/loadbalancers/${id}`, opts.token(), opts.projectId());
       opts.onDeleted?.();
     } catch (e) {
       toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
       saving = false;
     }
   }

@@ -5,6 +5,11 @@ import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/public-entry';
 import { t as commonT } from '$lib/i18n/ns/common';
 import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
+import type * as ExperienceModule from '$lib/utils/experience';
+import { ApiError } from '$lib/api/client';
+const experience = vi.hoisted(() => ({
+	begin: vi.fn(), applied: vi.fn(), discarded: vi.fn(), message: vi.fn(), state: vi.fn(), record: vi.fn(),
+}));
 
 const { api, auth, projectSwitching, goto, page } = vi.hoisted(() => {
 	function store<T>(initial: T) {
@@ -35,6 +40,15 @@ vi.mock('$app/navigation', () => ({ goto }));
 vi.mock('$app/stores', () => ({ page }));
 vi.mock('$lib/api/client', () => ({ api, ApiError: class ApiError extends Error { constructor(_status: number, detail: string) { super(detail); } } }));
 vi.mock('$lib/stores/auth', () => ({ auth, projectSwitching }));
+vi.mock('$lib/utils/experience', async importOriginal => {
+	const actual = await importOriginal<typeof ExperienceModule>();
+	return {
+		...actual, beginExperienceAction: experience.begin, experienceApplied: experience.applied,
+		beginExperienceLoad: experience.begin,
+		experienceDiscarded: experience.discarded, experienceMessage: experience.message,
+		experienceState: experience.state, recordExperience: experience.record,
+	};
+});
 
 import Page from '../+page.svelte';
 
@@ -127,6 +141,7 @@ function transition(kind: Transition) {
 describe('MCP OAuth consent route', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		experience.applied.mockResolvedValue(undefined);
 		initLocale('ko');
 		sessionStorage.clear();
 		auth.set(actor);
@@ -621,4 +636,63 @@ describe('MCP OAuth consent route', () => {
 		expect(assign).not.toHaveBeenCalled();
 		expect(pendingMcpConsentTicket()).toBe(ticket);
 	});
+});
+
+describe('consent semantic source boundaries', () => {
+	beforeEach(() => {
+		vi.resetAllMocks(); initLocale('en'); sessionStorage.clear();
+		auth.set(actor); projectSwitching.set(false);
+		page.set({ url: new URL('http://localhost/oauth/mcp/authorize'), data: {} });
+		experience.begin.mockImplementation((_feature, action) => Object.freeze({ segmentId: 'test-segment', actionId: `${action}-${experience.begin.mock.calls.length}` }));
+		experience.applied.mockResolvedValue(undefined);
+		defaultGets(['mcp:read', 'mcp:write']);
+	});
+	afterEach(() => { cleanup(); sessionStorage.clear(); initLocale('ko'); });
+
+	it('records finite access and selection choices without client, project, redirect or ticket data', async () => {
+		setTicket(ticket); render(Page); await loaded();
+		await chooseAccess('read'); await chooseScope('all');
+		await chooseScope('selected'); await fireEvent.click(checkbox('project-a'));
+		const payloads = experience.record.mock.calls.filter(([, type]) => type === 'view.state_changed').map(([, , payload]) => payload);
+		expect(payloads).toContainEqual({ state: 'ready', step: 1, access: 'read', selection: 'all' });
+		expect(payloads).toContainEqual({ state: 'ready', step: 1, access: 'none', selection: 'none' });
+		const serialized = JSON.stringify(payloads);
+		for (const forbidden of [ticket, actor.projectId, details.client_id, details.client_name, details.redirect_uri, projects[0].name]) expect(serialized).not.toContain(forbidden);
+		expect(api.get.mock.calls[0][3]).toHaveProperty('experience');
+	});
+
+	it('labels an unknown displayed server error unavailable rather than attributing the fallback template', async () => {
+		api.get.mockRejectedValueOnce(new ApiError(503, 'private-server-detail'));
+		setTicket(ticket); render(Page);
+		await screen.findByText('private-server-detail');
+		expect(experience.message).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ key: null, restoration: 'unavailable', locale: 'unknown' }));
+		expect(JSON.stringify(experience.message.mock.calls)).not.toContain('private-server-detail');
+		expect(experience.message.mock.calls.some(([, metadata]) => metadata.key === 'public-entry:mcpConsent.error.loadFailed')).toBe(false);
+	});
+
+	it('discards an aborted old decision after owner ABA without an old DOM application or diagnostic re-execution', async () => {
+		const pending = deferred<{ redirect_uri: string }>(); api.post.mockReturnValue(pending.promise);
+		setTicket(ticket); render(Page); await loaded();
+		await fireEvent.click(approveButton());
+		const decisionContext = api.post.mock.calls[0][4].experience;
+		transition('aba');
+		pending.resolve({ redirect_uri: details.redirect_uri });
+		await waitFor(() => expect(experience.discarded).toHaveBeenCalledWith(decisionContext, 'aborted'));
+		expect(experience.applied.mock.calls.some(([context]) => context === decisionContext)).toBe(false);
+		expect(api.post).toHaveBeenCalledOnce();
+	});
+
+it('emits one applied error for an unconfirmed consent decision, never a ready terminal or a replay', async () => {
+	experience.begin.mockImplementation((_feature, action) => Object.freeze({ segmentId: 'segment', actionId: `${action}-${experience.begin.mock.calls.length}` }));
+	experience.applied.mockResolvedValue(undefined);
+	defaultGets(['mcp:read'], projects, { ongoing_supported: true });
+	api.post.mockResolvedValue({ redirect_uri: details.redirect_uri, effective_ongoing: false });
+	setTicket(ticket); render(Page); await loaded();
+	await fireEvent.click(approveButton());
+	const context = api.post.mock.calls[0][4].experience;
+	await screen.findByText(t('mcpConsent.error.durationUnconfirmed'));
+	expect(experience.applied.mock.calls.filter(([candidate]) => candidate === context)).toHaveLength(1);
+	expect(experience.state.mock.calls.filter(([candidate]) => candidate === context).map(([, state]) => state)).toEqual(['loading', 'error']);
+	expect(api.post).toHaveBeenCalledOnce();
+});
 });

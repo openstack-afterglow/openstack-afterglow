@@ -143,11 +143,26 @@ async def test_thumbnail_rejects_oversized_object_without_reading_it(client, moc
 
 @pytest.mark.asyncio
 async def test_thumbnail_reports_missing_object(client, mock_conn):
+    from openstack.exceptions import HttpException
+
     swift = MagicMock()
-    swift.get_object_metadata.side_effect = Exception("not found")
+    swift.get_object_metadata.side_effect = HttpException("not found", http_status=404)
     with patch("app.services.swift", swift):
         resp = await client.get("/api/v1/object-storage/test/objects/ghost.png/thumbnail")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_reports_outage_without_inventing_absence(client, mock_conn):
+    """Swift 장애 시 404가 아닌 살균된 503."""
+    from openstack.exceptions import HttpException
+
+    swift = MagicMock()
+    swift.get_object_metadata.side_effect = HttpException("PRIVATE_NATIVE_THUMBNAIL_BODY", http_status=503)
+    with patch("app.services.swift", swift):
+        resp = await client.get("/api/v1/object-storage/test/objects/ghost.png/thumbnail")
+    assert resp.status_code == 503
+    assert "PRIVATE_NATIVE_THUMBNAIL_BODY" not in resp.text
 
 
 @pytest.mark.asyncio

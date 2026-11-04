@@ -7,7 +7,7 @@ import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import type { UsageScheduleInfo } from '$lib/types/instanceUsage';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get }, ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } } }));
+vi.mock('$lib/api/client', () => ({ api: { get, withExperience: () => ({ get }) }, ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } } }));
 vi.mock('$lib/stores/auth', async () => {
 	// The hoisted auth mock factory must load its store dependency before static imports initialize.
 	const { writable } = await import('svelte/store');

@@ -1,6 +1,14 @@
 import { t } from '$lib/i18n/ns/chat-diagnostics';
 import type { ChatPart, ChatRunEvent, ChatRunKind, ChatRunStatus, ContextUpdatedPayload, RunStage, ToolActivitySource, UsageComponent } from './chatContracts';
 
+/** Only source-owned durable terminal statuses settle a run, never stream HTTP admission. */
+export function chatRunExperienceState(status: ChatRunStatus): 'loading' | 'ready' | 'error' | 'disabled' {
+	if (status === 'completed') return 'ready';
+	if (status === 'failed') return 'error';
+	if (status === 'canceled') return 'disabled';
+	return 'loading';
+}
+
 export interface RunToolView {
 	callId: string;
 	name: string;

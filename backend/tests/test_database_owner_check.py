@@ -98,3 +98,42 @@ async def test_restore_from_other_project_backup_returns_404(client, mock_conn):
         json={"backup_id": "bk-foreign", "name": "n", "flavor_id": "f", "volume_size": 1},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404, 503, 504])
+@pytest.mark.parametrize("suffix", ["", "/databases", "/users", "/backups", "/auto-backup"])
+async def test_instance_owner_read_distinguishes_unavailable_from_absent(client, mock_conn, status, suffix):
+    from openstack.exceptions import HttpException
+
+    mock_conn.database.get_instance.side_effect = HttpException(
+        "PRIVATE_PROVIDER_BODY_CANARY",
+        http_status=status,
+    )
+    with patch("app.services.trove.get_instance") as readback:
+        resp = await client.get(f"/api/v1/database-instances/inst-unavailable{suffix}")
+    assert resp.status_code == (404 if status in (401, 403, 404) else 503)
+    assert "PRIVATE_PROVIDER_BODY_CANARY" not in resp.text
+    readback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_instance_owner_transport_failure_is_unavailable(client, mock_conn):
+    mock_conn.database.get_instance.side_effect = ConnectionError("PRIVATE_TRANSPORT_CANARY")
+    resp = await client.get("/api/v1/database-instances/inst-unavailable")
+    assert resp.status_code == 503
+    assert "PRIVATE_TRANSPORT_CANARY" not in resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [404, 503])
+async def test_instance_readback_distinguishes_unavailable_after_owner_check(client, mock_conn, status):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.services.trove.get_instance",
+        side_effect=HttpException("PRIVATE_READBACK_CANARY", http_status=status),
+    ):
+        resp = await client.get("/api/v1/database-instances/inst-owned?refresh=true")
+    assert resp.status_code == status
+    assert "PRIVATE_READBACK_CANARY" not in resp.text

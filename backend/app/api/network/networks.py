@@ -32,7 +32,13 @@ from app.models.storage import (
 from app.rate_limit import limiter
 from app.services import neutron, nova, trove
 from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_static
-from app.services.octavia import get_lb_stats, get_topology_lbs, lb_rate_from_snapshot, list_load_balancers
+from app.services.octavia import (
+    TopologyLoadBalancersUnavailable,
+    get_lb_stats,
+    get_topology_lbs,
+    lb_rate_from_snapshot,
+    list_load_balancers,
+)
 from app.services.parallel import run_parallel
 from app.services.prom_query import (
     PromBadQuery,
@@ -522,6 +528,9 @@ async def get_topology(
         )
     except HTTPException:
         raise
+    except TopologyLoadBalancersUnavailable as exc:
+        _logger.warning("Octavia topology is unavailable", exc_info=True)
+        raise HTTPException(503, "topology_load_balancers_unavailable") from exc
     except Exception:
         _logger.exception("토폴로지 조회 실패")
         raise HTTPException(status_code=500, detail="토폴로지 조회 실패")

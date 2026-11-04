@@ -85,11 +85,13 @@ from app.services.cache import (
     ttl_static,
 )
 from app.services.cache import invalidation as cache_invalidation
+from app.services.experience_context import capture_experience_context, emit_experience, emit_experience_cleanup
 from app.services.instance_password import PASSWORD_PROVISIONING_ERROR, preflight_password
 from app.services.resource_policies import ResourcePolicyValidationError
 from app.services.resource_policy_store import ResourcePolicyStorageUnavailable
 from app.services.ssh_access import github_ssh_metadata
 from app.services.volume_protection import register_volume_protection, rollback_volume_protection
+from app.services.work_dispatcher import drain_task, run_native
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +331,14 @@ async def get_instance(
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     # admin 외에는 본인 프로젝트의 인스턴스만 조회 가능 (RBAC 외 추가 방어선)
     assert_instance_owner(server, conn, token_info)
+    reference = server.id if server.project_id == pid else None
+    await emit_experience(
+        capture_experience_context(feature="compute", action="inspect", component="resource.detail"),
+        "stage.completed",
+        stage="readback",
+        status="succeeded" if server.status == "ACTIVE" else "observed",
+        resource_ref=reference,
+    )
     try:
         return await cached_call(
             f"afterglow:nova:{pid}:instance:{instance_id}",
@@ -525,6 +535,7 @@ async def create_instance(
     token_info: dict = Depends(require_project_write),
 ):
     """동기식 인스턴스 생성 (기존 방식)."""
+    experience = capture_experience_context(feature="compute", action="create", component="compute.create")
     settings = get_settings()
     if req.admin_pass is None:
         req = await _verify_github_ssh(req, token_info=token_info)
@@ -532,7 +543,7 @@ async def create_instance(
     from app.services.instance_names import ensure_unique_instance_name
 
     try:
-        req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
+        req = req.model_copy(update={"name": await run_native(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -544,10 +555,10 @@ async def create_instance(
     )
     from app.services.gpu_quota import GpuQuotaDenied, GpuQuotaUnavailable
 
-    password_plan = await asyncio.to_thread(preflight_password, conn, req)
+    password_plan = await run_native(preflight_password, conn, req)
     if req.admin_pass is not None:
         req = await _verify_github_ssh(req, token_info=token_info)
-    flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    flavors = await run_native(nova.list_flavors, conn)
     flavor = next((f for f in flavors if f.id == req.flavor_id), None)
     if flavor is None:
         raise HTTPException(status_code=400, detail="Invalid flavor ID")
@@ -576,6 +587,7 @@ async def create_instance(
     protection_registration_id: str | None = None
 
     try:
+        await emit_experience(experience, "stage.started", stage="native", status="running")
         data_mounts_info: list[dict] = []
         if req.data_mounts:
             data_mounts_info = await _prepare_data_mounts(
@@ -586,7 +598,7 @@ async def create_instance(
         # 2. Cinder: 부트 볼륨 생성 또는 기존 볼륨 검증
         # ------------------------------------------------------------------
         if req.boot_volume_id:
-            boot_vol = await asyncio.to_thread(cinder.get_volume, conn, req.boot_volume_id)
+            boot_vol = await run_native(cinder.get_volume, conn, req.boot_volume_id, experience=experience)
             if boot_vol.status != "available":
                 raise HTTPException(400, f"부팅 볼륨 상태가 'available'이 아닙니다: {boot_vol.status}")
             if not boot_vol.bootable:
@@ -594,20 +606,22 @@ async def create_instance(
             boot_volume_id = req.boot_volume_id
             boot_volume_was_provided = True
         else:
-            boot_vol = await asyncio.to_thread(
+            boot_vol = await run_native(
                 cinder.create_volume_from_image,
                 conn,
                 f"{req.name}-boot",
                 req.image_id,
                 req.boot_volume_size_gb or settings.boot_volume_size_gb,
                 volume_availability_zone,
+                experience=experience,
             )
             boot_volume_id = boot_vol.id
-            await asyncio.to_thread(
+            await run_native(
                 cinder.rename_volume,
                 conn,
                 boot_volume_id,
                 f"{req.name}-boot-{boot_volume_id[:8]}",
+                experience=experience,
             )
 
         # ------------------------------------------------------------------
@@ -649,7 +663,7 @@ async def create_instance(
             meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
         instance_usage.require_creation_schedule_current(meta)
-        server = await asyncio.to_thread(
+        server = await run_native(
             nova.create_server,
             conn,
             name=req.name,
@@ -666,19 +680,20 @@ async def create_instance(
                 False if boot_volume_was_provided else req.delete_boot_volume_on_termination
             ),
             security_groups=req.security_groups if req.security_groups else None,
+            experience=experience,
         )
         server_id = server.id
 
         # Floating IP 자동 생성 (tenant 네트워크 선택 시)
         if req.network_id:
-            all_nets = await asyncio.to_thread(neutron.list_networks, conn)
+            all_nets = await run_native(neutron.list_networks, conn, experience=experience)
             selected_net = next((n for n in all_nets if n.id == req.network_id), None)
             if selected_net and not selected_net.is_external:
                 ext_net = next((n for n in all_nets if n.is_external), None)
                 if ext_net:
-                    fip = await asyncio.to_thread(neutron.create_floating_ip, conn, ext_net.id)
+                    fip = await run_native(neutron.create_floating_ip, conn, ext_net.id, experience=experience)
                     floating_ip_id = fip.id
-                    await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
+                    await run_native(neutron.associate_floating_ip, conn, fip.id, server_id, experience=experience)
 
         if req.auto_snapshot or req.auto_backup:
             protection_registration_id = secrets.token_hex(24)
@@ -705,9 +720,11 @@ async def create_instance(
         await invalidate(f"afterglow:nova:{project_id}:instances")
         await invalidate(f"afterglow:nova:{project_id}:servers")
         await cache_invalidation.invalidate_mutation_count("nova", project_id)
+        await emit_experience(experience, "stage.completed", stage="native", status="accepted", resource_ref=server.id)
         return server
 
     except Exception as e:
+        await emit_experience(experience, "stage.completed", stage="native", status="outcome_unknown", reason="unknown")
         if isinstance(e, HTTPException) and req.admin_pass is None and not boot_volume_id and not created_access_ids:
             raise
         error_detail = str(e)
@@ -721,7 +738,7 @@ async def create_instance(
 
         if server_id:
             try:
-                srv = conn.compute.get_server(server_id)
+                srv = await run_native(conn.compute.get_server, server_id, experience=experience)
                 raw_fault = getattr(srv, "fault", None)
                 if raw_fault:
                     fault_msg = (
@@ -753,6 +770,8 @@ async def create_instance(
             floating_ip_id,
             safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
         )
+        # This observes the rollback return, not verified absence of every resource.
+        await emit_experience(experience, "stage.completed", stage="cleanup", status="observed", resource_ref=server_id)
         is_admin = token_info.get("is_system_admin", False)
         detail = (
             PASSWORD_PROVISIONING_ERROR
@@ -779,7 +798,11 @@ async def create_instance(
         ) from None
     finally:
         try:
-            await release_admission(admission)
+            release = asyncio.create_task(release_admission(admission))
+            interrupted = await drain_task(release)
+            release.result()
+            if interrupted:
+                raise asyncio.CancelledError
         except Exception:
             logger.warning("GPU quota reservation release failed", exc_info=True)
 
@@ -791,13 +814,14 @@ async def create_instance_async(
     token_info: dict = Depends(require_project_write),
 ):
     """SSE로 진행 상황을 스트리밍하는 비동기 인스턴스 생성."""
+    experience = capture_experience_context(feature="compute", action="create", component="compute.create")
     settings = get_settings()
     if req.admin_pass is None:
         req = await _verify_github_ssh(req, token_info=token_info)
     from app.services.instance_names import ensure_unique_instance_name
 
     try:
-        req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
+        req = req.model_copy(update={"name": await run_native(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -809,10 +833,10 @@ async def create_instance_async(
     )
     from app.services.gpu_quota import GpuQuotaDenied, GpuQuotaUnavailable
 
-    password_plan = await asyncio.to_thread(preflight_password, conn, req)
+    password_plan = await run_native(preflight_password, conn, req)
     if req.admin_pass is not None:
         req = await _verify_github_ssh(req, token_info=token_info)
-    sse_flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    sse_flavors = await run_native(nova.list_flavors, conn)
     sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
     if sse_flavor is None:
         raise HTTPException(status_code=400, detail="Invalid flavor ID")
@@ -851,6 +875,7 @@ async def create_instance_async(
             return f"data: {msg.model_dump_json()}\n\n"
 
         try:
+            await emit_experience(experience, "stage.started", stage="native", status="running")
             data_mounts_info: list[dict] = []
             userdata = None
 
@@ -864,7 +889,7 @@ async def create_instance_async(
             # Step 2: Boot volume (20-45%)
             if req.boot_volume_id:
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 20, "기존 부팅 볼륨 검증 중...")
-                boot_vol = await asyncio.to_thread(cinder.get_volume, conn, req.boot_volume_id)
+                boot_vol = await run_native(cinder.get_volume, conn, req.boot_volume_id, experience=experience)
                 if boot_vol.status != "available":
                     raise HTTPException(400, f"부팅 볼륨 상태가 'available'이 아닙니다: {boot_vol.status}")
                 if not boot_vol.bootable:
@@ -874,20 +899,22 @@ async def create_instance_async(
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부팅 볼륨 검증 완료")
             else:
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 20, "부트 볼륨 생성 중...")
-                boot_vol = await asyncio.to_thread(
+                boot_vol = await run_native(
                     cinder.create_volume_from_image,
                     conn,
                     name=f"{req.name}-boot",
                     image_id=req.image_id,
                     size_gb=req.boot_volume_size_gb or settings.boot_volume_size_gb,
                     availability_zone=volume_availability_zone,
+                    experience=experience,
                 )
                 boot_volume_id = boot_vol.id
-                await asyncio.to_thread(
+                await run_native(
                     cinder.rename_volume,
                     conn,
                     boot_volume_id,
                     f"{req.name}-boot-{boot_volume_id[:8]}",
+                    experience=experience,
                 )
                 yield send_progress(ProgressStep.BOOT_VOLUME_CREATING, 45, "부트 볼륨 생성 완료")
 
@@ -927,7 +954,7 @@ async def create_instance_async(
                 meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
             instance_usage.require_creation_schedule_current(meta)
-            server = await asyncio.to_thread(
+            server = await run_native(
                 nova.create_server,
                 conn,
                 name=req.name,
@@ -944,6 +971,7 @@ async def create_instance_async(
                     False if boot_volume_was_provided else req.delete_boot_volume_on_termination
                 ),
                 security_groups=_sse_effective_sgs,
+                experience=experience,
             )
             server_id = server.id
             yield send_progress(ProgressStep.SERVER_CREATING, 95, "Nova 서버 생성 완료")
@@ -956,21 +984,24 @@ async def create_instance_async(
                 nv_size = nv.size_gb
                 if not nv_name:
                     continue
-                new_vol = await asyncio.to_thread(cinder.create_empty_volume, conn, nv_name, nv_size)
+                new_vol = await run_native(cinder.create_empty_volume, conn, nv_name, nv_size, experience=experience)
                 created_volume_ids.append(new_vol.id)
-                await asyncio.to_thread(
+                await run_native(
                     conn.compute.create_volume_attachment,
                     server_id,
                     volume_id=new_vol.id,
+                    experience=experience,
                 )
             # 추가 볼륨 연결
             for vol_id in req.additional_volume_ids or []:
-                await asyncio.to_thread(conn.compute.create_volume_attachment, server_id, volume_id=vol_id)
+                await run_native(
+                    conn.compute.create_volume_attachment, server_id, volume_id=vol_id, experience=experience
+                )
             yield send_progress(ProgressStep.ATTACHING_VOLUME, 100, "볼륨 연결 완료")
 
             # Step 7: Floating IP (tenant 네트워크 선택 시)
             if req.network_id:
-                all_nets = await asyncio.to_thread(neutron.list_networks, conn)
+                all_nets = await run_native(neutron.list_networks, conn, experience=experience)
                 selected_net = next((n for n in all_nets if n.id == req.network_id), None)
                 if selected_net and not selected_net.is_external:
                     ext_net = next((n for n in all_nets if n.is_external), None)
@@ -980,9 +1011,9 @@ async def create_instance_async(
                             100,
                             "Floating IP 할당 중...",
                         )
-                        fip = await asyncio.to_thread(neutron.create_floating_ip, conn, ext_net.id)
+                        fip = await run_native(neutron.create_floating_ip, conn, ext_net.id, experience=experience)
                         floating_ip_id = fip.id
-                        await asyncio.to_thread(neutron.associate_floating_ip, conn, fip.id, server_id)
+                        await run_native(neutron.associate_floating_ip, conn, fip.id, server_id, experience=experience)
                         yield send_progress(
                             ProgressStep.FLOATING_IP_CREATING,
                             100,
@@ -1016,9 +1047,15 @@ async def create_instance_async(
             await invalidate(f"afterglow:nova:{_pid}:instances")
             await invalidate(f"afterglow:nova:{_pid}:servers")
             await cache_invalidation.invalidate_mutation_count("nova", _pid)
+            await emit_experience(
+                experience, "stage.completed", stage="native", status="accepted", resource_ref=server_id
+            )
             yield send_progress(ProgressStep.COMPLETED, 100, "인스턴스 생성 완료", instance_id=server_id)
 
         except Exception as e:
+            await emit_experience(
+                experience, "stage.completed", stage="native", status="outcome_unknown", reason="unknown"
+            )
             error_detail = str(e)
 
             # wait_for_server 실패 시 server_id가 미설정 — 예외 메시지에서 추출
@@ -1032,7 +1069,7 @@ async def create_instance_async(
             # ERROR 상태 서버의 fault 메시지를 우선 사용
             if server_id:
                 try:
-                    srv = conn.compute.get_server(server_id)
+                    srv = await run_native(conn.compute.get_server, server_id, experience=experience)
                     raw_fault = getattr(srv, "fault", None)
                     if raw_fault:
                         fault_msg = (
@@ -1078,6 +1115,9 @@ async def create_instance_async(
                 safe_error_message=PASSWORD_PROVISIONING_ERROR if req.admin_pass is not None else None,
                 additional_volume_ids=created_volume_ids,
             )
+            await emit_experience(
+                experience, "stage.completed", stage="cleanup", status="observed", resource_ref=server_id
+            )
 
             yield send_progress(
                 ProgressStep.FAILED,
@@ -1094,9 +1134,19 @@ async def create_instance_async(
                 resource_name=req.name,
                 error_message=error_detail[:500],
             )
+        except (asyncio.CancelledError, GeneratorExit):
+            # Owned SDK calls have drained; their provider outcome may remain unknown.
+            await emit_experience_cleanup(
+                experience, "stage.completed", stage="native", status="outcome_unknown", reason="aborted"
+            )
+            raise
         finally:
             try:
-                await release_admission(admission)
+                release = asyncio.create_task(release_admission(admission))
+                interrupted = await drain_task(release)
+                release.result()
+                if interrupted:
+                    raise asyncio.CancelledError
             except Exception:
                 logger.warning("GPU quota reservation release failed", exc_info=True)
 
@@ -1870,7 +1920,7 @@ async def _prepare_data_mounts(
     result = []
 
     for spec in data_mounts:
-        share = await asyncio.to_thread(manila.get_file_storage, conn, spec.file_storage_id)
+        share = await run_native(manila.get_file_storage, conn, spec.file_storage_id)
 
         share_project = share.project_id or ""
         if share_project != project_id and not share.is_public:
@@ -1894,7 +1944,7 @@ async def _prepare_data_mounts(
                         detail="NFS 파일 스토리지 마운트를 위해 network_id가 필요합니다.",
                     )
                 try:
-                    project_cidrs = await asyncio.to_thread(_resolve_project_subnet_cidrs, conn, network_id)
+                    project_cidrs = await run_native(_resolve_project_subnet_cidrs, conn, network_id)
                 except Exception as e:
                     raise HTTPException(status_code=503, detail=f"Subnet CIDR 조회 실패: {e}")
             if not project_cidrs:
@@ -1903,7 +1953,7 @@ async def _prepare_data_mounts(
             nfs_base = "hard,intr,noatime,nosuid,nodev,_netdev,timeo=10,retrans=3"
             mount_options = f"ro,{nfs_base}" if spec.read_only else nfs_base
             for cidr in project_cidrs:
-                rule = await asyncio.to_thread(
+                rule = await run_native(
                     manila.ensure_nfs_access_rule,
                     conn,
                     share.id,
@@ -1916,7 +1966,7 @@ async def _prepare_data_mounts(
 
             nfs_export = share.nfs_export_location
             if not nfs_export:
-                locs = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
+                locs = await run_native(manila.get_export_locations, conn, share.id)
                 nfs_export = locs[0] if locs else ""
 
             result.append(
@@ -1935,10 +1985,10 @@ async def _prepare_data_mounts(
 
         else:
             cephx_id = f"data-{access_level}-{instance_name}-{share.id[:8]}"
-            rule = await asyncio.to_thread(manila.create_access_rule, conn, share.id, cephx_id, access_level)
+            rule = await run_native(manila.create_access_rule, conn, share.id, cephx_id, access_level)
             created_access_ids.append((share.id, rule["access_id"]))
 
-            locs = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
+            locs = await run_native(manila.get_export_locations, conn, share.id)
             if not locs:
                 raise HTTPException(
                     status_code=503,

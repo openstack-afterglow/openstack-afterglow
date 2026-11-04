@@ -1118,6 +1118,16 @@ async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None 
             },
         }
     resource_snapshot["build_token"] = uuid.uuid4().hex
+    from app.services.experience_context import (
+        bind_experience_operation,
+        capture_experience_context,
+        emit_experience,
+        experience_owner_receipt,
+    )
+
+    experience_owner = experience_owner_receipt()
+    if experience_owner is not None:
+        resource_snapshot["experience_owner"] = experience_owner
     async with factory() as session:
         if "openstack.service_project" in resource_snapshot:
             await lock_service_project_admission(session, resource_snapshot["openstack.service_project"]["id"])
@@ -1148,6 +1158,11 @@ async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None 
         await session.commit()
         await session.refresh(job)
         data = _job_to_dict(job)
+    context = capture_experience_context(feature="palimpsest", action="create", component="page")
+    await bind_experience_operation(context, "dockerfile_import", job.id)
+    await emit_experience(
+        context, "operation.accepted", stage="build.admission", status="accepted", operation_id=str(job.id)
+    )
     return data
 
 

@@ -2,6 +2,7 @@
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { beginExperienceAction, experienceApplied } from '$lib/utils/experience';
 
 	const s = useInstanceDetailController();
 
@@ -17,7 +18,9 @@
 	async function toggleLog() {
 		showLog = !showLog;
 		s.consolePollAr.active = showLog;
-		if (showLog) await s.loadConsoleLog(s.logFull);
+		const experience = beginExperienceAction('compute', showLog ? 'inspect' : 'close', 'resource.detail');
+		if (showLog) await s.loadConsoleLog(s.logFull, experience);
+		else if (experience) void experienceApplied(experience);
 	}
 </script>
 
@@ -43,7 +46,7 @@
 					{t('console.newWindow')}
 				</a>
 				<button
-					onclick={() => s.loadConsoleLog(s.logFull)}
+					onclick={() => s.loadConsoleLog(s.logFull, beginExperienceAction('compute', 'refresh', 'resource.detail'))}
 					disabled={s.logLoading}
 					class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors disabled:text-ink-3"
 				>

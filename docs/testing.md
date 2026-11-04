@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## MCP VM 생성 필수 선택 (2026-11-04, source/local)
+
+- 이미지·flavor·네트워크·부팅 볼륨 크기·본인 SSH 키·1개 이상의 대상 프로젝트 보안그룹을 명시하도록 계약을 변경했다. 원본 Nova/Neutron 응답의 키 이름·소유자·유형, 그룹 ID·소유자, 활성 port security를 확인하고 admission 이후 다시 검사한다. 기존 VM·운영 권한을 변경하지 않았다.
+- `test_mcp_compute.py`, `test_mcp_registry.py`, `test_mcp_project_runtime.py`는 334 passed. MCP server·SDK runtime·project authority·native HTTP·OAuth 관련 selector는 127 passed/19 deselected. 변경 파일 Ruff 및 format 확인 통과. 기존 Pydantic/FastAPI deprecation 경고가 있다.
+- 별도 단일 실행에서 설치된 openstacksdk 3.3과 loopback Nova/Neutron HTTP fixture로 실제 create request의 key, 선택 security-group UUID, network, flavor 및 image-backed boot volume을 확인했다. 외부 운영 provider에서 새 계약의 인스턴스를 만들지는 않았다.
+- 공유 index와 working review 표식을 보존하고 base `c51b2baadb03f223fd1800d91250d8eaff3fe338`의 전용 snapshot에 변경을 적용하여 architecture working/staged guard를 모두 통과했다. 검토된 snapshot의 source SHA-256은 `3f313f8ac576071bcd4c5ea9416d461ad02017d41e20b4b28a64e2795da698ae`이고 4069개 파일이다. 이는 동시 진행 중인 다른 작업을 포함한 전체 공유 checkout의 digest가 아니다.
+- Nova 2025.2는 security group 입력을 UUID 우선·이름 차순으로 조회한다. 마지막 검증 후 그룹/네트워크 변경은 원자적으로 차단할 수 없고, provider 수락은 실제 포트 보안그룹이나 guest 준비의 증거가 아니다.
+
 ## MCP member 권한·클라이언트 식별 (2026-11-04, source/local)
 
 - 기존 source의 `member` cloud 관리 허용을 유지하면서 프로젝트 native 관리 가능 여부와 read/manage 연결 상한을 분리했다. Read key·reader·unknown은 관리로 승격하지 않고 independently confirmed service leaves와 Lumen 제외를 유지한다. Request-local 검증된 AccessInfo가 preview policy catalog 조회로 전달되지 않던 경로를 복구했다.
@@ -17,6 +25,379 @@ nav_order: 8
 - 최종 gate는 committed base `15a475836a5b7842c1f1f023d144d042e8c3a9a7`에 문구 정리를 포함한 이번17개 source만 얹은 격리 snapshot에서 수행했다. Python3.12.13 전체 gate가 source `3bcd4317cdd98a252e635e61d45b96cd04b38dbc116a7dac3f6a71c5601b6c91`/4069files로 exit0: backend13515passed/106skip, frontend512files/6804tests, contracts258, DB233passed/54deselected, Ruff/format847files. Production frontend build와 격리 working architecture check를 통과했고17개 source가 공유 checkout과 hash 일치했다. 다른 작업의 source와 공유 working architecture stamp를 보존하며 이번 source·문서만 선택하여 커밋한다.
 
 - 첫 격리 gate는 다른 작업 `ag-experience-20261104-7d91`가 PostgreSQL5434를 사용해 functional datastore 시작에서 실패했다. 해당 서비스를 건드리지 않고 정본 Compose test service를 별도 project의 Docker 할당 loopback port로 기동해 전체 gate를 새로 통과했다. 소유한 browser/Vite·snapshot·test containers/network는 정리하며, 최종 범위 증거·동작16조건·추가 문구36조건·스크린샷·전체 로그는 `~/.local/share/afterglow-proofs/mcp-member-client-20261104/`에 보존한다. 이는 진행 중인 다른 source나 운영/native 호환성 검증이 아니다.
+
+
+## Kolla Python 패키지 (2026-11-04, source/local)
+
+- 이름 변경 후 `afterglow-kolla` wheel을 실제 Python3.11.15 venv에서 `python -m pip install --no-deps --no-index`로 설치했다. 운영 관측처럼 role과 site가 서로 다른 두 checkout을 가리키는 격리 fixture에서 각 exact target 이관과 두 원본 파일 보존을 확인했다. Sibling package metadata와 설정은 합성이다. Kolla contract 29개 및 image resolver13·Cloud Shell3개도 통과했다. 운영 배포나 GitHub/PyPI 발행은 하지 않았다.
+- 동일 `afterglow-kolla` 합성 1.32.6→1.32.7 wheel을 Python3.11 환경에서 실제 pip로 설치·업그레이드했다. installer를 다시 실행하지 않고 기존 role 링크에서 변경된 파일을 확인했으며 이 시험 버전은 발행 artifact가 아니다.
+- `openstack-afterglow` source wheel과 sdist에서 다시 빌드한 wheel의 실제 Kolla role 자산을 비교하고 installer 경계를 검증했다. 최초 wheel에서 Hatch 설정으로 role 디렉터리가 누락되는 오류를 발견해 수정했으며, 두 wheel의 완전한 role 포함을 회귀 검사한다.
+- 전용 Python 3.12 venv에서 실제 wheel 1.32.6을 설치하고 정확한 구 checkout 링크를 package 자산 링크로 이관했다. 합성 1.32.7 wheel로 업그레이드한 뒤 링크를 다시 만들지 않고 role 파일 변경이 보였으며 구 checkout 원본은 보존됐다. 버전 1.32.7은 시험용이며 발행 버전이 아니다. 형제 role metadata는 합성 fixture다.
+- 배포 자산의 Python 하한을 operator와 같은 3.11로 맞춘 뒤 실제 Python3.11.15 venv에 wheel을 설치하고 role 파일·Python helper 컴파일 및 lock version 추출을 확인했다. 별도 격리 Git 태그에서 `requires-python >=3.11` operator의 실제 `uv lock`과 Python3.11 `uv sync --locked --no-install-project`도 통과했다. Git 저장소·태그는 synthetic이며 GitHub 발행 증거가 아니다.
+- 설치된 역할 경로를 실제 Ansible에서 `config_validate`로 load해 `failed=0`을 확인했다. 별도 canonical Kolla runtime fixture 58개도 통과했으나 설치된 wheel로 실제 cloud 배포를 실행한 것은 아니다.
+- 설치기는 실제 동기화에 사용한 `AFTERGLOW_OPERATOR_LOCK`을 필수로 받는다. 번들 lock이 더 오래된 fixture에서도 실제 lock에 따라 현재 sibling을 수용하고 오래된 sibling을 거부했으며, lock 미지정은 링크 생성 전에 거부했다. 실제 설치 wheel에서도 lock 미지정 거부와 명시 lock 사용 후 sibling 검증까지 확인했다.
+- 운영 동기화·배포, PyPI/Git release 발행, operator lock의 미발행 package pin, multi-architecture image/Kolla 실제 배포 및 전체 gate는 수행하지 않았다. `scripts/check_architecture.py`는 공유 snapshot stale로 실패했고 공유 index/stamp는 변경하지 않았다.
+
+
+## 직전24시간 운영 마찰·의미 기반 경험 v2 (2026-11-04, source/local 진행 기록)
+
+이 절은 현재 미발행 source와 격리 검증을 설명합니다. 아래1.32.6의 별도 정식 발행·운영 수용을
+새 v2/SQL107의 배포 증거로 재사용하지 않습니다. 운영 수집·SQL107·보존 삭제는 활성화하지 않았습니다.
+
+### Source coverage inventory
+
+| 기능 계열 | 의미 관측 경계 | 의도적 비수집·미확인 |
+|---|---|---|
+| 인증·계정·복구·provider | 실제 form/정책/일회용 inspect·callback·결과·locale별 notice owner | 이메일/username/비밀번호/code/ticket 원문, 익명 과거의 신원 소급 |
+| MCP 동의 | client review·권한 단계·프로젝트 선택 요약·preview·승인/거부·만료·상태 적용 | Client URL·원문 scope/token·native 권위 추정 |
+| VM·볼륨 생성 | 독립 action/async context·접수/SSE·provider/readback·source state 적용·취소/unknown | 접수를 guest/volume 준비로 표시, 취소 요청을 drain 완료로 표시 |
+| Compute·image·keypair | 실제 목록/detail/fan-out·주요 mutation와 follow-up owner | Console/cloud-init/키 내용·image thumbnail·download 완료 추정 |
+| Network·router·LB | 주요 list/detail owner·bulk 작업·후속 적용 | Floating-IP/security-group의 일부 독립 route는 generic request 경계만 유지 |
+| File·object·database | wizard/list/detail/subresource의 실제 state 할당·주요 mutation | 파일·object·SQL·사용자 자원 이름·credential; coalesced read의 독점 dispatch 주장 |
+| Container·K3s·Waygate | inventory/detail/log lifecycle·finite stream progress·주요 mutation | Terminal/log/kubeconfig·VPN key, 원격 서비스 내부 span |
+| Lumen·Studio·realtime | 실제 run/stream·terminal·source-owned 적용/폐기·UI 상태 | 채팅/프롬프트/도구 인수결과/오디오 원문, unsupported remote internals |
+| Palimpsest·build·mail | BFF/state owner와 exact-owner durable operation/worker 연결 | Artifact/body/원문 mail·claim journal, unknown 자동 재실행 |
+| IAM·workspace·관리자·settings·monitoring·activity/docs | 실제 source owner와 공통 primitive, 선택 clearing/ABA·한국어 읽기 전용 조회 | 자유형 검색/선택 값·디렉터리 원문·운영 요청 replay |
+
+공통 primitive hook만으로 feature 완료를 추정하지 않습니다. Teardown/실제 할당 identity가 증명되지
+않는 owner는 applied까지만 기록하며 DOM tail은 unknown입니다. Confirm 이전 취소/일부 early denial은
+별도 의미 사건이 없을 수 있습니다. 이 목록은 전체 함수 계측·전체 상태·전체 사용자 경험의 무손실
+관측을 주장하지 않습니다. Source registry와 실제 mounted owner가 없는 영역은 generic API 관측 또는
+의도적 미수집이며 viewer가 과거 행을 합성하지 않습니다.
+
+### 완료된 국소 검증
+
+- 설치된 `openstacksdk3.3.0`와 실제 loopback Nova/Octavia HTTP fixture에서 pool query/body
+  관계 오류를 재현·교정했습니다.6LB, child delay35ms의 동일 fixture 비교:
+
+  | 관측 | 수정 전 | 수정 후 |
+  |---|---:|---:|
+  | Native HTTP reads | 85 | 25 |
+  | 반환된 member 관계 | 72 | 12 |
+  | 총 소요 ms | 3513 | 223 |
+  | 최대 동시 read | 1 | 8 |
+
+  격리 fixture의 조건부 수치이며 운영 p95나 실제 클라우드 용량 측정이 아닙니다. 일부 native 실패,
+  타 project·모호한 fixed-IP·catalog 부재와 bounded drain도 regression으로 분리했습니다.
+- Operational/logging 관련 수정 target372회귀, 최종 공통 logging/worker/discovery6파일262회귀가
+  통과했습니다. 실제 Uvicorn/TCP7요청에서 unsampled metrics7, sampled request4, incomplete
+  probe2 WARNING을 확인했습니다. HTTP200 두 건은 실제 JSON payload가 불완전하므로 사용자 성공이
+  아닙니다. 고정 reason과 stream/file canary 비노출은 유지했습니다.
+- 실제 native MariaDB에서 v2/CLI/recent-discovery3모듈30passed/5skipped/41deselected입니다.
+  Canonical6-table bootstrap175ms, 재실행154ms와 실제 CLI dry-run을 확인했습니다. Catalog GC와
+  신규 event 연결 race는 수정 전 `accepted=1/catalog=0/unavailable`로 재현했고 고정 동시성 회귀가
+  수정 후 통과했습니다. Cross-schema FK는 실제 native SQL에서 거부·자동 수정 없음·정확한 local FK
+  복원 뒤 정상 검증을 확인했습니다. 이 결과는3-node Galera 동시 write나 production restore가 아닙니다.
+- Support-code disclosure/SSR/recent lookup58회귀, 복구·viewer89회귀, ChatPanel63회귀가 통과했습니다.
+  Raw token assignment는 검증된 갱신이 아니므로 권위 fence를 완화하지 않고 실제 mapping을 쓰는
+  fixture로 교정했습니다. 새 source-text assertion 두 개는 경로를 재고정하지 않고 삭제했습니다.
+- 실제 compiled `/recover`의 SMTP-disabled warning metadata 누락을 교정하고 같은 mount의 ko/en
+  표시 사건·동일 locale dedup·policy GET 추가0을 확인했습니다. Provider callback503 및 stored
+  Korean 오류가 선택 English와 달라도 실제 Korean metadata를 유지했고 locale 변경의 consume 추가0을
+  확인했습니다. 이는 양성 SMTP/signup/native SSO 수용을 뜻하지 않습니다.
+- Network detail의 관측용 synchronous `loading` 읽기가 effect dependency가 되어 응답 직후
+  재조회를 유발했습니다. Bounded 회귀는 수정 전 단일 응답 뒤3GET·화면 소거로 실패했고 untrack 교정 후
+ 8회귀가 통과했습니다. Network/API base/token/project 변경 reload는 유지했습니다. Catalog는 genuine
+  mapped renewal에서 settled options/미저장 draft를 유지하고 role/readiness/base 및 same-tick backend
+  ABA 뒤의 late read/policy/runtime save 표시를 폐기하는16회귀가 통과했습니다.
+- Frontend check는0error/기존17warning, i18n check/scan 및 production build가 통과했습니다.
+  기존 accessibility/reactivity compiler warning과 JSDOM canvas 미구현 출력은 구분하며 무관한 UI나
+  dependency 변경으로 숨기지 않았습니다.
+- Canonical Dockerfile의 declared CI platform `linux/amd64` API/frontend/worker3개를 실제 빌드했습니다.
+  Worker-only final image는 실제 CLI lifecycle과 file/stderr JSON, explicit worker entrypoint, driver
+  code1054·canary 비노출·API main/Uvicorn 미import를 확인했고 canonical crypto smoke도 통과했습니다.
+  DB 미설정 종료는 readiness·작업 성공 증거가 아닙니다. Source-local interpreter3.12.13과 image
+  python:3.12-slim의 실제3.12.16은 구분합니다.
+- 실제 source API/JWT/Redis/MariaDB에서 ingest201·동일 event duplicate1, 설치 SDK→loopback HTTP의
+  volume POST201/독립 GET200과 verified actor SQL provenance, scope 밖 조회0·익명 열람403·다른 project
+  bearer403·raw payload422 및 no-store export200을 확인했습니다. 신원/native 권위 adapter는
+  synthetic이며 실제 Keystone/cloud 수용이 아닙니다.
+- 실제 Redis driver의 socket GET/SETEX 응답 장애에서 health204→503→503→같은 credential204,
+  unknown401/instance mismatch403과 PTTL602803667→602803325를 확인했습니다. 재발급·폐기·갱신은
+  없습니다. 별도 native Redis proxy는 실제 traffic Lua commit 뒤 ACK만 버렸고 source는251.75ms 뒤
+  미확인/timeout으로 반환했습니다. EVAL 전달1·실제 counter 증가1·자동 write replay0이며 보수적
+  unacknowledged observation1을 실제 손실1로 오인하지 않습니다.
+- Synthetic SQL job 한 건을 실제 source Redis membership/publish/claim/lease와 build executor로
+  실행하여 preflight `error`·완료 시각·worker3행·operation link1을 확인했습니다. Native 할당 전 거부된
+  부정 경로이며 build 성공이나 VM durable worker로 표시하지 않습니다. Source VM SSE도 HTTP200 뒤
+  boot-volume20/45→server65→failed0을 관측했고 provider 접수/rollback 불확실성을 guest 준비로 표시하지 않았습니다.
+- 실제 CLI hold dry-run/apply 뒤 만료된 비보호 detail1만 삭제하고 held detail/catalog를 보존했습니다.
+ 6-table10023byte snapshot을 새 DB에 복원해 삭제 전 free row1·held row1·hold1·정확한 Korean
+  catalog 및 bootstrap postcondition을 복구했습니다. Released1.32.6/0334564 image의 구 ORM writer가
+  새 schema에 기록·독립 조회했고 새 API/구 schema는 진단503·source health200/200·SQL 원문 비노출을
+  실제 HTTP로 확인했습니다. Lifespan은 꺼 자동 schema creation과 구분했고 production/Galera 복원은 아닙니다.
+- 한국어 replay의390/768/1440px×light/dark6조건에서 overflow0, replay endpoint만 읽는 검색/export,
+  익명403 뒤 이전 rows 제거·export 비활성화를 확인했습니다. 실제 browser-native JSON download는
+  snapshot895unique events/1235267bytes이며 cause134/134·request-bearing result263/263의 bounded
+  참조를 확인했습니다. 이는 관측된 window의 join 성공이지 전체 수집률·절대 loss0 주장이 아닙니다.
+- Fresh post-partial privacy scan은9772진단행/19catalog/1link에서 password·query/body/inert-DOM
+  canary와 fixture password의4-needle union 및 encoded variants가 SQL·2개 backend/member log·
+ 15개 export에서 모두0이었습니다. 같은 QA schema에 original-member16/reader5행이 포함됩니다.
+  Fresh Node window와 접근 가능한5capture는0, 만료된6capture는UNKNOWN입니다. MariaDB
+  general/slow log는OFF여서N/A이며 검사 성공으로 세지 않습니다. Native/Budget의 별도 schema·
+  mailbox/log privacy는 해당 별도 receipt로 확인합니다. 기존 business audit 이름/health payload는
+  진단 비노출 주장에 포함하지 않습니다.
+- 최종 packaged amd64 frontend를 canonical 최소 Compose+owned overlay로 재생성하고 API/frontend
+  healthy/restart0·health200·v2contract200·실제 SQL ingest201/duplicate201을 확인했습니다. 실제390px
+  Korean `/recover`·지원 코드 disclosure는 overflow0, locale 전환 뒤 policy GET1을 유지했습니다.
+  Screenshot은 QA 증거이며 화면 녹화/픽셀 replay 기능이 아닙니다.
+- Exact-source private clone의 canonical `npm run test:gate`가 source5f4bcebe…/4112files에서
+  통과했습니다. Python3.12.13·Node24.14.1·전용 SQL/Redis/Postgres·private Docker plugin을 사용했고
+  unit에 `AFTERGLOW_TEST_REAL_REDIS`를 전역 주입하지 않았습니다. Backend13802passed/106skipped,
+  frontend526files/7108passed, contracts261passed, functional263passed/5skipped,
+  Ruff check·format864files입니다. 후속 single-line tablet CSS는 별도 compiled8조건으로
+  검증했으며 e45d6d06… exact-source gate/최종 working·staged architecture를 따로 갱신합니다.
+  Shared checkout의 index/global review marker는 변경하지 않았습니다.
+- 실제 packaged collector에503을 주입한 동안 recovery policy GET200·한국어 warning·login link가
+  보존됐고 GET 추가0·동일 event 최대2시도·transport gap9을 확인했습니다. Source SQL이201로
+ 9개를 수락한 뒤 browser ACK만 abort하면 다음 동일 batch가201/duplicates9로 끝났습니다.
+  Native Chromium target offline와 synthetic focus500회 burst는 실제 offline 실패1·batch최대20·
+  queue-overflow gap309·동일 recovery 화면/GET1을 보존했습니다. 이는 본 업무 쓰기 proof가 아닙니다.
+- 별도 owned Chrome process/profile에서 실제 `Page.crash`를 실행했습니다. Queued synthetic
+  focus3개는 이전 segment의 native SQL에 생기지 않았고 browser rows9/client_seq1–9만 남았습니다.
+  SDK의 reattach/reload 뒤 명시 reload는 다른 segment/client_seq1로 시작했습니다. 이는 애플리케이션
+  자동 복구나 lost tail 복원을 뜻하지 않습니다. 마지막 관측 뒤는 미확인으로 남기며0행을0행동으로
+  해석하지 않습니다. Shared browser/사용자 Chrome은 crash하지 않았습니다.
+- V2 native SQL snapshot은 browser3700행 JSON p50/p95/max863/927/1053byte,
+  API2828행846/868/938byte, worker3행829/832/832byte였습니다(nearest-rank).
+  Separate columns/index/binlog/replica·wire encoding 비용은 포함하지 않습니다. 반복된 benchmark/
+  합성 구간이므로 사람 세션당 event 수나 운영 저장 용량으로 환산하지 않습니다.
+- 첫 paired benchmark는 signup-options429가 섞여 동일-state 비교로 부적합하여 폐기했습니다.
+  원 trace를 남기고 rate limit을 완화하지 않았습니다. 최종 측정은 동일한 frozen compiled
+  tree(5caeee3b…/4183files), warmup각3·본 측정각20, mode별65초 cooldown·navigation target3300ms,
+  모든 policy200·429표본0으로 실행했습니다. 유효 OFF 뒤 ON 이전에 같은
+  `max(25ms, OFF p95의15%)` 규칙을 고정했고 추가 DOM p95한계25ms를 통과했습니다.
+
+  | 유효 local client-observed 지표 | OFF p95(ms) | ON p95(ms) |
+  | --- | ---: | ---: |
+  | `/recover` warning DOM 표시 | 96.225 | 92.381 |
+  | Recovery policy GET 응답 | 13.881 | 12.934 |
+
+  작은 역전은 local variance이지 성능 향상 주장이 아닙니다. ON ingest p95는26.681ms,
+  receive→state/DOM commit p95는각1ms/20표본입니다. CPU-only·운영 concurrency 수용이 아닙니다.
+  Business method/path7그룹(OPTIONS 포함)은 각 mode20회씩 같고 추가 business call0,
+  ON20batch/240event/168020wire bytes·batch p958401bytes·관측 ID240 accepted/retained를 확인했습니다.
+  참조100개 중 signed-scope eligible60/60을 join했고 public site-config/signup-options40개는
+  기존 익명 열람 정책으로 제외됐습니다. Clock-order unknown·redacted reference·절대 loss unknown을
+  유지합니다. 이 frozen build의 collector budget과 후속 정책-only 변경의 최신 compiled smoke는 구분합니다.
+- 실제 VM close는113ms에 `net::ERR_ABORTED`였지만 loopback native POST는2973ms 뒤202와
+  ERROR 상태로 응답했습니다. Replay에는 aborted/unmounted discard·outcome_unknown과 ready0을
+  남겼습니다. Client abort를 native cancel/drain 완료나 durable VM worker로 선언하지 않습니다.
+  최신 network detail은200→같은 mounted ID의404→200마다 정확히1GET이고 오래된 detail이 지워졌습니다.
+ 767/768/1023/1024px 경계에서 overflow0·support 접근 가능을 확인했습니다.
+- Runtime r1–12의 member+admin/domain-managertrue와 r13의 member/domain-managerfalse를
+  구분합니다. 해당 cohort는 여전히 synthetic system-admintrue와 wholesale JWT principal resolver
+  adapter·SDK dependency override를 사용하므로 nonadmin owner/write/nativeIAM·별도 service-project
+  격리를 입증하지 않습니다. Wrong-project403은 harness 확인이며 제품 native scope resolver의 증거가
+  아닙니다. 별도18638 cohort는 원 `_resolve_jwt_token_info/get_token_info/get_os_conn/get_os_conn_write/
+  require_project_write/require_admin`을 유지하고 dependency override0으로 실행했습니다.
+  Synthetic native directory/token/SDK connection adapter만 사용하여 member 보호 읽기200/쓰기201,
+  타 project scope403·타 소유 resource404·member admin403, reader 읽기200/쓰기403을 관측했습니다.
+  실제 native volume POST1·foreign exchange0·업무 audit1이며 renewed access의 보호 읽기200,
+  두 번째 source rotation 뒤 원 refresh401/구 access401/새 access200·절대 deadline 미연장을
+  확인했습니다. Production IAM·별도 service/user project 격리까지 증명한 것은 아닙니다.
+
+- Partial-policy 최종 compiled 수용은 `web-runtime/frontend/corrected-453-runtime-acceptance.json`에
+  연결합니다. Waygate/Drover native503에도 local11행과 Builder catalog를 보존하고 실패 서비스만
+  제한했습니다. 실제 source refresh200의8권위 필드·roles 불변에서 draft/search/선택·cookie를
+  보존하고 catalog/policy/runtime GET·save 추가0을 확인했습니다. 실제 target200/1행과 별도
+  runtime nativeSQL1054→503에서도 카드1행·조회 불가 gate를 유지하며 false empty를 표시하지 않습니다.
+  실제 null·명시 false·unknown은 구분하고 browser 저장·global TRUE·외부 Notion 접속은 없었습니다.
+  Base A→B와 실제 logout/확인 뒤 late A200이 되살아나지 않았습니다. Logout503은 fixture native
+  client의 tokens manager 부재로 확인했으므로 local owner fence만 수용하고 server revocation은 UNKNOWN입니다.
+- 해당 최종 privacy window는 primary/member10408행·20catalog·1link와 Notion A362/B32행,
+  export16개·fresh Node capture4개에서4needle/encoded variants0입니다. 이전 만료 capture는 UNKNOWN,
+  general/slow OFF는 N/A입니다. Egress의 과거3거부 대상은 UNKNOWN이고 새6거부는 optional
+  Prometheus로 분류했습니다. 모두 transport 전 차단이며 Notion 접속0을 전체 외부 시도0으로 바꾸지 않습니다.
+
+- Canonical gate의 Lumen 설치기 fixture가20초 timeout에서 멈춘 원인은 별도 stack 계측으로
+  PTY 생성 전 `json.load(sys.stdin)`의 EOF 대기까지 좁혔습니다. 진단 계측 실행의 통과를 정식
+  수용으로 쓰지 않았습니다. 제어 JSON을 개행 frame으로 전달하고 `readline`으로 읽게 한 뒤,
+  원래 deadline·비밀 비노출·파일 무변경·실제 installer/TTY 검증을 유지한20회귀가 모두 통과했습니다.
+  실제 설치 script나 운영 CLI 동작을 바꾼 것은 아니며 전체 gate는 최종 source snapshot에서 별도 실행합니다.
+
+### 실제 native worker·취소 drain과 전체 대표 흐름 예산
+
+- 이전 build-worker preflight 거부와 별개로 실제 source mail outbox worker를 Redis role/lease와
+  native MariaDB에 연결하고 aiosmtplib의 검증 implicit SMTPS→GreenMail2.1.15, 검증 IMAPS
+  readonly UID/header exact-ID readback을 실행했습니다. 서로 다른 actor의 같은 role delivery에서
+  accepted2/unknown1·원 SMTP DATA3만 있었고 unknown을 재전송하지 않았습니다. Unknown1도 dummy
+  mailbox에 도착했으므로 SMTP 최종ACK 유실과 source 확정 성공을 같게 취급하지 않았습니다.
+- 실제 SQL cancel-notice INSERT를180ms 지연한 동안 named `background:email-delivery`에 두 번째
+  직접 취소를 전달했습니다. Transport와 terminal SQL이 끝날 때까지 dispatching/Redis lease를
+  유지했고 call childspan 최대4행·원 durable operation별 link1·마지막 delivery의 role cleanup
+  오귀속0을 확인했습니다. 일반 blocking과 명시 native span을 구분하며 drain은 호출 종료 확인이지
+  provider 취소·guest 준비가 아닙니다. Palimpsest build 성공·운영 mailbox 수용도 아닙니다.
+- 소비자 VM create/SG/rollback과 관리자 create의 actual installed-SDK→loopback HTTP에서
+  취소 후350ms에도 admission/connection을 유지하고 약2초 native 종료 뒤 같은 childspan의
+  cancel→drain을 확인했습니다. 기대한 원 create/SG/rule/force-delete만 있고 추가 replay·불필요한
+  compute/volume DELETE는0이었습니다. 실제 SQL start/return 진단에180ms 지연을 걸고 취소한
+  framework case는 native POST1·이미 반환된 ID 추적1·즉시 후속 native function/PUT0·
+  `await close_connection` 뒤 cleanup 실행을 확인했습니다. Generic framework proof는 사업 worker
+  성공으로 승격하지 않았습니다. Exact native279·직접 소비자208·native SQL20/3skip이 통과했습니다.
+- 새 compiled VM의 실제16385GiB 요청은 source422였고 Nova CREATE0입니다.
+  `validation.rejected` event/action/root/request가 wire·client ACK·SQL·정적 export에서 일치합니다.
+  과거 required-keypair의 disabled Next 화면은 이 event의 수용 증거로 소급하지 않습니다.
+- 전체 고정 episode는 source/native prereq를 실행한 fresh OFF/ON Chrome profile로 로그인→
+  volume 생성/readback→one-time MCP deny→VM422→실제 복구 불가 표시/재조회→scoped replay를
+  실행했습니다. 실제 native GET/POST method-family count가 같고 각 volume+1/VM0/credential0,
+  계측에 따른 추가 mutation0입니다. 두 번의 독립 read-only discovery는 별도 집계했고30초 freshness를
+  늘리지 않았습니다. Receipt: `budget/final-453/acceptance.json`.
+
+| 사전 고정 local 한계 | 실제 관측 | 판정 |
+| --- | ---: | --- |
+| Flow 전송≤262144B | 147548B(body·ASGI header·증분 business correlation header 포함) | 통과 |
+| Episode≤1048576B | 391487B(정적 replay 포함) | 통과 |
+| Browser stored JSON p95≤2048B | 924B/257행 | 통과 |
+| Replay window≤5 SELECT | 200/2000행 모두3 | 통과 |
+| 200행 query p95≤750ms | 13.202ms | 통과 |
+| 2000행 query p95≤2500ms | 86.102ms | 통과 |
+| 20event ingest p95≤250ms/SQL≤150 | 28.269ms/최대80 | 통과 |
+| Worker call≤6diag rows / operation≤1link | 최대4 / 각1 | 통과 |
+
+Query/ingest 수치는1key·40distinctkey·정상 RESTRICT로 생길 수 없는 dangling catalog fault의
+synthetic native-SQL data-plane이며 HTTP/user session latency가 아닙니다. 각200/2000행20표본,
+실행 전 immutable image source와 marshal code identity를 기록했습니다. 정보 schema의 물리 할당은
+추정치이고 JSON6000행은 exact이며 binlog/replica는 측정하지 않았습니다. Catalog N+1의 이전
+202/2002 SELECT를 제거했으나 현재 native-IAM/운영 capacity를 대신하지 않습니다.
+
+Client ACK IDs132개 중 SQL missing0, 별도 ACK 미관측7개도 SQL에 존재했습니다. 원시 cause는38/40,
+정확히 입증한 익명→로그인 cross-owner2를 따로 둔 eligible38/38입니다. Fresh owner/auth-header
+존재 boolean·같은 UUID/request만으로 예외를 증명했고 raw token은 기록하지 않았습니다.
+Owner-fence drop4·document-end queued snapshot 합10의 fate는UNKNOWN이며 절대/미관측 crash loss는
+계속UNKNOWN입니다. 더 작은 통과 수치로 과거36/38거부·CSP/429/동일 profile 시도를 덮지 않습니다.
+
+ChatPanel과 CloudShell/ContainerTerminal의 실제 mounted component→real collector wire60회귀는
+nonempty semantic state/result/apply/commit을 확인하면서 prompt/tool/output/error·binary command/
+output·ticket/token/kubeconfig canary를 제외했습니다. Provider/xterm/WS/수신 HTTP는 통제 fixture이며
+compiled 외부 chat/terminal/cloud 수용과 구분합니다. 나머지 기능 계열의 compiled family matrix는
+별도 수용 전까지 열린 항목으로 남기고, source inventory만으로 전체 UI 실행을 주장하지 않습니다.
+
+### 읽기 실패의 적용·DOM 경계 추가 검증
+
+- Palimpsest Hub/package/asset/catalog의 오류 state에도 guarded applied 경계를 연결했습니다.
+  복원된 실제 source의 관련5개 suite120회귀가 통과했습니다. 이는 mounted controller/guard 검증이며
+  새 compiled browser/API/SQL 증거를 대신하지 않습니다.
+- ChatPanel의 모델 목록·대화 기록 실패는 실제 mounted component→collector 직렬화로 검증했습니다.
+  새7회귀를 포함한 전체65회귀가 통과했고, 열린 화면에서 error→applied→committed를 관측했습니다.
+  닫힌 모델 선택창은 applied 뒤 DOM stale-discard이며, unmount·프로젝트 전환 뒤 late 실패는
+  원 trace의 applied/commit을 만들지 않습니다. 원문 오류 canary는 collector body에 없습니다.
+  Endpoint 결과는 통제 fixture이며 native Lumen/inference 수용은 아닙니다.
+- Audio/Image Studio의 모델 목록·capability 오류4개 site(음성 양쪽 kind 포함)는45개 추가 회귀를
+  포함한2개 suite106회귀가 통과했습니다. 실제 mounted DOM와 collector의 applied→commit,
+  읽기 대기 중 owner/unmount·선택 변경, 적용과 tick 사이 owner/unmount의 stale-discard를
+  검증했습니다. 사용자 입력·원문 오류 canary는 전송 body에 없으며 provider/API/SQL은 fixture입니다.
+- 추가로 Audio capability 선택 A→B→A에서 첫 A의 늦은 오류가 최신 A 뒤 error→applied→commit을
+  만들던 결함을 TTS/STT 두 회귀로 재현했습니다. Kind별 요청 ticket으로 성공·실패·finally·DOM
+  guard를 함께 제한했고 최종2개 suite108개(추가47개)가 통과했습니다. 이전106개 통과와 구분합니다.
+- Trove의 실제 설치 SDK와 in-process HTTP adapter에서7개 목록×6개 실패 상태 및 정상 빈 목록
+  경계49회귀가 통과했습니다. Swift도 설치 SDK의 account/trash 실패와 정상 부재·빈 목록을
+  구분했습니다. 이 adapter 증거는 실제 원격 provider/socket 검증과 구분합니다.
+- 이후 source 변경 전 전체 gate는 backend14076·frontend7143·contracts261까지 통과했지만,
+  functional datastore3307 포트가 다른 소유 QA project에 할당되어 중단됐습니다. 전체 gate 통과로
+  표시하지 않습니다. 새 gate는 명시한 기존 격리 functional DB를 사용하고 해당 project의
+  컨테이너를 기동·종료하지 않는 경로로 실행합니다. 과거16a1ed8e 전체 통과와 최신 source는 별도입니다.
+
+### 최종 격리 source·image·compiled 재수용
+
+- Python3.12.13의 격리 snapshot `091e0181134587e3693242b154d65ab4a3ae80b87389f982501597f0eda9652c`/
+  4116files에서 working/staged architecture와 전체 `npm run test:gate`가 exit0입니다.
+  Backend14119passed/106skip, frontend529files7203tests, contracts261, 실제 DB263passed/
+  5skip/89deselect, Ruff/format865files입니다. 앞선 동일 구현의 첫 gate는 컨테이너 회귀1곳의
+  줄바꿈 검사만 실패했고 수정 후 전체를 다시 통과했습니다. 공유 index는 변경하지 않았습니다.
+- 같은 구현의 Svelte check0errors/기존17warnings, production frontend build와 정본 Dockerfile
+  backend/frontend/worker3개 `linux/amd64` build를 통과했습니다. 정본 최소 Compose+소유 overlay를
+  새 project/schema/Redis로 실행해 양 서비스 healthy/restart0과 실제 DB·Redis 목적지를 확인했습니다.
+  실제 패키지 `/recover`의 이메일 사용 불가 경고와 collector201·ACK9/SQL9/missing0을 확인했습니다.
+  Worker image는 x86_64/Python3.12.16에서 실제 CLI/file+stderr JSON·driver1054·canary 비노출·
+  API main/Uvicorn 미import 및 crypto round-trip을 통과했습니다. DB 미설정 종료는 readiness가 아닙니다.
+- 새 identity/schema `native-e71f`·`core-e72f`에서 Palimpsest asset/package context·Hub me·
+  관리자 catalog 목록, Lumen 모델 목록·Chat history 오류의 state→applied→guarded commit을
+  compiled Chromium과 현재 source BFF/실제 SQL로 대조했습니다. Catalog·Hub/package 실패는
+  원 서비스 성공이 아니며 원격 native identity/service503은 통제 peer입니다.
+  Image capability와 Audio ABA는 모델/capability HTTP만 browser fixture이고 실제 component/
+  API client/collector/SQL을 사용했습니다. Audio17→18→17의 실제 coalescing은 A GET1회였고,
+  이전 A 오류/commit0·현재 A 오류/commit1입니다. 이미지 생성·음성 생성·전사·메일은 실행하지 않았습니다.
+- 현재 actual SDK/loopback HTTP는 Manila503/404/opaque403→404, Trove flavor503→500/
+  genuine empty200→200[], Zun detail503, Swift metadata503의7조건을 통과했고 native resource write0입니다.
+  Compiled ObjectBrowser는 초기 조회 실패, 같은 owner의 유효 행·필터를 보존한 명시 refresh 실패와
+  정확한 해당 action의 error/DOM commit을 확인했습니다. 정상 cache hit는 장애 응답으로 세지 않았습니다.
+- `families/consolidated-e71f-matrix.json`은11계열을 각각 source-owned/generic-only/비수집/
+  remote-unsupported로 연결합니다. 변경 없는 계열의 과거 compiled receipt는 UI source byte parity로
+  연결했고, OOM으로 없어진 SQL/이전 identity를 복원했다고 주장하지 않습니다. 마지막 private snapshot은
+  native805행/core816행이며9개 canary/fixture credential의 encoded variant가 진단 wire·SQL·소유 로그에
+  없습니다. Server 성공·건강한 전체 CRUD·native 내부 span·사람 인지는 이 수용의 범위가 아닙니다.
+- Legacy standalone container/file detail의 초기 client context와 source-owned DOM proof는
+  미확인입니다. 별도 관리자 container endpoint의 controlled native503→404 누락을 실제 HTTP에서
+  찾았고 같은 helper로 교정했습니다. 추가11조건을 포함한 container44회귀와 scoped Ruff/format이
+  통과했습니다. Quota 합성의 Trove/Swift lenient0은 이번 cutover로 수정됐다고 주장하지 않습니다.
+
+### 동일 catalog의 전체 전송 비용 재검증
+
+`budget/current-matched-full-wire-d63f-d64f/qualification-fresh.json`은 앞선 legacy byte 미확인
+pair를 대체하는 새 OFF/ON cohort입니다. Frontend/backend catalog는 모두 `bd028e47…`입니다.
+
+| 사전 고정 한계 | OFF d63f | ON d64f |
+| --- | ---: | ---: |
+| 전체 진단 HTTP wire·business semantic header ≤262144B | 22606B | 190855B |
+| Replay wire 포함 episode ≤1048576B | 25898B | 450817B |
+| 추가 업무 native mutation0 | volume1/VM0/credential0 | 동일 |
+
+ON client ACK131개의 scoped SQL missing0, ACK 미관측7개도 별도 SQL 존재, eligible causal38/38을
+확인했습니다. 원시40개 중 정확한 anonymous→login2개만 별도 표시했고 stored JSON p95922B입니다.
+한 legacy transaction은 정확한 HTTP message/request-ID attribution이 없어 해당 연결 잔여2418B
+전체를 비용에 더했습니다. 이 부분의 header/body 분해·인과 참조와 절대 crash loss는 UNKNOWN입니다.
+독립 pipelined raw-socket probe로 parser와 전체 연결 byte counter를 대조했으며 threshold·분모를
+완화하지 않았습니다. 기존 d61/d62 불완전 계측 결과는 superseded로 보존합니다.
+
+위091e0181 gate 이후 관리자 container의 false404 누락을 추가 수정했으므로 이 gate를 그 변경의
+최종 통과로 사용하지 않습니다. 새 snapshot의 전체 gate·패키지 API·실제 HTTP 재수용을 따로 기록합니다.
+Source/local 수용은 운영 SQL107/수집/보존 삭제·native release/IAM·unknown claim 재개 승인을 포함하지 않습니다.
+
+추가 관리자 단건 수정까지 포함한 최종 snapshot은
+`3b539f55fd730d05876aad1340429df7c3d70b4884ba32b0fbf7b121aeb253b5`/4116files입니다.
+Python3.12.13 전체 gate가 다시 exit0(backend14130/106skip, frontend529files7203,
+contracts261, DB263/5skip/89deselect, Ruff/format865)이며 private working/staged architecture를
+통과했습니다. 실제 같은 native503에 source 관리자404였던 요청은 수정 후503·정적 오류로 바뀌고
+원 provider body는 없습니다(`families/core-e72f/admin-container-read-corrected.json`).
+이 snapshot의 API/frontend/worker e74f3개 amd64 이미지를 다시 빌드하고 소유 Compose cohort에만
+반영했습니다. 실제 DB·Redis·key·mount·port 전후 일치, healthy/restart0와 health/recover200,
+worker crypto/CLI 구조화 로그를 재수용했습니다. 새 tag의 발행이나 운영 배포는 아닙니다.
+새 Image/Audio capability·Chat history, Palimpsest Hub/package/catalog의 추가6개 compiled 경계는
+`families/added-boundary-compiled-e71f.json`에 통제 transport와 source HTTP·SQL을 구분했습니다.
+OFF/ON budget을 실행한 backend와 최종 backend의 구현 차이는 이 관리자 단건 함수뿐이며 해당
+budget flow는 이 endpoint를 호출하지 않습니다(`budget/final-admin-delta-parity.json`).
+그 이후 검증 기록/checklist/architecture만 갱신하며 구현·runtime 계약은 변경하지 않습니다.
+
+
+
+
+### 운영 조치와 남은 경계
+
+- 승인된 local backend stop으로 wrong-key/shared-DB와 별도 Redis outbox 소비자를 차단했습니다.
+  원 image/env/mount/restart policy·DB/key/메일 상태는 보존했고 unknown 재전송은 하지 않았습니다.
+- Redis16:23UTC의3노드 재시작 이후 native master/replica2·dispatcher6·mail/Drover 미완료0을
+  확인했습니다. 별도로 계속된 controller1 traffic503을 이 사건의 결과로 단정하지 않습니다.
+- Hub old POST-only API와 GET settlement worker의 계약 불일치로 restart-loop만 중지했습니다.
+ 2408회 restart 시점의 두 uncertain claim journal은 hash/inode/mtime/volume 그대로 보존했습니다.
+  새 cursor의 빈 결과를 과거 미실행 증거로 삼지 않고 원장 대조·operator disposition 전 재개하지 않습니다.
+- MCP SQL106/실제 인증 목록 HTTP200·1.32.6 Kolla bootstrap은 아래 별도 운영 기록으로 확인합니다.
+  사용자 Chrome relay 시각 수용은 제한됐으며 native Waygate token 교환/openid와 matching sibling
+  release·schema·원 key 복구 전제는 별도입니다. 최신 광범위 sibling WIP 이미지를 임의 교체하지 않습니다.
+- Source/compiled browser/worker·격리 DB와 전체 canonical gate·native backup/restore·mixed-schema
+  검증은 위에서 분리 기록합니다. 최종 paired 성능/VM·권한·privacy acceptance는 진행 중이며
+  현재 증거를 운영 전체 복구로 표시하지 않습니다. Gbrain CLI가 없어 해당 동기화는 미실행이며
+  설치·사용자 설정/시작 지침 변경으로 우회하지 않았습니다.
+  Private receipts: `~/.local/share/afterglow-proofs/operational-remediation-20261104/`.
+
+
+## Kolla backend 워커 수 (2026-11-04)
+
+- `test_proxy_scheme.py` 18개 통과: 기본 1, 설정 2·4가 실제 Uvicorn CLI에 전달되고 factory·proxy 신뢰 설정이 유지된다. 별도 격리 Ansible 실행에서 1·2·4는 허용하고 0·음수·소수·boolean·비숫자와 숫자 접미사는 거부했다.
+- 실제 Uvicorn factory를 loopback에서 2 worker로 실행해 health HTTP 200과 자식 프로세스를 확인했다. 이 smoke는 `--lifespan off`와 연결 불가능한 격리 datastore를 사용했으므로 scheduler·DB pool·스트림 부하·운영 Kolla 배포 검증은 아니다.
+- 운영 reconfigure, 실제 다중 worker의 DB/background 작업·스트림 전환과 platform별 이미지 빌드·Kolla 배포 검증은 수행하지 않았다.
+- 다중 worker 비교 시 현재 `/api/v1/metrics`는 각 프로세스의 registry만 노출하므로 전체 throughput·p95/p99 근거로 사용할 수 없다. 외부 부하 생성기나 ingress 측정으로 일반 요청 및 스트림 첫 이벤트·완료 시간을 별도로 수집해야 한다. 해당 비교는 아직 실행하지 않았다.
+
 
 ## 1.32.6 SQL106 bootstrap·직접 복구 (2026-11-04)
 

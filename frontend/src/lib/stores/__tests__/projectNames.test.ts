@@ -1,14 +1,19 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import type { ExperienceContext } from '$lib/utils/experience';
+import type * as ExperienceModule from '$lib/utils/experience';
 
-const { apiGet, mockScope, revisionListeners } = vi.hoisted(() => ({
-	apiGet: vi.fn(),
+const { apiGet, apiWithExperience, experienceRecord, mockScope, revisionListeners } = vi.hoisted(() => ({
+	apiGet: vi.fn(), apiWithExperience: vi.fn(), experienceRecord: vi.fn(),
 	mockScope: { profile: null as 'on' | 'admin' | null, revision: 0 },
 	revisionListeners: new Set<() => void>(),
 }));
 
-vi.mock('$lib/api/client', () => ({ api: { get: apiGet } }));
+vi.mock('$lib/api/client', () => ({ api: { get: apiGet, withExperience: apiWithExperience } }));
+vi.mock('$lib/utils/experience', async (importOriginal) => ({
+	...(await importOriginal<typeof ExperienceModule>()), recordExperience: experienceRecord,
+}));
 vi.mock('$lib/mockup/transport', () => ({
 	getActiveMockupProfile: () => mockScope.profile,
 }));
@@ -41,6 +46,7 @@ async function loadStore() {
 beforeEach(() => {
 	vi.resetModules();
 	apiGet.mockReset();
+	apiWithExperience.mockReset().mockReturnValue({ get: apiGet }); experienceRecord.mockReset();
 	mockScope.profile = null;
 	mockScope.revision = 0;
 	revisionListeners.clear();
@@ -206,5 +212,56 @@ describe('projectNames store', () => {
 		await pending;
 		expect(get(projectNames)).toEqual(new Map([['current', 'Current']]));
 		expect((await projectNames.loadMetadata('token', 'project')).projects[0].id).toBe('current');
+	});
+
+	it('links only the first metadata dispatch and describes later shared/cache consumers without physical IDs', async () => {
+		const firstContext = { actionId: 'first' } as ExperienceContext;
+		const sharedContext = { actionId: 'shared' } as ExperienceContext;
+		const cachedContext = { actionId: 'cached' } as ExperienceContext;
+		const pending = deferred<ProjectName[]>();
+		apiGet.mockReturnValueOnce(pending.promise);
+		const { projectNames } = await loadStore();
+		const first = projectNames.loadMetadata('token', 'project', 'user', false, firstContext);
+		const shared = projectNames.loadMetadata('token', 'project', 'user', false, sharedContext);
+		expect(apiGet).toHaveBeenCalledOnce();
+		expect(apiWithExperience.mock.calls).toEqual([[firstContext]]);
+		pending.resolve([{ id: 'private-id', name: 'private-name' }]);
+		const [a, b] = await Promise.all([first, shared]);
+		expect(a.projects).toEqual(b.projects); expect(a.projects).not.toBe(b.projects);
+		expect(experienceRecord.mock.calls).toEqual([[sharedContext, 'result.received', { stage: 'response', transport: 'shared' }]]);
+		await projectNames.loadMetadata('token', 'project', 'user', false, cachedContext);
+		expect(apiGet).toHaveBeenCalledOnce();
+		expect(apiWithExperience.mock.calls).toEqual([[firstContext]]);
+		expect(experienceRecord).toHaveBeenLastCalledWith(cachedContext, 'result.received', { stage: 'response', transport: 'cache' });
+		expect(JSON.stringify(experienceRecord.mock.calls)).not.toMatch(/private-id|private-name|physical_span_id|http_status/);
+	});
+
+	it('keeps a shared metadata failure retryable without serializing its native error as a business result', async () => {
+		const firstContext = { actionId: 'first' } as ExperienceContext;
+		const sharedContext = { actionId: 'shared' } as ExperienceContext;
+		const pending = Promise.withResolvers<ProjectName[]>();
+		apiGet.mockReturnValueOnce(pending.promise).mockResolvedValueOnce([]);
+		const { projectNames } = await loadStore();
+		const first = projectNames.loadMetadata('token', 'project', 'user', false, firstContext);
+		const shared = projectNames.loadMetadata('token', 'project', 'user', false, sharedContext);
+		pending.reject(new Error('private-native-error'));
+		expect((await first).failed).toBe(true); expect((await shared).failed).toBe(true);
+		expect(experienceRecord).toHaveBeenLastCalledWith(sharedContext, 'result.received', { stage: 'response', transport: 'shared' });
+		expect((await projectNames.loadMetadata('token', 'project', 'user', false, firstContext)).failed).toBe(false);
+		expect(JSON.stringify(experienceRecord.mock.calls)).not.toMatch(/private-native-error|failed|succeeded|physical_span_id/);
+	});
+
+	it('passes a domain-list observation context while retaining refresh and disabled-call arguments', async () => {
+		// Re-import after resetModules to use this test's fresh mocked API boundary.
+		const { domainsApi } = await import('$lib/api/domains');
+		const experience = { actionId: 'domains' } as ExperienceContext;
+		apiGet.mockResolvedValue({ items: [] });
+		await domainsApi.list({ token: 'token', projectId: 'project' }, { refresh: true, experience });
+		expect(apiWithExperience).toHaveBeenCalledExactlyOnceWith(experience);
+		expect(apiGet).toHaveBeenLastCalledWith('/api/v1/admin/domains', 'token', 'project', { refresh: true });
+		apiGet.mockClear(); apiWithExperience.mockClear();
+		await domainsApi.list({ token: 'token', projectId: 'project' });
+		expect(apiWithExperience).not.toHaveBeenCalled();
+		expect(apiGet.mock.calls).toEqual([['/api/v1/admin/domains', 'token', 'project']]);
 	});
 });

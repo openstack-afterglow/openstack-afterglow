@@ -1,8 +1,8 @@
-"""Canonical Kolla bootstrap: create missing tables and apply only verified SQL106.
+"""Canonical Kolla bootstrap: missing tables and explicitly pinned SQL106/107.
 
-This is not a historical migration runner or a migration-ledger baseline. SQL106
-DDL commits implicitly; operators must retain the schema-before-writer backup and
-rollback prerequisites documented in the immutable migration.
+This is not a historical migration runner or a migration-ledger baseline.
+DDL commits implicitly; schema-before-writer backup and rollback prerequisites
+remain mandatory. SQL107 adds diagnostics only, never business-table columns.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import hashlib
 import re
 from contextlib import asynccontextmanager
 
-from sqlalchemy import MetaData, text
+from sqlalchemy import JSON, MetaData, UniqueConstraint, inspect, text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from scripts.baseline_migrations import MIGRATIONS, MigrationLedgerError, load_manifest
@@ -20,6 +20,19 @@ from scripts.baseline_migrations import MIGRATIONS, MigrationLedgerError, load_m
 _SQL106_ID = "106-mcp-oauth-ongoing"
 _SQL106_PATH = "backend/migrations/106_mcp_oauth_ongoing.sql"
 _SQL106_SHA256 = "b7ca283cceb76d3ce4c741804e828c0073b6694f5ceb592182041151ca0d6ea6"
+_SQL107_ID = "107-experience-events"
+_SQL107_PATH = "backend/migrations/107_experience_events.sql"
+_SQL107_SHA256 = "1ce65e8130e89107a765dfec5ae3d31d431343f864e93bbf0e2e93b8fdfb8881"
+_EXPERIENCE_TABLES = frozenset(
+    {
+        "experience_events",
+        "experience_catalogs",
+        "experience_operation_links",
+        "experience_holds",
+        "experience_aggregates",
+        "experience_maintenance",
+    }
+)
 _GRANTS = "mcp_delegated_grants"
 _TOKENS = "mcp_oauth_tokens"
 _CHECKS = {
@@ -46,6 +59,27 @@ def load_sql106() -> list[str]:
     # or semicolons inside literals. Do not generalize this to arbitrary files.
     sql = "\n".join(line for line in payload.decode("utf-8").splitlines() if not line.lstrip().startswith("--"))
     return [statement.strip() for statement in sql.split(";") if statement.strip()]
+
+
+def load_sql107() -> list[str]:
+    """Admit only the reviewed additive diagnostic tables, never arbitrary DDL."""
+    migration = next((item for item in load_manifest() if item.logical_id == _SQL107_ID), None)
+    if migration is None or (migration.relative_path, migration.sha256) != (_SQL107_PATH, _SQL107_SHA256):
+        raise MigrationLedgerError("SQL107 immutable manifest identity does not match")
+    payload = (MIGRATIONS / "107_experience_events.sql").read_bytes()
+    if hashlib.sha256(payload).hexdigest() != _SQL107_SHA256:
+        raise MigrationLedgerError("SQL107 immutable payload checksum does not match")
+    sql = "\n".join(line for line in payload.decode("utf-8").splitlines() if not line.lstrip().startswith("--"))
+    statements = [statement.strip() for statement in sql.split(";") if statement.strip()]
+    names = []
+    for statement in statements:
+        match = re.match(r"\ACREATE TABLE IF NOT EXISTS ([a-z_]+)\s*\(", statement)
+        if match is None:
+            raise MigrationLedgerError("SQL107 contains unsupported DDL")
+        names.append(match[1])
+    if len(names) != len(_EXPERIENCE_TABLES) or set(names) != _EXPERIENCE_TABLES:
+        raise MigrationLedgerError("SQL107 table set does not match")
+    return statements
 
 
 def _check_signature(expression: str) -> tuple:
@@ -222,6 +256,7 @@ def model_metadata() -> MetaData:
         domain_quotas,
         email_delivery,
         enrollment_policy,
+        experience,
         gpu_quota_requests,
         mcp_authority,
         organization_provisioning,
@@ -231,6 +266,97 @@ def model_metadata() -> MetaData:
     return Base.metadata
 
 
+def _verify_sql107(sync, metadata: MetaData) -> None:
+    """Refuse incompatible existing tables; CREATE IF NOT EXISTS cannot fix them."""
+    inspector = inspect(sync)
+    database = sync.execute(text("SELECT DATABASE()")).scalar_one()
+
+    def normalized_type(value) -> str:
+        compiled = value.compile(dialect=sync.dialect).upper()
+        return re.sub(r"\b(BIGINT|INT|INTEGER)\([0-9]+\)", r"\1", compiled)
+
+    for name in sorted(_EXPERIENCE_TABLES):
+        expected = metadata.tables[name]
+        columns = {column["name"]: column for column in inspector.get_columns(name)}
+        if set(columns) != set(expected.c.keys()):
+            raise MigrationLedgerError(f"SQL107 column set is incompatible: {name}")
+        # SQLAlchemy's MariaDB inspector omits inline JSON CHECK constraints.
+        checks = set()
+        clauses = sync.execute(
+            text(
+                "SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS "
+                "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = :name"
+            ),
+            {"name": name},
+        ).scalars()
+        for clause in clauses:
+            try:
+                checks.add(_check_signature(clause))
+            except MigrationLedgerError:
+                continue
+        for column in expected.c:
+            actual = columns[column.name]
+            if bool(actual["nullable"]) != column.nullable:
+                raise MigrationLedgerError(f"SQL107 nullability is incompatible: {name}.{column.name}")
+            native_type = normalized_type(actual["type"])
+            if isinstance(column.type, JSON):
+                if native_type != "LONGTEXT" or _check_signature(f"json_valid({column.name})") not in checks:
+                    raise MigrationLedgerError(f"SQL107 JSON guard is incompatible: {name}.{column.name}")
+            elif native_type != normalized_type(column.type.dialect_impl(sync.dialect)):
+                raise MigrationLedgerError(f"SQL107 type is incompatible: {name}.{column.name}")
+        if inspector.get_pk_constraint(name)["constrained_columns"] != [column.name for column in expected.primary_key]:
+            raise MigrationLedgerError(f"SQL107 primary key is incompatible: {name}")
+        expected_indexes = {
+            index.name: (tuple(column.name for column in index.columns), bool(index.unique))
+            for index in expected.indexes
+        }
+        expected_indexes.update(
+            {
+                constraint.name: (tuple(column.name for column in constraint.columns), True)
+                for constraint in expected.constraints
+                if isinstance(constraint, UniqueConstraint)
+            }
+        )
+        actual_indexes = {
+            index["name"]: (tuple(index["column_names"]), bool(index["unique"]))
+            for index in inspector.get_indexes(name)
+        }
+        if any(actual_indexes.get(key) != value for key, value in expected_indexes.items()):
+            raise MigrationLedgerError(f"SQL107 indexes are incompatible: {name}")
+        expected_foreign_keys = {
+            constraint.name: (
+                tuple(column.name for column in constraint.columns),
+                constraint.referred_table.name,
+                tuple(element.column.name for element in constraint.elements),
+            )
+            for constraint in expected.foreign_key_constraints
+        }
+        actual_foreign_keys = {key["name"]: key for key in inspector.get_foreign_keys(name)}
+        for key, (columns, parent, parent_columns) in expected_foreign_keys.items():
+            saved = actual_foreign_keys.get(key)
+            if (
+                saved is None
+                or tuple(saved["constrained_columns"]) != columns
+                or saved["referred_table"] != parent
+                or saved.get("referred_schema") not in {None, database}
+                or tuple(saved["referred_columns"]) != parent_columns
+                or (saved.get("options", {}).get("ondelete") or "RESTRICT").upper() not in {"RESTRICT", "NO ACTION"}
+            ):
+                raise MigrationLedgerError(f"SQL107 catalog referential guard is incompatible: {name}")
+        options = inspector.get_table_options(name)
+        if options.get("mysql_collate") != "utf8mb4_bin" or options.get("mysql_engine", "").lower() != "innodb":
+            raise MigrationLedgerError(f"SQL107 engine or exact-identity collation is incompatible: {name}")
+    identity = next(column for column in inspector.get_columns("experience_events") if column["name"] == "id")
+    if identity.get("autoincrement") is not True:
+        raise MigrationLedgerError("SQL107 event identity is incompatible")
+
+
+async def ensure_sql107(conn: AsyncConnection, metadata: MetaData) -> None:
+    for statement in load_sql107():
+        await conn.exec_driver_sql(statement)
+    await conn.run_sync(lambda sync: _verify_sql107(sync, metadata))
+
+
 async def bootstrap_database(
     database_url: str,
     *,
@@ -238,7 +364,7 @@ async def bootstrap_database(
     grants_table: str = _GRANTS,
     tokens_table: str = _TOKENS,
 ) -> bool:
-    """Strict missing-table initialization followed by SQL106 under one lock.
+    """Strict missing-table initialization followed by pinned schemas under one lock.
 
     Optional metadata/table names isolate real bootstrap regression schemas;
     the CLI always uses the registered canonical application models.
@@ -248,11 +374,18 @@ async def bootstrap_database(
         raise MigrationLedgerError("database.url is required for schema bootstrap")
     # Validate image contents before opening or changing the database.
     load_sql106()
+    if metadata is None:
+        load_sql107()
     engine = create_async_engine(database_url, connect_args={"connect_timeout": 10}, hide_parameters=True)
     try:
         async with engine.connect() as conn, schema_lock(conn):
-            await conn.run_sync((metadata if metadata is not None else model_metadata()).create_all)
-            return await ensure_sql106(conn, grants_table=grants_table, tokens_table=tokens_table)
+            canonical = metadata is None
+            registered = model_metadata() if canonical else metadata
+            await conn.run_sync(registered.create_all)
+            changed = await ensure_sql106(conn, grants_table=grants_table, tokens_table=tokens_table)
+            if canonical:
+                await ensure_sql107(conn, registered)
+            return changed
     finally:
         await engine.dispose()
 

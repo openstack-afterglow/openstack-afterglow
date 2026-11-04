@@ -934,7 +934,9 @@ def _normalize_router_routes(raw_routes: Any) -> list[dict]:
     return routes
 
 
-def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tuple[str, str], dict]:
+def build_compute_port_index(
+    conn: openstack.connection.Connection, *, ports: list | None = None
+) -> dict[tuple[str, str], dict]:
     """compute 포트를 한 번 순회해 (device_id, ip_address) → 포트 메타 인덱스를 만든다.
 
     토폴로지 핸들러(user/admin)가 인스턴스 ip_addresses 에 network_id/port_id/mac_address 를
@@ -943,7 +945,7 @@ def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tupl
     (``device_owner`` prefix 매칭이 필요해 서버측 device_owner 필터는 쓰지 않는다).
     """
     index: dict[tuple[str, str], dict] = {}
-    for p in conn.network.ports(fields=_COMPUTE_PORT_FIELDS):
+    for p in ports if ports is not None else conn.network.ports(fields=_COMPUTE_PORT_FIELDS):
         dev_owner = p.device_owner or ""
         if not p.device_id or not dev_owner.startswith("compute:"):
             continue
@@ -961,6 +963,24 @@ def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tupl
 def get_topology(
     conn: openstack.connection.Connection, *, include_provider: bool = False, project_id: str | None = None
 ) -> TopologyData:
+    return _collect_topology(conn, include_provider=include_provider, project_id=project_id)[0]
+
+
+def get_topology_snapshot(conn: openstack.connection.Connection) -> tuple[TopologyData, dict, list]:
+    """Admin-only request snapshot: one port enumeration and fresh subnet ownership.
+
+    Raw subnets are returned to the caller, never stored in the structural cache.
+    """
+    return _collect_topology(conn, include_provider=True, collect_compute_ports=True)
+
+
+def _collect_topology(
+    conn: openstack.connection.Connection,
+    *,
+    include_provider: bool = False,
+    project_id: str | None = None,
+    collect_compute_ports: bool = False,
+) -> tuple[TopologyData, dict, list]:
     """배치 조회로 전체 토폴로지 데이터를 수집. 독립 조회는 스레드로 동시에 수행한다.
 
     ``project_id`` 가 주어지면 Floating IP는 해당 프로젝트 소유분만 조회한다(사용자 scope).
@@ -971,16 +991,34 @@ def get_topology(
     """
     # 1. 서로 의존하지 않는 조회(네트워크/서브넷/라우터/FIP/라우터 인터페이스 포트)를 동시에 수행.
     #    직렬 호출은 각 응답 시간이 그대로 합산돼 대규모 클라우드에서 토폴로지 응답이 수 초로 늘어난다.
-    iface_port_calls = [
-        (lambda owner=owner: list(conn.network.ports(device_owner=owner))) for owner in _ROUTER_IFACE_OWNERS
-    ]
+    iface_port_calls = (
+        [lambda: list(conn.network.ports(fields=_COMPUTE_PORT_FIELDS))]
+        if collect_compute_ports
+        else [(lambda owner=owner: list(conn.network.ports(device_owner=owner))) for owner in _ROUTER_IFACE_OWNERS]
+    )
     all_networks, all_subnets, all_routers, floating_ips, *iface_port_groups = run_parallel(
         lambda: list(conn.network.networks()),
         lambda: list(conn.network.subnets()),
         lambda: list(conn.network.routers()),
-        lambda: list_floating_ips(conn, project_id),
+        lambda: (
+            [_fip_to_info(fip) for fip in conn.network.ips()]
+            if collect_compute_ports
+            else list_floating_ips(conn, project_id)
+        ),
         *iface_port_calls,
     )
+    port_index = {}
+    if collect_compute_ports:
+        ports = iface_port_groups[0]
+        port_index = build_compute_port_index(conn, ports=ports)
+        iface_port_groups = [[port for port in ports if port.device_owner in _ROUTER_IFACE_OWNERS]]
+        compute_ports = {
+            port.id: port.device_id
+            for port in ports
+            if port.device_id and (port.device_owner or "").startswith("compute:")
+        }
+        for floating_ip in floating_ips:
+            floating_ip.instance_id = compute_ports.get(floating_ip.port_id)
 
     # 2. 서브넷 → 맵 구축
     subnet_map: dict[str, SubnetDetail] = {}  # subnet_id → SubnetDetail
@@ -1091,18 +1129,16 @@ def get_topology(
         else:
             topo_networks.append(TopologyNetwork(**base_fields))
 
-    if include_provider:
-        return AdminTopologyData(
+    topology_type = AdminTopologyData if include_provider else TopologyData
+    return (
+        topology_type(
             networks=topo_networks,
             routers=topo_routers,
             instances=[],  # API 핸들러에서 nova 데이터 주입
             floating_ips=floating_ips,
-        )
-    return TopologyData(
-        networks=topo_networks,
-        routers=topo_routers,
-        instances=[],  # API 핸들러에서 nova 데이터 주입
-        floating_ips=floating_ips,
+        ),
+        port_index,
+        all_subnets,
     )
 
 

@@ -7,6 +7,7 @@ import type { Volume } from '$lib/types/volume';
 import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 import { policyInput } from '$lib/types/volumeBackupPolicy';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 const base = '/api/v1/volumes/backups/auto-backup';
 
@@ -58,29 +59,40 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		return !get(projectSwitching) && s.generation === generation && s.token === now.token && s.projectId === now.projectId && s.userId === now.userId;
 	}
 
-	async function refresh() {
+	function refresh() {
+		return refreshAttempt(beginExperienceAction('monitoring', 'refresh', 'resource.list'));
+	}
+	async function refreshAttempt(parentExperience?: ExperienceContext) {
 		const s = scope();
 		if (!s.token || !s.projectId || get(projectSwitching) || busy) return;
 		const sequence = ++loadSequence;
+		const experience = parentExperience ?? beginExperienceLoad('monitoring', 'resource.list');
+		const owns = () => current(s) && sequence === loadSequence;
 		loading = true;
+		experienceState(experience, 'loading');
 		await Promise.all([
-			api.get<VolumeBackupPolicy[]>(`${base}/configs`, s.token, s.projectId).then((rows) => {
-				if (!current(s) || sequence !== loadSequence) return;
+			api.withExperience(experience).get<VolumeBackupPolicy[]>(`${base}/configs`, s.token, s.projectId).then((rows) => {
+				if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
 				if (rows.some((row) => row.project_id !== s.projectId)) throw new Error('Policy scope mismatch');
 				policies = rows;
 				error = '';
 			}).catch(() => {
 				if (current(s) && sequence === loadSequence) error = t('autoPolicy.loadFailed');
 			}),
-			api.get<Volume[]>('/api/v1/volumes', s.token, s.projectId).then((rows) => {
-				if (!current(s) || sequence !== loadSequence) return;
+			api.withExperience(experience).get<Volume[]>('/api/v1/volumes', s.token, s.projectId).then((rows) => {
+				if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
 				volumes = rows;
 				volumesError = '';
 			}).catch(() => {
 				if (current(s) && sequence === loadSequence) volumesError = t('autoPolicy.volumesFailed');
 			}),
 		]);
-		if (current(s) && sequence === loadSequence) loading = false;
+		if (owns()) {
+			loading = false;
+			experienceState(experience, error || volumesError ? 'error' : policies.length ? 'ready' : 'empty');
+			// The controller has no mounted-result fence; publication is known, DOM commitment is not.
+			void experienceApplied(experience);
+		} else experienceDiscarded(experience, 'stale');
 	}
 
 	$effect(() => {
@@ -94,7 +106,7 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 				loadSequence++;
 				policies = []; volumes = []; error = ''; volumesError = ''; mutationError = '';
 				busy = false; editor = null; loading = Boolean(value.projectId && value.token);
-				if (value.projectId && value.token && !switching) void refresh();
+				if (value.projectId && value.token && !switching) void refreshAttempt();
 			});
 		});
 	});
@@ -107,18 +119,27 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		mutationError = '';
 	}
 
-	async function save(volumeId: string, input: VolumeBackupPolicyInput): Promise<true | string> {
+	function save(volumeId: string, input: VolumeBackupPolicyInput): Promise<true | string> {
+		return saveAttempt(volumeId, input);
+	}
+	async function saveAttempt(volumeId: string, input: VolumeBackupPolicyInput, parentExperience?: ExperienceContext): Promise<true | string> {
 		const s = scope();
 		if (!s.token || !s.projectId || !current(s) || !get(canWrite) || busy || loading || error || volumesError) return t('autoPolicy.saveFailed');
 		busy = true;
+		const experience = parentExperience ?? beginExperienceAction('monitoring', 'update', 'resource.detail');
+		experienceState(experience, 'loading');
 		mutationError = '';
 		try {
-			const saved = await api.post<VolumeBackupPolicy>(`${base}/${encodeURIComponent(volumeId)}`, input, s.token, s.projectId);
-			if (!current(s) || !get(canWrite)) return t('autoPolicy.saveFailed');
+			const saved = await api.withExperience(experience).post<VolumeBackupPolicy>(`${base}/${encodeURIComponent(volumeId)}`, input, s.token, s.projectId);
+			if (!current(s) || !get(canWrite)) { experienceDiscarded(experience, 'scope_changed'); return t('autoPolicy.saveFailed'); }
 			if (saved.project_id !== s.projectId || saved.volume_id !== volumeId) throw new Error('Policy scope mismatch');
 			policies = [...policies.filter((row) => row.volume_id !== volumeId), saved];
+			experienceState(experience, 'ready');
+			void experienceApplied(experience);
 			return true;
 		} catch (e) {
+			// The caller owns its returned validation/error text; no local result state was published.
+			if (!current(s)) experienceDiscarded(experience, 'scope_changed');
 			return e instanceof ApiError ? e.message : t('autoPolicy.saveFailed');
 		} finally {
 			if (current(s)) busy = false;
@@ -129,8 +150,13 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		const s = scope();
 		const volume = volumes.find((row) => row.id === policy.volume_id);
 		if (enabled && volume?.status === 'in-use' && !policy.force) { open(policy.volume_id); resuming = editor === policy.volume_id; return; }
-		const result = await save(policy.volume_id, { ...policyInput(policy), enabled });
-		if (current(s) && result !== true) mutationError = result;
+		const experience = beginExperienceAction('monitoring', 'update', 'resource.detail');
+		const result = await saveAttempt(policy.volume_id, { ...policyInput(policy), enabled }, experience);
+		if (current(s) && result !== true) {
+			mutationError = result;
+			experienceState(experience, 'error');
+			void experienceApplied(experience);
+		}
 	}
 
 	async function remove(policy: VolumeBackupPolicy) {
@@ -140,11 +166,20 @@ export function createVolumeBackupPoliciesController(): VolumeBackupPoliciesCont
 		if (!await confirmDialog(t('autoPolicy.removeConfirm', { name }))) return;
 		if (!current(s) || !get(canWrite) || busy || loading || error) return;
 		busy = true; mutationError = '';
+		const experience = beginExperienceAction('monitoring', 'delete', 'resource.detail');
+		experienceState(experience, 'loading');
 		try {
-			await api.delete(`${base}/${encodeURIComponent(policy.volume_id)}`, s.token ?? undefined, s.projectId ?? undefined);
-			if (current(s) && get(canWrite)) policies = policies.filter((row) => row.volume_id !== policy.volume_id);
+			await api.withExperience(experience).delete(`${base}/${encodeURIComponent(policy.volume_id)}`, s.token ?? undefined, s.projectId ?? undefined);
+			if (current(s) && get(canWrite)) {
+				policies = policies.filter((row) => row.volume_id !== policy.volume_id);
+				experienceState(experience, policies.length ? 'ready' : 'empty');
+				void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} catch (e) {
-			if (current(s)) mutationError = e instanceof ApiError ? e.message : t('autoPolicy.removeFailed');
+			if (current(s)) {
+				mutationError = e instanceof ApiError ? e.message : t('autoPolicy.removeFailed');
+				experienceState(experience, 'error'); void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} finally { if (current(s)) busy = false; }
 	}
 

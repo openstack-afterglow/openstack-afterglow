@@ -94,7 +94,7 @@ describe('instance operation feedback', () => {
 		for (const status of statuses) expect(log.contains(status)).toBe(false);
 		expect(log.textContent).toBe('');
 		expect(log.getAttribute('aria-busy')).toBe('true');
-		expect(controller.current.loadConsoleLog).toHaveBeenCalledWith(false);
+		expect(controller.current.loadConsoleLog).toHaveBeenCalledWith(false, undefined);
 		expect(controller.current.consolePollAr).toMatchObject({ active: true });
 		expect(statuses.filter((status) => !status.closest('button'))).toHaveLength(1);
 	});

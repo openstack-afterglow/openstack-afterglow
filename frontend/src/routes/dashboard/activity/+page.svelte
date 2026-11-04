@@ -9,6 +9,7 @@
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState } from '$lib/utils/experience';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, PageHeader, PageShell, StatusChip, ResourceToolbar, SectionHeader, StatTile, ToggleGroup } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
@@ -51,15 +52,19 @@
 
 	async function fetchData(force = false) {
 		if (!token || !projectId) return;
+		const experience = force ? beginExperienceAction('activity', 'refresh', 'page') : beginExperienceLoad('activity', 'page');
 		loading = !data;
 		error = null;
+		if (loading) experienceState(experience, 'loading');
 		try {
-			const res = await api.get<ActivityData>(`/api/v1/dashboard/activity?range=${period}`, token, projectId, { refresh: force });
+			const res = await api.withExperience(experience).get<ActivityData>(`/api/v1/dashboard/activity?range=${period}`, token, projectId, { refresh: force });
 			data = res;
 		} catch (e) {
 			error = e instanceof Error ? e.message : t('activity.loadFailed');
 		} finally {
 			loading = false;
+			experienceState(experience, error && !data ? 'error' : data?.db_status === 'unavailable' ? 'error' : (data?.recent_actions?.length ?? 0) === 0 ? 'empty' : 'ready');
+			void experienceApplied(experience);
 		}
 	}
 

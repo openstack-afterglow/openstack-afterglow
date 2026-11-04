@@ -3,7 +3,7 @@
   import PageShell from '$lib/components/ui/PageShell.svelte';
   import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import type { Router, Network } from '$lib/types/networks';
@@ -21,6 +21,7 @@
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations } from '$lib/utils/bulkActions';
   import { toast } from '$lib/stores/toast';
+  import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
   let selectedRouterId = $state<string | null>(null);
 
@@ -41,6 +42,9 @@
   let showModal = $state(false);
   let selection = createResourceSelection();
   let busy = $state(false);
+  let stateVersion = 0;
+  let live = true;
+  onDestroy(() => { live = false; });
   let selectableIds = $derived(new Set(routers.filter((router) => router.project_id && router.project_id === $auth.projectId).map((router) => router.id)));
 
   async function bulkDelete() {
@@ -50,26 +54,41 @@
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     busy = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.list');
     try {
-      const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/routers/${id}`, tokenSnapshot, projectSnapshot));
+      const results = await executeBulkMutations(ids, (id) => api.withExperience(experience).delete(`/api/v1/routers/${id}`, tokenSnapshot, projectSnapshot));
       const succeeded = results.filter((result) => result.ok).map((result) => result.id);
       if (projectSnapshot === ($auth.projectId ?? undefined)) selection.remove(succeeded);
       if (succeeded.length > 0) toast.success(t('routers.bulkDone', { count: succeeded.length }));
       const failedCount = results.length - succeeded.length;
-      if (failedCount > 0) toast.error(t('routers.bulkFailed', { count: failedCount }));
-      if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchRouters({ refresh: true });
+      if (failedCount > 0) {
+        toast.error(t('routers.bulkFailed', { count: failedCount }));
+        experienceState(experience, 'error');
+        if (experience) void experienceApplied(experience);
+      }
+      if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchRouters({ refresh: true }, experience);
     } finally {
       busy = false;
     }
   }
 
-  async function fetchRouters(opts?: { refresh?: boolean }) {
+  async function fetchRouters(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.list')) {
+    const projectId = $auth.projectId, userId = $auth.userId;
+    let appliedVersion = 0;
+    const current = () => live && appliedVersion === stateVersion && $auth.projectId === projectId && $auth.userId === userId;
+    if (loading || refreshing) experienceState(experience, 'loading');
     try {
-      routers = await api.get<Router[]>('/api/v1/routers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
+      routers = await api.withExperience(experience).get<Router[]>('/api/v1/routers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
       if (selection.count > 0) selection.retain(routers.map((router) => router.id));
       error = '';
+      appliedVersion = ++stateVersion;
+      if (experience?.action !== 'create') experienceState(experience, routers.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience, {}, current);
     } catch (e) {
       error = e instanceof ApiError ? t('routers.loadFailed', { status: e.status }) : t('routers.serverError');
+      appliedVersion = ++stateVersion;
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience, {}, current);
     } finally {
       loading = false;
     }
@@ -77,7 +96,7 @@
 
   async function forceRefresh() {
     refreshing = true;
-    try { await fetchRouters({ refresh: true }); } finally { refreshing = false; }
+    try { await fetchRouters({ refresh: true }, beginExperienceAction('network', 'refresh', 'resource.list')); } finally { refreshing = false; }
   }
 
   async function fetchNetworks() {
@@ -97,13 +116,15 @@
   }
 
   async function createRouter(form: { name: string; external_network_id: string }): Promise<string | true> {
+    const experience = beginExperienceAction('network', 'create', 'resource.list');
     try {
       const body: Record<string, unknown> = { name: form.name };
       if (form.external_network_id) body.external_network_id = form.external_network_id;
-      await api.post('/api/v1/routers', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
-      await fetchRouters();
+      await api.withExperience(experience).post('/api/v1/routers', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      await fetchRouters(undefined, experience);
       return true;
     } catch (e) {
+      experienceState(experience, 'error');
       return e instanceof ApiError ? e.message : t('routers.createFailed');
     }
   }

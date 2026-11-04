@@ -144,6 +144,11 @@ Magnum 쿠버네티스 클러스터와 Zun 컨테이너를 관리합니다. **af
 
 특정 컨테이너의 상세 정보를 반환합니다.
 
+Native401/403/404는 정보 노출을 막는 정적404이고, 그 외 native HTTP·전송 장애는 정제된503입니다.
+오류 원문이나 native header를 반환하지 않으며 장애를 컨테이너 부재로 추정하지 않습니다.
+관리자 단건 경로 `GET /api/v1/admin/containers/{container_id}`도 같은 분류를 사용하되 기존
+`require_admin`과 관리자 executor 권위는 별도로 유지합니다.
+
 ### DELETE /api/v1/containers/{container_id}
 
 컨테이너를 삭제합니다.

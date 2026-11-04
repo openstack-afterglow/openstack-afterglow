@@ -181,9 +181,9 @@ async def _policy(redis, member: str) -> dict | None:
 
 
 async def _listing(conn, instance_id: str) -> list[dict]:
-    # The optional Trove UI API normally returns [] on error. That is never
-    # evidence of absence for submission or retention.
-    backups = await run_sync(trove.list_backups, conn, instance_id, strict=True)
+    # Trove 백업 목록 조회 실패는 빈 목록으로 숨기지 않고 호출자로 전파한다.
+    # 조회 실패를 백업 부재 증거로 사용하지 않는다.
+    backups = await run_sync(trove.list_backups, conn, instance_id)
     return [backup for backup in backups if backup.get("instance_id") == instance_id]
 
 

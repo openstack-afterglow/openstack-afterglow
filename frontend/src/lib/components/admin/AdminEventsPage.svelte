@@ -13,6 +13,8 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { interactionAuditHealth } from '$lib/utils/interactionAudit';
+	import ExperienceReplayPanel from './ExperienceReplayPanel.svelte';
+	import { siteConfig } from '$lib/config/site';
 
 	interface EventRecord {
 		id: number;
@@ -291,6 +293,7 @@
 	</PageHeader>
 	<p class="mb-6 text-sm text-ink-2">{t('events.collectionNotice')}</p>
 	<p class="mb-6 text-sm tabular-nums text-ink-2" role="status">{t('events.localDelivery', { queued: $interactionAuditHealth.queued, sent: $interactionAuditHealth.sent, dropped: $interactionAuditHealth.dropped, failed: $interactionAuditHealth.failedBatches })}</p>
+	{#if $siteConfig.experience_enabled === true}<ExperienceReplayPanel />{/if}
 
 	<Card surface="base" class="mb-6">
 		<form onsubmit={apply} aria-label={t('events.filters')}>

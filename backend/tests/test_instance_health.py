@@ -1,5 +1,6 @@
 """인스턴스 헬스체크 서비스 + API 테스트."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -31,6 +32,22 @@ def _make_report(**kwargs) -> InstanceHealthReport:
     )
     defaults.update(kwargs)
     return InstanceHealthReport(**defaults)
+
+
+def _callback_reasons(caplog) -> list[str]:
+    from app.utils.log import SensitiveDataFilter
+    from app.utils.structured_logging import JSONFormatter
+
+    records = [record for record in caplog.records if record.name == "app.api.compute.instance_health"]
+    sanitizer = SensitiveDataFilter()
+    formatter = JSONFormatter()
+    reasons = []
+    for record in records:
+        sanitizer.filter(record)
+        payload = json.loads(formatter.format(record))
+        reasons.append(payload["diagnostic_reason"])
+        assert "exception" not in payload
+    return reasons
 
 
 # ---------------------------------------------------------------------------
@@ -269,26 +286,100 @@ async def test_list_health_results(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_report_endpoint_unauthorized(client):
+@pytest.mark.parametrize("authorization", [None, "Bearer ", "Basic invalid"])
+async def test_report_endpoint_unauthorized(client, authorization, caplog):
     resp = await client.post(
         "/api/v1/instances/some-id/health/report",
+        headers={"Authorization": authorization} if authorization is not None else {},
         json=_make_report().model_dump(),
     )
     assert resp.status_code == 401
+    assert "X-Afterglow-Error-Code" not in resp.headers
+    assert "health_credential_missing" in _callback_reasons(caplog)
 
 
 @pytest.mark.asyncio
-async def test_report_endpoint_invalid_token(fake_redis, client):
+async def test_report_endpoint_invalid_token(fake_redis, client, caplog):
     resp = await client.post(
         "/api/v1/instances/some-id/health/report",
         headers={"Authorization": "Bearer invalid-token"},
         json=_make_report().model_dump(),
     )
     assert resp.status_code == 401
+    assert "X-Afterglow-Error-Code" not in resp.headers
+    assert "health_credential_expired_or_unknown" in _callback_reasons(caplog)
 
 
 @pytest.mark.asyncio
-async def test_report_endpoint_wrong_instance(fake_redis, client):
+@pytest.mark.parametrize(
+    ("operation", "route"),
+    [("get", "health/report"), ("setex", "health/report"), ("get", "credentials/rotate-cephx")],
+)
+async def test_callback_store_outage_preserves_credential(fake_redis, client, monkeypatch, caplog, operation, route):
+    token = await svc.issue_report_token("outage-instance", "outage-project")
+    before = dict(fake_redis._store)
+    original = getattr(fake_redis, operation)
+
+    async def unavailable(*_args, **_kwargs):
+        raise ConnectionError(f"secret diagnostic {token} outage-instance outage-project")
+
+    monkeypatch.setattr(fake_redis, operation, unavailable)
+    response = await client.post(
+        f"/api/v1/instances/outage-instance/{route}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_make_report().model_dump() if route == "health/report" else None,
+    )
+    assert response.status_code == 503
+    assert "X-Afterglow-Error-Code" not in response.headers
+    assert "health_store_unavailable" not in response.text
+    assert "health_store_unavailable" in _callback_reasons(caplog)
+    assert fake_redis._store == before
+    assert token not in caplog.text
+    assert "secret diagnostic" not in caplog.text
+    callback_logs = [record.getMessage() for record in caplog.records if record.name.startswith("app.")]
+    assert all("outage-instance" not in message and "outage-project" not in message for message in callback_logs)
+    monkeypatch.setattr(fake_redis, operation, original)
+    assert await svc.verify_report_token(token) == {"instance_id": "outage-instance", "project_id": "outage-project"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw", ["not-json", "[]", '{"instance_id": "inst-corrupt"}'])
+async def test_callback_corrupt_store_record_is_not_invalid_credential(fake_redis, client, raw, caplog):
+    token = await svc.issue_report_token("inst-corrupt", "proj-1")
+    await fake_redis.setex(f"{svc._TOKEN_PREFIX}{token}", svc._TOKEN_TTL, raw)
+    before = dict(fake_redis._store)
+    response = await client.post(
+        "/api/v1/instances/inst-corrupt/health/report",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_make_report().model_dump(),
+    )
+    assert response.status_code == 503
+    assert "X-Afterglow-Error-Code" not in response.headers
+    assert "health_credential_record_invalid" not in response.text
+    assert "health_credential_record_invalid" in _callback_reasons(caplog)
+    assert fake_redis._store == before
+
+
+@pytest.mark.asyncio
+async def test_callback_expiry_does_not_renew_or_replace_credential(fake_redis, client, caplog):
+    token = await svc.issue_report_token("inst-expired", "proj-1")
+    token_key = f"{svc._TOKEN_PREFIX}{token}"
+    raw, _ = fake_redis._store[token_key]
+    fake_redis._store[token_key] = (raw, 0)
+    response = await client.post(
+        "/api/v1/instances/inst-expired/health/report",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_make_report().model_dump(),
+    )
+    assert response.status_code == 401
+    assert "X-Afterglow-Error-Code" not in response.headers
+    assert "health_credential_expired_or_unknown" in _callback_reasons(caplog)
+    assert token_key not in fake_redis._store
+    assert await fake_redis.get(f"{svc._INSTANCE_PREFIX}inst-expired") == token
+
+
+@pytest.mark.asyncio
+async def test_report_endpoint_wrong_instance(fake_redis, client, caplog):
     token = await svc.issue_report_token("inst-x", "proj-1")
     resp = await client.post(
         "/api/v1/instances/wrong-id/health/report",
@@ -296,6 +387,8 @@ async def test_report_endpoint_wrong_instance(fake_redis, client):
         json=_make_report().model_dump(),
     )
     assert resp.status_code == 403
+    assert "X-Afterglow-Error-Code" not in resp.headers
+    assert "health_credential_instance_mismatch" in _callback_reasons(caplog)
 
 
 @pytest.mark.asyncio

@@ -62,5 +62,9 @@ async def ingest_traffic(request: Request, response: Response):
     accepted = await record_event(event, "frontend")
     response.headers["Cache-Control"] = "no-store"
     if not accepted:
-        raise HTTPException(503, "Traffic aggregation unavailable or capacity exceeded")
+        raise HTTPException(
+            503,
+            "Traffic aggregation unavailable or capacity exceeded",
+            headers={"Cache-Control": "no-store"},
+        )
     return {"accepted": True}

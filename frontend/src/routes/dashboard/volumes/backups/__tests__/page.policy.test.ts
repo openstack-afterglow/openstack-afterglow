@@ -6,7 +6,7 @@ import type { Volume } from '$lib/types/volume';
 import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/volumeBackupPolicy';
 
 const { get, post, remove, confirm } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), remove: vi.fn(), confirm: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get, post, delete: remove, prefetch: vi.fn() }, ApiError: class ApiError extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { get, post, delete: remove, prefetch: vi.fn(), withExperience() { return this; } }, ApiError: class ApiError extends Error {} }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'member' }), canWrite: writable(true), projectSwitching: writable(false) }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: confirm }));
 vi.mock('$lib/i18n/ns/volume', () => ({ t: (key: string, values?: Record<string, unknown>) => values?.name ? `${key}:${values.name}` : key }));

@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, withExperience: () => ({ get: mocks.get }) } }));
 vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth, authReady: mocks.authReady }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (callback: () => Promise<void>) => {

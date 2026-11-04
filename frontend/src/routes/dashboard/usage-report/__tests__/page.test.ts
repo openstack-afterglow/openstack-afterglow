@@ -9,7 +9,7 @@ import { t } from '$lib/i18n/ns/dashboard-home';
 
 const { mockGet, refreshCallbacks } = vi.hoisted(() => ({ mockGet: vi.fn(), refreshCallbacks: [] as Array<() => unknown> }));
 
-vi.mock('$lib/api/client', () => ({ api: { get: mockGet } }));
+vi.mock('$lib/api/client', () => ({ api: { get: mockGet, withExperience: () => ({ get: mockGet }) } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project', projectName: 'Project One' }),
 	authReady: writable(true),

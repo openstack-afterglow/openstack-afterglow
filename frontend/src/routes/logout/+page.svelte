@@ -7,6 +7,10 @@
 	import { t } from '$lib/i18n/ns/shell';
 	import { t as tp } from '$lib/i18n/ns/public-entry';
 	import { ensureLogoutStarted, logoutProgress, type LogoutStep } from '$lib/utils/logout';
+	import { get } from 'svelte/store';
+	import { auth } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { beginAuthExperience, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
 
 	const steps = ['shell', 'server', 'local'] as const;
 	const statusKeys = { pending: 'logout.pending', active: 'logout.active', done: 'logout.complete', warning: 'logout.unconfirmed' } as const satisfies Record<LogoutStep, Parameters<typeof t>[0]>;
@@ -19,8 +23,38 @@
 
 	// Authored glyph state marker; status text below remains the accessible source.
 	const art = $derived(!finished ? '[ : : · · ]' : partial || $logoutProgress.local === 'warning' ? '[ ! ]' : '[ + ]');
+	let live = false;
+	let observation = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
+	$effect(() => {
+		if (!observation) return;
+		const progress = $logoutProgress;
+		const step = progress.local === 'active' || progress.phase === 'complete' ? 2 : progress.server === 'active' || progress.server === 'done' || progress.server === 'warning' ? 1 : 0;
+		observation.state(progress.phase !== 'complete' ? 'loading' : partial ? 'error' : 'ready', step);
+		void observation.applied(() => get(logoutProgress) === progress);
+	});
+	$effect(() => {
+		const progress = $logoutProgress;
+		const key = progress.phase !== 'complete' ? null : progress.local === 'warning' ? 'logout.localFailed' : progress.server === 'warning' ? progress.all ? 'logout.allPartial' : 'logout.partial' : !partial ? 'logout.done' : null;
+		if (key) t(key);
+		presentNotice('result', observation, 'shell', key, progress.local === 'warning' ? 'danger' : partial ? 'warning' : 'success');
+		const shell = progress.phase === 'complete' && progress.shell === 'warning' ? 'logout.shellFailed' : null;
+		if (shell) t(shell);
+		presentNotice('shell', observation, 'shell', shell, 'warning');
+	});
 
-	onMount(() => { void ensureLogoutStarted(); });
+	onMount(() => {
+		live = true;
+		observation = beginAuthExperience('page', 'view', () => live);
+		let previous = '';
+		const unsubscribe = auth.subscribe(state => {
+			const next = sessionScopeKey(state);
+			if (previous && next !== previous) observation = beginAuthExperience('page', 'view', () => live);
+			previous = next;
+		});
+		if (observation.context) void ensureLogoutStarted(observation.context); else void ensureLogoutStarted();
+		return () => { live = false; unsubscribe(); };
+	});
 </script>
 
 <svelte:head><title>{t('logout.pageTitle')}</title></svelte:head>

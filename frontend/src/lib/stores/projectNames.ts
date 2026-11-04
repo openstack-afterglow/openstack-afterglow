@@ -4,6 +4,7 @@ import { api } from '$lib/api/client';
 import { getActiveMockupProfile } from '$lib/mockup/transport';
 import { getMockupRevision, onMockupRevisionChange } from '$lib/mockup/state';
 import type { MockupProfileId } from '$lib/mockup/contracts';
+import { recordExperience, type ExperienceContext } from '$lib/utils/experience';
 
 export interface ProjectNamesScope {
 	token?: string;
@@ -59,12 +60,18 @@ function clearInFlight(requestGeneration: number, requestedScopeKey: string): vo
 	}
 }
 
-async function loadDirectory(token?: string, projectId?: string, userId?: string, refresh = false): Promise<ProjectDirectoryResult> {
+async function loadDirectory(token?: string, projectId?: string, userId?: string, refresh = false, experience?: ExperienceContext): Promise<ProjectDirectoryResult> {
 	const requestedScope = scope(token, projectId, userId);
 	const requestedScopeKey = scopeKey(requestedScope);
 	const copy = (value: ProjectDirectoryResult): ProjectDirectoryResult => ({ ...value, names: new Map(value.names), projects: value.projects.map(project => ({ ...project })) });
-	if (!refresh && currentScopeKey === requestedScopeKey && settledValue && Date.now() - settledAt < METADATA_TTL_MS) return copy(settledValue);
-	if (!refresh && inFlight?.scopeKey === requestedScopeKey) return inFlight.promise.then(copy);
+	if (!refresh && currentScopeKey === requestedScopeKey && settledValue && Date.now() - settledAt < METADATA_TTL_MS) {
+		if (experience) recordExperience(experience, 'result.received', { stage: 'response', transport: 'cache' });
+		return copy(settledValue);
+	}
+	if (!refresh && inFlight?.scopeKey === requestedScopeKey) return inFlight.promise.then(value => {
+		if (experience) recordExperience(experience, 'result.received', { stage: 'response', transport: 'shared' });
+		return copy(value);
+	});
 
 	generation += 1;
 	const requestGeneration = generation;
@@ -76,9 +83,10 @@ async function loadDirectory(token?: string, projectId?: string, userId?: string
 
 	const promise = (async () => {
 		try {
+			const request = experience ? api.withExperience(experience) : api;
 			const data = refresh
-				? await api.get<AdminProjectName[]>('/api/v1/admin/projects/names', token, projectId, { refresh: true })
-				: await api.get<AdminProjectName[]>('/api/v1/admin/projects/names', token, projectId);
+				? await request.get<AdminProjectName[]>('/api/v1/admin/projects/names', token, projectId, { refresh: true })
+				: await request.get<AdminProjectName[]>('/api/v1/admin/projects/names', token, projectId);
 			const loaded = new Map(data.map((project) => [project.id, project.name]));
 			if (
 				generation === requestGeneration
@@ -105,8 +113,8 @@ async function loadResult(token?: string, projectId?: string, userId?: string): 
 	return { names, failed };
 }
 
-async function loadMetadata(token?: string, projectId?: string, userId?: string, refresh = false) {
-	const { projects, failed, error } = await loadDirectory(token, projectId, userId, refresh);
+async function loadMetadata(token?: string, projectId?: string, userId?: string, refresh = false, experience?: ExperienceContext) {
+	const { projects, failed, error } = await loadDirectory(token, projectId, userId, refresh, experience);
 	return { projects, failed, error };
 }
 

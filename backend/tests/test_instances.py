@@ -101,11 +101,7 @@ async def test_get_instance_other_project_returns_404(client, mock_conn):
 @pytest.mark.asyncio
 async def test_admin_can_get_other_project_instance(admin_client, mock_conn):
     """admin 은 다른 프로젝트 인스턴스도 직접 조회 가능."""
-    from unittest.mock import MagicMock
-
-    foreign = MagicMock(spec=InstanceInfo)
-    foreign.id = "inst-foreign"
-    foreign.name = "vm-foreign"
+    foreign = make_instance(instance_id="inst-foreign", name="vm-foreign")
     foreign.project_id = "other-project-999"
     with (
         patch("app.api.compute.instances.nova.get_server", return_value=foreign),

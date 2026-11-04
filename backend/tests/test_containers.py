@@ -53,6 +53,82 @@ async def test_get_container_success(client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_get_container_native_read_status_preserves_denial_without_inventing_absence(client, mock_conn, status):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.api.container.containers.zun.get_container",
+        side_effect=HttpException("PRIVATE_NATIVE_CONTAINER_BODY", http_status=status),
+    ) as lookup:
+        response = await client.get("/api/v1/containers/c-1")
+
+    lookup.assert_called_once_with(mock_conn, "c-1")
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert response.json() == {
+        "detail": "컨테이너를 찾을 수 없습니다" if expected == 404 else "컨테이너 서비스에 연결할 수 없습니다"
+    }
+    assert "PRIVATE_NATIVE_CONTAINER_BODY" not in response.text
+    assert "PRIVATE_NATIVE_CONTAINER_BODY" not in str(response.headers)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["connection", "timeout", "unexpected"])
+async def test_get_container_transport_and_unexpected_read_failures_are_sanitized_unavailable(client, failure_kind):
+    from requests.exceptions import ConnectionError, Timeout
+
+    error_type = {"connection": ConnectionError, "timeout": Timeout, "unexpected": RuntimeError}[failure_kind]
+    with patch(
+        "app.api.container.containers.zun.get_container", side_effect=error_type("PRIVATE_NATIVE_CONTAINER_BODY")
+    ):
+        response = await client.get("/api/v1/containers/c-1")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "컨테이너 서비스에 연결할 수 없습니다"}
+    assert "PRIVATE_NATIVE_CONTAINER_BODY" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404])
+async def test_get_container_keeps_local_lookup_denial_opaque_without_forwarding_provider_headers(client, status):
+    from fastapi import HTTPException
+
+    with patch(
+        "app.api.container.containers.zun.get_container",
+        side_effect=HTTPException(
+            status, "PRIVATE_NATIVE_CONTAINER_BODY", headers={"X-Native-Private": "PRIVATE_HEADER"}
+        ),
+    ):
+        response = await client.get("/api/v1/containers/c-1")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "컨테이너를 찾을 수 없습니다"}
+    assert "X-Native-Private" not in response.headers
+    assert "PRIVATE_HEADER" not in str(response.headers)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504])
+async def test_admin_container_read_outage_is_not_reported_as_absent(admin_client, status):
+    from openstack.exceptions import HttpException
+
+    with patch(
+        "app.services.zun.get_container",
+        side_effect=HttpException("PRIVATE_ADMIN_CONTAINER_BODY", http_status=status),
+    ):
+        response = await admin_client.get("/api/v1/admin/containers/c-1")
+
+    expected = 404 if status in (401, 403, 404) else 503
+    assert response.status_code == expected
+    assert response.json() == {
+        "detail": "컨테이너를 찾을 수 없습니다" if expected == 404 else "컨테이너 서비스에 연결할 수 없습니다"
+    }
+    assert "PRIVATE_ADMIN_CONTAINER_BODY" not in response.text
+    assert "PRIVATE_ADMIN_CONTAINER_BODY" not in str(response.headers)
+
+
+@pytest.mark.asyncio
 async def test_create_container_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.post("/api/v1/containers", json={"name": "test", "image": "nginx"})

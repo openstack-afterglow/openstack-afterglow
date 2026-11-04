@@ -29,6 +29,7 @@
 	"browser.files": "파일",
 	"browser.trash": "휴지통",
 	"browser.viewLabel": "오브젝트 브라우저 보기",
+	"browser.loadFailed": "오브젝트를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.",
 	"uploadQueue.readFailed": "파일을 읽지 못했습니다",
 	"uploadQueue.hashFailed": "무결성 해시 계산 실패",
 	"uploadQueue.failed": "업로드 실패",

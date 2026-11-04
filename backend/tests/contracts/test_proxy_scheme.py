@@ -20,7 +20,7 @@ from app.main import app
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _kolla_launch():
+def _kolla_launch(workers=None):
     defaults = yaml.safe_load((ROOT / "deploy/kolla/ansible/roles/afterglow/defaults/main.yml").read_text())
     addresses = {"backend": "172.30.0.14", "lb1": "172.30.0.11", "lb2": "172.30.0.12", "lb3": "172.30.0.13"}
     renderer = Environment(undefined=StrictUndefined)
@@ -29,7 +29,10 @@ def _kolla_launch():
         "inventory_hostname": "backend",
         "groups": {"loadbalancer": ["lb1", "lb2", "lb3"]},
         "afterglow_backend_listen_port": 18020,
+        "afterglow_backend_workers": defaults["afterglow_backend_workers"],
     }
+    if workers is not None:
+        variables["afterglow_backend_workers"] = workers
     for name in ("afterglow_backend_listen_address", "afterglow_backend_forwarded_allow_ips"):
         if name in defaults:
             variables[name] = renderer.from_string(defaults[name]).render(**variables)
@@ -43,6 +46,15 @@ def _kolla_launch():
         ).render(**variables)
     }
     return command, environment, "172.30.0.12", "172.30.0.99"
+
+
+@pytest.mark.parametrize(("workers", "expected"), [(None, 1), (2, 2), (4, 4)])
+def test_kolla_worker_count_reaches_uvicorn(workers, expected):
+    command, _, _, _ = _kolla_launch(workers)
+    with uvicorn_cli.make_context("uvicorn", command[1:]) as context:
+        assert context.params["workers"] == expected
+        assert context.params["factory"] is True
+        assert context.params["proxy_headers"] is False
 
 
 def _kubernetes_launch(kind):

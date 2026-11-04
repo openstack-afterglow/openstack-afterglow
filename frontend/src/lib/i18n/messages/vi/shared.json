@@ -1,4 +1,10 @@
 {
+	"support.label": "Mã hỗ trợ",
+	"support.copy": "Sao chép mã hỗ trợ",
+	"support.copied": "Đã sao chép mã hỗ trợ",
+	"support.help": "Chia sẻ mã này với bộ phận hỗ trợ. Đây không phải mật khẩu và không cấp quyền truy cập. Có mã không đảm bảo bản ghi đã được lưu.",
+	"support.partial": "Việc gửi bản ghi chẩn đoán chưa được xác nhận hoặc chưa đầy đủ. Không có bản ghi không có nghĩa là không có gì xảy ra.",
+	"support.unavailable": "Không thể sao chép. Hãy chọn và sao chép mã phía trên theo cách thủ công.",
 	"loadingState.label": "Đang tải",
 	"progressBar.failed": "Triển khai thất bại",
 	"projectSelector.switchFailed": "Không thể chuyển đổi dự án",

@@ -1,15 +1,20 @@
 <script lang="ts">
-	let { cur, totalSteps, stepLabels, goTo }: {
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
+	let { cur, totalSteps, stepLabels, goTo, experience, experienceMessage }: {
 		cur: number;
 		totalSteps: number;
 		stepLabels: string[];
 		goTo: (n: number) => void;
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 	} = $props();
 
 	const progressFraction = $derived(Math.max(0, Math.min(1, (cur - 1) / Math.max(1, totalSteps - 1))));
 </script>
 
-<div class="stepper-container hidden md:block">
+<div use:experiencePresentation={{ context: experience, message: experienceMessage, state: 'ready', step: cur }} class="stepper-container hidden md:block">
 	<div class="full-stepper relative bg-surface-base border border-line rounded-xl px-5 py-2.5 mb-5">
 		<!-- progress track (background) + fill (자식으로 좌표계 통일) -->
 		<div class="absolute left-5 right-5 top-1/2 h-[2px] bg-surface-sunken rounded-full -translate-y-1/2 overflow-hidden" aria-hidden="true">

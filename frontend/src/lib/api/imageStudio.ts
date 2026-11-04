@@ -3,6 +3,7 @@ import { api, ApiError, fetchWithAuth } from './client';
 import { requireLumenCapability } from './lumenAccess';
 import { downloadChatAsset, uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 export interface ImageModel extends AvailableModel {
 	provider_api_key_configured?: boolean;
@@ -42,6 +43,7 @@ export interface ImageEditRequest extends ImageRequest {
 export interface ImageApiScope {
 	token: string;
 	projectId: string;
+	experience?: ExperienceContext;
 }
 
 export function imageModelReadiness(model: ImageModel | undefined): string | null {
@@ -54,8 +56,8 @@ export function imageModelReadiness(model: ImageModel | undefined): string | nul
 }
 
 export const imageStudioApi = {
-	models: (scope: ImageApiScope) => api.get<ImageModel[]>('/api/v1/chat/models?model_kind=image', scope.token, scope.projectId, { refresh: true }),
-	capabilities: (modelId: number, scope: ImageApiScope) => api.get<ImageCapabilities>(`/api/v1/chat/capabilities?model_id=${encodeURIComponent(modelId)}&model_kind=image`, scope.token, scope.projectId, { refresh: true }),
+	models: (scope: ImageApiScope) => api.get<ImageModel[]>('/api/v1/chat/models?model_kind=image', scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
+	capabilities: (modelId: number, scope: ImageApiScope) => api.get<ImageCapabilities>(`/api/v1/chat/capabilities?model_id=${encodeURIComponent(modelId)}&model_kind=image`, scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
 	async submit(kind: 'generations' | 'edits', request: ImageRequest | ImageEditRequest, scope: ImageApiScope, idempotencyKey: string, signal?: AbortSignal): Promise<ImageRunDescriptor> {
 		requireLumenCapability('lumen-images_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth(`/api/v1/chat/images/${kind}`, {
@@ -64,7 +66,7 @@ export const imageStudioApi = {
 			headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
 			body: JSON.stringify(request),
 			signal
-		}, scope.token, scope.projectId);
+		}, scope.token, scope.projectId, { experience: scope.experience });
 		if (!response.ok) {
 			const body = await response.json().catch(() => null);
 			const detail = body?.detail;
@@ -72,8 +74,8 @@ export const imageStudioApi = {
 		}
 		return response.json();
 	},
-	run: (runId: string, scope: ImageApiScope) => api.get<ImageRun>(`/api/v1/chat/runs/${encodeURIComponent(runId)}`, scope.token, scope.projectId, { refresh: true }),
-	cancel: (runId: string, scope: ImageApiScope) => api.post(`/api/v1/chat/runs/${encodeURIComponent(runId)}/cancel`, {}, scope.token, scope.projectId),
+	run: (runId: string, scope: ImageApiScope) => api.get<ImageRun>(`/api/v1/chat/runs/${encodeURIComponent(runId)}`, scope.token, scope.projectId, { refresh: true, experience: scope.experience }),
+	cancel: (runId: string, scope: ImageApiScope) => api.post(`/api/v1/chat/runs/${encodeURIComponent(runId)}/cancel`, {}, scope.token, scope.projectId, { experience: scope.experience }),
 	upload: (file: File, scope: ImageApiScope, signal?: AbortSignal) => uploadChatAttachment(file, { ...scope, signal }),
 	download: (assetId: string, scope: ImageApiScope, signal?: AbortSignal) => downloadChatAsset(assetId, { ...scope, signal })
 };

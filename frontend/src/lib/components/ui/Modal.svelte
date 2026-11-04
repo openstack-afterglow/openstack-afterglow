@@ -2,8 +2,13 @@
 	import type { Snippet } from 'svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/common';
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 
 	interface Props {
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 		open: boolean;
 		onClose?: () => void;
 		dismissible?: boolean;
@@ -13,6 +18,8 @@
 	}
 
 	let {
+		experience,
+		experienceMessage,
 		open = $bindable(false),
 		onClose,
 		dismissible = true,
@@ -30,6 +37,7 @@
 
 {#if open}
 	<div
+		use:experiencePresentation={{ context: experience, message: experienceMessage }}
 		use:dialogFocus={{ enabled: open, onEscape: close }}
 		class="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
 		role="dialog"

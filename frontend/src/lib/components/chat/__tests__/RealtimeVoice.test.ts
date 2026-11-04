@@ -5,6 +5,7 @@ import { authReady, projectSwitching } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
 import RealtimeVoice from '../RealtimeVoice.svelte';
 import { t } from '$lib/i18n/ns/chat-studio';
+import * as experience from '$lib/utils/experience';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
 vi.mock('$lib/api/realtimeVoice', async (original) => ({ ...await original<typeof RealtimeModule>(), realtimeVoiceApi: calls }));
@@ -330,14 +331,23 @@ describe('Realtime Voice', () => {
 		expect(calls.createSession.mock.calls[1][3]).toBe(calls.createSession.mock.calls[0][3]);
 	});
 
-	it('reports denied microphone access and releases connecting state without creating a session', async () => {
+	it('reports denied microphone access without inventing an applied connection or unknown provider outcome', async () => {
 		const getUserMedia = vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError'));
 		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
-		render(RealtimeVoice);
-		await screen.findByText('음성 입력·출력 경로와 가격이 준비되었습니다.');
-		await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
-		await screen.findByText('마이크 권한이 거부되었습니다.');
-		expect(calls.createSession).not.toHaveBeenCalled();
-		expect(screen.getByRole('button', { name: '음성 세션 시작' }).hasAttribute('disabled')).toBe(false);
+		const state = vi.spyOn(experience, 'experienceState');
+		const discarded = vi.spyOn(experience, 'experienceDiscarded');
+		const applied = vi.spyOn(experience, 'experienceApplied');
+		try {
+			render(RealtimeVoice);
+			await screen.findByText('음성 입력·출력 경로와 가격이 준비되었습니다.');
+			applied.mockClear();
+			await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
+			await screen.findByText('마이크 권한이 거부되었습니다.');
+			expect(calls.createSession).not.toHaveBeenCalled();
+			expect(screen.getByRole('button', { name: '음성 세션 시작' }).hasAttribute('disabled')).toBe(false);
+			expect(state.mock.calls.filter(([, , step]) => step !== undefined && step >= 2).map(([, value, step]) => [value, step])).toEqual([['loading', 2], ['error', 5]]);
+			expect(discarded).not.toHaveBeenCalled();
+			expect(applied).not.toHaveBeenCalled();
+		} finally { state.mockRestore(); discarded.mockRestore(); applied.mockRestore(); }
 	});
 });

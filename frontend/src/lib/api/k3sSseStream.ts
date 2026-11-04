@@ -1,5 +1,6 @@
 import { beginMutationCacheFence, fetchWithAuth } from './client';
 import { maybeMockK3sStream } from '$lib/mockup/transport';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 
 export interface K3sSseProgressMessage {
@@ -13,7 +14,7 @@ export interface K3sSseProgressMessage {
 
 export async function* streamK3sProgress(
   path: string,
-  init: { method: 'POST'; body?: unknown; token?: string; projectId?: string },
+  init: { method: 'POST'; body?: unknown; token?: string; projectId?: string; experience?: ExperienceContext },
 ): AsyncGenerator<K3sSseProgressMessage> {
   const fence = beginMutationCacheFence(init.token, init.projectId);
   try {
@@ -29,7 +30,7 @@ export async function* streamK3sProgress(
         Accept: 'text/event-stream',
       },
       body: init.body != null ? JSON.stringify(init.body) : undefined,
-    }, init.token, init.projectId, { baseUrl: fence.baseUrl });
+    }, init.token, init.projectId, { baseUrl: fence.baseUrl, experience: init.experience });
 
     if (!res.ok || !res.body) {
       const text = await res.text().catch(() => '');

@@ -5,6 +5,9 @@
 Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(GitOps) 세 가지 배포 방식을 지원합니다.
 
 Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI의 인증 설정을 각 검사보다 먼저 준비한다. 애플리케이션 이미지의 `latest` 자동 선택은 명시적 `*_image_ref`와 버전 pin이 없는 경우에만 적용되며, datastore pin과 migration 전 복구 검증은 별도로 유지한다.
+Kolla의 `afterglow_backend_workers`는 backend **호스트당** Uvicorn 프로세스 수이며 기본값은 기존과 같은 `1`이다. 양의 정수만 허용한다. 증설 전 프로세스별 DB 연결 풀·메모리·백그라운드 작업과 스트림 재연결을 검증하고, 별도 승인된 reconfigure에서 적용한다. 설정 변경만으로 운영에 반영되지 않는다. 자세한 내용은 `deploy/kolla/README.md`를 참조한다.
+현재 `/api/v1/metrics`의 counter·histogram은 프로세스별이며 multiprocess collector가 없다. 워커가 여러 개면 scrape마다 다른 registry에 도달할 수 있으므로 이 지표만으로 전체 처리량이나 p95/p99를 판단하지 않는다. 워커 수 비교에는 외부 부하 생성기 또는 ingress의 요청 시간과 스트림 첫 이벤트·완료 시간을 사용한다.
+
 
 ## 정식 release/tag 버전 규칙
 
@@ -20,7 +23,7 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 
 기존 Kolla bootstrap의 `create_tables()`는 모델 기반 테이블 생성과 일부 과거 opportunistic ALTER를 수행하지만 SQL106을 적용·검증하지 않았다. 1.32.6은 API 이미지에 migration manifest·SQL 파일을 포함하고, Kolla에서 `python -m scripts.bootstrap_schema`를 실행한다. 이 전용 runner는 effective DB 설정을 사용하며 schema별 MariaDB advisory lock 안에서 고정 SQL106의 manifest identity·checksum을 확인한다. 모델을 명시 등록하고 같은 연결의 `metadata.create_all`로 없는 테이블만 생성한 뒤 MCP column·type·nullable 만료·CHECK 제약을 검증한다. 기존 token 만료의 DATETIME precision0..6을 수용하고 SQL106으로 nullable DATETIME(6)로 전환한다. 이미 호환되는 schema는 SQL106을 재적용하지 않는다. 검증·잠금·DDL 실패는 bootstrap을 실패시켜 배포를 중단하며, 과거 ALTER를 재실행하거나 오류를 삼키는 legacy helper와 일반 baseline을 사용하지 않는다. Advisory lock은 해당 MariaDB server-local이며 Galera 전체 분산 lock이 아니다. Kolla의 고정 bootstrap 대상과 `run_once`를 유지한다.
 
-SQL106의 원본 checksum은 `b7ca283cceb76d3ce4c741804e828c0073b6694f5ceb592182041151ca0d6ea6`이다. DDL은 implicit commit되므로 runner 성공이 backup/restore·writer 정지·구형 reader 호환성 검토를 대신하지 않는다. 원 DB·암호화 key·finite grant/token을 보존하고 지속 승인 issuer/reader/cleanup cohort를 맞춘다. 실패 뒤 image-only rollback이나 기존 승인 기한의 자동 연장은 하지 않는다. Afterglow role은 checkout symlink이므로 image 발행뿐 아니라 배포서버의 해당 role source도 같은 검증된 release로 갱신해야 한다. 이번 수정 자체는 sibling operator package 버전 변경을 요구하지 않는다.
+SQL106의 원본 checksum은 `b7ca283cceb76d3ce4c741804e828c0073b6694f5ceb592182041151ca0d6ea6`이다. DDL은 implicit commit되므로 runner 성공이 backup/restore·writer 정지·구형 reader 호환성 검토를 대신하지 않는다. 원 DB·암호화 key·finite grant/token을 보존하고 지속 승인 issuer/reader/cleanup cohort를 맞춘다. 실패 뒤 image-only rollback이나 기존 승인 기한의 자동 연장은 하지 않는다. 당시 Afterglow role은 checkout symlink였으므로 image 발행뿐 아니라 배포서버의 해당 role source도 같은 검증된 release로 갱신해야 했다. 아래의 package-private 설치 방식으로 명시 전환한 환경은 검토된 `afterglow-kolla` source/wheel을 설치하고 등록한다. 이 문서 변경은 당시 운영 환경이 새 패키지 방식으로 전환되었다는 뜻이 아니며 sibling operator package 버전 변경도 요구하지 않는다.
 
 **직접 복구 관측(2026-11-03 16:10:03 UTC / 2026-11-04 01:10:03 KST):** 운영1.32.5 revision `92cb744a`의 SQL106 누락에 대해 명시 승인된 native MariaDB Galera TOI 적용을 수행했다. 11개 MCP 테이블의 root-only0600 백업(`/var/backups/afterglow/mcp-before-sql106-20261103T160910Z.sql`,143009bytes, SHA256 `08dbb684cde839c4469201f3ac8f668325bb71e9058d158901e5e58a3102b865`)을 보존했다. 기존 grant5개·token52개의 원본 column row hash는 전후 같고 세 운영 API에서 새 두 column과 nullable DATETIME(6) 만료를 읽었다. 이 schema 복구는1.32.6 발행·배포나 실제 OAuth 사용자 경로 성공을 뜻하지 않는다. 새 runner의 통합 gate·정식 artifact 발행·Kolla rollout과 사용자 경로 수용은 검증 결과가 추가되기 전까지 대기 상태다.
 
@@ -352,6 +355,15 @@ defense-in-depth이며 모든 임의의 사용자 텍스트·객체·설정 덤�
 표현을 호출하지 않고 제외합니다. 중첩 한도를 넘는 extra 값은 마스킹되지만, 이것을
 request/response 전체 덤프의 허가로 해석하지 않습니다.
 
+API와 standalone Notion worker는 `app.utils.structured_logging`의 공통 JSON formatter/setup을
+사용합니다. Runtime metadata의 `entrypoint`는 explicit `api|worker|unknown`이고 argv나 임의
+환경 문자열을 복사하지 않습니다. Worker CLI 시작에서만 handler를 초기화하여 API 안에서
+worker module을 import하는 도구·테스트가 기존 request diagnostics를 지우지 않게 합니다.
+Pytest는 configured log directory 아래 PID별 test sink로 분리합니다. 고정 진단 reason/stage와
+실제 driver integer code는 허용하되 임의 exception/SQL/parameter 원문은 추가하지 않습니다.
+성공 operational probe는 ASGI final body send와 정상 반환을 확인한 뒤에만 request log를
+샘플링하고 metrics는 모두 유지합니다. 실패·불완전·취소 응답은 생략하지 않습니다.
+
 생성/배포 경로:
 
 - `generate_k8s.py`: 병합된 `[DEFAULT].debug`를 ConfigMap의 `afterglow.conf`에
@@ -390,6 +402,73 @@ Keystone HTTP 성공과 별개로 권한 조회 단계에서 지연/실패할 �
 원인 구조를 확인합니다. Native Keystone client도 설정된 `openstack.interface`와 `region_name`을
 사용하며 public endpoint로 조용히 바꾸지 않습니다. 권한 읽기 재사용은 한 번의 조회 안으로
 제한되고 다음 호출의 revoke·group membership·disabled 상태는 native에서 다시 확인합니다.
+
+### 의미 기반 경험 관측 v2의 전환과 보존
+
+다음은 source의 opt-in 계약이며 운영 활성화/SQL 적용 증거가 아닙니다.
+
+```toml
+[experience]
+enabled = false
+anonymous_read_enabled = false
+detail_retention_days = 30
+aggregate_retention_days = 90
+```
+
+Detail은1–365일, aggregate는1–3650일이며 aggregate가 detail보다 짧으면 설정을 거부합니다.
+공개 site config는 enabled boolean만 투영하고 private 보존·익명 열람 정책을 노출하지 않습니다.
+설정 예시·K8s generator·config2helm·Helm values/configmap은 같은 계약을 생성합니다.
+
+1. 기존 DB/key·실행 image/API/worker/frontend revision·manifest/schema·복구 지점을 먼저
+   확인합니다. DB 영향 평가와 별도 운영 승인을 유지하며 private key를 새로 만들지 않습니다.
+2. 승인된 격리 복원 환경에서 SQL107과 backup/restore, 기존 writer/신규 schema 및 신규
+   writer/기존 schema의 제한을 확인합니다. SQL107은 업무 컬럼을 바꾸지 않는 additive
+   `experience_events/catalogs/operation_links/holds/aggregates/maintenance` 여섯 테이블입니다.
+3. 새 canonical `scripts/bootstrap_schema.py`는 packaged manifest/checksum으로107을
+   제한하고 columns/types/PK/index/JSON guard/engine/binary collation/catalog FK를 검증합니다.
+   이미 있는 비호환 테이블을 자동 수정하거나 전 migration을 replay하지 않습니다. DDL은
+   implicit commit이므로 bootstrap 실패가 앞선 DDL 전체를 rollback한다는 뜻이 아닙니다.
+   SQL107 pinned SHA256은 `1ce65e8130e89107a765dfec5ae3d31d431343f864e93bbf0e2e93b8fdfb8881`입니다.
+4. Schema를 준비한 뒤 matching API/worker/frontend cohort와 실제 browser/API/worker 경로를
+   검증합니다. 새 frontend는 off/구 cohort의 contract404·unsupported를 관측 불가로 처리하며
+   업무 요청을 재실행하지 않습니다. 구 writer는 새 진단을 남기지 않습니다. 신규 enabled
+   writer를107 없는 schema와 혼용하면 진단은503/누락이므로 opt-in 수용으로 인정하지 않습니다.
+5. 정확한 source·권위·성능·canary·수집/열람 정책을 확인한 경우에만 enabled를 별도로 켭니다.
+   익명 열람은 필요할 때만 별도 승인하며 live global-admin/unscoped gate도 유지합니다.
+   끌 때는 수집을 중단할 뿐 기존 행을 지우지 않습니다. Image rollback만으로 새 진단과
+   hold/catalog 보존·DDL·backups가 되돌아가지 않으며 운영 image/schema rollback은 별도 계획입니다.
+
+삭제는 자동 scheduler가 아니라 explicit maintenance CLI입니다. 기본 dry-run이며 counts만
+반환합니다. URL은 승인된 private 실행 환경에서 공급하고 shell history·출력·CI artifact에
+credential을 남기지 않습니다. 다음의 `APPROVED_DIAGNOSTIC_DATABASE_URL`은 운영자가 설정한
+정확한 유지보수 목적지이며 임의 기존 공유 DB를 선택하라는 예제가 아닙니다.
+
+```bash
+python scripts/retain_experiences.py --database-url "$APPROVED_DIAGNOSTIC_DATABASE_URL"
+python scripts/retain_experiences.py --database-url "$APPROVED_DIAGNOSTIC_DATABASE_URL" \
+  --hold "$SEGMENT_UUID" --user-id "$EXACT_USER_ID" --project-id "$EXACT_PROJECT_ID"
+```
+
+첫 명령은 삭제 후보, 둘째는 exact-owner existing segment의 hold 후보만 보여줍니다.
+실제 변경은 backup·hold·목적지를 별도 확인한 뒤 같은 명령에 `--apply`를 붙여 수행합니다.
+해제는 `--hold` 대신 `--release`를 사용하며 user/project를 생략하거나 지원 코드만으로
+다른 owner를 추정하지 않습니다. `--batch-size`는1–2000(기본500)이고 한 호출은 bounded
+batch만 처리합니다. 실패·commit 불명은 success receipt가 아니며 자동 재실행하지 않습니다.
+
+Hold/release와 적용 삭제는 하나의 SQL maintenance row를 lock/write하여 직렬화합니다.
+단일 native MariaDB 동시성 qualification과 별개로 실제 다중 Galera writer의 충돌/복구
+수용이 필요합니다. Held owner/segment의 detail/link는 보존하며 참조 중 catalog는 정확한
+revision/locale FK로 보호합니다. 만료 detail은 제한된 aggregate로 집계하고 orphan catalog만
+삭제합니다. 이 CLI는 기존 business audit·SMTP unknown·claim journal을 삭제하지 않습니다.
+
+Backup과 이미 내려받은 export는 원본 retention과 함께 자동 소거되지 않습니다. 운영자는
+사본의 접근·보존 기한·hold·삭제를 별도로 관리하고, 복원에서는 detail/catalog/link/hold/
+aggregate/maintenance 여섯 테이블의 일관성을 확인합니다. 현재 격리 native MariaDB에서 실제
+hold→비보호 detail 삭제→새 DB6-table snapshot 복원·원 catalog/FK·hold readback과 구1.32.6
+ORM writer/새 schema·새 API/구 schema 경계를 실행했습니다([검증 기록](testing.md#직전24시간-운영-마찰의미-기반-경험-v2-2026-11-04-sourcelocal-진행-기록)).
+이는 production backup 복구·전체 Galera 동시성·운영 SQL107/수집 활성화의 증거가 아닙니다.
+
+
 
 ### 1-b. 설정 오버라이드 (선택)
 
@@ -1301,14 +1380,136 @@ kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,wa
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
-- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 네 개가 [`deploy/kolla/operator/uv.lock`](../deploy/kolla/operator/uv.lock)의 `drover`·`lumen`·`waygate`·`palimpsest-client` 릴리즈 tag/version과 일치할 것. 이미지 tag나 source checkout 버전만으로 설치된 역할 버전을 판단하지 않습니다.
+- 실제 Python3.11+ Kolla 가상 환경에 명시 설치한 `afterglow-kolla` root 배포 자산과, 검토된 operator lock의 `drover`·`lumen`·`waygate`·`palimpsest-client` tag/version에 일치하는 네 sibling 역할 패키지. 이미지 tag나 checkout 버전만으로 설치 역할을 판단하지 않습니다. [`deploy/kolla/operator/uv.lock`](../deploy/kolla/operator/uv.lock)의 기존 sibling pin은 이번 패키징 변경에서 승격하지 않았으며 `afterglow-kolla`도 이 lock의 dependency가 아닙니다.
 - `/etc/kolla/config/afterglow/globals.yml` 및 `secrets.yml`, globals.d 연결
 - 기존 MariaDB·Valkey, Lumen PostgreSQL 설정, 고정 이미지와 API 공개 경로
 - 대상 호스트에서 암호 입력 없이 sudo를 사용할 수 있는 배포 SSH 계정
-- stock `site.yml`에 서비스 플레이북을 연결하는 `deploy/kolla/install.sh`
+- stock `site.yml`에 서비스 플레이북을 연결하는 설치된 `share/afterglow/kolla/install.sh`
 
-Afterglow 역할은 저장소로 연결되며 Lumen 역할은 wheel이 소유합니다.
-설치기는 역할을 임의 복제하거나 기존 비밀값을 샘플로 덮어쓰지 않습니다.
+**Afterglow root 패키지의 명시 설치·등록:** `afterglow-kolla`는 backend의
+`afterglow-api`와 별개인 배포 자산 distribution입니다. 검토된 source checkout
+또는 실제 wheel 경로를 지정해 같은 Kolla 가상 환경에 설치합니다. Operator
+manifest와 이 배포 자산 패키지는 Python 3.11 이상을 요구합니다.
+아래 설치 방식 중 하나만 선택합니다. 현재는 미발행 source package이며
+이 패키지를 포함한 release tag나 PyPI 게시를 주장하지 않습니다.
+
+```bash
+# 실제 패키지를 포함하는 검토된 불변 tag가 발행된 후 X.Y.Z를 대체
+cd /etc/kolla
+uv add --no-sync --tag X.Y.Z \
+  "afterglow-kolla @ git+https://github.com/openstack-afterglow/openstack-afterglow.git"
+# pyproject.toml과 uv.lock 변경 검토 후 동기화
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
+```
+
+미발행 source 검토 시에는 다음 local artifact 중 하나를 사용합니다.
+
+```bash
+# 검토된 checkout의 절대 경로: editable이 아닌 wheel로 설치
+uv pip install --python /etc/kolla/.venv/bin/python \
+  --reinstall-package afterglow-kolla /absolute/path/to/afterglow
+# 또는 검토한 실제 wheel 경로와 version을 지정
+uv pip install --python /etc/kolla/.venv/bin/python \
+  --reinstall-package afterglow-kolla \
+  /absolute/path/to/afterglow_kolla-X.Y.Z-py3-none-any.whl
+```
+
+검토된 artifact를 갱신할 때는 같은 version의 wheel을 포함해
+`--reinstall-package afterglow-kolla`를 유지합니다. 이미 설치된 version만
+보고 건너뛰지 않고 해당 package의 cache를 refresh하고 재설치하도록 강제합니다.
+
+**PyPI 이름 충돌:** 공개 index의 `afterglow`는 관련 없는 프로젝트입니다.
+`pip install afterglow`, `pip install -U afterglow` 및 동등한 `uv` 명령을
+이 통합의 설치·갱신에 사용하지 않습니다. 새 distribution 이름은
+`afterglow-kolla`이며 대응 release가 PyPI에 발행되었다고 가정하지 않습니다.
+디렉터리 이름 `share/afterglow/kolla`는 그대로 유지합니다.
+
+`pip`도 같은 Kolla interpreter와 명시 artifact로 설치할 수 있습니다.
+
+```bash
+/etc/kolla/.venv/bin/python -m pip install --force-reinstall --no-deps \
+  /absolute/path/to/afterglow_kolla-X.Y.Z-py3-none-any.whl
+# 검토된 non-editable checkout 절대 경로를 wheel 대신 지정할 수도 있습니다.
+```
+
+**기존 distribution 이관(설치되어 있을 때만):** 같은 환경에 예전
+`openstack-afterglow`가 설치되어 있다면 **먼저 제거한 다음**
+`afterglow-kolla`를 설치합니다.
+
+```bash
+uv pip uninstall --python /etc/kolla/.venv/bin/python openstack-afterglow
+# 그 다음 위 명령으로 검토된 afterglow-kolla source/wheel 설치
+# pip 대안: /etc/kolla/.venv/bin/python -m pip uninstall openstack-afterglow
+```
+
+두 이름은 동일한 private `share/afterglow/kolla` 파일을 소유하므로 공존시키지
+않습니다. 새 패키지를 먼저 설치하고 이전 것을 제거하면 새 자산도 삭제될 수
+있습니다. 이미 둘 다 설치했다면 이전 distribution을 제거한 뒤 검토된 artifact로
+`afterglow-kolla`를 반드시 재설치합니다. 설치기는 이전 distribution metadata가
+남으면 등록을 거부합니다. 제거부터 재설치·등록 완료까지 Kolla를 실행하지 않습니다.
+안정 링크는 이 사이 잠시 끊길 수 있습니다. 기존 source checkout·설정·비밀값이나
+관련 없는 자산을 삭제하지 않습니다. Checkout 링크만으로 예전 distribution 설치를
+판단하지 않으며, 이 조건부 절차는 production 이관을 수행했다는 보고가 아닙니다.
+
+패키지는 `<environment-prefix>/share/afterglow/kolla`라는 private 경로의
+Afterglow role·aggregate playbook·helper·sample·installer를 소유합니다.
+설치기는 active Python의 distribution metadata로 소유권을 확인한 뒤
+Kolla의 `ansible/roles/afterglow`와 `ansible/afterglow-site.yml`을 각각
+private `ansible/roles/afterglow`와 `site.yml`로 연결합니다. 이 안정 symlink
+경로 자체에는 wheel이 role 파일을 쓰지 않으므로 기존 checkout 링크를
+통해 사용자 source를 덮어쓰지 않습니다. 네 sibling role은 각 root 패키지의
+실제 디렉터리로 유지하며 설치기는 임의 복제하거나 교체하지 않습니다.
+
+```bash
+AFTERGLOW_OPERATOR_LOCK=/absolute/path/to/the/synced/operator/uv.lock \
+KOLLA_ANSIBLE_BIN=/etc/kolla/.venv/bin/kolla-ansible \
+KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
+bash /etc/kolla/.venv/share/afterglow/kolla/install.sh
+```
+
+기존 checkout 링크가 같은 root라면 위 명령에
+`AFTERGLOW_REPO_DIR=/absolute/path/to/the/legacy/afterglow`를 명시합니다.
+두 링크의 현재 `readlink` text가 각각 그 경로의
+`deploy/kolla/ansible/roles/afterglow`와 `deploy/kolla/site.yml`에 **정확히**
+일치할 때만 private package 자산으로 전환합니다.
+
+Role과 aggregate playbook의 옛 checkout이 서로 다르면 각각 확인한 **전체 절대
+링크 text**를 다음처럼 별도 지정합니다. 한 링크의 root에서 다른 값을 추측하지
+않습니다.
+
+```bash
+AFTERGLOW_LEGACY_ROLE_TARGET=/absolute/old-role-checkout/deploy/kolla/ansible/roles/afterglow \
+AFTERGLOW_LEGACY_SITE_TARGET=/absolute/old-site-checkout/deploy/kolla/site.yml \
+AFTERGLOW_OPERATOR_LOCK=/absolute/path/to/the/synced/operator/uv.lock \
+KOLLA_ANSIBLE_BIN=/etc/kolla/.venv/bin/kolla-ansible \
+KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
+bash /etc/kolla/.venv/share/afterglow/kolla/install.sh
+```
+
+각 explicit target은 해당 `AFTERGLOW_REPO_DIR` fallback보다 우선합니다.
+두 경로를 모두 먼저 검사하고 다른 링크·실제 파일·디렉터리는 거부합니다.
+상대 경로는 허용하지 않으며 기존 checkout 파일은 변경하지 않습니다. Checkout의
+`deploy/kolla/install.sh`를 직접 실행하면 그 checkout을 legacy 경로의
+기본값으로 사용하고, 설치된 script는 legacy 전환 시 명시 변수가 필요합니다.
+이 변수들은 이전 링크의 신원일 뿐 새 역할 source 선택자가 아닙니다.
+기존 exact package 링크는 그대로 유지합니다. 퇴역 sibling checkout 링크는
+[별도의 exact-match 절차](../deploy/kolla/README.md#1-legacy-symlink-migration)를
+따라 정리하며 이 두 링크의 자동 전환과 혼동하지 않습니다.
+
+설치기에는 해당 Kolla 환경을 실제 동기화한 검토된 lock을
+`AFTERGLOW_OPERATOR_LOCK`으로 반드시 지정합니다. 패키지에 포함된 lock은
+더 오래될 수 있으므로 자동 선택하지 않습니다. 이 설정은 package를 설치하지 않습니다.
+현재 저장소 operator lock의 승격, 운영 venv 동기화와 운영 배포는 별도 승인입니다.
+이번 source/package 변경만으로 production 설치·배포·service restart·이미지 발행
+또는 실제 사용자 경로 수용이 수행되었다고 보고하지 않습니다. 기존 설정·비밀값을
+sample로 덮어쓰지 않습니다.
+
+표준 Kolla 실행은 stock `site.yml`의 marker-delimited `afterglow-site.yml`
+import에 의존합니다. 역할 링크만으로는 충분하지 않으며 Kolla 재설치가 stock
+파일을 교체하면 설치기를 다시 실행해 import를 복원해야 합니다.
+`--list-tasks`에서 활성 custom play를 확인하는 것은 dispatch 증거일 뿐
+migration·서비스 기동·운영 health 증거가 아닙니다. 이 import 등록은 custom
+playbook·wrapper 없이 아래 표준 명령을 유지합니다.
 
 ```bash
 source /etc/kolla/.venv/bin/activate

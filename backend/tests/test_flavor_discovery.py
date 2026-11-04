@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -335,3 +336,167 @@ async def test_create_rejects_fresh_spec_and_capacity_shortage_despite_ready_sto
     assert "host_capacity_insufficient" in response.json()["detail"]
     volume.assert_not_called()
     server.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["transport", "rejected", "malformed", "inventory"])
+async def test_failed_shapes_are_aggregated_with_native_read_counts_and_safe_reasons(
+    cloud, storage, monkeypatch, caplog, failure
+):
+    from app.utils.structured_logging import JSONFormatter
+
+    cloud.add_host(ROOT_B, pcpu=(16, 0))
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
+    flavors = [flavor(f"cpu-{index}", vcpus=index + 1) for index in range(20)] + [
+        flavor("dedicated", specs={"hw:cpu_policy": "dedicated"})
+    ]
+    secret = "native-url-query-body-must-not-appear"
+    native_reads = []
+    original_send = cloud.send
+
+    def send(request, **kwargs):
+        if "/compute/v2.1/" in request.url or "/placement/" in request.url:
+            native_reads.append(request.url)
+        if "/allocation_candidates" in request.url and failure == "transport":
+            raise requests.exceptions.ConnectionError(secret)
+        return original_send(request, **kwargs)
+
+    monkeypatch.setattr(cloud, "send", send)
+    if failure == "rejected":
+        cloud.failures["/placement/allocation_candidates"] = (400, secret.encode())
+    elif failure == "malformed":
+        cloud.failures["/placement/allocation_candidates"] = (200, json.dumps({"errors": secret}).encode())
+    elif failure == "inventory":
+        cloud.failures[f"/placement/resource_providers/{ROOT_B}/inventories"] = (503, secret.encode())
+    with caplog.at_level(logging.WARNING, logger="app.services.flavor_discovery"):
+        await prepare(cloud, monkeypatch, flavors)
+    records = [record for record in caplog.records if record.name == "app.services.flavor_discovery"]
+    assert len(records) == 1
+    record = records[0]
+    assert record.shapes_total == record.shapes_attempted == 2
+    assert record.shapes_failed == (1 if failure == "inventory" else 2)
+    assert record.shapes_succeeded + record.shapes_failed == record.shapes_attempted
+    assert record.shapes_skipped == 0
+    assert record.native_reads_attempted == len(native_reads)
+    assert record.native_reads_attempted == record.native_reads_completed + record.native_reads_failed
+    assert record.native_reads_failed == (0 if failure == "malformed" else record.shapes_failed)
+    assert sum(group["count"] for group in record.failures) == record.shapes_failed
+    assert {group["stage"] for group in record.failures} == {
+        "inventories" if failure == "inventory" else "allocation_candidates"
+    }
+    assert {group["reason"] for group in record.failures} == {
+        "transport" if failure == "transport" else "observation_rejected"
+    }
+    assert secret not in JSONFormatter().format(record)
+    native_reads.clear()
+    result = await project(*flavors)
+    assert all(result[row.id].status == "unavailable" for row in flavors[:20])
+    assert all(result[row.id].remaining_vcpus is None for row in flavors[:20])
+    assert native_reads == []
+
+
+async def test_discovery_deadline_reports_skipped_shapes_without_inventing_capacity(
+    cloud, storage, monkeypatch, caplog
+):
+    cloud.add_host(ROOT_B)
+    flavors = [flavor("cpu"), flavor("dedicated", specs={"hw:cpu_policy": "dedicated"})]
+    policy = {"gpu_profiles": []}
+    clock = [100.0]
+    original_shape = flavor_capacity._Snapshot.shape
+
+    def shape(snapshot, client, deadline, demand):
+        result = original_shape(snapshot, client, deadline, demand)
+        clock[0] = deadline
+        return result
+
+    conn = keystone.get_admin_project_connection()
+    try:
+        with monkeypatch.context() as context:
+            context.setattr(flavor_discovery.time, "monotonic", lambda: clock[0])
+            context.setattr(flavor_capacity._Snapshot, "shape", shape)
+            with caplog.at_level(logging.WARNING, logger="app.services.flavor_discovery"):
+                records = flavor_discovery._observe(conn, flavors, policy)
+    finally:
+        conn.close()
+    summaries = [record for record in caplog.records if record.name == "app.services.flavor_discovery"]
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.shapes_total == 2
+    assert summary.shapes_attempted == summary.shapes_succeeded == summary.shapes_skipped == 1
+    assert summary.shapes_failed == 0
+    assert summary.deadline_exhausted is True
+    await flavor_discovery._store(
+        "capacity",
+        {
+            "schema": 1,
+            "observed_at": time.time(),
+            "profiles": flavor_discovery._profile_key(policy),
+            "records": records,
+        },
+        30,
+    )
+    cloud.calls.clear()
+    result = await project(*flavors)
+    assert sorted(row.status for row in result.values()) == ["insufficient", "unavailable"]
+    assert all(row.remaining_vcpus is None for row in result.values() if row.status == "unavailable")
+    assert cloud.calls == []
+
+
+async def test_inventory_deadline_distinguishes_native_attempt_from_dispatched_get(cloud, storage, monkeypatch, caplog):
+    cloud.add_host(ROOT_B)
+    cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]
+    cpu = flavor("cpu")
+    policy = {"gpu_profiles": []}
+    clock = [100.0]
+    dispatched = []
+    original_send = cloud.send
+    original_shape = flavor_capacity._Snapshot.shape
+
+    def send(request, **kwargs):
+        if "/compute/v2.1/" in request.url or "/placement/" in request.url:
+            dispatched.append(request.url)
+        return original_send(request, **kwargs)
+
+    def shape(snapshot, client, deadline, demand):
+        view = original_shape(snapshot, client, deadline, demand)
+        assert view.roots
+        clock[0] = deadline
+        return view
+
+    monkeypatch.setattr(cloud, "send", send)
+    conn = keystone.get_admin_project_connection()
+    try:
+        with monkeypatch.context() as context:
+            context.setattr(flavor_discovery.time, "monotonic", lambda: clock[0])
+            context.setattr(flavor_capacity._Snapshot, "shape", shape)
+            with caplog.at_level(logging.WARNING, logger="app.services.flavor_discovery"):
+                records = flavor_discovery._observe(conn, [cpu], policy)
+    finally:
+        conn.close()
+    summaries = [record for record in caplog.records if record.name == "app.services.flavor_discovery"]
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.shapes_attempted == summary.shapes_failed == 1
+    assert summary.shapes_succeeded == summary.shapes_skipped == 0
+    assert summary.deadline_exhausted is True
+    assert summary.native_reads_attempted == len(dispatched) + 1
+    assert summary.native_reads_completed == len(dispatched)
+    assert summary.native_reads_failed == 1
+    assert not any("/inventories" in url for url in dispatched)
+    assert {(item["stage"], item["reason"], item["count"]) for item in summary.failures} == {
+        ("inventories", "deadline", 1)
+    }
+    await flavor_discovery._store(
+        "capacity",
+        {
+            "schema": 1,
+            "observed_at": time.time(),
+            "profiles": flavor_discovery._profile_key(policy),
+            "records": records,
+        },
+        30,
+    )
+    dispatched.clear()
+    result = (await project(cpu))["cpu"]
+    assert result.status == "unavailable"
+    assert result.remaining_vcpus is result.remaining_ram_mb is None
+    assert dispatched == []

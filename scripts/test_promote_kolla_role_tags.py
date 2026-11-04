@@ -6,7 +6,10 @@ import sys
 import importlib.util
 import os
 import re
+import csv
+import json
 import subprocess
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -233,6 +236,13 @@ class PromotionIntegrationTests(unittest.TestCase):
             self.assertEqual(success_res.returncode, 0, f"install.sh failed: {success_res.stderr}")
             self.assertIn("Drover role verified at", success_res.stdout)
             self.assertIn(f"(drover=={expected_version})", success_res.stdout)
+            package_root = self.base / f"kolla-{expected_version}/share/afterglow/kolla"
+            ansible_root = self.base / f"kolla-{expected_version}/share/kolla-ansible/ansible"
+            self.assertEqual(
+                (ansible_root / "roles/afterglow").readlink(),
+                package_root / "ansible/roles/afterglow",
+            )
+            self.assertEqual((ansible_root / "afterglow-site.yml").readlink(), package_root / "site.yml")
         finally:
             _PROMOTER.SERVICES.clear()
             _PROMOTER.SERVICES.update(orig_services)
@@ -284,6 +294,45 @@ class PromotionIntegrationTests(unittest.TestCase):
             (dist_info / "METADATA").write_text(
                 f"Metadata-Version: 2.1\nName: {dist_name}\nVersion: {ver}\n", encoding="utf-8"
             )
+        # Model the installed wheel's private data and RECORD ownership, not a
+        # source-checkout link or a package fetched from the public index.
+        package_root = kolla_base / "share/afterglow/kolla"
+        for relative in (
+            "ansible/roles/afterglow",
+            "site.yml",
+            "read_locked_version.py",
+            "normalize_stock_globals.py",
+            "patch_stock_site.py",
+            "operator/uv.lock",
+        ):
+            source = root_repo / "deploy/kolla" / relative
+            destination = package_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(source, destination)
+        package_version = json.loads((root_repo / "package.json").read_text(encoding="utf-8"))["version"]
+        package_dist_info = metadata_dir / f"afterglow_kolla-{package_version}.dist-info"
+        package_dist_info.mkdir(parents=True, exist_ok=True)
+        (package_dist_info / "METADATA").write_text(
+            f"Metadata-Version: 2.1\nName: afterglow-kolla\nVersion: {package_version}\n",
+            encoding="utf-8",
+        )
+        with (package_dist_info / "RECORD").open("w", encoding="utf-8", newline="") as record:
+            writer = csv.writer(record)
+            for asset in sorted(package_root.rglob("*")):
+                if asset.is_file():
+                    writer.writerow((os.path.relpath(asset, metadata_dir), "", ""))
+        (metadata_dir / "sitecustomize.py").write_text(
+            "import sysconfig\n"
+            "_original_get_path = sysconfig.get_path\n"
+            "def _fixture_get_path(name, *args, **kwargs):\n"
+            f"    if name == 'data':\n        return {str(kolla_base)!r}\n"
+            "    return _original_get_path(name, *args, **kwargs)\n"
+            "sysconfig.get_path = _fixture_get_path\n",
+            encoding="utf-8",
+        )
         # Find python with PyYAML available (matching kolla-contract.test.js)
         python_bin = subprocess.run(
             ["uv", "run", "--project", str(root_repo / "backend"), "python", "-c", "import sys; print(sys.executable)"],
@@ -294,7 +343,7 @@ class PromotionIntegrationTests(unittest.TestCase):
 
         fake_py = bin_dir / "python"
         fake_py.write_text(
-            f'#!/usr/bin/env bash\nexport PYTHONPATH="{metadata_dir.resolve()}:$PYTHONPATH"\nexec "{python_bin}" "$@"\n',
+            f'#!/usr/bin/env bash\nexport PYTHONPATH="{metadata_dir}"\nexec "{python_bin}" "$@"\n',
             encoding="utf-8",
         )
         fake_py.chmod(0o755)

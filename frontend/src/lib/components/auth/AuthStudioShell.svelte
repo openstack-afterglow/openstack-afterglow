@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import AfterglowOrbit from '$lib/components/ui/AfterglowOrbit.svelte';
+	import ExperienceSupportCode from '$lib/components/ui/ExperienceSupportCode.svelte';
 	import ThemeSelect from '$lib/components/ThemeSelect.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import { siteConfig } from '$lib/config/site';
@@ -56,6 +57,7 @@
 		<section class="auth-panel">
 			<div class="auth-panel-content">
 				{@render children()}
+				<footer class="auth-support"><ExperienceSupportCode /></footer>
 			</div>
 		</section>
 	</main>

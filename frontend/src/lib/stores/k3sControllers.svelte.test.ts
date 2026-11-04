@@ -9,9 +9,16 @@ const mocks = vi.hoisted(() => ({
 	configMaps: vi.fn(), secrets: vi.fn(), createCm: vi.fn(), updateCm: vi.fn(), deleteCm: vi.fn(),
 	createSecret: vi.fn(), updateSecret: vi.fn(), deleteSecret: vi.fn(), namespaces: vi.fn(),
 	deletePod: vi.fn(), deleteService: vi.fn(), restart: vi.fn(), scale: vi.fn(), log: vi.fn(),
+	withExperience: vi.fn(), begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn(), record: vi.fn(),
+	deployments: vi.fn(), replicasets: vi.fn(), delete: vi.fn(),
+	load: vi.fn(),
 }));
 vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 vi.mock('$lib/api/client', () => ({ api: mocks, fetchWithAuth: mocks.fetchWithAuth, ApiError: class extends Error { status = 403; } }));
+vi.mock('$lib/utils/experience', () => ({
+	beginExperienceAction: mocks.begin, beginExperienceLoad: mocks.load, experienceState: mocks.state, experienceApplied: mocks.applied,
+	experienceDiscarded: mocks.discarded, recordExperience: mocks.record,
+}));
 vi.mock('$lib/api/k3sSseStream', () => ({ streamK3sProgress: mocks.stream }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/utils/downloadBlob', () => ({ downloadBlobAs: mocks.download }));
@@ -24,7 +31,7 @@ vi.mock('$lib/api/k3sResources', () => ({
 }));
 vi.mock('$lib/api/k3sWorkloads', () => ({
 	listPods: vi.fn(), deletePod: mocks.deletePod, getPodLog: mocks.log,
-	listServices: vi.fn(), deleteService: mocks.deleteService, listDeployments: vi.fn(), listReplicaSets: vi.fn(),
+	listServices: vi.fn(), deleteService: mocks.deleteService, listDeployments: mocks.deployments, listReplicaSets: mocks.replicasets,
 	restartDeployment: mocks.restart, scaleDeployment: mocks.scale,
 }));
 
@@ -32,6 +39,7 @@ import { serviceCapabilities } from '$lib/stores/servicePermissions';
 import { createK3sClusterListController } from './k3sClusterListController.svelte';
 import { createK3sClusterDetailController } from './k3sClusterDetailController.svelte';
 import { createK3sProgress } from './k3sProgress.svelte';
+import { createContainerDetailController } from './containerDetailController.svelte';
 
 const cluster: K3sCluster = {
 	id: 'c', name: 'demo', status: 'ACTIVE', status_reason: null, server_vm_id: 'server',
@@ -56,6 +64,7 @@ function setup(adminMode = false, selectedProjectId = 'project-a') {
 }
 beforeEach(() => {
 	vi.resetAllMocks();
+	mocks.withExperience.mockReturnValue(mocks);
 	grant();
 	mocks.get.mockImplementation(async (path: string) => path.endsWith('/c') ? cluster : []);
 	mocks.confirm.mockResolvedValue(true);
@@ -110,7 +119,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		if (resource === 'secret') await detail.deleteSecretItem('credentials');
 		else await detail.deleteCm('settings');
 		expect(mocks.confirm).toHaveBeenCalledOnce();
-		expect(resource === 'secret' ? mocks.deleteSecret : mocks.deleteCm).toHaveBeenCalledWith('c', 'private', resource === 'secret' ? 'credentials' : 'settings', 'token-a', 'resource-project');
+		expect(resource === 'secret' ? mocks.deleteSecret : mocks.deleteCm).toHaveBeenCalledWith('c', 'private', resource === 'secret' ? 'credentials' : 'settings', 'token-a', 'resource-project', undefined);
 	});
 	it('does not disclose a late private Secret after the selected session scope resets on the same resource project', async () => {
 		grant('drover-workloads_editor');
@@ -157,10 +166,10 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c', 'token-a', 'resource-project');
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/k3s/clusters/c/health', 'token-a', 'resource-project');
 		expect(mocks.post).toHaveBeenCalledWith('/api/v1/k3s/clusters/c/health/check', {}, 'token-a', 'resource-project');
-		expect(mocks.namespaces).toHaveBeenCalledWith('c', 'token-a', 'resource-project');
-		expect(mocks.configMaps).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project');
-		expect(mocks.secrets).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project');
-		expect(mocks.attach).toHaveBeenCalledWith('c', 'server', 'net', 'token-a', 'resource-project');
+		expect(mocks.namespaces).toHaveBeenCalledWith('c', 'token-a', 'resource-project', undefined);
+		expect(mocks.configMaps).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project', undefined);
+		expect(mocks.secrets).toHaveBeenCalledWith('c', 'private', 'token-a', 'resource-project', undefined);
+		expect(mocks.attach).toHaveBeenCalledWith('c', 'server', 'net', 'token-a', 'resource-project', undefined);
 		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c/scale', { agent_count: 2 }, 'token-a', 'resource-project');
 		expect(mocks.downloadBlob).toHaveBeenLastCalledWith('/api/v1/k3s/clusters/c/kubeconfig?grade=editor', 'token-a', 'resource-project');
 		mocks.confirm.mockClear();
@@ -168,7 +177,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		expect(mocks.confirm).toHaveBeenCalledOnce();
 		expect(mocks.downloadBlob).toHaveBeenLastCalledWith('/api/v1/k3s/clusters/c/kubeconfig?grade=admin', 'token-a', 'resource-project');
 		await detail.deleteCluster();
-		expect(mocks.stream).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c/delete-async', { method: 'POST', token: 'token-a', projectId: 'resource-project' });
+		expect(mocks.stream).toHaveBeenCalledWith('/api/v1/admin/k3s-clusters/c/delete-async', { method: 'POST', token: 'token-a', projectId: 'resource-project', experience: undefined });
 	});
 	it('discards same-target credentials and confirmations after the panel generation is reset', async () => {
 		grant('drover-access_admin', 'drover-clusters_admin');
@@ -242,7 +251,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await detail.loadCluster();
 		await detail.checkKubeconfig();
 		await detail.downloadKubeconfig();
-		expect(mocks.fetchWithAuth).toHaveBeenCalledWith(`/api/v1/k3s/clusters/c/kubeconfig?grade=${grade}`, { method: 'HEAD' }, 'token-a', 'project-a');
+		expect(mocks.fetchWithAuth).toHaveBeenCalledWith(`/api/v1/k3s/clusters/c/kubeconfig?grade=${grade}`, { method: 'HEAD' }, 'token-a', 'project-a', { experience: undefined });
 		expect(mocks.downloadBlob).toHaveBeenCalledWith(`/api/v1/k3s/clusters/c/kubeconfig?grade=${grade}`, 'token-a', 'project-a');
 		expect(mocks.confirm).not.toHaveBeenCalled();
 	});
@@ -312,7 +321,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await detail.downloadKubeconfig();
 		await detail.attachInterface('server', 'net');
 		await detail.detachInterface('server', 'port');
-		expect(mocks.detach).toHaveBeenCalledWith('c', 'server', 'port', 'token-a', 'project-a');
+		expect(mocks.detach).toHaveBeenCalledWith('c', 'server', 'port', 'token-a', 'project-a', undefined);
 		expect(mocks.attach).not.toHaveBeenCalled();
 		expect(mocks.stream).not.toHaveBeenCalled();
 		expect(mocks.downloadBlob).not.toHaveBeenCalled();
@@ -347,7 +356,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await detail.saveConfigMap('settings', { key: 'value' }, true);
 		await detail.saveSecret('credentials', 'Opaque', { key: 'value' }, true);
 		await detail.saveSecret('tls', 'kubernetes.io/tls', {}, true);
-		expect(mocks.createCm).toHaveBeenCalledWith('c', 'backend-private-namespace', { name: 'settings', data: { key: 'value' } }, 'token-a', 'project-a');
+		expect(mocks.createCm).toHaveBeenCalledWith('c', 'backend-private-namespace', { name: 'settings', data: { key: 'value' } }, 'token-a', 'project-a', undefined);
 		expect(mocks.createSecret).toHaveBeenCalledTimes(1);
 		grant('drover-access_admin');
 		await detail.saveSecret('tls', 'kubernetes.io/tls', {}, true);
@@ -366,7 +375,7 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await detail.loadNamespaces();
 		expect(detail.selectedNamespace).toBe('dw-private');
 		await detail.loadConfigMaps();
-		expect(mocks.configMaps).toHaveBeenCalledWith('c', 'dw-private', 'token-a', 'project-a');
+		expect(mocks.configMaps).toHaveBeenCalledWith('c', 'dw-private', 'token-a', 'project-a', undefined);
 	});
 	it.each(['drover-workloads_editor', 'drover-access_admin'])('allows shell with %s but does not imply cluster mutations', leaf => {
 		grant(leaf);
@@ -417,4 +426,166 @@ describe('Drover handlers independently enforce current exact leaves', () => {
 		await downloading;
 		expect(mocks.download).not.toHaveBeenCalled();
 	});
+});
+
+describe('K3s semantic owner observations', () => {
+	it('propagates creation context into the stream and follow-up inventory without treating admission as readiness', async () => {
+		grant('drover-clusters_editor');
+		const context = { actionId: 'creation-observation' };
+		mocks.begin.mockReturnValue(context);
+		mocks.stream.mockImplementation(async function* () {
+			yield { step: 'waiting_callback', progress: 95, message: 'private log', cluster_id: 'private-id' };
+		});
+		const { list } = setup();
+		await list.createCluster(form);
+		expect(mocks.stream.mock.calls[0][1].experience).toBe(context);
+		expect(mocks.withExperience).toHaveBeenCalledWith(context);
+		expect(mocks.record).not.toHaveBeenCalled();
+		// A clean handoff stream is not transport loss or resource availability.
+		expect(mocks.state.mock.calls.some(([ctx, state]) => ctx === context && state === 'ready')).toBe(false);
+		expect(JSON.stringify([mocks.state.mock.calls, mocks.record.mock.calls])).not.toContain('private');
+	});
+
+	it('reports only finite progress transitions and keeps unknown frames out of replay', () => {
+		const context = { actionId: 'stream-observation' };
+		const progress = createK3sProgress();
+		progress.begin('create', 'private initial message', context as never);
+		progress.apply({ step: 'private-runtime-key', progress: 43, message: 'private log', error: 'private error' }, context as never);
+		expect(mocks.applied).not.toHaveBeenCalled();
+		progress.apply({ step: 'security_group', progress: 50, message: 'private log' }, context as never);
+		progress.apply({ step: 'security_group', progress: 60, message: 'more private log' }, context as never);
+		expect(mocks.applied).toHaveBeenCalledOnce();
+		expect(mocks.state).toHaveBeenLastCalledWith(context, 'loading', 1);
+		progress.end(context as never);
+		expect(JSON.stringify([mocks.state.mock.calls, mocks.record.mock.calls])).not.toContain('private');
+	});
+
+	it('discards a response only when the existing cluster generation guard prevented its assignment', async () => {
+		const context = { actionId: 'old-read' };
+		mocks.load.mockReturnValue(context);
+		const { detail } = setup();
+		const pending = Promise.withResolvers<K3sCluster>();
+		mocks.get.mockReturnValueOnce(pending.promise);
+		const loading = detail.loadCluster();
+		detail.reset();
+		pending.resolve(cluster);
+		await loading;
+		expect(detail.cluster).toBeNull();
+		expect(mocks.discarded).toHaveBeenCalledWith(context, 'stale');
+		expect(mocks.applied).not.toHaveBeenCalled();
+	});
+
+	it('retains the actual late health assignment while withholding its DOM claim after reset', async () => {
+		const context = { actionId: 'health-read' };
+		mocks.load.mockReturnValue(context);
+		const { detail } = setup();
+		await detail.loadCluster();
+		mocks.applied.mockClear();
+		const pending = Promise.withResolvers<null>();
+		mocks.get.mockReturnValueOnce(pending.promise);
+		const loading = detail.loadHealth();
+		detail.reset();
+		pending.resolve(null);
+		await loading;
+		expect(mocks.applied).toHaveBeenCalledOnce();
+		expect(mocks.applied.mock.calls[0][2]()).toBe(false);
+	});
+
+	it('observes credential download lifecycle without claiming source-owned DOM application', async () => {
+		grant('drover-access_user');
+		const context = { actionId: 'credential-export' };
+		mocks.begin.mockReturnValue(context);
+		const { detail } = setup();
+		await detail.loadCluster();
+		mocks.applied.mockClear();
+		await detail.downloadKubeconfig();
+		expect(mocks.withExperience).toHaveBeenLastCalledWith(context);
+		expect(mocks.download).toHaveBeenCalledOnce();
+		expect(mocks.state).toHaveBeenLastCalledWith(context, 'ready');
+		expect(mocks.applied).not.toHaveBeenCalled();
+	});
+});
+
+describe('Explicit cloud follow-up observations', () => {
+	it('passes one workload observation into both deployment fan-out reads', async () => {
+		const context = { actionId: 'fan-out' };
+		mocks.load.mockReturnValue(context);
+		mocks.deployments.mockResolvedValue([]);
+		mocks.replicasets.mockResolvedValue([]);
+		const { detail } = setup();
+		detail.selectedNamespace = 'private-namespace';
+		await detail.loadDeployments();
+		expect(mocks.deployments).toHaveBeenCalledWith('c', 'private-namespace', 'token-a', 'project-a', context);
+		expect(mocks.replicasets).toHaveBeenCalledWith('c', 'private-namespace', 'token-a', 'project-a', context);
+		expect(mocks.applied).toHaveBeenCalledOnce();
+		expect(JSON.stringify(mocks.state.mock.calls)).not.toContain('private-namespace');
+	});
+
+	it('preserves the container action context through its actual readback assignment', async () => {
+		const context = { actionId: 'container-start' };
+		mocks.begin.mockReturnValue(context);
+		mocks.get.mockResolvedValue({ id: 'private-id', name: 'private-name', status: 'Running' });
+		const detail = createContainerDetailController({
+			containerId: () => 'private-id', adminMode: () => false,
+			token: () => 'token-a', projectId: () => 'project-a',
+		});
+		await detail.handleAction('start');
+		expect(mocks.begin).toHaveBeenCalledOnce();
+		expect(mocks.withExperience.mock.calls).toEqual([[context], [context]]);
+		expect(detail.container?.status).toBe('Running');
+		expect(mocks.applied).toHaveBeenCalledOnce();
+		expect(JSON.stringify(mocks.state.mock.calls)).not.toContain('private');
+	});
+
+	it('records actual overlapping container writes rather than inventing a product stale-result guard', async () => {
+		mocks.begin.mockReturnValue({ actionId: 'container-read' });
+		const old = Promise.withResolvers<{ logs: string }>();
+		mocks.get.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ logs: 'new private content' });
+		const detail = createContainerDetailController({
+			containerId: () => 'private-id', adminMode: () => false,
+			token: () => 'token-a', projectId: () => 'project-a',
+		});
+		const first = detail.fetchLogs();
+		await detail.fetchLogs();
+		old.resolve({ logs: 'old private content' });
+		await first;
+		expect(detail.logs).toBe('old private content');
+		expect(mocks.applied).toHaveBeenCalledTimes(2);
+		expect(mocks.applied.mock.calls.every(call => call.length === 2)).toBe(true);
+		expect(mocks.discarded).not.toHaveBeenCalled();
+		expect(JSON.stringify(mocks.state.mock.calls)).not.toContain('private');
+	});
+});
+
+it('uses passive source loads for polling and reserves action context for manual refresh', async () => {
+	const passive = { spanId: 'passive-owner' };
+	const manual = { actionId: 'manual-refresh' };
+	mocks.load.mockReturnValue(passive);
+	mocks.begin.mockReturnValue(manual);
+	const { list, detail } = setup();
+	const container = createContainerDetailController({
+		containerId: () => 'container', adminMode: () => false,
+		token: () => 'token-a', projectId: () => 'project-a',
+	});
+	await list.fetchClusters();
+	await detail.loadCluster();
+	await container.fetchContainer();
+	expect(mocks.begin).not.toHaveBeenCalled();
+	expect(mocks.load).toHaveBeenCalledTimes(3);
+	await container.fetchContainer(true);
+	expect(mocks.begin).toHaveBeenCalledWith('container', 'refresh', 'resource.detail');
+	expect(mocks.withExperience).toHaveBeenLastCalledWith(manual);
+});
+
+it('passes availability-read context in authenticated request options, never in RequestInit', async () => {
+	grant('drover-access_user');
+	const context = { spanId: 'availability-read' };
+	mocks.load.mockReturnValue(context);
+	const { detail } = setup();
+	await detail.loadCluster();
+	await detail.checkKubeconfig();
+	expect(mocks.fetchWithAuth).toHaveBeenCalledWith(
+		'/api/v1/k3s/clusters/c/kubeconfig?grade=user',
+		{ method: 'HEAD' }, 'token-a', 'project-a', { experience: context },
+	);
 });

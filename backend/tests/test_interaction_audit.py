@@ -90,6 +90,28 @@ async def test_anonymous_browser_observation_is_not_login_success(interaction_cl
 
 
 @pytest.mark.asyncio
+async def test_anonymous_exact_logout_observation_remains_observed_not_authorized(interaction_client, interaction_db):
+    response = await interaction_client.post(
+        "/api/v1/activity/interactions", json={"events": [observation(page="/logout")]}
+    )
+    assert response.status_code == 201
+    rows = await stored(interaction_db)
+    assert len(rows) == 1
+    assert rows[0].page == "/logout"
+    assert (rows[0].user_id, rows[0].project_id, rows[0].source, rows[0].status) == ("", "", "browser", "observed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("page", ["/logout/[id]", "/admin/events", "/dashboard/compute/instances"])
+async def test_anonymous_logout_permission_does_not_extend_to_children_or_private_routes(
+    interaction_client, interaction_db, page
+):
+    response = await interaction_client.post("/api/v1/activity/interactions", json={"events": [observation(page=page)]})
+    assert response.status_code == 401
+    assert await stored(interaction_db) == []
+
+
+@pytest.mark.asyncio
 async def test_actor_comes_only_from_verified_auth_and_dynamic_paths_are_erased(
     interaction_client, interaction_db, monkeypatch
 ):

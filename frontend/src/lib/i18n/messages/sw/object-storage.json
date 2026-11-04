@@ -28,6 +28,7 @@
   "browser.files": "Faili",
   "browser.trash": "Taka",
   "browser.viewLabel": "Mwonekano wa kivinjari cha objekti",
+  "browser.loadFailed": "Imeshindwa kupakia objekti. Onyesha upya ili kujaribu tena.",
   "uploadQueue.readFailed": "Imeshindwa kusoma faili",
   "uploadQueue.hashFailed": "Imeshindwa kukokotoa hashi ya uadilifu",
   "uploadQueue.failed": "Upakiaji umeshindwa",

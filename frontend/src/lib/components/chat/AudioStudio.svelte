@@ -12,6 +12,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 	const AUDIO_MIMES = new Set(['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg', 'audio/webm']);
 	const MIME_LABELS: Record<string, string> = { 'audio/mpeg': 'MP3', 'audio/wav': 'WAV', 'audio/x-wav': 'WAV', 'audio/mp4': 'M4A', 'audio/ogg': 'OGG', 'audio/webm': 'WebM' };
@@ -32,6 +33,7 @@
 	const ownerKey = $derived(`${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
 	let activeOwner = '';
 	let generation = 0;
+	const capabilityRequests: Record<AudioKind, number> = { tts: 0, stt: 0 };
 	let sourceVersion = 0;
 	let mode = $state<AudioKind>('tts');
 	let models = $state<Record<AudioKind, AudioModel[]>>({ tts: [], stt: [] });
@@ -215,34 +217,53 @@
 	}
 	async function loadModels(kind: AudioKind, requestScope: AudioScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.list') };
+		experienceState(requestScope.experience, 'loading', kind === 'tts' ? 0 : 1);
 		loading = { ...loading, [kind]: true };
 		errors = { ...errors, [kind]: '' };
 		try {
 			const list = await audioStudioApi.models(kind, requestScope);
-			if (!canPublish(epoch)) return;
+			if (!canPublish(epoch)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			models = { ...models, [kind]: list.filter((model) => model.model_kind === kind && Number.isSafeInteger(model.id) && model.id > 0) };
 			if (!models[kind].some((model) => String(model.id) === selected[kind])) selected = { ...selected, [kind]: models[kind][0] ? String(models[kind][0].id) : '' };
+			experienceState(requestScope.experience, models[kind].length ? 'ready' : 'empty', kind === 'tts' ? 0 : 1);
+			const appliedModels = models[kind];
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && models[kind] === appliedModels);
 		} catch (cause) {
-			if (canPublish(epoch)) errors = { ...errors, [kind]: message(cause) };
+			if (canPublish(epoch)) {
+				errors = { ...errors, [kind]: message(cause) }; experienceState(requestScope.experience, 'error', kind === 'tts' ? 0 : 1);
+				const displayedError = errors[kind];
+				void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && errors[kind] === displayedError);
+			}
 		} finally {
 			if (epoch === generation) loading = { ...loading, [kind]: false };
 		}
 	}
 	async function loadCapability(kind: AudioKind, model: AudioModel, requestScope: AudioScope, epoch: number) {
 		if (!audioAllowed || activeOwner !== ownerKey) return;
+		const request = ++capabilityRequests[kind];
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.detail') };
+		experienceState(requestScope.experience, 'loading', kind === 'tts' ? 2 : 3);
 		capabilityLoading = { ...capabilityLoading, [kind]: true };
 		try {
 			const value = await audioStudioApi.capabilities(kind, model.id, requestScope);
-			if (!canPublish(epoch) || selected[kind] !== String(model.id)) return;
+			if (request !== capabilityRequests[kind] || !canPublish(epoch) || selected[kind] !== String(model.id)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = { ...capabilities, [kind]: value };
 			if (kind === 'tts') {
 				if (!value.available_voices?.includes(voice)) voice = value.available_voices?.[0] ?? '';
 				if (!value.available_formats?.includes(format)) format = value.available_formats?.[0] ?? 'mp3';
 			}
+			experienceState(requestScope.experience, 'ready', kind === 'tts' ? 2 : 3);
+			const appliedCapabilities = capabilities[kind];
+			void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id) && capabilities[kind] === appliedCapabilities);
 		} catch (cause) {
-			if (canPublish(epoch) && selected[kind] === String(model.id)) errors = { ...errors, [kind]: message(cause) };
+			if (request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id)) {
+				errors = { ...errors, [kind]: message(cause) }; experienceState(requestScope.experience, 'error', kind === 'tts' ? 2 : 3);
+				const displayedError = errors[kind];
+				void experienceApplied(requestScope.experience, {}, () => request === capabilityRequests[kind] && canPublish(epoch) && selected[kind] === String(model.id) && errors[kind] === displayedError);
+			}
 		} finally {
-			if (epoch === generation && selected[kind] === String(model.id)) capabilityLoading = { ...capabilityLoading, [kind]: false };
+			if (request === capabilityRequests[kind] && epoch === generation && selected[kind] === String(model.id)) capabilityLoading = { ...capabilityLoading, [kind]: false };
 		}
 	}
 	$effect(() => {
@@ -312,7 +333,8 @@
 	async function speech() {
 		if (!canPublish(generation) || !ttsReady || !scope || !ttsModel) return;
 		const epoch = generation;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'submit', 'shared.stream') };
+		experienceState(requestScope.experience, 'loading', 4);
 		const fingerprintNow = fingerprint;
 		const requestVoice = voice;
 		const requestFormat = format;
@@ -323,16 +345,21 @@
 		failures = { ...failures, tts: '' };
 		try {
 			const blob = await audioStudioApi.speech({ model_id: String(ttsModel.id), input: draft.trim(), voice: requestVoice, response_format: requestFormat }, requestScope, key, request.signal);
-			if (!canPublish(epoch) || request.signal.aborted) return;
+			if (!canPublish(epoch) || request.signal.aborted) { experienceDiscarded(requestScope.experience, request.signal.aborted ? 'aborted' : 'stale'); return; }
 			cleanupAudio();
 			audioUrl = URL.createObjectURL(blob);
 			outputFormat = requestFormat;
 			outputVoice = requestVoice;
 			pendingSpeech = null;
+			experienceState(requestScope.experience, 'ready', 4);
+			const appliedUrl = audioUrl;
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && !request.signal.aborted && audioUrl === appliedUrl);
 		} catch (cause) {
 			if (canPublish(epoch) && !request.signal.aborted) {
 				if (cause instanceof ApiError && [400, 401, 402, 403, 404, 409, 422].includes(cause.status)) pendingSpeech = null;
 				failures = { ...failures, tts: message(cause) };
+				experienceState(requestScope.experience, 'error', 4);
+				if (!(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(requestScope.experience, 'unknown');
 			}
 		} finally {
 			if (epoch === generation) busyTts = false;
@@ -344,7 +371,8 @@
 		releaseSource();
 		const version = sourceVersion;
 		const epoch = generation;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'attach', 'resource.detail') };
+		experienceState(requestScope.experience, 'loading', 5);
 		const request = controller();
 		uploadRequest = request;
 		source = { name: file.name, size: file.size, type: file.type, url: URL.createObjectURL(file) };
@@ -352,13 +380,16 @@
 		failures = { ...failures, stt: '' };
 		try {
 			const asset = await audioStudioApi.upload(file, requestScope, request.signal);
-			if (!canPublish(epoch) || !uploadAllowed || version !== sourceVersion || request.signal.aborted) return;
+			if (!canPublish(epoch) || !uploadAllowed || version !== sourceVersion || request.signal.aborted) { experienceDiscarded(requestScope.experience, request.signal.aborted ? 'aborted' : 'stale'); return; }
 			assetId = asset.id;
 			assetName = asset.name;
+			experienceState(requestScope.experience, 'ready', 5);
+			void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && uploadAllowed && version === sourceVersion && !request.signal.aborted);
 		} catch (cause) {
 			if (canPublish(epoch) && uploadAllowed && version === sourceVersion && !request.signal.aborted) {
 				releaseSource();
 				failures = { ...failures, stt: t('audioStudio.uploadFailed', { message: message(cause) }) };
+				experienceState(requestScope.experience, 'error', 5);
 			}
 		} finally {
 			if (epoch === generation && version === sourceVersion) {
@@ -458,7 +489,8 @@
 		const version = sourceVersion;
 		const request = controller();
 		transcriptionRequest = request;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'submit', 'shared.stream') };
+		experienceState(requestScope.experience, 'loading', 6);
 		const timed = requestTimestamps;
 		const name = source?.name || assetName;
 		transcribing = true;
@@ -476,11 +508,17 @@
 			if (canPublish(epoch) && version === sourceVersion && !request.signal.aborted) {
 				showTranscript(result, name, timed);
 				pendingTranscription = null;
+				experienceState(requestScope.experience, 'ready', 6);
+				const appliedTranscript = transcript;
+				void experienceApplied(requestScope.experience, {}, () => canPublish(epoch) && version === sourceVersion && !request.signal.aborted && transcript === appliedTranscript);
 			}
+			else experienceDiscarded(requestScope.experience, request.signal.aborted ? 'aborted' : 'stale');
 		} catch (cause) {
 			if (canPublish(epoch) && version === sourceVersion && !request.signal.aborted) {
 				if (cause instanceof ApiError && [400, 401, 402, 403, 404, 409, 422].includes(cause.status)) pendingTranscription = null;
 				failures = { ...failures, stt: message(cause) };
+				experienceState(requestScope.experience, 'error', 6);
+				if (!(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(requestScope.experience, 'unknown');
 			}
 		} finally {
 			if (epoch === generation && version === sourceVersion) {

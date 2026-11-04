@@ -10,7 +10,7 @@ import { originalImage } from './windowsSetupFixtures';
 
 const boundary = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn(), confirm: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: boundary, get ApiError() { return ApiError; }, getBaseUrl: () => 'https://api.example.test',
+	api: { ...boundary, withExperience: () => boundary }, get ApiError() { return ApiError; }, getBaseUrl: () => 'https://api.example.test',
 }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a' }) }));
 vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => true) }));

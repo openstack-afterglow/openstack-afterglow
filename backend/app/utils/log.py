@@ -3,15 +3,105 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import sys
 from collections import deque
 from inspect import getattr_static
+from pathlib import Path
 from types import TracebackType
 
 _EXCEPTION_CAUSE_LIMIT = 8
 _EXCEPTION_FRAME_LIMIT = 12
 _EXCEPTION_TRACEBACK_LIMIT = 1024
 _EXCEPTION_NAME_LIMIT = 128
+
+_APPLICATION_SOURCE = str(Path(__file__).resolve().parents[1]) + os.sep
+_TEST_SOURCE = str(Path(__file__).resolve().parents[2] / "tests") + os.sep
+
+# Only source-controlled finite diagnostics may bypass generic string masking.
+# Unknown values (including str subclasses) are omitted, not converted or logged.
+DIAGNOSTIC_LOG_FIELDS: dict[str, frozenset[str]] = {
+    "traffic_source": frozenset({"backend", "frontend"}),
+    "failure_stage": frozenset({"redis_acquire", "aggregate"}),
+    "stage_scope": frozenset({"client_initialization", "pool_connect_command_reply"}),
+    "failure_reason": frozenset({"timeout", "connection", "capacity", "rejected", "unknown"}),
+    "diagnostic_reason": frozenset(
+        {
+            "authority_rejected",
+            "authentication_failed",
+            "client_invalid",
+            "resource_mismatch",
+            "credential_unknown",
+            "credential_reused",
+            "credential_expired",
+            "invalid_shape",
+            "grant_inactive",
+            "authority_invariant",
+            "scope_invalid",
+            "health_credential_missing",
+            "health_credential_expired_or_unknown",
+            "health_credential_instance_mismatch",
+            "health_store_unavailable",
+            "health_credential_record_invalid",
+        }
+    ),
+}
+
+
+def sanitize_diagnostic_field(field: str, value: object) -> str | None:
+    """Admit exact plain strings from a field's closed operational vocabulary."""
+    allowed = DIAGNOSTIC_LOG_FIELDS.get(field)
+    return value if allowed is not None and type(value) is str and value in allowed else None
+
+
+def log_file_directory(configured: str) -> Path:
+    """Keep pytest file output separate, without inspecting test names or args.
+
+    Detection affects only the file sink; application behavior and configured
+    severity stay identical. PID directories also isolate parallel test workers.
+    """
+    directory = Path(configured)
+    return directory / "pytest" / str(os.getpid()) if "pytest" in sys.modules else directory
+
+
+def log_source(record: logging.LogRecord) -> dict:
+    """Identify the emitting code without retaining absolute filesystem paths."""
+    origin = "dependency"
+    if record.pathname.startswith(_APPLICATION_SOURCE):
+        origin = "application"
+    elif record.pathname.startswith(_TEST_SOURCE):
+        origin = "test"
+    return {"origin": origin, "module": record.module, "function": record.funcName, "line": record.lineno}
+
+
+def log_runtime() -> dict:
+    """Collect only fixed runtime facts, never argv, test IDs or environment dumps."""
+    environment = os.environ.get("AFTERGLOW_ENV", "").strip().lower()
+    return {
+        "environment": environment if environment in {"development", "test", "staging", "production"} else "other",
+        "python": ".".join(str(part) for part in sys.version_info[:3]),
+        "implementation": sys.implementation.name,
+    }
+
+
+def _mysql_error_code(exc: BaseException) -> int | None:
+    """Read only known, already-loaded SQLAlchemy/PyMySQL DBAPI structures."""
+    sqlalchemy = sys.modules.get("sqlalchemy.exc")
+    wrapper = getattr_static(sqlalchemy, "DBAPIError", None) if sqlalchemy is not None else None
+    if isinstance(wrapper, type) and isinstance(exc, wrapper):
+        original = getattr_static(exc, "orig", None)
+        if not isinstance(original, BaseException):
+            return None
+        exc = original
+    driver = sys.modules.get("pymysql.err")
+    driver_error = getattr_static(driver, "MySQLError", None) if driver is not None else None
+    if not isinstance(driver_error, type) or not isinstance(exc, driver_error):
+        return None
+    args = BaseException.args.__get__(exc)
+    if type(args) is tuple and args and type(args[0]) is int and 1000 <= args[0] <= 4999:
+        return args[0]
+    return None
 
 
 def _exception_frames(tb: TracebackType | None) -> dict:
@@ -32,6 +122,9 @@ def _exception_frames(tb: TracebackType | None) -> dict:
 def _exception_node(exc_type: type[BaseException], exc: BaseException | None, tb: TracebackType | None) -> dict:
     metadata = {"type": type.__getattribute__(exc_type, "__name__")[:_EXCEPTION_NAME_LIMIT], **_exception_frames(tb)}
     if exc is not None:
+        error_code = _mysql_error_code(exc)
+        if error_code is not None:
+            metadata["error_code"] = error_code
         for key in ("status_code", "http_status", "status", "errno"):
             # Static lookup never evaluates provider properties or user-defined
             # conversions. OSError stores errno in a built-in slot, not __dict__.
@@ -50,7 +143,8 @@ def exception_metadata(exc_info: tuple[type[BaseException], BaseException | None
 
     Each node has type (at most 128 characters), frames (last 12 visited
     {function, line} pairs), and optional plain-int status_code/http_status/status
-    (100..599) or errno (signed 32-bit). Properties and coercions are not used.
+    (100..599), errno (signed 32-bit), or known PyMySQL/SQLAlchemy DBAPI
+    error_code (1000..4999). Properties and coercions are not used.
     frames_truncated marks omitted frames; traceback_truncated means the scan
     stopped at 1024 frames, so the innermost frame is not known.
 
@@ -176,6 +270,9 @@ WARNING_LOG_NAMESPACES = (
     "boto3",
     "sqlalchemy.engine",
     "uvicorn.access",
+    "aiosqlite",
+    "asyncio",
+    "stevedore",
 )
 
 
@@ -265,6 +362,12 @@ class SensitiveDataFilter(logging.Filter):
             if type(attr) is not str:
                 record.__dict__.pop(attr)
                 record.__dict__["<redacted>"] = "***"
+            elif attr in DIAGNOSTIC_LOG_FIELDS:
+                value = sanitize_diagnostic_field(attr, record.__dict__[attr])
+                if value is None:
+                    record.__dict__.pop(attr)
+                else:
+                    record.__dict__[attr] = value
             elif attr not in self._SKIP_ATTRS:
                 if mask_str(attr) != attr:
                     record.__dict__.pop(attr)

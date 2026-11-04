@@ -24,6 +24,7 @@ import threading
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from app.api.common.owner_check import native_resource_read_failure
 from app.api.deps import get_os_conn_write, get_token_info
 from app.api.object_storage.containers import _sanitize_object_name
 from app.config import get_settings
@@ -62,9 +63,13 @@ async def upload_object(
 
     try:
         await asyncio.to_thread(swift_svc.get_container_metadata, conn, container)
-    except Exception:
+    except Exception as exc:
         _logger.warning("컨테이너 검증 실패: container=%s", container, exc_info=True)
-        raise HTTPException(status_code=404, detail="컨테이너를 찾을 수 없거나 권한 없음")
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="컨테이너를 찾을 수 없거나 권한 없음",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
     quarantine_bucket = f"{container}-quarantine"
     raw_name = (prefix or "") + (file.filename or "")

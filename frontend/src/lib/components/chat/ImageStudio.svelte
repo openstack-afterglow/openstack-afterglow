@@ -10,6 +10,7 @@
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 	// The actor survives token/permission refresh; each action checks its own leaf.
 	const scope = $derived($authReady && !$projectSwitching && $auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
@@ -102,18 +103,26 @@
 	}
 	async function loadCapabilities(model: ImageModel, requestScope: ImageApiScope, generation: number) {
 		if (!canPublish(requestScope)) return;
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.detail') };
+		experienceState(requestScope.experience, 'loading', 1);
 		capabilitiesLoading = true;
 		capabilitiesError = '';
 		try {
 			const loaded = await imageStudioApi.capabilities(model.id, requestScope);
-			if (generation !== capabilityRequest || !canPublish(requestScope)) return;
+			if (generation !== capabilityRequest || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			capabilities = loaded;
 			const first = loaded.available_image_variants?.[0]?.split(':');
 			size = first?.[0] ?? '';
 			quality = first?.[1] ?? '';
 			count = '1';
+			experienceState(requestScope.experience, 'ready', 1);
+			void experienceApplied(requestScope.experience, {}, () => generation === capabilityRequest && canPublish(requestScope));
 		} catch (cause) {
-			if (generation === capabilityRequest && canPublish(requestScope)) capabilitiesError = message(cause);
+			if (generation === capabilityRequest && canPublish(requestScope)) {
+				capabilitiesError = message(cause); experienceState(requestScope.experience, 'error', 1);
+				const displayedError = capabilitiesError;
+				void experienceApplied(requestScope.experience, {}, () => generation === capabilityRequest && canPublish(requestScope) && capabilitiesError === displayedError);
+			}
 		} finally {
 			if (generation === capabilityRequest) capabilitiesLoading = false;
 		}
@@ -203,16 +212,24 @@
 
 	async function loadModels(requestScope: ImageApiScope, generation: number) {
 		if (!canPublish(requestScope)) return;
+		requestScope = { ...requestScope, experience: beginExperienceLoad('lumen', 'resource.list') };
+		experienceState(requestScope.experience, 'loading', 0);
 		modelsLoading = true;
 		modelsError = '';
 		try {
 			const loaded = await imageStudioApi.models(requestScope);
-			if (generation !== modelRequest || !canPublish(requestScope)) return;
+			if (generation !== modelRequest || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			models = loaded;
 			modelsLoaded = true;
 			if (!loaded.some((model) => String(model.id) === modelId)) modelId = loaded[0] ? String(loaded[0].id) : '';
+			experienceState(requestScope.experience, loaded.length ? 'ready' : 'empty', 0);
+			void experienceApplied(requestScope.experience, {}, () => generation === modelRequest && canPublish(requestScope));
 		} catch (cause) {
-			if (generation === modelRequest && canPublish(requestScope)) modelsError = message(cause);
+			if (generation === modelRequest && canPublish(requestScope)) {
+				modelsError = message(cause); experienceState(requestScope.experience, 'error', 0);
+				const displayedError = modelsError;
+				void experienceApplied(requestScope.experience, {}, () => generation === modelRequest && canPublish(requestScope) && modelsError === displayedError);
+			}
 		} finally {
 			if (generation === modelRequest) modelsLoading = false;
 		}
@@ -224,14 +241,20 @@
 			timer = setTimeout(() => { void loadRun(id, requestScope, generation); }, 2000);
 			return;
 		}
-		requestScope = scope;
+		requestScope = { ...scope, experience: requestScope.experience ?? beginExperienceLoad('lumen', 'shared.stream') };
 		loadingRun = true;
 		try {
 			const run = await imageStudioApi.run(id, requestScope);
-			if (generation !== operation || selectedRunId !== id || !canPublish(requestScope)) return;
+			if (generation !== operation || selectedRunId !== id || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			const firstCompletion = currentRun?.run_id !== run.run_id || currentRun?.status !== 'completed';
+			const stateChanged = currentRun?.run_id !== run.run_id || currentRun?.status !== run.status || currentRun?.terminal !== run.terminal;
 			currentRun = run;
 			loadingRun = false;
+			// Admission and polling are not terminal success. Only the native run's terminal status is observed.
+			if (stateChanged) {
+				experienceState(requestScope.experience, !run.terminal ? 'loading' : run.status === 'completed' ? 'ready' : run.status === 'failed' ? 'error' : 'disabled', 3);
+				void experienceApplied(requestScope.experience, {}, () => generation === operation && selectedRunId === id && canPublish(requestScope) && currentRun?.status === run.status && currentRun?.terminal === run.terminal);
+			}
 			if (run.terminal) {
 				if (run.status === 'completed' && firstCompletion) void loadPreviews(run, requestScope, generation);
 			} else {
@@ -242,6 +265,7 @@
 			if (generation === operation && canPublish(requestScope)) {
 				loadingRun = false;
 				error = t('imageStudio.runLoadFailed', { message: message(cause) });
+				experienceState(requestScope.experience, 'error', 3);
 			}
 		}
 	}
@@ -253,9 +277,12 @@
 			if (generation !== operation || controller.signal.aborted || !canPublish(requestScope) || !scope) return;
 			if (previewUrls[asset.asset_id]) continue;
 			try {
-				const blob = await imageStudioApi.download(asset.asset_id, scope, controller.signal);
-				if (generation !== operation || controller.signal.aborted || !canPublish(requestScope)) return;
-				if (asset.mime_type.startsWith('image/')) previewUrls = { ...previewUrls, [asset.asset_id]: URL.createObjectURL(blob) };
+				const blob = await imageStudioApi.download(asset.asset_id, { ...scope, experience: requestScope.experience }, controller.signal);
+				if (generation !== operation || controller.signal.aborted || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
+				if (asset.mime_type.startsWith('image/')) {
+					previewUrls = { ...previewUrls, [asset.asset_id]: URL.createObjectURL(blob) };
+					void experienceApplied(requestScope.experience, {}, () => generation === operation && !controller.signal.aborted && canPublish(requestScope));
+				}
 			} catch (cause) {
 				if (generation === operation && !controller.signal.aborted && canPublish(requestScope)) error = t('imageStudio.previewLoadFailed', { message: message(cause) });
 			}
@@ -357,19 +384,23 @@
 		const generation = inputGeneration;
 		const controller = new AbortController();
 		uploadAbort = controller;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'attach', 'resource.detail') };
+		experienceState(requestScope.experience, 'loading', 5);
 		inputPreviewUrl = URL.createObjectURL(file);
 		inputFileName = file.name;
 		uploading = true;
 		error = '';
 		try {
 			const asset = await imageStudioApi.upload(file, requestScope, controller.signal);
-			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) return;
+			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			inputAssetId = asset.id;
 			inputFileName = asset.name;
+			experienceState(requestScope.experience, 'ready', 5);
+			void experienceApplied(requestScope.experience, {}, () => generation === inputGeneration && assetsAllowed && activeScopeKey === storageKey && requestScope.projectId === scope?.projectId);
 		} catch (cause) {
-			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) return;
+			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			error = t('imageStudio.uploadFailed', { message: message(cause) });
+			experienceState(requestScope.experience, 'error', 5);
 		} finally {
 			if (uploadAbort === controller) {
 				uploadAbort = null;
@@ -379,7 +410,8 @@
 	}
 	async function submit() {
 		if (!canSubmit || !scope || !canPublish(scope)) return;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'submit', 'shared.stream') };
+		experienceState(requestScope.experience, 'loading', 2);
 		const generation = ++operation;
 		const controller = new AbortController();
 		submitAbort = controller;
@@ -398,7 +430,7 @@
 			const idempotencyKey = pendingIntent?.fingerprint === fingerprint ? pendingIntent.key : crypto.randomUUID();
 			pendingIntent = { fingerprint, key: idempotencyKey };
 			const descriptor = await imageStudioApi.submit(inputAssetId ? 'edits' : 'generations', inputAssetId ? { ...request, input_asset_id: inputAssetId } : request, requestScope, idempotencyKey, controller.signal);
-			if (generation !== operation || !canPublish(requestScope)) return;
+			if (generation !== operation || !canPublish(requestScope)) { experienceDiscarded(requestScope.experience, 'stale'); return; }
 			pendingIntent = null;
 			// A completed admission or known history ID is replay, not a new live result.
 			liveRunId = !runIds.includes(descriptor.run_id) && !['completed', 'failed', 'canceled'].includes(descriptor.status) ? descriptor.run_id : null;
@@ -406,9 +438,15 @@
 			runIds = [descriptor.run_id, ...runIds.filter((id) => id !== descriptor.run_id)].slice(0, 20);
 			saveHistory(storageKey, runIds);
 			selectedRunId = descriptor.run_id;
+			void experienceApplied(requestScope.experience, {}, () => generation === operation && canPublish(requestScope));
 			void loadRun(descriptor.run_id, requestScope, generation);
 		} catch (cause) {
-			if (generation === operation && canPublish(requestScope)) error = message(cause);
+			if (generation === operation && canPublish(requestScope)) {
+				error = message(cause);
+				experienceState(requestScope.experience, 'error', 2);
+				if (controller.signal.aborted) experienceDiscarded(requestScope.experience, 'aborted');
+				else if (!(cause instanceof ApiError && cause.status >= 400 && cause.status < 500)) experienceDiscarded(requestScope.experience, 'unknown');
+			}
 		} finally {
 			if (submitAbort === controller) submitAbort = null;
 			if (generation === operation) submitting = false;
@@ -416,11 +454,13 @@
 	}
 	async function cancel() {
 		if (!scope || !canPublish(scope) || !selectedRunId || currentRun?.terminal) return;
-		const requestScope = scope;
+		const requestScope = { ...scope, experience: beginExperienceAction('lumen', 'cancel', 'shared.stream') };
 		const generation = operation;
 		try {
-			await imageStudioApi.cancel(selectedRunId, scope);
-			if (generation === operation && canPublish(requestScope) && selectedRunId && scope) void loadRun(selectedRunId, scope, generation);
+			await imageStudioApi.cancel(selectedRunId, requestScope);
+			// A cancellation response is only a request; read the actual run before changing its displayed state.
+			if (generation === operation && canPublish(requestScope) && selectedRunId && scope) void loadRun(selectedRunId, { ...scope, experience: requestScope.experience }, generation);
+			else experienceDiscarded(requestScope.experience, 'stale');
 		} catch (cause) { if (generation === operation && canPublish(requestScope)) error = t('imageStudio.cancelFailed', { message: message(cause) }); }
 	}
 	async function download(id: string, name: string) {

@@ -29,6 +29,7 @@
 	"browser.files": "Files",
 	"browser.trash": "Trash",
 	"browser.viewLabel": "Object browser view",
+	"browser.loadFailed": "Unable to load objects. Refresh to try again.",
 	"uploadQueue.readFailed": "Couldn't read the file",
 	"uploadQueue.hashFailed": "Failed to calculate the integrity hash",
 	"uploadQueue.failed": "Upload failed",

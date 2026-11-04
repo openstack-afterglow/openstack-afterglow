@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { ApiError } from '$lib/api/errors';
 import type { SignupOptions } from '$lib/types/enrollmentPolicy';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), clearAuth: vi.fn(), close: vi.fn(), success: vi.fn(), error: vi.fn() }));
+import type * as ExperienceModule from '$lib/utils/experience';
+import { t as authText } from '$lib/i18n/ns/domain-auth';
+const mocks = vi.hoisted(() => ({
+ get: vi.fn(), post: vi.fn(), goto: vi.fn(), clearAuth: vi.fn(), close: vi.fn(), success: vi.fn(), error: vi.fn(),
+ experienceBegin: vi.fn(), experienceApplied: vi.fn(), experienceDiscarded: vi.fn(), experienceMessage: vi.fn(), experienceState: vi.fn(),
+}));
 vi.mock('$app/stores', () => ({ page: writable({ params: { token: 'recovery_token_12345678901234567890' } }) }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto, invalidate: vi.fn().mockResolvedValue(undefined) }));
@@ -14,6 +19,14 @@ vi.mock('$lib/stores/auth', () => ({
  auth: writable({ token: null, userId: null, identityDomainId: null, projectId: null, domainId: null, sessionId: null }),
  authReady: writable(true), logoutInProgress: writable(false), projectSwitching: writable(false), clearAuth: mocks.clearAuth,
 }));
+vi.mock('$lib/utils/experience', async importOriginal => {
+ const actual = await importOriginal<typeof ExperienceModule>();
+ return {
+  ...actual, beginExperienceAction: mocks.experienceBegin, beginExperienceLoad: mocks.experienceBegin,
+  experienceApplied: mocks.experienceApplied, experienceDiscarded: mocks.experienceDiscarded,
+  experienceMessage: mocks.experienceMessage, experienceState: mocks.experienceState,
+ };
+});
 import { auth, authReady, logoutInProgress } from '$lib/stores/auth';
 import { freshLoginDestination } from '$lib/utils/mcpConsent';
 import { page } from '$app/stores';
@@ -35,6 +48,7 @@ beforeEach(() => {
  mocks.goto.mockResolvedValue(undefined); mocks.close.mockResolvedValue(undefined);
  tokenPage.set({ params: { token }, url: new URL(`http://localhost/recover/${token}`) });
  mocks.get.mockResolvedValue(options); mocks.post.mockResolvedValue({ accepted: true });
+ mocks.experienceApplied.mockResolvedValue(undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 afterEach(() => { cleanup(); initLocale('ko'); });
@@ -331,5 +345,67 @@ describe('one-use recovery token', () => {
   expect(await screen.findByText(/This tab cannot safely retain/)).toBeTruthy();
   expect(mocks.goto).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
   expect(screen.queryByLabelText(/^Password/)).toBeNull();
+ });
+});
+
+describe('recovery semantic causality', () => {
+ const context = Object.freeze({ segmentId: 'recovery-segment', actionId: 'explicit-action' });
+
+ it('records the actually displayed availability warning in each locale without repeating policy reads', async () => {
+  mocks.experienceBegin.mockReturnValue(context);
+  mocks.get.mockResolvedValue({ ...options, smtp_configured: false });
+  render(Request);
+  await screen.findByText(authText('recovery.notAvailable'));
+  await waitFor(() => expect(mocks.experienceMessage).toHaveBeenCalledWith(context, expect.objectContaining({
+   key: 'domain-auth:recovery.notAvailable', locale: 'en', tone: 'warning',
+  })));
+  initLocale('ko');
+  await screen.findByText(authText('recovery.notAvailable'));
+  await waitFor(() => expect(mocks.experienceMessage).toHaveBeenCalledWith(context, expect.objectContaining({
+   key: 'domain-auth:recovery.notAvailable', locale: 'ko', tone: 'warning',
+  })));
+  expect(mocks.experienceMessage).toHaveBeenCalledTimes(2);
+  expect(mocks.get).toHaveBeenCalledOnce();
+  expect(mocks.post).not.toHaveBeenCalled();
+ });
+
+ it('retains a consumed username inspection through locale changes and records only source message metadata', async () => {
+  mocks.experienceBegin.mockReturnValue(context);
+  mocks.get.mockResolvedValue({ kind: 'username', email: 'private@example.com', username: 'private-username', identity_domain_name: 'Private home' });
+  render(Recovery);
+  await screen.findByText('private-username');
+  initLocale('ko');
+  await screen.findByRole('heading', { level: 1, name: '계정 찾기' });
+  await waitFor(() => expect(mocks.experienceMessage).toHaveBeenCalledWith(context, expect.objectContaining({ key: 'domain-auth:recovery.usernameResult', locale: 'ko' })));
+  expect(mocks.get).toHaveBeenCalledOnce();
+  expect(mocks.get).toHaveBeenCalledWith(`/api/v1/auth/recovery/${token}`, undefined, undefined, expect.objectContaining({ experience: context, replayOnUnauthorized: false, cache: 'no-store' }));
+  expect(mocks.post).not.toHaveBeenCalled();
+  const messages = JSON.stringify(mocks.experienceMessage.mock.calls);
+  for (const forbidden of ['private@example.com', 'private-username', 'Private home', token]) expect(messages).not.toContain(forbidden);
+ });
+
+ it('records the existing stale discard without re-inspecting or applying a late consumed result', async () => {
+  mocks.experienceBegin.mockReturnValue(context);
+  const pending = Promise.withResolvers<object>();
+  mocks.get.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ kind: 'password', email: 'next@example.com' });
+  render(Recovery); await waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
+  tokenPage.set({ params: { token: 'other_recovery_token_1234567890' } });
+  await screen.findByLabelText(/^Password/);
+  pending.resolve({ kind: 'username', username: 'late-private-username' });
+  await waitFor(() => expect(mocks.experienceDiscarded).toHaveBeenCalledWith(context, 'stale'));
+  expect(screen.queryByText('late-private-username')).toBeNull();
+  expect(mocks.get).toHaveBeenCalledTimes(2);
+  expect(mocks.post).not.toHaveBeenCalled();
+ });
+
+ it('starts email confirmation only on explicit approval and carries its own verification action', async () => {
+  mocks.experienceBegin.mockReturnValue(context);
+  mocks.get.mockResolvedValue({ kind: 'email_change', email: 'private-new@example.com' });
+  render(Recovery);
+  const approve = await screen.findByRole('button', { name: 'Confirm email change' });
+  expect(mocks.post).not.toHaveBeenCalled();
+  await fireEvent.click(approve);
+  expect(mocks.experienceBegin).toHaveBeenCalledWith('account', 'verify', 'auth.verification');
+  expect(mocks.post).toHaveBeenCalledWith('/api/v1/auth/email/changes/accept', { token }, undefined, undefined, expect.objectContaining({ experience: context, replayOnUnauthorized: false }));
  });
 });

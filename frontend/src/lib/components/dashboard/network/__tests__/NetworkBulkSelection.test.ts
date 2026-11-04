@@ -8,6 +8,7 @@ vi.mock('$lib/api/client', () => ({
         ]
       : []),
     delete: vi.fn(async () => undefined),
+    withExperience() { return this; },
   },
   ApiError: class ApiError extends Error { status = 500; },
 }));

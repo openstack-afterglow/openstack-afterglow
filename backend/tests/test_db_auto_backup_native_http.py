@@ -176,6 +176,5 @@ def test_native_listing_error_is_not_empty_evidence(native_trove):
     state["listing_status"] = 500
     conn = factory(PROJECT)
     with pytest.raises(Exception):
-        trove.list_backups(conn, INSTANCE, strict=True)
-    assert trove.list_backups(conn, INSTANCE) == []
+        trove.list_backups(conn, INSTANCE)
     assert state["posts"] == []

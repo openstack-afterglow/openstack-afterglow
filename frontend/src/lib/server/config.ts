@@ -10,6 +10,7 @@ const DEFAULTS: PublicSiteConfig = {
 	logo_light_path: '/afterglow-logo.svg',
 	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
+	experience_enabled: false,
 	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	mcp_url: '',
 	runtime: {
@@ -119,6 +120,7 @@ export function loadPublicSiteConfig(): PublicSiteConfig {
 		const monitoring = (toml.monitoring ?? {}) as Record<string, unknown>;
 		const chat = (toml.chat ?? {}) as Record<string, unknown>;
 		const mcp = (toml.mcp ?? {}) as Record<string, unknown>;
+		const experience = (toml.experience ?? {}) as Record<string, unknown>;
 
 		_cached = {
 			site_name: String(app.site_name ?? DEFAULTS.site_name),
@@ -129,6 +131,8 @@ export function loadPublicSiteConfig(): PublicSiteConfig {
 			favicon_path: String(app.favicon_path ?? DEFAULTS.favicon_path),
 			refresh_interval_ms: Number(app.refresh_interval_ms ?? DEFAULTS.refresh_interval_ms),
 			mcp_url: mcpPublicUrl(mcp.public_url),
+			// Only a typed opt-in may enable diagnostic collection; never coerce strings.
+			experience_enabled: experience.enabled === true,
 			services: {
 				magnum: Boolean(services.magnum ?? false),
 				manila: Boolean(services.manila ?? false),

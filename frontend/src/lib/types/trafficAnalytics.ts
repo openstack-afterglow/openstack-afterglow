@@ -6,6 +6,7 @@ export type TrafficOriginFilter = 'all' | TrafficOrigin;
 export type TrafficOrigins = Record<TrafficOrigin, number>;
 export const geoReasons = ['address_unavailable', 'invalid_address', 'non_global', 'database_unconfigured', 'database_unavailable', 'range_missing', 'country_invalid', 'lookup_failed', 'peer_unverified', 'forwarded_missing', 'forwarded_invalid', 'forwarded_all_trusted', 'legacy_unclassified'] as const;
 export const originReasons = ['peer_unverified', 'address_unavailable', 'invalid_address', 'forwarded_missing', 'forwarded_invalid', 'forwarded_all_trusted', 'non_global_noncluster', 'legacy_unclassified'] as const;
+const dropReasons = ['timeout', 'connection', 'capacity', 'rejected', 'unknown'] as const;
 export const trafficNetworkKinds = ['private', 'shared', 'loopback', 'link_local', 'documentation', 'benchmark', 'multicast', 'reserved', 'unspecified'] as const;
 export type TrafficNetworkKind = typeof trafficNetworkKinds[number];
 export const trafficNetworkBases = ['resolved_client', 'socket_peer'] as const;
@@ -31,6 +32,8 @@ export interface TrafficSnapshot {
         geo_unknown_reasons: Partial<Record<typeof geoReasons[number], number>>;
         origin_unknown_reasons: Partial<Record<typeof originReasons[number], number>>;
         classified_requests: number | null; legacy_unclassified_requests: number | null; classification_policy: string;
+        drop_reasons?: Partial<Record<typeof dropReasons[number], number>>;
+        reporter_drop_reasons?: Partial<Record<typeof dropReasons[number], number>>;
         dropped_events: number | null; reporter_dropped_events: number | null; observed_since: number | null; last_observed_at: number | null };
 	totals: TrafficMetrics | null;
 	countries: Array<TrafficMetrics & { country: string }>;
@@ -91,6 +94,8 @@ export function parseTrafficSnapshot(value: unknown, source: TrafficSource, rang
         typeof c.geo_source !== 'string' || !['offline_mmdb', 'unconfigured', 'unavailable'].includes(c.geo_source) || !nullable(c.dropped_events, count) || !nullable(c.reporter_dropped_events, count) || !nullable(c.observed_since) || !nullable(c.last_observed_at) ||
         ![c.geo_provider, c.geo_version, c.geo_attribution].every(v => v === null || typeof v === 'string') ||
         !reasons(c.geo_unknown_reasons, geoReasons) || !reasons(c.origin_unknown_reasons, originReasons) ||
+        (c.drop_reasons !== undefined && !reasons(c.drop_reasons, dropReasons)) ||
+        (c.reporter_drop_reasons !== undefined && !reasons(c.reporter_drop_reasons, dropReasons)) ||
         !nullable(c.classified_requests, count) || !nullable(c.legacy_unclassified_requests, count) || typeof c.classification_policy !== 'string' ||
 		!(c.site_country === null || (typeof c.site_country === 'string' && /^[A-Z]{2}$/.test(c.site_country) && c.site_country.length === 2 && c.site_country !== 'XX')) ||
 		!(value.totals === null || metrics(value.totals)) ||

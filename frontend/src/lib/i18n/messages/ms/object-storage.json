@@ -28,6 +28,7 @@
 	"browser.files": "Fail",
 	"browser.trash": "Tong sampah",
 	"browser.viewLabel": "Paparan pelayar objek",
+	"browser.loadFailed": "Objek tidak dapat dimuatkan. Muat semula untuk mencuba lagi.",
 	"uploadQueue.readFailed": "Tidak dapat membaca fail",
 	"uploadQueue.hashFailed": "Gagal mengira cincangan integriti",
 	"uploadQueue.failed": "Muat naik gagal",

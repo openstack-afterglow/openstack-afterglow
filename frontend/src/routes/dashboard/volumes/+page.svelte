@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/volume';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth, canWrite } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -40,6 +40,7 @@
     projectId: () => $auth.projectId ?? undefined,
     volumeSnapshotsEnabled: () => $betaFeatures.volumeSnapshots,
   });
+  onDestroy(() => ctrl.destroy());
   const volumeSelection = createResourceSelection();
   const snapshotSelection = createResourceSelection();
   let bulkBusy = $state(false);
@@ -176,7 +177,7 @@
   onkeydown={(e) => { if (e.key === 'Escape' && ctrl.selectedVolumeId) ctrl.closeVolumePanel(); }}
 />
 
-<VolumeCreateModal bind:open={ctrl.showModal} onCreated={() => ctrl.fetchVolumes()} />
+<VolumeCreateModal bind:open={ctrl.showModal} onCreated={(context, createdVolumeId) => ctrl.fetchVolumes(false, context, createdVolumeId)} />
 
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('page.breadcrumb')} title={ctrl.loading || ctrl.error ? t('page.title') : t('page.titleWithCount', { title: t('page.title'), count: ctrl.volumes.length })}>

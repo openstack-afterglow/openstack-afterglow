@@ -8,6 +8,7 @@ import { toast } from '$lib/stores/toast';
 import type { RouterDetail } from '$lib/types/router';
 import type { SubnetDetail } from '$lib/types/networks';
 import type { Network } from '$lib/types/networks';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 interface Options {
 	routerId: () => string;
@@ -47,31 +48,41 @@ function createRouterDetailController(opts: Options) {
 		}
 		const tok = untrack(() => opts.token());
 		const proj = untrack(() => opts.projectId());
-		api.get<{ subnet_details: SubnetDetail[] }>(`/api/v1/networks/${netId}`, tok, proj)
+		const experience = beginExperienceLoad('network', 'resource.detail');
+		api.withExperience(experience).get<{ subnet_details: SubnetDetail[] }>(`/api/v1/networks/${netId}`, tok, proj)
 			.then(d => {
 				allSubnets = d.subnet_details ?? [];
 				selectedSubnetId = allSubnets[0]?.id ?? '';
+				if (experience) void experienceApplied(experience);
 			})
 			.catch(() => {});
 	});
 
-	async function fetchRouter(force = false) {
+	async function fetchRouter(force = false, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.detail')) {
 		loading = true;
 		error = '';
+		experienceState(experience, 'loading');
 		try {
-			router = await api.get<RouterDetail>(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId(), { refresh: force });
+			router = await api.withExperience(experience).get<RouterDetail>(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId(), { refresh: force });
+			if (experience?.action !== 'create') experienceState(experience, router ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('router.error.load');
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function fetchNetworks() {
+		const experience = beginExperienceLoad('network', 'resource.detail');
 		try {
-			const nets = await api.get<Network[]>('/api/v1/networks', opts.token(), opts.projectId());
+			const nets = await api.withExperience(experience).get<Network[]>('/api/v1/networks', opts.token(), opts.projectId());
 			availableNetworks = nets.filter((network) => !network.is_external && (opts.isSystemAdmin?.() || network.project_id === opts.projectId()));
 			externalNetworks = nets.filter(n => n.is_external);
+			experienceState(experience, nets.length ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience);
 		} catch { /* 무시 */ }
 	}
 
@@ -79,14 +90,17 @@ function createRouterDetailController(opts: Options) {
 		if (!canManageRouter || !selectedSubnetId) return;
 		const subnet = allSubnets.find((item) => item.id === selectedSubnetId);
 		saving = true;
+		const experience = beginExperienceAction('network', 'attach', 'resource.detail');
 		try {
-			await api.post(`/api/v1/routers/${opts.routerId()}/interfaces`, { subnet_id: selectedSubnetId, auto_gateway: !subnet?.gateway_ip }, opts.token(), opts.projectId());
+			await api.withExperience(experience).post(`/api/v1/routers/${opts.routerId()}/interfaces`, { subnet_id: selectedSubnetId, auto_gateway: !subnet?.gateway_ip }, opts.token(), opts.projectId());
 			showAddInterface = false;
 			selectedNetId = '';
 			selectedSubnetId = '';
-			await fetchRouter();
+			await fetchRouter(false, experience);
 		} catch (e) {
 			toast.error(t('router.error.addInterface', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			saving = false;
 		}
@@ -96,11 +110,14 @@ function createRouterDetailController(opts: Options) {
 		if (!canManageRouter) return;
 		if (!(await confirmDialog(t('router.confirm.removeInterface')))) return;
 		saving = true;
+		const experience = beginExperienceAction('network', 'detach', 'resource.detail');
 		try {
-			await api.delete(`/api/v1/routers/${opts.routerId()}/interfaces/${subnetId}`, opts.token(), opts.projectId());
-			await fetchRouter();
+			await api.withExperience(experience).delete(`/api/v1/routers/${opts.routerId()}/interfaces/${subnetId}`, opts.token(), opts.projectId());
+			await fetchRouter(false, experience);
 		} catch (e) {
 			toast.error(t('router.error.removeInterface', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			saving = false;
 		}
@@ -109,13 +126,16 @@ function createRouterDetailController(opts: Options) {
 	async function setGateway() {
 		if (!canManageRouter || !selectedExtNetId) return;
 		saving = true;
+		const experience = beginExperienceAction('network', 'attach', 'resource.detail');
 		try {
-			await api.post(`/api/v1/routers/${opts.routerId()}/gateway`, { external_network_id: selectedExtNetId }, opts.token(), opts.projectId());
+			await api.withExperience(experience).post(`/api/v1/routers/${opts.routerId()}/gateway`, { external_network_id: selectedExtNetId }, opts.token(), opts.projectId());
 			showSetGateway = false;
 			selectedExtNetId = '';
-			await fetchRouter();
+			await fetchRouter(false, experience);
 		} catch (e) {
 			toast.error(t('router.error.setGateway', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			saving = false;
 		}
@@ -125,11 +145,14 @@ function createRouterDetailController(opts: Options) {
 		if (!canManageRouter) return;
 		if (!(await confirmDialog(t('router.confirm.removeGateway')))) return;
 		saving = true;
+		const experience = beginExperienceAction('network', 'detach', 'resource.detail');
 		try {
-			await api.delete(`/api/v1/routers/${opts.routerId()}/gateway`, opts.token(), opts.projectId());
-			await fetchRouter();
+			await api.withExperience(experience).delete(`/api/v1/routers/${opts.routerId()}/gateway`, opts.token(), opts.projectId());
+			await fetchRouter(false, experience);
 		} catch (e) {
 			toast.error(t('router.error.removeGateway', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			saving = false;
 		}
@@ -139,8 +162,9 @@ function createRouterDetailController(opts: Options) {
 		if (!canManageRouter) return;
 		if (!(await confirmDialog(t('router.confirm.delete', { name: router?.name || opts.routerId() })))) return;
 		saving = true;
+		const experience = beginExperienceAction('network', 'delete', 'resource.detail');
 		try {
-			await api.delete(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId());
+			await api.withExperience(experience).delete(`/api/v1/routers/${opts.routerId()}`, opts.token(), opts.projectId());
 			if (opts.onDeleted) {
 				opts.onDeleted();
 			} else {
@@ -149,6 +173,8 @@ function createRouterDetailController(opts: Options) {
 			}
 		} catch (e) {
 			toast.error(t('router.error.delete', { error: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 			saving = false;
 		}
 	}

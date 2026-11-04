@@ -313,6 +313,11 @@ def _load_toml() -> dict:
         "infrastructure_topology_retention_seconds", 3600
     )
     flat["monitoring_infrastructure_fabric"] = mon.get("infrastructure_fabric", {})
+    experience = data.get("experience", {})
+    flat["experience_enabled"] = experience.get("enabled", False)
+    flat["experience_anonymous_read_enabled"] = experience.get("anonymous_read_enabled", False)
+    flat["experience_detail_retention_days"] = experience.get("detail_retention_days", 30)
+    flat["experience_aggregate_retention_days"] = experience.get("aggregate_retention_days", 90)
     # These two file keys configure the frontend process, not backend analytics.
     # Preserve strict validation of every other key in this shared section.
     flat["traffic_analytics"] = {
@@ -746,6 +751,18 @@ class Settings(BaseSettings):
     monitoring_infrastructure_topology_retention_seconds: int = Field(default=3600, ge=300, le=86400)
     monitoring_infrastructure_fabric: FabricSettings = Field(default_factory=FabricSettings)
     traffic_analytics: TrafficAnalyticsSettings = Field(default_factory=TrafficAnalyticsSettings)
+
+    # Opt-in structural diagnostics, separate from durable business audit.
+    experience_enabled: bool = False
+    experience_anonymous_read_enabled: bool = False
+    experience_detail_retention_days: int = Field(default=30, ge=1, le=365)
+    experience_aggregate_retention_days: int = Field(default=90, ge=1, le=3650)
+
+    @model_validator(mode="after")
+    def validate_experience_retention(self):
+        if self.experience_aggregate_retention_days < self.experience_detail_retention_days:
+            raise ValueError("Experience aggregate retention cannot be shorter than detail retention")
+        return self
 
     @model_validator(mode="after")
     def validate_infrastructure_topology(self):

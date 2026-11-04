@@ -822,3 +822,107 @@ async def test_disabled_sql_legacy_config_cannot_fall_back_to_stale_redis_policy
     with pytest.raises(wd.DispatcherUnavailable):
         await ns.update_notion_config_timestamps({"last_sync": datetime.now(UTC).isoformat()})
     assert json.loads(await redis.get(key)) == config
+
+
+@pytest.mark.parametrize("pytest_sink", [False, True])
+@pytest.mark.parametrize("debug", [False, True])
+def test_worker_startup_emits_shared_private_json_without_api_dependencies(tmp_path, pytest_sink, debug):
+    import json
+    import os
+    import textwrap
+
+    directory = tmp_path / "worker-logs"
+    (tmp_path / "afterglow.conf").write_text(
+        f"[DEFAULT]\ndebug = {str(debug).lower()}\n"
+        f'[logging]\nlog_level = "INFO"\nlog_directory = "{directory.as_posix()}"\n',
+        encoding="utf-8",
+    )
+    script = textwrap.dedent(
+        """
+        import asyncio
+        import importlib.abc
+        import json
+        import logging
+        import os
+        import sys
+        from pathlib import Path
+
+        class WorkerOnlyImports(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                forbidden = ("app.main", "app.api", "app.services.activity", "fastapi", "uvicorn", "mcp")
+                if any(fullname == prefix or fullname.startswith(prefix + ".") for prefix in forbidden):
+                    raise AssertionError("Worker logging imported an API-only dependency")
+                return None
+
+        sys.meta_path.insert(0, WorkerOnlyImports())
+        if sys.argv[1] == "pytest":
+            import pytest
+        from app import config
+        config._config_candidates = lambda: [Path.cwd() / "afterglow.conf"]
+        config.get_settings.cache_clear()
+        config.load_raw_toml.cache_clear()
+        from app import notion_worker
+        from app.utils.structured_logging import JSONFormatter
+        from pymysql.err import OperationalError
+        from sqlalchemy.exc import OperationalError as WrappedError
+
+        async def logging_probe():
+            secret = "worker-operational-secret-must-not-appear"
+            notion_worker._logger.debug("worker public diagnostic", extra={"password": secret})
+            dependency = logging.getLogger("aiosqlite.worker_probe")
+            dependency.setLevel(logging.DEBUG)
+            dependency.debug("worker SQL parameters %s", secret)
+            dependency.warning("worker dependency warning")
+            error = WrappedError("SELECT " + secret, {"password": secret}, OperationalError(1054, secret))
+            logging.getLogger("app.services.worker_probe").error(
+                "worker operation failed",
+                exc_info=(type(error), error, None),
+                extra={"diagnostic_reason": "authentication_failed", "token": secret},
+            )
+
+        notion_worker.main = logging_probe
+        asyncio.run(notion_worker._main_async())
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        record = logging.LogRecord("worker_probe", logging.INFO, "", 1, "direct", (), None)
+        print(json.dumps({
+            "pid": os.getpid(),
+            "direct_entrypoint": json.loads(JSONFormatter().format(record))["runtime"]["entrypoint"],
+        }))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, "pytest" if pytest_sink else "runtime"],
+        cwd=tmp_path,
+        env={
+            "PATH": os.defpath,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
+            "AFTERGLOW_ENV": "development",
+            "SECRET_KEY": "worker-log-unit-secret-key-0123456789abcdef",
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    receipt = json.loads(result.stdout)
+    assert receipt["direct_entrypoint"] == "unknown"
+    active_directory = directory / "pytest" / str(receipt["pid"]) if pytest_sink else directory
+    files = list(active_directory.glob("backend-*.log"))
+    assert files
+    if pytest_sink:
+        assert not list(directory.glob("backend-*.log"))
+    for output in (result.stderr, "".join(path.read_text(encoding="utf-8") for path in files)):
+        assert "worker-operational-secret-must-not-appear" not in output
+        events = [json.loads(line) for line in output.splitlines()]
+        assert all(event["runtime"]["entrypoint"] == "worker" for event in events)
+        assert all(event["runtime"]["file_scope"] == ("pytest" if pytest_sink else "runtime") for event in events)
+        assert all(event["process"]["pid"] == receipt["pid"] for event in events)
+        assert any(event["message"] == "worker public diagnostic" for event in events) is debug
+        assert any(event["message"] == "worker dependency warning" for event in events)
+        assert not any("worker SQL parameters" in event["message"] for event in events)
+        failure = next(event for event in events if event["message"] == "worker operation failed")
+        assert failure["diagnostic_reason"] == "authentication_failed"
+        assert failure["exception"]["error_code"] == 1054
+        assert failure["token"] == "***"

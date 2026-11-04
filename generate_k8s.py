@@ -1166,6 +1166,18 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     )
     lines.append("")
 
+    experience = cfg.get("experience", {})
+    lines.append("[experience]")
+    lines.append(f"enabled = {_toml_bool(experience.get('enabled', False))}")
+    lines.append(
+        f"anonymous_read_enabled = {_toml_bool(experience.get('anonymous_read_enabled', False))}"
+    )
+    lines.append(f"detail_retention_days = {experience.get('detail_retention_days', 30)}")
+    lines.append(
+        f"aggregate_retention_days = {experience.get('aggregate_retention_days', 90)}"
+    )
+    lines.append("")
+
     traffic = cfg.get("traffic_analytics", {})
     lines.append("[traffic_analytics]")
     lines.append(f"enabled = {_toml_bool(traffic.get('enabled', False))}")

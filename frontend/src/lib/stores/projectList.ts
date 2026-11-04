@@ -3,6 +3,7 @@ import { api } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
 import { sessionScopeKey } from '$lib/utils/authSession';
 import { writable, get } from 'svelte/store';
+import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 export interface Project {
 	id: string;
@@ -78,15 +79,23 @@ function writeCache(userId: string, projects: Project[]): void {
 
 async function fetchAndStore(path: string, token: string, userId: string): Promise<void> {
 	const requestId = ++requestSequence;
+	const experience = beginExperienceLoad('iam', 'resource.list');
+	const current = () => requestId === requestSequence;
 	update((state) => ({ ...state, loading: true }));
+	experienceState(experience, 'loading');
 	try {
-		const projects = await api.get<Project[]>(path, token);
-		if (requestId !== requestSequence) return;
+		const projects = await api.withExperience(experience).get<Project[]>(path, token);
+		if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 		successfulLoad = { owner: requestOwner(userId), ts: Date.now() };
 		set({ projects, loading: false, loaded: true });
 		writeCache(userId, projects);
+		experienceState(experience, !Array.isArray(projects) ? 'error' : projects.length ? 'ready' : 'empty');
+		// This shared cache publishes state, not a mounted component's DOM.
+		void experienceApplied(experience);
 	} catch {
 		// SWR 재검증 실패 시 기존 캐시를 유지한다.
+		// A failed background revalidation does not publish an error view or replace retained rows.
+		if (!current()) experienceDiscarded(experience, 'stale');
 	} finally {
 		if (requestId === requestSequence) {
 			update((state) => ({ ...state, loading: false }));
@@ -112,6 +121,9 @@ function prefetch(token: string, userId: string): void {
 	const cached = readCache(userId);
 	if (cached && Date.now() - cached.ts < BROWSER_TTL_MS) {
 		set({ projects: cached.data, loading: false, loaded: true });
+		const experience = beginExperienceLoad('iam', 'resource.list');
+		experienceState(experience, cached.data.length ? 'ready' : 'empty');
+		void experienceApplied(experience, { transport: 'cache' });
 	}
 	void revalidate(token, userId);
 }

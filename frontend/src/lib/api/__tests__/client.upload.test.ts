@@ -32,7 +32,11 @@ class MockXhr {
 		this._url = url;
 	}
 	setRequestHeader(k: string, v: string) {
-		this._headers[k] = v;
+		const existing = Object.keys(this._headers).find(name => name.toLowerCase() === k.toLowerCase()) ?? k;
+		this._headers[existing] = this._headers[existing] === undefined ? v : `${this._headers[existing]}, ${v}`;
+	}
+	getResponseHeader(name: string): string | null {
+		return name.toLowerCase() === 'x-request-id' ? 'req-0123456789abcdef0123456789abcdef' : null;
 	}
 	send(body: unknown) {
 		this._body = body;
@@ -513,3 +517,38 @@ describe('getBaseUrl', () => {
 	});
 });
 
+
+describe('explicit upload experience context', () => {
+	it('propagates an XHR child span and records a 202 response without application/readiness claims', async () => {
+		vi.resetModules(); mockFetch.mockReset();
+		// Isolated auth/client modules must share the same collector instance in this regression.
+		const { auth, setAuth } = await import('$lib/stores/auth');
+		const { get } = await import('svelte/store');
+		setAuth({ token: 'upload-token', refreshToken: null, accessExpiresAt: null, domainId: 'domain-1', identityDomainId: 'domain-1', sessionId: 'upload-session' });
+		const { api, getBaseUrl } = await import('../client');
+		const tracing = await import('$lib/utils/experience');
+		const collector = tracing.installExperienceCollector({ getOwner: () => get(auth), getRoute: () => '/dashboard', getBaseUrl, isEnabled: () => true, isSuppressed: () => false, subscribeOwner: callback => auth.subscribe(callback) });
+		mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+			if (url.endsWith('/experience-contract')) return Response.json({ schema_version: 2, enabled: true, redaction_revision: 1, max_batch_events: 20, max_body_bytes: 32768 });
+			return Response.json({ schema_version: 2, accepted: JSON.parse(String(init.body)).events.length, duplicates: 0 }, { status: 201 });
+		});
+		try {
+			const ctx = tracing.beginExperienceAction('palimpsest', 'create', 'shared.form')!;
+			const form = new FormData(); form.set('private-file', 'private-content');
+			const upload = api.withExperience(ctx).uploadWithProgress('/api/v1/upload', form, vi.fn(), 'upload-token');
+			expect(lastXhr._body).toBe(form);
+			expect(lastXhr._headers['X-Afterglow-Experience-Action']).toBe(ctx.actionId);
+			expect(lastXhr._headers['X-Afterglow-Experience-Span']).not.toBe(ctx.spanId);
+			expect(lastXhr._headers['X-Afterglow-Page']).toBe(ctx.route);
+			expect(lastXhr._headers['X-Afterglow-Page']).not.toContain(',');
+			lastXhr.status = 202; lastXhr.responseText = '{\"accepted\":true}'; lastXhr.onload?.();
+			await expect(upload.promise).resolves.toEqual({ accepted: true });
+			await collector.flush();
+			const events = mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/experience-events')).flatMap(([, init]) => JSON.parse(init.body).events);
+			const receipt = events.find(row => row.event_type === 'result.received');
+			expect(receipt.payload).toMatchObject({ http_status: 202, request_id: 'req-0123456789abcdef0123456789abcdef', stage: 'response' });
+			expect(events.some(row => row.event_type === 'result.applied' || row.event_type === 'result.committed')).toBe(false);
+			expect(JSON.stringify(events)).not.toContain('private-content');
+		} finally { collector.destroy(); }
+	});
+});

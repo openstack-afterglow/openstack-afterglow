@@ -8,6 +8,9 @@ import ImageStudio from '../ImageStudio.svelte';
 import { IMAGE_STUDIO_STYLES, imageRequestAspectRatio } from '../imageStudioStyles';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import * as experience from '$lib/utils/experience';
+import { tick } from 'svelte';
+import { captureFlowExperience, type CapturedFlowExperience } from '$lib/stores/__tests__/experienceFlowHarness';
 
 const api = vi.hoisted(() => ({
 	models: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), run: vi.fn(), cancel: vi.fn(), upload: vi.fn(), download: vi.fn()
@@ -32,6 +35,10 @@ const owner = {
 	projectId: 'project-1', projectName: 'Project 1', availableProjects: [], roles: [], isSystemAdmin: false, federated: false, domainId: 'domain-1', domainName: 'Domain', identityDomainId: 'domain-1', identityDomainName: 'Domain', isDomainManager: false
 };
 
+function spanEvents(captured: CapturedFlowExperience, context: experience.ExperienceContext) {
+	return captured.events.filter((event) => 'span_id' in event && event.span_id === context.spanId);
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	sessionStorage.clear();
@@ -48,9 +55,107 @@ beforeEach(() => {
 		createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn()
 	}));
 });
-afterEach(() => { cleanup(); initLocale('ko'); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Image Studio', () => {
+	it.each(['models', 'capabilities'] as const)('commits the mounted %s error without serializing raw error or prompt', async (read) => {
+		const pending = Promise.withResolvers<never>();
+		api[read].mockReturnValueOnce(pending.promise);
+		const captured = captureFlowExperience('/dashboard/chat/images', () => owner);
+		const view = render(ImageStudio);
+		try {
+			await waitFor(() => expect(api[read]).toHaveBeenCalled());
+			const context = (api[read].mock.calls[0][read === 'models' ? 0 : 1] as ImageStudioModule.ImageApiScope).experience!;
+			await fireEvent.input(screen.getByRole('textbox', { name: t('imageStudio.prompt') }), { target: { value: 'PRIVATE-IMAGE-PROMPT-CANARY' } });
+			pending.reject(new ApiError(422, 'PRIVATE-IMAGE-READ-ERROR-CANARY'));
+			await screen.findByText('PRIVATE-IMAGE-READ-ERROR-CANARY');
+			await tick();
+			await captured.flush();
+			const events = spanEvents(captured, context);
+			const step = read === 'models' ? 0 : 1;
+			expect(events.map((event) => event.event_type)).toEqual(['view.state_changed', 'view.state_changed', 'result.applied', 'result.committed']);
+			expect(events.map((event) => event.payload)).toEqual([{ state: 'loading', step }, { state: 'error', step }, { stage: 'state' }, { stage: 'dom' }]);
+			expect(JSON.stringify(captured.events)).not.toMatch(/PRIVATE-IMAGE-(?:PROMPT|READ-ERROR)-CANARY/);
+			expect(api[read]).toHaveBeenCalledTimes(1);
+			expect(api.submit).not.toHaveBeenCalled();
+			expect(api.upload).not.toHaveBeenCalled();
+			expect(api.run).not.toHaveBeenCalled();
+		} finally { view.unmount(); captured.collector.destroy(); }
+	});
+
+	describe.each(['models', 'capabilities'] as const)('%s error ownership', (read) => {
+		it.each(['project', 'user', 'unmount'] as const)('ignores a failed response after %s', async (transition) => {
+			const pending = Promise.withResolvers<never>();
+			api[read].mockReturnValueOnce(pending.promise);
+			// A fixed diagnostic owner isolates the Studio's own response fence.
+			const captured = captureFlowExperience('/dashboard/chat/images', () => owner);
+			const view = render(ImageStudio);
+			try {
+				await waitFor(() => expect(api[read]).toHaveBeenCalled());
+				const context = (api[read].mock.calls[0][read === 'models' ? 0 : 1] as ImageStudioModule.ImageApiScope).experience!;
+				if (transition === 'unmount') view.unmount();
+				else {
+					setVerifiedLumenActor(transition === 'project' ? { ...owner, projectId: 'project-2' } : { ...owner, userId: 'other-owner' });
+					await tick();
+				}
+				pending.reject(new ApiError(422, 'PRIVATE-STALE-IMAGE-ERROR'));
+				await tick();
+				await tick();
+				await captured.flush();
+				expect(spanEvents(captured, context).map((event) => event.event_type)).toEqual(['view.state_changed']);
+				expect(screen.queryByText('PRIVATE-STALE-IMAGE-ERROR')).toBeNull();
+			} finally { if (transition !== 'unmount') view.unmount(); captured.collector.destroy(); }
+		});
+
+		it.each(['project', 'user', 'unmount'] as const)('does not commit an applied error when %s occurs before the DOM tick', async (transition) => {
+			const pending = Promise.withResolvers<never>();
+			api[read].mockReturnValueOnce(pending.promise);
+			const captured = captureFlowExperience('/dashboard/chat/images', () => owner);
+			const view = render(ImageStudio);
+			let unmounted = false;
+			const apply = experience.experienceApplied;
+			try {
+				await waitFor(() => expect(api[read]).toHaveBeenCalled());
+				const context = (api[read].mock.calls[0][read === 'models' ? 0 : 1] as ImageStudioModule.ImageApiScope).experience!;
+				vi.spyOn(experience, 'experienceApplied').mockImplementation((candidate, ...args) => {
+					const result = apply(candidate, ...args);
+					if (candidate === context) {
+						if (transition === 'unmount') { view.unmount(); unmounted = true; }
+						else setVerifiedLumenActor(transition === 'project' ? { ...owner, projectId: 'project-2' } : { ...owner, userId: 'other-owner' });
+					}
+					return result;
+				});
+				pending.reject(new ApiError(422, 'PRIVATE-APPLIED-IMAGE-ERROR'));
+				await tick();
+				await tick();
+				await captured.flush();
+				const events = spanEvents(captured, context);
+				expect(events.map((event) => event.event_type)).toEqual(['view.state_changed', 'view.state_changed', 'result.applied', 'result.discarded']);
+				expect(events.at(-1)?.payload).toEqual({ stage: 'dom', reason: 'stale' });
+			} finally { if (!unmounted) view.unmount(); captured.collector.destroy(); }
+		});
+	});
+
+	it('does not apply an obsolete capability error after selecting another image model', async () => {
+		const pending = Promise.withResolvers<never>();
+		api.models.mockResolvedValue([ready, { ...ready, id: 2, display_name: 'Other image model' }]);
+		api.capabilities.mockReturnValueOnce(pending.promise);
+		const captured = captureFlowExperience('/dashboard/chat/images', () => owner);
+		const view = render(ImageStudio);
+		try {
+			await waitFor(() => expect(api.capabilities).toHaveBeenCalled());
+			const context = (api.capabilities.mock.calls[0][1] as ImageStudioModule.ImageApiScope).experience!;
+			await fireEvent.change(screen.getByRole('combobox', { name: t('imageStudio.model') }), { target: { value: '2' } });
+			await screen.findByRole('option', { name: t('imageStudio.quality.high') });
+			pending.reject(new ApiError(422, 'PRIVATE-OBSOLETE-IMAGE-ERROR'));
+			await tick();
+			await tick();
+			await captured.flush();
+			expect(spanEvents(captured, context).map((event) => event.event_type)).toEqual(['view.state_changed']);
+			expect(screen.queryByText('PRIVATE-OBSOLETE-IMAGE-ERROR')).toBeNull();
+		} finally { view.unmount(); captured.collector.destroy(); }
+	});
+
 	it('denies image generation to a chat-only user on the direct studio route', async () => {
 		grantLumen('lumen-chat_user');
 		render(ImageStudio);
@@ -156,6 +261,26 @@ describe('Image Studio', () => {
 			expect(api.run).toHaveBeenLastCalledWith('run-1', { token: 'refreshed-token', projectId: 'project-1' });
 			expect(screen.getByLabelText(t('imageStudio.developing'))).toBeTruthy();
 		} finally { view.unmount(); vi.useRealTimers(); }
+	});
+
+	it('records run view transitions once while retaining every native polling request', async () => {
+		api.run.mockResolvedValue({ run_id: 'run-1', status: 'running', terminal: false, output_assets: [] });
+		const state = vi.spyOn(experience, 'experienceState');
+		const view = render(ImageStudio);
+		try {
+			await screen.findByRole('option', { name: t('imageStudio.quality.high') });
+			await fireEvent.input(screen.getByRole('textbox', { name: t('imageStudio.prompt') }), { target: { value: 'private-prompt' } });
+			vi.useFakeTimers();
+			await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(state.mock.calls.filter(([, , step]) => step === 3)).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(6000);
+			expect(api.run.mock.calls.length).toBeGreaterThanOrEqual(4);
+			expect(state.mock.calls.filter(([, , step]) => step === 3)).toHaveLength(1);
+			api.run.mockResolvedValue({ run_id: 'run-1', status: 'failed', terminal: true, output_assets: [] });
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(state.mock.calls.filter(([, , step]) => step === 3).map(([, value]) => value)).toEqual(['loading', 'error']);
+		} finally { view.unmount(); vi.useRealTimers(); state.mockRestore(); }
 	});
 
 	it.each(['project', 'user', 'logout', 'switching'] as const)('clears input and output on actual %s transition', async (transition) => {

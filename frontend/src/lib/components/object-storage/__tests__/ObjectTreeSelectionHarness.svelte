@@ -16,6 +16,7 @@
 		containerName: () => 'sample-artifacts',
 		token: () => undefined,
 		projectId: () => 'project-a',
+		ownerKey: () => 'selection-fixture-owner',
 	});
 	provideObjectBrowser(store);
 

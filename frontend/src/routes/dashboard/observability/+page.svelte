@@ -6,6 +6,7 @@
 	import { api } from '$lib/api/client';
 	import type { Instance } from '$lib/types/compute';
 	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
 	import { Alert, Button, EmptyState, PageHeader, PageShell, StatusChip, TextInput } from '$lib/components/ui';
 
@@ -34,23 +35,36 @@
 		const current = () => request.generation === generation && request.revision === $viewScope
 			&& $authReady && !$projectSwitching && request.projectId === ($auth.projectId ?? undefined);
 		if (!request.token || !request.projectId || !$authReady || $projectSwitching) { loading = false; return; }
+		const experience = refresh ? beginExperienceAction('monitoring', 'refresh', 'resource.list') : beginExperienceLoad('monitoring', 'resource.list');
 		loading = true;
 		failed = false;
+		if (currentInstances.length === 0) experienceState(experience, 'loading');
 		try {
-			const rows = await api.get<Instance[]>('/api/v1/instances', request.token, request.projectId, { refresh });
-			if (!current()) return;
+			const rows = await api.withExperience(experience).get<Instance[]>('/api/v1/instances', request.token, request.projectId, { refresh });
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			// A user-surface selection never broadens an administrator's current workspace.
 			instances = rows.filter((instance) => instance.project_id === request.projectId);
 			inventoryRevision = request.revision;
 			if (!instances.some((instance) => instance.id === selectedId)) selectedId = '';
 		} catch {
-			if (!current()) return;
+			if (!current()) { experienceDiscarded(experience, 'stale'); return; }
 			failed = true;
 			instances = [];
 			selectedId = '';
 		} finally {
 			if (request.generation === generation) loading = false;
+			if (current()) {
+				experienceState(experience, failed ? 'error' : filtered.length === 0 ? 'empty' : 'ready');
+				void experienceApplied(experience, {}, current);
+			}
 		}
+	}
+
+	function selectInstance(id: string) {
+		const experience = beginExperienceAction('monitoring', 'select', 'resource.detail');
+		selectedId = id;
+		experienceState(experience, selected ? 'ready' : 'empty');
+		void experienceApplied(experience);
 	}
 
 	$effect(() => {
@@ -93,7 +107,7 @@
 						<EmptyState headline={search.trim() ? t('observability.noResults') : t('observability.empty')} class="py-8" />
 					{:else}
 						{#each filtered as instance (instance.id)}
-							<button type="button" onclick={() => { selectedId = instance.id; }} aria-pressed={selected?.id === instance.id}
+							<button type="button" onclick={() => selectInstance(instance.id)} aria-pressed={selected?.id === instance.id}
 								class="block min-h-11 w-full border-b border-line p-4 text-left transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent {selected?.id === instance.id ? 'bg-surface-selected' : ''}">
 								<span class="block break-words text-sm font-medium text-ink-0">{instance.name}</span>
 								<span class="mt-1 block break-all font-mono text-xs text-ink-2">{instance.id}</span>

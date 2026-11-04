@@ -3,6 +3,7 @@
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { beginExperienceAction } from '$lib/utils/experience';
 
 	interface Props {
 		onClose?: () => void;
@@ -36,7 +37,7 @@
 			bind:intervalSeconds={s.ar.intervalSeconds}
 			intervalOptions={s.ar.intervalOptions}
 			refreshing={s.loading}
-			onManualRefresh={() => s.loadAll()}
+			onManualRefresh={() => s.loadAll(beginExperienceAction('database', 'refresh', 'resource.detail'))}
 		/>
 		{#if s.instance}
 			<button onclick={() => s.deleteInstance()} disabled={s.deleting}

@@ -14,6 +14,7 @@ STATIC_SEGMENTS = frozenset(
         "auth",
         "callback",
         "login",
+        "logout",
         "signup",
         "recover",
         "invitations",
@@ -133,7 +134,7 @@ def canonical_page(value: str) -> str:
 
 
 def public_page(value: str) -> bool:
-    return value == "/" or value.split("/")[1] in PUBLIC_ROOTS
+    return value in {"/", "/logout"} or value.split("/")[1] in PUBLIC_ROOTS
 
 
 def interaction_id(value: str | None) -> str | None:

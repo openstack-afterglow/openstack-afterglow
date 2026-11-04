@@ -762,6 +762,13 @@ monitoring:
     # 개발 환경에서만 true로 설정할 것
     disableSecurityPlugin: false
 
+# Default-off structural experience diagnostics. Retention never schedules deletion.
+experience:
+  enabled: false
+  anonymousReadEnabled: false
+  detailRetentionDays: 30
+  aggregateRetentionDays: 90
+
 trafficAnalytics:
   enabled: false
   retentionDays: 30

@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AuthModule from '$lib/stores/auth';
 import type * as LogoutModule from './logout';
+import type { ExperienceContext } from './experience';
 
 const mocks = vi.hoisted(() => ({ goto: vi.fn(), close: vi.fn(), post: vi.fn(), begin: vi.fn(), end: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -151,4 +152,18 @@ describe('visible logout workflow', () => {
 		expect(get(authModule.auth).token).toBeNull();
 		expect(get(workflow.logoutProgress)).toMatchObject({ phase: 'complete', local: 'warning' });
 	});
+});
+
+it('carries an explicit logout context through the freshest-token revocation without replacing a single-flight cleanup', async () => {
+	const context = Object.freeze({ segmentId: 'source-logout-segment' }) as unknown as ExperienceContext;
+	const replacement = Object.freeze({ segmentId: 'unrelated-segment' }) as unknown as ExperienceContext;
+	const request = Promise.withResolvers<unknown>(); mocks.post.mockReturnValue(request.promise);
+	const original = workflow.startLogout({ experience: context });
+	expect(workflow.startLogout({ all: true, experience: replacement })).toBe(original);
+	expect(workflow.ensureLogoutStarted(replacement)).toBe(original);
+	await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/logout', {}, 'access-old', 'project', { suppressAuthRedirect: true, experience: context }));
+	expect(get(workflow.logoutProgress)).toMatchObject({ server: 'active', local: 'pending' });
+	request.resolve({}); await original;
+	expect(get(workflow.logoutProgress)).toMatchObject({ phase: 'complete', server: 'done', local: 'done' });
+	expect(get(authModule.auth).token).toBeNull();
 });

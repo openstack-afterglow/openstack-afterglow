@@ -1,4 +1,10 @@
 {
+	"support.label": "지원 문의 코드",
+	"support.copy": "지원 문의 코드 복사",
+	"support.copied": "지원 문의 코드를 복사했습니다",
+	"support.help": "지원 담당자에게 이 코드를 전달하세요. 비밀번호가 아니며 접근 권한을 부여하지 않습니다. 코드가 있어도 기록 저장이 보장되지는 않습니다.",
+	"support.partial": "진단 기록 전송이 미확인 또는 일부 누락 상태입니다. 기록이 없다고 아무 일도 없었다는 뜻은 아닙니다.",
+	"support.unavailable": "복사할 수 없습니다. 위 코드를 직접 선택해 복사하세요.",
 	"loadingState.label": "불러오는 중",
 	"progressBar.failed": "배포 실패",
 	"projectSelector.switchFailed": "프로젝트 전환 실패",

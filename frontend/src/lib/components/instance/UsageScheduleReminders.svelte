@@ -12,6 +12,7 @@
 	import type { UsageScheduleInfo } from '$lib/types/instanceUsage';
 	import { USAGE_STATES } from '$lib/types/instanceUsage';
 	import { scheduleUrgency, validUsageSchedule } from '$lib/utils/instanceUsage';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 	type Scope = { key: string; project: string | null; ready: boolean };
 
@@ -45,19 +46,22 @@
 	function stateLabel(state: UsageScheduleInfo['state']) {
 		return USAGE_STATES.includes(state) ? t(`state.${state}`) : t('state.unknown');
 	}
-	async function refresh() {
+	async function refresh(manual = false) {
 		const owner = scope;
 		if (!owner?.ready || controller || disposed) return;
 		const requestEpoch = epoch;
 		const request = new AbortController();
 		controller = request;
+		const experience = manual ? beginExperienceAction('activity', 'refresh', 'resource.list') : beginExperienceLoad('activity', 'resource.list');
+		const current = () => !disposed && requestEpoch === epoch;
 		loading = true;
 		error = '';
+		if (!loaded) experienceState(experience, 'loading');
 		try {
 			const token = get(auth).token;
 			if (!token || !owner.project) return;
-			const result = await loadUsageSchedules(token, owner.project, request.signal);
-			if (disposed || requestEpoch !== epoch) return;
+			const result = await loadUsageSchedules(token, owner.project, request.signal, experience);
+			if (disposed || requestEpoch !== epoch) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
 			// Missing/invalid inventory is never a successful empty reminder list.
 			if (!result || !Array.isArray(result.schedules) || !Array.isArray(result.errors)
 				|| result.schedules.some(row => !row || typeof row.instance_id !== 'string' || !row.instance_id)
@@ -72,8 +76,13 @@
 			loaded = true;
 		} catch (cause) {
 			if (!disposed && requestEpoch === epoch) error = cause instanceof ApiError ? cause.message : t('loadFailed');
+			else experienceDiscarded(experience, disposed ? 'unmounted' : 'stale');
 		} finally {
-			if (!disposed && requestEpoch === epoch) { loading = false; controller = null; }
+			if (!disposed && requestEpoch === epoch) {
+				loading = false; controller = null;
+				experienceState(experience, error || rowErrors.length > 0 ? 'error' : reminders.length === 0 ? 'empty' : 'ready');
+				void experienceApplied(experience, {}, current);
+			}
 		}
 	}
 
@@ -107,7 +116,7 @@
 	<section aria-label={t('reminders')} class="min-w-0 space-y-3">
 		<SectionHeader title={t('reminders')}>
 			{#snippet right()}
-				<Button variant="outline" size="sm" class="min-h-11" disabled={!ready || loading} onclick={() => void refresh()}>{t('refresh')}</Button>
+				<Button variant="outline" size="sm" class="min-h-11" disabled={!ready || loading} onclick={() => void refresh(true)}>{t('refresh')}</Button>
 			{/snippet}
 		</SectionHeader>
 		{#if loading && !loaded}

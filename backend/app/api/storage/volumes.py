@@ -15,7 +15,7 @@ from openstack.exceptions import HttpException
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_project_resource_owner, assert_resource_owner
+from app.api.common.owner_check import _resource_project_id, assert_project_resource_owner, assert_resource_owner
 from app.api.deps import (
     CacheMode,
     cache_mode,
@@ -29,6 +29,7 @@ from app.models.storage import CreateVolumeRequest, ExtendVolumeRequest, VolumeI
 from app.rate_limit import limiter
 from app.services import cinder, volume_transfers
 from app.services.cache import cached_call, invalidate, invalidate_project, invalidation, ttl_fast
+from app.services.experience_context import capture_experience_context, emit_experience
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ async def _assert_volume_owner(
         raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
     check_owner = assert_project_resource_owner if strict else assert_resource_owner
     check_owner(v, conn, token_info, not_found_detail="볼륨을 찾을 수 없습니다")
+    return v
 
 
 @router.get("", response_model=list[VolumeInfo])
@@ -111,9 +113,19 @@ async def get_volume(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    await _assert_volume_owner(conn, volume_id, token_info)
+    owned = await _assert_volume_owner(conn, volume_id, token_info)
+    experience = capture_experience_context(feature="block_storage", action="inspect", component="resource.detail")
     try:
-        return await asyncio.to_thread(cinder.get_volume, conn, volume_id)
+        result = await asyncio.to_thread(cinder.get_volume, conn, volume_id)
+        reference = volume_id if _resource_project_id(owned) == conn._afterglow_project_id else None
+        await emit_experience(
+            experience,
+            "stage.completed",
+            stage="readback",
+            status="succeeded" if result.status == "available" else "observed",
+            resource_ref=reference,
+        )
+        return result
     except Exception:
         raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
 
@@ -184,7 +196,9 @@ async def create_volume(
     token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
+    experience = capture_experience_context(feature="block_storage", action="create", component="block_storage.create")
     try:
+        await emit_experience(experience, "stage.started", stage="native", status="running")
         result = await asyncio.to_thread(cinder.create_empty_volume, conn, req.name, req.size_gb, req.availability_zone)
         await invalidate(f"afterglow:cinder:{pid}:volumes:v3")
         await rec(
@@ -196,8 +210,10 @@ async def create_volume(
             resource_name=req.name,
             extra={"size_gb": req.size_gb},
         )
+        await emit_experience(experience, "stage.completed", stage="native", status="accepted", resource_ref=result.id)
         return result
     except Exception as e:
+        await emit_experience(experience, "stage.completed", stage="native", status="outcome_unknown", reason="unknown")
         await rec(
             token_info,
             conn,

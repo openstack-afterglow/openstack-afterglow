@@ -16,12 +16,22 @@ import type { SessionTokenResponse } from '$lib/types/auth';
 import Page from './+page.svelte';
 import { dialogState } from '$lib/stores/confirm.svelte';
 
+import type * as ExperienceModule from '$lib/utils/experience';
+const experience = vi.hoisted(() => ({ begin: vi.fn(), applied: vi.fn(), state: vi.fn(), message: vi.fn(), record: vi.fn() }));
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), goto: vi.fn(), close: vi.fn() }));
 vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 'test' }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$app/stores', () => ({ page: { subscribe(run: (value: unknown) => void) { run({ data: { mockup: { active: false } } }); return () => {}; } } }));
-vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: mocks.get, post: mocks.post }, beginSessionRevocation: vi.fn(), endSessionRevocation: vi.fn() }));
+vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: mocks.get, post: mocks.post, withExperience: () => ({ get: mocks.get, post: mocks.post }) }, beginSessionRevocation: vi.fn(), endSessionRevocation: vi.fn() }));
 vi.mock('$lib/stores/cloudShell.svelte', () => ({ cloudShell: { close: mocks.close } }));
+vi.mock('$lib/utils/experience', async importOriginal => {
+	const actual = await importOriginal<typeof ExperienceModule>();
+	return {
+		...actual, beginExperienceAction: experience.begin, beginExperienceLoad: experience.begin,
+		experienceApplied: experience.applied, experienceState: experience.state,
+		experienceMessage: experience.message, recordExperience: experience.record,
+	};
+});
 
 const home = { id: 'home', name: 'Home' };
 const team = { id: 'team', name: 'Team' };
@@ -44,6 +54,7 @@ beforeEach(() => {
 	setLoginAuth({ token: 'home-token', refreshToken: 'home-refresh', userId: 'alice', username: 'alice', identityDomainId: home.id, identityDomainName: home.name, domainId: home.id, domainName: home.name, projectId: null, availableDomains: [home], canCreateDomain: true, federated: true, isDomainManager: false });
 	expect(acceptAuthVerification(getAuthVerificationEpoch(), {})).toBe(true);
 	browse(); mocks.post.mockResolvedValue(switchResponse); mocks.goto.mockResolvedValue(undefined); mocks.close.mockResolvedValue(undefined);
+	experience.applied.mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); projectSwitching.set(false); logoutInProgress.set(false); clearAuth(); sessionStorage.clear(); initLocale('ko'); });
 
@@ -351,4 +362,48 @@ describe('explicit creation in the browsed domain', () => {
 		expect(mocks.goto).toHaveBeenCalledWith(`/invitations/${invitation}`);
 		expect(takePendingInvitationPath()).toBeNull(); expect(mocks.post).toHaveBeenCalledOnce();
 	});
+});
+
+describe('standalone workspace semantic choices', () => {
+	it('records only fixed domain/project selection kinds and starts independent post-publication observation', async () => {
+		experience.begin.mockImplementation((feature, action, component) => Object.freeze({
+			segmentId: `segment-${experience.begin.mock.calls.length}`, feature, action, component,
+		}));
+		render(Page); await chooseTeam();
+		await fireEvent.click(screen.getByRole('button', { name: /^Team project/ }));
+		await waitFor(() => expect(get(auth).domainId).toBe(team.id));
+		const selections = experience.record.mock.calls.filter(([, type, payload]) => type === 'view.state_changed' && payload.selection_kind);
+		expect(selections.map(([, , payload]) => payload)).toEqual([
+			{ state: 'loading', selection_kind: 'domain' }, { state: 'loading', selection_kind: 'project' },
+		]);
+		const originalSelection = selections.at(-1)![0];
+		const publication = experience.begin.mock.results.at(-1)?.value;
+		expect(publication).not.toBe(originalSelection);
+		expect(JSON.stringify(selections.map(([, , payload]) => payload))).not.toContain('team-project');
+	});
+
+	it('observes confirmation cancellation without revocation or a claimed cleanup result', async () => {
+		experience.begin.mockImplementation((feature, action, component) => Object.freeze({ segmentId: 'entry', feature, action, component }));
+		render(Page);
+		await fireEvent.click(screen.getByRole('button', { name: tp('selectProject.logout') }));
+		expect(dialogState.open).toBe(true);
+		dialogState.reject();
+		await waitFor(() => expect(dialogState.open).toBe(false));
+		expect(experience.begin).toHaveBeenCalledWith('auth', 'cancel', 'page');
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(get(logoutInProgress)).toBe(false);
+	});
+});
+
+it('does not observe search keystrokes or mislabel a filtered workspace list as an empty inventory', async () => {
+	experience.begin.mockImplementation((feature, action, component) => Object.freeze({ segmentId: 'workspace', feature, action, component }));
+	render(Page);
+	await screen.findByRole('button', { name: /^Home project/ });
+	const applied = experience.applied.mock.calls.length, states = experience.state.mock.calls.length, records = experience.record.mock.calls.length;
+	await fireEvent.input(screen.getByRole('textbox', { name: t('projectSearch') }), { target: { value: 'private search with no match' } });
+	await screen.findByText(t('empty'));
+	expect(experience.applied).toHaveBeenCalledTimes(applied);
+	expect(experience.state).toHaveBeenCalledTimes(states);
+	expect(experience.record).toHaveBeenCalledTimes(records);
+	expect(JSON.stringify(experience.record.mock.calls)).not.toContain('private search');
 });

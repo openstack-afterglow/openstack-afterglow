@@ -11,6 +11,9 @@ from app.models.traffic_analytics import TrafficEvent
 from app.services.traffic_analytics import record_domain_request, record_event, route_category
 
 EXCLUDED = ("/api/v1/monitoring/traffic", "/api/v1/admin/monitoring/traffic")
+SELF_REPORTING = frozenset(("/api/v1/activity/experience-events", "/api/v1/activity/experience-contract"))
+
+SUCCESS_PROBES = frozenset(("/api/health", "/api/v1/health"))
 
 
 class TrafficAnalyticsMiddleware:
@@ -33,6 +36,7 @@ class TrafficAnalyticsMiddleware:
         request_complete = False
         response_complete = False
         status = 500
+        completed = False
 
         async def observed_receive() -> Message:
             nonlocal request_bytes, request_complete
@@ -55,33 +59,44 @@ class TrafficAnalyticsMiddleware:
 
         try:
             await self.app(scope, observed_receive, observed_send)
+            completed = True
         finally:
             # ASGI exceptions/cancellation must propagate unchanged. Analytics must
             # not replace a successful response or mask an application's exception.
-            try:
-                route = scope.get("route")
-                peer = scope.get("extensions", {}).get("afterglow.analytics.original_peer")
-                forwarded = b",".join(
-                    value for name, value in scope.get("headers", []) if name.lower() == b"x-forwarded-for"
+            diagnostic_success = (
+                completed
+                and response_complete
+                and (
+                    (scope.get("method") in {"GET", "HEAD"} and path in SUCCESS_PROBES)
+                    or path.removesuffix("/") in SELF_REPORTING
                 )
-                # Oversized chains become invalid evidence, never silently truncated.
-                forwarded_for = forwarded.decode("latin-1") if len(forwarded) <= 1024 else "invalid"
-                event = TrafficEvent(
-                    id=uuid4(),
-                    at=at,
-                    status=status,
-                    route=route_category(getattr(route, "path", None), "backend"),
-                    peer_ip=peer[0] if peer else None,
-                    peer_verified=peer is not None,
-                    forwarded_for=forwarded_for or None,
-                    request_bytes=request_bytes if request_complete and request_bytes <= 2**40 else None,
-                    response_bytes=response_bytes if response_complete and response_bytes <= 2**40 else None,
-                    latency_ms=min((time.perf_counter() - started) * 1000, 86_400_000),
-                )
-                await record_event(event, "backend")
-                await record_domain_request(
-                    Request(scope), status=status, route_template=getattr(route, "path", None), at=at
-                )
-            except Exception:
-                # Never log event data or change request behavior on metrics failure.
-                pass
+                and 200 <= status < 300
+            )
+            if not diagnostic_success:
+                try:
+                    route = scope.get("route")
+                    peer = scope.get("extensions", {}).get("afterglow.analytics.original_peer")
+                    forwarded = b",".join(
+                        value for name, value in scope.get("headers", []) if name.lower() == b"x-forwarded-for"
+                    )
+                    # Oversized chains become invalid evidence, never silently truncated.
+                    forwarded_for = forwarded.decode("latin-1") if len(forwarded) <= 1024 else "invalid"
+                    event = TrafficEvent(
+                        id=uuid4(),
+                        at=at,
+                        status=status,
+                        route=route_category(getattr(route, "path", None), "backend"),
+                        peer_ip=peer[0] if peer else None,
+                        peer_verified=peer is not None,
+                        forwarded_for=forwarded_for or None,
+                        request_bytes=request_bytes if request_complete and request_bytes <= 2**40 else None,
+                        response_bytes=response_bytes if response_complete and response_bytes <= 2**40 else None,
+                        latency_ms=min((time.perf_counter() - started) * 1000, 86_400_000),
+                    )
+                    await record_event(event, "backend")
+                    await record_domain_request(
+                        Request(scope), status=status, route_template=getattr(route, "path", None), at=at
+                    )
+                except Exception:
+                    # Never log event data or change request behavior on metrics failure.
+                    pass

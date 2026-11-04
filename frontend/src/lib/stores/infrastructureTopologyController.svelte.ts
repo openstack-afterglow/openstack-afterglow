@@ -1,6 +1,7 @@
 import { getInfrastructureTopology, submitInfrastructureTrace } from '$lib/api/infrastructureTopology';
 import { ApiError } from '$lib/api/errors';
 import type { InfrastructureTopologySnapshot, TopologyAuthority, TopologySelection } from '$lib/types/infrastructureTopology';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 export type TraceSubmissionError = 'denied' | 'conflict' | 'rateLimited' | 'targetDenied' | 'observerNotConfigured' | 'unavailable' | '';
 export interface InfrastructureTopologyController {
@@ -17,6 +18,7 @@ export interface InfrastructureTopologyController {
 export function createInfrastructureTopologyController(): InfrastructureTopologyController {
 	let authority = $state<TopologyAuthority>({ admin: false, ready: false });
 	let disposed = $state(false), visible = $state(true);
+	let pendingReadExperience: ExperienceContext | undefined;
 	let epoch = 0, pendingReload = false;
 	let timer: number | undefined, expiryTimer: number | undefined;
 	let readAbort: AbortController | null = null, traceAbort: AbortController | null = null;
@@ -31,6 +33,7 @@ export function createInfrastructureTopologyController(): InfrastructureTopology
 		clearTimeout(timer); timer = undefined;
 		clearTimeout(expiryTimer); expiryTimer = undefined;
 		readAbort?.abort(); traceAbort?.abort();
+		pendingReadExperience = undefined;
 		verified = false; busy = false; traceError = '';
 	}
 	function setAuthority(next: TopologyAuthority) {
@@ -38,13 +41,13 @@ export function createInfrastructureTopologyController(): InfrastructureTopology
 		++epoch; stop(); authority = { ...next };
 		snapshot = null; selection = null; selectedId = ''; selectedNic = ''; target = ''; error = ''; loading = false;
 		pendingReload = allowed() && visible;
-		if (pendingReload) void load();
+		if (pendingReload) void loadAttempt();
 	}
 	function setVisible(next: boolean) {
 		if (visible === next || disposed) return;
 		visible = next; ++epoch; stop();
 		pendingReload = next && allowed();
-		if (pendingReload) void load();
+		if (pendingReload) void loadAttempt();
 	}
 	function selectHost(id: string) {
 		selection = id ? { kind: 'node', id: `host:${id}` } : null;
@@ -58,35 +61,49 @@ export function createInfrastructureTopologyController(): InfrastructureTopology
 		if (hostId && snapshot?.hosts.some(host => host.id === hostId)) selectHost(hostId);
 		selection = next;
 	}
-	async function load() {
+	function load() {
+		return loadAttempt(beginExperienceAction('monitoring', 'refresh', 'page'));
+	}
+	async function loadAttempt(parentExperience?: ExperienceContext) {
 		if (!allowed() || !visible) return;
-		if (readAbort) return;
+		if (readAbort) { if (parentExperience) pendingReadExperience = parentExperience; return; }
 		pendingReload = false; clearTimeout(timer);
 		const generation = epoch, captured = { ...authority }, abort = new AbortController();
+		const experience = parentExperience ?? beginExperienceLoad('monitoring', 'page');
+		const owns = () => !disposed && generation === epoch && visible && !abort.signal.aborted;
 		readAbort = abort; loading = true;
+		experienceState(experience, 'loading');
 		try {
-			const result = await getInfrastructureTopology(captured, abort.signal);
-			if (disposed || generation !== epoch || !visible || abort.signal.aborted) return;
+			const result = await getInfrastructureTopology(captured, abort.signal, experience);
+			if (!owns()) { experienceDiscarded(experience, disposed ? 'unmounted' : abort.signal.aborted ? 'aborted' : 'stale'); return; }
 			snapshot = result; verified = result.enabled && !result.error; error = '';
+			const publishedSnapshot = snapshot;
 			clearTimeout(expiryTimer);
 			// The backend expires observations after 30 seconds. A pending poll must
 			// not flicker a verified snapshot, but cannot keep it live indefinitely.
-			expiryTimer = verified ? window.setTimeout(() => { verified = false; }, 30_000) : undefined;
+			expiryTimer = verified ? window.setTimeout(() => {
+				verified = false;
+				experienceState(experience, 'disabled');
+				void experienceApplied(experience, {}, () => owns() && snapshot === publishedSnapshot && !verified);
+			}, 30_000) : undefined;
 			if (!result.hosts.some(host => host.id === selectedId)) selectHost(result.hosts[0]?.id ?? '');
 			const host = result.hosts.find(host => host.id === selectedId);
 			if (!host?.observation?.interfaces.some(nic => nic.name === selectedNic)) selectedNic = host?.observation?.interfaces[0]?.name ?? '';
 			if (!result.trace_targets.includes(target)) target = result.trace_targets[0] ?? '';
+			experienceState(experience, !result.enabled ? 'disabled' : result.error ? 'error' : result.hosts.length ? 'ready' : 'empty');
+			void experienceApplied(experience, {}, () => owns() && snapshot === publishedSnapshot);
 		} catch (failure) {
 			if (generation === epoch && !disposed && visible && !abort.signal.aborted) {
 				verified = false; error = failure instanceof ApiError && (failure.status === 401 || failure.status === 403) ? 'denied' : 'unavailable';
 				if (error === 'denied') { snapshot = null; selection = null; }
-			}
+				experienceState(experience, 'error'); void experienceApplied(experience);
+			} else experienceDiscarded(experience, disposed ? 'unmounted' : abort.signal.aborted ? 'aborted' : 'stale');
 		} finally {
 			if (readAbort === abort) readAbort = null;
 			if (generation === epoch && !disposed) loading = false;
 			if (allowed() && visible) {
-				if (pendingReload) void load();
-				else timer = window.setTimeout(() => void load(), 10_000);
+				if (pendingReload) { const followupExperience = pendingReadExperience; pendingReadExperience = undefined; void loadAttempt(followupExperience); }
+				else timer = window.setTimeout(() => void loadAttempt(), 10_000);
 			}
 		}
 	}
@@ -94,20 +111,30 @@ export function createInfrastructureTopologyController(): InfrastructureTopology
 		const host = snapshot?.hosts.find(item => item.id === selectedId);
 		if (!allowed() || !visible || !verified || busy || !host?.observer_configured || !snapshot?.trace_targets.includes(target) || host.traces.some(trace => trace.status === 'queued' || trace.status === 'running')) return;
 		const generation = epoch, hostId = selectedId, captured = { ...authority }, abort = new AbortController();
+		const experience = beginExperienceAction('monitoring', 'submit', 'resource.detail');
 		traceAbort = abort; busy = true; traceError = '';
+		experienceState(experience, 'loading');
 		try {
-			const job = await submitInfrastructureTrace(hostId, target, captured, abort.signal);
-			if (disposed || generation !== epoch || traceAbort !== abort || abort.signal.aborted || selectedId !== hostId) return;
+			const job = await submitInfrastructureTrace(hostId, target, captured, abort.signal, experience);
+			if (disposed || generation !== epoch || traceAbort !== abort || abort.signal.aborted || selectedId !== hostId) { experienceDiscarded(experience, disposed ? 'unmounted' : abort.signal.aborted ? 'aborted' : 'stale'); return; }
 			const current = snapshot?.hosts.find(item => item.id === hostId);
-			if (current) current.traces = [{ ...job, result: null }, ...current.traces.filter(trace => trace.id !== job.id)].slice(0, 20);
+			const publishedSnapshot = snapshot;
+			if (current) {
+				current.traces = [{ ...job, result: null }, ...current.traces.filter(trace => trace.id !== job.id)].slice(0, 20);
+				experienceState(experience, 'ready');
+			}
+			const publishedTraces = current?.traces;
 			++epoch; readAbort?.abort();
-			pendingReload = true; void load();
+			if (current) void experienceApplied(experience, {}, () => !disposed && epoch === generation + 1 && selectedId === hostId && visible && snapshot === publishedSnapshot && current.traces === publishedTraces);
+			pendingReload = true; void loadAttempt(experience);
 		} catch (failure) {
 			if (generation === epoch && traceAbort === abort && !abort.signal.aborted && !disposed) {
 				const code = failure instanceof ApiError ? failure.code : undefined;
 				traceError = code === 'trace_rate_limited' ? 'rateLimited' : code === 'trace_target_not_allowed' ? 'targetDenied' : code === 'observer_not_configured' ? 'observerNotConfigured' : code === 'trace_already_active' ? 'conflict' : failure instanceof ApiError && (failure.status === 401 || failure.status === 403) ? 'denied' : failure instanceof ApiError && failure.status === 409 ? 'conflict' : 'unavailable';
 				if (traceError === 'denied') { verified = false; snapshot = null; selection = null; }
-			}
+				experienceState(experience, 'error');
+				void experienceApplied(experience);
+			} else experienceDiscarded(experience, disposed ? 'unmounted' : abort.signal.aborted ? 'aborted' : 'stale');
 		} finally {
 			if (traceAbort === abort) { traceAbort = null; busy = false; }
 		}

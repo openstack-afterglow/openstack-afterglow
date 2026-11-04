@@ -11,6 +11,7 @@
 	import FileStorageAccessRulesSection from '$lib/components/file-storage/FileStorageAccessRulesSection.svelte';
 	import FileStorageMetadataSection from '$lib/components/file-storage/FileStorageMetadataSection.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { beginExperienceAction, experienceApplied, experienceState } from '$lib/utils/experience';
 
 	interface Props {
 		fileStorageId: string;
@@ -22,6 +23,7 @@
 
 	let refresh!: CoalescedRefresh;
 	let refreshing = $state(false);
+	let experienceLive = true;
 	const s = createFileStorageDetailController({
 		fileStorageId: () => fileStorageId,
 		token: () => $auth.token ?? undefined,
@@ -38,7 +40,7 @@
 			refreshing = false;
 		}
 	});
-	$effect(() => () => refresh.dispose());
+	$effect(() => () => { experienceLive = false; refresh.dispose(); });
 	provideFileStorageDetailController(s);
 
 	const ar = createAutoRefresh(() => refresh.run(false), {
@@ -52,10 +54,21 @@
 	$effect(() => {
 		if (fileStorageId && $auth.token) void refresh.run(false);
 	});
+	async function manualRefresh() {
+		const experience = beginExperienceAction('file_storage', 'refresh', 'resource.detail');
+		const resource = fileStorageId, projectId = $auth.projectId, userId = $auth.userId;
+		await refresh.run(true);
+		experienceState(experience, s.error ? 'error' : s.fileStorage ? 'ready' : 'empty');
+		if (experience) {
+			const assigned = s.fileStorage;
+			void experienceApplied(experience, { transport: 'shared' }, () => experienceLive && !refreshing
+				&& fileStorageId === resource && $auth.projectId === projectId && $auth.userId === userId && s.fileStorage === assigned);
+		}
+	}
 </script>
 
 <div class="flex min-h-full flex-col {s.loading && !s.fileStorage ? '' : 'p-6'}">
-	<FileStorageDetailHeader {onClose} {ar} {refreshing} onManualRefresh={() => refresh.run(true)} />
+	<FileStorageDetailHeader {onClose} {ar} {refreshing} onManualRefresh={manualRefresh} />
 
 	{#if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>

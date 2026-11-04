@@ -833,6 +833,7 @@ async def test_lumen_metadata_uses_revalidated_saved_public_projection(runtime, 
 _PROVISIONING_SERVER = "11111111-1111-4111-8111-111111111111"
 _PROVISIONING_NETWORK = "22222222-2222-4222-8222-222222222222"
 _PROVISIONING_IMAGE = "33333333-3333-4333-8333-333333333333"
+_PROVISIONING_GROUP = "44444444-4444-4444-8444-444444444444"
 
 
 @pytest.fixture
@@ -844,6 +845,7 @@ def provisioning_cloud(runtime, monkeypatch):
         volumes={},
         ports={},
         writes=[],
+        create_bodies=[],
         uncertain=False,
         admission_checks=0,
         flavor={"name": "small", "vcpus": 1, "ram": 2048, "disk": 0, "extra_specs": {}},
@@ -863,10 +865,24 @@ def provisioning_cloud(runtime, monkeypatch):
             def get_flavor(self, flavor_id, **_kwargs):
                 return {"id": flavor_id, **state.flavor}
 
+            def get(self, path, **_kwargs):
+                assert path.startswith("/os-keypairs/")
+                return SimpleNamespace(
+                    status_code=200,
+                    json=lambda: {
+                        "keypair": {
+                            "name": path.removeprefix("/os-keypairs/"),
+                            "user_id": context.user_id,
+                            "type": "ssh",
+                        }
+                    },
+                )
+
             def servers(self, **_kwargs):
                 return [server for server in state.servers.values() if server["project_id"] == project]
 
             def create_server(self, **body):
+                state.create_bodies.append(body)
                 state.servers[_PROVISIONING_SERVER] = {
                     "id": _PROVISIONING_SERVER,
                     "project_id": project,
@@ -905,6 +921,30 @@ def provisioning_cloud(runtime, monkeypatch):
                 state.volumes[volume["id"]] = volume
                 return create("volume", volume)
 
+        def network_get(path, **_kwargs):
+            if path.startswith("/networks/"):
+                body = {
+                    "network": {
+                        "id": path.removeprefix("/networks/"),
+                        "project_id": project,
+                        "status": "ACTIVE",
+                        "admin_state_up": True,
+                        "shared": False,
+                        "router:external": False,
+                        "port_security_enabled": True,
+                    }
+                }
+            else:
+                assert path.startswith("/security-groups/")
+                body = {
+                    "security_group": {
+                        "id": path.removeprefix("/security-groups/"),
+                        "project_id": project,
+                        "name": "default",
+                    }
+                }
+            return SimpleNamespace(status_code=200, json=lambda: body)
+
         conn = SimpleNamespace(
             compute=Compute(),
             block_storage=Storage(),
@@ -920,6 +960,7 @@ def provisioning_cloud(runtime, monkeypatch):
             network=SimpleNamespace(
                 get_network=lambda network_id: {"id": network_id, "project_id": project, "status": "ACTIVE"},
                 get_port=lambda port_id: state.ports.get(port_id),
+                get=network_get,
             ),
         )
         yield conn
@@ -947,6 +988,9 @@ def provisioning_arguments(tool, project="b"):
             "flavor_id": "1",
             "network_id": _PROVISIONING_NETWORK,
             "availability_zone": "nova",
+            "boot_volume_size_gb": 20,
+            "key_name": "consumer-key",
+            "security_group_ids": [_PROVISIONING_GROUP],
         }
     if tool == "afterglow_volume_create":
         return {"project_id": project, "name": "consumer-volume", "size_gb": 10}
@@ -995,6 +1039,47 @@ async def test_provisioning_target_binding_and_replay_create_only_one_resource(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("surface", ["mcp", "lumen"])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"boot_volume_size_gb": 21},
+        {"key_name": "another-key"},
+        {"security_group_ids": ["55555555-5555-4555-8555-555555555555"]},
+    ],
+)
+async def test_vm_create_replay_key_cannot_change_explicit_resource_selections(
+    runtime, provisioning_cloud, surface, changed
+):
+    arguments = provisioning_arguments("afterglow_vm_create")
+    await invoke_provisioning(runtime, surface, "afterglow_vm_create", arguments, "selected-create")
+    with pytest.raises((HTTPException, ledger.McpInvocationError)):
+        await invoke_provisioning(runtime, surface, "afterglow_vm_create", {**arguments, **changed}, "selected-create")
+    assert provisioning_cloud.writes == [("vm", "b")]
+    assert len(provisioning_cloud.create_bodies) == 1
+    assert len(runtime.invocations) == 1 and runtime.invocations[0].status == "succeeded"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
+@pytest.mark.parametrize("field", ["boot_volume_size_gb", "key_name", "security_group_ids"])
+@pytest.mark.parametrize("missing", [True, False], ids=["absent", "null"])
+async def test_vm_create_missing_selections_fail_public_consumers_before_ledger(
+    runtime, provisioning_cloud, surface, field, missing
+):
+    arguments = provisioning_arguments("afterglow_vm_create")
+    if missing:
+        arguments.pop(field)
+    else:
+        arguments[field] = None
+    with pytest.raises((ValueError, HTTPException)):
+        await invoke_provisioning(runtime, surface, "afterglow_vm_create", arguments, "missing-selection")
+    assert runtime.invocations == []
+    assert provisioning_cloud.admission_checks == 0
+    assert provisioning_cloud.writes == [] and provisioning_cloud.create_bodies == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["mcp", "lumen"])
 @pytest.mark.parametrize("tool", ["afterglow_vm_create", "afterglow_volume_create", "afterglow_vm_network_attach"])
 async def test_provisioning_uncertain_outcome_blocks_same_and_new_replay_keys(
     runtime, provisioning_cloud, surface, tool
@@ -1034,6 +1119,13 @@ async def test_provisioning_requires_saved_write_authority_for_selected_target(
         ("afterglow_vm_create", {"adminPass": "provider-secret"}),
         ("afterglow_vm_create", {"user_data": "arbitrary-script"}),
         ("afterglow_vm_create", {"boot_volume_size_gb": "50"}),
+        ("afterglow_vm_create", {"boot_volume_size_gb": None}),
+        ("afterglow_vm_create", {"key_name": None}),
+        ("afterglow_vm_create", {"key_name": ""}),
+        ("afterglow_vm_create", {"security_group_ids": None}),
+        ("afterglow_vm_create", {"security_group_ids": []}),
+        ("afterglow_vm_create", {"security_group_ids": [_PROVISIONING_GROUP, _PROVISIONING_GROUP]}),
+        ("afterglow_vm_create", {"security_group_ids": ["not-a-uuid"]}),
         ("afterglow_vm_create", {"delete_boot_volume_on_termination": "false"}),
         ("afterglow_vm_create", {"availability_zone": "nova:host:node"}),
         ("afterglow_vm_create", {"usage_schedule": {}}),
@@ -1098,6 +1190,11 @@ async def test_vm_create_public_path_preserves_explicit_approved_schedule_in_fir
     assert "delete all attached volumes" in preview.estimated_effect and preview.destructive
     await invoke_provisioning(runtime, surface, "afterglow_vm_create", arguments, "scheduled-create")
     assert provisioning_cloud.writes == [("vm", "b")]
+    assert len(provisioning_cloud.create_bodies) == 1
+    body = provisioning_cloud.create_bodies[0]
+    assert body["key_name"] == "consumer-key"
+    assert body["block_device_mapping"][0]["volume_size"] == 20
+    assert body["security_groups"] == [{"name": _PROVISIONING_GROUP}]
     metadata = provisioning_cloud.servers[_PROVISIONING_SERVER]["metadata"]
     assert datetime.fromisoformat(metadata["afterglow_usage_expires_at"]) == expiry
     assert metadata["afterglow_usage_action"] == "delete" and metadata["afterglow_usage_delete_volumes"] == "true"

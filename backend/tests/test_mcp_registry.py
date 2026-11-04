@@ -33,7 +33,68 @@ def _vm_create_arguments():
         "flavor_id": "large",
         "network_id": "22222222-2222-4222-8222-222222222222",
         "availability_zone": "nova",
+        "boot_volume_size_gb": 20,
+        "key_name": "user-key",
+        "security_group_ids": ["44444444-4444-4444-8444-444444444444"],
     }
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["image_id", "flavor_id", "network_id", "boot_volume_size_gb", "key_name", "security_group_ids"],
+)
+@pytest.mark.parametrize("missing", [True, False], ids=["absent", "null"])
+def test_vm_create_requires_every_explicit_resource_selection(field, missing):
+    entry = entry_by_name("afterglow_vm_create")
+    raw = _vm_create_arguments()
+    if missing:
+        raw.pop(field)
+    else:
+        raw[field] = None
+    with pytest.raises(ValueError):
+        parse_entry_arguments(entry, raw)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"key_name": ""},
+        {"key_name": " "},
+        {"boot_volume_size_gb": 0},
+        {"boot_volume_size_gb": "20"},
+        {"boot_volume_size_gb": True},
+        {"security_group_ids": []},
+        {"security_group_ids": "44444444-4444-4444-8444-444444444444"},
+        {"security_group_ids": [""]},
+        {"security_group_ids": ["not-a-uuid"]},
+        {"security_group_ids": [None]},
+        {"security_group_ids": ["44444444-4444-4444-8444-444444444444"] * 2},
+        {"security_group_ids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"]},
+        {"security_group_ids": [f"aaaaaaaa-aaaa-4aaa-8aaa-{index:012x}" for index in range(33)]},
+    ],
+)
+def test_vm_create_rejects_empty_malformed_and_duplicate_resource_selections(invalid):
+    entry = entry_by_name("afterglow_vm_create")
+    with pytest.raises(ValueError):
+        parse_entry_arguments(entry, {**_vm_create_arguments(), **invalid})
+
+
+@pytest.mark.parametrize("count", [1, 32])
+def test_vm_create_preserves_each_explicit_selected_group_in_public_arguments(count):
+    groups = [f"aaaaaaaa-aaaa-4aaa-8aaa-{index:012x}" for index in range(count)]
+    entry = entry_by_name("afterglow_vm_create")
+    parsed = parse_entry_arguments(entry, {**_vm_create_arguments(), "security_group_ids": groups})
+    assert parsed.model_dump(mode="json")["security_group_ids"] == groups
+
+
+def test_vm_create_schema_exposes_required_resources_without_defaults():
+    schema = entry_by_name("afterglow_vm_create").input_schema()
+    for field in ("image_id", "flavor_id", "network_id", "boot_volume_size_gb", "key_name", "security_group_ids"):
+        assert field in schema["required"]
+        assert "default" not in schema["properties"][field]
+    groups = schema["properties"]["security_group_ids"]
+    assert groups["minItems"] == 1 and groups["maxItems"] == 32
+    assert groups["items"]["format"] == "uuid"
 
 
 @pytest.mark.parametrize("schedule", [{}, {"expires_at": None}])
@@ -44,7 +105,7 @@ def test_vm_create_schedule_requires_explicit_expiry_without_approval_protocol_c
 
 
 @pytest.mark.asyncio
-async def test_vm_create_schedule_approval_fingerprint_covers_expiry_reason_and_all_deletion_consent(monkeypatch):
+async def test_vm_create_approval_fingerprint_covers_resource_selections_schedule_and_deletion_consent(monkeypatch):
     from app.services.mcp_control_plane import registry
 
     @asynccontextmanager
@@ -86,6 +147,24 @@ async def test_vm_create_schedule_approval_fingerprint_covers_expiry_reason_and_
         {"usage_schedule": {**schedule, "expiry_action": "delete"}},
         {"usage_schedule": {**schedule, "expiry_action": "delete", "delete_volumes": True}},
         {"delete_boot_volume_on_termination": True},
+        {"boot_volume_size_gb": 21},
+        {"key_name": "another-user-key"},
+        {"flavor_id": "other-flavor"},
+        {"network_id": "55555555-5555-4555-8555-555555555555"},
+        {"image_id": "66666666-6666-4666-8666-666666666666"},
+        {"security_group_ids": ["77777777-7777-4777-8777-777777777777"]},
+        {
+            "security_group_ids": [
+                "44444444-4444-4444-8444-444444444444",
+                "77777777-7777-4777-8777-777777777777",
+            ]
+        },
+        {
+            "security_group_ids": [
+                "77777777-7777-4777-8777-777777777777",
+                "44444444-4444-4444-8444-444444444444",
+            ]
+        },
     ]
     for change in variants:
         preview = await build_mutation_preview(
@@ -149,6 +228,9 @@ async def test_vm_create_dispatch_forwards_public_serialized_schedule_unchanged(
     assert len(received) == 1
     assert received[0]["usage_schedule"] == parsed.model_dump(mode="json")["usage_schedule"]
     assert isinstance(received[0]["usage_schedule"], dict)
+    assert received[0]["boot_volume_size_gb"] == 20
+    assert received[0]["key_name"] == "user-key"
+    assert received[0]["security_group_ids"] == ["44444444-4444-4444-8444-444444444444"]
 
 
 @pytest.fixture(autouse=True)

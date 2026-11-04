@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import time
+from functools import partial
 from threading import Lock
 from typing import TYPE_CHECKING
+
+from keystoneauth1.exceptions.catalog import EndpointNotFound
+
+from app.services.parallel import run_parallel
 
 if TYPE_CHECKING:
     import openstack
@@ -48,6 +53,14 @@ def _listener_to_dict(listener) -> dict:
 
 
 def _pool_to_dict(p) -> dict:
+    # Pool's provider body uses ``loadbalancers`` in openstacksdk 3.3.0.
+    # Do not use the query's loadbalancer_id as ownership evidence.
+    parents = getattr(p, "loadbalancers", None)
+    parent_id = (
+        parents[0].get("id")
+        if isinstance(parents, list) and len(parents) == 1 and isinstance(parents[0], dict)
+        else None
+    )
     return {
         "id": p.id,
         "name": p.name or "",
@@ -55,9 +68,7 @@ def _pool_to_dict(p) -> dict:
         "lb_algorithm": getattr(p, "lb_algorithm", "") or "",
         "status": getattr(p, "provisioning_status", "") or "",
         "health_monitor_id": getattr(p, "health_monitor_id", None),
-        "load_balancer_id": (getattr(p, "load_balancers", None) or [{}])[0].get("id")
-        if getattr(p, "load_balancers", None)
-        else None,
+        "load_balancer_id": parent_id,
     }
 
 
@@ -220,7 +231,7 @@ def delete_listener(conn: openstack.connection.Connection, listener_id: str) -> 
 def list_pools(conn: openstack.connection.Connection, lb_id: str | None = None) -> list[dict]:
     kwargs = {}
     if lb_id:
-        kwargs["load_balancer_id"] = lb_id
+        kwargs["loadbalancer_id"] = lb_id
     return [_pool_to_dict(p) for p in conn.load_balancer.pools(**kwargs)]
 
 
@@ -324,75 +335,101 @@ def delete_health_monitor(conn: openstack.connection.Connection, hm_id: str) -> 
 # ---------------------------------------------------------------------------
 
 
+class TopologyLoadBalancersUnavailable(RuntimeError):
+    """The native LB graph could not be observed completely."""
+
+
 def get_topology_lbs(
     conn: openstack.connection.Connection,
     project_id: str | None = None,
     instances: list[dict] | None = None,
 ) -> list[dict]:
-    """프로젝트의 LB 목록을 토폴로지용 dict로 반환.
+    """Collect the native LB graph using bounded, drained read fan-out.
 
-    LB별로 list_listeners + list_pools + list_members를 직접 호출해 listener/pool/member를
-    평탄화한다 (status tree보다 정확 — listener에 묶이지 않은 추가 pool도 포함).
-    member.address ↔ instance fixed_ip 매칭으로 server_id를 미리 채운다.
-    Octavia가 catalog에 없으면 빈 리스트 반환.
+    A genuinely absent Octavia catalog entry is empty. Transport, authorization
+    and partial child-read failures are unavailable, never an empty graph.
     """
     try:
         lbs = list_load_balancers(conn, project_id=project_id)
-    except Exception:
+    except EndpointNotFound:
+        return []
+    except Exception as exc:
+        raise TopologyLoadBalancersUnavailable() from exc
+    if not lbs:
         return []
 
-    ip_to_server: dict[str, str] = {}
-    for srv in instances or []:
-        for ip_info in srv.get("ip_addresses") or []:
-            addr = ip_info.get("addr")
-            if addr and srv.get("id"):
-                ip_to_server[addr] = srv["id"]
+    try:
+        # One shared bounded executor per phase, not nested per-LB thread pools.
+        children = run_parallel(
+            *(partial(list_listeners, conn, lb_id=lb["id"]) for lb in lbs),
+            *(partial(list_pools, conn, lb_id=lb["id"]) for lb in lbs),
+        )
+        listeners = children[: len(lbs)]
+        pools_by_lb = children[len(lbs) :]
+        pool_reads = []
+        for lb, pools in zip(lbs, pools_by_lb, strict=True):
+            for pool in pools:
+                # Independently retain only native-proven parent associations.
+                if not pool.get("load_balancer_id"):
+                    raise TopologyLoadBalancersUnavailable()
+                if pool["load_balancer_id"] == lb["id"]:
+                    pool_reads.append((lb["id"], pool["id"]))
+        member_rows = run_parallel(*(partial(list_members, conn, pool_id=pid) for _, pid in pool_reads))
+    except TopologyLoadBalancersUnavailable:
+        raise
+    except Exception as exc:
+        raise TopologyLoadBalancersUnavailable() from exc
 
-    result = []
-    for lb in lbs:
-        lb_id = lb["id"]
-
-        listeners_dicts: list[dict] = []
-        try:
-            for li in list_listeners(conn, lb_id=lb_id):
-                listeners_dicts.append(
-                    {
-                        "id": li.get("id", ""),
-                        "name": li.get("name", ""),
-                        "protocol": li.get("protocol", ""),
-                        "protocol_port": li.get("protocol_port", 0),
-                        "default_pool_id": li.get("default_pool_id"),
-                    }
-                )
-        except Exception:
-            pass
-
-        members_flat: list[dict] = []
-        try:
-            pools = list_pools(conn, lb_id=lb_id)
-        except Exception:
-            pools = []
-        for pool in pools:
-            pid = pool.get("id", "")
-            try:
-                pool_members = list_members(conn, pool_id=pid)
-            except Exception:
+    # Private networks can repeat fixed addresses across projects (and within a
+    # project). Only one positively owned fixed-IP candidate may form an edge.
+    ip_to_server: dict[tuple[str, str], str | None] = {}
+    for server in instances or []:
+        owner, server_id = server.get("project_id"), server.get("id")
+        if not isinstance(owner, str) or not owner or not isinstance(server_id, str) or not server_id:
+            continue
+        for ip in server.get("ip_addresses") or []:
+            address = ip.get("addr")
+            if ip.get("type") != "fixed" or not isinstance(address, str) or not address:
                 continue
-            for m in pool_members:
-                addr = m.get("address", "")
-                members_flat.append(
-                    {
-                        "id": m.get("id", ""),
-                        "address": addr,
-                        "protocol_port": m.get("protocol_port", 0),
-                        "status": m.get("status", ""),
-                        "subnet_id": m.get("subnet_id"),
-                        "pool_id": pid,
-                        "server_id": ip_to_server.get(addr),
-                    }
-                )
-        result.append({**lb, "listeners": listeners_dicts, "members": members_flat})
-    return result
+            key = (owner, address)
+            if key in ip_to_server and ip_to_server[key] != server_id:
+                ip_to_server[key] = None
+            else:
+                ip_to_server[key] = server_id
+
+    members_by_lb: dict[str, list[dict]] = {lb["id"]: [] for lb in lbs}
+    owners = {lb["id"]: lb.get("project_id") for lb in lbs}
+    for (lb_id, pool_id), members in zip(pool_reads, member_rows, strict=True):
+        for member in members:
+            address = member.get("address", "")
+            members_by_lb[lb_id].append(
+                {
+                    "id": member.get("id", ""),
+                    "address": address,
+                    "protocol_port": member.get("protocol_port", 0),
+                    "status": member.get("status", ""),
+                    "subnet_id": member.get("subnet_id"),
+                    "pool_id": pool_id,
+                    "server_id": ip_to_server.get((owners[lb_id], address)),
+                }
+            )
+    return [
+        {
+            **lb,
+            "listeners": [
+                {
+                    "id": listener.get("id", ""),
+                    "name": listener.get("name", ""),
+                    "protocol": listener.get("protocol", ""),
+                    "protocol_port": listener.get("protocol_port", 0),
+                    "default_pool_id": listener.get("default_pool_id"),
+                }
+                for listener in lb_listeners
+            ],
+            "members": members_by_lb[lb["id"]],
+        }
+        for lb, lb_listeners in zip(lbs, listeners, strict=True)
+    ]
 
 
 # ---------------------------------------------------------------------------

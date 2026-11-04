@@ -1,11 +1,12 @@
 import { fetchWithAuth } from '$lib/api/client';
 import { ApiError } from '$lib/api/errors';
 import type { CredentialAuthority } from '$lib/types/adminCredential';
+import type { ExperienceContext } from '$lib/utils/experience';
 
 /** Bypass the ordinary GET cache: even explicit sensitive details stay ephemeral.
  * Native Keystone 403 is not evidence that platform system-admin was revoked.
  */
-export async function credentialRequest<T>(path: string, domainId: string, authority: CredentialAuthority, method = 'GET', body?: unknown): Promise<T> {
+export async function credentialRequest<T>(path: string, domainId: string, authority: CredentialAuthority, method = 'GET', body?: unknown, experience?: ExperienceContext): Promise<T> {
   if (!domainId.trim()) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
   const [pathname, query = ''] = path.split('?');
   const params = new URLSearchParams(query);
@@ -15,7 +16,7 @@ export async function credentialRequest<T>(path: string, domainId: string, autho
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
-  }, authority.token, authority.projectId);
+  }, authority.token, authority.projectId, { experience });
   if (!response.ok) {
     // Do not display arbitrary upstream error payloads in a sensitive surface.
     const data = await response.json().catch(() => null);

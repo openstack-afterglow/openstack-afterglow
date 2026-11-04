@@ -4,7 +4,12 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 	interface Props {
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 		tone?: AlertTone;
 		title?: string;
 		class?: string;
@@ -12,10 +17,11 @@
 		actions?: Snippet;
 	}
 
-	let { tone = 'danger', title, class: className = '', children, actions }: Props = $props();
+	let { tone = 'danger', title, class: className = '', children, actions, experience, experienceMessage }: Props = $props();
+	const renderedMessage = $derived(experienceMessage ? { ...experienceMessage, tone } : undefined);
 </script>
 
-<div class="alert motion-enter alert-{tone} {className}" role={tone === 'danger' ? 'alert' : 'status'}>
+<div use:experiencePresentation={{ context: experience, message: renderedMessage }} class="alert motion-enter alert-{tone} {className}" role={tone === 'danger' ? 'alert' : 'status'}>
 	<div class="alert-body">
 		{#if title}
 			<p class="alert-title">{title}</p>

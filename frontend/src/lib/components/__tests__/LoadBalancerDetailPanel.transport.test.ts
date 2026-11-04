@@ -4,7 +4,7 @@ import { writable } from 'svelte/store';
 
 import { ApiError } from '$lib/api/client';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn(), confirm: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class extends Error {} }));
+vi.mock('$lib/api/client', () => ({ api: { ...mocks, withExperience: () => mocks }, ApiError: class extends Error {} }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'personal' }) }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn() } }));

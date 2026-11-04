@@ -15,6 +15,25 @@ from typing import Any
 from fastapi import HTTPException
 
 
+def native_resource_read_failure(
+    exc: Exception,
+    *,
+    not_found_detail: str,
+    unavailable_detail: str,
+) -> HTTPException:
+    """Keep provider absence/denial opaque without presenting an outage as absence."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (401, 403, 404):
+        return HTTPException(status_code=404, detail=not_found_detail)
+    # 503 detail은 호출자가 지정한 정적 문구이며 upstream 내용을 담지 않으므로
+    # 중앙 새니타이저(sanitized_http_exception_handler)가 verbatim 반환하도록 표시한다.
+    error = HTTPException(status_code=503, detail=unavailable_detail)
+    error._afterglow_safe_public_detail = True
+    return error
+
+
 def _caller_project_id(conn: Any) -> str | None:
     """deps.get_os_conn 이 conn 에 저장한 원본 project_id 를 추출."""
     return getattr(conn, "_afterglow_project_id", None)

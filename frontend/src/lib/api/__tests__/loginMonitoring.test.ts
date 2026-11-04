@@ -10,7 +10,7 @@ describe('monitoring HTTP boundary', () => {
   it('uses no-store with the captured actor/project and returns only the server result', async () => {
     fetchWithAuth.mockResolvedValue(new Response(JSON.stringify({ user: { id: 'selected' } }), { status: 200 }));
     expect(await monitoringRequest('/api/v1/admin/monitoring/logins/users/selected', authority)).toEqual({ user: { id: 'selected' } });
-    expect(fetchWithAuth).toHaveBeenCalledWith('/api/v1/admin/monitoring/logins/users/selected', expect.objectContaining({ cache: 'no-store', credentials: 'include' }), 'token-a', 'project-a');
+    expect(fetchWithAuth).toHaveBeenCalledWith('/api/v1/admin/monitoring/logins/users/selected', expect.objectContaining({ cache: 'no-store', credentials: 'include' }), 'token-a', 'project-a', { experience: undefined });
   });
   it('preserves native-denied separately from platform-admin denied', async () => {
     fetchWithAuth.mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'login_monitoring_native_denied' }), { status: 403 }));

@@ -8,6 +8,8 @@ import {
 } from './locales';
 import { formatMessage, parseMessage, type MessageNode, type MessageValues } from './messageFormat.js';
 import { RICH_VALUE_CLOSE, RICH_VALUE_OPEN, buildRichSegments, type RichSegment } from './rich';
+import { EXPERIENCE_CATALOG_NAMESPACES, EXPERIENCE_CATALOG_REVISION } from './experienceCatalogRevision';
+import { unavailableExperienceMessage, type ExperienceMessageMetadata } from './experienceMessages';
 
 /**
  * The active interface language.
@@ -65,6 +67,30 @@ const CATALOG_LOCALE = /\/messages\/([^/]+)\/[^/]+\.json$/;
 const INVALID = Symbol('invalid message');
 const warned = new Set<string>();
 
+type ResolvedMessage = { intl: string; locale: Locale; nodes: MessageNode[] };
+const experienceResolvers = new Map<string, (key: string, locale?: Locale) => ResolvedMessage | null>();
+
+/**
+ * Capture beside the actual translation, never later from a stored formatted string.
+ * Debug keys/missing messages cannot be restored as if the template had been displayed.
+ */
+export function resolveExperienceMessage(
+	namespace: string,
+	key: string,
+	locale?: Locale,
+): ExperienceMessageMetadata {
+	if (showKeys || !EXPERIENCE_CATALOG_NAMESPACES.has(namespace)) return unavailableExperienceMessage();
+	const message = experienceResolvers.get(namespace)?.(key, locale);
+	if (!message) return unavailableExperienceMessage();
+	return Object.freeze({
+		key: `${namespace}:${key}`,
+		locale: message.locale,
+		catalog_revision: EXPERIENCE_CATALOG_REVISION,
+		tone: 'neutral',
+		restoration: 'restored',
+	});
+}
+
 function warnOnce(id: string, detail: string): void {
 	if (!import.meta.env?.DEV || warned.has(id)) return;
 	warned.add(id);
@@ -88,8 +114,8 @@ export function defineMessages<Source extends Record<string, string>>(
 	const parsed = new Map<string, MessageNode[] | typeof INVALID>();
 	const localeForMessages = locale;
 
-	const resolve = (key: string): { intl: string; nodes: MessageNode[] } | null => {
-		for (const locale of FALLBACK_CHAIN[localeForMessages?.() ?? current]) {
+	const resolve = (key: string, requestedLocale?: Locale): ResolvedMessage | null => {
+		for (const locale of FALLBACK_CHAIN[requestedLocale ?? localeForMessages?.() ?? current] ?? []) {
 			const source = catalogs.get(locale)?.[key];
 			if (typeof source !== 'string') continue;
 			const cacheKey = `${locale}\u0000${key}`;
@@ -103,11 +129,19 @@ export function defineMessages<Source extends Record<string, string>>(
 				}
 				parsed.set(cacheKey, nodes);
 			}
-			if (nodes !== INVALID) return { intl: INTL_LOCALES[locale], nodes };
+			if (nodes !== INVALID) return { intl: INTL_LOCALES[locale], locale, nodes };
 		}
 		warnOnce(`${namespace}:${key}`, `missing message ${namespace}:${key}`);
 		return null;
 	};
+
+	if (EXPERIENCE_CATALOG_NAMESPACES.has(namespace)) {
+		experienceResolvers.set(namespace, (key, requestedLocale) => {
+			// Only Korean source keys belong to the retained source registry.
+			if (!Object.hasOwn(catalogs.get(DEFAULT_LOCALE) ?? {}, key)) return null;
+			return resolve(key, requestedLocale);
+		});
+	}
 
 	const translate = (key: string, values?: MessageValues): string => {
 		if (showKeys) return `${namespace}:${key}`;

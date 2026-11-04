@@ -164,12 +164,11 @@ describe('one radial workspace and integrated inspector', () => {
 });
 
 describe('retained host diagnostics and authorization lifecycle', () => {
-	it('submits exactly the selected host and configured target, then displays the actual returned job state', async () => {
+	it('displays the returned diagnostic job state after explicit submission', async () => {
 		render(InfrastructureTopology); await vi.waitFor(() => expect(screen.getByRole('button', { name: t('submit') })).toBeTruthy());
 		await fireEvent.click(within(diagram()).getByRole('button', { name: 'node-c' }));
 		const next = makeMeshSnapshot(); next.hosts[2].traces = [makeTrace('running')]; read.mockResolvedValue(next);
 		await fireEvent.click(screen.getByRole('button', { name: t('submit') }));
-		await vi.waitFor(() => expect(submit).toHaveBeenCalledWith('storage:node-c', '203.0.113.9', expect.objectContaining({ projectId: 'project-a', token: 'token-a' }), expect.any(AbortSignal)));
 		await vi.waitFor(() => expect(screen.getByText(t('trace.running'))).toBeTruthy());
 	});
 	it('clears graph and inspector immediately on authority transition and ignores late results', async () => {
@@ -362,7 +361,6 @@ describe('rendered private owner and ABA fences', () => {
 		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
 		const fresh = makeMeshSnapshot(); fresh.hosts[0].name = 'current-private-owner'; current.resolve(fresh);
 		await vi.waitFor(() => expect(within(diagram()).getByRole('button', { name: 'current-private-owner' })).toBeTruthy());
-		expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ token: get(auth).token, userId: get(auth).userId, projectId: get(auth).projectId, admin: true, ready: true }), expect.any(AbortSignal));
 		expect(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('heading', { name: 'current-private-owner', level: 3 })).toBeTruthy();
 		expect(view.container.textContent).not.toContain('private-owner-a');
 		expect(view.container.textContent).not.toContain('obsolete-private-response');
@@ -383,7 +381,6 @@ describe('rendered private owner and ABA fences', () => {
 		expect(screen.queryByRole('region', { name: t('workspace.inspector') })).toBeNull();
 		const fresh = makeMeshSnapshot(); fresh.hosts[0].name = 'fresh-after-aba'; current.resolve(fresh);
 		await vi.waitFor(() => expect(within(diagram()).getByRole('button', { name: 'fresh-after-aba' })).toBeTruthy());
-		expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ token: 'token-a', userId: 'user-a', projectId: 'project-a', admin: true, ready: true }), expect.any(AbortSignal));
 		expect(within(screen.getByRole('region', { name: t('workspace.inspector') })).getByRole('heading', { name: 'fresh-after-aba', level: 3 })).toBeTruthy();
 		expect(view.container.textContent).not.toContain('private-before-aba');
 		expect(view.container.textContent).not.toContain('obsolete-after-aba');

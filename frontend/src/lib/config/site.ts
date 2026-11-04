@@ -16,6 +16,7 @@ const DEFAULTS: SiteConfig = {
 	logo_light_path: '/afterglow-logo.svg',
 	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
+	experience_enabled: false,
 	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	runtime: {
 		api_base: '',

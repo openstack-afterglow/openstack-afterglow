@@ -13,6 +13,8 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
+	import { beginAuthExperience, createAuthNoticePresenter, type AuthExperience } from '$lib/components/auth/authExperience';
+	import { recordExperience } from '$lib/utils/experience';
 
 	let { onSelected, onClose, mockup = false, busy = $bindable(false) }: { onSelected: () => void; onClose: () => void; mockup?: boolean; busy?: boolean } = $props();
 	const controller = createWorkspaceController(() => onSelected());
@@ -27,6 +29,10 @@
 	let createDomain = $state(false);
 	let name = $state('');
 	let description = $state('');
+	let live = false;
+	let ownerEpoch = 0;
+	let pageExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
 	const mutationBusy = $derived(controller.busy || projectSubmitting);
 	const disabled = $derived(!controller.ready || controller.loading || mutationBusy || $projectSwitching);
 	$effect(() => { busy = mutationBusy; });
@@ -40,28 +46,71 @@
 			&& (settings || view === 'all' || (view === 'pinned' ? preference?.pinned : preference?.visited))
 			&& `${row.name} ${row.id} ${row.description ?? ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase());
 	}));
+	$effect(() => {
+		if (!pageExperience) return;
+		const inventory = controller.inventory, loading = controller.loading, error = controller.error, ready = controller.ready;
+		pageExperience.state(loading ? 'loading' : error ? 'error' : ready ? inventory?.projects.length ? 'ready' : 'empty' : 'disabled');
+		void pageExperience.applied(() => controller.inventory === inventory && controller.loading === loading && controller.error === error && controller.ready === ready);
+	});
+	$effect(() => {
+		const error = controller.error || null;
+		if (error) t(error);
+		presentNotice('error', pageExperience, 'workspace-selector', error, 'warning');
+		const storage = controller.storageFailed ? 'storageFailed' : null;
+		if (storage) t(storage);
+		presentNotice('storage', pageExperience, 'workspace-selector', storage, 'warning');
+		const empty = controller.ready && !controller.loading && !controller.inventory?.projects.length ? 'empty' : null;
+		if (empty) t(empty);
+		presentNotice('empty', pageExperience, 'workspace-selector', empty, 'info');
+	});
 	onMount(() => {
+		live = true;
+		pageExperience = beginAuthExperience('page', 'load', () => live, 'iam');
 		const dispose = controller.mount();
 		let previous = '';
 		const unsubscribe = derived([auth, authReady, logoutInProgress], ([state, ready, loggingOut]) => JSON.stringify([sessionScopeKey(state), !!state.token, ready, loggingOut])).subscribe(key => {
 			if (previous && key !== previous) {
+				ownerEpoch++;
+				pageExperience = beginAuthExperience('page', 'load', () => live, 'iam');
 				search = ''; domainSearch = ''; view = 'all'; settings = false;
 				createProject = false; createDomain = false; name = ''; description = '';
 			}
 			previous = key;
 		});
-		return () => { unsubscribe(); dispose(); busy = false; };
+		return () => { live = false; ownerEpoch++; unsubscribe(); dispose(); busy = false; };
 	});
 	function toggle(kind: ResourceKind, id: string, field: 'pinned' | 'hidden') {
 		controller.preference(kind, id, { [field]: !controller.preferences[kind][id]?.[field] });
 	}
+	function selection(kind: 'domain' | 'project' | 'home') {
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('page', 'select', () => live && epoch === ownerEpoch, 'iam');
+		recordExperience(observation.context, 'view.state_changed', { state: 'loading', selection_kind: kind });
+		return observation;
+	}
+	function selectDomain(id: string) {
+		const observation = selection('domain');
+		search = '';
+		return controller.selectDomain(id, observation.context);
+	}
+	function selectProject(id: string) {
+		const observation = selection('project');
+		return controller.select(id, observation.context);
+	}
+	function refresh() {
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('page', 'refresh', () => live && epoch === ownerEpoch, 'iam');
+		return controller.refresh(undefined, observation.context);
+	}
 	async function submitDomain(event: SubmitEvent) {
 		event.preventDefault();
-		if (!name.trim()) return;
-		if (await controller.createDomain(name, description)) { createDomain = false; name = ''; description = ''; domainSearch = ''; }
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('page', 'create', () => live && epoch === ownerEpoch, 'iam');
+		if (!name.trim()) { observation.validation('required'); return; }
+		if (await controller.createDomain(name, description, observation.context)) { createDomain = false; name = ''; description = ''; domainSearch = ''; void observation.applied(); }
 	}
 	function close() {
-		if (!mutationBusy && !$projectSwitching) onClose();
+		if (!mutationBusy && !$projectSwitching) { beginAuthExperience('page', 'close', () => live, 'iam'); onClose(); }
 	}
 </script>
 
@@ -86,7 +135,7 @@
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
 			<Field label={t('domainSearch')} for={`${componentId}-domain-search`}><TextInput id={`${componentId}-domain-search`} bind:value={domainSearch} disabled={mutationBusy} /></Field>
 			<Field label={t('domain')} for={`${componentId}-domain`}>
-				<SelectInput id={`${componentId}-domain`} value={controller.domainId} disabled={controller.loading || mutationBusy || !controller.domains.length || $projectSwitching} onchange={(event) => { search = ''; void controller.selectDomain((event.currentTarget as HTMLSelectElement).value); }}>
+				<SelectInput id={`${componentId}-domain`} value={controller.domainId} disabled={controller.loading || mutationBusy || !controller.domains.length || $projectSwitching} onchange={(event) => { void selectDomain((event.currentTarget as HTMLSelectElement).value); }}>
 					{#each matchingDomains as domain (domain.id)}<option value={domain.id}>{controller.preferences.domains[domain.id]?.pinned ? '★ ' : ''}{domain.name} · {domain.id}{domain.kind === 'personal' || domain.kind === 'organization' ? ` · ${t(domain.kind)}` : ''}</option>{/each}
 				</SelectInput>
 			</Field>
@@ -125,7 +174,7 @@
 			<ul class="divide-y divide-line rounded-lg border border-line" aria-label={t('projects')}>
 				{#each projects as project, index (project.id)}
 					<li class="flex flex-wrap items-center gap-2 p-3 {project.id === $auth.projectId && controller.domainId === $auth.domainId ? 'bg-surface-selected' : ''}">
-						<button type="button" class="min-h-11 min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50" onclick={() => controller.select(project.id)} disabled={disabled || mockup}>
+						<button type="button" class="min-h-11 min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50" onclick={() => selectProject(project.id)} disabled={disabled || mockup}>
 							<span class="block break-all text-sm font-medium">{project.name}{project.id === $auth.projectId && controller.domainId === $auth.domainId ? ` · ${t('current')}` : ''}</span>
 							<span class="block break-all font-mono text-xs text-ink-2">{project.id}</span>
 							{#if project.description}<span class="block break-words text-xs text-ink-2">{project.description}</span>{/if}
@@ -139,7 +188,7 @@
 	</div>
 	<footer class="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-line p-4">
 		<div class="flex flex-wrap gap-2">
-			<Button variant="secondary" onclick={() => { void controller.refresh(); }} disabled={mutationBusy || $projectSwitching}>{t('refresh')}</Button>
+			<Button variant="secondary" onclick={() => { void refresh(); }} disabled={mutationBusy || $projectSwitching}>{t('refresh')}</Button>
 			{#if $auth.canCreateDomain && !mockup}<Button variant="secondary" onclick={() => { createDomain = !createDomain; }} disabled={disabled || controller.uncertain}>{t('newDomain')}</Button>{/if}
 			{#if controller.inventory?.can_create_project && !mockup}<Button onclick={() => { createProject = true; }} disabled={disabled}>{t('newProject')}</Button>{/if}
 			{#if controller.domainId === $auth.domainId && controller.inventory?.can_create_project && controller.inventory.domain.kind !== 'personal' && !mockup}<Button variant="link" href="/dashboard/iam/projects" onclick={close} disabled={disabled}>{t('manageProjects')}</Button>{/if}

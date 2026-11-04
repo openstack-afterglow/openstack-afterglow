@@ -19,6 +19,7 @@ from fastapi import (
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
+from app.api.common.owner_check import native_resource_read_failure
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.models.containers import (
     ContainerListResponse,
@@ -81,8 +82,12 @@ async def get_container(
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-    except Exception:
-        raise HTTPException(status_code=404, detail="컨테이너를 찾을 수 없습니다")
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="컨테이너를 찾을 수 없습니다",
+            unavailable_detail="컨테이너 서비스에 연결할 수 없습니다",
+        ) from exc
 
 
 @router.post("", response_model=ZunContainerInfo, status_code=201)

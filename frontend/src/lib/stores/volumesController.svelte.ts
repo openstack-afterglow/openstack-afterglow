@@ -6,6 +6,9 @@ import { wizard, openWizard } from '$lib/stores/wizard';
 import type { QuotaItem } from '$lib/types/quotas';
 import type { Volume, Snapshot } from '$lib/types/volume';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import {
+  beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceContext,
+} from '$lib/utils/experience';
 
 interface VolumeQuotas { storage: { volumes: QuotaItem; gigabytes: QuotaItem; }; }
 
@@ -61,22 +64,100 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   let volumesRequestSeq = 0;
   let snapshotsRequestSeq = 0;
   let quotasRequestSeq = 0;
+  let scopeRevision = 0;
+  let destroyed = false;
+  // Diagnostic correlation is bounded independently of the unchanged product polling.
+  const creationObservationTtlMs = 5 * 60_000;
+  let pendingCreation: {
+    context: ExperienceContext; id: string; project: string | undefined; revision: number;
+    expiresAt: number; seen: boolean; lastCreatingState?: 'creating' | 'downloading';
+  } | undefined;
 
-  async function fetchVolumes(manual = false) {
+  async function fetchVolumes(manual = false, context?: ExperienceContext, createdVolumeId?: string) {
     const path = '/api/v1/volumes';
     const seq = ++volumesRequestSeq;
+    const project = opts.projectId();
+    const token = opts.token();
+    const revision = scopeRevision;
+    const owns = () => !destroyed && seq === volumesRequestSeq && revision === scopeRevision
+      && project === opts.projectId() && token === opts.token();
+    const loadContext = destroyed ? undefined : beginExperienceLoad('block_storage', 'resource.list');
+    const explicitContext = context?.segmentId === loadContext?.segmentId ? context : undefined;
+    if (pendingCreation && (pendingCreation.context.segmentId !== loadContext?.segmentId
+      || pendingCreation.project !== project || pendingCreation.revision !== revision
+      || performance.now() >= pendingCreation.expiresAt)) {
+      experienceDiscarded(pendingCreation.context,
+        pendingCreation.context.segmentId !== loadContext?.segmentId || pendingCreation.project !== project
+          || pendingCreation.revision !== revision ? 'scope_changed' : 'unknown');
+      pendingCreation = undefined;
+    }
+    if (!destroyed && explicitContext && createdVolumeId) {
+      if (pendingCreation && pendingCreation.context !== explicitContext) experienceDiscarded(pendingCreation.context, 'unknown');
+      // Resource IDs are used only for exact authoritative readback matching, never event payloads.
+      pendingCreation = { context: explicitContext, id: createdVolumeId, project, revision, expiresAt: performance.now() + creationObservationTtlMs, seen: false };
+    }
+    const pending = pendingCreation;
+    const readContext = explicitContext ?? pending?.context ?? loadContext;
     const cached = swrGet<Volume[]>(path);
     if (cached && volumes.length === 0) volumes = cached;
     if (manual) refreshing = true;
     try {
-      const fresh = await api.get<Volume[]>(path, opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
-      if (seq !== volumesRequestSeq) return;
+      const fresh = await api.get<Volume[]>(path, token, project,
+        readContext ? { ...(manual ? { refresh: true } : {}), experience: readContext } : manual ? { refresh: true } : undefined);
+      if (seq !== volumesRequestSeq) {
+        experienceDiscarded(readContext, destroyed ? 'unmounted'
+          : project !== opts.projectId() || revision !== scopeRevision ? 'scope_changed' : 'stale');
+        return;
+      }
       volumes = fresh;
       swrSet(path, volumes);
       error = '';
+      loading = false;
+      refreshing = false;
+      // List receipt, guarded state replacement and the following DOM commit remain distinct.
+      await experienceApplied(readContext, undefined, owns);
+      if (!owns()) return;
+      recordExperience(readContext, 'view.exposure_changed', {
+        visibility: typeof document === 'undefined' || document.visibilityState !== 'visible' ? 'hidden' : 'visible',
+      });
+      if (pending && pending === pendingCreation && pending.project === project && pending.revision === revision) {
+        const created = fresh.find(volume => volume.id === pending.id);
+        if (performance.now() >= pending.expiresAt) {
+          experienceDiscarded(pending.context, 'unknown');
+          pendingCreation = undefined;
+        } else if (!created) {
+          // A row never listed may still be propagating; a disappeared row has no inferred outcome.
+          if (pending.seen) {
+            experienceDiscarded(pending.context, 'unknown');
+            pendingCreation = undefined;
+          }
+        } else if (created.status === 'available') {
+          experienceState(pending.context, 'ready', 3);
+          pendingCreation = undefined;
+        } else if (created.status.startsWith('error')) {
+          experienceState(pending.context, 'error', 3);
+          pendingCreation = undefined;
+        } else if (created.status === 'creating' || created.status === 'downloading') {
+          pending.seen = true;
+          if (pending.lastCreatingState !== created.status) experienceState(pending.context, 'loading', 3);
+          pending.lastCreatingState = created.status;
+        } else {
+          // Attached/reserved/deleting/other states are not this create readback's readiness proof.
+          experienceDiscarded(pending.context, 'unknown');
+          pendingCreation = undefined;
+        }
+      }
     } catch (e) {
-      if (seq !== volumesRequestSeq) return;
+      if (seq !== volumesRequestSeq) {
+        experienceDiscarded(readContext, destroyed ? 'unmounted'
+          : project !== opts.projectId() || revision !== scopeRevision ? 'scope_changed' : 'stale');
+        return;
+      }
       error = e instanceof ApiError ? t('listController.fetchFailed', { status: e.status }) : t('listController.serverError');
+      loading = false;
+      refreshing = false;
+      experienceDiscarded(readContext, e instanceof DOMException && e.name === 'AbortError' ? 'aborted' : 'unknown');
+      await experienceApplied(readContext, undefined, owns);
     } finally {
       if (seq === volumesRequestSeq) {
         loading = false;
@@ -201,6 +282,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
 
   /** Drop per-project UI targets so a project switch never acts on the previous tenant's volume. */
   function resetProjectScope() {
+    scopeRevision += 1;
+    experienceDiscarded(pendingCreation?.context, 'scope_changed');
+    pendingCreation = undefined;
     snapshotsRequestSeq += 1;
     quotasRequestSeq += 1;
     snapshotsLoading = true;
@@ -216,6 +300,12 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     openActionMenu = null;
     openSnapshotActionMenu = null;
     if (selectedVolumeId) closeVolumePanel();
+  }
+
+  function destroy() {
+    destroyed = true;
+    experienceDiscarded(pendingCreation?.context, 'unmounted');
+    pendingCreation = undefined;
   }
 
   return {
@@ -253,6 +343,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     set renameTargetVol(v: Volume | null) { renameTargetVol = v; },
     get detailRefreshKey() { return detailRefreshKey; },
     get quotas() { return quotas; },
+    destroy,
     fetchVolumes,
     fetchSnapshots,
     fetchQuotas,

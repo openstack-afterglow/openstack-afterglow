@@ -7,6 +7,7 @@ import hmac
 import json
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
@@ -68,8 +69,28 @@ def _access_token_lifetime() -> timedelta:
     return timedelta(seconds=get_settings().mcp_access_token_ttl_seconds)
 
 
+class McpOAuthFailureReason(StrEnum):
+    """Closed operational vocabulary; never carries client or credential data."""
+
+    AUTHORITY_REJECTED = "authority_rejected"
+    AUTHENTICATION_FAILED = "authentication_failed"
+    CLIENT_INVALID = "client_invalid"
+    RESOURCE_MISMATCH = "resource_mismatch"
+    CREDENTIAL_UNKNOWN = "credential_unknown"
+    CREDENTIAL_REUSED = "credential_reused"
+    CREDENTIAL_EXPIRED = "credential_expired"
+    INVALID_SHAPE = "invalid_shape"
+    GRANT_INACTIVE = "grant_inactive"
+    AUTHORITY_INVARIANT = "authority_invariant"
+    SCOPE_INVALID = "scope_invalid"
+
+
 class McpOAuthAuthorityError(McpAuthorityError):
-    """A safe OAuth protocol error with no credential-bearing detail."""
+    """An OAuth protocol error with a separate, non-public operational reason."""
+
+    def __init__(self, detail: str, *, reason: McpOAuthFailureReason = McpOAuthFailureReason.AUTHORITY_REJECTED):
+        super().__init__(detail)
+        self.reason = reason if isinstance(reason, McpOAuthFailureReason) else McpOAuthFailureReason.AUTHORITY_REJECTED
 
 
 @dataclass(frozen=True)
@@ -164,11 +185,13 @@ async def _check_ongoing_client(session: AsyncSession, grant: McpDelegatedGrant,
             await session.scalars(select(McpOAuthCode.client_id).where(McpOAuthCode.grant_id == grant.id).limit(2))
         ).all()
         if len(clients) != 1:
-            raise McpOAuthAuthorityError("OAuth client binding is unavailable")
+            raise McpOAuthAuthorityError(
+                "OAuth client binding is unavailable", reason=McpOAuthFailureReason.AUTHORITY_INVARIANT
+            )
         client_id = clients[0]
     client = await session.scalar(select(McpOAuthClient).where(McpOAuthClient.client_id == client_id))
     if client is None or client.revoked_at is not None:
-        raise McpOAuthAuthorityError("OAuth client is inactive")
+        raise McpOAuthAuthorityError("OAuth client is inactive", reason=McpOAuthFailureReason.CLIENT_INVALID)
 
 
 def _consent_scopes(requested: object, access_level: str | None) -> tuple[str, tuple[str, ...]]:
@@ -665,15 +688,24 @@ async def exchange_authorization_code(
     urls,
     code_verifier: str,
 ) -> TokenResult:
-    require_exact_resource(resource, urls)
+    try:
+        require_exact_resource(resource, urls)
+    except McpOAuthError:
+        raise McpOAuthAuthorityError(
+            "authorization code is invalid", reason=McpOAuthFailureReason.RESOURCE_MISMATCH
+        ) from None
+    if not code:
+        raise McpOAuthAuthorityError("authorization code is invalid", reason=McpOAuthFailureReason.INVALID_SHAPE)
     code_hash = hash_oauth_value(code)
     async with session_factory() as session:
         code_hint = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.code_hash == code_hash))
         if code_hint is None:
-            raise McpOAuthAuthorityError("authorization code is invalid")
+            raise McpOAuthAuthorityError(
+                "authorization code is invalid", reason=McpOAuthFailureReason.CREDENTIAL_UNKNOWN
+            )
         grant_hint = await session.scalar(select(McpDelegatedGrant).where(McpDelegatedGrant.id == code_hint.grant_id))
     if grant_hint is None:
-        raise McpOAuthAuthorityError("authorization code is invalid")
+        raise McpOAuthAuthorityError("authorization code is invalid", reason=McpOAuthFailureReason.AUTHORITY_INVARIANT)
     now = _now()
     async with session_factory() as session, session.begin():
         await lock_owner(session, owner_user_id=grant_hint.owner_user_id, owner_project_id=grant_hint.owner_project_id)
@@ -694,20 +726,27 @@ async def exchange_authorization_code(
             select(McpOAuthCode).where(McpOAuthCode.code_hash == code_hash).with_for_update()
         )
         now = _now()
-        if (
-            oauth_code is None
-            or not hmac.compare_digest(oauth_code.code_hash, code_hash)
-            or oauth_code.used_at is not None
-            or _as_utc(oauth_code.expires_at) <= now
-            or grant.status != "active"
-            or grant.source != "oauth"
-            or grant_is_expired(grant, now=now)
-            or oauth_code.client_id != client_id
-            or oauth_code.redirect_uri != redirect_uri
-            or oauth_code.resource != urls.resource
-            or pkce_s256(code_verifier) != oauth_code.code_challenge
-        ):
-            raise McpOAuthAuthorityError("authorization code is invalid")
+        reason = None
+        if oauth_code is None or not hmac.compare_digest(oauth_code.code_hash, code_hash):
+            reason = McpOAuthFailureReason.CREDENTIAL_UNKNOWN
+        elif oauth_code.used_at is not None:
+            reason = McpOAuthFailureReason.CREDENTIAL_REUSED
+        elif _as_utc(oauth_code.expires_at) <= now or grant_is_expired(grant, now=now):
+            reason = McpOAuthFailureReason.CREDENTIAL_EXPIRED
+        elif grant.status != "active" or grant.source != "oauth":
+            reason = McpOAuthFailureReason.GRANT_INACTIVE
+        elif oauth_code.client_id != client_id or oauth_code.redirect_uri != redirect_uri:
+            reason = McpOAuthFailureReason.CLIENT_INVALID
+        elif oauth_code.resource != urls.resource:
+            reason = McpOAuthFailureReason.RESOURCE_MISMATCH
+        else:
+            try:
+                if pkce_s256(code_verifier) != oauth_code.code_challenge:
+                    reason = McpOAuthFailureReason.AUTHENTICATION_FAILED
+            except (McpOAuthError, UnicodeError):
+                reason = McpOAuthFailureReason.INVALID_SHAPE
+        if reason is not None:
+            raise McpOAuthAuthorityError("authorization code is invalid", reason=reason)
         await _check_ongoing_client(session, grant, client_id)
         access_token = new_oauth_value()
         refresh_token = new_oauth_value()
@@ -752,14 +791,21 @@ async def refresh_tokens(
     scope: str | None,
     client_id: str | None = None,
 ) -> TokenResult:
-    require_exact_resource(resource, urls)
+    try:
+        require_exact_resource(resource, urls)
+    except McpOAuthError:
+        raise McpOAuthAuthorityError(
+            "refresh token is invalid", reason=McpOAuthFailureReason.RESOURCE_MISMATCH
+        ) from None
     if not client_id:
-        raise McpOAuthAuthorityError("refresh token client_id is required")
+        raise McpOAuthAuthorityError("refresh token client_id is required", reason=McpOAuthFailureReason.CLIENT_INVALID)
+    if not refresh_token:
+        raise McpOAuthAuthorityError("refresh token is invalid", reason=McpOAuthFailureReason.INVALID_SHAPE)
     token_hash = hash_oauth_value(refresh_token)
     async with session_factory() as session:
         token_hint = await session.scalar(select(McpOAuthToken).where(McpOAuthToken.token_hash == token_hash))
         if token_hint is None:
-            raise McpOAuthAuthorityError("refresh token is invalid")
+            raise McpOAuthAuthorityError("refresh token is invalid", reason=McpOAuthFailureReason.CREDENTIAL_UNKNOWN)
         family_hint = await session.scalar(
             select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.id == token_hint.family_id)
         )
@@ -769,9 +815,9 @@ async def refresh_tokens(
             else None
         )
     if family_hint is None or grant_hint is None:
-        raise McpOAuthAuthorityError("refresh token is invalid")
+        raise McpOAuthAuthorityError("refresh token is invalid", reason=McpOAuthFailureReason.AUTHORITY_INVARIANT)
     now = _now()
-    replay_detected = False
+    replay_reason = None
     async with session_factory() as session, session.begin():
         await lock_owner(session, owner_user_id=grant_hint.owner_user_id, owner_project_id=grant_hint.owner_project_id)
         grant = await _lock_grant(
@@ -791,25 +837,28 @@ async def refresh_tokens(
         issuing_clients = (
             await session.scalars(select(McpOAuthCode.client_id).where(McpOAuthCode.grant_id == grant.id).limit(2))
         ).all()
-        if len(issuing_clients) != 1 or issuing_clients[0] != client_id:
-            raise McpOAuthAuthorityError("refresh token is invalid")
+        if len(issuing_clients) != 1:
+            raise McpOAuthAuthorityError("refresh token is invalid", reason=McpOAuthFailureReason.AUTHORITY_INVARIANT)
+        if issuing_clients[0] != client_id:
+            raise McpOAuthAuthorityError("refresh token is invalid", reason=McpOAuthFailureReason.CLIENT_INVALID)
         await _check_ongoing_client(session, grant, client_id)
-        replay = (
-            token is None
-            or not hmac.compare_digest(token.token_hash, token_hash)
-            or token.token_type != "refresh"
-            or token.resource != urls.resource
-            or token.rotated_at is not None
-            or token.revoked_at is not None
-            or _refresh_is_expired(token, grant, now)
-            or family is None
-            or family.revoked_at is not None
-            or token.generation != family.generation
-            or grant.status != "active"
-            or grant.source != "oauth"
-            or grant_is_expired(grant, now=now)
-        )
-        if replay:
+        if token is None or not hmac.compare_digest(token.token_hash, token_hash):
+            replay_reason = McpOAuthFailureReason.CREDENTIAL_UNKNOWN
+        elif token.token_type != "refresh":
+            replay_reason = McpOAuthFailureReason.INVALID_SHAPE
+        elif token.resource != urls.resource:
+            replay_reason = McpOAuthFailureReason.RESOURCE_MISMATCH
+        elif token.rotated_at is not None or token.revoked_at is not None:
+            replay_reason = McpOAuthFailureReason.CREDENTIAL_REUSED
+        elif _refresh_is_expired(token, grant, now) or grant_is_expired(grant, now=now):
+            replay_reason = McpOAuthFailureReason.CREDENTIAL_EXPIRED
+        elif family is None:
+            replay_reason = McpOAuthFailureReason.AUTHORITY_INVARIANT
+        elif family.revoked_at is not None or token.generation != family.generation:
+            replay_reason = McpOAuthFailureReason.CREDENTIAL_REUSED
+        elif grant.status != "active" or grant.source != "oauth":
+            replay_reason = McpOAuthFailureReason.GRANT_INACTIVE
+        if replay_reason is not None:
             if family is not None:
                 family.revoked_at = now
             if grant.status == "active":
@@ -836,11 +885,17 @@ async def refresh_tokens(
                 grant=grant,
                 extra={"reason": "refresh_token_replay", "credential_epoch": grant.credential_epoch},
             )
-            replay_detected = True
         else:
-            requested_scopes = tuple(token.scopes) if scope is None else validate_scopes(scope)
+            try:
+                requested_scopes = tuple(token.scopes) if scope is None else validate_scopes(scope)
+            except McpOAuthError:
+                raise McpOAuthAuthorityError(
+                    "refresh token may not expand scope", reason=McpOAuthFailureReason.SCOPE_INVALID
+                ) from None
             if not set(requested_scopes).issubset(set(token.scopes)):
-                raise McpOAuthAuthorityError("refresh token may not expand scope")
+                raise McpOAuthAuthorityError(
+                    "refresh token may not expand scope", reason=McpOAuthFailureReason.SCOPE_INVALID
+                )
             token.rotated_at = now
             family.generation += 1
             access_token = new_oauth_value()
@@ -874,8 +929,8 @@ async def refresh_tokens(
                 expires_in=max(1, int((access_expiry - now).total_seconds())),
                 scope=" ".join(requested_scopes),
             )
-    if replay_detected:
-        raise McpOAuthAuthorityError("refresh token is invalid")
+    if replay_reason is not None:
+        raise McpOAuthAuthorityError("refresh token is invalid", reason=replay_reason)
     return result
 
 

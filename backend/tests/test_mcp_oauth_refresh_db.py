@@ -56,6 +56,10 @@ _TABLES = [
 _URLS = oauth_urls("", public_mcp_url="https://cloud.example.test/mcp", production=True)
 
 
+def _oauth_reasons(caplog) -> list[str]:
+    return [record.diagnostic_reason for record in caplog.records if record.name == "app.api.mcp"]
+
+
 @pytest.fixture(scope="module")
 def db_tables():
     database_url = os.environ.get("AFTERGLOW_TEST_DATABASE_URL")
@@ -188,12 +192,15 @@ async def security_state(issued):
 
 
 @pytest.mark.parametrize("client_id", [None, "another-client", ""])
-async def test_mismatched_refresh_client_cannot_rotate_or_revoke(issued_refresh, client_id):
+async def test_mismatched_refresh_client_cannot_rotate_or_revoke(issued_refresh, client_id, caplog):
     before = await security_state(issued_refresh)
     rejected = await refresh(issued_refresh, client_id=client_id)
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "invalid_grant"
     assert await security_state(issued_refresh) == before
+    assert "client_invalid" in _oauth_reasons(caplog)
+    assert issued_refresh.refresh_token not in caplog.text
+    assert rejected.json()["error_description"] == "OAuth grant is invalid"
 
     accepted = await refresh(issued_refresh, client_id=issued_refresh.client_id)
     assert accepted.status_code == 200
@@ -357,7 +364,7 @@ async def test_refresh_binding_survives_code_expiry_and_ticket_cleanup(issued_re
 
 
 @pytest.mark.parametrize("binding", ["missing", "ambiguous"])
-async def test_supplied_client_fails_closed_without_unique_issuing_code(issued_refresh, binding):
+async def test_supplied_client_fails_closed_without_unique_issuing_code(issued_refresh, binding, caplog):
     async with issued_refresh.factory() as session, session.begin():
         code = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.grant_id == issued_refresh.grant_id))
         if binding == "missing":
@@ -381,9 +388,12 @@ async def test_supplied_client_fails_closed_without_unique_issuing_code(issued_r
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "invalid_grant"
     assert await security_state(issued_refresh) == before
+    assert "authority_invariant" in _oauth_reasons(caplog)
+    assert rejected.json()["error_description"] == "OAuth grant is invalid"
+    assert issued_refresh.refresh_token not in caplog.text
 
 
-async def test_correct_client_replay_still_revokes_but_other_client_does_not(issued_refresh):
+async def test_correct_client_replay_still_revokes_but_other_client_does_not(issued_refresh, caplog):
     rotated = await refresh(issued_refresh, client_id=issued_refresh.client_id)
     assert rotated.status_code == 200
     before = await security_state(issued_refresh)
@@ -393,6 +403,9 @@ async def test_correct_client_replay_still_revokes_but_other_client_does_not(iss
 
     replay = await refresh(issued_refresh, client_id=issued_refresh.client_id)
     assert replay.status_code == 400
+    assert "credential_reused" in _oauth_reasons(caplog)
+    assert replay.json()["error_description"] == "OAuth grant is invalid"
+    assert issued_refresh.refresh_token not in caplog.text
     state = await security_state(issued_refresh)
     assert state[0] == "revoked"
     assert state[1] == before[1] + 1
@@ -431,11 +444,99 @@ async def test_refresh_attenuation_cannot_regain_grant_write_scope(issued_refres
     assert inherited.json()["scope"] == "mcp:read"
 
 
-async def test_refresh_wrong_resource_cannot_rotate_or_revoke(issued_refresh):
+async def test_refresh_wrong_resource_cannot_rotate_or_revoke(issued_refresh, caplog):
     before = await security_state(issued_refresh)
     rejected = await refresh(issued_refresh, client_id=issued_refresh.client_id, resource=_URLS.resource + "/other")
     assert rejected.status_code == 400
     assert await security_state(issued_refresh) == before
+    assert "resource_mismatch" in _oauth_reasons(caplog)
+    assert rejected.json()["error_description"] == "OAuth grant is invalid"
+    assert issued_refresh.refresh_token not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"), [("unknown-synthetic-credential", "credential_unknown"), ("", "invalid_shape")]
+)
+async def test_unknown_refresh_diagnostic_never_mutates_other_authority(issued_refresh, caplog, token, reason):
+    before = await security_state(issued_refresh)
+    rejected = await issued_refresh.client.post(
+        "/api/v1/mcp/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": token,
+            "client_id": issued_refresh.client_id,
+            "resource": _URLS.resource,
+        },
+    )
+    assert rejected.status_code == 400
+    assert rejected.json() == {"error": "invalid_grant", "error_description": "OAuth grant is invalid"}
+    assert reason in _oauth_reasons(caplog)
+    assert "unknown-synthetic-credential" not in caplog.text
+    assert await security_state(issued_refresh) == before
+
+
+async def test_expired_refresh_diagnostic_preserves_revocation_and_no_replay(issued_refresh, caplog):
+    async with issued_refresh.factory() as session, session.begin():
+        token = await session.scalar(
+            select(McpOAuthToken).where(McpOAuthToken.token_hash == hash_oauth_value(issued_refresh.refresh_token))
+        )
+        token.expires_at = datetime.now(UTC) - timedelta(seconds=5)
+    before = await security_state(issued_refresh)
+    rejected = await refresh(issued_refresh, client_id=issued_refresh.client_id)
+    assert rejected.status_code == 400
+    assert rejected.json() == {"error": "invalid_grant", "error_description": "OAuth grant is invalid"}
+    assert "credential_expired" in _oauth_reasons(caplog)
+    assert issued_refresh.refresh_token not in caplog.text
+    after = await security_state(issued_refresh)
+    assert after[0] == "revoked" and after[1] == before[1] + 1
+    assert after[4] is not None
+    assert after[5] == before[5]
+    assert (await refresh(issued_refresh, client_id=issued_refresh.client_id)).status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("verifier", "reason"),
+    [("short", "invalid_shape"), ("é" * 43, "invalid_shape"), ("z" * 43, "authentication_failed")],
+)
+async def test_code_authentication_diagnostic_does_not_consume_or_replay(oauth_consent, caplog, verifier, reason):
+    from app.services.mcp_control_plane.oauth_authority import approve_consent_ticket
+
+    consent = oauth_consent
+    result = await approve_consent_ticket(
+        consent.factory,
+        ticket=consent.ticket,
+        owner_user_id=consent.owner,
+        owner_project_id="A",
+        username="owner",
+        roles=["member"],
+        conn=consent.conn,
+        access_level="read",
+    )
+    form = {
+        "grant_type": "authorization_code",
+        "code": result.code,
+        "client_id": consent.client_id,
+        "redirect_uri": result.redirect_uri,
+        "resource": _URLS.resource,
+        "code_verifier": verifier,
+    }
+    rejected = await consent.client.post("/api/v1/mcp/oauth/token", data=form)
+    assert rejected.status_code == 400
+    assert rejected.json() == {"error": "invalid_grant", "error_description": "OAuth grant is invalid"}
+    assert reason in _oauth_reasons(caplog)
+    assert result.code not in caplog.text
+    async with consent.factory() as session:
+        code = await session.scalar(select(McpOAuthCode).where(McpOAuthCode.code_hash == hash_oauth_value(result.code)))
+        assert code.used_at is None
+        assert (
+            await session.scalar(select(McpOAuthTokenFamily).where(McpOAuthTokenFamily.grant_id == code.grant_id))
+            is None
+        )
+    accepted = await consent.client.post("/api/v1/mcp/oauth/token", data={**form, "code_verifier": consent.verifier})
+    assert accepted.status_code == 200
+    replay = await consent.client.post("/api/v1/mcp/oauth/token", data={**form, "code_verifier": consent.verifier})
+    assert replay.status_code == 400
+    assert "credential_reused" in _oauth_reasons(caplog)
 
 
 async def test_oauth_revocation_blocks_access_and_refresh(issued_refresh):

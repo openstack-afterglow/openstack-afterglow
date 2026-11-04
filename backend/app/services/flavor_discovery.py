@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.models.compute import FlavorInfo
 from app.services import cache, flavor_automation_policy, flavor_capacity, keystone, nova
 from app.services.work_dispatcher import checkpoint, close_connection, open_connection, run_sync
+from app.utils.log import exception_metadata
 
 _logger = logging.getLogger(__name__)
 _REFRESH_SECONDS = 10
@@ -59,6 +60,11 @@ class _RecordedClient:
         self.native = native
         self.records = {} if records is None else records
         self.observed_at = observed_at
+        # These are native method attempts, not dispatched HTTP GET counts:
+        # the client's deadline guard can reject an attempt before transport I/O.
+        self.native_reads_attempted = 0
+        self.native_reads_completed = 0
+        self.native_reads_failed = 0
 
     def _read(self, service, path, params, deadline, *, missing_ok=False):
         key = _request_key(service, path, params)
@@ -69,10 +75,16 @@ class _RecordedClient:
             if value is None and not missing_ok:
                 raise flavor_capacity._AuthorityError("required capacity observation is missing")
             return value
-        if service == "compute":
-            value = self.native.compute(path, params, deadline)
-        else:
-            value = self.native.placement(path, params, deadline, missing_ok=missing_ok)
+        self.native_reads_attempted += 1
+        try:
+            if service == "compute":
+                value = self.native.compute(path, params, deadline)
+            else:
+                value = self.native.placement(path, params, deadline, missing_ok=missing_ok)
+        except Exception:
+            self.native_reads_failed += 1
+            raise
+        self.native_reads_completed += 1
         self.records[key] = value
         return value
 
@@ -139,30 +151,100 @@ async def capacity_client(policy):
     )
 
 
+def _failure_reason(exc, deadline):
+    if time.monotonic() >= deadline:
+        return "deadline"
+    # Structural diagnostics preserve chained transport errors without touching
+    # exception messages, response bodies, endpoints, or credential properties.
+    metadata = exception_metadata((type(exc), exc, exc.__traceback__))
+    types = {metadata["type"], *(node["type"] for node in metadata["causes"])}
+    if types & {"TimeoutError", "Timeout", "ConnectTimeout", "ReadTimeout"}:
+        return "timeout"
+    if types & {"ConnectionError", "ConnectFailure", "ConnectionFailure", "ConnectError"}:
+        return "transport"
+    if isinstance(exc, flavor_capacity._AuthorityError):
+        return "observation_rejected"
+    return "unexpected"
+
+
 def _observe(conn, flavors, policy):
     """Collect each project-independent Placement shape once; project/AZ fitting stays local."""
-    client = _RecordedClient(flavor_capacity._Client(conn))
-    snapshot = flavor_capacity._Snapshot()
-    demands, _ = flavor_capacity._parse_all(flavors, policy["gpu_profiles"])
-    deadline = time.monotonic() + flavor_capacity._DEADLINE_SECONDS
-    snapshot.facts(client, deadline)
-    snapshot.provider_roots(client, deadline)
-    shapes = {demand.shape for demand in demands.values() if demand is not None}
-    for shape in sorted(shapes, key=lambda shape: repr(shape)):
-        if time.monotonic() >= deadline:
-            break
-        try:
-            view = snapshot.shape(client, deadline, shape)
-            # Fetch CPU/RAM max_unit even for tenant-restricted hosts. The stored
-            # facts, not an arbitrary warmup tenant, determine their later visibility.
-            for candidates in view.roots.values():
-                for amounts in candidates:
-                    for provider, resource in amounts:
-                        if resource in (shape.cpu_class, "MEMORY_MB"):
-                            snapshot.max_unit(client, deadline, provider, resource)
-        except Exception:
-            _logger.warning("Flavor discovery shape unavailable", exc_info=False)
-    return client.records
+    started = time.monotonic()
+    deadline = started + flavor_capacity._DEADLINE_SECONDS
+    client = None
+    shapes = set()
+    attempted = succeeded = 0
+    failures = {}
+    stage = "client"
+
+    def failed(exc):
+        reason = _failure_reason(exc, deadline)
+        group = (stage, reason)
+        if group not in failures:
+            metadata = exception_metadata((type(exc), exc, exc.__traceback__))
+            failures[group] = {
+                "stage": stage,
+                "reason": reason,
+                "count": 0,
+                "exception_type": metadata["type"],
+            }
+            for key in ("status_code", "http_status", "status", "errno"):
+                if key in metadata:
+                    failures[group][key] = metadata[key]
+        failures[group]["count"] += 1
+
+    try:
+        client = _RecordedClient(flavor_capacity._Client(conn))
+        snapshot = flavor_capacity._Snapshot()
+        stage = "parse"
+        demands, _ = flavor_capacity._parse_all(flavors, policy["gpu_profiles"])
+        shapes = {demand.shape for demand in demands.values() if demand is not None}
+        stage = "host_facts"
+        snapshot.facts(client, deadline)
+        stage = "provider_roots"
+        snapshot.provider_roots(client, deadline)
+        for shape in sorted(shapes, key=lambda shape: repr(shape)):
+            if time.monotonic() >= deadline:
+                break
+            attempted += 1
+            try:
+                stage = "allocation_candidates"
+                view = snapshot.shape(client, deadline, shape)
+                # Fetch CPU/RAM max_unit even for tenant-restricted hosts. The stored
+                # facts, not an arbitrary warmup tenant, determine their later visibility.
+                stage = "inventories"
+                for candidates in view.roots.values():
+                    for amounts in candidates:
+                        for provider, resource in amounts:
+                            if resource in (shape.cpu_class, "MEMORY_MB"):
+                                snapshot.max_unit(client, deadline, provider, resource)
+                succeeded += 1
+            except Exception as exc:
+                failed(exc)
+        return client.records
+    except Exception as exc:
+        failed(exc)
+        raise
+    finally:
+        skipped = len(shapes) - attempted
+        if failures or skipped:
+            _logger.warning(
+                "Flavor discovery observation incomplete",
+                extra={
+                    "shapes_total": len(shapes),
+                    "shapes_attempted": attempted,
+                    "shapes_succeeded": succeeded,
+                    "shapes_failed": attempted - succeeded,
+                    "shapes_skipped": skipped,
+                    "deadline_exhausted": time.monotonic() >= deadline,
+                    "native_reads_attempted": client.native_reads_attempted if client is not None else 0,
+                    "native_reads_completed": client.native_reads_completed if client is not None else 0,
+                    "native_reads_failed": client.native_reads_failed if client is not None else 0,
+                    "observations_recorded": len(client.records) if client is not None else 0,
+                    "duration_ms": round((time.monotonic() - started) * 1000, 1),
+                    "failures": list(failures.values()),
+                },
+            )
 
 
 async def refresh_once(conn):

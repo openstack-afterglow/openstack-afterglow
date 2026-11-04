@@ -51,6 +51,8 @@ class TrafficAnalyticsSettings(BaseModel):
 
 
 ByteCount = Annotated[int, Field(ge=0, le=2**40)]
+DropReason = Literal["timeout", "connection", "capacity", "rejected", "unknown"]
+DropCount = Annotated[int, Field(ge=0, le=1_000_000)]
 
 
 class EventMeasurements(BaseModel):
@@ -66,6 +68,13 @@ class EventMeasurements(BaseModel):
     response_bytes: ByteCount | None = None
     latency_ms: float = Field(ge=0, le=86_400_000)
     reporter_dropped_events: int = Field(0, ge=0, le=1_000_000)
+    reporter_drop_reasons: dict[DropReason, DropCount] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_drop_reasons(self):
+        if sum(self.reporter_drop_reasons.values()) > self.reporter_dropped_events:
+            raise ValueError("drop reasons exceed reported losses")
+        return self
 
     @field_validator("at", "latency_ms")
     @classmethod
@@ -165,6 +174,8 @@ class TrafficCoverage(BaseModel):
     unique_method: str
     dropped_events: int | None
     reporter_dropped_events: int | None
+    drop_reasons: dict[DropReason, int] = Field(default_factory=dict)
+    reporter_drop_reasons: dict[DropReason, int] = Field(default_factory=dict)
     observed_since: float | None
     last_observed_at: float | None
 

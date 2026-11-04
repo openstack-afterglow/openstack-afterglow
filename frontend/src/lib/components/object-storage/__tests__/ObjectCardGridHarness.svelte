@@ -10,6 +10,7 @@
 		containerName: () => 'sample-artifacts',
 		token: () => undefined,
 		projectId: () => 'project-a',
+		ownerKey: () => 'grid-fixture-owner',
 	});
 	provideObjectBrowser(store);
 	untrack(() => onstore?.(store));

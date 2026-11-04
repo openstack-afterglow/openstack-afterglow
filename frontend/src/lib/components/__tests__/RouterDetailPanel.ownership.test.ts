@@ -9,7 +9,7 @@ const { mocks, confirmMock } = vi.hoisted(() => ({
 
 vi.mock('$lib/api/client', () => ({
 	ApiError: class ApiError extends Error {},
-	api: mocks,
+	api: { ...mocks, withExperience: () => mocks },
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: confirmMock }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));

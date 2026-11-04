@@ -9,6 +9,7 @@
 	import { palette } from '$lib/stores/palette';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ExperienceSupportCode from '$lib/components/ui/ExperienceSupportCode.svelte';
 	import { t } from '$lib/i18n/ns/nav';
 	import { auth } from '$lib/stores/auth';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -137,7 +138,12 @@
 				</a>
 			{/each}
 		</nav>
-		{#if $sidebarExpanded && footer}<div class="shrink-0 border-t border-line">{@render footer()}</div>{/if}
+		{#if $sidebarExpanded}
+			<div class="min-h-0 max-h-[40%] shrink-0 overflow-y-auto border-t border-line">
+				<ExperienceSupportCode />
+				{#if footer}{@render footer()}{/if}
+			</div>
+		{/if}
 	</aside>
 {/if}
 
@@ -217,7 +223,10 @@
 			</div>
 			</div>
 			<p class="shrink-0 px-6 pb-3 text-xs text-ink-2">{$siteConfig.site_name === 'Afterglow' ? 'Afterglow' : `${$siteConfig.site_name} · Powered by Afterglow`}</p>
-			{#if footer}<div class="min-h-0 max-h-[35%] shrink-0 overflow-y-auto border-t border-line">{@render footer()}</div>{/if}
+			<div class="min-h-0 max-h-[35%] shrink-0 overflow-y-auto border-t border-line">
+				<ExperienceSupportCode />
+				{#if footer}{@render footer()}{/if}
+			</div>
 		</aside>
 	</div>
 {/if}

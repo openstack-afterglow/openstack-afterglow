@@ -9,7 +9,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 import openstack
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, StrictBool, StringConstraints
 
 from app.api.deps import get_token_info, require_admin
@@ -67,7 +67,8 @@ def _require_drover_enabled() -> None:
 
 
 @router.get("/resource-policies", dependencies=[Depends(require_admin)])
-async def list_resource_policies(request: Request):
+async def list_resource_policies(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     try:
         async with _admin_os_conn() as conn:
             local_policies = await store.inspect_policies(conn)
@@ -80,18 +81,74 @@ async def list_resource_policies(request: Request):
         if not _is_waygate_policy(str(policy.get("key") or "")) and not _is_drover_policy(str(policy.get("key") or ""))
     ]
     settings = get_settings()
-    remote_policies: list[dict] = []
-    if settings.service_k3s_enabled:
-        drover_policies = await get_json("drover", request, "/v1/admin/resource-policies")
-        if not isinstance(drover_policies, list):
-            raise HTTPException(status_code=502, detail="drover 응답 형식이 잘못되었습니다")
-        remote_policies.extend(drover_policies)
-    if settings.service_waygate_enabled:
-        waygate_policies = await get_json("waygate", request, "/v1/admin/resource-policies")
-        if not isinstance(waygate_policies, list):
-            raise HTTPException(status_code=502, detail="waygate 응답 형식이 잘못되었습니다")
-        remote_policies.extend(waygate_policies)
-    return [*local_policies, *remote_policies]
+    errors: list[dict] = []
+    for service, enabled in (
+        ("drover", settings.service_k3s_enabled),
+        ("waygate", settings.service_waygate_enabled),
+    ):
+        if not enabled:
+            continue
+        try:
+            policies = await get_json(service, request, "/v1/admin/resource-policies")
+        except HTTPException as exc:
+            errors.append({"service": service, "status": exc.status_code})
+            continue
+        if not isinstance(policies, list):
+            errors.append({"service": service, "status": 502})
+            continue
+        local_policies.extend(policies)
+    return {"policies": local_policies, "errors": errors}
+
+
+def _catalog(spec: resource_policies.PolicySpec, options: list[dict]) -> dict:
+    return {
+        "key": spec.key,
+        "resource_kind": spec.resource_kind,
+        "group": spec.group,
+        "execution_scope": spec.execution_scope,
+        "dependency": spec.dependency,
+        "constraints": {"external_only": spec.external_only, "shared_only": spec.shared_only},
+        "options": options,
+    }
+
+
+@router.get("/resource-policies/catalog", dependencies=[Depends(require_admin)])
+async def discover_resource_policy_catalogs(
+    response: Response,
+    keys: Annotated[list[str], Query(min_length=1, max_length=32)],
+):
+    """Batch local catalogs only; extracted services retain independent reads."""
+    response.headers["Cache-Control"] = "no-store"
+    keys = list(dict.fromkeys(keys))
+    results: dict[str, dict] = {}
+    local_keys = [key for key in keys if not _is_waygate_policy(key) and not _is_drover_policy(key)]
+
+    def failure(key: str, status: int, detail: str) -> dict:
+        return {"key": key, "error": {"status": status, "detail": detail}}
+
+    for key in keys:
+        if key not in local_keys:
+            results[key] = failure(key, 404, "알 수 없는 리소스 정책입니다")
+
+    async def local():
+        if not local_keys:
+            return
+        try:
+            async with _admin_os_conn() as conn:
+                discovered = await resource_policies.discover_options_batch(conn, local_keys)
+            for key, options in discovered.items():
+                if isinstance(options, resource_policies.ResourcePolicyValidationError):
+                    results[key] = failure(key, 404, "알 수 없는 리소스 정책입니다")
+                elif isinstance(options, Exception):
+                    results[key] = failure(key, 503, "OpenStack 리소스 목록을 조회할 수 없습니다")
+                else:
+                    results[key] = _catalog(resource_policies.get_spec(key), options)
+        except Exception:
+            for key in local_keys:
+                results[key] = failure(key, 503, "OpenStack 리소스 목록을 조회할 수 없습니다")
+
+    await local()
+    return {"catalogs": [results[key] for key in keys]}
 
 
 @router.get("/resource-policies/catalog/{policy_key}", dependencies=[Depends(require_admin)])
@@ -108,15 +165,7 @@ async def discover_resource_policy_options(policy_key: str, request: Request):
     try:
         async with _admin_os_conn() as conn:
             spec = resource_policies.get_spec(policy_key)
-            return {
-                "key": spec.key,
-                "resource_kind": spec.resource_kind,
-                "group": spec.group,
-                "execution_scope": spec.execution_scope,
-                "dependency": spec.dependency,
-                "constraints": {"external_only": spec.external_only, "shared_only": spec.shared_only},
-                "options": await resource_policies.discover_options(conn, policy_key),
-            }
+            return _catalog(spec, await resource_policies.discover_options(conn, policy_key))
     except resource_policies.ResourcePolicyValidationError as exc:
         raise HTTPException(status_code=404, detail="알 수 없는 리소스 정책입니다") from exc
     except store.ResourcePolicyStorageUnavailable as exc:
@@ -156,7 +205,8 @@ async def update_resource_policy(
 
 
 @router.get("/runtime-settings", dependencies=[Depends(require_admin)])
-async def list_runtime_settings(request: Request):
+async def list_runtime_settings(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     try:
         local_settings = await store.list_runtime_settings()
     except store.ResourcePolicyStorageUnavailable as exc:
@@ -165,12 +215,18 @@ async def list_runtime_settings(request: Request):
     local_settings = [
         setting for setting in local_settings if not _is_drover_runtime_setting(str(setting.get("key") or ""))
     ]
-    if not get_settings().service_k3s_enabled:
-        return local_settings
-    drover_settings = await get_json("drover", request, "/v1/admin/runtime-settings")
-    if not isinstance(drover_settings, list):
-        raise HTTPException(status_code=502, detail="drover 응답 형식이 잘못되었습니다")
-    return [*local_settings, *drover_settings]
+    errors: list[dict] = []
+    if get_settings().service_k3s_enabled:
+        try:
+            drover_settings = await get_json("drover", request, "/v1/admin/runtime-settings")
+        except HTTPException as exc:
+            errors.append({"service": "drover", "status": exc.status_code})
+        else:
+            if isinstance(drover_settings, list):
+                local_settings.extend(drover_settings)
+            else:
+                errors.append({"service": "drover", "status": 502})
+    return {"settings": local_settings, "errors": errors}
 
 
 @router.put("/runtime-settings/{setting_key}", dependencies=[Depends(require_admin)])

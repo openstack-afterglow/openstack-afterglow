@@ -4,9 +4,11 @@ import type { ReusableAsset, CloudEnvironment, AssetPage, ConsumeResult, CloudRe
 import type { PackageIdentity, PackageSummary, PackageVersion, ScopedPage, ProjectContext } from '$lib/api/palimpsestPackages';
 import { HubClientError } from '$lib/api/palimpsestHub';
 import { t as hubText } from '$lib/i18n/ns/palimpsest-hub';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 export type AssetSource = 'hub' | 'packages' | 'environments';
 type Lane = AssetSource | 'versions' | 'download' | 'resources' | 'consume' | 'status' | 'cleanup';
+const LANE_STEPS: Readonly<Record<Lane, number>> = { hub: 0, packages: 1, environments: 2, versions: 3, download: 4, resources: 5, consume: 6, status: 7, cleanup: 8 };
 export type AssetSelection = { source: 'hub'; asset: ReusableAsset } | { source: 'environments'; asset: CloudEnvironment } | { source: 'packages'; asset: PackageSummary };
 export function createPalimpsestAssetsController(
   identity: () => AssetIdentity | null,
@@ -48,6 +50,17 @@ export function createPalimpsestAssetsController(
     consumeLocked = false;
     close(); errors = {}; busy = {}; query = '';
   }
+  function laneValue(lane: Lane) {
+    switch (lane) {
+      case 'hub': return hub;
+      case 'packages': return packages;
+      case 'environments': return environments;
+      case 'versions': return versions;
+      case 'resources': return resources;
+      case 'consume': case 'status': case 'cleanup': return consume;
+      default: return null;
+    }
+  }
   async function run<T>(lane: Lane, operation: (actor: PackageIdentity, signal: AbortSignal) => Promise<T>, apply: (value: T) => void) {
     if (!current() || lane === 'download' && !canDownload() || lane === 'consume' && (!canWrite() || !canDownload()) || lane === 'cleanup' && !canWrite()) return;
     if (lane === 'consume' && busy.consume) return;
@@ -55,14 +68,31 @@ export function createPalimpsestAssetsController(
     const actor = { ...bound! }, epoch = generation, request = new AbortController();
     requests.set(lane, request); busy[lane] = true; delete errors[lane];
     const owns = () => owned() && (lane === 'consume' || lane === 'cleanup' || permitted()) && epoch === generation && requests.get(lane) === request && !request.signal.aborted;
+    const experience = lane === 'consume' || lane === 'cleanup' || lane === 'download'
+      ? beginExperienceAction('palimpsest', lane === 'consume' ? 'create' : lane === 'cleanup' ? 'delete' : 'export', 'resource.list')
+      : beginExperienceLoad('palimpsest', 'resource.list');
+    const step = LANE_STEPS[lane];
+    experienceState(experience, 'loading', step);
     try {
-      const result = await operation(actor, request.signal);
-      if (owns() && (lane !== 'download' || canDownload())) apply(result);
+      const result = await operation({ ...actor, experience }, request.signal);
+      if (owns() && (lane !== 'download' || canDownload())) {
+        apply(result);
+        const appliedValue = laneValue(lane);
+        if (lane !== 'download') {
+          const items = appliedValue && 'items' in appliedValue ? appliedValue.items : null;
+          experienceState(experience, Array.isArray(items) && !items.length ? 'empty' : 'ready', step);
+          void experienceApplied(experience, {}, () => current() && epoch === generation && !request.signal.aborted && laneValue(lane) === appliedValue);
+        }
+      } else experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale');
     } catch (error) {
       if (owns()) {
         errors[lane] = error instanceof HubClientError ? hubText(error.code === 'too-large' ? 'error.size' : 'error.response') : error instanceof Error ? error.message : hubText('error.request');
         if (lane === 'consume' && error instanceof ApiError && [400, 403, 404, 409, 422].includes(error.status)) consumeLocked = false;
+        experienceState(experience, 'error', step);
+        const appliedError = errors[lane];
+        void experienceApplied(experience, {}, () => current() && epoch === generation && !request.signal.aborted && errors[lane] === appliedError);
       }
+      else experienceDiscarded(experience, request.signal.aborted ? 'aborted' : 'stale');
     } finally {
       if (owns()) { requests.delete(lane); busy[lane] = false; }
     }

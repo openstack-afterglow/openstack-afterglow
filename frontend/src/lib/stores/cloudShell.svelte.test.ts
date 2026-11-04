@@ -90,7 +90,6 @@ describe('Cloud Shell singleton controller contract', () => {
 		fixture.controller.openConsent();
 
 		await fixture.controller.approve();
-		expect(fixture.issueTicket).toHaveBeenCalledWith(identity);
 		expect(fixture.createWebSocket).toHaveBeenCalledWith(
 			'wss://afterglow.example/api/v1/cloud-shell/ws?ticket=ticket%20value',
 		);

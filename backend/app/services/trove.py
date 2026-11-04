@@ -114,14 +114,12 @@ def list_instances(conn) -> list[dict]:
     """현재 프로젝트의 DB 인스턴스 목록 반환 (raw REST: ip/addresses 보장).
 
     Trove 응답의 deleted=1 행은 이미 삭제된 인스턴스이므로 UI 노출 방지를 위해 제외.
+    Upstream 실패는 호출자(HTTP 500)로 전달하고 빈 목록으로 숨기지 않는다.
     """
-    try:
-        resp = conn.database.get("/instances")
-        body = resp.json() if hasattr(resp, "json") else {}
-        return [_dict_from_raw(raw) for raw in body.get("instances", []) if not raw.get("deleted")]
-    except Exception:
-        _logger.debug("Trove 인스턴스 목록 조회 실패", exc_info=True)
-        return []
+    resp = conn.database.get("/instances")
+    resp.raise_for_status()
+    body = resp.json() if hasattr(resp, "json") else {}
+    return [_dict_from_raw(raw) for raw in body.get("instances", []) if not raw.get("deleted")]
 
 
 def list_instances_admin_all_projects(conn) -> list[dict]:
@@ -211,6 +209,7 @@ def get_instance(conn, instance_id: str) -> dict:
     `deleted` 필드를 반환 dict 에 포함하여 라우터에서 404 처리 가능하도록 한다.
     """
     resp = conn.database.get(f"/instances/{instance_id}")
+    resp.raise_for_status()
     body = resp.json() if hasattr(resp, "json") else {}
     raw = body.get("instance") or {}
     d = _dict_from_raw(raw)
@@ -351,19 +350,15 @@ def enable_root(conn, instance_id: str) -> dict:
 
 
 def list_databases(conn, instance_id: str) -> list[dict]:
-    """인스턴스 내 데이터베이스 목록."""
-    try:
-        return [
-            {
-                "name": db.name or "",
-                "character_set": getattr(db, "character_set", "utf8") or "utf8",
-                "collate": getattr(db, "collate", "") or "",
-            }
-            for db in conn.database.databases(instance_id)
-        ]
-    except Exception:
-        _logger.debug("Trove DB 목록 조회 실패 instance=%s", instance_id, exc_info=True)
-        return []
+    """인스턴스 내 데이터베이스 목록. Upstream 실패는 호출자로 전달한다."""
+    return [
+        {
+            "name": db.name or "",
+            "character_set": getattr(db, "character_set", "utf8") or "utf8",
+            "collate": getattr(db, "collate", "") or "",
+        }
+        for db in conn.database.databases(instance_id)
+    ]
 
 
 def create_database(
@@ -406,42 +401,39 @@ def delete_database(conn, instance_id: str, db_name: str) -> None:
 
 
 def list_users(conn, instance_id: str) -> list[dict]:
-    """인스턴스 내 유저 목록 (raw REST 우선, name@host 기준 dedup)."""
+    """인스턴스 내 유저 목록 (raw REST 우선, name@host 기준 dedup). Upstream 실패는 호출자로 전달한다."""
+    # raw REST: SDK 래핑이 host 를 누락하거나 중복 entry 를 만드는 경우 회피
     try:
-        # raw REST: SDK 래핑이 host 를 누락하거나 중복 entry 를 만드는 경우 회피
-        try:
-            resp = conn.database.get(f"/instances/{instance_id}/users")
-            body = resp.json() if hasattr(resp, "json") else {}
-            raw_users = body.get("users", []) or []
-            entries = [
-                {
-                    "name": u.get("name", "") or "",
-                    "host": u.get("host", "%") or "%",
-                    "databases": u.get("databases", []) or [],
-                }
-                for u in raw_users
-                if u.get("name")
-            ]
-        except Exception:
-            entries = [
-                {
-                    "name": u.name or "",
-                    "host": getattr(u, "host", "%") or "%",
-                    "databases": getattr(u, "databases", []) or [],
-                }
-                for u in conn.database.users(instance_id)
-            ]
-
-        # dedup: (name, host) 동일 entry 는 1개로 (Trove 가 동일 user 중복 반환하는 경우 방어)
-        seen: dict[tuple[str, str], dict] = {}
-        for e in entries:
-            key = (e["name"], e["host"])
-            if key not in seen:
-                seen[key] = e
-        return list(seen.values())
+        resp = conn.database.get(f"/instances/{instance_id}/users")
+        resp.raise_for_status()
+        body = resp.json() if hasattr(resp, "json") else {}
+        raw_users = body.get("users", []) or []
+        entries = [
+            {
+                "name": u.get("name", "") or "",
+                "host": u.get("host", "%") or "%",
+                "databases": u.get("databases", []) or [],
+            }
+            for u in raw_users
+            if u.get("name")
+        ]
     except Exception:
-        _logger.debug("Trove 유저 목록 조회 실패 instance=%s", instance_id, exc_info=True)
-        return []
+        entries = [
+            {
+                "name": u.name or "",
+                "host": getattr(u, "host", "%") or "%",
+                "databases": getattr(u, "databases", []) or [],
+            }
+            for u in conn.database.users(instance_id)
+        ]
+
+    # dedup: (name, host) 동일 entry 는 1개로 (Trove 가 동일 user 중복 반환하는 경우 방어)
+    seen: dict[tuple[str, str], dict] = {}
+    for e in entries:
+        key = (e["name"], e["host"])
+        if key not in seen:
+            seen[key] = e
+    return list(seen.values())
 
 
 def create_user(
@@ -485,30 +477,27 @@ def list_flavors(conn) -> list[dict]:
     openstacksdk Flavor ORM 이 일부 환경에서 id 를 None 으로 반환해
     flavorRef 에 name 이 전송되는 문제 → raw REST 로 숫자 id 를 직접 파싱.
     """
-    try:
-        resp = conn.database.get("/flavors")
-        body = resp.json() if hasattr(resp, "json") else {}
-        result: list[dict] = []
-        for f in body.get("flavors", []):
-            name = f.get("name", "") or ""
-            if name not in _ALLOWED_DB_FLAVORS:
-                continue
-            raw_id = f.get("id") or f.get("str_id")
-            if raw_id in (None, ""):
-                continue
-            result.append(
-                {
-                    "id": str(raw_id),
-                    "name": name,
-                    "ram": f.get("ram", 0) or 0,
-                    "vcpus": f.get("vcpus", 0) or 0,
-                    "disk": f.get("disk", 0) or 0,
-                }
-            )
-        return result
-    except Exception:
-        _logger.debug("Trove 플레이버 목록 조회 실패", exc_info=True)
-        return []
+    resp = conn.database.get("/flavors")
+    resp.raise_for_status()
+    body = resp.json() if hasattr(resp, "json") else {}
+    result: list[dict] = []
+    for f in body.get("flavors", []):
+        name = f.get("name", "") or ""
+        if name not in _ALLOWED_DB_FLAVORS:
+            continue
+        raw_id = f.get("id") or f.get("str_id")
+        if raw_id in (None, ""):
+            continue
+        result.append(
+            {
+                "id": str(raw_id),
+                "name": name,
+                "ram": f.get("ram", 0) or 0,
+                "vcpus": f.get("vcpus", 0) or 0,
+                "disk": f.get("disk", 0) or 0,
+            }
+        )
+    return result
 
 
 def list_datastores(conn) -> list[dict]:
@@ -516,33 +505,31 @@ def list_datastores(conn) -> list[dict]:
 
     name/version 이 빈 문자열이면 select value 가 비어 form validation 실패 →
     이름 없는 datastore/version 은 응답에서 제외.
+    Upstream 실패는 호출자(HTTP 500)로 전달하고 빈 목록으로 숨기지 않는다.
     """
-    try:
-        resp = conn.database.get("/datastores")
-        body = resp.json() if hasattr(resp, "json") else {}
-        datastores_raw = body.get("datastores", [])
-        result = []
-        for ds in datastores_raw:
-            ds_name = ds.get("name", "") or ""
-            if not ds_name:
+    resp = conn.database.get("/datastores")
+    resp.raise_for_status()
+    body = resp.json() if hasattr(resp, "json") else {}
+    datastores_raw = body.get("datastores", [])
+    result = []
+    for ds in datastores_raw:
+        ds_name = ds.get("name", "") or ""
+        if not ds_name:
+            continue
+        versions = []
+        for v in ds.get("versions", []):
+            v_name = v.get("name", "") or v.get("version", "") or ""
+            if not v_name:
                 continue
-            versions = []
-            for v in ds.get("versions", []):
-                v_name = v.get("name", "") or v.get("version", "") or ""
-                if not v_name:
-                    continue
-                versions.append({"id": str(v.get("id", "") or v_name), "name": v_name})
-            result.append(
-                {
-                    "id": str(ds.get("id", "") or ds_name),
-                    "name": ds_name,
-                    "versions": versions,
-                }
-            )
-        return result
-    except Exception:
-        _logger.debug("Trove 데이터스토어 목록 조회 실패", exc_info=True)
-        return []
+            versions.append({"id": str(v.get("id", "") or v_name), "name": v_name})
+        result.append(
+            {
+                "id": str(ds.get("id", "") or ds_name),
+                "name": ds_name,
+                "versions": versions,
+            }
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -571,37 +558,26 @@ def _backup_to_dict(b: dict) -> dict:
     }
 
 
-def list_backups(conn, instance_id: str | None = None, *, strict: bool = False) -> list[dict]:
-    """Optional UI listing; background observation must opt into fail-closed reads."""
-    try:
-        url = f"/instances/{instance_id}/backups" if instance_id else "/backups"
-        backups = []
-        seen = set()
-        while url:
-            if url in seen:
-                raise RuntimeError("Trove backup pagination loop")
-            seen.add(url)
-            resp = conn.database.get(url)
-            if strict:
-                resp.raise_for_status()
-            body = resp.json()
-            if strict and not isinstance(body.get("backups"), list):
-                raise RuntimeError("Trove backup listing has no backups array")
-            backups.extend(_backup_to_dict(b) for b in body.get("backups", []))
-            url = next(
-                (
-                    link["href"]
-                    for link in body.get("backups_links", body.get("links", []))
-                    if link.get("rel") == "next"
-                ),
-                None,
-            )
-        return backups
-    except Exception:
-        if strict:
-            raise
-        _logger.debug("Trove 백업 목록 조회 실패", exc_info=True)
-        return []
+def list_backups(conn, instance_id: str | None = None) -> list[dict]:
+    """백업 목록 (raw REST). Upstream 실패는 호출자(HTTP 500)로 전달하고 빈 목록으로 숨기지 않는다."""
+    url = f"/instances/{instance_id}/backups" if instance_id else "/backups"
+    backups = []
+    seen = set()
+    while url:
+        if url in seen:
+            raise RuntimeError("Trove backup pagination loop")
+        seen.add(url)
+        resp = conn.database.get(url)
+        resp.raise_for_status()
+        body = resp.json()
+        if not isinstance(body.get("backups"), list):
+            raise RuntimeError("Trove backup listing has no backups array")
+        backups.extend(_backup_to_dict(b) for b in body.get("backups", []))
+        url = next(
+            (link["href"] for link in body.get("backups_links", body.get("links", [])) if link.get("rel") == "next"),
+            None,
+        )
+    return backups
 
 
 def create_backup(conn, instance_id: str, name: str, description: str = "", *, no_retry: bool = False) -> dict:
@@ -643,8 +619,9 @@ def delete_backup(conn, backup_id: str) -> None:
 
 
 def get_backup(conn, backup_id: str) -> dict:
-    """백업 상세 조회."""
+    """백업 상세 조회. Upstream 실패는 호출자로 전달한다."""
     resp = conn.database.get(f"/backups/{backup_id}")
+    resp.raise_for_status()
     body = resp.json() if hasattr(resp, "json") else {}
     return _backup_to_dict(body.get("backup", {}))
 
@@ -666,25 +643,22 @@ def set_instance_access(conn, instance_id: str, is_public: bool, allowed_cidrs: 
 
 
 def list_configurations(conn) -> list[dict]:
-    """DB Configuration group 목록 (raw REST)."""
-    try:
-        resp = conn.database.get("/configurations")
-        body = resp.json() if hasattr(resp, "json") else {}
-        result = []
-        for c in body.get("configurations", []):
-            cfg_name = c.get("name", "") or ""
-            cfg_id = str(c.get("id", "") or "")
-            if not cfg_id:
-                continue
-            result.append(
-                {
-                    "id": cfg_id,
-                    "name": cfg_name,
-                    "datastore_name": c.get("datastore_name", "") or "",
-                    "datastore_version_name": c.get("datastore_version_name", "") or "",
-                }
-            )
-        return result
-    except Exception:
-        _logger.debug("Trove configuration group 목록 조회 실패", exc_info=True)
-        return []
+    """DB Configuration group 목록 (raw REST). Upstream 실패는 호출자로 전달한다."""
+    resp = conn.database.get("/configurations")
+    resp.raise_for_status()
+    body = resp.json() if hasattr(resp, "json") else {}
+    result = []
+    for c in body.get("configurations", []):
+        cfg_name = c.get("name", "") or ""
+        cfg_id = str(c.get("id", "") or "")
+        if not cfg_id:
+            continue
+        result.append(
+            {
+                "id": cfg_id,
+                "name": cfg_name,
+                "datastore_name": c.get("datastore_name", "") or "",
+                "datastore_version_name": c.get("datastore_version_name", "") or "",
+            }
+        )
+    return result

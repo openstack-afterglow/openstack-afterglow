@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import type { Keypair } from '$lib/types/keypair';
@@ -14,6 +14,7 @@
   import KeypairEmptyState from '$lib/components/keypair/KeypairEmptyState.svelte';
   import { toast } from '$lib/stores/toast';
   import { t } from '$lib/i18n/ns/images-keys';
+  import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
   let keypairs = $state<Keypair[]>([]);
   let loading = $state(true);
@@ -22,13 +23,26 @@
   let deleting = $state<string | null>(null);
   let copiedFingerprint = $state<string | null>(null);
   let showModal = $state(false);
+  let stateVersion = 0;
+  let live = true;
+  onDestroy(() => { live = false; });
 
-  async function fetchKeypairs(opts?: { refresh?: boolean }) {
+  async function fetchKeypairs(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.list')) {
+    const projectId = $auth.projectId, userId = $auth.userId;
+    let appliedVersion = 0;
+    const current = () => live && appliedVersion === stateVersion && $auth.projectId === projectId && $auth.userId === userId;
+    if (loading || refreshing) experienceState(experience, 'loading');
     try {
-      keypairs = await api.get<Keypair[]>('/api/v1/keypairs', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
+      keypairs = await api.withExperience(experience).get<Keypair[]>('/api/v1/keypairs', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
       error = '';
+      appliedVersion = ++stateVersion;
+      if (experience?.action !== 'create') experienceState(experience, keypairs.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience, {}, current);
     } catch (e) {
       error = e instanceof ApiError ? t('keypairPage.error.fetchFailed', { status: e.status }) : t('keypairPage.error.server');
+      appliedVersion = ++stateVersion;
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience, {}, current);
     } finally {
       loading = false;
     }
@@ -37,7 +51,7 @@
   async function forceRefresh() {
     refreshing = true;
     try {
-      await fetchKeypairs({ refresh: true });
+      await fetchKeypairs({ refresh: true }, beginExperienceAction('compute', 'refresh', 'resource.list'));
     } finally {
       refreshing = false;
     }
@@ -52,14 +66,16 @@
   });
 
   async function createKeypair(form: { name: string; public_key: string }): Promise<{ private_key?: string } | string> {
+    const experience = beginExperienceAction('compute', 'create', 'resource.list');
     try {
-      const result = await api.post<Keypair>('/api/v1/keypairs', {
+      const result = await api.withExperience(experience).post<Keypair>('/api/v1/keypairs', {
         name: form.name,
         public_key: form.public_key.trim() || null,
       }, $auth.token ?? undefined, $auth.projectId ?? undefined);
-      await fetchKeypairs();
+      await fetchKeypairs(undefined, experience);
       return { private_key: result.private_key };
     } catch (e) {
+      experienceState(experience, 'error');
       return e instanceof ApiError ? e.message : t('keypairPage.error.createFailed');
     }
   }
@@ -67,11 +83,14 @@
   async function deleteKeypair(name: string) {
     if (!await confirmDialog(t('keypairPage.deleteDialog.body', { name }))) return;
     deleting = name;
+    const experience = beginExperienceAction('compute', 'delete', 'resource.list');
     try {
-      await api.delete(`/api/v1/keypairs/${name}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
-      await fetchKeypairs();
+      await api.withExperience(experience).delete(`/api/v1/keypairs/${name}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      await fetchKeypairs(undefined, experience);
     } catch (e) {
       toast.error(t('keypairPage.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       deleting = null;
     }

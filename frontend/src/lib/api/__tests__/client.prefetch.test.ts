@@ -472,3 +472,175 @@ describe('explicit scoped prefetch', () => {
 		expect(mockFetch).toHaveBeenCalledTimes(66);
 	});
 });
+
+describe('explicit semantic read contexts preserve physical cache/coalescing truth', () => {
+	async function observe(getOwner: () => { token: string | null; userId: string | null; domainId: string | null; projectId: string | null } = () => ({ token: null, userId: null, domainId: null, projectId: null })) {
+		// Module reset above isolates private cache registries; collector must share that fresh module instance.
+		const experience = await import('$lib/utils/experience');
+		const collector = experience.installExperienceCollector({
+			getOwner,
+			getRoute: () => '/login', getBaseUrl: () => 'http://localhost:8000',
+			isEnabled: () => true, isSuppressed: () => false, subscribeOwner: () => () => {},
+		});
+		const events = () => mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/experience-events')).flatMap(([, init]) => JSON.parse(init.body).events);
+		return { ...experience, collector, events };
+	}
+	function telemetry(url: string, init?: RequestInit) {
+		if (url.endsWith('/experience-contract')) return Response.json({ schema_version: 2, enabled: true, redaction_revision: 1, max_batch_events: 20, max_body_bytes: 32768 });
+		const count = JSON.parse(String(init?.body)).events.length;
+		return Response.json({ schema_version: 2, accepted: count, duplicates: 0 }, { status: 201 });
+	}
+	it('coalesces two explicit action consumers into one unlinked physical span and records both safe links', async () => {
+		const pending = Promise.withResolvers<Response>();
+		mockFetch.mockImplementation((url, init) => String(url).includes('/activity/experience-') ? Promise.resolve(telemetry(String(url), init)) : pending.promise);
+		const { api } = await loadClient();
+		const tracing = await observe();
+		try {
+			const one = tracing.beginExperienceAction('compute', 'refresh', 'resource.list')!;
+			const two = tracing.beginExperienceAction('compute', 'load', 'resource.list')!;
+			const a = api.withExperience(one).get('/api/v1/items');
+			const b = api.withExperience(two).get('/api/v1/items');
+			await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+			const headers = new Headers(mockFetch.mock.calls[0][1].headers);
+			expect(headers.has('X-Afterglow-Experience-Action')).toBe(false);
+			pending.resolve(Response.json({ values: ['safe'] })); const [left, right] = await Promise.all([a, b]);
+			expect(left).toEqual(right); expect(left).not.toBe(right);
+			await tracing.collector.flush();
+			const links = tracing.events().filter(row => row.action_id && row.event_type === 'result.received');
+			expect(links).toHaveLength(2);
+			expect(new Set(links.map(row => row.payload.transport))).toEqual(new Set(['network', 'shared']));
+			expect(links.every(row => row.payload.physical_span_id === headers.get('X-Afterglow-Experience-Span'))).toBe(true);
+			expect(tracing.events().some(row => row.event_type === 'result.applied' || row.event_type === 'result.committed')).toBe(false);
+			expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'))).toHaveLength(1);
+		} finally { tracing.collector.destroy(); }
+	});
+	it.each([false, true])('links both failed shared GET consumers to the received physical response without changing rejection or dispatches (refresh=%s)', async refresh => {
+		const pending = Promise.withResolvers<Response>();
+		mockFetch.mockImplementation((url, init) => String(url).includes('/activity/experience-') ? Promise.resolve(telemetry(String(url), init)) : pending.promise);
+		const { api } = await loadClient();
+		const tracing = await observe();
+		try {
+			const one = tracing.beginExperienceAction('iam', 'refresh', 'resource.list')!;
+			const two = tracing.beginExperienceAction('iam', 'load', 'resource.list')!;
+			const a = api.withExperience(one).get('/api/v1/auth/workspaces', undefined, undefined, { refresh });
+			const b = api.withExperience(two).get('/api/v1/auth/workspaces', undefined, undefined, { refresh });
+			const settled = Promise.allSettled([a, b]);
+			await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+			const headers = new Headers(mockFetch.mock.calls[0][1].headers);
+			const requestId = 'req-1234567890abcdef1234567890abcdef';
+			pending.resolve(Response.json({ detail: 'private-directory-error' }, { status: 503, headers: { 'X-Request-Id': requestId } }));
+			const [left, right] = await settled;
+			expect(left.status).toBe('rejected'); expect(right.status).toBe('rejected');
+			if (left.status !== 'rejected' || right.status !== 'rejected') throw new Error('Expected both original HTTP failures');
+			expect(left.reason).toBe(right.reason);
+			expect(left.reason).toMatchObject({ status: 503, message: 'private-directory-error' });
+			await tracing.collector.flush();
+			const physical = tracing.events().find(row => !row.action_id && row.event_type === 'result.received' && row.span_id === headers.get('X-Afterglow-Experience-Span'));
+			expect(physical.payload).toMatchObject({ request_id: requestId, http_status: 503 });
+			const links = tracing.events().filter(row => row.action_id && row.event_type === 'result.received');
+			expect(links).toHaveLength(2);
+			expect(new Set(links.map(row => row.action_id))).toEqual(new Set([one.actionId, two.actionId]));
+			expect(new Set(links.map(row => row.payload.transport))).toEqual(new Set(['network', 'shared']));
+			for (const link of links) {
+				expect(link.payload).toMatchObject({ physical_span_id: physical.span_id, http_status: 503, stage: 'response' });
+				expect(link.segment_id).toBe(physical.segment_id);
+				expect(link.page_view_id).toBe(physical.page_view_id);
+			}
+			expect(tracing.events().some(row => row.event_type === 'result.applied' || row.event_type === 'result.committed')).toBe(false);
+			expect(JSON.stringify(tracing.events())).not.toContain('private-directory-error');
+			expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/auth/workspaces'))).toHaveLength(1);
+		} finally { tracing.collector.destroy(); }
+	});
+	it('preserves a rejected shared transport error without inventing received-response links', async () => {
+		const pending = Promise.withResolvers<Response>();
+		mockFetch.mockImplementation((url, init) => String(url).includes('/activity/experience-') ? Promise.resolve(telemetry(String(url), init)) : pending.promise);
+		const { api } = await loadClient(); const tracing = await observe();
+		try {
+			const one = tracing.beginExperienceAction('iam', 'load', 'resource.list')!;
+			const two = tracing.beginExperienceAction('iam', 'load', 'resource.list')!;
+			const settled = Promise.allSettled([api.withExperience(one).get('/api/v1/items'), api.withExperience(two).get('/api/v1/items')]);
+			await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+			const error = new TypeError('private-network-failure'); pending.reject(error);
+			for (const result of await settled) { expect(result.status).toBe('rejected'); if (result.status === 'rejected') expect(result.reason).toBe(error); }
+			await tracing.collector.flush();
+			expect(tracing.events().some(row => row.event_type === 'result.received')).toBe(false);
+			expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'))).toHaveLength(1);
+		} finally { tracing.collector.destroy(); }
+	});
+	it.each(['owner_changed', 'destroyed'] as const)('keeps failed shared response links behind the existing collector %s fence', async boundary => {
+		const pending = Promise.withResolvers<Response>();
+		mockFetch.mockImplementation((url, init) => String(url).includes('/activity/experience-') ? Promise.resolve(telemetry(String(url), init)) : pending.promise);
+		const { api } = await loadClient();
+		let userId: string | null = null;
+		const tracing = await observe(() => ({ token: null, userId, domainId: null, projectId: null }));
+		try {
+			const one = tracing.beginExperienceAction('iam', 'load', 'resource.list')!;
+			const two = tracing.beginExperienceAction('iam', 'load', 'resource.list')!;
+			const settled = Promise.allSettled([api.withExperience(one).get('/api/v1/items'), api.withExperience(two).get('/api/v1/items')]);
+			await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+			if (boundary === 'owner_changed') { userId = 'private-new-owner'; tracing.collector.syncOwner(); }
+			else tracing.collector.destroy();
+			pending.resolve(Response.json({ detail: 'private-late-error' }, { status: 503 }));
+			for (const result of await settled) { expect(result.status).toBe('rejected'); if (result.status === 'rejected') expect(result.reason).toMatchObject({ status: 503 }); }
+			await tracing.collector.flush();
+			expect(tracing.events().some(row => row.action_id === one.actionId || row.action_id === two.actionId)).toBe(false);
+			expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'))).toHaveLength(1);
+		} finally { tracing.collector.destroy(); }
+	});
+	it('keeps prefetched warm reads off the network and labels cache receipt without fake HTTP/server references', async () => {
+		mockFetch.mockImplementation((url, init) => Promise.resolve(String(url).includes('/activity/experience-') ? telemetry(String(url), init) : Response.json({ nested: { safe: true } })));
+		const { api } = await loadClient(); const tracing = await observe();
+		try {
+			await api.prefetch('/api/v1/items');
+			const ctx = tracing.beginExperienceAction('compute', 'load', 'resource.list')!;
+			await api.withExperience(ctx).get('/api/v1/items');
+			await tracing.collector.flush();
+			const cached = tracing.events().find(row => row.action_id === ctx.actionId && row.event_type === 'result.received');
+			expect(cached.payload).toEqual({ transport: 'cache', stage: 'response' });
+			expect(mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'))).toHaveLength(1);
+		} finally { tracing.collector.destroy(); }
+	});
+	it('retains forced/no-store request policy and non-replay mutation options with a bound context', async () => {
+		mockFetch.mockImplementation((url, init) => Promise.resolve(String(url).includes('/activity/experience-') ? telemetry(String(url), init) : Response.json({ ok: true }, { status: 202 })));
+		const { api } = await loadClient(); const tracing = await observe();
+		try {
+			const ctx = tracing.beginExperienceAction('compute', 'create', 'compute.create')!;
+			const bound = api.withExperience(ctx);
+			await bound.get('/api/v1/items', undefined, undefined, { refresh: true });
+			await bound.get('/api/v1/items', undefined, undefined, { cache: 'no-store', replayOnUnauthorized: false });
+			const beforeDispatch = vi.fn();
+			await bound.post('/api/v1/items', { secret: 'private-body' }, undefined, undefined, { replayOnUnauthorized: false, beforeDispatch });
+			expect(beforeDispatch).toHaveBeenCalled();
+			const business = mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'));
+			expect(business).toHaveLength(3); expect(String(business[0][0])).toContain('refresh=true');
+			expect(business[1][1].cache).toBe('no-store'); expect(business[2][1].method).toBe('POST');
+			expect(new Headers(business[2][1].headers).get('X-Afterglow-Experience-Action')).toBe(ctx.actionId);
+			await tracing.collector.flush();
+			expect(JSON.stringify(tracing.events())).not.toContain('private-body');
+			expect(tracing.events().some(row => row.event_type === 'result.committed')).toBe(false);
+		} finally { tracing.collector.destroy(); }
+	});
+	it('links an independently re-read clone-fallback waiter to its own physical request rather than the original dispatch', async () => {
+		let reads = 0;
+		mockFetch.mockImplementation((url, init) => {
+			if (String(url).includes('/activity/experience-')) return Promise.resolve(telemetry(String(url), init));
+			++reads;
+			const response = Response.json({ safe: true });
+			if (reads === 1) vi.spyOn(response, 'json').mockResolvedValue({ uncloneable: () => true });
+			return Promise.resolve(response);
+		});
+		const { api } = await loadClient(); const tracing = await observe();
+		try {
+			const one = tracing.beginExperienceAction('compute', 'load', 'resource.list')!;
+			const two = tracing.beginExperienceAction('compute', 'load', 'resource.list')!;
+			await Promise.all([api.withExperience(one).get('/api/v1/items'), api.withExperience(two).get('/api/v1/items')]);
+			const business = mockFetch.mock.calls.filter(([url]) => String(url).includes('/api/v1/items'));
+			expect(business).toHaveLength(2);
+			await tracing.collector.flush();
+			const receipt = tracing.events().find(row => row.action_id === two.actionId && row.event_type === 'result.received');
+			expect(receipt.payload.transport).toBe('network');
+			expect(receipt.payload.physical_span_id).toBe(new Headers(business[1][1].headers).get('X-Afterglow-Experience-Span'));
+			expect(receipt.payload.physical_span_id).not.toBe(new Headers(business[0][1].headers).get('X-Afterglow-Experience-Span'));
+		} finally { tracing.collector.destroy(); }
+	});
+});

@@ -13,7 +13,7 @@ vi.mock('$app/stores', () => ({
 	page: writable({ url: new URL('http://localhost/dashboard/notifications'), data: {} }),
 }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: mockPost },
+	api: { get: mockGet, post: mockPost, withExperience: () => ({ get: mockGet, post: mockPost }) },
 	ApiError: class ApiError extends Error { status = 500; },
 }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }), authReady: writable(true), projectSwitching: writable(false) }));

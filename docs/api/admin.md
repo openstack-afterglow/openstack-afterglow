@@ -15,6 +15,39 @@ nav_order: 20
 
 SSO 계정도 native `first-password-galera-v2`의 actual credential state/revision에 따라 최초 생성·기존 초기화가 가능합니다. 기존 UUID/home/federation을 유지하며 metadata marker는 유무 판단의 권위가 아닙니다. Native 확장·snapshot 불가나 미정산 최초 생성만 `409 admin_password_reset_external_account`로 native 쓰기·메일·세션 회수·cooldown 전에 거부합니다. 운영 활성화에는 matching native 확장·기존103/schema qualification이 필요합니다.
 
+## 리소스 정책·런타임 설정의 부분 조회
+
+두 합성 목록은 bare array가 아니라 아래 envelope를 반환합니다. 모두 fresh `require_admin`이며
+성공 응답은 `Cache-Control: no-store`입니다. 이전 array 형태의 fallback은 없으므로 API와 frontend를
+matching cohort로 전환해야 합니다. Native 서비스 자체의 개별 proxy 계약은 바꾸지 않습니다.
+
+| 메서드·경로 (`/api/v1/admin` 기준) | 계약 |
+| --- | --- |
+| `GET /resource-policies` | `{policies:[정상 조회된 정책…],errors:[{service:"drover"\|"waygate",status:HTTP정수}…]}` |
+| `GET /runtime-settings` | `{settings:[정상 조회된 설정…],errors:[{service:"drover"\|"waygate",status:HTTP정수}…]}` |
+| `GET /resource-policies/catalog?keys=…` | 입력 key1–32개·중복 제거; `{catalogs:[catalog 또는 {key,error:{status,detail}}…]}`. Local key만 발견하며 remote key는 이 batch에서404·개별 경로로 읽음 |
+| `GET /resource-policies/catalog/{policy_key}` | 해당 key의 원래 local 또는 native scope에서 읽는 options |
+| `PUT /resource-policies/{policy_key}` | `{resource_id:문자열\|null}`; ID최대128자, 실제 native 검증·권위 유지 |
+| `PUT /runtime-settings/{setting_key}` | `{value:strict boolean 또는 trim된1–32자 문자열}`; key별 기존 검증 유지 |
+
+예를 들어 Waygate 조회503이면 local/정상 Drover 값은 유지하고 `errors`에
+`{service:"waygate",status:503}`을 담습니다. Native401/403도 그 서비스의 실패로 남기며 native
+detail/header/URL/token을 복사하지 않습니다. Native 목록 형식 불일치는 해당 service502입니다.
+**HTTP200은 모든 서비스의 설정을 읽었다는 뜻이 아닙니다.** Disabled service는 요청하지 않으며
+그 설정이 누락됐다고 실제 구성 삭제나 default 값으로 추정하지 않습니다. Local 연결/저장소 실패는
+여전히 top-level503, 중앙 사용자 인증/현재 system-admin 거부는 top-level401/403이고, 예상 밖
+programming exception을 빈 목록이나 부분 성공으로 숨기지 않습니다.
+
+Frontend는 실패 service의 행을 해당 서비스의 조회 불가로 설명하고 catalog/선택/저장을
+차단하되 독립된 정상 값·미저장 draft는 유지합니다. Remote per-key catalog 실패도 OpenStack
+장애로 오인하지 않으며 upstream detail은 표시하지 않습니다. `k3s.version`의 Drover 실패가
+local `notion.sync_enabled`를 막지 않습니다. 반환되지 않았거나 읽기 중/실패인 Notion 값은
+unknown이며 false로 표시·저장하지 않습니다. 실제 반환된 `{value:null,state:"missing"}`은
+명시 false와 다른 **미설정**입니다. Panel은 true/false를 명시 선택하기 전 Save를 잠그고
+standalone은 명시 활성화만 허용합니다. Notion target/runtime 읽기는 독립 적용하므로 한쪽 실패를
+다른 쪽의 빈 목록으로 표시하지 않습니다. Owner epoch·read sequence·write revision으로 stale
+결과와 pending-save 중복을 막습니다. 명시 재조회는 읽기만 수행하며 업무 쓰기를 재실행하지 않습니다.
+
 ## 웹 이메일 설정·발송·수신 확인
 
 관리자 페이지 **설정 → 이메일**(`/admin/settings?tab=email`)에서 다음 기능을 사용합니다. 모두 fresh system-admin, private/no-store이며 SMTP 비밀번호·IMAP 비밀번호·본문 암호문은 응답/로그에 노출하지 않습니다. 파일값은 초기 기본값이고 DB override를 저장하면 기존 복구/가입/초대/관리자 password 메일에도 즉시 적용합니다. 기존 원본 config 파일은 수정하지 않습니다.
@@ -57,6 +90,13 @@ Projectless 예외는 위 service BFF에 한정되며 core OpenStack project sco
 - 예외: 라이브러리 관리(`/api/v1/admin/libraries`), 공지(`/api/v1/admin/announcements`).
 - 캐시 기반 조회 엔드포인트는 대부분 `refresh` (query, boolean, 기본 `false`) 파라미터로 캐시 무시 재조회를 지원합니다.
 - 목록 조회는 대체로 `limit`(1~100, 기본 20) + `marker` 커서 페이지네이션을 사용하며 `{ "items": [...], "next_marker": ..., "count": N }` 형태로 응답합니다.
+
+`GET /api/v1/admin/containers/{container_id}`는 기존 관리자 권위와 executor를 유지합니다.
+컨테이너 native 조회의401/403/404만 정적404 `컨테이너를 찾을 수 없습니다`로 숨기고,
+그 밖의 native HTTP·전송·예상 밖 읽기 실패는503 `컨테이너 서비스에 연결할 수 없습니다`로
+구분합니다. Service-disabled/미지원503은 유지하며 provider body·header는 전달하지 않습니다.
+조회 장애는 자원 부재나 삭제 성공의 증거가 아닙니다.
+
 
 ![관리자 개요](../../assets/admin-page.png)
 *관리자 개요 페이지 — 클러스터 전체 vCPU·RAM·Disk 사용률, 총 VM/하이퍼바이저 수, 프로젝트별 리소스 할당량을 한 화면에서 조회*

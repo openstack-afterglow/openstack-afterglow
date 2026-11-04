@@ -16,31 +16,52 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import WorkspaceBrowser from './WorkspaceBrowser.svelte';
+	import { beginAuthExperience } from '$lib/components/auth/authExperience';
 	let loggingOut = $state(false);
 	let busy = $state(false);
+	let live = false;
+	let ownerEpoch = 0;
 	// Only explicit continue/selection actions consume invitation or MCP intent; reads never navigate.
 	function continueSession() {
 		if (busy || get(projectSwitching)) return;
 		continueAfterSelection();
 	}
 	// A successful selection owns its switch lock until its callback returns.
-	function continueAfterSelection() {
+	function continueAfterSelection(sourceSelection = false) {
 		if (!get(authReady) || !get(auth).token || get(logoutInProgress)) return;
 		const state = get(auth);
+		beginAuthExperience('page', sourceSelection ? 'load' : 'navigate', () => live, 'iam').state('loading');
 		const fallback = state.projectId ? '/dashboard' : state.isDomainManager ? '/dashboard/iam/users' : state.isSystemAdmin ? '/admin' : '/select-project';
 		void goto(takePendingInvitationPath() ?? postAuthDestination(fallback));
 	}
-	onMount(() => auth.subscribe(state => { if (!state.token && !loggingOut) void goto('/login', { replaceState: true }); }));
+	onMount(() => {
+		live = true;
+		let previous = '';
+		const unsubscribe = auth.subscribe(state => {
+			const next = sessionScopeKey(state);
+			if (previous && next !== previous) ownerEpoch++;
+			previous = next;
+			if (!state.token && !loggingOut) void goto('/login', { replaceState: true });
+		});
+		return () => { live = false; ownerEpoch++; unsubscribe(); };
+	});
 	let logoutConfirming = false;
 	async function logout() {
 		if (busy || loggingOut || logoutConfirming || get(logoutInProgress) || get(projectSwitching)) return;
 		const owner = sessionScopeKey(get(auth));
+		const epoch = ownerEpoch;
+		const observation = beginAuthExperience('page', 'sign_out', () => live && epoch === ownerEpoch);
 		logoutConfirming = true;
 		try {
-			if (!await confirmDialog(tShell('logout.confirm'))) return;
-			if (busy || get(logoutInProgress) || get(projectSwitching) || sessionScopeKey(get(auth)) !== owner) return;
+			const prompt = tShell('logout.confirm');
+			observation.message('shell', 'logout.confirm', 'warning');
+			if (!await confirmDialog(prompt)) {
+				beginAuthExperience('page', 'cancel', () => live && epoch === ownerEpoch).state('ready');
+				return;
+			}
+			if (busy || get(logoutInProgress) || get(projectSwitching) || sessionScopeKey(get(auth)) !== owner) { observation.discard('scope_changed'); return; }
 			loggingOut = true;
-			void startLogout();
+			if (observation.context) void startLogout({ experience: observation.context }); else void startLogout();
 		} finally {
 			logoutConfirming = false;
 		}
@@ -63,7 +84,7 @@
 		</div>
 		{#if $authReady && $auth.token && !$logoutInProgress}
 			<div class="workspace-entry-browser">
-				<WorkspaceBrowser bind:busy mockup={$page.data.mockup?.active === true} onSelected={continueAfterSelection} onClose={continueSession} />
+				<WorkspaceBrowser bind:busy mockup={$page.data.mockup?.active === true} onSelected={() => continueAfterSelection(true)} onClose={continueSession} />
 			</div>
 		{:else}
 			<LoadingState variant="section" label={t('loading')} />

@@ -7,6 +7,7 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import { executeBulkMutations, type BulkMutationResult } from '$lib/utils/bulkActions';
 import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 
 export interface ImagesControllerOpts {
   token: () => string | undefined;
@@ -49,7 +50,7 @@ export function createImagesController(opts: ImagesControllerOpts) {
     images = images.map(i => i.id === updated.id ? updated : i);
   }
 
-  async function fetchImages(fetchOpts?: { refresh?: boolean }) {
+  async function fetchImages(fetchOpts?: { refresh?: boolean }, experience = beginExperienceLoad('compute', 'resource.list')) {
     const generation = ++fetchGeneration;
     const token = opts.token();
     const projectId = opts.projectId();
@@ -62,14 +63,21 @@ export function createImagesController(opts: ImagesControllerOpts) {
     fetchToken = token;
     fetchProjectId = projectId;
     const owns = () => generation === fetchGeneration && opts.token() === token && opts.projectId() === projectId;
+    if (loading || refreshing) experienceState(experience, 'loading');
     try {
-      const fetched = await api.get<ImageInfo[]>('/api/v1/images', token, projectId, fetchOpts);
-      if (!owns()) return;
+      const fetched = await api.withExperience(experience).get<ImageInfo[]>('/api/v1/images', token, projectId, fetchOpts);
+      if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
       images = fetched;
       selection.retain(images.map((image) => image.id));
       error = '';
+      experienceState(experience, images.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience);
     } catch (e) {
-      if (owns()) error = e instanceof ApiError ? t('imagesController.loadFailed', { status: e.status }) : t('imagesController.serverError');
+      if (owns()) {
+        error = e instanceof ApiError ? t('imagesController.loadFailed', { status: e.status }) : t('imagesController.serverError');
+        experienceState(experience, 'error');
+        if (experience) void experienceApplied(experience);
+      } else experienceDiscarded(experience, 'stale');
     } finally {
       if (owns()) loading = false;
     }
@@ -78,12 +86,17 @@ export function createImagesController(opts: ImagesControllerOpts) {
   async function deleteImage(id: string, name: string) {
     if (!(await confirmDialog(t('imagesController.deleteConfirm', { name })))) return;
     deleting = id;
+    const experience = beginExperienceAction('compute', 'delete', 'resource.list');
     try {
-      await api.delete(`/api/v1/images/${id}`, opts.token(), opts.projectId());
+      await api.withExperience(experience).delete(`/api/v1/images/${id}`, opts.token(), opts.projectId());
       images = images.filter(img => img.id !== id);
       selection.remove([id]);
+      experienceState(experience, images.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience);
     } catch (e) {
       toast.error(t('imagesController.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       deleting = null;
     }
@@ -91,12 +104,15 @@ export function createImagesController(opts: ImagesControllerOpts) {
 
   async function toggleActivation(img: ImageInfo) {
     togglingId = img.id;
+    const experience = beginExperienceAction('compute', 'update', 'resource.list');
     try {
       const action = img.status === 'active' ? 'deactivate' : 'reactivate';
-      await api.post(`/api/v1/images/${img.id}/${action}`, {}, opts.token(), opts.projectId());
-      await fetchImages({ refresh: true });
+      await api.withExperience(experience).post(`/api/v1/images/${img.id}/${action}`, {}, opts.token(), opts.projectId());
+      await fetchImages({ refresh: true }, experience);
     } catch (e) {
       toast.error(t('imagesController.statusChangeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally {
       togglingId = null;
     }
@@ -108,16 +124,18 @@ export function createImagesController(opts: ImagesControllerOpts) {
   ): Promise<BulkMutationResult[]> {
     const token = opts.token();
     const projectId = opts.projectId();
+    const experience = beginExperienceAction('compute', action === 'delete' ? 'delete' : 'update', 'resource.list');
     bulkActioning = true;
     try {
       const results = await executeBulkMutations(ids, (id) => {
-        if (action === 'delete') return api.delete(`/api/v1/images/${id}`, token, projectId);
+        if (action === 'delete') return api.withExperience(experience).delete(`/api/v1/images/${id}`, token, projectId);
         const endpoint = action === 'activate' ? 'reactivate' : 'deactivate';
-        return api.post(`/api/v1/images/${id}/${endpoint}`, {}, token, projectId);
+        return api.withExperience(experience).post(`/api/v1/images/${id}/${endpoint}`, {}, token, projectId);
       });
+      if (results.some((result) => !result.ok)) experienceState(experience, 'error');
       if (opts.projectId() === projectId) {
         selection.remove(results.filter((result) => result.ok).map((result) => result.id));
-        await fetchImages({ refresh: true });
+        await fetchImages({ refresh: true }, experience);
       }
       return results;
     } finally {
@@ -128,7 +146,7 @@ export function createImagesController(opts: ImagesControllerOpts) {
   async function forceRefresh() {
     refreshing = true;
     try {
-      await fetchImages({ refresh: true });
+      await fetchImages({ refresh: true }, beginExperienceAction('compute', 'refresh', 'resource.list'));
     } finally {
       refreshing = false;
     }

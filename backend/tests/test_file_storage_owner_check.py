@@ -91,3 +91,34 @@ async def test_public_share_access_passes_for_get(client, mock_conn):
     with patch("app.api.storage.file_storage.manila.get_file_storage", return_value=public):
         resp = await client.get("/api/v1/file-storage/share-foreign")
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 404, 500, 503, 504])
+@pytest.mark.parametrize("suffix", ["", "/access-rules"])
+async def test_share_owner_read_distinguishes_unavailable_from_absent(client, mock_conn, status, suffix):
+    import httpx
+
+    request = httpx.Request("GET", "http://native.invalid/shares/private-share")
+    response = httpx.Response(status, json={"error": "PRIVATE_MANILA_BODY_CANARY"}, request=request)
+    with (
+        patch(
+            "app.services.manila.get_file_storage",
+            side_effect=httpx.HTTPStatusError("PRIVATE_MANILA_BODY_CANARY", request=request, response=response),
+        ),
+        patch("app.services.manila.list_access_rules") as access_rules,
+    ):
+        result = await client.get(f"/api/v1/file-storage/private-share{suffix}")
+    assert result.status_code == (404 if status in (401, 403, 404) else 503)
+    assert "PRIVATE_MANILA_BODY_CANARY" not in result.text
+    access_rules.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_share_owner_transport_failure_is_not_reported_absent(client, mock_conn):
+    import httpx
+
+    with patch("app.services.manila.get_file_storage", side_effect=httpx.ConnectError("PRIVATE_TRANSPORT_CANARY")):
+        result = await client.get("/api/v1/file-storage/private-share")
+    assert result.status_code == 503
+    assert "PRIVATE_TRANSPORT_CANARY" not in result.text

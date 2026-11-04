@@ -40,10 +40,13 @@ vi.mock('$lib/config/site', async () => {
 	mocks.siteConfig = writable({ services: { k3s: true } });
 	return { siteConfig: mocks.siteConfig };
 });
-vi.mock('$lib/api/client', () => ({
-	api: { get: (path: string, ...args: unknown[]) => path === '/api/v1/instances/usage-schedules' ? mocks.usageGet(path, ...args) : mocks.apiGet(path, ...args) },
-	ApiError: class ApiError extends Error {},
-}));
+vi.mock('$lib/api/client', () => {
+	const get = (path: string, ...args: unknown[]) => path === '/api/v1/instances/usage-schedules' ? mocks.usageGet(path, ...args) : mocks.apiGet(path, ...args);
+	return {
+		api: { get, withExperience: () => ({ get }) },
+		ApiError: class ApiError extends Error {},
+	};
+});
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (callback: () => void | Promise<void>) => {
 		mocks.autoCallback = callback;

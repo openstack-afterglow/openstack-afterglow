@@ -54,6 +54,16 @@ async def cancel_build(build_db_id: int) -> dict:
         row.error_message = "관리자에 의해 취소됨"
         row.resource_snapshot = {**(row.resource_snapshot or {}), "cancel_cleanup": "pending"}
         await session.commit()
+    from app.services.experience_context import capture_experience_context, emit_experience
+
+    await emit_experience(
+        capture_experience_context(feature="palimpsest", action="cancel", component="page"),
+        "operation.state_changed",
+        stage="cleanup",
+        status="cancel_requested",
+        operation_id=str(build_db_id),
+        reason="pending_cleanup",
+    )
     return {"cancelled": True, "library_id": library_id}
 
 
@@ -135,6 +145,11 @@ async def queue_build(library_id: str, existing_share_id: str | None = None) -> 
         },
     }
     async with factory() as session:
+        from app.services.experience_context import experience_owner_receipt
+
+        experience_owner = experience_owner_receipt()
+        if experience_owner is not None:
+            snapshot["experience_owner"] = experience_owner
         await lock_service_project_admission(session, service_project["id"])
         # The oldest recipe is a stable SQL serialization row even as later
         # recipe versions are added. No process cache or Redis admission lock.
@@ -181,6 +196,13 @@ async def queue_build(library_id: str, existing_share_id: str | None = None) -> 
         queued = (await session.execute(select(LibraryBuild.id).where(LibraryBuild.status == "queued"))).scalars().all()
         position = len(queued)
         await session.commit()
+    from app.services.experience_context import bind_experience_operation, capture_experience_context, emit_experience
+
+    context = capture_experience_context(feature="palimpsest", action="create", component="page")
+    await bind_experience_operation(context, "library_build", row.id)
+    await emit_experience(
+        context, "operation.accepted", stage="build.admission", status="accepted", operation_id=str(row.id)
+    )
     return {"status": "queued", "library_id": library_id, "queue_position": position}
 
 
@@ -269,7 +291,14 @@ async def _discover_work(dispatcher) -> None:
 
 async def _execute_work(dispatcher, member: str, owner: str) -> None:
     from app.services import build_work
-    from app.services.work_dispatcher import work_lease
+    from app.services.experience_context import (
+        build_experience_context,
+        build_experience_terminal,
+        emit_experience,
+        experience_scope,
+        unlinked_worker_context,
+    )
+    from app.services.work_dispatcher import bind_worker_experience, work_lease
 
     kind, identity = member.split(":", 1)
     async with work_lease(dispatcher, member, owner) as lease:
@@ -285,21 +314,48 @@ async def _execute_work(dispatcher, member: str, owner: str) -> None:
                     and row.status == "cancelled"
                     and (row.resource_snapshot or {}).get("cancel_cleanup") == "pending"
                 )
-        async with build_work.bind(dispatcher.redis, member, lease, cancel_cleanup=cancel_cleanup):
-            if kind == "library":
-                from app.services.ephemeral_build import run_ephemeral_build
+        context = await build_experience_context(kind, identity)
+        linked = context is not None
+        context = context or unlinked_worker_context(feature="palimpsest", action="create", component="page")
+        bind_worker_experience(context, identity)
+        await emit_experience(
+            context,
+            "worker.claimed",
+            stage="worker",
+            status="running",
+            operation_id=identity,
+            reason=None if linked else "unlinked",
+        )
+        with experience_scope(context):
+            try:
+                async with build_work.bind(dispatcher.redis, member, lease, cancel_cleanup=cancel_cleanup):
+                    if kind == "library":
+                        from app.services.ephemeral_build import run_ephemeral_build
 
-                await run_ephemeral_build(int(identity))
-            elif kind == "import":
-                from app.services.dockerfile_import import run_dockerfile_import_job
+                        await run_ephemeral_build(int(identity))
+                    elif kind == "import":
+                        from app.services.dockerfile_import import run_dockerfile_import_job
 
-                await run_dockerfile_import_job(int(identity))
-            elif kind == "layer":
-                from app.services.layer_builder import execute_layer_build
+                        await run_dockerfile_import_job(int(identity))
+                    elif kind == "layer":
+                        from app.services.layer_builder import execute_layer_build
 
-                await execute_layer_build(int(identity))
-            else:
-                raise ValueError(f"unknown build target: {member}")
+                        await execute_layer_build(int(identity))
+                    else:
+                        raise ValueError(f"unknown build target: {member}")
+            except BaseException:
+                # No task/transport exception is promoted to native terminal proof.
+                await emit_experience(
+                    context,
+                    "worker.state_changed",
+                    stage="worker",
+                    status="outcome_unknown",
+                    operation_id=identity,
+                    reason="lease_lost" if lease.experience_lease_lost else "unknown",
+                )
+                raise
+            status = await build_experience_terminal(kind, identity)
+            await emit_experience(context, "worker.state_changed", stage="worker", status=status, operation_id=identity)
 
 
 async def _worker_session(dispatcher, poll_seconds: float) -> None:

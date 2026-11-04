@@ -6,6 +6,8 @@ host 필드를 포함하는지, list_users 가 host 를 응답에 포함하는�
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.services import trove
 
 
@@ -154,6 +156,34 @@ def test_list_users_dedupes_duplicate_name_host():
     assert len(result) == 2
     assert ("healthcheck", "%") in keys
     assert ("alice", "%") in keys
+
+
+def test_list_users_failed_read_never_degrades_to_empty():
+    """raw 상태 실패와 SDK fallback 실패는 호출자 예외이며 빈 유저 목록(정상)이 아니다."""
+    from httpx import Request, Response
+    from openstack.exceptions import HttpException
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        503, text="PRIVATE_NATIVE_USERS_CANARY", request=Request("GET", "http://native.invalid/users")
+    )
+    conn.database.users.side_effect = HttpException("PRIVATE_NATIVE_USERS_CANARY", http_status=503)
+
+    with pytest.raises(HttpException):
+        trove.list_users(conn, "inst-001")
+
+
+def test_list_users_valid_empty_inventory_is_not_retried():
+    """정상 빈 응답은 빈 목록이며 SDK로 같은 조회를 반복하지 않는다."""
+    from httpx import Request, Response
+
+    conn = MagicMock()
+    conn.database.get.return_value = Response(
+        200, json={"users": []}, request=Request("GET", "http://native.invalid/users")
+    )
+
+    assert trove.list_users(conn, "inst-001") == []
+    conn.database.users.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from collections.abc import Iterable
@@ -21,6 +20,7 @@ from app.models.compute import (
 )
 from app.services import compute_pools, gpu_quota, nova
 from app.services.gpu_inventory import is_gpu_flavor
+from app.services.work_dispatcher import run_native
 
 _logger = logging.getLogger(__name__)
 
@@ -369,7 +369,7 @@ async def evaluate_project_flavors(
     except compute_pools.ComputePoolUnavailable:
         pool_unavailable = True
     try:
-        compute_quota = await asyncio.to_thread(nova.get_project_quota, conn, project_id, strict=True)
+        compute_quota = await run_native(nova.get_project_quota, conn, project_id, strict=True)
     except Exception:
         _logger.warning("compute quota lookup failed for project %s", project_id, exc_info=True)
         compute_error = True

@@ -6,7 +6,6 @@ without Drover dependencies.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 import uuid
@@ -18,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session_factory, is_db_available, mark_db_unhealthy
 from app.models.db import GpuQuota, GpuQuotaReservation
+from app.services.work_dispatcher import run_native
 
 _logger = logging.getLogger(__name__)
 
@@ -384,7 +384,7 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
 
 async def get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
     """Count GPU use without blocking the application event loop."""
-    return await asyncio.to_thread(_get_project_gpu_usage, conn, project_id)
+    return await run_native(_get_project_gpu_usage, conn, project_id)
 
 
 async def check_gpu_quota(

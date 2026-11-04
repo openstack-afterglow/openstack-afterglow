@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { credentialRequest } from '../adminCredentials';
+import type { ExperienceContext } from '$lib/utils/experience';
 const { fetchAuth } = vi.hoisted(() => ({ fetchAuth: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ fetchWithAuth: fetchAuth }));
 const authority = { token: 'caller-token', userId: 'caller', projectId: 'project', admin: true, ready: true };
@@ -46,5 +47,18 @@ describe('sensitive credential transport', () => {
     const last = fetchAuth.mock.calls.at(-1)!;
     expect(JSON.parse(last[1].body).blob).toBe('{"access":"a","secret":"s"}');
     for (const [url] of fetchAuth.mock.calls) expect(new URL(url, 'https://afterglow.test').searchParams.get('domain_id')).toBe(domainId);
+  });
+  it('forwards only the captured source context alongside sensitive transport without deriving metadata from its body', async () => {
+    const experience: ExperienceContext = {
+      segmentId: '00000000-0000-4000-8000-000000000001', pageViewId: '00000000-0000-4000-8000-000000000002',
+      actionId: '00000000-0000-4000-8000-000000000003', traceId: '00000000-0000-4000-8000-000000000004',
+      spanId: '00000000-0000-4000-8000-000000000005', route: '/admin/user-credentials',
+      feature: 'admin', action: 'update', component: 'resource.detail',
+    };
+    fetchAuth.mockResolvedValue(new Response('{}', { status: 200 }));
+    await credentialRequest('/api/v1/admin/user-credentials/id', domainId, authority, 'PATCH', { blob: 'private-input' }, experience);
+    expect(fetchAuth.mock.calls[0][4]).toEqual({ experience });
+    expect(fetchAuth.mock.calls[0][4].experience).toBe(experience);
+    expect(JSON.stringify(fetchAuth.mock.calls[0][4])).not.toContain('private-input');
   });
 });

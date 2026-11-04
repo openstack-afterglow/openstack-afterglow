@@ -14,7 +14,12 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { experiencePresentation } from '$lib/utils/experiencePresentation';
+	import type { ExperienceContext } from '$lib/utils/experience';
+	import type { ExperienceMessageMetadata } from '$lib/i18n/experienceMessages';
 	interface Props {
+		experience?: ExperienceContext;
+		experienceMessage?: ExperienceMessageMetadata;
 		variant?: ButtonVariant;
 		size?: ButtonSize;
 		type?: 'button' | 'submit' | 'reset';
@@ -35,6 +40,8 @@
 	}
 
 	let {
+		experience,
+		experienceMessage,
 		variant = 'primary',
 		size = 'md',
 		type = 'button',
@@ -71,6 +78,7 @@
 
 {#if href}
 	<a
+		use:experiencePresentation={{ context: experience, message: experienceMessage, state: disabled ? 'disabled' : ariaBusy ? 'loading' : 'ready' }}
 		href={disabled ? undefined : href}
 		{target}
 		rel={anchorRel}
@@ -88,7 +96,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} aria-busy={ariaBusy} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
+	<button use:experiencePresentation={{ context: experience, message: experienceMessage, state: disabled ? 'disabled' : ariaBusy ? 'loading' : 'ready' }} {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} aria-busy={ariaBusy} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
 		{@render children()}
 	</button>
 {/if}

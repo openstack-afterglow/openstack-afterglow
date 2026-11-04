@@ -12,6 +12,7 @@ import { executeBulkMutations } from '$lib/utils/bulkActions';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/object-storage';
 import source from '$lib/i18n/messages/ko/object-storage.json';
+import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, experienceDiscarded, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
 
 const moveRoot = source['dialogs.controller.move.rootToken'];
 
@@ -29,6 +30,11 @@ interface ObjectBrowserOpts {
 	containerName: () => string;
 	token: () => string | undefined;
 	projectId: () => string | undefined;
+	ownerKey: () => string;
+}
+interface ObjectObservationOptions {
+	silent?: boolean;
+	experience?: ExperienceContext;
 }
 
 const OBJECT_BROWSER_KEY = Symbol('object-browser');
@@ -37,6 +43,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	// ——— 공통 상태 ———
 	let objects = $state<SwiftObject[]>([]);
 	let loading = $state(true);
+	let loadError = $state(false);
+	let listErrorExperience = $state.raw<ExperienceContext | undefined>(undefined);
 	let prefix = $state('');
 	let deleting = $state<string | null>(null);
 	let downloading = $state<string | null>(null);
@@ -97,6 +105,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	let dirLoading = $state<SvelteSet<string>>(new SvelteSet());
 	let allObjectsCache = $state<SwiftObject[] | null>(null);
 	let allObjectsLoading = $state(false);
+	let allObjectsError = $state(false);
+	let allErrorExperience = $state.raw<ExperienceContext | undefined>(undefined);
 	let viewMode = $state<ObjectView>(readObjectView());
 
 	// ——— thumbnail (user 그리드 전용) ———
@@ -109,6 +119,28 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	// 폴더 이동·컨테이너 전환·언마운트마다 증가한다. 이미 떠난 세대의 응답은
 	// 현재 map 을 덮어쓰지 않고 자신이 만든 blob URL 만 회수한다.
 	let thumbGeneration = 0;
+
+	let observationGeneration = 0;
+	const observations = new Map<string, object>();
+	function observe(owner: 'list' | 'container' | 'directory' | 'all' | 'mutation' | 'metadata' | 'preview' | 'move-containers' | 'move-directories', action: ExperienceAction, parent?: ExperienceContext) {
+		const component = owner === 'list' ? 'resource.list' : 'resource.detail';
+		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' || action === 'refresh' ? beginExperienceLoad('object_storage', component) : beginExperienceAction('object_storage', action, component));
+		const generation = observationGeneration;
+		const container = untrack(opts.containerName), project = untrack(opts.projectId), mode = untrack(opts.mode), currentPrefix = untrack(() => prefix), ownerKey = untrack(opts.ownerKey);
+		const current = () => observationGeneration === generation && container === opts.containerName()
+			&& project === opts.projectId() && mode === opts.mode() && currentPrefix === prefix && ownerKey === opts.ownerKey();
+		return {
+			ctx, client: api.withExperience(ctx), current,
+			applied(state: 'ready' | 'empty' | 'error', stillAssigned?: () => boolean) {
+				if (!ctx) return;
+				const marker = {};
+				observations.set(owner, marker);
+				const isCurrent = () => (stillAssigned ? stillAssigned() : observations.get(owner) === marker) && current() && (owner !== 'preview' || showPreview);
+				if (ctx.action !== 'create' || state === 'error') experienceState(ctx, state);
+				void experienceApplied(ctx, {}, isCurrent);
+			},
+		};
+	}
 
 	function thumbKey(obj: SwiftObject) {
 		return `${obj.name}@${obj.etag}`;
@@ -159,6 +191,9 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	function disposeThumbnails() {
+		// The owning ObjectBrowser calls this existing cleanup on destruction.
+		observationGeneration++;
+		observations.clear();
 		thumbGeneration++;
 		for (const url of thumbUrls.values()) if (url) URL.revokeObjectURL(url);
 		thumbUrls.clear();
@@ -208,94 +243,159 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	// ——— API ———
-	async function loadContainerMeta() {
+	async function loadContainerMeta(parent?: ExperienceContext) {
+		const observation = observe('container', 'load', parent);
 		try {
-			containerMeta = await api.get<SwiftContainer>(
+			const value = await observation.client.get<SwiftContainer>(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}`,
 				opts.token(), opts.projectId()
 			);
-		} catch { containerMeta = null; }
+			if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
+			containerMeta = value;
+			observation.applied(containerMeta ? 'ready' : 'empty');
+		} catch {
+			if (observation.current()) { containerMeta = null; observation.applied('error'); }
+		}
 	}
 
-	async function load(o: { silent?: boolean } = {}) {
+	async function load(o: ObjectObservationOptions = {}) {
+		const observation = observe('list', 'load', o.experience);
+		if (!o.silent) experienceState(observation.ctx, 'loading');
 		if (!o.silent) loading = true;
 		try {
 			const qs = new URLSearchParams({ delimiter: '/' });
 			if (prefix) qs.set('prefix', prefix);
-			objects = await api.get<SwiftObject[]>(
+			const items = await observation.client.get<SwiftObject[]>(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects?${qs}`,
 				opts.token(), opts.projectId()
 			);
+			if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
+			objects = items;
 			pruneSelected(objects.map((item) => item.name));
-		} catch { if (!o.silent) objects = []; }
-		finally { if (!o.silent) loading = false; }
+			if (observation.current()) { loadError = false; listErrorExperience = undefined; }
+			observation.applied(objects.length ? 'ready' : 'empty');
+		} catch {
+			if (observation.current()) {
+				loadError = true;
+				listErrorExperience = observation.ctx;
+				observation.applied('error', () => loadError);
+			}
+		}
+		finally { if (!o.silent && observation.current()) loading = false; }
 	}
 
 	// user: prefix 단위 캐시 fetch
-	async function fetchDir(p: string): Promise<SwiftObject[]> {
+	async function fetchDir(p: string, parent?: ExperienceContext): Promise<SwiftObject[]> {
+		// Cache slots have independent observation ownership; paths never enter events.
+		const observation = observe('directory', 'load', parent);
 		dirLoading.add(p);
 		try {
 			const qs = new URLSearchParams({ delimiter: '/' });
 			if (p) qs.set('prefix', p);
-			const items = await api.get<SwiftObject[]>(
+			const items = await observation.client.get<SwiftObject[]>(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects?${qs}`,
 				opts.token(), opts.projectId()
 			);
+			if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return items; }
 			dirCache.set(p, items);
+			if (observation.ctx) {
+				const assignedItems = dirCache.get(p);
+				observation.applied(items.length ? 'ready' : 'empty', () => dirCache.get(p) === assignedItems);
+			}
 			return items;
 		} finally {
-			dirLoading.delete(p);
+			if (observation.current()) dirLoading.delete(p);
 		}
 	}
 
-	async function fetchAllObjects(o: { silent?: boolean } = {}): Promise<void> {
+	async function fetchAllObjects(o: ObjectObservationOptions = {}): Promise<void> {
+		const observation = observe('all', 'load', o.experience);
 		if (!o.silent) allObjectsLoading = true;
 		try {
 			const qs = new URLSearchParams({ delimiter: '' });
-			const items = await api.get<SwiftObject[]>(
+			const items = await observation.client.get<SwiftObject[]>(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects?${qs}`,
 				opts.token(), opts.projectId()
 			);
+			if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
 			allObjectsCache = items;
-		} catch { if (!o.silent) allObjectsCache = []; }
-		finally { if (!o.silent) allObjectsLoading = false; }
+			allObjectsError = false;
+			allErrorExperience = undefined;
+			observation.applied(items.length ? 'ready' : 'empty');
+		} catch {
+			if (observation.current()) {
+				allObjectsError = true;
+				allErrorExperience = observation.ctx;
+				observation.applied('error', () => allObjectsError);
+			}
+		}
+		finally { if (!o.silent && observation.current()) allObjectsLoading = false; }
 	}
 
 	// user: 펼친 모든 prefix 병렬 재페치 (동시성 4)
-	async function refreshAll(o: { silent?: boolean } = {}): Promise<void> {
+	async function refreshAll(o: ObjectObservationOptions = {}): Promise<void> {
+		const observation = observe('list', 'refresh', o.experience);
+		if (!o.silent) experienceState(observation.ctx, 'loading');
 		if (!o.silent) loading = true;
+		let failed = false;
 		try {
 			const queue = [prefix, ...expandedDirs];
 			while (queue.length) {
 				const batch = queue.splice(0, 4);
-				await Promise.all(batch.map(p => fetchDir(p).catch(() => [])));
+				const results = await Promise.allSettled(batch.map(p => fetchDir(p, observation.ctx)));
+				if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
+				if (results.some((result) => result.status === 'rejected')) failed = true;
 			}
-			objects = dirCache.get(prefix) ?? [];
+			objects = dirCache.get(prefix) ?? objects;
 			if (searchScope === 'all' && filterText.trim()) {
-				await fetchAllObjects({ silent: true });
+				await fetchAllObjects({ silent: true, experience: observation.ctx });
+				if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
+				if (allObjectsError) failed = true;
 			}
 			const available = searchScope === 'all' && filterText.trim() && allObjectsCache
 				? allObjectsCache
 				: [...dirCache.values()].flat();
 			pruneSelected(available.map((item) => item.name));
-		} catch { /* ignore per-dir failures */ }
-		finally { if (!o.silent) loading = false; }
+			if (observation.current()) {
+				loadError = failed;
+				listErrorExperience = failed ? observation.ctx : undefined;
+				observation.applied(failed ? 'error' : objects.length ? 'ready' : 'empty', () => loadError === failed);
+			}
+		} catch {
+			if (observation.current()) {
+				loadError = true;
+				listErrorExperience = observation.ctx;
+				observation.applied('error', () => loadError);
+			}
+		}
+		finally { if (!o.silent && observation.current()) loading = false; }
 	}
-	async function loadCurrent(o: { silent?: boolean } = {}) {
+	async function loadCurrent(o: ObjectObservationOptions = {}) {
 		if (opts.mode() === 'user') {
+			const observation = observe('list', 'load', o.experience);
+			if (!o.silent) experienceState(observation.ctx, 'loading');
 			if (!o.silent) loading = true;
 			try {
-				const items = await fetchDir(prefix);
+				const items = await fetchDir(prefix, observation.ctx);
+				if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
 				objects = items;
 				pruneSelected(items.map((item) => item.name));
-			} catch { if (!o.silent) objects = []; }
-			finally { if (!o.silent) loading = false; }
+				if (observation.current()) { loadError = false; listErrorExperience = undefined; }
+				observation.applied(items.length ? 'ready' : 'empty');
+			} catch {
+				if (observation.current()) {
+					loadError = true;
+					listErrorExperience = observation.ctx;
+					observation.applied('error', () => loadError);
+				}
+			}
+			finally { if (!o.silent && observation.current()) loading = false; }
 		} else {
 			await load(o);
 		}
 	}
 
-	async function doRefresh(o: { silent?: boolean } = {}) {
+	async function doRefresh(o: ObjectObservationOptions = {}) {
 		if (opts.mode() === 'user') await refreshAll(o);
 		else await load(o);
 	}
@@ -323,7 +423,15 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 	// ——— 네비게이션 ———
 	function navigatePrefix(newPrefix: string) {
+		const ctx = beginExperienceAction('object_storage', 'navigate', 'resource.list');
+		observationGeneration++;
+		observations.clear();
 		prefix = newPrefix;
+		objects = [];
+		loadError = false;
+		allObjectsError = false;
+		listErrorExperience = undefined;
+		allErrorExperience = undefined;
 		selectedMeta = null;
 		showPreview = false;
 		filterText = '';
@@ -332,10 +440,12 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			searchScope = 'current';
 			expandedDirs.clear();
 			dirCache.clear();
+			dirLoading.clear();
+			allObjectsLoading = false;
 			disposeThumbnails();
 			allObjectsCache = null;
 		}
-		loadCurrent();
+		loadCurrent({ experience: ctx });
 	}
 
 	// ——— 정렬/필터/선택 ———
@@ -510,9 +620,10 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			? t('dialogs.controller.delete.bulkConfirmWithDirectories', { count: submitted.length, directoryCount: dirs.length })
 			: t('dialogs.controller.delete.bulkConfirm', { count: submitted.length });
 		if (!(await confirmDialog(msg))) return;
+		const observation = observe('mutation', 'delete');
 		bulkDeleting = true;
 		try {
-			const result = await api.post<{ deleted?: string[]; failed?: { name: string; error?: string }[] }>(
+			const result = await observation.client.post<{ deleted?: string[]; failed?: { name: string; error?: string }[] }>(
 				`/api/v1/object-storage/${encodeURIComponent(requestContainer)}/objects/bulk-delete`,
 				{ objects: submitted, recursive: true },
 				requestToken, requestProject
@@ -523,19 +634,24 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			if (failedCount) toast.error(t('dialogs.controller.delete.bulkFailed', { count: failedCount }));
 			if (opts.projectId() === requestProject && opts.containerName() === requestContainer) {
 				selected = pruneSelectionByIds(selected, submitted.filter((name) => !deleted.includes(name)));
-				await doRefresh();
-				loadContainerMeta();
+				observation.applied(failedCount ? 'error' : 'ready');
+				await doRefresh({ experience: observation.ctx });
+				loadContainerMeta(observation.ctx);
 			}
+			else experienceDiscarded(observation.ctx, 'stale');
 		} catch {
 			toast.error(t('dialogs.controller.delete.requestFailed'));
 		} finally { bulkDeleting = false; }
 	}
 
 	async function downloadObject(name: string) {
+		const ctx = beginExperienceAction('object_storage', 'export', 'resource.detail');
+		const client = api.withExperience(ctx);
+		let rejected = false;
 		downloading = name;
 		try {
 			if (opts.mode() === 'user') {
-				const { url } = await api.post<{ url: string; expires_in: number }>(
+				const { url } = await client.post<{ url: string; expires_in: number }>(
 					`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(name)}/download-token`,
 					{}, opts.token(), opts.projectId()
 				);
@@ -544,26 +660,35 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				a.href = absoluteUrl; a.rel = 'noopener';
 				document.body.appendChild(a); a.click(); a.remove();
 			} else {
-				const { blob, filename } = await api.downloadBlob(
+				const { blob, filename } = await client.downloadBlob(
 					`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(name)}/download`,
 					opts.token(), opts.projectId()
 				);
 				downloadBlobAs(blob, filename);
 			}
 		} catch (e) {
+			rejected = true;
 			toast.error(t('dialogs.controller.download.failed', { error: e instanceof ApiError ? e.message : String(e) }));
-		} finally { downloading = null; }
+		} finally {
+			downloading = null;
+			// Observe the local download handoff only, not a completed browser save.
+			if (ctx) {
+				experienceState(ctx, rejected ? 'error' : 'ready');
+				void experienceApplied(ctx);
+			}
+		}
 	}
 
 	async function deleteObject(name: string) {
 		if (!(await confirmDialog(t('dialogs.controller.delete.confirm', { name: displayName(name) })))) return;
 		deleting = name;
+		const observation = observe('mutation', 'delete');
 		try {
-			await api.delete(
+			await observation.client.delete(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(name)}`,
 				opts.token(), opts.projectId()
 			);
-			await doRefresh();
+			await doRefresh({ experience: observation.ctx });
 		} catch (e) {
 			toast.error(t('dialogs.controller.delete.failed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally { deleting = null; }
@@ -571,11 +696,13 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 
 	async function showMeta(name: string) {
 		showPreview = false; loadingMeta = true; selectedMeta = null;
+		const observation = observe('metadata', 'inspect');
 		try {
-			selectedMeta = await api.get<SwiftObjectMeta>(
+			selectedMeta = await observation.client.get<SwiftObjectMeta>(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(name)}/metadata`,
 				opts.token(), opts.projectId()
 			);
+			observation.applied(selectedMeta ? 'ready' : 'empty');
 		} catch { /* ignore */ }
 		finally { loadingMeta = false; }
 	}
@@ -584,20 +711,23 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		selectedMeta = null; showPreview = true;
 		previewName = obj.name; previewContentType = obj.content_type;
 		previewText = ''; previewUrl = ''; loadingPreview = true;
+		const observation = observe('preview', 'open');
 		const tok = opts.token(); const pid = opts.projectId();
 		const encodedPath = `/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(obj.name)}/preview`;
 		try {
-			const res = await fetchWithAuth(encodedPath, {}, tok, pid);
+			const res = await fetchWithAuth(encodedPath, {}, tok, pid, { experience: observation.ctx });
 			if (obj.content_type.startsWith('image/') || obj.content_type === 'application/pdf') {
 				previewUrl = URL.createObjectURL(await res.blob());
 			} else {
 				previewText = await res.text();
 			}
-		} catch { previewText = t('dialogs.controller.preview.failed'); }
+			observation.applied('ready');
+		} catch { previewText = t('dialogs.controller.preview.failed'); observation.applied('error'); }
 		finally { loadingPreview = false; }
 	}
 
 	function closePreview() {
+		observations.delete('preview');
 		showPreview = false;
 		if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ''; }
 	}
@@ -605,16 +735,19 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	async function createDirectory() {
 		if (!newDirName.trim()) { dirError = t('dialogs.controller.newDir.nameRequired'); return; }
 		creatingDir = true; dirError = '';
+		const observation = observe('mutation', 'create');
 		try {
-			await api.post(
+			await observation.client.post(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/directory`,
 				{ path: prefix + newDirName.trim().replace(/\/$/, '') + '/' },
 				opts.token(), opts.projectId()
 			);
 			showNewDir = false; newDirName = '';
-			await doRefresh();
+			observation.applied('ready');
+			await doRefresh({ experience: observation.ctx });
 		} catch (e) {
 			dirError = e instanceof ApiError ? e.message : t('dialogs.controller.newDir.failed');
+			observation.applied('error');
 		} finally { creatingDir = false; }
 	}
 
@@ -628,37 +761,44 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	async function doRename() {
 		if (!renameNew.trim()) { renameError = t('dialogs.controller.rename.nameRequired'); return; }
 		renaming = true; renameError = '';
+		const observation = observe('mutation', 'update');
 		try {
 			let newFullName = prefix + renameNew.trim();
 			if (renameIsDir) newFullName = newFullName.replace(/\/$/, '') + '/';
-			await api.post(
+			await observation.client.post(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/rename`,
 				{ source: renameTarget, new_name: newFullName }, opts.token(), opts.projectId()
 			);
 			showRename = false;
-			await doRefresh();
+			observation.applied('ready');
+			await doRefresh({ experience: observation.ctx });
 		} catch (e) {
 			renameError = e instanceof ApiError ? e.message : t('dialogs.controller.rename.failed');
+			observation.applied('error');
 		} finally { renaming = false; }
 	}
 
-	async function loadMoveContainers() {
+	async function loadMoveContainers(parent?: ExperienceContext) {
+		const observation = observe('move-containers', 'load', parent);
 		try {
-			moveContainers = await api.get<SwiftContainer[]>('/api/v1/object-storage', opts.token(), opts.projectId());
-		} catch { moveContainers = []; }
+			moveContainers = await observation.client.get<SwiftContainer[]>('/api/v1/object-storage', opts.token(), opts.projectId());
+			observation.applied(moveContainers.length ? 'ready' : 'empty');
+		} catch { moveContainers = []; observation.applied('error'); }
 	}
 
-	async function loadMoveDirectories(targetContainer: string) {
+	async function loadMoveDirectories(targetContainer: string, parent?: ExperienceContext) {
+		const observation = observe('move-directories', 'load', parent);
 		moveLoadingDirs = true;
 		try {
-			const all = await api.get<SwiftObject[]>(
+			const all = await observation.client.get<SwiftObject[]>(
 				`/api/v1/object-storage/${encodeURIComponent(targetContainer)}/objects?delimiter=/`,
 				opts.token(), opts.projectId()
 			);
 			moveDirectories = [moveRoot, ...all
 				.filter(o => o.is_dir === true || o.content_type === 'application/directory' || o.name.endsWith('/'))
 				.map(o => o.name)];
-		} catch { moveDirectories = [moveRoot]; }
+			observation.applied(all.length ? 'ready' : 'empty');
+		} catch { moveDirectories = [moveRoot]; observation.applied('error'); }
 		finally { moveLoadingDirs = false; }
 	}
 
@@ -666,7 +806,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		moveTarget = name; moveDest = ''; moveDestContainer = opts.containerName();
 		moveDestinationChosen = false;
 		moveSelectedDir = ''; moveError = ''; showMove = true;
-		await Promise.all([loadMoveContainers(), loadMoveDirectories(opts.containerName())]);
+		const ctx = beginExperienceAction('object_storage', 'open', 'shared.modal');
+		await Promise.all([loadMoveContainers(ctx), loadMoveDirectories(opts.containerName(), ctx)]);
 	}
 
 	function selectMoveDir(dir: string) {
@@ -693,16 +834,19 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	async function doMove() {
 		if (!moveDestinationChosen) { moveError = t('dialogs.controller.move.destinationRequired'); return; }
 		moving = true; moveError = '';
+		const observation = observe('mutation', 'update');
 		try {
-			await api.post(
+			await observation.client.post(
 				`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/move`,
 				{ source: moveTarget, destination: moveDest.trim(), dest_container: moveDestContainer || null },
 				opts.token(), opts.projectId()
 			);
 			showMove = false;
-			await doRefresh();
+			observation.applied('ready');
+			await doRefresh({ experience: observation.ctx });
 		} catch (e) {
 			moveError = e instanceof ApiError ? e.message : t('dialogs.controller.move.failed');
+			observation.applied('error');
 		} finally { moving = false; }
 	}
 
@@ -710,7 +854,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		moveDest = ''; moveDestContainer = opts.containerName();
 		moveDestinationChosen = false;
 		moveSelectedDir = ''; moveError = ''; showBulkMove = true;
-		await Promise.all([loadMoveContainers(), loadMoveDirectories(opts.containerName())]);
+		const ctx = beginExperienceAction('object_storage', 'open', 'shared.modal');
+		await Promise.all([loadMoveContainers(ctx), loadMoveDirectories(opts.containerName(), ctx)]);
 	}
 
 	async function doBulkMove() {
@@ -722,6 +867,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		const requestProject = opts.projectId();
 		const requestDestContainer = moveDestContainer;
 		bulkMoving = true; moveError = '';
+		const observation = observe('mutation', 'update');
 		try {
 			const results = await executeBulkMutations(submitted, async (name) => {
 				const isDir2 = isDirectory(findObject(name) ?? { name, bytes: 0, content_type: '', last_modified: '', etag: '' });
@@ -731,7 +877,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				const destination = requestDest
 					? `${requestDest.replace(/\/$/, '')}/${basename}`
 					: basename;
-				await api.post(
+				await observation.client.post(
 					`/api/v1/object-storage/${encodeURIComponent(requestContainer)}/objects/move`,
 					{ source: name, destination, dest_container: requestDestContainer || null },
 					requestToken, requestProject
@@ -744,16 +890,19 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			if (opts.projectId() === requestProject && opts.containerName() === requestContainer) {
 				showBulkMove = false;
 				selected = pruneSelectionByIds(selected, submitted.filter((name) => !moved.includes(name)));
-				await doRefresh();
-				loadContainerMeta();
+				observation.applied(failedCount ? 'error' : 'ready');
+				await doRefresh({ experience: observation.ctx });
+				loadContainerMeta(observation.ctx);
 			}
+			else experienceDiscarded(observation.ctx, 'stale');
 		} finally { bulkMoving = false; }
 	}
 
 	function handleDrop(e: DragEvent) {
+		const ctx = beginExperienceAction('object_storage', 'submit', 'resource.list');
 		const refreshFn = opts.mode() === 'user'
-			? () => refreshAll({ silent: true })
-			: () => load({ silent: true });
+			? () => refreshAll({ silent: true, experience: ctx })
+			: () => load({ silent: true, experience: ctx });
 		for (const f of Array.from(e.dataTransfer?.files ?? [])) {
 			uploadQueue.enqueue(f, {
 				containerName: opts.containerName(),
@@ -784,20 +933,27 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 
 	// ——— effects ———
 	$effect(() => {
-		if (opts.mode() === 'user' && searchScope === 'all' && filterText.trim() && allObjectsCache === null && !allObjectsLoading) {
+		if (opts.mode() === 'user' && searchScope === 'all' && filterText.trim() && allObjectsCache === null && !allObjectsLoading && !allObjectsError) {
 			fetchAllObjects();
 		}
 	});
 
-	// 컨테이너/프로젝트가 바뀔 때만 초기화한다. 본문은 prefix 등 자체 상태를 읽으므로
-	// untrack 하지 않으면 navigatePrefix 가 이 effect 를 다시 돌려 prefix 를 ''로 되돌린다.
+	// A prop-object republish is not an owner transition (for example verified token rotation).
+	const readOwner = $derived(JSON.stringify([opts.containerName(), opts.projectId(), opts.mode(), opts.ownerKey()]));
 	$effect(() => {
-		const cn = opts.containerName();
-		const pid = opts.projectId();
-		const mode = opts.mode();
+		void readOwner;
 		untrack(() => {
+			const cn = opts.containerName();
+			const pid = opts.projectId();
+			const mode = opts.mode();
+			observationGeneration++;
+			observations.clear();
 			prefix = '';
 			objects = [];
+			loadError = false;
+			allObjectsError = false;
+			listErrorExperience = undefined;
+			allErrorExperience = undefined;
 			selected = new Set();
 			filterText = '';
 			selectedMeta = null;
@@ -811,13 +967,13 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			moveError = '';
 			moveContainers = [];
 			moveDirectories = [];
-			if (mode === 'user') {
-				searchScope = 'current';
-				expandedDirs.clear();
-				dirCache.clear();
-				disposeThumbnails();
-				allObjectsCache = null;
-			}
+			if (mode === 'user') searchScope = 'current';
+			expandedDirs.clear();
+			dirCache.clear();
+			dirLoading.clear();
+			allObjectsLoading = false;
+			disposeThumbnails();
+			allObjectsCache = null;
 			if (!cn || !pid) return;
 			loadCurrent();
 			loadContainerMeta();
@@ -830,6 +986,11 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		get containerName() { return opts.containerName(); },
 		get objects() { return objects; },
 		get loading() { return loading; },
+		get loadError() { return loadError || (searchScope === 'all' && filterText.trim().length > 0 && allObjectsError); },
+		get loadErrorExperience() {
+			return searchScope === 'all' && filterText.trim().length > 0 && allObjectsError
+				? allErrorExperience : loadError ? listErrorExperience : undefined;
+		},
 		get prefix() { return prefix; },
 		get deleting() { return deleting; },
 		get downloading() { return downloading; },

@@ -6,7 +6,16 @@ export interface TrafficEvent {
     peer_ip: string | null; peer_verified: boolean; forwarded_for: string | null;
 	pageview: boolean; request_bytes: null; response_bytes: number | null;
 	latency_ms: number; reporter_dropped_events: number;
+	reporter_drop_reasons?: Partial<Record<DropReason, number>>;
 }
+type DropReason = 'timeout' | 'connection' | 'capacity' | 'rejected' | 'unknown';
+const dropReasons: readonly DropReason[] = ['timeout', 'connection', 'capacity', 'rejected', 'unknown'];
+const ingestPath = '/api/v1/monitoring/traffic/events';
+const snapshotPath = '/api/v1/admin/monitoring/traffic';
+const selfReportingPaths: Readonly<Record<string, true>> = {
+	'/api/v1/activity/experience-events': true,
+	'/api/v1/activity/experience-contract': true,
+};
 export interface ReporterConfig { url: string; key: string; peerIsSocket: boolean }
 export function reporterConfig(env: Record<string, string | undefined>): ReporterConfig | null {
 	const url = env.TRAFFIC_ANALYTICS_INGEST_URL;
@@ -71,15 +80,23 @@ export function createTrafficReporter(
 	{ fetch: send = globalThis.fetch, maxInflight = 16, timeoutMs = 2000 }:
 	{ fetch?: typeof fetch; maxInflight?: number; timeoutMs?: number } = {},
 ): Handle {
+	const ingestion = config ? new URL(config.url) : null;
 	let inflight = 0;
-	let dropped = 0;
-	const drop = (count: number) => { dropped = Math.min(Number.MAX_SAFE_INTEGER, dropped + count); };
-	function report(event: Omit<TrafficEvent, 'reporter_dropped_events'>) {
+	const dropped: Partial<Record<DropReason, number>> = {};
+	const drop = (reason: DropReason, count = 1) => {
+		dropped[reason] = Math.min(Number.MAX_SAFE_INTEGER, (dropped[reason] ?? 0) + count);
+	};
+	function report(event: Omit<TrafficEvent, 'reporter_dropped_events' | 'reporter_drop_reasons'>) {
 		if (!config) return;
-		if (inflight >= maxInflight) { drop(1); return; }
-		const carried = Math.min(1_000_000, dropped);
-		dropped -= carried;
-		const payload = { ...event, reporter_dropped_events: carried };
+		if (inflight >= maxInflight) { drop('capacity'); return; }
+		const carriedReasons: Partial<Record<DropReason, number>> = {};
+		let carried = 0;
+		for (const reason of dropReasons) {
+			const count = Math.min(1_000_000 - carried, dropped[reason] ?? 0);
+			if (count) { carriedReasons[reason] = count; dropped[reason]! -= count; carried += count; }
+		}
+		const payload: TrafficEvent = { ...event, reporter_dropped_events: carried,
+			...(carried ? { reporter_drop_reasons: carriedReasons } : {}) };
 		let body = JSON.stringify(payload);
 		// JSON escaping must not turn invalid address evidence into a lost request.
 		if (Buffer.byteLength(body, 'utf8') > 2048) {
@@ -91,10 +108,11 @@ export function createTrafficReporter(
 		void (async () => {
 			const controller = new AbortController();
 			let timer: NodeJS.Timeout | undefined;
+			let failure: DropReason = 'unknown';
 			try {
 				// Runtime builds also support Node 20, which has no Promise.withResolvers.
 				const deadline = new Promise<never>((_, reject) => {
-					timer = setTimeout(() => { controller.abort(); reject(new Error('report deadline')); }, timeoutMs);
+					timer = setTimeout(() => { failure = 'timeout'; controller.abort(); reject(new Error('report deadline')); }, timeoutMs);
 				});
 				const delivery = (async () => {
 					const result = await send(config.url, {
@@ -102,16 +120,30 @@ export function createTrafficReporter(
 						headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
 						body,
 					});
-					try { if (!result.ok) throw new Error('report rejected'); }
+					try { if (!result.ok) { failure = 'rejected'; throw new Error('report rejected'); } }
 					finally { await result.body?.cancel(); }
 				})();
 				await Promise.race([delivery, deadline]);
-			} catch { drop(carried + 1); }
+			} catch (error) {
+				// Fetch network failures are TypeError; do not inspect URLs/messages/causes.
+				if (failure === 'unknown' && error instanceof TypeError) failure = 'connection';
+				for (const reason of dropReasons) if (carriedReasons[reason]) drop(reason, carriedReasons[reason]);
+				drop(failure);
+			}
 			finally { clearTimeout(timer); inflight--; }
 		})();
 	}
 	return async ({ event, resolve }) => {
 		if (!config) return resolve(event);
+		const requestUrl = new URL(event.request.url);
+		const path = requestUrl.pathname;
+		// Never report ingestion itself, even when it fails: a proxy routed
+		// through this hook must not recursively report its own POST.
+		if (path === ingestPath || path === `${ingestPath}/` ||
+			(ingestion && requestUrl.origin === ingestion.origin && path === ingestion.pathname)) return resolve(event);
+		const diagnostic = Object.hasOwn(selfReportingPaths, path.endsWith('/') ? path.slice(0, -1) : path) ||
+			((event.request.method === 'GET' || event.request.method === 'HEAD') &&
+				(path === '/health' || path === snapshotPath || path === `${snapshotPath}/`));
 		const start = performance.now();
 		let address: string | null = null;
         if (config.peerIsSocket) {
@@ -125,10 +157,15 @@ export function createTrafficReporter(
             forwarded_for: forwarded && forwarded.length > 1024 ? 'invalid' : forwarded,
             request_bytes: null,
         } as const;
-		const finish = (status: number, pageview: boolean, bytes: number | null) => report({
-			...base, at: Date.now() / 1000, status, pageview, response_bytes: bytes,
-			latency_ms: Math.max(0, performance.now() - start),
-		});
+		const finish = (status: number, pageview: boolean, bytes: number | null) => {
+			// Only a fully consumed successful diagnostic is noise. Cancelled or
+			// failed streams remain observations with unknown byte coverage.
+			if (diagnostic && status >= 200 && status < 300 && bytes !== null) return;
+			report({
+				...base, at: Date.now() / 1000, status, pageview, response_bytes: bytes,
+				latency_ms: Math.max(0, performance.now() - start),
+			});
+		};
 		try {
 			const response = await resolve(event);
 			const pageview = event.request.method === 'GET' && response.status >= 200 && response.status < 300 &&

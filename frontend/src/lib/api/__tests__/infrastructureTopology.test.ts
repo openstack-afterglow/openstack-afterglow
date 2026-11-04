@@ -12,7 +12,7 @@ describe('infrastructure topology API boundary', () => {
 	it('bypasses caching and uses the captured token/project authority', async () => {
 		const snapshot = makeSnapshot(); fetchAuth.mockResolvedValue(new Response(JSON.stringify(snapshot), { status: 200 }));
 		const abort = new AbortController(); expect(await getInfrastructureTopology(authority, abort.signal)).toEqual(snapshot);
-		expect(fetchAuth).toHaveBeenCalledWith('/api/v1/admin/infrastructure-topology', expect.objectContaining({ method: 'GET', cache: 'no-store', credentials: 'include', signal: expect.any(AbortSignal) }), 'exact-token', 'exact-project');
+		expect(fetchAuth).toHaveBeenCalledWith('/api/v1/admin/infrastructure-topology', expect.objectContaining({ method: 'GET', cache: 'no-store', credentials: 'include', signal: expect.any(AbortSignal) }), 'exact-token', 'exact-project', { experience: undefined });
 	});
 	it('encodes the host path and submits only the target, never command arguments', async () => {
 		const job = makeTrace('queued'); fetchAuth.mockResolvedValue(new Response(JSON.stringify(job), { status: 200 }));

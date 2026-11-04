@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ClientModule from '$lib/api/client';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), baseUrl: 'http://localhost:8000' }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), baseUrl: 'http://localhost:8000', withExperience() { return this; } }));
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$lib/api/client', async importOriginal => ({ ...(await importOriginal<typeof ClientModule>()), api: mocks, getBaseUrl: () => mocks.baseUrl }));
 vi.mock('$lib/stores/cloudShell.svelte', () => ({ cloudShell: { close: vi.fn().mockResolvedValue(undefined) } }));

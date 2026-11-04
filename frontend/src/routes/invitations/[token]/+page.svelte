@@ -17,6 +17,8 @@
 	import { t } from '$lib/i18n/ns/domain-auth';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { beginAuthExperience, observedAuthText, createAuthNoticePresenter, type ExperienceContext } from '$lib/components/auth/authExperience';
+	import type { AuthExperience } from '$lib/components/auth/authExperience';
 
 	const token = $derived(($page.params as Record<string, string>)['token'] ?? '');
 
@@ -31,6 +33,15 @@
 	let approval = $state<SignupApprovalState | null>(null);
 	let createAbandoned = $state(false);
 	let loadSerial = 0;
+	let viewExperience = $state.raw<AuthExperience>();
+	const presentNotice = createAuthNoticePresenter();
+	$effect(() => {
+		const key = !viewExperience || loading || loadError ? null
+			: approval ? approval === 'pending' ? 'signup.approval.invitationPending' : 'signup.approval.invitationRejected'
+			: created ? 'onboarding.created.body' : accepted ? 'invitation.accepted.body' : null;
+		if (key) t(key, { project: '', domain: '' });
+		presentNotice('result', viewExperience, 'domain-auth', key, created || accepted ? 'success' : approval === 'rejected' ? 'warning' : 'info');
+	});
 
 	const signedIn = $derived(!!info && !!$auth.token);
 	let live = true;
@@ -54,8 +65,13 @@
 		untrack(() => void loadInfo(current));
 	});
 
-	async function loadInfo(current: string) {
+	async function loadInfo(current: string, action: 'load' | 'inspect' = 'load') {
 		const serial = ++loadSerial;
+		const owns = () => live && serial === loadSerial;
+		const observation = beginAuthExperience('auth.invitation', action, owns, 'account');
+		viewExperience = observation;
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 0);
 		info = null;
 		accepted = null;
 		created = null;
@@ -65,7 +81,8 @@
 		loadError = '';
 		if (!isOnboardingToken(current)) {
 			loading = false;
-			loadError = t('invitation.notFound');
+			loadError = text('invitation.notFound');
+			observation.validation('format'); observation.state('error'); void observation.applied();
 			return;
 		}
 		loading = true;
@@ -74,27 +91,32 @@
 				`/api/v1/auth/invitations/${encodeURIComponent(current)}`,
 				undefined,
 				undefined,
-				{ refresh: true, suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+				{ refresh: true, suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options },
 			);
-			if (serial !== loadSerial) return;
+			if (serial !== loadSerial) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			info = result;
 			accountExists = result.account_exists;
+			observation.state('ready', 1);
 		} catch (e) {
-			if (serial !== loadSerial) return;
+			if (serial !== loadSerial) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			const status = e instanceof ApiError ? e.status : null;
-			loadError = status === 404 ? t('invitation.notFound') : status === 410 ? t('invitation.gone') : t(onboardingErrorKey(status));
+			loadError = status === 404 ? text('invitation.notFound') : status === 410 ? text('invitation.gone') : text(onboardingErrorKey(status));
+			observation.state('error');
 		} finally {
-			if (serial === loadSerial) loading = false;
+			if (serial === loadSerial) { loading = false; void observation.applied(); }
 		}
 	}
 
-	async function createAccount(account: { name: string; password: string }) {
+	async function createAccount(account: { name: string; password: string }, experience?: ExperienceContext) {
 		if (!info || accountExists || approval || createAbandoned || $auth.token || $logoutInProgress || $projectSwitching) return;
 		const current = token;
 		const serial = loadSerial;
 		const generation = sessionGeneration;
 		const owns = () => live && serial === loadSerial && current === token && generation === sessionGeneration
 			&& !$auth.token && !$logoutInProgress && !$projectSwitching;
+		const observation = beginAuthExperience('auth.invitation', 'create', owns, 'account', experience);
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 1);
 		actionError = '';
 		accountExists = false;
 		try {
@@ -103,17 +125,19 @@
 				{ token: current, ...account },
 				undefined,
 				undefined,
-				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false },
+				{ suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: false, ...observation.options },
 			);
-			if (!owns()) return;
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			created = result;
+			viewExperience = observation; observation.state('ready', 2); void observation.applied();
 		} catch (e) {
-			if (!owns()) return;
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			approval = e instanceof ApiError ? signupApprovalState(e) : null;
-			if (approval) { created = null; storePendingInvitation(current); return; }
+			if (approval) { created = null; storePendingInvitation(current); viewExperience = observation; observation.state('ready'); void observation.applied(); return; }
 			const status = e instanceof ApiError ? e.status : null;
 			accountExists = status === 409;
-			actionError = t(onboardingErrorKey(status));
+			actionError = text(onboardingErrorKey(status));
+			observation.state('error'); void observation.applied();
 		}
 	}
 
@@ -127,6 +151,9 @@
 			&& generation === sessionGeneration && session === sessionScopeKey($auth)
 			&& !!$auth.token && $authReady && !$logoutInProgress && !$projectSwitching;
 		if (!sessionToken || !signedIn || acting || !owns()) return;
+		const observation = beginAuthExperience('auth.invitation', 'approve', owns, 'account');
+		const text = observedAuthText(observation, 'domain-auth', t);
+		observation.state('loading', 1);
 		acting = true;
 		actionError = '';
 		try {
@@ -135,22 +162,26 @@
 				{ token: current },
 				sessionToken,
 				undefined,
-				{ cache: 'no-store', replayOnUnauthorized: false },
+				{ cache: 'no-store', replayOnUnauthorized: false, ...observation.options },
 			);
-			if (!owns()) return;
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			if (result.user_id !== $auth.userId || result.identity_domain_id !== $auth.identityDomainId) throw new Error('Invitation account mismatch');
 			accepted = result;
+			viewExperience = observation; observation.state('ready', 2);
 		} catch (e) {
-			if (!owns()) return;
+			if (!owns()) { observation.discard(live ? 'stale' : 'unmounted'); return; }
 			const status = e instanceof ApiError ? e.status : null;
-			actionError = status === 403 ? t('invitation.emailMismatch') : t(onboardingErrorKey(status));
+			actionError = status === 403 ? text('invitation.emailMismatch') : text(onboardingErrorKey(status));
+			observation.state('error');
 		} finally {
-			if (owns()) acting = false;
+			if (owns()) { acting = false; void observation.applied(); }
 		}
 	}
 
 	function signInToAccept() {
 		if (!info) return;
+		const observation = beginAuthExperience('auth.invitation', 'sign_in', () => live, 'account');
+		observation.state('loading');
 		storePendingInvitation(token);
 		void goto('/login');
 	}
@@ -184,7 +215,7 @@
 						{t(approval === 'pending' ? 'signup.approval.invitationPending' : 'signup.approval.invitationRejected')}
 					</Alert>
 					<div class="auth-flow-actions">
-						{#if approval === 'pending'}<Button onclick={() => loadInfo(token)} class="w-full">{t('signup.approval.reopenInvitation')}</Button>{/if}
+						{#if approval === 'pending'}<Button onclick={() => loadInfo(token, 'inspect')} class="w-full">{t('signup.approval.reopenInvitation')}</Button>{/if}
 						<Button href="/signup" class="w-full">{t('signup.approval.restart')}</Button>
 						<Button variant="secondary" href="/login" class="w-full">{t('common.backToLogin')}</Button>
 					</div>

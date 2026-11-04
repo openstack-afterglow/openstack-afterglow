@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
+	import { untrack } from 'svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createDbInstanceDetailController, provideDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import DbInstanceHeader from '$lib/components/database/DbInstanceHeader.svelte';
@@ -28,9 +30,13 @@
 	provideDbInstanceDetailController(s);
 
 	$effect(() => {
+		void token;
+		void projectId;
 		if (instanceId) {
-			s.reset();
-			s.loadAll();
+			untrack(() => {
+				s.reset();
+				void s.loadAll();
+			});
 		}
 	});
 </script>
@@ -40,6 +46,8 @@
 
 	{#if s.loading && !s.instance}
 		<LoadingState variant="surface" label={tr('state.loading')} />
+	{:else if s.instanceReadError}
+		<Alert tone="danger">{s.instanceReadError}</Alert>
 	{:else if !s.instance}
 		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}

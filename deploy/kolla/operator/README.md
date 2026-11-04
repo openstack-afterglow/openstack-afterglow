@@ -1,8 +1,10 @@
 # Afterglow Kolla Operator Environment
 
-This dependency-only `uv` project supplies the Kolla CLI plus the root service
-packages that own the Afterglow plugin roles. It does not install an operator
-application.
+This dependency-only `uv` project supplies the Kolla CLI plus four sibling root
+service packages. It does not install an operator application or the
+`afterglow-kolla` root deployment-assets distribution. Install that root
+distribution explicitly from a reviewed source checkout or wheel into the same
+Kolla environment.
 
 ## Package ownership
 
@@ -13,12 +15,20 @@ application.
 | `waygate` | `waygate` | `0.2.0` |
 | `palimpsest-client` | `palimpsest` | `0.3.3` (PyPI) |
 
-Each root wheel owns its role files. No separate `*-kolla` distribution is
-installed, and installing one of these packages does not make its role a Kolla
-default dependency. The Afterglow aggregate playbook dispatches only enabled
-plugin roles after `../install.sh` has registered its stock-site import.
+Each root wheel owns its role files. The separately installed
+`afterglow-kolla` wheel owns the Afterglow role, aggregate playbook and helpers
+under `<environment-prefix>/share/afterglow/kolla`. The installer creates stable
+Kolla links to those private assets; it does not install the role contents into
+Kolla's stable link paths. Sibling roles use their root service distributions,
+not separate sibling `*-kolla` packages. Installing a package does not make its
+role a Kolla default dependency. The aggregate playbook dispatches enabled
+plugin roles only after the installer registers its additive stock `site.yml` import.
 
-The controller and every root package require Python 3.11 or newer.
+The operator manifest and `afterglow-kolla` deployment-assets package require Python 3.11+.
+
+**Current promotion boundary:** the table and checked-in lock retain the
+existing sibling pins. This packaging change does not promote them, update
+Kolla's pinned commit, synchronize a production venv, or deploy any service.
 
 ## Source declaration and release-tag promotion
 
@@ -29,6 +39,15 @@ not required by normal role installation. Kolla-Ansible remains independently
 pinned to `34daacfbf2d5987f543787f57535b2bebe7dee19`. The other promoted root
 packages use immutable Git tags and resolved commits; every controller installs
 the reviewed lock with `uv sync --locked`.
+
+`afterglow-kolla` is intentionally absent from this manifest/lock: this is
+unpublished source packaging, not a published release or a claim that an
+immutable release tag already contains it. Install an explicitly reviewed
+source/wheel path as shown below until an appropriate release is published.
+The public PyPI name `afterglow` belongs to an unrelated project; never run
+`pip install afterglow` or `pip install -U afterglow` (including `uv` equivalents)
+to install or update this integration. The directory `share/afterglow/kolla`
+retains its existing name regardless of the distribution name.
 
 Root-role Git sources must never use a branch, a bare repository URL, or a
 mutable `latest` label. This package/lock policy is distinct from application
@@ -133,19 +152,117 @@ The installer refuses to continue while `palimpsest-local` metadata remains.
 
 ## Install and lifecycle
 
-After the root packages have been synchronized, prepare
-`/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`, then run:
+Add the reviewed immutable Git tag containing `afterglow-kolla` to the same
+Python 3.11+ operator project; replace `X.Y.Z` only after that tag exists.
 
 ```bash
-KOLLA_ANSIBLE_BIN=/etc/kolla/.venv/bin/kolla-ansible \
-KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
-../install.sh
+cd /etc/kolla
+uv add --no-sync --tag X.Y.Z \
+  "afterglow-kolla @ git+https://github.com/openstack-afterglow/openstack-afterglow.git"
+# Review pyproject.toml and uv.lock changes before synchronizing.
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
 ```
 
-The installer verifies that each role is a real package-owned directory and
-that the active environment reports the distribution/version in the table
-above. It creates only the Afterglow role and aggregate-playbook links; it
-never links, replaces, or removes root-package role directories.
+For unreleased review, use one of the following local artifacts:
+
+```bash
+# Non-editable source installation; use the reviewed checkout's absolute path.
+uv pip install --python /etc/kolla/.venv/bin/python \
+  --reinstall-package afterglow-kolla /absolute/path/to/afterglow
+# Alternatively, install the actual reviewed wheel (replace X.Y.Z).
+uv pip install --python /etc/kolla/.venv/bin/python \
+  --reinstall-package afterglow-kolla \
+  /absolute/path/to/afterglow_kolla-X.Y.Z-py3-none-any.whl
+```
+
+Retain `--reinstall-package afterglow-kolla` for reviewed artifact updates,
+including same-version wheels: it forces reinstallation and package cache refresh.
+
+The same wheel can be installed with `pip` in the selected environment:
+
+```bash
+/etc/kolla/.venv/bin/python -m pip install --force-reinstall --no-deps \
+  /absolute/path/to/afterglow_kolla-X.Y.Z-py3-none-any.whl
+```
+
+**Migration if `openstack-afterglow` is installed:** uninstall that retired
+distribution **before** installing `afterglow-kolla` in the same environment:
+
+```bash
+uv pip uninstall --python /etc/kolla/.venv/bin/python openstack-afterglow
+# Then install the reviewed afterglow-kolla artifact above.
+# pip alternative: /etc/kolla/.venv/bin/python -m pip uninstall openstack-afterglow
+```
+
+The two names own the same private files; co-installation is unsafe because a
+later uninstall of the old distribution can remove the new package's assets.
+If both already exist, uninstall the old name and then reinstall
+`afterglow-kolla` from the reviewed artifact before registering links or running
+Kolla. The installer refuses remaining retired distribution metadata. Stable
+links may temporarily dangle during migration. Do not delete source checkouts,
+operator configuration or unrelated assets; a checkout link is not proof that
+the retired distribution is installed. This documents a conditional migration,
+not an observed production installation or rollout.
+
+Prepare `/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`, preserving
+existing values, then register the installed assets:
+
+```bash
+AFTERGLOW_OPERATOR_LOCK=/absolute/path/to/the/synced/operator/uv.lock \
+KOLLA_ANSIBLE_BIN=/etc/kolla/.venv/bin/kolla-ansible \
+KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
+bash /etc/kolla/.venv/share/afterglow/kolla/install.sh
+```
+
+The installer validates private asset ownership using the active interpreter's
+`afterglow-kolla` distribution metadata. It also verifies that each sibling
+role is a real package-owned directory and its distribution version matches the
+selected operator lock. Set `AFTERGLOW_OPERATOR_LOCK` to the exact reviewed lock
+used to sync the environment; the bundled snapshot is not selected automatically.
+The stable links are:
+
+- `<kolla-share>/ansible/roles/afterglow` ->
+  `<environment-prefix>/share/afterglow/kolla/ansible/roles/afterglow`
+- `<kolla-share>/ansible/afterglow-site.yml` ->
+  `<environment-prefix>/share/afterglow/kolla/site.yml`
+
+Wheel installation never writes through those Kolla links into an old checkout.
+The installer never replaces sibling role directories or foreign Afterglow
+paths. Both Afterglow links are preflighted before either is changed.
+
+For a known legacy Afterglow checkout, set
+`AFTERGLOW_REPO_DIR=/absolute/path/to/the/legacy/afterglow` on the installer
+command. Only complete link text equal to
+`$AFTERGLOW_REPO_DIR/deploy/kolla/ansible/roles/afterglow` or
+`$AFTERGLOW_REPO_DIR/deploy/kolla/site.yml`, respectively,
+authorizes migration to the installed private assets. An unrelated link,
+real directory or file is refused. Invoking `deploy/kolla/install.sh` from a
+checkout defaults the legacy path to that checkout; the installed script needs
+the explicit variable for a legacy migration. This variable identifies the old
+links, not a source of new role bytes. Existing exact package links are retained;
+old checkout files are untouched. Retired sibling checkout links require the
+separate exact-match procedure in [the deployment guide](../README.md#1-legacy-symlink-migration).
+
+If the role and aggregate playbook point to different old checkouts, identify
+the two complete absolute link texts independently:
+
+```bash
+AFTERGLOW_LEGACY_ROLE_TARGET=/absolute/old-role-checkout/deploy/kolla/ansible/roles/afterglow \
+AFTERGLOW_LEGACY_SITE_TARGET=/absolute/old-site-checkout/deploy/kolla/site.yml \
+AFTERGLOW_OPERATOR_LOCK=/absolute/path/to/the/synced/operator/uv.lock \
+KOLLA_ANSIBLE_BIN=/etc/kolla/.venv/bin/kolla-ansible \
+KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
+bash /etc/kolla/.venv/share/afterglow/kolla/install.sh
+```
+
+Each explicit target overrides only its corresponding `AFTERGLOW_REPO_DIR`
+fallback. It authorizes an exact existing link text, not a new source or a
+guessed path. Inspect both links before selecting these values. Both link
+destinations are preflighted before changes, and the source checkouts remain
+untouched.
+
+Installation and registration alone are not production deployment, image
+publication, operator-lock promotion, service restart or live acceptance.
 
 After any Kolla package reinstall, rerun the installer: the package can replace
 stock `site.yml` and remove its additive Afterglow import even while all role and
@@ -169,9 +286,8 @@ For explicitly authorized current-state recovery, preserve the actual installed
 Kolla commit and deployed image digests, review exact root-role package pins
 (PyPI version/hashes for Palimpsest; immutable tags for the other roots), snapshot
 the venv/configuration, and verify a locked/inexact dry-run before syncing.
-If the operator has its own reviewed manifest/lock, pass
-`AFTERGLOW_OPERATOR_LOCK=/etc/kolla/uv.lock` to the existing installer rather
-than changing repository promotion pins or using a custom playbook.
+Pass the actual synchronized lock using `AFTERGLOW_OPERATOR_LOCK`; do not
+substitute the potentially older package snapshot.
 Keep fresh operator authentication, restorable datastore backups and full-stock
 storage/availability gates separate from operator-path preparation.
 

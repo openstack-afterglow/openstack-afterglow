@@ -18,7 +18,10 @@ import type { WorkspaceInventory } from '$lib/stores/workspaceController.svelte'
 
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/stores', () => ({ page: { subscribe(run: (value: unknown) => void) { run({ data: { mockup: { active: false } } }); return () => {}; } } }));
-vi.mock('$lib/api/client', async (importOriginal) => ({ ...(await importOriginal<typeof ClientModule>()), api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('$lib/api/client', async (importOriginal) => {
+	const methods = { get: vi.fn(), post: vi.fn() };
+	return { ...(await importOriginal<typeof ClientModule>()), api: { ...methods, withExperience: () => methods } };
+});
 
 const home = { id: 'home', name: 'Same name' };
 const team = { id: 'team', name: 'Same name' };

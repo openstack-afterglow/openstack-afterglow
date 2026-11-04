@@ -5,6 +5,7 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/domain-auth';
+	import { beginAuthExperience, type ExperienceContext } from './authExperience';
 
 	// Creates a password account from a verified onboarding link. Clear password
 	// inputs before waiting so terminal states and late navigation retain no draft.
@@ -17,7 +18,7 @@
 		idPrefix: string;
 		submitLabel: string;
 		disabled?: boolean;
-		onSubmit: (account: { name: string; password: string }) => Promise<void>;
+		onSubmit: (account: { name: string; password: string }, experience?: ExperienceContext) => Promise<void>;
 	} = $props();
 
 	let name = $state('');
@@ -25,6 +26,7 @@
 	let confirm = $state('');
 	let submitting = $state(false);
 	let attempted = $state(false);
+	let live = true;
 
 	const nameError = $derived(attempted && !name.trim() ? t('onboarding.required') : '');
 	// Mirrors the onboarding API's password bounds; the server remains authoritative.
@@ -41,12 +43,20 @@
 		event.preventDefault();
 		if (submitting || disabled) return;
 		attempted = true;
-		if (!name.trim() || password.length < PASSWORD_MIN || confirm !== password) return;
+		const observation = beginAuthExperience(idPrefix === 'invitation' ? 'auth.invitation' : 'auth.signup', 'create', () => live);
+		if (!name.trim() || password.length < PASSWORD_MIN || confirm !== password) {
+			observation.validation(!name.trim() || !password || !confirm ? 'required' : 'policy');
+			const key = !name.trim() || !password || !confirm ? 'onboarding.required' : confirm !== password ? 'onboarding.passwordMismatch' : 'onboarding.passwordTooShort';
+			t(key); observation.message('domain-auth', key);
+			void observation.applied();
+			return;
+		}
 		submitting = true;
+		observation.state('loading');
 		const account = { name: name.trim(), password };
 		password = ''; confirm = ''; attempted = false;
 		try {
-			await onSubmit(account);
+			if (observation.context) await onSubmit(account, observation.context); else await onSubmit(account);
 		} finally {
 			password = '';
 			confirm = '';
@@ -54,7 +64,7 @@
 			submitting = false;
 		}
 	}
-	onDestroy(() => { name = ''; password = ''; confirm = ''; });
+	onDestroy(() => { live = false; name = ''; password = ''; confirm = ''; });
 </script>
 
 <form class="onboarding-form auth-flow" novalidate onsubmit={submit}>

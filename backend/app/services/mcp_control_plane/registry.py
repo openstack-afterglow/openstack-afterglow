@@ -665,10 +665,15 @@ class VmCreateArguments(McpDomainArguments):
     flavor_id: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._-]+$")
     network_id: UUID = Field(strict=False, description="Active project-owned or explicitly shared Neutron network.")
     boot_volume_size_gb: int = Field(
-        default=50, ge=1, le=16384, description="Root volume GiB; must satisfy image min_disk."
+        ge=1, le=16384, description="Explicit root volume GiB; must satisfy image min_disk."
+    )
+    key_name: str = Field(
+        min_length=1, max_length=255, description="Explicit SSH keypair owned by the authenticated user."
+    )
+    security_group_ids: list[Annotated[UUID, Field(strict=False)]] = Field(
+        min_length=1, max_length=32, description="Explicit, unique security groups owned by the selected project."
     )
     delete_boot_volume_on_termination: bool = False
-    key_name: str | None = Field(default=None, min_length=1, max_length=255)
     availability_zone: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^:]+$")
     usage_schedule: UsageScheduleRequest | None = Field(
         default=None,
@@ -693,6 +698,20 @@ class VmCreateArguments(McpDomainArguments):
     def reject_blank_text(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
             raise ValueError("Creation selections must not be blank")
+        return value
+
+    @field_validator("key_name")
+    @classmethod
+    def reject_reserved_key_name(cls, value: str) -> str:
+        if any(char in value for char in "/\\?#%") or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("Key name must not contain reserved characters")
+        return value
+
+    @field_validator("security_group_ids")
+    @classmethod
+    def reject_duplicate_groups(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("Security-group IDs must be unique")
         return value
 
 
@@ -735,6 +754,8 @@ async def _vm_create_preview(context: ConsumerCloudContext, arguments: VmCreateA
             f"glance-image:{plan['image_id']}",
             f"nova-flavor:{plan['flavor_id']}",
             f"neutron-network:{plan['network_id']}",
+            f"nova-keypair:{context.user_id}:{plan['key_name']}",
+            *[f"neutron-security-group:{group_id}" for group_id in plan["security_group_ids"]],
         ],
         destructive=schedule is not None and schedule["expiry_action"] == "delete",
         estimated_effect=effect,
@@ -3331,7 +3352,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
     ),
     RegistryEntry(
         name="afterglow_vm_create",
-        description="Request creation of one VM with an image-backed boot volume in the selected project; acceptance is not guest readiness.",
+        description="Request one VM using an explicit image, flavor, network, boot volume size, user-owned SSH key and project-owned security groups; acceptance is not guest readiness.",
         arguments=VmCreateArguments,
         output=VmCreateOutput,
         minimum_scope="mcp:write",

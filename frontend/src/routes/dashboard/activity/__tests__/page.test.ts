@@ -5,7 +5,7 @@ import { writable } from 'svelte/store';
 
 const { mockGet, refreshCallbacks } = vi.hoisted(() => ({ mockGet: vi.fn(), refreshCallbacks: [] as Array<() => unknown> }));
 
-vi.mock('$lib/api/client', () => ({ api: { get: mockGet } }));
+vi.mock('$lib/api/client', () => ({ api: { get: mockGet, withExperience: () => ({ get: mockGet }) } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project', projectName: 'Project One' }),
 	authReady: writable(true),

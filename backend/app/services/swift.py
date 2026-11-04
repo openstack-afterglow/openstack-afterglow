@@ -183,13 +183,11 @@ def list_containers(
 
         return _container_inventory(conn.object_store, include_quarantine, include_trash)
     except Exception as exc:
-        if _is_account_not_found(exc):
-            _logger.info("Swift 계정 미초기화 (404) — 빈 목록 반환")
-        elif _is_unauthorized(exc):
-            _logger.info("Swift 401 Unauthorized — 권한 없음, 빈 목록 반환")
-        else:
-            _logger.warning("Swift 컨테이너 목록 조회 실패", exc_info=True)
-        return []
+        if _is_account_not_found(exc) or _is_unauthorized(exc):
+            _logger.info("Swift 계정 미초기화/권한 없음 — 빈 목록 반환")
+            return []
+        _logger.warning("Swift 컨테이너 목록 조회 실패", exc_info=True)
+        raise
 
 
 def count_containers(conn, *, timeout: float | int | None = None, strict: bool = False) -> int:
@@ -1109,8 +1107,12 @@ def list_trash_objects(conn, container: str) -> list[dict]:
     trash_container = _trash_container_name(container)
     try:
         objects = list_objects(conn, trash_container, delimiter="")
-    except Exception:
-        return []
+    except Exception as exc:
+        # 휴지통 버킷 자체가 없으면(삭제 이력 없음) 빈 목록이 정상.
+        # 그 외 장애(타임아웃/5xx)는 빈 목록으로 위장하지 않고 전파한다.
+        if _is_account_not_found(exc):
+            return []
+        raise
 
     result = []
     for obj in objects:

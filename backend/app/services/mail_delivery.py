@@ -16,7 +16,6 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from anyio import CancelScope
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -26,7 +25,7 @@ from app.models.activity import ActivityLog
 from app.models.announcement import Announcement
 from app.models.email_delivery import EmailDelivery, EmailNotificationCursor, EmailOperation, EmailPreference
 from app.services import domain_auth, identity_roles, mail_crypto, mail_settings
-from app.services.work_dispatcher import checkpoint, run_sync
+from app.services.work_dispatcher import checkpoint, drain_task, run_sync, worker_experience_scope
 
 logger = logging.getLogger(__name__)
 STATUSES = ("pending", "dispatching", "accepted", "failed", "unknown", "cancelled")
@@ -329,6 +328,20 @@ async def _persist(
     return operation
 
 
+async def _experience_admission(operation):
+    from app.services.experience_context import bind_experience_operation, capture_experience_context, emit_experience
+
+    if operation.kind == "resource_alert" or operation.actor_id in {"notifications", "system", ""}:
+        return
+    context = capture_experience_context(feature="admin", action="submit", component="page")
+    if context is None or context.get("actor", {}).get("user_id") != operation.actor_id:
+        return
+    await bind_experience_operation(context, "email_operation", operation.id)
+    await emit_experience(
+        context, "operation.accepted", stage="mail.admission", status="accepted", operation_id=operation.id
+    )
+
+
 async def _enqueue(
     *,
     actor_id,
@@ -372,6 +385,7 @@ async def _enqueue(
                 notification_activity_id=notification_activity_id,
             )
             summary = await _summary(session, operation)
+        await _experience_admission(operation)
         return summary
     except IntegrityError:
         async with factory() as session:
@@ -479,6 +493,7 @@ async def create_announcement_with_mail(row, *, actor_id, operation_id):
                 announcement=row,
             )
             result = {**_serialize_admin(row), "email_operation": await _summary(session, operation)}
+        await _experience_admission(operation)
         return result
     except IntegrityError:
         async with factory() as session:
@@ -951,8 +966,6 @@ async def _eligible_delivery(row, operation, payload, settings, now):
 
 
 async def _dispatch_one(delivery_id, *, now=None):
-    from app.services import email_service
-
     dispatch_clock = now
     now = now or _now()
     settings = await mail_settings.effective_settings()
@@ -963,6 +976,35 @@ async def _dispatch_one(delivery_id, *, now=None):
         if row is None or row.status != "pending":
             return
         operation = await session.get(EmailOperation, row.operation_key)
+    from app.services.experience_context import (
+        restore_experience_operation,
+        unlinked_worker_context,
+    )
+
+    experience = (
+        await restore_experience_operation(
+            "email_operation", operation.id, {"user_id": operation.actor_id, "ownership_mode": "origin_receipt"}
+        )
+        if operation is not None
+        and operation.kind != "resource_alert"
+        and operation.actor_id not in {"notifications", "system", ""}
+        else None
+    )
+    linked = experience is not None
+    experience = experience or unlinked_worker_context(feature="admin", action="submit", component="page")
+    with worker_experience_scope(experience, row.id):
+        return await _dispatch_bound_delivery(row, operation, settings, experience, linked, now, dispatch_clock)
+
+
+async def _dispatch_bound_delivery(row, operation, settings, experience, linked, now, dispatch_clock):
+    from app.services import email_service
+    from app.services.experience_context import (
+        bind_experience_operation,
+        emit_experience,
+        emit_experience_cleanup,
+        fork_experience_call,
+    )
+
     try:
         payload = _payload(row)
     except HTTPException:
@@ -988,34 +1030,84 @@ async def _dispatch_one(delivery_id, *, now=None):
     message["Message-ID"] = row.message_id
     message.set_content(payload["body"])
     message.add_alternative("<p>" + html.escape(payload["body"]).replace("\n", "<br>\n") + "</p>", subtype="html")
+    await bind_experience_operation(experience if linked else None, "email_delivery", row.id)
     await checkpoint()
     if not await _set_status(row.id, "dispatching", expected="pending", now=now):
         return
-    task = None
-    interrupted = False
-    try:
-        await checkpoint()
-        task = asyncio.create_task(email_service.send_message(message, smtp=settings.smtp))
+
+    async def dispatch_and_settle():
+        recorded = False
         try:
-            result = await asyncio.shield(task)
-        except asyncio.CancelledError:
-            interrupted = True
-            # Keep dispatcher ownership until late SMTP and SQL settlement finish.
-            with CancelScope(shield=True):
-                while not task.done():
-                    try:
-                        await asyncio.shield(task)
-                    except asyncio.CancelledError:
-                        continue
-                result = task.result()
-        with CancelScope(shield=True):
-            await _set_status(row.id, result.status, result.code)
-    except BaseException:
-        with CancelScope(shield=True):
-            await _set_status(row.id, "unknown", "dispatch_outcome_unknown")
+            await checkpoint()
+            await emit_experience(
+                native_experience, "stage.started", stage="native", status="running", operation_id=row.id
+            )
+            result = await email_service.send_message(message, smtp=settings.smtp)
+            # 업무상 최종 상태를 먼저 기록한다. 이후 진단은 best-effort이며 취소돼도 결과를 강등하지 않는다.
+            settled = await _set_status(row.id, result.status, result.code)
+            recorded = True
+            await emit_experience(
+                native_experience, "stage.completed", stage="native", status="observed", operation_id=row.id
+            )
+            if settled:
+                status = {"accepted": "accepted", "failed": "failed", "cancelled": "cancelled"}.get(
+                    result.status, "outcome_unknown"
+                )
+                await emit_experience(
+                    experience,
+                    "worker.state_changed",
+                    stage="mail.dispatch",
+                    status=status,
+                    operation_id=row.id,
+                    reason="smtp_accepted" if result.status == "accepted" else None,
+                )
+        except BaseException:
+            if not recorded:
+                settled = await _set_status(row.id, "unknown", "dispatch_outcome_unknown")
+                if settled:
+                    await emit_experience(
+                        experience,
+                        "worker.state_changed",
+                        stage="mail.dispatch",
+                        status="outcome_unknown",
+                        operation_id=row.id,
+                        reason="unknown",
+                    )
+            raise
+
+    # Own both the actual SMTP transport and terminal SQL write. Neither caller
+    # cancellation nor diagnostic cancellation may abandon them or replay DATA.
+    native_experience = fork_experience_call(experience)
+    task = asyncio.create_task(dispatch_and_settle())
+    try:
+        await emit_experience(
+            experience,
+            "worker.claimed",
+            stage="mail.dispatch",
+            status="running",
+            operation_id=row.id,
+            reason=None if linked else "unlinked",
+        )
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await emit_experience_cleanup(
+            native_experience,
+            "worker.state_changed",
+            stage="mail.dispatch",
+            status="cancel_requested",
+            operation_id=row.id,
+            reason="aborted",
+        )
+        await drain_task(task)
+        await emit_experience_cleanup(
+            native_experience,
+            "worker.state_changed",
+            stage="native.drain",
+            status="observed",
+            operation_id=row.id,
+            reason="aborted",
+        )
         raise
-    if interrupted:
-        raise asyncio.CancelledError
 
 
 async def _dispatch_pending(now, dispatch_clock, batch_size, excluded=()):

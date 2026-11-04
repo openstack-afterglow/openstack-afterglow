@@ -7,10 +7,40 @@
 
 ## [Unreleased]
 
+### Added
+
+- `afterglow-kolla` Python 배포 패키지에 Kolla role·playbook과 설치 도구를 포함해, 최초 연결 이후 패키지 갱신으로 Kolla 자산을 갱신할 수 있게 합니다. Private `share/afterglow/kolla` 경로는 유지하고, 예전 `openstack-afterglow` distribution 설치 환경은 이전 이름 제거 후 새 artifact 설치·재설치가 필요합니다. Role/site의 서로 다른 옛 checkout 링크도 별도 exact target으로 이관하며 원본 source·설정은 보존합니다. 아직 미발행 source package로, 패키지 게시·운영 설치·배포를 수행했다는 뜻은 아닙니다.
+- Kolla에서 `afterglow_backend_workers`로 backend 호스트당 Uvicorn 프로세스 수를 설정합니다. 기본값은 기존과 같은 1이며 잘못된 값은 구성 및 활성화 전에 거부합니다.
+- 기본 꺼짐인 의미 기반 경험 관측 v2를 추가합니다. 입력값·DOM·원본 URL/query·채팅·터미널·credential 원문 없이 명시적 action/request/operation/worker 연결과 실제 화면 상태를 별도 SQL107 진단 저장소에 기록합니다. 브라우저 관측·서버 요청·업무 terminal·상태 적용·DOM commit·노출/미확인을 구분하며 기존 관리자 이벤트 화면의 한국어 해설·정확한 카탈로그 복원·읽기 전용 export와 연결합니다. 새 수집·운영 schema·보존 삭제는 자동 활성화하지 않습니다.
+- 진단 보존 CLI에 기본 dry-run, exact-owner 구간 hold/release와 제한된 삭제·집계를 추가합니다. Hold와 삭제는 SQL maintenance row로 직렬화하고 원문 카탈로그는 FK/동시성 보호로 실제 참조가 남아 있는 동안 보존합니다. 업무 감사와 기존 키·unknown 원장은 별도 보존합니다.
+
 ### Fixed
+
+- MCP VM 생성에서 이미지·flavor·네트워크·부팅 볼륨 크기·본인 SSH 키·대상 프로젝트 보안그룹을 명시하도록 요구합니다. 누락과 소유권 미확인은 생성 전에 거부하므로 기존 MCP 생성 클라이언트는 새 필수 입력을 제공해야 합니다.
 
 - MCP 권한 표에서 member의 프로젝트 관리 가능 상태와 선택한 키·동의의 읽기/관리 제한을 구분합니다. 이미 검증한 native catalog를 재사용해 불필요한 토큰 재교환을 없애며 서비스 권한 조회 오류를 허용으로 바꾸지 않습니다.
 - MCP 연결 카드에 정제된 클라이언트 이름·버전·신고/추정 출처를 펼치지 않아도 표시합니다. 원래 client ID·프로젝트 UUID masking과 정확한 자격 전체 철회는 유지합니다.
+- Octavia pool 목록에서 설치된 SDK가 무시하던 `load_balancer_id` 대신 `loadbalancer_id`를 사용하고 provider 응답의 `loadbalancers` 관계를 읽습니다. LB마다 전체 pool을 반복 연결하던 오류와 중복 조회를 제거하고, topology child 조회는 bounded fan-out으로 정리합니다. Native 일부 조회 실패를 정상 빈 그래프로 숨기지 않으며 fixed-IP edge는 프로젝트·유일 후보를 확인합니다.
+- 관리자 정책 카탈로그의 local key 조회는 한 요청 안에서 scope/kind별 native collection을 재사용합니다. Waygate·Drover의 원래 독립 요청·timeout·현재 권위 경계는 유지하며 remote URL에 aggregate query를 전달하지 않습니다.
+- 관리자 정책·런타임 합성 조회는 native 서비스의 실패를 service/status로 분리하여 정상 local/다른 서비스 값을 보존합니다. 중앙 권한·local 저장소 오류는 그대로 실패하며 remote 원문 오류를 노출하지 않습니다. 실패/미수신 행의 catalog·선택·저장을 막고 Notion의 알려진 unset과 조회 불가를 구분합니다. 새 envelope와 frontend를 함께 전환하며 업무 쓰기를 자동 재실행하지 않습니다.
+- 네트워크 상세의 관측용 `loading` 읽기가 초기 effect의 재조회 조건이 되어 응답 직후 화면을 지우고 GET을 반복하던 회귀를 제거합니다. 기존 network/API base/token/project 변경의 실제 reload는 유지합니다. 관리자 정책 카탈로그는 검증된 same-owner 갱신에서 목록·미저장 draft를 보존하고 권위·readiness·backend ABA 뒤의 오래된 read/save 결과는 표시하지 않습니다.
+- DB 상세는 빈 flavor 응답 뒤 자동 새로고침 OFF 상태에서도 GET을 반복하던 reactive dependency를 제거합니다. Instance/token/project 변경의 재조회는 유지하며 Trove 장애·transport 실패를 정제된503과 실제 화면의 조회 실패로 구분합니다. 소유권 거부·존재하지 않음404는 유지하고 raw REST의 실패 응답을 정상 상세로 해석하지 않습니다.
+- Shared GET의 실패 응답도 실제 physical request와 각 화면 owner에 연결합니다. 동일 예외와 기존 coalescing·cache·owner 경계를 유지하고 transport 오류를 수신 성공으로 합성하지 않습니다. Waygate 목록의 실제 상태·수동 갱신을 관측하고 조회 실패와 빈 목록 안내가 동시에 보이지 않게 합니다. File wizard의 관측 초기화를 실제 열림 lifecycle에 연결하고 닫힘·재열림·scope 전환 뒤의 오래된 metadata를 폐기합니다.
+- Object Storage 조회 실패를 정상 빈 목록·검색 결과0으로 표시하지 않고 같은 owner의 마지막 유효 행과 정상 sibling cache를 보존합니다. 실제 read/cache/meta 결과와 cleanup을 logical owner·scope·API-base ABA로 제한하고, 검증된 갱신의 props 재발행이 filter·선택·pending 결과를 지우지 않게 합니다. 객체 조회에 맞는 다국어 오류와 당시 표시 locale의 카탈로그 관측을 사용합니다.
+- Palimpsest와 Lumen의 목록·상세 읽기 오류에 상태 적용과 소유권을 재확인한 DOM 반영 관측을 연결합니다. 닫힌 모델 선택창·unmount·프로젝트 전환 뒤의 오류를 화면에 보였다고 기록하지 않으며 생성·추론·전송 작업의 성공이나 자동 재시도를 합성하지 않습니다.
+- Audio Studio의 모델 선택 A→B→A 뒤 첫 A의 늦은 capability 응답이 최신 결과·오류·loading을 덮지 않도록 kind별 요청 세대 경계를 적용합니다. TTS/STT의 실패 재현 회귀를 유지하고 음성 생성·전사를 재실행하지 않습니다.
+- Trove 목록 계열의 upstream 실패를 빈 목록으로 숨기지 않고 500으로 전파하며 관련 캐시 키를 http-checked-v2로 격리합니다. Swift 목록/휴지통의 빈 목록 인정 범위를 부재 사유로 좁히고 계정 조회를 strict로 전환합니다. 단건 조회와 백업 owner 확인의 catch-all 404를 401/403/404만 opaque 404로 좁히고 나머지는 정제된 503으로 구분합니다.
+- 관리자 컨테이너 단건 조회도 native 503·전송 장애를 거짓 404로 바꾸지 않고 정제된 503으로 구분합니다. 실제 부재·거부의 opaque 404와 관리자 권한·executor 경계는 유지합니다.
+- 경험 조회의 정적 카탈로그는 이미 허용된 bounded window에서 한 번에 읽어 반복 message마다 발생하던 SQL 조회를 없앱니다. 같은 catalog ID를 공유해도 각 사건의 revision/key/실제 locale을 개별 검증하여 다른 사건의 성공 때문에 잘못된 문구를 복원 완료로 표시하지 않습니다.
+- 소비자·관리자 VM 생성의 소유 SDK 호출과 worker의 native 호출은 실제 종료까지 admission·연결·lease를 보존합니다. 동기/native child span의 시작·반환 관측·취소 요청·실제 drain을 구분하며, 진단 저장 중 취소가 이미 반환된 native ID를 잃게 하거나 새 후속 SDK 쓰기를 시작시키지 않게 합니다. SMTP transport와 terminal SQL을 함께 drain하고 다중 delivery의 마지막 actor가 role cleanup에 남지 않도록 합니다. SDK 종료를 provider 취소·guest 준비로 선언하거나 unknown 작업을 재전송하지 않습니다.
+- SMTP가 결과를 반환하면 메일 업무 최종 상태(accepted/failed/cancelled/unknown)를 best-effort 완료 진단보다 먼저 durable하게 기록합니다. 진단 취소가 이미 accepted된 메일을 `unknown`으로 강등하지 않으며 알 수 없는 DATA는 계속 재전송하지 않습니다. 소유 anyio scope의 레벨 취소가 진단 shield에 가려져도 `checkpoint()`가 새 SDK 작업 전에 이를 드러내어, 취소된 scope에서 다음 native 변경이 시작되지 않습니다.
+- Notion 연결 목록과 전역 설정의 성공·실패를 독립 적용하고 미설정·명시 OFF·조회 불가를 구분합니다. 미설정 값을 조회만으로 OFF로 저장하지 않으며, 같은 owner의 읽기 갱신이 pending-save lock을 풀거나 성공한 쓰기를 오래된 값으로 덮지 않습니다. 원 서비스의 조회 실패를 다른 OpenStack 장애로 표시하지 않습니다.
+- VM 생성의 서버422 검증 거부를 원래 create action의 `validation.rejected`로 관측합니다. 원문 거부 입력·본문은 진단에 넣지 않고 요청을 재실행하거나 준비 완료로 표시하지 않습니다.
+- 복구 화면의 실제 비활성 경고도 표시된 언어와 함께 관측하며 locale 변경으로 일회용/정책 요청을 재실행하지 않습니다. 한국어 replay는 browser batch 수신 영수증 ID가 아니라 scope 검증된 실제 업무 요청 참조를 표시합니다.
+- 성공 probe의 요청 로그는 실제 ASGI final-send와 정상 반환 뒤에만 샘플링합니다. 불완전·실패·취소 응답은 숨기지 않고 metrics는 모든 요청을 유지합니다. Traffic 진단 self-report noise를 제한하고 사유·단계·보수적 유실 증거를 추가하되 Redis 쓰기 재실행이나250ms deadline 확대는 하지 않습니다.
+- Instance-health의 coordination store 장애를 잘못된 credential401 또는 거짓204로 처리하지 않고503으로 구분합니다. 기존7일 절대 수명과 재발급/키 변경 경계를 유지합니다. MCP OAuth의 외부 오류는 동일한 generic 응답으로 유지하면서 고정 내부 사유만 secret-safe 구조화 로그에 기록합니다.
+- API와 standalone worker의 JSON 로그를 공통 모듈로 통합하고 pytest 파일 로그를 PID별로 분리하며 dependency DEBUG 증폭을 제한합니다. Worker CLI에서만 초기화하여 API 안의 단순 worker import가 기존 handler·감사를 지우지 않습니다. 고정 진단 사유·driver numeric code와 source/process/runtime metadata는 보존하되 SQL·예외 원문·credential·임의 값은 추가하지 않습니다.
+- 설치기 PTY 검증의 제어 JSON을 명시적인 개행 frame으로 읽어, 실제 PTY 생성 전 stdin EOF를 기다리며 멈추던 gate 경로를 교정합니다. 설치 script·deadline·안전성 assertion은 바꾸지 않습니다.
 
 ## [1.32.6] - 2026-11-04
 

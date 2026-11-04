@@ -52,6 +52,28 @@ npm run services:up                  # docker-compose.dev.yml, http://localhost:
 
 K8s·Helm 설정과 배포 파일만 만들려면 설정을 둘 디렉터리에서 `python3 /path/to/checkout/setup.py`를 실행합니다(Python 3.11+). 기존 `afterglow.conf`를 보존하며 terminal menu로 편집·Kubernetes·Helm·둘 다를 선택하고 비밀은 숨겨 입력합니다. 자동 모드는 `--non-interactive --target both`, 비밀 파일은 `--set-file`입니다. 출력·curl entry point·Kolla native defaults와 sparse override 우선순위는 [설정 생성 가이드](docs/deployment.md#k8shelm-로컬-설정-편집과-생성)를 따릅니다. 생성은 cluster apply가 아닙니다.
 
+### Kolla-Ansible 패키지 설치
+
+`afterglow-kolla`는 Drover·Lumen처럼 Kolla 환경에 설치하는 Python 배포 자산 패키지입니다. 현재 패키징 변경은 **아직 GitHub 릴리스나 PyPI에 발행되지 않았습니다.** 아래 `X.Y.Z`는 이 패키지를 포함하는 불변 Git 태그가 실제로 발행된 뒤에만 해당 태그로 바꾸세요.
+
+Kolla 서버의 기존 `uv` 프로젝트에서 `uv add`로 의존성과 Git source를 추가하고 lock을 생성합니다. 이 명령은 `--no-sync`를 사용하므로 가상환경을 변경하지 않습니다.
+
+```bash
+cd /etc/kolla
+uv add --no-sync --tag X.Y.Z \
+  "afterglow-kolla @ git+https://github.com/openstack-afterglow/openstack-afterglow.git"
+```
+
+`pyproject.toml`의 `dependencies`와 `[tool.uv.sources]`, `uv.lock`에 생긴 변경을 검토한 뒤, Python 3.11 이상의 기존 Kolla 가상환경에 동기화합니다.
+
+```bash
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
+```
+
+이미 lock이 검토되어 있다면 `uv lock`을 다시 실행할 필요는 없습니다. `--inexact`는 다른 운영 패키지의 제거를 방지하지만, 동기화 전 기존 lock과 패키지 변경 내역은 별도 검토해야 합니다. 로컬 wheel을 검토할 때는 `/etc/kolla/.venv/bin/python -m pip install --no-deps /absolute/path/to/afterglow_kolla-X.Y.Z-py3-none-any.whl`을 사용할 수 있습니다.
+
+최초 설치 후에는 실제 동기화에 사용한 lock을 `AFTERGLOW_OPERATOR_LOCK`으로 지정해 설치된 `share/afterglow/kolla/install.sh`를 실행해야 Kolla role과 playbook이 연결됩니다. 기존 checkout 링크가 있으면 정확한 대상 확인도 필요합니다. 패키지 설치는 Kolla reconfigure나 서비스 배포가 아닙니다. 전체 절차와 기존 링크 이관은 [Kolla 설치 가이드](deploy/kolla/README.md#installation--symlink-creation)를 따르세요.
+
 
 ### 공개 MCP/OAuth
 

@@ -8,7 +8,6 @@ DB + Neutron을 결합한 비동기 함수 모음.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -19,6 +18,7 @@ if TYPE_CHECKING:
 from app.api.common.errors import public_service_error
 from app.database import get_session_factory, is_db_available
 from app.models.storage import NetworkInfo
+from app.services.work_dispatcher import run_native
 
 _logger = logging.getLogger(__name__)
 
@@ -39,19 +39,19 @@ async def ensure_default_network(
     row = await _db_get(project_id)
     if row:
         network_id = row["network_id"]
-        network = await asyncio.to_thread(conn.network.get_network, network_id)
+        network = await run_native(conn.network.get_network, network_id)
         if network is None:
             raise RuntimeError("persisted project default network is unavailable")
         return _net_to_info(network)
 
-    net_id, subnet_id, router_id, newly_created = await asyncio.to_thread(
+    net_id, subnet_id, router_id, newly_created = await run_native(
         provision_default_network, conn, project_id, external_network_id, cidr
     )
 
     # ── 3. DB 기록 ────────────────────────────────────────────────────────────
     await _db_upsert(project_id, net_id, subnet_id, router_id, auto_created=newly_created)
 
-    n = await asyncio.to_thread(conn.network.get_network, net_id)
+    n = await run_native(conn.network.get_network, net_id)
     from app.services.neutron import _net_to_info
 
     return _net_to_info(n)

@@ -34,6 +34,8 @@ import {
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { k3sPermissions, type KubeconfigGrade } from './k3sPermissions';
+import { K3S_DELETE_STEPS } from '$lib/components/k3sSteps';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
 
 export type ActiveTab = 'main' | 'configmaps' | 'secrets' | 'services' | 'workloads' | 'pods' | 'stampede';
 
@@ -105,7 +107,33 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   const apiBase = $derived(opts.adminMode() ? '/api/v1/admin/k3s-clusters' : '/api/v1/k3s/clusters');
   const isActive = $derived(cluster?.status === 'ACTIVE');
 
-  async function loadCluster() {
+  // Assignment revisions describe actual writes, never whether a response should be applied.
+  const assignments = new Map<string, number>();
+  function observe(key: string, action: ExperienceAction, context?: ExperienceContext, workload = false, allowed: () => boolean = () => true) {
+    const component = key === 'delete' ? 'shared.stream' : 'resource.detail';
+    const ctx = context ?? (action === 'load' ? beginExperienceLoad('k3s', component) : beginExperienceAction('k3s', action, component));
+    const id = opts.clusterId();
+    const projectId = opts.projectId();
+    const userId = opts.userId();
+    const admin = opts.adminMode();
+    const epoch = generation;
+    const workloadEpoch = workloadGeneration;
+    const namespace = selectedNamespace;
+    const current = () => epoch === generation && opts.clusterId() === id && opts.projectId() === projectId && opts.userId() === userId && opts.adminMode() === admin && (!workload || (workloadEpoch === workloadGeneration && namespace === selectedNamespace)) && allowed();
+    experienceState(ctx, 'loading');
+    return {
+      ctx, current,
+      applied(state: 'ready' | 'empty' | 'error' | 'disabled', step?: number) {
+        const assignment = (assignments.get(key) ?? 0) + 1;
+        assignments.set(key, assignment);
+        experienceState(ctx, state, step);
+        void experienceApplied(ctx, {}, () => assignments.get(key) === assignment && current());
+      },
+      discarded() { experienceDiscarded(ctx, 'stale'); },
+    };
+  }
+
+  async function loadCluster(context?: ExperienceContext) {
     const id = opts.clusterId();
     const projectId = opts.projectId();
     const userId = opts.userId();
@@ -113,15 +141,18 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const request = ++clusterRequest;
     if (!id || !projectId) return;
     const current = () => epoch === generation && request === clusterRequest && opts.clusterId() === id && opts.projectId() === projectId && opts.userId() === userId;
+    const observation = observe('cluster', 'load', context);
     try {
-      const value = await api.get<K3sCluster>(`${apiBase}/${id}`, opts.token(), projectId);
-      if (!current()) return;
+      const value = await api.withExperience(observation.ctx).get<K3sCluster>(`${apiBase}/${id}`, opts.token(), projectId);
+      if (!current()) { observation.discarded(); return; }
       cluster = value;
       if (scalingTarget === null && cluster) scalingTarget = cluster.agent_count;
       error = '';
+      observation.applied(cluster ? 'ready' : 'empty');
     } catch (e) {
-      if (!current()) return;
+      if (!current()) { observation.discarded(); return; }
       error = e instanceof ApiError ? t('detail.lookupFailed', { status: e.status }) : t('detail.serverError');
+      observation.applied('error');
     } finally {
       if (current()) loading = false;
     }
@@ -130,10 +161,13 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   async function loadHealth() {
     const id = opts.clusterId();
     if (!id || !cluster || cluster.status !== 'ACTIVE') return;
+    const observation = observe('health', 'load');
     try {
-      health = await api.get<K3sClusterHealth>(`/api/v1/k3s/clusters/${id}/health`, opts.token(), opts.projectId());
+      health = await api.withExperience(observation.ctx).get<K3sClusterHealth>(`/api/v1/k3s/clusters/${id}/health`, opts.token(), opts.projectId());
+      observation.applied(health ? 'ready' : 'empty');
     } catch {
       // 404는 아직 헬스 데이터 없음 — 무시
+      if (observation.current()) experienceState(observation.ctx, health ? 'ready' : 'empty');
     }
   }
 
@@ -141,11 +175,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).inventory) return;
     const id = opts.clusterId();
     if (!id || checkingHealth) return;
+    const observation = observe('health', 'verify', undefined, false, () => get(k3sPermissions).inventory);
     checkingHealth = true;
     try {
-      health = await api.post<K3sClusterHealth>(`/api/v1/k3s/clusters/${id}/health/check`, {}, opts.token(), opts.projectId());
+      health = await api.withExperience(observation.ctx).post<K3sClusterHealth>(`/api/v1/k3s/clusters/${id}/health/check`, {}, opts.token(), opts.projectId());
+      observation.applied(health ? 'ready' : 'empty');
     } catch {
       // rate limit(429) 등 — 무시
+      if (observation.current()) experienceState(observation.ctx, health ? 'ready' : 'empty');
     } finally {
       checkingHealth = false;
     }
@@ -162,21 +199,25 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const userId = opts.userId();
     const projectId = opts.projectId();
     const epoch = generation;
+    const observation = observe('kubeconfig-check', 'load', undefined, false, () => get(k3sPermissions).kubeconfigGrade === grade);
     try {
       const path = `/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`;
       const mock = await maybeMockHead(path, opts.token(), opts.projectId());
-      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) { observation.discarded(); return; }
       if (mock !== symbolNoMatch) {
         kubeconfigAvailable = mock.ok;
+        observation.applied(mock.ok ? 'ready' : 'empty');
         return;
       }
       const res = await fetchWithAuth(path, {
         method: 'HEAD',
-      }, opts.token(), opts.projectId());
-      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      }, opts.token(), opts.projectId(), { experience: observation.ctx });
+      if (epoch !== generation || get(k3sPermissions).kubeconfigGrade !== grade || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) { observation.discarded(); return; }
       kubeconfigAvailable = res.ok;
+      observation.applied(res.ok ? 'ready' : 'empty');
     } catch {
       kubeconfigAvailable = false;
+      observation.applied('error');
     }
   }
 
@@ -196,13 +237,19 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
       if (!(await confirmDialog(t('detail.confirmAdminKubeconfig', { name })))) return;
       if (epoch !== generation || !get(k3sPermissions).adminCredentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
     }
+    const observation = observe('kubeconfig-download', 'export', undefined, false, () => {
+      const permission = get(k3sPermissions);
+      return full ? permission.adminCredentials : grade === 'editor' ? permission.workloads : permission.credentials;
+    });
     try {
-      const { blob } = await api.downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
+      const { blob } = await api.withExperience(observation.ctx).downloadBlob(`/api/v1/k3s/clusters/${id}/kubeconfig?grade=${grade}`, opts.token(), projectId);
       // Recheck the requested grade as well as identity before disclosing this native-issued credential.
       const current = get(k3sPermissions);
-      if (epoch !== generation || (full ? !current.adminCredentials : grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      if (epoch !== generation || (full ? !current.adminCredentials : grade === 'editor' ? !current.workloads : !current.credentials) || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) { observation.discarded(); return; }
       downloadBlobAs(blob, `kubeconfig-${name}.yaml`);
+      if (observation.current()) experienceState(observation.ctx, 'ready');
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
       if (e instanceof ApiError && e.status === 404) toast.warning(t('detail.kubeconfigPending'));
       else toast.error(t('detail.downloadFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     }
@@ -217,14 +264,25 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const epoch = generation;
     if (!c || !(await confirmDialog(t('detail.confirmDelete', { name: c.name })))) return;
     if (epoch !== generation || !get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+    const observation = observe('delete', 'delete', undefined, false, () => get(k3sPermissions).administerClusters);
+    let observedStep = '';
     deleting = true;
     deleteProgress = { step: '', pct: 0, msg: t('detail.preparingDelete'), error: '' };
     try {
       for await (const msg of streamK3sProgress(
         `${apiBase}/${id}/delete-async`,
-        { method: 'POST', token: opts.token(), projectId: opts.projectId() },
+        { method: 'POST', token: opts.token(), projectId: opts.projectId(), experience: observation.ctx },
       )) {
         deleteProgress = { step: msg.step, pct: msg.progress, msg: msg.message, error: msg.error ?? '' };
+        if (msg.step !== observedStep) {
+          observedStep = msg.step;
+          const stage = K3S_DELETE_STEPS.findIndex(item => item.id === msg.step);
+          if (stage >= 0) {
+            experienceState(observation.ctx, msg.step === 'completed' ? 'ready' : 'loading', stage + 1);
+            const appliedStep = msg.step;
+            void experienceApplied(observation.ctx, {}, () => observation.current() && deleteProgress?.step === appliedStep);
+          }
+        }
         if (msg.step === 'completed') {
           opts.onClose?.();
           return;
@@ -232,12 +290,16 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
         if (msg.step === 'failed') {
           deleteProgress = { ...deleteProgress, error: msg.error ?? t('detail.unknownError') };
           deleting = false;
+          observation.applied('error');
           return;
         }
       }
+      if (observation.current()) recordExperience(observation.ctx, 'telemetry.gap', { reason: 'transport_failed' });
+      else observation.discarded();
     } catch (e) {
       deleteProgress = { step: 'failed', pct: 0, msg: t('detail.deleteFailed'), error: String(e) };
       deleting = false;
+      observation.applied('error');
     }
   }
 
@@ -252,13 +314,15 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const epoch = generation;
     if (!(await confirmDialog(t('detail.confirmScale', { current: c.agent_vm_ids.length, target: scalingTarget })))) return;
     if (epoch !== generation || !get(k3sPermissions).editClusters || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+    const observation = observe('scale', 'update', undefined, false, () => get(k3sPermissions).editClusters);
     scaling = true;
     scaleError = '';
     try {
-      await api.patch(`${apiBase}/${id}/scale`, { agent_count: scalingTarget }, opts.token(), opts.projectId());
-      await loadCluster();
+      await api.withExperience(observation.ctx).patch(`${apiBase}/${id}/scale`, { agent_count: scalingTarget }, opts.token(), opts.projectId());
+      await loadCluster(observation.ctx);
     } catch (e) {
       scaleError = e instanceof ApiError ? e.message : String(e);
+      observation.applied('error');
     } finally {
       scaling = false;
     }
@@ -276,37 +340,48 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
 
   async function loadNetworks() {
     if (networks.length > 0) return;
+    const observation = observe('networks', 'load');
     try {
-      networks = await api.get<NetworkInfo[]>('/api/v1/networks', opts.token(), opts.projectId());
+      networks = await api.withExperience(observation.ctx).get<NetworkInfo[]>('/api/v1/networks', opts.token(), opts.projectId());
+      observation.applied(networks.length ? 'ready' : 'empty');
     } catch {
       networks = [];
+      observation.applied('error');
     }
   }
 
-  async function loadInterfaces(vmIds: string[]) {
+  async function loadInterfaces(vmIds: string[], context?: ExperienceContext) {
     const id = opts.clusterId();
     if (!id) return;
+    const observation = observe('interfaces', 'load', context);
     await Promise.all(
       vmIds.map(async (vmId) => {
         try {
-          const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId());
+          const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId(), observation.ctx);
           interfaces = { ...interfaces, [vmId]: list };
+          observation.applied(list.length ? 'ready' : 'empty');
         } catch {
           // 개별 노드 실패는 무시
         }
       })
     );
+    if (observation.current()) experienceState(observation.ctx, Object.values(interfaces).some(list => list.length > 0) ? 'ready' : 'empty');
   }
 
   async function attachInterface(vmId: string, netId: string) {
     if (!get(k3sPermissions).editClusters) return;
     const id = opts.clusterId();
     if (!id || interfaceActioning) return;
+    const observation = observe('interface-mutation', 'attach', undefined, false, () => get(k3sPermissions).editClusters);
     interfaceActioning = vmId;
     try {
-      await attachNodeInterface(id, vmId, netId, opts.token(), opts.projectId());
-      const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId());
+      await attachNodeInterface(id, vmId, netId, opts.token(), opts.projectId(), observation.ctx);
+      const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId(), observation.ctx);
       interfaces = { ...interfaces, [vmId]: list };
+      observation.applied(list.length ? 'ready' : 'empty');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       interfaceActioning = null;
     }
@@ -316,11 +391,16 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).administerClusters) return;
     const id = opts.clusterId();
     if (!id || interfaceActioning) return;
+    const observation = observe('interface-mutation', 'detach', undefined, false, () => get(k3sPermissions).administerClusters);
     interfaceActioning = `${vmId}:${portId}`;
     try {
-      await detachNodeInterface(id, vmId, portId, opts.token(), opts.projectId());
-      const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId());
+      await detachNodeInterface(id, vmId, portId, opts.token(), opts.projectId(), observation.ctx);
+      const list = await listNodeInterfaces(id, vmId, opts.token(), opts.projectId(), observation.ctx);
       interfaces = { ...interfaces, [vmId]: list };
+      observation.applied(list.length ? 'ready' : 'empty');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       interfaceActioning = null;
     }
@@ -332,18 +412,21 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const userId = opts.userId();
     const projectId = opts.projectId();
     const epoch = generation;
+    const observation = observe('namespaces', 'load');
     try {
-      const ns = await listNamespaces(id, opts.token(), opts.projectId());
-      if (epoch !== generation || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) return;
+      const ns = await listNamespaces(id, opts.token(), opts.projectId(), observation.ctx);
+      if (epoch !== generation || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id) { observation.discarded(); return; }
       namespaces = ns;
       if (!namespaces.includes(selectedNamespace)) {
         selectedNamespace = namespaces[0] ?? '';
       }
       namespacesLoaded = true;
+      observation.applied(namespaces.length ? 'ready' : 'empty');
     } catch {
-      if (epoch !== generation) return;
+      if (epoch !== generation) { observation.discarded(); return; }
       namespaces = [];
       selectedNamespace = '';
+      observation.applied('error');
     }
   }
 
@@ -357,13 +440,16 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const namespace = selectedNamespace;
     const epoch = generation;
     const workloadEpoch = workloadGeneration;
+    const observation = observe('configmaps', 'load', undefined, true, () => get(k3sPermissions).workloads);
     try {
-      const items = await listConfigMaps(id, namespace, opts.token(), projectId);
-      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+      const items = await listConfigMaps(id, namespace, opts.token(), projectId, observation.ctx);
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) { observation.discarded(); return; }
       configMaps = items;
+      observation.applied(configMaps.length ? 'ready' : 'empty');
     } catch {
-      if (epoch !== generation || workloadEpoch !== workloadGeneration) return;
+      if (epoch !== generation || workloadEpoch !== workloadGeneration) { observation.discarded(); return; }
       configMaps = [];
+      observation.applied('error');
     }
   }
 
@@ -377,13 +463,16 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const namespace = selectedNamespace;
     const epoch = generation;
     const workloadEpoch = workloadGeneration;
+    const observation = observe('secrets', 'load', undefined, true, () => get(k3sPermissions).workloads);
     try {
-      const items = await listSecrets(id, namespace, opts.token(), projectId);
-      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+      const items = await listSecrets(id, namespace, opts.token(), projectId, observation.ctx);
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) { observation.discarded(); return; }
       secrets = items;
+      observation.applied(secrets.length ? 'ready' : 'empty');
     } catch {
-      if (epoch !== generation || workloadEpoch !== workloadGeneration) return;
+      if (epoch !== generation || workloadEpoch !== workloadGeneration) { observation.discarded(); return; }
       secrets = [];
+      observation.applied('error');
     }
   }
 
@@ -405,17 +494,22 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).workloads) return;
     const scope = captureWorkloadScope();
     if (!scope || cmActioning) return;
+    const observation = observe('configmaps', isNew ? 'create' : 'update', undefined, true, () => get(k3sPermissions).workloads);
     cmActioning = `${scope.namespace}:${name}`;
     try {
       if (isNew) {
-        const cm = await createConfigMap(scope.id, scope.namespace, { name, data }, scope.token, scope.projectId);
-        if (!scope.current() || !get(k3sPermissions).workloads) return;
+        const cm = await createConfigMap(scope.id, scope.namespace, { name, data }, scope.token, scope.projectId, observation.ctx);
+        if (!scope.current() || !get(k3sPermissions).workloads) { observation.discarded(); return; }
         configMaps = [...configMaps, cm];
       } else {
-        const cm = await updateConfigMap(scope.id, scope.namespace, name, { data }, scope.token, scope.projectId);
-        if (!scope.current() || !get(k3sPermissions).workloads) return;
+        const cm = await updateConfigMap(scope.id, scope.namespace, name, { data }, scope.token, scope.projectId, observation.ctx);
+        if (!scope.current() || !get(k3sPermissions).workloads) { observation.discarded(); return; }
         configMaps = configMaps.map((c) => (c.name === name ? cm : c));
       }
+      observation.applied('ready');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       if (scope.current()) cmActioning = null;
     }
@@ -427,11 +521,16 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!scope || cmActioning) return;
     if (!(await confirmDialog(t('configMaps.confirmDelete', { name })))) return;
     if (!scope.current() || !get(k3sPermissions).workloads || cmActioning) return;
+    const observation = observe('configmaps', 'delete', undefined, true, () => get(k3sPermissions).workloads);
     cmActioning = `${scope.namespace}:${name}`;
     try {
-      await deleteConfigMap(scope.id, scope.namespace, name, scope.token, scope.projectId);
-      if (!scope.current() || !get(k3sPermissions).workloads) return;
+      await deleteConfigMap(scope.id, scope.namespace, name, scope.token, scope.projectId, observation.ctx);
+      if (!scope.current() || !get(k3sPermissions).workloads) { observation.discarded(); return; }
       configMaps = configMaps.filter((c) => c.name !== name);
+      observation.applied(configMaps.length ? 'ready' : 'empty');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       if (scope.current()) cmActioning = null;
     }
@@ -441,17 +540,22 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
     const scope = captureWorkloadScope();
     if (!scope || cmActioning) return;
+    const observation = observe('secrets', isNew ? 'create' : 'update', undefined, true, () => get(k3sPermissions).workloads && (type === 'Opaque' || get(k3sPermissions).adminCredentials));
     cmActioning = `${scope.namespace}:${name}`;
     try {
       if (isNew) {
-        const s = await createSecret(scope.id, scope.namespace, { name, type, data }, scope.token, scope.projectId);
-        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
+        const s = await createSecret(scope.id, scope.namespace, { name, type, data }, scope.token, scope.projectId, observation.ctx);
+        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) { observation.discarded(); return; }
         secrets = [...secrets, s];
       } else {
-        const s = await updateSecret(scope.id, scope.namespace, name, { type, data }, scope.token, scope.projectId);
-        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) return;
+        const s = await updateSecret(scope.id, scope.namespace, name, { type, data }, scope.token, scope.projectId, observation.ctx);
+        if (!scope.current() || !get(k3sPermissions).workloads || (type !== 'Opaque' && !get(k3sPermissions).adminCredentials)) { observation.discarded(); return; }
         secrets = secrets.map((x) => (x.name === name ? s : x));
       }
+      observation.applied('ready');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       if (scope.current()) cmActioning = null;
     }
@@ -463,18 +567,32 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!scope || cmActioning) return;
     if (!(await confirmDialog(t('secrets.confirmDelete', { name })))) return;
     if (!scope.current() || !get(k3sPermissions).workloads || cmActioning) return;
+    const observation = observe('secrets', 'delete', undefined, true, () => get(k3sPermissions).workloads);
     cmActioning = `${scope.namespace}:${name}`;
     try {
-      await deleteSecret(scope.id, scope.namespace, name, scope.token, scope.projectId);
-      if (!scope.current() || !get(k3sPermissions).workloads) return;
+      await deleteSecret(scope.id, scope.namespace, name, scope.token, scope.projectId, observation.ctx);
+      if (!scope.current() || !get(k3sPermissions).workloads) { observation.discarded(); return; }
       secrets = secrets.filter((s) => s.name !== name);
+      observation.applied(secrets.length ? 'ready' : 'empty');
+    } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      throw e;
     } finally {
       if (scope.current()) cmActioning = null;
     }
   }
 
-  function openShell() { if (get(k3sPermissions).workloads) shellOpen = true; }
-  function closeShell() { shellOpen = false; }
+  function openShell() {
+    if (!get(k3sPermissions).workloads) return;
+    const observation = observe('shell', 'open', undefined, true, () => get(k3sPermissions).workloads);
+    shellOpen = true;
+    observation.applied('ready');
+  }
+  function closeShell() {
+    const observation = observe('shell', 'close');
+    shellOpen = false;
+    observation.applied('disabled');
+  }
 
   function _invalidateWorkloadCaches() {
     podsLoaded = false;
@@ -489,39 +607,48 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   async function loadPods() {
     const id = opts.clusterId();
     if (!id) return;
+    const observation = observe('pods', 'load', undefined, true);
     try {
-      pods = await listPods(id, selectedNamespace, opts.token(), opts.projectId());
+      pods = await listPods(id, selectedNamespace, opts.token(), opts.projectId(), observation.ctx);
       podsLoaded = true;
+      observation.applied(pods.length ? 'ready' : 'empty');
     } catch {
       pods = [];
+      observation.applied('error');
     }
   }
 
   async function loadServices() {
     const id = opts.clusterId();
     if (!id) return;
+    const observation = observe('services', 'load', undefined, true);
     try {
-      services = await listServices(id, selectedNamespace, opts.token(), opts.projectId());
+      services = await listServices(id, selectedNamespace, opts.token(), opts.projectId(), observation.ctx);
       servicesLoaded = true;
+      observation.applied(services.length ? 'ready' : 'empty');
     } catch {
       services = [];
+      observation.applied('error');
     }
   }
 
   async function loadDeployments() {
     const id = opts.clusterId();
     if (!id) return;
+    const observation = observe('deployments', 'load', undefined, true);
     try {
       const [deps, rss] = await Promise.all([
-        listDeployments(id, selectedNamespace, opts.token(), opts.projectId()),
-        listReplicaSets(id, selectedNamespace, opts.token(), opts.projectId()),
+        listDeployments(id, selectedNamespace, opts.token(), opts.projectId(), observation.ctx),
+        listReplicaSets(id, selectedNamespace, opts.token(), opts.projectId(), observation.ctx),
       ]);
       deployments = deps;
       replicasets = rss;
       deploymentsLoaded = true;
+      observation.applied(deployments.length || replicasets.length ? 'ready' : 'empty');
     } catch {
       deployments = [];
       replicasets = [];
+      observation.applied('error');
     }
   }
 
@@ -534,11 +661,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const namespace = selectedNamespace;
     const confirmed = await confirmDialog(t('detail.confirmDeletePod', { name }));
     if (!confirmed || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+    const observation = observe('pods', 'delete', undefined, true, () => get(k3sPermissions).workloads);
     workloadActioning = `${selectedNamespace}:pod:${name}`;
     try {
-      await deletePod(id, selectedNamespace, name, opts.token(), opts.projectId());
+      await deletePod(id, selectedNamespace, name, opts.token(), opts.projectId(), observation.ctx);
       pods = pods.filter((p) => p.name !== name);
+      observation.applied(pods.length ? 'ready' : 'empty');
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
       toast.error(e instanceof ApiError ? e.message : t('detail.deletePodFailed'));
     } finally {
       workloadActioning = null;
@@ -554,11 +684,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const namespace = selectedNamespace;
     const confirmed = await confirmDialog(t('detail.confirmDeleteService', { name }));
     if (!confirmed || !get(k3sPermissions).workloads || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return;
+    const observation = observe('services', 'delete', undefined, true, () => get(k3sPermissions).workloads);
     workloadActioning = `${selectedNamespace}:svc:${name}`;
     try {
-      await deleteService(id, selectedNamespace, name, opts.token(), opts.projectId());
+      await deleteService(id, selectedNamespace, name, opts.token(), opts.projectId(), observation.ctx);
       services = services.filter((s) => s.name !== name);
+      observation.applied(services.length ? 'ready' : 'empty');
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
       toast.error(e instanceof ApiError ? e.message : t('detail.deleteServiceFailed'));
     } finally {
       workloadActioning = null;
@@ -569,12 +702,15 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).workloads) return;
     const id = opts.clusterId();
     if (!id || !selectedNamespace || workloadActioning) return;
+    const observation = observe('deployments', 'restart', undefined, true, () => get(k3sPermissions).workloads);
     workloadActioning = `${selectedNamespace}:deploy:${name}`;
     try {
-      const updated = await apiRestartDeployment(id, selectedNamespace, name, opts.token(), opts.projectId());
+      const updated = await apiRestartDeployment(id, selectedNamespace, name, opts.token(), opts.projectId(), observation.ctx);
       deployments = deployments.map((d) => (d.name === name ? updated : d));
+      observation.applied('ready');
       toast.success(t('detail.restartRequested', { name }));
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
       toast.error(e instanceof ApiError ? e.message : t('detail.restartFailed'));
     } finally {
       workloadActioning = null;
@@ -585,11 +721,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     if (!get(k3sPermissions).workloads) return;
     const id = opts.clusterId();
     if (!id || !selectedNamespace || workloadActioning) return;
+    const observation = observe('deployments', 'update', undefined, true, () => get(k3sPermissions).workloads);
     workloadActioning = `${selectedNamespace}:deploy:${name}`;
     try {
-      const updated = await apiScaleDeployment(id, selectedNamespace, name, replicas, opts.token(), opts.projectId());
+      const updated = await apiScaleDeployment(id, selectedNamespace, name, replicas, opts.token(), opts.projectId(), observation.ctx);
       deployments = deployments.map((d) => (d.name === name ? updated : d));
+      observation.applied('ready');
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
       toast.error(e instanceof ApiError ? e.message : t('detail.scaleFailed'));
     } finally {
       workloadActioning = null;
@@ -605,11 +744,17 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const userId = opts.userId();
     const projectId = opts.projectId();
     const namespace = selectedNamespace;
+    const observation = observe('pod-log', 'inspect', undefined, true, () => get(k3sPermissions).credentials);
     try {
-      const result = await getPodLog(id, namespace, name, opts2, opts.token(), projectId);
-      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).credentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) return null;
+      const result = await getPodLog(id, namespace, name, opts2, opts.token(), projectId, observation.ctx);
+      if (epoch !== generation || workloadEpoch !== workloadGeneration || !get(k3sPermissions).credentials || opts.userId() !== userId || opts.projectId() !== projectId || opts.clusterId() !== id || selectedNamespace !== namespace) { observation.discarded(); return null; }
+      // This owner returns logs; it does not own their eventual rendered content.
+      if (observation.current()) experienceState(observation.ctx, 'ready');
+      else observation.discarded();
       return result;
     } catch (e) {
+      if (observation.current()) experienceState(observation.ctx, 'error');
+      else observation.discarded();
       toast.error(e instanceof ApiError ? e.message : t('detail.podLogFailed'));
       return null;
     }

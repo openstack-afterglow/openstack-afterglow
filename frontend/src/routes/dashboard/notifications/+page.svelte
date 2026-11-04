@@ -10,6 +10,7 @@
 	import { Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import { prefersReducedMotion } from '$lib/utils/motion';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 	import type { AnnouncementUser, AnnouncementSeverity } from '$lib/types/announcements';
 	import type { DashboardAlert, DashboardOverviewQuotas } from '$lib/types/quotas';
 
@@ -26,13 +27,15 @@
 	let reloadedForFocus: string | null = null;
 
 	function toggleExpanded(id: number) {
+		const experience = beginExperienceAction('activity', expandedId === id ? 'close' : 'open', 'resource.detail');
 		expandedId = expandedId === id ? null : id;
+		void experienceApplied(experience);
 	}
 
 	// 대시보드 카드/종 드롭다운에서 특정 공지로 딥링크(?focus=<id>) 진입 시 자동 펼침 + 스크롤.
 	// $derived 문자열은 동일 id 재탐색 시 동등성 때문에 $effect를 깨우지 못하므로,
 	// 최초 마운트와 같은 라우트 내 재탐색 모두에서 호출되는 afterNavigate로 처리한다.
-	async function applyFocus() {
+	async function applyFocus(experience: ExperienceContext | undefined) {
 		const raw = $page.url.searchParams.get('focus');
 		if (!raw) return;
 		const id = Number(raw);
@@ -41,10 +44,11 @@
 			// 페이지가 열린 뒤 발행된 공지로 딥링크된 경우 목록이 스테일할 수 있다 — 1회만 재조회
 			if (reloadedForFocus === raw) return;
 			reloadedForFocus = raw;
-			await load();
+			await load(experience);
 			if (!announcements.some((a) => a.id === id)) return;
 		}
 		expandedId = id;
+		void experienceApplied(experience);
 		requestAnimationFrame(() => {
 			document.getElementById(`announcement-${id}`)?.scrollIntoView({
 				block: 'center',
@@ -55,11 +59,12 @@
 
 	afterNavigate(() => {
 		void (async () => {
+			const experience = beginExperienceLoad('activity', 'page');
 			if (!initialized) {
 				initialized = true;
-				await load();
+				await load(experience);
 			}
-			await applyFocus();
+			await applyFocus(experience);
 		})();
 	});
 
@@ -69,30 +74,39 @@
 		return 'var(--color-accent)';
 	}
 
-	async function load() {
+	async function load(experience = beginExperienceLoad('activity', 'resource.list')) {
 		const generation = ++loadGeneration;
 		loading = loadedProject !== ($auth.projectId ?? undefined);
 		quotaLoading = true;
 		error = '';
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
-		const quotaPromise = api
+		const quotaExperience = beginExperienceLoad('activity', 'resource.detail');
+		if (loading) experienceState(experience, 'loading');
+		if (quotaLoadedProject !== projectId) experienceState(quotaExperience, 'loading');
+		const quotaPromise = api.withExperience(quotaExperience)
 			.get<DashboardOverviewQuotas>('/api/v1/dashboard/quotas?view=overview', token, projectId)
 			.then((quotas) => {
 				if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
 					quotaAlerts = quotas.alerts ?? [];
 					quotaLoadedProject = projectId;
 				}
+				else experienceDiscarded(quotaExperience, 'stale');
 			})
 			.catch(() => {
 				if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) quotaAlerts = [];
+				else experienceDiscarded(quotaExperience, 'stale');
 			})
 			.finally(() => {
-				if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) quotaLoading = false;
+				if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
+					quotaLoading = false;
+					experienceState(quotaExperience, quotaLoadedProject !== projectId ? 'error' : quotaAlerts.length === 0 ? 'empty' : 'ready');
+					void experienceApplied(quotaExperience);
+				}
 			});
 		try {
-			const items = await api.get<AnnouncementUser[]>('/api/v1/announcements', token, projectId);
-			if (generation !== loadGeneration || ($auth.projectId ?? undefined) !== projectId) return;
+			const items = await api.withExperience(experience).get<AnnouncementUser[]>('/api/v1/announcements', token, projectId);
+			if (generation !== loadGeneration || ($auth.projectId ?? undefined) !== projectId) { experienceDiscarded(experience, 'stale'); return; }
 			loadedProject = projectId;
 			const unread = items.filter((announcement) => !announcement.is_read);
 			announcements = items.map((announcement) => (
@@ -103,7 +117,7 @@
 			if (unread.length > 0) {
 				void Promise.allSettled(
 					unread.map((announcement) =>
-						api.post(`/api/v1/announcements/${announcement.id}/read`, {}, token, projectId)
+						api.withExperience(experience).post(`/api/v1/announcements/${announcement.id}/read`, {}, token, projectId)
 					),
 				);
 			}
@@ -111,8 +125,13 @@
 			if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
 				error = e instanceof ApiError ? e.message : t('notifications.loadFailed');
 			}
+			else experienceDiscarded(experience, 'stale');
 		} finally {
-			if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) loading = false;
+			if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
+				loading = false;
+				experienceState(experience, error ? 'error' : announcements.length === 0 ? 'empty' : 'ready');
+				void experienceApplied(experience);
+			}
 		}
 		void quotaPromise;
 	}

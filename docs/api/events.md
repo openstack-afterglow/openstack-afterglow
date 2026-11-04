@@ -38,3 +38,76 @@ parent: API 레퍼런스
 - Root collector는 마우스/키보드 button·link activation, form submit, 이동, 안전한 client/API 실패 metadata만 관측합니다. 메모리 최대200개·batch20으로 전송하며 원문 입력/선택 값·DOM text/label·URL query/hash·credential·body·stack/message는 읽어 전송하지 않습니다. Ordinary same-owner 자격 갱신은 최신 token으로 보내되 logout/사용자/프로젝트/authority 세대 교체는 대기 관측을 다른 소유자에게 귀속하지 않습니다. Mockup/tutorial은 수집하지 않습니다.
 - 서버 `request_id`는 자체 생성되고 `X-Afterglow-Interaction-Id`는 client가 신고한 UUID를 정제한 별도 연결 값입니다. 이 header나 browser row는 신원·권한·완전한 인과관계의 증명이 아닙니다. 관리자 상세는 동일 scope/기간의 최대50개 관련 행을 조회하고 출처별로 나눠 확인합니다. Method/template/stage/duration·구조 control/순번/destination·오류 class/code와 application source 위치만 allowlist로 표시합니다.
 - Browser buffer/drop/failure는 현재 tab의 관측이며 server 전체 수집률이나 무손실 전달 보장이 아닙니다. 실패·응답 불명 POST를 자동 재전송하거나 인증 복구를 실행하지 않고, DB/offline/page 종료/crash/차단기·scope 변경에서 누락될 수 있습니다. 기존 best-effort 감사·선택 native notification collector와 별개이며 보존기간을 새로 정하거나 과거 이력을 소급 생성하지 않습니다.
+
+## 의미 기반 경험 관측 v2 — 기본 꺼짐
+
+`[experience].enabled=true`인 별도 승인 환경에서만 다음 API를 제공합니다. 기존
+`activity_logs`와 v1 interaction 계약은 유지하며 v2 진단 행은 SQL107의 별도
+`experience_*` 테이블에 저장합니다. 화면 녹화·입력 재생·업무 API 재실행 기능이 아닙니다.
+
+| 메서드 | 경로 | 계약 |
+|---|---|---|
+| `GET` | `/api/v1/activity/experience-contract` | `schema_version=2`, redaction revision, backend build와20개/32768byte 한도. 꺼짐은404 |
+| `POST` | `/api/v1/activity/experience-events` | JSON v2 batch1–20개, 전체32KiB,60회/분.201 `{schema_version,accepted,duplicates}` |
+| `GET` | `/api/v1/admin/experiences/segments` | 현재 scope의 최근 구간 metadata. `days=1|7|30`(기본1), 선택 exact `user_id`(1–64), `limit=1..50`(기본20) |
+| `GET` | `/api/v1/admin/experiences` | 필수 canonical UUID `segment_id`, 선택 UUID `action_id`, 양수 `before_id`, `limit=1..200`(기본200) |
+| `GET` | `/api/v1/admin/experiences/export` | 같은 필터·권위의 static JSON download. 최대2000행; 원래 자원 API를 호출하지 않음 |
+
+### 수집·신뢰 경계
+
+- Envelope는 `schema_version=2`, `redaction_revision=1`, `event_id`, `segment_id`,
+  `page_view_id`, sequence·monotonic elapsed·timezone 시각, canonical source route,
+  registry의 `feature/action/component`, frontend/catalog revision과 event별 strict
+  payload를 사용합니다. 선택 action/cause/trace/span UUID는 연결 참조이지 권위가 아닙니다.
+  임의 필드·입력·actor/project/source·업무 성공 선언·원본 URL/query는 거부합니다.
+- Browser event는 view/action/validation/message/result/exposure/gap 관측만 허용합니다.
+  Actor/project는 기존 인증 결과, `source=browser`와 수신 시각은 서버가 결정합니다.
+  잘못된 bearer를 익명으로 낮추지 않으며 익명은 등록된 공개 route만 허용합니다.
+  검증422·body413·JSON415·인증401·rate429·event identity409·SQL503을 구분합니다.
+- `(trusted owner,segment_id,event_id)`가 같은 동일 payload는 중복 삽입하지 않습니다.
+  같은 ID의 다른 payload 또는 server-source 행과의 충돌은409입니다. v2 진단 전송은
+  최대 두 번으로 제한하지만 업무 POST·one-time callback·unknown native 작업은 재실행하지 않습니다.
+- API client는 명시 context를 비동기 경계로 전달합니다. Server request pair와 실제 HTTP
+  transport, operation 및 지원하는 Afterglow worker 단계는 별도 출처입니다. Shared/cache
+  응답과 physical request도 구분합니다. 형제 서비스의 미지원 내부 span은 만들어내지 않습니다.
+- `blocking`은 일반 동기 호출, `native`는 명시적으로 표시한 native 호출입니다.
+  `cancel_requested`는 취소 요청만 뜻합니다. `blocking.drain`/`native.drain`의 `observed`는
+  해당 소유 호출이 실제 종료된 뒤에만 남기는 종료 확인이며 provider 작업 취소·guest 준비·
+  업무 성공을 뜻하지 않습니다. SDK가 응답한 뒤에도 외부 효과가 불명일 수 있습니다.
+  Caller 취소·lease 상실 중에도 진단 저장 실패가 실제 drain/connection 정리를 중단시켜서는 안 됩니다.
+- 최대200개 tab memory queue,60초 deadline과 bounded gap counter를 사용합니다.
+  Logout/owner/project/권위/ABA/tutorial 전환은 이전 관측을 새 owner로 재귀속하지 않습니다.
+  종료·crash·offline·SQL 장애의 tail은 복구 보장이 없으며 지원 코드는 저장 성공 영수증이 아닙니다.
+
+### 조회·한국어 해설
+
+조회는 매번 `require_admin`과 fresh `AdminResourceScope`를 사용합니다. Domain/project
+교집합을 SQL WHERE에서 limit 전에 적용하고 child/operation 참조도 같은 owner/scope로
+제한합니다. `include_anonymous=true`는 operator의 별도 `anonymous_read_enabled=true`,
+현재 전역 관리자, domain/project 미선택이 모두 필요합니다. 지원 코드만으로 조회 권한이
+생기지 않습니다. SQL·권위·열람 감사 commit 실패는503이며 빈 정상 결과로 위장하지 않습니다.
+
+최근 검색은 `{schema_version,segments,has_more,coverage}`를 반환합니다. Segment metadata는
+`segment_id,user_id,project_id,last_received_at,event_count`만 포함합니다. 기간은 서버 수신
+시각 기준이고 count는 저장 행 수입니다. 고유 사용자·업무 횟수·전체 수집률을 뜻하지 않습니다.
+정확 조회/export는 `{schema_version,events,catalogs,has_more,coverage}`이며 ID 내림차순
+bounded window입니다. Cross-window/off-scope 참조는 지우거나 미확인으로 표시합니다.
+시계 오차 때문에 wall time을 전체 인과 순서로 해석하지 않습니다.
+
+카탈로그는 이 bounded·인가된 window에서 나온 ID만 일괄 조회하고 각 사건의 revision/key/실제
+locale을 따로 대조합니다. 같은 catalog ID를 공유하는 다른 사건이 복원됐다는 이유로 불일치 사건의
+복원을 허용하지 않습니다. 사라지거나 불일치한 카탈로그는 해당 사건만 `unavailable`입니다.
+
+관리자 기존 이벤트 화면에서 최근 지원 코드 검색→구간 선택→정확 조회→export를 각각
+사람이 실행합니다. 각 disclosure는 기존 업무 감사에 기록하고 응답은 `no-store/nosniff`입니다.
+브라우저 신고·서버 요청 proof·업무 terminal·결과 수신·상태 적용·DOM commit·document/viewport
+노출·폐기를 구분합니다. DOM commit/노출도 사용자의 인지 증거가 아니며, 누락·tail·미지원
+remote span은 한국어로 명시합니다. HTML/script/URL/operation 참조는 실행하지 않습니다.
+
+메시지는 producer가 실제 표시한 key·locale·정확한 catalog revision만 보존합니다. 현재 선택
+언어와 과거 formatted 오류의 언어가 달라도 후자로 기록합니다. 정적 template는 참조 중인
+immutable catalog로 복원하고 임의 parameter·오류 원문은 수집하지 않습니다. 카탈로그가 없으면
+`unavailable`, 민감/dynamic 값은 `redacted`이며 최신 번역으로 과거 문구를 추측하지 않습니다.
+
+보존·hold·backup/restore·운영 opt-in은 [배포 가이드](../deployment.md#의미-기반-경험-관측-v2의-전환과-보존)를
+따릅니다. 기존 업무 감사와 unknown/irreversible 작업 원장은 이 진단 보존 정책으로 삭제하지 않습니다.

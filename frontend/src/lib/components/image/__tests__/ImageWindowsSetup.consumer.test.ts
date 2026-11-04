@@ -13,7 +13,7 @@ import {
 const boundary = vi.hoisted(() => ({
 	get: vi.fn(), patch: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(),
 }));
-vi.mock('$lib/api/client', () => ({ api: boundary, get ApiError() { return ApiError; } }));
+vi.mock('$lib/api/client', () => ({ api: { ...boundary, withExperience: () => boundary }, get ApiError() { return ApiError; } }));
 // No controller, component, context, i18n, or UI primitive mocks.
 import Harness from './WindowsSetupConsumerHarness.svelte';
 

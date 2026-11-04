@@ -62,6 +62,24 @@ export function isTourActive(): boolean {
 	return driverInstance !== null;
 }
 
+const activityListeners = new Set<(active: boolean) => void>();
+
+/** Observe both edges synchronously, including a start/stop inside one await. */
+export function onTourActivityChange(listener: (active: boolean) => void): () => void {
+	activityListeners.add(listener);
+	return () => { activityListeners.delete(listener); };
+}
+
+function notifyTourActivity(): void {
+	for (const listener of activityListeners) {
+		try {
+			listener(isTourActive());
+		} catch {
+			// Diagnostic observers must not interrupt the tutorial's lifecycle.
+		}
+	}
+}
+
 /**
  * 투어를 끝까지 완주했을 때만 발행한다(취소/× /ESC 로 인한 stopTour 에서는 발행 안 함).
  * 상태 스토어가 이 이벤트를 수신해 서버에 'completed' 로 기록한다.
@@ -96,6 +114,7 @@ export async function startTour(tourId: TourId, fromStep = 0): Promise<boolean> 
 		onCloseClick: () => stopTour(),
 		onDestroyStarted: () => stopTour(),
 	});
+	notifyTourActivity();
 	const startIndex = Math.min(Math.max(fromStep, 0), tour.steps.length - 1);
 	await showStep(startIndex);
 	return true;
@@ -339,6 +358,7 @@ export function stopTour(): void {
 		driverInstance = null;
 		currentTour = null;
 		currentIndex = 0;
+		if (d) notifyTourActivity();
 		d?.destroy();
 	} finally {
 		stopping = false;

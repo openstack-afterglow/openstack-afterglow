@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { get } from 'svelte/store';
-import { auditRoute, installInteractionAudit, interactionAuditHealth, type InteractionAuditController, type InteractionOwner } from '../interactionAudit';
+import { auditRoute, publicAuditRoute, installInteractionAudit, interactionAuditHealth, type InteractionAuditController, type InteractionOwner } from '../interactionAudit';
 
 let collector: InteractionAuditController;
 let owner: InteractionOwner;
@@ -52,6 +52,10 @@ describe('mounted privacy-safe interaction collector', () => {
 	it('sanitizes source templates and external destinations, and never listens to key or input values', async () => {
 		expect(auditRoute('/(console)/dashboard/compute/instances/[id]')).toBe('/dashboard/compute/instances/:id');
 		expect(auditRoute('/recover/secret?token=private')).toBe('/:id');
+		expect(auditRoute('/logout')).toBe('/logout');
+		expect(publicAuditRoute('/logout')).toBe(true);
+		expect(publicAuditRoute('/logout/:id')).toBe(false);
+		expect(publicAuditRoute('/dashboard/compute/instances')).toBe(false);
 		document.body.innerHTML = '<a href="https://private.example/secret?token=private">external</a><input value="private">';
 		document.querySelector('a')!.addEventListener('click', event => event.preventDefault());
 		document.querySelector('a')!.click();
@@ -162,6 +166,16 @@ describe('mounted privacy-safe interaction collector', () => {
 		await collector.flush();
 		expect(get(interactionAuditHealth).queued).toBe(0);
 		expect(sentEvents()).toHaveLength(20);
+	});
+
+	it('excludes v2 capability and ingestion requests from v1 observation and click headers', async () => {
+		document.body.innerHTML = '<button>observe</button>';
+		document.querySelector('button')!.click();
+		transport.mockResolvedValue({ ok: false, status: 404 });
+		await window.fetch('http://localhost:8000/api/v1/activity/experience-contract');
+		await window.fetch('http://localhost:8000/api/v1/activity/experience-events', { method: 'POST', body: '{}' });
+		expect(transport.mock.calls.slice(0, 2).every(([, init]) => !new Headers(init?.headers).has('X-Afterglow-Interaction-Id'))).toBe(true);
+		expect(get(interactionAuditHealth).queued).toBe(1);
 	});
 
 	it('restores only its own fetch wrapper and removes all delegated listeners on disposal', async () => {

@@ -9,6 +9,7 @@ let listing = initialListing();
 
 vi.mock('$lib/api/client', () => ({
 	api: {
+		withExperience() { return this; },
 		get: vi.fn(async (path: string) => {
 			const prefix = new URL(path, 'http://test').searchParams.get('prefix') ?? '';
 			return [...(listing[prefix] ?? [])];

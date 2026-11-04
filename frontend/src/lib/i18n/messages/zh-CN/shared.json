@@ -1,4 +1,10 @@
 {
+	"support.label": "支持代码",
+	"support.copy": "复制支持代码",
+	"support.copied": "已复制支持代码",
+	"support.help": "请将此代码提供给支持人员。它不是密码，也不授予访问权限。拥有代码并不保证记录已保存。",
+	"support.partial": "诊断记录的传输尚未确认或存在缺失。没有记录并不意味着什么都没发生。",
+	"support.unavailable": "无法复制。请手动选择并复制上方代码。",
 	"loadingState.label": "加载中",
 	"progressBar.failed": "部署失败",
 	"projectSelector.switchFailed": "切换项目失败",

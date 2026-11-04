@@ -13,16 +13,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import secrets
 import socket
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 
-from anyio import CancelScope
+from anyio import CancelScope, current_effective_deadline
+from anyio.lowlevel import checkpoint as scope_checkpoint
 
 MEMBER_SECONDS = 45
 LEADER_SECONDS = 45
@@ -453,6 +455,31 @@ _logger = logging.getLogger(__name__)
 _current_lease: ContextVar[WorkLease | None] = ContextVar("background_work_lease", default=None)
 
 
+class _DeferredCancellation:
+    __slots__ = ("task", "pending")
+
+    def __init__(self, task):
+        self.task = task
+        self.pending = True
+
+    def expire(self):
+        self.pending = False
+
+
+_deferred_cancellation: ContextVar[_DeferredCancellation | None] = ContextVar("deferred_sdk_cancel", default=None)
+
+
+def _defer_cancellation() -> None:
+    current = asyncio.current_task()
+    if current is not None:
+        marker = _DeferredCancellation(current)
+        _deferred_cancellation.set(marker)
+        current.cancel()
+        # Once the loop resumes, the pending cancellation can be delivered.
+        # Retained Task.cancelling() counts are not evidence of a new request.
+        asyncio.get_running_loop().call_soon(marker.expire)
+
+
 async def _settle(task: asyncio.Task) -> bool:
     """Wait for actual completion; return whether this caller was cancelled meanwhile."""
     current = asyncio.current_task()
@@ -470,6 +497,12 @@ async def _settle(task: asyncio.Task) -> bool:
     if not task.cancelled():
         task.exception()  # Retrieved: the owner reports or intentionally discards it.
     return interrupted or (current is not None and current.cancelling() > requests)
+
+
+async def drain_task(task: asyncio.Task) -> bool:
+    """Retain ownership through actual completion, even under level cancellation."""
+    with CancelScope(shield=True):
+        return await _settle(task)
 
 
 class WorkLease:
@@ -490,6 +523,9 @@ class WorkLease:
         self._loop = asyncio.get_running_loop()
         self._thread_id = threading.get_ident()
         self._deadline = time.monotonic() + seconds
+        self.experience_context = None
+        self.experience_operation_id = None
+        self.experience_lease_lost = False
 
     def revoke(self) -> None:
         """Revoke immediately from either the event loop or a guarded SDK thread."""
@@ -506,6 +542,8 @@ class WorkLease:
     async def check(self) -> None:
         """Raise before new work if membership, assignment or token is lost."""
         if self._revoked or self.revoked.is_set() or time.monotonic() >= self._deadline:
+            if time.monotonic() >= self._deadline:
+                self.experience_lease_lost = True
             self.revoke()
             raise DispatcherUnavailable("Background work lease was revoked")
         try:
@@ -514,6 +552,8 @@ class WorkLease:
             self.revoke()
             raise
         if not current or self._revoked or self.revoked.is_set() or time.monotonic() >= self._deadline:
+            if not current or time.monotonic() >= self._deadline:
+                self.experience_lease_lost = True
             self.revoke()
             raise DispatcherUnavailable("Background work ownership is unavailable")
 
@@ -541,6 +581,7 @@ class WorkLease:
                 or not dispatcher._active
                 or time.monotonic() >= self._deadline
             ):
+                self.experience_lease_lost = True
                 self.revoke()
         except Exception:
             dispatcher.lost = True
@@ -575,24 +616,69 @@ async def work_lease(dispatcher: WorkDispatcher, member: str, owner: str, *, sec
         guard = _current_lease.set(lease)
         yield lease
     finally:
+        was_revoked = lease.revoked.is_set()
         lease.revoke()
         if guard is not None:
             _current_lease.reset(guard)
         interrupted = False
         if renewal is not None:
             renewal.cancel()
-            interrupted = await _settle(renewal)
+            interrupted = await drain_task(renewal)
         # Nothing executed under a rejected adoption, so releasing this exact
         # token is safe and shortens handoff; a replacement token is untouched.
         release = asyncio.create_task(dispatcher.redis.eval(_LEASE_RELEASE, 1, lease.key, owner))
-        interrupted = await _settle(release) or interrupted
+        interrupted = await drain_task(release) or interrupted
         dispatcher._work_tokens.discard(owner)
+        from app.services.experience_context import emit_experience_cleanup
+
+        interrupted = (
+            await emit_experience_cleanup(
+                lease.experience_context,
+                "worker.state_changed",
+                stage="cleanup",
+                status="observed",
+                operation_id=lease.experience_operation_id,
+                reason="lease_lost" if lease.experience_lease_lost else "unknown" if was_revoked else None,
+            )
+            or interrupted
+        )
         if interrupted:
             raise asyncio.CancelledError
 
 
+def bind_worker_experience(context, operation_id=None) -> None:
+    """Attach only an explicitly restored source record to its current lease."""
+    lease = _current_lease.get()
+    if lease is not None:
+        lease.experience_context = context
+        lease.experience_operation_id = operation_id
+
+
+@contextmanager
+def worker_experience_scope(context, operation_id=None):
+    """Bind one delivery without attributing the rest of a long-lived role to it."""
+    lease = _current_lease.get()
+    previous = (lease.experience_context, lease.experience_operation_id) if lease is not None else None
+    bind_worker_experience(context, operation_id)
+    try:
+        yield
+    finally:
+        if lease is not None:
+            lease.experience_context, lease.experience_operation_id = previous
+
+
 async def checkpoint() -> None:
-    """Check owned background work; intentionally no-op for request-bound code."""
+    """Fence new work, including cancellation deferred to deliver a completed ID."""
+    if current_effective_deadline() == -math.inf:
+        # A shielded diagnostic can hold an anyio scope's level cancellation until
+        # its owner resumes; deliver it before another SDK mutation can start.
+        await scope_checkpoint()
+    deferred = _deferred_cancellation.get()
+    if deferred is not None and deferred.pending and deferred.task is asyncio.current_task():
+        # Deliver the already armed cancellation once, before a new SDK task.
+        # Raising a second synthetic cancellation would leave the armed one
+        # waiting to interrupt the caller's next cleanup await.
+        await asyncio.sleep(0)
     lease = _current_lease.get()
     if lease is not None:
         await lease.check()
@@ -627,22 +713,116 @@ def _invoke(fn, args, kwargs):
     return fn(*args, **kwargs)
 
 
+async def _run_sync(fn, args, kwargs, *, stage, experience=None):
+    from app.services.experience_context import (
+        capture_experience_context,
+        emit_experience,
+        emit_experience_cleanup,
+        fork_experience_call,
+    )
+
+    await checkpoint()
+    lease = _current_lease.get()
+    context = experience
+    if context is None:
+        context = lease.experience_context if lease is not None else capture_experience_context()
+    context = fork_experience_call(context)
+    operation_id = lease.experience_operation_id if lease is not None else None
+    operation = asyncio.create_task(asyncio.to_thread(_invoke, fn, args, kwargs))
+    logging_start = True
+    try:
+        await emit_experience(context, "stage.started", stage=stage, status="running", operation_id=operation_id)
+        logging_start = False
+        result = await asyncio.shield(operation)
+        interrupted = await emit_experience_cleanup(
+            context, "stage.completed", stage=stage, status="observed", operation_id=operation_id
+        )
+        if interrupted:
+            # The call already returned: let its owner record the native ID
+            # before cancellation resurfaces at the owner's next await.
+            _defer_cancellation()
+        return result
+    except asyncio.CancelledError:
+        if lease is not None:
+            lease.revoke()
+        if operation.done():
+            if logging_start and not operation.cancelled() and operation.exception() is None:
+                result = operation.result()
+                await emit_experience_cleanup(
+                    context, "stage.completed", stage=stage, status="observed", operation_id=operation_id
+                )
+                _defer_cancellation()
+                return result
+            if not operation.cancelled():
+                operation.exception()
+            raise
+        await emit_experience_cleanup(
+            context,
+            "stage.completed",
+            stage=stage,
+            status="cancel_requested",
+            operation_id=operation_id,
+            reason="aborted",
+        )
+        await drain_task(operation)
+        await emit_experience_cleanup(
+            context,
+            "stage.completed",
+            stage=stage + ".drain",
+            status="observed",
+            operation_id=operation_id,
+            reason="aborted",
+        )
+        raise
+    except Exception:
+        # Even an unexpected diagnostic failure cannot abandon a started call.
+        interrupted = await drain_task(operation)
+        interrupted = (
+            await emit_experience_cleanup(
+                context,
+                "stage.completed",
+                stage=stage,
+                status="outcome_unknown",
+                operation_id=operation_id,
+                reason="unknown",
+            )
+            or interrupted
+        )
+        if interrupted:
+            if lease is not None:
+                lease.revoke()
+            await emit_experience_cleanup(
+                context,
+                "stage.completed",
+                stage=stage,
+                status="cancel_requested",
+                operation_id=operation_id,
+                reason="aborted",
+            )
+            await emit_experience_cleanup(
+                context,
+                "stage.completed",
+                stage=stage + ".drain",
+                status="observed",
+                operation_id=operation_id,
+                reason="aborted",
+            )
+            raise asyncio.CancelledError from None
+        raise
+
+
 async def run_sync(fn, *args, **kwargs):
-    """Check before new SDK work; cancellation waits for the actual SDK thread.
+    """Fence and drain a generic blocking call; do not imply provider mutation.
 
     Resource factories must use open_connection so a cancelled result is closed.
     Cleanup must use close_connection (or another unfenced shielded drain).
     """
-    await checkpoint()
-    operation = asyncio.create_task(asyncio.to_thread(_invoke, fn, args, kwargs))
-    try:
-        return await asyncio.shield(operation)
-    except asyncio.CancelledError:
-        lease = _current_lease.get()
-        if lease is not None:
-            lease.revoke()
-        await _settle(operation)
-        raise
+    return await _run_sync(fn, args, kwargs, stage="blocking")
+
+
+async def run_native(fn, *args, experience=None, **kwargs):
+    """Explicit native SDK boundary using the same blocking-call drain engine."""
+    return await _run_sync(fn, args, kwargs, stage="native", experience=experience)
 
 
 async def close_connection(conn) -> None:
@@ -651,7 +831,7 @@ async def close_connection(conn) -> None:
     try:
         await asyncio.shield(operation)
     except asyncio.CancelledError:
-        await _settle(operation)
+        await drain_task(operation)
         raise
 
 
@@ -670,12 +850,12 @@ async def open_connection(factory, *args, **kwargs):
             lease.revoke()
         interrupted = False
         if conn is None:
-            interrupted = await _settle(operation)
+            interrupted = await drain_task(operation)
             if not operation.cancelled() and operation.exception() is None:
                 conn = operation.result()
         if conn is not None:
             close = asyncio.create_task(asyncio.to_thread(conn.close))
-            interrupted = await _settle(close) or interrupted
+            interrupted = await drain_task(close) or interrupted
         if interrupted:
             raise asyncio.CancelledError from None
         raise
@@ -694,7 +874,7 @@ async def _run_role(dispatcher, member, owner, factory):
             for child in (operation, revoked):
                 if not child.done():
                     child.cancel()
-                interrupted = await _settle(child) or interrupted
+                interrupted = await drain_task(child) or interrupted
             if interrupted:
                 raise asyncio.CancelledError
 
@@ -759,7 +939,7 @@ async def run_roles(
                         if not child.done() and not child.cancelling():
                             child.cancel()
                     for child in children.values():
-                        interrupted = await _settle(child) or interrupted
+                        interrupted = await drain_task(child) or interrupted
                     if interrupted:
                         raise asyncio.CancelledError
         except asyncio.CancelledError:

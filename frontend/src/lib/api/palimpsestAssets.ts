@@ -77,7 +77,7 @@ async function request<T>(identity: PackageIdentity, signal: AbortSignal, path: 
       signal: bounded,
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-    }, identity.token, identity.projectId);
+    }, identity.token, identity.projectId, { experience: identity.experience });
     if (!result.ok) {
       const value = await result.json().catch(() => null);
       const message = value?.error?.message ?? value?.detail?.message ?? value?.detail ?? result.statusText;

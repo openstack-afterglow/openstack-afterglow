@@ -7,7 +7,7 @@ import { t } from '$lib/i18n/ns/dashboard-home';
 import type { Instance } from '$lib/types/compute';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
+vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, withExperience: () => ({ get: mocks.get }) } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a' as string | null, projectId: 'project-a' as string | null, userId: 'user-a', sessionId: 'session-a', isSystemAdmin: false }),
 	authReady: writable(true),

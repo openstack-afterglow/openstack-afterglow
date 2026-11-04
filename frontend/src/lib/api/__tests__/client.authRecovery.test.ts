@@ -609,3 +609,67 @@ describe('authentication recovery state', () => {
 		} finally { s.projectSwitching.set(false); vi.useRealTimers(); }
 	});
 });
+
+describe('experience context does not alter business replay policy', () => {
+	it('retains action identity but creates a unique child span for each real authenticated retry', async () => {
+		const s = await session();
+		s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900, sessionId: 'experience-session' });
+		// This fixture resets modules to isolate auth coordination; collector must bind the same fresh instance.
+		const tracing = await import('$lib/utils/experience');
+		const collector = tracing.installExperienceCollector({ getOwner: () => get(s.auth), getRoute: () => '/dashboard', getBaseUrl: s.getBaseUrl, isEnabled: () => true, isSuppressed: () => false, subscribeOwner: callback => s.auth.subscribe(callback) });
+		let attempts = 0;
+		mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+			if (url.includes('/auth/refresh')) return Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', domain_id: 'domain-1', identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(Date.now() + 900000).toISOString() });
+			if (url.endsWith('/experience-contract')) return Response.json({ schema_version: 2, enabled: true, redaction_revision: 1, max_batch_events: 20, max_body_bytes: 32768 });
+			if (url.endsWith('/experience-events')) return Response.json({ schema_version: 2, accepted: JSON.parse(String(init.body)).events.length, duplicates: 0 }, { status: 201 });
+			++attempts;
+			return attempts === 1 ? Response.json({ detail: 'expired' }, { status: 401 }) : Response.json({ accepted: true }, { status: 202 });
+		});
+		try {
+			const ctx = tracing.beginExperienceAction('compute', 'create', 'compute.create')!;
+			await s.fetchWithAuth('/api/v1/instances', { method: 'POST', body: '{}' }, 'old-access', undefined, { experience: ctx });
+			const sends = mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/api/v1/instances'));
+			expect(sends).toHaveLength(2);
+			const first = new Headers(sends[0][1].headers), second = new Headers(sends[1][1].headers);
+			expect(first.get('X-Afterglow-Experience-Action')).toBe(ctx.actionId);
+			expect(second.get('X-Afterglow-Experience-Action')).toBe(ctx.actionId);
+			expect(first.get('X-Afterglow-Experience-Span')).not.toBe(second.get('X-Afterglow-Experience-Span'));
+			expect(first.get('X-Afterglow-Experience-Attempt')).toBe('1'); expect(second.get('X-Afterglow-Experience-Attempt')).toBe('2');
+			await collector.flush();
+			const events = mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/experience-events')).flatMap(([, init]) => JSON.parse(init.body).events);
+			expect(events.filter(row => row.event_type === 'result.received').map(row => row.payload.http_status)).toEqual([401, 202]);
+			expect(events.some(row => row.event_type === 'result.applied' || row.event_type === 'result.committed')).toBe(false);
+		} finally { collector.destroy(); }
+	});
+	it('does not replay a non-replay mutation just because semantic tracing is active', async () => {
+		const s = await session(); s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900, sessionId: 'experience-session' });
+		// The session/client and collector intentionally share the isolated module lifetime.
+		const tracing = await import('$lib/utils/experience');
+		const collector = tracing.installExperienceCollector({ getOwner: () => get(s.auth), getRoute: () => '/dashboard', getBaseUrl: s.getBaseUrl, isEnabled: () => true, isSuppressed: () => false, subscribeOwner: callback => s.auth.subscribe(callback) });
+		mockFetch.mockResolvedValue(Response.json({ detail: 'not accepted' }, { status: 401 }));
+		try {
+			const ctx = tracing.beginExperienceAction('compute', 'create', 'compute.create')!;
+			const response = await s.fetchWithAuth('/api/v1/instances', { method: 'POST', body: '{}' }, 'old-access', undefined, { experience: ctx, replayOnUnauthorized: false, suppressAuthRedirect: true });
+			expect(response.status).toBe(401); expect(mockFetch).toHaveBeenCalledOnce();
+		} finally { collector.destroy(); }
+	});
+});
+
+describe('passive request ownership fencing', () => {
+	it('does not stamp a stale caller credential with a later login observation owner', async () => {
+		const s = await session();
+		s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900, sessionId: 'old-session' });
+		s.setAuth({ token: 'later-access', userId: 'later-user', sessionId: 'later-session' });
+		// Auth/client private owner registries are intentionally reset per case.
+		const tracing = await import('$lib/utils/experience');
+		const collector = tracing.installExperienceCollector({ getOwner: () => get(s.auth), getRoute: () => '/dashboard', getBaseUrl: s.getBaseUrl, isEnabled: () => true, isSuppressed: () => false, subscribeOwner: callback => s.auth.subscribe(callback) });
+		mockFetch.mockResolvedValue(Response.json({ accepted: true }));
+		try {
+			const current = tracing.beginExperienceAction('compute', 'load', 'resource.list');
+			await s.fetchWithAuth('/api/v1/instances', { method: 'GET' }, 'old-access', undefined, { experience: current, replayOnUnauthorized: false, suppressAuthRedirect: true });
+			const headers = new Headers(mockFetch.mock.calls[0][1].headers);
+			expect(headers.get('Authorization')).toBe('Bearer old-access');
+			expect(headers.has('X-Afterglow-Experience-Segment')).toBe(false);
+		} finally { collector.destroy(); }
+	});
+});

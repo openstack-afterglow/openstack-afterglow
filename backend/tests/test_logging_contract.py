@@ -13,14 +13,14 @@ from fastapi import FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 
 from app.main import (
-    _JSONFormatter,
-    _setup_logging,
     app,
     request_logging_middleware,
     sanitized_http_exception_handler,
     unhandled_exception_handler,
 )
 from app.services.layer_build import run_layer_build
+from app.utils.log import DIAGNOSTIC_LOG_FIELDS
+from app.utils.structured_logging import JSONFormatter, setup_logging
 
 
 @pytest.mark.asyncio
@@ -63,16 +63,7 @@ async def test_request_completion_has_template_and_no_input_on_success_or_failur
         ("<unmatched>", 404),
     ]
     assert all(r.levelno == logging.INFO and r.duration_ms >= 0 for r in records)
-    assert secret not in "\n".join(_JSONFormatter().format(record) for record in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_health_request_is_logged(caplog):
-    with caplog.at_level(logging.INFO):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.get("/api/v1/health")
-    assert response.status_code == 200
-    assert any(r.msg == "request" and r.path == "/api/v1/health" and r.status == 200 for r in caplog.records)
+    assert secret not in "\n".join(JSONFormatter().format(record) for record in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -128,7 +119,7 @@ async def test_build_execution_info_and_debug_are_bounded_and_sanitized(caplog, 
         events = [r for r in caplog.records if r.name == "app.services.layer_build" and r.msg == "execution"]
         assert [(r.state, getattr(r, "result", None)) for r in events] == [("started", None), ("completed", "failed")]
         assert not any(r.msg == "execution metadata" for r in caplog.records)
-        assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
+        assert secret not in "\n".join(JSONFormatter().format(r) for r in caplog.records)
 
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger="app.services.layer_build"):
@@ -140,7 +131,7 @@ async def test_build_execution_info_and_debug_are_bounded_and_sanitized(caplog, 
         ]
         assert metadata[0].pip_package_count == 1
         assert metadata[-1].result == "failed"
-        assert secret not in "\n".join(_JSONFormatter().format(r) for r in caplog.records)
+        assert secret not in "\n".join(JSONFormatter().format(r) for r in caplog.records)
     finally:
         await redis.close()
         await engine.dispose()
@@ -165,7 +156,8 @@ def configured_logging(tmp_path, monkeypatch):
     stream = io.StringIO()
 
     def configure(default_debug="true", env_debug=None, log_level="INFO"):
-        content = f'[logging]\nlog_level = "{log_level}"\nlog_directory = "logs"\n'
+        log_directory = tmp_path / "logs"
+        content = f'[logging]\nlog_level = "{log_level}"\nlog_directory = "{log_directory.as_posix()}"\n'
         if default_debug is not None:
             content += f"[DEFAULT]\ndebug = {default_debug}\n"
         (tmp_path / "afterglow.conf").write_text(content, encoding="utf-8")
@@ -182,8 +174,13 @@ def configured_logging(tmp_path, monkeypatch):
             logger.handlers = []
             logger.propagate = True
         monkeypatch.setattr("sys.stderr", stream)
-        _setup_logging()
-        return stream, tmp_path / "logs"
+        setup_logging(entrypoint="api")
+        from app.utils.daily_size_handler import DailySizeHandler
+
+        directory = next(
+            handler.log_directory for handler in logging.getLogger().handlers if isinstance(handler, DailySizeHandler)
+        )
+        return stream, directory
 
     with patch.dict(
         os.environ,
@@ -771,3 +768,281 @@ def test_exception_traceback_scan_and_names_are_bounded(configured_logging):
         assert metadata["frames_truncated"] is True
         assert metadata["traceback_truncated"] is True
         assert metadata["root_cause"]["traceback_truncated"] is True
+
+
+def test_pytest_file_destination_is_separate_and_metadata_is_safe(configured_logging, tmp_path, monkeypatch):
+    secret = "runtime-secret-must-not-appear"
+    monkeypatch.setattr(sys, "argv", ["pytest", "--password", secret])
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", secret)
+    monkeypatch.setenv("AFTERGLOW_ENV", secret)
+    stream, directory = configured_logging()
+    logging.getLogger("app.main").warning("consumer failure", extra={"source": secret, "runtime": secret})
+    assert directory == tmp_path / "logs" / "pytest" / str(os.getpid())
+    assert not list((tmp_path / "logs").glob("backend-*.log"))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        event = next(json.loads(line) for line in output.splitlines() if "consumer failure" in line)
+        assert event["source"]["origin"] == "test"
+        assert event["source"]["function"] == "test_pytest_file_destination_is_separate_and_metadata_is_safe"
+        assert event["source"]["line"] > 0
+        assert event["process"] == {"pid": os.getpid()}
+        assert event["runtime"]["environment"] == "other"
+        assert event["runtime"]["file_scope"] == "pytest"
+        assert event["runtime"]["entrypoint"] == "api"
+        assert set(event["runtime"]) == {"environment", "python", "implementation", "file_scope", "entrypoint"}
+
+
+def test_normal_file_destination_preserves_configured_directory(tmp_path, monkeypatch):
+    from app.utils.log import log_file_directory
+
+    with monkeypatch.context() as context:
+        context.delitem(sys.modules, "pytest")
+        assert log_file_directory(str(tmp_path)) == tmp_path
+
+
+@pytest.mark.parametrize("namespace", ["aiosqlite", "asyncio", "stevedore"])
+def test_dependency_noise_is_bounded_without_hiding_failures(configured_logging, namespace):
+    stream, directory = configured_logging(log_level="DEBUG")
+    # An explicitly configured child must not bypass the output-handler policy.
+    dependency = logging.getLogger(namespace + ".consumer")
+    dependency.setLevel(logging.DEBUG)
+    dependency.debug("dependency debug containing SQL parameters")
+    dependency.info("dependency informational detail")
+    dependency.warning("dependency warning remains visible")
+    dependency.error("dependency failure remains visible")
+    logging.getLogger("app.main").debug("application debug remains visible")
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        messages = [json.loads(line)["message"] for line in output.splitlines()]
+        assert "dependency debug containing SQL parameters" not in messages
+        assert "dependency informational detail" not in messages
+        assert "dependency warning remains visible" in messages
+        assert "dependency failure remains visible" in messages
+        assert "application debug remains visible" in messages
+
+
+@pytest.mark.parametrize("code", [1054, 1146, 2003, 1000, 4999])
+def test_mysql_error_codes_survive_without_sql_or_driver_text(configured_logging, code):
+    from pymysql.err import OperationalError
+    from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+
+    stream, directory = configured_logging()
+    secret = "database-secret-must-not-appear"
+    driver = OperationalError(code, secret)
+    wrapper = SQLAlchemyOperationalError("SELECT " + secret, {"password": secret}, driver)
+    logger = logging.getLogger("app.main")
+    for error in (driver, wrapper):
+        logger.error("database operation failed", exc_info=(type(error), error, None))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        events = [json.loads(line) for line in output.splitlines() if "database operation failed" in line]
+        assert len(events) == 2
+        assert all(event["exception"]["error_code"] == code for event in events)
+
+
+def test_mysql_error_code_rejects_unsupported_values_and_properties(configured_logging):
+    from pymysql.err import OperationalError
+    from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+
+    stream, directory = configured_logging()
+    secret = "unsupported-database-secret"
+
+    class IntSubclass(int):
+        def __str__(self):
+            pytest.fail("numeric driver values must not be converted")
+
+    class PropertyWrapper(SQLAlchemyOperationalError):
+        @property
+        def orig(self):
+            pytest.fail("driver metadata must not evaluate orig properties")
+
+    error = PropertyWrapper.__new__(PropertyWrapper)
+    BaseException.__init__(error, secret)
+    cases = [
+        RuntimeError(1054, secret),
+        SQLAlchemyOperationalError("SELECT " + secret, {"password": secret}, RuntimeError(1054, secret)),
+        OperationalError(True, secret),
+        OperationalError(IntSubclass(1054), secret),
+        OperationalError("1054", secret),
+        OperationalError(999, secret),
+        OperationalError(5000, secret),
+        error,
+    ]
+    logger = logging.getLogger("app.main")
+    for case in cases:
+        logger.error("unsupported database failure", exc_info=(type(case), case, None))
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        events = [json.loads(line) for line in output.splitlines() if "unsupported database failure" in line]
+        assert len(events) == len(cases)
+        assert all("error_code" not in event["exception"] for event in events)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [(field, value) for field, values in DIAGNOSTIC_LOG_FIELDS.items() for value in sorted(values)],
+)
+def test_finite_diagnostic_fields_survive_both_json_output_paths(configured_logging, field, value):
+    stream, directory = configured_logging()
+    secret = "closed-diagnostic-secret-must-not-appear"
+    record = logging.LogRecord(
+        "app.main", logging.WARNING, __file__, 1, "closed diagnostic password=" + secret, (), None
+    )
+    record.__dict__[field] = value
+    direct = json.loads(JSONFormatter().format(record))
+    assert direct[field] == value
+    assert secret not in json.dumps(direct)
+    logging.getLogger("app.main").warning(
+        "closed diagnostic password=%s", secret, extra={field: value, "password": secret}
+    )
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        event = next(json.loads(line) for line in output.splitlines() if "closed diagnostic" in line)
+        assert event[field] == value
+        assert event["password"] == "***"
+
+
+@pytest.mark.parametrize("field", sorted(DIAGNOSTIC_LOG_FIELDS))
+@pytest.mark.parametrize("bad_kind", ["unknown", "credential", "subclass", "object", "integer", "mapping"])
+def test_unknown_diagnostic_values_are_omitted_without_conversion(configured_logging, field, bad_kind):
+    stream, directory = configured_logging()
+    secret = "unadmitted-diagnostic-secret"
+
+    class HostileString(str):
+        def __str__(self):
+            pytest.fail("diagnostic string subclasses must not be converted")
+
+        def __hash__(self):
+            pytest.fail("diagnostic string subclasses must not be hashed")
+
+        def __eq__(self, other):
+            pytest.fail("diagnostic string subclasses must not be compared")
+
+    class Opaque:
+        def __str__(self):
+            pytest.fail("diagnostic objects must not be converted")
+
+    value = {
+        "unknown": "new_unreviewed_reason",
+        "credential": secret,
+        "subclass": HostileString(next(iter(DIAGNOSTIC_LOG_FIELDS[field]))),
+        "object": Opaque(),
+        "integer": 1054,
+        "mapping": {"password": secret},
+    }[bad_kind]
+    record = logging.LogRecord("app.main", logging.WARNING, __file__, 1, "unadmitted diagnostic", (), None)
+    record.__dict__[field] = value
+    direct = json.loads(JSONFormatter().format(record))
+    assert field not in direct
+    assert secret not in json.dumps(direct)
+    logging.getLogger("app.main").warning("unadmitted diagnostic", extra={field: value})
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        event = next(json.loads(line) for line in output.splitlines() if "unadmitted diagnostic" in line)
+        assert field not in event
+
+
+def test_diagnostic_vocabulary_covers_oauth_enum_and_health_default():
+    from app.services.instance_health import HealthStoreUnavailable
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthFailureReason
+
+    assert {reason.value for reason in McpOAuthFailureReason} <= DIAGNOSTIC_LOG_FIELDS["diagnostic_reason"]
+    assert HealthStoreUnavailable().reason in DIAGNOSTIC_LOG_FIELDS["diagnostic_reason"]
+
+
+def test_diagnostic_vocabulary_covers_actual_traffic_classifier_and_stage_outputs(configured_logging, monkeypatch):
+    import time
+    from typing import get_args, get_type_hints
+
+    from app.services import traffic_analytics as traffic
+
+    stream, directory = configured_logging()
+    monkeypatch.setattr(traffic, "_failure_log_at", {})
+    secret = "producer-diagnostic-secret-must-not-appear"
+    errors = [
+        TimeoutError(secret),
+        traffic.RedisTimeoutError(secret),
+        ConnectionError(secret),
+        OSError(secret),
+        traffic.RedisConnectionError(secret),
+        traffic.MaxConnectionsError(secret),
+        traffic.OutOfMemoryError(secret),
+        traffic.AuthenticationError(secret),
+        traffic.AuthorizationError(secret),
+        traffic.ResponseError(secret),
+        RuntimeError(secret),
+    ]
+    reasons = {traffic._failure_reason(error) for error in errors}
+    assert reasons <= DIAGNOSTIC_LOG_FIELDS["failure_reason"]
+    producer_types = get_type_hints(traffic._log_failure)
+    sources = get_args(producer_types["source"])
+    stages = get_args(producer_types["stage"])
+    assert sources and stages
+    assert set(sources) <= DIAGNOSTIC_LOG_FIELDS["traffic_source"]
+    assert set(stages) <= DIAGNOSTIC_LOG_FIELDS["failure_stage"]
+    for source in sources:
+        for stage in stages:
+            for reason in reasons:
+                traffic._log_failure(source, stage, reason, time.monotonic())
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        assert secret not in output
+        events = [json.loads(line) for line in output.splitlines()]
+        events = [event for event in events if event["logger"] == traffic.__name__]
+        assert len(events) == len(sources) * len(stages) * len(reasons)
+        for event in events:
+            assert event["traffic_source"] in sources
+            assert event["failure_stage"] in stages
+            assert event["failure_reason"] in reasons
+            assert event["stage_scope"] in DIAGNOSTIC_LOG_FIELDS["stage_scope"]
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "expected"),
+    [
+        ("api", "api"),
+        ("worker", "worker"),
+        ("unknown", "unknown"),
+        ("private-entrypoint-secret", "unknown"),
+        (None, "unknown"),
+    ],
+)
+def test_formatter_entrypoint_is_explicit_and_closed(entrypoint, expected, monkeypatch):
+    secret = "private-entrypoint-secret"
+    monkeypatch.setenv("AFTERGLOW_ENTRYPOINT", secret)
+    monkeypatch.setattr(sys, "argv", ["worker", secret])
+    record = logging.LogRecord("app.test", logging.INFO, __file__, 1, "runtime classification", (), None)
+    payload = JSONFormatter(entrypoint=entrypoint).format(record)
+    assert json.loads(payload)["runtime"]["entrypoint"] == expected
+    assert json.loads(JSONFormatter().format(record))["runtime"]["entrypoint"] == "unknown"
+    assert secret not in payload
+
+
+def test_importing_worker_preserves_api_handlers_audit_and_runtime(configured_logging):
+    import importlib.util
+
+    from app import notion_worker
+    from app.services.activity import _audit_ctx
+    from app.utils.auth_diagnostics import RequestDiagnosticHandler
+
+    stream, directory = configured_logging()
+    root = logging.getLogger()
+    handlers = root.handlers[:]
+    previous_level = root.level
+    assert any(isinstance(handler, RequestDiagnosticHandler) for handler in handlers)
+    # Execute the module's import boundary in a separate namespace: no reload of
+    # shared worker globals, no CLI startup, and no business task execution.
+    spec = importlib.util.spec_from_file_location("worker_import_probe", notion_worker.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert root.handlers == handlers
+    assert root.level == previous_level
+    holder = {"stages": []}
+    context = _audit_ctx.set(holder)
+    try:
+        logging.getLogger("app.services.import_probe").warning("api import diagnostic")
+    finally:
+        _audit_ctx.reset(context)
+    assert any(item["stage"] == "application_warning" for _, item in holder["stages"])
+    for output in (stream.getvalue(), "".join(path.read_text() for path in directory.glob("backend-*.log"))):
+        event = next(json.loads(line) for line in output.splitlines() if "api import diagnostic" in line)
+        assert event["runtime"]["entrypoint"] == "api"

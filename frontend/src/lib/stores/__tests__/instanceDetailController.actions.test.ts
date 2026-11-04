@@ -13,7 +13,7 @@ vi.mock('$lib/stores/auth', () => {
 	return { auth, canWrite: derived(auth, state => state.isSystemAdmin || state.roles.includes('member')) };
 });
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: mockPost, delete: mockDelete },
+	api: { get: mockGet, post: mockPost, delete: mockDelete, withExperience() { return this; } },
 	ApiError: class ApiError extends Error { status = 409; },
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));

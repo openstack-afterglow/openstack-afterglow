@@ -28,6 +28,7 @@
 	"browser.files": "Filer",
 	"browser.trash": "Papirkurv",
 	"browser.viewLabel": "Visning i objektutforskeren",
+	"browser.loadFailed": "Kunne ikke laste objekter. Oppdater for å prøve igjen.",
 	"uploadQueue.readFailed": "Kunne ikke lese filen",
 	"uploadQueue.hashFailed": "Kunne ikke beregne integritetshashen",
 	"uploadQueue.failed": "Opplasting mislyktes",

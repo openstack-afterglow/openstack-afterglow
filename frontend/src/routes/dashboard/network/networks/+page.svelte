@@ -2,7 +2,7 @@
 	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { createSwr } from '$lib/utils/swr.svelte';
@@ -22,6 +22,7 @@
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
   import { Alert, Button, EmptyState, Field, Pagination, PageHeader, PageShell, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
+  import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
   let networks = $state<Network[]>([]);
   let floatingIps = $state<FloatingIp[]>([]);
@@ -44,6 +45,9 @@
   let typeFilter = $state('all');
   let displayPage = $state(1);
   let pageSize = $state(20);
+  let stateVersion = 0;
+  let live = true;
+  onDestroy(() => { live = false; });
   const filteredNetworks = $derived(networks.filter((network) => {
     const matchesSearch = `${network.name} ${network.id} ${network.cidrs?.join(' ') ?? ''}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
     return matchesSearch && (typeFilter === 'all' || (typeFilter === 'external' ? network.is_external : typeFilter === 'shared' ? network.is_shared : !network.is_external && !network.is_shared));
@@ -80,18 +84,33 @@
   const pid = () => $auth.projectId ?? undefined;
   const { swrGet, swrSet } = createSwr(() => $auth.projectId);
 
-  async function fetchNetworks(opts?: { refresh?: boolean }) {
+  async function fetchNetworks(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.list')) {
     const path = '/api/v1/networks';
+    const projectId = pid(), userId = $auth.userId;
+    let appliedVersion = 0;
+    const current = () => live && appliedVersion === stateVersion && pid() === projectId && $auth.userId === userId;
+    if (loading || refreshing) experienceState(experience, 'loading');
     const cached = swrGet<Network[]>(path);
-    if (cached && networks.length === 0) networks = cached;
+    if (cached && networks.length === 0) {
+      networks = cached;
+      const cachedVersion = ++stateVersion;
+      experienceState(experience, cached.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience, { transport: 'cache' }, () => live && stateVersion === cachedVersion && pid() === projectId && $auth.userId === userId);
+    }
     try {
-      networks = await api.get<Network[]>(path, tok(), pid(), opts);
+      networks = await api.withExperience(experience).get<Network[]>(path, tok(), pid(), opts);
       hasInventory = true;
       swrSet(path, networks);
       if (activeDomain === 'networks') selection.retain(visibleSelectableIds);
       error = '';
+      appliedVersion = ++stateVersion;
+      if (experience?.action !== 'create') experienceState(experience, networks.length ? 'ready' : 'empty');
+      if (experience) void experienceApplied(experience, {}, current);
     } catch (e) {
       error = e instanceof ApiError ? t('networks.loadFailed', { status: e.status }) : t('networks.serverError');
+      appliedVersion = ++stateVersion;
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience, {}, current);
     } finally { loading = false; }
   }
 
@@ -108,21 +127,31 @@
       return;
     }
     settingDefault = networkId;
+    const experience = beginExperienceAction('network', 'update', 'resource.list');
     try {
-      await api.put('/api/v1/networks/default', { network_id: networkId }, tok(), pid());
+      await api.withExperience(experience).put('/api/v1/networks/default', { network_id: networkId }, tok(), pid());
       defaultNetworkId = networkId;
+      if (experience) void experienceApplied(experience);
     } catch (e) {
       toast.error(t('networks.setDefaultFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
     } finally { settingDefault = null; }
   }
 
-  async function fetchFloatingIps(opts?: { refresh?: boolean }) {
+  async function fetchFloatingIps(opts?: { refresh?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('network', 'resource.list')) {
+    const projectId = pid(), userId = $auth.userId;
     try {
-      floatingIps = await api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok(), pid(), opts);
+      floatingIps = await api.withExperience(experience).get<FloatingIp[]>('/api/v1/networks/floating-ips', tok(), pid(), opts);
       if (activeDomain === 'floating-ips') selection.retain(floatingIps.map((fip) => fip.id));
+      experienceState(experience, floatingIps.length ? 'ready' : 'empty');
+      if (experience) {
+        const assigned = floatingIps;
+        void experienceApplied(experience, {}, () => live && floatingIps === assigned && pid() === projectId && $auth.userId === userId);
+      }
     } catch { /* 오류 무시 */ }
   }
-  async function runBulkAction(domain: 'networks' | 'floating-ips', eligible: ReadonlySet<string>, mutate: (id: string, token: string | undefined, projectId: string | undefined) => Promise<unknown>) {
+  async function runBulkAction(domain: 'networks' | 'floating-ips', eligible: ReadonlySet<string>, mutate: (id: string, token: string | undefined, projectId: string | undefined, experience: ExperienceContext | undefined) => Promise<unknown>) {
     const snapshotIds = [...selection.ids];
     const { eligible: eligibleIds, skipped } = partitionBulkIds(snapshotIds, eligible);
     if (eligibleIds.length === 0) return;
@@ -130,18 +159,23 @@
     const tokenSnapshot = tok();
     const projectSnapshot = pid();
     busy = true;
+    const experience = beginExperienceAction('network', 'delete', 'resource.list');
     try {
-      const results = await executeBulkMutations(eligibleIds, (id) => mutate(id, tokenSnapshot, projectSnapshot));
+      const results = await executeBulkMutations(eligibleIds, (id) => mutate(id, tokenSnapshot, projectSnapshot, experience));
       const succeeded = results.filter((result) => result.ok).map((result) => result.id);
       const failedCount = results.length - succeeded.length;
       const sameProjectDomain = projectSnapshot === pid() && activeDomain === domain;
       if (sameProjectDomain) selection.remove(succeeded);
       if (succeeded.length > 0) toast.success(t(domain === 'networks' ? 'networks.bulk.deleteDone' : 'networks.bulk.releaseDone', { count: succeeded.length }));
-      if (failedCount > 0) toast.error(t(domain === 'networks' ? 'networks.bulk.deleteFailed' : 'networks.bulk.releaseFailed', { count: failedCount }));
+      if (failedCount > 0) {
+        toast.error(t(domain === 'networks' ? 'networks.bulk.deleteFailed' : 'networks.bulk.releaseFailed', { count: failedCount }));
+        experienceState(experience, 'error');
+        if (experience) void experienceApplied(experience);
+      }
       if (skipped.length > 0) toast.warning(t(domain === 'networks' ? 'networks.bulk.deleteSkipped' : 'networks.bulk.releaseSkipped', { count: skipped.length }));
       if (sameProjectDomain) {
-        if (domain === 'networks') await fetchNetworks({ refresh: true });
-        else await fetchFloatingIps();
+        if (domain === 'networks') await fetchNetworks({ refresh: true }, experience);
+        else await fetchFloatingIps(undefined, experience);
       }
     } finally {
       busy = false;
@@ -154,7 +188,7 @@
         label: t('networks.delete'),
         tone: 'danger',
         disabled: partitionBulkIds(selection.ids, selectableNetworkIds).eligible.length === 0,
-        onAction: () => runBulkAction('networks', selectableNetworkIds, (id, token, projectId) => api.delete(`/api/v1/networks/${id}`, token, projectId)),
+        onAction: () => runBulkAction('networks', selectableNetworkIds, (id, token, projectId, experience) => api.withExperience(experience).delete(`/api/v1/networks/${id}`, token, projectId)),
       }];
     }
     if (activeDomain === 'floating-ips') {
@@ -163,26 +197,30 @@
         label: t('networks.release'),
         tone: 'warning',
         disabled: partitionBulkIds(selection.ids, selectableFloatingIpIds).eligible.length === 0,
-        onAction: () => runBulkAction('floating-ips', selectableFloatingIpIds, (id, token, projectId) => api.delete(`/api/v1/networks/floating-ips/${id}`, token, projectId)),
+        onAction: () => runBulkAction('floating-ips', selectableFloatingIpIds, (id, token, projectId, experience) => api.withExperience(experience).delete(`/api/v1/networks/floating-ips/${id}`, token, projectId)),
       }];
     }
     return [];
   }
 
   async function forceRefresh() {
+    const experience = beginExperienceAction('network', 'refresh', 'resource.list');
     refreshing = true;
-    try { await Promise.all([fetchNetworks({ refresh: true }), fetchFloatingIps({ refresh: true })]); }
+    try { await Promise.all([fetchNetworks({ refresh: true }, experience), fetchFloatingIps({ refresh: true }, experience)]); }
     finally { refreshing = false; }
   }
 
   async function createNetwork(body: Record<string, unknown>): Promise<boolean> {
     creating = true; createError = '';
+    const experience = beginExperienceAction('network', 'create', 'resource.list');
     try {
-      await apiMut(t('networks.create'), () => api.post('/api/v1/networks', body, tok(), pid()));
-      await fetchNetworks();
+      await apiMut(t('networks.create'), () => api.withExperience(experience).post('/api/v1/networks', body, tok(), pid()));
+      await fetchNetworks(undefined, experience);
       return true;
     } catch (e) {
       createError = e instanceof ApiError ? e.message : t('networks.createFailed');
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
       return false;
     } finally { creating = false; }
   }
@@ -192,10 +230,14 @@
     if (isExternal) { toast.warning(t('networks.externalDelete')); return; }
     if (!await confirmDialog(`${t('networks.deleteConfirm', { name: name ? `${name} (${id})` : id })}\n${t('list.deleteImpact')}`)) return;
     deleting = id;
+    const experience = beginExperienceAction('network', 'delete', 'resource.list');
     try {
-      await apiMut(t('networks.deleteAction'), () => api.delete(`/api/v1/networks/${id}`, tok(), pid()));
-      await fetchNetworks();
-    } catch { /* error toast shown by apiMut */ }
+      await apiMut(t('networks.deleteAction'), () => api.withExperience(experience).delete(`/api/v1/networks/${id}`, tok(), pid()));
+      await fetchNetworks(undefined, experience);
+    } catch {
+      experienceState(experience, 'error');
+      if (experience) void experienceApplied(experience);
+    }
     finally { deleting = null; }
   }
 

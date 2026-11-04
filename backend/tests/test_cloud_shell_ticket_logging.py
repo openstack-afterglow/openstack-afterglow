@@ -76,7 +76,7 @@ def test_noncredential_diagnostic_strings_are_unchanged():
 
 def test_application_setup_filters_uvicorn_nonpropagating_handlers(monkeypatch, tmp_path):
     from app import config
-    from app.main import _setup_logging
+    from app.utils.structured_logging import setup_logging
 
     root = logging.getLogger()
     root_handlers = root.handlers[:]
@@ -109,7 +109,7 @@ def test_application_setup_filters_uvicorn_nonpropagating_handlers(monkeypatch, 
             logger.disabled = False
             logger.filters = []
             logger.setLevel(logging.INFO)
-        _setup_logging()
+        setup_logging(entrypoint="api")
         # Exercise own handlers first, then Uvicorn's actual default route:
         # uvicorn.error -> uvicorn, whose handler does not propagate to root.
         for name, logger in loggers.items():

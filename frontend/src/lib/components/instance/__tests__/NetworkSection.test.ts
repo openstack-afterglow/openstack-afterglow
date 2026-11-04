@@ -12,7 +12,7 @@ interface SecurityGroupSnapshot {
 
 const { mockGet, mockPost } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPost: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mockGet, post: mockPost, put: vi.fn(), delete: vi.fn() },
+	api: { get: mockGet, post: mockPost, put: vi.fn(), delete: vi.fn(), withExperience() { return this; } },
 	ApiError: class ApiError extends Error {},
 }));
 vi.mock('$lib/stores/auth', () => ({

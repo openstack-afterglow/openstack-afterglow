@@ -15,6 +15,7 @@
   import { getTerminalTheme } from '$lib/utils/terminalTheme';
   import { getLocale } from '$lib/i18n/runtime.svelte';
   import { localizeTerminal } from '$lib/utils/terminalLocale';
+  import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
   const s = useK3sClusterDetailController();
 
@@ -28,6 +29,7 @@
   let errorMsg = $state('');
   let idleTimedOut = $state(false);
   let disposed = false;
+  let connectionExperience: ExperienceContext | undefined;
 
   // K8s exec v4.channel.k8s.io 채널 ID
   const CH_STDIN = 0;
@@ -72,7 +74,7 @@
     if (terminal) localizeTerminal(terminal);
   });
 
-  async function initTerminal() {
+  async function initTerminal(experience?: ExperienceContext) {
     if (disposed || !$k3sPermissions.workloads || !terminalEl) return;
     const { Terminal } = await import('@xterm/xterm');
     const { FitAddon } = await import('@xterm/addon-fit');
@@ -109,15 +111,18 @@
     resizeObserver = new ResizeObserver(() => fitAddon?.fit());
     resizeObserver.observe(terminalEl);
 
-    await connectWs();
+    await connectWs(experience);
   }
 
-  async function connectWs() {
+  async function connectWs(context?: ExperienceContext) {
     if (disposed || !$k3sPermissions.workloads || connecting || !terminal || !s.cluster) return;
     const userId = $auth.userId;
     const projectId = $auth.projectId;
     const targetProjectId = s.projectId;
     const clusterId = s.cluster.id;
+    const experience = context ?? beginExperienceLoad('k3s', 'shared.stream');
+    connectionExperience = experience;
+    experienceState(experience, 'loading', 0);
     connecting = true;
     errorMsg = '';
     idleTimedOut = false;
@@ -127,16 +132,18 @@
       const res = await createShellTicket(
         s.cluster.id,
         $auth.token ?? undefined,
-        targetProjectId
+        targetProjectId,
+        experience
       );
       ticket = res.ticket;
     } catch {
       errorMsg = t('cloudShell.ticketFailed');
       connecting = false;
+      experienceState(experience, 'error', 3);
       terminal?.write(`\r\n\x1b[31m${t('cloudShell.terminalTicketFailed')}\x1b[0m\r\n`);
       return;
     }
-    if (disposed || !terminal || $auth.userId !== userId || $auth.projectId !== projectId || s.projectId !== targetProjectId || s.cluster?.id !== clusterId) { connecting = false; return; }
+    if (disposed || !terminal || $auth.userId !== userId || $auth.projectId !== projectId || s.projectId !== targetProjectId || s.cluster?.id !== clusterId) { connecting = false; experienceDiscarded(experience, 'stale'); return; }
 
     const baseUrl = getBaseUrl();
     const proto = baseUrl.startsWith('https') ? 'wss:' : 'ws:';
@@ -152,6 +159,8 @@
     socket.onopen = () => {
       connecting = false;
       connected = true;
+      experienceState(experience, 'ready', 1);
+      void experienceApplied(experience, {}, () => !disposed && ws === socket && connected && $auth.userId === userId && $auth.projectId === projectId && s.projectId === targetProjectId && s.cluster?.id === clusterId);
       // 현재 터미널 크기 전송
       if (terminal) {
         sendResize(terminal.cols, terminal.rows);
@@ -174,6 +183,7 @@
       errorMsg = t('cloudShell.connectionError');
       connecting = false;
       connected = false;
+      experienceState(experience, 'error', 3);
     };
 
     socket.onclose = (event: CloseEvent) => {
@@ -186,10 +196,14 @@
       } else if (event.code !== 1000 && event.code !== 1001) {
         terminal?.write(`\r\n\x1b[33m${t('cloudShell.terminalClosed', { code: event.code })}\x1b[0m\r\n`);
       }
+      experienceState(experience, 'disabled', 2);
+      void experienceApplied(experience, {}, () => !disposed && !connected && $auth.userId === userId && $auth.projectId === projectId && s.projectId === targetProjectId && s.cluster?.id === clusterId);
     };
   }
 
   function closeAll() {
+    if (connecting) experienceDiscarded(connectionExperience, disposed ? 'unmounted' : 'aborted');
+    connectionExperience = undefined;
     resizeObserver?.disconnect();
     resizeObserver = null;
     ws?.close();
@@ -205,12 +219,13 @@
   }
 
   async function reconnect() {
+    const experience = beginExperienceAction('k3s', 'start', 'shared.stream');
     if (!terminal) {
-      await initTerminal();
+      await initTerminal(experience);
       return;
     }
     terminal.clear();
-    await connectWs();
+    await connectWs(experience);
   }
 </script>
 

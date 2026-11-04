@@ -125,6 +125,16 @@ async def start_layer_build(
             "source_metadata": deepcopy(source_metadata),
         },
     }
+    from app.services.experience_context import (
+        bind_experience_operation,
+        capture_experience_context,
+        emit_experience,
+        experience_owner_receipt,
+    )
+
+    experience_owner = experience_owner_receipt()
+    if experience_owner is not None:
+        resource_snapshot["experience_owner"] = experience_owner
     from sqlalchemy.exc import SQLAlchemyError
 
     try:
@@ -154,6 +164,11 @@ async def start_layer_build(
             build_db_id = row.id
     except SQLAlchemyError as exc:
         raise LayerBuildUnavailable("layer build admission could not be committed") from exc
+    context = capture_experience_context(feature="palimpsest", action="create", component="page")
+    await bind_experience_operation(context, "layer_build", build_db_id)
+    await emit_experience(
+        context, "operation.accepted", stage="build.admission", status="accepted", operation_id=str(build_db_id)
+    )
 
     return {
         "build_id": build_db_id,
@@ -205,6 +220,16 @@ async def cancel_layer_build(build_db_id: int) -> dict:
         row.progress_step = "사용자 취소"
         row.error_message = "관리자에 의해 취소됨"
         await session.commit()
+    from app.services.experience_context import capture_experience_context, emit_experience
+
+    await emit_experience(
+        capture_experience_context(feature="palimpsest", action="cancel", component="page"),
+        "operation.state_changed",
+        stage="cleanup",
+        status="cancel_requested",
+        operation_id=str(build_db_id),
+        reason="pending_cleanup",
+    )
 
     # The assigned cleanup owner waits for in-flight SDK effects and observes
     # late accepted identities; the request cannot safely use its earlier IDs.

@@ -28,6 +28,7 @@
 	"browser.files": "Tệp",
 	"browser.trash": "Thùng rác",
 	"browser.viewLabel": "Chế độ xem trình duyệt đối tượng",
+	"browser.loadFailed": "Không thể tải đối tượng. Hãy làm mới để thử lại.",
 	"uploadQueue.readFailed": "Không thể đọc tệp",
 	"uploadQueue.hashFailed": "Không thể tính giá trị băm kiểm tra tính toàn vẹn",
 	"uploadQueue.failed": "Tải lên thất bại",

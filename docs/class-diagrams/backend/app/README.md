@@ -267,11 +267,11 @@ T_backend_app_database_py_Base_fbe8cc2ba130 <|-- T_backend_app_models_db_py_Unio
 ### 관계 설명
 - `backend/app/database.py::Base <|-- backend/app/models/db.py::UnionUserMount` — 근거: `backend/app/models/db.py::UnionUserMount.__bases__`; 관계: `inherits`.
 
-## 다이어그램 5 — `backend/app/main.py::_JSONFormatter` … `backend/app/utils/log.py::SensitiveDataFilter`
+## 다이어그램 5 — `backend/app/utils/structured_logging.py::JSONFormatter` … `backend/app/utils/log.py::SensitiveDataFilter`
 ```mermaid
 classDiagram
-%% source-type: backend/app/main.py::_JSONFormatter
-class T_backend_app_main_py_JSONFormatter_01a0b3e0fb17["_JSONFormatter (backend/app/main.py)"] {
+%% source-type: backend/app/utils/structured_logging.py::JSONFormatter
+class JSONFormatterStructuredLogging["JSONFormatter (backend/app/utils/structured_logging.py)"] {
   <<class>>
   +format(record: LogRecord): str
 }

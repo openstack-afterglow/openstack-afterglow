@@ -6,11 +6,19 @@ set -euo pipefail
 # Usage: ./deploy/kolla/uninstall.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO_DIR="${AFTERGLOW_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${AFTERGLOW_REPO_DIR:-}"
+if [[ -z "$REPO_DIR" && "$SCRIPT_DIR" == */deploy/kolla ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 
 log()  { echo "[afterglow-uninstall] $*"; }
 warn() { echo "[afterglow-uninstall] WARNING: $*" >&2; }
 die()  { echo "[afterglow-uninstall] ERROR: $*" >&2; exit 1; }
+if [[ -n "$REPO_DIR" ]]; then
+  [[ "$REPO_DIR" == /* ]] || die "AFTERGLOW_REPO_DIR must be an absolute checkout path."
+  REPO_DIR="${REPO_DIR%/}"
+fi
 
 detect_kolla_dir() {
   if [[ -n "${KOLLA_ANSIBLE_DIR:-}" ]]; then
@@ -90,6 +98,66 @@ remove_symlink_safe() {
 }
 
 ROLES_DIR="$KOLLA_DIR/ansible/roles"
+KOLLA_PYTHON=$(command -v python3) || die "python3 실행 파일을 찾을 수 없습니다"
+case "$KOLLA_DIR" in
+  */local/share/kolla-ansible)
+    candidate_kolla_python="${KOLLA_DIR%/local/share/kolla-ansible}/bin/python" ;;
+  */share/kolla-ansible)
+    candidate_kolla_python="${KOLLA_DIR%/share/kolla-ansible}/bin/python" ;;
+  *) candidate_kolla_python="" ;;
+esac
+if [[ -x "$candidate_kolla_python" ]]; then
+  KOLLA_PYTHON="$candidate_kolla_python"
+elif [[ "${KOLLA_ANSIBLE_BIN:-}" == /* ]]; then
+  candidate_kolla_python="$(dirname "$KOLLA_ANSIBLE_BIN")/python"
+  [[ -x "$candidate_kolla_python" ]] && KOLLA_PYTHON="$candidate_kolla_python"
+elif candidate_kolla_bin=$(command -v kolla-ansible); then
+  candidate_kolla_python="$(dirname "$candidate_kolla_bin")/python"
+  [[ -x "$candidate_kolla_python" ]] && KOLLA_PYTHON="$candidate_kolla_python"
+fi
+AFTERGLOW_PACKAGE_ROOT=$(
+  "$KOLLA_PYTHON" -c 'import sysconfig; from pathlib import Path; print(Path(sysconfig.get_path("data")) / "share/afterglow/kolla")'
+) || die "Unable to resolve the active Kolla environment's package data directory."
+AFTERGLOW_ROLE_TARGET="$AFTERGLOW_PACKAGE_ROOT/ansible/roles/afterglow"
+AFTERGLOW_SITE_TARGET="$AFTERGLOW_PACKAGE_ROOT/site.yml"
+AFTERGLOW_LEGACY_ROLE_TARGET="${AFTERGLOW_LEGACY_ROLE_TARGET:-}"
+AFTERGLOW_LEGACY_SITE_TARGET="${AFTERGLOW_LEGACY_SITE_TARGET:-}"
+if [[ -n "$REPO_DIR" ]]; then
+  AFTERGLOW_LEGACY_ROLE_TARGET="${AFTERGLOW_LEGACY_ROLE_TARGET:-$REPO_DIR/deploy/kolla/ansible/roles/afterglow}"
+  AFTERGLOW_LEGACY_SITE_TARGET="${AFTERGLOW_LEGACY_SITE_TARGET:-$REPO_DIR/deploy/kolla/site.yml}"
+fi
+for legacy_target_name in AFTERGLOW_LEGACY_ROLE_TARGET AFTERGLOW_LEGACY_SITE_TARGET; do
+  legacy_target="${!legacy_target_name}"
+  [[ -z "$legacy_target" || "$legacy_target" == /* ]] ||
+    die "$legacy_target_name must be an absolute exact legacy symlink target."
+done
+
+# Package contents belong to the package manager. Only remove stable wiring
+# whose exact target is ours, or the explicitly identified legacy checkout.
+check_afterglow_link() {
+  local target="$1" link_path="$2" legacy_target="$3"
+  if [[ -e "$link_path" || -L "$link_path" ]]; then
+    [[ -L "$link_path" ]] || die "Refusing to remove foreign path: $link_path"
+    local current_target
+    current_target=$(readlink "$link_path")
+    if [[ "$current_target" != "$target" ]] &&
+       [[ -z "$legacy_target" || "$current_target" != "$legacy_target" ]]; then
+      die "Refusing to remove foreign symlink: $link_path -> $current_target. Set AFTERGLOW_LEGACY_ROLE_TARGET and AFTERGLOW_LEGACY_SITE_TARGET to the exact known old targets, or AFTERGLOW_REPO_DIR for a single old checkout."
+    fi
+  fi
+}
+
+remove_afterglow_link() {
+  local target="$1" link_path="$2" legacy_target="$3"
+  check_afterglow_link "$target" "$link_path" "$legacy_target"
+  if [[ -L "$link_path" ]]; then
+    rm -- "$link_path" || die "Unable to remove Afterglow wiring: $link_path"
+    log "Afterglow asset link removed: $link_path"
+  fi
+}
+
+check_afterglow_link "$AFTERGLOW_ROLE_TARGET" "$ROLES_DIR/afterglow" "$AFTERGLOW_LEGACY_ROLE_TARGET"
+check_afterglow_link "$AFTERGLOW_SITE_TARGET" "$KOLLA_DIR/ansible/afterglow-site.yml" "$AFTERGLOW_LEGACY_SITE_TARGET"
 
 # Remove the site import before its target so an interruption can never leave a
 # dangling import in Kolla's stock playbook.
@@ -103,14 +171,13 @@ GLOBALS_D="$KOLLA_CONFIG_DIR/globals.d"
 STOCK_SITE="$KOLLA_DIR/ansible/site.yml"
 
 [[ -f "$STOCK_SITE" ]] || die "Kolla stock site.yml을 찾을 수 없습니다: $STOCK_SITE"
-python3 "$REPO_DIR/deploy/kolla/patch_stock_site.py" remove "$STOCK_SITE" || \
+"$KOLLA_PYTHON" "$SCRIPT_DIR/patch_stock_site.py" remove "$STOCK_SITE" || \
   die "Afterglow stock site.yml import 제거 실패"
 
-# Remove aggregate playbook link after its stock import is gone.
-remove_symlink_safe "$REPO_DIR/deploy/kolla/site.yml" "$KOLLA_DIR/ansible/afterglow-site.yml" "aggregate afterglow-site.yml playbook"
-
-# Remove the Afterglow source role link (Drover, Lumen, Waygate, and Palimpsest roles are package-installed via their kolla packages).
-remove_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/afterglow" "$ROLES_DIR/afterglow" "afterglow role"
+# Remove only stable symlinks after the stock import is gone. The private
+# package-owned role and aggregate remain installed for future reinstallation.
+remove_afterglow_link "$AFTERGLOW_SITE_TARGET" "$KOLLA_DIR/ansible/afterglow-site.yml" "$AFTERGLOW_LEGACY_SITE_TARGET"
+remove_afterglow_link "$AFTERGLOW_ROLE_TARGET" "$ROLES_DIR/afterglow" "$AFTERGLOW_LEGACY_ROLE_TARGET"
 
 remove_symlink_safe "$MULTINODE_INVENTORY" "$DEFAULT_INVENTORY" "Kolla default multinode inventory"
 remove_symlink_safe "$KOLLA_CONFIG_DIR/group_vars" "$KOLLA_CONFIG_DIR/ansible/inventory/group_vars" "Kolla default group_vars"
@@ -122,7 +189,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo " Afterglow integration wiring removed."
 echo " The installer-owned stock site.yml import, default inventory link, globals.d"
-echo " links, and Afterglow source role link were removed."
-echo " Package-installed root roles (drover, lumen, waygate, palimpsest-client),"
-echo " multinode inventory, plugin configuration, databases, containers, images,"
-echo " and source checkouts remain UNTOUCHED."
+echo " links, and stable Afterglow role/aggregate links were removed."
+echo " Package-owned Afterglow assets and sibling roles, multinode inventory,"
+echo " plugin configuration, databases, containers, images, and source checkouts"
+echo " remain UNTOUCHED."

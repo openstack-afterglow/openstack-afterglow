@@ -13,6 +13,7 @@ import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/network
 import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { Volume as VolumeInfo } from '$lib/types/volume';
 import { flavorCreateBlock, type FlavorOption } from '$lib/types/flavor';
+import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, recordExperience, type ExperienceContext } from '$lib/utils/experience';
 
 // Selection setters publish synchronously: effects cannot observe same-tick A→B→A.
 const instanceDetailSelectionRevision = writable(0);
@@ -165,22 +166,25 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			&& opts.effectiveProjectId() === context.projectId && ownPid() === context.ownProjectId
 			&& opts.adminMode() === context.adminMode && get(auth).token === context.token && get(auth).userId === context.userId;
 		if (!context || !owns() || renameLoading || mutationBusy()) return;
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
+		const readContext = captureReadContext();
 		const draft = renameDraft.trim();
 		if (draft === instance?.name) { closeRename(); return; }
 		const name = draft.replace(/[^\S\r\n]+/g, '-');
 		if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/.test(name)) {
 			renameError = t('rename.invalidName');
+			recordExperience(experience, 'validation.rejected', { reason: 'format' });
 			return;
 		}
 		if (name === instance?.name) { closeRename(); return; }
 		renameLoading = true;
 		renameError = '';
 		try {
-			const result = await api.put<{ id: string; name: string; project_id: string }>(
+			const result = await api.withExperience(experience).put<{ id: string; name: string; project_id: string }>(
 				`/api/v1/${context.adminMode ? 'admin/' : ''}instances/${context.id}/name`, { name }, context.token,
 				context.adminMode ? context.ownProjectId : context.projectId, { replayOnUnauthorized: false },
 			);
-			if (!owns()) return;
+			if (!owns()) { experienceDiscarded(experience, 'stale'); return; }
 			if (result.id !== context.id || result.project_id !== context.projectId || result.name !== name) {
 				renameError = t('rename.failed');
 				return;
@@ -189,10 +193,16 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			loading = false;
 			refreshing = false;
 			instance = { ...instance!, name: result.name };
+			experienceState(experience, 'ready');
+			if (experience) void experienceApplied(experience, {}, readContext.current);
 			closeRename();
 			opts.onUpdated?.();
 		} catch (e) {
-			if (owns()) renameError = e instanceof ApiError ? e.message : t('rename.failed');
+			if (owns()) {
+				renameError = e instanceof ApiError ? e.message : t('rename.failed');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'stale');
 		} finally {
 			if (generation === renameGeneration) renameLoading = false;
 		}
@@ -304,7 +314,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	// Core fetch
-	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean; refreshSecurityGroups?: boolean }) {
+	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean; refreshSecurityGroups?: boolean }, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.detail')) {
 		if (renameContext && (renameContext.id !== id || renameContext.projectId !== opts.effectiveProjectId() || renameContext.adminMode !== opts.adminMode())) closeRename();
 		++passwordPrecheckGeneration;
 		passwordPrecheck = null;
@@ -339,34 +349,46 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			&& readContext.current()
 		);
 
-		const instancePromise = api.get<Instance>(base, requestToken, transportProjectId);
-		const fipsPromise = api.get<FloatingIpDetail[]>(requestAdminMode ? `${base}/floating-ips` : '/api/v1/networks/floating-ips', requestToken, transportProjectId).catch(() => []);
-		const interfacesPromise = api.get<PortInfo[]>(`${base}/interfaces`, requestToken, transportProjectId).catch(() => []);
-		const volumesPromise = api.get<VolumeAttachment[]>(`${base}/volumes`, requestToken, transportProjectId).catch(() => []);
-		const securityGroupsPromise = api.get<{ ports: PortInfo[]; security_groups: SecurityGroup[] }>(
+		experienceState(experience, 'loading');
+		const request = api.withExperience(experience);
+		const instancePromise = request.get<Instance>(base, requestToken, transportProjectId);
+		const fipsPromise = request.get<FloatingIpDetail[]>(requestAdminMode ? `${base}/floating-ips` : '/api/v1/networks/floating-ips', requestToken, transportProjectId).catch(() => []);
+		const interfacesPromise = request.get<PortInfo[]>(`${base}/interfaces`, requestToken, transportProjectId).catch(() => []);
+		const volumesPromise = request.get<VolumeAttachment[]>(`${base}/volumes`, requestToken, transportProjectId).catch(() => []);
+		const securityGroupsPromise = request.get<{ ports: PortInfo[]; security_groups: SecurityGroup[] }>(
 			`${base}/security-groups`,
 			requestToken,
 			transportProjectId,
 			fetchOpts?.refreshSecurityGroups ? { refresh: true } : undefined,
 		);
-		const allVolumesPromise = api.get<VolumeInfo[]>(requestAdminMode ? `${base}/available-volumes` : '/api/v1/volumes', requestToken, transportProjectId).catch(() => []);
-		const networksPromise = api.get<NetworkInfo[]>(requestAdminMode ? `${base}/networks` : '/api/v1/networks', requestToken, transportProjectId).catch(() => []);
-		const ownerPromise = api.get<{ display: string }>(`${base}/owner`, requestToken, transportProjectId).catch(() => ({ display: '' }));
+		const allVolumesPromise = request.get<VolumeInfo[]>(requestAdminMode ? `${base}/available-volumes` : '/api/v1/volumes', requestToken, transportProjectId).catch(() => []);
+		const networksPromise = request.get<NetworkInfo[]>(requestAdminMode ? `${base}/networks` : '/api/v1/networks', requestToken, transportProjectId).catch(() => []);
+		const ownerPromise = request.get<{ display: string }>(`${base}/owner`, requestToken, transportProjectId).catch(() => ({ display: '' }));
 
-		void interfacesPromise.then((value) => { if (ownsRequest()) interfaces = value; });
-		void volumesPromise.then((value) => { if (ownsRequest()) volumes = value; });
+		void interfacesPromise.then((value) => {
+			if (ownsRequest()) interfaces = value;
+		});
+		void volumesPromise.then((value) => {
+			if (ownsRequest()) volumes = value;
+		});
 		void securityGroupsPromise.then((value) => {
 			if (!ownsRequest()) return;
 			allSecurityGroups = value.security_groups;
 			securityGroupPorts = value.ports;
 			securityGroupsError = '';
 		}).catch((e) => {
-			if (ownsRequest()) securityGroupsError = e instanceof ApiError ? e.message : t('controller.securityGroup.fetchFailed');
+			if (ownsRequest()) {
+				securityGroupsError = e instanceof ApiError ? e.message : t('controller.securityGroup.fetchFailed');
+			}
 		}).finally(() => {
 			if (ownsRequest()) securityGroupsLoading = false;
 		});
-		void networksPromise.then((value) => { if (ownsRequest()) availableNetworks = value; });
-		void ownerPromise.then((value) => { if (ownsRequest()) ownerDisplay = value.display || ''; });
+		void networksPromise.then((value) => {
+			if (ownsRequest()) availableNetworks = value;
+		});
+		void ownerPromise.then((value) => {
+			if (ownsRequest()) ownerDisplay = value.display || '';
+		});
 		void Promise.all([instancePromise, fipsPromise]).then(([loadedInstance, fips]) => {
 			if (!ownsRequest()) return;
 			const instanceIps = new Set(
@@ -382,28 +404,32 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 		try {
 			const loadedInstance = await instancePromise;
-			if (!ownsRequest()) return;
+			if (!ownsRequest()) { experienceDiscarded(experience, 'stale'); return; }
 			instance = loadedInstance;
 			error = '';
 			refreshError = '';
-			if (canChangePassword) void fetchPasswordPrecheck(id);
+			if (experience?.action !== 'create') experienceState(experience, 'ready');
+			if (experience) void experienceApplied(experience, {}, ownsRequest);
+			if (canChangePassword) void fetchPasswordPrecheck(id, experience);
 			if (opts.adminMode()) {
 				if (loadedInstance.status === 'MIGRATING') {
-					void loadMigrationStatus(id);
+					void loadMigrationStatus(id, experience);
 				} else if (migrationStatus?.migration?.status !== 'running') {
-					void loadMigrationStatus(id);
+					void loadMigrationStatus(id, experience);
 				}
 			}
 		} catch (e) {
 			if (ownsRequest()) {
 				// A background read superseded by an authority change is not a server failure.
-				if (fetchOpts?.silent && instance?.id === id && e instanceof DOMException && e.name === 'AbortError') return;
+				if (fetchOpts?.silent && instance?.id === id && e instanceof DOMException && e.name === 'AbortError') { experienceDiscarded(experience, 'aborted'); return; }
 				const message = e instanceof ApiError
 					? t('controller.error.fetchFailed', { status: e.status, message: e.message })
 					: e instanceof DOMException && e.name === 'TimeoutError' ? t('controller.error.timeout') : t('controller.error.server');
 				if (fetchOpts?.silent && instance?.id === id) refreshError = t('controller.error.refreshFailed', { message });
 				else error = message;
-			}
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, ownsRequest);
+			} else experienceDiscarded(experience, 'stale');
 		} finally {
 			if (ownsRequest()) {
 				if (fetchOpts?.silent) refreshing = false;
@@ -414,22 +440,32 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	function manualRefresh() {
 		const id = opts.instanceId();
-		if (id) fetchInstance(id, { silent: true });
+		if (id) fetchInstance(id, { silent: true }, beginExperienceAction('compute', 'refresh', 'resource.detail'));
 	}
 
-	async function loadConsoleLog(full = false) {
+	async function loadConsoleLog(full = false, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.detail')) {
 		if (!instance || instance.id !== opts.instanceId()) return;
 		const context = captureReadContext();
 		const generation = ++logGeneration;
+		const current = () => context.current() && generation === logGeneration;
+		experienceState(experience, 'loading');
 		logLoading = true;
 		const length = full ? 0 : 200;
 		try {
-			const data = await api.get<{ output: string }>(
+			const data = await api.withExperience(experience).get<{ output: string }>(
 				`${instancePath(context.id, context.adminMode)}/log?length=${length}`, context.token, context.ownProjectId,
 			);
-			if (context.current() && generation === logGeneration) consoleLog = data.output || t('controller.console.noLog');
+			if (context.current() && generation === logGeneration) {
+				consoleLog = data.output || t('controller.console.noLog');
+				experienceState(experience, data.output ? 'ready' : 'empty');
+				if (experience) void experienceApplied(experience, {}, current);
+			} else experienceDiscarded(experience, 'stale');
 		} catch {
-			if (context.current() && generation === logGeneration) consoleLog = t('controller.console.logFailed');
+			if (context.current() && generation === logGeneration) {
+				consoleLog = t('controller.console.logFailed');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, current);
+			} else experienceDiscarded(experience, 'stale');
 		} finally {
 			if (generation === logGeneration) logLoading = false;
 		}
@@ -437,30 +473,39 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function toggleFullLog() {
 		logFull = !logFull;
-		await loadConsoleLog(logFull);
+		await loadConsoleLog(logFull, beginExperienceAction('compute', 'inspect', 'resource.detail'));
 	}
 
 	async function openConsole() {
 		if (!instance || instance.id !== opts.instanceId() || consoleOpening) return;
 		const context = captureReadContext();
 		const generation = ++consoleGeneration;
+		const experience = beginExperienceAction('compute', 'open', 'resource.detail');
+		const current = () => context.current() && generation === consoleGeneration;
+		experienceState(experience, 'loading');
 		consoleOpening = true;
 		consoleOpenError = '';
 		consoleOpenMessage = t('controller.console.requestingUrl');
 		try {
-			const data = await api.get<{ url: string }>(`${instancePath(context.id, context.adminMode)}/console`, context.token, context.ownProjectId);
-			if (!context.current() || generation !== consoleGeneration) return;
+			const data = await api.withExperience(experience).get<{ url: string }>(`${instancePath(context.id, context.adminMode)}/console`, context.token, context.ownProjectId);
+			if (!context.current() || generation !== consoleGeneration) { experienceDiscarded(experience, 'stale'); return; }
 			const url = data.url?.trim();
 			if (!url) {
 				consoleOpenError = t('controller.console.emptyUrl');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, current);
 				toast.error(consoleOpenError);
 				return;
 			}
 			consoleOpenMessage = t('controller.console.opening');
+			experienceState(experience, 'ready');
+			if (experience) void experienceApplied(experience, {}, current);
 			window.open(url, '_blank', 'noopener,noreferrer');
 		} catch {
-			if (!context.current() || generation !== consoleGeneration) return;
+			if (!context.current() || generation !== consoleGeneration) { experienceDiscarded(experience, 'stale'); return; }
 			consoleOpenError = t('controller.console.urlFailed');
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience, {}, current);
 			toast.error(consoleOpenError);
 		} finally {
 			if (generation === consoleGeneration) {
@@ -513,11 +558,17 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(action === 'stop' || action === 'shelve' ? `${message}\n${t('panel.stoppedQuotaWarning')}` : message))) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = action;
+		const experience = beginExperienceAction('compute', action === 'reboot' ? 'restart' : action === 'shelve' || action === 'unshelve' ? 'update' : action, 'resource.detail');
 		try {
-			await api.post(`${instancePath(context.id, context.adminMode)}/${action}`, {}, context.token, context.ownProjectId);
-			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
+			await api.withExperience(experience).post(`${instancePath(context.id, context.adminMode)}/${action}`, {}, context.token, context.ownProjectId);
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true }, experience);
+			else experienceDiscarded(experience, 'scope_changed');
 		} catch (e) {
-			if (ownsMutationContext(context, false)) toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) {
+				toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} finally {
 			actioning = null;
 		}
@@ -535,11 +586,16 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(lines.join('\n')))) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		deleting = true;
+		const experience = beginExperienceAction('compute', 'delete', 'resource.detail');
 		try {
-			await api.delete(instancePath(context.id, context.adminMode), context.token, context.ownProjectId);
+			await api.withExperience(experience).delete(instancePath(context.id, context.adminMode), context.token, context.ownProjectId);
 			if (ownsMutationContext(context, false)) opts.onDelete();
 		} catch (e) {
-			if (ownsMutationContext(context, false)) toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) {
+				toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} finally {
 			deleting = false;
 		}
@@ -548,11 +604,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function assignFloatingIp(portId: string) {
 		if (!instance) return;
 		actioning = 'fip-assign-' + portId;
+		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
-			await api.post(`${instancePath(instance.id)}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).post(`${instancePath(instance.id)}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.floatingIp.assignFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -562,16 +621,19 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		if (!(await confirmDialog(t('controller.floatingIp.releaseConfirm')))) return;
 		actioning = 'fip-release-' + fipId;
+		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
 		try {
 			if (opts.adminMode()) {
-				await api.delete(`${instancePath(instance.id)}/floating-ips/${fipId}`, tok(), ownPid());
+				await api.withExperience(experience).delete(`${instancePath(instance.id)}/floating-ips/${fipId}`, tok(), ownPid());
 			} else {
-				await api.post(`/api/v1/networks/floating-ips/${fipId}/disassociate`, {}, tok(), ownPid());
-				await api.delete(`/api/v1/networks/floating-ips/${fipId}`, tok(), ownPid());
+				await api.withExperience(experience).post(`/api/v1/networks/floating-ips/${fipId}/disassociate`, {}, tok(), ownPid());
+				await api.withExperience(experience).delete(`/api/v1/networks/floating-ips/${fipId}`, tok(), ownPid());
 			}
-			await fetchInstance(instance.id, { silent: true });
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.floatingIp.releaseFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -580,11 +642,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function attachVolume(volumeId: string) {
 		if (!instance) return;
 		actioning = 'attach-vol';
+		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
-			await api.post(`${instancePath(instance.id)}/volumes`, { volume_id: volumeId }, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).post(`${instancePath(instance.id)}/volumes`, { volume_id: volumeId }, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.volume.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -593,12 +658,15 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function createAndAttachVolume(name: string, sizeGb: number) {
 		if (!instance || opts.adminMode()) return;
 		actioning = 'create-vol';
+		const experience = beginExperienceAction('compute', 'create', 'resource.detail');
 		try {
-			const vol = await api.post<VolumeInfo>('/api/v1/volumes', { name, size_gb: sizeGb }, tok(), ownPid());
-			await api.post(`${instancePath(instance.id)}/volumes`, { volume_id: vol.id }, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			const vol = await api.withExperience(experience).post<VolumeInfo>('/api/v1/volumes', { name, size_gb: sizeGb }, tok(), ownPid());
+			await api.withExperience(experience).post(`${instancePath(instance.id)}/volumes`, { volume_id: vol.id }, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.volume.createAttachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -608,11 +676,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		if (!(await confirmDialog(t('controller.volume.detachConfirm')))) return;
 		actioning = 'detach-' + volumeId;
+		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
 		try {
-			await api.delete(`${instancePath(instance.id)}/volumes/${volumeId}`, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).delete(`${instancePath(instance.id)}/volumes/${volumeId}`, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.volume.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -622,11 +693,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		if (!(await confirmDialog(t('controller.volume.autoDeleteConfirm', { state: next ? 'enabled' : 'disabled' })))) return;
 		actioning = 'dot-' + volumeId;
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
-			await api.patch(`${instancePath(instance.id)}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).patch(`${instancePath(instance.id)}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.volume.changeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -635,11 +709,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function attachInterface(netId: string) {
 		if (!instance) return;
 		actioning = 'attach-iface';
+		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
-			await api.post(`${instancePath(instance.id)}/interfaces`, { net_id: netId }, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).post(`${instancePath(instance.id)}/interfaces`, { net_id: netId }, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.interface.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -649,11 +726,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		if (!(await confirmDialog(t('controller.interface.detachConfirm')))) return;
 		actioning = 'detach-iface-' + portId;
+		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
 		try {
-			await api.delete(`${instancePath(instance.id)}/interfaces/${portId}`, tok(), ownPid());
-			await fetchInstance(instance.id, { silent: true });
+			await api.withExperience(experience).delete(`${instancePath(instance.id)}/interfaces/${portId}`, tok(), ownPid());
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.interface.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -662,16 +742,19 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function saveSgEdit(portId: string, sgIds: string[]) {
 		if (!instance) return;
 		actioning = 'sg-' + portId;
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
-			await api.post(
+			await api.withExperience(experience).post(
 				`${instancePath(instance.id)}/ports/${portId}/security-groups`,
 				{ security_group_ids: sgIds },
 				tok(),
 				ownPid()
 			);
-			await fetchInstance(instance.id, { silent: true, refreshSecurityGroups: true });
+			await fetchInstance(instance.id, { silent: true, refreshSecurityGroups: true }, experience);
 		} catch (e) {
 			toast.error(t('controller.securityGroup.updateFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		} finally {
 			actioning = null;
 		}
@@ -701,17 +784,23 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		resizeFlavors = [];
 		resizeError = '';
 		resizeFlavorsLoading = true;
+		const experience = beginExperienceLoad('compute', 'resource.detail');
+		experienceState(experience, 'loading');
 		try {
-			const flavors = await api.get<FlavorOption[]>(
+			const flavors = await api.withExperience(experience).get<FlavorOption[]>(
 				`${instancePath(context.id, context.adminMode)}/resize-flavors`, context.token, resizeProjectId(context)
 			);
 			if (generation === resizeFlavorGeneration && ownsMutationContext(context)) {
 				resizeFlavors = flavors;
 				resizeFlavorContext = context;
-			}
+				experienceState(experience, flavors.length ? 'ready' : 'empty');
+				if (experience) void experienceApplied(experience, {}, () => generation === resizeFlavorGeneration && ownsMutationContext(context));
+			} else experienceDiscarded(experience, 'stale');
 		} catch (e) {
 			if (generation === resizeFlavorGeneration && ownsMutationContext(context)) {
 				resizeError = e instanceof ApiError ? e.message : t('controller.resize.flavorsFailed');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, () => generation === resizeFlavorGeneration && ownsMutationContext(context));
 			}
 		} finally {
 			if (generation === resizeFlavorGeneration) resizeFlavorsLoading = false;
@@ -731,16 +820,21 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId, composed)) return false;
 		resizeLoading = true;
 		resizeError = '';
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
-			await api.post(resizePath(context, 'resize'), { flavor_id: flavorId }, context.token, resizeProjectId(context));
+			await api.withExperience(experience).post(resizePath(context, 'resize'), { flavor_id: flavorId }, context.token, resizeProjectId(context));
 			// Nova accepted the resize: report success even if the access token rotated
 			// meanwhile, so the dialog never invites a duplicate submission. The status
 			// refresh runs in the background and cannot hold the dialog open.
 			resizeFlavorContext = null;
-			if (opts.instanceId() === context.id) void fetchInstance(context.id, { silent: true });
+			if (opts.instanceId() === context.id) void fetchInstance(context.id, { silent: true }, experience);
 			return true;
 		} catch (e) {
-			if (ownsMutationContext(context, false)) resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
+			if (ownsMutationContext(context, false)) {
+				resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 			return false;
 		} finally {
 			resizeLoading = false;
@@ -753,11 +847,16 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.resize.revertConfirm')))) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = 'revert-resize';
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
-			await api.post(resizePath(context, 'revert-resize'), {}, context.token, resizeProjectId(context));
-			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
+			await api.withExperience(experience).post(resizePath(context, 'revert-resize'), {}, context.token, resizeProjectId(context));
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true }, experience);
 		} catch (e) {
-			if (ownsMutationContext(context, false)) toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) {
+				toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} finally {
 			actioning = null;
 		}
@@ -769,17 +868,22 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!(await confirmDialog(t('controller.resize.confirm')))) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		actioning = 'confirm-resize';
+		const experience = beginExperienceAction('compute', 'approve', 'resource.detail');
 		try {
-			await api.post(resizePath(context, 'confirm-resize'), {}, context.token, resizeProjectId(context));
-			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true });
+			await api.withExperience(experience).post(resizePath(context, 'confirm-resize'), {}, context.token, resizeProjectId(context));
+			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true }, experience);
 		} catch (e) {
-			if (ownsMutationContext(context, false)) toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			if (ownsMutationContext(context, false)) {
+				toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience);
+			} else experienceDiscarded(experience, 'scope_changed');
 		} finally {
 			actioning = null;
 		}
 	}
 
-	async function fetchPasswordPrecheck(serverId: string) {
+	async function fetchPasswordPrecheck(serverId: string, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.detail')) {
 		const generation = ++passwordPrecheckGeneration;
 		passwordPrecheck = null;
 		passwordPrecheckError = '';
@@ -792,13 +896,22 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			&& opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId
 			&& tok() === requestToken && canChangePassword && context.current();
 		passwordPrecheckLoading = true;
+		experienceState(experience, 'loading');
 		try {
-			const result = await api.get<PasswordPrecheck>(
+			const result = await api.withExperience(experience).get<PasswordPrecheck>(
 				`${instancePath(serverId, context.adminMode)}/admin-password/precheck`, requestToken, context.transportProjectId
 			);
-			if (ownsRequest()) passwordPrecheck = result;
+			if (ownsRequest()) {
+				passwordPrecheck = result;
+				if (experience?.action !== 'create') experienceState(experience, result.supported ? 'ready' : 'disabled');
+				if (experience) void experienceApplied(experience, {}, ownsRequest);
+			} else experienceDiscarded(experience, 'stale');
 		} catch (e) {
-			if (ownsRequest()) passwordPrecheckError = e instanceof ApiError ? e.message : t('controller.password.precheckFailed');
+			if (ownsRequest()) {
+				passwordPrecheckError = e instanceof ApiError ? e.message : t('controller.password.precheckFailed');
+				experienceState(experience, 'error');
+				if (experience) void experienceApplied(experience, {}, ownsRequest);
+			} else experienceDiscarded(experience, 'stale');
 		} finally {
 			if (ownsRequest()) passwordPrecheckLoading = false;
 		}
@@ -814,13 +927,15 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		const serverId = instance.id;
 		const requestToken = tok();
 		const requestProjectId = opts.effectiveProjectId();
+		const experience = beginExperienceAction('compute', 'change_password', 'resource.detail');
 		try {
-			await api.post(`${instancePath(serverId)}/admin-password`, { new_password: password }, requestToken, detailProjectId());
+			await api.withExperience(experience).post(`${instancePath(serverId)}/admin-password`, { new_password: password }, requestToken, detailProjectId());
 			if (opts.instanceId() === serverId && opts.effectiveProjectId() === requestProjectId && tok() === requestToken) {
 				toast.info(t('controller.password.requestSent'), 8000);
 			}
 			return null;
 		} catch (e) {
+			experienceState(experience, 'error');
 			return e instanceof ApiError ? e.message : t('controller.password.failed');
 		}
 	}
@@ -830,6 +945,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function loadMigrateHosts(type: 'live' | 'cold' = 'live') {
 		migrateHosts = [];
 		migrateError = '';
+		const experience = beginExperienceLoad('compute', 'resource.detail');
 		try {
 			// server_id를 항상 전달해 소스 자신을 제외한다.
 			// 라이브 마이그레이션: cpu_filter=true(기본) — 동일 CPU 모델 호스트만
@@ -837,13 +953,16 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			const params = new URLSearchParams();
 			if (instance) params.set('server_id', instance.id);
 			if (type === 'cold') params.set('cpu_filter', 'false');
-			migrateHosts = await api.get<{ name: string; state: string; status: string; cpu_model: string | null }[]>(
+			migrateHosts = await api.withExperience(experience).get<{ name: string; state: string; status: string; cpu_model: string | null }[]>(
 				`/api/v1/admin/compute-hosts?${params.toString()}`,
 				tok(),
 				ownPid()
 			);
+			experienceState(experience, migrateHosts.length ? 'ready' : 'empty');
+			if (experience) void experienceApplied(experience);
 		} catch {
 			migrateHosts = [];
+			if (experience) void experienceApplied(experience);
 		}
 	}
 
@@ -851,16 +970,19 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return false;
 		migrateLoading = true;
 		migrateError = '';
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
 			if (type === 'live') {
-				await api.post(`/api/v1/admin/instances/${instance.id}/live-migrate`, { host: host || null, block_migration: 'auto' }, tok(), ownPid());
+				await api.withExperience(experience).post(`/api/v1/admin/instances/${instance.id}/live-migrate`, { host: host || null, block_migration: 'auto' }, tok(), ownPid());
 			} else {
-				await api.post(`/api/v1/admin/instances/${instance.id}/cold-migrate`, { host: host || null }, tok(), ownPid());
+				await api.withExperience(experience).post(`/api/v1/admin/instances/${instance.id}/cold-migrate`, { host: host || null }, tok(), ownPid());
 			}
-			await fetchInstance(instance.id, { silent: true });
+			await fetchInstance(instance.id, { silent: true }, experience);
 			return true;
 		} catch (e) {
 			migrateError = e instanceof ApiError ? e.message : t('controller.migration.failed');
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 			return false;
 		} finally {
 			migrateLoading = false;
@@ -868,16 +990,17 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	// Admin: migration status tracking
-	async function loadMigrationStatus(serverId?: string) {
+	async function loadMigrationStatus(serverId?: string, experience: ExperienceContext | undefined = beginExperienceLoad('compute', 'resource.detail')) {
 		const id = serverId ?? instance?.id;
 		if (!id) return;
 		migrationStatusLoading = true;
 		try {
-			migrationStatus = await api.get<MigrationStatus>(
+			migrationStatus = await api.withExperience(experience).get<MigrationStatus>(
 				`/api/v1/admin/instances/${id}/migration-status`,
 				tok(),
 				ownPid()
 			);
+			if (experience) void experienceApplied(experience);
 		} catch {
 			// fail-soft — 폴링 중 오류는 무시하고 기존 상태 유지
 		} finally {
@@ -887,23 +1010,29 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function abortMigration(): Promise<void> {
 		if (!instance) return;
+		const experience = beginExperienceAction('compute', 'cancel', 'resource.detail');
 		try {
-			await api.post(`/api/v1/admin/instances/${instance.id}/live-migrate/abort`, {}, tok(), ownPid());
+			await api.withExperience(experience).post(`/api/v1/admin/instances/${instance.id}/live-migrate/abort`, {}, tok(), ownPid());
 			toast.success(t('controller.migration.abortRequested'));
-			await fetchInstance(instance.id, { silent: true });
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(e instanceof ApiError ? e.message : t('controller.migration.abortFailed'));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		}
 	}
 
 	async function forceCompleteMigration(): Promise<void> {
 		if (!instance) return;
+		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
-			await api.post(`/api/v1/admin/instances/${instance.id}/live-migrate/force-complete`, {}, tok(), ownPid());
+			await api.withExperience(experience).post(`/api/v1/admin/instances/${instance.id}/live-migrate/force-complete`, {}, tok(), ownPid());
 			toast.success(t('controller.migration.forceCompleteRequested'));
-			await fetchInstance(instance.id, { silent: true });
+			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
 			toast.error(e instanceof ApiError ? e.message : t('controller.migration.forceCompleteFailed'));
+			experienceState(experience, 'error');
+			if (experience) void experienceApplied(experience);
 		}
 	}
 
@@ -1056,7 +1185,7 @@ export interface InstanceDetailController {
 	readonly consolePollAr: AutoRefreshController;
 	fetchInstance(id: string, options?: { silent?: boolean; refreshSecurityGroups?: boolean }): Promise<void>;
 	manualRefresh(): void;
-	loadConsoleLog(full?: boolean): Promise<void>;
+	loadConsoleLog(full?: boolean, experience?: ExperienceContext): Promise<void>;
 	toggleFullLog(): Promise<void>;
 	openConsole(): Promise<void>;
 	performAction(action: 'start' | 'stop' | 'reboot' | 'shelve' | 'unshelve'): Promise<void>;
