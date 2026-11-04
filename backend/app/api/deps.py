@@ -378,6 +378,16 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
         "/api/v1/auth/logout",
         "/api/v1/auth/logout-all",
     }
+    # These handlers independently prove current domain-manager or exact-project
+    # authority; they must remain reachable when the selected project was lost.
+    context_path = context_path or (
+        (path == "/api/v1/instances/usage-extension-policy" and request.method in {"GET", "PUT"})
+        or (path == "/api/v1/instances/usage-extension-requests" and request.method == "GET")
+        or (
+            request.method == "POST"
+            and re.fullmatch(r"/api/v1/instances/usage-extension-requests/[0-9a-f]{32}/review", path) is not None
+        )
+    )
     context_path = context_path or (
         request.method == "DELETE" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+", path) is not None
     )

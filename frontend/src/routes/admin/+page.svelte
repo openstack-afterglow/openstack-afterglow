@@ -7,12 +7,11 @@
 	import { goto } from '$app/navigation';
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import type { Overview, VersionInfo, DomainUsage } from '$lib/types/adminOverview';
+	import type { Overview, DomainUsage } from '$lib/types/adminOverview';
 	import KpiCardRow from '$lib/components/admin/overview/KpiCardRow.svelte';
 	import ResourceDonutsCard from '$lib/components/admin/overview/ResourceDonutsCard.svelte';
 	import DomainUsageTable from '$lib/components/admin/overview/DomainUsageTable.svelte';
 	import ServiceCountCards from '$lib/components/admin/overview/ServiceCountCards.svelte';
-	import VersionInfoPanel from '$lib/components/admin/overview/VersionInfoPanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { Alert, Button, PageHeader, PageShell } from '$lib/components/ui';
 
@@ -49,8 +48,6 @@
 	let domainUsage = $state<DomainUsage[]>([]);
 	let domainUsageLoading = $state(true);
 	let domainUsageError = $state('');
-	let versionInfo = $state<VersionInfo | null>(null);
-	let versionOpen = $state(false);
 	let notifications = $state<Notification[]>([]);
 	let identitySummary = $state<IdentitySummary | null>(null);
 	function identityCount(section: string, value: number): string {
@@ -85,7 +82,7 @@
 		overviewRequest += 1;
 		overview = null; overviewLoading = true; error = '';
 		domainUsage = []; domainUsageLoading = true; domainUsageError = '';
-		versionInfo = null; versionOpen = false; notifications = []; identitySummary = null;
+		notifications = []; identitySummary = null;
 		recentEvents = null; eventsError = false; notificationsError = false; identityError = false;
 	}
 	function capture() {
@@ -124,8 +121,6 @@
 			})
 			.finally(() => { if (current()) overviewLoading = false; });
 		loadDomainUsage();
-		api.get<VersionInfo>('/api/v1/admin/version', owner.token, owner.projectId)
-			.then(result => { if (current()) versionInfo = result; }).catch(() => {});
 		api.get<{ notifications: Notification[] }>('/api/v1/admin/notifications', owner.token, owner.projectId)
 			.then(result => { if (current()) { notifications = result.notifications; notificationsError = false; } }).catch(() => { if (current()) notificationsError = true; });
 		api.get<IdentitySummary>('/api/v1/admin/identity/summary', owner.token, owner.projectId)
@@ -191,6 +186,5 @@
 	<nav class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-2" aria-label={t('overview.kpi.details')}>
 		{#each [{ href: '/admin/hypervisors', label: t('overview.links.hypervisors') }, { href: '/admin/instances', label: t('overview.links.instances') }, { href: '/admin/containers', label: t('overview.links.containers') }, { href: '/admin/file-storage', label: t('overview.links.fileStorage') }, { href: '/admin/database-instances', label: t('overview.links.database') }, { href: '/admin/object-storage', label: t('overview.links.objectStorage') }, { href: '/admin/topology', label: t('overview.links.topology') }, { href: '/admin/networks', label: t('overview.links.networks') }] as link}<Button variant="link" href={link.href}>{link.label}</Button>{/each}
 	</nav>
-	<VersionInfoPanel {versionInfo} bind:open={versionOpen} />
 </PageShell>
 

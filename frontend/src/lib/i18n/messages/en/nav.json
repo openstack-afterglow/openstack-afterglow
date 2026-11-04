@@ -1,4 +1,5 @@
 {
+	"items.systemInfo": "System information",
 	"sections.account": "Account settings",
 	"items.accountProfile": "Profile",
 	"items.accountSshKeys": "SSH keys",

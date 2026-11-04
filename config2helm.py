@@ -707,6 +707,7 @@ def chart_sources() -> dict[str, str]:
         "templates/middleware.yaml",
         "templates/namespace.yaml",
         "templates/backend/deployment.yaml",
+        "templates/backend/schema-job.yaml",
         "templates/backend/service.yaml",
         "templates/backend/worker-runtime-rbac.yaml",
         "templates/frontend/deployment.yaml",

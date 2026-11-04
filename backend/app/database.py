@@ -136,6 +136,7 @@ async def create_tables() -> None:
         ExperienceRecord,
     )
     from app.models.gpu_quota_requests import GpuQuotaRequest  # noqa: F401
+    from app.models.instance_usage_governance import InstanceUsageExtensionRequest, InstanceUsagePolicy  # noqa: F401
     from app.models.organization_provisioning import OrganizationBinding  # noqa: F401
 
     async with _engine.begin() as conn:

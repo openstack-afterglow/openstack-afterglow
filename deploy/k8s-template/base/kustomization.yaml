@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - backend/schema-job.yaml
   - backend/deployment.yaml
   - backend/service.yaml
   - frontend/deployment.yaml

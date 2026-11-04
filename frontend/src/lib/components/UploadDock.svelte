@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { enter, reflow } from '$lib/utils/motion';
 
+	let { inline = false }: { inline?: boolean } = $props();
 	let jobs = $state<UploadJob[]>([]);
 	let collapsed = $state(false);
 
@@ -70,7 +71,7 @@
 </script>
 
 {#if visible}
-	<div class="motion-enter fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] shadow-[var(--shadow-overlay-compact)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
+	<div class="motion-enter {inline ? 'relative w-80 max-w-full shrink-0 self-end' : 'fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)]'} shadow-[var(--shadow-overlay-compact)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
 		<!-- 헤더 -->
 		<button
 			onclick={() => (collapsed = !collapsed)}

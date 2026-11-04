@@ -43,5 +43,15 @@ export function k3sProgressState(
     const reached = Object.keys(stepTimings).filter((id) => id !== 'failed' && id !== 'completed' && activeSteps.some((stage) => stage.id === id));
     return { current: reached.at(-1) ?? null, status: 'failed' };
   }
-  return { current: step || null, status: 'running' };
+  const reached = activeSteps.filter((stage) => stage.id !== 'completed' && (stage.id === step || stage.id in stepTimings));
+  return { current: reached.at(-1)?.id ?? null, status: 'running' };
+}
+
+/** Stage-based estimate only: never a provider percentage or a prediction of remaining time. */
+export function k3sStagePercent(step: string, stepTimings: Record<string, number>, activeSteps: readonly K3sStep[]): number | null {
+  if (step === 'completed') return 100;
+  const work = activeSteps.filter(stage => stage.id !== 'completed');
+  const reached = work.map((stage, index) => stage.id === step || stage.id in stepTimings ? index : -1);
+  const index = Math.max(-1, ...reached);
+  return index < 0 || !work.length ? null : Math.min(99, Math.round(index / work.length * 100));
 }

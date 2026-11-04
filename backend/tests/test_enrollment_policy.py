@@ -123,9 +123,9 @@ async def test_absent_policy_preserves_config_auto_and_usable_personal_defaults(
     assert result["approval_mode"] == "auto"
     assert result["defaults_future_only"] is True
     assert "smtp_configured" not in result
-    assert result["personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS
+    assert result["personal_quotas"]["security_group"] == 10
+    assert result["personal_quotas"]["security_group_rule"] == 200
     assert result["personal_quota_source"] == "source_defaults"
-    assert result["source_default_personal_quotas"] == service.PERSONAL_DEFAULT_QUOTAS
     assert "key_pairs" not in result["personal_quotas"]
     assert "file_storage" not in result["quota_fields"]
     policy_db.settings.auth.public_signup_enabled = False

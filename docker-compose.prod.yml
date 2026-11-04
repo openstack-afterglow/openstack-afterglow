@@ -21,16 +21,16 @@ services:
         max-file: "3"
 
   backend:
-    image: ${AFTERGLOW_BACKEND_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-api:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    image: &backend-image ${AFTERGLOW_BACKEND_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-api:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
-    volumes:
+    volumes: &backend-volumes
       - ./afterglow.conf:/app/afterglow.conf:ro
       - ./logs:/app/logs
       - ${CEPH_RBD_CONF_FILE:-/dev/null}:/etc/ceph/ceph.conf:ro
       - ${CEPH_RBD_KEYRING_FILE:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
       - ${TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE:-/dev/null}:/etc/afterglow/geoip/country.mmdb:ro
     command: uvicorn app.middleware.traffic_address:create_app --factory --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers
-    environment:
+    environment: &backend-environment
       OS_PASSWORD: ${OS_PASSWORD:?OS_PASSWORD must be set}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
       AFTERGLOW_ENV: production
@@ -50,7 +50,10 @@ services:
       SERVICE_LUMEN_INTERNAL_URL:
       SERVICE_PALIMPSEST_INTERNAL_URL:
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      schema-bootstrap:
+        condition: service_completed_successfully
     restart: always
     logging:
       driver: json-file
@@ -63,6 +66,16 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+
+  schema-bootstrap:
+    image: *backend-image
+    pull_policy: always
+    volumes: *backend-volumes
+    environment: *backend-environment
+    command: ["python", "-m", "scripts.bootstrap_schema"]
+    restart: "no"
+    healthcheck:
+      disable: true
 
   frontend:
     image: ${AFTERGLOW_FRONTEND_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow:${FRONTEND_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
@@ -142,8 +155,12 @@ services:
       SERVICE_LUMEN_INTERNAL_URL:
       SERVICE_PALIMPSEST_INTERNAL_URL:
     depends_on:
-      - redis
-      - backend
+      redis:
+        condition: service_started
+      backend:
+        condition: service_started
+      schema-bootstrap:
+        condition: service_completed_successfully
     restart: always
     logging:
       driver: json-file

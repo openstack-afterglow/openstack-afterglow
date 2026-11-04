@@ -102,6 +102,18 @@ describe('administrator contextual sidebar expansion', () => {
 		expect(get(auth)).toEqual(authBefore);
 		expect(get(page).url.pathname).toBe('/admin/chat/tools/tool-1');
 	});
+	it('opens system information in the existing System sidebar and keeps it selected in the compact rail', async () => {
+		await navigate('/admin/system-info');
+		render(AdminSidebar);
+		await tick();
+		const panel = within(screen.getByRole('complementary'));
+		const information = destination(panel, '/admin/system-info');
+		expect(information.getAttribute('aria-current')).toBe('page');
+		expect(information.textContent).toContain(t('items.systemInfo'));
+		destination(panel, '/admin/services');
+		await fireEvent.click(panel.getByRole('button', { name: t('accessibility.collapseServiceMenu') }));
+		expect(destination(panel, '/admin/system-info').getAttribute('aria-current')).toBe('page');
+	});
 });
 
 describe('administrator global navigation', () => {
@@ -237,7 +249,7 @@ describe('administrator global navigation', () => {
 			'/admin/libraries', '/admin/secrets', '/admin/monitoring', '/admin/monitoring/node', '/admin/monitoring/aodh', '/admin/monitoring/gnocchi',
 			'/admin/monitoring/mysql', '/admin/monitoring/proxysql', '/admin/monitoring/haproxy', '/admin/monitoring/rabbitmq', '/admin/monitoring/memcached',
 			'/admin/monitoring/etcd', '/admin/monitoring/libvirt', '/admin/monitoring/openstack', '/admin/monitoring/ceph',
-			'/admin/services', '/admin/events', '/admin/orphans', '/admin/notion', '/admin/announcements', '/admin/settings',
+			'/admin/services', '/admin/system-info', '/admin/events', '/admin/orphans', '/admin/notion', '/admin/announcements', '/admin/settings',
 			'/admin/users', '/admin/projects', '/admin/quotas', '/admin/groups', '/admin/roles', '/admin/system-admins',
 		]) destination(menu, href);
 		const hub = within(menu.getByRole('navigation', { name: t('sections.hub') }));

@@ -545,6 +545,84 @@ async def test_projection_resync_removes_revoked_managers_and_live_project_fence
 
 
 @pytest.mark.asyncio
+async def test_usage_governance_rejects_stale_projection_but_allows_direct_reader(
+    domain_native, client, mock_conn, monkeypatch
+):
+    from datetime import UTC, datetime
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.api.compute.usage_schedules import get_governance_conn
+    from app.api.deps import get_token_info
+    from app.main import app
+    from app.models.instance_usage_governance import InstanceUsageExtensionRequest, InstanceUsagePolicy
+    from app.services import instance_usage_governance as governance
+    from tests.conftest import make_token_info
+
+    n = domain_native
+    await domain_projects.ensure_login_access("creator", "tenant-a")
+    n.raw = [r for r in n.raw if r.role["id"] != "manager"]
+    domain_projects.assert_membership("creator", "tenant-a")
+    assert not domain_projects.has_manager("creator", "tenant-a")
+    assert any(r.user["id"] == "creator" for r in n.assignments(project="work-a", effective=True))
+    mock_conn._afterglow_project_id = "work-a"
+    app.dependency_overrides[get_governance_conn] = lambda: mock_conn
+    app.dependency_overrides[get_token_info] = lambda: {
+        **make_token_info(),
+        "user_id": "creator",
+        "domain_id": "tenant-a",
+    }
+    monkeypatch.setattr(keystone, "get_identity_user", lambda uid: {"id": uid, "domain_id": "home"})
+    monkeypatch.setattr(governance, "cloud_id", AsyncMock(return_value="c" * 64))
+    engine = create_async_engine("sqlite+aiosqlite://")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync: InstanceUsagePolicy.metadata.create_all(
+                    sync, tables=[InstanceUsagePolicy.__table__, InstanceUsageExtensionRequest.__table__]
+                )
+            )
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            session.add(
+                InstanceUsageExtensionRequest(
+                    id="a" * 32,
+                    cloud_id="c" * 64,
+                    domain_id="tenant-a",
+                    project_id="work-a",
+                    instance_id="instance",
+                    requested_by="ordinary",
+                    requested_at=datetime.now(UTC),
+                    expires_at=datetime.now(UTC),
+                    reason="private research reason",
+                    schedule_revision="b" * 32,
+                    policy_revision="c" * 32,
+                    revision="d" * 32,
+                    status="pending",
+                )
+            )
+            await session.commit()
+
+        @asynccontextmanager
+        async def sessions():
+            async with factory() as session:
+                yield session
+
+        monkeypatch.setattr(governance, "session_scope", sessions)
+        for path in ("usage-extension-policy", "usage-extension-requests"):
+            response = await client.get(f"/api/v1/instances/{path}")
+            assert response.status_code == 403
+        n.raw.append(grant("project_reader", user="creator", project="work-a"))
+        for path in ("usage-extension-policy", "usage-extension-requests"):
+            response = await client.get(f"/api/v1/instances/{path}")
+            assert response.status_code == 200, response.text
+            if path == "usage-extension-requests":
+                assert response.json()["items"][0]["reason"] == "private research reason"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["group", "domain-inherit", "ancestor-inherit", "inference"])
 async def test_projection_sync_external_manager_changes_preserve_stored_login(domain_native, login_proofs, source):
     n = domain_native

@@ -143,7 +143,7 @@ Host registry는 단절/down/maintenance/목록 누락/축소 관측으로 마�
 
 ## 인스턴스 사용 일정
 
-현재 source의 일정 API는 Nova server metadata만 정본으로 사용합니다. 모든 GPU,12 vCPU 이상 **또는** RAM65536 MiB 이상, 관리자 추가 지정 플레이버가 대상입니다. SQL/Redis 일정 저장소나 별도 승인 workflow가 아닙니다. 생성·날짜·볼륨 보존·state 계약은 [Instances API의 사용 일정](instances.md#13-사용-일정-usage-schedule)을 따릅니다.
+현재 source의 일정 정본은 Nova server metadata입니다. 모든 GPU,12 vCPU 이상 **또는** RAM65536 MiB 이상, 관리자 추가 지정 플레이버가 대상입니다. SQL은 도메인 승인 정책과 요청·처리 이력을 저장하고 일정 정본을 대체하지 않습니다. 생성·날짜·승인·볼륨 보존·state 계약은 [Instances API의 사용 일정](instances.md#13-사용-일정-usage-schedule)을 따릅니다.
 
 | 메서드 | 경로 | 입력·응답 |
 |---|---|---|
@@ -153,7 +153,7 @@ Host registry는 단절/down/maintenance/목록 누락/축소 관측으로 마�
 
 세 경로 모두 현재 system-admin 권위와 exact native ID/owner를 검증하고 `Cache-Control: no-store`를 사용합니다. 변경은 입력 project ID가 아니라 조회한 실제 소유 프로젝트의 검증된 connection에서 수행합니다. 일반 project reader의 GET·writer의 PUT/POST와 구분하며, 관리자 전용 전체 일정 list는 제공하지 않습니다. 알림용 목록은 현재 프로젝트의 `GET /api/v1/instances/usage-schedules`입니다.
 
-필수 대상 관리자 SSE 생성도 `usage_schedule: {}`를 명시해야 하며 기본은 한 calendar month·shelve/offload·모든 Cinder root/data disk 보존입니다. 연장은 사유를 남기는 self-service 작업이지 관리자의 승인 요청이 아니고 자동 start/unshelve를 하지 않습니다. Native403/409·유실 응답·requested/unknown marker는 자동 삭제 재시도 사유가 아닙니다. Metadata·native status·attachment와 managed resource receipt를 대조해 수동 조정하세요. [운영 조건](../deployment.md#인스턴스-사용-일정-운영-source-only)을 충족하기 전 실제 배포·정각 실행·삭제 완료를 가정하지 않습니다.
+필수 대상 관리자 SSE 생성도 `usage_schedule: {}`를 명시해야 하며 기본은 한 calendar month·shelve/offload·모든 Cinder root/data disk 보존입니다. 연장은 최대 한 calendar month와 사유가 필요하며 기본 자동 승인 또는 도메인 manager가 설정한 수동 승인을 따릅니다. 승인 대기는 기존 만료를 늦추지 않고 연장은 자동 start/unshelve하지 않습니다. Native403/409·유실 응답·requested/unknown marker는 자동 삭제 재시도 사유가 아닙니다. Metadata·native status·attachment와 managed resource receipt를 대조해 수동 조정하세요. [운영 조건](../deployment.md#인스턴스-사용-일정-운영-source-only)을 충족하기 전 실제 배포·정각 실행·삭제 완료를 가정하지 않습니다.
 
 관리자의 추가 플레이버 지정은 `PUT /api/v1/admin/flavors/{flavor_id}/usage-schedule-requirement`의 `{"required":true|false}` 전용 경로를 사용합니다. 수동·managed 모두 가능하고 응답은 `{flavor_id, usage_schedule_required, additional_requirement}`입니다. False는 추가 key만 제거하고 GPU·CPU·RAM 기본 조건은 유지하며 hardware/ACL 잠금도 해제하지 않습니다. [Flavor API](flavors.md#사용-일정-필수-판정과-추가-지정)를 참조하세요. Background enrollment/만료 writer는 기본 비활성이고 승인된 shared-Redis cohort에서 운영자가 명시적으로 활성화해야 합니다. 일정 API/UI 사용 가능 여부와 별개입니다.
 
@@ -413,6 +413,9 @@ UI: [로그인 모니터링](/admin/monitoring/logins).
 | `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`AdminTopologyData`). 사용자용 `GET /api/v1/networks/topology` 응답에 더해 `networks[]`에 `provider_network_type` / `provider_segmentation_id` / `provider_physical_network`를 추가한다 (관리자 응답 전용). `instances[].is_database`는 Trove 전체 프로젝트 목록(`all_projects=True`)의 fixed IP 매칭으로 채우며 Trove 미배포 시 모두 `false` |
 | `GET` | `/api/v1/admin/timeseries/{resource_type}` | 리소스 유형별 시계열 스냅샷 (1시간 간격) |
 | `GET` | `/api/v1/admin/version` | 백엔드/배포 버전 정보 |
+| `GET` | `/api/v1/admin/service-versions` | Nova, Neutron, Palimpsest, Drover, Lumen, Waygate 제공 API 버전과 출처 |
+
+`GET /service-versions`는 각 서비스가 직접 제공하는 discovery 문서에서 읽은 API 버전만 반환하며 설치된 제품·패키지 릴리스로 해석하지 않습니다. 요청자의 검증된 native catalog나 운영자 소유 override에서 단일 내부 endpoint를 선택하고 인증 새로고침·리디렉트·압축 해제를 사용하지 않습니다. 응답 항목은 service, status(available/unavailable/disabled), version, version_kind이며 관측 실패는 URL·헤더·본문 없이 unavailable로만 구분합니다. 비활성 서비스는 native에 접촉하지 않고 disabled를 반환합니다. 관리자 /admin/system-info 화면의 서비스 버전 표가 이 응답을 그대로 표시합니다.
 
 관리자 토폴로지 `networks[]`는 fresh native 소유권의 `project_name`, `domain_id`, `domain_name`, `owner_status`(`known/deleted_project/deleted_domain/unknown_owner`)도 반환합니다. 도메인·프로젝트 조건은 네트워크 소유권으로 적용하며 공유 사용자의 도메인을 소유자로 대체하지 않습니다. Directory 실패는503입니다. 관리자 캔버스/레인은 domain UUID별 상위 그룹을 만들고 동일한 표시 이름에는 UUID를 함께 표시하지만, 그 상자는 통신 허용·연결을 의미하지 않습니다. 실제 연결선과 소비자 응답은 유지됩니다. Swift 전체 inventory는 별도 `GET /api/v1/admin/object-storage`를 사용합니다([Object Storage API](object-storage.md#get-apiv1adminobject-storage)).
 
@@ -784,6 +787,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 `public_signup_button_visible`은 로그인 화면의 회원가입 링크 노출만 제어하는 별도 strict boolean입니다. `public_signup_enabled` 및 SMTP readiness와 함께 public `signup_button_visible`로 투영되지만, 숨김 값 자체는 `/signup` 직접 접근·검증 링크 발급/소비·OIDC enrollment·기존 조직 admission을 막거나 허용하지 않습니다. 시스템 관리자만 이 전역 표시 정책을 저장하며 domain manager는 자기 domain의 이메일/admission 정책만 관리합니다. 최초 row 부재의 설정 fallback은 `[auth].public_signup_button_visible=true`이며 기존 row에는 additive migration101의 true만 추가합니다. 기존 signup opt-in·approval·quota·revision은 덮어쓰지 않습니다.
 
 최초 policy row 부재만 config의 공개 가입 opt-in·auto와 source 기본2 vCPU·4096MiB RAM·1024GiB Cinder, instances2·volumes10·snapshots10 및 보조 network count로 시작합니다. DTO는 `personal_quota_source:source_defaults|administrator`와 `source_default_personal_quotas`도 반환합니다. 기존 저장 template(0 포함)은 그대로 유지하므로 새 제공값을 원하면 UI의 **제공 기본값 사용**으로 draft를 채운 뒤 명시 저장합니다. SQL 장애는503이며 source default로 우회하지 않습니다. 디스크 값은 quota이지 실제 볼륨 생성이 아닙니다.
+Source 기본 개인 프로젝트 quota의 security_group은 10, security_group_rule은 200이다. 이는 시스템 사용량을 위한 추가 여유이지 별도 예약이 아니며, 이미 저장된 관리자 정책·기존 프로젝트와 일반 조직 프로젝트의 native 기본 quota를 자동 변경하지 않는다.
 
 기존 프로젝트는 **개인 프로젝트 불러오기→paged 선택→현재 사용량과 정책 미리 확인→확인 checkbox→적용** 순서입니다. Fresh system authority, exact Personal·활성 user/project·소유 marker, accepted member SQL provenance 또는 검증된 legacy native-owner primary를 요구합니다. Native member-only catalog에 project_owner 프리셋을 추가하지 않습니다. 현재 in_use+reserved가 새 limit를 초과하거나 reservation을 확인하지 못하면 적용 불가입니다. Apply는 policy/사용량/소유권·preview fingerprint를 다시 검사하고 기존 native quota journal/readback을 사용합니다. 결과 unknown은 원 호출 종료·기존 domain quota settlement 전 반복 적용하지 않습니다. 원래 personal provisioning intent의 동결 quota·계정/권한/리소스는 수정하지 않습니다.
 

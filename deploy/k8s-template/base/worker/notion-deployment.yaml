@@ -22,6 +22,35 @@ spec:
         app: notion-worker
     spec:
       terminationGracePeriodSeconds: 30
+      # No Notion/background SQL writer starts until canonical verification succeeds.
+      initContainers:
+        - name: schema-bootstrap
+          image: ghcr.io/openstack-afterglow/afterglow-api:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "scripts.bootstrap_schema", "--if-configured", "--verify-only"]
+          env:
+            - name: AFTERGLOW_ENV
+              value: "production"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: APP_REDIS_URL
+          envFrom:
+            - secretRef:
+                name: afterglow-secrets
+          volumeMounts:
+            - name: afterglow-config-volume
+              mountPath: /app/afterglow.conf
+              subPath: afterglow.conf
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
       containers:
         - name: notion-worker
           image: ghcr.io/openstack-afterglow/afterglow-worker:latest

@@ -40,8 +40,8 @@ PERSONAL_DEFAULT_QUOTAS = {
     "port": 10,
     "router": 1,
     "floatingip": 1,
-    "security_group": 5,
-    "security_group_rule": 100,
+    "security_group": 10,
+    "security_group_rule": 200,
 }
 
 

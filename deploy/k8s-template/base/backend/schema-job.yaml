@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # generate_k8s adds a fresh, non-secret rollout identity suffix.
+  name: schema-bootstrap-sql108
+  namespace: afterglow
+  labels:
+    app: schema-bootstrap
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: schema-bootstrap
+    spec:
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: schema-bootstrap
+          image: ghcr.io/openstack-afterglow/afterglow-api:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "scripts.bootstrap_schema", "--if-configured"]
+          env:
+            - name: AFTERGLOW_ENV
+              value: "production"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: APP_REDIS_URL
+          envFrom:
+            - secretRef:
+                name: afterglow-secrets
+          volumeMounts:
+            - name: afterglow-config-volume
+              mountPath: /app/afterglow.conf
+              subPath: afterglow.conf
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "1"
+            limits:
+              memory: "2Gi"
+              cpu: "4"
+      volumes:
+        - name: afterglow-config-volume
+          configMap:
+            name: afterglow-config
+            items:
+              - key: afterglow.conf
+                path: afterglow.conf

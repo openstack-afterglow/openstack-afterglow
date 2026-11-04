@@ -18,15 +18,27 @@ const mocks = vi.hoisted(() => {
 		};
 	}
 	return {
-		auth: store({ token: 'token' as string | null, userId: 'user', identityDomainId: 'domain', projectId: 'project', projectName: 'Project One' }),
+		auth: store({ token: 'token' as string | null, userId: 'user', identityDomainId: 'domain', domainId: 'domain', domainName: 'Domain',
+			isDomainManager: false, projectId: 'project' as string | null, projectName: 'Project One' as string | null }),
 		authReady: store(true),
+		projectSwitching: store(false),
 		get: vi.fn(),
 		autoCallback: null as (() => Promise<void>) | null,
 	};
 });
 
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, withExperience: () => ({ get: mocks.get }) } }));
-vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth, authReady: mocks.authReady }));
+vi.mock('$lib/api/client', () => ({
+	api: {
+		get: (path: string, ...args: unknown[]) => {
+			if (path.includes('/usage-extension-policy')) return Promise.resolve({ domain_id: 'domain', review_required: false, revision: 'policy-a', can_manage: false });
+			if (path.includes('/usage-extension-requests')) return Promise.resolve({ items: [], next_cursor: null });
+			return mocks.get(path, ...args);
+		},
+		withExperience: () => ({ get: mocks.get }),
+	},
+	ApiError: class ApiError extends Error {},
+}));
+vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth, authReady: mocks.authReady, projectSwitching: mocks.projectSwitching }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (callback: () => Promise<void>) => {
 		mocks.autoCallback = callback;
@@ -36,7 +48,8 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Page from '../+page.svelte';
 
-const authContext = { token: 'token', userId: 'user', identityDomainId: 'domain', projectId: 'project', projectName: 'Project One' };
+const authContext = { token: 'token', userId: 'user', identityDomainId: 'domain', domainId: 'domain', domainName: 'Domain',
+	isDomainManager: false, projectId: 'project', projectName: 'Project One' };
 const collected = { data: [10], points: 1, available: true, source: 'gnocchi', status: 'available', native_status: 'available' };
 const empty = { data: [], points: 0, available: false, source: null, status: 'not_collected', native_status: 'not_collected' };
 const trend = {
@@ -74,6 +87,7 @@ function resolveRequests(requests: Request[], name = instance.name, cpu = 10, pe
 beforeEach(() => {
 	mocks.auth.set(authContext);
 	mocks.authReady.set(true);
+	mocks.projectSwitching.set(false);
 	mocks.get.mockReset();
 	mocks.autoCallback = null;
 	localStorage.clear();
@@ -81,6 +95,24 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('usage loading boundaries', () => {
+	it('makes extension review discoverable in the ordinary usage route independently of telemetry', async () => {
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/metrics/trend') ? trend : stats));
+		render(Page);
+		expect(await screen.findByRole('heading', { name: '사용 기간 연장 요청' })).toBeTruthy();
+		expect(document.querySelector('#usage-extension-review')).toBeTruthy();
+		expect(await screen.findByText(instance.name)).toBeTruthy();
+	});
+
+	it('renders domain review without a project or perpetual project-telemetry loading states', async () => {
+		mocks.auth.set({ ...authContext, isDomainManager: true, projectId: null, projectName: null });
+		render(Page);
+		expect(await screen.findByRole('heading', { name: '사용 기간 연장 요청' })).toBeTruthy();
+		expect(await screen.findByText('현재 도메인 정책에 따라 연장을 자동 적용합니다.')).toBeTruthy();
+		expect(screen.queryByText('추세 메트릭을 불러오는 중...')).toBeNull();
+		expect(screen.queryByRole('button', { name: '30d' })).toBeNull();
+		expect(mocks.get).not.toHaveBeenCalled();
+	});
+
 	it('renders usage stats while best-effort trends remain pending or fail', async () => {
 		const statsRequest = Promise.withResolvers<unknown>();
 		const trendRequest = Promise.withResolvers<unknown>();

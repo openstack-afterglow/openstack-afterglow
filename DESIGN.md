@@ -12,6 +12,10 @@ Public login asks for username/email and password without naming the internal Ac
 
 Authenticated dashboard data belongs to the logical login, user, identity/working domain, project and verified authority—not the current access-token bytes. A same-owner credential renewal preserves settled rows and independent in-flight reads; subsequent fetches use the new credential. Scope switching, logout, readiness loss and authority changes clear private content immediately, including same-tick ABA transitions. The usage-schedule bell and reminder share only overlapping reads with independent cancellation; transient failures retain the existing explicit retry/error UI. No new visual primitive or style is introduced.
 
+인스턴스 사용 일정은 현재 종료일과 승인 대기 요청을 별도로 표시한다. 날짜 단축과 한 달 이내 사유 있는 연장을 구분하고, 사유가 부적절하면 관리자가 별도 확인할 수 있으며 승인 대기는 만료를 미루지 않음을 안내한다. 도메인 manager 정책과 도메인/프로젝트 검토 목록은 현재 권한·scope를 따르고 결과 불명은 명시적 재조회 전 재전송하지 않는다. 기존 form·상태·alert primitives와9locale를 사용한다.
+
+Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한다. 이후 관측된 단계 기반 추정치와 native 보고 진행률은 구분하며, authoritative terminal 전100%를 표시하지 않는다. 생성 modal 최소화 뒤 동일 소유자·프로젝트의 하단 dock에서 상태를 계속 볼 수 있고, 실제 terminal 전에는 완전히 닫지 않는다. 연결 유실과 operation ID 미수신은 unknown이며 재시도·성공으로 합성하지 않는다. Dock은 기존 upload 표시와 겹치지 않고 좁은 화면에서도 조작할 수 있다.
+
 OAuth 연결 카드는 client ID나 저장된 프로젝트 UUID 대신 지역화된 OAuth 이름+현재 목록 순번과 프로젝트 이름을 표시한다. 만료·접근 권한·클라이언트 관측과 exact grant 제거는 유지하고 확인창에도 같은 순번을 사용한다. 순번은 목록의 현재 표시 순서이지 영구 식별자가 아니다. 개인 API 키 발급·일회성 평문·키 관리 카드는 바꾸지 않는다.
 
 MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member가 read key를 선택해도 프로젝트의 관리 가능 상태는 남고 연결의 읽기 제한만 바뀐다. Reader와 unknown을 관리로 추정하지 않으며 service policy 미확인은 그대로 독립 경고다. 클라이언트 이름·버전·신고/추정 출처는 각 관측의 닫힌 summary에서도 읽을 수 있고 플랫폼·시각·제품/종류 추론만 펼친다. 이름 없는 관측은 allowlisted product 또는 명시 unknown, 기록 없는 grant는 미관측이다. 표시 이름·key 이름으로 실제 클라이언트·온라인 세션을 만들어내지 않으며9locale와 모바일 줄바꿈을 유지한다.

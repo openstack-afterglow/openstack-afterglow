@@ -1,6 +1,30 @@
 import { beginMutationCacheFence, fetchWithAuth } from './client';
 import { maybeMockK3sStream } from '$lib/mockup/transport';
 import type { ExperienceContext } from '$lib/utils/experience';
+import { ApiError } from './errors';
+
+export interface K3sQuotaBudget {
+  project_id: string;
+  resource: 'security_group' | 'security_group_rule';
+  required: number;
+  available: number;
+  limit: number;
+  used: number;
+  reserved: number;
+}
+
+/** Native quota preflight explicitly proves that no operation was admitted. */
+export class K3sAdmissionRefused extends ApiError {
+  reason?: string;
+  quota?: K3sQuotaBudget;
+  constructor(status: number, message: string, detail: { reason?: string; quota?: K3sQuotaBudget }) {
+    super(status, message, 'drover_pre_admission_refused');
+    this.reason = detail.reason;
+    const quota = detail.quota;
+    if (quota && typeof quota.project_id === 'string' && ['security_group', 'security_group_rule'].includes(quota.resource)
+      && [quota.required, quota.available, quota.limit, quota.used, quota.reserved].every(value => Number.isInteger(value) && value >= 0)) this.quota = quota;
+  }
+}
 
 
 export interface K3sSseProgressMessage {
@@ -10,6 +34,8 @@ export interface K3sSseProgressMessage {
   cluster_id?: string;
   error?: string;
   elapsed_seconds?: number;
+  operation_id?: string;
+  sequence?: number;
 }
 
 export async function* streamK3sProgress(
@@ -34,7 +60,14 @@ export async function* streamK3sProgress(
 
     if (!res.ok || !res.body) {
       const text = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status}: ${text}`);
+      let refusal: K3sAdmissionRefused | undefined;
+      try {
+        const body = JSON.parse(text);
+        if (body?.detail?.code === 'drover_pre_admission_refused' && typeof body.detail.message === 'string' && body.detail.message.trim()) {
+          refusal = new K3sAdmissionRefused(res.status, body.detail.message, body.detail);
+        }
+      } catch { /* Untyped proxy/provider errors do not prove whether dispatch occurred. */ }
+      throw refusal ?? new ApiError(res.status, `HTTP ${res.status}: ${text}`);
     }
 
     const reader = res.body.getReader();

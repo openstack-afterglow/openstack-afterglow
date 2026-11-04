@@ -108,6 +108,56 @@ describe('usage schedule detail with its real controller and fields', () => {
 		expect(transport.put.mock.calls[1][1].revision).toBe('revision-b');
 	});
 
+	it('does not compound the extension shortcut beyond one month from the effective expiry', async () => {
+		render(UsageScheduleSection, props);
+		await ready();
+		const button = screen.getByRole('button', { name: t('extend') });
+		await fireEvent.click(button);
+		await fireEvent.click(button);
+		expect(document.querySelector<HTMLInputElement>('#usage-schedule-edit-expires')!.value)
+			.toBe(toLocalDateTime(calendarMonthAfter(new Date(schedule().expires_at)).toISOString()));
+		expect(screen.getByText(t('reasonFollowup'))).toBeTruthy();
+	});
+
+	it('shortens an active future deadline but refuses dates before enrollment or over the extension cap', async () => {
+		render(UsageScheduleSection, props);
+		await ready();
+		const input = document.querySelector<HTMLInputElement>('#usage-schedule-edit-expires')!;
+		await fireEvent.input(input, { target: { value: toLocalDateTime('2099-01-15T10:20:00Z') } });
+		expect(saveButton().disabled).toBe(false);
+		await fireEvent.click(saveButton());
+		await screen.findByText(t('saved'));
+		expect(transport.put.mock.calls[0][1].expires_at).toBe(fromLocalDateTime(input.value));
+		await fireEvent.input(input, { target: { value: toLocalDateTime('2099-01-01T10:19:00Z') } });
+		expect(saveButton().disabled).toBe(true);
+		expect(screen.getByText(t('beforeStart'))).toBeTruthy();
+		await fireEvent.input(input, { target: { value: toLocalDateTime('2099-04-01T10:20:00Z') } });
+		expect(screen.getByText(t('extensionLimit'))).toBeTruthy();
+		await fireEvent.submit(screen.getByRole('form', { name: t('edit') }));
+		expect(transport.put).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows a pending request separately without changing effective expiry or announcing save success', async () => {
+		transport.put.mockImplementationOnce(async (_path, payload) => ({
+			status: 'pending', schedule: schedule(),
+			request: { id: 'request-a', instance_id: 'vm-a', project_id: 'project-a', expires_at: payload.expires_at,
+				status: 'pending', reason: payload.reason },
+		}));
+		const onUpdated = vi.fn();
+		render(UsageScheduleSection, { ...props, onUpdated });
+		await ready();
+		await fireEvent.click(screen.getByRole('button', { name: t('extend') }));
+		await reason('Continue research');
+		await fireEvent.click(saveButton());
+		await screen.findByText(t('pendingSubmitted'), { exact: false });
+		expect(screen.getByText(t('pendingWarning'), { exact: false })).toBeTruthy();
+		expect(screen.queryByText(t('saved'))).toBeNull();
+		expect(document.querySelector<HTMLInputElement>('#usage-schedule-edit-expires')!.value).toBe(toLocalDateTime(schedule().expires_at));
+		expect(document.querySelector(`time[datetime=\"${schedule().expires_at}\"]`)).toBeTruthy();
+		expect(screen.getByRole('link', { name: t('reviewTitle') }).getAttribute('href')).toBe('/dashboard/usage#usage-extension-review');
+		expect(onUpdated).not.toHaveBeenCalled();
+	});
+
 	it('keeps overlong multibyte reasons visible and refuses extension submission', async () => {
 		render(UsageScheduleSection, props);
 		await ready();

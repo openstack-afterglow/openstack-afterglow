@@ -3,7 +3,7 @@ import { get } from 'svelte/store';
 import { api, ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/usage-schedule';
-import type { UsageScheduleDraft, UsageScheduleInfo } from '$lib/types/instanceUsage';
+import type { UsageExtensionPending, UsageExtensionRequest, UsageScheduleDraft, UsageScheduleInfo } from '$lib/types/instanceUsage';
 import { defaultUsageDraft, scheduleDraft, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
 import { sessionScopeKey } from '$lib/utils/authSession';
 import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
@@ -24,6 +24,7 @@ export function createInstanceUsageController(options: {
 	canWrite: () => boolean; onUpdated?: () => void;
 }) {
 	let schedule = $state<UsageScheduleInfo | null>(null);
+	let pendingRequest = $state<UsageExtensionRequest | null>(null);
 	let draft = $state<UsageScheduleDraft>(defaultUsageDraft());
 	let loading = $state(false);
 	let saving = $state(false);
@@ -79,6 +80,7 @@ export function createInstanceUsageController(options: {
 			if (!current(owner)) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
 			if (result && result.instance_id !== owner.id) throw new Error('Schedule identity mismatch');
 			schedule = result;
+			pendingRequest = null;
 			draft = result ? recoveryDraft ?? scheduleDraft(result) : defaultUsageDraft();
 			confirmed = true;
 			experienceState(experience, result ? 'ready' : 'empty');
@@ -96,7 +98,7 @@ export function createInstanceUsageController(options: {
 		const owner = snapshot();
 		const previous = schedule;
 		if (!owner.token || !owner.project || !options.canWrite() || !confirmed || loading || saving
-			|| !previous || !['active', 'blocked', 'complete'].includes(previous.state) || usageDraftError(draft, previous.expires_at)) return;
+			|| !previous || !['active', 'blocked', 'complete'].includes(previous.state) || usageDraftError(draft, previous.expires_at, Date.now(), previous.starts_at)) return;
 		const payload = { ...usagePayload(draft, previous.expires_at), revision: previous.revision };
 		const effectiveExpiry = payload.expires_at ?? previous.expires_at;
 		if (['blocked', 'complete'].includes(previous.state) && Date.parse(effectiveExpiry) <= Date.now()) {
@@ -114,16 +116,21 @@ export function createInstanceUsageController(options: {
 		saved = false;
 		controller = new AbortController();
 		try {
-			const result = await api.withExperience(experience).put<UsageScheduleInfo>(path(owner), payload, owner.token,
+			const result = await api.withExperience(experience).put<UsageScheduleInfo | UsageExtensionPending>(path(owner), payload, owner.token,
 				owner.admin ? owner.headerProject : owner.project, { signal: controller.signal, replayOnUnauthorized: false });
 			if (!current(owner) || !options.canWrite()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'scope_changed'); return; }
-			if (result.instance_id !== owner.id) throw new Error('Schedule identity mismatch');
-			schedule = result;
-			draft = scheduleDraft(result);
-			saved = true;
+			const pending = 'status' in result && result.status === 'pending' ? result : null;
+			const effective = pending ? pending.schedule : result as UsageScheduleInfo;
+			if (effective.instance_id !== owner.id || (pending && (pending.request.instance_id !== owner.id
+				|| pending.request.project_id !== owner.project || pending.request.status !== 'pending'
+				|| effective.expires_at !== previous.expires_at || effective.revision !== previous.revision))) throw new Error('Schedule identity mismatch');
+			schedule = effective;
+			pendingRequest = pending?.request ?? null;
+			draft = scheduleDraft(effective);
+			saved = !pending;
 			experienceState(experience, 'ready');
 			void experienceApplied(experience, {}, () => current(owner) && options.canWrite());
-			options.onUpdated?.();
+			if (!pending) options.onUpdated?.();
 		} catch (cause) {
 			if (!current(owner)) { experienceDiscarded(experience, disposed ? 'unmounted' : 'stale'); return; }
 			// An error may follow a native write. Keep the draft, but require an explicit fresh read before another write.
@@ -140,13 +147,13 @@ export function createInstanceUsageController(options: {
 		untrack(() => {
 			generation += 1;
 			controller?.abort();
-			schedule = null; draft = defaultUsageDraft(); loading = false; saving = false; confirmed = false; error = ''; saved = false;
+			schedule = null; pendingRequest = null; draft = defaultUsageDraft(); loading = false; saving = false; confirmed = false; error = ''; saved = false;
 			void refreshAttempt();
 		});
 	});
 	onDestroy(() => { disposed = true; generation += 1; controller?.abort(); unsubscribe(); });
 	return {
-		get schedule() { return schedule; }, get draft() { return draft; },
+		get schedule() { return schedule; }, get pendingRequest() { return pendingRequest; }, get draft() { return draft; },
 		set draft(value: UsageScheduleDraft) { draft = value; saved = false; },
 		get loading() { return loading; }, get saving() { return saving; }, get error() { return error; }, get saved() { return saved; },
 		get editable() { return confirmed && !loading && !saving && options.canWrite() && !!schedule && ['active', 'blocked', 'complete'].includes(schedule.state); },

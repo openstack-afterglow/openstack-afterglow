@@ -1,4 +1,5 @@
 {
+	"items.systemInfo": "Maklumat sistem",
 	"sections.account": "Tetapan akaun",
 	"items.accountProfile": "Profil",
 	"items.accountSshKeys": "Kunci SSH",

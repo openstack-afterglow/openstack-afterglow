@@ -289,7 +289,7 @@ async def test_reasoned_extension_preserves_existing_delete_consent_and_latest_r
         cloud,
         cloud.server,
         UsageScheduleExtension(
-            revision=original_revision, expires_at=datetime(2026, 3, 31, tzinfo=UTC), reason="finish experiment"
+            revision=original_revision, expires_at=datetime(2026, 3, 28, tzinfo=UTC), reason="finish experiment"
         ),
         user_id="user-a",
         now=START + timedelta(days=3),
@@ -365,7 +365,7 @@ async def test_future_extension_resumes_without_native_unshelve(lease_redis, sta
         cloud,
         cloud.server,
         UsageScheduleExtension(
-            revision=revision(cloud), expires_at=datetime(2026, 3, 31, tzinfo=UTC), reason="continue"
+            revision=revision(cloud), expires_at=datetime(2026, 3, 28, tzinfo=UTC), reason="continue"
         ),
         user_id="u",
         now=START,
@@ -379,7 +379,7 @@ async def test_future_extension_resumes_without_native_unshelve(lease_redis, sta
 async def test_concurrent_extensions_have_one_winner(lease_redis):
     cloud = Cloud()
     request = UsageScheduleExtension(
-        revision=revision(cloud), expires_at=datetime(2026, 3, 31, tzinfo=UTC), reason="more compute"
+        revision=revision(cloud), expires_at=datetime(2026, 3, 28, tzinfo=UTC), reason="more compute"
     )
     results = await asyncio.gather(
         *(
@@ -571,7 +571,7 @@ async def test_cancellation_drains_sdk_before_releasing_lease_even_when_cancelle
         {"expires_at": datetime(2026, 3, 1, tzinfo=UTC)},
     ],
 )
-async def test_update_never_shortens_or_extends_without_reason(lease_redis, fields):
+async def test_update_rejects_nonfuture_shortening_or_extension_without_reason(lease_redis, fields):
     cloud = Cloud()
     with pytest.raises(HTTPException) as error:
         await usage.update_schedule(
@@ -583,6 +583,243 @@ async def test_update_never_shortens_or_extends_without_reason(lease_redis, fiel
             redis=lease_redis,
         )
     assert error.value.status_code == 422 and not cloud.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["shelve", "delete"])
+async def test_future_shortening_preserves_policy_and_extension_attribution(lease_redis, action):
+    metadata = usage.creation_metadata(
+        SMALL,
+        UsageScheduleRequest(expiry_action=action, delete_volumes=action == "delete", reason="finish experiment"),
+        now=START,
+    )
+    metadata.update({P + "extended_at": START.isoformat(), P + "extended_by": "original-user"})
+    cloud = Cloud(metadata={**metadata, "unrelated": "retain me"})
+    original_revision = revision(cloud)
+    result = await usage.update_schedule(
+        cloud,
+        cloud.server,
+        UsageScheduleUpdate(revision=original_revision, expires_at=START + timedelta(days=5)),
+        user_id="shortening-user",
+        now=START + timedelta(days=2),
+        redis=lease_redis,
+    )
+    assert result.expires_at == (START + timedelta(days=5)).isoformat()
+    assert result.expiry_action == action
+    assert result.delete_volumes is (action == "delete")
+    assert result.state == "active" and result.revision != original_revision
+    assert result.reason == "finish experiment"
+    assert result.extended_at == START.isoformat() and result.extended_by == "original-user"
+    assert cloud.server.metadata["unrelated"] == "retain me"
+    assert len(cloud.writes) == 1
+    assert P + "extended_at" not in cloud.writes[0] and P + "extended_by" not in cloud.writes[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "expiry",
+    [START - timedelta(seconds=1), START, START + timedelta(days=1), START + timedelta(days=2)],
+)
+async def test_shortening_must_follow_clock_and_enrollment(lease_redis, expiry):
+    cloud = Cloud()
+    original = copy.deepcopy(cloud.server.metadata)
+    with pytest.raises(HTTPException) as error:
+        await usage.update_schedule(
+            cloud,
+            cloud.server,
+            UsageScheduleUpdate(revision=revision(cloud), expires_at=expiry),
+            user_id="u",
+            now=START + timedelta(days=2),
+            redis=lease_redis,
+        )
+    assert error.value.status_code == 422
+    assert cloud.server.metadata == original and not cloud.writes
+
+
+@pytest.mark.asyncio
+async def test_shortening_cannot_precede_enrollment_even_with_earlier_clock(lease_redis):
+    cloud = Cloud()
+    with pytest.raises(HTTPException) as error:
+        await usage.update_schedule(
+            cloud,
+            cloud.server,
+            UsageScheduleUpdate(revision=revision(cloud), expires_at=START),
+            user_id="u",
+            now=START - timedelta(seconds=1),
+            redis=lease_redis,
+        )
+    assert error.value.status_code == 422 and not cloud.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [
+        "blocked",
+        "complete",
+        "shelve_requested",
+        "offload_requested",
+        "stop_requested",
+        "volume_flags_requested",
+        "volumes_ready",
+        "delete_requested",
+        "unknown",
+    ],
+)
+async def test_shortening_never_reactivates_fenced_schedule(lease_redis, state):
+    cloud = Cloud()
+    cloud.server.metadata[P + "state"] = state
+    cloud.server.metadata[P + "last_error"] = "Keep the execution outcome"
+    if state in {"stop_requested", "volume_flags_requested", "volumes_ready", "delete_requested"}:
+        cloud.server.metadata[P + "action"] = "delete"
+    original = copy.deepcopy(cloud.server.metadata)
+    with pytest.raises(HTTPException) as error:
+        await usage.update_schedule(
+            cloud,
+            cloud.server,
+            UsageScheduleUpdate(revision=revision(cloud), expires_at=START + timedelta(days=5)),
+            user_id="u",
+            now=START,
+            redis=lease_redis,
+        )
+    assert error.value.status_code == 409
+    assert cloud.server.metadata == original and not cloud.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extension_only", [False, True])
+@pytest.mark.parametrize("beyond_limit", [False, True])
+@pytest.mark.parametrize(
+    ("previous", "limit"),
+    [
+        (datetime(2026, 1, 31, 12, tzinfo=UTC), datetime(2026, 2, 28, 12, tzinfo=UTC)),
+        (datetime(2028, 1, 31, 12, tzinfo=UTC), datetime(2028, 2, 29, 12, tzinfo=UTC)),
+        (datetime(2026, 2, 28, 12, tzinfo=UTC), datetime(2026, 3, 28, 12, tzinfo=UTC)),
+        (datetime(2026, 12, 31, 12, tzinfo=UTC), datetime(2027, 1, 31, 12, tzinfo=UTC)),
+        (
+            datetime(2026, 5, 1, 1, tzinfo=timezone(timedelta(hours=9))),
+            datetime(2026, 5, 30, 16, tzinfo=UTC),
+        ),
+    ],
+)
+async def test_both_mutations_enforce_calendar_month_from_existing_expiry(
+    lease_redis, previous, limit, beyond_limit, extension_only
+):
+    cloud = Cloud(
+        metadata=usage.creation_metadata(
+            SMALL, UsageScheduleRequest(expires_at=previous), now=previous - timedelta(days=10)
+        )
+    )
+    expiry = limit + timedelta(seconds=int(beyond_limit))
+    request_type = UsageScheduleExtension if extension_only else UsageScheduleUpdate
+    mutate = usage.extend_schedule if extension_only else usage.update_schedule
+    request = request_type(revision=revision(cloud), expires_at=expiry, reason="finish experiment")
+    arguments = {"user_id": "u", "now": previous - timedelta(days=1), "redis": lease_redis}
+    if beyond_limit:
+        original = copy.deepcopy(cloud.server.metadata)
+        with pytest.raises(HTTPException) as error:
+            await mutate(cloud, cloud.server, request, **arguments)
+        assert error.value.status_code == 422
+        assert cloud.server.metadata == original and not cloud.writes
+    else:
+        result = await mutate(cloud, cloud.server, request, **arguments)
+        assert result.expires_at == limit.isoformat()
+        assert result.extended_by == "u" and len(cloud.writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_each_extension_uses_latest_expiry_not_request_clock(lease_redis):
+    cloud = Cloud()
+    expiry = datetime(2026, 2, 28, 12, 34, 56, tzinfo=UTC)
+    for _ in range(2):
+        expiry = usage.calendar_month_after(expiry)
+        result = await usage.extend_schedule(
+            cloud,
+            cloud.server,
+            UsageScheduleExtension(revision=revision(cloud), expires_at=expiry, reason="finish experiment"),
+            user_id="u",
+            now=START,
+            redis=lease_redis,
+        )
+        assert result.expires_at == expiry.isoformat()
+    assert len(cloud.writes) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extension_only", [False, True])
+@pytest.mark.parametrize("past_or_equal", [False, True])
+async def test_expired_schedule_extension_requires_future_within_original_month(
+    lease_redis, extension_only, past_or_equal
+):
+    cloud = Cloud()
+    previous = datetime.fromisoformat(cloud.server.metadata[P + "expires_at"])
+    now = usage.calendar_month_after(previous)
+    expiry = now if past_or_equal else now + timedelta(seconds=1)
+    request_type = UsageScheduleExtension if extension_only else UsageScheduleUpdate
+    mutate = usage.extend_schedule if extension_only else usage.update_schedule
+    with pytest.raises(HTTPException) as error:
+        await mutate(
+            cloud,
+            cloud.server,
+            request_type(revision=revision(cloud), expires_at=expiry, reason="finish experiment"),
+            user_id="u",
+            now=now,
+            redis=lease_redis,
+        )
+    assert error.value.status_code == 422 and not cloud.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expiry", [START + timedelta(days=5), datetime(2026, 2, 28, 12, 34, 56, tzinfo=UTC)])
+async def test_extension_endpoint_still_rejects_shortening_and_unchanged_expiry(lease_redis, expiry):
+    cloud = Cloud()
+    with pytest.raises(HTTPException) as error:
+        await usage.extend_schedule(
+            cloud,
+            cloud.server,
+            UsageScheduleExtension(revision=revision(cloud), expires_at=expiry, reason="finish experiment"),
+            user_id="u",
+            now=START,
+            redis=lease_redis,
+        )
+    assert error.value.status_code == 422 and not cloud.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["active", "blocked", "complete"])
+async def test_recently_expired_schedule_allows_reasoned_future_extension_within_month(lease_redis, state):
+    cloud = Cloud()
+    cloud.server.metadata[P + "state"] = state
+    previous = datetime.fromisoformat(cloud.server.metadata[P + "expires_at"])
+    now = previous + timedelta(days=1)
+    expiry = usage.calendar_month_after(previous)
+    result = await usage.extend_schedule(
+        cloud,
+        cloud.server,
+        UsageScheduleExtension(revision=revision(cloud), expires_at=expiry, reason="finish experiment"),
+        user_id="u",
+        now=now,
+        redis=lease_redis,
+    )
+    assert result.expires_at == expiry.isoformat() and result.state == "active"
+    assert result.extended_at == now.isoformat() and len(cloud.writes) == 1
+
+
+def test_shared_update_validator_returns_effective_expiry_without_mutating_schedule():
+    cloud = Cloud()
+    schedule = usage.parse_schedule(cloud.server)
+    original_schedule = schedule.model_dump()
+    original_metadata = copy.deepcopy(cloud.server.metadata)
+    shortened = START + timedelta(days=5)
+    expiry = usage.validate_schedule_update(
+        schedule, UsageScheduleUpdate(revision=schedule.revision, expires_at=shortened), now=START
+    )
+    assert expiry == shortened
+    assert schedule.model_dump() == original_schedule
+    assert cloud.server.metadata == original_metadata and not cloud.writes
+    assert usage.validate_schedule_update(
+        schedule, UsageScheduleUpdate(revision=schedule.revision), now=START
+    ) == datetime.fromisoformat(schedule.expires_at)
 
 
 @pytest.mark.asyncio
@@ -777,7 +1014,7 @@ async def test_completed_instance_can_resume_only_after_reasoned_future_extensio
         cloud,
         cloud.server,
         UsageScheduleExtension(
-            revision=revision(cloud), expires_at=datetime(2026, 3, 31, tzinfo=UTC), reason="resume experiment"
+            revision=revision(cloud), expires_at=datetime(2026, 3, 28, tzinfo=UTC), reason="resume experiment"
         ),
         user_id="u",
         now=START,

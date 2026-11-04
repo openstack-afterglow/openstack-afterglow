@@ -1,4 +1,5 @@
 {
+	"items.systemInfo": "Thông tin hệ thống",
 	"sections.account": "Cài đặt tài khoản",
 	"items.accountProfile": "Hồ sơ",
 	"items.accountSshKeys": "Khóa SSH",

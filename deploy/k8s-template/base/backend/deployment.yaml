@@ -26,6 +26,35 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # Read-only verification gates every replica; only the singleton Job runs DDL.
+      initContainers:
+        - name: schema-bootstrap
+          image: ghcr.io/openstack-afterglow/afterglow-api:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "scripts.bootstrap_schema", "--if-configured", "--verify-only"]
+          env:
+            - name: AFTERGLOW_ENV
+              value: "production"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afterglow-config
+                  key: APP_REDIS_URL
+          envFrom:
+            - secretRef:
+                name: afterglow-secrets
+          volumeMounts:
+            - name: afterglow-config-volume
+              mountPath: /app/afterglow.conf
+              subPath: afterglow.conf
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "1"
+            limits:
+              memory: "2Gi"
+              cpu: "4"
       containers:
         - name: backend
           image: ghcr.io/openstack-afterglow/afterglow-api:latest

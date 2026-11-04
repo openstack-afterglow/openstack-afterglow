@@ -212,6 +212,8 @@ Content-Type: application/json
 백엔드 `create_k3s_cluster_async()`는 `StreamingResponse`로 SSE를 보낸다. 첫 chunk는 프록시 버퍼링을 피하기 위한 padding이다.
 
 이후 실제 생성은 다음 순서다.
+다음 다이어그램의 퍼센트와 callback 경로는 이전 흐름의 기록이다. 현재 source의 생성 UI는 native 보고값과 별개로 관측된 단계 기반 추정치를 표시하고 실제 operation이 terminal임을 확인할 때까지 전역 dock에서 같은 operation ID를 GET으로 추적한다. Stream 종료는 작업 완료가 아니며, ID 수신 전 결과가 불명인 경우 자동으로 재전송하지 않는다. 이 UI와 native quota 사전 검사는 matching Drover source가 필요하며 운영 배포 여부는 별도다.
+
 
 ```mermaid
 sequenceDiagram

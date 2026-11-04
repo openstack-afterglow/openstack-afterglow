@@ -1,4 +1,5 @@
 {
+	"items.systemInfo": "সিস্টেমের তথ্য",
 	"sections.account": "অ্যাকাউন্ট সেটিংস",
 	"items.accountProfile": "প্রোফাইল",
 	"items.accountSshKeys": "SSH কী",

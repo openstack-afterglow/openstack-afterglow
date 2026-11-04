@@ -26,7 +26,7 @@
 		adminMode: () => adminMode, canWrite: () => canWrite, onUpdated: () => onUpdated?.(),
 	});
 	const locked = $derived(!!controller.schedule && !['active', 'blocked', 'complete'].includes(controller.schedule.state));
-	const draftError = $derived(usageDraftError(controller.draft, controller.schedule?.expires_at));
+	const draftError = $derived(usageDraftError(controller.draft, controller.schedule?.expires_at, Date.now(), controller.schedule?.starts_at));
 	const resumeError = $derived.by(() => {
 		if (!controller.schedule || !['blocked', 'complete'].includes(controller.schedule.state)) return null;
 		const expires = fromLocalDateTime(controller.draft.expiresLocal);
@@ -42,9 +42,8 @@
 
 	function extendDraft() {
 		if (!controller.editable) return;
-		const expires = fromLocalDateTime(controller.draft.expiresLocal);
-		if (!expires) return;
-		controller.draft = { ...controller.draft, expiresLocal: toLocalDateTime(calendarMonthAfter(new Date(expires)).toISOString()) };
+		if (!controller.schedule) return;
+		controller.draft = { ...controller.draft, expiresLocal: toLocalDateTime(calendarMonthAfter(new Date(controller.schedule.expires_at)).toISOString()) };
 	}
 </script>
 
@@ -60,6 +59,10 @@
 		{#if controller.loading}<LoadingState variant="inline" label={t('loading')} />{/if}
 		{#if controller.error}<Alert tone="danger">{controller.error}</Alert>{/if}
 		{#if controller.saved}<Alert tone="success">{t('saved')}</Alert>{/if}
+		{#if controller.pendingRequest}
+			<Alert tone="info">{t('pendingSubmitted')}<br />{t('pendingWarning')}</Alert>
+			<p class="text-sm text-ink-1">{t('requestedExpiry')}: <time datetime={controller.pendingRequest.expires_at}>{formatDate(controller.pendingRequest.expires_at)}</time></p>
+		{/if}
 
 		{#if controller.schedule}
 			{@const schedule = controller.schedule}
@@ -82,6 +85,8 @@
 			{:else}<p class="text-sm text-ink-2">{t('retain')}</p>{/if}
 			{#if schedule.expiry_action === 'delete'}<p class="text-xs leading-relaxed text-ink-2">{t('storageScope')}</p>{/if}
 			<p class="text-sm text-ink-2">{t('noResume')}</p>
+			<p class="text-sm text-ink-2">{t('policyHelp')}</p>
+			<a href="/dashboard/usage#usage-extension-review" class="inline-flex min-h-11 items-center text-sm text-accent underline underline-offset-4">{t('reviewTitle')}</a>
 			{#if schedule.last_error}<Alert tone="danger">{schedule.last_error}</Alert>{/if}
 			{#if locked}<Alert tone="danger">{t('locked')}</Alert>{/if}
 			{#if !canWrite}
@@ -90,7 +95,7 @@
 				<form class="min-w-0 space-y-4 border-t border-line pt-4" aria-label={t('edit')}
 					onsubmit={(event) => { event.preventDefault(); void controller.save(); }}>
 					<UsageScheduleFields value={controller.draft} onchange={(value) => { controller.draft = value; }}
-						disabled={!controller.editable} currentExpiry={schedule.expires_at} idPrefix="usage-schedule-edit" />
+						disabled={!controller.editable} currentExpiry={schedule.expires_at} startsAt={schedule.starts_at} idPrefix="usage-schedule-edit" />
 					{#if resumeError && !draftError}<Alert tone="danger">{t(resumeError)}</Alert>{/if}
 					<div class="flex min-w-0 flex-wrap gap-2">
 						<Button variant="secondary" class="min-h-11 max-w-full whitespace-normal" disabled={!controller.editable}

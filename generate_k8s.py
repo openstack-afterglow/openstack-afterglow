@@ -35,7 +35,7 @@ import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from generation_config import (
     config_override_paths,
@@ -1578,6 +1578,16 @@ def render_artifacts(cfg: dict, namespace: str = "afterglow") -> dict[str, str]:
                 "  - ingress.yaml\n  - middleware.yaml\n  - monitoring\n"
             ),
         }
+    )
+    # Each generated rollout gets a fresh immutable Job, including unchanged
+    # configuration with a mutable image tag. Never expose a credential-derived
+    # fingerprint through public Kubernetes resource names.
+    job_path = "base/backend/schema-job.yaml"
+    identity = uuid4().hex
+    artifacts[job_path] = artifacts[job_path].replace(
+        "name: schema-bootstrap-sql108\n",
+        f"name: schema-bootstrap-sql108-{identity}\n",
+        1,
     )
     # Explicit env lists in both workloads must consume the dynamic registry keys.
     auth_keys = [

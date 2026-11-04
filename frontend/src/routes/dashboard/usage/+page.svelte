@@ -9,6 +9,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import UsageExtensionReview from '$lib/components/instance/UsageExtensionReview.svelte';
 	import {
 		Alert,
 		AnimatedNumber,
@@ -220,7 +221,9 @@
 		{/if}
 	{/snippet}
 <PageShell class="space-y-6">
-	<PageHeader breadcrumb={t('usage.breadcrumb')} title={t('usage.title')} subtitle={$auth.projectName ?? '—'} />
+	<PageHeader breadcrumb={t('usage.breadcrumb')} title={t('usage.title')} subtitle={$auth.projectName ?? $auth.domainName ?? '—'} />
+	<UsageExtensionReview />
+	{#if $auth.projectId}
 	<ResourceToolbar label={t('usage.toolbar')}>
 		{#snippet filters()}
 			<ToggleGroup
@@ -394,4 +397,5 @@
 		<EmptyState headline={t('usage.noData')} description={t('usage.noDataHelp')} />
 	{/if}
 {/key}
+	{/if}
 </PageShell>

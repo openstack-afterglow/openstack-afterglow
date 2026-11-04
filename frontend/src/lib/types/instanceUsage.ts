@@ -25,6 +25,43 @@ export interface UsageScheduleInfo extends UsageScheduleRequest {
 	server_name?: string;
 }
 
+export interface UsageExtensionPolicy {
+	domain_id: string;
+	review_required: boolean;
+	revision: string;
+	can_manage: boolean;
+}
+
+export interface UsageExtensionRequest {
+	id: string;
+	domain_id: string;
+	project_id: string;
+	instance_id: string;
+	instance_name: string | null;
+	requested_by: string;
+	requested_at: string;
+	expires_at: string;
+	reason: string;
+	schedule_revision: string;
+	policy_revision: string;
+	revision: string;
+	status: 'pending' | 'applying' | 'approved' | 'rejected' | 'stale' | 'uncertain';
+	reviewed_by: string | null;
+	reviewed_at: string | null;
+	can_review: boolean;
+}
+
+export interface UsageExtensionPage {
+	items: UsageExtensionRequest[];
+	next_cursor: string | null;
+}
+
+export interface UsageExtensionPending {
+	status: 'pending';
+	request: UsageExtensionRequest;
+	schedule: UsageScheduleInfo;
+}
+
 /** Tab-local form values; never persisted to browser storage. */
 export interface UsageScheduleDraft {
 	expiresLocal: string;

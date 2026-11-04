@@ -8,10 +8,11 @@ type NavMessage = Parameters<typeof t>[0];
 
 const PROJECT_AGNOSTIC_ROUTES = ['/', '/login', '/logout', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 
-/** Project selection is not required for domain IAM or verified system-admin routes. Authentication still is. */
-export function isProjectAgnosticPath(pathname: string, isSystemAdmin: boolean): boolean {
+/** Domain IAM and exact verified-manager usage review can work without a project; admin stays system-only. */
+export function isProjectAgnosticPath(pathname: string, isSystemAdmin: boolean, isDomainManager: boolean): boolean {
   return PROJECT_AGNOSTIC_ROUTES.includes(pathname)
     || pathname === '/dashboard/iam' || pathname.startsWith('/dashboard/iam/')
+    || (isDomainManager && pathname === '/dashboard/usage')
     || (isSystemAdmin && (pathname === '/admin' || pathname.startsWith('/admin/')));
 }
 
@@ -78,6 +79,7 @@ const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Admin
   monitoring: 'routes.monitoring',
   services: 'routes.services',
+  'system-info': 'items.systemInfo',
   notion: 'routes.notion',
   settings: 'routes.settings',
   users: 'routes.users',

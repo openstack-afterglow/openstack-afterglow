@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 
 import httpx
 from anyio import CancelScope
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
@@ -67,6 +67,7 @@ from app.services.octavia import TopologyLoadBalancersUnavailable, get_topology_
 # FastAPI-free 인벤토리 유틸리티로 이동됨 — admin.py 내부 호출 + 하위 호환 재export.
 from app.services.openstack_inventory import _fetch_hypervisors_raw, list_servers_complete
 from app.services.parallel import run_parallel
+from app.services.service_versions import ServiceVersions, observe_service_versions
 from app.utils.version import read_app_version
 
 if TYPE_CHECKING:
@@ -3287,6 +3288,18 @@ _admin_start_time: float = __import__("time").time()
 
 
 _backend_version: str = read_app_version()
+
+
+@router.get("/service-versions", response_model=ServiceVersions, dependencies=[Depends(require_admin)])
+async def admin_service_versions(
+    request: Request,
+    token_info: dict = Depends(require_admin),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    """Observe advertised native API versions without inferring software releases."""
+    return await observe_service_versions(
+        conn, token_info, native_access=getattr(request.state, "_afterglow_native_access", None)
+    )
 
 
 @router.get("/version", dependencies=[Depends(require_admin)])

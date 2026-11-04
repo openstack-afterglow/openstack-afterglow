@@ -167,7 +167,10 @@ test("production and standalone Compose require the prefixed Afterglow input wit
 
 		for (const manifest of ["docker-compose.prod.yml", "docker-compose.yml"]) {
 			const targets = manifest === "docker-compose.prod.yml"
-				? applications : [{ ...applications[0], consumers: ["backend"] }];
+				? applications.map((application, index) => index === 0
+					? { ...application, consumers: [...application.consumers, "schema-bootstrap"] }
+					: application)
+				: [{ ...applications[0], consumers: ["backend", "schema-bootstrap"] }];
 			const run = async (name, dotenvValues, privateInputs, shellInputs, expected, reject = false) => {
 				await t.test(`${manifest}: ${name}`, () => {
 					writeEnvironment(dotenvPath, { ...required, ...dotenvValues });
@@ -187,6 +190,76 @@ test("production and standalone Compose require the prefixed Afterglow input wit
 			await run("empty private input cannot inherit valid .env input", dotenv, { AFTERGLOW_DATABASE_URL: "" }, {}, {}, true);
 			await run("empty shell cannot inherit valid .env input", dotenv, null, { AFTERGLOW_DATABASE_URL: "" }, {}, true);
 			await run("empty shell cannot inherit valid private input", dotenv, privateValues, { AFTERGLOW_DATABASE_URL: "" }, {}, true);
+		}
+	});
+});
+
+test("supported Compose deployments finish canonical SQL108 bootstrap before Afterglow writers", async (t) => {
+	await withProject(async (projectDir) => {
+		const selected = externalEnvironment("bootstrap");
+		const required = {
+			...selected,
+			SECRET_KEY: "synthetic-bootstrap-secret",
+			OS_PASSWORD: "synthetic-bootstrap-keystone-password",
+			ORIGIN: "https://frontend.invalid",
+			PUBLIC_API_BASE: "https://api.invalid",
+			TLS_CERTS_DIR: path.join(projectDir, "tls"),
+			DATABASE_URL: "mysql+aiomysql://generic:synthetic@generic.invalid:3306/wrong",
+			REDIS_URL: "redis://synthetic-redis.invalid:6379/0",
+			CEPH_RBD_CONF_FILE: "/synthetic/ceph.conf",
+			CEPH_RBD_KEYRING_FILE: "/synthetic/ceph.keyring",
+			TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE: "/synthetic/country.mmdb",
+		};
+		writeEnvironment(path.join(projectDir, ".env"), required);
+		const cases = [
+			["docker-compose.yml", {}, "ghcr.io/openstack-afterglow/afterglow-api:latest"],
+			["docker-compose.yml", { REGISTRY: "registry.invalid/team", IMAGE_TAG: "standalone-108" }, "registry.invalid/team/afterglow-api:standalone-108"],
+			["docker-compose.prod.yml", {}, "ghcr.io/openstack-afterglow/afterglow-api:latest"],
+			["docker-compose.prod.yml", { REGISTRY: "registry.invalid/team", IMAGE_TAG: "common", BACKEND_IMAGE_TAG: "backend-108" }, "registry.invalid/team/afterglow-api:backend-108"],
+			["docker-compose.prod.yml", {
+				AFTERGLOW_BACKEND_IMAGE: `registry.invalid/private/api@sha256:${"a".repeat(64)}`,
+				AFTERGLOW_WORKER_IMAGE: "registry.invalid/private/worker:distinct",
+				IMAGE_TAG: "ignored",
+			}, `registry.invalid/private/api@sha256:${"a".repeat(64)}`],
+		];
+		for (const [index, [manifest, shell, expectedImage]] of cases.entries()) {
+			await t.test(`${manifest}: image/config and writer ordering case ${index + 1}`, () => {
+				const config = composeConfig(projectDir, { manifest, shell });
+				const { backend, "schema-bootstrap": bootstrap } = config.services;
+				assert.ok(bootstrap, "canonical bootstrap must be part of the default stack");
+				assert.equal(bootstrap.image, expectedImage);
+				assert.equal(bootstrap.image, backend.image, "bootstrap must use the selected backend image, not worker/frontend tags");
+				assert.deepEqual(bootstrap.command, ["python", "-m", "scripts.bootstrap_schema"]);
+				assert.equal(bootstrap.restart, "no", "a failed schema check must not be hidden by a restart loop");
+				assert.equal(bootstrap.healthcheck.disable, true, "the one-shot job must not inherit an API HTTP healthcheck");
+				assert.ok(JSON.stringify(bootstrap.environment) === JSON.stringify(backend.environment), "bootstrap and API must share effective configuration (values withheld)");
+				assert.deepEqual(bootstrap.volumes, backend.volumes, "bootstrap must read the same mounted application configuration");
+				const configMount = bootstrap.volumes.find((volume) => volume.target === "/app/afterglow.conf");
+				assert.equal(configMount?.read_only, true);
+				assert.ok(bootstrap.environment.DATABASE_URL === selected.AFTERGLOW_DATABASE_URL, "bootstrap must use the explicit Afterglow database, never the generic alias (values withheld)");
+				assert.ok(bootstrap.entrypoint === undefined || bootstrap.entrypoint === null, "bootstrap must not override the image entrypoint");
+				for (const field of ["ports", "profiles", "build", "depends_on"]) {
+					assert.ok(bootstrap[field] === undefined, `bootstrap must not acquire ${field} or alter other service lifecycles`);
+				}
+				const expectedWriters = manifest === "docker-compose.prod.yml" ? ["backend", "notion-worker"] : ["backend"];
+				const gated = Object.entries(config.services)
+					.filter(([, service]) => service.depends_on?.["schema-bootstrap"])
+					.map(([name]) => name).sort();
+				assert.deepEqual(gated, expectedWriters, "only Afterglow SQL writers should gain schema dependencies");
+				for (const writer of expectedWriters) {
+					const dependency = config.services[writer].depends_on["schema-bootstrap"];
+					assert.equal(dependency.condition, "service_completed_successfully", `${writer} must not start on schema failure or while DDL is running`);
+					assert.notEqual(dependency.required, false);
+				}
+				assert.equal(config.services.frontend.depends_on.backend.condition, "service_healthy");
+				if (manifest === "docker-compose.prod.yml") {
+					assert.equal(bootstrap.pull_policy, backend.pull_policy);
+					assert.equal(backend.depends_on.redis.condition, "service_started");
+					assert.equal(config.services["notion-worker"].depends_on.redis.condition, "service_started");
+					assert.equal(config.services["notion-worker"].depends_on.backend.condition, "service_started");
+					assert.equal(config.services.haproxy.depends_on.backend.condition, "service_healthy");
+				}
+			});
 		}
 	});
 });

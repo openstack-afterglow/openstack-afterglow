@@ -529,7 +529,7 @@
 - `frontend/src/routes/docs/+error.svelte`
 - `frontend/src/routes/docs/+page.svelte`
 
-### 이미지·캔버스·SVG 소유 화면 (119 files)
+### 이미지·캔버스·SVG 소유 화면 (118 files)
 
 - `frontend/src/lib/components/AdminSidebar.svelte`
 - `frontend/src/lib/components/AutoRefreshControl.svelte`
@@ -551,7 +551,6 @@
 - `frontend/src/lib/components/admin/infrastructure-topology/NetworkMap.svelte`
 - `frontend/src/lib/components/admin/infrastructure-topology/PeerProbeMap.svelte`
 - `frontend/src/lib/components/admin/infrastructure-topology/RadialWorkspace.svelte`
-- `frontend/src/lib/components/admin/overview/VersionInfoPanel.svelte`
 - `frontend/src/lib/components/admin/topology/TopologyLegend.svelte`
 - `frontend/src/lib/components/auth/LoginBrandHeader.svelte`
 - `frontend/src/lib/components/chat/AgentBuilderForm.svelte`

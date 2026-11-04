@@ -281,10 +281,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 32,
 		tokens: ["bg-amber-500/15","bg-cyan-500/15","bg-gray-800","bg-gray-900","bg-indigo-500/15","bg-teal-500/15","border-amber-500/30","border-amber-500/40","border-cyan-500/30","border-cyan-500/40","border-gray-800","border-indigo-500/30","border-indigo-500/40","border-teal-500/30","border-teal-500/40","text-amber-400","text-cyan-400","text-gray-500","text-indigo-400","text-teal-400"],
 	},
-	"frontend/src/lib/components/admin/overview/VersionInfoPanel.svelte": {
-		count: 36,
-		tokens: ["bg-gray-900","border-gray-800","border-gray-800/50","text-gray-300","text-gray-400","text-gray-500","text-gray-600"],
-	},
 	"frontend/src/lib/components/admin/ports/PortCreateModal.svelte": {
 		count: 31,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-red-900/40","border-blue-500","border-gray-600","border-gray-700","border-red-700","text-gray-300","text-gray-400","text-gray-600","text-red-300"],

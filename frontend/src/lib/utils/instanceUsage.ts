@@ -73,13 +73,14 @@ export function scheduleDraft(schedule: UsageScheduleInfo): UsageScheduleDraft {
 		expiryAction: schedule.expiry_action, deleteVolumes: schedule.delete_volumes, reason: '' };
 }
 
-export type UsageDraftError = 'invalidDate' | 'pastDate' | 'shorterDate' | 'reasonRequired' | 'reasonInvalid' | 'invalidConsent';
-export function usageDraftError(draft: UsageScheduleDraft, currentExpiry?: string, now = Date.now()): UsageDraftError | null {
+export type UsageDraftError = 'invalidDate' | 'pastDate' | 'shorterDate' | 'beforeStart' | 'extensionLimit' | 'reasonRequired' | 'reasonInvalid' | 'invalidConsent';
+export function usageDraftError(draft: UsageScheduleDraft, currentExpiry?: string, now = Date.now(), startsAt?: string): UsageDraftError | null {
 	const expires = fromLocalDateTime(draft.expiresLocal);
 	if (!expires) return 'invalidDate';
 	const changed = !currentExpiry || draft.expiresLocal !== toLocalDateTime(currentExpiry);
 	if (changed && Date.parse(expires) <= now) return 'pastDate';
-	if (currentExpiry && changed && Date.parse(expires) < Date.parse(currentExpiry)) return 'shorterDate';
+	if (changed && startsAt && Date.parse(expires) <= Date.parse(startsAt)) return 'beforeStart';
+	if (currentExpiry && changed && Date.parse(expires) > calendarMonthAfter(new Date(currentExpiry)).getTime()) return 'extensionLimit';
 	if (draft.expiryAction !== 'delete' && draft.deleteVolumes) return 'invalidConsent';
 	const reason = draft.reason.trim();
 	if (new TextEncoder().encode(reason).length > 255 || /[\u0000-\u001f\u007f-\u009f]/u.test(reason)) return 'reasonInvalid';

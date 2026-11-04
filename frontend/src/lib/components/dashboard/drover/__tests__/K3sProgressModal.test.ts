@@ -120,6 +120,7 @@ describe('K3sProgressModal', () => {
 		expect(Object.values(stepStates())).toEqual(['pending', 'pending', 'pending', 'pending', 'pending']);
 		expect(screen.getByRole('progressbar').getAttribute('data-tone')).toBe('danger');
 		expect(screen.getByRole('progressbar').getAttribute('data-active')).toBeNull();
+		expect(screen.queryByText(/Drover 보고 진행률/)).toBeNull();
 	});
 
 	it('shows every step done and stops the in-flight sheen once completed', () => {
@@ -134,5 +135,29 @@ describe('K3sProgressModal', () => {
 		expect(bar.getAttribute('data-tone')).toBe('success');
 		expect(bar.getAttribute('data-active')).toBeNull();
 		expect(bar.getAttribute('aria-valuenow')).toBe('100');
+	});
+
+	it('keeps stage progress consistent with the observed pipeline without rewriting native progress', () => {
+		const progress = begin();
+		progress.apply({ step: 'server_creating', progress: 10, message: '서버 VM' });
+		renderModal(progress);
+		expect(stepStates().server_creating).toBe('active');
+		expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
+		expect(screen.getByText(/Drover 보고 진행률: 10%/)).toBeTruthy();
+		expect(screen.getByText(/관측 단계 기준 추정/)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: '닫기' })).toBeNull();
+		expect(screen.getByRole('button', { name: '최소화' })).toBeTruthy();
+	});
+
+	it.each(['completed', 'failed'] as const)('does not announce a restored confirmed %s outcome as unknown', step => {
+		const progress = begin();
+		progress.restore({ mode: 'create', step, pct: step === 'completed' ? 100 : null, clusterId: 'cluster', operationId: null,
+			sequence: 4, elapsed: 12, timings: {}, ...(step === 'failed' ? { refusalSummary: {
+				reason: 'security_group_quota_exceeded' as const, quota: { resource: 'security_group_rule' as const, required: 7, available: 2 },
+			} } : {}) });
+		renderModal(progress);
+		expect(screen.queryByText(/완료 또는 실패는 아직 확인되지 않았습니다/)).toBeNull();
+		expect(screen.getByRole('button', { name: '닫기' })).toBeTruthy();
+		if (step === 'failed') expect(screen.getByRole('alert').textContent).toContain('필요 7개, 사용 가능 2개');
 	});
 });

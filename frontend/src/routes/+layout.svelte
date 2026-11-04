@@ -30,6 +30,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { sidebarOpen } from '$lib/stores/sidebar';
 	import Toast from '$lib/components/ui/Toast.svelte';
+	import K3sOperationDock from '$lib/components/dashboard/drover/K3sOperationDock.svelte';
 	import UploadDock from '$lib/components/UploadDock.svelte';
 	import CmdPalette from '$lib/components/CmdPalette.svelte';
 	import { palette } from '$lib/stores/palette';
@@ -331,8 +332,9 @@
 
 
 
-	// Domain selection and IAM work without a project; admin exemption remains system-only.
-	const projectAgnostic = $derived(isProjectAgnosticPath($page.url.pathname, $isAdmin));
+	// Domain review requires verified current-domain manager authority; admin exemption remains system-only.
+	const projectAgnostic = $derived(isProjectAgnosticPath($page.url.pathname, $isAdmin,
+		$authReady && $auth.isDomainManager === true && !!$auth.domainId));
 
 	// Token-bearing onboarding links are public and render without console chrome.
 	const isOnboardingRoute = $derived($page.url.pathname.startsWith('/invitations/') || $page.url.pathname.startsWith('/registrations/') || $page.url.pathname.startsWith('/recover/'));
@@ -652,9 +654,6 @@
 			</button>
 		</div>
 	</header>
-	{#if !mockup.active}
-		<UploadDock />
-	{/if}
 	{#if !mockup.active || mockupAdminActive}
 		<CmdPalette />
 	{/if}
@@ -675,6 +674,12 @@
 	<TutorialController />
 {/if}
 <Toast />
+<div data-background-operation-stack class="fixed bottom-4 right-4 z-[var(--z-toast)] flex max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-2rem)] flex-col items-end gap-2 overflow-y-auto">
+	<K3sOperationDock inline />
+	{#if showAppChrome && !mockup.active}
+		<UploadDock inline />
+	{/if}
+</div>
 
 <!-- Console and standalone auth flows retain state across locale changes.
      Remounting an entry page can replay a consumed inspection or discard an

@@ -2,8 +2,9 @@
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { t as td } from '$lib/i18n/ns/drover';
 	import type { K3sProgressController } from '$lib/stores/k3sProgress.svelte';
-	import { k3sProgressState, type K3sStep } from '$lib/components/k3sSteps';
-	import { Alert, AnimatedNumber, Button, ProgressTrack, ProvisionPipeline, StepProgress } from '$lib/components/ui';
+	import { k3sProgressState, k3sStagePercent, type K3sStep } from '$lib/components/k3sSteps';
+	import { Alert, Button, ProgressTrack, ProvisionPipeline, StepProgress } from '$lib/components/ui';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import type { ProgressStepItem } from '$lib/components/ui';
 
 	let {
@@ -26,12 +27,12 @@
 		}),
 	);
 	const running = $derived(progressState.status === 'running');
-	const percent = $derived(Math.max(0, Math.min(100, controller.pct)));
+	const percent = $derived(k3sStagePercent(controller.step, controller.stepTimings, activeSteps));
 	const stepsLabel = $derived(controller.mode === 'delete' ? t('cluster.deleteTitle') : t('cluster.createTitle'));
 </script>
 
 <div class="motion-fade fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-50">
-	<div data-tour="drover-progress" class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-xl mx-4 max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-[var(--shadow-restraint)]">
+	<div use:dialogFocus={{ enabled: true, onEscape: onClose }} role="dialog" aria-modal="true" aria-label={stepsLabel} tabindex="-1" data-tour="drover-progress" class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-xl mx-4 max-h-[calc(100dvh-2rem)] overflow-y-auto shadow-[var(--shadow-restraint)]">
 		<h2 class="text-lg font-semibold text-ink-0 mb-4">
 			{controller.mode === 'delete' ? t('cluster.deleteTitle') : t('cluster.createTitle')}
 		</h2>
@@ -39,20 +40,23 @@
 		<ProvisionPipeline stages={activeSteps} current={progressState.current} status={progressState.status} label={stepsLabel} decorative class="mb-4" />
 
 		<ProgressTrack
-			value={running && controller.pct <= 0 ? null : controller.pct}
+			value={percent}
 			label={stepsLabel}
 			tone={progressState.status === 'done' ? 'success' : progressState.status === 'failed' ? 'danger' : 'accent'}
-			active={running}
+			active={running && !controller.uncertain}
 		/>
 		<div class="mt-2 flex items-center justify-between gap-3 text-xs text-ink-2">
-			<span class="font-mono text-sm text-ink-0">
-				{#if running && controller.pct <= 0}{td('steps.prepare')}{:else}<AnimatedNumber value={Math.round(percent)} />%{/if}
+			<span class="text-sm text-ink-0 tabular-nums">
+				{#if percent === null}{td('steps.prepare')}{:else}{Math.round(percent)}%{/if}
 			</span>
 			{#if controller.elapsedSeconds > 0}
 				<span class="flex-shrink-0">{t('progress.elapsed', { seconds: controller.elapsedSeconds })}</span>
 			{/if}
 		</div>
 		<p class="mt-2 mb-4 min-h-5 text-sm text-ink-2" role="status" aria-live="polite">{controller.msg}</p>
+		<p class="mb-4 text-xs text-ink-2">{t('progress.reported')}</p>
+		{#if Number.isFinite(controller.pct) && controller.step}<p class="mb-4 text-xs text-ink-2">{t('progress.native', { percent: controller.pct })}</p>{/if}
+		{#if controller.uncertain}<Alert tone="warning" class="mb-4">{t('progress.unknown')}</Alert>{/if}
 
 		<StepProgress steps={listSteps} current={progressState.current} status={progressState.status} label={stepsLabel} class="mb-4" />
 
@@ -69,7 +73,7 @@
 		{:else}
 			<div class="flex items-center justify-between gap-3">
 				<p class="text-xs text-ink-2">{t('progress.background')}</p>
-				<Button variant="outline" size="sm" onclick={onClose}>{t('actions.close')}</Button>
+				<Button variant="outline" size="sm" onclick={onClose}>{t('progress.minimize')}</Button>
 			</div>
 		{/if}
 	</div>

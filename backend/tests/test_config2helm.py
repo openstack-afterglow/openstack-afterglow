@@ -512,3 +512,47 @@ async def test_rendered_session_accepts_until_original_deadline_and_preserves_sh
         )
     assert error.value.status_code == 401
     deleted.assert_awaited_once_with("rendered-session")
+
+
+def test_setup_chart_sources_include_the_canonical_schema_job():
+    sources = config2helm.chart_sources()
+    assert sources["templates/backend/schema-job.yaml"] == (
+        ROOT / "helm/afterglow/templates/backend/schema-job.yaml"
+    ).read_text(encoding="utf-8")
+
+
+def test_generated_chart_renders_schema_job_and_both_read_only_writer_gates(cfg, tmp_path):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is required to render the generated chart contract")
+    chart = tmp_path / "generated-chart"
+    for name, content in config2helm.chart_sources().items():
+        path = chart / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    values = chart / "values-local.yaml"
+    values.write_text(config2helm.render_values(cfg), encoding="utf-8")
+    rendered = subprocess.run(
+        [helm, "template", "afterglow", str(chart), "--values", str(values)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    documents = [document for document in yaml.safe_load_all(rendered.stdout) if document]
+    jobs = [document for document in documents if document["kind"] == "Job"]
+    assert len(jobs) == 1
+    schema = jobs[0]["spec"]["template"]["spec"]["containers"][0]
+    assert schema["command"] == ["python", "-m", "scripts.bootstrap_schema", "--if-configured"]
+    writers = [
+        document
+        for document in documents
+        if document["kind"] == "Deployment" and document["metadata"]["name"] in {"backend", "notion-worker"}
+    ]
+    assert len(writers) == 2
+    for writer in writers:
+        verifier = writer["spec"]["template"]["spec"]["initContainers"][0]
+        assert verifier["command"] == [*schema["command"], "--verify-only"]
+        assert verifier["image"] == schema["image"]
+        assert verifier["envFrom"] == schema["envFrom"]
+        assert verifier["volumeMounts"] == schema["volumeMounts"]

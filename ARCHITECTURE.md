@@ -8,6 +8,10 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 Kolla backend launcher는 `afterglow_backend_workers` 양의 정수로 호스트당 Uvicorn 프로세스 수를 지정하며 기본값은 1이다. 프로세스별 connection pool·cache·startup 작업과 스트림 중단 가능성을 고려해야 하며 설정 변경만으로 운영에 적용되지 않는다. 기존 ASGI factory 및 proxy trust 경계는 유지한다.
 Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·installer를 환경의 `share/afterglow/kolla`에 소유한다. 예전 `openstack-afterglow` distribution이 설치된 환경은 동일 자산의 이중 소유를 막도록 이전 패키지를 먼저 제거하고 새 artifact를 설치·재설치해야 하며, installer는 이전 metadata가 남으면 거부한다. 안정 Kolla 경로는 설치된 자산을 가리키는 링크이며 정확히 식별한 구 checkout 링크만 이관한다. Role/site가 다른 checkout을 가리키면 `AFTERGLOW_LEGACY_ROLE_TARGET`·`AFTERGLOW_LEGACY_SITE_TARGET`에 각각 전체 절대 링크 text를 지정하고, 미지정 target만 `AFTERGLOW_REPO_DIR`에서 도출한다. 두 경로를 모두 preflight하며 source checkout·설정·foreign 경로는 보존한다. 패키지 갱신은 이미 연결된 파일을 갱신하지만 최초 stock-site import와 Kolla 재설치 후 복원은 별도 installer가 필요하다. 패키지 설치는 서비스 배포가 아니며 아직 미발행 소스다.
 
+**프로젝트 quota·시스템 정보 (source/local):** 저장된 enrollment singleton이 없는 경우 신규 개인 프로젝트의 제공 기본 보안 그룹10개·규칙200개로 여유를 넓힌다. 별도 native 예약은 아니며 기존 관리자 template, 동결 intent, 기존 프로젝트 및 조직 프로젝트의 native 기본값은 변경하지 않는다. 관리자 버전 정보는 기존 보호된 API와 검증된 관리자 경계를 유지한 채 메인에서 `/admin/system-info`로 옮긴다. 운영 배포·quota 변경은 없다.
+
+**Drover 작업 추적 (source/local):** 초기 progress track은 전체 너비를 사용한다. 표시 퍼센트는 관측된 단계의 추정치이며 native 보고값은 별도로 남긴다. 전역 dock은 사용자·도메인·프로젝트에 묶인 tab-local operation ID를 사용하여 GET으로만 계속 조회하고, 완료 전 최소화는 허용하되 닫지 않는다. Stream EOF·전송 오류·미확인 결과는 terminal이 아니며 operation ID 수신 전 유실은 재전송하지 않고 unknown으로 남는다. 확인된 pre-admission quota 거절만 marker로 구분한다. 이 source는 운영 반영이나 provider 준비를 뜻하지 않는다.
+
 **MCP VM 생성 명시 선택 (source/local):** `afterglow_vm_create`는 이미지·flavor·네트워크·부팅 볼륨 크기·현재 사용자 SSH 키와 대상 프로젝트 보안그룹을 모두 명시해야 한다. Preview와 native 쓰기 전에 provider 소유권을 재검증하고 선택 내용을 승인 fingerprint에 포함한다. 기존 VM·권한은 변경하지 않으며 이 source 변경은 운영 배포가 아니다.
 
 **MCP member 권한·클라이언트 식별 (source/local):** 프로젝트의 native cloud 관리 가능 여부와 키/동의의 선택된 접근 상한을 분리해 표시한다. 검증된 `member`의 기존 관리 허용·현재 역할/저장 프로젝트/발급 role ceiling 교집합은 유지하며 read key·reader·unknown을 쓰기로 승격하지 않는다. 프로젝트 preview는 검증한 request-local `AccessInfo` catalog를 독립 native 정책 조회에 전달해 불필요한 동일 token 재교환을 피한다. Native 서비스의404/403·미확인을 관리 허용으로 바꾸지는 않는다. 연결 카드에서는 기존 정제 관측의 이름·버전·신고/추정 근거를 접지 않은 요약에 표시하고, 플랫폼·날짜·제품 추론은 상세에 둔다. Client ID·프로젝트 UUID masking과 exact grant 폐기·Lumen MCP 제외는 유지한다. 새 schema·권위 cache·운영 배포는 없다.
@@ -972,7 +976,7 @@ Nova2.47+ embedded flavor의 `original_name`을 SDK가 가상ID로 노출하는 
 
 ### GPU·고성능 인스턴스 사용 일정
 
-`models/instance_usage.py`와 `services/instance_usage.py`는 Nova 서버의 `afterglow_usage_*` metadata를 일정·종료일·동작·볼륨 동의·revision·최신 연장 사유·dispatch 상태의 유일한 정본으로 사용한다. 별도 SQL/Redis 일정 레코드나 schema migration은 없다. GPU 전체 및12vCPU 이상 또는65536MiB 이상, 관리자 추가 extra spec 대상의 sync/SSE·admin SSE·MCP 생성은 최초 Nova CREATE에 일정을 싣는다. 기본은 달력 한 달(UTC 월말 보정)·shelve이고 한 달 초과 초기 기간/연장은 사유를 요구한다. MCP는 승인 fingerprint의 날짜가 흔들리지 않도록 명시적인 aware expires_at을 요구한다.
+`models/instance_usage.py`와 `services/instance_usage.py`는 Nova 서버의 `afterglow_usage_*` metadata를 일정·종료일·동작·볼륨 동의·revision·최신 연장 사유·dispatch 상태의 유일한 정본으로 사용한다. SQL108의 도메인 승인 정책·요청 이력은 일정 정본이 아니며 Redis는 조정만 소유한다. GPU 전체 및12vCPU 이상 또는65536MiB 이상, 관리자 추가 extra spec 대상의 sync/SSE·admin SSE·MCP 생성은 최초 Nova CREATE에 일정을 싣는다. 기본은 달력 한 달(UTC 월말 보정)·shelve이고 한 달 초과 초기 기간은 사유를 요구한다. MCP는 승인 fingerprint의 날짜가 흔들리지 않도록 명시적인 aware expires_at을 요구한다.
 
 Palimpsest catalog의 독립 cloud 생성, 관리자 직접 consume와 Dockerfile import의 `consumer.usage_schedule`도 동일 검증을 거쳐 첫 consumer Nova CREATE에 lineage와 일정을 함께 넣는다. 기존 비동기 작업의 불변 SQL 입력은 CREATE 요청 전달용이며 생성된 VM의 만료/연장 정본으로 읽지 않는다. 기본 한 달은 실제 consumer provisioning 시작에 계산하고, 오래 기다린 명시 종료일은 첫 POST 직전에 재확인한다.
 
@@ -981,6 +985,10 @@ Palimpsest catalog의 독립 cloud 생성, 관리자 직접 consume와 Dockerfil
 Native 전체 cloud를 바꾸는 scheduler는 `[instance_usage] scheduler_enabled=false`가 기본이다. 일반 local/dev Compose는 별도 Redis와 운영 cloud credential을 함께 사용할 수 있으므로 자동 활성화하지 않는다. 운영자가 같은 cloud의 공유 조정 Redis·대상·권한·기존 유예/복구 경계를 확인하고 명시적으로 켠 배포에서만 census·최초 등록·만료 동작을 실행한다. 꺼져 있어도 metadata 일정 API와 화면은 읽고 편집할 수 있다.
 
 `instance_usage_scheduler`는 API process의 독립 `instance-usage-dispatch` lane으로 native 전체 서버/catalog를 읽고 기존 대상에 첫 metadata 등록 시점부터 한 달 유예를 준다. 동일 cloud의 모든 API/scheduler는 같은 Redis primary/logical DB·WorkDispatcher namespace와 cloud/project/server 임시 잠금을 공유해야 한다. Redis는 조정만 소유하며 일정 저장소가 아니다. Fresh 실제 프로젝트 credential·서버 소유권·만료/revision·lease를 재확인하고 metadata 요청 marker를 읽어 확인한 뒤 단일 native mutation을 보낸다. `shelve → SHELVED → offload → SHELVED_OFFLOADED`, 선택한 `stop → 정지 관측 → 일반 DELETE`를 별도 tick으로 관측하며 요청 불명은 재전송·강제 처리하지 않는다. 완료/만료된 인스턴스의 Afterglow start/unshelve는 사유 있는 미래 연장 후에만 가능하다.
+
+`instance_usage_governance`는 미래 종료일 단축과 기존 종료일로부터 최대 한 calendar month의 사유 있는 연장을 공통 검증한다. 기본 자동 승인이고 현재 도메인 manager가 수동 검토를 켜면 동일 도메인 manager 또는 정확한 프로젝트 admin/owner가 요청을 검토한다. 대기 요청은 native 만료를 변경하거나 만료 처리를 멈추지 않는다. SQL revision/요청·graph lease와 동일 VM usage lease를 사용하고, Nova 전송 전 durable `applying`을 기록하며 불명 결과는 `uncertain`으로 남겨 재전송하지 않는다. 검토 executor의 실제 admin-project 인증과 별도 target binding·소유권을 확인한다. 구형 writer는 승인 정책을 우회할 수 있으므로 운영 cutover 전 schema·모든 writer·공유 coordination·복구를 함께 확인해야 한다.
+
+요청 ORM 변경은 각 SQL UPDATE에 기존 `revision` 조건을 적용한다. 늦게 도착한 거절·stale 처리가 더 최신 `applying`·`uncertain`·`approved` 상태를 덮지 않으며 충돌은 rollback 후409로 보고한다. Native 결과가 이미 전송되었을 가능성은 별도 확인해야 한다.
 
 자동 삭제 전에 Nova2.85 연결 목록과 서버의 전체 attached volume 목록, exact-project Cinder 단일 연결을 교차한다. 기본은 root/data의 delete_on_termination=false를 확인하고, 명시 동의에서만 연결 볼륨 삭제 flag를 설정한다. 일반·관리자 attach/detach/flag 변경도 같은 잠금과 dispatch-state fence를 사용한다. 외부 native writer와 metadata/BDM API의 CAS 부재는 원자성 보장이 아니며 공유되지 않는 Redis로 동일 cloud scheduler를 실행하지 않는다.
 

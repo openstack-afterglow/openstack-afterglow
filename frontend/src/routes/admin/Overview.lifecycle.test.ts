@@ -15,7 +15,6 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: (callback: 
 vi.mock('$lib/components/admin/overview/ResourceDonutsCard.svelte', () => ({ default: () => ({}) }));
 vi.mock('$lib/components/admin/overview/KpiCardRow.svelte', () => ({ default: () => ({}) }));
 vi.mock('$lib/components/admin/overview/ServiceCountCards.svelte', () => ({ default: () => ({}) }));
-vi.mock('$lib/components/admin/overview/VersionInfoPanel.svelte', () => ({ default: () => ({}) }));
 import Page from './+page.svelte';
 const initial = get(auth);
 const row = (name: string): DomainUsage => ({ domain_id: 'owned-domain', domain_name: name, owner_status: 'known', project_ids: ['owned-project'], project_count: 1, instances: 1, vcpus: 2, ram_mb: 4096, gpu_instances: 0, volumes: 1, volume_gb: 1024, attached_volumes: 1, attached_gb: 1024, available_volumes: 0, available_gb: 0 });
@@ -42,6 +41,8 @@ describe('administrator overview response ownership', () => {
 		serve(Promise.resolve([row('Current domain')])); render(Page);
 		expect(await screen.findByText('Current domain')).toBeTruthy();
 		expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/admin/overview/projects')).toBe(false);
+		expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/admin/version')).toBe(false);
+		expect(screen.queryByText('System version information')).toBeNull();
 		expect(screen.getByRole('link', { name: 'View instances' }).getAttribute('href')).toBe('/admin/instances?domain_id=owned-domain');
 	});
 

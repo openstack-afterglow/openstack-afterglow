@@ -46,7 +46,7 @@ describe('native usage policy presentation', () => {
 		expect(usagePayload(draft, schedule.expires_at)).toEqual({ expires_at: null, expiry_action: 'delete', delete_volumes: false, reason: '' });
 	});
 
-	it('requires a reason for a later initial date or extension and rejects shortening', () => {
+	it('requires a reason for later dates while allowing future shortening', () => {
 		const draft = defaultUsageDraft(new Date(now));
 		draft.expiresLocal = toLocalDateTime('2026-03-01T12:34:00Z');
 		expect(usageDraftError(draft, undefined, now)).toBe('reasonRequired');
@@ -54,7 +54,20 @@ describe('native usage policy presentation', () => {
 		expect(usageDraftError(draft, undefined, now)).toBeNull();
 		expect(usagePayload(draft).reason).toBe('research continues');
 		draft.expiresLocal = toLocalDateTime('2026-02-27T12:34:00Z');
-		expect(usageDraftError(draft, schedule.expires_at, now)).toBe('shorterDate');
+		expect(usageDraftError(draft, schedule.expires_at, now, schedule.starts_at)).toBeNull();
+	});
+
+	it('caps each extension at one UTC calendar month from the effective expiry', () => {
+		const draft = scheduleDraft(schedule);
+		draft.reason = 'Research continues';
+		draft.expiresLocal = toLocalDateTime('2026-03-28T12:34:00Z');
+		expect(usageDraftError(draft, schedule.expires_at, now)).toBeNull();
+		draft.expiresLocal = toLocalDateTime('2026-03-28T12:35:00Z');
+		expect(usageDraftError(draft, schedule.expires_at, now)).toBe('extensionLimit');
+		draft.expiresLocal = toLocalDateTime('2026-01-31T12:34:00Z');
+		expect(usageDraftError(draft, schedule.expires_at, now - 60000, schedule.starts_at)).toBe('beforeStart');
+		draft.expiresLocal = toLocalDateTime('2026-01-31T12:33:00Z');
+		expect(usageDraftError(draft, schedule.expires_at, now)).toBe('pastDate');
 	});
 
 	it('limits UTF-8 bytes, not characters, and rejects controls and stale volume consent', () => {

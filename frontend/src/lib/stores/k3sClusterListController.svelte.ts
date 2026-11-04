@@ -1,11 +1,12 @@
 import { t } from '$lib/i18n/ns/drover';
 import { api, ApiError } from '$lib/api/client';
 import { streamK3sProgress } from '$lib/api/k3sSseStream';
+import type { K3sAdmissionRefused } from '$lib/api/k3sSseStream';
 import { toast } from '$lib/stores/toast';
-import { K3S_CREATE_STEPS } from '$lib/components/k3sSteps';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import type { K3sCluster } from '$lib/types/k3s';
-import type { K3sProgressController } from '$lib/stores/k3sProgress.svelte';
+import { createK3sProgress, type K3sProgressController } from '$lib/stores/k3sProgress.svelte';
+import { k3sOperations } from '$lib/stores/k3sOperations.svelte';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { k3sPermissions } from './k3sPermissions';
@@ -15,7 +16,6 @@ export interface K3sClusterListOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
   userId: () => string | null | undefined;
-  progress: K3sProgressController;
 }
 
 export function createK3sClusterListController(opts: K3sClusterListOpts) {
@@ -40,6 +40,13 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     void experienceApplied(ctx, {});
   }
 
+
+  function refuse(progress: K3sProgressController, failure: ApiError, ctx: ExperienceContext | undefined) {
+    const { reason, quota } = failure as K3sAdmissionRefused;
+    progress.failWith(failure.message, ctx, reason === 'security_group_quota_unavailable' || reason === 'security_group_quota_exceeded'
+      ? { reason, ...(quota ? { quota: { resource: quota.resource, required: quota.required, available: quota.available } } : {}) }
+      : undefined);
+  }
   async function fetchClusters(fetchOpts?: { refresh?: boolean }, context?: ExperienceContext) {
     const ctx = context ?? (fetchOpts?.refresh ? beginExperienceAction('k3s', 'refresh', 'resource.list') : beginExperienceLoad('k3s', 'resource.list'));
     experienceState(ctx, 'loading');
@@ -77,13 +84,15 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     master_count: number; stampede_enabled?: boolean;
   }) {
     if (!get(k3sPermissions).editClusters) return;
+    if (creating) return;
+    const progress = createK3sProgress();
+    k3sOperations.track(progress, form.name);
     const ctx = beginExperienceAction('k3s', 'create', 'shared.stream');
     const current = captureOwner();
     creating = true;
     createError = '';
-    opts.progress.begin('create', t('list.preparingCreate'), ctx);
-    const clusterName = form.name;
-    let prevStep = '';
+    progress.begin('create', t('list.preparingCreate'), ctx);
+    showModal = false;
     try {
       const body = {
         name: form.name,
@@ -99,24 +108,19 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
       for await (const msg of streamK3sProgress('/api/v1/k3s/clusters/async', {
         method: 'POST', body, token: opts.token(), projectId: opts.projectId(), experience: ctx,
       })) {
-        opts.progress.apply(msg, ctx);
-        if (msg.step !== prevStep && !opts.progress.visible && msg.step !== 'completed' && msg.step !== 'failed') {
-          const stepLabel = K3S_CREATE_STEPS.find(s => s.id === msg.step)?.label ?? msg.step;
-          toast.info(t('list.stepProgress', { name: clusterName, step: stepLabel }));
-        }
-        prevStep = msg.step;
-        if (msg.step === 'completed') {
-          toast.success(t('list.createCompleted', { name: clusterName || t('list.defaultClusterName'), seconds: opts.progress.elapsedSeconds }));
-        } else if (msg.step === 'failed') {
-          toast.error(t('list.createFailed', { error: msg.error || t('list.unknownError') }));
-        }
+        if (!current() || !k3sOperations.owns(progress)) { experienceDiscarded(ctx, 'scope_changed'); break; }
+        progress.apply(msg, ctx);
       }
     } catch (e) {
-      opts.progress.failWith(String(e), ctx);
+      if (current() && k3sOperations.owns(progress)) {
+        if (e instanceof ApiError && e.code === 'drover_pre_admission_refused') refuse(progress, e, ctx);
+        else progress.disconnect(String(e));
+      }
     } finally {
-      opts.progress.end(ctx, current);
+      progress.end(ctx, current);
+      k3sOperations.handoff(progress);
       creating = false;
-      await fetchClusters(undefined, ctx);
+      if (current()) await fetchClusters(undefined, ctx);
     }
   }
 
@@ -128,23 +132,28 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     if (!get(k3sPermissions).administerClusters || opts.userId() !== userId || opts.projectId() !== projectId) return;
     const ctx = beginExperienceAction('k3s', 'delete', 'shared.stream');
     const current = captureOwner();
+    if (deleting) return;
+    const progress = createK3sProgress();
+    k3sOperations.track(progress, name);
     deleting = id;
-    opts.progress.begin('delete', '', ctx);
+    progress.begin('delete', '', ctx);
     try {
       for await (const msg of streamK3sProgress(`/api/v1/k3s/clusters/${id}/delete-async`, {
         method: 'POST', token: opts.token(), projectId: opts.projectId(), experience: ctx,
       })) {
-        opts.progress.apply(msg, ctx);
-        if (msg.step === 'completed') toast.success(t('list.deleteCompleted', { name, seconds: opts.progress.elapsedSeconds }));
-        else if (msg.step === 'failed') toast.error(t('list.deleteFailed', { error: msg.error || t('list.unknownError') }));
+        if (!current() || !k3sOperations.owns(progress)) { experienceDiscarded(ctx, 'scope_changed'); break; }
+        progress.apply(msg, ctx);
       }
     } catch (e) {
-      opts.progress.failWith(String(e), ctx);
-      toast.error(t('list.deleteFailed', { error: String(e) }));
+      if (current() && k3sOperations.owns(progress)) {
+        if (e instanceof ApiError && e.code === 'drover_pre_admission_refused') refuse(progress, e, ctx);
+        else progress.disconnect(String(e));
+      }
     } finally {
-      opts.progress.end(ctx, current);
+      progress.end(ctx, current);
+      k3sOperations.handoff(progress);
       deleting = null;
-      await fetchClusters(undefined, ctx);
+      if (current()) await fetchClusters(undefined, ctx);
     }
   }
 

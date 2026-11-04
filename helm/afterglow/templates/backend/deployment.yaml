@@ -32,6 +32,8 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        {{- include "afterglow.schemaContainer" (dict "image" .Values.image.backend "resources" .Values.resources.backend "verifyOnly" true) | nindent 8 }}
       containers:
         - name: backend
           image: {{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}

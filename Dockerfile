@@ -233,6 +233,7 @@ COPY --chown=appuser:appuser frontend/scripts/ /app/frontend/scripts/
 COPY --from=backend --chown=appuser:appuser /app/app /app/app
 COPY --from=backend --chown=appuser:appuser /app/tofu /app/tofu
 COPY --from=backend --chown=appuser:appuser /app/scripts /app/scripts
+COPY --from=backend --chown=appuser:appuser /app/migrations /app/migrations
 COPY --chown=appuser:appuser backend/pyproject.toml backend/uv.lock /app/
 USER appuser
 ENTRYPOINT ["/app/.venv/bin/python", "/app/scripts/native_vm.py"]

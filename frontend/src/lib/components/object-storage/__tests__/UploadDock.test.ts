@@ -67,4 +67,13 @@ describe('UploadDock transfer state', () => {
 		window.dispatchEvent(completedUnload);
 		expect(completedUnload.defaultPrevented).toBe(false);
 	});
+
+	it('uses normal stack flow without changing upload controls when embedded in the shared dock', async () => {
+		const { container } = render(UploadDock, { inline: true });
+		await tick();
+		expect(container.firstElementChild?.classList.contains('fixed')).toBe(false);
+		expect(container.firstElementChild?.classList.contains('relative')).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: 'report.csv 업로드 취소' }));
+		expect(actions.cancel).toHaveBeenCalledWith('upload-1');
+	});
 });

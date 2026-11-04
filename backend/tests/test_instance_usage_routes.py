@@ -1,16 +1,20 @@
 """HTTP usage contracts execute real metadata validation and revision updates."""
 
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.compute import instances, usage_schedules
 from app.api.identity import admin_instances
 from app.models.compute import FlavorInfo
+from app.models.instance_usage_governance import InstanceUsageExtensionRequest, InstanceUsagePolicy
 from app.services import instance_usage as usage
+from app.services import instance_usage_governance as governance
 from tests.conftest import make_token_info
 
 PROJECT = "test-project-123"
@@ -20,7 +24,50 @@ ROUTES = ["/api/v1/instances", "/api/v1/instances/async", "/api/v1/admin/instanc
 
 
 @pytest.fixture
-async def usage_cloud(monkeypatch, mock_conn):
+async def governance_store(monkeypatch):
+    """Real SQL intent transactions; native authority/graph transport is isolated."""
+    engine = create_async_engine("sqlite+aiosqlite://")
+    async with engine.begin() as connection:
+        await connection.run_sync(
+            lambda sync: InstanceUsagePolicy.metadata.create_all(
+                sync, tables=[InstanceUsagePolicy.__table__, InstanceUsageExtensionRequest.__table__]
+            )
+        )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def sessions():
+        async with factory() as session:
+            yield session
+
+    @asynccontextmanager
+    async def graph():
+        yield SimpleNamespace(assert_owned=AsyncMock())
+
+    monkeypatch.setattr(governance, "session_scope", sessions)
+    monkeypatch.setattr(governance, "governance_lock", graph)
+    monkeypatch.setattr(governance, "cloud_id", AsyncMock(return_value="c" * 64))
+    monkeypatch.setattr(governance, "project_domain", AsyncMock(return_value="default"))
+    monkeypatch.setattr(
+        governance,
+        "live_access",
+        AsyncMock(
+            return_value={
+                "manager": False,
+                "write": True,
+                "review": False,
+                "read": True,
+            }
+        ),
+    )
+    try:
+        yield factory
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def usage_cloud(monkeypatch, mock_conn, governance_store):
     native = SimpleNamespace(
         id=INSTANCE,
         project_id=PROJECT,
@@ -55,7 +102,33 @@ async def usage_cloud(monkeypatch, mock_conn):
     monkeypatch.setattr(usage_schedules, "rec", AsyncMock())
     monkeypatch.setattr(usage_schedules, "invalidate", AsyncMock())
     monkeypatch.setattr(admin_instances, "_make_admin_conn", lambda *_args: mock_conn)
-    return native
+
+    def fixed_operator():
+        access = SimpleNamespace(
+            project_scoped=True,
+            system_scoped=False,
+            project_id="native-admin-project",
+            user_id="native-service-user",
+            auth_token="native-service-token",
+            is_admin_project=True,
+            role_names=["admin"],
+            _data={"token": {"is_admin_project": True}},
+        )
+        return SimpleNamespace(
+            compute=compute,
+            endpoint_for=mock_conn.endpoint_for,
+            close=lambda: None,
+            session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda _session: access)),
+        )
+
+    monkeypatch.setattr(governance.keystone, "get_admin_project_connection", fixed_operator)
+    from app.main import app
+
+    app.dependency_overrides[usage_schedules.get_governance_conn] = lambda: mock_conn
+    try:
+        yield native
+    finally:
+        app.dependency_overrides.pop(usage_schedules.get_governance_conn, None)
 
 
 @pytest.mark.asyncio

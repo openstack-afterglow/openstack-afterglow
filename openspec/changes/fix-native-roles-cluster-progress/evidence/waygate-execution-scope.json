@@ -1,0 +1,162 @@
+{
+  "diagnosis": {
+    "kind": "read-only-production-diagnosis",
+    "captured_at": "2026-11-04T09:12:30.826718+00:00",
+    "release_revision": "8a62fd9f1e8deabebb0d78a39720675992940569",
+    "requests_replayed": 0,
+    "production_writes": 0,
+    "access_logs": [
+      {
+        "host": "172.30.0.11",
+        "exit": 0,
+        "lines": 4665,
+        "facts": [
+          {
+            "timestamp": "2026-11-04T07:45:17.526771080Z",
+            "method": "POST",
+            "route": "/v1/servers",
+            "status": "403",
+            "scope_mismatch": false
+          }
+        ]
+      },
+      {
+        "host": "172.30.0.12",
+        "exit": 0,
+        "lines": 4665,
+        "facts": []
+      },
+      {
+        "host": "172.30.0.13",
+        "exit": 0,
+        "lines": 4658,
+        "facts": []
+      }
+    ],
+    "matching_grants": [
+      {
+        "id": "4233446a-a68c-493f-9fb3-1c5222f5523f",
+        "project_id": "a4da5d82465b44d5afda1dc0388b687d",
+        "user_id": "0665ef750b0a4533af760d038ecc6098",
+        "trust_id": "93d435426b1346e5bcfe4b8fed117544",
+        "trustee_user_id": "f37b46588a224e30b0c72b2c4cd506ee",
+        "role_id": "c0daddac816248739496cf30a5a1ae84",
+        "status": "revoked",
+        "expires_at": "2026-11-04 09:45:13",
+        "created_at": "2026-11-04 07:45:13.501247",
+        "updated_at": "2026-11-04 07:45:17.517613"
+      }
+    ],
+    "keystone_settings": {
+      "exit": 0,
+      "settings": {
+        "token_expiration_seconds": "86400",
+        "provider": "fernet"
+      }
+    },
+    "installed_keystone": {
+      "keystone_version": "28.0.3.dev6",
+      "default_expire_time": "def default_expire_time():\n    \"\"\"Determine when a fresh token should expire.\n\n    Expiration time varies based on configuration (see ``[token] expiration``).\n\n    :returns: a naive UTC datetime.datetime object\n\n    \"\"\"\n    expire_delta = datetime.timedelta(seconds=CONF.token.expiration)\n    expires_at = timeutils.utcnow() + expire_delta\n    return expires_at.replace(microsecond=0)\n",
+      "password_authentication": "    def authenticate(self, auth_payload):\n        \"\"\"Try to authenticate against the identity backend.\"\"\"\n        response_data = {}\n        user_info = auth_plugins.UserAuthInfo.create(auth_payload, METHOD_NAME)\n\n        try:\n            PROVIDERS.identity_api.authenticate(\n                user_id=user_info.user_id, password=user_info.password\n            )\n        except AssertionError:\n            # authentication failed because of invalid username or password\n            msg = _('Invalid username or password')\n            raise exception.Unauthorized(msg)\n\n        response_data['user_id'] = user_info.user_id\n\n        return base.AuthHandlerResponse(\n            status=True, response_body=None, response_data=response_data\n        )\n",
+      "trust_roles": "    def _get_trust_roles(self):\n        roles = []\n        # If redelegated_trust_id is set, then we must traverse the trust_chain\n        # in order to determine who the original trustor is. We need to do this\n        # because the user ID of the original trustor helps us determine scope\n        # in the redelegated context.\n        if self.trust.get('redelegated_trust_id'):\n            trust_chain = PROVIDERS.trust_api.get_trust_pedigree(self.trust_id)\n            original_trustor_id = trust_chain[-1]['trustor_user_id']\n        else:\n            original_trustor_id = self.trustor['id']\n\n        trust_roles = [{'role_id': role['id']} for role in self.trust['roles']]\n        effective_trust_roles = PROVIDERS.assignment_api.add_implied_roles(\n            trust_roles\n        )\n        effective_trust_role_ids = {\n            r['role_id'] for r in effective_trust_roles\n        }\n\n        current_effective_trustor_roles = (\n            PROVIDERS.assignment_api.get_roles_for_trustor_and_project(\n                original_trustor_id, self.trust.get('project_id')\n            )\n        )\n\n        for trust_role_id in effective_trust_role_ids:\n            if trust_role_id in current_effective_trustor_roles:\n                role = PROVIDERS.role_api.get_role(trust_role_id)\n                if role['domain_id'] is None:\n                    roles.append(role)\n            else:\n                raise exception.Forbidden(_('Trustee has no delegated roles.'))\n\n        return roles\n"
+    },
+    "installed_authenticate_for_token": "def authenticate_for_token(auth=None):\n    \"\"\"Authenticate user and issue a token.\"\"\"\n    try:\n        auth_info = core.AuthInfo.create(auth=auth)\n        auth_context = core.AuthContext(method_names=[], bind={})\n        authenticate(auth_info, auth_context)\n        if auth_context.get('access_token_id'):\n            auth_info.set_scope(None, auth_context['project_id'], None)\n        _check_and_set_default_scoping(auth_info, auth_context)\n        (domain_id, project_id, trust, unscoped, system) = (\n            auth_info.get_scope()\n        )\n        trust_id = trust.get('id') if trust else None\n\n        receipt = receipt_handlers.extract_receipt(auth_context)\n\n        # NOTE(notmorgan): only methods that actually run and succeed will\n        # be in the auth_context['method_names'] list. Do not blindly take\n        # the values from auth_info, look at the authoritative values. Make\n        # sure the set is unique.\n        # NOTE(adriant): The set of methods will also include any methods from\n        # the given receipt.\n        if receipt:\n            method_names_set = set(\n                auth_context.get('method_names', []) + receipt.methods\n            )\n        else:\n            method_names_set = set(auth_context.get('method_names', []))\n        method_names = list(method_names_set)\n\n        app_cred_id = None\n        if 'application_credential' in method_names:\n            token_auth = auth_info.auth['identity']\n            if \"application_credential\" in token_auth:\n                app_cred_id = token_auth['application_credential']['id']\n            elif \"application_credential_id\" in auth_context:\n                app_cred_id = auth_context[\"application_credential_id\"]\n            else:\n                raise exception.MissingApplicationCredentialId(\n                    user_id=auth_context['user_id']\n                )\n\n        # Do MFA Rule Validation for the user\n        if not core.UserMFARulesValidator.check_auth_methods_against_rules(\n            auth_context['user_id'], method_names_set\n        ):\n            raise exception.InsufficientAuthMethods(\n                user_id=auth_context['user_id'], methods=method_names\n            )\n\n        expires_at = auth_context.get('expires_at')\n        token_audit_id = auth_context.get('audit_id')\n\n        token = PROVIDERS.token_provider_api.issue_token(\n            auth_context['user_id'],\n            method_names,\n            expires_at=expires_at,\n            system=system,\n            project_id=project_id,\n            domain_id=domain_id,\n            auth_context=auth_context,\n            trust_id=trust_id,\n            app_cred_id=app_cred_id,\n            parent_audit_id=token_audit_id,\n        )\n\n        # NOTE(wanghong): We consume a trust use only when we are using\n        # trusts and have successfully issued a token.\n        if trust:\n            PROVIDERS.trust_api.consume_use(token.trust_id)\n\n        return token\n    except exception.TrustNotFound as e:\n        LOG.warning(e)\n        raise exception.Unauthorized(e)\n",
+    "failed_token_retained": false,
+    "mechanism": "Password Trust issuance uses native token lifetime86400 without Trust expiry clamp; Waygate0.3.6 rejects token nominal expiry beyond independent2h grant. Existing synthetic fixture incorrectly min-clamped expiry. Actual failed token was not retained, but matching native member grant/config/installed-source mechanism is evidenced.",
+    "installed_additional_authentication_sources": {
+      "authenticate": "def authenticate(auth_info, auth_context):\n    \"\"\"Authenticate user.\"\"\"\n    # NOTE(notmorgan): This is not super pythonic, but we lean on the\n    # __setitem__ method in auth_context to handle edge cases and security\n    # of the attributes set by the plugins. This check to ensure\n    # `auth_context` is an instance of AuthContext is extra insurance and\n    # will prevent regressions.\n\n    if not isinstance(auth_context, core.AuthContext):\n        LOG.error(\n            '`auth_context` passed to the Auth controller '\n            '`authenticate` method is not of type '\n            '`keystone.auth.core.AuthContext`. For security '\n            'purposes this is required. This is likely a programming '\n            'error. Received object of type `%s`',\n            type(auth_context),\n        )\n        raise exception.Unauthorized(\n            _('Cannot Authenticate due to internal error.')\n        )\n    # The 'external' method allows any 'REMOTE_USER' based authentication\n    # In some cases the server can set REMOTE_USER as '' instead of\n    # dropping it, so this must be filtered out\n    if flask.request.remote_user:\n        try:\n            external = core.get_auth_method('external')\n            resp = external.authenticate(auth_info)\n            if resp and resp.status:\n                # NOTE(notmorgan): ``external`` plugin cannot be multi-step\n                # it is either a plain success/fail.\n                auth_context.setdefault('method_names', []).insert(\n                    0, 'external'\n                )\n                # NOTE(notmorgan): All updates to auth_context is handled\n                # here in the .authenticate method.\n                auth_context.update(resp.response_data or {})\n\n        except exception.AuthMethodNotSupported:\n            # This will happen there is no 'external' plugin registered\n            # and the container is performing authentication.\n            # The 'kerberos'  and 'saml' methods will be used this way.\n            # In those cases, it is correct to not register an\n            # 'external' plugin;  if there is both an 'external' and a\n            # 'kerberos' plugin, it would run the check on identity twice.\n            LOG.debug(\"No 'external' plugin is registered.\")\n        except exception.Unauthorized:\n            # If external fails then continue and attempt to determine\n            # user identity using remaining auth methods\n            LOG.debug(\"Authorization failed for 'external' auth method.\")\n\n    # need to aggregate the results in case two or more methods\n    # are specified\n    auth_response = {'methods': []}\n    for method_name in auth_info.get_method_names():\n        method = core.get_auth_method(method_name)\n        resp = method.authenticate(auth_info.get_method_data(method_name))\n        if resp:\n            if resp.status:\n                auth_context.setdefault('method_names', []).insert(\n                    0, method_name\n                )\n                # NOTE(notmorgan): All updates to auth_context is handled\n                # here in the .authenticate method. If the auth attempt was\n                # not successful do not update the auth_context\n                resp_method_names = resp.response_data.pop('method_names', [])\n                auth_context['method_names'].extend(resp_method_names)\n                auth_context.update(resp.response_data or {})\n                # NOTE(gtema): When trying to get token from\n                # application_credential based token we need to restore\n                # application_credential_id to prevent escaping its bounds.\n                if \"application_credential_id\" in resp:\n                    auth_context[\"application_credential_id\"] = resp[\n                        \"application_credential_id\"\n                    ]\n            elif resp.response_body:\n                auth_response['methods'].append(method_name)\n                auth_response[method_name] = resp.response_body\n\n    if auth_response[\"methods\"]:\n        # authentication continuation required\n        raise exception.AdditionalAuthRequired(auth_response)\n\n    if 'user_id' not in auth_context:\n        msg = 'User not found by auth plugin; authentication failed'\n        tr_msg = _('User not found by auth plugin; authentication failed')\n        LOG.warning(msg)\n        raise exception.Unauthorized(tr_msg)\n",
+      "default_scope": "def _check_and_set_default_scoping(auth_info, auth_context):\n    (domain_id, project_id, trust, unscoped, system) = auth_info.get_scope()\n    if trust:\n        project_id = trust['project_id']\n    if system or domain_id or project_id or trust:\n        # scope is specified\n        return\n\n    # Skip scoping when unscoped federated token is being issued\n    if constants.IDENTITY_PROVIDER in auth_context:\n        return\n\n    # Do not scope if request is for explicitly unscoped token\n    if unscoped is not None:\n        return\n\n    # fill in default_project_id if it is available\n    try:\n        user_ref = PROVIDERS.identity_api.get_user(auth_context['user_id'])\n    except exception.UserNotFound as e:\n        LOG.warning(e)\n        raise exception.Unauthorized(e)\n\n    default_project_id = user_ref.get('default_project_id')\n    if not default_project_id:\n        # User has no default project. They shall get an unscoped token.\n        msg = (\n            \"User %(user_id)s doesn't have a default project. \"\n            \" The token will be unscoped rather than scoped to a project.\"\n        )\n        LOG.debug(msg, {'user_id': user_ref['id']})\n        return\n\n    # make sure user's default project is legit before scoping to it\n    try:\n        default_project_ref = PROVIDERS.resource_api.get_project(\n            default_project_id\n        )\n        default_project_domain_ref = PROVIDERS.resource_api.get_domain(\n            default_project_ref['domain_id']\n        )\n        if default_project_ref.get(\n            'enabled', True\n        ) and default_project_domain_ref.get('enabled', True):\n            if PROVIDERS.assignment_api.get_roles_for_user_and_project(\n                user_ref['id'], default_project_id\n            ):\n                auth_info.set_scope(project_id=default_project_id)\n            else:\n                msg = (\n                    \"User %(user_id)s doesn't have access to\"\n                    \" default project %(project_id)s. The token\"\n                    \" will be unscoped rather than scoped to the\"\n                    \" project.\"\n                )\n                LOG.debug(\n                    msg,\n                    {\n                        'user_id': user_ref['id'],\n                        'project_id': default_project_id,\n                    },\n                )\n        else:\n            msg = (\n                \"User %(user_id)s's default project %(project_id)s\"\n                \" is disabled. The token will be unscoped rather\"\n                \" than scoped to the project.\"\n            )\n            LOG.debug(\n                msg,\n                {'user_id': user_ref['id'], 'project_id': default_project_id},\n            )\n    except (exception.ProjectNotFound, exception.DomainNotFound):\n        # default project or default project domain doesn't exist,\n        # will issue unscoped token instead\n        msg = (\n            \"User %(user_id)s's default project %(project_id)s not\"\n            \" found. The token will be unscoped rather than\"\n            \" scoped to the project.\"\n        )\n        LOG.debug(\n            msg, {'user_id': user_ref['id'], 'project_id': default_project_id}\n        )\n"
+    },
+    "native_identity_endpoint_configuration": {
+      "auth_url_path": "",
+      "scheme": "http",
+      "has_userinfo": false,
+      "inspection": "read-only get_settings().os_auth_url parsed inside production waygate_api"
+    }
+  },
+  "qualification": {
+    "release_revision": "8a62fd9f1e8deabebb0d78a39720675992940569",
+    "release_source": "/tmp/waygate-scope-0.3.6-20261104",
+    "release_patch": "/tmp/waygate-scope-0.3.6-20261104.patch",
+    "shared_checkout": "/Users/pieroot/code/waygate",
+    "modified_paths": [
+      "waygate/services/execution.py",
+      "tests/test_execution_delegation.py",
+      "tests/test_execution_role_inference.py",
+      "tests/native_execution_scope_smoke.py",
+      "ARCHITECTURE.md",
+      "CHANGELOG.md"
+    ],
+    "baseline": {
+      "exit": 0,
+      "stdout": "{\"baseline\": \"8a62fd9f\", \"predicate\": \"published _validate_access\", \"token_lifetime_seconds\": 86400, \"operation_lifetime_seconds\": 7200, \"status\": 403, \"detail\": \"Waygate execution token scope does not match\", \"provider_sends\": 0, \"native_roles\": [\"member\", \"reader\"]}\n",
+      "stderr": ""
+    },
+    "final_release": {
+      "service_passed": 1499,
+      "skipped": 3,
+      "artifact": "artifact://928",
+      "architecture_source_sha256": "2c5c8d409d16daf61f5e2842bb4f3d3cbdd0bc26eb6b286c6a0591a886474923",
+      "architecture_files": 128,
+      "ruff_owned": "passed"
+    },
+    "shared_compatibility": {
+      "native_scope_and_existing_delegation_passed": 441,
+      "artifact": "artifact://936",
+      "final_new_regression_count": 25,
+      "ruff_owned": "passed",
+      "whole_shared_architecture_stamp": "intentionally preserved: extensive pre-existing unreviewed WIP"
+    },
+    "standalone_runtime": {
+      "release": "passed",
+      "shared": "passed",
+      "api": "actual Uvicorn subprocess",
+      "worker": "actual worker subprocess",
+      "native_sdks": "installed keystoneauth1/python-keystoneclient/openstacksdk",
+      "datastore": "scratch SQLite only",
+      "cloud": "task-owned loopback synthetic Keystone/Nova/Glance/Neutron",
+      "positive": "24h Trust token, member/reader, original credential, 201 then completed PROVISIONING",
+      "negatives": [
+        "issued-reader/current-member403; zero provider sends",
+        "queued membership revocation ERROR; zero new provider sends"
+      ],
+      "token_reissues": 0,
+      "identity_auth_url_shapes": [
+        "versioned /v3",
+        "unversioned root (--unversioned)"
+      ],
+      "identity_endpoint": "SDK-discovered v3 AUTH_INTERFACE; fixed original token; no trust write path guessed from configured root URL"
+    },
+    "limits": [
+      "No production token/resource/IAM/policy/config/schema mutation or create replay",
+      "Failed production token not retained; runtime config/installed code and exact matching SQL/access logs establish expiry mismatch mechanism",
+      "No production deployment/publication/commit/push",
+      "No claim of MariaDB mixed-version qualification; no schema changed",
+      "Source release clone retained for parent integration; shared existing WIP preserved"
+    ],
+    "previous_runs": [
+      {
+        "native_release": {
+          "failed": 3,
+          "passed": 88,
+          "cause": "two missing release-fixture observation fields and one negative fixture incorrectly expired directory credentials; corrected fixture only"
+        }
+      },
+      {
+        "ruff": "initial owned-test fixture import/re-export issues corrected; final owned checks passed"
+      }
+    ],
+    "diagnosis_path": "/tmp/waygate-scope-diagnosis-20261104.json",
+    "review_followup": {
+      "finding": "Configured production os_auth_url is unversioned; fixed-token plugin alone does not discover a versioned base",
+      "correction": "Resolve native v3 auth endpoint before constructing caller fixed-token session; refuse missing discovery; no original token exchange",
+      "qualification": "Full release1499/3skip and shared native441; actual Uvicorn worker smokes passed versioned and unversioned on both checkouts",
+      "production_endpoint_read_only": {
+        "auth_url_path": "",
+        "scheme": "http",
+        "has_userinfo": false,
+        "inspection": "read-only get_settings().os_auth_url parsed inside production waygate_api"
+      }
+    }
+  }
+}

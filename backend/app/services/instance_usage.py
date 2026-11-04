@@ -14,6 +14,7 @@ import secrets
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
 from copy import copy
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -225,12 +226,68 @@ def safe_compute_proxy(conn):
     return proxy
 
 
+@dataclass(frozen=True, slots=True)
+class _OperatorScope:
+    connection_id: int
+    authenticated_project_id: str
+    user_id: str
+    target_project_id: str
+
+
+def _operator_access(conn):
+    from app.services.flavor_composition import _verify_operator
+
+    _verify_operator(conn)
+    access = conn.session.auth.get_access(conn.session)
+    if not isinstance(access.user_id, str) or not access.user_id.strip():
+        raise HTTPException(503, "Native usage operator identity is unavailable")
+    return access
+
+
+def bind_operator_scope(conn, project_id):
+    """Bind an explicitly authorized target without pretending to rescope credentials.
+
+    Only governance may grant human review authority. This proves the separate
+    fixed service executor's native admin-project scope; it grants no human role.
+    """
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise HTTPException(403, "An exact usage target project is required")
+    access = _operator_access(conn)
+    conn._afterglow_project_id = access.project_id
+    conn._afterglow_usage_operator_scope = _OperatorScope(id(conn), access.project_id, access.user_id, project_id)
+
+
+def _target_project(conn):
+    binding = vars(conn).get("_afterglow_usage_operator_scope")
+    if binding is None:
+        return getattr(conn, "_afterglow_project_id", None)
+    if (
+        not isinstance(binding, _OperatorScope)
+        or binding.connection_id != id(conn)
+        or getattr(conn, "_afterglow_project_id", None) != binding.authenticated_project_id
+        or getattr(conn, "_afterglow_authenticated_project_id", None) != binding.authenticated_project_id
+    ):
+        raise HTTPException(403, "Native usage operator target binding is invalid")
+    return binding.target_project_id
+
+
+def _assert_operator_scope(conn):
+    binding = vars(conn).get("_afterglow_usage_operator_scope")
+    if binding is None:
+        return
+    _target_project(conn)
+    access = _operator_access(conn)
+    if access.project_id != binding.authenticated_project_id or access.user_id != binding.user_id:
+        raise HTTPException(403, "Native usage operator identity or scope changed")
+
+
 def require_server_scope(conn, server, instance_id=None) -> str:
-    project = getattr(conn, "_afterglow_project_id", None)
+    project = _target_project(conn)
     authenticated = getattr(conn, "_afterglow_authenticated_project_id", project)
+    operator = vars(conn).get("_afterglow_usage_operator_scope")
     actual = _field(server, "project_id") or _field(server, "tenant_id")
     identifier = _field(server, "id")
-    if not isinstance(project, str) or not project or authenticated != project:
+    if not isinstance(project, str) or not project or (operator is None and authenticated != project):
         raise HTTPException(403, "A verified project-scoped connection is required")
     if not isinstance(identifier, str) or not identifier or (instance_id is not None and identifier != instance_id):
         raise HTTPException(502, "Native instance identity could not be verified")
@@ -277,7 +334,7 @@ class UsageLease:
 
 @asynccontextmanager
 async def usage_lease(conn, project_id, instance_id, *, redis=None):
-    if getattr(conn, "_afterglow_project_id", None) != project_id or not project_id or not instance_id:
+    if _target_project(conn) != project_id or not project_id or not instance_id:
         raise HTTPException(403, "Usage schedule project scope is invalid")
     cloud = await _cloud_scope(conn)
     digest = hashlib.sha256(f"{cloud}\0{project_id}\0{instance_id}".encode()).hexdigest()
@@ -356,6 +413,8 @@ async def volume_mutation_lease(conn, server, *, redis=None):
 
 async def _assert_lease(conn, server, lease):
     project = require_server_scope(conn, server)
+    if vars(conn).get("_afterglow_usage_operator_scope") is not None:
+        await sdk_call(_assert_operator_scope, conn)
     if (
         lease is None
         or lease.project_id != project
@@ -417,14 +476,10 @@ async def write_schedule_metadata(conn, server, changes: dict, *, lease):
         raise HTTPException(502, "Native usage schedule write could not be verified; reload before retrying") from None
 
 
-async def _update_locked(conn, server, request, *, user_id, now, lease, extension_only=False):
-    identifier = _field(server, "id")
-    try:
-        fresh = await sdk_call(safe_compute_proxy(conn).get_server, identifier)
-    except Exception:
-        raise HTTPException(502, "Native usage schedule could not be read") from None
-    require_server_scope(conn, fresh, identifier)
-    schedule = parse_schedule(fresh)
+def validate_schedule_update(
+    schedule: UsageScheduleInfo | None, request: UsageScheduleUpdate, *, now=None, extension_only=False
+) -> datetime:
+    """Validate effective expiry before either requesting review or mutating Nova."""
     if schedule is None:
         raise HTTPException(409, "This instance has no native usage schedule")
     if schedule.revision != request.revision:
@@ -434,15 +489,35 @@ async def _update_locked(conn, server, request, *, user_id, now, lease, extensio
     clock = _clock(now)
     previous = aware_timestamp(schedule.expires_at)
     expiry = request.expires_at if request.expires_at is not None else previous
-    if expiry < previous:
-        raise HTTPException(422, "Usage schedule expiry cannot be shortened")
+    if expiry != previous and (expiry <= clock or expiry <= aware_timestamp(schedule.starts_at)):
+        raise HTTPException(422, "Usage schedule expiry must be in the future and after schedule enrollment")
     extending = expiry > previous
     if extension_only and not extending:
         raise HTTPException(422, "An extension must move expiry forward")
     if extending and (expiry <= clock or not request.reason):
         raise HTTPException(422, "An extension requires a future expiry and a reason")
+    if extending and expiry > calendar_month_after(previous):
+        raise HTTPException(422, "An extension cannot exceed one calendar month from the existing expiry")
     if schedule.state in {"blocked", "complete"} and (not extending or expiry <= clock):
         raise HTTPException(409, "Resuming a completed or blocked schedule requires a future extension")
+    action = request.expiry_action if "expiry_action" in request.model_fields_set else schedule.expiry_action
+    delete_volumes = request.delete_volumes if "delete_volumes" in request.model_fields_set else schedule.delete_volumes
+    if delete_volumes and action != "delete":
+        raise HTTPException(422, "Clear volume deletion consent before selecting shelve")
+    return expiry
+
+
+async def _update_locked(conn, server, request, *, user_id, now, lease, extension_only=False):
+    identifier = _field(server, "id")
+    try:
+        fresh = await sdk_call(safe_compute_proxy(conn).get_server, identifier)
+    except Exception:
+        raise HTTPException(502, "Native usage schedule could not be read") from None
+    require_server_scope(conn, fresh, identifier)
+    schedule = parse_schedule(fresh)
+    clock = _clock(now)
+    expiry = validate_schedule_update(schedule, request, now=clock, extension_only=extension_only)
+    extending = expiry > aware_timestamp(schedule.expires_at)
     try:
         actor = metadata_text(user_id)
         if not actor or actor != actor.strip():
@@ -451,8 +526,6 @@ async def _update_locked(conn, server, request, *, user_id, now, lease, extensio
         raise HTTPException(422, "A valid extension actor is required") from None
     action = request.expiry_action if "expiry_action" in request.model_fields_set else schedule.expiry_action
     delete_volumes = request.delete_volumes if "delete_volumes" in request.model_fields_set else schedule.delete_volumes
-    if delete_volumes and action != "delete":
-        raise HTTPException(422, "Clear volume deletion consent before selecting shelve")
     changes = {
         METADATA_PREFIX + "expires_at": expiry.isoformat(),
         METADATA_PREFIX + "action": action,

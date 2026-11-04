@@ -51,7 +51,7 @@
 	{#if shape === 'circular'}
 		<pre class="progress-circle" aria-hidden="true">{circularProgress(pct, $characterStep, active)}</pre>
 	{:else if pct === null}
-		{#if active}<span class="progress-indeterminate" data-art={flowBar($characterStep)} aria-hidden="true"></span>{/if}
+		{#if active}<span class="progress-indeterminate" aria-hidden="true">{#each [...flowBar($characterStep)] as character}<span>{character}</span>{/each}</span>{/if}
 	{:else}
 		<span class="progress-empty" aria-hidden="true">{#each Array(32) as _}<span>·</span>{/each}</span>
 		<span class="progress-fill" aria-hidden="true" style:clip-path={`inset(0 ${100 - pct}% 0 0)`}>{#each Array(32) as _}<span>#</span>{/each}</span>
@@ -81,12 +81,11 @@
 	.progress-size-xs { letter-spacing: 0; }
 	.progress-size-md { letter-spacing: 0.1em; }
 	.progress-empty { color: var(--color-ink-3); }
-	.progress-empty, .progress-fill { display: flex; justify-content: space-between; width: 100%; }
-	.progress-empty > span, .progress-fill > span { flex: none; }
+	.progress-empty, .progress-fill, .progress-indeterminate { display: flex; justify-content: space-between; width: 100%; }
+	.progress-empty > span, .progress-fill > span, .progress-indeterminate > span { flex: none; }
 	.progress-fill, .progress-indeterminate { position: absolute; inset: 0; color: var(--progress-fill); }
 	.progress-fill { transition: clip-path var(--motion-duration-data) var(--motion-ease-emphasized); }
 	.progress-indeterminate { overflow: hidden; }
-	.progress-indeterminate::before { content: attr(data-art); }
 	@media (prefers-reduced-motion: reduce) {
 		.progress-fill { transition: none; }
 	}

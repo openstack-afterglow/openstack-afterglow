@@ -23,6 +23,17 @@ export interface VersionInfo {
 	git: { commit: string | null; tag: string | null; branch: string | null };
 }
 
+export interface ServiceVersion {
+	service: 'nova' | 'neutron' | 'palimpsest' | 'drover' | 'lumen' | 'waygate';
+	status: 'available' | 'unavailable' | 'disabled';
+	version: string | null;
+	version_kind: 'product' | 'api' | null;
+}
+
+export interface ServiceVersions {
+	services: ServiceVersion[];
+}
+
 export interface DomainUsage {
 	domain_id: string | null;
 	domain_name: string | null;

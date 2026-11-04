@@ -321,7 +321,7 @@ class ExperienceRecord(Base):
         Index("ix_experience_segment_action", "segment_id", "action_id", "id"),
         Index("ix_experience_retention", "received_at", "id"),
         Index("ix_experience_catalog", "catalog_id"),
-        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
     )
 
 
@@ -332,7 +332,7 @@ class ExperienceCatalog(Base):
     key: Mapped[str] = mapped_column(String(180))
     locale: Mapped[str] = mapped_column(String(16))
     template: Mapped[str] = mapped_column(Text)
-    __table_args__ = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+    __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
 
 
 class ExperienceOperationLink(Base):
@@ -349,7 +349,7 @@ class ExperienceOperationLink(Base):
     __table_args__ = (
         Index("ix_experience_link_retention", "created_at"),
         Index("ix_experience_link_segment", "segment_id"),
-        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
     )
 
 
@@ -358,14 +358,14 @@ class ExperienceHold(Base):
     owner_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     segment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(_TIME, default=lambda: datetime.now(UTC))
-    __table_args__ = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+    __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
 
 
 class ExperienceMaintenance(Base):
     __tablename__ = "experience_maintenance"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     revision: Mapped[int] = mapped_column(BIGINT)
-    __table_args__ = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+    __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
 
 
 class ExperienceAggregate(Base):
@@ -379,5 +379,5 @@ class ExperienceAggregate(Base):
     count: Mapped[int] = mapped_column(BIGINT)
     __table_args__ = (
         Index("ix_experience_aggregate_retention", "day"),
-        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
+        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"},
     )

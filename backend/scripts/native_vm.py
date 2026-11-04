@@ -1,7 +1,7 @@
 #!/app/.venv/bin/python
 """Non-root native OCI-root entrypoint (no init system or container engine).
 
-Image contract: /app/app, /app/scripts, API + worker /app/.venv,
+Image contract: /app/app, /app/scripts, /app/migrations, API + worker /app/.venv,
 /usr/local/bin/node, /app/frontend/{build,node_modules,package.json}, and
 mariadbd, mariadb-install-db, redis-server on PATH with their runtime assets.
 Run as appuser with persistent, owned /var/lib/afterglow and writable /app/logs.
@@ -12,8 +12,9 @@ datastore/origin settings use the application's supported environment layer.
 SQL has no TCP listener; Redis is authenticated and loopback-only. Installation
 is staged and marked only after success. Interrupted staging is preserved and
 refused, not silently adopted or deleted. Keep the entire state directory,
-including credentials.json, across restarts. Child output goes to private logs;
-only service names and exit codes are printed here, never exception text/argv.
+including credentials.json, across restarts. Canonical schema bootstrap must
+succeed before API/worker startup on every boot. Child output goes to private
+logs; only service names and exit codes are printed here, never exception text/argv.
 """
 
 import argparse
@@ -373,15 +374,11 @@ async def guarded_startup(supervisor, operation, timeout=120):
 
 async def create_schema():
     from app.config import get_settings
-    from app.database import close_db, create_tables, init_db
+    from scripts.bootstrap_schema import bootstrap_database
 
     get_settings.cache_clear()
     settings = get_settings()
-    init_db(settings.database_url)
-    try:
-        await create_tables()
-    finally:
-        await close_db()
+    await bootstrap_database(settings.database_url)
 
 
 def main(argv=None):

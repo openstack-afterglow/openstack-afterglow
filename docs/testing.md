@@ -6,6 +6,23 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 표준 역할·Drover 생성 추적 (2026-11-04, source/local)
+
+- Waygate 운영 실패 시각의 정제 로그·grant와 Keystone 설정을 대조하고, 실제 토큰 원문은 보관하지 않았다. 설치 SDK/loopback에서2시간 grant와24시간 Trust token 조합의 기존403 및 독립 만료 검사 수정을 확인했다. 0.3.6 기준1499 passed/3 skipped, 공유 source441 passed; 두 source의 versioned/unversioned auth URL과 실제 Uvicorn/worker synthetic smoke를 확인했다. 실제 운영 재시도·배포는 하지 않았다.
+- Drover native quota preflight는 실제 SDK loopback에서 사용·예약·기본 SG/rule·결과 불명 경계와 pre-admission marker를 검증했다. Full native 최종1805 passed/1 skipped; 기존 ownership 재가입 race의 최초 실패와 generation fence 수정, keyed 동시 요청에서 거절을 확정으로 표시하지 않는 경계는 해당 native OpenSpec에 기록한다.
+- Afterglow `_forward`의 실제 loopback TCP upstream→ASGI 경계에서 HTTP409와 중첩 `drover_pre_admission_refused` quota 객체가 그대로 보존됨을 확인했다. Synthetic fixture이며 운영 provider 쓰기는 없다.
+- 신규 개인 프로젝트 fallback quota projection은 그룹10·규칙200, saved policy는 보존한다. Backend `test_enrollment_policy.py` 44 passed와 실제 projection smoke를 수행했다. 조직 native 기본 quota나 운영 quota는 바꾸지 않았다.
+- 관리자 시스템 정보: 14 focused tests 및9locale×2theme×6width108조건의 실제 source component/CSS 합성 browser. Drover progress/dock: 최종 focused102 tests, Chromium 합성 operation/SSE54조건과 upload 동시 표시6조건. 증거는 `~/.local/share/afterglow-proofs/admin-system-info-20261104/`와 `~/.local/share/afterglow-proofs/drover-progress-20261104/`. Full-root 실제 인증·native provider acceptance가 아니다.
+- Frontend typecheck0 errors/17 warnings, i18n0 errors/45 key-order warnings 및 Korean scan0. 전체 Afterglow gate·배포·live cluster 생성은 수행하지 않았다.
+
+## 인스턴스 사용 일정 연장 검토 (2026-11-04, source/local)
+
+- 종료일 단축, 기존 만료 기준 한 calendar month 연장 제한, 사유와 선택적 도메인 승인 정책을 구현했다. 승인 대기는 실제 Nova 일정을 변경하지 않으며 `applying`/`uncertain`은 자동 재전송하지 않는다.
+- Backend 일정·승인·스케줄러·bootstrap/ledger selector 358 passed. 설치된 Keystoneauth/OpenStack SDK와 loopback HTTP를 이용한 operator scope·tenant rescope 거부·native 결과 불명 경계를 포함한다. 이는 synthetic provider이며 운영 Nova 권한 검증이 아니다.
+- 승인 요청 SQL revision 경합은 지연된 거절이 최신 `applying`·`uncertain`·`approved`를 덮고200을 반환하는 실패를 먼저 재현했다. 수정 뒤 동일3사례는409와 최신 상태 보존을 확인했으며 별도 SQLite 실제 ORM smoke에서도 stale 쓰기가 거부됐다. 운영 DB 검증은 아니다.
+- Frontend 관련 5개 파일 150 tests passed; Svelte check 0 errors/17 warnings. JSDOM은 canvas 미구현 메시지를 출력했다. 운영 VM 목록 MCP 조회는 unavailable이었고 브라우저 릴레이는 확장 버전 불일치로 연결되지 않았다.
+- 운영 SQL108 적용, mixed-version·복구, 실제 전체 cloud inventory·Redis cohort·자동 만료 및 승인 executor를 검증하거나 배포하지 않았다. 운영 scheduler 활성화는 수행하지 않았다.
+
 ## MCP VM 생성 필수 선택 (2026-11-04, source/local)
 
 - 이미지·flavor·네트워크·부팅 볼륨 크기·본인 SSH 키·1개 이상의 대상 프로젝트 보안그룹을 명시하도록 계약을 변경했다. 원본 Nova/Neutron 응답의 키 이름·소유자·유형, 그룹 ID·소유자, 활성 port security를 확인하고 admission 이후 다시 검사한다. 기존 VM·운영 권한을 변경하지 않았다.

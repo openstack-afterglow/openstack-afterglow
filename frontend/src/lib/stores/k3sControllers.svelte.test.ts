@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	withExperience: vi.fn(), begin: vi.fn(), state: vi.fn(), applied: vi.fn(), discarded: vi.fn(), record: vi.fn(),
 	deployments: vi.fn(), replicasets: vi.fn(), delete: vi.fn(),
 	load: vi.fn(),
+	track: vi.fn(), handoff: vi.fn(),
 }));
 vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 vi.mock('$lib/api/client', () => ({ api: mocks, fetchWithAuth: mocks.fetchWithAuth, ApiError: class extends Error { status = 403; } }));
@@ -21,6 +22,7 @@ vi.mock('$lib/utils/experience', () => ({
 }));
 vi.mock('$lib/api/k3sSseStream', () => ({ streamK3sProgress: mocks.stream }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
+vi.mock('$lib/stores/k3sOperations.svelte', () => ({ k3sOperations: { track: mocks.track, owns: () => true, handoff: mocks.handoff } }));
 vi.mock('$lib/utils/downloadBlob', () => ({ downloadBlobAs: mocks.download }));
 vi.mock('$lib/mockup/transport', () => ({ maybeMockHead: mocks.head, symbolNoMatch: Symbol.for('no-match') }));
 vi.mock('$lib/api/k3s', () => ({ listNodeInterfaces: mocks.interfaces, attachNodeInterface: mocks.attach, detachNodeInterface: mocks.detach }));
@@ -36,6 +38,7 @@ vi.mock('$lib/api/k3sWorkloads', () => ({
 }));
 
 import { serviceCapabilities } from '$lib/stores/servicePermissions';
+import { ApiError } from '$lib/api/client';
 import { createK3sClusterListController } from './k3sClusterListController.svelte';
 import { createK3sClusterDetailController } from './k3sClusterDetailController.svelte';
 import { createK3sProgress } from './k3sProgress.svelte';
@@ -56,7 +59,7 @@ function setup(adminMode = false, selectedProjectId = 'project-a') {
 	let projectId = selectedProjectId;
 	const opts = { token: () => token, projectId: () => projectId, userId: () => 'user-a' };
 	return {
-		list: createK3sClusterListController({ ...opts, progress: createK3sProgress() }),
+		list: createK3sClusterListController(opts),
 		detail: createK3sClusterDetailController({ ...opts, clusterId: () => 'c', adminMode: () => adminMode }),
 		switchScope: () => { token = 'token-b'; projectId = 'project-b'; },
 		refreshToken: () => { token = 'token-a2'; },
@@ -588,4 +591,54 @@ it('passes availability-read context in authenticated request options, never in 
 		'/api/v1/k3s/clusters/c/kubeconfig?grade=user',
 		{ method: 'HEAD' }, 'token-a', 'project-a', { experience: context },
 	);
+});
+
+describe('Drover truthful admission outcomes', () => {
+	it.each([
+		[409, undefined, false],
+		[503, undefined, false],
+		[409, 'drover_pre_admission_refused', true],
+		[503, 'drover_pre_admission_refused', true],
+	] as const)('requires an authoritative refusal marker, not HTTP %s alone (%s)', async (status, code, terminal) => {
+		grant('drover-clusters_editor');
+		const failure = Object.assign(new ApiError(status, 'Provider refusal', code), { status, code, message: 'Provider refusal' });
+		mocks.stream.mockImplementation(async function* () { throw failure; });
+		const { list } = setup();
+		await list.createCluster(form);
+		const progress = mocks.track.mock.calls[0][0];
+		expect(progress.isTerminal).toBe(terminal);
+		expect(progress.error).toContain('Provider refusal');
+		expect(mocks.handoff).toHaveBeenCalledWith(progress);
+	});
+
+	it('formats native quota counts and administrator recovery without fabricating missing availability', async () => {
+		grant('drover-clusters_editor');
+		const quota = { project_id: 'project-a', resource: 'security_group_rule', required: 7, available: 2, limit: 10, used: 8, reserved: 0 };
+		const failure = Object.assign(new ApiError(409, 'Rule budget exhausted', 'drover_pre_admission_refused'), {
+			code: 'drover_pre_admission_refused', reason: 'security_group_quota_exceeded', quota,
+		});
+		mocks.stream.mockImplementation(async function* () { throw failure; });
+		const { list } = setup();
+		await list.createCluster(form);
+		const progress = mocks.track.mock.calls[0][0];
+		expect(progress.isTerminal).toBe(true);
+		expect(progress.error).toContain('보안 그룹 규칙');
+		expect(progress.error).toContain('필요 7개, 사용 가능 2개');
+		expect(progress.error).toContain('관리자');
+	});
+
+	it.each(['security_group_quota_unavailable', 'security_group_quota_exceeded'])('keeps missing counts out of the localized %s refusal', async reason => {
+		grant('drover-clusters_editor');
+		const failure = Object.assign(new ApiError(503, 'Native quota refusal', 'drover_pre_admission_refused'), {
+			code: 'drover_pre_admission_refused', reason, quota: undefined, message: 'Native quota refusal',
+		});
+		mocks.stream.mockImplementation(async function* () { throw failure; });
+		const { list } = setup();
+		await list.createCluster(form);
+		const progress = mocks.track.mock.calls[0][0];
+		expect(progress.isTerminal).toBe(true);
+		expect(progress.error).not.toMatch(/필요 \d|사용 가능 \d/);
+		if (reason === 'security_group_quota_unavailable') expect(progress.error).toContain('Neutron 조회 권한');
+		else expect(progress.error).toBe('Native quota refusal');
+	});
 });

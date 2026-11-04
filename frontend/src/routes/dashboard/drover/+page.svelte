@@ -5,28 +5,22 @@
 	import { auth, authReady } from '$lib/stores/auth';
 	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { api } from '$lib/api/client';
-	import { createK3sProgress } from '$lib/stores/k3sProgress.svelte';
 	import { createK3sClusterListController } from '$lib/stores/k3sClusterListController.svelte';
 	import K3sClusterDetailPanel from '$lib/components/K3sClusterDetailPanel.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createDroverClusterPanel } from '$lib/utils/droverClusterPanel.svelte';
-	import { K3S_CREATE_STEPS, K3S_DELETE_STEPS } from '$lib/components/k3sSteps';
 	import K3sCreateClusterModal from '$lib/components/dashboard/drover/K3sCreateClusterModal.svelte';
-	import K3sProgressModal from '$lib/components/dashboard/drover/K3sProgressModal.svelte';
 	import DroverHeader from '$lib/components/dashboard/drover/DroverHeader.svelte';
 	import DroverClusterGrid from '$lib/components/dashboard/drover/DroverClusterGrid.svelte';
 	import { Alert, Button } from '$lib/components/ui';
 
-	const progress = createK3sProgress();
-	const activeSteps = $derived(progress.mode === 'delete' ? K3S_DELETE_STEPS : K3S_CREATE_STEPS);
 	const panel = createDroverClusterPanel();
 
 	const ctrl = createK3sClusterListController({
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
 		userId: () => $auth.userId,
-		progress,
 	});
 
 	function prefetchCreateDependencies() {
@@ -65,14 +59,6 @@
 	onCreate={ctrl.createCluster}
 />
 
-{#if progress.visible}
-	<K3sProgressModal
-		controller={progress}
-		activeSteps={activeSteps}
-		onClose={() => { progress.visible = false; }}
-		onViewCluster={(id) => { progress.visible = false; panel.open(id); }}
-	/>
-{/if}
 
 {#if panel.selectedClusterId}
 	<SlidePanel onClose={panel.close} ariaLabel={t('cluster.detailLabel')}>

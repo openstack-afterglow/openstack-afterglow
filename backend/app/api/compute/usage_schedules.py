@@ -1,10 +1,12 @@
-"""Project-scoped Nova metadata usage schedules; no database projection."""
+"""Native schedules and durable, domain-governed extension approvals."""
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from openstack.exceptions import HttpException, ResourceNotFound
 
 from app.api.common.activity_recorder import rec
@@ -17,7 +19,9 @@ from app.api.deps import (
     require_project_write,
 )
 from app.models.instance_usage import UsageScheduleExtension, UsageScheduleInfo, UsageScheduleUpdate
+from app.models.instance_usage_governance import UsageExtensionReview, UsagePolicyUpdate
 from app.services import instance_usage as usage
+from app.services import instance_usage_governance as governance
 from app.services.cache import invalidate
 
 
@@ -27,6 +31,18 @@ def _private(response: Response):
 
 router = APIRouter(dependencies=[Depends(_private)])
 admin_router = APIRouter(dependencies=[Depends(require_admin), Depends(_private)])
+
+
+async def get_governance_conn(token_info: dict = Depends(get_token_info)):
+    """Fixed read executor; scoped native authority is proven by each handler."""
+    from app.services import keystone
+
+    conn = await governance.project_service._provider_call(keystone.get_admin_project_connection)
+    conn._afterglow_project_id = token_info.get("project_id") or ""
+    try:
+        yield conn
+    finally:
+        await usage.sdk_call(conn.close)
 
 
 def _field(resource, key):
@@ -83,6 +99,65 @@ async def list_usage_schedules(conn=Depends(get_os_conn)):
     return {"schedules": schedules, "errors": errors}
 
 
+@router.get("/usage-extension-policy")
+async def get_extension_policy(
+    domain_id: str | None = None,
+    project_id: str | None = None,
+    conn=Depends(get_governance_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    return await governance.get_policy(conn, token_info, domain_id=domain_id, project_id=project_id)
+
+
+@router.put("/usage-extension-policy")
+async def put_extension_policy(
+    req: UsagePolicyUpdate,
+    domain_id: str | None = None,
+    project_id: str | None = None,
+    conn=Depends(get_governance_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    return await governance.set_policy(conn, token_info, req, domain_id=domain_id, project_id=project_id)
+
+
+@router.get("/usage-extension-requests")
+async def get_extension_requests(
+    domain_id: str | None = None,
+    project_id: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(None, max_length=512),
+    conn=Depends(get_governance_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    return await governance.list_requests(
+        conn, token_info, domain_id=domain_id, project_id=project_id, limit=limit, cursor=cursor
+    )
+
+
+@router.post("/usage-extension-requests/{request_id}/review")
+async def review_extension_request(
+    request_id: str,
+    req: UsageExtensionReview,
+    conn=Depends(get_governance_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    result = await governance.review_request(conn, token_info, request_id, req)
+    if result["status"] == "approved":
+        await invalidate(f"afterglow:nova:{result['project_id']}:instances")
+        await invalidate(f"afterglow:nova:{result['project_id']}:servers")
+    await rec(
+        token_info,
+        conn,
+        resource_type="instance",
+        resource_id=result["instance_id"],
+        resource_name=result["instance_name"],
+        action="instance.usage.extension.review",
+        status="success",
+        extra={"request_id": result["id"], "decision": req.decision, "status": result["status"]},
+    )
+    return result
+
+
 @router.get("/{instance_id}/usage-schedule", response_model=UsageScheduleInfo | None)
 async def get_usage_schedule(instance_id: str, conn=Depends(get_os_conn)):
     return usage.parse_schedule(await read_server(conn, instance_id))
@@ -90,8 +165,19 @@ async def get_usage_schedule(instance_id: str, conn=Depends(get_os_conn)):
 
 async def _change(conn, instance_id, req, token_info, *, extend: bool):
     server = await read_server(conn, instance_id)
-    change = usage.extend_schedule if extend else usage.update_schedule
-    schedule = await change(conn, server, req, user_id=token_info["user_id"])
+    schedule = await governance.change_schedule(conn, server, req, token_info, extension_only=extend)
+    if isinstance(schedule, dict) and schedule.get("status") == "pending":
+        await rec(
+            token_info,
+            conn,
+            resource_type="instance",
+            resource_id=instance_id,
+            resource_name=_field(server, "name"),
+            action="instance.usage.extension.request",
+            status="success",
+            extra={"request_id": schedule["request"]["id"], "expires_at": schedule["request"]["expires_at"]},
+        )
+        return JSONResponse(jsonable_encoder(schedule), status_code=202)
     project_id = conn._afterglow_project_id
     await invalidate(f"afterglow:nova:{project_id}:instances")
     await invalidate(f"afterglow:nova:{project_id}:servers")

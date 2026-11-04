@@ -5,17 +5,17 @@ name: afterglow
 
 services:
   backend:
-    image: ${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-api:${IMAGE_TAG:-latest}
+    image: &backend-image ${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-api:${IMAGE_TAG:-latest}
     ports:
       - "127.0.0.1:8000:8000"
-    volumes:
+    volumes: &backend-volumes
       - ./afterglow.conf:/app/afterglow.conf:ro
       - ./logs:/app/logs
       - ${TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE:-/dev/null}:/etc/afterglow/geoip/country.mmdb:ro
-    env_file:
+    env_file: &backend-env-file
       - path: .env
         required: false
-    environment:
+    environment: &backend-environment
       DATABASE_URL: ${AFTERGLOW_DATABASE_URL:?AFTERGLOW_DATABASE_URL must select the standalone Afterglow database}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3080,http://127.0.0.1:3080}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3080}
@@ -27,6 +27,9 @@ services:
       SERVICE_LUMEN_INTERNAL_URL:
       SERVICE_PALIMPSEST_INTERNAL_URL:
     command: uvicorn app.middleware.traffic_address:create_app --factory --host 0.0.0.0 --port 8000 --no-proxy-headers
+    depends_on:
+      schema-bootstrap:
+        condition: service_completed_successfully
     restart: unless-stopped
     logging:
       driver: json-file
@@ -39,6 +42,16 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+
+  schema-bootstrap:
+    image: *backend-image
+    volumes: *backend-volumes
+    env_file: *backend-env-file
+    environment: *backend-environment
+    command: ["python", "-m", "scripts.bootstrap_schema"]
+    restart: "no"
+    healthcheck:
+      disable: true
 
   frontend:
     image: ${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow:${IMAGE_TAG:-latest}

@@ -830,12 +830,14 @@ GitHub 공개키 SSH 접근을 선택한 VM 생성 전에 GitHub 사용자 존�
 |---|---|---|
 | `GET` | `/api/v1/instances/usage-schedules` | `{schedules: [...], errors: [...]}`. 현재 프로젝트 목록; schedule에는 선택적 `instance_name`, 오류에는 `instance_id`, `instance_name`, `message` |
 | `GET` | `/api/v1/instances/{instance_id}/usage-schedule` | 일정 object 또는 등록된 prefix key가 전혀 없을 때만 `null` |
-| `PUT` | `/api/v1/instances/{instance_id}/usage-schedule` | `revision` 필수, 선택적 `expires_at`, `expiry_action`, `delete_volumes`, `reason`; 갱신된 일정 반환 |
-| `POST` | `/api/v1/instances/{instance_id}/usage-schedule/extend` | `{"expires_at":"2027-02-28T09:00:00Z","reason":"실험 계속 진행","revision":"0123456789abcdef0123456789abcdef"}`; 갱신된 일정 반환 |
+| `PUT` | `/api/v1/instances/{instance_id}/usage-schedule` | `revision` 필수, 선택적 `expires_at`, `expiry_action`, `delete_volumes`, `reason`; 즉시 적용이면 일정, 승인 필요 시 HTTP 202와 pending 요청 및 변경 전 일정 반환 |
+| `POST` | `/api/v1/instances/{instance_id}/usage-schedule/extend` | `expires_at`, 비어 있지 않은 `reason`, `revision`; 즉시 적용이면 일정, 승인 필요 시 HTTP 202와 pending 요청 및 변경 전 일정 반환 |
 
-일정 응답은 `instance_id`, `starts_at`, `expires_at`, `expiry_action`, `delete_volumes`, `reason`, `revision`, `state`, `source`(`created`/`adopted`), 선택적 `last_error`, `extended_at`, `extended_by`를 포함합니다. Revision은32자리 lowercase hex이며 최신 GET 값을 보내야 합니다. PUT의 생략/null 날짜는 기존 날짜를 보존하고 생략한 action/디스크 동의도 보존합니다. 날짜를 앞당길 수 없고, 늘릴 때는 미래 날짜와 비어 있지 않은 사유가 필요합니다. POST는 반드시 기존보다 늦춰야 합니다. `blocked`/`complete`는 미래로 연장해야 다시 `active`가 되며 **연장 자체가 start/unshelve를 수행하지 않습니다**. 진행 중/`unknown` 일정은 수정할 수 없습니다. Afterglow에서 다시 시작하려면 먼저 유효한 active 일정을 확보해야 합니다.
+일정 응답은 `instance_id`, `starts_at`, `expires_at`, `expiry_action`, `delete_volumes`, `reason`, `revision`, `state`, `source`(`created`/`adopted`), 선택적 `last_error`, `extended_at`, `extended_by`를 포함합니다. Revision은32자리 lowercase hex이며 최신 GET 값을 보내야 합니다. PUT의 생략/null 날짜와 생략한 action/디스크 동의는 기존 값을 보존합니다. 활성 일정은 등록 시각 이후의 미래 날짜로 앞당길 수 있습니다. 연장은 기존 종료일로부터 최대 한 UTC calendar month이며 사유가 필수입니다. 사유는 관리자가 확인하며 타당하지 않으면 별도로 확인할 수 있습니다. 기본은 자동 승인이고 도메인 관리자가 수동 검토를 켤 수 있습니다. 승인 대기는 실제 종료일을 바꾸거나 만료 실행을 중단하지 않습니다. `blocked`/`complete`는 미래로 연장해야 다시 `active`가 되며 연장 자체는 start/unshelve를 수행하지 않습니다. 진행 중/`unknown` 일정은 수정할 수 없습니다.
 
 `409`는 stale revision·진행 중/불명 상태·coordination 불가·손상 metadata, `422`는 입력/날짜/사유 위반입니다. Native 조회 실패는 빈 목록이나 `null`로 바꾸지 않으며, 목록의 `errors`도 확인해야 합니다. `502` 쓰기 결과는 적용 여부가 불명일 수 있어 새 조회와 필요 시 운영자 조정 없이 자동 재전송하지 않습니다.
+
+도메인 정책은 `GET`/`PUT /api/v1/instances/usage-extension-policy`, 요청 목록은 `GET /api/v1/instances/usage-extension-requests`, 결정은 `POST /api/v1/instances/usage-extension-requests/{id}/review`입니다. 정책 변경은 해당 도메인의 현재 manager, 검토는 해당 도메인 manager 또는 해당 프로젝트의 현재 admin/owner 권한을 검증합니다. 목록은 `limit`/`cursor`와 `next_cursor`를 사용합니다. 정책·요청 revision과 현재 native 일정을 다시 확인하며, `applying`/`uncertain` 결과는 성공으로 간주하거나 자동 재전송하지 않습니다. SQL 정책·요청 저장소 장애는 자동 승인으로 대체하지 않습니다.
 
 ### 만료 동작과 데이터 경계
 

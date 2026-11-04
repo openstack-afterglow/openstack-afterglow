@@ -8,10 +8,6 @@
 [![Docker Build](https://github.com/openstack-afterglow/openstack-afterglow/actions/workflows/docker-build.yml/badge.svg)](https://github.com/openstack-afterglow/openstack-afterglow/actions/workflows/docker-build.yml)
 [![License](https://img.shields.io/github/license/openstack-afterglow/openstack-afterglow)](LICENSE)
 
-Frontend: [![Frontend 상태](https://incidents.betterstack.com/status-badges/v1/monitor/2zi0k.svg)](https://incidents.betterstack.com/?utm_source=status_badge)
-
-Backend: [![Backend 상태](https://incidents.betterstack.com/status-badges/v1/monitor/3010o.svg)](https://incidents.betterstack.com/?utm_source=status_badge)
-
 Afterglow는 OpenStack 클라우드를 위한 오픈소스 웹 대시보드입니다. Horizon의 기능 완성도와 안정성을 유지하면서 SvelteKit 기반의 현대적 UI/UX를 제공하고, Magnum을 대체하는 **k3s 기반 Kubernetes 프로비저닝**과 AI/ML 워크로드를 위한 **squashfs/NFS 기반 Palimpsest 라이브러리 레이어**를 내장합니다.
 
 ## 실제 운영 서비스

@@ -22,6 +22,8 @@ spec:
         app: notion-worker
     spec:
       terminationGracePeriodSeconds: 30
+      initContainers:
+        {{- include "afterglow.schemaContainer" (dict "image" .Values.image.backend "resources" .Values.resources.notionWorker "verifyOnly" true) | nindent 8 }}
       containers:
         - name: notion-worker
           image: {{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}

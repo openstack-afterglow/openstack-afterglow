@@ -1,4 +1,5 @@
 {
+	"items.systemInfo": "系统信息",
 	"sections.account": "账户设置",
 	"items.accountProfile": "个人资料",
 	"items.accountSshKeys": "SSH 密钥",

@@ -1,0 +1,23 @@
+{{- $podTemplate := include "afterglow.schemaJobTemplate" . -}}
+{{- $publicConfig := include (print .Template.BasePath "/configmap.yaml") . -}}
+{{- $identity := printf "%s\n%s" $podTemplate $publicConfig | sha256sum | trunc 16 -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # ArgoCD templates always use revision 1; deterministic public inputs prevent
+  # immutable Job updates without introducing random Helm-render drift.
+  name: afterglow-schema-{{ .Release.Revision }}-{{ $identity }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    # Native Helm ignores these. ArgoCD reruns the singleton even for a
+    # Secret-only database change without hashing private configuration.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  labels:
+    app: schema-bootstrap
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    {{- $podTemplate | nindent 4 }}

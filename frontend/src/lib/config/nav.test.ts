@@ -51,6 +51,7 @@ describe('allNavItems service inheritance', () => {
   it.each([
     ['/admin/drover', '/admin/containers'],
     ['/admin/drover/templates', '/admin/containers'],
+    ['/admin/system-info', '/admin/services'],
     ['/admin/drover/cluster-1', '/admin/containers'],
     ['/admin/chat/stats/daily', '/admin/chat'],
     ['/admin/libraries/123', '/admin/libraries'],
@@ -72,6 +73,13 @@ describe('allNavItems service inheritance', () => {
       expect(adminItems.find(item => item.href === href)).toMatchObject({ sectionKey: 'sections.identity', service: null });
       expect(userItems.some(item => item.href === href)).toBe(false);
     }
+  });
+
+  it('exposes system information only in the administrator System category', () => {
+    expect(allNavItems(true, DEFAULT_BETA_FEATURES).find(item => item.href === '/admin/system-info')).toMatchObject({
+      labelKey: 'items.systemInfo', sectionKey: 'sections.system', service: null,
+    });
+    expect(allNavItems(false, DEFAULT_BETA_FEATURES).some(item => item.href === '/admin/system-info')).toBe(false);
   });
 
   it('separates manager-only user navigation from fresh project-management navigation', () => {
@@ -97,13 +105,23 @@ describe('allNavItems service inheritance', () => {
 
 describe('project-independent authenticated routes', () => {
 	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects'])('does not require a selected project for %s', (path) => {
-		expect(isProjectAgnosticPath(path, false)).toBe(true);
+		expect(isProjectAgnosticPath(path, false, false)).toBe(true);
 	});
 	it.each(['/admin', '/admin/domains'])('keeps the project exemption on %s system-admin-only', (path) => {
-		expect(isProjectAgnosticPath(path, false)).toBe(false);
-		expect(isProjectAgnosticPath(path, true)).toBe(true);
+		expect(isProjectAgnosticPath(path, false, false)).toBe(false);
+		expect(isProjectAgnosticPath(path, true, false)).toBe(true);
 	});
 	it.each(['/select-domain-other', '/dashboard/iam-other', '/dashboard/compute/instances'])('does not exempt lookalike or project-bound route %s', (path) => {
-		expect(isProjectAgnosticPath(path, false)).toBe(false);
+		expect(isProjectAgnosticPath(path, false, false)).toBe(false);
 	});
+	it('permits projectless usage review only with verified current-domain manager authority', () => {
+		expect(isProjectAgnosticPath('/dashboard/usage', false, true)).toBe(true);
+		expect(isProjectAgnosticPath('/dashboard/usage', false, false)).toBe(false);
+		expect(isProjectAgnosticPath('/dashboard/usage', true, false)).toBe(false);
+	});
+	it.each(['/dashboard/usage-report', '/dashboard/usage/other', '/dashboard/usage-other', '/dashboard/compute/instances', '/admin'])(
+		'does not extend a domain-manager exemption to %s', path => {
+			expect(isProjectAgnosticPath(path, false, true)).toBe(false);
+		},
+	);
 });
