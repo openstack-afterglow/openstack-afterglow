@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.6`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.7`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 Kolla backend launcher는 `afterglow_backend_workers` 양의 정수로 호스트당 Uvicorn 프로세스 수를 지정하며 기본값은 1이다. 프로세스별 connection pool·cache·startup 작업과 스트림 중단 가능성을 고려해야 하며 설정 변경만으로 운영에 적용되지 않는다. 기존 ASGI factory 및 proxy trust 경계는 유지한다.
 Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·installer를 환경의 `share/afterglow/kolla`에 소유한다. 예전 `openstack-afterglow` distribution이 설치된 환경은 동일 자산의 이중 소유를 막도록 이전 패키지를 먼저 제거하고 새 artifact를 설치·재설치해야 하며, installer는 이전 metadata가 남으면 거부한다. 안정 Kolla 경로는 설치된 자산을 가리키는 링크이며 정확히 식별한 구 checkout 링크만 이관한다. Role/site가 다른 checkout을 가리키면 `AFTERGLOW_LEGACY_ROLE_TARGET`·`AFTERGLOW_LEGACY_SITE_TARGET`에 각각 전체 절대 링크 text를 지정하고, 미지정 target만 `AFTERGLOW_REPO_DIR`에서 도출한다. 두 경로를 모두 preflight하며 source checkout·설정·foreign 경로는 보존한다. 패키지 갱신은 이미 연결된 파일을 갱신하지만 최초 stock-site import와 Kolla 재설치 후 복원은 별도 installer가 필요하다. 패키지 설치는 서비스 배포가 아니며 아직 미발행 소스다.
 
@@ -2077,8 +2077,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "7994a5607249f7f31df91e8d81c1d264311e0b3b3feadd1aaaa6adb2ff849b75",
-  "reviewed_at": "2026-11-05T14:45:42Z",
-  "summary": "기존 VM 공통 UTC 기준일의 1 calendar month 만료·미설정 기본·만료 전 fail-closed 등록과 scheduler native metadata/lease 경계 및 TOML·K8s·Helm 설정 투영을 검토했다. 실제 운영 권위·배포는 별도 확인한다."
+  "reviewed_at": "2026-11-05T15:21:46Z",
+  "summary": "Record published 1.32.7 without changing architecture or deployment state."
 }
 ```
 <!-- architecture-review:end -->
