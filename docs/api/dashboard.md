@@ -132,12 +132,16 @@ nav_order: 70
 | `network` | `floatingip`, `network`, `subnet`, `port`, `router`, `security_group`, `security_group_rule` |
 | `file_storage` | Manila 활성 시 `shares`, `gigabytes`, `share_networks`, `snapshot_gigabytes` |
 | `gpu`, `gpu_available` | Afterglow GPU 타입별 쿼터와 조회 성공 여부 |
-| `object_storage` | Swift의 `container_count`, `object_count`, `bytes_used` 통계 |
-| `database` | Trove의 `instances_count` 통계 |
+| `object_storage` | Swift 통계 `{container_count, object_count, bytes_used}` 또는 `null`(조회 불가·비활성) |
+| `database` | `{instances_count: 정수 또는 null}`. 실제 정상 빈 목록은0이며 조회 불가·비활성은 `null` |
+| `unavailable_sections` | 활성 서비스 중 조회 실패한 `database`·`object_storage` 이름 배열. 정상 core quota는 보존 |
+| `disabled_sections` | 설정상 비활성인 `database`·`object_storage` 이름 배열. 해당 native 조회는 실행하지 않음 |
 
-프론트엔드는 Manila·Swift·Trove를 사이트 서비스 설정으로 게이트하고, 부분 응답에서 `{limit, in_use}`가 없는 항목은 표시하지 않습니다. 사용량 보고서의 `compute_available=false` 또는 `storage_available=false`이면 해당 full 응답 그룹을 표시하지 않아 정규화된 0/무제한 값을 정상 쿼터로 오인하지 않습니다. 키페어는 사용자 범위 리소스이며 Nova 프로젝트 쿼터에서 사용량을 제공하지 않으므로 **사용자별 한도만** 표시합니다. Swift·Trove는 쿼터 비율이 아닌 개수/용량 통계입니다. 보고서와 현황은 별도로 응답을 반영하므로 이 요청이 지연되어도 보고서를 먼저 표시하고, 실패하면 현황 섹션에 경고를 표시합니다. RAM 한도 그래프는 MB에서 소수 GB로 변환한 값으로 비율을 계산합니다.
+프론트엔드는 Manila·Swift·Trove를 사이트 서비스 설정으로 게이트하고, 부분 응답에서 `{limit, in_use}`가 없는 항목은 표시하지 않습니다. 사용량 보고서의 `compute_available=false` 또는 `storage_available=false`이면 해당 full 응답 그룹을 표시하지 않아 정규화된 0/무제한 값을 정상 쿼터로 오인하지 않습니다. Swift·Trove는 활성인데 읽을 수 없으면 기존 조회 불가 문구, 비활성이면 비활성 문구를 표시하며 실제0과 구분합니다. 두 선택 서비스 중 하나 또는 둘 다 실패해도 독립적으로 정상인 core quota와 보고서는 유지합니다. 키페어는 사용자 범위 리소스이며 Nova 프로젝트 쿼터에서 사용량을 제공하지 않으므로 **사용자별 한도만** 표시합니다. Swift·Trove는 쿼터 비율이 아닌 개수/용량 통계입니다. 보고서와 현황은 별도로 응답을 반영하므로 이 요청이 지연되어도 보고서를 먼저 표시하고, core 요청 자체가 실패하면 현황 섹션에 경고를 표시합니다. RAM 한도 그래프는 MB에서 소수 GB로 변환한 값으로 비율을 계산합니다.
 
-`compute`는 기존 domain pool/effective 한도와 검증 실패 시 CPU/RAM `null` 계약을 유지합니다. `native_compute`는 pool의 active/paused/unavailable 여부로 덮어쓰지 않고 같은 Nova 응답에서 사용량을 확인한 정수 쌍만 분리하므로 공용 domain 사용량을 프로젝트 사용량으로 오인하지 않습니다. `limit=-1`은 무제한이지만 `in_use`는 실제 관측값이며, native source 부재를 domain 수치·0/무제한으로 대체하지 않습니다. 누락/잘못된 항목은 생략하고 실패한 HTTP 관측은 `null`이며, 기존 limits fallback은 실제 인증 프로젝트 일치가 입증된 경우의 관측만 사용합니다. Full source cache는 `afterglow:dashboard:{project_id}:quotas:native-v1`로 이전 정규화 payload와 분리하고 기존 quota/pool 변경 무효화에 참여합니다. `view=overview`에는 이 새 필드를 추가하지 않습니다. 새 권한·추가 native 조회·DB schema·quota 변경은 없습니다.
+`compute`는 기존 domain pool/effective 한도와 검증 실패 시 CPU/RAM `null` 계약을 유지합니다. `native_compute`는 pool의 active/paused/unavailable 여부로 덮어쓰지 않고 같은 Nova 응답에서 사용량을 확인한 정수 쌍만 분리하므로 공용 domain 사용량을 프로젝트 사용량으로 오인하지 않습니다. `limit=-1`은 무제한이지만 `in_use`는 실제 관측값이며, native source 부재를 domain 수치·0/무제한으로 대체하지 않습니다. 누락/잘못된 항목은 생략하고 실패한 HTTP 관측은 `null`이며, 기존 limits fallback은 실제 인증 프로젝트 일치가 입증된 경우의 관측만 사용합니다. Full source cache는 `afterglow:dashboard:{project_id}:quotas:native-v2`로 과거 fake0 payload와 분리하고 기존 quota/pool 변경 무효화에 참여합니다. Strict Trove는 native 실패·누락된 collection을, strict Swift는404 외의 native 실패·불완전/음수 usage header를 정상0으로 바꾸지 않습니다. Swift native404의 계정 미초기화는 기존대로 알려진0입니다. `view=overview`에는 이 full 전용 availability 계약을 추가하지 않습니다. 새 권한·DB schema·quota 변경은 없습니다.
+
+Strict Trove count는 native next-link의 동일 authority·project/path·진전 marker만 인정하고 원래 proxy의 `/instances` 상대 경로로 다음 page를 조회합니다. Native가 HTTP 응답에 HTTPS 링크를 광고해도 metadata만 검증하며 그 URL로 연결하거나 redirect하지 않습니다. 삭제 상태 행만 있는 첫 page를 정상0으로 확정하지 않고 전체 page를 합산하며100page/10000row·중복/loop·잘못된 continuation 경계를 넘으면 부분 개수 대신 조회 불가로 처리합니다.
 
 ### GET /api/v1/dashboard/gpu-available
 

@@ -16,6 +16,7 @@ dependencies = [
     "httpcore==1.0.9",  # SafeAsyncTransport uses the pinned connection backend API.
     "urllib3>=2.8.0",
     "anyio>=4.14.2",
+    "sniffio==1.3.1",  # httpcore 1.0.9 otherwise repeats failed imports with newer AnyIO.
     "aiofiles==24.1.0",
     "redis[hiredis]==5.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
@@ -122,6 +123,7 @@ worker = [
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
     "httpx==0.28.1",
+    "sniffio==1.3.1",  # Keep worker HTTPX runtime detection on the same cached path.
     "redis[hiredis]==5.0.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiomysql>=0.2.0",

@@ -470,6 +470,12 @@ hold→비보호 detail 삭제→새 DB6-table snapshot 복원·원 catalog/FK·
 ORM writer/새 schema·새 API/구 schema 경계를 실행했습니다([검증 기록](testing.md#직전24시간-운영-마찰의미-기반-경험-v2-2026-11-04-sourcelocal-진행-기록)).
 이는 production backup 복구·전체 Galera 동시성·운영 SQL107/수집 활성화의 증거가 아닙니다.
 
+2026-11-05 source/local 수용은11계열 분류·현재4대표 episode·실제 worker/SMTP/SQL·추가 standalone detail 및 full-quota 경계를 포함합니다([검증 기록](testing.md#남은-운영-마찰경험-관측-경계-2026-11-05-sourcelocal)).
+새 full-quota의 nullable Trove/Swift·availability와 `quotas:native-v2` 계약은 matching backend/frontend cohort로 전환하며, old fake0와 혼합 응답을 정상 native0으로 인정하지 않습니다.
+이 검증 snapshot은 다른 작업의 SQL108 등을 포함하는 공유 dev이므로 그 전체를 최소 운영 진단 릴리스로 자동 채택하지 않습니다.
+선택한 실제 release의 schema/manifest·원 key·복구·cohort 정합성을 따로 검증한 후 운영 승인을 받습니다.
+현재 사람/native 권위 미확인·Hub legacy journal outcome unknown·controller1 실패 stage 미관측은 source green으로 해소하지 않으며 수집/보존 삭제·unknown replay·서비스 재시작을 자동 수행하지 않습니다.
+
 
 
 ### 1-b. 설정 오버라이드 (선택)

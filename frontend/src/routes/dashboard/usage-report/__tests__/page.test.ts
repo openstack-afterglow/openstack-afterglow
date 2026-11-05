@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import { get, writable } from 'svelte/store';
 import { tick } from 'svelte';
 import { siteConfig } from '$lib/config/site';
 import { auth, type AuthState } from '$lib/stores/auth';
 import { t as tp } from '$lib/i18n/ns/compute-pools';
 import { t } from '$lib/i18n/ns/dashboard-home';
+import { t as ta } from '$lib/i18n/ns/admin-ops';
 
 const { mockGet, refreshCallbacks } = vi.hoisted(() => ({ mockGet: vi.fn(), refreshCallbacks: [] as Array<() => unknown> }));
 
@@ -91,6 +92,10 @@ const QUOTAS = {
 	storage: { volumes: { limit: 60, in_use: 14 }, gigabytes: { limit: 8000, in_use: 1250 } },
 	network: { floatingip: { limit: 16, in_use: 3 }, router: { limit: 10, in_use: 2 } },
 	file_storage: { shares: { limit: 12, in_use: 4 }, gigabytes: { limit: 4096, in_use: 780 } },
+	database: { instances_count: 0 },
+	object_storage: { container_count: 0, object_count: 0, bytes_used: 0 },
+	unavailable_sections: [],
+	disabled_sections: [],
 };
 
 function mockSources(usageReport: unknown, quotas: Promise<unknown>) {
@@ -206,6 +211,58 @@ describe('usage report page', () => {
 		expect(screen.queryByText('컴퓨트 한도')).toBeNull();
 		expect(screen.queryByRole('region', { name: '블록 스토리지' })).toBeNull();
 		expect(screen.queryByText('키페어 한도 (사용자별)')).toBeNull();
+	});
+
+	it.each([[false, false], [true, false], [false, true], [true, true]])(
+		'keeps Trove failure=%s and Swift failure=%s independent from native zero',
+		async (databaseFailed, objectStorageFailed) => {
+			siteConfig.update((config) => ({ ...config, services: { ...config.services, swift: true, trove: true } }));
+			mockSources(report(), Promise.resolve({
+				...QUOTAS,
+				database: { instances_count: databaseFailed ? null : 0 },
+				object_storage: objectStorageFailed ? null : QUOTAS.object_storage,
+				unavailable_sections: [
+					...(databaseFailed ? ['database'] : []),
+					...(objectStorageFailed ? ['object_storage'] : []),
+				],
+			}));
+			render(Page);
+			expect(await screen.findByText('라우터')).toBeTruthy();
+			expect(screen.getByText('cpu.4c_8g')).toBeTruthy();
+			const database = within(screen.getByRole('region', { name: t('usageReport.resources.database') }));
+			const objects = within(screen.getByRole('region', { name: t('usageReport.resources.objectStorage') }));
+			if (databaseFailed) {
+				expect(database.getByText(ta('overview.availability.unknown'))).toBeTruthy();
+				expect(database.queryByText('0')).toBeNull();
+			} else {
+				expect(database.getByText('0')).toBeTruthy();
+				expect(database.queryByText(ta('overview.availability.unknown'))).toBeNull();
+			}
+			if (objectStorageFailed) {
+				expect(objects.getByText(ta('overview.availability.unknown'))).toBeTruthy();
+				expect(objects.queryByText('0')).toBeNull();
+				expect(objects.queryByText('0 B')).toBeNull();
+			} else {
+				expect(objects.getAllByText('0')).toHaveLength(2);
+				expect(objects.getByText('0 B')).toBeTruthy();
+				expect(objects.queryByText(ta('overview.availability.unknown'))).toBeNull();
+			}
+			expect(screen.queryByText(t('usageReport.inventory.loadFailed'))).toBeNull();
+		},
+	);
+
+	it('keeps explicitly disabled optional services distinct from native failure', async () => {
+		siteConfig.update((config) => ({ ...config, services: { ...config.services, swift: true, trove: true } }));
+		mockSources(report(), Promise.resolve({
+			...QUOTAS,
+			database: { instances_count: null },
+			object_storage: null,
+			disabled_sections: ['database', 'object_storage'],
+		}));
+		render(Page);
+		expect(await screen.findByText('라우터')).toBeTruthy();
+		expect(screen.getAllByText(ta('overview.availability.disabled'))).toHaveLength(2);
+		expect(screen.queryByText(ta('overview.availability.unknown'))).toBeNull();
 	});
 
 	it('calculates the RAM quota bar using sub-GB allocations', async () => {

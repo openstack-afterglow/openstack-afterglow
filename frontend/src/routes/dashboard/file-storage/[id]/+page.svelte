@@ -3,7 +3,8 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
@@ -18,6 +19,8 @@
 	import AccessRulesSection from '$lib/components/dashboard/file-storage/[id]/AccessRulesSection.svelte';
 	import FileStorageMetadata from '$lib/components/dashboard/file-storage/[id]/FileStorageMetadata.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { createDetailReadScope, type DetailReadScope } from '$lib/utils/detailReadScope';
+	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceRequest, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	let fileStorage = $state<FileStorage | null>(null);
 	let loading = $state(true);
@@ -26,80 +29,126 @@
 	let deleting = $state(false);
 	let accessRules = $state<AccessRule[]>([]);
 	let accessLoading = $state(false);
+	let accessError = $state('');
 	let addingRule = $state(false);
 	let ruleError = $state('');
 	let revokingId = $state<string | null>(null);
 
-	interface DetailScope { id: string; token: string | null; projectId: string | null; }
-	let activeScope = $state.raw<DetailScope | null>(null);
+	const readScope = createDetailReadScope(derived(page, value => value.params.id ?? ''));
+	let activeScope = $state.raw<DetailReadScope | null>(null);
 	let refresh: CoalescedRefresh;
+	let live = true;
+	let controller = new AbortController();
+	let detailGeneration = 0;
+	let accessGeneration = 0;
+	let manualExperience: ExperienceContext | undefined;
+	let forcedRefreshActive = false;
 	const scopeCurrent = $derived(activeScope !== null && isCurrentScope(activeScope));
-
-	function isCurrentScope(scope: DetailScope): boolean {
-		return scope === activeScope && scope.id === $page.params.id
-			&& scope.token === $auth.token && scope.projectId === $auth.projectId;
+	function isCurrentScope(scope: DetailReadScope): boolean {
+		return live && scope.ready && scope === activeScope && scope.revision === $readScope.revision;
 	}
+	onDestroy(() => { live = false; controller.abort(); refresh?.dispose(); });
 
-	function createScopedRefresh(scope: DetailScope) {
+	function createScopedRefresh(scope: DetailReadScope) {
 		return createCoalescedRefresh(async (force) => {
-			if (!scope.id || !scope.token || !isCurrentScope(scope)) return;
-			await Promise.allSettled([
-				fetchFileStorage(scope, force ? { refresh: true } : undefined),
-				fetchAccessRules(scope, force ? { refresh: true } : undefined),
-			]);
+			if (!isCurrentScope(scope)) return;
+			forcedRefreshActive = force;
+			const experience = (force ? manualExperience : undefined) ?? beginExperienceLoad('file_storage', 'resource.detail');
+			if (force) manualExperience = undefined;
+			try {
+				const detail = fetchFileStorage(scope, force, experienceRequest(experience).context);
+				await Promise.allSettled([
+					detail,
+					fetchAccessRules(scope, force, experienceRequest(experience).context, detail),
+				]);
+			} finally {
+				if (isCurrentScope(scope)) forcedRefreshActive = false;
+			}
 		});
 	}
+	function manualRefresh() {
+		if (!activeScope || !isCurrentScope(activeScope)) return;
+		const experience = beginExperienceAction('file_storage', 'refresh', 'resource.detail');
+		// A click joining an already forced cycle must not lend its context to a later poll.
+		if (!forcedRefreshActive && !manualExperience) manualExperience = experience;
+		return refresh.run(true);
+	}
 	const ar = createAutoRefresh(
-		() => refresh.run(false),
+		() => refresh?.run(false),
 		{ storageKey: 'dashboard-file-storage-detail', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false }
 	);
 
 	$effect(() => {
-		const scope: DetailScope = {
-			id: $page.params.id ?? '', token: $auth.token, projectId: $auth.projectId,
-		};
+		const revision = $readScope.revision;
 		untrack(() => {
+			if (activeScope?.revision === revision) return;
+			refresh?.dispose();
+			controller.abort(); controller = new AbortController();
+			const scope = $readScope;
 			activeScope = scope;
 			fileStorage = null; accessRules = [];
 			loading = true; accessLoading = true; refreshing = false;
-			error = ''; ruleError = '';
+			error = ''; ruleError = ''; accessError = '';
 			addingRule = false; deleting = false; revokingId = null;
+			manualExperience = undefined;
+			forcedRefreshActive = false;
+			detailGeneration += 1; accessGeneration += 1;
 			refresh = createScopedRefresh(scope);
-			if (scope.id && scope.token) void refresh.run(false);
+			if (isCurrentScope(scope)) void refresh.run(false);
 		});
-		return () => { refresh.dispose(); activeScope = null; };
 	});
 
-	async function fetchFileStorage(scope: DetailScope, opts?: { refresh?: boolean }) {
-		// Preserve the loaded view only while refreshing the same resource and auth scope.
+	async function fetchFileStorage(scope: DetailReadScope, force: boolean, experience?: ExperienceContext) {
+		const generation = ++detailGeneration;
+		const current = () => isCurrentScope(scope) && generation === detailGeneration;
 		if (fileStorage?.id === scope.id) refreshing = true;
 		else loading = true;
 		error = '';
+		experienceState(experience, 'loading');
 		try {
-			const next = await api.get<FileStorage>(
-				`/api/v1/file-storage/${scope.id}`, scope.token ?? undefined,
-				scope.projectId ?? undefined, opts
+			const next = await api.withExperience(experience).get<FileStorage>(
+				`/api/v1/file-storage/${scope.id}${force ? '?refresh=true' : ''}`, $auth.token ?? undefined,
+				$auth.projectId ?? undefined, { signal: controller.signal, cache: 'no-store', replayOnUnauthorized: true }
 			);
-			if (isCurrentScope(scope)) fileStorage = next;
+			if (!current()) { experienceDiscarded(experience, live ? 'stale' : 'unmounted'); return; }
+			fileStorage = next;
 		} catch (e) {
-			if (isCurrentScope(scope)) error = e instanceof ApiError ? t('detail.loadFailedWithMessage', { status: e.status, message: e.message }) : t('errors.server');
+			if (!current()) { experienceDiscarded(experience, live ? 'stale' : 'unmounted'); return; }
+			error = e instanceof ApiError ? t('detail.loadFailedWithMessage', { status: e.status, message: e.message }) : t('errors.server');
 		} finally {
-			if (isCurrentScope(scope)) { loading = false; refreshing = false; }
+			if (current()) {
+				loading = false; refreshing = false;
+				experienceState(experience, error ? 'error' : fileStorage ? 'ready' : 'empty');
+				void experienceApplied(experience, {}, current);
+			}
 		}
 	}
 
-	async function fetchAccessRules(scope: DetailScope, opts?: { refresh?: boolean }) {
+	async function fetchAccessRules(scope: DetailReadScope, force: boolean, experience: ExperienceContext | undefined, detail: Promise<void>) {
+		const generation = ++accessGeneration;
+		const current = () => isCurrentScope(scope) && generation === accessGeneration;
 		if (accessRules.length === 0) accessLoading = true;
+		accessError = '';
+		experienceState(experience, 'loading');
 		try {
-			const next = await api.get<AccessRule[]>(
-				`/api/v1/file-storage/${scope.id}/access-rules`, scope.token ?? undefined,
-				scope.projectId ?? undefined, opts
+			const next = await api.withExperience(experience).get<AccessRule[]>(
+				`/api/v1/file-storage/${scope.id}/access-rules${force ? '?refresh=true' : ''}`, $auth.token ?? undefined,
+				$auth.projectId ?? undefined, { signal: controller.signal, cache: 'no-store', replayOnUnauthorized: true }
 			);
-			if (isCurrentScope(scope)) accessRules = next;
-		} catch {
-			if (isCurrentScope(scope)) accessRules = [];
+			if (!current()) { experienceDiscarded(experience, live ? 'stale' : 'unmounted'); return; }
+			accessRules = next;
+		} catch (e) {
+			if (!current()) { experienceDiscarded(experience, live ? 'stale' : 'unmounted'); return; }
+			accessError = e instanceof ApiError ? t('detail.accessLoadFailedWithMessage', { status: e.status, message: e.message }) : t('detail.accessLoadFailed');
 		} finally {
-			if (isCurrentScope(scope)) accessLoading = false;
+			if (current()) {
+				accessLoading = false;
+				experienceState(experience, accessError ? 'error' : accessRules.length ? 'ready' : 'empty');
+				void detail.then(() => {
+					if (!current()) { experienceDiscarded(experience, live ? 'stale' : 'unmounted'); return; }
+					void experienceApplied(experience, {}, () => current() && !loading && !error && fileStorage !== null);
+				});
+			}
 		}
 	}
 
@@ -112,7 +161,7 @@
 		try {
 			await api.post(`/api/v1/file-storage/${storage.id}/access-rules`,
 				{ access_to: form.access_to.trim(), access_level: form.access_level, access_type },
-				scope.token ?? undefined, scope.projectId ?? undefined);
+				$auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (isCurrentScope(scope)) await refresh.invalidate();
 			return true;
 		} catch (e) {
@@ -128,7 +177,7 @@
 		if (!await confirmDialog(t('detail.revokeConfirm')) || !isCurrentScope(scope)) return;
 		revokingId = accessId;
 		try {
-			await api.delete(`/api/v1/file-storage/${storage.id}/access-rules/${accessId}`, scope.token ?? undefined, scope.projectId ?? undefined);
+			await api.delete(`/api/v1/file-storage/${storage.id}/access-rules/${accessId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (isCurrentScope(scope)) await refresh.invalidate();
 		} catch (e) {
 			if (isCurrentScope(scope)) toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -142,7 +191,7 @@
 		if (!await confirmDialog(t('detail.deleteConfirm', { name: storage.name || storage.id })) || !isCurrentScope(scope)) return;
 		deleting = true;
 		try {
-			await api.delete(`/api/v1/file-storage/${storage.id}`, scope.token ?? undefined, scope.projectId ?? undefined);
+			await api.delete(`/api/v1/file-storage/${storage.id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (isCurrentScope(scope)) goto('/dashboard');
 		} catch (e) {
 			if (isCurrentScope(scope)) toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
@@ -156,7 +205,7 @@
 	</div>
 
 	{#if scopeCurrent && error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
+		<div role="alert" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if loading || !scopeCurrent}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('list.title') })} />
 	{:else if fileStorage}
@@ -166,18 +215,22 @@
 				bind:arActive={ar.active}
 				bind:arInterval={ar.intervalSeconds}
 				arIntervalOptions={ar.intervalOptions}
-				onManualRefresh={() => refresh.run(true)}
+				onManualRefresh={manualRefresh}
 				onDelete={deleteFileStorage}
 			/>
 			<FileStorageInfoCard {fileStorage} />
 			<ExportLocationList paths={fileStorage.export_locations} />
-			<AccessRulesSection
-				shareProto={fileStorage.share_proto}
-				{accessRules} {accessLoading}
-				onAdd={handleAddRule} onRevoke={handleRevokeRule}
-				{addingRule} addError={ruleError} {revokingId}
-			/>
+			{#key activeScope?.revision}
+				<AccessRulesSection
+					shareProto={fileStorage.share_proto}
+					{accessRules} {accessLoading} {accessError}
+					onAdd={handleAddRule} onRevoke={handleRevokeRule}
+					{addingRule} addError={ruleError} {revokingId}
+				/>
+			{/key}
 			<FileStorageMetadata metadata={fileStorage.metadata} />
 		</div>
+	{:else}
+		<p role="status">{t('list.empty')}</p>
 	{/if}
 </PageShell>

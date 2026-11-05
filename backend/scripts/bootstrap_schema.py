@@ -47,8 +47,7 @@ _CHECKS = {
         "expires_at IS NOT NULL OR source = 'personal_token' OR (source = 'oauth' AND oauth_ongoing = 1)"
     ),
     "chk_mcp_grant_ongoing": (
-        "oauth_ongoing = 0 OR (source = 'oauth' AND expires_at IS NULL "
-        f"AND {_ROLE_CEILING_GUARD})"
+        f"oauth_ongoing = 0 OR (source = 'oauth' AND expires_at IS NULL AND {_ROLE_CEILING_GUARD})"
     ),
     "chk_mcp_oauth_token_expiry": "expires_at IS NOT NULL OR token_type = 'refresh'",
 }
@@ -134,9 +133,7 @@ def _check_signature(expression: str) -> tuple:
         token
         for index, token in enumerate(tokens)
         if not (
-            token in {"_utf8", "_utf8mb3", "_utf8mb4"}
-            and index + 1 < len(tokens)
-            and tokens[index + 1].startswith("'")
+            token in {"_utf8", "_utf8mb3", "_utf8mb4"} and index + 1 < len(tokens) and tokens[index + 1].startswith("'")
         )
     ]
     aliases = {"true": "1", "false": "0", "lower": "lcase"}
@@ -194,11 +191,7 @@ def _check_signature(expression: str) -> tuple:
                 lhs = left[1] if left[0] == operator else (left,)
                 rhs = right[1] if right[0] == operator else (right,)
                 left = (operator, lhs + rhs)
-            elif (
-                operator == "<>"
-                and left == ("value", "0")
-                and right == _check_signature(_ROLE_CEILING_GUARD)
-            ):
+            elif operator == "<>" and left == ("value", "0") and right == _check_signature(_ROLE_CEILING_GUARD):
                 # MySQL SHOW CREATE prints this boolean guard as 0 <> expr.
                 # This exact COALESCE(comparison, 0) can only be 0 or 1,
                 # so the coercion is scalar-equivalent even under SQL NULLs.
@@ -724,7 +717,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-only", action="store_true", help="verify the canonical schema without DDL")
-    parser.add_argument("--if-configured", action="store_true", help="skip only when the effective database URL is empty")
+    parser.add_argument(
+        "--if-configured", action="store_true", help="skip only when the effective database URL is empty"
+    )
     args = parser.parse_args()
     database_url = get_settings().database_url
     if args.if_configured and not database_url:

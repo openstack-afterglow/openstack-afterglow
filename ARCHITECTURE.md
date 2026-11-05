@@ -59,6 +59,8 @@ SQL107은 `events/catalogs/operation_links/holds/aggregates/maintenance`를 addi
 
 UI 관측 코드는 기존 reactive business dependency를 만들지 않는다. Network detail의 관측용 `loading` 읽기는 untrack하여 응답 완료가 초기 effect의 재조회 조건이 되지 않게 하고 기존 network/API base/token/project reload를 보존한다. 관리자 정책 catalog는 bearer byte가 아닌 full logical display-context·project·synchronous API-base revision을 reload/read/save identity로 사용한다. 검증된 갱신은 settled metadata·미저장 draft를 유지하고 role/readiness/base/project ABA 뒤의 오래된 응답·save success를 표시하지 않는다. 업무 쓰기 결과를 되돌리거나 재전송하지 않는다.
 
+Legacy standalone container/file 상세도 `detailReadScope.ts`의 자원·논리 auth display-owner·API-base revision으로 최초/후속 읽기·오류·finally·DOM commit을 fence한다. 실제 route에서 명시 context를 만들고 글로벌 collector/client를 재설치하거나 계측용 재조회·초기 지연을 추가하지 않는다. 소비자 abort 뒤에도 남는 shared GET leader가 새 ABA owner에 재결합하는 실제 client 회귀 때문에 이 두 상세의 읽기는 기존 no-store/AbortSignal 경계를 사용하며 기존 인증 복구는 보존한다. 검증된 same-owner 갱신은 settled DOM·pending read·규칙 초안을 유지하고 다음 읽기만 새 credential을 쓴다. Container log 읽기가 pending인 동안 polling timer를 멈추고 완료 후 원15초 간격을 다시 시작해 느린 최초 읽기와 자동 polling을 겹치지 않게 한다. File access-rule 실패는 별도 오류이며 실제 정상 빈 목록만 empty다. 원문 logs·규칙 입력·자원 이름은 진단에 넣지 않는다.
+
 DB 상세의 초기 effect는 instance/token/project 입력만 추적하고 controller reset/load는 untrack한다. 빈 flavor 응답 등 내부 state assignment가 자동 새로고침 OFF 상태에서도 무한 GET을 만드는 것을 차단하며 실제 입력 변경은 재조회한다. Trove owner 확인과 raw 상세 readback은 absence/opaque denial404와 unavailable503을 구분하고 소비자 화면도 조회 불가를 not-found로 가장하지 않는다. Native raw REST는 JSON 해석 전에 status를 검사하며 원문 오류를 노출하지 않는다.
 
 Trove 목록 계열은 upstream 실패를 빈 목록으로 숨기지 않고 호출자 500으로 전파한다. flavors/datastores/configurations/backups/instances/subresource 캐시 키는 http-checked-v2 네임스페이스로 레거시 항목과 격리한다.
@@ -69,9 +71,13 @@ Swift 컨테이너 목록은 계정 미초기화 404와 권한 없음 401만 빈
 
 관리자 Zun 단건 조회도 소비자와 같은 `native_resource_read_failure`를 사용한다. Native401/403/404는 정적 opaque404로 유지하고 그 외 native HTTP·transport·예상 밖 실패는 원문·header 없이503으로 구분한다. 기존 `require_admin`·고정 관리자 executor 및 service-disabled503은 바꾸지 않는다. Native503→관리자404로 표시되던 실제 격리 HTTP 경계의 누락을 교정한 것이며 자원 부재를 추정하지 않는다.
 
+Full dashboard quota는 Trove·Swift를 strict로 독립 조회하여 실제 정상0과 조회 불가·비활성을 구분한다. `database.instances_count`는 nullable이고 `object_storage` 통계 전체도 nullable이며 `unavailable_sections`·`disabled_sections`가 실패/비활성 소유권을 명시한다. 선택 서비스 실패는 정상 core quota를 버리지 않고 full cache `quotas:native-v2`로 과거 fake0과 격리한다. Overview 및 native admission·quota 쓰기·권위는 유지한다. 기간 사용량 화면은 기존 localized unknown/disabled 문구로 표시하며 조회 불가를0으로 채우지 않는다.
+
 관리자 resource-policy/runtime-setting 합성 목록은 각각 `{policies,errors}`·`{settings,errors}`를 반환한다. 중앙 fresh admin/auth 및 local store/connection 실패는 원래 top-level 거부를 유지하고, 기대한 native HTTP 실패·목록 형식502만 service/status로 분리해 정상 local/다른 service 값을 보존한다. Remote detail/header/token/URL은 복사하지 않는다. Native 개별 proxy·쓰기 검증은 그대로이며 old-array fallback이 없어 matching API/frontend가 필요하다. Service 및 remote per-key 오류는 해당 서비스의 조회 불가로 설명하며 OpenStack 장애로 오인하지 않는다. Panel과 Notion consumer는 미수신/실패 unknown, 알려진 null/unset, 명시 true/false를 구분한다. Panel의 unset은 명시 선택 전 저장하지 않고 Notion target/runtime은 독립 적용한다. Owner epoch·read sequence·write revision을 분리해 late read가 성공한 write를 덮거나 pending-save lock을 해제하지 않는다. Panel refresh는 읽기만 수행하고 draft·logical owner/authority/base-ABA fence를 유지한다.
 
 API/standalone worker는 `utils/structured_logging.py`의 public `JSONFormatter/setup_logging`을 공유한다. Explicit `api|worker|unknown`, source/process/runtime/PID와 고정 진단 사유·실제 numeric driver code만 추가하고 pytest sink와 dependency DEBUG를 분리한다. Worker CLI 초기화는 단순 module import가 API handler를 지우지 않게 한다. Operational probe의 request sampling은 실제 final-send/정상 반환 뒤에만 적용하며 metrics·실패·불완전·취소 로그는 보존한다. Coordination store 장애는 instance-health credential401/거짓204가 아니라503이며 기존7일 절대 수명·키를 유지한다. Traffic250ms deadline과 불명 쓰기 무재실행 경계는 바꾸지 않는다.
+
+배포0334564d의 최소 Traffic 진단은 전체 `dev` 전환과 분리한 private 두-file backport로 검증한다. 기존 Redis 초기화/aggregate 예외와 Lua 용량 거절의 finite stage/reason만 추가하고 원200/503·250ms·Lua/EVAL·drop bookkeeping·취소·무재시도 및 schema/dependency/version을 보존한다. Packaging snapshot과 전체 gate 사본은 구분하며 후자는 ARCHITECTURE 설명/stamp 외6778 inventoried runtime/test 입력이 동일하다. Worker target도 같은 module을 복사하므로 transitive image/filter/import를 검증하지만 원 no-DB 종료는 readiness가 아니다. 정식발행·운영 rollout이나 pre-Redis/rate-limited 무로그의 원인·손실 확정 증거로 사용하지 않으며, 원 Docker image/config ID와 실제 registry manifest rollback ref도 구분한다. 구조 변경 없이 관측·수용 경계만 명시하며 자세한 receipt는 `docs/testing.md`에 둔다.
 
 **1.32.4 준비:** MCP 혼합 프로젝트 동의·권한 preview에서 restricted token의 검증된 native catalog를 재사용하여 Keystone 재교환 없이 native 정책을 검사한다. 취소된 프로젝트 역할 조회는 실제 directory read가 종료되기 전 연결과 preview slot을 해제하지 않는다. Native 정책 fallback·새 schema·권한 승격은 없다. SQL105와 native 정책 호환성·복구 조건은 운영 전환 전 별도 검증한다.
 
@@ -215,6 +221,8 @@ Image Studio의 사후 실제 Chromium 점검에서 `lumen-images_user` 확정 �
 ## Native OpenStack telemetry monitoring
 
 `services/native_telemetry.py`는 요청자의 Keystone `metric` catalog와 SDK session에서 Ceilometer→Gnocchi 저장값을 읽는 bounded read adapter다. `instance_series`·`project_series`·`system_series`를 기존 instance metrics·project dashboard·admin monitoring router가 호출한다. Native-first 지표별 Prometheus/node/libvirt/DCGM fallback이며 별도 서비스 계정·DB/schema·secret·설정·background collector·배포 topology는 추가하지 않는다. Nova 소유 inventory와 실제 인증 프로젝트를 교차하고 시스템 실측은 기존 system-admin 및 native policy 아래 whitelist만 공개한다. Native 데이터는 전역 inventory cache에 저장하지 않으며 정상·오류 no-store를 유지하고 중앙 5xx sanitizer는 route의 명시적 no-store만 보존한다.
+
+Instance metrics의 단일·batch·summary detail resolution과 summary의 조건부 flavor inventory는 동기 Nova SDK 작업을 `asyncio.to_thread`에서 수행하고 기존 `_to_completion`으로 실제 종료까지 drain한다. 소유권 확인·404/403·native-first/fallback 계약은 바꾸지 않으며 요청 취소가 연결을 먼저 닫거나 별도 retry를 시작하지 않는다. API와 worker는 `sniffio==1.3.1`을 명시하여 httpcore1.0.9의 요청별 실패 import·filesystem 탐색을 없앤다. 이는 관측된 이벤트 루프 blocking과 runtime-detection overhead의 source 수정이지, controller1 traffic503의 확정 원인이나 운영 해결 증거가 아니다.
 
 CPU/RAM은 같은 기록 시점의 분모, 누적 meter는 reset/gap 검증 후 rate를 사용한다. 실제 archive granularity·provider-side mean resample·최대 세 tier 중 단일 최선 coverage와 요청/시간/byte/resource/sample bound를 보존한다. Archive counter mean rate는 추정이며 완전한 cloud inventory·실제 guest filesystem·물리 GPU 수집을 주장하지 않는다. API `monitoring_available`은 provider readability, `source/unit/status/native_status`는 선택된 지표와 native 원인의 별도 계약이다. UI는 source·부분 coverage·기록 이력과 추가 meter를 표시하고 token/user/project/instance/range/ABA 전환 때 이전 private snapshot을 가린다. 실제 계약·운영 전제와 synthetic/live evidence 경계는 `docs/api/instances.md`, `docs/api/admin.md`, `docs/api/dashboard.md`, `docs/deployment.md`, `docs/testing.md`를 따른다.
 
@@ -487,6 +495,8 @@ Workspace chooser의 기본 domain 표시는 서버의 `kind=personal`을 이름
 Fresh human 로그인은 관리자도 verified personal primary에 기본 연결되고 바로 dashboard로 간다. `login_preferences`는 exact user+immutable home별 Redis의 opt-in last-workspace hint만 저장한다. 저장 pair는 활성 native domain/project·현재 실제 membership을 다시 검증하고 system-admin 관측 권한으로 대체하지 않는다. 철회·삭제·비활성 때 personal로 돌아가며 directory/store 장애·native proof 변조는 거부한다. `initial_workspace:{kind:personal|remembered,domain_id,project_id}`는 fresh 응답에만 포함하고 frontend는 exact session pair와 검증된 domain 목록을 요구한다. 기존 native service automation의 빈 프로젝트 관리자 context는 실제 소속이 있는 working domain 안에서 유지한다. 프로젝트가 준비된 fresh 로그인만 초대→MCP/Claude continuation을 이어가며 projectless·실패·stale 결과는 pending intent를 소비하지 않는다.
 
 개인 프로젝트의 native member token과 사람의 system-admin 권위는 구분한다. Stock Nova2025.2의 all-tenants server·hypervisor·flavor-access 정책은 project scope이므로 `/admin/*` 전체를 system token으로 승격하지 않는다. 명시적 `get_admin_os_conn`은 fresh `require_admin` 뒤 기존 configured 고정 admin-project connection만 인증하고 native project scope·admin 역할·SDK가 검증한 is_admin_project 의미를 확인해 provider inventory/운영·selected-domain owner directory에 사용한다. 모든 관리자 API는 fresh system:all 관리자 권위로 인가하고 OpenStack provider 조회는 이 고정 executor로 실행하며 `tests/test_admin_route_authority.py`가 실제 mount의 전이 dependency와 명시적 human-token 예외를 열거해 회귀를 막는다. Keystone이 legacy is_admin_project 필드를 생략하면 SDK의 native 기본 true를 존중하고, 명시 false/null/string/number는 거부한다. 논리 workspace/actor/home과 실제 execution project/token을 별도 metadata로 보존하며 connection을 정확히 한 번 닫는다. 요청한 임의 프로젝트로 executor를 재스코프하거나 사람의 Personal에 admin grant를 추가하지 않는다. Application credential 생성·생성 context는 native owner/project/role ceiling 때문에 caller-bound `get_os_conn`을 유지하고 library VM 생성은 caller-project trust/ledger를 보존한다. Drover·Palimpsest Hub의 별도 native 인가 proxy는 원래 human token을 전달하며 IAM/compute-pool의 도메인 관리자 경로는 기존 경계를 유지한다. Flavor ACL narrowing은 실제 native transport의 admin 범위를 따르며 UI system-admin flag는 native 권한이 아니다.
+
+`/admin/service-versions`는 provider inventory/운영 executor가 아니라 caller가 실제 받은 catalog와 원 token으로 광고된 API version만 관측하는 명시적 예외다. Fresh `require_admin`은 유지하며 configured admin-project 권위를 빌리지 않는다. Notifications/monitoring의 caller-native transport와 고정 OpenStack inventory executor를 함께 요구하는 경계도 `test_admin_route_authority.py`에서 보존한다.
 
 관리자 상세는 사용자 경로의 domain/project guard를 우회하지 않고 명시적 `/admin/instances/{id}`, `/admin/images/{id}`, `/admin/file-storage/{id}`, `/admin/loadbalancers/{id}`, `/admin/database-instances/{id}`에서 고정 executor로 실제 native 부모 UUID/owner 및 child 연결을 검증한다. Identity의 `_selected_objects`와 목록·상세·관리 작업도 같은 fresh executor를 공유한다. 관리자 관측 picker/header workspace는 이 native 권한과 별도이며 UI mode는 nullable project hint와 독립적이다. 관리자 VM Gnocchi·Aodh·통합 native telemetry는 고정 executor로 읽고 이미지 Palimpsest export는 caller-project trust를 유지한다. Foreign-private export, fixed executor로 target 소유를 보장할 수 없는 VM 새 볼륨 생성과 caller-bound block-ledger 삭제는 승격하지 않는다. LB/DB/파일 스토리지의 일반 mutation은 exact caller-owned parent에서만 노출한다. 새 DB/schema/config·role grant·운영 변경은 없다.
 
@@ -1283,7 +1293,7 @@ Placement는 호스트 합계만 제공하므로 단일 NUMA 셀 요청은 같�
 
 [`VmCreatePanel`](frontend/src/lib/components/VmCreatePanel.svelte)은 기존 `adminMode`를 공유 `SelectFlavor`에 전달한다. 호스트별 VM 최대 CPU·RAM, 후보 호스트 수와 NUMA/GPU 근접성은 관리자 wizard의 선택 가능한 행·카드·선택 상세에만 남긴다. 소비자 `/dashboard`는 관리자 계정이더라도 이 값을 숨기며 부족 사유·GPU 잔여량 배지·선택 상세의 잔여량도 표시하지 않는다. API eligibility/capacity 진단 필드는 다른 소비자와 fresh admission을 위해 유지한다. Full dashboard quota의 `native_compute`는 기존에 조회한 native 프로젝트 compute 관측을 domain/effective `compute`와 분리한다. VM wizard quota preview는 이를 사용하여 VM/vCPU/RAM/DISK 현재 사용량·한도와 선택 VM 추가량을 보여주며 domain pool 상태로 CPU/RAM을 숨기지 않는다. 무제한은 사용량과∞를 유지하고 결측은 미확인이다. 관리자 target quota는 기존 native 경로를 유지한다. Auth·정책/admission·DB schema·설정·배포 구조는 바꾸지 않는다(2026-10-31).
 
-`nova.get_project_quota(include_native=True)`는 같은 detail/기존 limits fallback 응답에서 legacy `compute`와 관측 정수 쌍 `native_compute`를 함께 만든다. Missing/malformed native pair는 생략하고 HTTP 실패는 native 미확인으로 남긴다. Limits fallback의 프로젝트 일치가 입증되지 않으면 legacy 값만 보존하고 native로 인정하지 않는다. Full source cache는 `...:quotas:native-v1`로 분리해 이전 normalized payload와 혼합하지 않으며 기존 domain/pool/native quota 편집의 invalidation도 이 namespace를 포함한다. 기존 default/strict caller·overview와 추가 native HTTP 요청 수는 유지한다.
+`nova.get_project_quota(include_native=True)`는 같은 detail/기존 limits fallback 응답에서 legacy `compute`와 관측 정수 쌍 `native_compute`를 함께 만든다. Missing/malformed native pair는 생략하고 HTTP 실패는 native 미확인으로 남긴다. Limits fallback의 프로젝트 일치가 입증되지 않으면 legacy 값만 보존하고 native로 인정하지 않는다. Full source cache는 `...:quotas:native-v2`로 분리해 이전 normalized/fake0 payload와 혼합하지 않으며 기존 domain/pool/native quota 편집의 invalidation도 이 namespace를 포함한다. 기존 default/strict caller·overview와 추가 native HTTP 요청 수는 유지한다.
 
 전체 unit 후속 비교에서 country-startup의 직접 추출 fixture에 새 alias snapshot path/파일 입력이 누락된 것을 확인해 테스트만 보완했다. 실제 Ansible의 country pin·restart checksum·fail-closed guard는 그대로 실행하며 production task/defaults·서비스·권한·schema에는 구조 영향이 없다. RBAC service capability fixture의6개 외부 DNS 접근 오류는 동일 설치/설정의 HEAD baseline에서도 재현됐고 인가/네트워크 격리를 완화하지 않았다.
 
@@ -2064,9 +2074,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3b539f55fd730d05876aad1340429df7c3d70b4884ba32b0fbf7b121aeb253b5",
-  "reviewed_at": "2026-11-04T07:45:30Z",
-  "summary": "직전24시간 운영 마찰 source/local 검토: strict native 읽기 및 관리자 Zun false404 누락, Palimpsest/Lumen failed-read 적용·DOM 경계, Audio capability 요청 ABA, SDK/anyio drain·SMTP terminal 보존. 공유 구현·계약·schema·tests는 전체 gate3b539f55와 일치하고 문서만 후속 갱신. 운영 배포·IAM·SQL107·보존 활성화 없음; 공유 index 보존."
+  "source_sha256": "0eab16fb570e4806ea8cff3e2a068d95000c5c6e21fb3435afbb6a8a60b7120c",
+  "reviewed_at": "2026-11-05T13:49:58Z",
+  "summary": "현재 dev의 instance usage governance·schema bootstrap과 추가 quota 실패 분리, scoped 상세 관측, Nova metrics drain 및 sniffio 의존성 변경을 문서와 대조했다. 운영 배포·실제 native 권한 및 전체 gate 성공은 별도 검증이다."
 }
 ```
 <!-- architecture-review:end -->

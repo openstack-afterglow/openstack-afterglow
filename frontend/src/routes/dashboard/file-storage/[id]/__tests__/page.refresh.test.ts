@@ -17,10 +17,13 @@ vi.mock('$lib/api/client', () => {
 	class ApiError extends Error {
 		status = 500;
 	}
-	return { ApiError, api: { get: mocks.get, post: mocks.post, delete: mocks.delete } };
+	const api = { get: mocks.get, post: mocks.post, delete: mocks.delete, withExperience: () => api };
+	return { ApiError, api };
 });
 vi.mock('$lib/stores/auth', () => ({
-	auth: writable({ token: 'token', projectId: 'project-a' }),
+	auth: writable({ token: 'token', sessionId: 'session', userId: 'user', projectId: 'project-a' }),
+	authReady: writable(true),
+	projectSwitching: writable(false),
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirmDialog }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({

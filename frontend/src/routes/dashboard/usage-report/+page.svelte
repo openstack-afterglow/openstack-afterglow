@@ -11,6 +11,7 @@
 	import { formatDate, formatSize } from '$lib/utils/format';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tp } from '$lib/i18n/ns/compute-pools';
+	import { t as ta } from '$lib/i18n/ns/admin-ops';
 	import { getLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -372,8 +373,12 @@
 		return groups.filter((group) => group.rows.length > 0);
 	});
 
-	const objectStorage = $derived($siteConfig.services.swift ? (inventory?.object_storage ?? null) : null);
-	const database = $derived($siteConfig.services.trove ? (inventory?.database ?? null) : null);
+	const objectStorage = $derived(inventory?.object_storage ?? null);
+	const database = $derived(inventory?.database ?? null);
+
+	function optionalUsageUnavailable(section: 'database' | 'object_storage'): string {
+		return ta(inventory?.disabled_sections.includes(section) ? 'overview.availability.disabled' : 'overview.availability.unknown');
+	}
 
 	function formatAmount(value: number, scale = 1): string {
 		return (value / scale).toLocaleString(intlLocale(), { maximumFractionDigits: 2 });
@@ -740,21 +745,25 @@
 								{/if}
 							</section>
 						{/each}
-						{#if objectStorage}
+						{#if $siteConfig.services.swift}
 							<section class="space-y-2.5" aria-label={t('usageReport.resources.objectStorage')}>
 								<SectionLabel>{t('usageReport.resources.objectStorage')}</SectionLabel>
+								{#if objectStorage}
 								<div class="grid gap-px overflow-hidden rounded-lg border border-line bg-line">
 									<StatTile label={t('usageReport.resources.container')} value={objectStorage.container_count.toLocaleString(intlLocale())} accent="blue" flat />
 									<StatTile label={t('usageReport.resources.object')} value={objectStorage.object_count.toLocaleString(intlLocale())} accent="cyan" flat />
 									<StatTile label={t('usageReport.resources.usage')} value={objectStorage.bytes_used > 0 ? formatSize(objectStorage.bytes_used) : `${formatValue(0)} B`} accent="violet" flat />
 								</div>
+								{:else}
+									<p class="text-sm text-ink-2">{optionalUsageUnavailable('object_storage')}</p>
+								{/if}
 							</section>
 						{/if}
-						{#if database}
+						{#if $siteConfig.services.trove}
 							<section class="space-y-2.5" aria-label={t('usageReport.resources.database')}>
 								<SectionLabel>{t('usageReport.resources.database')}</SectionLabel>
 								<div class="overflow-hidden rounded-lg border border-line">
-									<StatTile label={t('usageReport.resources.dbInstance')} value={formatValue(database.instances_count)} accent="emerald" flat />
+									<StatTile label={t('usageReport.resources.dbInstance')} value={database?.instances_count == null ? optionalUsageUnavailable('database') : formatValue(database.instances_count)} accent="emerald" flat />
 								</div>
 							</section>
 						{/if}

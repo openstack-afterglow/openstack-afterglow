@@ -36,6 +36,9 @@
 - Audio Studio의 모델 선택 A→B→A 뒤 첫 A의 늦은 capability 응답이 최신 결과·오류·loading을 덮지 않도록 kind별 요청 세대 경계를 적용합니다. TTS/STT의 실패 재현 회귀를 유지하고 음성 생성·전사를 재실행하지 않습니다.
 - Trove 목록 계열의 upstream 실패를 빈 목록으로 숨기지 않고 500으로 전파하며 관련 캐시 키를 http-checked-v2로 격리합니다. Swift 목록/휴지통의 빈 목록 인정 범위를 부재 사유로 좁히고 계정 조회를 strict로 전환합니다. 단건 조회와 백업 owner 확인의 catch-all 404를 401/403/404만 opaque 404로 좁히고 나머지는 정제된 503으로 구분합니다.
 - 관리자 컨테이너 단건 조회도 native 503·전송 장애를 거짓 404로 바꾸지 않고 정제된 503으로 구분합니다. 실제 부재·거부의 opaque 404와 관리자 권한·executor 경계는 유지합니다.
+- Full dashboard quota에서 Trove·Swift 장애를 정상 0으로 숨기지 않습니다. 조회 불가와 비활성을 nullable 통계·명시 section 목록으로 구분하고 정상 core quota·기간 보고서를 보존합니다. 레거시 fake0 cache를 격리하며 실제 정상0과 Swift 계정 미초기화0은 유지합니다.
+- 컨테이너·파일 스토리지 standalone 상세의 최초 읽기를 실제 owner·HTTP·상태 적용·guarded DOM에 연결합니다. 권위·자원·API-base ABA 뒤의 늦은 응답과 shared GET leader 재결합을 차단하고 정상 credential 갱신의 화면·pending 읽기·규칙 초안은 보존합니다. 느린 초기 로그 읽기 중 자동 polling을 겹치지 않게 하며 규칙 조회 실패를 빈 목록으로 숨기지 않습니다.
+- 인스턴스 메트릭의 Nova 단건·summary flavor 조회가 API 이벤트 루프를 막지 않도록 기존 완료 drain 경계 아래 스레드에서 실행합니다. API/worker의 httpcore 실행 환경 탐지가 매번 누락된 선택 의존성을 파일시스템에서 찾지 않도록 sniffio를 명시합니다. 운영 traffic503 원인 확정·배포 완료를 뜻하지 않습니다.
 - 경험 조회의 정적 카탈로그는 이미 허용된 bounded window에서 한 번에 읽어 반복 message마다 발생하던 SQL 조회를 없앱니다. 같은 catalog ID를 공유해도 각 사건의 revision/key/실제 locale을 개별 검증하여 다른 사건의 성공 때문에 잘못된 문구를 복원 완료로 표시하지 않습니다.
 - 소비자·관리자 VM 생성의 소유 SDK 호출과 worker의 native 호출은 실제 종료까지 admission·연결·lease를 보존합니다. 동기/native child span의 시작·반환 관측·취소 요청·실제 drain을 구분하며, 진단 저장 중 취소가 이미 반환된 native ID를 잃게 하거나 새 후속 SDK 쓰기를 시작시키지 않게 합니다. SMTP transport와 terminal SQL을 함께 drain하고 다중 delivery의 마지막 actor가 role cleanup에 남지 않도록 합니다. SDK 종료를 provider 취소·guest 준비로 선언하거나 unknown 작업을 재전송하지 않습니다.
 - SMTP가 결과를 반환하면 메일 업무 최종 상태(accepted/failed/cancelled/unknown)를 best-effort 완료 진단보다 먼저 durable하게 기록합니다. 진단 취소가 이미 accepted된 메일을 `unknown`으로 강등하지 않으며 알 수 없는 DATA는 계속 재전송하지 않습니다. 소유 anyio scope의 레벨 취소가 진단 shield에 가려져도 `checkpoint()`가 새 SDK 작업 전에 이를 드러내어, 취소된 scope에서 다음 native 변경이 시작되지 않습니다.

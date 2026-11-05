@@ -78,7 +78,7 @@ export interface ComputePoolSummary {
 }
 export interface ManilaFileQuota { shares: QuotaItem; gigabytes: QuotaItem; share_networks: QuotaItem; }
 
-/** Full `/api/v1/dashboard/quotas` view; optional keys depend on enabled services and adapter fallbacks. */
+/** Full `/api/v1/dashboard/quotas` view; optional-service failures preserve core quotas. */
 export interface DashboardQuotas {
   compute: { instances: QuotaItem; cores: QuotaItem | null; ram: QuotaItem | null; key_pairs?: QuotaItem; server_groups?: QuotaItem };
   native_compute?: ComputeQuotas | null;
@@ -102,8 +102,10 @@ export interface DashboardQuotas {
   file_storage: { shares?: QuotaItem; gigabytes?: QuotaItem; share_networks?: QuotaItem; snapshot_gigabytes?: QuotaItem };
   gpu?: GpuQuota[];
   gpu_available?: boolean;
-  database?: { instances_count: number };
-  object_storage?: { container_count: number; object_count: number; bytes_used: number };
+  database: { instances_count: number | null };
+  object_storage: { container_count: number; object_count: number; bytes_used: number } | null;
+  unavailable_sections: ('database' | 'object_storage')[];
+  disabled_sections: ('database' | 'object_storage')[];
   compute_pool?: ComputePoolSummary;
 }
 export interface DashboardAlert {

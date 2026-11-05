@@ -41,6 +41,15 @@
 - **WHEN** 사용자가 취소했으나 native 호출이 아직 종료되지 않았다
 - **THEN** cancel_requested와 실제 drain/정리 완료를 구분하고 성공/취소 확정을 앞당기지 않는다
 
+#### Scenario: Initial direct-detail route and owner replacement
+- **WHEN** 컨테이너 또는 파일 스토리지 상세로 직접 진입하거나 같은 mounted route에서 자원·논리 owner·권위·API base가 바뀐다
+- **THEN** 실제 최초/후속 읽기에 명시 context를 전달하고 source state 적용과 guarded DOM commit을 구분하며 이전 owner의 늦은 결과·오류·cleanup을 새 화면에 적용하지 않는다
+
+#### Scenario: Verified same-owner renewal
+- **WHEN** 같은 논리 owner의 검증된 bearer 갱신이 열린 상세에 반영된다
+- **THEN** 정상 state·독립 in-flight 읽기를 보존하고 이후 읽기는 새 credential을 사용하며 계측 때문에 업무 GET이나 mutation을 반복하지 않는다
+
+
 ### Requirement: Historical locale and message fidelity
 시스템은 SHALL message key, 실제 표시 locale, catalog/build revision과 허용된 비민감 parameter로 당시 문구를 재구성하며 복원 불가 영역을 명시한다.
 

@@ -235,7 +235,7 @@ async def _assert_settled(session, domain_id, *, project_id=None):
 async def _invalidate(project_id):
     for suffix in (
         f"afterglow:dashboard:{project_id}:quotas",
-        f"afterglow:dashboard:{project_id}:quotas:native-v1",
+        f"afterglow:dashboard:{project_id}:quotas:native-v2",
         f"afterglow:dashboard:{project_id}:quotas:overview",
         f"afterglow:nova:{project_id}:quota:strict",
         f"afterglow:cinder:{project_id}:quota:strict",

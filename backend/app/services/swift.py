@@ -292,11 +292,16 @@ def get_account_metadata(conn, *, strict: bool = False) -> dict:
     """Return current-account usage metadata.
 
     A missing account is represented as empty usage. With ``strict=True``, all
-    other provider failures are propagated so callers can fail closed.
+    other provider failures and incomplete usage headers are propagated.
     """
     _apply_endpoint_override(conn)
     try:
         meta = conn.object_store.get_account_metadata()
+        if strict:
+            for field in ("account_container_count", "account_object_count", "account_bytes_used"):
+                value = getattr(meta, field, None)
+                if type(value) is not int or value < 0:
+                    raise ValueError("invalid Swift account usage metadata")
         result = {
             "container_count": int(getattr(meta, "account_container_count", 0) or 0),
             "object_count": int(getattr(meta, "account_object_count", 0) or 0),

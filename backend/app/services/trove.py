@@ -1,10 +1,12 @@
 """Trove (Database as a Service) 서비스 래퍼.
 
 openstacksdk의 conn.database 프록시를 사용.
-서비스가 없거나 오류 시 빈 목록/0을 반환하여 optional 서비스로 동작.
+목록 조회의 native 실패는 전파하며, strict 조회는 프로젝트 범위의 모든 marker page를 검증한다.
+비엄격 count/topology 등 명시한 optional 호출자만 실패 시 0/빈 결과 fallback을 유지한다.
 """
 
 import logging
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 _logger = logging.getLogger(__name__)
 
@@ -110,16 +112,84 @@ def _instance_to_dict(i) -> dict:
     }
 
 
-def list_instances(conn) -> list[dict]:
+def _instance_page_marker(body: dict, response_url: str, last_id: str | None) -> str | None:
+    """Validate continuation metadata, never dispatch a provider-supplied URL."""
+    continuations = []
+    next_link = body.get("next")
+    if next_link is not None and next_link is not False and next_link != "":
+        continuations.append(next_link)
+    for field in ("links", "instances_links"):
+        links = body.get(field, [])
+        if not isinstance(links, list) or any(not isinstance(link, dict) for link in links):
+            raise ValueError("invalid Trove pagination metadata")
+        continuations.extend(link.get("href") for link in links if link.get("rel") == "next")
+    current = urlsplit(response_url)
+    for href in continuations:
+        if not isinstance(href, str) or not href or last_id is None:
+            raise ValueError("invalid Trove continuation")
+        target = urlsplit(urljoin(response_url, href))
+        query = parse_qs(target.query, keep_blank_values=True)
+        # Trove AppUrl.change_query_params forces HTTPS even for HTTP endpoints.
+        # This is link metadata only; the next GET keeps the original proxy URL.
+        same_scheme = target.scheme == current.scheme
+        native_https_link = current.scheme == "http" and target.scheme == "https"
+        if (
+            not (same_scheme or native_https_link)
+            or target.netloc != current.netloc
+            or target.username is not None
+            or target.password is not None
+            or target.path.rstrip("/") != current.path.rstrip("/")
+            or target.fragment
+            or set(query) - {"marker", "limit"}
+            or query.get("marker") != [last_id]
+            or (
+                "limit" in query
+                and (len(query["limit"]) != 1 or not query["limit"][0].isdigit() or int(query["limit"][0]) < 1)
+            )
+        ):
+            raise ValueError("out-of-scope or nonadvancing Trove continuation")
+    return last_id if continuations else None
+
+
+def list_instances(conn, *, strict: bool = False) -> list[dict]:
     """현재 프로젝트의 DB 인스턴스 목록 반환 (raw REST: ip/addresses 보장).
 
     Trove 응답의 deleted=1 행은 이미 삭제된 인스턴스이므로 UI 노출 방지를 위해 제외.
     Upstream 실패는 호출자(HTTP 500)로 전달하고 빈 목록으로 숨기지 않는다.
     """
-    resp = conn.database.get("/instances")
-    resp.raise_for_status()
-    body = resp.json() if hasattr(resp, "json") else {}
-    return [_dict_from_raw(raw) for raw in body.get("instances", []) if not raw.get("deleted")]
+    if not strict:
+        resp = conn.database.get("/instances")
+        resp.raise_for_status()
+        body = resp.json() if hasattr(resp, "json") else {}
+        return [_dict_from_raw(raw) for raw in body.get("instances", []) if not raw.get("deleted")]
+
+    items: list[dict] = []
+    seen_ids: set[str] = set()
+    marker = None
+    for _page in range(100):
+        params = {"marker": marker} if marker is not None else {}
+        resp = conn.database.get("/instances", params=params, redirect=False)
+        resp.raise_for_status()
+        if not 200 <= resp.status_code < 300:
+            raise ValueError("invalid Trove inventory HTTP response")
+        body = resp.json()
+        if not isinstance(body, dict) or not isinstance(body.get("instances"), list):
+            raise ValueError("invalid Trove instance collection")
+        batch = body["instances"]
+        if len(items) + len(batch) > 10000:
+            raise ValueError("Trove inventory row bound exceeded")
+        for raw in batch:
+            instance_id = raw.get("id") if isinstance(raw, dict) else None
+            if not isinstance(instance_id, str) or not instance_id or instance_id in seen_ids:
+                raise ValueError("invalid or duplicate Trove instance identity")
+            seen_ids.add(instance_id)
+            items.append(raw)
+        if marker is not None and not batch:
+            raise ValueError("Trove inventory pagination did not advance")
+        marker = _instance_page_marker(body, resp.url, batch[-1]["id"] if batch else None)
+        if marker is None:
+            return [_dict_from_raw(raw) for raw in items if not raw.get("deleted")]
+    raise ValueError("Trove inventory page bound exceeded")
 
 
 def list_instances_admin_all_projects(conn) -> list[dict]:
@@ -188,15 +258,18 @@ def topology_database_ips(conn, *, all_projects: bool = False) -> set[str]:
     return ips
 
 
-def count_instances(conn) -> int:
+def count_instances(conn, *, strict: bool = False) -> int:
     """현재 프로젝트의 DB 인스턴스 수 반환 (deleted 행 제외).
 
     SDK iterator (`conn.database.instances()`) 가 deleted 행을 포함하는지 불확실하므로
     list_instances 기반으로 산정하여 목록 카운트와 항상 일치.
+    Strict reads traverse bounded, same-project marker pages and propagate incomplete inventory.
     """
     try:
-        return len(list_instances(conn))
+        return len(list_instances(conn, strict=True) if strict else list_instances(conn))
     except Exception:
+        if strict:
+            raise
         return 0
 
 

@@ -869,7 +869,7 @@ async def _invalidate_projections(project_ids):
             f"afterglow:nova:{project_id}:flavors",
             f"afterglow:nova:{project_id}:quota:strict",
             f"afterglow:dashboard:{project_id}:quotas",
-            f"afterglow:dashboard:{project_id}:quotas:native-v1",
+            f"afterglow:dashboard:{project_id}:quotas:native-v2",
             f"afterglow:dashboard:{project_id}:quotas:overview",
         ):
             await invalidate(key)

@@ -12,6 +12,8 @@ Public login asks for username/email and password without naming the internal Ac
 
 Authenticated dashboard data belongs to the logical login, user, identity/working domain, project and verified authority—not the current access-token bytes. A same-owner credential renewal preserves settled rows and independent in-flight reads; subsequent fetches use the new credential. Scope switching, logout, readiness loss and authority changes clear private content immediately, including same-tick ABA transitions. The usage-schedule bell and reminder share only overlapping reads with independent cancellation; transient failures retain the existing explicit retry/error UI. No new visual primitive or style is introduced.
 
+기간 사용량의 full quota 현황은 선택 서비스의 실제0·조회 불가·비활성을 구분한다. Trove·Swift가 활성인데 실패하면 정상 core quota·기간 보고서를 유지하면서 해당 통계에 기존 조회 불가 문구를 표시한다. 비활성은 별도 문구이고0개/0B나 quota 사용률로 바꾸지 않는다. 기존 Card·StatTile·Alert·locale 토큰을 재사용하며 새 시각 primitive나 색상은 추가하지 않는다.
+
 인스턴스 사용 일정은 현재 종료일과 승인 대기 요청을 별도로 표시한다. 날짜 단축과 한 달 이내 사유 있는 연장을 구분하고, 사유가 부적절하면 관리자가 별도 확인할 수 있으며 승인 대기는 만료를 미루지 않음을 안내한다. 도메인 manager 정책과 도메인/프로젝트 검토 목록은 현재 권한·scope를 따르고 결과 불명은 명시적 재조회 전 재전송하지 않는다. 기존 form·상태·alert primitives와9locale를 사용한다.
 
 Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한다. 이후 관측된 단계 기반 추정치와 native 보고 진행률은 구분하며, authoritative terminal 전100%를 표시하지 않는다. 생성 modal 최소화 뒤 동일 소유자·프로젝트의 하단 dock에서 상태를 계속 볼 수 있고, 실제 terminal 전에는 완전히 닫지 않는다. 연결 유실과 operation ID 미수신은 unknown이며 재시도·성공으로 합성하지 않는다. Dock은 기존 upload 표시와 겹치지 않고 좁은 화면에서도 조작할 수 있다.

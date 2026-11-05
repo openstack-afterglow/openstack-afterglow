@@ -636,14 +636,22 @@ async def get_project_quotas(
         if settings.service_manila_enabled:
             tasks.append(asyncio.to_thread(manila_svc.get_file_storage_quota, conn))
         if settings.service_trove_enabled:
-            tasks.append(asyncio.to_thread(trove_svc.count_instances, conn))
+            tasks.append(asyncio.to_thread(trove_svc.count_instances, conn, strict=True))
         if settings.service_swift_enabled:
-            tasks.append(asyncio.to_thread(swift_svc.get_account_metadata, conn))
-        return list(await asyncio.gather(*tasks))
+            tasks.append(asyncio.to_thread(swift_svc.get_account_metadata, conn, strict=True))
+        results = list(await asyncio.gather(*tasks, return_exceptions=True))
+        required_count = 3 + int(settings.service_manila_enabled)
+        for index, result in enumerate(results):
+            if isinstance(result, BaseException):
+                if index < required_count or not isinstance(result, Exception):
+                    raise result
+                _logger.warning("dashboard optional quota usage 조회 실패", exc_info=result)
+                results[index] = None
+        return results
 
     try:
         results = await cached_call(
-            f"afterglow:dashboard:{project_id}:quotas:native-v1",
+            f"afterglow:dashboard:{project_id}:quotas:native-v2",
             ttl_normal(),
             _fetch_quotas,
             enabled=cm.enabled,
@@ -656,14 +664,10 @@ async def get_project_quotas(
         file_storage_q = results[idx] if settings.service_manila_enabled else {"limit": 0, "in_use": 0, "reserved": 0}
         if settings.service_manila_enabled:
             idx += 1
-        trove_count: int = results[idx] if settings.service_trove_enabled else 0
+        trove_count: int | None = results[idx] if settings.service_trove_enabled else None
         if settings.service_trove_enabled:
             idx += 1
-        swift_meta: dict = (
-            results[idx]
-            if settings.service_swift_enabled
-            else {"container_count": 0, "object_count": 0, "bytes_used": 0}
-        )
+        swift_meta: dict | None = results[idx] if settings.service_swift_enabled else None
     except Exception:
         raise HTTPException(status_code=500, detail="작업 실패")
     try:
@@ -691,6 +695,11 @@ async def get_project_quotas(
     if pool and pool["state"] != "active":
         gpu_quota, gpu_quota_available = [], False
 
+    optional_usage = (
+        ("database", settings.service_trove_enabled, trove_count),
+        ("object_storage", settings.service_swift_enabled, swift_meta),
+    )
+
     return {
         "compute": compute_q,
         "native_compute": native_compute_q,
@@ -702,6 +711,8 @@ async def get_project_quotas(
         **({"compute_pool": pool} if pool else {}),
         "database": {"instances_count": trove_count},
         "object_storage": swift_meta,
+        "unavailable_sections": [name for name, enabled, value in optional_usage if enabled and value is None],
+        "disabled_sections": [name for name, enabled, _value in optional_usage if not enabled],
     }
 
 

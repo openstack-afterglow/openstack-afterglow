@@ -267,7 +267,7 @@ async def get_instance_metrics(
     token_info: dict = Depends(get_token_info),
 ) -> dict:
     """Return one native-first metric with exporter fallback and provenance."""
-    server = _resolve_server(conn, instance_id)
+    server = await _to_completion(asyncio.to_thread(_resolve_server, conn, instance_id))
     _authorize(server, token_info)
     metric_instance_id = _metric_instance_id(server)
 
@@ -305,7 +305,7 @@ async def get_instance_metrics_batch(
 ) -> dict:
     """Resolve/authorize once; choose a single provider independently per metric."""
     keys = _metric_keys(metrics)
-    server = _resolve_server(conn, instance_id)
+    server = await _to_completion(asyncio.to_thread(_resolve_server, conn, instance_id))
     _authorize(server, token_info)
     return await instance_metrics_batch(server, keys, range, conn)
 
@@ -587,7 +587,7 @@ async def get_instance_metrics_summary(
       recommendation: { underutilized, reason, current_flavor, suggested_flavor } | null
     }
     """
-    server = _resolve_server(conn, instance_id)
+    server = await _to_completion(asyncio.to_thread(_resolve_server, conn, instance_id))
     _authorize(server, token_info)
     return await instance_metrics_summary(server, range, conn)
 
@@ -633,10 +633,10 @@ async def instance_metrics_summary(server, range: str, conn, *, flavor_conn=None
                 if mem_avg is not None and mem_avg < 20:
                     reason_parts.append("mem_avg<20")
 
-                all_flavors = (
-                    nova._list_flavors(flavor_conn, project_id=server.project_id)
+                all_flavors = await _to_completion(
+                    asyncio.to_thread(nova._list_flavors, flavor_conn, project_id=server.project_id)
                     if flavor_conn is not None
-                    else nova.list_flavors(conn)
+                    else asyncio.to_thread(nova.list_flavors, conn)
                 )
                 cur_flavor = next((f for f in all_flavors if f.id == server.flavor_id), None)
 

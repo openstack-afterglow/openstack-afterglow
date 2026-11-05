@@ -5,7 +5,7 @@
 	import { ResponsiveTable, CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
 
 	let {
-		shareProto, accessRules, accessLoading,
+		shareProto, accessRules, accessLoading, accessError,
 		onAdd, onRevoke,
 		addingRule, addError,
 		revokingId,
@@ -13,6 +13,7 @@
 		shareProto: string;
 		accessRules: AccessRule[];
 		accessLoading: boolean;
+		accessError: string;
 		onAdd: (form: { access_to: string; access_level: string }) => Promise<boolean>;
 		onRevoke: (id: string) => Promise<void>;
 		addingRule: boolean;
@@ -88,6 +89,8 @@
 
 	{#if accessLoading}
 		<div class="flex justify-center py-4"><LoadingState variant="section" label={t('accessRules.loading')} /></div>
+	{:else if accessError}
+		<div role="alert" class="text-red-400 text-sm py-4">{accessError}</div>
 	{:else if accessRules.length === 0}
 		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.empty')}</p>
 	{:else}

@@ -1309,7 +1309,7 @@ async def update_project_compute_policy(
 
     await invalidate(f"afterglow:nova:{project_id}:flavors")
     await invalidate(f"afterglow:dashboard:{project_id}:quotas")
-    await invalidate(f"afterglow:dashboard:{project_id}:quotas:native-v1")
+    await invalidate(f"afterglow:dashboard:{project_id}:quotas:native-v2")
     return {
         "project_id": project_id,
         "status": "partial" if errors else "ok",

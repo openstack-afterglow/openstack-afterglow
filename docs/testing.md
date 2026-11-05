@@ -6,6 +6,104 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 남은 운영 마찰·경험 관측 경계 (2026-11-05, source/local)
+
+- Standalone container/file detail의 실제 mounted route·실제 API client·collector 회귀41개가 통과했습니다.
+  최초/수동/자동 읽기·성공/실패·자원/권위/base/route ABA·unmount·검증된 갱신 보존을 포함합니다.
+  최초 log200/503을16초 지연해도 pending 중 physical GET1회이며, 완료 후14999ms까지 추가0·
+  15000ms에 다음 polling1회를 확인했습니다. Forced refresh가 passive 읽기에 action context를 누출하지
+  않음을 포함하며 이전37·39개 통과는 superseded입니다.
+- Full quota는 nullable database/Swift와 unavailable/disabled section 계약으로 정상 core를 보존합니다.
+  설치 SDK→loopback HTTP→실제 source endpoint 및 실제 cache invalidation 회귀를 포함한221개,
+  기간 사용량 DOM·mockup transport47개가 통과했습니다. 세 exact-key invalidator도 native-v2로
+  함께 전환했습니다. Strict count는 deleted-only 첫 page 뒤의 live row도 합산하며 scoped marker로
+  최대100page/10000row를 읽고 loop·불완전/범위 밖 continuation은 unknown으로 반환합니다.
+  Native Trove의 HTTPS next-link metadata도 검증하되 실제 transport/목적지는 바꾸지 않습니다.
+  Native provider·현재 사람 권위·운영 quota 변경 수용은 아닙니다.
+- 실제 source Uvicorn→설치 SDK→loopback Trove GET/Swift HEAD에서도 정상0·Trove만 실패·Swift만 실패·
+  둘 다 실패의4조건이 모두200과 정확한 nullable/availability·정상 core를 보존했습니다.
+  최초 자체 Swift fixture의 trailing slash 처리 오류는 fixture만 교정했으며 제품 fallback으로 숨기지 않았습니다.
+- Full gate 첫 backend 실행은14381passed/106skipped와 service-versions caller-token 예외 누락1실패였습니다.
+  Service-versions는 caller-native API version metadata를 읽고 fresh system-admin guard를 그대로 유지하는
+  실제 계약이므로 권한·executor를 바꾸지 않고 해당 route를 명시적 caller-transport 예외로 복원했습니다.
+  관리자 executor 경계 회귀와 기존 mounted HTTP cached-admin 폐기403/native 호출0·원 native token/catalog·
+  부분 실패 회귀를 포함한 authority/service-version selector37개가 통과했습니다.
+  수정 후 full gate는 별도 최종 receipt로 기록합니다.
+- 현재 운영의 native 서비스 cohort는 이전 조사와 달라졌으며 source1.32.7 checkout과 실제 운영
+  Afterglow1.32.6을 구분합니다. User browser relay가 끊겨 현재 사람 권위 수용은 아직 차단입니다.
+  두 Hub journal은 원 hash와 일치하고 worker exited/restart2408·구 Hub POST-only claim 계약을
+  확인했습니다. Settlement GET을 조회처럼 실행하지 않았습니다.
+- Controller1 traffic503 편중은 남아 있으나 slowlog 선택 표본·cgroup CPU만으로 pool/event-loop/
+  Sentinel/Redis 원인을 단정하지 않습니다. 사용자가 세 API의 최대60초 외부 read-only stack 관측과
+  원 Hub claim/build 원장의 보호된 read-only 대조를 승인했습니다. Reset·삭제·replay·worker 재시작·
+  schema/key/IAM·deadline 변경 또는 운영 수집/보존 활성화 승인은 아닙니다.
+- 승인된50초 동시 stack 관측은 ctrl2/3의 동기 Nova resolution이 실제 main event loop에서
+  socket read를 기다림을 확인했습니다. 격리된 수정 전 source의 실제 SDK/HTTP 회귀는3개 endpoint에서
+  실패했고 수정 뒤 metrics·host-health selector138개가 통과했습니다. 조건부 summary flavor 읽기도
+  같은 completion-drain 경계로 옮겼으며 권위·오류·재시도 계약은 바꾸지 않았습니다.
+- Ctrl1의 성공 stack2230개 중186개에 반복 sniffio import/filesystem 탐색이 있었습니다.
+  실제 httpcore1.0.9를 쓰는 local asyncio probe15000회에서 optional dependency 명시 전 탐색15000회·
+  후0회를 확인했습니다. Local call median13,357ns→131ns는 detection-only micro-measurement이며
+  운영 request latency 개선 수치가 아닙니다. API·worker dependency/lock을 함께 갱신했습니다.
+- 해당 sampling window의503은0건이었고 앞뒤에는503이 남아 있습니다. 따라서 위 source 수정으로
+  controller1 traffic503이 해결됐다고 선언하지 않습니다. Hub exact cursor는58846·decoded result null로
+  두 번 동일했지만 legacy POST는 sequence를 모르므로 journal58848의 미실행을 증명하지 못합니다.
+  원 journal·worker hold를 유지하며 reset·재실행·settlement를 수행하지 않았습니다.
+- 최종 frozen source0eab16fb/4141files의 Python3.12.13 전체 gate가 exit0입니다.
+  backend14382passed/106skipped·frontend534files/7351tests·contracts261·DB263passed/46skipped/122deselected·Ruff/format876files.
+  별도 frontend check/build는5278dcc1에서 exit0이고0eab16fb와 runtime source2973개·served assets의 byte parity를 확인했습니다.
+  Private working/staged architecture는0eab16fb로 통과했습니다. 원3002-entry manifest의29개 .DS_Store/.omc 항목은 runtime 검증에서 명시적으로 제외합니다.
+  amd64 api/frontend/worker image3종과 정본 root Compose·schema-before-writers 격리 runtime의 health/recovery4HTTP200을 확인했습니다.
+  5278dcc1 이후 product 변경은 없으며 test/authority regression 복원만 새 전체 gate로 재검증했습니다.
+  더 이른 실패/불완전 receipt는 superseded로 보존합니다.
+
+- 최신 합성 수용의 정본은 `~/.local/share/afterglow-proofs/operational-remediation-20261105/consolidated-current-acceptance.json`입니다.
+  Core4계열의26조건과 나머지7계열의18 source-owned/2 generic docs 조건을 실제 compiled frontend·source API·설치 SDK 또는 HTTP peer·전용 SQL로 연결했습니다.
+  Core 캡처375개는 SQL3980행 snapshot에서 missing0이고 source response request ID/physical span·owner state/applied/commit·별도 ingest ID를 대조했습니다.
+  Native/workspace cohort SQL828/1219행과3175 served-asset 대조도 보존합니다. 모든 화면/정상 native CRUD·실제 사람 IAM 수용을 뜻하지 않습니다.
+- 컨테이너·파일 standalone 최초 ready/error를1280/390px에서 검증했고 overflow0입니다.
+  컨테이너 native 로그200/503을 각각16초 지연해도 브라우저/native GET은 각1회이며15초 자동 polling이 겹치지 않았습니다.
+  파일 규칙500은 정상 상세와 독립 오류를 보존하고 빈 규칙 안내를 숨겼으며, native200/실제[]만 빈 목록으로 표시했습니다.
+  수동 갱신의 두 GET은 같은 action에 연결되고 다음 자동 두 GET에는 해당 action이 없습니다.
+- Full quota 정상0·Trove만 실패·Swift만 실패·둘 다 실패의8조건(1280/390px)은 실제 source 응답과 화면의 조회 불가/0·정상 core 보존이 일치합니다.
+  DB 상세는503/error/applied-only이며 guarded DOM telemetry를 주장하지 않습니다. Object 목록500/error·row200/ready와 metadata503의 독립 상태를 확인했습니다.
+  Retained object 사례는 metadata503과 cached objects200 조합이며 새 native 목록 실패의 증거로 확대하지 않습니다.
+- Drover도 applied-only/DOM intentionally-not-collected입니다. Waygate/Lumen/Palimpsest·workspace selector·monitoring directory는 검증된 guarded commit입니다.
+  별도 IAM users page는200/applied-only이며 실패 수용으로 확대하지 않습니다. Monitoring overview와 docs는 명시 generic-only이고 local docs 검색 원문은 비수집입니다.
+  원격 내부 span·채팅/terminal/파일 원문·실제 사람 인지는 미확인입니다.
+- Fresh worker-f05e에서 현재 source의 encrypted outbox→실제 Redis membership/claim/lease→scheduler→aiosmtplib verified SMTPS→독립 GreenMail→SQL terminal을 실행했습니다.
+  반복 취소 후에도 SMTP/SQL 종료까지 lease를 유지했고 accepted/unknown 각1건·원 DATA2회·진단 각9행·link 각2개이며 재전송0입니다.
+  지연/유실된 ACK 전에 독립 verified IMAPS readonly exact-ID readback 각1건을 확인했습니다. 이전 worker hash 불일치는 재사용하지 않았고 실제 운영 mailbox/IAM 수용은 아닙니다.
+  현재 amd64 worker image의 실제 CLI·secret-safe1054/file+stderr·sniffio1.3.1 및 정본 crypto smoke도 통과했으나 DB 미설정 종료를 readiness로 간주하지 않습니다.
+- Packaged recovery390px의 실제 collector201/ACK9개는 별도 image-f05c SQL9개와 일치하고 익명 user_id는 정본의 빈 문자열 계약입니다.
+  Unsent CephX/로그인 password canary의 literal·encoded 변형은 core SQL/legacy·collector·owned backend logs에서0회입니다.
+  Core/image/worker의 SQL·독립 Redis backup을 남기고 소유 browser/API/frontend/Redis/mail peer만 종료했습니다. 공유 datastore·운영/unknown 원장은 보존했습니다.
+- 동일 catalog fresh f51a/f51b 네 대표 episode의 비용은 다음과 같습니다. VM은 실제422/validation.rejected 분기이며 guest 성공으로 해석하지 않습니다.
+
+| 고정 비용 항목 | OFF | ON | 원 수용 한계 |
+|---|---:|---:|---:|
+| 진단+legacy+header 전체 wire |22,606 B|190,878 B|262,144 B|
+| replay 포함 전체 episode |25,898 B|451,072 B|1,048,576 B|
+
+  추가 native mutation0, ACK131/131 SQL·missing0, ACK 미관측7개도 SQL에 있습니다.
+  원 분모40 중 정확히 증명한 익명→로그인 cross-owner2개만 제외하여38/38을 연결했고 절대 crash loss는 UNKNOWN입니다.
+  ACK latency p9572.7ms/관측11batch와 stored JSON p95924B는 운영 request p95나 전체 사람 session 비용이 아닙니다.
+  Native human 권위·Hub legacy disposition·실패 시각 traffic stage 원인과 운영 opt-in/보존/배포는 별도 미완료 조건으로 유지합니다.
+
+- 추가 승인된 운영 읽기(2026-11-05)는 source/local 수용과 별개입니다. Controller1 기존 process 하나의 외부 관측은 configured10Hz, 실제299.214초로 종료했고, 원 PID/start/image/restart0·TracerPid0 및 sampler 회수를 확인했습니다. 자연 요청 window의 성공606개와 실패503 6개 중 실패6개 모두 `ingest_traffic:65`의 비연쇄 `HTTPException(503)`이며 `record_event=False` 직후입니다. 배포0334564d가 내부 예외를 삼키고 stage logger 자체를 갖지 않아 Redis 초기화·pool/connect/Sentinel·eval/reply·capacity 중 어느 False 경로인지는 복원할 수 없습니다. 실패 window845–1609ms는 기존250ms 내부 budget 초과 원인의 증명이 아니며, sniffio/import 탐색은 duration-matched 성공20/20에서도 관측되어 실패 고유 원인으로 판정하지 않습니다. `live-stack-controller1-extended/acceptance-clarification.json`과 `controller-approved-observation-final.json`이 초기 미확정 receipt를 대체합니다.
+- Hub의 승인된 역사 metadata 대조도 완료했습니다. 10월30일 암호화 backup은 11월2일 sequence58848보다 오래됐고, 보호된 metadata에는 exact claim→build/lease/outcome이 없습니다. 원 worker log의 UUID7개는 모두 channel UUID였고, 세 실제 Hub API의 가장 오래된 retained log도 관련 window 초반을 포함하지 않습니다. Claim route literal5개와 결과/status UNKNOWN을 성공·실패·미실행으로 해석하지 않습니다. `hub-historical-read-summary.json`, `hub-api-log-history-metadata.json`, `hub-historical-log-metadata.json`에 한계를 보존했으며, 암호문 읽기·복호화·restore·settlement GET·replay/reset·worker 재시작 없이 원 journal/hash와 exited hold를 유지했습니다.
+- 다음 운영 경계는 별도 승인 대상입니다. Traffic은0334564d 기반의 최소 finite-stage 진단만 선별하고 기존250ms budget·응답·무재시도 계약과 rollback을 보존해야 하며, 공유 dev/SQL107·108 전체를 배포해서는 안 됩니다. Hub는 원 unknown 결과를 추정하지 않는 비재실행 격리 및 호환 API/worker 전환 조건이 필요합니다. MCP는 사용자가 선택한 현재 로그인 Chrome Relay만 사용하며 protected grant SQL/저장 human credential 대체 경로는 선택되지 않았습니다.
+- 승인된 Hub 후속 준비에서는12:00:36UTC 단일 readonly transaction의 현재 builds6개(complete5/error1)·image_jobs8개(complete2/error6), nonterminal·future lease0을 대조했습니다. 전체 두 표의 상태별 aggregate이며 payload/row ID/lease 값은 반환하지 않았습니다. 이 점시각 census는 writer fence나 외부 실행 부재·과거 claim 판정이 아닙니다. 원 worker/journal 보존도 전후 확인했습니다. [공개 Palimpsest0.3.12](https://github.com/openstack-afterglow/palimpsest/releases/tag/0.3.12)의 정합한 API/export/build-worker3개 index·amd64 manifest·config metadata digest와 선언된4905228/version 일치를 확인했지만 layer/code 실행·운영 schema/복원 호환성을 검증한 것은 아닙니다. 현재 API57ab180/held worker7c4bb06과 교체하지 않았고, recovery GET의 stateful fence 및 creator/PK/visibility bootstrap·paired SQL/CAS rollback·전체-group 배포·unknown 비재실행 조건을 `hub-current-cutover-qualification.json`에 기록했습니다. 검토 source5개 파일만 release commit과 working-byte diff0이며 후기 checkout 전체나 image binary의 동일성 증거로 사용하지 않습니다.
+- 승인된 최소 Traffic 후보는 배포0334564d 기반의 private snapshot `a7a26c86`(6778 inventory entries), patch `12708860`이며 product 변경은 `services/traffic_analytics.py`와 `utils/log.py`뿐입니다. 원 HTTP200/503·250ms budget·Lua/EVAL·drop bookkeeping·취소·무재시도를 보존했습니다. 초기 exception-only 후보의 원 Lua 용량 거절 무로그 공백도 같은 finite aggregate/capacity로 닫았습니다. 기존155회귀와 원본/후보 실제 TCP·설치 Redis5 driver·genuine Redis/Lua, 별도 canonical Compose SQL106 bootstrap→full API의 timeout/connection503→복구200·stream/file 일치가 통과했습니다. Private fixture secret2개의 literal/JSON/URL 변형은 실제 app stream/file에0건이며 provider/human 인증 수용은 아닙니다.
+- 같은 후보의 API `d4a49e65`와 같은 module을 복사하는 transitive worker `b5c0c8f7`를 정본 Dockerfile의 배포 지원 amd64로 빌드·실행하고 두 source hash를 확인했습니다. Worker의 finite filter/import 및 원래 no-DB 종료만 검증했으며 업무 실행/readiness로 승격하지 않습니다. 별도 `dev` gate 사본은 immutable snapshot6778entries 중 private ARCHITECTURE 설명/stamp만 다르고 runtime/test 입력은 동일합니다. Python3.12.13 `npm run test:gate`는 backend13511/106skip, frontend511files/6782, contracts258, DB233/54deselected, Ruff846으로 통과했고 working/staged architecture는 `b6f98672`/4067files입니다. 기존 전체 source0eab의14382/7351 gate와 다른 입력이므로 서로의 결과로 대체하지 않습니다.
+- 첫 qualification-only native smoke는 pinned Redis5에서 newer `aclose()`를 잘못 호출했고, 첫 full gate는 제가 주입한 LOG_DIRECTORY가 기존 config precedence 조건을 깨뜨렸습니다. Native harness를 `close()`로 고치고 불필요한 환경 주입만 제거했으며 product/test는 수정·삭제하지 않았습니다. 실패 로그와 원 disposable keys의 DUMP/PTTL을 보존했습니다. 최종 소유 MariaDB/PostgreSQL/Redis snapshot을 남기고 새 API/Redis fixture만 중지했으며 공유 datastore/network lifecycle과 운영은 건드리지 않았습니다.
+- `traffic-minimal-candidate/manifest.json` 및 `qualification/acceptance.json`이 실행·제한·복구의 정본입니다. 원 f4551cd0는 Docker config/image ID이지 registry manifest digest가 아니며, 공개 manifest `01245ce9`의 config와 정확히 대응함을 metadata로 확인했습니다. 정식발행/운영 적용 전 current cohort·effective DB/Redis/key·복구점과 승인된 전체-group 절차를 다시 확인해야 합니다. 후보는 baseline1.32.6+로컬 진단 patch일 뿐 정식1.32.6 bytes나 새 release가 아니며, pre-Redis preparation·rate-limit된 반복의 무로그 및 timeout 후 commit 가능성도 계속 제한으로 남습니다.
+- Skip 대조 보강: 정식1.32.6의13523pass/94skip와 최소 후보의13511pass/106skip는 동일 총13617개지만 같은 수용이 아닙니다. Exact set diff12개는 operator Ansible executable이 private PATH에 없었던 country/GeoIP startup1개와 CloudShell static precheck11개입니다. Country 경로가 traffic에 관련되므로 사유만 적고 제외하지 않고, 기존 operator Ansible을 read-only로 노출하여 원 selector12개를 추가 실행해12pass/0skip를 확인했습니다. Docker startup 자체는 기존 테스트의 marker-copy sandbox이며 운영 실행이 아닙니다. `qualification/release-skip-delta.json`에12개 이름·이전 release pass·사유·실제 추가 실행을 보존하고 원 canonical13511/106을13523으로 다시 쓰지 않습니다.
+- Hub startup의 필수 차단: 검토한0.3.12 source는 executor preflight 뒤 `reconcile()`을 자동 실행합니다. Channel 있는 claim_pending은 recovery GET을 보내고, empty settlement가 성공하면 `Journal.clear()`가 원파일을 지우는 대신 phase=idle/channel/sequence로 다시 씁니다. 이 동작은 cursor58846→58848 empty fence와 unknown pending 상태 해제를 초래할 수 있으므로 mount/journal을 “보존하여 reconfigure”하는 것은 hold가 아닙니다. 원58848의 명시적 비재실행 판정과 byte-exact protected copy 전에는 기존/신규 어느 worker version도 원 scratch에서 시작·reconfigure·autorestart하지 않습니다. 현재 실제 기동/GET/원장 변경은 없으며 `hub-startup-settlement-guard.json`에 source 경로와 조건을 기록했습니다.
+- 보존된 Controller1 관측의 주기 가설도 대조했습니다. 실패6/6뿐 아니라 duration-matched 성공6/6에도 host_health probe frame이 있고 일부 성공은 실패와8ms 미만 차이입니다. 10초 phase 집중0.499초는 posthoc 시간상 연관이지 causal·task/lease-owner proof가 아닙니다. 원 frontend reporter는10초 flush/retry를 갖지 않고 response 소비 시 즉시 POST·2초 deadline·기본16 inflight만 사용합니다. 외부 요청 주기·스케줄링·log batching과 collector 원인을 구분할 수 없어 추가 profiler/live lease 조회나 설정 변경 없이 미확정으로 남깁니다. `controller-retained-periodic-comparison.json`에6개 window·성공 대조·겹침·sampling/clock 한계를 보존했습니다.
+- Sentinel 경로도 같은 immutable API/source로 추가 수용했습니다. 실제 Valkey8.1.11 master1/Sentinel1/replica0과 redis-py5 `SentinelConnectionPool`에서 positive200, 재사용 연결의900ms WRITE pause→timeout503→복구200, 실제 HLEN10000→capacity503×3→200을 확인했습니다. Sentinel만 정지해도 기존 master pool은200이었고, Sentinel 정지 상태에서 새 소유 API를 시작한 cold discovery는 connection503×3, 복구 후200·소유 master dedupe를 확인했습니다. Frontend aggregate timeout/capacity/connection 각1줄과 backend connection1줄의 stream/file이 같고 finite/secret-safe 조건을 통과했습니다. `qualification/sentinel-addendum.json`이 parent 재확인한 source6778entries diff0·backup SHA·소유 container7개 중지와 원 receipt를 연결합니다. API startup ping이 pool을 prewarm하고 최종 recovery는 이전 QA schema를 재생성/rebootstrap하지 않았다는 점, restart 직전 master-IP/config를 별도 재대조하지 않았다는 점도 기록했습니다. 이 master1/Sentinel1은 운영 version/topology/HA 수용이 아니며 timeout commit 미확정·pre-Redis/rate-limit 무로그와 broad aggregate 한계는 그대로입니다.
+
+
 ## 표준 역할·Drover 생성 추적 (2026-11-04, source/local)
 
 - Waygate 운영 실패 시각의 정제 로그·grant와 Keystone 설정을 대조하고, 실제 토큰 원문은 보관하지 않았다. 설치 SDK/loopback에서2시간 grant와24시간 Trust token 조합의 기존403 및 독립 만료 검사 수정을 확인했다. 0.3.6 기준1499 passed/3 skipped, 공유 source441 passed; 두 source의 versioned/unversioned auth URL과 실제 Uvicorn/worker synthetic smoke를 확인했다. 실제 운영 재시도·배포는 하지 않았다.

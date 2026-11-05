@@ -338,6 +338,10 @@ function seedState(): MockupState {
 			storage: { volumes: { limit: 60, in_use: 14 }, gigabytes: { limit: 8000, in_use: 1250 } },
 			network: { floatingip: { limit: 16, in_use: 3 } },
 			file_storage: { shares: { limit: 12, in_use: 4 }, gigabytes: { limit: 4096, in_use: 780 } },
+			database: { instances_count: null },
+			object_storage: null,
+			unavailable_sections: ['database', 'object_storage'],
+			disabled_sections: [],
 		},
 		admin: {
 			overview: { collected_at: NOW, unavailable_sections: [], disabled_sections: [], hypervisor_count: 7, running_vms: 46, gpu_instances: 8, instance_stats: { total: 58, active: 46, shutoff: 9, error: 3, other: 0 }, vcpus: { total: 768, allowed: 620, used: 312 }, ram_gb: { total: 2048, used: 890 }, disk_gb: { total: 78000, used: 31200, volumes: 30000, images: 1200 }, containers_count: 12, file_storage_count: 9, database_instances_count: 5, object_storage_containers_count: 18, object_storage_unreadable_accounts: 0 },

@@ -60,6 +60,8 @@ def test_every_admin_route_requires_fresh_system_administrator():
 # library build/consume/import writes retain caller-project trust and ledgers.
 # Aodh mutations retain the human trustor/owner: trust+ actions must never
 # delegate the configured service account's admin-project authority.
+# Service-versions observes advertised native API versions with the caller's own
+# token/catalog, so it must not borrow the fixed admin-project executor.
 CALLER_TRANSPORTS = {
     ("GET", "/api/v1/admin/notifications"),
     ("GET", "/api/v1/admin/monitoring/summary"),
@@ -71,6 +73,7 @@ CALLER_TRANSPORTS = {
     ("POST", "/api/v1/admin/telemetry/aodh/alarms"),
     ("PUT", "/api/v1/admin/telemetry/aodh/alarms/{alarm_id}"),
     ("DELETE", "/api/v1/admin/telemetry/aodh/alarms/{alarm_id}"),
+    ("GET", "/api/v1/admin/service-versions"),
 }
 
 

@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from generate_k8s import render_artifacts  # noqa: E402
 
-_COMMAND_DOUBLE = r'''#!PYTHON
+_COMMAND_DOUBLE = r"""#!PYTHON
 import json
 import os
 from pathlib import Path
@@ -91,7 +91,7 @@ elif args[:2] == ["rollout", "status"]:
     record({"action": "status", "args": args, "namespace": namespace})
 else:
     raise SystemExit("Unexpected kubectl operation")
-'''
+"""
 
 
 def _documented_block():
@@ -113,11 +113,15 @@ def _run_procedure(tmp_path, *, fail_at="", mutate=None, backend_image=None):
     if mutate:
         mutate(job)
     rendered = tmp_path / "rendered.yaml"
-    rendered.write_text(yaml.safe_dump_all([
-        yaml.safe_load(artifacts["secret.yaml"]),
-        yaml.safe_load(artifacts["configmap.yaml"]),
-        job,
-    ]))
+    rendered.write_text(
+        yaml.safe_dump_all(
+            [
+                yaml.safe_load(artifacts["secret.yaml"]),
+                yaml.safe_load(artifacts["configmap.yaml"]),
+                job,
+            ]
+        )
+    )
     for name in ("secret.yaml", "configmap.yaml"):
         (fixture / name).write_text(artifacts[name])
     binaries = tmp_path / "bin"
@@ -173,8 +177,20 @@ def test_config_update_waits_for_exact_fresh_bootstrap_then_read_only_gate(tmp_p
     assert creates[1]["job"] == expected_verify
     ordered = [event["action"] for event in events]
     assert ordered == [
-        "generation", "render", "image-read", "apply", "apply",
-        "create", "wait", "create", "wait", "image-read", "restart", "status", "status", "status",
+        "generation",
+        "render",
+        "image-read",
+        "apply",
+        "apply",
+        "create",
+        "wait",
+        "create",
+        "wait",
+        "image-read",
+        "restart",
+        "status",
+        "status",
+        "status",
     ]
     waits = [event for event in events if event["action"] == "wait"]
     assert [event["name"] for event in waits] == [name, name + "-verify"]
@@ -190,7 +206,10 @@ def test_config_update_waits_for_exact_fresh_bootstrap_then_read_only_gate(tmp_p
     assert (directory / "rendered.yaml").stat().st_mode & 0o077 == 0
 
 
-@pytest.mark.parametrize("fail_at", ["generation", "render", "secret.yaml", "configmap.yaml", "create", "bootstrap", "verify", "image-change"])
+@pytest.mark.parametrize(
+    "fail_at",
+    ["generation", "render", "secret.yaml", "configmap.yaml", "create", "bootstrap", "verify", "image-change"],
+)
 def test_config_update_never_restarts_after_pre_rollout_failure(tmp_path, fail_at):
     result, events, _ = _run_procedure(tmp_path, fail_at=fail_at)
     assert result.returncode != 0
@@ -220,9 +239,7 @@ def test_config_update_rejects_wrong_job_before_config_mutation(tmp_path, invali
 
 
 def test_config_update_rejects_mutable_backend_image_before_config_mutation(tmp_path):
-    result, events, _ = _run_procedure(
-        tmp_path, backend_image="ghcr.io/openstack-afterglow/afterglow-api:dev"
-    )
+    result, events, _ = _run_procedure(tmp_path, backend_image="ghcr.io/openstack-afterglow/afterglow-api:dev")
     assert result.returncode != 0
     assert not any(event["action"] == "apply" for event in events)
     assert not any(event["action"] in {"create", "wait", "restart", "status"} for event in events)

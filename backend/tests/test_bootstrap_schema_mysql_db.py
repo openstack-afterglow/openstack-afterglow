@@ -195,10 +195,7 @@ async def _snapshot(engine, tables=_SNAPSHOT_TABLES, *, legacy_columns=False):
 
 async def _ddl(engine, tables=_SNAPSHOT_TABLES):
     async with engine.connect() as conn:
-        return {
-            name: (await conn.exec_driver_sql(f"SHOW CREATE TABLE `{name}`")).one()[1]
-            for name in tables
-        }
+        return {name: (await conn.exec_driver_sql(f"SHOW CREATE TABLE `{name}`")).one()[1] for name in tables}
 
 
 @pytest.mark.db
@@ -290,9 +287,11 @@ async def test_mysql_legacy_partial_bootstrap_resumes_and_preserves_all_original
     await verify_database(url)
     assert await _snapshot(engine, _MCP_TABLES, legacy_columns=True) == before
     async with engine.connect() as conn:
-        assert (await conn.exec_driver_sql(
-            "SELECT COUNT(*) FROM mcp_delegated_grants WHERE oauth_ongoing = 0 AND issued_role_ceiling IS NULL"
-        )).scalar_one() == 3
+        assert (
+            await conn.exec_driver_sql(
+                "SELECT COUNT(*) FROM mcp_delegated_grants WHERE oauth_ongoing = 0 AND issued_role_ceiling IS NULL"
+            )
+        ).scalar_one() == 3
     ddl = await _ddl(engine)
     assert await bootstrap_database(url) is False
     assert await _snapshot(engine, _MCP_TABLES, legacy_columns=True) == before
@@ -463,9 +462,7 @@ async def test_mysql_invalid_existing_row_fails_without_dropping_or_rewriting_or
     await bootstrap_database(url)
     await _seed_mcp(engine, metadata)
     async with engine.begin() as conn:
-        await conn.exec_driver_sql(
-            "ALTER TABLE mcp_delegated_grants ALTER CHECK chk_mcp_grant_expiry NOT ENFORCED"
-        )
+        await conn.exec_driver_sql("ALTER TABLE mcp_delegated_grants ALTER CHECK chk_mcp_grant_expiry NOT ENFORCED")
         await conn.exec_driver_sql("UPDATE mcp_delegated_grants SET expires_at=NULL WHERE id='oauth'")
     before, ddl = await _snapshot(engine), await _ddl(engine)
     with pytest.raises(DBAPIError) as rejected:
@@ -502,15 +499,12 @@ async def test_mysql_non_innodb_sql106_tables_are_refused_without_ddl_or_row_cha
         for table in tables:
             engine_name = "MyISAM" if table == non_innodb else "InnoDB"
             await conn.exec_driver_sql(
-                f"CREATE TABLE `{table}` (id VARCHAR(36) PRIMARY KEY, expires_at DATETIME(6) NULL) "
-                f"ENGINE={engine_name}"
+                f"CREATE TABLE `{table}` (id VARCHAR(36) PRIMARY KEY, expires_at DATETIME(6) NULL) ENGINE={engine_name}"
             )
             await conn.exec_driver_sql(
                 f"INSERT INTO `{table}` VALUES ('preserve-original', '2026-12-01 12:34:56.123456')"
             )
-        before_ddl = {
-            table: (await conn.exec_driver_sql(f"SHOW CREATE TABLE `{table}`")).one()[1] for table in tables
-        }
+        before_ddl = {table: (await conn.exec_driver_sql(f"SHOW CREATE TABLE `{table}`")).one()[1] for table in tables}
     before = await _snapshot(engine, tables)
     for operation in (verify_database, bootstrap_database):
         with pytest.raises(MigrationLedgerError, match=f"SQL106 MySQL tables require InnoDB: {non_innodb}"):
@@ -535,9 +529,7 @@ async def test_mysql_preflight_refuses_known_incompatibilities_before_any_pendin
     async with engine.begin() as conn:
         await conn.exec_driver_sql("DROP TABLE experience_maintenance")
         if incompatible == "sql106":
-            await conn.exec_driver_sql(
-                "ALTER TABLE mcp_delegated_grants ALTER COLUMN oauth_ongoing SET DEFAULT 1"
-            )
+            await conn.exec_driver_sql("ALTER TABLE mcp_delegated_grants ALTER COLUMN oauth_ongoing SET DEFAULT 1")
             error = "BOOLEAN"
         else:
             await conn.exec_driver_sql(
@@ -551,9 +543,7 @@ async def test_mysql_preflight_refuses_known_incompatibilities_before_any_pendin
                 "MODIFY COLUMN expires_at DATETIME NOT NULL"
             )
             if incompatible == "sql107":
-                await conn.exec_driver_sql(
-                    "ALTER TABLE experience_operation_links MODIFY kind VARCHAR(31) NOT NULL"
-                )
+                await conn.exec_driver_sql("ALTER TABLE experience_operation_links MODIFY kind VARCHAR(31) NOT NULL")
                 error = "type is incompatible"
             else:
                 await conn.exec_driver_sql(
@@ -609,9 +599,11 @@ async def test_mysql_non_innodb_default_still_creates_transactional_canonical_ta
                     )
                 )
                 assert set(
-                    (await conn.exec_driver_sql(
-                        "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"
-                    )).scalars()
+                    (
+                        await conn.exec_driver_sql(
+                            "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"
+                        )
+                    ).scalars()
                 ) == {"InnoDB"}
         assert await bootstrap_database(url) is False
         await _seed_mcp(engine, metadata)
@@ -620,9 +612,11 @@ async def test_mysql_non_innodb_default_still_creates_transactional_canonical_ta
             # default; bootstrap did not alter global/server configuration.
             assert (await conn.exec_driver_sql("SELECT @@SESSION.default_storage_engine")).scalar_one() == "MyISAM"
             engines = dict(
-                (await conn.exec_driver_sql(
-                    "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"
-                )).all()
+                (
+                    await conn.exec_driver_sql(
+                        "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"
+                    )
+                ).all()
             )
             assert set(engines) == set(metadata.tables)
             assert set(engines.values()) == {"InnoDB"}

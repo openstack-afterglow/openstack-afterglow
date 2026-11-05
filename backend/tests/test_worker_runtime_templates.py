@@ -379,9 +379,7 @@ def test_generated_schema_job_name_is_independent_of_database_credentials(monkey
 def test_helm_schema_job_identity_changes_with_immutable_inputs_without_argocd_render_drift(changed_input):
     initial = _render_helm_template("--set-string", "image.backend.tag=schema108-initial")
     repeated = _render_helm_template("--set-string", "image.backend.tag=schema108-initial")
-    updated = _render_helm_template(
-        "--set", "image.backend.tag=schema108-initial", "--set", changed_input
-    )
+    updated = _render_helm_template("--set", "image.backend.tag=schema108-initial", "--set", changed_input)
     jobs = [next(document for document in docs if document["kind"] == "Job") for docs in (initial, repeated, updated)]
     # All these Helm-template calls have revision 1, as the ArgoCD source does.
     assert all(job["metadata"]["name"].startswith("afterglow-schema-1-") for job in jobs)
@@ -390,8 +388,9 @@ def test_helm_schema_job_identity_changes_with_immutable_inputs_without_argocd_r
     backend = _find_doc(updated, "Deployment", "backend")
     _assert_schema_job(jobs[2], backend["spec"]["template"]["spec"]["initContainers"][0])
     if changed_input.startswith("image."):
-        assert jobs[0]["spec"]["template"]["spec"]["containers"][0]["image"] != (
-            jobs[2]["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert (
+            jobs[0]["spec"]["template"]["spec"]["containers"][0]["image"]
+            != (jobs[2]["spec"]["template"]["spec"]["containers"][0]["image"])
         )
 
 
