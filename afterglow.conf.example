@@ -25,6 +25,13 @@ debug = false
 # operator opt-in, not proof of that topology. Metadata APIs/UI remain available.
 # Environment override: INSTANCE_USAGE_SCHEDULER_ENABLED (local dev Compose pins false).
 scheduler_enabled = false
+# Optional common reference instant for first adoption only (ISO datetime with timezone).
+# Empty: each existing VM gets one calendar month from its own enrollment.
+# Set: expiry is exactly one UTC calendar month after this reference, not VM creation.
+# Invalid references or expiry <= enrollment fail closed without metadata/lifecycle writes.
+# Existing schedules are never rebased. All cohort writers must use the same setting.
+# Example: "2026-11-05T00:00:00Z"; environment: INSTANCE_USAGE_ADOPTION_REFERENCE_AT.
+adoption_reference_at = ""
 
 [openstack]
 auth_url = "http://keystone.example.com:5000/v3"

@@ -24,6 +24,7 @@ data:
 
     [instance_usage]
     scheduler_enabled = {{ .Values.instanceUsage.schedulerEnabled | default false }}
+    adoption_reference_at = {{ .Values.instanceUsage.adoptionReferenceAt | default "" | quote }}
 
     [logging]
     log_directory = {{ .Values.logging.logDirectory | default "logs" | quote }}

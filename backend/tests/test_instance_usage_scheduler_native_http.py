@@ -39,7 +39,9 @@ class Redis:
 
 
 @pytest.fixture
-def native_usage():
+def native_usage(monkeypatch):
+    monkeypatch.setattr(scheduler, "_clock", lambda now=None: now or NOW)
+    monkeypatch.setattr(scheduler, "get_settings", lambda: SimpleNamespace(instance_usage_adoption_reference_at=""))
     state = dict(
         metadata={},
         status="ACTIVE",
@@ -331,6 +333,57 @@ def native_usage():
 
 async def tick(conn):
     await scheduler._cycle(conn, PROJECT, SERVER, NOW, Redis())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reference", "expiry"),
+    [
+        ("", "2026-11-29T00:00:00+00:00"),
+        ("2026-10-20T09:00:00+09:00", "2026-11-20T00:00:00+00:00"),
+        ("2026-11-10T00:00:00Z", "2026-12-10T00:00:00+00:00"),
+    ],
+)
+async def test_native_sdk_adoption_uses_configured_reference_without_lifecycle(
+    native_usage, monkeypatch, reference, expiry
+):
+    settings = SimpleNamespace(instance_usage_adoption_reference_at=reference)
+    monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
+    native = native_usage
+    conn = native.configure()
+    native.state["metadata"] = {"unrelated": "preserve"}
+    await tick(conn)
+    schedule = usage.parse_schedule({"id": SERVER, "metadata": native.state["metadata"]})
+    assert schedule.starts_at == NOW.isoformat()
+    assert schedule.expires_at == expiry
+    assert schedule.source == "adopted"
+    assert schedule.expiry_action == "shelve" and schedule.delete_volumes is False
+    assert len(native.state["metadata_posts"]) == 1
+    assert native.state["metadata"]["unrelated"] == "preserve"
+    assert native.state["action_posts"] == native.state["flag_puts"] == native.state["deletes"] == []
+    original = dict(native.state["metadata"])
+    settings.instance_usage_adoption_reference_at = "2025-01-01T00:00:00Z"
+    await tick(conn)
+    assert native.state["metadata"] == original
+    assert len(native.state["metadata_posts"]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", ["invalid", "2026-10-20", "2026-09-29T00:00:00Z", "2026-09-28T00:00:00Z"])
+async def test_native_sdk_adoption_invalid_or_elapsed_reference_sends_no_mutations(
+    native_usage, monkeypatch, reference
+):
+    monkeypatch.setattr(
+        scheduler, "get_settings", lambda: SimpleNamespace(instance_usage_adoption_reference_at=reference)
+    )
+    native = native_usage
+    conn = native.configure()
+    native.state["metadata"] = {"unrelated": "preserve"}
+    with pytest.raises(ValueError, match="Usage adoption reference"):
+        await tick(conn)
+    assert native.state["metadata"] == {"unrelated": "preserve"}
+    assert native.state["metadata_posts"] == native.state["action_posts"] == []
+    assert native.state["flag_puts"] == native.state["deletes"] == []
 
 
 @pytest.mark.asyncio

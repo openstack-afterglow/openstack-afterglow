@@ -19,6 +19,7 @@ from functools import partial
 from fastapi import HTTPException
 from openstack.exceptions import ResourceNotFound
 
+from app.config import get_settings
 from app.services import instance_usage as usage
 from app.services.cache import _get_redis
 from app.services.nova import flavor_extra_specs
@@ -467,9 +468,14 @@ async def _cycle(conn, project_id, server_id, clock, redis):
             server, info = await _current(conn, lease, project_id, server_id)
             if info is not None or not await usage.sdk_call(_resolve_required, conn, server, catalog):
                 return
-            # Grace starts when this first native enrollment succeeds, not birth.
+            # Only first adoption uses this reference; existing native metadata is authoritative.
+            metadata = usage.adoption_metadata(
+                now=max(clock, _clock()), reference_at=get_settings().instance_usage_adoption_reference_at
+            )
             await checkpoint()
-            await usage.write_schedule_metadata(conn, server, usage.adoption_metadata(now=clock), lease=lease)
+            await usage.write_schedule_metadata(
+                conn, server, metadata, lease=lease, adoption_clock=lambda: max(clock, _clock())
+            )
             return
         if datetime.fromisoformat(info.expires_at.replace("Z", "+00:00")) > clock:
             return

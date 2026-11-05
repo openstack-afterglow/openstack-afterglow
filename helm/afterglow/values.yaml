@@ -11,6 +11,9 @@ debug: false
 # Global native schedule writer; enable only for the verified shared cloud Redis cohort.
 instanceUsage:
   schedulerEnabled: false
+  # Empty: per-enrollment month. Otherwise exact UTC calendar month after this aware instant.
+  # New adoption fails closed once that common expiry is reached; existing schedules stay native.
+  adoptionReferenceAt: ""
 
 # -----------------------------------------------------------------------------
 # 이미지

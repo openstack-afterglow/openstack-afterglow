@@ -119,6 +119,8 @@ nav_order: 8
 - Backend 일정·승인·스케줄러·bootstrap/ledger selector 358 passed. 설치된 Keystoneauth/OpenStack SDK와 loopback HTTP를 이용한 operator scope·tenant rescope 거부·native 결과 불명 경계를 포함한다. 이는 synthetic provider이며 운영 Nova 권한 검증이 아니다.
 - 승인 요청 SQL revision 경합은 지연된 거절이 최신 `applying`·`uncertain`·`approved`를 덮고200을 반환하는 실패를 먼저 재현했다. 수정 뒤 동일3사례는409와 최신 상태 보존을 확인했으며 별도 SQLite 실제 ORM smoke에서도 stale 쓰기가 거부됐다. 운영 DB 검증은 아니다.
 - Frontend 관련 5개 파일 150 tests passed; Svelte check 0 errors/17 warnings. JSDOM은 canvas 미구현 메시지를 출력했다. 운영 VM 목록 MCP 조회는 unavailable이었고 브라우저 릴레이는 확장 버전 불일치로 연결되지 않았다.
+- 2026-11-05 공통 UTC 기준일은 기준일의 한 calendar month 뒤를 사용하고 설정이 없으면 등록 시점 기준을 유지한다. 종료 시각이 이미 지났거나 제출 전 경과하면 등록을 거부한다. 관련 네 backend selector 556개와 기준일 계산·만료 거부 직접 실행을 확인했다.
+- 격리 MariaDB·Redis와 synthetic Keystone/Nova HTTP에서 실제 usage router·JWT/session 권위·lease를 사용하는 Uvicorn smoke를 실행했다. 승인 대기 동안 native metadata 불변, 권한 철회 거부, SQL `applying` 및 Redis lease 확인, 단일 native POST와 SQL 승인·readback을 확인했다. 이 fixture는 전체 앱 lifespan이나 실제 운영 권한·scheduler를 검증하지 않는다. 증거: `~/.local/share/afterglow-proofs/governance-runtime-20261105/runtime.json`.
 - 운영 SQL108 적용, mixed-version·복구, 실제 전체 cloud inventory·Redis cohort·자동 만료 및 승인 executor를 검증하거나 배포하지 않았다. 운영 scheduler 활성화는 수행하지 않았다.
 
 ## MCP VM 생성 필수 선택 (2026-11-04, source/local)

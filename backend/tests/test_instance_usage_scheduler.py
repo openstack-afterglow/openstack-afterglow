@@ -168,6 +168,41 @@ async def cycle(native, redis=None, clock=NOW):
     await scheduler._cycle(native, PROJECT, SERVER, clock, redis or Redis())
 
 
+@pytest.fixture(autouse=True)
+def adoption_settings(monkeypatch):
+    """Do not let the operator's local reference date leak into scheduler tests."""
+    settings = SimpleNamespace(instance_usage_adoption_reference_at="")
+    monkeypatch.setattr(scheduler, "get_settings", lambda: settings)
+    monkeypatch.setattr(scheduler, "_clock", lambda now=None: now or NOW)
+    return settings
+
+
+@pytest.mark.asyncio
+async def test_adoption_elapsed_during_native_reads_rejects_stale_tick_clock(adoption_settings, monkeypatch):
+    adoption_settings.instance_usage_adoption_reference_at = "2026-09-30T00:00:00Z"
+    monkeypatch.setattr(scheduler, "_clock", lambda now=None: NOW + timedelta(days=2))
+    native = Native(schedule=False)
+    original = copy.deepcopy(native.server)
+    with pytest.raises(ValueError, match="Usage adoption reference has expired"):
+        await cycle(native, clock=NOW)
+    assert native.server == original
+    assert native.metadata_writes == native.flag_writes == native.actions == []
+
+
+@pytest.mark.asyncio
+async def test_adoption_expiring_during_metadata_preflight_never_submits(adoption_settings, monkeypatch):
+    adoption_settings.instance_usage_adoption_reference_at = "2026-09-30T00:00:00Z"
+    clocks = iter([NOW, NOW + timedelta(days=1)])
+    monkeypatch.setattr(scheduler, "_clock", lambda now=None: next(clocks))
+    native = Native(schedule=False)
+    original = copy.deepcopy(native.server)
+    with pytest.raises(HTTPException, match="expired before metadata submission") as error:
+        await cycle(native, clock=NOW)
+    assert error.value.status_code == 409
+    assert native.server == original
+    assert native.metadata_writes == native.flag_writes == native.actions == []
+
+
 @pytest.mark.asyncio
 async def test_existing_enrollment_starts_calendar_month_grace_once_not_creation_date():
     native = Native(schedule=False)
@@ -182,6 +217,67 @@ async def test_existing_enrollment_starts_calendar_month_grace_once_not_creation
     assert native.server["metadata"] == original
     assert native.actions == []
     assert native.server["metadata"]["unrelated"] == "keep"
+
+
+@pytest.mark.asyncio
+async def test_adoption_common_reference_converges_across_enrollment_times(adoption_settings):
+    adoption_settings.instance_usage_adoption_reference_at = "2026-10-20T09:00:00+09:00"
+    first, later = Native(schedule=False), Native(schedule=False)
+    await cycle(first)
+    await cycle(later, clock=NOW + timedelta(days=5))
+    first_info, later_info = usage.parse_schedule(first.server), usage.parse_schedule(later.server)
+    assert first_info.expires_at == later_info.expires_at == "2026-11-20T00:00:00+00:00"
+    assert datetime.fromisoformat(first_info.starts_at) == NOW
+    assert datetime.fromisoformat(later_info.starts_at) == NOW + timedelta(days=5)
+    assert first.actions == later.actions == []
+    assert len(first.metadata_writes) == len(later.metadata_writes) == 1
+    assert first.server["metadata"]["unrelated"] == later.server["metadata"]["unrelated"] == "keep"
+    original = dict(later.server["metadata"])
+    adoption_settings.instance_usage_adoption_reference_at = "2026-11-15T00:00:00Z"
+    await cycle(later, clock=NOW + timedelta(days=6))
+    assert later.server["metadata"] == original
+    assert len(later.metadata_writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_adoption_future_reference_is_not_capped_to_enrollment_month(adoption_settings):
+    adoption_settings.instance_usage_adoption_reference_at = "2026-11-10T00:00:00Z"
+    native = Native(schedule=False)
+    await cycle(native)
+    assert usage.parse_schedule(native.server).expires_at == "2026-12-10T00:00:00+00:00"
+    assert native.actions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "invalid",
+        "2026-10-20",
+        "2026-10-20T00:00:00",
+        "9999-12-01T00:00:00Z",
+        "2026-09-29T00:00:00Z",
+        "2026-09-28T00:00:00Z",
+    ],
+)
+async def test_adoption_invalid_or_elapsed_reference_has_no_native_writes(adoption_settings, reference):
+    adoption_settings.instance_usage_adoption_reference_at = reference
+    native = Native(schedule=False)
+    original = copy.deepcopy(native.server)
+    with pytest.raises(ValueError, match="Usage adoption reference"):
+        await cycle(native)
+    assert native.server == original
+    assert native.metadata_writes == native.flag_writes == native.actions == []
+
+
+@pytest.mark.asyncio
+async def test_elapsed_adoption_reference_does_not_disable_existing_schedule_expiry(adoption_settings):
+    adoption_settings.instance_usage_adoption_reference_at = "2025-01-01T00:00:00Z"
+    native = Native()
+    expiry = usage.parse_schedule(native.server).expires_at
+    await cycle(native)
+    assert native.actions == ["shelve"]
+    assert usage.parse_schedule(native.server).expires_at == expiry
 
 
 @pytest.mark.asyncio

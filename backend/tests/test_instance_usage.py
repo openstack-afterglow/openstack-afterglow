@@ -96,6 +96,49 @@ def test_explicit_required_creation_and_one_time_adoption_grace():
     assert all(isinstance(value, str) and len(value.encode()) <= 255 for value in created.values())
 
 
+@pytest.mark.parametrize(
+    ("reference", "enrollment", "expiry"),
+    [
+        ("2026-01-31T12:34:56Z", START + timedelta(days=7), "2026-02-28T12:34:56+00:00"),
+        ("2028-01-31T00:00:00Z", datetime(2028, 2, 20, tzinfo=UTC), "2028-02-29T00:00:00+00:00"),
+        ("2026-05-01T01:00:00+09:00", datetime(2026, 5, 10, tzinfo=UTC), "2026-05-30T16:00:00+00:00"),
+        ("2026-12-31T00:00:00Z", datetime(2027, 1, 10, tzinfo=UTC), "2027-01-31T00:00:00+00:00"),
+        # A future common baseline is not capped to the per-enrollment month.
+        ("2026-02-10T00:00:00Z", START, "2026-03-10T00:00:00+00:00"),
+    ],
+)
+def test_adoption_common_reference_uses_exact_utc_calendar_month(reference, enrollment, expiry):
+    values = usage.adoption_metadata(now=enrollment, reference_at=reference)
+    assert values[P + "starts_at"] == enrollment.isoformat()
+    assert values[P + "expires_at"] == expiry
+    assert values[P + "action"] == "shelve"
+    assert values[P + "delete_volumes"] == "false"
+    assert usage.parse_schedule({"id": "adopted", "metadata": values}).source == "adopted"
+
+
+@pytest.mark.parametrize("reference", [None, ""])
+def test_adoption_unset_reference_preserves_per_enrollment_month(reference):
+    values = usage.adoption_metadata(now=START, reference_at=reference)
+    assert values[P + "expires_at"] == usage.calendar_month_after(START).isoformat()
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "not-a-date",
+        "2026-01-01",
+        "2026-01-01T00:00:00",
+        "2026-02-30T00:00:00Z",
+        "9999-12-01T00:00:00Z",
+        "2025-12-31T12:34:56Z",  # Expiry equals enrollment.
+        "2025-12-31T12:34:55Z",  # Expiry precedes enrollment.
+    ],
+)
+def test_adoption_rejects_invalid_or_expired_common_reference(reference):
+    with pytest.raises(ValueError, match="Usage adoption reference"):
+        usage.adoption_metadata(now=START, reference_at=reference)
+
+
 def test_creation_requires_future_date_and_reason_beyond_calendar_month():
     for expiry in (START, START - timedelta(seconds=1)):
         with pytest.raises(HTTPException) as error:

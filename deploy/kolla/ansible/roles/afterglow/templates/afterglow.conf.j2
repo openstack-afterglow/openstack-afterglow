@@ -8,6 +8,8 @@ debug = false
 # Global native schedule writer; explicit operator TOML may enable a verified cohort.
 [instance_usage]
 scheduler_enabled = false
+# Empty keeps per-enrollment grace; explicit operator TOML may set a common aware instant.
+adoption_reference_at = ""
 
 [openstack]
 auth_url = {{ afterglow_keystone_auth_url | to_json }}

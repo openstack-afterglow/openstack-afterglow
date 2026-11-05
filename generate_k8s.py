@@ -33,6 +33,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -645,6 +646,10 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(
         f"scheduler_enabled = {_toml_bool(cfg.get('instance_usage', {}).get('scheduler_enabled', False))}"
     )
+    adoption_reference = cfg.get("instance_usage", {}).get("adoption_reference_at", "")
+    if isinstance(adoption_reference, datetime):
+        adoption_reference = adoption_reference.isoformat()
+    lines.append(f"adoption_reference_at = {_toml_str(adoption_reference)}")
     lines.append("")
 
     # [openstack]

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -224,6 +225,60 @@ def test_instance_usage_scheduler_opt_in_precedence(isolated_debug_config_dir, t
     assert app_config.get_settings().instance_usage_scheduler_enabled is expected
 
 
+@pytest.mark.parametrize("toml_reference", [None, "", "2026-10-31T09:00:00+09:00"])
+@pytest.mark.parametrize("environment_reference", [None, "", "2026-11-05T00:00:00Z"])
+def test_instance_usage_adoption_reference_config_precedence(
+    isolated_debug_config_dir, toml_reference, environment_reference
+):
+    if toml_reference is not None:
+        (isolated_debug_config_dir / "afterglow.conf").write_text(
+            f"[instance_usage]\nadoption_reference_at = {json.dumps(toml_reference)}\n", encoding="utf-8"
+        )
+    if environment_reference is not None:
+        os.environ["INSTANCE_USAGE_ADOPTION_REFERENCE_AT"] = environment_reference
+    selected = environment_reference if environment_reference is not None else toml_reference
+    expected = {
+        None: "",
+        "": "",
+        "2026-10-31T09:00:00+09:00": "2026-10-31T00:00:00+00:00",
+        "2026-11-05T00:00:00Z": "2026-11-05T00:00:00+00:00",
+    }[selected]
+    assert app_config.get_settings().instance_usage_adoption_reference_at == expected
+
+
+@pytest.mark.parametrize(
+    ("literal", "expected"),
+    [
+        ("2026-11-05T00:00:00Z", "2026-11-05T00:00:00+00:00"),
+        ("2026-11-05T09:00:00+09:00", "2026-11-05T00:00:00+00:00"),
+        ("2026-11-05T00:00:00", None),
+        ("2026-11-05", None),
+    ],
+)
+def test_instance_usage_unquoted_toml_adoption_reference(isolated_debug_config_dir, literal, expected):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(
+        f"[instance_usage]\nadoption_reference_at = {literal}\n", encoding="utf-8"
+    )
+    if expected is None:
+        with pytest.raises(ValueError, match="instance_usage_adoption_reference_at"):
+            app_config.get_settings()
+    else:
+        assert app_config.get_settings().instance_usage_adoption_reference_at == expected
+
+
+@pytest.mark.parametrize("source", ["toml", "environment"])
+@pytest.mark.parametrize("reference", ["invalid", "2026-11-05", "2026-11-05T00:00:00", "2026-02-30T00:00:00Z"])
+def test_instance_usage_invalid_adoption_reference_fails_configuration(isolated_debug_config_dir, source, reference):
+    if source == "toml":
+        (isolated_debug_config_dir / "afterglow.conf").write_text(
+            f"[instance_usage]\nadoption_reference_at = {json.dumps(reference)}\n", encoding="utf-8"
+        )
+    else:
+        os.environ["INSTANCE_USAGE_ADOPTION_REFERENCE_AT"] = reference
+    with pytest.raises(ValueError, match="instance_usage_adoption_reference_at"):
+        app_config.get_settings()
+
+
 def test_dev_compose_blocks_scheduler_from_shared_production_config(isolated_debug_config_dir):
     compose = yaml.safe_load((ROOT / "docker-compose.dev.yml").read_text())
     environment = compose["services"]["backend"]["environment"]
@@ -237,21 +292,56 @@ def test_dev_compose_blocks_scheduler_from_shared_production_config(isolated_deb
 
 
 @pytest.mark.parametrize("enabled", [None, False, True])
-def test_instance_usage_scheduler_generator_round_trip(enabled):
-    config = {} if enabled is None else {"instance_usage": {"scheduler_enabled": enabled}}
+@pytest.mark.parametrize(
+    "reference",
+    [
+        None,
+        "",
+        "2026-11-05T09:00:00+09:00",
+        tomllib.loads("reference = 2026-11-05T00:00:00Z")["reference"],
+        tomllib.loads("reference = 2026-11-05T09:00:00+09:00")["reference"],
+    ],
+)
+def test_instance_usage_scheduler_generator_round_trip(enabled, reference):
+    options = {}
+    if enabled is not None:
+        options["scheduler_enabled"] = enabled
+    if reference is not None:
+        options["adoption_reference_at"] = reference
+    config = {"instance_usage": options}
     expected = bool(enabled)
+    expected_reference = reference.isoformat() if isinstance(reference, datetime) else reference or ""
     generated = tomllib.loads(generate_k8s._render_toml_for_k8s(config))
     assert generated["instance_usage"]["scheduler_enabled"] is expected
-    assert config2helm.convert(config, False)["instanceUsage"]["schedulerEnabled"] is expected
+    assert generated["instance_usage"]["adoption_reference_at"] == expected_reference
+    converted = config2helm.convert(config, False)["instanceUsage"]
+    assert converted["schedulerEnabled"] is expected
+    assert converted["adoptionReferenceAt"] == expected_reference
+    settings = app_config.Settings(
+        instance_usage_adoption_reference_at=generated["instance_usage"]["adoption_reference_at"]
+    )
+    assert settings.instance_usage_adoption_reference_at == ("2026-11-05T00:00:00+00:00" if expected_reference else "")
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_instance_usage_scheduler_actual_helm_round_trip(tmp_path, enabled):
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "",
+        "2026-11-05T09:00:00+09:00",
+        tomllib.loads("reference = 2026-11-05T00:00:00Z")["reference"],
+    ],
+)
+def test_instance_usage_scheduler_actual_helm_round_trip(tmp_path, enabled, reference):
     helm = shutil.which("helm")
     if helm is None:
         pytest.skip("Helm is required to render the scheduler opt-in contract")
     override = tmp_path / "values.yaml"
-    override.write_text(config2helm.render_values({"instance_usage": {"scheduler_enabled": enabled}}, False))
+    override.write_text(
+        config2helm.render_values(
+            {"instance_usage": {"scheduler_enabled": enabled, "adoption_reference_at": reference}}, False
+        )
+    )
     rendered = subprocess.run(
         [helm, "template", "afterglow", str(ROOT / "helm/afterglow"), "-f", str(override)],
         check=True,
@@ -264,6 +354,10 @@ def test_instance_usage_scheduler_actual_helm_round_trip(tmp_path, enabled):
         if doc and doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "afterglow-config"
     )
     assert tomllib.loads(configmap["data"]["afterglow.conf"])["instance_usage"]["scheduler_enabled"] is enabled
+    rendered_reference = tomllib.loads(configmap["data"]["afterglow.conf"])["instance_usage"]["adoption_reference_at"]
+    assert rendered_reference == (reference.isoformat() if isinstance(reference, datetime) else reference)
+    settings = app_config.Settings(instance_usage_adoption_reference_at=rendered_reference)
+    assert settings.instance_usage_adoption_reference_at == ("2026-11-05T00:00:00+00:00" if reference else "")
 
 
 @pytest.mark.parametrize(

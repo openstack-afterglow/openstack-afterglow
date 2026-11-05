@@ -25,6 +25,7 @@ from pydantic_settings import BaseSettings
 from app.models.auth_settings import AuthSettings
 from app.models.infrastructure_fabric import FabricSettings
 from app.models.infrastructure_topology import HostObserverIdentity, HostPeerProbeTarget, validate_topology_settings
+from app.models.instance_usage import aware_timestamp
 from app.models.traffic_analytics import TrafficAnalyticsSettings
 from app.services.cloud_shell_security import MANDATORY_BLOCKED_CIDRS, canonical_blocked_cidrs
 
@@ -132,6 +133,7 @@ def _load_toml() -> dict:
 
     instance_usage = data.get("instance_usage", {})
     flat["instance_usage_scheduler_enabled"] = instance_usage.get("scheduler_enabled", False)
+    flat["instance_usage_adoption_reference_at"] = instance_usage.get("adoption_reference_at", "")
 
     ceph = data.get("ceph", {})
     flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
@@ -502,6 +504,13 @@ class Settings(BaseSettings):
 
     # Global native census/expiry writer: opt in only for the shared cloud Redis cohort.
     instance_usage_scheduler_enabled: bool = False
+    # Optional common UTC-month baseline for new adoption only; never rewrites Nova schedules.
+    instance_usage_adoption_reference_at: str = ""
+
+    @field_validator("instance_usage_adoption_reference_at")
+    @classmethod
+    def validate_usage_adoption_reference(cls, value: str) -> str:
+        return aware_timestamp(value).isoformat() if value else ""
 
     # Optional native RabbitMQ/oslo notification consumer; never uses Keystone credentials.
     openstack_notifications_enabled: bool = False

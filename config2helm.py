@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -88,10 +89,14 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
     """afterglow.conf dict → Helm values dict."""
     out: dict = {}
     out["debug"] = cfg.get("DEFAULT", {}).get("debug", False)
+    adoption_reference = cfg.get("instance_usage", {}).get("adoption_reference_at", "")
+    if isinstance(adoption_reference, datetime):
+        adoption_reference = adoption_reference.isoformat()
     out["instanceUsage"] = {
         "schedulerEnabled": cfg.get("instance_usage", {}).get(
             "scheduler_enabled", False
         ),
+        "adoptionReferenceAt": adoption_reference,
     }
 
     os_cfg = cfg.get("openstack", {})

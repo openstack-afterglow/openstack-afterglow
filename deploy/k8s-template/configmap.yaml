@@ -23,6 +23,8 @@ data:
     # Global native writer requires explicit verified shared-cloud Redis opt-in.
     [instance_usage]
     scheduler_enabled = false
+    # Empty keeps per-enrollment grace; otherwise use one UTC month after this aware instant.
+    adoption_reference_at = ""
 
     [openstack]
     auth_url = "https://keystone.example.com/v3"

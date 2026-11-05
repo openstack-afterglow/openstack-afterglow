@@ -994,7 +994,9 @@ Palimpsest catalog의 독립 cloud 생성, 관리자 직접 consume와 Dockerfil
 
 Native 전체 cloud를 바꾸는 scheduler는 `[instance_usage] scheduler_enabled=false`가 기본이다. 일반 local/dev Compose는 별도 Redis와 운영 cloud credential을 함께 사용할 수 있으므로 자동 활성화하지 않는다. 운영자가 같은 cloud의 공유 조정 Redis·대상·권한·기존 유예/복구 경계를 확인하고 명시적으로 켠 배포에서만 census·최초 등록·만료 동작을 실행한다. 꺼져 있어도 metadata 일정 API와 화면은 읽고 편집할 수 있다.
 
-`instance_usage_scheduler`는 API process의 독립 `instance-usage-dispatch` lane으로 native 전체 서버/catalog를 읽고 기존 대상에 첫 metadata 등록 시점부터 한 달 유예를 준다. 동일 cloud의 모든 API/scheduler는 같은 Redis primary/logical DB·WorkDispatcher namespace와 cloud/project/server 임시 잠금을 공유해야 한다. Redis는 조정만 소유하며 일정 저장소가 아니다. Fresh 실제 프로젝트 credential·서버 소유권·만료/revision·lease를 재확인하고 metadata 요청 marker를 읽어 확인한 뒤 단일 native mutation을 보낸다. `shelve → SHELVED → offload → SHELVED_OFFLOADED`, 선택한 `stop → 정지 관측 → 일반 DELETE`를 별도 tick으로 관측하며 요청 불명은 재전송·강제 처리하지 않는다. 완료/만료된 인스턴스의 Afterglow start/unshelve는 사유 있는 미래 연장 후에만 가능하다.
+`instance_usage_scheduler`는 API process의 독립 `instance-usage-dispatch` lane으로 native 전체 서버/catalog를 읽고 기존 대상에 기본적으로 첫 metadata 등록 시점부터 한 달 유예를 준다. 선택적 `[instance_usage] adoption_reference_at`(환경 변수 `INSTANCE_USAGE_ADOPTION_REFERENCE_AT`, Helm `instanceUsage.adoptionReferenceAt`)은 timezone-aware 공통 기준 시각이며 비어 있으면 기존 per-enrollment 기본값을 유지한다. 설정하면 새 adoption의 종료일은 UTC로 정규화한 기준 시각에서 정확히 한 calendar month 뒤(월말 보정)이고 `starts_at`은 실제 등록 시각이다. 등록 기준 한 달과 min을 취하지 않으며 미래 기준도 그대로 적용한다. 잘못된 값은 설정 검증에서 거부하고 calendar overflow 또는 종료일이 등록 시각 이하이면 metadata·lifecycle 변경 없이 해당 등록을 거부한다. 기준 변경/만료는 기존 native 일정·revision을 재설정하거나 기존 만료 처리를 중지하지 않는다. 동일 cloud의 모든 API/scheduler는 같은 기준 설정과 Redis primary/logical DB·WorkDispatcher namespace 및 cloud/project/server 임시 잠금을 공유해야 한다. Redis는 조정만 소유하며 일정 저장소가 아니다. Fresh 실제 프로젝트 credential·서버 소유권·만료/revision·lease를 재확인하고 metadata 요청 marker를 읽어 확인한 뒤 단일 native mutation을 보낸다. `shelve → SHELVED → offload → SHELVED_OFFLOADED`, 선택한 `stop → 정지 관측 → 일반 DELETE`를 별도 tick으로 관측하며 요청 불명은 재전송·강제 처리하지 않는다. 완료/만료된 인스턴스의 Afterglow start/unshelve는 사유 있는 미래 연장 후에만 가능하다.
+
+공통 기준은 유한한 adoption window이다. 종료일 이후 미등록인 CLI/Horizon 생성 VM이나 prefix key가 지워진 VM은 기준을 유지하는 동안 일정 없이 남으며 cycle warning이 운영 신호다. 운영자는 inventory를 검토해 기준을 비우거나 의도적으로 앞으로 옮겨야 한다. `get_settings()`가 process별 cache이므로 설정 변경은 모든 same-cloud writer의 일치하는 설정·재시작을 요구한다. Adoption은 tick 시작 시간이 아닌 fresh 현재 시각으로 검증하며 metadata 전송 직전의 native read·lease preflight 후에도 종료일이 지나면409로 쓰기를 거부한다. 유효한 unquoted TOML offset datetime은 runtime 및 K8s/Helm 렌더에서 ISO 문자열로 전달한다.
 
 `instance_usage_governance`는 미래 종료일 단축과 기존 종료일로부터 최대 한 calendar month의 사유 있는 연장을 공통 검증한다. 기본 자동 승인이고 현재 도메인 manager가 수동 검토를 켜면 동일 도메인 manager 또는 정확한 프로젝트 admin/owner가 요청을 검토한다. 대기 요청은 native 만료를 변경하거나 만료 처리를 멈추지 않는다. SQL revision/요청·graph lease와 동일 VM usage lease를 사용하고, Nova 전송 전 durable `applying`을 기록하며 불명 결과는 `uncertain`으로 남겨 재전송하지 않는다. 검토 executor의 실제 admin-project 인증과 별도 target binding·소유권을 확인한다. 구형 writer는 승인 정책을 우회할 수 있으므로 운영 cutover 전 schema·모든 writer·공유 coordination·복구를 함께 확인해야 한다.
 
@@ -2074,9 +2076,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "0eab16fb570e4806ea8cff3e2a068d95000c5c6e21fb3435afbb6a8a60b7120c",
-  "reviewed_at": "2026-11-05T13:49:58Z",
-  "summary": "현재 dev의 instance usage governance·schema bootstrap과 추가 quota 실패 분리, scoped 상세 관측, Nova metrics drain 및 sniffio 의존성 변경을 문서와 대조했다. 운영 배포·실제 native 권한 및 전체 gate 성공은 별도 검증이다."
+  "source_sha256": "7994a5607249f7f31df91e8d81c1d264311e0b3b3feadd1aaaa6adb2ff849b75",
+  "reviewed_at": "2026-11-05T14:45:42Z",
+  "summary": "기존 VM 공통 UTC 기준일의 1 calendar month 만료·미설정 기본·만료 전 fail-closed 등록과 scheduler native metadata/lease 경계 및 TOML·K8s·Helm 설정 투영을 검토했다. 실제 운영 권위·배포는 별도 확인한다."
 }
 ```
 <!-- architecture-review:end -->

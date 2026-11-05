@@ -116,11 +116,17 @@ def creation_metadata(flavor, request: UsageScheduleRequest | None, *, now: date
     return _metadata(now=clock, expires_at=expiry, request=request, source="created")
 
 
-def adoption_metadata(*, now: datetime | None = None) -> dict[str, str]:
+def adoption_metadata(*, now: datetime | None = None, reference_at: datetime | str | None = None) -> dict[str, str]:
+    """Enroll once, using either enrollment or the operator's common month baseline."""
     clock = _clock(now)
-    return _metadata(
-        now=clock, expires_at=calendar_month_after(clock), request=UsageScheduleRequest(), source="adopted"
-    )
+    try:
+        baseline = clock if reference_at is None or reference_at == "" else _clock(reference_at)
+        expiry = calendar_month_after(baseline)
+    except (ValueError, TypeError, OverflowError):
+        raise ValueError("Usage adoption reference must be a valid timezone-aware calendar-month baseline") from None
+    if expiry <= clock:
+        raise ValueError("Usage adoption reference has expired; no schedule was enrolled")
+    return _metadata(now=clock, expires_at=expiry, request=UsageScheduleRequest(), source="adopted")
 
 
 def _owned_metadata(server):
@@ -425,7 +431,7 @@ async def _assert_lease(conn, server, lease):
         raise HTTPException(409, "Usage schedule operation lease is no longer current")
 
 
-async def write_schedule_metadata(conn, server, changes: dict, *, lease):
+async def write_schedule_metadata(conn, server, changes: dict, *, lease, adoption_clock=None):
     """Merge only owned keys; exact native pre/readback fences stale or partial data."""
     await _assert_lease(conn, server, lease)
     if not changes or any(not isinstance(key, str) or not key.startswith(METADATA_PREFIX) for key in changes):
@@ -451,6 +457,12 @@ async def write_schedule_metadata(conn, server, changes: dict, *, lease):
         if _owned_metadata(fresh) != expected:
             raise HTTPException(409, "Usage schedule changed; reload before continuing")
         await _assert_lease(conn, fresh, lease)
+        if (
+            adoption_clock is not None
+            and not expected
+            and aware_timestamp(combined[METADATA_PREFIX + "expires_at"]) <= aware_timestamp(adoption_clock())
+        ):
+            raise HTTPException(409, "Usage adoption reference expired before metadata submission")
         submitted = True
         await sdk_call(proxy.set_server_metadata, identifier, **changes)
         refreshed = await sdk_call(proxy.get_server, identifier)

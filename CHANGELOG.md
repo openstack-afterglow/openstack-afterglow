@@ -10,6 +10,7 @@
 ### Added
 
 - 인스턴스 사용 종료일을 미래 날짜로 앞당기고, 사유를 남겨 기존 종료일에서 최대 한 달씩 연장할 수 있습니다. 기본 자동 승인과 도메인 manager가 설정하는 선택적 수동 승인, 도메인 manager·프로젝트 관리자의 검토 목록을 추가합니다. 승인 대기는 기존 만료를 미루지 않습니다. SQL108 및 일치하는 writer cohort 전환이 필요하며 아직 운영 활성화·배포 증거는 아닙니다.
+- 기존 VM 최초 일정 등록에 선택적 공통 기준 시각 `instance_usage.adoption_reference_at`을 추가합니다. 미설정 시 VM별 등록부터 한 달을 유지하며, 설정 시 UTC 기준 시각에서 정확히 한 calendar month 뒤를 공통 종료일로 사용합니다. 잘못되거나 이미 끝난 유예는 새 metadata·만료 동작 없이 거부하고 기존 Nova 일정은 재설정하지 않습니다. TOML·환경 변수·Kubernetes·Helm·Kolla 예시를 동기화하며 scheduler는 기본 비활성을 유지합니다.
 - `afterglow-kolla` Python 배포 패키지에 Kolla role·playbook과 설치 도구를 포함해, 최초 연결 이후 패키지 갱신으로 Kolla 자산을 갱신할 수 있게 합니다. Private `share/afterglow/kolla` 경로는 유지하고, 예전 `openstack-afterglow` distribution 설치 환경은 이전 이름 제거 후 새 artifact 설치·재설치가 필요합니다. Role/site의 서로 다른 옛 checkout 링크도 별도 exact target으로 이관하며 원본 source·설정은 보존합니다. 아직 미발행 source package로, 패키지 게시·운영 설치·배포를 수행했다는 뜻은 아닙니다.
 - Kolla에서 `afterglow_backend_workers`로 backend 호스트당 Uvicorn 프로세스 수를 설정합니다. 기본값은 기존과 같은 1이며 잘못된 값은 구성 및 활성화 전에 거부합니다.
 - 기본 꺼짐인 의미 기반 경험 관측 v2를 추가합니다. 입력값·DOM·원본 URL/query·채팅·터미널·credential 원문 없이 명시적 action/request/operation/worker 연결과 실제 화면 상태를 별도 SQL107 진단 저장소에 기록합니다. 브라우저 관측·서버 요청·업무 terminal·상태 적용·DOM commit·노출/미확인을 구분하며 기존 관리자 이벤트 화면의 한국어 해설·정확한 카탈로그 복원·읽기 전용 export와 연결합니다. 새 수집·운영 schema·보존 삭제는 자동 활성화하지 않습니다.

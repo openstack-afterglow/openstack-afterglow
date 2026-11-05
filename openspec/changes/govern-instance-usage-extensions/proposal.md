@@ -9,6 +9,7 @@ Operators need to schedule an earlier shutdown and govern extension requests wit
 - Default to automatic extension approval; allow domain managers to require review by authorized domain managers or project administrators.
 - Expose request, review, status, and domain policy in the console with native authority checks and durable, race-safe handling.
 - Assess operational scheduler activation against the existing production safety prerequisites; do not silently alter schedules or cloud resources.
+- Support an optional operator-selected common reference instant for first adoption of existing instances, retaining per-enrollment grace when unset and refusing invalid or already-expired adoption without native writes.
 
 ## Capabilities
 
