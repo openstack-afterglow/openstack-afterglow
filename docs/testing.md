@@ -30,6 +30,13 @@ nav_order: 8
 - 발행된 frontend digest를 canonical entrypoint/CMD 그대로 별도19482 port·read-only rootfs·tmpfs log에서 기동했다. 실제 browser의 tutorial identity/data로 invalid regex 안내, 정확한2row 검색, 이름 내림차순, manual refresh 후 조건 보존과390px/overflow0/compact sort6개를 확인했다. 근거는`published-frontend-runtime.json`·`published-image-mobile.png`다. Source Node24 실행 결과와 image Node20 실행 결과를 구분한다.
 - Helm OCI`oci://ghcr.io/openstack-afterglow/charts/afterglow:1.32.9`의 manifest digest는`sha256:f8f70d1e4dbedb165dcd6824872a98d42a35a097513cd97f553a33f75b97f359`다. 실제 pull한 package SHA256`a36e5db5b2b054a9a3f12f1693055a33a3539f59afa3e64f499199c0b406b207`와`version`/`appVersion`1.32.9를 확인했다. Helm install·운영 Kolla/native/schema 변경·main merge는 수행하지 않았다.
 
+### 1.32.9 남은 위험·발행 설명 보정
+
+- API/worker의 발행 image 검증은 위의 read-only/network-none 버전 command만 실행했다. 전체 lifespan·worker loop·native-integration startup은 실행하지 않았고 image는 `linux/amd64`만 발행했다.
+- `mail_resource_notifications.py:302`는 여전히`keystone.get_admin_connection_for_project`를 사용한다. 사용 기간·quota 알림의 tenant password-scope 인증은 변경하지 않았으며 동일401 가능성은 남는다(`[INFERENCE]`, 이 발행에서 실제 mail lane/SMTP·운영 tenant 재인증을 시도하지 않음). 알림 메일 복구는1.32.9 scheduler/cleanup 수정의 검증 범위가 아니다.
+- Source의 `_layer_resource`에서 올바른 operator target 인자를 보내도 foreign-owner-only 응답은 제외되어 `allow_absent=True`일 때`None`이 된다. 설치된 SDK·실제 loopback HTTP로 네 자원군의 target-present 조회 성공과 foreign-only→None을 확인했다(`residual-provider-filter-smoke.json`, synthetic identity/provider, cloud writes0). Native provider가 목록 scope를 무시하거나 축소하면 이 응답으로 대상 부재를 증명할 수 없고 unknown-create 자원이 남아도 cleanup을 마친 것으로 처리할 위험이 있다(`[INFERENCE]`, 운영 provider에서 발생했음을 확인한 것은 아님). 이 hardening은 코드에 반영하지 않았고 공개1.32.9 tag/image도 바꾸지 않았다.
+- 지연 검토를1.32.8 tag와 대조해 credential 만료 프리셋·image relevance·consumer volume 생성일 정렬·flavor 근사/GPU 전용 프리셋의 실제 제거와 administrator name 검색 위치 변경을 확인했다. CHANGELOG와 한영 GitHub Release에 이를 명시하고 새 기능의 발행 전 보완은 Changed로 분류했다. 발행 설명 보정은 문서·Release body만 바꾸며 source SHA256·tag·image digest는 유지한다.
+
 
 ## 대시보드·표 제어 통일 (2026-11-06, source/local)
 
