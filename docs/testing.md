@@ -17,7 +17,18 @@ nav_order: 8
 - Ownership regression은 원본 source에서16실패/74통과, 수정 후90통과였다. Image draft4·metadata3·secret reveal6의 원본 실패를 확인하고 수정 후 관련73회귀가 통과했다. Secret before-run에는 passive selector attribute만 동일하게 붙여 wiring 부재가 아니라 실제 다른 secret의 plaintext 노출을 검증했다. Usage report의 route parent는 기존 private-view key로 이미 완화하고 있었으며 page 자체에도 독립 owner/ABA fence를 적용했다.
 - 실제 Vite component/controller/API client로 active regex의 image field 연속 입력이 다른 속성을 바꾸지 않음, read filter 복귀, secret sort/namespace 변경 후 다른 값 masking, 검색 중 metadata Add·key 연속 입력·다른 행 제거의 안정성을 확인했다. QA-only 임시 route와 synthetic HTTP identity/image/secret/context를 사용했으며 이 route는 최종 source/gate 전에 제거했다. 근거는`review-ui-runtime.json`·`review-secrets-runtime.png`·`catalog-operator-runtime.json`과 before/after 기록이다. 최종 gate·production build는 수정된 source에서 다시 실행한다.
 - 수정 후 최종 source`73d5f8c0f9a431a6e4c8a931afee2ae72a4a1478cf460a65502972db730c5dbe`/4,172files에서 canonical`npm run test:gate`가 다시 exit0이었다. Backend14,511passed/106skip, frontend550files/7,593passed, contracts261passed, functional283passed/46skip/122deselected, Ruff879files가 통과했다. 최종 production build·Svelte0errors/기존15warnings·i18n0errors/0warnings/scan0도 통과했다. 원본/최종 결과를 구분하며, 임시 QA source는 이 최종 hash에 없다.
-- 재현 가능한 명령 결과·snapshot manifest·실행 receipt는`~/.local/share/afterglow-proofs/release-1329-20261106/`에 보존한다. 정식 commit/CI/tag·세 release/latest image와 Helm 결과는 발행 후 별도로 기록한다. 운영 Kolla/native/schema 변경·main merge는 이번 발행 범위가 아니다.
+- 재현 가능한 명령 결과·snapshot manifest·실행 receipt는`~/.local/share/afterglow-proofs/release-1329-20261106/`에 보존한다. 공유 dev의 working/staged architecture guard는 최종 source와 일치했고, 통합 후 backend48·frontend8files/163회귀도 통과했다. 실제 staged18,093,134bytes에서 Gitleaks0건이었다. Rapid/no-specs 프로젝트에서`openspec validate --strict`의 no-deltas 결과는 알려진 non-gate이며, 종료는 개발 가이드의`archive --skip-specs --yes`를 따른다.
+- 정식 source commit/tag는`dcf1c4b9d04b23af76aadbc0d065dff70f147808`/`1.32.9`다. [dev exact-SHA CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/42245065818), [numeric-tag image CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/42246620078), [Helm CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/42246620088)가 모두 success다. [GitHub Release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/1.32.9)의 한영 이전-release delta 본문을 read-back 대조했고 remote annotated tag의 dereferenced SHA도 동일했다.
+- 아래 세 image는 발행된`1.32.9`와`latest`의 root manifest digest가 각각 같고 OCI revision이 위 source commit과 일치했다. 실제 platform inventory는`linux/amd64`다. immutable digest로 pull 후 read-only/network-none command를 실행하여 API/worker의 실제 Python3.12.16·frontend의 Node20.20.2와 모두 app1.32.9를 확인했다. 이는 API/worker의 전체 lifespan·worker loop·운영 native 연동 기동 증명이 아니다.
+
+| Image repository (`ghcr.io/openstack-afterglow/`) | `1.32.9` = `latest` manifest digest |
+| --- | --- |
+| `afterglow-api` | `sha256:f1905d36f94534946c97a7486d52fde52b0e7ed5f4d6e05345b67bed9a0634a1` |
+| `afterglow` | `sha256:84860c806c5690c1caffc3a92570e41fbdf95b254bfca5aad12a655648d7256c` |
+| `afterglow-worker` | `sha256:999ebdfedcc66d7070acafd077814bf228afc4820f2c0f8bb3336da487863fc7` |
+
+- 발행된 frontend digest를 canonical entrypoint/CMD 그대로 별도19482 port·read-only rootfs·tmpfs log에서 기동했다. 실제 browser의 tutorial identity/data로 invalid regex 안내, 정확한2row 검색, 이름 내림차순, manual refresh 후 조건 보존과390px/overflow0/compact sort6개를 확인했다. 근거는`published-frontend-runtime.json`·`published-image-mobile.png`다. Source Node24 실행 결과와 image Node20 실행 결과를 구분한다.
+- Helm OCI`oci://ghcr.io/openstack-afterglow/charts/afterglow:1.32.9`의 manifest digest는`sha256:f8f70d1e4dbedb165dcd6824872a98d42a35a097513cd97f553a33f75b97f359`다. 실제 pull한 package SHA256`a36e5db5b2b054a9a3f12f1693055a33a3539f59afa3e64f499199c0b406b207`와`version`/`appVersion`1.32.9를 확인했다. Helm install·운영 Kolla/native/schema 변경·main merge는 수행하지 않았다.
 
 
 ## 대시보드·표 제어 통일 (2026-11-06, source/local)
