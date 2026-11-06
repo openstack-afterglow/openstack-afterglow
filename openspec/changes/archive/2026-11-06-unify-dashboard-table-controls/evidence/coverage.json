@@ -1,0 +1,1960 @@
+{
+  "status": "Implementation and local browser verification completed; final gate outcome in acceptance.json",
+  "scope": "All application-owned dashboard/table resource surfaces; external/user Markdown, conversation content search, navigation and command discovery retain their separate contracts",
+  "initialNativeTableFiles": 122,
+  "implementationReceipts": {
+    "ConsumerCompute": {
+      "owner": "ConsumerCompute",
+      "verification": {
+        "checksRun": [
+          "Authorized focused Vitest: ImageWindowsSetup.consumer.test.ts; ImageRepositoryTrust.test.ts; imagesController.svelte.test.ts; K3sClusterNetworksCard.test.ts; my-resources/page.test.ts; ProjectUsageTable.test.ts",
+          "Authorized focused Vitest: container instances/page.test.ts and mockup/transport.test.ts — 2 files / 40 tests passed",
+          "Authorized focused Vitest after grouped-image representative ordering fix: imagesController.svelte.test.ts and ImageRepositoryTrust.test.ts — 2 files / 25 tests passed",
+          "Authorized focused Vitest after empty-image recovery corrections: ImageAdminDetail.consumer.test.ts and SelectImage.test.ts — 2 files / 38 tests passed"
+        ],
+        "status": "Latest focused image recovery run: 2 files / 38 tests passed. New readonly-token-refresh regression initially failed, exposing a second automatic reset in loadImage; scoped retention fix then passed. Earlier listed focused runs also passed; parent owns final full gate/build/browser.",
+        "warnings": [
+          "Existing jsdom canvas getContext diagnostics emitted during loading fixtures",
+          "ProjectUsageTable named keyboard scroll-region tabindex accessibility warning remains; initial retained-state capture warning resolved with untrack"
+        ],
+        "reportedDiagnosticsFixed": [
+          "Typed verification formatter and module-exported CatalogViewMode",
+          "Toolbar fixtures annotated ImageInfo; container test direction tuples narrowed",
+          "ImageRepositoryDetail state prop aliased retainedState to prevent Svelte $state rune/store shadowing runtime TypeError",
+          "Mutation-save regressions now identify mutation buttons rather than requiring read-only column controls to be disabled",
+          "Obsolete duplicate primary-label and hidden-empty-summary structure assertions removed without weakening mutation or no-invented-resource checks"
+        ]
+      },
+      "surfaces": {
+        "compute": [
+          "frontend/src/routes/dashboard/compute/instances/+page.svelte",
+          "frontend/src/lib/components/instance/list/InstancesTable.svelte",
+          "frontend/src/lib/components/dashboard/overview/RecentInstancesCard.svelte",
+          "frontend/src/lib/components/dashboard/my-resources/ProjectUsageTable.svelte",
+          "frontend/src/routes/dashboard/my-resources/+page.svelte",
+          "frontend/src/routes/dashboard/compute/keypairs/+page.svelte",
+          "frontend/src/lib/components/keypair/KeypairListTable.svelte"
+        ],
+        "images": [
+          "frontend/src/routes/dashboard/compute/images/+page.svelte",
+          "frontend/src/lib/stores/imageCatalog.svelte.ts",
+          "frontend/src/lib/stores/imagesController.svelte.ts",
+          "frontend/src/lib/utils/imageReference.ts",
+          "frontend/src/lib/components/dashboard/images/ImageCatalogToolbar.svelte",
+          "frontend/src/lib/components/dashboard/images/ImageRepositoryDetail.svelte",
+          "frontend/src/lib/components/image/ImagePropertiesSection.svelte",
+          "frontend/src/lib/components/image/ImageWindowsSetupSection.svelte",
+          "frontend/src/lib/components/image/ImageMembersSection.svelte",
+          "frontend/src/lib/stores/imageDetailController.svelte.ts",
+          "frontend/src/lib/components/ImageDetailPanel.svelte",
+          "frontend/src/lib/components/wizard/SelectImage.svelte"
+        ],
+        "k3s": [
+          "frontend/src/routes/dashboard/drover/+page.svelte",
+          "frontend/src/lib/stores/k3sClusterDetailController.svelte.ts",
+          "frontend/src/lib/components/k3s/K3sClusterListTable.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterPodsCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterServicesCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterDeploymentsCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterNodesCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterVmList.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterSecretsCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterConfigMapsCard.svelte",
+          "frontend/src/lib/components/k3s/K3sClusterNetworksCard.svelte",
+          "frontend/src/lib/components/k3s/K3sNodegroupsSection.svelte",
+          "frontend/src/lib/components/k3s/K3sStampedeTab.svelte"
+        ],
+        "database": [
+          "frontend/src/routes/dashboard/database/instances/+page.svelte",
+          "frontend/src/routes/dashboard/database/backups/+page.svelte",
+          "frontend/src/lib/components/database/DbInstancesTable.svelte",
+          "frontend/src/lib/components/database/DbBackupsTable.svelte",
+          "frontend/src/lib/components/database/DbBackupsSection.svelte",
+          "frontend/src/lib/components/database/DbUsersSection.svelte",
+          "frontend/src/lib/components/database/DbDatabasesSection.svelte",
+          "frontend/src/lib/components/database/DbInstanceDetailPanel.svelte",
+          "frontend/src/lib/stores/dbInstanceDetailController.svelte.ts",
+          "frontend/src/lib/utils/databaseTableColumns.ts"
+        ],
+        "containers": [
+          "frontend/src/routes/dashboard/containers/instances/+page.svelte",
+          "frontend/src/lib/components/dashboard/containers/instances/ContainersTable.svelte",
+          "frontend/src/routes/dashboard/containers/clusters/+page.svelte",
+          "frontend/src/routes/dashboard/containers/clusters/[id]/+page.svelte",
+          "frontend/src/lib/components/dashboard/containers/clusters/id/ClusterEventsTab.svelte",
+          "frontend/src/lib/components/dashboard/containers/clusters/id/ClusterResourcesTab.svelte",
+          "frontend/src/lib/types/zunContainer.ts",
+          "frontend/src/lib/mockup/transport.ts"
+        ]
+      },
+      "regressionSources": [
+        "frontend/src/lib/components/instance/list/__tests__/InstancesTable.test.ts",
+        "frontend/src/routes/dashboard/compute/instances/__tests__/page.lifecycle.test.ts",
+        "frontend/src/lib/components/dashboard/my-resources/ProjectUsageTable.test.ts",
+        "frontend/src/lib/components/keypair/__tests__/KeypairListMotion.test.ts",
+        "frontend/src/lib/stores/imagesController.svelte.test.ts",
+        "frontend/src/lib/utils/imageReference.test.ts",
+        "frontend/src/lib/components/dashboard/images/__tests__/ImageCatalogToolbar.test.ts",
+        "frontend/src/lib/components/dashboard/images/__tests__/ImageActivityMotion.test.ts",
+        "frontend/src/lib/components/wizard/__tests__/SelectImage.test.ts",
+        "frontend/src/lib/components/image/__tests__/ImageOperationMotion.test.ts",
+        "frontend/src/lib/components/image/__tests__/ImageAdminDetail.consumer.test.ts",
+        "frontend/src/lib/stores/k3sControllers.svelte.test.ts",
+        "frontend/src/lib/components/k3s/__tests__/K3sClusterListTable.test.ts",
+        "frontend/src/lib/components/k3s/__tests__/K3sClusterNetworksCard.test.ts",
+        "frontend/src/lib/components/k3s/__tests__/K3sStampedeTab.test.ts",
+        "frontend/src/routes/dashboard/database/backups/__tests__/page.intent.test.ts",
+        "frontend/src/lib/components/database/__tests__/DbInstancesTable.test.ts",
+        "frontend/src/lib/components/database/__tests__/DbBackupsTable.test.ts",
+        "frontend/src/lib/components/database/__tests__/DbInstanceDetailPanel.test.ts",
+        "frontend/src/lib/components/dashboard/containers/instances/__tests__/ContainersTable.test.ts",
+        "frontend/src/routes/dashboard/containers/instances/__tests__/page.test.ts",
+        "frontend/src/routes/dashboard/containers/clusters/__tests__/page.test.ts",
+        "frontend/src/routes/dashboard/containers/clusters/[id]/__tests__/page.tabs.test.ts",
+        "frontend/src/lib/components/dashboard/images/__tests__/ImageRepositoryTrust.test.ts",
+        "frontend/src/lib/components/image/__tests__/ImageWindowsSetup.consumer.test.ts",
+        "frontend/src/routes/dashboard/my-resources/__tests__/page.test.ts",
+        "frontend/src/lib/mockup/transport.test.ts"
+      ],
+      "removed": [
+        "frontend/src/lib/components/dashboard/images/ImageDistroFilter.svelte",
+        "frontend/src/lib/components/instance/list/instanceSort.ts",
+        "frontend/src/lib/components/instance/list/__tests__/instanceSort.test.ts"
+      ],
+      "delegatedElsewhere": [
+        "SecurityGroupUnion.svelte and UnionInfoSection.svelte migrated by ConsumerNetwork",
+        "all tutorial/header actions and docs/locales owned by Main/TableCore",
+        "admin image inventory owns its AdminImagesTable/route and consumes shared catalog.view"
+      ],
+      "unchangedWrappers": [
+        "dashboard/containers/instances/[id]/+page.svelte: detail grid/log/terminal no list search/table",
+        "dashboard/drover/[id]/+page.svelte and K3sClusterDetailPanel: inherited detail tables; existing scoped reset preserved",
+        "dashboard/database/instances/[id]/+page.svelte: inherits DbInstanceDetailPanel",
+        "overview route already keys RecentInstancesCard owner by visibleContext"
+      ],
+      "boundaries": [
+        "All consumer inventories use complete local snapshots before page slicing/selection; Stampede event projection truthfully labels loaded latest-100 records; native include-deleted and namespace/VM target query boundaries retained.",
+        "Image repository/tag grouping, immutable UUID versions and canonical current upload remain independent of regex and column filters; wizard resolves current upload before filtering.",
+        "K3s and image detail view/query state owned by scoped controllers survives refresh/error/tab remount; actual controller reset clears state. Image bearer rotation retains only nonsecret table choices while read/mutation generations still reset.",
+        "My Resources search/sort/filter state hoisted above refresh/error conditional and clears on logical owner/authority transitions.",
+        "Image consumer cards use all-width equivalent column controls; repository detail uses actual table headings and compact controls. Shared toolbar supports columnControls for admin table versus consumer card-only presentation.",
+        "Repository detail selection plus controller-owned per-repository ImageCatalogState survive populated→empty/absent→populated snapshots and component remount. Same-owner token rotation retains state; logical owner changes clear it. Nullable absent group keeps actual table controls mounted, with no fabricated image/latest identity. Repository-list catalog controls are not displayed over the independently searched detail.",
+        "Browser-reported consumer tutorial container crash traced to bare-array tutorial response versus native ContainerListResponse envelope. Fixture corrected; My Resources tutorial aggregation explicitly unwraps the native envelope. Runtime parser validates envelope/item shapes before publication; malformed reads preserve last-success rows and explicit error, with no fake empty fallback. Logical owner/request-generation fences discard stale publications and retain normal bearer-renewal view state. Parent owns fresh managed-browser sweep.",
+        "Grouped image sort now uses shared view.orderRows over displayed newest tag/repository representatives, not the first individually sorted historical upload. Canonical current/latest identity and hidden previous versions remain unchanged; stable ties use native newest-first group order. Duplicate-upload size and rendered detail-target regressions pass.",
+        "Read-only image properties with zero fresh properties keep truthful empty controls mounted only while retained query/facets/sort remain; clearing all conditions restores original hidden-empty readonly behavior. Wizard selected-repository tag controls remain accessible through explicit/inferred [R]→[]→[R] transitions without fabricated image/group identity or automatic selection. Image loadImage/reset handoff now preserves only nonsecret table choices for the same image/project/admin context; parent actor/authority reset still clears them."
+      ]
+    },
+    "ConsumerStorage": {
+      "owner": "ConsumerStorage",
+      "verification": {
+        "executed": [
+          {
+            "scope": "11 owned storage regression files after central failure corrections",
+            "result": "10 files passed; initial policy suite had one ambiguous-label assertion failure",
+            "evidence": "artifact://268",
+            "tests": "87 passed, 1 failed"
+          },
+          {
+            "scope": "Corrected backup policy suite only",
+            "result": "1 file / 11 tests passed; prior other 10 files remain passed",
+            "evidence": "artifact://272"
+          },
+          {
+            "scope": "Object whitespace all-scope queries without current-scope fallback, context-only ancestor target exclusion, PDF+TXT safety, grid scope and hierarchy",
+            "result": "3 files / 39 tests passed",
+            "evidence": "artifact://347"
+          },
+          {
+            "scope": "File detail error gates and truthful metadata source-empty versus filtered-empty states",
+            "result": "1 file / 4 tests passed",
+            "evidence": "Focused Vitest job bg_10 output"
+          }
+        ],
+        "status": "Main-authorized focused verification: initial affected set 11 files / 88 tests passed across focused batch and corrected policy rerun; latest object scope/target/whitespace corrections passed 3 files / 39 tests, and metadata/error-state regression passed 1 file / 4 tests. Full gate/browser remain parent-owned. Passing logs contain jsdom canvas diagnostics and named-scroll-region Svelte warnings.",
+        "recommended": [
+          "frontend/src/lib/stores/__tests__/objectBrowserNavigation.svelte.test.ts",
+          "frontend/src/lib/components/volume/__tests__/VolumeBulkSelection.test.ts",
+          "frontend/src/lib/components/volume/__tests__/VolumeResponsiveCards.test.ts",
+          "frontend/src/lib/components/object-storage/__tests__",
+          "storage target; frontend localization/typecheck; desktop/compact compiled browser scenarios"
+        ]
+      },
+      "routes": [
+        {
+          "path": "frontend/src/routes/dashboard/volumes/backups/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/volumes/snapshots/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/networks/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/security-services/+page.svelte",
+          "status": "migrated; parent-reported beta-enabled browser QA found zero-source duplicate controls and false noMatches; parent applied fallback-class and truthful empty-state correction"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/snapshots/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/volumes/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/manage/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/file-storage/[id]/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/object-storage/buckets/+page.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/volumes/[id]/+page.svelte",
+          "status": "unchanged route wrapper; migrated attachment/snapshot projections in VolumeDetailPanel descendants"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/object-storage/buckets/[name]/+page.svelte",
+          "status": "unchanged route wrapper; shared ObjectBrowser store owns view state"
+        }
+      ],
+      "components": [
+        {
+          "path": "frontend/src/lib/components/volume/backups/VolumeBackupListTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/snapshots/VolumeSnapshotsTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/dashboard/file-storage/networks/ShareNetworkTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/dashboard/file-storage/security-services/SecurityServiceTable.svelte",
+          "status": "migrated; parent owns zero-source QA correction removing unconditional child noMatches; current parent hunks preserved"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/SnapshotListTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeListTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/SnapshotListTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeAttachmentsList.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeSnapshotsSection.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeTransferModal.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/backups/VolumeBackupPolicies.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/dashboard/file-storage/[id]/AccessRulesSection.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/dashboard/file-storage/[id]/FileStorageMetadata.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/FileStorageAccessRulesSection.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/FileStorageMetadataSection.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/wizard/FileStorageWizardStep1.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/wizard/FileStorageWizardStep3.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/manage/FileStorageManageGrid.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/file-storage/manage/PrebuiltLibraryGrid.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/ObjectFlatTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/ObjectTreeTable.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/ObjectCardGrid.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/ObjectBrowserToolbar.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/ObjectTrashView.svelte",
+          "status": "migrated-unverified"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/buckets/BucketTable.svelte",
+          "status": "migrated-unverified"
+        }
+      ],
+      "supportingChanges": [
+        "frontend/src/lib/stores/objectBrowser.svelte.ts",
+        "frontend/src/lib/components/FileStorageDetailPanel.svelte",
+        "frontend/src/lib/components/object-storage/ObjectFolderCard.svelte",
+        "frontend/src/lib/components/object-storage/__tests__/ObjectTreeSelectionHarness.svelte",
+        "frontend/src/lib/components/object-storage/__tests__/ObjectBulkSelection.test.ts",
+        "frontend/src/lib/components/__tests__/VolumeDetailPanel.test.ts",
+        "frontend/src/lib/components/volume/__tests__/VolumeTransferModal.test.ts",
+        "frontend/src/routes/dashboard/volumes/__tests__/volumeRenameParity.test.ts",
+        "frontend/src/routes/dashboard/volumes/__tests__/volumeSort.test.ts",
+        "frontend/src/routes/dashboard/volumes/__tests__/volumeTransferLifecycle.test.ts",
+        "frontend/src/routes/dashboard/object-storage/buckets/__tests__/page.test.ts",
+        "frontend/src/routes/dashboard/volumes/backups/__tests__/page.policy.test.ts",
+        "frontend/src/routes/dashboard/volumes/backups/__tests__/page.project.test.ts",
+        "frontend/src/lib/stores/__tests__/objectBrowserNavigation.svelte.test.ts",
+        "frontend/src/lib/components/volume/__tests__/VolumeBulkSelection.test.ts",
+        "frontend/src/lib/components/volume/__tests__/VolumeResponsiveCards.test.ts",
+        "frontend/src/lib/components/file-storage/__tests__/FileStorageDetailPanel.error.test.ts"
+      ],
+      "unchangedConsumers": [
+        {
+          "path": "frontend/src/lib/components/file-storage/FileStorageCard.svelte",
+          "reason": "Receives already projected route rows; one resource card, no independent view owner"
+        },
+        {
+          "path": "frontend/src/lib/components/object-storage/BucketCardGrid.svelte",
+          "reason": "Receives already projected active bucket rows from route; no independent controls"
+        },
+        {
+          "path": "frontend/src/lib/components/ObjectBrowser.svelte",
+          "reason": "Existing lifetime and logical owner fences retained; store owns table state across table/grid render branches"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeInfoCard.svelte",
+          "reason": "Single resource summary, no row collection"
+        },
+        {
+          "path": "frontend/src/lib/components/volume/VolumeDetailPanel.svelte",
+          "reason": "Existing same-scope background refresh mounts attachment/snapshot view components stably"
+        }
+      ],
+      "boundaries": [
+        "Volume project view applies regex/columns/default newest sort to complete loaded volume snapshot before page slice and visible selection; removed status-option invalidation and toolbar sort/status controls. Snapshot tab projects before slicing.",
+        "File access key values remain display/copy-only; never searchable/sortable/facetable, preventing facet menus from exposing secret key material.",
+        "Object grid facets project only direct children; explicit all-scope regex results retain full paths. Search presence uses raw length, so literal space/tab queries trigger all-scope loading and never fall back to current-folder rows while pending. Tree ancestors retained solely for descendant context are marked contextOnly, retain navigation/individual actions but cannot be bulk-selected or submitted. PDF+TXT sibling regressions verify recursive bulk delete targets only the matching PDF. Canonical sibling ordering, grid scope, predicate actions, whitespace matching and native delimiter-only request boundaries passed.",
+        "Editor metadata sorting/filtering uses original row object identity and removal by original metadata-array index, not display order.",
+        "Standalone and panel file details preserve the original error content gate: failed detail reads unmount stale data and mutation actions. Search and TableViewState live in the parent above the gate, retaining conditions on same-owner recovery while clearing on logical owner/resource scope changes. 401/403/503 regressions and metadata source-empty versus query-filtered-empty notices passed; sort alone never labels an actually empty metadata source as noMatches.",
+        "Selectors and action-only columns intentionally have no meaningless sorting/filter facets. Single-resource lookup/preview cards are not independent inventories.",
+        "Inventory referenced obsolete frontend/src/lib/components/wizard/FileStorageWizardStep3.svelte; actual file is frontend/src/lib/components/file-storage/wizard/FileStorageWizardStep3.svelte and migrated."
+      ],
+      "notes": [
+        "No shared locale/token/UI primitive/docs/OpenSpec files edited by worker. Parent tutorial header placement retained.",
+        "Parent-reported actual beta-enabled security-services browser QA: zero-source showed 12 desktop controls instead of 6 and false noMatches. Main corrected parent fallback class to loading ? '' : 'lg:hidden', moved actual-source-empty versus filtered-zero notices to the parent, and removed the child's unconditional notice/common import. Worker preserved both files without re-editing or claiming independent browser verification.",
+        "No builds/formatters/browser/full gates run by worker. Only Main-authorized focused regressions ran after corrections; evidence is recorded above."
+      ]
+    },
+    "ConsumerNetwork": {
+      "owner": "ConsumerNetwork",
+      "change": "unify-dashboard-table-controls",
+      "verification": {
+        "checksRun": false,
+        "reason": "Worker assignment explicitly forbids build/lint/tests/formatters; parent owns integration verification."
+      },
+      "routes": [
+        {
+          "path": "frontend/src/routes/dashboard/network/networks/+page.svelte",
+          "status": "migrated",
+          "details": "Owner-held network and floating-IP regex/table views; network projection precedes pagination and visible selection; obsolete type toolbar removed. Floating-IP cards consume the same projected/eligible IDs. Refresh retains conditions; actual project transition clears views."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/floating-ips/+page.svelte",
+          "status": "migrated",
+          "details": "Regex plus actual desktop grid heading controls and compact equivalent; visible-only selection; source/authority mutation eligibility preserved."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/routers/+page.svelte",
+          "status": "migrated",
+          "details": "Card-only column controls, regex and projected selection; owned-project eligibility preserved."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/loadbalancers/+page.svelte",
+          "status": "migrated",
+          "details": "Card-only column controls and regex; projected selection preserves Drover protection."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/security-groups/+page.svelte",
+          "status": "migrated",
+          "details": "Group regex/card controls and visible selection; rules have actual desktop grid heading controls and compact parity. Editing remains bound to rule ID, and a filtered-out edited rule retains its draft form outside the projected row list."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/security-groups/+page.svelte",
+          "status": "migrated",
+          "details": "Legacy group cards receive regex/column controls; child rules table migrated."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/networks/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Subnet/connected-router tables migrated; children remain mounted but hidden on transient error. Logical project/resource key resets only true scope changes."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/networks/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Legacy subnet/router tables migrated; router owner no longer unmounts merely because refresh yields zero routers. Errors hide rather than discard same-owner view state."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/routers/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Standalone interface rows use typed projection; same-owner error/loading keeps child owner mounted, logical project/resource changes keyed."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/routers/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Uses migrated dashboard/routers/id interface rows; same-owner error/loading keeps child owner mounted and true project/resource transition is keyed. Shared RouterDetailPanel additionally uses controller-owned interface state."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/loadbalancers/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Standalone listeners/pools/members migrated; same-owner transient error hides rather than unmounts owners; true project/resource transition keyed."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/loadbalancers/[id]/+page.svelte",
+          "status": "migrated",
+          "details": "Legacy listener/pool/member card views migrated with the same error/owner behavior."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/topology/+page.svelte",
+          "status": "covered by migrated shared topology views",
+          "details": "Canvas and lane searches are regex with visible invalid input feedback. Subnet inspector table plus topology LB listener/member card lists migrated without flattening ownership/graph hierarchy."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/secrets/+page.svelte",
+          "status": "migrated",
+          "details": "Three independent metadata-only regex/table views for secrets, containers, orders; typed dates/counts; visible eligible selection. Refresh retains state; project/beta-authority transition clears views and revealed payloads. Payload content is not searchable or a facet."
+        }
+      ],
+      "migratedComponents": [
+        "frontend/src/lib/components/dashboard/network/networks/NetworksTableCard.svelte",
+        "frontend/src/lib/components/dashboard/network/networks/FloatingIpCard.svelte",
+        "frontend/src/lib/components/dashboard/network/security-groups/SecurityGroupRulesPanel.svelte",
+        "frontend/src/lib/components/dashboard/networks/ConnectedRouterTable.svelte",
+        "frontend/src/lib/components/dashboard/networks/SubnetTableSection.svelte",
+        "frontend/src/lib/components/dashboard/networks/id/DashboardRouterTable.svelte",
+        "frontend/src/lib/components/dashboard/networks/id/DashboardSubnetSection.svelte",
+        "frontend/src/lib/components/dashboard/security-groups/SecurityGroupRuleTable.svelte",
+        "frontend/src/lib/components/dashboard/routers/id/RouterInterfacesSection.svelte",
+        "frontend/src/lib/components/dashboard/loadbalancers/ListenerSection.svelte",
+        "frontend/src/lib/components/dashboard/loadbalancers/PoolSection.svelte",
+        "frontend/src/lib/components/dashboard/loadbalancers/id/LbListenerSection.svelte",
+        "frontend/src/lib/components/dashboard/loadbalancers/id/LbPoolSection.svelte",
+        "frontend/src/lib/components/dashboard/loadbalancers/id/LbPoolMembersPanel.svelte",
+        "frontend/src/lib/components/dashboard/network/topology/LoadBalancerDetailPanel.svelte",
+        "frontend/src/lib/components/network/NetworkSubnetsSection.svelte",
+        "frontend/src/lib/components/network/NetworkRoutersSection.svelte",
+        "frontend/src/lib/components/router/RouterInterfacesSection.svelte",
+        "frontend/src/lib/components/loadbalancer/LoadBalancerListenersSection.svelte",
+        "frontend/src/lib/components/loadbalancer/LoadBalancerPoolsSection.svelte",
+        "frontend/src/lib/components/loadbalancer/PoolMembersPanel.svelte",
+        "frontend/src/lib/components/instance/SecurityGroupUnion.svelte",
+        "frontend/src/lib/components/instance/UnionInfoSection.svelte",
+        "frontend/src/lib/components/topology/canvas/TopologyNetworkPanel.svelte"
+      ],
+      "adaptersAndSearch": [
+        "frontend/src/lib/mockup/transport.ts",
+        "frontend/src/lib/stores/networkDetailController.svelte.ts",
+        "frontend/src/lib/stores/routerDetailController.svelte.ts",
+        "frontend/src/lib/stores/loadbalancerDetailController.svelte.ts",
+        "frontend/src/lib/utils/loadBalancerTableColumns.ts",
+        "frontend/src/lib/components/topology/topologyDerivedController.svelte.ts",
+        "frontend/src/lib/components/topology/TopologyHeader.svelte",
+        "frontend/src/lib/components/topology/canvas/CanvasToolbar.svelte",
+        "frontend/src/lib/components/topology/canvas/CanvasDomainLayer.svelte",
+        "frontend/src/lib/components/topology/canvas/CanvasOwnershipOverview.svelte",
+        "frontend/src/lib/components/topology/canvas/topologyGraph.ts"
+      ],
+      "behavioralTestUpdatesNotRun": [
+        "frontend/src/routes/dashboard/network/networks/[id]/__tests__/page.test.ts",
+        "frontend/src/lib/mockup/transport.test.ts",
+        "frontend/src/routes/dashboard/network/security-groups/__tests__/page.test.ts",
+        "frontend/src/lib/components/topology/canvas/__tests__/TopologyNetworkPanel.test.ts",
+        "frontend/src/routes/dashboard/secrets/__tests__/page.motion.test.ts",
+        "frontend/src/lib/components/dashboard/network/__tests__/NetworkBulkSelection.test.ts",
+        "frontend/src/lib/components/dashboard/network/__tests__/NetworksTableCardCidr.test.ts",
+        "frontend/src/lib/components/topology/canvas/__tests__/topologyGraph.test.ts",
+        "frontend/src/lib/components/topology/canvas/__tests__/domainGrouping.test.ts"
+      ],
+      "boundaries": [
+        "Security-group rule display state belongs to the route and the selected group identity survives an absent inventory snapshot; no absent group data/actions render. Legacy LB member view belongs to the existing controller and survives selected pool row unmount/filter exclusion. Topology LB resets from its scalar derived resource ID. Unrun regressions cover same-ID replacement and absent/reappearing groups/pool rows.",
+        "Token-only auth writable replacement is excluded from reset dependencies: inventory/secrets use scalar derived sessionScopeKey; shared detail view resets use scalar derived resource/project keys. Unrun mounted regressions cover regex+column filter+sort retention on token replacement and logical-session privacy reset.",
+        "Secrets retain separate loaded/error state for each of the three inventories and quota. Failed reads do not claim verified-empty or no-match; refresh failures retain and label prior successful data. Logical owner changes clear prior snapshots and late prior-owner results are ignored. Unrun regressions cover all three initial failures, recovery-to-empty, projection no-match and stale successful rows.",
+        "All six retained network/router/load-balancer detail roots call provideTableViewVisibility, composing their own error/loading/identity mask with inherited visibility. Shared column controls dismiss portaled dialogs without clearing retained display state. Added an unrun open-filter -> automatic read error -> recovery regression without pointer/focus dismissal events.",
+        "No native API, backend query, cursor, authorization, ownership, cloud mutation, or Waygate changes.",
+        "Existing domain error/status trees, graph edge/ownership hierarchy, single-resource definition lists, create forms and select inputs are not flattened into generic inventory tables.",
+        "All migrated local inventories project only their existing returned arrays; no claim of new backend whole-cloud inventory capability.",
+        "Topology search now treats CIDR/IP/MAC query text as regex against explicit fields, not a special CIDR-membership/prefix parser; invalid expressions highlight/match nothing. Normalized MAC is an explicit additional field for existing delimiter-free addresses.",
+        "No tutorial/header action placement changes; parent owns tutorials and documentation/OpenSpec integration. Added exact read-only Key Manager tutorial GET fixtures matching backend list[SecretInfo]/list[ContainerInfo]/list[OrderInfo] and quota dictionaries; payload reads and all mutations remain unsupported and network-free."
+      ]
+    },
+    "admin-inventory": {
+      "change": "unify-dashboard-table-controls",
+      "owner": "AdminInventory",
+      "verification": {
+        "checksRun": true,
+        "browserExercised": false,
+        "productionAcceptance": false,
+        "reason": "Main authorized focused regressions for reported full-suite failures. Seven named files passed across initial run and corrected marker rerun: 49 tests total. Initial artifact://269 had 48passed/1failed; obsolete probe removed and marker-only rerun passed2. Nonfatal jsdom canvas getContext diagnostics remain. No full gate or browser run by worker.",
+        "focusedFiles": [
+          "admin/images/page.test",
+          "admin/hypervisors/page.test",
+          "admin/instances/page.lifecycle.test",
+          "admin/instances/page.marker.test",
+          "admin/volumes/page.bulk-delete.test",
+          "ManagedFlavorReadonly.test",
+          "AdminVolumeDomainSummary.test"
+        ],
+        "delegatedOrphanVerification": {
+          "source": "agent://AdminInventory.AdminInfraTables",
+          "command": "npx vitest run src/routes/admin/orphans/page.test.ts --maxWorkers=1",
+          "reportedResult": "1 file / 2 behavioral tests passed, exit0",
+          "scope": "Desktop/compact deferred rescan retains checkbox DOM, disables newly persistent collection cleanup while pending, then permits fresh exact-ID confirmation after completion. Prior modal/dispatch behavior restored; unrelated extra guards removed."
+        }
+      },
+      "slideRetentionFollowup": {
+        "path": "frontend/src/lib/components/AdminVolumeDetailPanel.svelte",
+        "behavior": "Read-only attachment/metadata wrappers remain mounted through same-owner empty/error reloads and bearer renewal, hidden while data unavailable. Actual volume/logical authority/project key resets their state. Existing mutation, diagnostic and data-request branches unchanged.",
+        "test": "frontend/src/lib/components/admin/__tests__/AdminVolumeDetailPanel.retention.test.ts",
+        "result": "Authorized focused npx vitest run src/lib/components/admin/__tests__/AdminVolumeDetailPanel.retention.test.ts --maxWorkers=1: 1file/1test passed. Asserts regex, exact facet and descending sort retention plus project-change reset. Nonfatal JSDOM canvas warnings remain."
+      },
+      "finalLifetimeCorrections": {
+        "overview": "DomainUsageTable exposes shared controls at desktop only while loading removes actual column headings; existing ready desktop headings remain sole controls. No extra checks for one-line change.",
+        "exportIdentity": "AdminFileStorageDetailPanel export loop restored to original unkeyed rendering because distinct Manila share instances may legitimately advertise identical paths. No deduplication or provider semantics changed.",
+        "exportTest": "Focused AdminFileStorageDetailPanel.test.ts -t 'instance-specific export records' --maxWorkers=1 passed1; 7other tests skipped. Nonfatal JSDOM canvas warning."
+      },
+      "slidePortalVisibility": {
+        "provider": "provideTableViewVisibility(() => !!s.volume && !s.error) in AdminVolumeDetailPanel",
+        "behavior": "Inherited visibility mask matches retained read-only wrapper hidden predicate, dismissing body-portaled facets when owner data becomes missing/error while retaining query/filter/sort state.",
+        "regression": "Existing AdminVolumeDetailPanel.retention.test now opens active metadata facet then triggers same-owner error; asserts portal removed and conditions restored afterward. Focused 1file/1test passed after change.",
+        "fileStorageBoundary": "AdminFileStorageDetailPanel error/loading branches unmount controls and portals rather than hiding retained DOM; no provider added."
+      },
+      "surfaces": [
+        {
+          "route": "/admin/instances",
+          "paths": [
+            "frontend/src/routes/admin/instances/+page.svelte",
+            "frontend/src/lib/components/admin/instances/AdminInstanceFilters.svelte",
+            "frontend/src/lib/components/admin/instances/AdminInstanceTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Native marker pagination retained. Header Name free-value contains, Status enum single and Host directory/free-value single preserve existing server scalar semantics; Name/Created sort maps existing ResourceSort and resets marker. Unsupported column filters/sorts and regex operate on explicitly disclosed loaded page. Selection follows projected visible IDs. No fetch-all or backend expansion."
+        },
+        {
+          "route": "/admin/flavors",
+          "paths": [
+            "frontend/src/routes/admin/flavors/+page.svelte",
+            "frontend/src/lib/components/admin/flavors/AdminFlavorsFilters.svelte",
+            "frontend/src/lib/components/admin/flavors/AdminFlavorsTable.svelte",
+            "frontend/src/lib/components/admin/flavors/flavorGpuFilters.ts"
+          ],
+          "status": "migrated",
+          "boundary": "Existing bounded flavor request retained. Shared typed projection before local page slice; explicit per-field regex; GPU facets preserve alias set membership via existing authoritative GPU projection. Manual refresh no longer clears conditions; array replacement clamps page only, criteria reset page."
+        },
+        {
+          "route": "/admin/flavors",
+          "paths": [
+            "frontend/src/lib/components/admin/flavors/GpuDeviceCatalogModal.svelte",
+            "frontend/src/lib/components/admin/flavors/FlavorAccessTab.svelte",
+            "frontend/src/lib/components/admin/flavors/FlavorExtraSpecsTab.svelte",
+            "frontend/src/lib/components/admin/flavors/FlavorAutomationPanel.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "GPU catalog native table headers; access/spec/report card-only controls at all widths. Editable spec keys remain keyed and mutation bindings unchanged. GPU audio exclusion and managed mapping semantics retained. Fixed configuration forms/diagnostic prose unchanged."
+        },
+        {
+          "route": "/admin/images",
+          "paths": [
+            "frontend/src/routes/admin/images/+page.svelte",
+            "frontend/src/lib/components/admin/images/AdminImagesTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "ConsumerCompute-owned shared catalog provides regex and canonical identity/group semantics. Existing complete-image collector unchanged. Catalog projection before grouping/pagination; repository cards all-width controls, tag tables compact-only toolbar controls with actual desktop headers incl repository/distro subcontrols. No-match table headers remain mounted. Parent tutorial/header edits retained and admin-images-controls/results/ready anchors supplied."
+        },
+        {
+          "route": "/admin/volumes",
+          "paths": [
+            "frontend/src/routes/admin/volumes/+page.svelte",
+            "frontend/src/lib/components/admin/volumes/AdminVolumeFilters.svelte",
+            "frontend/src/lib/components/admin/volumes/AdminVolumeTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Native marker pagination retained. Header Name contains, Status summary single, Type exact/free-value single, Size arbitrary min/max plus exact single preserve existing server query capability. Both list and status-summary carry native predicates; native Name/Created sort resets marker. Unsupported columns and regex explicitly loaded-page. Status cards remain native all-page query, totals not falsely narrowed by local regex. Refresh retains disappeared selected status rather than clearing it."
+        },
+        {
+          "route": "/admin/volumes and /admin/volumes/[id]",
+          "paths": [
+            "frontend/src/lib/components/admin/volumes/AdminVolumeDomainSummary.svelte",
+            "frontend/src/lib/components/admin/volumes/AdminVolumeTransferModal.svelte",
+            "frontend/src/lib/components/admin/volumes/id/AdminVolumeAttachmentTable.svelte",
+            "frontend/src/lib/components/admin/volumes/id/AdminVolumeMetadataCard.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Typed domain capacity summary, pending transfer IDs, attachment records and key/value metadata views. Transfer source/target and one-time key guards unchanged; authentication keys never become facets. Summary default provider order and missing values preserved."
+        },
+        {
+          "route": "/admin/volumes slide panel",
+          "paths": [
+            "frontend/src/lib/components/admin-volume/AdminVolumeAttachmentsSection.svelte",
+            "frontend/src/lib/components/admin-volume/AdminVolumeMetadataSection.svelte"
+          ],
+          "status": "migrated-reused-adapters",
+          "boundary": "Slide sections reuse migrated AdminVolumeAttachmentTable and AdminVolumeMetadataCard; no second raw collection remains in the slide-panel path."
+        },
+        {
+          "route": "/admin/file-storage",
+          "paths": [
+            "frontend/src/routes/admin/file-storage/+page.svelte",
+            "frontend/src/lib/components/admin/file-storage/AdminFileStorageTable.svelte",
+            "frontend/src/lib/components/admin/file-storage/AdminFileStorageDetailPanel.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Existing complete response projection before local page slice. Refresh no longer resets page. Nested access rules native headers, metadata div headings, export-location cards share typed views. Secret access-key facets use existing masked display only, not raw key. Scope, delete diagnostics and copy authority unchanged."
+        },
+        {
+          "route": "/admin/object-storage",
+          "paths": [
+            "frontend/src/routes/admin/object-storage/+page.svelte"
+          ],
+          "status": "integrated-shared-component",
+          "boundary": "ConsumerStorage owns BucketTable/ObjectBrowser. Parent route now keeps BucketTable mounted through empty/loading/error so shared view state survives refresh. Existing partial-account disclosure and project mutation guards preserved."
+        },
+        {
+          "route": "/admin/object-storage/[name]",
+          "paths": [
+            "frontend/src/routes/admin/object-storage/[name]/+page.svelte"
+          ],
+          "status": "unchanged-composition",
+          "boundary": "Delegates exclusively to ConsumerStorage-owned ObjectBrowser; no local table/query state to migrate."
+        },
+        {
+          "route": "/admin/gpu",
+          "paths": [
+            "frontend/src/routes/admin/gpu/+page.svelte",
+            "frontend/src/routes/admin/gpu/+page.ts"
+          ],
+          "status": "unchanged-redirect",
+          "boundary": "Existing 308 redirect to /admin/hypervisors; actual GPU inventory covered by infra receipt."
+        }
+      ],
+      "childReceipts": [
+        "local://admin-infra-coverage.json",
+        "/tmp/afterglow-admin-runtime-table-coverage.json"
+      ],
+      "childMigratedPaths": [
+        "frontend/src/lib/components/admin/hypervisors/HypervisorTable.svelte",
+        "frontend/src/lib/components/admin/hypervisors/HostHealthPanel.svelte",
+        "frontend/src/lib/components/admin/hypervisors/HypervisorDetailPanel.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanFipSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanVolumeSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanShareSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanSecurityGroupSection.svelte",
+        "frontend/src/lib/components/admin/system-info/ServiceVersionsPanel.svelte",
+        "frontend/src/lib/components/admin/overview/DomainUsageTable.svelte",
+        "frontend/src/routes/admin/hypervisors/+page.svelte",
+        "frontend/src/routes/admin/orphans/+page.svelte",
+        "frontend/src/routes/admin/containers/+page.svelte",
+        "frontend/src/routes/admin/database-instances/+page.svelte",
+        "frontend/src/routes/admin/drover/+page.svelte",
+        "frontend/src/routes/admin/drover/templates/+page.svelte",
+        "frontend/src/routes/admin/secrets/+page.svelte",
+        "frontend/src/lib/components/admin/database-instances/id/DbDatabasesSection.svelte",
+        "frontend/src/lib/components/admin/database-instances/id/DbUsersSection.svelte",
+        "frontend/src/lib/components/admin/database-instances/id/DbBackupsSection.svelte"
+      ],
+      "imageRepositoryRetention": "Admin route keeps its parent-owned catalog and selected repository when refresh returns empty/temporarily absent data or column/regex conditions hide all tags. Canonical repository context and a reachable back link remain; matching rows restore within the same selection. Native scope-change clearing remains.",
+      "updatedBehavioralTests": [
+        "frontend/src/lib/components/admin/file-storage/__tests__/AdminFileStorageDetailPanel.test.ts",
+        "frontend/src/lib/components/admin/__tests__/AdminVolumeDetailPanel.retention.test.ts",
+        "frontend/src/routes/admin/orphans/page.test.ts",
+        "frontend/src/routes/admin/hypervisors/__tests__/page.test.ts",
+        "frontend/src/routes/admin/instances/__tests__/page.lifecycle.test.ts",
+        "frontend/src/routes/admin/instances/__tests__/page.marker.test.ts",
+        "frontend/src/routes/admin/volumes/__tests__/page.bulk-delete.test.ts",
+        "frontend/src/lib/components/admin/flavors/__tests__/ManagedFlavorReadonly.test.ts",
+        "frontend/src/lib/components/admin/volumes/__tests__/AdminVolumeDomainSummary.test.ts",
+        "frontend/src/routes/admin/images/__tests__/page.test.ts",
+        "frontend/src/lib/components/admin/__tests__/AdminInstanceFilters.test.ts",
+        "frontend/src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
+        "frontend/src/lib/components/admin/flavors/__tests__/AdminFlavorsTable.test.ts",
+        "frontend/src/lib/components/admin/file-storage/__tests__/AdminFileStorageTable.test.ts",
+        "frontend/src/lib/components/admin/volumes/__tests__/AdminVolumeTable.test.ts",
+        "frontend/src/lib/components/admin/volumes/__tests__/AdminVolumeOwnershipResponsive.test.ts",
+        "frontend/src/lib/components/admin/volumes/__tests__/AdminVolumeFilters.test.ts",
+        "frontend/src/routes/admin/flavors/page.lifecycle.test.ts",
+        "frontend/src/routes/admin/volumes/__tests__/page.inventory-boundary.test.ts"
+      ],
+      "errorRecovery": "Instances, volumes and file-storage expose all-width shared controls only while actual table headers are unavailable due to loading/error, allowing native range correction after 422 without restoring duplicate desktop toolbar widgets.",
+      "intentionallyUnchanged": "Shared consumer detail/create components, tutorial/header ownership, locale files, docs, OpenSpec checklist, authorization/native mutation logic, backend API signatures and native pagination transport.",
+      "recommendedCentralChecks": "Remaining shared table/regex and flavor/volume boundary regressions; runtime/infra suites; orphan scan-in-flight cleanup refusal and postscan new confirmation; compiled browser regex/facet/sort/refresh/no-match/error/compact scenarios; localization/responsive and full repository gate. Worker ran only the seven authorized focused files recorded above."
+    },
+    "admin-infra": {
+      "change": "unify-dashboard-table-controls",
+      "owner": "AdminInventory.AdminInfraTables",
+      "paths": [
+        "frontend/src/lib/components/admin/hypervisors/HypervisorTable.svelte",
+        "frontend/src/lib/components/admin/hypervisors/HostHealthPanel.svelte",
+        "frontend/src/lib/components/admin/hypervisors/HypervisorDetailPanel.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanFipSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanVolumeSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanShareSection.svelte",
+        "frontend/src/lib/components/admin/orphans/OrphanSecurityGroupSection.svelte",
+        "frontend/src/lib/components/admin/system-info/ServiceVersionsPanel.svelte",
+        "frontend/src/lib/components/admin/overview/DomainUsageTable.svelte",
+        "frontend/src/routes/admin/hypervisors/+page.svelte",
+        "frontend/src/routes/admin/orphans/+page.svelte",
+        "frontend/src/routes/admin/hypervisors/__tests__/page.test.ts",
+        "frontend/src/routes/admin/orphans/page.test.ts"
+      ],
+      "surfaces": [
+        {
+          "route": "/admin/hypervisors",
+          "component": "HypervisorTable",
+          "projection": "Typed hypervisor columns; shared header sorting/filtering; compact and desktop consume view.rows",
+          "notes": "GPU models use filterValues for any-device membership. Per-type used/total summaries remain read-only. Successful-load gate avoids false initial empty inventory; scope key clears view only on actual logical scope transition."
+        },
+        {
+          "route": "/admin/hypervisors",
+          "component": "HostHealthPanel",
+          "projection": "Typed host, reachability, heartbeat and five metric columns",
+          "notes": "Metric projections preserve verified/freshness masking; filters retain unavailable values across refresh. Native headers and compact controls consume the same projected rows."
+        },
+        {
+          "route": "/admin/hypervisors",
+          "component": "HypervisorDetailPanel VM inventory",
+          "projection": "Typed name, ID, status, domain, project and flavor columns",
+          "notes": "Desktop div-grid uses TableColumnControl at actual headings; compact controls remain default compact-only. Shrinkable grouped identity/ownership tracks fit fixed 32rem SlidePanel; existing detail and migration guards remain."
+        },
+        {
+          "route": "/admin/orphans",
+          "component": "OrphanFipSection",
+          "projection": "Typed address, project, created date, age and ID columns via OrphanSection"
+        },
+        {
+          "route": "/admin/orphans",
+          "component": "OrphanVolumeSection",
+          "projection": "Typed name, size, status, project, created date, age and ID columns via OrphanSection"
+        },
+        {
+          "route": "/admin/orphans",
+          "component": "OrphanShareSection",
+          "projection": "Typed name, size, status, missing project, created date, age and ID columns via OrphanSection"
+        },
+        {
+          "route": "/admin/orphans",
+          "component": "OrphanSecurityGroupSection",
+          "projection": "Typed name, description, project, created date, age and ID columns via OrphanSection"
+        },
+        {
+          "route": "/admin/system-info",
+          "component": "ServiceVersionsPanel",
+          "projection": "Typed service, observed status, reported version and version-kind columns; unknown values remain missing"
+        },
+        {
+          "route": "/admin",
+          "component": "DomainUsageTable",
+          "projection": "Typed domain, project count, VM, vCPU, RAM, GPU VM, volume count and capacity columns; attached/available volume counts and capacities each have typed summary-heading controls; only drill-down links are exempt",
+          "notes": "Facet numeric labels match localized cells; compact and desktop use same view.rows."
+        }
+      ],
+      "shared_orphan_behavior": "Header and compact controls remain available for empty/no-match results; visible-row select-all and selection pruning prevent hidden-row cleanup. Sections remain mounted after first successful scan across refresh; initial loading and failed initial scans do not assert empty inventory. Only the newly introduced ability to open cleanup from retained rows during a scan is fenced: buttons are disabled during loading and openConfirm rejects loading. Prior runCleanup behavior and already-open confirmation lifecycle are unchanged. Column controls stay interactive. Existing min_age_days provider scan/eligibility boundary remains.",
+      "search": "No pre-existing resource text-search inputs or authored searchable joins in owned surfaces. Shared default explicit-column field-array projection applies; no literal fallback, native regex expansion or fetch-all added.",
+      "pagination": "No native marker pagination in these owned surfaces; no transport pagination or fetch-all changes.",
+      "unchanged_boundaries": [
+        "tutorial/header actions",
+        "documentation",
+        "locales",
+        "shared primitives/utilities",
+        "sibling surfaces",
+        "overview components other than DomainUsageTable",
+        "system-info route",
+        "VersionInfoPanel",
+        "host removal/migration operation logic"
+      ],
+      "verification": {
+        "checks_run": true,
+        "command": "cd frontend && npx vitest run src/routes/admin/orphans/page.test.ts --maxWorkers=1",
+        "result": "1 test file passed; 2 behavioral tests passed; exit 0",
+        "exercised": "Desktop and compact real route rendering retain checked row DOM during a deferred min-age rescan; cleanup button is disabled and attempted click cannot open dialog or POST; completing scan reenables fresh confirmation and exact selected-ID cleanup POST.",
+        "warnings": "JSDOM emitted HTMLCanvasElement.getContext not-implemented warnings from LoadingState scene; assertions passed.",
+        "browser_exercised": false,
+        "production_exercised": false,
+        "status": "Only parent-authorized focused orphan regression exercised; broad checks/build/lint/format not run. Central integrated verification belongs to Main."
+      }
+    },
+    "admin-network": {
+      "owner": "AdminNetwork",
+      "verification": "Not run: assignment forbids checks. Source implementation and behavioral regression changes only.",
+      "surfaces": [
+        {
+          "route": "/admin/networks",
+          "paths": [
+            "frontend/src/routes/admin/networks/+page.svelte",
+            "frontend/src/lib/components/admin/networks/AdminNetworkTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Complete native array projected before local page slice; raw owner IDs retained; type toolbar flags removed; same-logical-owner view retained through refresh."
+        },
+        {
+          "route": "/admin/networks/[id]",
+          "paths": [
+            "frontend/src/routes/admin/networks/[id]/+page.svelte",
+            "frontend/src/lib/components/admin/networks/RouterTable.svelte",
+            "frontend/src/lib/components/admin/networks/SubnetSection.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Connected-router table and editable subnet card inventory use typed shared views. Native add/edit/delete controls and keyed editor identities preserved. Same-owner token refresh retains mounted data/view; token-aware request fences retained."
+        },
+        {
+          "route": "/admin/networks/[id] expanded subnet; /admin/subnets/[id]",
+          "paths": [
+            "frontend/src/lib/components/admin/networks/SubnetIpInventory.svelte",
+            "frontend/src/lib/components/admin/networks/SubnetInventoryDetails.svelte"
+          ],
+          "tables": [
+            "allocation pools",
+            "DHCP placement/bindings",
+            "allocated IPs",
+            "ports"
+          ],
+          "status": "migrated",
+          "boundary": "Four independent searches, facets and sorts; allocations/ports projected before independent local pagination. Unknown DHCP flags remain null; native measurement and outage disclosures retained. Actual owner/subnet/logout transitions still clear; same-owner bearer rotation preserves table state and strict request ownership."
+        },
+        {
+          "route": "/admin/ports",
+          "paths": [
+            "frontend/src/routes/admin/ports/+page.svelte",
+            "frontend/src/lib/components/admin/ports/PortsTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Only loaded native marker page is locally projected, explicitly disclosed by table.loadedScope; marker continuation/prefetch and page-size controls remain. Manual refresh reloads current marker. All fixed IP values remain independently searchable/filterable."
+        },
+        {
+          "route": "/admin/routers",
+          "paths": [
+            "frontend/src/routes/admin/routers/+page.svelte",
+            "frontend/src/lib/components/admin/routers/AdminRoutersTable.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Complete native array; table owner stays mounted during loading/errors; native gateway/create/edit/delete controls unchanged."
+        },
+        {
+          "route": "/admin/floating-ips",
+          "paths": [
+            "frontend/src/routes/admin/floating-ips/+page.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Complete native array; existing assigned/unassigned definition and safe unassigned-only delete remain. Columns retained on empty/error."
+        },
+        {
+          "route": "/admin/subnets",
+          "paths": [
+            "frontend/src/routes/admin/subnets/+page.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Complete native array projected before local page slice; detail/network links preserved."
+        },
+        {
+          "route": "/admin/loadbalancers",
+          "paths": [
+            "frontend/src/routes/admin/loadbalancers/+page.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Complete native array; bulk selection/dispatch derives eligible IDs from projected rows and preserves protected Drover/project checks. Shared detail panel owned/migrated by ConsumerNetwork."
+        },
+        {
+          "route": "/admin/services",
+          "paths": [
+            "frontend/src/lib/components/admin/services/ServiceTabPanel.svelte",
+            "frontend/src/lib/components/admin/services/ServiceTable.svelte",
+            "frontend/src/lib/components/admin/services/NetworkAgentTable.svelte",
+            "frontend/src/lib/components/admin/services/EndpointsTable.svelte",
+            "frontend/src/lib/components/admin/services/StoragePoolsList.svelte",
+            "frontend/src/lib/components/admin/services/serviceList.ts"
+          ],
+          "tables": [
+            "compute services",
+            "block storage services",
+            "shared filesystem services",
+            "orchestration services",
+            "container services",
+            "container infrastructure services",
+            "network agents",
+            "API endpoint groups",
+            "storage pool cards"
+          ],
+          "status": "migrated",
+          "boundary": "Each tab owns persistent shared view; inactive tab components remain mounted without triggering category fetches. Logical owner changes reset under existing parent authority boundary; token renewal does not reset. Timestamp projection keeps native UTC interpretation and unknown last. Storage pools are genuinely card-only, using all-width shared controls. Parent-owned services tutorial/header untouched; admin-system panel/ready anchors preserved."
+        }
+      ],
+      "removedObsoletePaths": [
+        "frontend/src/lib/components/admin/ports/PortsFilterBar.svelte",
+        "frontend/src/lib/components/admin/networks/networkList.ts",
+        "frontend/src/lib/components/admin/services/ServiceListControls.svelte",
+        "frontend/src/lib/components/admin/services/ServiceSortHeader.svelte"
+      ],
+      "behavioralRegressionsChanged": [
+        "frontend/src/lib/components/admin/services/__tests__/tableInteractions.ts",
+        "frontend/src/lib/components/admin/services/__tests__/serviceList.test.ts",
+        "frontend/src/lib/components/admin/services/__tests__/ServiceTables.test.ts",
+        "frontend/src/lib/components/admin/services/__tests__/ServiceEndpointAndPoolLists.test.ts",
+        "frontend/src/routes/admin/services/__tests__/page.loading.test.ts",
+        "frontend/src/routes/admin/networks/__tests__/page.test.ts",
+        "frontend/src/routes/admin/ports/__tests__/page.marker.test.ts",
+        "frontend/src/routes/admin/ports/__tests__/_PortsTableProbe.svelte",
+        "frontend/src/lib/components/admin/networks/__tests__/SubnetInventoryDetails.test.ts",
+        "frontend/src/lib/components/admin/networks/__tests__/SubnetIpInventory.test.ts"
+      ],
+      "intentionallyUnchanged": [
+        "Native create/edit/delete dialogs and network measurement controls",
+        "AdminNetworkTimeseries chart/controls (shared chart source table owned centrally)",
+        "Topology and telemetry excluded by assignment",
+        "Route wrappers /admin/subnets/[id] and /admin/services consume migrated components without tutorial/header edits"
+      ],
+      "centralIntegrationNotes": [
+        "Removed PortsFilterBar has a stale legacyVisualDebt.ts entry, reported to Main",
+        "Parent owns shared docs, changelog, OpenSpec checklist, gates and compiled browser evidence",
+        "No source/wiring assertion tests added"
+      ]
+    },
+    "IdentityTables": {
+      "owner": "IdentityTables",
+      "verification": "Parent-authorized focused repairs: identity 7 files / 188 tests (artifact://282); groups/roles 7 files / 61 tests (artifact://255); account role modal 23 tests; deferred project renewal/privacy 2 files / 20 tests (artifact://296); nested group display-holder lifetime 4 files / 40 tests (artifact://311); compute-pool, project activity renewal, monitoring and metric no-match lifetime 4 files / 49 tests (artifact://321); final administrative owner-key alignment 1 file / 9 tests (artifact://352). Counts overlap and are not additive. JSDOM emitted canvas diagnostics. No worker full suite, build, lint, formatting or browser verification; parent owns integrated gates and browser evidence.",
+      "surfaces": [
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectsPage.svelte",
+          "status": "migrated",
+          "details": "Parent-owned regex/sort/facets before native page rendering; original marker/prefetch fencing retained. Original global contains-name/id/description and enabled predicates moved into single/free-value header adapters. Independent regex remains loaded-page; explicit loaded-scope disclosure. Manual refresh retains marker and view state. Deferred reads settle through verified same-owner bearer renewal using synchronous logical-owner/readiness/authority generations; owner ABA clears private state and discards stale reads; new dispatch and prefetch use current credentials."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectTable.svelte",
+          "status": "migrated",
+          "details": "Shared parent view drives desktop headers and compact cards."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectDetailPage.svelte",
+          "status": "migrated",
+          "details": "Members typed view, regex, desktop headers/compact controls. Same-owner strict-token renewal keeps selected tab and shared ActivityLogTable mounted through pending/transient failure; definitive 401/403/404/foreign-source result clears private snapshot."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/ProjectResourceMonitor.svelte",
+          "status": "migrated",
+          "details": "All resource-category card inventories; genuine category/project/domain query and deletion ownership/readback remain independent of presentation."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectAccessModal.svelte",
+          "status": "migrated",
+          "details": "Independent typed users/groups/principals card projections, regex, per-role facets; native exact-ID mutation fences retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectDeleteModal.svelte",
+          "status": "migrated",
+          "details": "Preflight resource-report card projection; full unfiltered report still exclusively controls deletion authority. Bounded sample examples and disclosure remain unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/users/AdminUsersPage.svelte",
+          "status": "migrated",
+          "details": "Complete native directory publication retained; regex/facets/sort precede local slice. Recent bounded activity is independently controlled before its existing five-row display slice. Parent tutorial header retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/users/AdminUsersTable.svelte",
+          "status": "migrated",
+          "details": "Parent view desktop headings and compact parity; exact deletion identities preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/users/AdminUserEditModal.svelte",
+          "status": "migrated",
+          "details": "Session table and permission cards have independent typed views; owner-change resets remain."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/users/UserDomainManagers.svelte",
+          "status": "migrated",
+          "details": "Grant card list controls; role assignment selector remains a genuine mutation form."
+        },
+        {
+          "path": "frontend/src/routes/admin/system-admins/+page.svelte",
+          "status": "migrated",
+          "details": "Table owner remains mounted when refreshed inventory becomes empty."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/system-admins/SystemAdminTable.svelte",
+          "status": "migrated",
+          "details": "Typed regex/header/compact controls; last-admin guard uses full original inventory."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/system-admins/SystemAdminGrantModal.svelte",
+          "status": "migrated",
+          "details": "Accumulated native marker pages searched and projected locally; load-more and partial-directory disclosure retained. Existing token-bound mutation/source fences retained, same-logical-owner view state retained in owner."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/credentials/CredentialManagement.svelte",
+          "status": "migrated",
+          "details": "Typed credential metadata view, always-regex directory search, desktop/compact controls. Native selected-user target remains a required source/authority boundary. Secret material excluded."
+        },
+        {
+          "path": "frontend/src/lib/stores/adminCredentialsController.svelte.ts",
+          "status": "migrated",
+          "details": "Bearer renewal retains selected directory target and settled rows while fencing prior requests and clearing secret-bearing dialogs; actual session/user/project/authority transitions retain full privacy reset."
+        },
+        {
+          "path": "frontend/src/routes/admin/announcements/+page.svelte",
+          "status": "migrated",
+          "details": "History regex/header/compact projection; targeting and delivery authority/forms unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/domains/DomainBudgetEditor.svelte",
+          "status": "migrated",
+          "details": "Retains verified BudgetSummary across same-owner refresh and external quota editor view state across required revision remounts. Failed refresh blocks writes."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/BudgetSummary.svelte",
+          "status": "migrated",
+          "details": "Allocation table and operation cards independently controlled; operation requested quota rows extracted into typed child."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/RequestedQuotaTable.svelte",
+          "status": "migrated",
+          "details": "New typed requested-quota table/card adapter with independent controls."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamForecast.svelte",
+          "status": "migrated",
+          "details": "Forecast table/card projection; same-owner reload retains snapshot/view owner."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamInvitations.svelte",
+          "status": "migrated",
+          "details": "Invitation table/card projection, explicit searchable fields, independent project-role form preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamLogin.svelte",
+          "status": "migrated",
+          "details": "Provider table/card projection; native login policy/provider editor unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamProjects.svelte",
+          "status": "migrated",
+          "details": "Member table/card view with independent role memberships. Native target selector and owner-count guards use full data."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamRecovery.svelte",
+          "status": "migrated",
+          "details": "Recovery table/card typed view; original operation guards unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamResources.svelte",
+          "status": "migrated",
+          "details": "Inventory typed view and delegated ResourceMetricTable projections; genuine attribution domain/project/user query boundaries retained. Source empty, filtered zero-match, pending refresh and failure remain distinct."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamUsers.svelte",
+          "status": "migrated",
+          "details": "Typed user view including native UUID searches; native eviction guards unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/QuotaEditor.svelte",
+          "status": "migrated",
+          "details": "Independent per-service typed field views; all drafts remain keyed by QuotaField. Parent-retained queries/column state survive required revision remounts."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/ResourceMetricTable.svelte",
+          "status": "migrated",
+          "details": "All six columns typed, regex/header/compact controls; unknown values preserved; source empty versus filtered no-match is explicit, unsettled parent suppresses empty claims."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamQuotas.svelte",
+          "status": "migrated",
+          "details": "Budget/editor lifetime and external view state preserved on refresh; failed native refresh blocks writing."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/ComputePoolPanel.svelte",
+          "status": "migrated",
+          "details": "Independent pool-resource, project-cap editor and stale-cap card views. Ordinary refresh retains valid project and predicates; active stale predicates remain removable after successful empty source. Fresh catalog removal clears actual mutation target. Transient read failure locks writes; authoritative 401/403 hides private snapshot. Draft keys, native policy revision and genuine target guards preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/GpuQuotaRequests.svelte",
+          "status": "migrated",
+          "details": "Loaded-page card projection; original global scalar native status moved into column adapter. Original cursor continuation/page-bound wording and manual fulfillment guards preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/IamProjectCreators.svelte",
+          "status": "migrated",
+          "details": "Creator grant card projection; eligible-user assignment form unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/DomainIamConsole.svelte",
+          "status": "delegates migrated children",
+          "details": "Authority/section wrapper intentionally unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/iam/ProjectIamConsole.svelte",
+          "status": "delegates migrated children",
+          "details": "Authority/section wrapper intentionally unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/groups/AdminGroupsPage.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles"
+        },
+        {
+          "path": "frontend/src/lib/components/admin/groups/GroupCard.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles",
+          "details": "Independent member/candidate projections and native account-home source boundary. Parent-held display-only state keyed by immutable group ID survives source failure/empty/parent criteria hiding; actual owner/domain/authority change clears holders, child mutations/source lifetime stays ephemeral."
+        },
+        {
+          "path": "frontend/src/lib/stores/adminGroupsController.svelte.ts",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles",
+          "details": "Logical-owner renewal lifetime and existing source/mutation fences."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/domains/DomainScope.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles",
+          "details": "Same-owner refresh/error preserves verified child; source replacement and authority ABA remain fail closed."
+        },
+        {
+          "path": "frontend/src/routes/admin/domains/+page.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles"
+        },
+        {
+          "path": "frontend/src/routes/admin/roles/+page.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles",
+          "details": "List/tree/preset preview controls; ancestor closure retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/roles/RoleTree.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles"
+        },
+        {
+          "path": "frontend/src/lib/components/admin/roles/RoleDetailPanel.svelte",
+          "status": "migrated by IdentityTables.IdentityGroupsRoles"
+        },
+        {
+          "path": "frontend/src/lib/components/account/ProjectSettingsSection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "Member table/card view, per-role direct/effective facets."
+        },
+        {
+          "path": "frontend/src/lib/components/account/ProjectsSection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount"
+        },
+        {
+          "path": "frontend/src/lib/components/account/GroupsSection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount"
+        },
+        {
+          "path": "frontend/src/lib/components/account/KeypairsSection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "Grid headings/compact parity; no key material in controls."
+        },
+        {
+          "path": "frontend/src/lib/components/account/SecuritySection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "Session cards."
+        },
+        {
+          "path": "frontend/src/lib/components/account/McpAccessSection.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "Separate API-key/OAuth metadata views, credential guards and OAuth identifier masking retained."
+        },
+        {
+          "path": "frontend/src/lib/components/account/McpClientList.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "New client observation list adapter with parent-retained query/column state."
+        },
+        {
+          "path": "frontend/src/lib/components/account/ProjectMemberRolesModal.svelte",
+          "status": "migrated by IdentityTables.IdentityAccount",
+          "details": "Existing role search converted to regex; editor bindings preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/account/ActivitySection.svelte",
+          "status": "shared renderer delegated",
+          "details": "ActivityLogTable owned by ObservationTables."
+        }
+      ],
+      "routeDelegation": [
+        "frontend/src/routes/admin/projects/+page.svelte",
+        "frontend/src/routes/admin/projects/[id]/resources/+page.svelte",
+        "frontend/src/routes/admin/users/+page.svelte",
+        "frontend/src/routes/admin/groups/+page.svelte",
+        "frontend/src/routes/admin/application-credentials/+page.svelte",
+        "frontend/src/routes/admin/user-credentials/+page.svelte",
+        "frontend/src/routes/admin/domains/[id]/+page.svelte",
+        "frontend/src/routes/dashboard/iam/projects/+page.svelte",
+        "frontend/src/routes/dashboard/iam/users/+page.svelte"
+      ],
+      "intentionallyUnchanged": [
+        "DomainMonitoring is owned by ObservationTables.",
+        "Mutation-only creation/edit/confirmation forms, structured service-permission descriptions and preferences are not inventory projections.",
+        "Native target/domain/account-home selectors are genuine source or authority boundaries, not obsolete toolbar facets.",
+        "External/user Markdown is untouched. No DB/API/schema/privilege expansion.",
+        "Parent owns tutorials, shared docs/locales and central gates/browser evidence."
+      ]
+    },
+    "ObservationTables": {
+      "owner": "ObservationTables",
+      "status": "implemented-awaiting-parent-verification",
+      "verification": {
+        "workerChecksRun": [
+          {
+            "kind": "focused-vitest",
+            "files": 11,
+            "passed": 216,
+            "failed": 1,
+            "artifact": "artifact://286",
+            "resolution": "The remaining event timeline assertion held a detached DOM region across an intentional empty filter transition; the assertion now queries the current region."
+          },
+          {
+            "kind": "focused-vitest-correction",
+            "file": "frontend/src/lib/components/admin/__tests__/AdminEventsPage.test.ts",
+            "passed": 4,
+            "failed": 0
+          },
+          {
+            "kind": "focused-empty-refresh-followup",
+            "files": [
+              "frontend/src/routes/admin/chat/stats/__tests__/page.test.ts",
+              "frontend/src/lib/stores/__tests__/loginMonitoringController.test.ts",
+              "frontend/src/lib/components/admin/domains/DomainMonitoring.test.ts",
+              "frontend/src/lib/components/admin/telemetry/GnocchiDashboard.test.ts",
+              "frontend/src/routes/admin/chat/quotas/__tests__/page.test.ts"
+            ],
+            "passedFiles": 3,
+            "failedFiles": 2,
+            "artifact": "artifact://302",
+            "resolution": "Two new test selectors were overly broad: directory and page refresh share a label, and model/user empty notices share copy. Scoped the refresh action and accepted multiple source-empty notices; no production behavior was weakened."
+          },
+          {
+            "kind": "focused-empty-refresh-correction",
+            "files": [
+              "frontend/src/routes/admin/chat/stats/__tests__/page.test.ts",
+              "frontend/src/lib/stores/__tests__/loginMonitoringController.test.ts"
+            ],
+            "passed": 48,
+            "failed": 0
+          }
+        ],
+        "parentReportedDiagnosticsCorrected": [
+          "ActivityLogTable closing block",
+          "AdminEvents obsolete timelineSource reset",
+          "DomainMonitoring raw projection/type nullability",
+          "AudioStudio unused header CSS",
+          "Gnocchi intentional named keyboard scroll region warnings"
+        ],
+        "limitations": [
+          "Only explicitly authorized focused Vitest/jsdom tests were run by this worker; no builds, linters, formatters, browser, or live/native requests were run.",
+          "Focused unit assertions are not compiled-browser, production, or responsive acceptance evidence.",
+          "Parent owns central localization, documentation, tutorial and verification integration."
+        ]
+      },
+      "helpers": [
+        "frontend/src/lib/components/admin/observation/ObservationTable.svelte",
+        "frontend/src/lib/components/admin/observation/observationView.svelte.ts"
+      ],
+      "surfaces": [
+        {
+          "path": "frontend/src/lib/components/admin/ActivityLogTable.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Native before_id cursor; scalar resource/action/user predicates moved to external header filters; local regex/sort and remaining facets cover loaded rows; raw logs drive continuation."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/AdminEventsPage.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Native applied query/statistics and before_id retained; service/user/username/page/resource/type/action/status/source predicates in combined actual headings; time/request/interaction targets remain source queries. Timeline is a separate loaded chronological card view."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/logins/LoginCharts.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Timeline source order preserved; chart itself remains unaffected by source-table presentation."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/logins/LoginMonitoring.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Regex user-directory suggestions; native selected-user/time scope retained; local history controls cover loaded audit events."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/domains/DomainMonitoring.svelte",
+          "nativeTableTemplates": 6,
+          "status": "implemented-unverified",
+          "boundary": "All six summary/resource/service/request-time/login-time/hour tables; typed raw summary values with separate display text; retains settled snapshot during same-owner refresh."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/infrastructure-topology/NicDetails.svelte",
+          "nativeTableTemplates": 4,
+          "status": "implemented-unverified",
+          "boundary": "All four counters/LLDP/neighbors/routes tables; source measured/unknown guards and rate freshness retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/infrastructure-topology/PeerProbeMap.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Probe table and compact projection; map/graph context stays complete; known-empty table remains mounted."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/infrastructure-topology/TopologyInspector.svelte",
+          "nativeTableTemplates": 3,
+          "status": "implemented-unverified",
+          "boundary": "All three direction rates/flow observations/device ports tables; incoming rx/tx and ifIndex default orders preserved."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/infrastructure-topology/TraceDetails.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Per-trace model owns table conditions through result refresh; incoming hop order remains default; diagnostic path diagram stays complete."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/telemetry/AodhDashboard.svelte",
+          "nativeTableTemplates": 2,
+          "status": "implemented-unverified",
+          "boundary": "Alarm native state predicate uses single header filter and resets native markers; history remains bounded; local view models survive conditional loading."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/telemetry/AodhSettings.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Loaded native alarm marker page; controls do not mutate edit identities or draft bindings."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/telemetry/GnocchiDashboard.svelte",
+          "nativeTableTemplates": 6,
+          "status": "implemented-unverified",
+          "boundary": "All six authored templates, with diagnostic template used for capabilities and processing; native resource collection type in header; metric/resource markers and measure time/aggregation/granularity retained; explicit source coverage stays."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/traffic/TrafficCountryMap.svelte",
+          "nativeTableTemplates": 2,
+          "status": "implemented-unverified",
+          "boundary": "Country and network ranking default requests order preserved; map detail selection remains independent; source network subset disclosure retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/traffic/TrafficTrend.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Sample chronology/default source order retained; numeric source metric accessors and compact parity."
+        },
+        {
+          "path": "frontend/src/routes/admin/monitoring/traffic/+page.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Dynamic origin columns declared; native source/range/origin retained. Refresh request revision is separate from source scope, keeping settled chart/map owners mounted."
+        },
+        {
+          "path": "frontend/src/lib/components/charts/BklitChart.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Dynamic declared x/series columns; controls owner persists while native details is closed; raw plot data never filtered by source-table controls."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/chat/AdminChatQuotasPage.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Native 20-user directory marker page and user_id quota join retained; local regex fields name/id/email; native continuation independent of matches."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/chat/AdminChatStatsPage.svelte",
+          "nativeTableTemplates": 2,
+          "status": "implemented-unverified",
+          "boundary": "Both model/user summary tables; loaded user offset page disclosure; native model/time bucket queries retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/chat/UserUsageDetailModal.svelte",
+          "nativeTableTemplates": 2,
+          "status": "implemented-unverified",
+          "boundary": "Both model aggregates and before_id ledger tables; native period/source statistic queries preserved."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/activity/+page.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Loaded recent actions table; native period query and chart remain independent."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/usage/+page.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Top-instance table preserves original provider rank under explicit sorting; unavailable telemetry stays missing; period query unchanged."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/usage-report/+page.svelte",
+          "nativeTableTemplates": 2,
+          "status": "implemented-unverified",
+          "boundary": "Both flavor-hour and instance-usage tables; native period and quota/forecast panels unchanged."
+        },
+        {
+          "path": "frontend/src/lib/components/chat/AudioStudio.svelte",
+          "nativeTableTemplates": 1,
+          "status": "implemented-unverified",
+          "boundary": "Transcript segment table uses typed timestamp/text projections; default chronology and TXT/SRT export data remain unchanged."
+        },
+        {
+          "path": "frontend/src/routes/dashboard/observability/+page.svelte",
+          "nativeTableTemplates": 0,
+          "status": "implemented-unverified",
+          "boundary": "Card-only exact-project complete instance selector; regex name/id and local column controls; existing privateViewScope fencing retained."
+        },
+        {
+          "path": "frontend/src/lib/components/admin/monitoring/InstanceMetricsTab.svelte",
+          "nativeTableTemplates": 0,
+          "status": "implemented-unverified",
+          "boundary": "Card-only accumulated native marker selector; regex name/id/project and local declared controls; continuation remains reachable while searching; existing privateViewScope used rather than token-byte lifetime."
+        }
+      ],
+      "nativeTableTemplates": 43
+    },
+    "PalimpsestWaygate": {
+      "owner": "PalimpsestWaygate",
+      "verification": "Parent-authorized focused checks: WaygateWorkspace.test.ts + NetworkBulkSelection.test.ts, 2 files / 74 tests passed (artifact://258; JSDOM canvas diagnostics, exit 0). HubArtifactsPanel.svelte.test.ts, 1 file / 4 tests passed at 18:21:54, including native scalar header facets and mixed-UTC timestamp sort/facet regression. Other integration checks remain parent-owned.",
+      "sharedContract": "createTableView with optional TableViewState adapter, explicit per-field searchable arrays, TableColumnHeader/TableColumnControl, TableViewControls, RegexSearch",
+      "surfaces": [
+        {
+          "path": "frontend/src/routes/admin/libraries/+page.svelte",
+          "tables": [
+            "profiles",
+            "artifacts",
+            "import jobs",
+            "build jobs",
+            "consume instances"
+          ],
+          "status": "migrated",
+          "scope": "Returned source arrays only; default order preserved; controllers/mutations untouched; view state above loading/workspace branches; actor scope clears state; parent headers preserved; deletion/VM/server headers and cells remain visible across all desktop widths so active facets remain reachable at1024–1279px (final class-only correction not separately exercised)"
+        },
+        {
+          "path": "frontend/src/lib/components/admin/libraries/PalimpsestCatalogPanel.svelte",
+          "tables": [
+            "catalog layers"
+          ],
+          "status": "migrated",
+          "scope": "Managed/Hub source and native offset/back/next retained; source-wide q moved to free-value single Name header predicate using catalog.search; independent per-field regex remains loaded-page; mixed native/local scope disclosed"
+        },
+        {
+          "path": "frontend/src/lib/components/palimpsest/AssetSearchPanel.svelte",
+          "tables": [
+            "Hub reusable assets"
+          ],
+          "cards": [
+            "package results",
+            "cloud environment results"
+          ],
+          "status": "migrated",
+          "scope": "Native source identity, offset and package cursor retained; shared source-wide q moved to free-value single Name header predicates for all three source views; refresh preserves native query and independent loaded-row regex; mixed scope disclosed"
+        },
+        {
+          "path": "frontend/src/lib/components/palimpsest/HubArtifactsPanel.svelte",
+          "tables": [
+            "Hub artifacts"
+          ],
+          "cards": [
+            "build activity",
+            "export activity"
+          ],
+          "status": "migrated",
+          "scope": "Native exact-name, digest-prefix, kind, architecture and format predicates moved from toolbar into external single header adapters; native offset resets through unchanged hub.setFilters; arbitrary name/digest values supported without local OR downgrade; independent per-field regex/local sort/size facet remain loaded-row; mixed scope disclosed"
+        },
+        {
+          "path": "frontend/src/routes/palimpsest/packages/+page.svelte",
+          "tables": [
+            "package inventory",
+            "issued keys"
+          ],
+          "cards": [
+            "package version history"
+          ],
+          "status": "migrated",
+          "scope": "Loaded inventory projection retains existing more/cursor boundary and counts; key authority/revoke/secret handling unchanged; versions remain cursor-backed and local search is explicitly scoped; actor changes clear all views and package detail target change clears version view"
+        },
+        {
+          "path": "frontend/src/lib/components/waygate/WaygateProjectWorkspace.svelte",
+          "tables": [
+            "gateway servers"
+          ],
+          "cards": [
+            "clients",
+            "network attachments"
+          ],
+          "status": "migrated",
+          "scope": "Shared typed view drives desktop/cards/visible eligible selection; hidden selections pruned and overlay count matches visible set; detail target change clears client/attachment conditions; normal refresh and token remount retain display conditions; original mutation fence unchanged; status/owner/network facet identities remain raw and locale-stable"
+        },
+        {
+          "path": "frontend/src/lib/components/waygate/WaygateWorkspace.svelte",
+          "status": "migrated",
+          "scope": "Display holder survives original token-keyed child remount; existing private-view lifetime clears conditions IN PLACE on logical session/domain/project/authority changes; no new authority-only key/remount and no detached mutation owner"
+        },
+        {
+          "path": "frontend/src/lib/utils/waygateView.svelte.ts",
+          "status": "implemented",
+          "scope": "Reactive display-only state: three searches, typed sort/filter states and detail target ID; no credentials, rows, dialogs, pending mutations or selection"
+        },
+        {
+          "path": "frontend/src/lib/components/waygate/__tests__/WaygateWorkspace.test.ts",
+          "status": "passed in authorized 2-file / 74-test focused run",
+          "scope": "Token renewal retains regex/descending sort/facet but clears selection and rejects old confirmation; project switch clears conditions; transient authority revalidation retains conditions while changed authority clears in place; hidden selections are pruned; client status/owner facets survive locale change"
+        },
+        {
+          "path": "frontend/src/lib/components/waygate/__tests__/WaygateWorkspacePolling.test.ts",
+          "status": "mock dependencies updated, not run",
+          "scope": "Expose existing private-view authority observation stores to mounted runtime tests"
+        },
+        {
+          "path": "frontend/src/lib/components/waygate/__tests__/WaygateExperience.test.ts",
+          "status": "mock dependencies updated, not run",
+          "scope": "Expose private-view authority observation dependencies without replacing experience behavior"
+        },
+        {
+          "path": "frontend/src/lib/components/admin/libraries/__tests__/PalimpsestCatalogPanel.test.ts",
+          "status": "behavioral regressions migrated/added, not run",
+          "scope": "Anchored per-field regex and invalid syntax do not issue provider name searches, retain continuation/refresh; separate Name header free predicate invokes native q and survives refresh"
+        },
+        {
+          "path": "frontend/src/lib/components/palimpsest/AssetSearchPanel.svelte.test.ts",
+          "status": "behavioral regression added, not run",
+          "scope": "Name header provider q reaches all three source lanes; refresh retains both provider q and independent regex"
+        },
+        {
+          "path": "frontend/src/lib/components/palimpsest/HubArtifactsPanel.svelte.test.ts",
+          "status": "passed authorized focused run: 1 file / 4 tests",
+          "scope": "Native scalar header kind/architecture values remain available independent of loaded rows, reset offset, retain regex through refresh; mixed offset-free native UTC and explicit-offset activity dates sort/facet by one normalized instant"
+        },
+        {
+          "path": "frontend/src/routes/dashboard/network/waygate/__tests__/page.test.ts",
+          "status": "mock dependencies updated, not run",
+          "scope": "Indirect route-mounted workspace gets private-view readiness and observed authority stores"
+        },
+        {
+          "path": "frontend/src/routes/palimpsest/packages/__tests__/page.permissions.test.ts",
+          "status": "behavioral regex expectation updated, not run by this worker",
+          "scope": "Whitespace-only regex is literal and matches no loaded rows; only empty query disables search"
+        },
+        {
+          "path": "frontend/src/lib/components/dashboard/network/__tests__/NetworkBulkSelection.test.ts",
+          "status": "passed in authorized 2-file / 74-test focused run",
+          "scope": "Private-view observer mock exported with a ready Waygate authority result matching granted native leaf; shared ConsumerNetwork edits preserved"
+        }
+      ],
+      "boundaries": [
+        "No controller, API, authorization or network-policy changes.",
+        "Native query capability retained in header scalar/free-value adapters; duplicated toolbar widgets removed; native source/cursor boundaries retained; independent regex and unsupported column filters remain explicitly loaded-row.",
+        "No DOM scraping/reordering/observer enhancement.",
+        "Only parent-authorized focused Vitest runs exercised here (74 Waygate/network + 4 Hub tests passed); no builds, linters, formatters, browser or production probes run by this worker.",
+        "Parent owns tutorial header movement, shared locale additions, central docs and integration checks."
+      ]
+    },
+    "ChatResourceSearch": {
+      "owner": "ChatResourceSearch",
+      "status": "implemented_focused_candidate_registration_verified",
+      "checks_run": [
+        {
+          "command": "npx vitest run src/routes/admin/chat/__tests__/admin_models_media_pricing.test.ts -t \"filters image-output discovery\"",
+          "result": "1 file passed; 1 test passed; 31 skipped",
+          "authorization": "Parent follow-up explicitly allowed focused tests"
+        }
+      ],
+      "files": [
+        {
+          "path": "frontend/src/lib/components/chat/ChatProjectsView.svelte",
+          "status": "changed",
+          "surface": "Chat project resource cards",
+          "search_fields": [
+            "name",
+            "id converted to string",
+            "description"
+          ],
+          "implementation": "Reactive compileRegexSearch once per query change; matchesRegexSearch over independent explicit fields; RegexSearch provides localized help/error. Malformed patterns produce no project cards.",
+          "preserved": [
+            "workspace exact-ID routing and selection",
+            "project mutations and permissions",
+            "incoming card order",
+            "project conversation assignment and chronology",
+            "query across same-owner row refresh"
+          ],
+          "other_changes": [
+            "Removed obsolete custom search CSS",
+            "Allowed search header wrapping"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/chat/ModelPickerOverlay.svelte",
+          "status": "changed",
+          "surface": "Chat model resource picker",
+          "search_fields": [
+            "display_name",
+            "model_name",
+            "canonical API model name",
+            "canonical API provider",
+            "provider display name"
+          ],
+          "implementation": "Reactive compileRegexSearch with independent explicit fields. Existing autofocus input remains inside Field with localized regex help/error, aria-invalid and described-by; invalid patterns produce no model options.",
+          "preserved": [
+            "exact internal model_name selection dispatch",
+            "canonical API ID copy",
+            "provider-ID partitioning",
+            "incoming provider/model order",
+            "query across catalog refresh",
+            "existing dialog focus behavior"
+          ],
+          "other_changes": [
+            "Unavailable selected provider is retained with zero count instead of silently broadening the list after refresh"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/chat/ModelSelector.svelte",
+          "status": "changed",
+          "surface": "Inline chat model resource selector",
+          "search_fields": [
+            "display_name",
+            "model_name",
+            "api_model_name",
+            "api_provider",
+            "provider"
+          ],
+          "implementation": "Reactive compileRegexSearch with independent explicit fields. Existing bound focus input remains inside Field with component-unique ID and localized inline feedback; invalid patterns produce no options.",
+          "preserved": [
+            "menu positioning and focus-on-open",
+            "exact model_name dispatch",
+            "current selected model label",
+            "incoming model order",
+            "query while open across refresh",
+            "existing explicit menu-open query reset",
+            "compact mode search visibility"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/admin/chat/ChatConfiguration.svelte",
+          "status": "changed_surgical_discovered_candidates_only",
+          "surface": "Discovered candidate model resource cards",
+          "search_fields": [
+            "candidate.id",
+            "candidate.display_name"
+          ],
+          "implementation": "createTableView owns regex projection and a single-valued local kind facet. Existing disabled/search input and selection-clearing behavior remain inside Field with localized regex help/error. TableViewControls class='' exposes the shared kind control for this genuinely card-only list; the old adjacent kind select is removed.",
+          "preserved": [
+            "registered model exclusion",
+            "uncertain registration exclusion",
+            "successful/unknown registration exclusion",
+            "provider and actor scope fences",
+            "pending and bulk registration disabling",
+            "incoming candidate order",
+            "query and kind facet on retryDiscovery refresh",
+            "manual review and all pricing source",
+            "registered provider/model table behavior outside assignment"
+          ],
+          "explicit_nonchanges": [
+            "All pre-existing pricing WIP left untouched",
+            "No authority/session/API/mutation policy edits"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/chat/ChatSidebar.svelte",
+          "status": "intentionally_unchanged",
+          "surface": "Remote conversation CONTENT search with local title fallback",
+          "reason": "Parent explicitly excluded content discovery from dashboard resource/table matching. onSearch(query), its capped native history endpoint, local content/title fallback, chronology and selected conversation behavior remain unchanged. No fetch-all, empty-query surrogate or backend regex expansion."
+        },
+        {
+          "path": "frontend/src/lib/components/chat/__tests__/ChatProjectsView.test.ts",
+          "status": "changed_not_run",
+          "coverage_added": [
+            "anchored independent project ID/name/description regex",
+            "case-insensitive matching",
+            "refresh query retention",
+            "invalid regex feedback and no rows"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/chat/__tests__/ModelPickerOverlay.test.ts",
+          "status": "changed_not_run",
+          "coverage_added": [
+            "anchored name/API/provider alternation",
+            "refresh regex retention",
+            "invalid regex feedback and no options",
+            "temporarily unavailable provider condition retention"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/chat/__tests__/ModelSelector.test.ts",
+          "status": "added_not_run",
+          "coverage_added": [
+            "focus-on-open",
+            "anchored API/provider regex",
+            "refresh query retention",
+            "no auto-selection",
+            "exact native selection identity",
+            "invalid regex feedback and no options"
+          ]
+        },
+        {
+          "path": "frontend/src/routes/admin/chat/__tests__/page.test.ts",
+          "status": "changed_not_run",
+          "coverage_added": [
+            "anchored independent candidate ID/display-name regex",
+            "shared kind facet",
+            "query and kind retention during source refresh",
+            "invalid regex feedback and no candidates"
+          ],
+          "scope": "One candidate filtering regression plus common translation import; existing pricing fixtures untouched"
+        },
+        {
+          "path": "frontend/src/routes/admin/chat/__tests__/admin_models_media_pricing.test.ts",
+          "status": "changed_focused_scenario_passed",
+          "coverage_updated": [
+            "Candidate kind selection uses shared card filter",
+            "Image candidate remains visible while text candidate is excluded",
+            "Inactive registration retains image kind and dispatches exactly one native registration"
+          ],
+          "scope": "Updated one obsolete kind-combobox interaction and strengthened single-registration assertion; all pricing fixtures and other test bodies untouched"
+        }
+      ],
+      "intentional_exclusions": [
+        "ChatSidebar remote conversation content discovery and its ChatPanel API callback, per parent clarification",
+        "ChatInput command completion, navigation service search, and arbitrary text/content discovery",
+        "Registered ChatConfiguration model/provider table controls outside this discovery-only assignment",
+        "Global/common locale files (owned centrally by TableCore)",
+        "Documentation, checklist, changelog and central verification (owned by parent)"
+      ],
+      "limitations": [
+        "No build, typecheck, linter, formatter or browser verification executed by this worker. Only the explicitly authorized focused candidate registration regression ran.",
+        "Other added regressions remain dependent on the parent's central verification.",
+        "Scope/actor privacy resets, explicit picker menu-open resets and discovery close/reset remain intentional lifecycle resets rather than refresh retention guarantees.",
+        "Regex searches project only the existing supplied resource arrays; discovery source completeness/provenance has not been broadened or relabeled."
+      ]
+    },
+    "WorkspaceSearch": {
+      "owner": "WorkspaceSearch",
+      "change": "unify-dashboard-table-controls",
+      "status": "implemented_source_only",
+      "files": [
+        {
+          "path": "frontend/src/lib/components/workspaces/WorkspaceBrowser.svelte",
+          "searches": [
+            {
+              "query": "domainSearch",
+              "fields": [
+                "domain.name",
+                "domain.id"
+              ],
+              "matching": "compileRegexSearch + matchesRegexSearch, case-insensitive Unicode",
+              "invalid": "No matching domains; localized Field error and aria-invalid on the existing disabled-aware input"
+            },
+            {
+              "query": "search",
+              "fields": [
+                "project.name",
+                "project.id",
+                "project.description"
+              ],
+              "matching": "compileRegexSearch + matchesRegexSearch, case-insensitive Unicode",
+              "invalid": "No matching projects; localized Field error and aria-invalid on the existing disabled-aware input"
+            }
+          ],
+          "preserved": [
+            "Authorized controller catalogs are the only search sources",
+            "Hidden resources/current active resource exceptions",
+            "Pinned/recent/all view constraints and incoming preference order",
+            "Exact UUID selection and explicit domain/project commit handlers",
+            "Mutation and project-switch disabling",
+            "Refresh does not reset search or view state",
+            "Existing owner/scope privacy resets and access fences"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/components/admin/projects/AdminProjectAccessModal.svelte",
+          "searches": [
+            {
+              "query": "userSearchFilter (users)",
+              "fields": [
+                "user.name",
+                "user.id",
+                "user.domain_id"
+              ],
+              "matching": "compileRegexSearch + matchesRegexSearch, case-insensitive Unicode",
+              "invalid": "No matching users; shared RegexSearch localized help/error and aria-invalid"
+            },
+            {
+              "query": "userSearchFilter (groups)",
+              "fields": [
+                "group.name",
+                "group.id",
+                "group.domain_id",
+                "group.description"
+              ],
+              "matching": "compileRegexSearch + matchesRegexSearch, case-insensitive Unicode",
+              "invalid": "No matching groups; shared RegexSearch localized help/error and aria-invalid"
+            }
+          ],
+          "preserved": [
+            "Unmodified native directory source and domain validation",
+            "Arbitrary native identifiers without UUID shape validation or new filtering",
+            "Exact principal ID grant/revoke payloads",
+            "Assignable role catalog and reader role requirements",
+            "Existing request scope/token/project fences, generation checks and pending state",
+            "Member reload does not reset search; pre-existing scope-effect and tab-switch resets remain unchanged"
+          ]
+        }
+      ],
+      "verification": {
+        "checks_run": [
+          {
+            "command": "npx vitest run src/routes/select-domain/DomainSelection.test.ts",
+            "result": "45 tests passed",
+            "output": "artifact://249",
+            "notes": "Non-fatal jsdom canvas getContext diagnostics were printed"
+          }
+        ],
+        "reason": "Parent explicitly authorized focused regression after identifying a stale textbox role selector; parent owns the full gate",
+        "tests_edited": [
+          "frontend/src/routes/select-domain/DomainSelection.test.ts: search keystroke observation uses searchbox role; semantic assertions unchanged"
+        ],
+        "docs_edited": [],
+        "suggested_parent_checks": [
+          "Workspace chooser regex alternation, anchors, Unicode case-insensitivity, invalid expressions and field-boundary matching",
+          "Workspace hidden/pinned/recent constraints and refresh query retention",
+          "Access-modal user/group name/ID/domain/description matching, malformed expressions and exact-ID grant dispatch",
+          "Existing component regressions and central Svelte/type checks"
+        ]
+      }
+    },
+    "WizardResourceSearch": {
+      "owner": "WizardResourceSearch",
+      "status": "implemented-unverified",
+      "surfaces": [
+        {
+          "component": "frontend/src/lib/components/wizard/SelectFlavor.svelte",
+          "query": "searchTerm",
+          "projection": "compileRegexSearch once per query; matchesRegexSearch over independent native UUID, native name, optional display name, consumer label, vCPU quantity and localized RAM label",
+          "feedback": "shared RegexSearch with localized regex help and inline invalid error",
+          "preserved": [
+            "creatable-only eligibility projection",
+            "category and exact GPU model conditions",
+            "quota/capacity/unchecked fences",
+            "selected native UUID and explicit click selection",
+            "local pagination and refresh conditions",
+            "no query-triggered network calls"
+          ]
+        },
+        {
+          "component": "frontend/src/lib/components/wizard/AdminProjectSelector.svelte",
+          "stateOwner": "frontend/src/lib/stores/vmCreateStore.svelte.ts",
+          "query": "adminProjectSearch",
+          "projection": "compileRegexSearch once per query; independent project name, project UUID, domain name and domain UUID",
+          "feedback": "shared RegexSearch with localized regex help and inline invalid error",
+          "preserved": [
+            "native project/domain loading",
+            "quota loading and unknown presentation",
+            "exact project selection callback",
+            "no automatic selection",
+            "selected UUID remains independent from regex visibility",
+            "project refresh does not clear query",
+            "no query-triggered network calls"
+          ]
+        }
+      ],
+      "testsAdded": [
+        "frontend/src/lib/components/wizard/__tests__/SelectFlavor.test.ts: desktop and compact anchored/alternation/case-insensitive/Unicode field matching, malformed pattern feedback/no rows, selected native UUID and query retention across refresh, no selection or refresh callback on typing",
+        "frontend/src/lib/stores/__tests__/vmCreateStoreLoad.test.ts: actual AdminProjectSelector mounted through existing wrapper; independent project/domain field anchors, alternation, invalid feedback/no rows, no GET on typing, refresh-retained query and explicit selected project",
+        "frontend/src/lib/stores/__tests__/_VmCreateStoreLoadWrapper.svelte: optional actual project chooser mounting with provided VM context and refresh/selected-project probes"
+      ],
+      "imageChooser": {
+        "component": "frontend/src/lib/components/wizard/SelectImage.svelte",
+        "observed": "already consumes RegexSearch and catalog.view; no nested local substring search found in wizard resource search scan",
+        "action": "unchanged; coordinated shared catalog ownership with ConsumerCompute"
+      },
+      "verification": {
+        "checksRun": [],
+        "reason": "Assignment explicitly prohibits worker checks; central verification belongs to Main",
+        "recommendedFocusedTests": [
+          "frontend/src/lib/components/wizard/__tests__/SelectFlavor.test.ts",
+          "frontend/src/lib/stores/__tests__/vmCreateStoreLoad.test.ts"
+        ]
+      },
+      "unchangedScope": [
+        "shared image catalog",
+        "general form fields",
+        "authority/session/mutation handling",
+        "composer saving/unknown states",
+        "documentation and OpenSpec checklist"
+      ]
+    },
+    "EnrollmentQueue": {
+      "owner": "Main",
+      "surfaces": [
+        {
+          "route": "/admin/settings?tab=requests",
+          "paths": [
+            "frontend/src/lib/components/admin/AdminEnrollmentPolicyPanel.svelte"
+          ],
+          "status": "migrated",
+          "boundary": "Existing status server scalar query moved into card-column options with first-cursor reset. Other explicit typed fields use loaded-page regex/facets/sort; opaque next/previous retained. Manual refresh preserves view; token-key invalidates pending credentials/data while same logical display owner can retain view-only conditions. Actual scope/readiness/authority transitions clear presentation."
+        }
+      ],
+      "verification": {
+        "command": "npm exec -- vitest run src/lib/tutorial/__tests__/engine.test.ts src/lib/mockup/contracts.test.ts src/lib/components/admin/__tests__/AdminEnrollmentPolicyPanel.test.ts",
+        "result": "3 files / 66 tests passed",
+        "limits": "Focused mounted components and tutorial engine; not production/native provider acceptance"
+      }
+    }
+  },
+  "verificationBoundary": "Receipt-owned focused checks are recorded per slice. Final acceptance.json will bind integrated gate/build/browser proof; no production/native-provider acceptance is claimed.",
+  "sharedPrimitives": {
+    "searchSelect": {
+      "file": "frontend/src/lib/components/ui/SearchSelect.svelte",
+      "scope": "All existing form-option picker callers; no substring-term fallback",
+      "behavior": "iu regex, separate label/description anchors, invalid-pattern selection blocked, compact outer overflow retains option reachability",
+      "runtime": [
+        "late-browser.json",
+        "compact-picker.json"
+      ]
+    },
+    "columnAnnouncement": {
+      "file": "frontend/src/lib/components/ui/TableColumnControl.svelte",
+      "behavior": "Localized accessible selected-count description, including active empty selection"
+    },
+    "eventAppliedBoundary": {
+      "file": "frontend/src/lib/components/admin/AdminEventsPage.svelte",
+      "behavior": "Native header changes one applied parameter only; pending time/request/interaction drafts remain unapplied",
+      "runtime": "event-draft-http.json"
+    }
+  }
+}

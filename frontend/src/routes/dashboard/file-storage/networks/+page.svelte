@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
@@ -34,7 +40,16 @@
 	const enabled = $derived($betaFeatures.fileStorageShareNetworks);
 	const shareNetworksEnabled = $derived($betaFeatures.fileStorageShareNetworks);
 	const selection = createResourceSelection();
-	const selectableIds = $derived(new Set(networks.map((network) => network.id)));
+	let search = $state('');
+ const columns = $derived<TableColumn<ShareNetwork>[]>([
+  { key: 'name', label: t('networkTable.name'), value: row => row.name },
+  { key: 'status', label: t('networkTable.status'), value: row => row.status },
+  { key: 'network', label: t('networkTable.networkId'), value: row => row.neutron_net_id },
+  { key: 'subnet', label: t('networkTable.subnetId'), value: row => row.neutron_subnet_id },
+  { key: 'created', label: t('networkTable.createdAt'), value: row => row.created_at },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => networks, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const selectableIds = $derived(new Set(view.rows.map((network) => network.id)));
 
 	function clearState() {
 		networks = [];
@@ -139,6 +154,12 @@
 		const ids = selectableIds;
 		untrack(() => selection.retain(ids));
 	});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#if !enabled}
@@ -153,13 +174,16 @@
 			{/snippet}
 		</PageHeader>
 		<p class="text-sm text-ink-2 mb-6">{t('networks.description')}</p>
+ <RegexSearch id="ShareNetworkTable-search" bind:value={search} />
+ <TableViewControls {view} class={networks.length === 0 ? '' : 'lg:hidden'} />
+ 
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('networks.title') })} />
 		{:else if networks.length === 0}
 			<div class="text-center py-20 text-ink-2"><p class="text-lg">{t('networks.empty')}</p></div>
 		{:else}
-			<ShareNetworkTable {networks} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteNetwork} />
+			<ShareNetworkTable networks={view.rows} {view} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteNetwork} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel={t('networks.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
 	</PageShell>

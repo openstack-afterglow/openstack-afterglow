@@ -1,0 +1,836 @@
+{
+  "consumer-route-browser-sweep": {
+    "environment": "local Vite + managed Chromium + built-in tutorial transport, not live provider",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "results": [
+      {
+        "route": "/dashboard/compute/instances",
+        "actual": "/dashboard/compute/instances",
+        "title": "인스턴스 (8)",
+        "tableViews": 1,
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": "_16g 리사이즈 권장192.0.2.71  —   sample-observer mock-ins…    중지됨 Ubuntu 24.04 LTS cpu.2c_4g 192.0.2.72  203.0.113.230—  검색 결과 8 / 전체 8 페이지당 행102030 ← 이전  1 / 1 다음 →",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/compute/images",
+        "actual": "/dashboard/compute/images",
+        "title": "이미지",
+        "tableViews": 0,
+        "columnControls": 12,
+        "searches": 1,
+        "overflow": false,
+        "tail": " 선택 :9  현재   미검증   모든 tag 조회 ubuntu Ubuntu  1 tags · 1 이미지1 tags · 1 이미지  검증됨 1검증됨 1  미검증 0  검증 불가 0 최근 업로드 :24.04 2026-07-09 버전 선택 :24.04  현재   검증됨   모든 tag 조회",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/volumes",
+        "actual": "/dashboard/volumes",
+        "title": "블록 볼륨 (2)",
+        "tableViews": 1,
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": "200 GB ceph-ssd  연결 가능 미연결  자동 백업 설정    root-disk mock-vol…     80 GB ceph-ssd  연결됨 1개 연결 부트  자동 백업 설정    페이지당 항목  102030  ← 이전 검색 결과 2개 · 프로젝트 전체 2개 1 / 1 다음 →",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/volumes/backups",
+        "actual": "/dashboard/volumes/backups",
+        "title": "볼륨 백업",
+        "tableViews": 0,
+        "columnControls": 16,
+        "searches": 2,
+        "overflow": false,
+        "tail": "(1–28)    이 저장된 일정의 강제 백업 허용    다음 예약 실행    마지막 실행    마지막 결과         자동 백업 정책을 불러올 수 없습니다. 설정을 사용할 수 없는 상태이며, 비활성화된 것은 아닙니다.   자동 백업 불러오기 다시 시도      조회 실패 (409)",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/volumes/snapshots",
+        "actual": "/dashboard/volumes/snapshots",
+        "title": "볼륨 스냅샷은 베타 기능입니다",
+        "tableViews": 0,
+        "columnControls": 0,
+        "searches": 0,
+        "overflow": false,
+        "tail": "β 볼륨 스냅샷은 베타 기능입니다 계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다. 베타 설정으로 이동",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/network/networks",
+        "actual": "/dashboard/network/networks",
+        "title": "네트워크 (3)",
+        "tableViews": 1,
+        "columnControls": 8,
+        "searches": 2,
+        "overflow": false,
+        "tail": "이스케이프하세요. Floating IP    연결된 Fixed IP    상태      Floating IP    전체 선택 0개 선택됨 + Floating IP 할당    203.0.113.216 → 192.0.2.24  활성   203.0.113.221 → 192.0.2.25  활성",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/network/floating-ips",
+        "actual": "/dashboard/network/floating-ips",
+        "title": "Floating IP",
+        "tableViews": 1,
+        "columnControls": 4,
+        "searches": 1,
+        "overflow": false,
+        "tail": " Floating IP     연결된 Fixed IP     인스턴스     상태         203.0.113.216 192.0.2.24 sample-project-alpha  활성 해제   203.0.113.221 192.0.2.25 sample-project-beta  활성 해제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/network/routers",
+        "actual": "/dashboard/network/routers",
+        "title": "라우터",
+        "tableViews": 1,
+        "columnControls": 4,
+        "searches": 1,
+        "overflow": false,
+        "tail": "이    연결된 서브넷           전체 선택 0개 선택됨     sample-edge-router SNAT 활성  활성 상세 외부 mock-net-pub… 내부 mock-sub…    sample-data-router SNAT 비활성  활성 상세 외부 없음 내부 mock-sub…",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/network/security-groups",
+        "actual": "/dashboard/network/security-groups",
+        "title": "보안 그룹",
+        "tableViews": 1,
+        "columnControls": 8,
+        "searches": 1,
+        "overflow": false,
+        "tail": " sample-project-alpha ACTIVE 규칙 2개규칙 2개 + 규칙 추가  방향    IP 버전    프로토콜    포트    출발지/대상    작업  ↓ ingress IPv4 tcp 22 0.0.0.0/0 수정 제거 ↑ egress IPv6 any — ::/0 수정 제거",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/network/loadbalancers",
+        "actual": "/dashboard/network/loadbalancers",
+        "title": "로드밸런서",
+        "tableViews": 0,
+        "columnControls": 4,
+        "searches": 1,
+        "overflow": false,
+        "tail": "않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. 이름    상태    VIP    운영 상태           전체 선택 0개 선택됨    sample-web-balancer 알 수 없음 VIP 192.0.2.80· ONLINE  상세",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage",
+        "actual": "/dashboard/file-storage",
+        "title": "파일 스토리지",
+        "tableViews": 1,
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": "로토콜    Share 타입    생성 일시      자동 새로고침:  사용 안 함 10초15초30초60초   새로고침      전체 선택 0개 선택됨     demo-dataset CEPHFS  · 2026-07-09 00:00:00  사용 가능 할당 크기 200 GB   상세  삭제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/networks",
+        "actual": "/dashboard/file-storage/networks",
+        "title": "Share 네트워크는 베타 기능입니다",
+        "tableViews": 0,
+        "columnControls": 0,
+        "searches": 0,
+        "overflow": false,
+        "tail": "β Share 네트워크는 베타 기능입니다 계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다. 베타 설정으로 이동",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/security-services",
+        "actual": "/dashboard/file-storage/security-services",
+        "title": "Security Service는 베타 기능입니다",
+        "tableViews": 0,
+        "columnControls": 0,
+        "searches": 0,
+        "overflow": false,
+        "tail": "β Security Service는 베타 기능입니다 계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다. 베타 설정으로 이동",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/snapshots",
+        "actual": "/dashboard/file-storage/snapshots",
+        "title": "파일 스토리지 스냅샷은 베타 기능입니다",
+        "tableViews": 0,
+        "columnControls": 0,
+        "searches": 0,
+        "overflow": false,
+        "tail": "β 파일 스토리지 스냅샷은 베타 기능입니다 계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다. 베타 설정으로 이동",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/database/instances",
+        "actual": "/dashboard/database/instances",
+        "title": "DB 인스턴스",
+        "tableViews": 1,
+        "columnControls": 5,
+        "searches": 1,
+        "overflow": false,
+        "tail": "케이프하세요.  자동 새로고침:  사용 안 함 10초15초30초60초   새로고침      전체 선택0개 선택됨이름    상태    Datastore    크기 (GB)    생성일    액션  sample-customer-mysql 활성mysql 8.0202026-07-09재시작 삭제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/database/backups",
+        "actual": "/dashboard/database/backups",
+        "title": "DB 백업",
+        "tableViews": 1,
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": "]   :  \n   : .       . :   \n      : : : :        DB 백업이 없습니다 데이터베이스 인스턴스에서 백업을 생성하면 여기에 표시됩니다.      전체 선택0개 선택됨이름    상태    원본 DB    Datastore    크기    생성일    액션",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/containers/instances",
+        "actual": "/dashboard/containers/instances",
+        "title": "컨테이너",
+        "tableViews": 0,
+        "columnControls": 0,
+        "searches": 1,
+        "overflow": false,
+        "tail": "INSTANCES 컨테이너  자동 새로고침:  사용 안 함 10초15초30초60초   새로고침 + 컨테이너 생성 서버 오류  정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.   컨테이너 불러오는 중…",
+        "errors": [
+          {
+            "seq": 38,
+            "ts": 1793955408187.808,
+            "type": "pageerror",
+            "level": "error",
+            "text": "TypeError: Cannot read properties of undefined (reading 'filter')",
+            "location": "http://127.0.0.1:4327/src/lib/utils/tableView.svelte.ts?t=1793954411344:108:67",
+            "stack": "TypeError: Cannot read properties of undefined (reading 'filter')\n\n\tin <unknown>\n\tin +layout.svelte\n\tin +layout.svelte\n\tin root.svelte\n\tin undefined\n\n    at http://127.0.0.1:4327/src/lib/utils/tableView.svelte.ts?t=1793954411344:109:68\n    at update_reaction (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:4893:16)\n    at execute_derived (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:3390:12)\n    at update_derived (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:3404:14)\n    at Module.get (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:5094:4)\n    at get rows (http://127.0.0.1:4327/src/lib/utils/tableView.svelte.ts?t=1793954411344:121:13)\n    at http://127.0.0.1:4327/src/routes/dashboard/containers/instances/+page.svelte:115:59\n    at update_reaction (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:4893:16)\n    at execute_derived (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:3390:12)\n    at update_derived (http://127.0.0.1:4327/node_modules/.vite/deps/runtime-DkgLB25l.js?v=13f174c4:3404:14)"
+          }
+        ]
+      },
+      {
+        "route": "/dashboard/containers/clusters",
+        "actual": "/dashboard/containers/clusters",
+        "title": "K8s 클러스터",
+        "tableViews": 1,
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": " 대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.  K8s 클러스터가 없습니다 Magnum을 통해 새 클러스터를 생성하세요   전체 선택0개 선택됨이름    상태    마스터    워커    API 주소    생성일",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/object-storage/buckets",
+        "actual": "/dashboard/object-storage/buckets",
+        "title": "버킷",
+        "tableViews": 1,
+        "columnControls": 3,
+        "searches": 1,
+        "overflow": false,
+        "tail": "    자동 새로고침:  사용 안 함 10초15초30초60초   새로고침  버킷 11     오브젝트 912     사용량 700.0 MiB         전체 선택 0개 선택됨     sample-artifacts 오브젝트 12개 오브젝트 12 크기 0.734 GB 상세 보기 → 삭제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/secrets",
+        "error": "Error: net::ERR_ABORTED at http://127.0.0.1:4327/dashboard/secrets?tutorial=on"
+      },
+      {
+        "route": "/dashboard/activity",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/usage",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/usage-report",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/my-resources",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/drover",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/account/keypairs",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/account/activity",
+        "error": "by: Timed out after waiting 10000ms"
+      },
+      {
+        "route": "/dashboard/account/sessions",
+        "error": "by: Timed out after waiting 10000ms"
+      }
+    ]
+  },
+  "consumer-route-browser-followup": {
+    "environment": "local Vite+managed Chromium+synthetic tutorial transport; DOM readiness replaces overly broad network-idle waiter; container contract fixed before verification",
+    "results": [
+      {
+        "route": "/dashboard/containers/instances",
+        "actual": "/dashboard/containers/instances",
+        "title": "컨테이너",
+        "controls": 6,
+        "overflow": false,
+        "tail": "ES CONTAINERS / INSTANCES 컨테이너  자동 새로고침:  사용 안 함 10초15초30초60초   새로고침 + 컨테이너 생성   정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.  컨테이너가 없습니다 Zun을 통해 새 컨테이너를 생성하세요   전체 선택0개 선택됨이름    상태    이미지    CPU    메모리    생성일",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/secrets",
+        "actual": "/dashboard/secrets",
+        "title": "Key Manager는 베타 기능입니다",
+        "controls": 0,
+        "overflow": false,
+        "tail": "β Key Manager는 베타 기능입니다 계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다. 베타 설정으로 이동",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/activity",
+        "actual": "/dashboard/activity",
+        "title": "활동 & 작업",
+        "controls": 2,
+        "overflow": false,
+        "tail": " 시간대별 작업 수  000306091214172023012345  차트 데이터 보기 정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.    항목    오늘의 활동 분포    000010020030040051062073084095104113124135143152162172181191200210220230 감사 로그 최근 작업 내역  로그 없음",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/usage",
+        "actual": "/dashboard/usage",
+        "title": "사용량",
+        "controls": 6,
+        "overflow": false,
+        "tail": "이티브 텔레메트리 · Gnocchi  8 GB 51%     Exporter 대체 수집 · Prometheus  네이티브 텔레메트리: 해당 메트릭의 텔레메트리 미수집 중지됨5sample-api-check cpu.2c_4g4 vCPU 46%     네이티브 텔레메트리 · Gnocchi  8 GB 56%     Exporter 대체 수집 · Prometheus  네이티브 텔레메트리: 해당 메트릭의 텔레메트리 미수집 오프로딩 보관됨",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/usage-report",
+        "actual": "/dashboard/usage-report",
+        "title": "기간 사용량 & 쿼터 예측",
+        "controls": 13,
+        "overflow": false,
+        "tail": "ck-insgpu.8c_64g_a10 활성 2026. 06. 10.720.081 프로젝트 리소스 현황 현재 할당/한도  네트워크 Floating IP 3/ 16 18.7%    블록 스토리지 볼륨 14/ 60 23.3%    컴퓨트 한도 인스턴스 8/ 30 26.6%    파일 스토리지 공유 4/ 12 33.3%   용량 780GB/ 4096GB 19%     오브젝트 스토리지 조회 불가 데이터베이스  DB 인스턴스 조회 불가",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/my-resources",
+        "actual": "/dashboard/my-resources",
+        "title": "내 리소스",
+        "controls": 29,
+        "overflow": false,
+        "tail": ": : :        리소스 없음   시크릿 0   sample-project-alpha  준비됨 0 sample-project-beta  준비됨 0 sample-ci-runner  준비됨 0         . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :        리소스 없음",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/drover",
+        "actual": "/dashboard/drover",
+        "title": "Drover 클러스터",
+        "controls": 4,
+        "overflow": false,
+        "tail": "s kubeconfig 상세 삭제 sample-cluster-error v1.29.8+k3s1  오류 노드 (M+A) 01 (1+0) API — Sample agent bootstrap timed out 오류 상세 Sample agent bootstrap timed out 클러스터 상세에서 실패 단계와 관련 리소스를 확인하세요. 보안 그룹·네트워크·할당량 문제를 해결한 뒤 상태를 다시 조회하세요. kubeconfig 상세 삭제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/account/keypairs",
+        "actual": "/dashboard/account/keypairs",
+        "title": "SSH 키",
+        "controls": 3,
+        "overflow": false,
+        "tail": "대시보드로 돌아가기 내 리소스 계정 설정 계정 설정 SSH 키    SSH 키페어 + 키페어 생성  정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.   이름    지문     유형     액션 demo-keypair   복사 삭제",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/account/activity",
+        "actual": "/dashboard/account/activity",
+        "title": "활동",
+        "controls": 4,
+        "overflow": false,
+        "tail": " 안 함 15초30초60초   새로고침 한 번에 표시 10개15개20개   로딩 중... 정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. 정규식 검색과 서버가 지원하지 않는 열 필터·정렬은 불러온 행에 적용됩니다. 서버가 지원하는 열 조건·정렬은 전체 목록을 조회하며 첫 페이지부터 다시 시작합니다.   시각    리소스    액션    상태",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/account/sessions",
+        "actual": "/dashboard/account/sessions",
+        "title": "세션",
+        "controls": 5,
+        "overflow": false,
+        "tail": "대시보드로 돌아가기 내 리소스 계정 설정 계정 설정 세션   세션 보안 새로고침    정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. IP    기기    상태    마지막 사용    최근 IP      활성 세션 정보를 불러올 수 없습니다. 모든 기기에서 로그아웃합니다. Keystone 토큰도 즉시 폐기됩니다. 모든 위치에서 로그아웃",
+        "errors": []
+      }
+    ]
+  },
+  "admin-route-browser-sweep": {
+    "environment": "local Vite + managed Chromium + built-in tutorial transport, not live provider",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "results": [
+      {
+        "route": "/admin/instances",
+        "actual": "/admin/instances",
+        "title": "전체 인스턴스 (3)",
+        "columnControls": 12,
+        "searches": 2,
+        "overflow": false,
+        "tail": "    2026-07-04  sample-project-alpha mock-ins…    실행 중   cpu.8c_32gsample-hypervisor-a— mock-pro…    2026-07-02 이 페이지 3개 페이지당 행102030 ← 이전  페이지 1 다음 →",
+        "errors": []
+      },
+      {
+        "route": "/admin/images",
+        "actual": "/admin/images",
+        "title": "이미지",
+        "columnControls": 12,
+        "searches": 1,
+        "overflow": false,
+        "tail": "ags · 1 이미지1 tags · 1 이미지  검증됨 1검증됨 1  미검증 0  검증 불가 0 최근 업로드 :24.04 2026-07-09 버전 선택 :24.04  현재   검증됨   모든 tag 조회 ← 이전 2개 중 1–2개 repository 1 / 1 다음 →",
+        "errors": []
+      },
+      {
+        "route": "/admin/volumes",
+        "actual": "/admin/volumes",
+        "title": "전체 볼륨 (3)",
+        "columnControls": 7,
+        "searches": 1,
+        "overflow": false,
+        "tail": "200 GiBceph-ssdDemomock-dom…   sample-project-alphamock-pro…   2026-07-01  페이지당 행  102030  모든 페이지의 검색 결과: 볼륨 3개 · 400 GiB · 현재 페이지 3개 ← 이전  페이지 1 다음 →",
+        "errors": []
+      },
+      {
+        "route": "/admin/libraries",
+        "actual": "/admin/libraries",
+        "title": "Palimpsest 레이어 관리",
+        "columnControls": 5,
+        "searches": 1,
+        "overflow": false,
+        "tail": "서버가 지원하는 열 조건·정렬은 전체 목록을 조회하며 첫 페이지부터 다시 시작합니다. 이름    생성·등록 출처    전체 SHA-256 다이제스트    의존 체인    공개 범위        인벤토리 조회에 실패했습니다. 연결을 확인한 뒤 다시 조회하세요. 다시 조회",
+        "errors": [
+          {
+            "seq": 13,
+            "ts": 1793955806435,
+            "type": "requestfailed",
+            "level": "error",
+            "text": "GET http://localhost:8000/api/v1/admin/palimpsest/catalog?source=managed&q=&offset=0&limit=50: net::ERR_CONNECTION_REFUSED",
+            "location": "http://localhost:8000/api/v1/admin/palimpsest/catalog?source=managed&q=&offset=0&limit=50"
+          },
+          {
+            "seq": 14,
+            "ts": 1793955806436,
+            "type": "requestfailed",
+            "level": "error",
+            "text": "OPTIONS http://localhost:8000/api/v1/admin/palimpsest/catalog?source=managed&q=&offset=0&limit=50: net::ERR_CONNECTION_REFUSED",
+            "location": "http://localhost:8000/api/v1/admin/palimpsest/catalog?source=managed&q=&offset=0&limit=50"
+          }
+        ]
+      },
+      {
+        "route": "/admin/topology",
+        "actual": "/admin/topology",
+        "title": "토폴로지",
+        "columnControls": 0,
+        "searches": 1,
+        "overflow": false,
+        "tail": ". 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), Esc 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.   네트워크 3개 라우터 2개 인스턴스 4개 Floating IP 2개 로드밸런서 1개",
+        "errors": []
+      },
+      {
+        "route": "/admin/containers",
+        "actual": "/admin/containers",
+        "title": "전체 컨테이너",
+        "columnControls": 7,
+        "searches": 1,
+        "overflow": false,
+        "tail": " 중ghcr.io/example/sample-api:1.422048sample-hypervisor-a2026-07-05sample-worker 중지됨ghcr.io/example/sample-worker:1.411024sample-hypervisor-b2026-07-06",
+        "errors": []
+      },
+      {
+        "route": "/admin/secrets",
+        "actual": "/admin/secrets",
+        "title": "Key Manager 쿼터",
+        "columnControls": 4,
+        "searches": 1,
+        "overflow": false,
+        "tail": "다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.  프로젝트 ID    Secrets    Orders    Containers    액션mock-project-11002020설정 초기화mock-project-2-15025설정 초기화",
+        "errors": []
+      },
+      {
+        "route": "/admin/monitoring",
+        "actual": "/admin/monitoring",
+        "title": "통합 모니터링",
+        "columnControls": 0,
+        "searches": 0,
+        "overflow": false,
+        "tail": "tive) 컨테이너 12 Zun 컨테이너 23 Drover 클러스터(1 active) 컨테이너 목록 → Drover 클러스터 → 데이터 서비스 45 DB 인스턴스 (Trove) DB 인스턴스 → Identity 92128 사용자 1724 프로젝트 사용자 → 프로젝트 →",
+        "errors": []
+      },
+      {
+        "route": "/admin/services",
+        "actual": "/admin/services",
+        "title": "서비스 상태",
+        "columnControls": 56,
+        "searches": 9,
+        "overflow": false,
+        "tail": "            . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :        스토리지 풀 정보를 가져올 수 없습니다",
+        "errors": []
+      },
+      {
+        "route": "/admin/users",
+        "error": "by: Waiting failed: 10000ms exceeded"
+      },
+      {
+        "route": "/admin/quotas",
+        "actual": "/admin/quotas",
+        "title": "쿼터",
+        "columnControls": 7,
+        "searches": 1,
+        "overflow": false,
+        "tail": "다. 다음 데이터는 기존 페이지 이동으로 불러올 수 있습니다.   GPU 사용량은 도메인 공유 풀로 관리합니다. 모든 도메인의 네이티브 프로젝트 쿼터와 기본 한도는 풀 상태와 별개로 관리합니다.도메인 풀 관리  도메인  도메인 선택     프로젝트 선택  프로젝트 선택",
+        "errors": []
+      },
+      {
+        "route": "/admin/domains",
+        "actual": "/admin/domains",
+        "title": "도메인",
+        "columnControls": 4,
+        "searches": 1,
+        "overflow": false,
+        "tail": "b 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.  검색·필터·정렬은 불러온 행에만 적용됩니다. 다음 데이터는 기존 페이지 이동으로 불러올 수 있습니다. 이름    ID    상태    설명    모니터링Demomock-domain 활성-수정모니터링",
+        "errors": []
+      },
+      {
+        "route": "/admin/flavors",
+        "actual": "/admin/flavors",
+        "title": "Flavor",
+        "columnControls": 6,
+        "searches": 1,
+        "overflow": false,
+        "tail": "   공개    GPU    액션cpu.4c_8g mock-managed-cpu-4 Synthetic managed shape; native publication unverified.48 GB0 GBPrivate-관리 삭제 ← 이전 1개 중 1–1개 1 / 1 다음 →",
+        "errors": []
+      }
+    ]
+  },
+  "beta-table-browser-sweep": {
+    "environment": "isolated local origin http://127.0.0.1:4327 with tutorial transport; five preferences enabled through native UI; source betaFeatures.ts proves localStorage-only/no backend mutation",
+    "results": [
+      {
+        "route": "/dashboard/secrets",
+        "title": "Key Manager",
+        "controls": 5,
+        "overflow": false,
+        "tail": ", public/private(비대칭키쌍) 등을 구분해 저장합니다. 🔒 표시된 항목은 시스템이 관리하는 secret으로 삭제할 수 없습니다. 서버 오류 정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. 이름    타입    상태    생성일    만료       🔑 저장된 비밀이 없습니다. + 비밀 생성",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/volumes/snapshots",
+        "title": "볼륨 스냅샷",
+        "controls": 6,
+        "overflow": false,
+        "tail": "   크기    볼륨 ID    설명    생성일      자동 새로고침:  사용 안 함 10초15초30초60초   새로고침        . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :       볼륨 스냅샷이 없습니다 첫 스냅샷을 생성하세요 →",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/snapshots",
+        "title": "스냅샷",
+        "controls": 6,
+        "overflow": false,
+        "tail": "기호를 그대로 찾으려면 \\로 이스케이프하세요. 이름    상태    크기    파일 스토리지 ID    설명    생성일             . : : .      \n   . :       : .   \n  :    [ · · ]   :  \n  :    [     ]   :  \n   : .       . :   \n      : : : :       스냅샷이 없습니다 첫 스냅샷을 생성하세요 →",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/networks",
+        "title": "Share 네트워크",
+        "controls": 5,
+        "overflow": false,
+        "tail": "60초   새로고침 + Share 네트워크 생성 파일 스토리지를 Neutron 네트워크에 연결하는 Share Network를 관리합니다. 정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. 이름    상태    Neutron 네트워크 ID    서브넷 ID    생성일       Share 네트워크가 없습니다",
+        "errors": []
+      },
+      {
+        "route": "/dashboard/file-storage/security-services",
+        "title": "Security Service",
+        "controls": 12,
+        "overflow": false,
+        "tail": " Directory 인증 서비스를 관리합니다. 정규식 검색   대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요. 이름    유형    상태    DNS IP    서버    도메인       현재 검색 및 필터 조건에 일치하는 행이 없습니다.   이름    유형    상태    DNS IP    서버    도메인    액션",
+        "errors": []
+      }
+    ]
+  },
+  "volume-browser-smoke": {
+    "environment": "Managed Chromium against local Vite source http://127.0.0.1:4327 with built-in tutorial synthetic transport",
+    "route": "/dashboard/volumes?tutorial=on",
+    "locale": "ko",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "observed": {
+      "regex": "^(root-disk|scratch)$",
+      "sort": "size ascending",
+      "nameFacet": {
+        "root-disk": true,
+        "scratch": false
+      },
+      "afterManualRefresh": {
+        "regexUnchanged": true,
+        "rootVisible": 1,
+        "scratchVisible": 0,
+        "sizeAscendingControl": 1,
+        "scratchCheckboxChecked": false
+      }
+    },
+    "screenshot": "/var/folders/1m/xfc726k14szbjnrlq5t68zjw0000gn/T/omp-sshots-15c34ed13831281d.webp",
+    "visualFinding": "Narrow fixed-grid size/type/boot Korean headings stack characters; assigned ConsumerStorage correction",
+    "limits": [
+      "Synthetic cloud inventory, not production/OpenStack acceptance",
+      "Screenshot predates assigned header width correction"
+    ]
+  },
+  "dashboard-table-production-locales": {
+    "boundary": "Production Node build with synthetic tutorial transport; isolated Chrome native page zoom 200%",
+    "matrix": [
+      {
+        "locale": "ko",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "블록 볼륨 (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "en",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "Block volumes (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "ja",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "ブロックボリューム（2）",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "zh-CN",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "块存储卷（2）",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 198
+        }
+      },
+      {
+        "locale": "sw",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "Volumu za bloku (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "nb",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "Blokkvolumer (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "ms",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "Volum blok (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "vi",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "Ổ đĩa khối (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      },
+      {
+        "locale": "bn",
+        "width": 720,
+        "dpr": 2,
+        "overflow": false,
+        "heading": "ব্লক ভলিউম (2)",
+        "help": "project-volume-search-message",
+        "invite": {
+          "left": 12,
+          "right": 284
+        }
+      }
+    ]
+  },
+  "dashboard-table-production-routes": {
+    "environment": "compiled Node application, local synthetic tutorial profile, native Chrome 200%, local beta preferences enabled",
+    "results": [
+      {
+        "path": "/dashboard/secrets",
+        "title": "Key Manager",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 5,
+        "tail": "비밀 관리\nKey Manager\n자동 새로고침:\n사용 안 함\n10초\n15초\n30초\n60초\n새로고침\n+ 비밀 생성\n비밀 (0\n2\n)\n컨테이너\nKey Orders\n쿼터\n🔑\n비밀(Secret)은 비밀번호, API 키, 인증서, 암호화 키 등 민감한 값을 안전하게 저장하는 단위입니다. 저장된 값은 암호화되어 보관되며, \"값 보기\" 버튼으로만 복호화할 수 있습니다. 타입에 따라 passphrase(비밀번호), certificate(인증서 PEM), symmetric(대칭키), public/private(비대칭키쌍) 등을 구분해 저장합니다. 🔒 표시된 항목은 시스템이 관리하는 secret으로 삭제할 수 없습니다.\n정규식 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\n이름\n타입\n상태\n생성일\n만료\n전체 선택\n0개 선택됨\ntutorial-api-password\nACTIVE\n\n패스프레이즈\n\n상세 정보\n값 보기\n삭제\ntutorial-tls-certificate\nACTIVE\n\n인증서· 시스템\n\n상세 정보\n값 보기"
+      },
+      {
+        "path": "/dashboard/containers/instances",
+        "title": "컨테이너",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 6,
+        "tail": "INSTANCES\n컨테이너\n자동 새로고침:\n사용 안 함\n10초\n15초\n30초\n60초\n새로고침\n+ 컨테이너 생성\n정규식 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\n이름\n상태\n이미지\nCPU\n메모리\n생성일\n\n컨테이너가 없습니다\n\nZun을 통해 새 컨테이너를 생성하세요\n\n전체 선택\n0개 선택됨"
+      },
+      {
+        "path": "/dashboard/file-storage/security-services",
+        "title": "Security Service",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 6,
+        "tail": "SECURITY SERVICES\nSecurity Service\n자동 새로고침:\n사용 안 함\n10초\n15초\n30초\n60초\n새로고침\n+ Security Service 생성\n\nLDAP, Kerberos, Active Directory 인증 서비스를 관리합니다.\n\n정규식 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\n이름\n유형\n상태\nDNS IP\n서버\n도메인\n\nSecurity Service가 없습니다\n\n전체 선택"
+      },
+      {
+        "path": "/dashboard/compute/images",
+        "title": "이미지",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 12,
+        "tail": " 드려요.\n\n튜토리얼 시작\n나중에\n+ 이미지 업로드\n자동 새로고침:\n사용 안 함\n10초\n15초\n30초\n60초\n새로고침\nRepository와 tag로 이미지 찾기\n\nDocker Hub처럼 이름을 검색하고, 같은 repository의 버전을 tag로 고르세요.\n\nRepository\nTags\n0 repositories\n2 repositories\n이미지 repository 또는 tag 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\nRepository\nTag\n상태\nOS 배포판\n신뢰 상태\n가시성\n크기\n업로드\n이름\nSHA 해시 · ID\n디스크 포맷\n소유자 (Project ID)\n필터 초기화\n\n2개 이미지 · 2개 repository\n\n🪨\nrocky\n\nRocky Linux\n\n0 tags · 1 이미지\n1 tags · 1 이미지\n검증됨 0\n미검증 0\n미검증 1\n검증 불가 0\n최근 업로드\n:9\n2026-07-09\n버전 선택\n:9\n현재\n미검증\n모든 tag 조회\nubuntu\n\nUbuntu\n\n0 tags · 1 이미지\n1 tags · 1 이미지\n검증됨 0\n검증됨 1\n미검증 0\n검증 불가 0\n최근 업로드\n:24.04\n2026-07-09\n버전 선택\n:24.04\n현재\n검증됨\n모든 tag 조회"
+      },
+      {
+        "path": "/admin/images",
+        "title": "이미지",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 12,
+        "tail": "처럼 이름을 검색하고, 같은 repository의 버전을 tag로 고르세요.\n\nRepository\nTags\n0 repositories\n2 repositories\n이미지 repository 또는 tag 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\nRepository\nTag\n상태\nOS 배포판\n신뢰 상태\n가시성\n크기\n업로드\n이름\nSHA 해시 · ID\n디스크 포맷\n소유자 (Project ID)\n필터 초기화\n\n2개 이미지 · 2개 repository\n\n관리자 검증은 업로드 또는 명시적 승인 기록입니다. 공개 범위와 별개이며 악성코드 검사 결과를 뜻하지 않습니다.\n\n🪨\nrocky\n\nRocky Linux\n\n0 tags · 1 이미지\n1 tags · 1 이미지\n검증됨 0\n미검증 0\n미검증 1\n검증 불가 0\n최근 업로드\n:9\n2026-07-09\n버전 선택\n:9\n현재\n미검증\n모든 tag 조회\nubuntu\n\nUbuntu\n\n0 tags · 1 이미지\n1 tags · 1 이미지\n검증됨 0\n검증됨 1\n미검증 0\n검증 불가 0\n최근 업로드\n:24.04\n2026-07-09\n버전 선택\n:24.04\n현재\n검증됨\n모든 tag 조회\n← 이전\n2개 중 1–2개 repository\n1 / 1\n다음 →"
+      },
+      {
+        "path": "/admin/libraries",
+        "title": "Palimpsest 레이어 관리",
+        "width": 720,
+        "overflow": false,
+        "searches": 1,
+        "filters": 5,
+        "tail": "Palimpsest\nPalimpsest 레이어 관리\n\nDockerfile로 루트 레이어를 빌드하고 선택적으로 SSH VM을 생성합니다. 기존 기록도 이곳에서 조회합니다.\n\n튜토리얼\n\n튜토리얼을 시작하시겠습니까?\n\n이 페이지의 사용 방법을 단계별로 안내해 드려요.\n\n튜토리얼 시작\n나중에\n빌드 만들기\n프로젝트 패키지 / 접근 키\n새로고침\n레이어 카탈로그\n빌드 스튜디오\n프로필\n아티팩트\n빌드 기록\n인스턴스\n레이어 인벤토리\n\n생성·등록 출처와 실제 부모·자식 관계를 확인합니다.\n\n레이어 인벤토리 새로고침\nAfterglow 관리\nPalimpsest Hub\n\n기존 관리 레코드의 읽기 전용 목록입니다. Hub 전체 인벤토리가 아닙니다.\n\n정규식 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\n정규식 검색과 서버가 지원하지 않는 열 필터·정렬은 불러온 행에 적용됩니다. 서버가 지원하는 열 조건·정렬은 전체 목록을 조회하며 첫 페이지부터 다시 시작합니다.\n\n이름\n생성·등록 출처\n전체 SHA-256 다이제스트\n의존 체인\n공개 범위\n인벤토리 조회에 실패했습니다. 연결을 확인한 뒤 다시 조회하세요.\n다시 조회"
+      }
+    ]
+  },
+  "dashboard-table-production-image-tours": [
+    {
+      "mode": "consumer",
+      "steps": [
+        {
+          "text": "×이미지 작업 (1/3)최상단 업로드 버튼에서 이미지를 등록할 수 있습니다. 이 안내에서는 업로드나 다른 변경 작업을 실행하지 않습니다.이전다음",
+          "uploadDialog": false
+        },
+        {
+          "text": "×검색과 열 조건 (2/3)검색은 항상 정규식으로 동작합니다. 열 제목으로 정렬하고 옆의 필터에서 값을 선택하세요. 새로고침해도 조건은 유지됩니다.이전다음",
+          "uploadDialog": false
+        },
+        {
+          "text": "×이미지와 버전 확인 (3/3)저장소와 태그별 버전, 이미지 식별자와 검증 상태를 확인하세요. 빈 목록은 현재 검색·필터 조건의 결과일 수 있습니다.이전완료",
+          "uploadDialog": false
+        }
+      ],
+      "completed": true
+    },
+    {
+      "mode": "admin",
+      "steps": [
+        {
+          "text": "×이미지 작업 (1/3)최상단 업로드 버튼에서 이미지를 등록할 수 있습니다. 이 안내에서는 업로드나 다른 변경 작업을 실행하지 않습니다.이전다음",
+          "uploadDialog": false
+        },
+        {
+          "text": "×검색과 열 조건 (2/3)검색은 항상 정규식으로 동작합니다. 열 제목으로 정렬하고 옆의 필터에서 값을 선택하세요. 새로고침해도 조건은 유지됩니다.이전다음",
+          "uploadDialog": false
+        },
+        {
+          "text": "×이미지와 버전 확인 (3/3)저장소와 태그별 버전, 이미지 식별자와 검증 상태를 확인하세요. 빈 목록은 현재 검색·필터 조건의 결과일 수 있습니다.이전완료",
+          "uploadDialog": false
+        }
+      ],
+      "completed": true
+    }
+  ],
+  "dashboard-table-production-retention": {
+    "boundary": "Production Node build, isolated tutorial fixture, measured desktop viewport 1440px; native 200% verified separately in locale/theme receipts",
+    "invalid": {
+      "invalid": "true",
+      "error": "올바르지 않은 정규식입니다. 괄호와 이스케이프를 확인하세요. 수정하기 전에는 일치하는 행이 없습니다."
+    },
+    "retained": {
+      "query": "^(root-disk|scratch)$",
+      "ascending": true,
+      "body": "볼륨 / 블록 볼륨\n블록 볼륨 (2)\n튜토리얼\n\n튜토리얼을 시작하시겠습니까?\n\n이 페이지의 사용 방법을 단계별로 안내해 드려요.\n\n튜토리얼 시작\n나중에\n+ 볼륨 생성\n볼륨 수신\n대기 중인 이전\n\n볼륨 프로비저닝 용량 280 GiB\n\n볼륨 2\n\n연결됨 1개\n\n스토리지 할당량 8000 GiB\n\n스냅샷 0\n\n볼륨 2\n스냅샷 0\n이름 또는 ID 검색\n\n대소문자를 구분하지 않는 정규식입니다. 예: ^web 또는 api|db. 기호를 그대로 찾으려면 \\로 이스케이프하세요.\n\n자동 새로고침:\n사용 안 함\n10초\n15초\n30초\n60초\n새로고침\n이름\n1\n크기\n유형\n상태\n연결\n부트\n자동 백업\nroot-disk\nmock-vol…\n80 GB\nceph-ssd\n연결됨\n1개 연결\n부트\n자동 백업 설정\n페이지당 항목\n10\n20\n30\n← 이전\n검색 결과 1개 · 프로젝트 전체 2개\n1 / 1\n다음 →",
+      "width": 1440,
+      "dpr": 1,
+      "overflow": false
+    },
+    "selections": [
+      {
+        "name": "root-disk",
+        "states": [
+          "checked=true"
+        ]
+      },
+      {
+        "name": "scratch",
+        "states": [
+          "checked=false"
+        ]
+      }
+    ]
+  },
+  "dashboard-table-production-midwidth": {
+    "width": 1100,
+    "overflow": false,
+    "visibleColumnFilters": [
+      "이름 값 필터",
+      "생성·등록 출처 값 필터",
+      "전체 SHA-256 다이제스트 값 필터",
+      "의존 체인 값 필터",
+      "공개 범위 값 필터"
+    ]
+  }
+}

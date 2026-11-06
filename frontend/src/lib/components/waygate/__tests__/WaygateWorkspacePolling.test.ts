@@ -11,11 +11,17 @@ vi.mock('$lib/api/client', () => ({
 		constructor(public status: number, message: string) { super(message); }
 	},
 }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a' }) }));
-vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>((leaf) => [
-	'waygate-inventory_reader', 'waygate-connect_user', 'waygate-clients_editor',
-	'waygate-clients_admin', 'waygate-gateways_editor', 'waygate-gateways_admin', 'waygate-routing_admin',
-].includes(leaf)) }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'token-a', projectId: 'project-a' }),
+	authReady: writable(true), projectSwitching: writable(false),
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>((leaf) => [
+		'waygate-inventory_reader', 'waygate-connect_user', 'waygate-clients_editor',
+		'waygate-clients_admin', 'waygate-gateways_editor', 'waygate-gateways_admin', 'waygate-routing_admin',
+	].includes(leaf)),
+	observedProjectPermissions: writable({ permissions: null, loading: false, error: '' }),
+}));
 vi.mock('$lib/config/site', () => ({ siteConfig: writable({ services: { waygate: true } }) }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: mocks.toastError } }));
 // Exercise the real autoRefresh controller, preferences and visibility listeners.

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/images-keys';
   import { untrack } from 'svelte';
@@ -10,7 +11,6 @@
   import ImageDetailPanel from '$lib/components/ImageDetailPanel.svelte';
   import ImageUploadModal from '$lib/components/ImageUploadModal.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
-  import ImageDistroFilter from '$lib/components/dashboard/images/ImageDistroFilter.svelte';
   import ImageCatalogToolbar, { type CatalogViewMode } from '$lib/components/dashboard/images/ImageCatalogToolbar.svelte';
   import ImageRepositoryCard from '$lib/components/dashboard/images/ImageRepositoryCard.svelte';
   import ImageRepositoryDetail from '$lib/components/dashboard/images/ImageRepositoryDetail.svelte';
@@ -22,9 +22,11 @@
   import { partitionBulkIds } from '$lib/utils/bulkActions';
   import { Alert, BulkSelectionOverlay, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectionToolbar } from '$lib/components/ui';
 
+  const viewOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]));
   const ctrl = createImagesController({
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
+    viewOwner: () => viewOwner,
   });
   let viewMode = $state<CatalogViewMode>('repositories');
   let selectedRepository = $state<string | null>(null);
@@ -40,6 +42,7 @@
   }
 
   function openRepository(repository: string) {
+    ctrl.repositoryState(repository);
     selectedRepository = repository;
     ctrl.selection.clear();
   }
@@ -49,7 +52,8 @@
   }
 
   $effect(() => {
-    if (selectedRepository && !selectedRepositoryGroup) selectedRepository = null;
+    void viewOwner;
+    untrack(() => { selectedRepository = null; });
   });
 
   const ar = createAutoRefresh(() => ctrl.fetchImages(), {
@@ -131,13 +135,16 @@
 <ImageDropOverlay onFile={(f) => { ctrl.uploadInitialFile = f; ctrl.showUploadModal = true; }} />
 
 <PageShell class="bulk-selection-page space-y-4">
+  <div data-tour="images-header">
   <PageHeader breadcrumb={t('imagesPage.breadcrumb')} title={t('imagesPage.title')}>
     {#snippet actions()}
+      <TutorialStartButton tour="images" />
       <Button onclick={() => { ctrl.uploadInitialFile = null; ctrl.showUploadModal = true; }} variant="primary">
         {t('imagesPage.upload')}
       </Button>
     {/snippet}
   </PageHeader>
+  </div>
   <ResourceToolbar label={t('imagesPage.toolbar')}>
     {#snippet actions()}
       <AutoRefreshControl
@@ -155,33 +162,23 @@
   {#if ctrl.loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('imagesPage.title') })} />
   {:else}
-    <ImageCatalogToolbar
-      bind:searchQuery={ctrl.searchQuery}
-      bind:repositoryFilter={ctrl.repositoryFilter}
-      bind:tagFilter={ctrl.tagFilter}
-      bind:sortMode={ctrl.sortMode}
-      bind:verificationFilter={ctrl.verificationFilter}
-      {viewMode}
-      repositoryOptions={ctrl.repositoryOptions}
-      tagOptions={ctrl.tagOptions}
-      resultCount={ctrl.filteredImages.length}
-      totalCount={ctrl.images.length}
-      repositoryCount={ctrl.visibleRepositoryCount}
-      onClear={ctrl.clearFilters}
-      onViewModeChange={changeViewMode}
-    />
-    <ImageDistroFilter bind:distroFilter={ctrl.distroFilter} counts={ctrl.distroGroups} />
-
-    {#if ctrl.filteredImages.length === 0}
+    {#if !selectedRepository}<ImageCatalogToolbar catalog={ctrl.catalog} {viewMode} onViewModeChange={changeViewMode} />{/if}
+    <div data-tour="images-results">
+    <div data-tour="images-ready">
+    {#if selectedRepository}
+      {#key selectedRepository}
+      <ImageRepositoryDetail
+        group={selectedRepositoryGroup}
+        repository={selectedRepository}
+        state={ctrl.repositoryStates[selectedRepository]}
+        onBack={() => selectedRepository = null}
+        onOpenTag={openRepositoryTag}
+      />
+      {/key}
+    {:else if ctrl.filteredImages.length === 0}
       <EmptyState
         headline={ctrl.images.length === 0 ? t('imagesPage.empty.title') : t('imagesPage.noResults.title')}
         description={ctrl.images.length > 0 ? t('imagesPage.noResults.description') : t('imagesPage.empty.description')}
-      />
-    {:else if selectedRepositoryGroup}
-      <ImageRepositoryDetail
-        group={selectedRepositoryGroup}
-        onBack={() => selectedRepository = null}
-        onOpenTag={openRepositoryTag}
       />
     {:else if viewMode === 'repositories'}
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -225,6 +222,8 @@
         {/each}
       </div>
     {/if}
+    </div>
+    </div>
   {/if}
   {#if viewMode === 'tags' && !selectedRepositoryGroup}
   <BulkSelectionOverlay

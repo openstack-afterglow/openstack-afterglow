@@ -1,7 +1,7 @@
 {
-  "personal": "Binafsi",
-  "organization": "Shirika",
-  "personalProjectNameHelp": "Majina ya miradi binafsi hutengenezwa kiotomatiki.",
+	"personal": "Binafsi",
+	"organization": "Shirika",
+	"personalProjectNameHelp": "Majina ya miradi binafsi hutengenezwa kiotomatiki.",
 	"title": "Chagua rasilimali",
 	"openSelector": "{project} · {domain}: chagua rasilimali",
 	"activeDomain": "Kikoa kinachotumika",

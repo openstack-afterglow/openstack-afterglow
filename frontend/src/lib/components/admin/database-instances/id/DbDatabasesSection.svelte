@@ -5,6 +5,12 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		databases,
@@ -28,6 +34,16 @@
 
 	let showForm = $state(false);
 	let newDb = $state({ name: '', character_set: 'utf8', collate: 'utf8_general_ci' });
+	let search = $state('');
+	const view = createTableView<DbDatabase>({
+		rows: () => databases,
+		search: () => search,
+		searchable: (db) => [db.name, db.character_set, db.collate],
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: tr('labels.name'), value: (db) => db.name },
+		],
+	});
 
 	async function handleAdd() {
 		const ok = await onAdd({ ...newDb });
@@ -59,14 +75,18 @@
 			</button>
 		</div>
 	{/if}
+	<div class="mb-3 space-y-3">
+		<RegexSearch id="admin-database-databases-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if loadError}
 		<p role="alert" class="text-state-danger-text text-sm">{loadError}</p>
-	{:else if databases.length === 0}
-		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
+	{:else if view.rows.length === 0}
+		<div class="text-ink-2 text-xs">{databases.length ? tc('table.noMatches') : tr('databases.empty')}</div>
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each databases as db}
+				{#each view.rows as db}
 					<CompactResourceCard>
 						<h3 class="break-all font-medium text-ink-0">{db.name}</h3>
 						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingDb === db.name} onclick={() => onDelete(db.name)}>{#if deletingDb === db.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingDb === db.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
@@ -74,7 +94,11 @@
 				{/each}
 			{/snippet}
 		<div class="space-y-1">
-			{#each databases as db}
+			<div class="flex items-center justify-between gap-3 border-b border-line py-2 text-xs text-ink-2">
+				<TableColumnControl {view} columnKey="name" />
+				{#if canMutate}<span>{tr('labels.actions')}</span>{/if}
+			</div>
+			{#each view.rows as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
 					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
 					{#if canMutate}

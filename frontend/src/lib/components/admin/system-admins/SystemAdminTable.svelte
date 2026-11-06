@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -47,15 +52,19 @@
 			revoking = null;
 		}
 	}
+	const tableSearchId = $props.id();
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof admins)[number]>({ rows: () => admins, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'name', label: t('systemTable.name'), value: row => row.name }, { key: 'email', label: t('systemTable.email'), value: row => row.email }, { key: 'status', label: t('systemTable.status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'systemTable.enabled' : 'systemTable.disabled') }, { key: 'id', label: t('systemTable.userId'), value: row => row.user_id }] });
 </script>
 
 {#if revokeError}
 	<div class="mb-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{revokeError}</div>
 {/if}
 
+<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
 <ResponsiveTable>
   {#snippet cards()}
-    {#each admins as admin (admin.user_id)}
+    {#each tableView.rows as admin (admin.user_id)}
       <CompactResourceCard>
         <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{admin.name || '-'}</strong><Pill tone={admin.enabled ? 'success' : 'danger'}>{admin.enabled ? t('systemTable.enabled') : t('systemTable.disabled')}</Pill></div>
         <p class="break-all text-sm text-ink-2">{admin.email || '-'}</p>
@@ -72,15 +81,15 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">{t('systemTable.name')}</th>
-				<th class="text-left py-2 pr-4">{t('systemTable.email')}</th>
-				<th class="text-left py-2 pr-4">{t('systemTable.status')}</th>
-				<th class="text-left py-2 pr-4">{t('systemTable.userId')}</th>
+				<TableColumnHeader view={tableView} columnKey="name" />
+				<TableColumnHeader view={tableView} columnKey="email" />
+				<TableColumnHeader view={tableView} columnKey="status" />
+				<TableColumnHeader view={tableView} columnKey="id" />
 				<th class="text-left py-2"></th>
 			</tr>
 		</thead>
 		<tbody>
-			{#each admins as admin (admin.user_id)}
+			{#each tableView.rows as admin (admin.user_id)}
 				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
 					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span></td>
 					<td class="py-2 pr-4 text-ink-2">{admin.email || '-'}</td>

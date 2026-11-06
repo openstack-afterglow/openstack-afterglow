@@ -1,4 +1,5 @@
 <script lang="ts">
+ import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
@@ -56,7 +57,7 @@
 		<svg class="w-12 h-12 mx-auto text-ink-2 mb-3" viewBox="0 0 20 20" fill="currentColor">
 			<path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
 		</svg>
-		{#if s.filterText.trim()}
+		{#if s.filterText.length > 0}
 			<p>{t('views.treeTable.noResults')}</p>
 			<p class="text-ink-2 text-xs mt-1">{t('views.treeTable.searchHint')}</p>
 		{:else}
@@ -69,19 +70,18 @@
   {#snippet cards()}
    <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs">
     <SelectionCheckbox checked={s.visibleSelectedCount > 0 && s.visibleSelectedCount === s.visibleObjectCount} indeterminate={s.visibleSelectedCount > 0 && s.visibleSelectedCount < s.visibleObjectCount} disabled={s.bulkDeleting || s.bulkMoving} ariaLabel={t('views.treeTable.selectAllVisible')} onclick={s.toggleSelectAll} />
-    <button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.treeTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.treeTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.treeTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
    </div>
    {#each s.treeRows as row (row.obj.name)}
     <div class="min-w-0 space-y-1">
      {#if row.isDir}
-      {#if !row.fullPath && (!s.filterText.trim() || s.searchScope === 'expanded')}<button onclick={() => s.toggleExpand(row.obj.name)} aria-busy={row.isLoading} class="min-h-11 px-2 text-xs text-ink-2">{#if row.isLoading}<LoadingState variant="control" label={commonT('state.loading')} />{:else}{row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}{/if} · {s.baseName(row.obj.name)}</button>{/if}
-      <ObjectFolderCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} />
+      {#if !row.fullPath && (s.filterText.length === 0 || s.searchScope === 'expanded')}<button onclick={() => s.toggleExpand(row.obj.name)} aria-busy={row.isLoading} class="min-h-11 px-2 text-xs text-ink-2">{#if row.isLoading}<LoadingState variant="control" label={commonT('state.loading')} />{:else}{row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}{/if} · {s.baseName(row.obj.name)}</button>{/if}
+      <ObjectFolderCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} selectable={!row.contextOnly} />
      {:else}<ObjectFileCard obj={row.obj} fullPath={row.fullPath || row.depth > 0} compact />{/if}
     </div>
    {/each}
   {/snippet}
-	<div class="overflow-x-auto">
-		<table class="w-full text-sm table-fixed" bind:this={tableRef}>
+	<div class="min-w-0 max-w-full overflow-x-auto" role="region" tabindex="0" aria-label={t('browser.files')}>
+		<table class="w-full min-w-[72rem] text-sm table-fixed" bind:this={tableRef}>
 			<colgroup>
 				<col style="width: 2.5rem" />
 				<col style="width: {s.colWidths.name}%" />
@@ -101,20 +101,20 @@
 							onclick={s.toggleSelectAll}
 						/>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('name')} class="hover:text-ink-2 transition-colors">{t('views.treeTable.nameSort', { icon: s.sortIcon('name') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('name')}>
+						<TableColumnControl view={s.view} columnKey="name" />
 						<button type="button" aria-label={t('views.treeTable.resizeName')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'name', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('bytes')} class="hover:text-ink-2 transition-colors">{t('views.treeTable.sizeSort', { icon: s.sortIcon('bytes') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('bytes')}>
+						<TableColumnControl view={s.view} columnKey="bytes" />
 						<button type="button" aria-label={t('views.treeTable.resizeSize')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'bytes', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						{t('views.treeTable.type')}
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('type')}>
+						<TableColumnControl view={s.view} columnKey="type" />
 						<button type="button" aria-label={t('views.treeTable.resizeType')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'type', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('last_modified')} class="hover:text-ink-2 transition-colors">{t('views.treeTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('last_modified')}>
+						<TableColumnControl view={s.view} columnKey="last_modified" />
 						<button type="button" aria-label={t('views.treeTable.resizeModified')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'modified', tableRef)}></button>
 					</th>
 					<th class="text-right py-3 px-4 font-medium">{t('views.treeTable.actions')}</th>
@@ -131,7 +131,7 @@
 						class="resource-selection-surface group border-b border-line/50 hover:bg-surface-sunken/30 transition-colors cursor-pointer"
 						class:motion-fade={order !== null}
 						style:--motion-index={order}
-						data-selected={s.selected.has(obj.name)}
+						data-selected={!row.contextOnly && s.selected.has(obj.name)}
 						onclick={(e) => {
 							const target = e.target as HTMLElement;
 							if (target.closest('button, input, a, label')) return;
@@ -141,15 +141,15 @@
 					>
 						<td class="py-3 px-4">
 							<SelectionCheckbox
-								checked={s.selected.has(obj.name)}
-								disabled={s.bulkDeleting || s.bulkMoving}
+								checked={!row.contextOnly && s.selected.has(obj.name)}
+								disabled={row.contextOnly || s.bulkDeleting || s.bulkMoving}
 								ariaLabel={t('views.treeTable.select', { name: rowLabel })}
 								onclick={() => s.toggleSelect(obj.name)}
 							/>
 						</td>
 						<td class="py-3 px-4">
 							<div class="flex items-center gap-2.5" style="padding-left: {row.depth * 16}px">
-								{#if isDir && !row.fullPath && (!s.filterText.trim() || s.searchScope === 'expanded')}
+								{#if isDir && !row.fullPath && (s.filterText.length === 0 || s.searchScope === 'expanded')}
 									<button
 										onclick={(e) => { e.stopPropagation(); s.toggleExpand(obj.name); }}
 										title={row.isLoading ? `${t('views.treeTable.folder')} ${rowLabel}: ${commonT('state.loading')}` : row.isExpanded ? t('views.treeTable.collapse') : t('views.treeTable.expand')}

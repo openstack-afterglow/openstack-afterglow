@@ -12,6 +12,9 @@
 	import FileStorageMetadataSection from '$lib/components/file-storage/FileStorageMetadataSection.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { beginExperienceAction, experienceApplied, experienceState } from '$lib/utils/experience';
+	import { untrack } from 'svelte';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
 
 	interface Props {
 		fileStorageId: string;
@@ -23,6 +26,22 @@
 
 	let refresh!: CoalescedRefresh;
 	let refreshing = $state(false);
+	let accessSearch = $state('');
+	let metadataSearch = $state('');
+	const accessTableState = $state<TableViewState>({ sort: null, filters: {} });
+	const metadataTableState = $state<TableViewState>({ sort: null, filters: {} });
+	function resetTableState() {
+		accessSearch = ''; metadataSearch = '';
+		accessTableState.sort = null; accessTableState.filters = {};
+		metadataTableState.sort = null; metadataTableState.filters = {};
+	}
+	let tableOwner = '';
+	$effect(() => authDisplayContext.subscribe(({ key }) => {
+		if (tableOwner === key) return;
+		tableOwner = key;
+		untrack(resetTableState);
+	}));
+	$effect(() => { void fileStorageId; untrack(resetTableState); });
 	let experienceLive = true;
 	const s = createFileStorageDetailController({
 		fileStorageId: () => fileStorageId,
@@ -93,8 +112,8 @@
 
 			<FileStorageInfoSection />
 			{#if (s.fileStorage.export_location_details?.length ?? 0) > 0 || s.fileStorage.export_locations.length > 0}<FileStorageExportLocationsSection />{/if}
-			<FileStorageAccessRulesSection />
-			{#if Object.keys(s.fileStorage.metadata).length > 0}<FileStorageMetadataSection />{/if}
+			<FileStorageAccessRulesSection tableState={accessTableState} bind:search={accessSearch} />
+			<FileStorageMetadataSection tableState={metadataTableState} bind:search={metadataSearch} />
 		</div>
 	{/if}
 </div>

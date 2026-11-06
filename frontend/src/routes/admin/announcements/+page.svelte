@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy } from 'svelte';
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
@@ -157,6 +162,9 @@
 		}
 		return 'color: var(--color-ink-3); border-color: var(--color-line); background: var(--color-surface-sunken);';
 	}
+	const tableSearchId = $props.id();
+	let tableSearch = $state('');
+	const tableView = createTableView<AnnouncementAdmin>({ rows: () => ctrl.announcements, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'sentAt', label: t('announcements.history.sentAt'), value: row => row.created_at }, { key: 'title', label: t('announcements.history.announcementTitle'), value: row => row.title }, { key: 'severity', label: t('announcements.history.severity'), value: row => severityLabel(row.severity) }, { key: 'target', label: t('announcements.history.target'), value: row => targetLabel(row) }, { key: 'status', label: t('announcements.history.status'), value: row => row.is_active ? t('announcements.status.active') : t('announcements.status.inactive') }, { key: 'author', label: t('announcements.history.author'), value: row => row.created_by_username }] });
 </script>
 
 <PageShell>
@@ -285,6 +293,7 @@
 
 	<Card padding="lg">
 		<h2 class="text-sm font-semibold text-[var(--color-ink-0)] mb-4">{t('announcements.history.title')}</h2>
+		<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
 		{#if ctrl.loading}
 			<LoadingState variant="surface" />
 		{:else if ctrl.announcements.length === 0}
@@ -292,7 +301,7 @@
 		{:else}
 			<ResponsiveTable>
 				{#snippet cards()}
-					{#each ctrl.announcements as a (a.id)}
+					{#each tableView.rows as a (a.id)}
 						<CompactResourceCard>
 							<div class="flex min-w-0 items-start justify-between gap-2">
 								<span class="min-w-0 font-medium">{a.title}</span>
@@ -322,17 +331,17 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="text-left text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-[var(--color-line)]">
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.sentAt')}</th>
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.announcementTitle')}</th>
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.severity')}</th>
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.target')}</th>
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.status')}</th>
-							<th class="py-2 pr-4 font-medium">{t('announcements.history.author')}</th>
+<TableColumnHeader view={tableView} columnKey="sentAt" />
+<TableColumnHeader view={tableView} columnKey="title" />
+<TableColumnHeader view={tableView} columnKey="severity" />
+<TableColumnHeader view={tableView} columnKey="target" />
+<TableColumnHeader view={tableView} columnKey="status" />
+<TableColumnHeader view={tableView} columnKey="author" />
 							<th class="py-2 font-medium"></th>
 						</tr>
 					</thead>
 					<tbody>
-						{#each ctrl.announcements as a (a.id)}
+						{#each tableView.rows as a (a.id)}
 							<tr class="border-b border-[var(--color-line)] last:border-0">
 								<td class="py-2.5 pr-4 text-[var(--color-ink-2)] tabular-nums whitespace-nowrap">{formatIsoDateTime(a.created_at)}</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-0)] max-w-[240px] truncate" title={a.title}>{a.title}</td>

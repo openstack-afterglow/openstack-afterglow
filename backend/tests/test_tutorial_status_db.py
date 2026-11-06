@@ -87,6 +87,15 @@ async def test_status_is_isolated_per_user(live_db):
     assert await svc.get_user_statuses("user-b") == {}
 
 
+@pytest.mark.parametrize("tour_id", ["images", "admin-images"])
+async def test_image_tour_status_survives_update_without_cross_user_visibility(live_db, tour_id):
+    await svc.set_status(user_id="image-user", tour_id=tour_id, status="dismissed")
+    assert await svc.get_user_statuses("image-user") == {tour_id: "dismissed"}
+    assert await svc.get_user_statuses("other-user") == {}
+    await svc.set_status(user_id="image-user", tour_id=tour_id, status="completed")
+    assert await svc.get_user_statuses("image-user") == {tour_id: "completed"}
+
+
 async def test_unknown_user_returns_empty(live_db):
     assert await svc.get_user_statuses("") == {}
 

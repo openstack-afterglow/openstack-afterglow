@@ -5,6 +5,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, StatusChip } from '$lib/components/ui';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as tc } from '$lib/i18n/ns/common';
 
   interface Props {
     poolId: string;
@@ -58,13 +60,15 @@
     </div>
   {/if}
 
+  <TableViewControls view={s.memberView} class="" />
+  {#if !s.membersError && s.selectedPoolMembers.length > 0 && s.memberView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if s.membersError}
     <p role="alert" class="text-state-danger-text text-sm">{s.membersError}</p>
   {:else if s.selectedPoolMembers.length === 0}
     <p class="text-xs text-ink-2">{t('lb.members.empty')}</p>
   {:else}
     <div class="space-y-1.5">
-      {#each s.selectedPoolMembers as member}
+      {#each s.memberView.rows as member (member.id)}
         {@const removingMember = pending.isActive(`remove:${member.id}`, s.saving)}
         <CompactResourceCard>
           <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{member.address}:{member.protocol_port}</strong><StatusChip status={member.status} /></div>

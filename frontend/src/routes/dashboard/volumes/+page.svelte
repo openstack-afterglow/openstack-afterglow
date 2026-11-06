@@ -1,4 +1,6 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/volume';
   import { onDestroy, untrack } from 'svelte';
@@ -25,12 +27,14 @@
   import VolumesModalStack from '$lib/components/volume/VolumesModalStack.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { betaFeatures } from '$lib/stores/betaFeatures';
-  import ResourceSortSelect from '$lib/components/ui/ResourceSortSelect.svelte';
-  import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import type { Volume, VolumeSnapshot } from '$lib/types/volume';
+  import { sortResources } from '$lib/utils/resourceSort';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Field from '$lib/components/ui/Field.svelte';
-  import TextInput from '$lib/components/ui/TextInput.svelte';
   import SelectInput from '$lib/components/ui/SelectInput.svelte';
   import Pagination from '$lib/components/ui/Pagination.svelte';
   import { getStatusLabel } from '$lib/config/statusColors';
@@ -44,19 +48,30 @@
   const volumeSelection = createResourceSelection();
   const snapshotSelection = createResourceSelection();
   let bulkBusy = $state(false);
-  let sort = $state<ResourceSort>('created_desc');
   let search = $state('');
-  let statusFilter = $state('');
   let pageSize = $state(20);
   let currentPage = $state(1);
-  const statusOptions = $derived([...new Set(ctrl.volumes.map((volume) => volume.status))].sort());
-  const sortedVolumes = $derived(sortResources(ctrl.volumes.filter((volume) =>
-    (!statusFilter || volume.status === statusFilter)
-    && (!search.trim() || `${volume.name} ${volume.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())),
-  ), sort));
+  const volumeColumns = $derived<TableColumn<Volume>[]>([
+    { key: 'name', label: t('listTable.name'), value: row => row.name },
+    { key: 'size', label: t('listTable.size'), value: row => row.size },
+    { key: 'type', label: t('listTable.type'), value: row => row.volume_type },
+    { key: 'status', label: t('listTable.status'), value: row => row.status, format: value => getStatusLabel(String(value), 'volume') },
+    { key: 'attachments', label: t('listTable.attachments'), value: row => row.attachments.length },
+    { key: 'bootable', label: t('listTable.boot'), value: row => row.bootable },
+  ]);
+  const snapshotColumns = $derived<TableColumn<VolumeSnapshot>[]>([
+    { key: 'name', label: t('snapshotListTable.name'), value: row => row.name },
+    { key: 'volume', label: t('snapshotListTable.sourceVolume'), value: row => row.volume_id },
+    { key: 'size', label: t('snapshotListTable.size'), value: row => row.size },
+    { key: 'created', label: t('snapshotListTable.created'), value: row => row.created_at },
+    { key: 'status', label: t('snapshotListTable.status'), value: row => row.status },
+  ]);
+  const volumeView = createTableView({ locale: intlLocale, rows: () => sortResources(ctrl.volumes, 'created_desc'), columns: () => volumeColumns, search: () => search, searchable: row => [row.name,row.id] });
+  const snapshotView = createTableView({ locale: intlLocale, rows: () => ctrl.snapshots, columns: () => snapshotColumns, search: () => search, searchable: row => [row.name,row.id,row.volume_id] });
+  const sortedVolumes = $derived(volumeView.rows);
   const pageVolumes = $derived(sortedVolumes.slice((currentPage - 1) * pageSize, currentPage * pageSize));
-  const pageSnapshots = $derived(ctrl.snapshots.slice((currentPage - 1) * pageSize, currentPage * pageSize));
-  const resultCount = $derived(ctrl.tab === 'volumes' ? sortedVolumes.length : ctrl.snapshots.length);
+  const pageSnapshots = $derived(snapshotView.rows.slice((currentPage - 1) * pageSize, currentPage * pageSize));
+  const resultCount = $derived(ctrl.tab === 'volumes' ? sortedVolumes.length : snapshotView.rows.length);
   const selectableVolumeIds = $derived(new Set(pageVolumes.filter((volume) => volume.attachments.length === 0).map((volume) => volume.id)));
   const selectableSnapshotIds = $derived(new Set(pageSnapshots.map((snapshot) => snapshot.id)));
 
@@ -82,10 +97,10 @@
     untrack(resetListPage);
   });
   $effect(() => {
-    if (statusFilter && !statusOptions.includes(statusFilter)) {
-      statusFilter = '';
-      untrack(resetListPage);
-    }
+    search; volumeView.sort; volumeView.filters; snapshotView.sort; snapshotView.filters;
+    untrack(resetListPage);
+  });
+  $effect(() => {
     const lastPage = Math.max(1, Math.ceil(resultCount / pageSize));
     if (currentPage > lastPage) currentPage = lastPage;
   });
@@ -171,6 +186,12 @@
       else volumeSelection.clear();
     });
   });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; volumeView.reset(); snapshotView.reset(); });
+ }));
 </script>
 
 <svelte:window
@@ -182,6 +203,7 @@
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('page.breadcrumb')} title={ctrl.loading || ctrl.error ? t('page.title') : t('page.titleWithCount', { title: t('page.title'), count: ctrl.volumes.length })}>
     {#snippet actions()}
+      <TutorialStartButton tour="volume" />
       <Button dataTour="volume-create-open" onclick={() => ctrl.showModal = true} variant="primary">{t('page.create')}</Button>
       <Button variant="outline" disabled={!$canWrite} onclick={() => ctrl.openTransferModal('', '', 'receive')}>{t('transferModal.receiveTitle')}</Button>
       <Button variant="outline" disabled={!$canWrite} onclick={() => ctrl.openTransferModal('', '', 'list')}>{t('transferModal.listTitle')}</Button>
@@ -191,16 +213,16 @@
     <VolumeSummaryCards volumes={ctrl.volumes} snapshots={ctrl.snapshots} quotas={ctrl.quotas} showSnapshots={$betaFeatures.volumeSnapshots} snapshotsKnown={!ctrl.snapshotsLoading && !ctrl.snapshotsError} />
   {/if}
   <VolumesTabs tab={ctrl.tab} onChange={changeTab} volumeCount={ctrl.loading || ctrl.error ? null : ctrl.volumes.length} snapshotCount={ctrl.snapshotsLoading || ctrl.snapshotsError ? null : ctrl.snapshots.length} showSnapshots={$betaFeatures.volumeSnapshots} />
-  <ResourceToolbar label={t('page.toolbar')} controlsHidden={ctrl.tab !== 'volumes'}>
+  <ResourceToolbar label={t('page.toolbar')}>
     {#snippet filters()}
+      <RegexSearch id="project-volume-search" bind:value={search} label={t('page.search')} />
       {#if ctrl.tab === 'volumes'}
-        <Field label={t('page.search')} for="project-volume-search" class="min-w-0 w-full md:flex-1 md:basis-48"><TextInput id="project-volume-search" type="search" bind:value={search} oninput={resetListPage} /></Field>
-        <Field label={t('listTable.status')} for="project-volume-status" class="min-w-0 max-w-full w-full md:w-auto"><SelectInput id="project-volume-status" bind:value={statusFilter} onchange={resetListPage}><option value="">{t('page.allStatuses')}</option>{#each statusOptions as status}<option value={status}>{getStatusLabel(status, 'volume')}</option>{/each}</SelectInput></Field>
-        <ResourceSortSelect id="project-volume-sort" bind:value={sort} onchange={() => { currentPage = 1; }} />
+        <TableViewControls view={volumeView} class={ctrl.volumes.length === 0 ? '' : 'lg:hidden'} />
+      {:else}
+        <TableViewControls view={snapshotView} class={ctrl.snapshots.length === 0 ? '' : 'lg:hidden'} />
       {/if}
     {/snippet}
     {#snippet actions()}
-      <TutorialStartButton tour="volume" />
       <AutoRefreshControl
         bind:active={ar.active}
         bind:intervalSeconds={ar.intervalSeconds}
@@ -227,6 +249,7 @@
       {#if sortedVolumes.length === 0}<p class="py-6 text-sm text-ink-2" role="status">{t('page.noMatches')}</p>{/if}
       <VolumeListTable
         volumes={pageVolumes}
+        view={volumeView}
         selectedVolumeId={ctrl.selectedVolumeId}
         deleting={ctrl.deleting}
         openActionMenu={ctrl.openActionMenu}
@@ -271,6 +294,7 @@
       />
       <SnapshotListTable
         snapshots={pageSnapshots}
+        view={snapshotView}
         deleting={ctrl.deleting}
         selectedIds={snapshotSelection.ids}
         selectableIds={selectableSnapshotIds}

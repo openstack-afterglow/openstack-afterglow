@@ -344,7 +344,7 @@
 	"image.recommendation.general": "通用镜像候选",
 	"image.recommendation.driverImage": "GPU 专用镜像",
 	"image.recommendation.cpuWarningTitle": "已为 CPU 实例类型选择 GPU 镜像",
-	"image.recommendation.cpuWarning": "此镜像声明了 GPU 相关元数据。附带的 GPU 驱动和工具可能给 CPU 虚拟机带来不必要的磁盘占用和维护开销。您手动选择的镜像将保持不变。", 
+	"image.recommendation.cpuWarning": "此镜像声明了 GPU 相关元数据。附带的 GPU 驱动和工具可能给 CPU 虚拟机带来不必要的磁盘占用和维护开销。您手动选择的镜像将保持不变。",
 	"image.tagsTitle": "选择{name}的标签",
 	"image.tagsHelp": "标签按最新上传时间排序。",
 	"image.inactiveReason": "无法选择（{status}）",

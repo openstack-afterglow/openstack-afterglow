@@ -33,6 +33,7 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/login',
 	'/admin',
 	'/admin/instances',
+	'/admin/images',
 	'/admin/volumes',
 	'/admin/libraries',
 	'/admin/topology',

@@ -16,7 +16,8 @@
 	import FlavorManagePanel from '$lib/components/admin/flavors/FlavorManagePanel.svelte';
 	import AdminFlavorsFilters from '$lib/components/admin/flavors/AdminFlavorsFilters.svelte';
 	import AdminFlavorsTable from '$lib/components/admin/flavors/AdminFlavorsTable.svelte';
-	import { buildGpuFilterOptions, matchesGpuFilter } from '$lib/components/admin/flavors/flavorGpuFilters';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { gpuAliases } from '$lib/components/admin/flavors/flavorGpuFilters';
 	import type { Flavor, PagedResponse } from '$lib/types/flavor';
 	import { toast } from '$lib/stores/toast';
 	import FlavorAutomationPanel from '$lib/components/admin/flavors/FlavorAutomationPanel.svelte';
@@ -30,10 +31,19 @@
 	let error = $state('');
 
 	let nameFilter = $state('');
-	let vcpuFilter = $state('');
-	let ramFilter = $state('');
-	let diskFilter = $state('');
-	let gpuFilter = $state('');
+	const view = createTableView<Flavor>({
+		rows: () => flavors,
+		search: () => nameFilter,
+		searchable: (f) => [f.name, f.display_name ?? '', f.id, f.description ?? '', ...gpuAliases(f)],
+		columns: () => [
+			{ key: 'name', label: t('flavors.fields.name'), value: (f) => f.display_name ?? f.name },
+			{ key: 'vcpus', label: t('flavors.fields.vcpu'), value: (f) => f.vcpus },
+			{ key: 'ram', label: t('flavors.fields.ram'), value: (f) => f.ram },
+			{ key: 'disk', label: t('flavors.fields.disk'), value: (f) => f.disk },
+			{ key: 'is_public', label: t('flavors.fields.public'), value: (f) => f.is_public, format: (v) => t(v ? 'flavors.visibility.public' : 'flavors.visibility.private') },
+			{ key: 'gpu', label: t('flavors.fields.gpu'), value: (f) => f.gpu_count, filterValues: (f) => [f.gpu_count, ...gpuAliases(f)] },
+		],
+	});
 
 	let showCreate = $state(false);
 	let showGpuCatalog = $state(false);
@@ -70,21 +80,6 @@
 		});
 	});
 
-	let gpuOptions = $derived(buildGpuFilterOptions(flavors));
-
-	let filteredFlavors = $derived(flavors.filter((f) => {
-		if (nameFilter && ![f.name, f.display_name ?? '', f.id].some(name => name.toLowerCase().includes(nameFilter.trim().toLowerCase()))) return false;
-		if (vcpuFilter && f.vcpus !== parseInt(vcpuFilter)) return false;
-		if (ramFilter) { const r = parseInt(ramFilter); if (f.ram < r * 0.9 || f.ram > r * 1.1) return false; }
-		if (diskFilter) { const d = parseInt(diskFilter); if (f.disk < d * 0.9 || f.disk > d * 1.1) return false; }
-		return matchesGpuFilter(f, gpuFilter);
-	}));
-
-	$effect(() => {
-		if (gpuFilter && !gpuOptions.some((option) => option.value === gpuFilter)) {
-			gpuFilter = '';
-		}
-	});
 
 	async function load(force = false) {
 		if (!allowed()) return;
@@ -159,14 +154,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={() => {
-					nameFilter = '';
-					vcpuFilter = '';
-					ramFilter = '';
-					diskFilter = '';
-					gpuFilter = '';
-					load(true);
-				}}
+				onManualRefresh={() => load(true)}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('flavors.display')}
@@ -183,14 +171,7 @@
 	</PageHeader>
 
 	<FlavorAutomationPanel onChanged={() => load(true)} />
-	<AdminFlavorsFilters
-		bind:nameFilter
-		bind:vcpuFilter
-		bind:ramFilter
-		bind:diskFilter
-		bind:gpuFilter
-		gpuOptions={gpuOptions}
-	/>
+	<AdminFlavorsFilters bind:nameFilter />
 
 	{#if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
@@ -200,7 +181,9 @@
 		<LoadingState variant="surface" />
 	{:else}
 		<AdminFlavorsTable
-			flavors={filteredFlavors}
+			flavors={view.rows}
+			{view}
+			search={nameFilter}
 			totalUnfiltered={flavors.length}
 			{pageSize}
 			{refreshing}

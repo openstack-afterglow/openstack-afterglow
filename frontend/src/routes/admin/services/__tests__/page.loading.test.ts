@@ -32,6 +32,7 @@ import Page from '../+page.svelte';
 import { auth } from '$lib/stores/auth';
 import { t as commonT } from '$lib/i18n/ns/common';
 import type { Service } from '$lib/types/adminServices';
+import { clearColumn, setColumnValues, sortColumn } from '$lib/components/admin/services/__tests__/tableInteractions';
 
 beforeEach(() => {
 	mockGet.mockReset();
@@ -94,13 +95,13 @@ describe('admin services loading graph', () => {
 		));
 		render(Page);
 		await screen.findByRole('cell', { name: 'host10' });
-		await fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'value:enabled' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Host 정렬' }));
+		await setColumnValues('Status', ['enabled']);
+		await sortColumn('Host');
 		expect(rowHosts()).toEqual(['host1', 'host10']);
 
 		await fireEvent.click(screen.getByRole('button', { name: /Block Storage/ }));
 		await screen.findByRole('cell', { name: 'host2' });
-		await fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'value:disabled' } });
+		await setColumnValues('Status', ['disabled']);
 		expect(rowHosts()).toEqual(['host2']);
 		await fireEvent.click(screen.getByRole('button', { name: /Compute/ }));
 		expect(rowHosts()).toEqual(['host1', 'host10']);
@@ -113,19 +114,20 @@ describe('admin services loading graph', () => {
 		mockGet.mockResolvedValueOnce({ compute: services }).mockReturnValueOnce(refreshed.promise);
 		render(Page);
 		await screen.findByRole('cell', { name: 'host10' });
-		await fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'value:enabled' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Host 정렬' }));
+		await setColumnValues('Status', ['enabled']);
+		await sortColumn('Host');
 		const refresh = autoRefreshCallback.current?.();
 		await tick();
 		expect(rowHosts()).toEqual(['host1', 'host10']);
-		await fireEvent.click(screen.getByRole('button', { name: 'Host 정렬' }));
+		await sortColumn('Host');
 		expect(rowHosts()).toEqual(['host10', 'host1']);
 
 		refreshed.resolve({ compute: services.map(service => ({ ...service, status: 'disabled' })) });
 		await refresh;
-		await vi.waitFor(() => expect(screen.queryByRole('table')).toBeNull());
-		expect(screen.getByRole('option', { name: /^enabled/, selected: true })).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: '필터·정렬 초기화' }));
+		await vi.waitFor(() => expect(rowHosts()).toEqual([]));
+		expect(screen.getByRole('searchbox')).toBeTruthy();
+		await clearColumn('Status');
+		await sortColumn('Host');
 		expect(rowHosts()).toEqual(['host10', 'host2', 'host1']);
 	});
 
@@ -143,7 +145,7 @@ describe('admin services loading graph', () => {
 		await screen.findByRole('cell', { name: 'host10' });
 		const refresh = autoRefreshCallback.current?.();
 		await tick();
-		expect((screen.getByRole('button', { name: '필터·정렬 초기화' }) as HTMLButtonElement).disabled).toBe(false);
+		expect(screen.getByRole('searchbox')).toBeTruthy();
 
 		auth.update((current) => ({ ...current, token: 'rotated-token' }));
 		await tick();

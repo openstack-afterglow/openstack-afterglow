@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
@@ -17,7 +22,7 @@
 	let enabled = $state(false);
 	let poolDraft = $state<Record<string, string>>({}), capDraft = $state<Record<string, string>>({});
 	let gpuNames = $state<Record<string, { name: string; display: string }>>({});
-	let epoch = $state(0), refresh = $state(0);
+	let epoch = $state(0);
 	let live = true, generation = 0, ownerKey = '';
 	const reset = () => { ++generation; data = null; error = ''; outcome = ''; project = ''; poolDraft = {}; capDraft = {}; gpuNames = {}; busy = false; reloadRequired = false; };
 	const sync = () => {
@@ -50,12 +55,17 @@
 	function selectProject(id: string) { project = id; capDraft = data ? Object.fromEntries(resources(data).map(key => [key, data?.project_limits[id]?.[key] == null ? '' : String(data.project_limits[id][key])])) : {}; }
 	async function load() {
 		if (!allowed() || busy) return;
-		++generation; const owner = capture(); loading = true; error = ''; outcome = ''; data = null; reloadRequired = false;
+		++generation; const owner = capture(); loading = true; error = ''; outcome = ''; reloadRequired = false;
 		try {
 			const result = await owner.client.load();
 			if (!owner.current()) return;
 			accept(result);
-		} catch (cause) { if (owner.current()) fail(cause); }
+		} catch (cause) {
+			if (owner.current()) {
+				fail(cause); reloadRequired = true;
+				if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) { data = null; project = ''; poolDraft = {}; capDraft = {}; gpuNames = {}; }
+			}
+		}
 		finally { if (owner.current()) loading = false; }
 	}
 	function fail(cause: unknown) { error = cause instanceof ApiError && cause.status === 409 && /revision|conflict/.test(cause.message) ? t('conflict') : cause instanceof ApiError ? cause.message : t('loadFailed'); }
@@ -83,15 +93,36 @@
 			if (owner.current()) { fail(cause); reloadRequired = true; outcome = cause instanceof ApiError && cause.status < 500 ? '' : t('unknownOutcome'); }
 		} finally { if (owner.current()) busy = false; }
 	}
-	$effect(() => { void epoch; void refresh; void domainId; void adminMode; void session; void blocked; untrack(() => { reset(); loading = false; if (allowed()) void load(); }); });
+	const lifecycleKey = $derived(JSON.stringify([epoch, domainId, adminMode, blocked]));
+	const activeSession = $derived(session);
+	$effect(() => { void lifecycleKey; void activeSession; untrack(() => { reset(); loading = false; if (allowed()) void load(); }); });
 	const poolValues = $derived(parseComputeLimits(poolDraft));
 	const capValues = $derived(data ? parseComputeLimits(capDraft, data.limits) : null);
 	const locked = $derived(blocked || loading || busy || reloadRequired || !allowed(true) || !data?.policy_ready || data.control_scope !== 'afterglow');
+	let poolSearch = $state('');
+	const poolView = createTableView<string>({ rows: () => data ? resources(data) : [], locale: () => intlLocale(), search: () => poolSearch, columns: () => [
+		{ key: 'resource', label: tc('table.key'), value: key => label(key) },
+		{ key: 'usage', label: t('usage'), value: key => data?.usage[key] },
+		{ key: 'limit', label: t('limit'), value: key => data ? computePoolLimit(data.limits, key) : null },
+		{ key: 'remaining', label: t('remaining'), value: key => data?.available[key] }
+	] });
+	let capSearch = $state('');
+	const capView = createTableView<string>({ rows: () => data ? resources(data) : [], locale: () => intlLocale(), search: () => capSearch, columns: () => [
+		{ key: 'resource', label: tc('table.key'), value: key => label(key) },
+		{ key: 'limit', label: t('limit'), value: key => capDraft[key] ? Number(capDraft[key]) : null }
+	] });
+	let staleSearch = $state('');
+	const staleView = createTableView<string>({ rows: () => data?.stale_project_caps ?? [], locale: () => intlLocale(), search: () => staleSearch, columns: () => [
+		{ key: 'project', label: t('project'), value: project => project }
+	] });
+	$effect(() => { void project; void lifecycleKey; void activeSession; untrack(() => { capSearch = ''; capView.reset(); }); });
+	$effect(() => { void lifecycleKey; void activeSession; untrack(() => { staleSearch = ''; staleView.reset(); }); });
+	$effect(() => { void lifecycleKey; void activeSession; untrack(() => { poolSearch = ''; poolView.reset(); }); });
 </script>
 
 <Card surface="base" class="min-w-0">
 	<section class="space-y-4" aria-label={t('title')}>
-		<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('title')}</h2><Button variant="secondary" disabled={blocked || loading || busy || !allowed()} onclick={() => refresh++}>{t('refresh')}</Button></div>
+		<div class="flex flex-wrap items-center gap-2"><h2 class="mr-auto text-lg font-semibold text-ink-0">{t('title')}</h2><Button variant="secondary" disabled={blocked || loading || busy || !allowed()} onclick={load}>{t('refresh')}</Button></div>
 		<p class="text-sm text-ink-2">{t('help')}</p>
 		{#if error}<Alert tone="danger">{error}</Alert>{/if}
 		{#if outcome}<Alert tone={reloadRequired ? 'warning' : 'info'}>{outcome}</Alert>{/if}
@@ -101,12 +132,14 @@
 			<div class="flex flex-wrap gap-2 text-sm text-ink-2"><span>{t(`poolState.${data.state}`)}</span><span>{t('revision', { revision: data.revision })}</span><code class="break-all">{data.domain_id}</code></div>
 			<Alert tone={data.policy_ready && data.control_scope === 'afterglow' ? 'info' : 'warning'}>{data.policy_ready && data.control_scope === 'afterglow' ? t('policyReady') : t('policyUnavailable')}<p class="mt-1 break-words">{t('scopeHelp')}</p></Alert>
 			{#if data.state === 'paused'}<Alert tone="warning">{t('pauseHelp')}</Alert>{/if}
-			{#if data.stale_project_caps?.length}
-				<Alert tone="warning">{t('staleCapHelp')}</Alert>
-				<ul class="divide-y divide-line">{#each data.stale_project_caps as id (id)}<li class="flex flex-wrap items-center justify-between gap-2 py-3"><code class="min-w-0 break-all text-xs text-ink-1">{id}</code><Button variant="secondary" disabled={blocked || loading || busy || reloadRequired || !allowed(true) || data.control_scope !== 'afterglow'} onclick={() => removeStaleCap(id)}>{t('verifyRemoveCap')}</Button></li>{/each}</ul>
+			{#if data.stale_project_caps?.length || staleSearch || Object.keys(staleView.filters).length || staleView.sort}
+				{#if data.stale_project_caps?.length}<Alert tone="warning">{t('staleCapHelp')}</Alert>{/if}
+				<RegexSearch id={`${uid}-stale-search`} bind:value={staleSearch} /><TableViewControls view={staleView} class="" />
+				<ul class="divide-y divide-line">{#each staleView.rows as id (id)}<li class="flex flex-wrap items-center justify-between gap-2 py-3"><code class="min-w-0 break-all text-xs text-ink-1">{id}</code><Button variant="secondary" disabled={blocked || loading || busy || reloadRequired || !allowed(true) || data.control_scope !== 'afterglow'} onclick={() => removeStaleCap(id)}>{t('verifyRemoveCap')}</Button></li>{/each}</ul>
 			{/if}
+			<RegexSearch id={`${uid}-pool-search`} bind:value={poolSearch} /><TableViewControls view={poolView} class="" />
 			<div class="divide-y divide-line">
-				{#each resources(data) as key (key)}
+				{#each poolView.rows as key (key)}
 					<div class="grid min-w-0 grid-cols-1 gap-3 py-3 md:grid-cols-2">
 						<div class="min-w-0"><h3 class="break-all text-sm font-medium text-ink-0">{gpuNames[key]?.name ?? label(key)}</h3>{#if gpuNames[key]}<p class="mt-1 break-all text-xs text-ink-2">{gpuNames[key].display ? `${gpuNames[key].display} · ` : ''}<code>{key}</code></p>{/if}<dl class="mt-2 grid grid-cols-3 gap-2 text-xs text-ink-2"><div class="min-w-0"><dt>{t('usage')}</dt><dd class="break-words tabular-nums text-ink-0">{number(data.usage[key])}</dd></div><div class="min-w-0"><dt>{t('limit')}</dt><dd class="break-words tabular-nums text-ink-0">{data.state === 'unmanaged' ? '—' : number(computePoolLimit(data.limits, key))}</dd></div><div class="min-w-0"><dt>{t('remaining')}</dt><dd class="break-words tabular-nums text-ink-0">{data.state === 'unmanaged' ? '—' : number(data.available[key])}</dd></div></dl></div>
 						{#if adminMode}<Field for={`${uid}-pool-${key}`} label={t('poolLimit', { resource: label(key) })} help={t('limitHelp')} error={poolValues === null ? t('invalidLimit') : ''}><TextInput id={`${uid}-pool-${key}`} inputmode="numeric" bind:value={poolDraft[key]} disabled={locked} ariaInvalid={poolValues === null} /></Field>{/if}
@@ -117,7 +150,8 @@
 			<div class="space-y-3 border-t border-line pt-4">
 				<h3 class="text-sm font-semibold text-ink-0">{t('projectCaps')}</h3><p class="text-sm text-ink-2">{t('capHelp')}</p>
 				<Field for={`${uid}-project`} label={t('project')}><SearchSelect id={`${uid}-project`} value={project} options={data.projects.map(row => ({ value: row.id, label: row.name || row.id, description: row.enabled ? row.id : `${row.id} · ${t('disabled')}` }))} disabled={blocked || loading || busy || reloadRequired || !allowed() || data.state === 'unmanaged'} placeholder={t('chooseProject')} ariaLabel={t('project')} onchange={selectProject} /></Field>
-				{#if project}<code class="block break-all text-xs text-ink-2">{project}</code><div class="grid grid-cols-1 gap-3 md:grid-cols-2">{#each resources(data) as key (key)}<Field for={`${uid}-cap-${key}`} label={label(key)} help={t('capLimitHelp', { limit: number(computePoolLimit(data.limits, key)) })} error={capValues === null ? t('invalidCap') : ''}><TextInput id={`${uid}-cap-${key}`} bind:value={capDraft[key]} disabled={locked || data.state === 'unmanaged' || !data.projects.some(row => row.id === project && row.enabled)} inputmode="numeric" ariaInvalid={capValues === null} /></Field>{/each}</div><div class="flex flex-wrap gap-2"><Button variant="accent" disabled={locked || data.state === 'unmanaged' || capValues === null || !data.projects.some(row => row.id === project && row.enabled)} onclick={() => save('cap')}>{t('saveCap')}</Button><Button variant="secondary" disabled={locked || data.state === 'unmanaged' || !data.project_limits[project]} onclick={() => save('remove')}>{t('removeCap')}</Button></div>{/if}
+				<RegexSearch id={`${uid}-cap-search`} bind:value={capSearch} /><TableViewControls view={capView} class="" />
+				{#if project}<code class="block break-all text-xs text-ink-2">{project}</code><div class="grid grid-cols-1 gap-3 md:grid-cols-2">{#each capView.rows as key (key)}<Field for={`${uid}-cap-${key}`} label={label(key)} help={t('capLimitHelp', { limit: number(computePoolLimit(data.limits, key)) })} error={capValues === null ? t('invalidCap') : ''}><TextInput id={`${uid}-cap-${key}`} bind:value={capDraft[key]} disabled={locked || data.state === 'unmanaged' || !data.projects.some(row => row.id === project && row.enabled)} inputmode="numeric" ariaInvalid={capValues === null} /></Field>{/each}</div><div class="flex flex-wrap gap-2"><Button variant="accent" disabled={locked || data.state === 'unmanaged' || capValues === null || !data.projects.some(row => row.id === project && row.enabled)} onclick={() => save('cap')}>{t('saveCap')}</Button><Button variant="secondary" disabled={locked || data.state === 'unmanaged' || !data.project_limits[project]} onclick={() => save('remove')}>{t('removeCap')}</Button></div>{/if}
 			</div>
 		{/if}
 	</section>

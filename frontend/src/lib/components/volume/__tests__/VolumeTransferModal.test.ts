@@ -14,6 +14,8 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', userId: 'user-a', projectId: 'destination-a', projectName: 'Destination A', canWrite: true }),
 	canWrite: writable(true),
 	projectSwitching: writable(false),
+	authReady: writable(true),
+	getAuthVerificationEpoch: () => 1,
 }));
 vi.mock('$lib/i18n/ns/volume', () => ({ t: (key: string) => key }));
 import { auth, canWrite, projectSwitching } from '$lib/stores/auth';

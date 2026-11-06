@@ -41,6 +41,7 @@ import { serviceCapabilities } from '$lib/stores/servicePermissions';
 import { ApiError } from '$lib/api/client';
 import { createK3sClusterListController } from './k3sClusterListController.svelte';
 import { createK3sClusterDetailController } from './k3sClusterDetailController.svelte';
+import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 import { createK3sProgress } from './k3sProgress.svelte';
 import { createContainerDetailController } from './containerDetailController.svelte';
 
@@ -79,6 +80,34 @@ beforeEach(() => {
 });
 
 describe('Drover handlers independently enforce current exact leaves', () => {
+	it('retains regex and column state over refresh and section remount, but clears actual owner reset', async () => {
+		const { detail, refreshToken } = setup();
+		await detail.loadCluster();
+		const retained = detail.tableState('inventory');
+		retained.search = '^demo$';
+		const columns: TableColumn<K3sCluster>[] = [
+			{ key: 'name', label: 'Name', value: row => row.name },
+			{ key: 'status', label: 'Status', value: row => row.status },
+		];
+		const view = createTableView({ rows: () => detail.cluster ? [detail.cluster] : [], columns: () => columns, search: () => retained.search, state: retained.state });
+		view.setFilter('status', ['ACTIVE', 'BUILD']);
+		view.toggleSort('name');
+		view.toggleSort('name');
+		refreshToken();
+		await detail.loadCluster();
+		expect(view.rows.map(row => row.name)).toEqual(['demo']);
+		expect(detail.tableState('inventory')).toBe(retained);
+		const remounted = createTableView({ rows: () => detail.cluster ? [detail.cluster] : [], columns: () => columns, search: () => retained.search, state: retained.state });
+		expect(remounted.sort).toEqual({ key: 'name', direction: 'desc' });
+		expect(remounted.selected('status')).toEqual(['ACTIVE', 'BUILD']);
+		retained.search = '[';
+		await detail.loadCluster();
+		expect(remounted.error).toBe(true);
+		expect(remounted.rows).toEqual([]);
+		detail.reset();
+		expect(detail.tableState('inventory')).not.toBe(retained);
+		expect(detail.tableState('inventory')).toEqual({ search: '', state: { sort: null, filters: {} } });
+	});
 	it.each([true, false].flatMap(isNew => ['reset', 'namespace-aba', 'revocation'].map(transition => ({ isNew, transition }))))('does not publish a late Secret mutation (create=$isNew) after $transition', async ({ isNew, transition }) => {
 		grant('drover-workloads_editor');
 		const { detail } = setup(true, 'resource-project');

@@ -1,4 +1,7 @@
 <script lang="ts">
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import type { TableView } from '$lib/utils/tableView.svelte';
+ import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
  import type { VolumeBackup } from '$lib/types/volume';
  import StatusChip from '$lib/components/ui/StatusChip.svelte';
  import { formatStorage } from '$lib/utils/format';
@@ -9,12 +12,13 @@
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
  import Button from '$lib/components/ui/Button.svelte';
- let { backups, deletingId, onRestore, onDelete, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll }: {
-  backups: VolumeBackup[]; deletingId: string | null; onRestore: (b: VolumeBackup) => void; onDelete: (id: string, name: string) => Promise<void>;
+ let { view, backups, deletingId, onRestore, onDelete, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll }: {
+  view: TableView<VolumeBackup>; backups: VolumeBackup[]; deletingId: string | null; onRestore: (b: VolumeBackup) => void; onDelete: (id: string, name: string) => Promise<void>;
   selectedIds: ReadonlySet<string>; selectableIds: ReadonlySet<string>; selectionDisabled: boolean; onToggleSelect: (id: string) => void; onToggleAll: () => void;
  } = $props();
  const selectedCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
+{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 <ResponsiveTable>
  {#snippet cards()}
   <div class="responsive-card-toolbar">
@@ -45,7 +49,7 @@
  {/snippet}
 <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
  <th class="text-left py-3 pr-3"><SelectionCheckbox checked={selectableIds.size > 0 && selectedCount === selectableIds.size} indeterminate={selectedCount > 0 && selectedCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('backupListTable.selectAll')} /></th>
- <th class="text-left py-3 pr-6">{t('backupListTable.name')}</th><th class="text-left py-3 pr-6">{t('backupListTable.status')}</th><th class="text-left py-3 pr-6">{t('backupListTable.size')}</th><th class="text-left py-3 pr-6">{t('backupListTable.incremental')}</th><th class="text-left py-3 pr-6">{t('backupListTable.createdAt')}</th><th class="text-right py-3">{t('backupListTable.actions')}</th>
+ <TableColumnHeader {view} columnKey="name" /><TableColumnHeader {view} columnKey="status" /><TableColumnHeader {view} columnKey="size" /><TableColumnHeader {view} columnKey="incremental" /><TableColumnHeader {view} columnKey="created" /><th class="text-right py-3">{t('backupListTable.actions')}</th>
 </tr></thead><tbody class="motion-stagger">
  {#each backups as backup (backup.id)}
   <tr class="resource-selection-surface border-b border-line/50 hover:bg-surface-sunken/50 transition-colors" data-selected={selectedIds.has(backup.id)}>

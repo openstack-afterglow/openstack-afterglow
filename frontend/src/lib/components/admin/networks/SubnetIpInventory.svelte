@@ -14,7 +14,7 @@
 	const userId = $derived($auth.userId);
 	const projectId = $derived($auth.projectId);
 	const scope = $derived<Scope>({ id: subnetId, token, userId, projectId });
-	const scopeKey = $derived(JSON.stringify([subnetId, token, userId, projectId]));
+	const scopeKey = $derived(JSON.stringify([subnetId, userId, projectId]));
 	let requestScope = $state<Scope | null>(null);
 	let detail = $state<AdminSubnetDetail | null>(null);
 	let loading = $state(false);
@@ -24,14 +24,17 @@
 	function sameScope(a: Scope, b: Scope | null): boolean {
 		return b !== null && a.id === b.id && a.token === b.token && a.userId === b.userId && a.projectId === b.projectId;
 	}
+	function sameOwner(a: Scope, b: Scope | null): boolean {
+		return b !== null && a.id === b.id && a.userId === b.userId && a.projectId === b.projectId;
+	}
 	const scoped = $derived(sameScope(scope, requestScope));
-	const subnet = $derived(scoped ? detail : null);
+	const subnet = $derived(scope.token && sameOwner(scope, requestScope) ? detail : null);
 	const visibleError = $derived(scoped ? error : null);
 	const busy = $derived(!scoped || loading);
 
 	async function loadSubnet(target: Scope, refresh = false) {
 		const requestGeneration = ++generation;
-		if (!sameScope(target, requestScope)) detail = null;
+		if (!sameOwner(target, requestScope) || !target.token) detail = null;
 		requestScope = target;
 		error = null;
 		loading = Boolean(target.id && target.token);

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -7,6 +10,8 @@
 	import { api } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import { formatDate, formatSize } from '$lib/utils/format';
 	import { t } from '$lib/i18n/ns/dashboard-home';
@@ -140,11 +145,12 @@
 	// Period/project changes can overlap in-flight requests; only the latest may publish.
 	let requestSerial = 0;
 	let chatUsageSerial = 0;
-	let reportToken: string | undefined;
-	let reportProjectId: string | undefined;
+	let reportScope: string | undefined;
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const privateViewScope = createPrivateViewScope();
+	const displayOwner = $derived(JSON.stringify([$privateViewScope, !!$auth.token, sessionScopeKey($auth)]));
 
 	async function fetchData() {
 		const serial = ++requestSerial;
@@ -155,21 +161,25 @@
 			loading = false;
 			return;
 		}
-		const requestToken = token, requestProjectId = projectId, requestPeriod = period;
-		const owns = () => serial === requestSerial && token === requestToken && projectId === requestProjectId && period === requestPeriod;
+		const requestToken = token, requestProjectId = projectId, requestPeriod = period, requestOwner = displayOwner;
+		const owns = () => serial === requestSerial && displayOwner === requestOwner && period === requestPeriod;
 		const experience = beginExperienceLoad('monitoring', 'page');
 		const inventoryExperience = beginExperienceLoad('monitoring', 'resource.list');
-		if (requestToken !== reportToken || requestProjectId !== reportProjectId) {
+		const logicalScope = requestOwner;
+		if (logicalScope !== reportScope) {
 			data = null;
 			inventory = null;
 			chatUsage = null;
+			for (const model of [observationView0, observationView1]) {
+				model.search = '';
+				model.view.reset();
+			}
 		}
-		reportToken = requestToken;
-		reportProjectId = requestProjectId;
+		reportScope = logicalScope;
 		loading = !data;
 		error = null;
 		if (loading) experienceState(experience, 'loading');
-		// Refreshes keep the current inventory on screen; only a first load (or a project switch) shows the skeleton.
+		// Same-owner refreshes keep the current inventory; a new display owner gets a skeleton.
 		if (!inventory) {
 			inventoryState = 'loading';
 			experienceState(inventoryExperience, 'loading');
@@ -212,8 +222,8 @@
 			chatUsage = null;
 			return;
 		}
-		const requestToken = token, requestProjectId = projectId;
-		const owns = () => serial === chatUsageSerial && token === requestToken && projectId === requestProjectId;
+		const requestToken = token, requestProjectId = projectId, requestOwner = displayOwner;
+		const owns = () => serial === chatUsageSerial && displayOwner === requestOwner;
 		const experience = beginExperienceLoad('monitoring', 'resource.detail');
 		try {
 			const usage = await api.withExperience(experience).get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProjectId);
@@ -230,12 +240,12 @@
 	}
 
 	$effect(() => {
-		void [token, projectId, period];
+		void [token, displayOwner, period];
 		untrack(() => fetchData());
 	});
 
 	$effect(() => {
-		void [token, projectId];
+		void [token, displayOwner];
 		untrack(() => fetchChatUsage());
 	});
 
@@ -413,6 +423,9 @@
 			days: entry.days_to_limit ?? 0,
 		});
 	}
+
+	const observationView0 = createObservationView(() => (sortedFlavors), () => ([{ key: 'flavor', label: t('usageReport.columns.flavor'), value: row => row.flavor }, { key: 'cpu', label: 'vCPU', value: row => row.vcpus }, { key: 'ram', label: 'RAM(GB)', value: row => row.ram_mb / 1024 }, { key: 'hours', label: t('usageReport.columns.usageHours'), value: row => row.usage_hours }, { key: 'vcpuHours', label: 'vCPU·h', value: row => row.vcpu_hours }, { key: 'count', label: t('usageReport.columns.vmCount'), value: row => row.instance_count }]));
+	const observationView1 = createObservationView(() => (data?.instance_usage ?? []), () => ([{ key: 'instance', label: t('usageReport.resources.instance'), value: row => row.name }, { key: 'flavor', label: t('usageReport.columns.flavor'), value: row => row.flavor }, { key: 'status', label: t('usageReport.columns.status'), value: row => row.state }, { key: 'started', label: t('usageReport.columns.started'), value: row => row.started_at }, { key: 'hours', label: t('usageReport.columns.usageHours'), value: row => row.hours }, { key: 'cpu', label: 'vCPU', value: row => row.vcpus }, { key: 'gpu', label: 'GPU', value: row => row.gpu_count }]));
 </script>
 
 {#snippet amount(text: string)}<span>{text}</span>{/snippet}
@@ -588,7 +601,9 @@
 				{#if sortedFlavors.length === 0}
 					<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 				{:else}
-					<ResponsiveTable class="mt-4">{#snippet cards()}{#each sortedFlavors as f (f.flavor)}<CompactResourceCard>
+					<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as f (f.flavor)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-mono">{f.flavor}</h3>{#if f.gpu_count > 0}<Pill tone="accent">{t('usageReport.flavors.gpuCount', { count: formatValue(f.gpu_count) })}</Pill>{/if}</div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(f.usage_hours, 1)}</p><p class="text-xs">{t('usageReport.columns.vmCount')}: {formatValue(f.instance_count)}</p>
 						{#snippet details()}<p class="text-xs">vCPU: {formatValue(f.vcpus)} · RAM(GB): {formatValue(Math.round(f.ram_mb / 1024))}</p><p class="text-xs">vCPU·h: {formatValue(f.vcpu_hours, 1)}</p>{/snippet}
 					</CompactResourceCard>{/each}{/snippet}
@@ -596,16 +611,16 @@
 						<table>
 							<thead>
 								<tr>
-									<th scope="col">{t('usageReport.columns.flavor')}</th>
-									<th scope="col">vCPU</th>
-									<th scope="col">RAM(GB)</th>
-									<th scope="col">{t('usageReport.columns.usageHours')}</th>
-									<th scope="col">vCPU·h</th>
-									<th scope="col">{t('usageReport.columns.vmCount')}</th>
+									<TableColumnHeader view={tableView} columnKey="flavor" />
+									<TableColumnHeader view={tableView} columnKey="cpu" />
+									<TableColumnHeader view={tableView} columnKey="ram" />
+									<TableColumnHeader view={tableView} columnKey="hours" />
+									<TableColumnHeader view={tableView} columnKey="vcpuHours" />
+									<TableColumnHeader view={tableView} columnKey="count" />
 								</tr>
 							</thead>
 							<tbody class="motion-stagger">
-								{#each sortedFlavors as f (f.flavor)}
+								{#each tableView.rows as f (f.flavor)}
 									<tr>
 										<td>
 											<div class="flex items-center gap-2">
@@ -626,6 +641,8 @@
 						</table>
 					</TableShell>
 					</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				{/if}
 			</Card>
 
@@ -679,7 +696,9 @@
 			{#if data.instance_usage.length === 0}
 				<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 			{:else}
-				<ResponsiveTable class="mt-4">{#snippet cards()}{#each data?.instance_usage ?? [] as row (row.instance_id)}<CompactResourceCard>
+				<ObservationTable model={observationView1}>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as row (row.instance_id)}<CompactResourceCard>
 					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{row.name || t('usageReport.missingValue')}</h3><StatusChip status={row.state} /></div><p class="text-sm tabular-nums">{t('usageReport.columns.usageHours')}: {formatValue(row.hours, 1)}</p>{#if row.ended_at}<Pill tone="neutral">{t('usageReport.instances.deleted')}</Pill>{/if}
 					{#snippet details()}<p class="text-xs font-mono">{row.instance_id}</p><p class="text-xs">{t('usageReport.columns.flavor')}: {row.flavor}</p><p class="text-xs">{t('usageReport.columns.started')}: {row.started_at ? formatDate(row.started_at) : t('usageReport.missingValue')}</p><p class="text-xs">vCPU: {formatValue(row.vcpus)} · GPU: {row.gpu_count ? formatValue(row.gpu_count) : t('usageReport.missingValue')}</p>{/snippet}
 				</CompactResourceCard>{/each}{/snippet}
@@ -687,17 +706,17 @@
 					<table>
 						<thead>
 							<tr>
-								<th scope="col">{t('usageReport.resources.instance')}</th>
-								<th scope="col">{t('usageReport.columns.flavor')}</th>
-								<th scope="col">{t('usageReport.columns.status')}</th>
-								<th scope="col">{t('usageReport.columns.started')}</th>
-								<th scope="col">{t('usageReport.columns.usageHours')}</th>
-								<th scope="col">vCPU</th>
-								<th scope="col">GPU</th>
+								<TableColumnHeader view={tableView} columnKey="instance" />
+								<TableColumnHeader view={tableView} columnKey="flavor" />
+								<TableColumnHeader view={tableView} columnKey="status" />
+								<TableColumnHeader view={tableView} columnKey="started" />
+								<TableColumnHeader view={tableView} columnKey="hours" />
+								<TableColumnHeader view={tableView} columnKey="cpu" />
+								<TableColumnHeader view={tableView} columnKey="gpu" />
 							</tr>
 						</thead>
 						<tbody class="motion-stagger">
-							{#each data.instance_usage as row (row.instance_id)}
+							{#each tableView.rows as row (row.instance_id)}
 								<tr>
 									<td>
 										<div class="text-ink-0">{row.name || t('usageReport.missingValue')}</div>
@@ -722,6 +741,8 @@
 					</table>
 				</TableShell>
 				</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 			{/if}
 		</Card>
 

@@ -2,8 +2,17 @@
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
 	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	const s = useInstanceDetailController();
+	const columns = (): TableColumn<[string, string]>[] => [
+		{ key: 'key', label: tc('table.key'), value: row => row[0] },
+		{ key: 'value', label: tc('table.value'), value: row => row[1] },
+	];
+	const view = createTableView({ rows: () => Object.entries(s.instance?.metadata ?? {}), columns });
 
 	const strategyLabel: Record<string, string> = {
 		get prebuilt() { return t('union.prebuilt'); },
@@ -76,12 +85,14 @@
 	</ResponsiveTable>
 </div>
 
-{#if Object.keys(s.instance!.metadata ?? {}).length > 0}
+{#if Object.keys(s.instance!.metadata ?? {}).length > 0 || Object.keys(view.filters).length > 0 || view.sort}
 	<div class="motion-enter bg-surface-base border border-line rounded-lg p-6">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('union.metadata')}</h2>
+		<TableViewControls {view} />
+		{#if Object.keys(s.instance!.metadata ?? {}).length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each Object.entries(s.instance!.metadata ?? {}) as [k, v] (k)}
+				{#each view.rows as [k, v] (k)}
 					<CompactResourceCard>
 						<h3 class="text-xs font-medium break-all line-clamp-2" title={k}>{k}</h3>
 						<p class="text-xs text-ink-2 font-mono break-all line-clamp-2" title={v}>{v}</p>
@@ -90,8 +101,9 @@
 				{/each}
 			{/snippet}
 		<table class="w-full text-sm">
+			<thead><tr><TableColumnHeader {view} columnKey="key" /><TableColumnHeader {view} columnKey="value" /></tr></thead>
 			<tbody>
-				{#each Object.entries(s.instance!.metadata ?? {}) as [k, v]}
+				{#each view.rows as [k, v] (k)}
 					<tr class="border-b border-line/50">
 						<td class="py-2 pr-4 text-ink-2 text-xs w-1/3 break-all">{k}</td>
 						<td class="py-2 text-ink-2 font-mono text-xs break-all">{v}</td>

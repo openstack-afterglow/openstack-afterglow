@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { createLoginMonitoringController } from '../loginMonitoringController.svelte';
 import LoginMonitoringPage from '$lib/components/admin/logins/LoginMonitoring.svelte';
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
 import { t } from '$lib/i18n/ns/login-monitoring';
+import { t as common } from '$lib/i18n/ns/common';
 import type { LoginMonitoring, MonitoringAuthority } from '$lib/types/loginMonitoring';
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }));
@@ -131,6 +132,30 @@ describe('selected-user monitoring consumer', () => {
     await vi.waitFor(() => expect(request.mock.calls.some(([path]) => path.endsWith('window=7d'))).toBe(true));
     projectSwitching.set(true);
     await vi.waitFor(() => expect(screen.queryByText('session-project')).toBeNull());
+  });
+  it('keeps history conditions reachable and removable when refresh returns no events', async () => {
+    await mountSelected();
+    await vi.waitFor(() => expect(screen.getByText('project-record')).toBeTruthy());
+    const initialHistory = screen.getByRole('region', { name: t('recent') });
+    await fireEvent.input(within(initialHistory).getByRole('searchbox', { name: common('table.search') }), { target: { value: '^auth' } });
+    const filterName = common('table.filterColumn', { column: t('project') });
+    await fireEvent.click(within(initialHistory).getByRole('button', { name: filterName }));
+    let popup = screen.getByRole('dialog', { name: filterName });
+    await fireEvent.click(within(popup).getByRole('button', { name: common('table.selectNone') }));
+    await fireEvent.click(within(popup).getByRole('checkbox', { name: 'project-record' }));
+    await fireEvent.click(within(popup).getByRole('button', { name: common('actions.close') }));
+    const empty = snapshot(); empty.history.events = [];
+    request.mockResolvedValueOnce(empty);
+    const pageHeader = screen.getByRole('heading', { name: t('title') }).closest<HTMLElement>('.page-header')!;
+    await fireEvent.click(within(pageHeader).getByRole('button', { name: t('refresh') }));
+    await screen.findByText(t('emptyEvents'));
+    const history = screen.getByRole('region', { name: t('recent') });
+    expect((within(history).getByRole('searchbox', { name: common('table.search') }) as HTMLInputElement).value).toBe('^auth');
+    await fireEvent.click(within(history).getByRole('button', { name: filterName }));
+    popup = screen.getByRole('dialog', { name: filterName });
+    expect((within(popup).getByRole('checkbox', { name: 'project-record' }) as HTMLInputElement).checked).toBe(true);
+    await fireEvent.click(within(popup).getByRole('button', { name: common('table.resetFilter') }));
+    expect(within(popup).queryByRole('checkbox', { name: 'project-record' })).toBeNull();
   });
   it.each(['unknown', 'unavailable', 'partial'] as const)('shows %s sessions as unknown, never verified empty', async state => {
     const data = snapshot(); data.sessions = { state, valid_count: null, observed_recent_count: null, items: state === 'partial' ? [] : null };

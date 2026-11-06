@@ -10,13 +10,18 @@
 	import { formatSize } from '$lib/utils/format';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 
 	let {
 		images, selectedImageId, togglingId, verifyingId, currentImageIds,
+		view,
 		deletingId = null,
 		onOpenDetail, onEdit, onToggleActivation, onDelete, onToggleVerification,
 	}: {
 		images: AdminImage[];
+		view: TableView<AdminImage>;
 		selectedImageId: string | null;
 		togglingId: string | null;
 		verifyingId: string | null;
@@ -68,8 +73,11 @@
 	<TableShell density="compact">
 		<table>
 			<thead><tr>
-				<th scope="col">{t('images.table.imageTag')}</th><th scope="col">{t('images.table.hashId')}</th><th scope="col">{t('images.table.verification')}</th><th scope="col">{t('images.table.status')}</th><th scope="col">{t('images.visibility.label')}</th>
-				<th scope="col">{t('images.table.size')}</th><th scope="col">{t('images.table.format')}</th><th scope="col">{t('images.table.project')}</th><th scope="col">{t('images.table.uploadedAt')}</th><th scope="col">{t('images.table.actions')}</th>
+				<th scope="col" aria-sort={view.direction('tag')}><div class="flex flex-wrap gap-2">{#each ['tag', 'repository', 'os_distro'] as key}<TableColumnControl {view} columnKey={key} />{/each}</div></th>
+				{#each ['id', 'verification', 'status', 'visibility', 'size', 'disk_format', 'owner', 'created_at'] as key}
+					<TableColumnHeader {view} columnKey={key} />
+				{/each}
+				<th scope="col">{t('images.table.actions')}</th>
 			</tr></thead>
 			<tbody>
 				{#each images as img (img.id)}

@@ -18,6 +18,8 @@
 		id: string;
 		grant_id: string;
 		name: string;
+		owner_project_id: string;
+		owner_project_name: string;
 		source: string;
 		access_level: string;
 		project_scope: 'current' | 'selected' | 'all';
@@ -44,8 +46,8 @@
 	import { siteConfig } from '$lib/config/site';
 	import { page } from '$app/stores';
 	import { docsHref } from '$lib/docs/locales';
-	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
-	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
+	import { confirmDialog, dialogState } from '$lib/stores/confirm.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -59,6 +61,11 @@
 	import McpPermissionPreview from './McpPermissionPreview.svelte';
 	import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
 	import { t as tp } from '$lib/i18n/ns/public-entry';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+	import McpClientList from './McpClientList.svelte';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 
 
 
@@ -78,7 +85,9 @@
 	interface AccessScope {
 		token: string | undefined;
 		projectId: string | undefined;
+		domainId: string | undefined;
 		userId: string | undefined;
+		ownerKey: string;
 		enabled: boolean;
 	}
 
@@ -89,6 +98,7 @@
 	let loadController: AbortController | null = null;
 	let issuanceSequence = 0;
 	let issuanceController: AbortController | null = null;
+	let confirmationRequestId: number | null = null;
 	let projectsScope = $state.raw<AccessScope | null>(null);
 	let projects = $state<McpProject[]>([]);
 	let projectsError = $state('');
@@ -122,6 +132,37 @@
 	const copySequences: Record<CopyTarget, number> = { oauth: 0, setup: 0, token: 0, config: 0 };
 	let tokens = $state<McpAccessRecord[]>([]);
 	let oauthGrants = $state<McpAccessRecord[]>([]);
+	const uid = $props.id();
+	let tokenSearch = $state('');
+	let grantSearch = $state('');
+	let clientViews = $state<Record<string, { search: string; table: TableViewState }>>({});
+	let viewOwner = '';
+	function accessColumns(oauth = false): TableColumn<McpAccessRecord>[] {
+		return [
+			{ key: 'name', label: t('mcp.name'), value: row => oauth ? `${t('mcp.oauth')} ${oauthGrants.indexOf(row) + 1}` : row.name },
+			{ key: 'status', label: tc('table.status'), value: row => row.status },
+			{ key: 'access', label: t('mcp.permission'), value: row => row.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') },
+			{ key: 'projects', label: t('mcp.projects'), value: row => row.projects.map(project => project.name).join(', ') || null, filterValues: row => row.projects.map(project => project.name) },
+			{ key: 'origin', label: t('mcp.issuingProjectLabel'), value: row => row.owner_project_name },
+			{ key: 'scope', label: t('mcp.savedRestrictions'), value: row => row.project_scope === 'all' ? t('mcp.savedAllProjects') : row.project_scope === 'selected' ? t('mcp.savedSelectedProjects') : t('mcp.savedCurrentProject') },
+			{ key: 'expires', label: tc('table.expires'), value: row => row.expires_at ? Date.parse(row.expires_at) : null, format: (_value, row) => row.expires_at ? formatDate(row.expires_at) : t('mcp.expiryNever') },
+			...(!oauth ? [
+				{ key: 'prefix', label: tc('table.prefix'), value: (row: McpAccessRecord) => row.visible_prefix },
+				{ key: 'lastUsed', label: tc('table.lastUsed'), value: (row: McpAccessRecord) => row.last_used_at ? Date.parse(row.last_used_at) : null, format: (_value: unknown, row: McpAccessRecord) => formatDate(row.last_used_at) },
+				{ key: 'default', label: t('mcp.lumenDefault'), value: (row: McpAccessRecord) => row.is_lumen_default, format: (value: unknown) => value ? t('mcp.lumenDefault') : '—' },
+			] : []),
+		];
+	}
+	const tokenView = createTableView<McpAccessRecord>({
+		locale: () => intlLocale(),
+		rows: () => tokens, columns: () => accessColumns(), search: () => tokenSearch,
+		searchable: row => [row.name, row.status, row.access_level, row.visible_prefix ?? '', row.owner_project_name, row.owner_project_id, ...row.projects.flatMap(project => [project.name, project.id])],
+	});
+	const grantView = createTableView<McpAccessRecord>({
+		locale: () => intlLocale(),
+		rows: () => oauthGrants, columns: () => accessColumns(true), search: () => grantSearch,
+		searchable: row => [`${t('mcp.oauth')} ${oauthGrants.indexOf(row) + 1}`, row.status, row.access_level, row.owner_project_name, ...row.projects.map(project => project.name)],
+	});
 	let actionError = $state('');
 	let creating = $state(false);
 	let mutatingId = $state<string | null>(null);
@@ -209,16 +250,20 @@
 		return t('mcp.verifyError.unavailable');
 	}
 
+	function isAccountScope(owner: AccessScope | null): owner is AccessScope & { token: string } {
+		return owner !== null && owner === scope && owner.enabled && !!owner.token;
+	}
+
 	function isCurrentScope(owner: AccessScope | null): owner is AccessScope & { token: string; projectId: string } {
-		return owner !== null && owner === scope && owner.enabled && !!owner.token && !!owner.projectId;
+		return isAccountScope(owner) && !!owner.projectId && !!owner.domainId;
 	}
 
 	function ownsToken(owner: AccessScope, record: McpAccessRecord) {
-		return method === 'api' && isCurrentScope(owner) && tokensScope === owner && !tokensLoading && !tokensError && tokens.includes(record);
+		return method === 'api' && isAccountScope(owner) && tokensScope === owner && !tokensLoading && !tokensError && tokens.includes(record);
 	}
 
 	function ownsGrant(owner: AccessScope, record: McpAccessRecord) {
-		return method === 'oauth' && isCurrentScope(owner) && grantsScope === owner && !grantsLoading && !grantsError && oauthGrants.includes(record);
+		return method === 'oauth' && isAccountScope(owner) && grantsScope === owner && !grantsLoading && !grantsError && oauthGrants.includes(record);
 	}
 
 	function clearPermissionPreview() {
@@ -254,8 +299,27 @@
 			}
 		}
 	}
+	function clearOwnedConfirmation() {
+		const request = confirmationRequestId;
+		confirmationRequestId = null;
+		if (request !== null && dialogState.requestId === request && dialogState.open) dialogState.reject();
+	}
+
+	async function confirmRemoval(message: string) {
+		clearOwnedConfirmation();
+		const result = confirmDialog(message);
+		const request = dialogState.requestId;
+		confirmationRequestId = request;
+		try {
+			return await result;
+		} finally {
+			if (confirmationRequestId === request) confirmationRequestId = null;
+		}
+	}
+
 
 	function reset() {
+		clearOwnedConfirmation();
 		loadController?.abort();
 		loadController = null;
 		tokensScope = null;
@@ -290,13 +354,19 @@
 	// Subscribe synchronously so even a batched A → B → A gets a new owner.
 	// Unrelated store updates keep the owner, including populated refresh rows.
 	onMount(() => {
-		const unsubscribe = derived([auth, siteConfig, authReady, projectSwitching], ([authState, config, ready, switching]): AccessScope => ({
+		const unsubscribe = derived([auth, siteConfig, authReady, projectSwitching, logoutInProgress], ([authState, config, ready, switching, loggingOut]): AccessScope => ({
 			token: authState.token ?? undefined,
 			projectId: authState.projectId ?? undefined,
+			domainId: authState.domainId ?? undefined,
 			userId: authState.userId ?? undefined,
-			enabled: config.services.mcp && ready && !switching,
+			ownerKey: sessionScopeKey(authState),
+			enabled: config.services.mcp && ready && !switching && !loggingOut,
 		})).subscribe((next) => {
-			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.userId === next.userId && scope?.enabled === next.enabled) return;
+			const nextViewOwner = next.enabled ? next.ownerKey : '';
+			if (viewOwner !== nextViewOwner) {
+				viewOwner = nextViewOwner; tokenSearch = ''; grantSearch = ''; tokenView.reset(); grantView.reset(); clientViews = {};
+			}
+			if (scope?.token === next.token && scope?.ownerKey === next.ownerKey && scope?.enabled === next.enabled) return;
 			scope = next;
 			reset();
 		});
@@ -340,16 +410,14 @@
 	}
 
 	async function loadAccessFor(owner: AccessScope | null) {
-		if (!isCurrentScope(owner)) return;
+		if (!isAccountScope(owner)) return;
 		const request = ++loadSequence;
 		loadController?.abort();
 		const controller = new AbortController();
 		loadController = controller;
 		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
-		tokensScope = null;
-		grantsScope = null;
-		tokens = [];
-		oauthGrants = [];
+		if (tokensScope !== owner) { tokensScope = null; tokens = []; }
+		if (grantsScope !== owner) { grantsScope = null; oauthGrants = []; }
 		tokensError = '';
 		grantsError = '';
 		tokensLoading = true;
@@ -359,12 +427,12 @@
 		clearPermissionPreview();
 		invalidateIssuance();
 		const token = owner.token;
-		const projectId = owner.projectId;
-		const current = () => isCurrentScope(owner) && request === loadSequence;
+		const current = () => isAccountScope(owner) && request === loadSequence;
 		async function loadRecords(kind: AccessMethod) {
 			try {
-				const records = await api.get<McpAccessRecord[]>(kind === 'api' ? '/api/v1/auth/mcp-tokens' : '/api/v1/auth/mcp-oauth/grants', token, projectId, { refresh: true, signal, suppressAuthRedirect: true });
+				const records = await api.get<McpAccessRecord[]>(kind === 'api' ? '/api/v1/auth/mcp-tokens' : '/api/v1/auth/mcp-oauth/grants', token, undefined, { refresh: true, signal, suppressAuthRedirect: true });
 				if (!current()) return;
+				for (const record of records) clientViews[`${kind}-${record.id}`] ??= { search: '', table: { sort: null, filters: {} } };
 				if (kind === 'api') { tokens = records; tokensScope = owner; }
 				else { oauthGrants = records; grantsScope = owner; }
 			} catch (error) {
@@ -378,7 +446,7 @@
 				}
 			}
 		}
-		await Promise.all([loadProjectsFor(owner, request, signal), loadRecords('api'), loadRecords('oauth')]);
+		await Promise.all([isCurrentScope(owner) ? loadProjectsFor(owner, request, signal) : Promise.resolve(), loadRecords('api'), loadRecords('oauth')]);
 		controller.abort();
 		if (loadController === controller) loadController = null;
 		if (current()) {
@@ -389,6 +457,7 @@
 
 	function selectMethod(next: AccessMethod) {
 		if (method === next) return;
+		clearOwnedConfirmation();
 		methodSequence += 1;
 		method = next;
 		invalidateIssuance();
@@ -480,14 +549,14 @@
 
 	async function copyContent(target: CopyTarget, owner: AccessScope, secret: string | null = null) {
 		const secretTarget = target === 'token' || target === 'config';
-		if (!isCurrentScope(owner) || (secretTarget && (!secret || issuedToken !== secret))) return;
+		if (!isAccountScope(owner) || (secretTarget && (!secret || issuedToken !== secret))) return;
 		if (method !== (target === 'oauth' ? 'oauth' : 'api')) return;
 		const content = () => target === 'oauth' ? oauthConfig : target === 'setup' ? setupConfig
 			: target === 'config' ? connectionConfig(secret!) : secret!;
 		const text = content();
 		const selected = methodSequence;
 		const request = ++copySequences[target];
-		const current = () => isCurrentScope(owner) && selected === methodSequence && request === copySequences[target]
+		const current = () => isAccountScope(owner) && selected === methodSequence && request === copySequences[target]
 			&& (!secretTarget || issuedToken === secret) && content() === text;
 		copyStates[target] = undefined;
 		try {
@@ -533,7 +602,7 @@
 	}
 
 	async function selectLumenDefault(owner: AccessScope, record: McpAccessRecord) {
-		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
+		if (!isCurrentScope(owner) || record.owner_project_id !== owner.projectId || !ownsToken(owner, record) || mutatingId !== null) return;
 		const selected = methodSequence;
 		mutatingId = record.id;
 		actionError = '';
@@ -548,7 +617,7 @@
 	}
 
 	async function clearLumenDefault(owner: AccessScope, record: McpAccessRecord) {
-		if (!isCurrentScope(owner) || !ownsToken(owner, record) || !record.is_lumen_default || mutatingId !== null) return;
+		if (!isCurrentScope(owner) || record.owner_project_id !== owner.projectId || !ownsToken(owner, record) || !record.is_lumen_default || mutatingId !== null) return;
 		const selected = methodSequence;
 		mutatingId = 'lumen-default';
 		actionError = '';
@@ -563,38 +632,38 @@
 	}
 
 	async function revokeToken(owner: AccessScope, record: McpAccessRecord) {
-		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
+		if (!isAccountScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
 		const selected = methodSequence;
 		const loaded = loadSequence;
-		if (!(await confirmDialog(t('mcp.revokeConfirm', { name: record.name })))) return;
-		if (!isCurrentScope(owner) || selected !== methodSequence || loaded !== loadSequence || !ownsToken(owner, record) || mutatingId !== null) return;
+		if (!(await confirmRemoval(t('mcp.revokeConfirm', { name: record.name })))) return;
+		if (!isAccountScope(owner) || selected !== methodSequence || loaded !== loadSequence || !ownsToken(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
-			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, owner.token, owner.projectId);
-			if (isCurrentScope(owner) && tokensScope === owner) await loadAccessFor(owner);
+			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, owner.token);
+			if (isAccountScope(owner) && tokensScope === owner) await loadAccessFor(owner);
 		} catch (error) {
 			if (ownsToken(owner, record) && selected === methodSequence) actionError = errorMessage(error, t('mcp.revokeFailed'));
 		} finally {
-			if (isCurrentScope(owner)) mutatingId = null;
+			if (isAccountScope(owner)) mutatingId = null;
 		}
 	}
 
 	async function revokeOAuthGrant(owner: AccessScope, record: McpAccessRecord, label: string) {
-		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
+		if (!isAccountScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
 		const selected = methodSequence;
 		const loaded = loadSequence;
-		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: label })))) return;
-		if (!isCurrentScope(owner) || selected !== methodSequence || loaded !== loadSequence || !ownsGrant(owner, record) || mutatingId !== null) return;
+		if (!(await confirmRemoval(t('mcp.revokeOAuthConfirm', { name: label })))) return;
+		if (!isAccountScope(owner) || selected !== methodSequence || loaded !== loadSequence || !ownsGrant(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
-			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, owner.token, owner.projectId);
-			if (isCurrentScope(owner) && grantsScope === owner) await loadAccessFor(owner);
+			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, owner.token);
+			if (isAccountScope(owner) && grantsScope === owner) await loadAccessFor(owner);
 		} catch (error) {
 			if (ownsGrant(owner, record) && selected === methodSequence) actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
 		} finally {
-			if (isCurrentScope(owner)) mutatingId = null;
+			if (isAccountScope(owner)) mutatingId = null;
 		}
 	}
 
@@ -602,14 +671,11 @@
 		if (!value) return '—';
 		return new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 	}
-	function formatObservationDate(value: string | null) {
-		return value && Number.isFinite(Date.parse(value)) ? formatDate(value) : t('mcp.unknown');
-	}
 
 
 	$effect(() => {
 		const owner = scope;
-		if (isCurrentScope(owner)) untrack(() => void loadAccessFor(owner));
+		if (isAccountScope(owner)) untrack(() => void loadAccessFor(owner));
 	});
 
 	$effect(() => {
@@ -626,35 +692,8 @@
 	});
 </script>
 
-{#snippet clientObservations(record: McpAccessRecord)}
-	{@const observations = (record.client_observations ?? []).slice(0, 10)}
-	<div class="client-observations" role="group" aria-label={t('mcp.observations')}>
-		{#if observations.length === 0}
-			<p>{t('mcp.noObservations')}</p>
-		{:else}
-			<p>{t('mcp.observationHelp')}</p>
-			<p>{tp('mcpClients.count', { count: observations.length })}</p>
-			<ul class="client-list">
-				{#each observations as observation}
-					<li>
-						<details>
-							<summary class="client-summary min-h-11 py-3 md:min-h-0 md:py-0 cursor-pointer text-xs text-ink-1 focus-visible:outline-2 focus-visible:outline-accent">
-								<span><strong>{observation.client_name || observation.product || t('mcp.unknownClient')}</strong> · <span>{observation.client_name ? t('mcp.clientSource.client_info') : t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</span></span>
-								<span class="client-evidence">{t('mcp.clientVersion', { version: observation.client_version || t('mcp.unknown') })}{#if observation.client_version && !observation.client_name}{' · '}{t('mcp.clientSource.client_info')}{/if}</span>
-							</summary>
-							{#if observation.client_name}
-								<span class="client-evidence"><span>{t('mcp.clientInference', { product: observation.product || t('mcp.unknown'), kind: t(`mcp.clientKind.${observation.kind}`) })}</span> · <span>{t('mcp.clientEvidence', { source: t(`mcp.clientSource.${observation.identity_source}`) })}</span></span>
-							{:else}
-								<span class="client-evidence">{t(`mcp.clientKind.${observation.kind}`)}</span>
-							{/if}
-							<p>{t('mcp.clientPlatform', { browser: observation.browser || t('mcp.unknown'), os: observation.os || t('mcp.unknown') })}</p>
-							<p>{t('mcp.clientDates', { first: formatObservationDate(observation.first_seen_at), last: formatObservationDate(observation.last_seen_at) })}</p>
-						</details>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</div>
+{#snippet clientObservations(record: McpAccessRecord, kind: AccessMethod = 'api')}
+	{#if clientViews[`${kind}-${record.id}`]}<McpClientList observations={(record.client_observations ?? []).slice(0, 10)} bind:state={clientViews[`${kind}-${record.id}`]} />{/if}
 {/snippet}
 
 {#snippet listFailure(error: string)}
@@ -687,6 +726,7 @@
 {#snippet savedRestrictions(record: McpAccessRecord, hideIdentifiers = false)}
 	<div class="saved-restrictions" role="group" aria-label={t('mcp.savedRestrictions')}>
 		<p class="restriction-heading">{t('mcp.savedRestrictions')}</p>
+		<p>{t('mcp.issuingProject', { project: record.owner_project_name })}</p>
 		<p>{t('mcp.savedAccess', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') })}</p>
 		{#if record.project_scope === 'all'}
 			<p>{t('mcp.savedAllProjects')}</p>
@@ -714,7 +754,7 @@
 	</div>
 {/snippet}
 
-{#if mcpEnabled && isCurrentScope(scope)}
+{#if mcpEnabled && isAccountScope(scope)}
 	{@const owner = scope}
 	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
 		<div class="section-heading">
@@ -730,6 +770,9 @@
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
 		<Button href={docsHref('mcp', getLocale(), $page.url)} variant="link" size="sm">{t('mcp.docs')}</Button>
 
+		{#if !isCurrentScope(owner)}
+			<Alert tone="info">{#snippet children()}{t('mcp.workspaceRequired')}{/snippet}</Alert>
+		{/if}
 		<div class="method-selection" role="group" aria-label={t('mcp.method')}>
 			<Button class="method-card" variant={method === 'oauth' ? 'secondary' : 'outline'} ariaPressed={method === 'oauth'} onclick={() => selectMethod('oauth')}>{t('mcp.methodOAuth')}</Button>
 			<Button class="method-card" variant={method === 'api' ? 'secondary' : 'outline'} ariaPressed={method === 'api'} onclick={() => selectMethod('api')}>{t('mcp.methodApiKey')}</Button>
@@ -760,6 +803,7 @@
 
 		{#if mutatingId}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
 		{#if method === 'api'}
+		{#if isCurrentScope(owner)}
 		<form class="token-form" onsubmit={submitToken.bind(null, owner)}>
 			<Field label={t('mcp.name')} for="mcp-token-name" required>
 				{#snippet children()}
@@ -844,12 +888,14 @@
 			{/if}
 			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !canCreate}>{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
+		{/if}
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
 			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
 			<p>{t('mcp.setupHelp')}</p>
 			{@render jsonBlock(owner, 'setup', setupConfig, t('mcp.config'), t('mcp.copySetupConfig'))}
 		</section>
 
+		{#if isCurrentScope(owner)}
 		<section aria-labelledby="mcp-verify-heading" class="connection-section">
 			<h3 id="mcp-verify-heading">{t('mcp.verifyTitle')}</h3>
 			<form class="verification-form" onsubmit={submitVerification.bind(null, owner)}>
@@ -864,6 +910,7 @@
 			</form>
 			{#if verificationSource === 'saved'}{@render connectionFeedback()}{/if}
 		</section>
+		{/if}
 
 
 		<section aria-labelledby="mcp-personal-tokens-heading">
@@ -871,16 +918,21 @@
 				<h3 id="mcp-personal-tokens-heading">{t('mcp.personal')}</h3>
 				{#if tokensScope === owner && !tokensError}<span><AnimatedNumber value={tokens.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>{/if}
 			</div>
+			<RegexSearch id={`${uid}-token-search`} bind:value={tokenSearch} />
+			<TableViewControls view={tokenView} class="" />
 			{#if tokensLoading && tokensScope === owner}<LoadingState variant="inline" label={t('mcp.loadingAccess')} />{/if}
 			{#if tokensError}
 				{@render listFailure(tokensError)}
-			{:else if tokensLoading && tokensScope !== owner}
+			{/if}
+			{#if tokensLoading && tokensScope !== owner}
 				<LoadingState variant="section" label={t('mcp.loadingAccess')}  />
 			{:else if tokensScope === owner && tokens.length === 0}
 				<p class="empty">{t('mcp.emptyTokens')}</p>
+			{:else if tokensScope === owner && tokenView.rows.length === 0}
+				<p role="status" class="empty">{tc('table.noMatches')}</p>
 			{:else}
 				<div class="records">
-					{#each tokens as record (record.id)}
+					{#each tokenView.rows as record (record.id)}
 						<div class="record">
 							<div class="record-main">
 								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
@@ -890,12 +942,14 @@
 								{#if record.is_lumen_default}<p class="default-note">{t('mcp.lumenDefault')}</p>{/if}
 							</div>
 							<div class="record-actions">
+								{#if isCurrentScope(owner) && record.owner_project_id === owner.projectId}
 								{#if record.is_lumen_default}
-									<Button variant="subtle" size="xs" onclick={clearLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.clearLumen')}</Button>
+									<Button variant="subtle" size="xs" onclick={clearLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record)}>{t('mcp.clearLumen')}</Button>
 								{:else}
-									<Button variant="outline" size="xs" onclick={selectLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
+									<Button variant="outline" size="xs" onclick={selectLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record) || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
 								{/if}
-								<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeToken.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.revoke')}</Button>
+								{/if}
+								<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeToken.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record)}>{t('mcp.revoke')}</Button>
 							</div>
 						</div>
 					{/each}
@@ -908,24 +962,29 @@
 
 		<section aria-labelledby="mcp-oauth-grants-heading">
 			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3>{#if grantsScope === owner && !grantsError}<span><AnimatedNumber value={oauthGrants.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>{/if}</div>
+			<RegexSearch id={`${uid}-grant-search`} bind:value={grantSearch} />
+			<TableViewControls view={grantView} class="" />
 			{#if grantsLoading && grantsScope === owner}<LoadingState variant="inline" label={t('mcp.loadingAccess')} />{/if}
 			{#if grantsError}
 				{@render listFailure(grantsError)}
-			{:else if grantsLoading && grantsScope !== owner}
+			{/if}
+			{#if grantsLoading && grantsScope !== owner}
 				<LoadingState variant="section" label={t('mcp.loadingAccess')}  />
 			{:else if grantsScope === owner && oauthGrants.length === 0}
 				<p class="empty">{t('mcp.emptyOAuth')}</p>
+			{:else if grantsScope === owner && grantView.rows.length === 0}
+				<p role="status" class="empty">{tc('table.noMatches')}</p>
 			{:else if grantsScope === owner && oauthGrants.length > 0}
 				<div class="records">
-					{#each oauthGrants as record, index (record.id)}
+					{#each grantView.rows as record (record.id)}
 						<div class="record">
 							<div class="record-main">
-								<div class="record-title"><strong>{t('mcp.oauth')} {index + 1}</strong><StatusChip status={record.status} /></div>
+								<div class="record-title"><strong>{t('mcp.oauth')} {oauthGrants.indexOf(record) + 1}</strong><StatusChip status={record.status} /></div>
 								<p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: record.expires_at ? formatDate(record.expires_at) : t('mcp.expiryNever') })}</p>
 								{@render savedRestrictions(record, true)}
-								{@render clientObservations(record)}
+								{@render clientObservations(record, 'oauth')}
 							</div>
-							<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record, `${t('mcp.oauth')} ${index + 1}`)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
+							<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record, `${t('mcp.oauth')} ${oauthGrants.indexOf(record) + 1}`)} disabled={mutatingId !== null || !ownsGrant(owner, record)}>{t('mcp.revokeAccess')}</Button>
 						</div>
 					{/each}
 				</div>
@@ -990,13 +1049,6 @@
 	.record p { overflow-wrap: anywhere; }
 	.saved-restrictions { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--color-line); }
 	.record .restriction-heading { color: var(--color-ink-1); font-weight: 500; }
-	.client-observations { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--color-line); font-size: 0.75rem; }
-	.client-list { display: grid; gap: 0.5rem; list-style: none; margin: 0.5rem 0 0; padding: 0; }
-	.client-list li { padding-left: 0.75rem; border-left: 1px solid var(--color-line); }
-	.client-list strong { color: var(--color-ink-1); }
-	.client-summary { overflow-wrap: anywhere; line-height: 1.5; }
-	.client-summary > span:first-child { color: var(--color-ink-1); }
-	.client-evidence { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-weight: 400; }
 	.subheading { margin-bottom: 0.5rem; }
 	.subheading h3 { font-size: 0.875rem; }
 	.subheading span { color: var(--color-ink-2); font-size: 0.75rem; }

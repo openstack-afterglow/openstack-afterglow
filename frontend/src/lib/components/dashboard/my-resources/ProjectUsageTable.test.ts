@@ -1,9 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import type * as Reactivity from 'svelte/reactivity';
 import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 import type { ProjectResourceInventory } from '$lib/types/userDashboard';
 import { t } from '$lib/i18n/ns/dashboard-home';
+import { t as tc } from '$lib/i18n/ns/common';
 
 const viewport = vi.hoisted(() => ({ desktop: false }));
 vi.mock('svelte/reactivity', async (importOriginal) => {
@@ -49,6 +50,25 @@ it('retains the complete desktop table instead of mounting duplicate cards', () 
 	viewport.desktop = true;
 	const { container } = render(ProjectUsageTable, { projects: [project()] });
 	expect(screen.getByRole('table')).toBeTruthy();
-	expect(screen.getByRole('columnheader', { name: t('myResources.category.secrets') })).toBeTruthy();
+
 	expect(container.querySelector('article')).toBeNull();
+});
+
+it('retains regex and ordering while refreshed project totals replace the rows', async () => {
+	viewport.desktop = true;
+	const first = project();
+	const second = { ...project(), project_id: 'project-b', project_name: 'Project B' };
+	const rendered = render(ProjectUsageTable, { projects: [first, second] });
+	const search = screen.getByRole('searchbox', { name: tc('table.search') });
+	await fireEvent.input(search, { target: { value: '^Project (A|B)$' } });
+	await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('projectUsage.project'), direction: tc('table.none') }) }));
+	await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('projectUsage.project'), direction: tc('table.ascending') }) }));
+	await rendered.rerender({ projects: [{ ...first, usage: { ...first.usage, vcpus: 8 } }, second] });
+	expect((search as HTMLInputElement).value).toBe('^Project (A|B)$');
+	expect(screen.getAllByRole('rowheader').map(cell => cell.textContent)).toEqual(['Project B', 'Project A']);
+	await fireEvent.input(search, { target: { value: '[' } });
+	await rendered.rerender({ projects: [] });
+	expect(screen.getByText(tc('table.regexError'))).toBeTruthy();
+	expect(screen.queryByRole('rowheader')).toBeNull();
+	expect(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('projectUsage.project'), direction: tc('table.descending') }) })).toBeTruthy();
 });

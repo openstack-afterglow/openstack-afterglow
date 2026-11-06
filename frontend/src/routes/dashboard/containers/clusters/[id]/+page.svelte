@@ -17,6 +17,8 @@
   import ClusterEventsTab from '$lib/components/dashboard/containers/clusters/id/ClusterEventsTab.svelte';
   import { toast } from '$lib/stores/toast';
   import { PageShell, Tabs } from '$lib/components/ui';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 
   type Tab = 'detail' | 'resources' | 'events';
   let activeTab = $state<Tab>('detail');
@@ -24,6 +26,27 @@
   let cluster = $state<Cluster | null>(null);
   let resources = $state<StackResource[]>([]);
   let events = $state<StackEvent[]>([]);
+  let resourcesSearch = $state('');
+  let eventsSearch = $state('');
+  const resourceColumns = (): TableColumn<StackResource>[] => [
+    { key: 'resource_name', label: t('clusters.resources.name'), value: row => row.resource_name },
+    { key: 'resource_type', label: t('clusters.resources.type'), value: row => row.resource_type },
+    { key: 'physical_resource_id', label: t('clusters.resources.physicalId'), value: row => row.physical_resource_id || null },
+    { key: 'resource_status', label: t('clusters.resources.status'), value: row => row.resource_status },
+    { key: 'created_at', label: t('clusters.resources.createdAt'), value: row => row.created_at },
+  ];
+  const eventColumns = (): TableColumn<StackEvent>[] => [
+    { key: 'event_time', label: t('clusters.events.time'), value: row => row.event_time },
+    { key: 'resource_name', label: t('clusters.events.resource'), value: row => row.resource_name },
+    { key: 'resource_status', label: t('clusters.events.status'), value: row => row.resource_status },
+    { key: 'resource_status_reason', label: t('clusters.events.reason'), value: row => row.resource_status_reason },
+  ];
+  const resourcesView = createTableView({ rows: () => resources, columns: resourceColumns,
+    search: () => resourcesSearch, locale: intlLocale,
+    searchable: row => [row.resource_name, row.resource_type, row.physical_resource_id, row.resource_status, row.resource_status_reason, row.created_at].map(value => value ?? '') });
+  const eventsView = createTableView({ rows: () => events, columns: eventColumns,
+    search: () => eventsSearch, locale: intlLocale,
+    searchable: row => [row.resource_name, row.resource_status, row.resource_status_reason, row.event_time, row.logical_resource_id, row.physical_resource_id].map(value => value ?? '') });
   const clusterTabs = $derived([
     { value: 'detail', label: t('clusters.tabs.detail'), panelId: 'cluster-panel-detail' },
     { value: 'resources', label: cluster?.stack_id ? t('clusters.tabs.resources') : t('clusters.tabs.noResources'), panelId: 'cluster-panel-resources', disabled: !cluster?.stack_id },
@@ -147,13 +170,19 @@
     const requestId = clusterId;
     const requestProject = projectId;
     if (!requestId || !requestProject) return;
-    loading = true;
-    resources = [];
-    events = [];
-    activeTab = 'detail';
-    untrack(() => void fetchCluster());
-    resourcesLoaded = false;
-    eventsLoaded = false;
+    untrack(() => {
+      loading = true;
+      resources = [];
+      events = [];
+      resourcesSearch = '';
+      eventsSearch = '';
+      resourcesView.reset();
+      eventsView.reset();
+      activeTab = 'detail';
+      void fetchCluster();
+      resourcesLoaded = false;
+      eventsLoaded = false;
+    });
   });
 </script>
 
@@ -194,9 +223,9 @@
     {#if activeTab === 'detail'}
       <ClusterDetailGrid {cluster} />
     {:else if activeTab === 'resources'}
-      <ClusterResourcesTab {resources} loading={resourcesLoading} onRefresh={fetchResources} />
+      <ClusterResourcesTab {resources} view={resourcesView} bind:search={resourcesSearch} loading={resourcesLoading} onRefresh={fetchResources} />
     {:else if activeTab === 'events'}
-      <ClusterEventsTab {events} loading={eventsLoading} onRefresh={fetchEvents} />
+      <ClusterEventsTab {events} view={eventsView} bind:search={eventsSearch} loading={eventsLoading} onRefresh={fetchEvents} />
     {/if}
     </div>
   {/if}

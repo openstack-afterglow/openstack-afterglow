@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
 	import type { CanvasDomainGroup, Rect } from './types';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 	let { groups, rects, query, domainGroupLabel, panX, panY, k, world = false }: {
 		groups: readonly CanvasDomainGroup[];
 		rects: ReadonlyMap<string, Rect>;
@@ -11,6 +12,7 @@
 		k: number;
 		world?: boolean;
 	} = $props();
+	const compiled = $derived(compileRegexSearch(query));
 </script>
 
 {#each groups as group (group.id)}
@@ -19,7 +21,7 @@
 		{#if world}
 			<div class="domain-box" data-domain-box={group.id} style:left="{rect.x}px" style:top="{rect.y}px" style:width="{rect.w}px" style:height="{rect.h}px" aria-hidden="true"></div>
 		{:else}
-			<div class="domain-label" data-domain-label={group.id} style:left="{rect.x * k + panX + 10}px" style:top="{rect.y * k + panY + 4}px" style:width="{Math.max(1, rect.w * k - 20)}px" title="{domainGroupLabel(group)} — {t('domain.ownershipOnly')}" data-search-match={query.trim() && domainGroupLabel(group).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) ? 'true' : undefined}>
+			<div class="domain-label" data-domain-label={group.id} style:left="{rect.x * k + panX + 10}px" style:top="{rect.y * k + panY + 4}px" style:width="{Math.max(1, rect.w * k - 20)}px" title="{domainGroupLabel(group)} — {t('domain.ownershipOnly')}" data-search-match={query.trim() && matchesRegexSearch(compiled, domainGroupLabel(group)) ? 'true' : undefined}>
 				{domainGroupLabel(group)}
 			</div>
 		{/if}

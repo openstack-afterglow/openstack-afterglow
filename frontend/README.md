@@ -86,6 +86,19 @@ Wrap application-authored table and div-grid data views in `ResponsiveTable`. It
 
 Author the compact branch with `CompactResourceCard`: name/status, two or three key facts, visible wrapping actions, secondary UUID/time/specification fields in `details` or the existing detail view. Use `.responsive-card-toolbar` for select-all/sort controls above the card grid. The default layout auto-fits18rem cards inside the available width with0.5rem gaps and0.75rem padding, without fixed heights. Preserve all action/permission/unknown-state boundaries and ensure inline editors do not lose drafts on viewport transitions. User/external Markdown and graph canvases are not data-table conversions.
 
+### Table search, sorting and value filters
+
+`utils/tableView.svelte.ts` owns typed local projection: explicit searchable fields → always-on case-insensitive Unicode regex → column facets → stable sort. Complete arrays are projected before pagination and visible selection. Native marker/cursor pages keep their continuation and disclose that local search/facets/order apply only to loaded rows; an upstream provider query is a separate, explicitly labeled constraint, never advertised as regex.
+
+Use `RegexSearch` for inline regex help/errors, `TableColumnHeader` for native `th`, and `TableColumnControl` for div-grid headings. `TableViewControls` provides the same controls for compact cards; only genuinely card-only surfaces use it on desktop. Adjacent filter popovers offer searchable exact values and counts, multi-selection, none and reset. An active empty selection matches nothing. Refresh never clears a selected value merely because fresh options omit it; it remains a removable zero-count condition.
+
+Keep view owners above loading/responsive branches. Ordinary manual/background refresh preserves search/facets/sort; actual actor/project/confirmed-authority changes retain existing privacy resets. An optional reactive display-state adapter may preserve these non-authoritative conditions across a required token-keyed mutation lifetime; never reuse a credential, pending confirmation or mutation owner that way. Tutorial entry points belong in the highest PageHeader actions beside create/edit, including consumer/admin image inventories.
+Server-backed columns use `filterOptions`/`filterSelection`/`onFilterChange` adapters and `filterMode: 'single'` where the existing native API accepts one value. Free native predicates (`filterFreeValue`) and numeric minimum/maximum (`rangeFilter`) live in the column popover; they preserve existing query semantics and marker resets without reintroducing toolbar filters. Known enums, full directories or status summaries supply options; unavailable counts remain unknown. External native predicates are never applied a second time locally. `onSortChange` maps supported native ordering; coalesce multi-condition reset into one reload rather than fetching once per column.
+
+`SearchSelect` form-option pickers use the same `iu` regex compiler over separate visible label/description fields, including anchors and invalid-pattern feedback; they do not split terms into substring queries. Active column triggers expose localized selected counts to assistive technology. Header predicates update only their own applied native parameter: pending period/request/interaction form drafts are committed only by the explicit form action.
+
+
+
 
 ### Dashboard charts: Bklit UI
 

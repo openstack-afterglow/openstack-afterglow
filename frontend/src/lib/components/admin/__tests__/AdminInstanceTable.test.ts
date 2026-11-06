@@ -6,6 +6,8 @@ import { t as instanceT } from '$lib/i18n/ns/instance';
 
 
 import AdminInstanceTable from '../instances/AdminInstanceTable.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
+const view = () => createTableView<AdminInstance>({ rows: () => [], columns: () => [{ key: 'name', label: t('instances.table.name'), value: row => row.name }] });
 
 describe('AdminInstanceTable', () => {
 	it('opens the selected resource from its name', async () => {
@@ -24,6 +26,7 @@ describe('AdminInstanceTable', () => {
 		render(AdminInstanceTable, {
 			props: {
 				instances: [instance],
+				view: view(),
 				selectedIds: new Set<string>(),
 				onOpen,
 				onToggleSelect: vi.fn(),
@@ -43,6 +46,7 @@ describe('AdminInstanceTable', () => {
 		};
 		const { rerender } = render(AdminInstanceTable, {
 			instances: [instance],
+			view: view(),
 			selectedIds: new Set<string>(), onOpen: vi.fn(),
 			onRecover: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(),
 		});
@@ -61,6 +65,7 @@ describe('AdminInstanceTable', () => {
 	it('uses row-native owner names and preserves deleted or unknown ownership states', () => {
 		const base = { id: 'one', name: 'vm-one', status: 'ACTIVE', project_id: 'p-one', user_id: null, flavor: 'small', host: 'host', created_at: null };
 		render(AdminInstanceTable, {
+			view: view(),
 			instances: [
 				{ ...base, project_name: 'Research', domain_id: 'd-one', domain_name: 'Science', owner_status: 'known' },
 				{ ...base, id: 'two', project_id: 'p-two', project_name: 'Research', domain_id: 'd-two', domain_name: 'Engineering', owner_status: 'known' },

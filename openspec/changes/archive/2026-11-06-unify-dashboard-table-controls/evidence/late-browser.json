@@ -1,0 +1,28 @@
+{
+  "boundary": "Actual production Node routes, isolated synthetic tutorial transport; no native mutations",
+  "anchored": [
+    "Demo mock-domain · 활성"
+  ],
+  "invalid": {
+    "invalid": "true",
+    "options": 0,
+    "error": "올바르지 않은 정규식입니다. 괄호와 이스케이프를 확인하세요. 수정하기 전에는 일치하는 행이 없습니다.",
+    "stillOpen": true,
+    "scope": "mock-domain"
+  },
+  "recovered": 1,
+  "announced": {
+    "id": 34,
+    "role": "button",
+    "name": "이름 값 필터",
+    "description": "1개 선택됨",
+    "states": [
+      "expanded=false",
+      "focused"
+    ]
+  },
+  "koreanTourClose": {
+    "accessibleName": "닫기",
+    "closedAfterActivation": true
+  }
+}

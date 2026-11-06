@@ -7,6 +7,8 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { Alert, ResourceIdentifier, TableShell } from '$lib/components/ui';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import type { TableView } from '$lib/utils/tableView.svelte';
 	type OwnedInstance = AdminInstance & {
 		project_name?: string | null;
 		domain_id?: string | null;
@@ -15,6 +17,7 @@
 	};
 	let {
 		instances,
+		view,
 		selectedIds,
 		selectableIds = new Set(instances.map((instance) => instance.id)),
 		selectionDisabled = false,
@@ -24,6 +27,7 @@
 		onToggleAll,
 	}: {
 		instances: OwnedInstance[];
+		view: TableView<OwnedInstance>;
 		selectedIds: ReadonlySet<string>;
 		selectableIds?: ReadonlySet<string>;
 		selectionDisabled?: boolean;
@@ -52,7 +56,6 @@
 	{/if}
 {/snippet}
 
-{#if instances.length > 0}
 <ResponsiveTable>
 	{#snippet cards()}
 		<div class="responsive-card-toolbar min-h-11 text-xs text-ink-2"><SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('instances.table.selectAll')} />{t('instances.table.selectAll')}</div>
@@ -82,12 +85,9 @@
 						ariaLabel={t('instances.table.selectAll')}
 					/>
 				</th>
-				<th class="text-left py-2 pr-4">{t('instances.table.name')}</th>
-				<th class="text-left py-2 pr-4">{t('instances.table.status')}</th>
-				<th class="text-left py-2 pr-4">{t('instances.table.flavor')}</th>
-				<th class="text-left py-2 pr-4">{t('instances.table.host')}</th>
-				<th class="text-left py-2 pr-4">{t('instances.table.project')}</th>
-				<th class="text-left py-2">{t('instances.table.createdAt')}</th>
+				{#each view.columns as column (column.key)}
+					<TableColumnHeader {view} columnKey={column.key} />
+				{/each}
 			</tr>
 		</thead>
 		<tbody>
@@ -145,5 +145,4 @@
 	</table>
 </TableShell>
 </ResponsiveTable>
-{/if}
 

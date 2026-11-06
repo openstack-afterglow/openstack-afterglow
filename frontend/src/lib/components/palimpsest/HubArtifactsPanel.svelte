@@ -4,7 +4,6 @@
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import { onMount, untrack } from 'svelte';
   import type { PackageIdentity } from '$lib/api/palimpsestPackages';
-  import type { HubFilters } from '$lib/api/palimpsestHub';
   import { MAX_HUB_DOWNLOAD_BYTES, hubDownloadCommand, sameHubIdentity } from '$lib/api/palimpsestHub';
   import { createPalimpsestHubController } from '$lib/stores/palimpsestHubController.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -14,15 +13,71 @@
   import Card from '$lib/components/ui/Card.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
-  import Field from '$lib/components/ui/Field.svelte';
-  import TextInput from '$lib/components/ui/TextInput.svelte';
-  import SelectInput from '$lib/components/ui/SelectInput.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import type { HubLayer } from '$lib/api/palimpsestHub';
+  import type { HubBuild, HubExport } from '$lib/api/palimpsestHub';
+  import type { HubFilters } from '$lib/api/palimpsestHub';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as commonText } from '$lib/i18n/ns/common';
 
   let { identity }: { identity: PackageIdentity | null } = $props();
   const hub = createPalimpsestHubController(() => identity);
-  let name = $state(''), prefix = $state(''), kind = $state(''), arch = $state(''), diskFormat = $state('');
+  let localSearch = $state('');
+  let nativeFilters = $state<HubFilters>({});
+  function setNativeFilter<Key extends keyof HubFilters>(key: Key, value: HubFilters[Key] | undefined) {
+    if (nativeFilters[key] === value) return;
+    const next = { ...nativeFilters };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    nativeFilters = next;
+    void hub.setFilters(next);
+  }
+  const columns = $derived<TableColumn<HubLayer>[]>([
+    { key: 'name', label: t('name'), value: row => row.name,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => [...new Set((hub.inventory ?? []).map(row => row.name))].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => nativeFilters.name ? [nativeFilters.name] : null,
+      onFilterChange: values => { if (!values || values.length === 1) setNativeFilter('name', values?.[0]); } },
+    { key: 'kind', label: t('filter.kind'), value: row => row.kind,
+      filterMode: 'single', filterOptions: () => ['cloud-image', 'squashfs'].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => nativeFilters.kind ? [nativeFilters.kind] : null,
+      onFilterChange: values => { if (!values || values.length === 1) setNativeFilter('kind', values?.[0] as HubFilters['kind']); } },
+    { key: 'arch', label: t('filter.arch'), value: row => row.arch,
+      filterMode: 'single', filterOptions: () => ['x86_64', 'aarch64'].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => nativeFilters.arch ? [nativeFilters.arch] : null,
+      onFilterChange: values => { if (!values || values.length === 1) setNativeFilter('arch', values?.[0] as HubFilters['arch']); } },
+    { key: 'format', label: t('filter.format'), value: row => row.disk_format,
+      filterMode: 'single', filterOptions: () => ['raw', 'qcow2', 'vmdk', 'vdi', 'vhd', 'vhdx'].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => nativeFilters.disk_format ? [nativeFilters.disk_format] : null,
+      onFilterChange: values => { if (!values || values.length === 1) setNativeFilter('disk_format', values?.[0] as HubFilters['disk_format']); } },
+    { key: 'size', label: t('size'), value: row => row.size_bytes, format: (_value, row) => bytes(row.size_bytes) },
+    { key: 'digest', label: t('digest'), value: row => row.blob_digest,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => (hub.inventory ?? []).map(row => ({ value: row.blob_digest, label: row.blob_digest, count: null })),
+      filterSelection: () => nativeFilters.digest_prefix ? [nativeFilters.digest_prefix] : null,
+      onFilterChange: values => { if (!values || values.length === 1) setNativeFilter('digest_prefix', values?.[0]); } },
+  ]);
+  const view = createTableView({ rows: () => hub.inventory ?? [], columns: () => columns, search: () => localSearch,
+    searchable: row => [row.name, row.kind, row.arch ?? '', row.disk_format ?? '', row.blob_digest], locale: intlLocale });
+  let buildSearch = $state(''), exportSearch = $state('');
+  const buildColumns = $derived<TableColumn<HubBuild>[]>([
+    { key: 'name', label: t('name'), value: row => row.name },
+    { key: 'status', label: commonText('table.status'), value: row => row.status },
+    { key: 'created', label: t('jobs.created'), value: row => timestampInstant(row.created_at), format: (_value, row) => timestamp(row.created_at) },
+    { key: 'size', label: t('size'), value: row => row.output_size_bytes, format: (_value, row) => bytes(row.output_size_bytes) },
+  ]);
+  const buildView = createTableView({ rows: () => hub.builds ?? [], columns: () => buildColumns, search: () => buildSearch, locale: intlLocale });
+  const exportColumns = $derived<TableColumn<HubExport>[]>([
+    { key: 'name', label: t('name'), value: row => row.source_name },
+    { key: 'status', label: commonText('table.status'), value: row => row.status },
+    { key: 'created', label: t('jobs.created'), value: row => timestampInstant(row.created_at), format: (_value, row) => timestamp(row.created_at) },
+    { key: 'size', label: t('size'), value: row => row.size_bytes, format: (_value, row) => bytes(row.size_bytes) },
+  ]);
+  const exportView = createTableView({ rows: () => hub.exports ?? [], columns: () => exportColumns, search: () => exportSearch, locale: intlLocale });
   let autoRefresh = $state(false);
   let copyNotice = $state<'copied' | 'copyFailed' | null>(null);
   const permissionReady = $derived(!!$projectPermissions.permissions && !$projectPermissions.loading && !$projectPermissions.error);
@@ -33,6 +88,14 @@
     try { return hubDownloadCommand(hub.detail); } catch { return ''; }
   });
   const urls = new Set<string>();
+  let previousOwner = '';
+  $effect(() => {
+    const owner = identity ? `${identity.projectId}:${identity.userId}` : '';
+    if (owner !== previousOwner) {
+      previousOwner = owner;
+      untrack(() => { localSearch = ''; buildSearch = ''; exportSearch = ''; nativeFilters = {}; void hub.setFilters({}); view.reset(); buildView.reset(); exportView.reset(); });
+    }
+  });
 
   $effect(() => {
     identity?.token; identity?.projectId; identity?.userId;
@@ -52,29 +115,21 @@
       for (const url of urls) URL.revokeObjectURL(url);
     };
   });
+  function timestampInstant(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    // Hub DATETIME rows serialize UTC without an offset; explicit offsets and epochs already identify an instant.
+    const instant = typeof value === 'string' ? Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value) ? `${value}Z` : value) : value;
+    return Number.isFinite(instant) ? instant : null;
+  }
   function timestamp(value: string | number | null | undefined) {
-    if (value === null || value === undefined || value === '') return t('unknown');
-    // Hub DATETIME rows serialize UTC without an offset; epochs and explicit offsets already identify an instant.
-    const instant = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value) ? `${value}Z` : value;
-    const date = new Date(instant);
-    return Number.isNaN(date.getTime()) ? t('unknown') : date.toLocaleString(intlLocale());
+    const instant = timestampInstant(value);
+    return instant === null ? t('unknown') : new Date(instant).toLocaleString(intlLocale());
   }
   function bytes(value: number | null | undefined) {
     if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return t('unknown');
     if (value < 1024) return `${value.toLocaleString(intlLocale())} B`;
     const unit = value >= 1024 ** 3 ? 3 : value >= 1024 ** 2 ? 2 : 1;
     return `${(value / 1024 ** unit).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} ${['B', 'KiB', 'MiB', 'GiB'][unit]}`;
-  }
-  async function search(clear = false) {
-    if (clear) { name = ''; prefix = ''; kind = ''; arch = ''; diskFormat = ''; }
-    const filters: HubFilters = {};
-    if (name.trim()) filters.name = name.trim();
-    if (prefix.trim()) filters.digest_prefix = prefix.trim();
-    if (kind === 'cloud-image' || kind === 'squashfs') filters.kind = kind;
-    if (arch === 'x86_64' || arch === 'aarch64') filters.arch = arch;
-    if (diskFormat === 'raw' || diskFormat === 'qcow2' || diskFormat === 'vmdk' || diskFormat === 'vdi' || diskFormat === 'vhd' || diskFormat === 'vhdx') filters.disk_format = diskFormat;
-    copyNotice = null;
-    await hub.setFilters(filters);
   }
   async function copyDigest() {
     const actor = identity ? { ...identity } : null;
@@ -133,32 +188,24 @@
       {#if !hub.canInventory}
         <Alert tone="warning">{t('denied')}</Alert>
       {:else}
-        <Card surface="base">
-          <form onsubmit={(event) => { event.preventDefault(); void search(); }} class="space-y-3">
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
-              <Field label={t('filter.name')} for="hub-name"><TextInput id="hub-name" bind:value={name} maxlength={128} /></Field>
-              <Field label={t('filter.digest')} for="hub-prefix"><TextInput id="hub-prefix" bind:value={prefix} maxlength={71} /></Field>
-              <Field label={t('filter.kind')} for="hub-kind"><SelectInput id="hub-kind" bind:value={kind}><option value="">{t('filter.all')}</option><option value="cloud-image">cloud-image</option><option value="squashfs">squashfs</option></SelectInput></Field>
-              <Field label={t('filter.arch')} for="hub-arch"><SelectInput id="hub-arch" bind:value={arch}><option value="">{t('filter.all')}</option><option value="x86_64">x86_64</option><option value="aarch64">aarch64</option></SelectInput></Field>
-              <Field label={t('filter.format')} for="hub-format"><SelectInput id="hub-format" bind:value={diskFormat}><option value="">{t('filter.all')}</option>{#each ['raw', 'qcow2', 'vmdk', 'vdi', 'vhd', 'vhdx'] as format}<option value={format}>{format}</option>{/each}</SelectInput></Field>
-            </div>
-            <p class="text-xs text-ink-2">{t('filter.help')}</p>
-            <div class="flex flex-wrap gap-2"><Button type="submit" variant="secondary" size="sm">{t('filter.apply')}</Button><Button variant="ghost" size="sm" onclick={() => search(true)}>{t('filter.clear')}</Button></div>
-          </form>
-        </Card>
+        <RegexSearch id="hub-artifact-regex" bind:value={localSearch} />
+        <p class="text-xs text-ink-2">{commonText('table.mixedScope')}</p>
+        <p class="text-xs text-ink-2">{t('filter.help')}</p>
+        <TableViewControls {view} class={hub.inventory?.length ? 'lg:hidden' : ''} />
+        {#if hub.inventory?.length && !view.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
         <p class="text-xs text-ink-2">{hub.observed.inventory ? t('observed', { time: timestamp(hub.observed.inventory) }) : t('neverObserved')}</p>
         {#if hub.errors.inventory}<Alert>{hub.errors.inventory}</Alert><Button variant="secondary" size="sm" disabled={hub.busy.inventory} onclick={() => hub.loadInventory()}>{t('retry')}</Button>{/if}
         {#if hub.busy.inventory}<LoadingState variant={hub.inventory ? 'inline' : 'section'} label={t('loading')} />{/if}
         {#if hub.inventory}
           <p class="text-xs text-ink-2">{t('page', { start: hub.offset, count: hub.inventory.length })}</p>
           {#if hub.inventory.length === 0}<Alert tone="neutral">{t('empty')}</Alert>{:else}
-            <ResponsiveTable>{#snippet cards()}{#each hub.inventory as row (row.blob_digest)}<CompactResourceCard selected={hub.selected === row.blob_digest}>
+            <ResponsiveTable>{#snippet cards()}{#each view.rows as row (row.blob_digest)}<CompactResourceCard selected={hub.selected === row.blob_digest}>
               <h3 class="text-sm font-medium">{row.name}</h3><p class="text-xs"><code>{row.kind}</code> · {bytes(row.size_bytes)}</p>
-              {#snippet details()}<p class="text-xs">{t('filter.arch')}: <code>{row.arch ?? '—'}</code></p><p class="text-xs break-all">{t('digest')}: <code>{row.blob_digest}</code></p>{/snippet}
+              {#snippet details()}<p class="text-xs">{t('filter.arch')}: <code>{row.arch ?? '—'}</code></p><p class="text-xs">{t('filter.format')}: <code>{row.disk_format ?? '—'}</code></p><p class="text-xs break-all">{t('digest')}: <code>{row.blob_digest}</code></p>{/snippet}
               {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => { copyNotice = null; void hub.openDetail(row.blob_digest); }}>{t('details')}</Button>{/snippet}
             </CompactResourceCard>{/each}{/snippet}
-            <TableShell><table><thead><tr><th>{t('name')}</th><th>{t('filter.kind')}</th><th>{t('filter.arch')}</th><th>{t('size')}</th><th>{t('digest')}</th><th>{t('details')}</th></tr></thead><tbody>
-              {#each hub.inventory as row (row.blob_digest)}<tr data-selected={hub.selected === row.blob_digest}><td>{row.name}</td><td><code>{row.kind}</code></td><td><code>{row.arch ?? '—'}</code></td><td>{bytes(row.size_bytes)}</td><td><code title={row.blob_digest}>{row.blob_digest.slice(0, 19)}…</code></td><td><Button variant="secondary" size="sm" onclick={() => { copyNotice = null; void hub.openDetail(row.blob_digest); }}>{t('details')}</Button></td></tr>{/each}
+            <TableShell><table><thead><tr>{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}<th>{t('details')}</th></tr></thead><tbody>
+              {#each view.rows as row (row.blob_digest)}<tr data-selected={hub.selected === row.blob_digest}><td>{row.name}</td><td><code>{row.kind}</code></td><td><code>{row.arch ?? '—'}</code></td><td><code>{row.disk_format ?? '—'}</code></td><td>{bytes(row.size_bytes)}</td><td><code title={row.blob_digest}>{row.blob_digest.slice(0, 19)}…</code></td><td><Button variant="secondary" size="sm" onclick={() => { copyNotice = null; void hub.openDetail(row.blob_digest); }}>{t('details')}</Button></td></tr>{/each}
             </tbody></table></TableShell>
             </ResponsiveTable>
           {/if}
@@ -202,10 +249,14 @@
           <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold">{t('builds')}</h3><Button variant="ghost" size="sm" disabled={!hub.canBuilds || hub.busy.builds} onclick={() => hub.loadBuilds()}>{t('refresh')}</Button></div>
           <p class="text-xs text-ink-2">{hub.observed.builds ? t('observed', { time: timestamp(hub.observed.builds) }) : t('neverObserved')}</p>
           {#if !hub.canBuilds}<Alert tone="warning">{t('denied')}</Alert>{:else}
+            <RegexSearch id="hub-build-regex" bind:value={buildSearch} />
+            <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+            <TableViewControls view={buildView} class="" />
+            {#if hub.builds?.length && !buildView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
             {#if hub.errors.builds}<Alert>{hub.errors.builds}</Alert>{/if}
             {#if hub.busy.builds}<LoadingState variant={hub.builds ? 'inline' : 'section'} label={t('loading')} />{/if}
             {#if hub.builds?.length === 0}<p class="text-xs text-ink-2">{t('jobs.empty')}</p>{/if}
-            {#if hub.builds}<ul class="space-y-3">{#each hub.builds as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
+            {#if hub.builds}<ul class="space-y-3">{#each buildView.rows as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
               <div class="flex flex-wrap justify-between gap-2"><span class="text-sm break-all">{job.name}</span><StatusChip status={job.status} /></div>
               <p class="text-xs text-ink-2">{t('jobs.noMetrics')}</p>
               <details><summary class="text-xs cursor-pointer"><code>{job.id}</code></summary><dl class="mt-2 space-y-2 text-xs"><div><dt>{t('jobs.created')}</dt><dd>{timestamp(job.created_at)}</dd></div><div><dt>{t('jobs.started')}</dt><dd>{timestamp(job.started_at)}</dd></div><div><dt>{t('jobs.completed')}</dt><dd>{timestamp(job.completed_at)}</dd></div><div><dt><code>output_size_bytes</code></dt><dd>{bytes(job.output_size_bytes)}</dd></div><div><dt><code>output_digest</code></dt><dd class="break-all"><code>{job.output_digest ?? t('unknown')}</code></dd></div><div><dt>{t('jobs.error')}</dt><dd class="break-all">{job.error_code ?? t('unknown')}</dd></div></dl></details>
@@ -218,10 +269,14 @@
           <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold">{t('exports')}</h3><Button variant="ghost" size="sm" disabled={!hub.canInventory || hub.busy.exports} onclick={() => hub.loadExports()}>{t('refresh')}</Button></div>
           <p class="text-xs text-ink-2">{hub.observed.exports ? t('observed', { time: timestamp(hub.observed.exports) }) : t('neverObserved')}</p>
           {#if !hub.canInventory}<Alert tone="warning">{t('denied')}</Alert>{:else}
+            <RegexSearch id="hub-export-regex" bind:value={exportSearch} />
+            <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+            <TableViewControls view={exportView} class="" />
+            {#if hub.exports?.length && !exportView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
             {#if hub.errors.exports}<Alert>{hub.errors.exports}</Alert>{/if}
             {#if hub.busy.exports}<LoadingState variant={hub.exports ? 'inline' : 'section'} label={t('loading')} />{/if}
             {#if hub.exports?.length === 0}<p class="text-xs text-ink-2">{t('jobs.empty')}</p>{/if}
-            {#if hub.exports}<ul class="space-y-3">{#each hub.exports as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
+            {#if hub.exports}<ul class="space-y-3">{#each exportView.rows as job (job.id)}<li class="border-t border-line pt-3 space-y-2">
               <div class="flex flex-wrap justify-between gap-2"><span class="text-sm break-all">{job.source_name}</span><StatusChip status={job.status} /></div>
               <p class="text-xs text-ink-2">{Number.isFinite(job.progress_pct) && job.progress_pct >= 0 && job.progress_pct <= 100 ? `${job.progress_pct.toLocaleString(intlLocale())}%` : t('jobs.noMetrics')}</p>
               <details><summary class="text-xs cursor-pointer"><code>{job.id}</code></summary><dl class="mt-2 space-y-2 text-xs"><div><dt>{t('jobs.created')}</dt><dd>{timestamp(job.created_at)}</dd></div><div><dt>{t('jobs.started')}</dt><dd>{timestamp(job.started_at)}</dd></div><div><dt>{t('jobs.completed')}</dt><dd>{timestamp(job.completed_at)}</dd></div><div><dt><code>target_disk_format</code></dt><dd><code>{job.target_disk_format}</code></dd></div><div><dt>{t('size')}</dt><dd>{bytes(job.size_bytes)}</dd></div><div><dt><code>blob_digest</code></dt><dd class="break-all"><code>{job.blob_digest ?? t('unknown')}</code></dd></div><div><dt>{t('jobs.error')}</dt><dd class="break-all">{job.error_code ?? t('unknown')}{#if job.error_message} · {job.error_message}{/if}</dd></div></dl></details>

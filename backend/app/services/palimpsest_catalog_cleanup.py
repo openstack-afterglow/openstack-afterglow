@@ -133,6 +133,11 @@ async def _authority(info, owner):
 
         if not await info.lease.current():
             raise HTTPException(409, "Scheduled cleanup lease was lost")
+        if vars(info.connection).get("_afterglow_usage_operator_scope") is not None:
+            await instance_usage.sdk_call(instance_usage._assert_operator_scope, info.connection)
+            if instance_usage._target_project(info.connection) != owner:
+                raise HTTPException(403, "Scheduled cleanup target differs from catalog owner")
+            return
         if getattr(info.connection, "_afterglow_project_id", None) != owner:
             raise HTTPException(403, "Scheduled cleanup project differs from catalog owner")
         access = await instance_usage.sdk_call(info.connection.session.auth.get_access, info.connection.session)

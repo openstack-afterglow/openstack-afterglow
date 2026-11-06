@@ -1,0 +1,30 @@
+Command: npm run build (frontend)
+Exit code: 0
+
+.svelte-kit/output/server/chunks/ja.js                                                                446.85 kB │ gzip: 132.11 kB
+.svelte-kit/output/server/chunks/LoadingState.js                                                      454.56 kB │ gzip: 106.23 kB
+.svelte-kit/output/server/chunks/vi.js                                                                464.98 kB │ gzip: 132.99 kB
+.svelte-kit/output/server/chunks/admin-identity.js                                                    482.76 kB │ gzip: 110.10 kB
+.svelte-kit/output/server/entries/pages/palimpsest/packages/_page.svelte.js                           501.15 kB │ gzip: 126.34 kB
+.svelte-kit/output/server/entries/pages/admin/monitoring/traffic/_page.svelte.js                      531.32 kB │ gzip: 149.01 kB
+.svelte-kit/output/server/chunks/bn.js                                                                694.00 kB │ gzip: 151.53 kB
+.svelte-kit/output/server/chunks/ChatConfiguration.js                                                 779.18 kB │ gzip: 171.20 kB
+
+✓ built in 12.44s
+
+Run npm run preview to preview your production build locally.
+
+> Using @sveltejs/adapter-node
+  ✔ done
+[PLUGIN_TIMINGS] Your build spent 100% of 12.4s inside plugin hooks (23.6s).
+Measured inside the callback, so queue time is excluded and time the callback itself awaited is not:
+  - vite-plugin-sveltekit-compile closeBundle (92%, 11.5s, 1 call)
+  - vite-plugin-sveltekit-compile writeBundle (55%, 6.8s, 1 call)
+  - vite-plugin-svelte:compile transform (32%, 4.0s, 814 calls)
+  - @tailwindcss/vite:generate:build transform (20%, 2.5s, 177 calls)
+Those rows are 100% of the build; the rest of the 100% is below.
+Not measurable — 1 hook whose calls overlap, so elapsed time covers work other calls were doing. Profile with `node --cpu-prof`:
+  - vite-plugin-sveltekit-guard resolveId (10494 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+[raw output: artifact://459]

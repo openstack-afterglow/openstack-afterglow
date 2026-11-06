@@ -4,6 +4,7 @@ import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-network';
 import SubnetInventoryDetails from '../SubnetInventoryDetails.svelte';
 import { subnetFixture } from './subnetFixture';
+import { setColumnValues, sortColumn } from '$lib/components/admin/services/__tests__/tableInteractions';
 
 beforeEach(() => setLocale('en'));
 
@@ -112,5 +113,40 @@ describe('shared subnet inventory presentation', () => {
 		expect(screen.getByText('allocation-port-20')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: t('subnetDetailPage.tabs.ports', { count: 1 }) }));
 		expect(screen.getByText('port-name-0')).toBeTruthy();
+	});
+	it('projects each of the four inventories before pagination and retains independent conditions on refresh', async () => {
+		const subnet = {
+			...subnetFixture,
+			allocation_pools: [{ start: '10.1.0.10', end: '10.1.0.20' }, { start: '10.2.0.10', end: '10.2.0.20' }],
+			dhcp_bindings: [
+				{ ...subnetFixture.dhcp_bindings[0], host: 'node-a' },
+				{ ...subnetFixture.dhcp_bindings[0], host: 'node-b' },
+			],
+			allocations: allocations(41),
+			ports: Array.from({ length: 41 }, (_, index) => ({ ...subnetFixture.ports[0], id: `port-${index}`, name: `port-name-${index}` })),
+		};
+		const rendered = render(SubnetInventoryDetails, { subnet });
+		const search = (suffix: string) => screen.getAllByRole('searchbox').find((input) => input.id.endsWith(suffix))!;
+		await sortColumn(t('subnetDetailPage.startIp'));
+		await sortColumn(t('subnetDetailPage.startIp'));
+		expect(within(screen.getAllByRole('table')[0]).getAllByRole('cell')[0].textContent).toBe('10.2.0.10');
+		await fireEvent.input(search('-pool-search'), { target: { value: '^10\\.1\\.' } });
+		await setColumnValues(t('subnetDetailPage.host'), ['node-a']);
+		await fireEvent.input(search('-allocation-search'), { target: { value: '^allocation-port-40$' } });
+		expect(screen.getByText('allocation-port-40')).toBeTruthy();
+		expect(screen.queryByText('allocation-port-0')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t('subnetDetailPage.tabs.ports', { count: 41 }) }));
+		await fireEvent.input(search('-port-search'), { target: { value: '^port-name-40$' } });
+		expect(screen.getByText('port-name-40')).toBeTruthy();
+		await rendered.rerender({ subnet: { ...subnet, allocation_pools: [...subnet.allocation_pools].reverse(), dhcp_bindings: [...subnet.dhcp_bindings].reverse() } });
+		expect(screen.getByText('10.1.0.10')).toBeTruthy();
+		expect(screen.queryByText('10.2.0.10')).toBeNull();
+		expect(screen.getByText('node-a')).toBeTruthy();
+		expect(screen.queryByText('node-b')).toBeNull();
+		expect(screen.getByText('port-name-40')).toBeTruthy();
+		await fireEvent.input(search('-pool-search'), { target: { value: '[' } });
+		expect(search('-pool-search').getAttribute('aria-invalid')).toBe('true');
+		expect(screen.getAllByRole('table')).toHaveLength(3);
+		expect(screen.getByText('port-name-40')).toBeTruthy();
 	});
 });

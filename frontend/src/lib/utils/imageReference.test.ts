@@ -29,7 +29,7 @@ describe('image references', () => {
 
 	it('searches repository and tag as separate Docker-style fields', () => {
 		const image = { name: 'ubuntu:24.04', repository: 'ubuntu', tag: '24.04', os_distro: 'ubuntu' };
-		expect(imageReferenceMatchesQuery(image, 'ubuntu 24.04')).toBe(true);
+		expect(imageReferenceMatchesQuery(image, '^ubuntu:24\\.04$')).toBe(true);
 		expect(imageReferenceMatchesQuery(image, 'debian')).toBe(false);
 	});
 });

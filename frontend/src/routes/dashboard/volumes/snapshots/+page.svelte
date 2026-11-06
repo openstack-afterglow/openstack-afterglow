@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/volume';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -30,7 +36,17 @@
   let bulkBusy = $state(false);
   const selection = createResourceSelection();
   const volumeSnapshotsEnabled = $derived($betaFeatures.volumeSnapshots);
-  const selectableIds = $derived(new Set(snapshots.map((snapshot) => snapshot.id)));
+  let search = $state('');
+ const columns = $derived<TableColumn<VolumeSnapshot>[]>([
+  { key: 'name', label: t('snapshotsTable.name'), value: row => row.name },
+  { key: 'status', label: t('snapshotsTable.status'), value: row => row.status },
+  { key: 'size', label: t('snapshotsTable.size'), value: row => row.size },
+  { key: 'volume', label: t('snapshotsTable.volumeId'), value: row => row.volume_id },
+  { key: 'description', label: t('snapshotsTable.description'), value: row => row.description },
+  { key: 'created', label: t('snapshotsTable.createdAt'), value: row => row.created_at },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => snapshots, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const selectableIds = $derived(new Set(view.rows.map((snapshot) => snapshot.id)));
 
   function retainSelection() {
     selection.retain(selectableIds);
@@ -157,6 +173,12 @@
     const ids = selectableIds;
     untrack(() => retainSelection());
   });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#if !volumeSnapshotsEnabled}
@@ -173,6 +195,9 @@
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('snapshotsPage.toolbar')}>
+ {#snippet filters()}<RegexSearch id="VolumeSnapshotsTable-search" bind:value={search} />
+ <TableViewControls {view} class={snapshots.length === 0 ? '' : 'lg:hidden'} />
+ {/snippet}
     {#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
   </ResourceToolbar>
 
@@ -182,7 +207,7 @@
   {:else if snapshots.length === 0}
     <VolumeSnapshotsEmptyState onCreate={openCreate} onintent={prefetchVolumes} />
   {:else}
-    <VolumeSnapshotsTable {snapshots} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
+    <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
     <BulkSelectionOverlay count={selection.count} ariaLabel={t('snapshotsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
 </PageShell>

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { api } from '$lib/api/client';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -16,39 +20,53 @@
 	let range = $state<TrafficRange>('24h');
     let origin = $state<TrafficOriginFilter>('all');
 	let revision = $state(0);
-	let result = $state<{ key: string; snapshot: TrafficSnapshot } | null>(null);
+	let result = $state<{ key: string; snapshot: TrafficSnapshot; stale: boolean } | null>(null);
 	let failedKey = $state<string | null>(null);
 	let pendingKey = $state<string | null>(null);
+	let snapshotElement = $state<HTMLDivElement>();
 	const ready = $derived($authReady && !$projectSwitching);
 	const allowed = $derived(ready && !!$auth.token && $auth.isSystemAdmin);
     const context = $derived(JSON.stringify([source, range, origin, $auth.token, $auth.userId, $auth.projectId, $auth.isSystemAdmin, ready, revision]));
-	const snapshot = $derived(allowed && result?.key === context ? result.snapshot : null);
+	const dataScope = $derived(JSON.stringify([source, range, origin]));
+	const snapshot = $derived(allowed && result?.key === dataScope ? result.snapshot : null);
+	const stale = $derived(result?.key === dataScope && result.stale);
 	const loading = $derived(allowed && pendingKey === context);
 	const failed = $derived(allowed && failedKey === context);
 	const metrics: TrafficMetric[] = ['requests', 'success', 'errors', 'pageviews', 'unique_visitors', 'unlocated', 'status_1xx', 'status_2xx', 'status_3xx', 'status_4xx', 'status_5xx', 'request_bytes', 'response_bytes', 'latency_avg', 'latency_ms_max'];
 
 	$effect(() => {
 		const key = context;
+		const scope = dataScope;
 		const selectedSource = source;
 		const selectedRange = range;
         const selectedOrigin = origin;
 		const token = $auth.token ?? undefined;
 		const project = $auth.projectId ?? undefined;
 		let stopped = false;
-		result = null; failedKey = null; pendingKey = null;
+		untrack(() => { if (!allowed || result?.key !== scope) result = null; }); failedKey = null; pendingKey = null;
 		if (allowed) {
 			pendingKey = key;
 			void (async () => {
 				try {
                     const response = await api.get<unknown>(`/api/v1/admin/monitoring/traffic?range=${selectedRange}&source=${selectedSource}&origin=${selectedOrigin}`, token, project, { refresh: true });
                     const parsed = parseTrafficSnapshot(response, selectedSource, selectedRange, selectedOrigin);
-					if (!stopped) result = { key, snapshot: parsed };
-				} catch { if (!stopped) failedKey = key; }
+					if (!stopped) result = { key: scope, snapshot: parsed, stale: false };
+				} catch {
+					if (!stopped) {
+						failedKey = key;
+						if (result?.key === scope) {
+							// Filter dialogs are portalled outside the snapshot's hidden/inert subtree.
+							for (const trigger of snapshotElement?.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"][aria-expanded="true"]') ?? []) trigger.click();
+							result = { ...result, stale: true };
+						}
+					}
+				}
 				finally { if (!stopped) pendingKey = null; }
 			})();
 		}
 		return () => { stopped = true; };
 	});
+	const routesView = createObservationView(() => snapshot?.routes ?? [], () => [{ key: 'route', label: t('routes.category'), value: row => row.route }, { key: 'requests', label: t('metrics.requests'), value: row => row.requests }, ...trafficOrigins.map(value => ({ key: value, label: t(`origins.${value}`), value: (row: TrafficSnapshot['routes'][number]) => row.origins[value] })), { key: 'errors', label: t('metrics.errors'), value: row => row.errors }, { key: 'bytes', label: t('metrics.response_bytes'), value: row => row.response_bytes }, { key: 'latency', label: t('metrics.latency_avg'), value: row => metricValue(row, 'latency_avg') }, { key: 'max', label: t('metrics.latency_ms_max'), value: row => row.latency_ms_max }]);
 </script>
 
 <PageShell>
@@ -80,6 +98,8 @@
 		{:else if failed}<Alert tone="danger">{t('loadFailed')}</Alert>
 		{/if}
 		{#if snapshot}
+			<!-- Keep child table models mounted without presenting a failed snapshot as current. -->
+			<div bind:this={snapshotElement} class="space-y-4" hidden={stale} inert={stale}>
 			<Alert tone={snapshot.state === 'available' ? 'info' : 'warning'}>{t(`states.${snapshot.state}`)}{#if snapshot.state === 'partial'} · {t('coverage.partial')}{/if}</Alert>
 			{#if snapshot.totals === null}<p class="text-sm text-ink-2">{t('empty')}</p>{/if}
 			<p class="text-xs text-ink-2">{t('trend.note')}</p>
@@ -98,9 +118,11 @@
 				{#if snapshot.routes.length === 0}<p class="mt-2 text-xs text-ink-2">{t('noObservations')}</p>
 				{:else}
 					{@const routeRows = snapshot.routes}
-					<ResponsiveTable class="mt-3">
+					<ObservationTable model={routesView} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-3">
 						{#snippet cards()}
-							{#each routeRows as row (row.route)}
+							{#each tableView.rows as row (row.route)}
 								<CompactResourceCard>
 									<p class="font-mono font-medium break-all">{row.route}</p>
 									<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('metrics.requests')}</dt><dd>{formatTrafficValue(row.requests)}</dd></div><div><dt>{t('metrics.errors')}</dt><dd>{formatTrafficValue(row.errors)}</dd></div></dl>
@@ -112,13 +134,16 @@
 						<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<table tabindex="0" aria-label={t('routes.title')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
-                        <thead><tr><th class="p-2 text-left">{t('routes.category')}</th><th class="p-2 text-right">{t('metrics.requests')}</th>{#each trafficOrigins as value (value)}<th class="p-2 text-right">{t(`origins.${value}`)}</th>{/each}<th class="p-2 text-right">{t('metrics.errors')}</th><th class="p-2 text-right">{t('metrics.response_bytes')}</th><th class="p-2 text-right">{t('metrics.latency_avg')}</th><th class="p-2 text-right">{t('metrics.latency_ms_max')}</th></tr></thead>
-                        <tbody>{#each routeRows as row (row.route)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.route}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td>{#each trafficOrigins as value (value)}<td class="p-2 text-right">{formatTrafficValue(row.origins[value])}</td>{/each}<td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.response_bytes, 'response_bytes')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(row, 'latency_avg'), 'latency_avg')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.latency_ms_max, 'latency_ms_max')}</td></tr>{/each}</tbody>
+                        <thead><tr><TableColumnHeader view={tableView} columnKey="route" /><TableColumnHeader view={tableView} columnKey="requests" />{#each trafficOrigins as value (value)}<TableColumnHeader view={tableView} columnKey={value} />{/each}<TableColumnHeader view={tableView} columnKey="errors" /><TableColumnHeader view={tableView} columnKey="bytes" /><TableColumnHeader view={tableView} columnKey="latency" /><TableColumnHeader view={tableView} columnKey="max" /></tr></thead>
+                        <tbody>{#each tableView.rows as row (row.route)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.route}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td>{#each trafficOrigins as value (value)}<td class="p-2 text-right">{formatTrafficValue(row.origins[value])}</td>{/each}<td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.response_bytes, 'response_bytes')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(row, 'latency_avg'), 'latency_avg')}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(row.latency_ms_max, 'latency_ms_max')}</td></tr>{/each}</tbody>
 					</table></TableShell>
 					</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				{/if}
 			</Card>
+			</div>
 		{/if}
-		<TrafficCoverage {snapshot} {source} />
+		<TrafficCoverage snapshot={stale ? null : snapshot} {source} />
 	</div>
 </PageShell>

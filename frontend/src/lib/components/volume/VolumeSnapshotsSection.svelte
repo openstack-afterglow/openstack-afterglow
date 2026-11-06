@@ -1,4 +1,13 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import type { VolumeSnapshot } from '$lib/types/volume';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
   import { t } from '$lib/i18n/ns/volume';
   import { useVolumeDetailController, statusColor } from '$lib/stores/volumeDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -9,6 +18,20 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
   const s = useVolumeDetailController();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<VolumeSnapshot>[]>([
+  { key: 'name', label: t('snapshotsTable.name'), value: row => row.name },
+  { key: 'status', label: t('snapshotsTable.status'), value: row => row.status },
+  { key: 'size', label: t('snapshotsTable.size'), value: row => row.size },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => s.snapshots, columns: () => columns, search: () => search, searchable: row => [row.name,row.id,row.status].map(value => String(value ?? '')) });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 <div class="mb-4">
@@ -44,12 +67,15 @@
     </div>
   {/if}
 
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class="" />
+{#if s.snapshots.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
   {#if s.snapshots.length === 0}
     <p class="text-xs text-ink-2">{t('snapshotsSection.empty')}</p>
   {:else}
     <ResponsiveTable>
       {#snippet cards()}
-        {#each s.snapshots as snap (snap.id)}
+        {#each view.rows as snap (snap.id)}
           <CompactResourceCard>
             <div class="flex items-start justify-between gap-2 min-w-0">
               <span class="min-w-0 font-medium break-all">{snap.name || snap.id.slice(0, 8)}</span>
@@ -66,7 +92,7 @@
         {/each}
       {/snippet}
     <div class="space-y-1">
-      {#each s.snapshots as snap}
+      {#each view.rows as snap}
         <div class="bg-surface-base rounded-lg border border-line-2 px-3 py-2 flex items-center justify-between text-xs">
           <div>
             <span class="text-ink-0 font-medium">{snap.name || snap.id.slice(0, 8)}</span>

@@ -4,9 +4,12 @@
 	import { ActionMenu, Button, ResourceIdentifier, StatusChip } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import type { createTableView } from '$lib/utils/tableView.svelte';
 
-	let { networks, ownerNames, ownerDomains = new Map<string, string>(), emptyMessage, onRowClick, onEdit, onDelete }: {
+	let { networks, view, ownerNames, ownerDomains = new Map<string, string>(), emptyMessage, onRowClick, onEdit, onDelete }: {
 		networks: AdminNetwork[];
+		view: ReturnType<typeof createTableView<AdminNetwork>>;
 		ownerNames: ReadonlyMap<string, string>;
 		ownerDomains?: ReadonlyMap<string, string>;
 		emptyMessage: string;
@@ -49,7 +52,7 @@
 	<div class="overflow-x-auto rounded-lg border border-line bg-surface-base">
 		<table class="w-full text-sm">
 			<thead><tr class="border-b border-line text-left text-[13px] text-ink-2">
-				<th class="px-4 py-2 font-medium">{t('adminNetworkTable.name')}</th><th class="px-4 py-2 font-medium">{t('adminNetworkTable.owner')}</th><th class="px-4 py-2 font-medium">{t('adminNetworkTable.status')}</th><th class="px-4 py-2 font-medium">{t('adminNetworkTable.type')}</th><th class="px-4 py-2 text-right font-medium">{t('adminNetworkTable.subnets')}</th><th class="px-4 py-2 text-right font-medium">{t('adminNetworkTable.actions')}</th>
+				{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}<th class="px-4 py-2 text-right font-medium">{t('adminNetworkTable.actions')}</th>
 			</tr></thead>
 			<tbody>
 				{#each networks as network (network.id)}

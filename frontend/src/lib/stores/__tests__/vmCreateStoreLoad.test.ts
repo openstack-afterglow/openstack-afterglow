@@ -7,6 +7,8 @@ import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard, wizard } from '../wizard';
 import { siteConfig } from '$lib/config/site';
 
+import { t as tw } from '$lib/i18n/ns/vm-wizard';
+import { t as tc } from '$lib/i18n/ns/common';
 const { api, fetchWithAuth } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() }, fetchWithAuth: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -306,6 +308,54 @@ describe('VM create option loading boundaries', () => {
 		await fireEvent.click(screen.getByTestId('project-b'));
 
 		await vi.waitFor(() => expect(screen.getByTestId('flavor').textContent).toBe('project-b-flavor'));
+	});
+
+	it('uses independent project and domain regex fields with inline errors, local typing and retained refresh conditions', async () => {
+		const projects = [
+			{ id: 'project-a', name: '연구 Alpha', domain_id: 'domain-a', domain_name: 'Research' },
+			{ id: 'project-b', name: 'Beta', domain_id: 'domain-b', domain_name: 'Teaching' },
+		];
+		api.get.mockImplementation((path: string) => Promise.resolve(
+			path === '/api/v1/admin/projects/names' ? projects
+				: path === '/api/v1/admin/domains' ? { items: [{ id: 'domain-a', name: 'Research' }, { id: 'domain-b', name: 'Teaching' }] }
+					: [],
+		));
+		render(VmCreateStoreLoadWrapper, { adminMode: true, showAdminProjectSelector: true });
+		await fireEvent.click(screen.getByTestId('init'));
+		await screen.findByRole('button', { name: /연구 Alpha/ });
+		await vi.waitFor(() => expect(screen.getByTestId('admin-quota-loading').textContent).toBe('idle'));
+		let search = screen.getByRole('searchbox', { name: tw('adminProject.search') });
+		const reads = api.get.mock.calls.length;
+		for (const pattern of ['^연구 Alpha$', '^PROJECT-A$', '^Research$', '^domain-a$']) {
+			await fireEvent.input(search, { target: { value: pattern } });
+			expect(screen.getByRole('button', { name: /연구 Alpha/ })).toBeTruthy();
+			expect(screen.queryByRole('button', { name: /^Beta/ })).toBeNull();
+		}
+		await fireEvent.input(search, { target: { value: '^(project-a|Beta)$' } });
+		expect(screen.getByRole('button', { name: /연구 Alpha/ })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /^Beta/ })).toBeTruthy();
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.getByText(tc('table.regexError'))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /연구 Alpha/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: /^Beta/ })).toBeNull();
+		expect(screen.getByTestId('selected-project').textContent).toBe('none');
+		expect(api.get.mock.calls).toHaveLength(reads);
+		await fireEvent.click(screen.getByTestId('refresh-projects'));
+		await vi.waitFor(() => expect(api.get.mock.calls).toHaveLength(reads + 2));
+		search = await screen.findByRole('searchbox', { name: tw('adminProject.search') });
+		expect((search as HTMLInputElement).value).toBe('[');
+		expect(screen.queryByRole('button', { name: /연구 Alpha/ })).toBeNull();
+		await fireEvent.input(search, { target: { value: '^project-a$' } });
+		await fireEvent.click(screen.getByRole('button', { name: /연구 Alpha/ }));
+		expect(screen.getByTestId('selected-project').textContent).toBe('project-a');
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(screen.getByTestId('selected-project').textContent).toBe('project-a');
+		expect(screen.queryByRole('button', { name: /^Beta/ })).toBeNull();
+		await fireEvent.click(screen.getByTestId('refresh-projects'));
+		search = await screen.findByRole('searchbox', { name: tw('adminProject.search') });
+		expect((search as HTMLInputElement).value).toBe('[');
+		expect(screen.getByTestId('selected-project').textContent).toBe('project-a');
 	});
 
 	it('starts a fresh public flavor request for a rapid A to B to A switch', async () => {

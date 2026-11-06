@@ -6,9 +6,14 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import { untrack } from 'svelte';
 
 	let {
 		group,
+		viewState,
 		groups,
 		instances,
 		instancesError,
@@ -32,6 +37,7 @@
 		onCloseMobile,
 	}: {
 		group: SecurityGroup;
+		viewState: TableViewState;
 		groups: SecurityGroup[];
 		instances: SecurityGroupInstance[];
 		instancesError: string;
@@ -58,6 +64,20 @@
 	function targetName(id: string): string {
 		return groups.find((item) => item.id === id)?.name ?? id;
 	}
+	const columns = (): TableColumn<SecurityGroupRule>[] => [
+		{ key: 'direction', label: t('securityGroupRules.direction'), value: row => row.direction, format: value => t(value === 'ingress' ? 'securityGroupRules.ingress' : 'securityGroupRules.egress') },
+		{ key: 'version', label: t('securityGroupRules.ipVersion'), value: row => row.ethertype },
+		{ key: 'protocol', label: t('securityGroupRules.protocol'), value: row => row.protocol ?? 'any', format: (_value, row) => row.protocol?.toUpperCase() ?? t('securityGroupRules.anyProtocol') },
+		{ key: 'port', label: t('securityGroupRules.port'), value: row => row.port_range_min == null ? null : row.port_range_max === row.port_range_min ? String(row.port_range_min) : `${row.port_range_min}-${row.port_range_max}` },
+		{
+			key: 'remote',
+			label: t('securityGroupRules.sourceTarget'),
+			value: row => row.remote_group_id ? targetName(row.remote_group_id) : row.remote_ip_prefix ?? (row.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0'),
+			filterValues: row => [row.remote_group_id ? `group:${row.remote_group_id}` : `cidr:${row.remote_ip_prefix ?? (row.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0')}`],
+			format: (_value, row) => row.remote_group_id ? `${t('securityGroupRules.remoteGroup', { name: targetName(row.remote_group_id) })} (${row.remote_group_id})` : row.remote_ip_prefix ?? (row.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0'),
+		},
+	];
+	const view = createTableView({ rows: () => group.rules, columns, state: untrack(() => viewState) });
 </script>
 
 <!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인. 모바일에서 fixed 레이어이므로 opacity 진입만 쓴다. -->
@@ -99,9 +119,10 @@
 				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
 			{/if}
 		</div>
+		<TableViewControls {view} />
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each group.rules as rule (rule.id)}
+				{#each view.rows as rule (rule.id)}
 					<CompactResourceCard>
 						<p class="font-medium">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')} · {rule.protocol?.toUpperCase() ?? t('securityGroupRules.anyProtocol')}</p>
 						<dl><div><dt>{t('securityGroupRules.port')}</dt><dd>{rule.port_range_min != null ? rule.port_range_min + (rule.port_range_max !== rule.port_range_min ? '-' + rule.port_range_max : '') : '—'}</dd></div><div><dt>{t('securityGroupRules.sourceTarget')}</dt><dd>{#if rule.remote_group_id}<button type="button" onclick={() => onSelectGroup(rule.remote_group_id!)} title={rule.remote_group_id} class="min-h-11 text-accent text-left">{t('securityGroupRules.remoteGroup', { name: targetName(rule.remote_group_id) })}</button>{:else}{rule.remote_ip_prefix ?? (rule.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0')}{/if}</dd></div></dl>
@@ -114,13 +135,13 @@
 		<div class="@container/rules overflow-x-auto">
 			<div class="min-w-[42rem]">
 				<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 border-b border-line text-xs text-ink-2 font-medium items-center">
-					<div>{t('securityGroupRules.direction')}</div><div>{t('securityGroupRules.ipVersion')}</div><div>{t('securityGroupRules.protocol')}</div><div>{t('securityGroupRules.port')}</div><div>{t('securityGroupRules.sourceTarget')}</div><div>{t('securityGroupRules.actions')}</div>
+					<TableColumnControl {view} columnKey="direction" /><TableColumnControl {view} columnKey="version" /><TableColumnControl {view} columnKey="protocol" /><TableColumnControl {view} columnKey="port" /><TableColumnControl {view} columnKey="remote" /><div>{t('securityGroupRules.actions')}</div>
 				</div>
-				{#if group.rules.length === 0}
+				{#if view.rows.length === 0}
 					<div class="text-xs text-ink-2 px-3 py-5">{t('securityGroupRules.noRules')}</div>
 				{/if}
 				<div class="motion-stagger">
-				{#each group.rules as rule (rule.id)}
+				{#each view.rows as rule (rule.id)}
 					<div>
 					<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 text-xs items-center border-b border-line">
 						<div><span class="text-state-info-text">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')}</span></div>
@@ -150,7 +171,7 @@
 			</div>
 		</div>
 		</ResponsiveTable>
-		{#if addRuleOpen && (!originalRuleId || !group.rules.some((rule) => rule.id === originalRuleId))}
+		{#if addRuleOpen && (!originalRuleId || !view.rows.some((rule) => rule.id === originalRuleId))}
 			<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />
 		{/if}
 		{#if addError && !addRuleOpen}<p role="alert" class="text-xs text-state-danger-text p-3">{addError}</p>{/if}

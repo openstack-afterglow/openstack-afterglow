@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView, nativeObservationFilter, observationOptions } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { t as events } from '$lib/i18n/ns/admin-ops';
@@ -38,6 +41,9 @@
 		extra: Record<string, unknown> | null;
 	}
 
+	let filterResourceType = $state('');
+	let filterAction = $state('');
+	let filterUserId = $state('');
 	let pageSize = $state('10');
 	let cursors = $state<(number | null)[]>([null]);
 	let pageIndex = $state(0);
@@ -47,9 +53,6 @@
 	let loadError = $state('');
 	let hasMore = $state(false);
 
-	let filterResourceType = $state('');
-	let filterAction = $state('');
-	let filterUserId = $state('');
 
 	let refreshing = $state(false);
 	let expandedId = $state<number | null>(null);
@@ -171,41 +174,13 @@
 	}
 
 
-	const RESOURCE_TYPES = [
-		'instance', 'hypervisor', 'keypair', 'volume', 'volume_snapshot', 'volume_backup',
-		'file_storage', 'share_snapshot', 'share_network', 'security_service',
-		'network', 'subnet', 'router', 'floating_ip', 'security_group', 'load_balancer',
-		'lb_listener', 'lb_pool', 'lb_member', 'lb_health_monitor',
-		'k3s_cluster', 'container', 'container_cluster', 'library', 'union_layer',
-	];
+
+	const RESOURCE_TYPES = ['instance', 'hypervisor', 'keypair', 'volume', 'volume_snapshot', 'volume_backup', 'file_storage', 'share_snapshot', 'share_network', 'security_service', 'network', 'subnet', 'router', 'floating_ip', 'security_group', 'load_balancer', 'lb_listener', 'lb_pool', 'lb_member', 'lb_health_monitor', 'k3s_cluster', 'container', 'container_cluster', 'library', 'union_layer'];
+	const observationView0 = createObservationView(() => (logs), () => ([{ key: 'time', label: t('activity.time'), value: row => row.created_at }, ...(showUser ? [{ key: 'user', label: t('activity.user'), value: (row: ActivityLog) => row.username, ...nativeObservationFilter(() => filterUserId, value => { filterUserId = value; }, () => observationOptions(logs.map(row => row.user_id))) }] : []), { key: 'resource', label: t('activity.resource'), value: row => `${row.resource_type} ${row.resource_name ?? row.resource_id ?? ""}`, ...nativeObservationFilter(() => filterResourceType, value => { filterResourceType = value; }, () => observationOptions(RESOURCE_TYPES)) }, { key: 'action', label: t('activity.action'), value: row => row.action, ...nativeObservationFilter(() => filterAction, value => { filterAction = value; }, () => observationOptions(logs.map(row => row.action))) }, { key: 'status', label: t('activity.status'), value: row => row.status }]), row => [row.created_at, ...(showUser ? [row.username, row.user_id] : []), row.resource_type, row.resource_name ?? "", row.resource_id ?? "", row.action, row.status]);
 </script>
 
 <div class="space-y-4">
-	<!-- 필터 + 자동갱신 -->
 	<div class="flex flex-wrap gap-3 items-center">
-		<select
-			bind:value={filterResourceType}
-			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-		>
-			<option value="">{t('activity.allResources')}</option>
-			{#each RESOURCE_TYPES as rt}
-				<option value={rt}>{rt}</option>
-			{/each}
-		</select>
-		<input
-			bind:value={filterAction}
-			type="text"
-			placeholder={t('activity.actionFilter')}
-			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-52"
-		/>
-		{#if showUser}
-			<input
-				bind:value={filterUserId}
-				type="text"
-				placeholder={t('activity.userId')}
-				class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-44"
-			/>
-		{/if}
 		<div class="ml-auto">
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -231,10 +206,12 @@
 		<Alert tone="danger">{loadError}</Alert>
 	{:else if logs.length === 0}
 		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.empty')}</div>
-	{:else}
-		<ResponsiveTable>
+	{/if}
+		<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 			{#snippet cards()}
-				{#each logs as log (log.id)}
+				{#each tableView.rows as log (log.id)}
 					{#snippet errorAction()}
 						<button onclick={() => expandedId = expandedId === log.id ? null : log.id} aria-expanded={expandedId === log.id} class="text-xs text-ink-2 underline">{expandedId === log.id ? t('activity.close') : t('activity.details')}</button>
 						{#if expandedId === log.id && log.error_message}
@@ -263,17 +240,17 @@
 			{/snippet}
 		<TableShell density="compact">
 			<table class="w-full text-sm">
-				<thead class="bg-surface-base text-ink-2 text-xs uppercase tracking-wide">
+				<thead>
 					<tr>
-						<th class="px-4 py-3 text-left font-medium">{t('activity.time')}</th>
-						{#if showUser}<th class="px-4 py-3 text-left font-medium">{t('activity.user')}</th>{/if}
-						<th class="px-4 py-3 text-left font-medium">{t('activity.resource')}</th>
-						<th class="px-4 py-3 text-left font-medium">{t('activity.action')}</th>
-						<th class="px-4 py-3 text-left font-medium">{t('activity.status')}</th>
+						<TableColumnHeader view={tableView} columnKey="time" />
+						{#if showUser}<TableColumnHeader view={tableView} columnKey="user" />{/if}
+						<TableColumnHeader view={tableView} columnKey="resource" />
+						<TableColumnHeader view={tableView} columnKey="action" />
+						<TableColumnHeader view={tableView} columnKey="status" />
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-line">
-					{#each logs as log (log.id)}
+					{#each tableView.rows as log (log.id)}
 						<tr class="hover:bg-surface-sunken/40 transition-colors">
 							<td class="px-4 py-3 text-ink-2 whitespace-nowrap" title={log.created_at}>
 								{relativeTime(log.created_at)}
@@ -314,8 +291,9 @@
 			</table>
 		</TableShell>
 		</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 
-	{/if}
 	{#if !loading && (pageIndex > 0 || logs.length > 0)}
 		<Pagination page={pageIndex + 1} hasPrev={pageIndex > 0 && !refreshing} hasNext={hasMore && !refreshing} onPrev={previousPage} onNext={nextPage} />
 	{/if}

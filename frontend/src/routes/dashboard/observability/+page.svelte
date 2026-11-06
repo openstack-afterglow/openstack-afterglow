@@ -1,4 +1,8 @@
 <script lang="ts">
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { t as common } from '$lib/i18n/ns/common';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
@@ -8,7 +12,7 @@
 	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState } from '$lib/utils/experience';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
-	import { Alert, Button, EmptyState, PageHeader, PageShell, StatusChip, TextInput } from '$lib/components/ui';
+	import { Alert, Button, EmptyState, PageHeader, PageShell, StatusChip } from '$lib/components/ui';
 
 	let instances = $state<Instance[]>([]);
 	let selectedId = $state('');
@@ -20,8 +24,18 @@
 	let generation = 0;
 	onDestroy(() => { generation += 1; });
 	const currentInstances = $derived($authReady && !$projectSwitching && inventoryRevision === $viewScope ? instances : []);
-	const filtered = $derived(currentInstances.filter((instance) =>
-		`${instance.name} ${instance.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())));
+	const instanceView = createTableView({
+		rows: () => currentInstances,
+		search: () => search,
+		searchable: row => [row.name, row.id],
+		columns: () => [
+			{ key: 'name', label: common('table.name'), value: row => row.name },
+			{ key: 'id', label: common('table.key'), value: row => row.id },
+			{ key: 'status', label: common('table.status'), value: row => row.status },
+			{ key: 'flavor', label: common('table.flavor'), value: row => row.flavor_display_name ?? row.flavor_name },
+		],
+	});
+	const filtered = $derived(instanceView.rows);
 	const selected = $derived(filtered.find((instance) => instance.id === selectedId));
 	$effect(() => {
 		const visible = filtered;
@@ -96,7 +110,8 @@
 			<section class="min-w-0 overflow-hidden rounded-lg border border-line bg-surface-base" aria-label={t('observability.instances')}>
 				<div class="space-y-3 border-b border-line p-4">
 					<h2 class="text-sm font-semibold text-ink-0">{t('observability.instances')}</h2>
-					<TextInput type="search" bind:value={search} ariaLabel={t('observability.search')} placeholder={t('observability.search')} />
+					<RegexSearch id="observability-instance-search" bind:value={search} label={t('observability.search')} />
+					<TableViewControls view={instanceView} class="" />
 				</div>
 				<div class="min-h-48 max-h-72 overflow-y-auto lg:max-h-[36rem]" aria-busy={loading}>
 					{#if !$authReady || $projectSwitching || (loading && currentInstances.length === 0)}

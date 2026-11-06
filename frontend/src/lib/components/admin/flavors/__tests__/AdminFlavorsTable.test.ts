@@ -23,6 +23,13 @@ beforeEach(() => { media.matches = true; });
 afterAll(() => { vi.unstubAllGlobals(); });
 
 import AdminFlavorsTable from '../AdminFlavorsTable.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import type { ComponentProps } from 'svelte';
+function renderTable(props: Omit<ComponentProps<typeof AdminFlavorsTable>, 'view'>) {
+	return render(AdminFlavorsTable, { ...props, view: createTableView<Flavor>({
+		rows: () => props.flavors, columns: () => [{ key: 'name', label: 'Name', value: row => row.name }],
+	}) });
+}
 
 function flavor(overrides: Partial<Flavor>): Flavor {
 	return {
@@ -52,7 +59,7 @@ describe('AdminFlavorsTable native flavor management', () => {
 		const onManage = vi.fn();
 		const first = flavor({ id: 'native-a', name: 'm1.small', display_name: 'cpu.2c_4g', cpu_automation_managed: true, is_gpu: false, gpu_count: 0, extra_specs: {} });
 		const second = flavor({ id: 'native-b', name: 'dedicated-small', display_name: 'cpu.2c_4g', is_gpu: false, gpu_count: 0, disk: 40 });
-		render(AdminFlavorsTable, { flavors: [first, second], totalUnfiltered: 2, pageSize: 20, refreshing: false, onManage, onDelete: vi.fn() });
+		renderTable({ flavors: [first, second], totalUnfiltered: 2, pageSize: 20, refreshing: false, onManage, onDelete: vi.fn() });
 		await waitFor(() => expect(screen.getAllByText('cpu.2c_4g')).toHaveLength(2));
 		for (const item of [first, second]) {
 			const id = screen.getAllByText(item.id)[0];
@@ -65,7 +72,7 @@ describe('AdminFlavorsTable native flavor management', () => {
 	});
 	it('retains explicit public/private identity and manages the exact flavor regardless of obsolete specs', async () => {
 		const onManage = vi.fn();
-		render(AdminFlavorsTable, {
+		renderTable({
 			flavors: [
 				flavor({
 					id: 'quota-gpu',
@@ -111,7 +118,7 @@ describe('AdminFlavorsTable native flavor management', () => {
 describe('AdminFlavorsTable approved GPU projection', () => {
 	it('renders approved counts and explicit unknown without preventing management', async () => {
 		const onManage = vi.fn();
-		render(AdminFlavorsTable, {
+		renderTable({
 			flavors: [
 				flavor({
 					id: 'approved', name: 'approved.group', gpu_count: 1,

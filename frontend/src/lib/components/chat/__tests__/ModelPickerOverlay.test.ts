@@ -85,6 +85,33 @@ describe('ModelPickerOverlay provider navigation', () => {
 		await fireEvent.click(view.getByRole('button', { name: 'perplexity/sonar API 모델 ID 복사' }));
 		expect(writeText).toHaveBeenCalledWith('perplexity/sonar');
 	});
+	it('matches anchored field alternatives, rejects malformed regex, and retains the query on refresh', async () => {
+		const view = renderPicker();
+		const input = view.getByRole('textbox');
+		await fireEvent.input(input, { target: { value: '^(gpt-5|anthropic)$' } });
+		expect(view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[0].display_name }) })).toBeTruthy();
+		expect(view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[1].display_name }) })).toBeTruthy();
+		expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: models[2].display_name }) })).toBeNull();
+
+		await view.rerender({ models: [...models].reverse() });
+		expect((input as HTMLInputElement).value).toBe('^(gpt-5|anthropic)$');
+		expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: models[2].display_name }) })).toBeNull();
+		await fireEvent.input(input, { target: { value: '[' } });
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(view.getByRole('alert')).toBeTruthy();
+		for (const model of models) {
+			expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: model.display_name }) })).toBeNull();
+		}
+	});
+	it('retains a temporarily unavailable provider condition instead of showing another provider after refresh', async () => {
+		const view = renderPicker();
+		await fireEvent.click(view.getByRole('button', { name: /Anthropic/ }));
+		await view.rerender({ models: models.filter((model) => model.provider_id !== 2) });
+		expect(view.getByRole('button', { name: /Anthropic/ }).getAttribute('aria-pressed')).toBe('true');
+		expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: models[0].display_name }) })).toBeNull();
+		await view.rerender({ models });
+		expect(view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[1].display_name }) })).toBeTruthy();
+	});
 	it('keeps the catalog provider and model order instead of sorting display labels', async () => {
 		const ordered = [
 			{ ...models[2], id: 13, provider_id: 4, provider_type: 'openai', api_provider: 'nvidia', provider: 'NVIDIA', display_name: 'Z model', model_name: 'nim/z', provider_sort_order: 1, sort_order: 1 },

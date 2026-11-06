@@ -5,6 +5,8 @@ import { get } from 'svelte/store';
 import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import type { Flavor, PagedResponse } from '$lib/types/flavor';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as computeT } from '$lib/i18n/ns/admin-compute';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delete: vi.fn(), names: vi.fn(), confirm: vi.fn(), refresh: undefined as (() => Promise<void>) | undefined }));
 // The mock factory is hoisted before static imports, so resolve the real error class inside it.
@@ -63,6 +65,27 @@ describe('administrator flavor catalog ownership', () => {
 		current.resolve(catalog('Newest flavor')); await screen.findByText('Newest flavor');
 		old.resolve(catalog('STALE refresh')); await flush();
 		expect(screen.queryByText('STALE refresh')).toBeNull(); expect(screen.getByText('Newest flavor')).toBeTruthy();
+	});
+	it('preserves regex, descending sort and local page when the refreshed array is replaced', async () => {
+		const items = Array.from({ length: 21 }, (_, index) => ({
+			...catalog('base').items[0], id: `flavor-${index}`, name: `Flavor ${String(index).padStart(2, '0')}`,
+		}));
+		mocks.get.mockResolvedValue({ items, count: items.length, next_marker: null });
+		render(Page); await screen.findByText('Flavor 00');
+		const search = screen.getByRole('searchbox') as HTMLInputElement;
+		await fireEvent.input(search, { target: { value: '^Flavor ' } });
+		const label = computeT('flavors.fields.name');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: label, direction: commonT('table.none') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: label, direction: commonT('table.ascending') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.next') }));
+		await screen.findByText('Flavor 00');
+		expect(screen.queryByText('Flavor 20')).toBeNull();
+		mocks.get.mockResolvedValue({ items: items.map(row => ({ ...row, description: 'refreshed' })), count: items.length, next_marker: null });
+		await mocks.refresh?.(); await flush();
+		expect(search.value).toBe('^Flavor ');
+		expect(screen.getByText('Flavor 00')).toBeTruthy();
+		expect(screen.queryByText('Flavor 20')).toBeNull();
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: label, direction: commonT('table.descending') }) })).toBeTruthy();
 	});
 	it.each(['logout', 'unverified', 'switching', 'revoked'] as const)('clears observed inventory and rejects late responses after %s', async transition => {
 		render(Page); await screen.findByText('Current flavor');

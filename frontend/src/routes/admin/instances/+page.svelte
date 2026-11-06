@@ -6,7 +6,7 @@
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { t as instanceT } from '$lib/i18n/ns/instance';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
@@ -26,12 +26,16 @@
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import { confirmInstanceDeletion } from '$lib/utils/instanceDeleteConfirmation';
 	import { isTransitional } from '$lib/utils/instanceStatus';
 	import RecoveryModal from '$lib/components/admin/instances/RecoveryModal.svelte';
 	import type { AdminInstance, PagedResponse, TsPoint } from '$lib/types/adminInstance';
 	import { Button, EmptyState, Pagination, SelectInput } from '$lib/components/ui';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import type { ResourceSort } from '$lib/utils/resourceSort';
 
 	let allInstances = $state<AdminInstance[]>([]);
@@ -42,11 +46,41 @@
 	$effect(() => { pageSizeInput = String(pageSize); });
 	let markerStack = $state<string[]>([]);
 	let nextMarker = $state<string | null>(null);
-	let availableHosts = $state<string[]>([]);
-	let hostFilter = $state('');
-	let statusFilter = $state('');
 	let nameSearch = $state('');
-	let sort = $state<ResourceSort>('created_desc');
+	let nativeName = $state('');
+	let nativeStatus = $state('');
+	let nativeHost = $state('');
+	let nativeSort = $state<ResourceSort>('created_desc');
+	let availableHosts = $state<string[]>([]);
+	type OwnedInstance = AdminInstance & { project_name?: string | null; domain_name?: string | null; domain_id?: string | null };
+	const view = createTableView<OwnedInstance>({
+		rows: () => allInstances,
+		search: () => nameSearch,
+		searchable: (row) => [row.id, row.name, row.status, row.flavor_display_name ?? '', row.flavor, row.host ?? '', row.project_name ?? '', row.project_id ?? '', row.domain_name ?? '', row.domain_id ?? ''],
+		columns: () => [
+			{ key: 'name', label: t('instances.table.name'), value: (row) => row.name,
+				filterMode: 'single', filterFreeValue: true, filterOptions: () => [],
+				filterSelection: () => nativeName ? [nativeName] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === nativeName) return; nativeName = next; onFilterChange(); } },
+			{ key: 'status', label: t('instances.table.status'), value: (row) => row.status,
+				filterMode: 'single', filterOptions: () => ['ACTIVE', 'SHUTOFF', 'ERROR', 'SHELVED_OFFLOADED', 'BUILD', 'PAUSED', 'SUSPENDED'].map(value => ({ value, label: value, count: null })),
+				filterSelection: () => nativeStatus ? [nativeStatus] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === nativeStatus) return; nativeStatus = next; onFilterChange(); } },
+			{ key: 'flavor', label: t('instances.table.flavor'), value: (row) => row.flavor_display_name ?? row.flavor },
+			{ key: 'host', label: t('instances.table.host'), value: (row) => row.host,
+				filterMode: 'single', filterFreeValue: true, filterOptions: () => availableHosts.map(value => ({ value, label: value, count: null })),
+				filterSelection: () => nativeHost ? [nativeHost] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === nativeHost) return; nativeHost = next; onFilterChange(); } },
+			{ key: 'project', label: t('instances.table.project'), value: (row) => row.project_name ?? row.project_id },
+			{ key: 'created', label: t('instances.table.createdAt'), value: (row) => row.created_at },
+		],
+		onSortChange: (sort) => {
+			const next: ResourceSort = sort?.key === 'name' ? sort.direction === 'asc' ? 'name_asc' : 'name_desc'
+				: sort?.key === 'created' && sort.direction === 'asc' ? 'created_asc' : 'created_desc';
+			if (next === nativeSort) return;
+			nativeSort = next; onFilterChange();
+		},
+	});
 	let tsData = $state<TsPoint[]>([]);
 	let tsRange = $state('7d');
 	let tsLoading = $state(true);
@@ -84,15 +118,16 @@
 	}
 	const canBulkDelete = $derived(targetsStopped([...selection.ids]));
 
-	const selectableIds = $derived(new Set(allInstances.map((instance) => instance.id)));
+	const selectableIds = $derived(new Set(view.rows.map((instance) => instance.id)));
+	$effect(() => { const ids = [...selectableIds]; untrack(() => selection.retain(ids)); });
 	const projectId = $derived($auth.projectId ?? undefined);
 	const nextPrefetch = createIntentPrefetchScheduler();
 	function listPath(marker?: string): string {
-		const params = new URLSearchParams({ limit: String(pageSize), sort });
+		const params = new URLSearchParams({ limit: String(pageSize), sort: nativeSort });
 		if (marker) params.set('marker', marker);
-		if (hostFilter) params.set('host', hostFilter);
-		if (statusFilter) params.set('status', statusFilter);
-		if (nameSearch) params.set('name', nameSearch);
+		if (nativeName) params.set('name', nativeName);
+		if (nativeStatus) params.set('status', nativeStatus);
+		if (nativeHost) params.set('host', nativeHost);
 		return `/api/v1/admin/all-instances?${params}`;
 	}
 	function prefetchNext() {
@@ -107,9 +142,6 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
-		const requestHostFilter = hostFilter;
-		const requestStatusFilter = statusFilter;
-		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
 		if (opts?.clearSelection) scopeRevision += 1;
 		const requestRevision = scopeRevision;
@@ -118,9 +150,6 @@
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
-			&& hostFilter === requestHostFilter
-			&& statusFilter === requestStatusFilter
-			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
 		if (opts?.clearSelection) {
@@ -152,13 +181,13 @@
 		}
 	}
 
+
 	async function loadHosts() {
 		try {
-			const hvs = await api.get<{ id: string; name: string }[]>('/api/v1/admin/hypervisors', token, projectId);
-			availableHosts = hvs.map(h => h.name).sort();
+			const rows = await api.get<{ name: string }[]>('/api/v1/admin/hypervisors', token, projectId);
+			availableHosts = rows.map(row => row.name).sort();
 		} catch { availableHosts = []; }
 	}
-
 	async function loadTimeseries(range: string, opts?: { background?: boolean }) {
 		if (!opts?.background) tsLoading = true;
 		try { tsData = await api.get<TsPoint[]>(`/api/v1/admin/timeseries/instances?range=${range}`, token, projectId); }
@@ -211,8 +240,8 @@
 		selection.clear();
 		void load();
 		void loadTimeseries(tsRange);
-		void loadHosts();
 		void loadHealth();
+		void loadHosts();
 	});
 
 	async function bulkAction(action: 'start' | 'stop' | 'delete') {
@@ -233,14 +262,17 @@
 					&& (action !== 'delete' || row.status === 'SHUTOFF');
 			});
 		if (bulkActioning || !owns()) return;
-		if (
-			(action === 'stop' || action === 'delete')
-			&& !await confirmDialog(
-				action === 'delete'
-					? `${t('instances.bulk.deleteConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`
-					: `${t('instances.bulk.stopConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`,
-			)
-		) return;
+		if (action === 'delete') {
+			if (!await confirmInstanceDeletion(`${t('instances.bulk.deleteConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`, {
+				targets: ids.map(id => ({ id, name: allInstances.find(row => row.id === id)?.name })),
+				adminMode: true,
+				token: requestToken,
+				projectId: requestProjectId,
+				isCurrent: owns,
+			})) return;
+		} else if (action === 'stop') {
+			if (!await confirmDialog(`${t('instances.bulk.stopConfirm', { count: ids.length })}\n\n${instanceT('panel.stoppedQuotaWarning')}`)) return;
+		}
 		if (!owns()) return;
 
 		bulkActioning = true;
@@ -274,8 +306,8 @@
 		projectEffectReady = true;
 		void load(undefined, { clearSelection: true });
 		void loadTimeseries(tsRange);
-		void loadHosts();
 		void loadHealth();
+		void loadHosts();
 	});
 	onDestroy(() => { unsubscribeAuth(); scopeRevision += 1; loadGeneration += 1; nextPrefetch.cancel(); invalidateInstanceDetailSelection(); });
 </script>
@@ -284,6 +316,7 @@
 	<div data-tour="admin-compute-header">
 	<PageHeader breadcrumb={t('instances.page.breadcrumb')} title={health ? t('instances.page.titleWithCount', { count: health.total }) : t('instances.page.title')}>
 		{#snippet actions()}
+			<TutorialStartButton tour="admin-compute" compactOnMobile />
 			<Button onclick={() => openWizard()} variant="primary" size="sm">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -299,20 +332,14 @@
 	{/if}
 
 	<div data-tour="admin-compute-filters">
-	<AdminInstanceFilters
-		{availableHosts}
-		bind:hostFilter
-		bind:statusFilter
-		bind:nameSearch
-		bind:sort
-		onChange={onFilterChange}
-	>
+	<AdminInstanceFilters bind:nameSearch>
 		{#snippet actions()}
-			<TutorialStartButton tour="admin-compute" compactOnMobile />
-			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing} onManualRefresh={() => { void load(markerStack.at(-1), { refresh: true }); void loadHealth(); void loadHosts(); }} />
+			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing} onManualRefresh={() => { void load(markerStack.at(-1), { refresh: true }); void loadHealth(); }} />
 		{/snippet}
 	</AdminInstanceFilters>
 	</div>
+	<p class="text-xs text-ink-2">{commonT('table.mixedScope')}</p>
+	<TableViewControls {view} class={loading || inventoryError ? '' : 'lg:hidden'} />
 
 	{#if !api.scoped}
 	<details class="rounded-lg border border-line bg-surface-base" data-tour="admin-compute-timeseries">
@@ -340,14 +367,15 @@
 	{:else if loading}
 		<LoadingState variant="surface" />
 	{:else}
-		{#if allInstances.length === 0}
-			<EmptyState headline={t(hostFilter || statusFilter || nameSearch ? 'instances.page.filteredEmpty' : 'instances.page.empty')} description={t(hostFilter || statusFilter || nameSearch ? 'instances.page.filteredEmptyDescription' : 'instances.page.emptyDescription')}>
-				{#snippet cta()}{#if hostFilter || statusFilter || nameSearch}<Button variant="secondary" onclick={() => { hostFilter = ''; statusFilter = ''; nameSearch = ''; onFilterChange(); }}>{t('instances.page.clearFilters')}</Button>{/if}{/snippet}
+		{#if view.rows.length === 0}
+			<EmptyState headline={t(nameSearch || nativeName || nativeStatus || nativeHost || Object.keys(view.filters).length ? 'instances.page.filteredEmpty' : 'instances.page.empty')} description={t(nameSearch || nativeName || nativeStatus || nativeHost || Object.keys(view.filters).length ? 'instances.page.filteredEmptyDescription' : 'instances.page.emptyDescription')}>
+				{#snippet cta()}{#if nameSearch || nativeName || nativeStatus || nativeHost || Object.keys(view.filters).length}<Button variant="secondary" onclick={() => { nameSearch = ''; nativeName = ''; nativeStatus = ''; nativeHost = ''; nativeSort = 'created_desc'; view.reset(); onFilterChange(); }}>{t('instances.page.clearFilters')}</Button>{/if}{/snippet}
 			</EmptyState>
 		{/if}
 		<div data-tour="admin-compute-ready">
 		<AdminInstanceTable
-			instances={allInstances}
+			instances={view.rows}
+			{view}
 			selectedIds={selection.ids}
 			{selectableIds}
 			selectionDisabled={bulkActioning}

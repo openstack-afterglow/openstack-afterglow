@@ -67,7 +67,10 @@ const targets = {
 			extraArgs: ["-m", "not db and not contract"]
 		},
 		frontend: {
-			selectors: ["src/lib/components/account/__tests__/McpAccessSection.test.ts"]
+			selectors: [
+				"src/lib/components/account/__tests__/McpAccessSection.test.ts",
+				"src/lib/components/account/__tests__/McpAccessConfirmation.test.ts"
+			]
 		}
 	},
 	auth: {
@@ -409,6 +412,8 @@ const targets = {
 				"tests/test_instance_usage_routes.py",
 				"tests/test_instance_usage_scheduler.py",
 				"tests/test_instance_usage_scheduler_native_http.py",
+				"tests/test_instance_usage_scheduler_operator_native_http.py",
+				"tests/test_instance_usage_catalog_operator_native_http.py",
 				"tests/test_instance_usage_cleanup.py",
 				"tests/test_image_gpu_metadata.py",
 				"tests/test_glance_properties_native_http.py",

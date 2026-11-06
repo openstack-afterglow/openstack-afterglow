@@ -5,6 +5,7 @@ import type { FlavorOption } from '$lib/types/flavor';
 import SelectImage from '../SelectImage.svelte';
 import { t } from '$lib/i18n/ns/vm-wizard';
 import { t as imageText } from '$lib/i18n/ns/images-keys';
+import { t as tc } from '$lib/i18n/ns/common';
 
 const images: ImageInfo[] = [
 	{
@@ -67,10 +68,47 @@ function tagPanel(repository: string) {
 
 function visibleRepositories() {
 	return within(screen.getByRole('list', { name: t('image.repositoryListLabel') }))
-		.queryAllByRole('button').filter(button => button.hasAttribute('aria-expanded'));
+		.queryAllByRole('button').filter(button => button.getAttribute('aria-controls')?.includes('-tags-'));
+}
+
+function tagChoices(repository: string) {
+	return within(tagPanel(repository)).queryAllByRole('button').filter(button => button.hasAttribute('aria-pressed'));
+}
+
+async function setDistro(value: string) {
+	await fireEvent.click(screen.getByRole('button', { name: tc('table.filterColumn', { column: imageText('infoSection.osDistro') }) }));
+	await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+	await fireEvent.click(screen.getByRole('checkbox', { name: value }).closest('label')!);
+	await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
 }
 
 describe('SelectImage', () => {
+	it.each([false, true])('keeps tag conditions recoverable while the selected repository is absent (explicit=%s)', async explicit => {
+		const onSelect = vi.fn();
+		const props = { images, selectedId: images[0].id, onSelect };
+		const rendered = render(SelectImage, props);
+		if (explicit) { await fireEvent.click(repositoryButton('ubuntu')); await fireEvent.click(repositoryButton('ubuntu')); }
+		const panel = tagPanel('ubuntu');
+		await fireEvent.input(within(panel).getByRole('searchbox'), { target: { value: '^22\\.04$' } });
+		await fireEvent.click(within(panel).getByRole('button', { name: tc('table.filterColumn', { column: t('image.columns.tag') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: '22.04' }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		for (const direction of ['none', 'ascending'] as const) await fireEvent.click(within(panel).getByRole('button', { name: tc('table.sortColumn', { column: t('image.columns.size'), direction: tc(`table.${direction}`) }) }));
+		await rendered.rerender({ ...props, images: [] });
+		const recovery = screen.getByRole('region', { name: t('image.columns.tag') });
+		expect((within(recovery).getByRole('searchbox') as HTMLInputElement).value).toBe('^22\\.04$');
+		await fireEvent.click(within(recovery).getByRole('button', { name: tc('table.filterColumn', { column: t('image.columns.tag') }) }));
+		expect((screen.getByRole('checkbox', { name: '22.04' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		await fireEvent.input(within(recovery).getByRole('searchbox'), { target: { value: '' } });
+		await rendered.rerender(props);
+		expect((within(tagPanel('ubuntu')).getByRole('searchbox') as HTMLInputElement).value).toBe('');
+		expect(within(tagPanel('ubuntu')).getByRole('button', { name: tc('table.sortColumn', { column: t('image.columns.size'), direction: tc('table.descending') }) })).toBeTruthy();
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		expect(screen.queryByRole('button', { name: t('image.selectLabel', { name: 'ubuntu:24.04' }) })).toBeNull();
+		expect(onSelect).not.toHaveBeenCalled();
+	});
 	it('groups tags by repository, not OS, and selects only after a concrete tag is chosen', async () => {
 		const { onSelect } = renderSelector();
 		expect(visibleRepositories()).toHaveLength(3);
@@ -81,7 +119,7 @@ describe('SelectImage', () => {
 		await fireEvent.click(repositoryButton('ubuntu'));
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(repositoryButton('ubuntu').getAttribute('aria-expanded')).toBe('true');
-		expect(within(tagPanel('ubuntu')).getAllByRole('button').map(button => button.textContent?.trim())).toEqual([
+		expect(tagChoices('ubuntu').map(button => button.textContent?.trim())).toEqual([
 			expect.stringContaining('24.04'), expect.stringContaining('22.04'),
 		]);
 		await fireEvent.click(tagButton('ubuntu:24.04'));
@@ -93,29 +131,27 @@ describe('SelectImage', () => {
 		expect(onSelect).toHaveBeenLastCalledWith('waygate-gateway', 'waygate-gateway:latest');
 	});
 
-	it('opens filters on demand and searches repositories and tags together', async () => {
+	it('searches repository reference fields with an anchored regex', async () => {
 		const { onSelect } = renderSelector();
-		expect(screen.queryByRole('searchbox')).toBeNull();
-		await fireEvent.click(screen.getByRole('button', { name: t('image.filters.title') }));
+
 		const search = screen.getByRole('searchbox', { name: t('image.searchLabel') });
-		await fireEvent.input(search, { target: { value: 'ubuntu 24.04' } });
+		await fireEvent.input(search, { target: { value: '^ubuntu:24\\.04$' } });
 		expect(visibleRepositories()).toHaveLength(1);
 		await fireEvent.click(repositoryButton('ubuntu'));
-		expect(within(tagPanel('ubuntu')).getAllByRole('button')).toHaveLength(1);
+		expect(tagChoices('ubuntu')).toHaveLength(1);
 		await fireEvent.click(tagButton('ubuntu:24.04'));
 		expect(onSelect).toHaveBeenCalledWith('ubuntu-2404', 'ubuntu:24.04');
 		await fireEvent.input(search, { target: { value: 'ubuntu' } });
-		expect(within(tagPanel('ubuntu')).getAllByRole('button')).toHaveLength(2);
+		expect(tagChoices('ubuntu')).toHaveLength(2);
 	});
 
 	it('filters by OS while keeping repositories with the same distro distinct', async () => {
 		renderSelector();
-		await fireEvent.click(screen.getByRole('button', { name: t('image.filters.title') }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Ubuntu 2' }));
+		await setDistro('ubuntu');
 		expect(visibleRepositories()).toHaveLength(2);
 		expect(repositoryButton('ubuntu')).toBeTruthy();
 		expect(repositoryButton('waygate-gateway')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Fedora 1' }));
+		await setDistro('fedora');
 		expect(visibleRepositories()).toHaveLength(1);
 		await fireEvent.click(repositoryButton('fedora'));
 		expect(tagButton('fedora:40')).toBeTruthy();
@@ -157,10 +193,9 @@ describe('SelectImage', () => {
 		(saving as HTMLButtonElement).click();
 		expect(onSelect).not.toHaveBeenCalled();
 
-		await fireEvent.click(screen.getByRole('button', { name: t('image.filters.title') }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Fedora 1' }));
+		await setDistro('fedora');
 		expect(screen.queryByRole('button', { name: t('image.repositoryLabel', { name: 'ubuntu' }) })).toBeNull();
-		await fireEvent.click(screen.getByRole('button', { name: 'Ubuntu 1' }));
+		await setDistro('ubuntu');
 		await fireEvent.input(screen.getByRole('searchbox', { name: t('image.searchLabel') }), { target: { value: 'legacy-upload' } });
 		expect(visibleRepositories()).toHaveLength(0);
 		await fireEvent.input(screen.getByRole('searchbox', { name: t('image.searchLabel') }), { target: { value: 'latest' } });
@@ -173,7 +208,7 @@ describe('SelectImage', () => {
 		const uploads = [{ ...older, updated_at: '2027-02-01T00:00:00Z' }, newer];
 		render(SelectImage, { images: reverse ? uploads.reverse() : uploads, selectedId: null, onSelect });
 		await fireEvent.click(repositoryButton('ubuntu'));
-		expect(within(tagPanel('ubuntu')).getAllByRole('button')).toHaveLength(1);
+		expect(tagChoices('ubuntu')).toHaveLength(1);
 
 		await fireEvent.click(tagButton('ubuntu:latest'));
 		expect(onSelect).toHaveBeenCalledWith(newer.id, 'ubuntu:latest');
@@ -193,7 +228,7 @@ describe('SelectImage', () => {
 			['ubuntu', 'waygate-gateway', 'fedora', 'unknown'].map(name => t('image.repositoryLabel', { name })),
 		);
 		await fireEvent.click(repositoryButton('ubuntu'));
-		expect(within(tagPanel('ubuntu')).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(
+		expect(tagChoices('ubuntu').map(button => button.getAttribute('aria-label'))).toEqual(
 			['24.04', '22.04', 'latest'].map(tag => t('image.selectLabel', { name: `ubuntu:${tag}` })),
 		);
 	});
@@ -217,7 +252,7 @@ describe('SelectImage', () => {
 		const onSelect = vi.fn();
 		render(SelectImage, { images, selectedId: images[0].id, onSelect });
 		const search = within(tagPanel('ubuntu')).getByRole('searchbox', { name: t('image.tagSearchLabel', { name: 'ubuntu' }) });
-		await fireEvent.input(search, { target: { value: ' 24.04 ' } });
+		await fireEvent.input(search, { target: { value: '^24\\.04$' } });
 		expect(tagButton('ubuntu:24.04')).toBeTruthy();
 		expect(screen.queryByRole('button', { name: t('image.selectLabel', { name: 'ubuntu:22.04' }) })).toBeNull();
 		expect(repositoryButton('ubuntu').textContent).toContain(t('image.selectedTag', { tag: '22.04' }));
@@ -238,7 +273,7 @@ describe('SelectImage', () => {
 		const onSelect = vi.fn();
 		render(SelectImage, { images: [older, { ...newer, status: 'saving' }, images[1]], selectedId: null, onSelect });
 		await fireEvent.click(repositoryButton('ubuntu'));
-		await fireEvent.input(within(tagPanel('ubuntu')).getByRole('searchbox'), { target: { value: ' LATEST ' } });
+		await fireEvent.input(within(tagPanel('ubuntu')).getByRole('searchbox'), { target: { value: '^LATEST$' } });
 		const blocked = screen.getByRole('button', { name: t('image.unselectableLabel', { name: 'ubuntu:latest', status: 'saving' }) });
 		expect(blocked.hasAttribute('disabled')).toBe(true);
 		expect(within(blocked).getByLabelText(`SHA-256: ${newer.os_hash_value}`)).toBeTruthy();

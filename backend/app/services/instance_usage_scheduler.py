@@ -83,14 +83,6 @@ async def _connection(factory, *args):
             await usage.sdk_call(conn.close)
 
 
-def _prove_project(conn, project_id):
-    access = conn.session.auth.get_access(conn.session)
-    if access.project_id != project_id or access.project_scoped is not True or access.system_scoped is not False:
-        raise RuntimeError("Native credentials do not prove the exact scheduled project")
-    conn._afterglow_project_id = project_id
-    conn._afterglow_authenticated_project_id = project_id
-
-
 def _catalog(conn):
     catalog = {}
     proxy = usage.safe_compute_proxy(conn)
@@ -228,7 +220,7 @@ async def _current(conn, lease, project_id, server_id, *, revision=None, due=Non
     await checkpoint()
     if not await lease.current():
         raise DispatcherUnavailable("Usage schedule lease was lost")
-    await usage.sdk_call(_prove_project, conn, project_id)
+    await usage.sdk_call(usage.prove_project_scope, conn, project_id)
     server = await usage.sdk_call(usage.safe_compute_proxy(conn).get_server, server_id)
     if _value(server, "id") != server_id or _project(server) != project_id:
         raise RuntimeError("Scheduled server identity or ownership changed")
@@ -449,7 +441,7 @@ class _DispatchLease:
 
 
 async def _cycle(conn, project_id, server_id, clock, redis):
-    await usage.sdk_call(_prove_project, conn, project_id)
+    await usage.sdk_call(usage.prove_project_scope, conn, project_id)
     async with usage.usage_lease(conn, project_id, server_id, redis=redis) as lease:
         if lease is None:
             return
@@ -585,9 +577,7 @@ async def _schedule_tick(dispatcher, census_connection_factory=None, now=None):
 
 async def _execute_tick(dispatcher, clock, connection_factory=None, redis=None):
     if connection_factory is None:
-        from app.services.keystone import get_admin_connection_for_project
-
-        connection_factory = get_admin_connection_for_project
+        connection_factory = usage.operator_connection
     for _ in range(await dispatcher.pending()):
         claimed = await dispatcher.claim(_LEASE_SECONDS)
         if claimed is None:

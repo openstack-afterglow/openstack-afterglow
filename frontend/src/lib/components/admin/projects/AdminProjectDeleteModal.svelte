@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -248,6 +252,16 @@
 			if (current(requestScope)) deleting = false;
 		}
 	}
+	const reportId = $props.id();
+	let reportSearch = $state('');
+	const reportView = createTableView<ResourceCheck>({ rows: () => report?.resources ?? [], locale: () => intlLocale(), search: () => reportSearch, columns: () => [
+		{ key: 'resource', label: tc('table.name'), value: row => row.kind, format: (_, row) => resourceLabel(row.kind) },
+		{ key: 'service', label: tc('table.source'), value: row => row.service, format: (_, row) => serviceLabel(row.service) },
+		{ key: 'count', label: tc('table.value'), value: row => row.count },
+		{ key: 'status', label: tc('table.status'), value: row => row.status },
+		{ key: 'reason', label: tc('table.description'), value: row => row.reason }
+	] });
+	$effect(() => { void project?.id; void domainId; void $auth.sessionId; void $auth.userId; void $auth.projectId; void session; untrack(() => { reportSearch = ''; reportView.reset(); }); });
 </script>
 
 {#snippet nameTag(text: string)}<span class="text-ink-0 font-medium">{text}</span>{/snippet}
@@ -276,8 +290,9 @@
 					<Alert tone="warning">{t('projectDelete.unavailable')}</Alert>
 				{/if}
 				{#if !session}<p class="text-xs text-ink-2">{t('projectDelete.cleanupHelp')}</p>{/if}
+				<RegexSearch id={`${reportId}-search`} bind:value={reportSearch} /><TableViewControls view={reportView} class="" />
 				<ul class="max-h-[40dvh] overflow-y-auto divide-y divide-line text-sm" aria-label={t('projectDelete.reportLabel')}>
-					{#each report.resources as row}
+					{#each reportView.rows as row}
 						<li class="py-2 min-w-0">
 							<div class="flex flex-wrap justify-between gap-x-3 gap-y-1">
 								<span class="text-ink-0 font-medium">{resourceLabel(row.kind)}</span>

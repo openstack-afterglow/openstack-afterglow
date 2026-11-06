@@ -1,4 +1,12 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
   import { t } from '$lib/i18n/ns/file-storage';
   import type { FileStorage } from '$lib/types/fileStorage';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -9,11 +17,30 @@
   }: {
     fileStorages: FileStorage[];
   } = $props();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<FileStorage>[]>([
+  { key: 'name', label: t('networkTable.name'), value: row => row.name },
+  { key: 'status', label: t('info.status'), value: row => row.status },
+  { key: 'size', label: t('info.size'), value: row => row.size },
+  { key: 'library', label: t('info.library'), value: row => row.library_name },
+  { key: 'built', label: t('info.builtAt'), value: row => row.built_at },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => fileStorages, columns: () => columns, search: () => search, searchable: row => [row.name, row.id, row.library_name, row.status].map(value => String(value ?? ''))});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class="" />
+{#if fileStorages.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
-    {#each fileStorages as fs (fs.id)}
+    {#each view.rows as fs (fs.id)}
       <CompactResourceCard>
         <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{fs.name || fs.id.slice(0, 8)}</strong><StatusChip status={fs.status} /></div>
         <p class="text-xs text-ink-2">{t('manageGrid.size')}: {fs.size} GB{#if fs.metadata?.union_type} · {fs.metadata.union_type}{/if}</p>
@@ -23,7 +50,7 @@
     {/each}
   {/snippet}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-  {#each fileStorages as fs}
+  {#each view.rows as fs}
     <div class="bg-surface-base border border-line rounded-lg p-5">
       <div class="flex items-center gap-2.5 mb-3">
         <div class="w-10 h-10 rounded-lg bg-teal-500/15 border border-teal-500/30 text-teal-400 flex items-center justify-center shrink-0">

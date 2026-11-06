@@ -7,8 +7,12 @@
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import type { Network } from '$lib/types/networks';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+  import { createTableView } from '$lib/utils/tableView.svelte';
 
-  let { networks, defaultNetworkId, deleting, settingDefault, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onOpenPanel, onSetDefault, onDelete }: {
+  let { networks, view, defaultNetworkId, deleting, settingDefault, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onOpenPanel, onSetDefault, onDelete }: {
+    view: ReturnType<typeof createTableView<Network>>;
     networks: Network[]; defaultNetworkId: string | null; deleting: string | null; settingDefault: string | null;
     selectedIds: ReadonlySet<string>; selectableIds: ReadonlySet<string>; selectionDisabled: boolean;
     onToggleSelect: (id: string) => void; onToggleAll: () => void; onOpenPanel: (id: string) => void;
@@ -55,8 +59,8 @@
   <div class="rounded-lg border border-line bg-surface-base overflow-x-auto">
     <table class="w-full text-sm">
       <thead><tr class="border-b border-line text-left text-[13px] text-ink-2">
-        <th class="px-4 py-2 font-medium"><SelectionToolbar label={t('networksTable.title')} ariaLabel={t('networksTable.selectAll')} checked={allSelected} {indeterminate} {selectedCount} disabled={selectionDisabled || selectableIds.size === 0} onToggle={onToggleAll} /></th>
-        <th class="px-4 py-2 font-medium">CIDR</th><th class="px-4 py-2 font-medium">{t('networksTable.type')}</th><th class="px-4 py-2 text-right font-medium">{t('networksTable.subnets')}</th><th class="px-4 py-2 font-medium">{t('networksTable.status')}</th><th class="px-4 py-2"></th>
+        <th scope="col" aria-sort={view.direction('name')} class="px-4 py-2 font-medium"><div class="flex flex-wrap items-center gap-2"><SelectionToolbar label={t('networksTable.title')} ariaLabel={t('networksTable.selectAll')} checked={allSelected} {indeterminate} {selectedCount} disabled={selectionDisabled || selectableIds.size === 0} onToggle={onToggleAll} /><TableColumnControl {view} columnKey="name" /></div></th>
+        <TableColumnHeader {view} columnKey="cidr" /><TableColumnHeader {view} columnKey="type" /><TableColumnHeader {view} columnKey="subnets" /><TableColumnHeader {view} columnKey="status" /><th class="px-4 py-2"></th>
       </tr></thead>
       <tbody>
         {#each networks as net (net.id)}

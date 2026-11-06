@@ -8,6 +8,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import CreateProjectDialog from './CreateProjectDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 	import {
 		buildWorkspacePayload,
 		countConversationsInWorkspace,
@@ -68,15 +70,10 @@
 	});
 	const canSubmit = $derived($serviceCapabilities('lumen-chat_user') && form.name.trim().length > 0 && !saving);
 
-	const filtered = $derived.by(() => {
-		const q = query.trim().toLowerCase();
-		if (!q) return workspaces;
-		return workspaces.filter(
-			(w) =>
-				w.name.toLowerCase().includes(q) ||
-				(w.description ?? '').toLowerCase().includes(q)
-		);
-	});
+	const compiledQuery = $derived(compileRegexSearch(query));
+	const filtered = $derived(workspaces.filter((workspace) =>
+		matchesRegexSearch(compiledQuery, [workspace.name, String(workspace.id), workspace.description ?? ''])
+	));
 
 	// 상세로 진입할 때 폼을 대상 프로젝트로 초기화한다.
 	// 목록(workspaces)이 갱신돼도 편집 중 폼을 덮어쓰지 않도록 selectedId/mode 만 추적하고
@@ -149,10 +146,7 @@
 		<header class="head">
 			<h1 class="title">{t('projects.title')}</h1>
 			<div class="head-actions">
-				<div class="search">
-					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-					<input type="text" placeholder={t('projects.search')} bind:value={query} />
-				</div>
+				<RegexSearch id="chat-project-search" bind:value={query} label={t('projects.search')} class="min-w-0 flex-1" />
 				<Button variant="accent" size="sm" disabled={!$serviceCapabilities('lumen-chat_user')} onclick={openCreate}>{t('projects.newProject')}</Button>
 			</div>
 		</header>
@@ -320,6 +314,7 @@
 	}
 	.head {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.6rem;
 		padding: 1.1rem 1.4rem;
@@ -339,30 +334,11 @@
 	.head-actions {
 		margin-left: auto;
 		display: flex;
+		flex-wrap: wrap;
+		min-width: 0;
+		flex: 1;
 		align-items: center;
 		gap: 0.6rem;
-	}
-	.search {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		padding: 0.4rem 0.6rem;
-		border-radius: 0.55rem;
-		border: 1px solid var(--color-line);
-		background: var(--color-surface-raised);
-		color: var(--color-ink-2);
-	}
-	.search input {
-		flex: 1;
-		border: none;
-		outline: none;
-		background: transparent;
-		color: var(--color-ink-1);
-		font-size: 0.8125rem;
-		min-width: 8rem;
-	}
-	.search input::placeholder {
-		color: var(--color-ink-3);
 	}
 	.back {
 		display: inline-flex;
@@ -402,7 +378,6 @@
 		transition: border-color 0.15s, background 0.15s;
 	}
 	:global(:root.light) .card,
-	:global(:root.light) .search,
 	:global(:root.light) .conv-row {
 		border-color: var(--color-line-2);
 	}

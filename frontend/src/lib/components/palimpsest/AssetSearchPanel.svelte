@@ -28,6 +28,11 @@
   import { t as usageText } from '$lib/i18n/ns/usage-schedule';
   import { defaultUsageDraft, requiresUsageSchedule, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
   import { sessionScopeKey } from '$lib/utils/authSession';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as commonText } from '$lib/i18n/ns/common';
 
   let { identity, onGuide }: { identity: AssetIdentity | null; onGuide: () => void } = $props();
   const permissionReady = $derived(!!$projectPermissions.permissions && !$projectPermissions.loading && !$projectPermissions.error);
@@ -35,7 +40,42 @@
   const downloadable = $derived(allowed && $serviceCapabilities('palimpsest-download_user'));
   const writable = $derived(downloadable && !!$auth.canWrite);
   const assets = createPalimpsestAssetsController(() => identity, () => allowed, () => downloadable, () => !!$auth.canWrite);
-  let query = $state('');
+  let localSearch = $state('');
+  const hubColumns = $derived<TableColumn<ReusableAsset>[]>([
+    { key: 'name', label: t('name'), value: row => row.name,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => [...new Set((assets.hub?.items ?? []).map(row => row.name))].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => assets.query ? [assets.query] : null,
+      onFilterChange: values => { if (!values || values.length === 1) { const query = values?.[0] ?? ''; if (query !== assets.query) void assets.search(query); } } },
+    { key: 'platform', label: t('platform'), value: row => row.arch },
+    { key: 'access', label: t('access'), value: row => row.visibility, format: (_value, row) => t(`visibility.${row.visibility}`) },
+    { key: 'size', label: t('size'), value: row => row.size_bytes, format: (_value, row) => bytes(row.size_bytes) },
+  ]);
+  const packageColumns = $derived<TableColumn<PackageSummary>[]>([
+    { key: 'name', label: t('name'), value: row => `${row.namespace}/${row.name}`,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => [...new Set((assets.packages?.items ?? []).map(row => row.name))].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => assets.query ? [assets.query] : null,
+      onFilterChange: values => { if (!values || values.length === 1) { const query = values?.[0] ?? ''; if (query !== assets.query) void assets.search(query); } } },
+    { key: 'type', label: commonText('table.type'), value: row => row.package_type, format: (_value, row) => t(row.package_type === 'runtime-bundle' ? 'type.bundle' : 'type.oci') },
+    { key: 'version', label: t('version.label'), value: row => row.tags.map(tag => tag.tag).join(', ') },
+  ]);
+  const environmentColumns = $derived<TableColumn<CloudEnvironment>[]>([
+    { key: 'name', label: t('name'), value: row => row.name,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => [...new Set((assets.environments?.items ?? []).map(row => row.name))].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => assets.query ? [assets.query] : null,
+      onFilterChange: values => { if (!values || values.length === 1) { const query = values?.[0] ?? ''; if (query !== assets.query) void assets.search(query); } } },
+    { key: 'platform', label: t('platform'), value: row => row.ubuntu_base },
+    { key: 'size', label: t('size'), value: row => row.size_bytes, format: (_value, row) => bytes(row.size_bytes) },
+    { key: 'cloud', label: t('cloud.supported'), value: row => row.cloud_supported, format: value => t(value ? 'cloud.supported' : 'cloud.unsupported') },
+  ]);
+  const hubView = createTableView({ rows: () => assets.hub?.items ?? [], columns: () => hubColumns, search: () => localSearch,
+    searchable: row => [row.name, row.arch ?? '', row.ubuntu_base ?? '', row.visibility, row.blob_digest], locale: intlLocale });
+  const packageView = createTableView({ rows: () => assets.packages?.items ?? [], columns: () => packageColumns, search: () => localSearch,
+    searchable: row => [row.namespace, row.name, `${row.namespace}/${row.name}`, row.package_type, ...row.tags.flatMap(tag => [tag.tag, tag.digest])], locale: intlLocale });
+  const environmentView = createTableView({ rows: () => assets.environments?.items ?? [], columns: () => environmentColumns, search: () => localSearch,
+    searchable: row => [row.name, row.ubuntu_base ?? ''], locale: intlLocale });
   let notice = $state<'copied' | 'copyFailed' | ''>('');
   let cloudOpen = $state(false);
   let flavor = $state(''), network = $state(''), key = $state(''), serverName = $state('');
@@ -81,7 +121,7 @@
     let active = true, lastOwner: string | null = null;
     const stopOwner = auth.subscribe((state) => {
       const owner = sessionScopeKey(state);
-      if (lastOwner !== null && owner !== lastOwner) { assets.invalidateActor(); query = ''; cloudOpen = false; flavor = ''; network = ''; key = ''; serverName = ''; usageSchedule = defaultUsageDraft(); }
+      if (lastOwner !== null && owner !== lastOwner) { assets.invalidateActor(); localSearch = ''; hubView.reset(); packageView.reset(); environmentView.reset(); cloudOpen = false; flavor = ''; network = ''; key = ''; serverName = ''; usageSchedule = defaultUsageDraft(); }
       lastOwner = owner;
       queueMicrotask(() => { if (active) assets.bind(); });
     });
@@ -98,10 +138,6 @@
     if (value == null || !Number.isFinite(value) || value < 0) return t('unknown');
     const unit = value >= 1024 ** 3 ? 3 : value >= 1024 ** 2 ? 2 : value >= 1024 ? 1 : 0;
     return `${(value / 1024 ** unit).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} ${['B', 'KiB', 'MiB', 'GiB'][unit]}`;
-  }
-  async function search(event?: SubmitEvent) {
-    event?.preventDefault();
-    await assets.search(query);
   }
   async function selectHub(asset: ReusableAsset) { await assets.select({ source: 'hub', asset }); await focusUse(); }
   async function selectPackage(asset: PackageSummary) { const selecting = assets.select({ source: 'packages', asset }); await focusUse(); await selecting; }
@@ -149,13 +185,9 @@
 </script>
 
 <section class="space-y-6 min-w-0" aria-label={t('heading')}>
-  <div class="space-y-3">
-    <form onsubmit={search} class="flex flex-wrap items-end gap-3">
-      <div class="min-w-0 flex-1"><Field label={t('search.label')} for="asset-name-search" help={t('search.help')}><TextInput id="asset-name-search" type="search" bind:value={query} maxlength={128} placeholder="torch, tensorflow" disabled={!allowed} /></Field></div>
-      <Button type="submit" variant="primary" disabled={!allowed}>{t('search.action')}</Button>
-      <Button variant="ghost" disabled={!allowed} onclick={() => { query = ''; void search(); }}>{t('search.clear')}</Button>
-    </form>
-  </div>
+  <div class="flex justify-end"><Button variant="secondary" disabled={!allowed} onclick={() => assets.search(assets.query)}>{commonText('autoRefresh.refresh')}</Button></div>
+  <RegexSearch id="asset-loaded-regex" bind:value={localSearch} />
+  <p class="text-xs text-ink-2">{commonText('table.mixedScope')}</p>
   {#if !identity}<Alert tone="info">{t('identity')}</Alert>
   {:else if $projectPermissions.error}<Alert tone="danger">{$projectPermissions.error}</Alert>
   {:else if !permissionReady}<LoadingState variant="section" />
@@ -163,34 +195,40 @@
   {:else}
     <section class="space-y-3" aria-labelledby="asset-shared-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-shared-heading" class="text-sm font-semibold">{t('source.hub')}</h3><p class="text-xs text-ink-2">{t('source.hubHelp')}</p></div>
+      <TableViewControls view={hubView} class={assets.hub?.items.length ? 'lg:hidden' : ''} />
+      {#if assets.hub?.items.length && !hubView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if assets.errors.hub}{@render failure('hub')}{:else if assets.busy.hub && !assets.hub}<LoadingState variant="section" />
       {:else if assets.hub}
         {#if assets.busy.hub}<LoadingState variant="inline" />{/if}
         {#if !assets.hub.items.length}{@render empty(assets.hub.has_more)}{:else}
-          <ResponsiveTable>{#snippet cards()}{#each assets.hub?.items ?? [] as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.arch ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.chain_complete ? t('dependencies.ready') : t('dependencies.incomplete')}</p>{#snippet details()}<p class="text-xs">{t(`visibility.${asset.visibility}`)} · {asset.ubuntu_base ?? t('unknown')}</p>{/snippet}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}{/snippet}
-            <TableShell><table><thead><tr><th>{t('name')}</th><th>{t('platform')}</th><th>{t('access')}</th><th>{t('size')}</th><th>{t('actions')}</th></tr></thead><tbody>{#each assets.hub.items as asset (asset.id)}<tr><td><span class="font-medium">{asset.name}</span><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')}</p></td><td>{asset.arch ?? t('unknown')}</td><td>{t(`visibility.${asset.visibility}`)}</td><td>{bytes(asset.size_bytes)}</td><td><Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button></td></tr>{/each}</tbody></table></TableShell>
+          <ResponsiveTable>{#snippet cards()}{#each hubView.rows as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.arch ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.chain_complete ? t('dependencies.ready') : t('dependencies.incomplete')}</p>{#snippet details()}<p class="text-xs">{t(`visibility.${asset.visibility}`)} · {asset.ubuntu_base ?? t('unknown')}</p>{/snippet}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}{/snippet}
+            <TableShell><table><thead><tr>{#each hubView.columns as column (column.key)}<TableColumnHeader view={hubView} columnKey={column.key} />{/each}<th>{t('actions')}</th></tr></thead><tbody>{#each hubView.rows as asset (asset.id)}<tr><td><span class="font-medium">{asset.name}</span><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')}</p></td><td>{asset.arch ?? t('unknown')}</td><td>{t(`visibility.${asset.visibility}`)}</td><td>{bytes(asset.size_bytes)}</td><td><Button variant="secondary" size="sm" onclick={() => selectHub(asset)}>{t('use')}</Button></td></tr>{/each}</tbody></table></TableShell>
           </ResponsiveTable>
         {/if}{@render paging('hub', assets.hub.offset, assets.hub.next_offset, assets.hub.items.length)}
       {/if}
     </section>
     <section class="space-y-3" aria-labelledby="asset-packages-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-packages-heading" class="text-sm font-semibold">{t('source.packages')}</h3><p class="text-xs text-ink-2">{t('source.packagesHelp')}</p></div>
+      <TableViewControls view={packageView} class="" />
+      {#if assets.packages?.items.length && !packageView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if assets.errors.packages}{@render failure('packages')}{:else if assets.busy.packages && !assets.packages}<LoadingState variant="section" />
       {:else if assets.packages}
         {#if assets.busy.packages}<LoadingState variant="inline" />{/if}
         {#if !assets.context?.namespace}<Alert tone="info">{t('packages.unregistered')}</Alert>
         {:else if !assets.packages.items.length}{@render empty()}
-        {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each assets.packages.items as asset (asset.package_id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.namespace} · {t(asset.package_type === 'runtime-bundle' ? 'type.bundle' : 'type.oci')}</p><p class="break-words text-xs">{asset.tags.map((tag) => tag.tag).join(', ') || t('version.untagged')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectPackage(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
+        {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each packageView.rows as asset (asset.package_id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.namespace} · {t(asset.package_type === 'runtime-bundle' ? 'type.bundle' : 'type.oci')}</p><p class="break-words text-xs">{asset.tags.map((tag) => tag.tag).join(', ') || t('version.untagged')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectPackage(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
         {#if assets.packages.next_cursor}<Button variant="secondary" size="sm" onclick={() => assets.load('packages', assets.packages!.next_cursor!)}>{t('next')}</Button>{/if}
       {/if}
     </section>
     <section class="space-y-3" aria-labelledby="asset-cloud-heading">
       <div class="flex flex-wrap items-baseline justify-between gap-2"><h3 id="asset-cloud-heading" class="text-sm font-semibold">{t('source.environments')}</h3><p class="text-xs text-ink-2">{t('source.environmentsHelp')}</p></div>
+      <TableViewControls view={environmentView} class="" />
+      {#if assets.environments?.items.length && !environmentView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if assets.errors.environments}{@render failure('environments')}{:else if assets.busy.environments && !assets.environments}<LoadingState variant="section" />
       {:else if assets.environments}
         {#if assets.busy.environments}<LoadingState variant="inline" />{/if}
         {#if !assets.environments.items.length}{@render empty(assets.environments.has_more)}
-        {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each assets.environments.items as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.cloud_supported ? t('cloud.supported') : t('cloud.unsupported')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectEnvironment(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
+        {:else}<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">{#each environmentView.rows as asset (asset.id)}<CompactResourceCard><h4 class="text-sm font-medium break-words">{asset.name}</h4><p class="text-xs text-ink-2">{asset.ubuntu_base ?? t('unknown')} · {bytes(asset.size_bytes)}</p><p class="text-xs">{asset.cloud_supported ? t('cloud.supported') : t('cloud.unsupported')}</p>{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectEnvironment(asset)}>{t('use')}</Button>{/snippet}</CompactResourceCard>{/each}</div>{/if}
         {@render paging('environments', assets.environments.offset, assets.environments.next_offset, assets.environments.items.length)}
       {/if}
     </section>

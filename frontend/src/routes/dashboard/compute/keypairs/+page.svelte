@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onDestroy, untrack } from 'svelte';
@@ -17,6 +20,13 @@
   import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
   let keypairs = $state<Keypair[]>([]);
+  let search = $state('');
+  const columns = $derived<TableColumn<Keypair>[]>([
+    { key: 'name', label: t('keypairTable.columns.name'), value: row => row.name },
+    { key: 'type', label: t('keypairTable.columns.type'), value: row => row.type },
+    { key: 'fingerprint', label: t('keypairTable.columns.fingerprint'), value: row => row.fingerprint },
+  ]);
+  const view = createTableView({ rows: () => keypairs, columns: () => columns, search: () => search });
   let loading = $state(true);
   let refreshing = $state(false);
   let error = $state('');
@@ -122,6 +132,7 @@
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('keypairPage.toolbar.label')}>
+    {#snippet filters()}<RegexSearch id="compute-keypairs-search" bind:value={search} />{/snippet}
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -132,6 +143,7 @@
       />
     {/snippet}
   </ResourceToolbar>
+  <TableViewControls {view} />
 
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
@@ -139,9 +151,11 @@
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('keypairPage.title') })} />
   {:else if keypairs.length === 0}
     <KeypairEmptyState onCreate={() => (showModal = true)} />
-  {:else}
+  {/if}
+  {#if !loading}
     <KeypairListTable
-      {keypairs}
+      keypairs={view.rows}
+      {view}
       {deleting}
       {copiedFingerprint}
       onCopy={copyFingerprint}

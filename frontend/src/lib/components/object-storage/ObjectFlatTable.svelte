@@ -1,4 +1,5 @@
 <script lang="ts">
+ import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
@@ -64,14 +65,13 @@
   {#snippet cards()}
    <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs">
     <SelectionCheckbox checked={s.selectedCount > 0 && s.selectedCount === s.filteredObjects.length} ariaLabel={t('views.cardGrid.selectAllVisible')} onclick={s.toggleSelectAll} />
-    <button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.flatTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.flatTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.flatTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
    </div>
    {#each s.filteredObjects as obj (obj.name)}
     {#if s.isDirectory(obj)}<ObjectFolderCard {obj} />{:else}<ObjectFileCard {obj} compact />{/if}
    {/each}
   {/snippet}
-	<div class="overflow-x-auto">
-		<table class="w-full text-sm table-fixed" bind:this={tableRef}>
+	<div class="min-w-0 max-w-full overflow-x-auto" role="region" tabindex="0" aria-label={t('browser.files')}>
+		<table class="w-full min-w-[72rem] text-sm table-fixed" bind:this={tableRef}>
 			<colgroup>
 				<col style="width: 2.5rem" />
 				<col style="width: {s.colWidths.name}%" />
@@ -90,20 +90,20 @@
 							class="w-3.5 h-3.5 rounded border-line-2 bg-surface-sunken accent-indigo-500 cursor-pointer"
 						/>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('name')} class="hover:text-ink-2 transition-colors">{t('views.flatTable.nameSort', { icon: s.sortIcon('name') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('name')}>
+						<TableColumnControl view={s.view} columnKey="name" />
 						<button type="button" aria-label={t('views.flatTable.resizeName')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'name', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('bytes')} class="hover:text-ink-2 transition-colors">{t('views.flatTable.sizeSort', { icon: s.sortIcon('bytes') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('bytes')}>
+						<TableColumnControl view={s.view} columnKey="bytes" />
 						<button type="button" aria-label={t('views.flatTable.resizeSize')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'bytes', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						{t('views.flatTable.type')}
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('type')}>
+						<TableColumnControl view={s.view} columnKey="type" />
 						<button type="button" aria-label={t('views.flatTable.resizeType')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'type', tableRef)}></button>
 					</th>
-					<th class="text-left py-3 px-4 font-medium relative">
-						<button onclick={() => s.toggleSort('last_modified')} class="hover:text-ink-2 transition-colors">{t('views.flatTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button>
+					<th class="text-left py-3 px-4 font-medium relative" aria-sort={s.view.direction('last_modified')}>
+						<TableColumnControl view={s.view} columnKey="last_modified" />
 						<button type="button" aria-label={t('views.flatTable.resizeModified')} class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60" onmousedown={(e) => s.onResizeStart(e, 'modified', tableRef)}></button>
 					</th>
 					<th class="text-right py-3 px-4 font-medium">{t('views.flatTable.actions')}</th>

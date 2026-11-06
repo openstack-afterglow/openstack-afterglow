@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -7,6 +11,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as td } from '$lib/i18n/ns/domain-admin';
 	import { t as tc } from '$lib/i18n/ns/common';
@@ -48,6 +53,7 @@
 		onClose: () => void;
 	} = $props();
 
+	const componentId = $props.id();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 	const ROLE_ORDER = ['reader', 'member'];
@@ -94,12 +100,25 @@
 	let detailRoleIds = $derived(new Set(principals.find((principal) => principal.key === detailPrincipal?.key)?.roles.map((role) => role.role_id) ?? []));
 	let memberUserIds = $derived(new Set(members.filter((member) => member.type !== 'group').map((member) => member.user_id)));
 	let memberGroupIds = $derived(new Set(members.filter((member) => member.type === 'group').map((member) => member.group_id)));
-	let filteredUsers = $derived(
-		allUsers.filter((user) => !userSearchFilter || user.name.toLowerCase().includes(userSearchFilter.toLowerCase())),
-	);
-	let filteredGroups = $derived(
-		allGroups.filter((group) => !userSearchFilter || group.name.toLowerCase().includes(userSearchFilter.toLowerCase())),
-	);
+	const userView = createTableView<User>({ rows: () => allUsers, locale: () => intlLocale(), search: () => userSearchFilter, searchable: row => [row.name, row.id, row.domain_id], columns: () => [
+		{ key: 'name', label: tc('table.name'), value: row => row.name },
+		{ key: 'id', label: tc('table.key'), value: row => row.id },
+		{ key: 'domain', label: td('scope.domain'), value: row => row.domain_id }
+	] });
+	const groupView = createTableView<Group>({ rows: () => allGroups, locale: () => intlLocale(), search: () => userSearchFilter, searchable: row => [row.name, row.id, row.domain_id, row.description], columns: () => [
+		{ key: 'name', label: tc('table.name'), value: row => row.name },
+		{ key: 'id', label: tc('table.key'), value: row => row.id },
+		{ key: 'domain', label: td('scope.domain'), value: row => row.domain_id },
+		{ key: 'description', label: tc('table.description'), value: row => row.description }
+	] });
+	let principalSearch = $state('');
+	const principalView = createTableView<Principal>({ rows: () => principals, locale: () => intlLocale(), search: () => principalSearch, searchable: row => [row.name, row.id, row.type, ...row.roles.map(role => role.role_name)], columns: () => [
+		{ key: 'name', label: tc('table.name'), value: row => row.name },
+		{ key: 'id', label: tc('table.key'), value: row => row.id },
+		{ key: 'type', label: tc('table.type'), value: row => row.type, format: (_, row) => t(row.type === 'group' ? 'projectDetail.groupType' : 'projectDetail.userType') },
+		{ key: 'roles', label: t('projectDetail.role'), value: row => row.roles.map(role => role.role_name).join(', '), filterValues: row => row.roles.map(role => role.role_name) }
+	] });
+	let viewOwner = '';
 
 	interface Scope { target: string; domainId: string; token: string | undefined; projectId: string | undefined; }
 	let scope: Scope | null = null;
@@ -114,11 +133,13 @@
 	$effect(() => {
 		const request: Scope = { target: project?.id ?? '', domainId, token, projectId };
 		const targetDomain = project?.domain_id;
+		const nextViewOwner = JSON.stringify([project?.id, domainId, $auth.sessionId, $auth.userId, $auth.projectId, $auth.isSystemAdmin, !!token]);
+		if (nextViewOwner !== viewOwner) { viewOwner = nextViewOwner; untrack(() => { userSearchFilter = ''; principalSearch = ''; userView.reset(); groupView.reset(); principalView.reset(); }); }
 		scope = request.target && domainId && targetDomain === domainId ? request : null;
 		members = []; allUsers = []; allGroups = []; allRoles = [];
 		membersLoading = !!scope;
 		addError = scope || !request.target ? '' : td('projects.accessLoadFailed');
-		addSaving = false; userSearchFilter = ''; accessTab = 'users';
+		addSaving = false;
 		detailPrincipal = null; detailError = ''; roleBusy = null; removingKey = null;
 		if (scope) {
 			void Promise.all([
@@ -240,16 +261,17 @@
 								<Button variant={accessTab === 'users' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}>{t('projectAccess.tabUsers')}</Button>
 								<Button variant={accessTab === 'groups' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}>{t('projectAccess.tabGroups')}</Button>
 							</div>
-							<input
-								type="text"
+							<RegexSearch
+								id={`${componentId}-candidate-search`}
+								label={accessTab === 'users' ? t('projectAccess.searchUsers') : t('projectAccess.searchGroups')}
 								placeholder={accessTab === 'users' ? t('projectAccess.searchUsers') : t('projectAccess.searchGroups')}
 								bind:value={userSearchFilter}
-								class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 							/>
+							{#if accessTab === 'users'}<TableViewControls view={userView} class="" />{:else}<TableViewControls view={groupView} class="" />{/if}
 						</div>
 						<div class="overflow-y-auto flex-1">
 							{#if accessTab === 'users'}
-								{#each filteredUsers as user}
+								{#each userView.rows as user}
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div class="min-w-0">
 											<span class="text-sm text-ink-1">{user.name}</span>
@@ -261,7 +283,7 @@
 									</div>
 								{/each}
 							{:else}
-								{#each filteredGroups as group}
+								{#each groupView.rows as group}
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div class="min-w-0">
 											<span class="text-sm text-ink-1">{group.name}</span>
@@ -279,12 +301,14 @@
 					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none">
 						<div class="p-4 border-b border-line">
 							<div class="text-xs text-ink-2 uppercase tracking-wide">{t('projectAccess.membersHeading')}</div>
+							<RegexSearch id={`${componentId}-principal-search`} bind:value={principalSearch} />
+							<TableViewControls view={principalView} class="" />
 						</div>
 						<div class="overflow-y-auto flex-1">
-							{#if principals.length === 0}
+							{#if principalView.rows.length === 0}
 								<div class="text-xs text-ink-2 px-4 py-4">{t('projectAccess.noMembers')}</div>
 							{:else}
-								{#each principals as principal (principal.key)}
+								{#each principalView.rows as principal (principal.key)}
 									<div class="flex items-start justify-between gap-3 px-4 py-2 border-b border-line/30">
 										<div class="min-w-0">
 											<div class="text-sm text-ink-1 truncate">{principal.name}</div>

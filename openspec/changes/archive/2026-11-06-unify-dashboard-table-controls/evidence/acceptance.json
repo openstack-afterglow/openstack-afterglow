@@ -1,0 +1,134 @@
+{
+  "status": "complete-source-local",
+  "date": "2026-11-06",
+  "change": "unify-dashboard-table-controls",
+  "source": {
+    "sha256": "9afe2deffebfda859dcc0e161bddb20e8e6c1a246a1df4f8eab2cd309c120cdd",
+    "files": 4166,
+    "scope": "Shared dev working tree with concurrent changes preserved; no commit, publication or deployment"
+  },
+  "gate": {
+    "command": "npm run test:gate",
+    "exitCode": 0,
+    "environment": "Project Python3.12.13 PATH; supported explicit URLs to exclusively owned ephemeral MariaDB/PostgreSQL/Redis on random loopback ports",
+    "backend": {
+      "passed": 14504,
+      "skipped": 94
+    },
+    "frontend": {
+      "files": 547,
+      "passed": 7562
+    },
+    "contracts": {
+      "passed": 261
+    },
+    "functional": {
+      "passed": 283,
+      "skipped": 46,
+      "deselected": 122
+    },
+    "ruff": {
+      "formattedFiles": 878
+    },
+    "sessionArtifact": "artifact://457",
+    "log": "gate-summary.txt"
+  },
+  "additionalChecks": {
+    "svelte": {
+      "errors": 0,
+      "warnings": 15,
+      "files": 3014,
+      "log": "static-checks.txt"
+    },
+    "i18n": {
+      "errors": 0,
+      "warnings": 0,
+      "namespaces": 54,
+      "sourceMessages": 12721,
+      "hardcodedKorean": 0,
+      "log": "static-checks.txt"
+    },
+    "productionBuild": {
+      "exitCode": 0,
+      "log": "build-summary.txt",
+      "sessionArtifact": "artifact://458",
+      "note": "Final compact-picker application code; no application code changed after this build"
+    },
+    "nativeVersionsFocused": {
+      "passed": 34
+    }
+  },
+  "earlierFailures": [
+    {
+      "boundary": "Shell Python3.9.6 lacks tomllib",
+      "resolution": "Used project Python3.12.13; no product/runner change"
+    },
+    {
+      "boundary": "First broad backend run: unchanged native-version partial-timeout test failed (fixture150ms)",
+      "resolution": "Focused34 and final identical-source complete gate passed; no timeout/assertion weakened",
+      "log": "earlier-gate-failure.txt"
+    },
+    {
+      "boundary": "Default functional port3307 occupied",
+      "resolution": "Preserved existing service; used separate tmpfs fixtures through supported external URLs"
+    }
+  ],
+  "browser": {
+    "receipt": "browser.json",
+    "inventoryNativeTableFiles": 122,
+    "coverage": "coverage.json",
+    "productionNode": true,
+    "nativeZoom": "Actual isolated Chrome appearance setting200%; measured720px CSS width/DPR2 for nine-locale and theme cases",
+    "desktopRetention": "Separate1440px production case retains regex, ascending sort and root-disk selected/scratch excluded after manual refresh",
+    "imageTours": "Consumer/admin each complete3 steps without upload dialog",
+    "themes": "Actual light/dark theme menu; bounded filter popovers",
+    "midwidth": "Palimpsest1100px exposes five column filters",
+    "correctedFindings": [
+      "Image tutorial and top action placement",
+      "Nested same-owner refresh state lifetime",
+      "Preserving server-wide native query controls",
+      "Container tutorial envelope",
+      "Secret error/empty truthfulness and readonly fixtures",
+      "Object context-only ancestor bulk-target protection",
+      "Whitespace/tab all-scope object regex",
+      "Hidden retained owner closes portaled facets",
+      "Tutorial invitation edge clipping",
+      "Shared form-option picker regex and compact overflow",
+      "Applied-only event header predicates",
+      "Localized active-filter accessible counts and Korean tutorial close"
+    ],
+    "limits": [
+      "Synthetic local identities/provider data, not production cloud or real-account auth acceptance",
+      "Unsupported Palimpsest catalog exercises read-error, not successful native inventory",
+      "No real mobile keyboard/Safari hardware qualification",
+      "Conversation/command/navigation search and external iframe/user Markdown tables intentionally excluded",
+      "Event draft HTTP proof is a mounted actual compiled component/API client with synthetic auth and a readonly peer, not full-route/native auth/CSP qualification; only that fixture bypassed CSP for its peer origin."
+    ],
+    "lateReceipts": [
+      "late-browser.json",
+      "event-draft-http.json",
+      "compact-picker.json"
+    ],
+    "receiptBoundary": "Broad route/9locale/native200% captures preceded late shared-picker/event-draft fixes; changed paths were separately requalified through final production routes, compiled HTTP component smoke and the latest full gate."
+  },
+  "governance": {
+    "docs": [
+      "ARCHITECTURE.md",
+      "DESIGN.md",
+      "CHANGELOG.md",
+      "frontend/README.md",
+      "docs/user-guide.md",
+      "docs/api/system-services.md",
+      "docs/testing.md",
+      "README.en.md"
+    ],
+    "index": "No staging/commits; existing index preserved",
+    "deployment": false,
+    "archive": "2026-11-06-unify-dashboard-table-controls",
+    "mainSpec": "openspec/specs/dashboard-table-controls/spec.md",
+    "validation": "openspec strict validation passed; six requirements synced and completed change archived",
+    "postArchive": "docs:check and experience:catalog:check passed with unchanged source fingerprint",
+    "cleanup": "Owned browsers, production/Vite servers and readonly peer stopped; temporary harness source/HTML and Compose fixture removed; all three owned tmpfs datastore containers and their network removed. Existing services and shared index preserved."
+  },
+  "previousQualifiedSource": "e152d865f0b946df98b0e696f9af37007d637eb769c122d02729d6ade76dfe47"
+}

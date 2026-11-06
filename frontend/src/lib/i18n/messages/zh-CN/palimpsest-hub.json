@@ -43,7 +43,7 @@
 	"private": "受限可见性",
 	"download": "认证下载",
 	"download.busy": "正在下载并验证完整性…",
-	"download.limit": "浏览器上限为 64 MiB。更大的文件仅可在通过本地使用指南中的 Hub 默认用户和项目检查后，使用单独认证的本地 Palimpsest CLI 下载。下方命令不会继承浏览器的项目权限；PALIMPSEST_PROJECT_ID 不会限定旧版 CLI pull 的项目范围。勿复制浏览器 JWT。" ,
+	"download.limit": "浏览器上限为 64 MiB。更大的文件仅可在通过本地使用指南中的 Hub 默认用户和项目检查后，使用单独认证的本地 Palimpsest CLI 下载。下方命令不会继承浏览器的项目权限；PALIMPSEST_PROJECT_ID 不会限定旧版 CLI pull 的项目范围。勿复制浏览器 JWT。",
 	"builds": "最近构建（最多 20 项）",
 	"exports": "最近镜像导出（最多 20 项）",
 	"jobs.empty": "无最近作业，不代表服务健康状态或累计作业数。",

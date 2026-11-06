@@ -15,6 +15,9 @@ import { describe, expect, it, vi } from 'vitest';
 import BucketCardGrid from '../BucketCardGrid.svelte';
 import ObjectTreeSelectionHarness from './ObjectTreeSelectionHarness.svelte';
 import type { SwiftContainer } from '$lib/types/objectStorage';
+import { tick } from 'svelte';
+import { api } from '$lib/api/client';
+import type { ObjectBrowserStore } from '$lib/stores/objectBrowser.svelte';
 
 const containers: SwiftContainer[] = [
 	{ name: 'alpha', count: 2, bytes: 1024 },
@@ -68,5 +71,22 @@ describe('Object bulk selection', () => {
 		await fireEvent.click(selectAll.closest('label')!);
 		expect((selectAll as HTMLInputElement).checked).toBe(true);
 		expect(screen.getByTestId('selected-names').textContent).toBe('alpha');
+	});
+
+	it.each([{ values: ['beta'] }, { values: [] }])('clears selected bulk targets synchronously when applying facet $values', async ({ values }) => {
+		let store!: ObjectBrowserStore;
+		vi.mocked(api.post).mockClear();
+		render(ObjectTreeSelectionHarness, { onstore: value => { store = value; } });
+		const alpha = await screen.findByRole('checkbox', { name: 'alpha 선택' });
+		await fireEvent.click(alpha.closest('label')!);
+		expect(store.selected.has('alpha')).toBe(true);
+		store.view.setFilter('name', values);
+		expect(store.selectedCount).toBe(0);
+		await store.bulkDelete();
+		await store.openBulkMove();
+		await tick();
+		expect(screen.getByTestId('selected-names').textContent).toBe('');
+		expect(store.showBulkMove).toBe(false);
+		expect(api.post).not.toHaveBeenCalled();
 	});
 });

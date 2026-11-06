@@ -76,7 +76,6 @@ describe.each([true, false])('AdminUsersPage delete consumer (desktop=%s)', desk
     expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(deletePath, 'admin-token', 'personal-project', { replayOnUnauthorized: false });
     expect(mocks.get).toHaveBeenCalledWith(activityPath, 'admin-token', 'personal-project', readOptions);
     expect(search.value).toBe('Alice'); expect(screen.queryByRole('button', { name: t('userDelete.actionLabel', { name: 'Bob' }) })).toBeNull();
-    expect(screen.getByText(t('userPage.noResults'))).toBeTruthy();
   });
 });
 

@@ -5,6 +5,10 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { poolColumns, memberColumns } from '$lib/utils/loadBalancerTableColumns';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { untrack } from 'svelte';
 
 	let {
 		pools,
@@ -33,6 +37,9 @@
 	const pending = createPendingAction();
 	const creatingPool = $derived(pending.isActive('create', saving));
 	const addingMember = $derived(pending.isActive('add-member', saving));
+	const view = createTableView({ rows: () => pools, columns: poolColumns });
+	const memberView = createTableView({ rows: () => members, columns: memberColumns });
+	$effect(() => { selectedPoolId; untrack(() => memberView.reset()); });
 
 	async function handleCreatePool() {
 		const ok = await pending.run('create', () => onCreatePool(poolForm));
@@ -75,11 +82,13 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class="" />
+	{#if pools.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if pools.length === 0}
 		<p class="text-sm text-ink-2">{t('lb.pools.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each pools as pool}
+			{#each view.rows as pool (pool.id)}
 				{@const deletingPool = pending.isActive(`delete:${pool.id}`, saving)}
 				<div>
 					<CompactResourceCard selected={selectedPoolId === pool.id}>
@@ -109,11 +118,13 @@
 								</div>
 							{/if}
 
+							<TableViewControls view={memberView} class="" />
+							{#if members.length > 0 && memberView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 							{#if members.length === 0}
 								<p class="text-xs text-ink-2">{t('lb.members.empty')}</p>
 							{:else}
 								<div class="space-y-1.5">
-									{#each members as member}
+									{#each memberView.rows as member (member.id)}
 										{@const removingMember = pending.isActive(`remove:${member.id}`, saving)}
 										<CompactResourceCard>
 											<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{member.address}:{member.protocol_port}</strong><StatusChip status={member.status} /></div>

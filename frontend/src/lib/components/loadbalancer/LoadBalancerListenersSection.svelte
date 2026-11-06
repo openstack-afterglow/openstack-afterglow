@@ -5,6 +5,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as tc } from '$lib/i18n/ns/common';
 
   const s = useLoadbalancerDetailController();
   const pending = createPendingAction();
@@ -23,11 +25,13 @@
 
   <ListenerAddForm />
 
+  <TableViewControls view={s.listenerView} class="" />
+  {#if s.listeners.length > 0 && s.listenerView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if s.listeners.length === 0}
     <p class="text-sm text-ink-2">{t('lb.listeners.empty')}</p>
   {:else}
     <div class="space-y-2">
-      {#each s.listeners as l}
+      {#each s.listenerView.rows as l (l.id)}
         {@const deletingListener = pending.isActive(`delete:${l.id}`, s.saving)}
         <CompactResourceCard>
           <div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{l.name || l.id.slice(0, 10)}</strong><StatusChip status={l.status} /></div>

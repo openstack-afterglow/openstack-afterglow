@@ -40,7 +40,10 @@
     revision;
     let alive = true;
     const { token, projectId } = untrack(() => ({ token: $auth.token ?? undefined, projectId: $auth.projectId ?? undefined }));
-    untrack(() => { domains = []; loading = true; error = ''; verifiedAuthority = ''; });
+    untrack(() => {
+      if (verifiedAuthority !== scope) { domains = []; verifiedAuthority = ''; }
+      loading = true; error = '';
+    });
     if (!untrack(() => $authReady && !$projectSwitching && $auth.isSystemAdmin) || !token) {
       untrack(() => { loading = false; error = t('scope.denied'); });
       return () => { alive = false; };
@@ -74,7 +77,7 @@
   {:else if !loading && selectedId && !selected}<Alert class="mt-3">{t('scope.invalid')}</Alert>
   {:else if !loading && !selected}<p class="mt-3 text-sm text-ink-2" role="status">{t('scope.required')}</p>{/if}
 </PageShell>
-{#if $authReady && !$projectSwitching && $auth.isSystemAdmin && !loading && !error && selected && verifiedAuthority === authority}
+{#if $authReady && !$projectSwitching && $auth.isSystemAdmin && selected && verifiedAuthority === authority}
   {#key `${authority}:${selected.id}`}
     {@render children(selected.id, selected.name)}
   {/key}

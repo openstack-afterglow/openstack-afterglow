@@ -11,6 +11,10 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
 	let {
 		open = $bindable(false),
@@ -22,6 +26,18 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	let devices = $state<GpuCatalogDevice[]>([]);
+	let search = $state('');
+	const view = createTableView<GpuCatalogDevice>({
+		rows: () => devices.filter((device) => !device.is_audio),
+		search: () => search,
+		searchable: (device) => [device.vendor_id, device.device_id, device.vendor_name, device.name, ...device.aliases],
+		columns: () => [
+			{ key: 'device', label: t('gpuCatalog.fields.vendorDevice'), value: (device) => `${device.vendor_id}:${device.device_id}` },
+			{ key: 'name', label: t('flavors.fields.name'), value: (device) => device.name },
+			{ key: 'aliases', label: t('gpuCatalog.fields.aliases'), value: (device) => device.aliases.join(', ') },
+			{ key: 'source', label: t('gpuCatalog.fields.source'), value: (device) => device.source },
+		],
+	});
 	let loading = $state(false);
 	let error = $state('');
 	let notice = $state('');
@@ -197,12 +213,14 @@
 				<!-- 카탈로그 목록 -->
 				<div>
 					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.devices', { count: devices.length })}</div>
+					<RegexSearch id="gpu-catalog-search" bind:value={search} />
+					<TableViewControls {view} />
 					{#if loading}
 						<div class="py-4"><LoadingState variant="section" label={t('flavors.loading')} /></div>
 					{:else}
 						<ResponsiveTable>
 							{#snippet cards()}
-								{#each devices.filter((d) => !d.is_audio) as d (d.vendor_id + d.device_id)}
+								{#each view.rows as d (d.vendor_id + d.device_id)}
 									<CompactResourceCard>
 										<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{d.name}</h3><Pill tone="neutral" size="xs">{sourceLabel[d.source]}</Pill></div><p class="text-xs text-ink-2">{d.vendor_name} · <span class="font-mono">{d.vendor_id}:{d.device_id}</span></p>
 										{#snippet actions()}{#if d.source === 'db'}<Button variant="danger" size="sm" disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} onclick={() => deleteDevice(d)}>{#if deletingDeviceId === `${d.vendor_id}:${d.device_id}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingDeviceId === `${d.vendor_id}:${d.device_id}` ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/if}{/snippet}
@@ -214,15 +232,12 @@
 							<table class="w-full text-xs">
 								<thead>
 									<tr class="bg-surface-canvas text-ink-2 uppercase tracking-wide">
-										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.vendorDevice')}</th>
-										<th class="text-left px-3 py-2">{t('flavors.fields.name')}</th>
-										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.aliases')}</th>
-										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.source')}</th>
+										{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 										<th class="px-3 py-2"></th>
 									</tr>
 								</thead>
 								<tbody>
-									{#each devices.filter((d) => !d.is_audio) as d (d.vendor_id + d.device_id)}
+									{#each view.rows as d (d.vendor_id + d.device_id)}
 										<tr class="border-t border-line/50">
 											<td class="px-3 py-1.5 font-mono text-ink-2">{d.vendor_id}:{d.device_id}</td>
 											<td class="px-3 py-1.5 text-ink-0">{d.name} <span class="text-ink-2">({d.vendor_name})</span></td>

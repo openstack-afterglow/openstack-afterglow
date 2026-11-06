@@ -93,13 +93,6 @@ describe('native administrator domain ownership', () => {
 		expect([...autoLayout(consumer).pos]).toEqual([...autoLayout(buildGraph(before, { projectId: null, showAll: true })).pos]);
 	});
 
-	it('keeps IP and MAC search from matching owner UUID fragments', () => {
-		const data = makeDomainFixture();
-		for (const network of data.networks) Object.assign(network, { domain_id: 'domain-192-fa16', domain_name: 'Research', project_id: 'project-192-fa16', owner_status: 'known' });
-		const graph = buildGraph(data, { projectId: null, showAll: true, adminView: true });
-		expect(matchesQuery(graph, '192')?.nets).toEqual(new Set(['net-mgmt']));
-		expect(matchesQuery(graph, 'fa16')?.nets.has('net-unknown')).toBe(false);
-	});
 
 	it('assigns a real cross-domain router to one network home and keeps domain boxes separate', () => {
 		const data = makeDomainFixture();

@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onDestroy, untrack } from 'svelte';
@@ -31,7 +37,7 @@
 	async function load() {
 		if (blocked || loading && data || !session.isCurrent()) return;
 		const pending = ++generation;
-		loading = true; error = ''; data = null;
+		loading = true; error = '';
 		try {
 			const result = await client.resources();
 			if (!live || pending !== generation) return;
@@ -47,6 +53,9 @@
 	}
 	$effect(() => { if (!blocked) untrack(() => { if (!started && session.isCurrent()) { started = true; void load(); } }); });
 	onDestroy(() => { live = false; generation++; data = null; projectId = ''; userId = ''; });
+	const tableSearchId = $props.id();
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof inventory)[number]>({ rows: () => inventory, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'metric', label: t('metric'), value: row => resourceLabel(row.category) }, { key: 'nameId', label: t('nameId'), value: row => row.name || row.id }, { key: 'project', label: t('project'), value: row => data?.projects.find(project => project.id === row.project_id)?.name || row.project_id }, { key: 'user', label: t('user'), value: row => data?.users.find(user => user.id === row.user_id)?.name || row.user_id }, { key: 'status', label: t('status'), value: row => row.status }] });
 </script>
 
 <div class="space-y-4">
@@ -57,7 +66,7 @@
 	{#if data}
 		<Alert tone={data.coverage.partial ? 'warning' : 'info'}>{t('coverage')}: {t(data.coverage.partial ? 'state.partial' : 'state.ready')} · {t('observedAt')}: {data.coverage.observed_at}</Alert>
 		{#if view === 'domain'}
-			<ResourceMetricTable metrics={data.resources.filter(row => ['instances', 'vcpus', 'ram_mb', 'volumes', 'volume_gb'].includes(row.metric))} />
+			<ResourceMetricTable metrics={data.resources.filter(row => ['instances', 'vcpus', 'ram_mb', 'volumes', 'volume_gb'].includes(row.metric))} settled={!loading && !error} />
 		{/if}
 		<div class="flex flex-wrap gap-2" role="group" aria-label={t('attributionScope')}>
 			{#each ['domain', 'project', 'user'] as scope}<Button variant={view === scope ? 'secondary' : 'ghost'} ariaPressed={view === scope} onclick={() => view = scope as typeof view}>{t(`scope.${scope as typeof view}`)}</Button>{/each}
@@ -69,17 +78,18 @@
 			<Alert tone="info">{t('userQuotaHelp')}</Alert>
 			{#if user}<div class="rounded-lg border border-line p-3 text-sm text-ink-1 [overflow-wrap:anywhere]"><p>{t('identityDomain')}: <code>{user.domain_id}</code></p><p>{t('memberships')}: {observationLabel(user.membership_state)}</p><ul>{#each user.project_ids as id}<li>{data.projects.find(row => row.id === id)?.name || id} · <code>{id}</code></li>{:else}<li>{user.membership_state === 'ready' ? t('noMemberships') : t('unknown')}</li>{/each}</ul></div>{/if}
 		{/if}
-		{#if metrics}<details open={view !== 'domain'}><summary class="mb-3 cursor-pointer text-sm font-semibold text-ink-0">{t('monitoringAllMetrics')}</summary><ResourceMetricTable {metrics} /></details>{:else}<p class="text-sm text-ink-2">{t('chooseScope')}</p>{/if}
+		{#if metrics}<details open={view !== 'domain'}><summary class="mb-3 cursor-pointer text-sm font-semibold text-ink-0">{t('monitoringAllMetrics')}</summary><ResourceMetricTable {metrics} settled={!loading && !error} /></details>{:else}<p class="text-sm text-ink-2">{t('chooseScope')}</p>{/if}
 		<details class="space-y-2">
 			<summary class="cursor-pointer text-sm font-semibold text-ink-0">{t('inventory')}</summary>
 			<p class="text-sm text-ink-2">{t('inventoryHelp')}</p>
-			<ResponsiveTable>{#snippet cards()}
-				{#each inventory as row}<CompactResourceCard>
+			<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>{#snippet cards()}
+				{#each tableView.rows as row}<CompactResourceCard>
 					<div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{row.name || '—'}</h4><span class="text-xs">{row.status ?? t('unknown')}</span></div><p class="text-xs">{resourceLabel(row.category)} · {data?.projects.find(project => project.id === row.project_id)?.name || row.project_id}</p>
 					{#snippet details()}<dl class="space-y-1 text-xs"><div>{t('nameId')}: <code>{row.id ?? t('unknown')}</code></div><div>{t('project')}: <code>{row.project_id}</code></div><div>{t('user')}: {row.user_id ? data?.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')} <code>{row.user_id ?? ''}</code></div></dl>{/snippet}
-				</CompactResourceCard>{:else}<p class="text-sm text-ink-2">{t('noObservations')}</p>{/each}
+				</CompactResourceCard>{:else}{#if !loading && !error}<p class="text-sm text-ink-2">{inventory.length ? tc('table.noMatches') : t('noObservations')}</p>{/if}{/each}
 			{/snippet}
-			<TableShell><table><thead><tr><th>{t('metric')}</th><th>{t('nameId')}</th><th>{t('project')}</th><th>{t('user')}</th><th>{t('status')}</th></tr></thead><tbody>{#each inventory as row}<tr><td>{resourceLabel(row.category)}</td><td>{row.name || '—'}<code class="block text-xs text-ink-2">{row.id ?? t('unknown')}</code></td><td>{data.projects.find(project => project.id === row.project_id)?.name || row.project_id}<code class="block text-xs text-ink-2">{row.project_id}</code></td><td>{row.user_id ? data.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')}<code class="block text-xs text-ink-2">{row.user_id ?? ''}</code></td><td>{row.status ?? t('unknown')}</td></tr>{:else}<tr><td colspan="5">{t('noObservations')}</td></tr>{/each}</tbody></table></TableShell>
+			<TableShell><table><thead><tr><TableColumnHeader view={tableView} columnKey="metric" /><TableColumnHeader view={tableView} columnKey="nameId" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="user" /><TableColumnHeader view={tableView} columnKey="status" /></tr></thead><tbody>{#each tableView.rows as row}<tr><td>{resourceLabel(row.category)}</td><td>{row.name || '—'}<code class="block text-xs text-ink-2">{row.id ?? t('unknown')}</code></td><td>{data.projects.find(project => project.id === row.project_id)?.name || row.project_id}<code class="block text-xs text-ink-2">{row.project_id}</code></td><td>{row.user_id ? data.users.find(user => user.id === row.user_id)?.name || row.user_id : t('unattributed')}<code class="block text-xs text-ink-2">{row.user_id ?? ''}</code></td><td>{row.status ?? t('unknown')}</td></tr>{:else}{#if !loading && !error}<tr><td colspan="5">{inventory.length ? tc('table.noMatches') : t('noObservations')}</td></tr>{/if}{/each}</tbody></table></TableShell>
 			</ResponsiveTable>
 		</details>
 		{#if data.coverage.notes.length}<details><summary class="cursor-pointer text-sm text-ink-1">{t('coverageNotes')}</summary><ul class="list-disc space-y-1 pl-5 text-sm text-ink-2">{#each data.coverage.notes as note}<li><code>{note}</code></li>{/each}</ul></details>{/if}

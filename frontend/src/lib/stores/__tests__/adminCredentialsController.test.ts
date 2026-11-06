@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t as tc } from '$lib/i18n/ns/common';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { createAdminCredentialsController } from '../adminCredentialsController.svelte';
@@ -54,11 +55,23 @@ function authenticate() {
 }
 
 describe('credential selected-domain and sensitive lifecycle', () => {
-  it.each(['token', 'userId', 'projectId', 'admin', 'ready'] as const)('discards issued secrets immediately on %s change', async field => {
+  it.each(['sessionId', 'token', 'userId', 'projectId', 'admin', 'ready'] as const)('discards issued secrets immediately on %s change', async field => {
     const ctrl = await readyApplication(); await ctrl.submit();
     expect(ctrl.issued?.secret).toBe('once-secret');
     ctrl.setAuthority({ ...authority, [field]: field === 'admin' || field === 'ready' ? false : 'changed' });
     expect(ctrl.issued).toBeNull(); expect(ctrl.mode).toBeNull(); expect(ctrl.draft.blob).toBe('');
+    ctrl.dispose();
+  });
+  it('retains the selected directory target on same-owner verified bearer renewal while clearing secrets', async () => {
+    request.mockImplementation((path: string) => Promise.resolve(path.includes('/users?') ? { items: users, next_marker: null } : { items: [credential] }));
+    const ctrl = await ready('user');
+    await ctrl.selectUser('user-a');
+    await ctrl.open('detail', credential);
+    ctrl.setAuthority({ ...authority, token: 'renewed-token' });
+    expect(ctrl.selectedUser).toBe('user-a');
+    expect(ctrl.mode).toBeNull();
+    await vi.waitFor(() => expect(ctrl.items).toEqual([credential]));
+    expect(request.mock.calls.some(([, , actor]) => actor.token === 'renewed-token')).toBe(true);
     ctrl.dispose();
   });
   it.each(['close', 'dispose', 'domain', 'authority'] as const)('does not publish late creation secret after %s, including ABA transitions', async event => {
@@ -267,14 +280,23 @@ describe('credential operator UI', () => {
     directory.resolve({ items: users, next_marker: null }); await vi.waitFor(() => expect(create.disabled).toBe(false));
     auth.update(state => ({ ...state, isSystemAdmin: false })); await vi.waitFor(() => expect(create.disabled).toBe(true)); list.resolve({ items: [] });
   });
-  it('filters real same-domain project/type metadata locally', async () => {
+  it('applies regex and exact column values locally and retains them through refresh', async () => {
     authenticate(); const second = { ...credential, id: 'cred-b', project_id: 'project-b', type: 'ec2' };
     request.mockImplementation((path: string) => Promise.resolve(path.includes('/users?') ? { items: users, next_marker: null } : { items: [credential, second] }));
     render(CredentialManagement, { kind: 'user', ...props }); await vi.waitFor(() => expect(screen.getByText('cred-b')).toBeTruthy());
-    await fireEvent.change(screen.getByRole('combobox', { name: t('credentials.project') }), { target: { value: 'project-b' } });
+    const search = screen.getByRole('searchbox', { name: t('credentials.search') }) as HTMLInputElement;
+    await fireEvent.input(search, { target: { value: '^cred-(a|b)$' } });
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.filterColumn', { column: t('credentials.project') }) }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'project-a' }));
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByText('cred-a')).toBeNull(); expect(screen.getByText('cred-b')).toBeTruthy();
-    await fireEvent.change(screen.getByRole('combobox', { name: t('credentials.type') }), { target: { value: 'cert' } }); expect(screen.getByText(t('credentials.noMatches'))).toBeTruthy();
-    expect(request.mock.calls.some(([path]) => path.includes('type=') || path.includes('project_id='))).toBe(false);
+    await fireEvent.click(screen.getByRole('button', { name: t('credentials.refresh') }));
+    await vi.waitFor(() => expect(screen.getByText('cred-b')).toBeTruthy());
+    expect(search.value).toBe('^cred-(a|b)$'); expect(screen.queryByText('cred-a')).toBeNull();
+    await fireEvent.input(search, { target: { value: '[' } });
+    expect(screen.getByText(tc('table.regexError'))).toBeTruthy();
+    expect(screen.getByText(t('credentials.noMatches'))).toBeTruthy();
+    expect(request.mock.calls.some(([path]) => path.includes('type=') || path.includes('project_id=') || path.includes('search='))).toBe(false);
   });
   it.each(LOCALES)('formats table and detail expiry in %s while retaining the exact ISO timestamp', async locale => {
     initLocale(locale); authenticate();
@@ -291,12 +313,15 @@ describe('credential operator UI', () => {
       expect(time.textContent).toBe(formatted); expect(time.getAttribute('datetime')).toBe(timestamp);
     }
   });
-  it('filters actual application expiry metadata without pretending unknown expiry is active', async () => {
+  it('filters exact expiry values without treating invalid expiry as a known timestamp', async () => {
     authenticate(); const expired = { ...app, id: 'expired', name: 'expired-robot', expires_at: '2000-01-01T00:00:00Z' };
     request.mockImplementation((path: string) => Promise.resolve(path.includes('/users?') ? { items: users, next_marker: null } : { items: [app, expired, { ...app, id: 'unknown', name: 'unknown-robot', expires_at: 'invalid' }] }));
     render(CredentialManagement, { kind: 'application', ...props }); await vi.waitFor(() => expect(screen.getByText('expired-robot')).toBeTruthy());
-    await fireEvent.change(screen.getByRole('combobox', { name: t('credentials.expiry') }), { target: { value: 'expired' } }); expect(screen.queryByText('robot')).toBeNull(); expect(screen.getByText('expired-robot')).toBeTruthy();
-    await fireEvent.change(screen.getByRole('combobox', { name: t('credentials.expiry') }), { target: { value: 'active' } }); expect(screen.getByText('robot')).toBeTruthy(); expect(screen.queryByText('unknown-robot')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.filterColumn', { column: t('credentials.expiry') }) }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: tc('table.missing') }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'invalid' }));
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByText('robot')).toBeNull(); expect(screen.queryByText('unknown-robot')).toBeNull(); expect(screen.getByText('expired-robot')).toBeTruthy();
   });
   it('does not render native denial as an empty inventory', async () => {
     authenticate(); request.mockRejectedValue(new ApiError(403, '', 'credential_native_denied'));

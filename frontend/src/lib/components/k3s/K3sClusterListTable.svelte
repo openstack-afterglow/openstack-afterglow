@@ -2,6 +2,8 @@
 	import { t } from '$lib/i18n/ns/drover';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { Cluster } from '$lib/types/cluster';
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -9,6 +11,7 @@
 
 	let {
 		clusters,
+		view,
 		deleting,
 		selectedIds = new Set<string>(),
 		selectableIds = new Set<string>(),
@@ -19,6 +22,7 @@
 		onNavigate,
 	}: {
 		clusters: Cluster[];
+		view: TableView<Cluster>;
 		deleting: string | null;
 		selectedIds?: ReadonlySet<string>;
 		selectableIds?: ReadonlySet<string>;
@@ -52,12 +56,12 @@
 		<thead>
 			<tr class="k3s-table__head text-xs uppercase tracking-wide">
 				<th class="text-left py-3 pr-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('overview.table.selectAllClusters')} onclick={onToggleAll} /><span>{t('overview.table.selectAll')}</span><span class="k3s-table__selection-count normal-case" aria-live="polite">{t('overview.table.selectedCount', { count: selectedSelectableCount })}</span></div></th>
-				<th class="text-left py-3 pr-6">{t('overview.table.name')}</th>
-				<th class="text-left py-3 pr-6">{t('overview.table.status')}</th>
-				<th class="text-left py-3 pr-6">{t('overview.table.master')}</th>
-				<th class="text-left py-3 pr-6">{t('overview.table.worker')}</th>
-				<th class="text-left py-3 pr-6">{t('overview.table.apiAddress')}</th>
-				<th class="text-left py-3 pr-6">{t('overview.table.createdAt')}</th>
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="name" />
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="status" />
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="master_count" />
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="node_count" />
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="api_address" />
+				<TableColumnHeader class="text-left py-3 pr-6" {view} columnKey="created_at" />
 				<th class="text-left py-3"></th>
 			</tr>
 		</thead>

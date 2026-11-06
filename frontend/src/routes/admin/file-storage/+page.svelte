@@ -23,6 +23,9 @@
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import AdminFileStorageDetailPanel from '$lib/components/admin/file-storage/AdminFileStorageDetailPanel.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let fileStorages = $state<AdminFileStorage[]>([]);
 	let loading = $state(true);
@@ -33,13 +36,31 @@
 	let pageSize = $state(20);
 	let currentPage = $state(0);
 	let selectedFileStorageId = $state<string | null>(null);
+	let search = $state('');
+	const view = createTableView<AdminFileStorage>({
+		rows: () => fileStorages,
+		search: () => search,
+		searchable: (row) => [row.id, row.name, row.status, row.share_proto, row.metadata?.union_type ?? '', row.project_id ?? '', ...row.export_locations],
+		columns: () => [
+			{ key: 'name', label: t('fileTable.column.name'), value: (row) => row.name },
+			{ key: 'status', label: t('fileTable.column.status'), value: (row) => row.status },
+			{ key: 'size', label: t('fileTable.column.size'), value: (row) => row.size },
+			{ key: 'protocol', label: t('fileTable.column.protocol'), value: (row) => row.share_proto },
+			{ key: 'type', label: t('fileTable.column.type'), value: (row) => row.metadata?.union_type },
+			{ key: 'project', label: t('fileTable.column.project'), value: (row) => row.project_id ? ($projectNames.get(row.project_id) ?? row.project_id) : null },
+			{ key: 'created', label: t('fileTable.column.createdAt'), value: (row) => row.created_at },
+			{ key: 'export', label: t('fileTable.column.exportPath'), value: (row) => row.export_locations.join(', ') },
+		],
+	});
+	$effect(() => { void search; void view.filters; void view.sort; currentPage = 0; });
+	$effect(() => { if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1); });
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	const totalPages = $derived(Math.ceil(fileStorages.length / pageSize));
+	const totalPages = $derived(Math.max(1, Math.ceil(view.rows.length / pageSize)));
 	const displayedStorages = $derived(
-		fileStorages.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
+		view.rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
 	);
 
 	async function loadTimeseries(range: string, opts?: { background?: boolean; refresh?: boolean }) {
@@ -61,7 +82,6 @@
 	async function load(opts?: { refresh?: boolean }) {
 		if (fileStorages.length === 0) loading = true;
 		else refreshing = true;
-		currentPage = 0;
 		inventoryError = '';
 		try {
 			fileStorages = await api.get<AdminFileStorage[]>('/api/v1/admin/all-file-storages', token, projectId, opts);
@@ -128,6 +148,8 @@
 		{/snippet}
 	</PageHeader>
 
+	<RegexSearch id="admin-file-storage-search" bind:value={search} />
+	<TableViewControls {view} class={loading || inventoryError ? '' : 'lg:hidden'} />
 	{#if !api.scoped}
 	<div class="mb-6">
 		<AdminFileStorageTimeseries
@@ -142,15 +164,14 @@
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
 		<LoadingState variant="surface" />
-	{:else if fileStorages.length === 0}
-		<div class="text-ink-2 text-sm">{t('filePage.empty')}</div>
 	{:else}
-			<AdminFileStorageTable storages={displayedStorages} selectedId={selectedFileStorageId} onOpen={openDetail} />
+		{#if view.rows.length === 0}<div class="text-ink-2 text-sm">{t('filePage.empty')}</div>{/if}
+			<AdminFileStorageTable storages={displayedStorages} {view} selectedId={selectedFileStorageId} onOpen={openDetail} />
 			{#if totalPages > 1}
 				<Pagination
 					page={currentPage + 1}
 					{totalPages}
-					total={fileStorages.length}
+					total={view.rows.length}
 					{pageSize}
 					hasPrev={currentPage > 0}
 					hasNext={currentPage < totalPages - 1}

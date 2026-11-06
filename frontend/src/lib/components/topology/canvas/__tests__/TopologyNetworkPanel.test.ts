@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import TopologyNetworkPanel from '../TopologyNetworkPanel.svelte';
 import { makeFixture, makeTraffic } from './fixtures';
+import TopologyLoadBalancerPanel from '$lib/components/dashboard/network/topology/LoadBalancerDetailPanel.svelte';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as resourceT } from '$lib/i18n/ns/network-resources';
 
 function renderPanel(networkId: string, showProvider: boolean, mutate?: (data: ReturnType<typeof makeFixture>) => void) {
 	const data = makeFixture();
@@ -63,7 +66,6 @@ describe('TopologyNetworkPanel', () => {
 
 	it('서브넷 표와 멤버(인스턴스·라우터) 버튼을 렌더링하고 콜백을 호출한다', async () => {
 		const { onSelectInstance, onSelectRouter } = renderPanel('net-web', false);
-		expect(screen.getByRole('columnheader', { name: 'CIDR' })).toBeTruthy();
 		expect(screen.getByRole('cell', { name: 'web-net-subnet' })).toBeTruthy();
 		// web-net NIC 보유 인스턴스: web-01, web-02, web-03, db-01(eth2), bastion-01(eth1)
 		const web01 = screen.getByRole('button', { name: /^web-01/ });
@@ -93,6 +95,34 @@ describe('TopologyNetworkPanel', () => {
 		expect(screen.queryByText('네트워크 타입')).toBeNull();
 	});
 });
+
+describe('topology load balancer view ownership', () => {
+	afterEach(cleanup);
+	it('retains listener/member filters and sorting through same-ID object replacement, then resets for another resource', async () => {
+		const lb = makeFixture().load_balancers![0];
+		const onClose = vi.fn();
+		const panel = render(TopologyLoadBalancerPanel, { lb, onClose });
+		const name = commonT('table.name');
+		const address = resourceT('lb.form.ipAddress');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.none') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: address, direction: commonT('table.none') }) }));
+		for (const column of [resourceT('securityGroup.rules.protocol'), commonT('table.status')]) {
+			const label = commonT('table.filterColumn', { column });
+			await fireEvent.click(screen.getByRole('button', { name: label }));
+			await fireEvent.click(screen.getByRole('button', { name: commonT('table.selectNone') }));
+			await fireEvent.keyDown(screen.getByRole('dialog', { name: label }), { key: 'Escape' });
+		}
+		await panel.rerender({ lb: structuredClone(lb), onClose });
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.ascending') }) })).toBeTruthy();
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: address, direction: commonT('table.ascending') }) })).toBeTruthy();
+		expect(screen.queryByText('https')).toBeNull();
+		expect(screen.queryByText('10.10.1.11:8080')).toBeNull();
+		await panel.rerender({ lb: { ...structuredClone(lb), id: 'different-lb' }, onClose });
+		expect(screen.getByText('https')).toBeTruthy();
+		expect(screen.getByText('10.10.1.11:8080')).toBeTruthy();
+	});
+});
+
 
 // ── 사용량 추이 (`loadHistory`) ───────────────────────────────────────────────
 

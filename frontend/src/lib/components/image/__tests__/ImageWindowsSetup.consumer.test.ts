@@ -374,7 +374,7 @@ describe('Windows setup consumer, real controller and metadata editors', () => {
 		expect(controller.windowsSaving).toBe(true);
 		expect(accountInput().disabled).toBe(true);
 		for (const input of [confirmation(), optionalInput('win11'), optionalInput('qga')]) expect(input.disabled).toBe(true);
-		for (const button of within(setupRegion()).getAllByRole<HTMLButtonElement>('button')) expect(button.disabled).toBe(true);
+		for (const name of [t('windowsSetup.saving'), t('windowsSetup.cancel')]) expect(within(setupRegion()).getByRole<HTMLButtonElement>('button', { name }).disabled).toBe(true);
 		expect(within(propertiesRegion()).getByRole<HTMLButtonElement>('button', { name: t('propertiesSection.edit') }).disabled).toBe(true);
 		controller.windowsAccount = 'OverwrittenDuringSave';
 		controller.windowsWin11 = true;
@@ -432,7 +432,8 @@ describe('Windows setup consumer, real controller and metadata editors', () => {
 		}, 'token-a', 'project-a');
 		expect(controller.savingProps).toBe(true);
 		for (const input of within(propertiesRegion()).getAllByRole<HTMLInputElement>('textbox')) expect(input.disabled).toBe(true);
-		for (const button of within(propertiesRegion()).getAllByRole<HTMLButtonElement>('button')) expect(button.disabled).toBe(true);
+		for (const name of [t('propertiesSection.add'), t('propertiesSection.cancel'), t('propertiesSection.saving')]) expect(within(propertiesRegion()).getByRole<HTMLButtonElement>('button', { name }).disabled).toBe(true);
+		for (const button of within(propertiesRegion()).getAllByRole<HTMLButtonElement>('button', { name: new RegExp(t('propertiesSection.delete')) })) expect(button.disabled).toBe(true);
 		expect(within(setupRegion()).getByRole<HTMLButtonElement>('button', { name: t('windowsSetup.start') }).disabled).toBe(true);
 		controller.startWindowsSetup();
 		controller.cancelEditProps();
@@ -473,6 +474,72 @@ describe('Windows setup consumer, real controller and metadata editors', () => {
 		expect(within(propertiesRegion()).queryByText('license_channel', { exact: true })).toBeNull();
 	});
 
+});
+
+describe('property editor preserves input identity independently of the read view', () => {
+	it.each(['value regex', 'value sort', 'value facet'])('keeps typing on the same property with an active %s', async condition => {
+		const image = originalImage();
+		image.properties = { hw_disk_bus: 'virtio', hw_vif_model: 'virtio-net' };
+		boundary.get.mockResolvedValueOnce(image);
+		const { controller } = await mount();
+		const table = controller.tableState('properties');
+		if (condition === 'value regex') table.search = '^virtio';
+		if (condition === 'value sort') table.state.sort = { key: 'value', direction: 'asc' };
+		if (condition === 'value facet') table.state.filters = { value: ['virtio', 'virtio-net'] };
+		await tick();
+		await fireEvent.click(within(propertiesRegion()).getByTestId('properties-edit'));
+		const row = propertyRow('hw_disk_bus');
+		const input = within(row).getByRole<HTMLInputElement>('textbox');
+		input.focus();
+		for (const value of ['z', 'zs', 'zscsi']) {
+			await fireEvent.input(input, { target: { value } });
+			expect(propertyRow('hw_disk_bus')).toBe(row);
+			expect(within(row).getByRole('textbox')).toBe(input);
+			expect(document.activeElement).toBe(input);
+			expect(controller.propsDraft.hw_disk_bus).toBe(value);
+			expect(controller.propsDraft.hw_vif_model).toBe('virtio-net');
+		}
+		expect(controller.image?.properties).toEqual(image.properties);
+		expectNoMutation();
+
+		const saved = { ...image, properties: { ...image.properties, hw_disk_bus: 'zscsi' } };
+		boundary.patch.mockResolvedValueOnce(saved);
+		await fireEvent.click(within(propertiesRegion()).getByTestId('props-save'));
+		await waitFor(() => expect(controller.editingProps).toBe(false));
+		expect(boundary.patch).toHaveBeenCalledExactlyOnceWith('/api/v1/images/image-a/properties', {
+			set: { hw_disk_bus: 'zscsi' }, remove: [],
+		}, 'token-a', 'project-a');
+		if (condition === 'value sort') {
+			expect([...propertiesRegion().querySelectorAll<HTMLTableRowElement>('tbody tr')].map(row => row.cells[0].textContent?.trim()))
+				.toEqual(['hw_vif_model', 'hw_disk_bus']);
+		} else {
+			expect(within(propertiesRegion()).queryByText('hw_disk_bus', { exact: true })).toBeNull();
+			expect(propertyRow('hw_vif_model')).toBeTruthy();
+		}
+	});
+
+	it('keeps new and deleted properties reachable during a filtered draft and restores the read filter on cancel', async () => {
+		const image = originalImage();
+		image.properties = { hw_disk_bus: 'virtio', hw_vif_model: 'virtio-net' };
+		boundary.get.mockResolvedValueOnce(image);
+		const { controller } = await mount();
+		controller.tableState('properties').search = '^virtio';
+		await tick();
+		await fireEvent.click(within(propertiesRegion()).getByTestId('properties-edit'));
+		await fireEvent.input(within(propertiesRegion()).getByRole('textbox', { name: t('propertiesSection.keyPlaceholder') }), { target: { value: 'support_ticket' } });
+		await fireEvent.input(within(propertiesRegion()).getByRole('textbox', { name: t('propertiesSection.valuePlaceholder') }), { target: { value: 'ticket-42' } });
+		await fireEvent.click(within(propertiesRegion()).getByRole('button', { name: t('propertiesSection.add') }));
+		expect(within(propertyRow('support_ticket')).getByRole<HTMLInputElement>('textbox').value).toBe('ticket-42');
+		await fireEvent.click(within(propertyRow('hw_disk_bus')).getByRole('button', { name: `${t('propertiesSection.delete')}: hw_disk_bus` }));
+		expect(controller.propsDraft.hw_disk_bus).toBeUndefined();
+		expect(within(propertiesRegion()).queryByText('hw_disk_bus', { exact: true })).toBeNull();
+		await fireEvent.click(within(propertiesRegion()).getByTestId('props-cancel'));
+		expect(controller.image?.properties).toEqual(image.properties);
+		expect(propertyRow('hw_disk_bus')).toBeTruthy();
+		expect(within(propertiesRegion()).queryByText('support_ticket', { exact: true })).toBeNull();
+		expect(controller.tableState('properties').search).toBe('^virtio');
+		expectNoMutation();
+	});
 });
 
 const scopeChanges = [

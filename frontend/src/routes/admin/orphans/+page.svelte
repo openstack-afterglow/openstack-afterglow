@@ -31,6 +31,7 @@
 	let shares = $state<OrphanShareInfo[]>([]);
 	let secgroups = $state<OrphanSecurityGroupInfo[]>([]);
 	let loading = $state(true);
+	let hasScanned = $state(false);
 	let scanError = $state('');
 	let minAgeDays = $state(14);
 
@@ -78,6 +79,7 @@
 			selectedVolumes = pruneSelection(selectedVolumes, volumes);
 			selectedShares = pruneSelection(selectedShares, shares);
 			selectedSGs = pruneSelection(selectedSGs, secgroups);
+			hasScanned = true;
 		} catch (e) {
 			scanError = e instanceof ApiError ? e.message : t('orphanPage.scanFailed');
 			fips = [];
@@ -90,6 +92,7 @@
 	}
 
 	function openConfirm(kind: Kind) {
+		if (loading) return;
 		const ids = [...SELECTION_GETTERS[kind]()];
 		if (ids.length === 0) return;
 		confirmKind = kind;
@@ -177,12 +180,15 @@
 	{/if}
 
 	{#if loading}
-		<LoadingState variant="surface" label={t('orphanPage.loading')} />
-	{:else}
-		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
-		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />
-		<OrphanShareSection items={shares} bind:selected={selectedShares} onCleanup={() => openConfirm('manila_share')} />
-		<OrphanSecurityGroupSection items={secgroups} bind:selected={selectedSGs} onCleanup={() => openConfirm('security_group')} />
+		<LoadingState variant={hasScanned ? 'inline' : 'surface'} label={t('orphanPage.loading')} />
+	{/if}
+	{#if hasScanned}
+	<div hidden={Boolean(scanError)}>
+		<OrphanFipSection items={fips} bind:selected={selectedFips} cleanupDisabled={loading} onCleanup={() => openConfirm('floating_ip')} />
+		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} cleanupDisabled={loading} onCleanup={() => openConfirm('volume')} />
+		<OrphanShareSection items={shares} bind:selected={selectedShares} cleanupDisabled={loading} onCleanup={() => openConfirm('manila_share')} />
+		<OrphanSecurityGroupSection items={secgroups} bind:selected={selectedSGs} cleanupDisabled={loading} onCleanup={() => openConfirm('security_group')} />
+	</div>
 	{/if}
 </PageShell>
 

@@ -4,6 +4,10 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		network,
@@ -32,6 +36,14 @@
 		onClearSaveError: () => void;
 		canManage: boolean;
 	} = $props();
+	const columns = (): TableColumn<NetworkDetail['subnet_details'][number]>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name },
+		{ key: 'cidr', label: 'CIDR', value: row => row.cidr },
+		{ key: 'gateway', label: t('network.labels.gateway'), value: row => row.gateway_ip },
+		{ key: 'dhcp', label: 'DHCP', value: row => row.dhcp_enabled, format: value => t(value === true ? 'network.state.enabled' : 'network.state.disabled') },
+		{ key: 'routers', label: t('network.routers.title'), value: row => (network.routers ?? []).filter(router => router.connected_subnet_ids.includes(row.id)).map(router => router.name || router.id).join(', ') || null, filterValues: row => { const ids = (network.routers ?? []).filter(router => router.connected_subnet_ids.includes(row.id)).map(router => router.id); return ids.length ? ids : [null]; }, format: value => network.routers?.find(router => router.id === value)?.name || String(value ?? '—') },
+	];
+	const view = createTableView({ rows: () => network.subnet_details, columns });
 
 	let showSubnetForm = $state(false);
 	let subnetForm = $state({ name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true, routerId: '' });
@@ -148,10 +160,12 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class={network.subnet_details.length ? 'lg:hidden' : ''} />
+	{#if network.subnet_details.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if network.subnet_details.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each network.subnet_details as subnet (subnet.id)}
+				{#each view.rows as subnet (subnet.id)}
 					{@const connected = (network.routers || []).filter((router) => router.connected_subnet_ids.includes(subnet.id))}
 					<CompactResourceCard>
 						{#if editingSubnetId === subnet.id}
@@ -178,18 +192,18 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-2 pr-6">{t('network.labels.name')}</th>
-					<th class="text-left py-2 pr-6">CIDR</th>
-					<th class="text-left py-2 pr-6">{t('network.labels.gateway')}</th>
-					<th class="text-left py-2 pr-4">DHCP</th>
-					<th class="text-left py-2 pr-6">{t('network.routers.title')}</th>
+					<TableColumnHeader {view} columnKey="name" />
+					<TableColumnHeader {view} columnKey="cidr" />
+					<TableColumnHeader {view} columnKey="gateway" />
+					<TableColumnHeader {view} columnKey="dhcp" />
+					<TableColumnHeader {view} columnKey="routers" />
 					{#if canManage}
 						<th class="text-right py-2">{t('network.labels.actions')}</th>
 					{/if}
 				</tr>
 			</thead>
 			<tbody>
-				{#each network.subnet_details as subnet}
+				{#each view.rows as subnet (subnet.id)}
 					{@const connected = (network.routers || []).filter((r) => r.connected_subnet_ids.includes(subnet.id))}
 					<tr class="border-b border-line/50">
 						{#if editingSubnetId === subnet.id}

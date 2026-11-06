@@ -9,6 +9,7 @@ import type { RouterDetail } from '$lib/types/router';
 import type { SubnetDetail } from '$lib/types/networks';
 import type { Network } from '$lib/types/networks';
 import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 
 interface Options {
 	routerId: () => string;
@@ -38,6 +39,13 @@ function createRouterDetailController(opts: Options) {
 		!!router && (opts.isSystemAdmin?.() || Boolean(router.project_id && router.project_id === opts.projectId()))
 	);
 	const canAddInterface = $derived(canManageRouter && !!selectedSubnetId && !saving);
+	const interfaceColumns = (): TableColumn<RouterDetail['interfaces'][number]>[] => [
+		{ key: 'subnet', label: t('network.subnets.name'), value: row => row.subnet_name || row.subnet_id },
+		{ key: 'address', label: t('lb.form.ipAddress'), value: row => row.ip_address },
+	];
+	const interfaceView = createTableView({ rows: () => router?.interfaces ?? [], columns: interfaceColumns });
+	const viewOwner = $derived(JSON.stringify([opts.routerId(), opts.projectId()]));
+	$effect(() => { viewOwner; untrack(() => interfaceView.reset()); });
 
 	$effect(() => {
 		const netId = selectedNetId;
@@ -180,6 +188,7 @@ function createRouterDetailController(opts: Options) {
 	}
 
 	return {
+		interfaceView,
 		get router() { return router; },
 		get loading() { return loading; },
 		get error() { return error; },

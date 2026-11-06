@@ -7,7 +7,7 @@ import type { VolumeBackupPolicy, VolumeBackupPolicyInput } from '$lib/types/vol
 
 const { get, post, remove, confirm } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), remove: vi.fn(), confirm: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get, post, delete: remove, prefetch: vi.fn(), withExperience() { return this; } }, ApiError: class ApiError extends Error {} }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'member' }), canWrite: writable(true), projectSwitching: writable(false) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'member' }), authReady: writable(true), canWrite: writable(true), projectSwitching: writable(false), getAuthVerificationEpoch: () => 1 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: confirm }));
 vi.mock('$lib/i18n/ns/volume', () => ({ t: (key: string, values?: Record<string, unknown>) => values?.name ? `${key}:${values.name}` : key }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }) }));
@@ -66,7 +66,7 @@ describe('scheduled backup settings', () => {
 		expect(post).toHaveBeenCalledWith(`${base}/volume-a`, { max_daily: 4, max_weekly: 0, max_monthly: 3, enabled: true, schedule_time: '21:45', timezone: 'UTC', weekly_day: 4, monthly_day: 28, force: false }, 'token-a', 'project-a');
 		expect(screen.getByText('completed-real-id')).toBeTruthy();
 		expect(screen.getByText('autoPolicy.status.available')).toBeTruthy();
-		expect(screen.getByText('autoPolicy.next').nextElementSibling?.textContent).not.toContain('autoPolicy.noNext');
+		expect(screen.getByText('autoPolicy.next', { selector: 'dt' }).nextElementSibling?.textContent).not.toContain('autoPolicy.noNext');
 		expect(post.mock.calls.filter(([path]) => path === '/api/v1/volumes/backups')).toHaveLength(0);
 	});
 

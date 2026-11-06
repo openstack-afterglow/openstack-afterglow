@@ -168,7 +168,6 @@
 	"toolbar.packetFlow": "连接结构动画",
 	"toolbar.createContext": "连接到所选网络 <b>{name}</b>",
 	"canvas.networkTitle": "网络 {name}",
-	"card.noStatus": "无状态",
 	"card.ports": "端口 {count}",
 	"card.listeners": "监听器 {count}",
 	"canvas.selected": "已选择{kind} {name}",

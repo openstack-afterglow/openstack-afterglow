@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { ApiError } from '$lib/api/client';
 	import type { IamSession } from '$lib/api/domainIam';
@@ -42,13 +43,13 @@
 	async function load() {
 		if (busy || blocked || !session.isCurrent()) return;
 		const pending = ++generation;
-		loading = true; error = ''; native = null; data = null;
+		loading = true; error = ''; native = null;
 		try {
 			const snapshot = await client.budgets();
 			if (!live || pending !== generation) return;
 			accept(snapshot); reloadRequired = false; editorRevision++;
 			if (editor === 'project') await loadProject();
-		} catch (cause) { if (pending === generation) fail(cause); }
+		} catch (cause) { if (pending === generation) { reloadRequired = true; fail(cause); } }
 		finally { if (live && pending === generation) loading = false; }
 	}
 	async function loadProject() {
@@ -63,7 +64,7 @@
 				native = result;
 			}
 			editorRevision++;
-		} catch (cause) { if (pending === generation) fail(cause); }
+		} catch (cause) { if (pending === generation) { reloadRequired = true; fail(cause); } }
 		finally { if (live && pending === generation) loading = false; }
 	}
 	function projectValues(): QuotaMap {
@@ -91,6 +92,7 @@
 	}
 	$effect(() => { if (!blocked) untrack(() => { if (!started && session.isCurrent()) { started = true; void load(); } }); });
 	onDestroy(() => { live = false; generation++; data = null; native = null; });
+	let quotaViewState = $state<{ searches: Record<string, string>; sections: Record<string, TableViewState> }>({ searches: {}, sections: {} });
 </script>
 
 <div class="space-y-4">
@@ -106,11 +108,11 @@
 	{#if loading}<LoadingState variant={data ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if data}
 		<BudgetSummary {data} />
-		<div class="flex flex-wrap gap-2"><Button variant={editor === 'defaults' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { editor = 'defaults'; native = null; editorRevision++; }}>{t('editDefaults')}</Button><Button variant={editor === 'project' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { editor = 'project'; void loadProject(); }}>{t('editProject')}</Button></div>
+		<div class="flex flex-wrap gap-2"><Button variant={editor === 'defaults' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { quotaViewState = { searches: {}, sections: {} }; editor = 'defaults'; native = null; editorRevision++; }}>{t('editDefaults')}</Button><Button variant={editor === 'project' ? 'secondary' : 'ghost'} disabled={busy || loading || blocked || reloadRequired} onclick={() => { quotaViewState = { searches: {}, sections: {} }; editor = 'project'; void loadProject(); }}>{t('editProject')}</Button></div>
 		{#if editor === 'defaults'}<p class="text-sm text-ink-2">{t('defaultsHelp')}</p>
-		{:else}<SelectInput bind:value={project} ariaLabel={t('project')} disabled={busy || loading || blocked || reloadRequired} onchange={() => void loadProject()}><option value="">{t('chooseProject')}</option>{#each data.projects as row (row.id)}<option value={row.id}>{row.name || row.id} · {row.id}{row.enabled ? '' : ` · ${t('disabled')}`}</option>{/each}</SelectInput>{/if}
+		{:else}<SelectInput bind:value={project} ariaLabel={t('project')} disabled={busy || loading || blocked || reloadRequired} onchange={() => { quotaViewState = { searches: {}, sections: {} }; void loadProject(); }}><option value="">{t('chooseProject')}</option>{#each data.projects as row (row.id)}<option value={row.id}>{row.name || row.id} · {row.id}{row.enabled ? '' : ` · ${t('disabled')}`}</option>{/each}</SelectInput>{/if}
 		{#if !reloadRequired && (editor === 'defaults' || native)}
-			{#key `${editor}:${project}:${editorRevision}`}<QuotaEditor values={editor === 'defaults' ? data.defaults : projectValues()} {native} projectMode={editor === 'project'} disabled={blocked || busy || loading || quotaBlocked(data)} onSave={save} />{/key}
+			{#key `${editor}:${project}:${editorRevision}`}<QuotaEditor viewState={quotaViewState} values={editor === 'defaults' ? data.defaults : projectValues()} {native} projectMode={editor === 'project'} disabled={blocked || busy || loading || quotaBlocked(data)} onSave={save} />{/key}
 		{/if}
 	{/if}
 </div>

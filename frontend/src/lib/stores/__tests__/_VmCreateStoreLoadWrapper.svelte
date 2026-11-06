@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { createVmCreateStore } from '../vmCreateStore.svelte';
+	import { createVmCreateStore, provideVmCreate } from '../vmCreateStore.svelte';
+	import AdminProjectSelector from '$lib/components/wizard/AdminProjectSelector.svelte';
 
-	let { adminMode = false }: { adminMode?: boolean } = $props();
+	let { adminMode = false, showAdminProjectSelector = false }: { adminMode?: boolean; showAdminProjectSelector?: boolean } = $props();
 	const store = createVmCreateStore({ adminMode: () => adminMode });
+	provideVmCreate(store);
 	onDestroy(() => store.destroy());
 </script>
 
@@ -44,3 +46,8 @@
 <span data-testid="step-elapsed">{JSON.stringify(store.stepElapsedSeconds)}</span>
 <span data-testid="admin-quota-loading">{store.adminProjectQuotasLoading ? 'loading' : 'idle'}</span>
 <span data-testid="admin-quota-projects">{[...store.adminProjectQuotas.keys()].join(',')}</span>
+{#if showAdminProjectSelector}
+	<AdminProjectSelector />
+	<button data-testid="refresh-projects" onclick={() => store.loadAdminProjects()}>refresh projects</button>
+	<span data-testid="selected-project">{store.adminSelectedProjectId ?? 'none'}</span>
+{/if}

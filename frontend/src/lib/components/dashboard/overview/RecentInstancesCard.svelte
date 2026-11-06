@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { t as tc } from '$lib/i18n/ns/common';
@@ -27,6 +31,14 @@
 	function getFirstIp(instance: DashboardRecentInstance): string {
 		return instance.ip_addresses?.[0]?.addr ?? '—';
 	}
+	let search = $state('');
+	const columns = $derived<TableColumn<DashboardRecentInstance>[]>([
+		{ key: 'name', label: t('recentInstances.name'), value: row => row.name },
+		{ key: 'status', label: t('recentInstances.status'), value: row => row.status },
+		{ key: 'ip', label: 'IP', value: row => row.ip_addresses?.[0]?.addr },
+		{ key: 'flavor', label: t('recentInstances.flavor'), value: consumerInstanceFlavorLabel },
+	]);
+	const view = createTableView({ rows: () => instances, columns: () => columns, search: () => search });
 </script>
 
 <Card padding="lg">
@@ -35,6 +47,9 @@
 		<a href="/dashboard/compute/instances" class="ml-auto text-[13px] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] transition-colors">{t('recentInstances.viewAll')}</a>
 	</div>
 
+	<RegexSearch id="recent-instance-search" bind:value={search} />
+	<TableViewControls {view} />
+	{#if instances.length > 0 && view.rows.length === 0}<p class="py-3 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if error && (loaded || instances.length > 0)}
 		<Alert tone="danger" class="mb-3">
 			<span>{t('recentInstances.loadFailed')}</span>
@@ -47,10 +62,11 @@
 		<Alert tone="danger"><span>{t('recentInstances.loadFailed')}</span></Alert>
 	{:else if instances.length === 0}
 		{#if emptyContent}{@render emptyContent()}{:else}<p class="py-2 text-sm text-ink-2">{t('recentInstances.empty')}</p>{/if}
-	{:else}
+	{/if}
+	{#if !pending || loaded || instances.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each instances as instance (instance.id)}
+				{#each view.rows as instance (instance.id)}
 					<CompactResourceCard>
 						<a class="font-medium text-ink-0 hover:underline" href="/dashboard/instances/{encodeURIComponent(instance.id)}">{instance.name}</a>
 						<StatusChip status={instance.status} kind="server" />
@@ -59,8 +75,8 @@
 				{/each}
 			{/snippet}
 			<TableShell><table>
-				<thead><tr><th>{t('recentInstances.name')}</th><th>{t('recentInstances.status')}</th><th>IP</th><th>{t('recentInstances.flavor')}</th></tr></thead>
-				<tbody>{#each instances as instance (instance.id)}<tr><td><a class="font-medium text-ink-0 hover:underline" href="/dashboard/instances/{encodeURIComponent(instance.id)}">{instance.name}</a></td><td><StatusChip status={instance.status} kind="server" /></td><td class="tabular-nums">{getFirstIp(instance)}</td><td>{consumerInstanceFlavorLabel(instance)}</td></tr>{/each}</tbody>
+				<thead><tr>{#each columns as column}<TableColumnHeader {view} columnKey={column.key} />{/each}</tr></thead>
+				<tbody>{#each view.rows as instance (instance.id)}<tr><td><a class="font-medium text-ink-0 hover:underline" href="/dashboard/instances/{encodeURIComponent(instance.id)}">{instance.name}</a></td><td><StatusChip status={instance.status} kind="server" /></td><td class="tabular-nums">{getFirstIp(instance)}</td><td>{consumerInstanceFlavorLabel(instance)}</td></tr>{/each}</tbody>
 			</table></TableShell>
 		</ResponsiveTable>
 	{/if}

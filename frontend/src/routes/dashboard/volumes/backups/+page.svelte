@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/volume';
 	import { page } from '$app/state';
@@ -36,7 +42,16 @@
 	let generation = 0;
 	let consumedLink = $state('');
 	const selection = createResourceSelection();
-	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
+	let search = $state('');
+ const columns = $derived<TableColumn<VolumeBackup>[]>([
+  { key: 'name', label: t('backupListTable.name'), value: row => row.name },
+  { key: 'status', label: t('backupListTable.status'), value: row => row.status },
+  { key: 'size', label: t('backupListTable.size'), value: row => row.size },
+  { key: 'incremental', label: t('backupListTable.incremental'), value: row => row.is_incremental },
+  { key: 'created', label: t('backupListTable.createdAt'), value: row => row.created_at },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => backups, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const selectableIds = $derived(new Set(view.rows.map((backup) => backup.id)));
 
 	async function fetchBackups(force = false) {
 		const token = $auth.token ?? undefined;
@@ -138,6 +153,12 @@
 		}
 	});
 	$effect(() => { const ids = selectableIds; untrack(() => selection.retain(ids)); });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 <VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
@@ -149,6 +170,9 @@
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
+ {#snippet filters()}<RegexSearch id="VolumeBackupListTable-search" bind:value={search} />
+ <TableViewControls {view} class={backups.length === 0 ? '' : 'lg:hidden'} />
+ {/snippet}
 		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
 	</ResourceToolbar>
 	<VolumeBackupPolicies controller={policies} />
@@ -158,7 +182,7 @@
 	{:else if backups.length === 0 && !error}
 		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
 	{:else if backups.length > 0}
-		<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
+		<VolumeBackupListTable backups={view.rows} {view} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>

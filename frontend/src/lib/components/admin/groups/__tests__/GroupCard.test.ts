@@ -61,7 +61,7 @@ it('announces only the member whose removal is in flight and clears activity on 
 it('shows same-name users with their email, full UUID and native home domain and adds the exact UUID', async () => {
 	const onAddMember = vi.fn().mockResolvedValue(true);
 	render(GroupCard, props({ onAddMember }));
-	await search('  PiErOoT  ');
+	await search('^PiErOoT$');
 	expect(screen.getAllByText('pieroot')).toHaveLength(2);
 	for (const user of [firstUser, secondUser]) {
 		const row = within(candidate(user.id));
@@ -71,18 +71,31 @@ it('shows same-name users with their email, full UUID and native home domain and
 	}
 	await fireEvent.click(within(candidate(secondUser.id)).getByRole('button', { name: '추가' }));
 	expect(onAddMember).toHaveBeenCalledExactlyOnceWith(secondUser.id);
-	await waitFor(() => expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(''));
+	await waitFor(() => expect((screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement).value).toBe('^PiErOoT$'));
 });
 
-it('matches trimmed case-insensitive email, full UUID and domain without matching only by name', async () => {
+it('matches case-insensitive regex on email, full UUID and home domain without matching only by name', async () => {
 	render(GroupCard, props());
-	for (const query of [`  ${secondUser.email.toUpperCase()}  `, secondUser.id.toUpperCase(), ' HOME-SECOND ']) {
+	for (const query of [`^${secondUser.email.toUpperCase().replaceAll('.', '\\.')}$`, `^${secondUser.id.toUpperCase()}$`, '^HOME-SECOND$']) {
 		await search(query);
 		expect(screen.queryByText(firstUser.id)).toBeNull();
 		expect(screen.getByText(secondUser.id)).toBeTruthy();
 	}
 	await search('unmatched');
 	expect(screen.getByText('일치하는 사용자가 없습니다')).toBeTruthy();
+});
+
+it('exposes invalid regex without showing candidates, and preserves it across same-owner refresh', async () => {
+	const view = render(GroupCard, props());
+	await search('[');
+	expect(screen.getByRole('searchbox', { name: '사용자 검색' }).getAttribute('aria-invalid')).toBe('true');
+	expect(screen.queryByText(firstUser.id)).toBeNull();
+	expect(screen.queryByText(secondUser.id)).toBeNull();
+	await view.rerender({ allUsers: [{ ...firstUser, email: 'updated@example.test' }] });
+	expect((screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement).value).toBe('[');
+	expect(screen.queryByText(firstUser.id)).toBeNull();
+	await search('^(home-first|home-second)$');
+	expect(screen.getByText(firstUser.id)).toBeTruthy();
 });
 
 it('excludes only the existing member UUID and keeps a same-name user from another domain selectable', async () => {

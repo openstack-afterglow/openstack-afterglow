@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -6,61 +7,38 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { EndpointGroup } from '$lib/types/adminServices';
-	import ServiceListControls from './ServiceListControls.svelte';
-	import ServiceSortHeader from './ServiceSortHeader.svelte';
-	import {
-		buildServiceFilters,
-		createServiceListState,
-		filterAndSortRows,
-		type ServiceListField,
-		type ServiceListState,
-	} from './serviceList';
-
-	const endpointFields: ServiceListField<EndpointGroup>[] = $derived([
-		{ key: 'name', label: t('services.endpoints.name'), value: (endpoint) => endpoint.name, filter: true },
-		{ key: 'service', label: t('services.endpoints.serviceType'), value: (endpoint) => endpoint.service, filter: true },
-		{ key: 'region', label: t('services.endpoints.region'), value: (endpoint) => endpoint.region, filter: true },
-		{
-			key: 'endpoints',
-			label: t('services.endpoints.url'),
-			value: (endpoint) => Object.values(endpoint.endpoints).join(' '),
-			search: true,
-		},
-	]);
-
-	const sortOptions = $derived([
-		{ key: 'name', label: t('services.endpoints.name') },
-		{ key: 'service', label: t('services.endpoints.serviceType') },
-		{ key: 'region', label: t('services.endpoints.region') },
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	const id = $props.id();
+	const endpointFields: TableColumn<EndpointGroup>[] = $derived([
+		{ key: 'name', label: t('services.endpoints.name'), value: (endpoint) => endpoint.name },
+		{ key: 'service', label: t('services.endpoints.serviceType'), value: (endpoint) => endpoint.service },
+		{ key: 'region', label: t('services.endpoints.region'), value: (endpoint) => endpoint.region },
+		{ key: 'endpoints', label: t('services.endpoints.endpoints'), value: (endpoint) => Object.entries(endpoint.endpoints).map(([name, url]) => `${name}: ${url}`).join(' ') },
 	]);
 
 	let {
 		endpoints,
 		loading,
 		emptyMessage,
-		view = $bindable<ServiceListState>(createServiceListState('name')),
+		search = $bindable(''),
 	}: {
 		endpoints: EndpointGroup[];
 		loading: boolean;
 		emptyMessage: string;
-		view?: ServiceListState;
+		search?: string;
 	} = $props();
 
-	const filters = $derived(buildServiceFilters(endpoints, endpointFields));
-	const visibleEndpoints = $derived(filterAndSortRows(endpoints, endpointFields, view));
+	const view = createTableView({ locale: intlLocale, rows: () => endpoints, columns: () => endpointFields, search: () => search,
+		searchable: (row) => [row.name, row.service, row.region, ...Object.keys(row.endpoints), ...Object.values(row.endpoints)] });
+	const visibleEndpoints = $derived(view.rows);
 </script>
 
 <div>
-	<ServiceListControls
-		bind:view
-		{filters}
-		{sortOptions}
-		total={endpoints.length}
-		count={visibleEndpoints.length}
-		{loading}
-		searchPlaceholder={t('services.endpoints.searchPlaceholder')}
-		defaultSortKey="name"
-	/>
+	<RegexSearch id="{id}-search" bind:value={search} placeholder={t('services.endpoints.searchPlaceholder')} />
+	<TableViewControls {view} />
 
 	{#if loading && endpoints.length === 0}
 		<LoadingState variant="section" />
@@ -68,7 +46,7 @@
 		<EmptyState headline={emptyMessage} />
 	{:else if visibleEndpoints.length === 0}
 		<EmptyState headline={t('services.endpoints.noMatches')} description={t('services.list.adjustFilters')} />
-	{:else}
+	{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
 				{#each visibleEndpoints as endpoint (endpoint.service_id)}
@@ -92,10 +70,7 @@
 			<table aria-label={t('services.endpoints.listLabel')}>
 				<thead>
 					<tr>
-						<ServiceSortHeader bind:view column="name" label={t('services.endpoints.name')} />
-						<ServiceSortHeader bind:view column="service" label={t('services.endpoints.serviceType')} />
-						<ServiceSortHeader bind:view column="region" label={t('services.endpoints.region')} />
-						<th scope="col">{t('services.endpoints.endpoints')}</th>
+						{#each endpointFields as field (field.key)}<TableColumnHeader {view} columnKey={field.key} />{/each}
 					</tr>
 				</thead>
 				<tbody>
@@ -120,5 +95,4 @@
 			</table>
 		</TableShell>
 		</ResponsiveTable>
-	{/if}
 </div>

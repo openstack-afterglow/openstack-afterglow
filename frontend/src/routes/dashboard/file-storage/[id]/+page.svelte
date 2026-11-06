@@ -21,6 +21,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { createDetailReadScope, type DetailReadScope } from '$lib/utils/detailReadScope';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceRequest, experienceState, type ExperienceContext } from '$lib/utils/experience';
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
 
 	let fileStorage = $state<FileStorage | null>(null);
 	let loading = $state(true);
@@ -33,6 +34,10 @@
 	let addingRule = $state(false);
 	let ruleError = $state('');
 	let revokingId = $state<string | null>(null);
+	let accessSearch = $state('');
+	let metadataSearch = $state('');
+	const accessTableState = $state<TableViewState>({ sort: null, filters: {} });
+	const metadataTableState = $state<TableViewState>({ sort: null, filters: {} });
 
 	const readScope = createDetailReadScope(derived(page, value => value.params.id ?? ''));
 	let activeScope = $state.raw<DetailReadScope | null>(null);
@@ -87,6 +92,9 @@
 			const scope = $readScope;
 			activeScope = scope;
 			fileStorage = null; accessRules = [];
+			accessSearch = ''; metadataSearch = '';
+			accessTableState.sort = null; accessTableState.filters = {};
+			metadataTableState.sort = null; metadataTableState.filters = {};
 			loading = true; accessLoading = true; refreshing = false;
 			error = ''; ruleError = ''; accessError = '';
 			addingRule = false; deleting = false; revokingId = null;
@@ -222,13 +230,14 @@
 			<ExportLocationList paths={fileStorage.export_locations} />
 			{#key activeScope?.revision}
 				<AccessRulesSection
+					tableState={accessTableState} bind:search={accessSearch}
 					shareProto={fileStorage.share_proto}
 					{accessRules} {accessLoading} {accessError}
 					onAdd={handleAddRule} onRevoke={handleRevokeRule}
 					{addingRule} addError={ruleError} {revokingId}
 				/>
 			{/key}
-			<FileStorageMetadata metadata={fileStorage.metadata} />
+			<FileStorageMetadata metadata={fileStorage.metadata} tableState={metadataTableState} bind:search={metadataSearch} />
 		</div>
 	{:else}
 		<p role="status">{t('list.empty')}</p>

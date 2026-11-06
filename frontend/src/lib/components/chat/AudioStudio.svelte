@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { goto } from '$app/navigation';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
@@ -543,6 +546,8 @@
 		offerAudioTranscript($auth.userId, $auth.projectId, transcript.text);
 		void goto('/dashboard/chat');
 	}
+
+	const observationView0 = createObservationView(() => (transcript?.segments ?? []), () => ([{ key: 'time', label: t('audioStudio.timeRange'), value: row => row.start }, { key: 'text', label: t('audioStudio.convertedText'), value: row => row.text }]));
 </script>
 
 <PageShell>
@@ -668,9 +673,11 @@
 						{#if copyStatus}<p role="status" class="muted">{copyStatus}</p>{/if}
 						{#if transcript.segments.length}
 							{@const segments = transcript.segments}
-							<ResponsiveTable>
+							<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
 								{#snippet cards()}
-									{#each segments as segment, index (index)}
+									{#each tableView.rows as segment, index (index)}
 										<CompactResourceCard>
 											<p class="text-xs tabular-nums text-ink-2"><time datetime={`PT${segment.start}S`}>{formatTranscriptTime(segment.start)}</time> – <time datetime={`PT${segment.end}S`}>{formatTranscriptTime(segment.end)}</time></p>
 											<p>{segment.text}</p>
@@ -679,15 +686,17 @@
 								{/snippet}
 							<div class="table-wrap">
 								<table class="segments">
-									<thead><tr><th scope="col">{t('audioStudio.timeRange')}</th><th scope="col">{t('audioStudio.convertedText')}</th></tr></thead>
+									<thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="text" /></tr></thead>
 									<tbody>
-										{#each transcript.segments as segment, index (index)}
+										{#each tableView.rows as segment, index (index)}
 											<tr><td class="range"><time datetime={`PT${segment.start}S`}>{formatTranscriptTime(segment.start)}</time> – <time datetime={`PT${segment.end}S`}>{formatTranscriptTime(segment.end)}</time></td><td>{segment.text}</td></tr>
 										{/each}
 									</tbody>
 								</table>
 							</div>
 							</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 						{:else}
 							<p class="muted">{transcriptTimed ? t('audioStudio.noSegments') : t('audioStudio.noTiming')}</p>
 							<p class="transcript">{transcript.text}</p>
@@ -762,7 +771,6 @@
 	.results-head { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; }
 	.table-wrap { min-width: 0; overflow-x: auto; }
 	.segments { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-	.segments th { padding: 0.625rem 1rem; border-bottom: 1px solid var(--color-line); background: var(--color-surface-raised); color: var(--color-ink-2); font-size: 0.75rem; font-weight: 500; text-align: left; }
 	.segments td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-1); vertical-align: top; overflow-wrap: anywhere; }
 	.segments .range { width: 15rem; color: var(--color-ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 	.transcript { font-size: 0.875rem; line-height: 1.6; color: var(--color-ink-1); white-space: pre-wrap; overflow-wrap: anywhere; }

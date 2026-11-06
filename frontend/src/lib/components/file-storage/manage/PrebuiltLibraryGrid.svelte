@@ -1,4 +1,12 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
   import { t } from '$lib/i18n/ns/file-storage';
   import { t as ts } from '$lib/i18n/ns/status';
   import RichText from '$lib/i18n/RichText.svelte';
@@ -19,12 +27,29 @@
     building: string | null;
     onBuild: (libraryId: string) => Promise<void>;
   } = $props();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<LibraryConfig>[]>([
+  { key: 'name', label: t('networkTable.name'), value: row => row.name },
+  { key: 'version', label: t('info.version'), value: row => row.version },
+  { key: 'status', label: t('info.status'), value: row => fileStorages.find(storage => storage.library_name === row.id && storage.metadata?.union_type === 'prebuilt')?.status ?? 'not-built', format: value => value === 'not-built' ? t('prebuiltGrid.notBuilt') : String(value) },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => libraries, columns: () => columns, search: () => search, searchable: row => [row.id,row.name,row.version].map(value => String(value ?? ''))});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#snippet storageId(text: string)}<span class="font-mono">{text}</span>{/snippet}
 
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class="" />
+{#if libraries.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  {#each libraries as lib (lib.id)}
+  {#each view.rows as lib (lib.id)}
     {@const prebuilt = fileStorages.find(s => s.library_name === lib.id && s.metadata?.union_type === 'prebuilt')}
     {@const serverBuilding = prebuilt?.status.toUpperCase() === 'BUILDING'}
     <div class="bg-surface-base border border-line-2 rounded-xl p-4">

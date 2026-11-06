@@ -1,7 +1,7 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { Alert, Button, Card, CompactResourceCard, Pagination, ResponsiveTable, TableShell } from '$lib/components/ui';
+	import { Alert, Button, Card, CompactResourceCard, Pagination, RegexSearch, ResponsiveTable, TableShell } from '$lib/components/ui';
 	import BklitChart from '$lib/components/charts/BklitChart.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import {
@@ -15,6 +15,7 @@
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { flavorGpuRequests } from '$lib/utils/flavorGpu';
 	import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 
 	interface QuotaPair { limit: number; in_use: number; }
 	interface FlavorQuotaSummary {
@@ -114,7 +115,7 @@
 
 	const uncheckedFlavors = $derived(flavors.filter(f => flavorCreateBlock(f) === 'unchecked'));
 	const defaultZoneUnavailable = $derived(flavors.some(f => f.eligibility?.capacity?.reason === 'default_compute_zone_unavailable'));
-	const hasFilters = $derived(activeCategory !== 'all' || activeGpuType !== null || Boolean(searchTerm.trim()));
+	const hasFilters = $derived(activeCategory !== 'all' || activeGpuType !== null || Boolean(searchTerm));
 	function resetFilters() {
 		activeCategory = 'all';
 		activeGpuType = null;
@@ -136,16 +137,16 @@
 		)
 	);
 
+	const flavorSearch = $derived(compileRegexSearch(searchTerm));
 	const searchedFlavors = $derived(
-		searchTerm.trim()
-			? filteredFlavors.filter(f =>
-				f.name.toLowerCase().includes(searchTerm.trim().toLowerCase()) ||
-				(f.display_name?.toLowerCase().includes(searchTerm.trim().toLowerCase()) ?? false) ||
-				consumerFlavorLabel(f).toLowerCase().includes(searchTerm.trim().toLowerCase()) ||
-				String(f.vcpus).includes(searchTerm.trim()) ||
-				ramLabel(f.ram).toLowerCase().includes(searchTerm.trim().toLowerCase())
-			)
-			: filteredFlavors
+		filteredFlavors.filter(f => matchesRegexSearch(flavorSearch, [
+			f.id,
+			f.name,
+			f.display_name ?? '',
+			consumerFlavorLabel(f),
+			String(f.vcpus),
+			ramLabel(f.ram),
+		]))
 	);
 
 	const totalPages = $derived(Math.max(1, Math.ceil(searchedFlavors.length / PAGE_SIZE)));
@@ -323,20 +324,13 @@
 {/if}
 
 <!-- 통합 검색 -->
-<div class="order-4 relative mb-4">
-	<span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-2 pointer-events-none">
-		<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
-		</svg>
-	</span>
-	<input
-		type="search"
-		placeholder={t('flavor.searchPlaceholder')}
-		aria-label={t('flavor.searchPlaceholder')}
-		bind:value={searchTerm}
-		class="w-full min-h-11 md:min-h-9 rounded-lg border border-line bg-surface-base pl-9 pr-3 py-2 text-sm text-ink-1 placeholder-ink-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-	/>
-</div>
+<RegexSearch
+	id="vm-flavor-search"
+	bind:value={searchTerm}
+	label={t('flavor.searchPlaceholder')}
+	placeholder={t('flavor.searchPlaceholder')}
+	class="order-4 mb-4"
+/>
 {/if}
 
 <!-- 프로젝트 quota delta 미터 -->

@@ -1,7 +1,7 @@
 {
-  "personal": "Cá nhân",
-  "organization": "Tổ chức",
-  "personalProjectNameHelp": "Tên dự án cá nhân được tạo tự động.",
+	"personal": "Cá nhân",
+	"organization": "Tổ chức",
+	"personalProjectNameHelp": "Tên dự án cá nhân được tạo tự động.",
 	"title": "Chọn tài nguyên",
 	"openSelector": "{project} · {domain}: chọn tài nguyên",
 	"activeDomain": "Miền đang hoạt động",

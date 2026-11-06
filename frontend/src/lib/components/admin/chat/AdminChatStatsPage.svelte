@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
@@ -165,7 +168,7 @@
 	function authorityChanged() {
 		const state = get(auth);
 		const next = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId,
-			state.projectId, state.token, state.isSystemAdmin, get(authReady), get(projectSwitching),
+			state.projectId, !!state.token, state.isSystemAdmin, get(authReady), get(projectSwitching),
 			get(logoutInProgress), get(adminInventoryScope)]);
 		if (next === authorityKey) return;
 		authorityKey = next;
@@ -376,6 +379,9 @@
 	const hasData = $derived((overview?.request_count ?? 0) > 0);
 
 	const cardCls = 'rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-base)]';
+
+	const observationView0 = createObservationView(() => (models), () => ([{ key: 'model', label: t('adminStats.model'), value: row => row.model_name }, { key: 'share', label: t('adminStats.share'), value: row => row.total_tokens / maxModelTokens }, { key: 'input', label: t('adminStats.input'), value: row => row.prompt_tokens }, { key: 'output', label: t('adminStats.output'), value: row => row.completion_tokens }, { key: 'tokens', label: t('adminStats.totalTokens'), value: row => row.total_tokens }, { key: 'requests', label: t('adminStats.requests'), value: row => row.request_count }, { key: 'credit', label: t('adminStats.credits'), value: row => row.credited_cost }, { key: 'cost', label: t('adminStats.cost'), value: row => row.raw_cost }, { key: 'unpriced', label: t('adminStats.unpriced'), value: row => row.unpriced_requests }]));
+	const observationView1 = createObservationView(() => (users), () => ([{ key: 'user', label: t('adminStats.user'), value: row => adminIdentityLabel(row.user_name, row.user_id) }, { key: 'input', label: t('adminStats.input'), value: row => row.prompt_tokens }, { key: 'output', label: t('adminStats.output'), value: row => row.completion_tokens }, { key: 'tokens', label: t('adminStats.totalTokens'), value: row => row.total_tokens }, { key: 'requests', label: t('adminStats.requests'), value: row => row.request_count }, { key: 'credit', label: t('adminStats.credits'), value: row => row.credited_cost }, { key: 'cost', label: t('adminStats.cost'), value: row => row.raw_cost }]));
 </script>
 
 {#snippet failureNotice(problem: StatsFailure, retry: () => void)}
@@ -423,9 +429,12 @@
 
 	{#if loading && !data}
 		<LoadingState variant="surface" label={t('adminStats.loading')} />
-	{:else if !loading && !error && !timeSeriesError && data && !hasData}
+	{/if}
+	{#if !loading && !error && !timeSeriesError && data && !hasData}
 		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} class="[&_.motion-enter]:animate-none" />
-	{:else if overview && !error && hasData}
+	{/if}
+	{#if overview && !error}
+		{#if hasData}
 		<!-- KPI 카드 -->
 		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
 			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="blue" />
@@ -488,33 +497,36 @@
 		</section>
 
 
+		{/if}
 		<!-- 모델별 -->
 		<section class="mb-8">
 			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.modelUsage')}</h3>
 			{#if models.length === 0}
 				<EmptyState headline={t('adminStats.modelEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
-			{:else}
-				<ResponsiveTable>
+			{/if}
+				<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
 					{#snippet cards()}
-						{#each models as m (m.model_name)}<CompactResourceCard><p class="font-medium">{m.model_name}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(m.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(m.credited_cost)}</dd></div></dl>{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(m.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(m.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(m.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(m.raw_cost)}</dd></div><div><dt>{t('adminStats.unpriced')}</dt><dd>{fmtInt(m.unpriced_requests)}</dd></div></dl><div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}><BklitChart spec={{ kind: 'gauge', value: (m.total_tokens / maxModelTokens) * 100, color: 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={6} decorative /></div>{/snippet}</CompactResourceCard>{/each}
+						{#each tableView.rows as m (m.model_name)}<CompactResourceCard><p class="font-medium">{m.model_name}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(m.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(m.credited_cost)}</dd></div></dl>{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(m.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(m.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(m.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(m.raw_cost)}</dd></div><div><dt>{t('adminStats.unpriced')}</dt><dd>{fmtInt(m.unpriced_requests)}</dd></div></dl><div role="meter" aria-label={t('adminStats.modelShareLabel', { model: m.model_name })} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round((m.total_tokens / maxModelTokens) * 100)} aria-valuetext={t('adminStats.tokenCount', { count: fmtInt(m.total_tokens) })}><BklitChart spec={{ kind: 'gauge', value: (m.total_tokens / maxModelTokens) * 100, color: 'var(--color-accent)', track: 'var(--color-surface-sunken)' }} height={6} decorative /></div>{/snippet}</CompactResourceCard>{/each}
 					{/snippet}
 				<TableShell>
 					<table>
 						<thead>
 							<tr class="text-xs uppercase tracking-wide">
-								<th>{t('adminStats.model')}</th>
-								<th class="text-right">{t('adminStats.share')}</th>
-								<th class="text-right">{t('adminStats.input')}</th>
-								<th class="text-right">{t('adminStats.output')}</th>
-								<th class="text-right">{t('adminStats.totalTokens')}</th>
-								<th class="text-right">{t('adminStats.requests')}</th>
-								<th class="text-right">{t('adminStats.credits')}</th>
-								<th class="text-right">{t('adminStats.cost')}</th>
-								<th class="text-right">{t('adminStats.unpriced')}</th>
+								<TableColumnHeader view={tableView} columnKey="model" />
+								<TableColumnHeader view={tableView} columnKey="share" />
+								<TableColumnHeader view={tableView} columnKey="input" />
+								<TableColumnHeader view={tableView} columnKey="output" />
+								<TableColumnHeader view={tableView} columnKey="tokens" />
+								<TableColumnHeader view={tableView} columnKey="requests" />
+								<TableColumnHeader view={tableView} columnKey="credit" />
+								<TableColumnHeader view={tableView} columnKey="cost" />
+								<TableColumnHeader view={tableView} columnKey="unpriced" />
 							</tr>
 						</thead>
 						<tbody>
-							{#each models as m (m.model_name)}
+							{#each tableView.rows as m (m.model_name)}
 								<tr>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]">{m.model_name}</td>
 									<td class="w-32">
@@ -535,7 +547,8 @@
 					</table>
 				</TableShell>
 				</ResponsiveTable>
-			{/if}
+{/snippet}
+</ObservationTable>
 		</section>
 
 		<!-- 사용자별 -->
@@ -546,26 +559,28 @@
 			</h3>
 			{#if users.length === 0}
 				<EmptyState headline={t('adminStats.userEmpty')} class="py-4 [&_.motion-enter]:animate-none" />
-			{:else}
-				<ResponsiveTable>
+			{/if}
+				<ObservationTable model={observationView1} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 					{#snippet cards()}
-						{#each users as u (u.user_id)}<CompactResourceCard><p class="font-medium">{adminIdentityLabel(u.user_name, u.user_id)}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(u.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(u.credited_cost)}</dd></div></dl>{#snippet details()}<p class="font-mono break-all">{u.user_id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(u.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(u.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(u.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(u.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
+						{#each tableView.rows as u (u.user_id)}<CompactResourceCard><p class="font-medium">{adminIdentityLabel(u.user_name, u.user_id)}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.totalTokens')}</dt><dd>{fmtInt(u.total_tokens)}</dd></div><div><dt>{t('adminStats.credits')}</dt><dd>{fmtCredit(u.credited_cost)}</dd></div></dl>{#snippet details()}<p class="font-mono break-all">{u.user_id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminStats.input')}</dt><dd>{fmtInt(u.prompt_tokens)}</dd></div><div><dt>{t('adminStats.output')}</dt><dd>{fmtInt(u.completion_tokens)}</dd></div><div><dt>{t('adminStats.requests')}</dt><dd>{fmtInt(u.request_count)}</dd></div><div><dt>{t('adminStats.cost')}</dt><dd>{fmtUsd(u.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
 					{/snippet}
 				<TableShell>
 					<table>
 						<thead>
 							<tr class="text-xs uppercase tracking-wide">
-								<th>{t('adminStats.user')}</th>
-								<th class="text-right">{t('adminStats.input')}</th>
-								<th class="text-right">{t('adminStats.output')}</th>
-								<th class="text-right">{t('adminStats.totalTokens')}</th>
-								<th class="text-right">{t('adminStats.requests')}</th>
-								<th class="text-right">{t('adminStats.credits')}</th>
-								<th class="text-right">{t('adminStats.cost')}</th>
+								<TableColumnHeader view={tableView} columnKey="user" />
+								<TableColumnHeader view={tableView} columnKey="input" />
+								<TableColumnHeader view={tableView} columnKey="output" />
+								<TableColumnHeader view={tableView} columnKey="tokens" />
+								<TableColumnHeader view={tableView} columnKey="requests" />
+								<TableColumnHeader view={tableView} columnKey="credit" />
+								<TableColumnHeader view={tableView} columnKey="cost" />
 							</tr>
 						</thead>
 						<tbody>
-							{#each users as u (u.user_id)}
+							{#each tableView.rows as u (u.user_id)}
 								<tr>
 									<td class="text-sm font-medium text-[var(--color-ink-1)]" title={u.user_id}>
 										{adminIdentityLabel(u.user_name, u.user_id)}
@@ -582,6 +597,8 @@
 					</table>
 				</TableShell>
 				</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				{#if userPageError}
 					<div class="mt-3" data-testid="lumen-stats-user-page-error">{@render failureNotice(userPageError, () => { void loadMoreUsers(); })}</div>
 				{/if}
@@ -592,7 +609,6 @@
 						</Button>
 					</div>
 				{/if}
-			{/if}
 		</section>
 	{/if}
 </PageShell>

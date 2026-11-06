@@ -12,6 +12,7 @@ vi.mock('$lib/api/client', () => {
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'caller-token', userId: 'user-a', projectId: 'destination', projectName: 'Destination project', canWrite: true, isSystemAdmin: false }),
 	canWrite: writable(true), projectSwitching: writable(false),
+	authReady: writable(true), getAuthVerificationEpoch: () => 1,
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),

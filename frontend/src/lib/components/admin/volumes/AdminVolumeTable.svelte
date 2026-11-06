@@ -10,6 +10,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import { ResourceIdentifier } from '$lib/components/ui';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import type { TableView } from '$lib/utils/tableView.svelte';
 
 	import type { AdminVolume } from '$lib/types/volume';
 
@@ -23,6 +25,7 @@
 
 	let {
 		volumes,
+		view,
 		selectedVolumeId,
 		openActionMenu,
 		selectedIds,
@@ -42,6 +45,7 @@
 		onBootFromVolume,
 	}: {
 		volumes: AdminVolume[];
+		view: TableView<AdminVolume>;
 		selectedVolumeId: string | null;
 		openActionMenu: string | null;
 		selectedIds: ReadonlySet<string>;
@@ -103,13 +107,9 @@
 						ariaLabel={t('volumeList.selectPage')}
 					/>
 				</th>
-				<th class="text-left py-2 pr-4">{t('volumeList.column.name')}</th>
-				<th class="text-left py-2 pr-4">{t('volumeList.column.status')}</th>
-				<th class="py-2 pr-4" style="text-align: right">{t('volumeList.column.size')}</th>
-				<th class="text-left py-2 pr-4">{t('volumeDetail.volumeType')}</th>
-				<th class="text-left py-2 pr-4">{t('volumeList.column.domain')}</th>
-				<th class="text-left py-2 pr-4">{t('volumeList.column.project')}</th>
-				<th class="text-left py-2 pr-4">{t('volumeList.column.createdAt')}</th>
+				{#each view.columns as column (column.key)}
+					<TableColumnHeader {view} columnKey={column.key} />
+				{/each}
 				<th class="text-left py-2">{t('volumeList.column.actions')}</th>
 			</tr>
 		</thead>

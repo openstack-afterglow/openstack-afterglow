@@ -185,7 +185,6 @@
 	"lb.actions.adding": "추가 중…",
 	"lb.actions.remove": "제거",
 	"lb.actions.removing": "제거 중…",
-
 	"lb.listeners.title": "리스너 ({count})",
 	"lb.listeners.empty": "리스너가 없습니다.",
 	"lb.form.optionalName": "이름 (선택)",

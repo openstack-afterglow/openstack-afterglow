@@ -393,7 +393,6 @@
 	"monitoring.rabbitmq.breadcrumb": "监控 / RABBITMQ",
 	"monitoring.rabbitmq.title": "RabbitMQ 指标",
 	"monitoring.rabbitmq.description": "通过 rabbitmq_prometheus 插件收集的指标。",
-	"overview.loading": "正在加载概览",
 	"overview.kpi.hypervisors": "虚拟机管理器",
 	"overview.kpi.details": "详情 →",
 	"overview.kpi.totalVms": "虚拟机总数",

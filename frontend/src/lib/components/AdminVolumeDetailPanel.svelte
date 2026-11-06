@@ -12,6 +12,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import AdminVolumeTransferModal from '$lib/components/admin/volumes/AdminVolumeTransferModal.svelte';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
+	import { auth } from '$lib/stores/auth';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 	let transferVolume = $state<Pick<AdminVolumeDetail, 'id' | 'name' | 'status'> | null>(null);
 
 	interface Props {
@@ -23,6 +25,7 @@
 	}
 
 	let { volumeId, onClose, onRefresh, token, projectId }: Props = $props();
+	const tableOwner = $derived(JSON.stringify([volumeId, projectId, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, $auth.isSystemAdmin, !!$auth.token, !!token]));
 
 	const s = createAdminVolumeDetailController({
 		volumeId: () => volumeId,
@@ -32,6 +35,7 @@
 		onRefresh: () => onRefresh?.(),
 	});
 	provideAdminVolumeDetailController(s);
+	provideTableViewVisibility(() => !!s.volume && !s.error);
 </script>
 
 <div class="flex flex-col h-full">
@@ -53,14 +57,14 @@
 				{/if}
 				<AdminVolumeBasicInfoSection />
 				<AdminVolumePropertiesSection />
-				{#if s.volume.attachments.length > 0}
-					<AdminVolumeAttachmentsSection />
-				{/if}
-				{#if Object.keys(s.volume.metadata).length > 0}
-					<AdminVolumeMetadataSection />
-				{/if}
 			</div>
 		{/if}
+		{#key tableOwner}
+			<div hidden={!s.volume || !!s.error} class="space-y-4">
+				<AdminVolumeAttachmentsSection />
+				<AdminVolumeMetadataSection />
+			</div>
+		{/key}
 	</div>
 </div>
 

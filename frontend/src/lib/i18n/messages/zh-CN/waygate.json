@@ -69,7 +69,7 @@
 	"project.error.detach": "断开连接失败：{error}",
 	"project.error.clientsLoad": "查询客户端失败",
 	"project.toast.clientIssued": "已签发 Waygate 客户端",
-	"project.toast.clientIssuedNoProfile": "已签发 Waygate 客户端。只有具有连接权限的所有者才能下载已启用的配置；未向当前用户提供配置文件。", 
+	"project.toast.clientIssuedNoProfile": "已签发 Waygate 客户端。只有具有连接权限的所有者才能下载已启用的配置；未向当前用户提供配置文件。",
 	"project.error.clientIssue": "签发客户端失败",
 	"project.toast.clientSaved": "已保存设置。请在设备上重新导入 .conf 或 QR。",
 	"project.error.clientSave": "保存客户端设置失败",
@@ -200,7 +200,7 @@
 	"project.qr.title": "{name} — QR 码",
 	"project.actions.closeSymbol": "✕",
 	"project.client.configHelp": "下载 <code>.conf</code> 文件，或使用 <strong>QR</strong> 按钮在移动端 WireGuard 应用中直接扫描并注册。",
-	"project.backup.help": "仅导出服务器、路由设置以及本人所有或未指定所有者的配置。其他用户的配置会被排除，因此不是完整的项目备份。密钥使用密码短语加密，服务器密钥不会迁移。导入后请重新下载本人的 <code>.conf</code>。", 
+	"project.backup.help": "仅导出服务器、路由设置以及本人所有或未指定所有者的配置。其他用户的配置会被排除，因此不是完整的项目备份。密钥使用密码短语加密，服务器密钥不会迁移。导入后请重新下载本人的 <code>.conf</code>。",
 	"project.network.attachHelp": "连接后，所选子网的 CIDR 将添加到 VPN 客户端 <code>.conf</code> 的 AllowedIPs 中。已签发的客户端必须重新下载 <code>.conf</code> 才能生效。",
 	"project.empty.icon": "🔐"
 }

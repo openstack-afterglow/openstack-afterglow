@@ -1,4 +1,11 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
@@ -43,6 +50,13 @@
 	let authKey = $state('');
 	let result = $state<TransferLookup | null>(null);
 	let transfers = $state<Transfer[]>([]);
+ let transferSearch = $state('');
+ const columns = $derived<TableColumn<Transfer>[]>([
+  { key: 'name', label: t('listTable.name'), value: row => row.name },
+  { key: 'id', label: t('transferModal.idLabel'), value: row => row.id },
+  { key: 'volume', label: t('transferModal.volumeLabel'), value: row => row.volume_id },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows:()=>transfers,columns:()=>columns,search:()=>transferSearch,searchable:row=>[row.name,row.id,row.volume_id].map(value => String(value ?? ''))});
 	let busy = $state<'create' | 'lookup' | 'accept' | 'list' | 'cancel' | 'copy' | null>(null);
 	let error = $state('');
 	let copied = $state<'id' | 'key' | null>(null);
@@ -217,6 +231,12 @@
 		}
 	}
 	$effect(() => { if (entryMode === 'list') untrack(() => { void load(); }); });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { transferSearch = ''; view.reset(); });
+ }));
 </script>
 
 <Modal open={!closed} onClose={close} dismissible={!busy} ariaLabel={title}>
@@ -293,12 +313,14 @@
 					</Field>
 				{/if}
 			{:else if entryMode === 'list'}
+ <RegexSearch id="volume-transfer-search" bind:value={transferSearch} /><TableViewControls {view} class="" />
+{#if !busy && transfers.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 				<p class="text-sm text-ink-2">{t('transferModal.listHelp')}</p>
 				{#if !busy && !error && transfers.length === 0}<p class="text-sm text-ink-2">{t('transferModal.empty')}</p>{/if}
 				{#if transfers.length > 0}
 				<ResponsiveTable>
 					{#snippet cards()}
-						{#each transfers as transfer (transfer.id)}
+						{#each view.rows as transfer (transfer.id)}
 							<CompactResourceCard>
 								<p class="font-medium break-all">{transfer.name || transfer.id}</p>
 								{#snippet details()}
@@ -312,7 +334,7 @@
 						{/each}
 					{/snippet}
 					<div class="space-y-4">
-				{#each transfers as transfer (transfer.id)}
+				{#each view.rows as transfer (transfer.id)}
 					<Card surface="sunken" padding="sm">
 						<p class="break-words text-sm">{transfer.name}</p>
 						<dl class="my-3 space-y-2 text-xs">

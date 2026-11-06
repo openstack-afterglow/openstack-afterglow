@@ -1,50 +1,51 @@
 <script lang="ts">
-  import { t } from '$lib/i18n/ns/drover';
-  import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
- import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
- import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t } from '$lib/i18n/ns/drover';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+	import { Button, CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
-  const s = useK3sClusterDetailController();
+	const s = useK3sClusterDetailController();
+	type VmRow = { id: string; label: string };
+	const rows = $derived<VmRow[]>([
+		...(s.cluster?.server_vm_id ? [{ id: s.cluster.server_vm_id, label: t('overview.vms.server') }] : []),
+		...(s.cluster?.agent_vm_ids ?? []).map((id, index) => ({ id, label: t('overview.vms.agent', { number: index + 1 }) })),
+	]);
+	const tableState = s.tableState('vms');
+	const columns = $derived<TableColumn<VmRow>[]>([
+		{ key: 'label', label: tc('table.name'), value: row => row.label },
+		{ key: 'id', label: 'ID', value: row => row.id },
+	]);
+	const view = createTableView({ rows: () => rows, columns: () => columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
-  <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('overview.vms.title')}</h3>
- <ResponsiveTable>
-  {#snippet cards()}
-   {#if s.cluster!.server_vm_id}<CompactResourceCard><strong class="text-sm">{t('overview.vms.server')}</strong>{#snippet details()}<p class="text-xs font-mono break-all">{s.cluster!.server_vm_id}</p>{/snippet}{#snippet actions()}<button onclick={() => s.setViewingInstance(s.cluster!.server_vm_id)} class="text-xs text-warm-text">{t('overview.vms.viewInstance')}</button>{/snippet}</CompactResourceCard>{/if}
-   {#each s.cluster!.agent_vm_ids as vmId, i (vmId)}<CompactResourceCard><strong class="text-sm">{t('overview.vms.agent', { number: i + 1 })}</strong>{#snippet details()}<p class="text-xs font-mono break-all">{vmId}</p>{/snippet}{#snippet actions()}<button onclick={() => s.setViewingInstance(vmId)} class="text-xs text-warm-text">{t('overview.vms.viewInstance')}</button>{/snippet}</CompactResourceCard>{/each}
-   {#if !s.cluster!.server_vm_id && s.cluster!.agent_vm_ids.length === 0}<p class="text-xs text-ink-2">{t('overview.vms.empty')}</p>{/if}
-  {/snippet}
-  <div class="space-y-2">
-    {#if s.cluster!.server_vm_id}
-      <div class="flex items-center justify-between py-2 border-b border-line">
-        <div class="flex items-center gap-2">
-          <span class="text-xs bg-purple-900/40 text-purple-400 border border-purple-800 rounded px-1.5 py-0.5">{t('overview.vms.server')}</span>
-          <span class="text-xs text-ink-2 font-mono">{s.cluster!.server_vm_id.slice(0, 12)}...</span>
-        </div>
-        <button
-          onclick={() => s.setViewingInstance(s.cluster!.server_vm_id)}
-          class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">
-          {t('overview.vms.viewInstance')}
-        </button>
-      </div>
-    {/if}
-    {#each s.cluster!.agent_vm_ids as vmId, i}
-      <div class="flex items-center justify-between py-2 {i < s.cluster!.agent_vm_ids.length - 1 ? 'border-b border-line' : ''}">
-        <div class="flex items-center gap-2">
-          <span class="text-xs bg-surface-selected/40 text-warm-text border border-action-warm rounded px-1.5 py-0.5">{t('overview.vms.agent', { number: i + 1 })}</span>
-          <span class="text-xs text-ink-2 font-mono">{vmId.slice(0, 12)}...</span>
-        </div>
-        <button
-          onclick={() => s.setViewingInstance(vmId)}
-          class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">
-          {t('overview.vms.viewInstance')}
-        </button>
-      </div>
-    {/each}
-    {#if !s.cluster!.server_vm_id && s.cluster!.agent_vm_ids.length === 0}
-      <p class="text-xs text-ink-2 py-2">{t('overview.vms.empty')}</p>
-    {/if}
-  </div>
- </ResponsiveTable>
+	<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('overview.vms.title')}</h3>
+	<RegexSearch id="k3s-vms-search" bind:value={tableState.search} />
+	<TableViewControls {view} />
+	<ResponsiveTable>
+		{#snippet cards()}
+			{#each view.rows as row (row.id)}
+				<CompactResourceCard>
+					<strong class="text-sm">{row.label}</strong>
+					{#snippet details()}<p class="text-xs font-mono break-all">{row.id}</p>{/snippet}
+					{#snippet actions()}<Button variant="link" size="xs" onclick={() => s.setViewingInstance(row.id)}>{t('overview.vms.viewInstance')}</Button>{/snippet}
+				</CompactResourceCard>
+			{:else}<p class="text-xs text-ink-2">{rows.length ? tc('table.noMatches') : t('overview.vms.empty')}</p>{/each}
+		{/snippet}
+		<div class="space-y-2">
+			<div class="grid grid-cols-[1fr_2fr_auto] gap-2 text-xs text-ink-2">
+				{#each columns as column}<TableColumnControl {view} columnKey={column.key} />{/each}<span></span>
+			</div>
+			{#each view.rows as row (row.id)}
+				<div class="grid grid-cols-[1fr_2fr_auto] items-center gap-2 border-b border-line py-2 text-xs">
+					<span>{row.label}</span><span class="font-mono break-all text-ink-2">{row.id}</span>
+					<Button variant="link" size="xs" onclick={() => s.setViewingInstance(row.id)}>{t('overview.vms.viewInstance')}</Button>
+				</div>
+			{:else}<p class="text-xs text-ink-2">{rows.length ? tc('table.noMatches') : t('overview.vms.empty')}</p>{/each}
+		</div>
+	</ResponsiveTable>
 </div>

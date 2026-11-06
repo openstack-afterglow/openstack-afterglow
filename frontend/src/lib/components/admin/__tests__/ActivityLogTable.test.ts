@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 // --- module mocks (must be declared before static imports) ---
@@ -22,10 +22,19 @@ import { auth } from '$lib/stores/auth';
 import { t } from '$lib/i18n/ns/admin-system';
 import { t as tc } from '$lib/i18n/ns/common';
 
+async function setNativeAction(value: string) {
+	const name = tc('table.filterColumn', { column: t('activity.action') });
+	await fireEvent.click(screen.getByRole('button', { name }));
+	const popup = screen.getByRole('dialog', { name });
+	await fireEvent.input(within(popup).getByLabelText(tc('table.filterValue')), { target: { value } });
+	await fireEvent.click(within(popup).getByRole('button', { name: tc('table.apply') }));
+	await fireEvent.click(within(popup).getByRole('button', { name: tc('actions.close') }));
+}
+
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-	vi.clearAllMocks();
+	mockGet.mockReset();
 	auth.set({ token: 'test-token', projectId: 'test-project' } as never);
 });
 
@@ -107,9 +116,7 @@ describe('ActivityLogTable', () => {
 		expect(mockGet).toHaveBeenCalledOnce();
 		const firstSignal = mockGet.mock.calls[0][3].signal as AbortSignal;
 
-		await fireEvent.input(screen.getByPlaceholderText('액션 필터 (예: instance.create)'), {
-			target: { value: 'instance.create' },
-		});
+		await setNativeAction('instance.create');
 		await vi.advanceTimersByTimeAsync(249);
 		expect(mockGet).toHaveBeenCalledOnce();
 		expect(firstSignal.aborted).toBe(true);
@@ -202,7 +209,7 @@ describe('ActivityLogTable', () => {
 		emptyLaterPage = false;
 		await fireEvent.click(screen.getByRole('button', { name: tc('pagination.next') }));
 		await screen.findByText('log-2');
-		await fireEvent.input(screen.getByPlaceholderText(t('activity.actionFilter')), { target: { value: 'volume' } });
+		await setNativeAction('volume');
 		await screen.findByText('log-12');
 		expect(new URL(mockGet.mock.calls.at(-1)![0], 'http://localhost').searchParams.has('before_id')).toBe(false);
 	});

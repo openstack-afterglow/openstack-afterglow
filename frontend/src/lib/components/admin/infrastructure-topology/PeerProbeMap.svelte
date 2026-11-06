@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import type { TopologyHost } from '$lib/types/infrastructureTopology';
 	import { buildPeerProbeEdges } from './evidence';
 	import { t } from '$lib/i18n/ns/infra-topology';
@@ -10,6 +13,8 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	let { hosts, verified, selectedId, onselect }: { hosts: TopologyHost[]; verified: boolean; selectedId: string; onselect: (id: string) => void } = $props();
 	const edges = $derived(buildPeerProbeEdges(hosts, verified));
+
+	const observationView0 = createObservationView(() => (edges), () => ([{ key: 'source', label: t('probeSource'), value: row => row.sourceName }, { key: 'target', label: t('probeTarget'), value: row => row.targetName }, { key: 'ip', label: t('ip'), value: row => row.address }, { key: 'port', label: t('probePort'), value: row => row.port }, { key: 'status', label: t('probeStatus'), value: row => row.status }, { key: 'latency', label: t('probeLatency'), value: row => row.status !== 'unknown' ? row.latency_ms : null }, { key: 'time', label: t('probeTime'), value: row => row.checked_at }]));
 </script>
 
 <section aria-label={t('peers')} class="space-y-4">
@@ -23,13 +28,17 @@
 			<div class="endpoint"><span class="text-xs text-ink-2">{t('probeTarget')}</span>{#if edge.targetInInventory}<Button variant="secondary" ariaPressed={selectedId === edge.target_host_id} onclick={() => onselect(edge.target_host_id)}><span class="font-mono break-all">{edge.targetName}</span></Button>{:else}<strong class="font-mono break-all">{edge.targetName}</strong><span class="text-xs text-ink-2">{t('probeOutside')}</span>{/if}<span class="text-xs font-mono break-all">{edge.address}:{edge.port}</span></div>
 		</div>
 	{/each}
-	{#if edges.length}<ResponsiveTable>
-		{#snippet cards()}{#each edges as edge}<CompactResourceCard><p class="font-mono font-medium">{edge.sourceName} → {edge.targetName}</p><p>{t('probeStatus')}: {t(`probe.${edge.status}`)}</p><p>{t('probeLatency')}: {edge.status !== 'unknown' && edge.latency_ms !== null ? t('rttValue', { value: edge.latency_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) }) : t('unknown')}</p>{#snippet details()}<p class="font-mono">{t('ip')}: {edge.address} · {t('probePort')}: {edge.port.toLocaleString(intlLocale(), { useGrouping: false })}</p><p>{t('probeTime')}: {edge.checked_at === null ? t('unknown') : new Date(edge.checked_at * 1000).toLocaleString(intlLocale())}</p>{#if edge.error}<p>{t(`probeError.${edge.error}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
+	<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+		{#snippet cards()}{#each tableView.rows as edge}<CompactResourceCard><p class="font-mono font-medium">{edge.sourceName} → {edge.targetName}</p><p>{t('probeStatus')}: {t(`probe.${edge.status}`)}</p><p>{t('probeLatency')}: {edge.status !== 'unknown' && edge.latency_ms !== null ? t('rttValue', { value: edge.latency_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) }) : t('unknown')}</p>{#snippet details()}<p class="font-mono">{t('ip')}: {edge.address} · {t('probePort')}: {edge.port.toLocaleString(intlLocale(), { useGrouping: false })}</p><p>{t('probeTime')}: {edge.checked_at === null ? t('unknown') : new Date(edge.checked_at * 1000).toLocaleString(intlLocale())}</p>{#if edge.error}<p>{t(`probeError.${edge.error}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<TableShell><table>
 		<caption class="text-left text-sm font-semibold pb-2">{t('peers')}</caption>
-		<thead><tr><th scope="col">{t('probeSource')}</th><th scope="col">{t('probeTarget')}</th><th scope="col">{t('ip')}</th><th scope="col">{t('probePort')}</th><th scope="col">{t('probeStatus')}</th><th scope="col">{t('probeLatency')}</th><th scope="col">{t('probeTime')}</th></tr></thead>
-		<tbody>{#each edges as edge}<tr><th scope="row" class="font-mono">{edge.sourceName}</th><td class="font-mono">{edge.targetName}</td><td class="font-mono">{edge.address}</td><td>{edge.port.toLocaleString(intlLocale(), { useGrouping: false })}</td><td>{t(`probe.${edge.status}`)}{#if edge.error}<p class="text-xs text-ink-2">{t(`probeError.${edge.error}`)}</p>{/if}</td><td class="tabular-nums">{edge.status !== 'unknown' && edge.latency_ms !== null ? t('rttValue', { value: edge.latency_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) }) : t('unknown')}</td><td>{edge.checked_at === null ? t('unknown') : new Date(edge.checked_at * 1000).toLocaleString(intlLocale())}</td></tr>{/each}</tbody>
-	</table></TableShell></ResponsiveTable>{/if}
+		<thead><tr><TableColumnHeader view={tableView} columnKey="source" /><TableColumnHeader view={tableView} columnKey="target" /><TableColumnHeader view={tableView} columnKey="ip" /><TableColumnHeader view={tableView} columnKey="port" /><TableColumnHeader view={tableView} columnKey="status" /><TableColumnHeader view={tableView} columnKey="latency" /><TableColumnHeader view={tableView} columnKey="time" /></tr></thead>
+		<tbody>{#each tableView.rows as edge}<tr><th scope="row" class="font-mono">{edge.sourceName}</th><td class="font-mono">{edge.targetName}</td><td class="font-mono">{edge.address}</td><td>{edge.port.toLocaleString(intlLocale(), { useGrouping: false })}</td><td>{t(`probe.${edge.status}`)}{#if edge.error}<p class="text-xs text-ink-2">{t(`probeError.${edge.error}`)}</p>{/if}</td><td class="tabular-nums">{edge.status !== 'unknown' && edge.latency_ms !== null ? t('rttValue', { value: edge.latency_ms.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }) }) : t('unknown')}</td><td>{edge.checked_at === null ? t('unknown') : new Date(edge.checked_at * 1000).toLocaleString(intlLocale())}</td></tr>{/each}</tbody>
+	</table></TableShell></ResponsiveTable>
+{/snippet}
+</ObservationTable>
 </section>
 
 <style>

@@ -1,4 +1,5 @@
 import { t } from '$lib/i18n/ns/drover';
+import type { TableViewState } from '$lib/utils/tableView.svelte';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError, fetchWithAuth } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
@@ -103,6 +104,11 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   let podsLoaded = $state(false);
   let servicesLoaded = $state(false);
   let deploymentsLoaded = $state(false);
+  let tableStates = $state<Record<string, { search: string; state: TableViewState }>>({});
+  function tableState(key: string) {
+    if (!tableStates[key]) tableStates[key] = { search: '', state: { sort: null, filters: {} } };
+    return tableStates[key];
+  }
 
   const apiBase = $derived(opts.adminMode() ? '/api/v1/admin/k3s-clusters' : '/api/v1/k3s/clusters');
   const isActive = $derived(cluster?.status === 'ACTIVE');
@@ -761,6 +767,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   }
 
   function reset() {
+    tableStates = {};
     invalidateInstanceDetailSelection();
     generation += 1;
     cluster = null;
@@ -805,6 +812,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   }
 
   return {
+    tableState,
     get cluster() { return cluster; },
     get health() { return health; },
     get loading() { return loading; },

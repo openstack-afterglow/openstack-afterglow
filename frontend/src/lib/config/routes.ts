@@ -8,9 +8,10 @@ type NavMessage = Parameters<typeof t>[0];
 
 const PROJECT_AGNOSTIC_ROUTES = ['/', '/login', '/logout', '/auth/callback', '/select-project', '/select-domain', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 
-/** Domain IAM and exact verified-manager usage review can work without a project; admin stays system-only. */
+/** Account settings and domain IAM need no project; usage/admin retain their authority guards. */
 export function isProjectAgnosticPath(pathname: string, isSystemAdmin: boolean, isDomainManager: boolean): boolean {
   return PROJECT_AGNOSTIC_ROUTES.includes(pathname)
+    || pathname === '/dashboard/account' || pathname.startsWith('/dashboard/account/')
     || pathname === '/dashboard/iam' || pathname.startsWith('/dashboard/iam/')
     || (isDomainManager && pathname === '/dashboard/usage')
     || (isSystemAdmin && (pathname === '/admin' || pathname.startsWith('/admin/')));

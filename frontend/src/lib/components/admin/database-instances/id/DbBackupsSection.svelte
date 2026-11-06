@@ -6,6 +6,12 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		backups,
@@ -33,6 +39,19 @@
 
 	let showForm = $state(false);
 	let newBackup = $state({ name: '', description: '' });
+	let search = $state('');
+	const view = createTableView<DbBackup>({
+		rows: () => backups,
+		search: () => search,
+		searchable: (b) => [b.name, b.id, b.status, b.size, b.created_at, b.description].map((value) => String(value ?? '')),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: tr('labels.name'), value: (b) => b.name },
+			{ key: 'status', label: tr('labels.status'), value: (b) => b.status },
+			{ key: 'size', label: tr('labels.size'), value: (b) => b.size },
+			{ key: 'created', label: tr('labels.created'), value: (b) => b.created_at },
+		],
+	});
 
 	async function handleAdd() {
 		const ok = await onAdd({ ...newBackup });
@@ -66,14 +85,18 @@
 			</button>
 		</div>
 	{/if}
+	<div class="mb-3 space-y-3">
+		<RegexSearch id="admin-database-backups-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if loadError}
 		<p role="alert" class="text-state-danger-text text-sm">{loadError}</p>
-	{:else if backups.length === 0}
-		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
+	{:else if view.rows.length === 0}
+		<div class="text-ink-2 text-xs">{backups.length ? tc('table.noMatches') : tr('backups.empty')}</div>
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each backups as b (b.id)}
+				{#each view.rows as b (b.id)}
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{b.name}</h3><StatusChip status={b.status} /></div><p class="text-xs text-ink-2">{b.size === null || b.size === undefined ? '-' : `${b.size} GB`} · {b.created_at?.slice(0, 10) ?? '-'}</p>
 						{#snippet actions()}{#if canMutate}<Button variant="secondary" size="sm" disabled={restoringBackup === b.id} onclick={() => onRestore(b.id)}>{#if restoringBackup === b.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{restoringBackup === b.id ? tr('state.restoring') : tr('actions.restore')}</Button><Button variant="danger" size="sm" disabled={deletingBackup === b.id} onclick={() => onDelete(b.id)}>{#if deletingBackup === b.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingBackup === b.id ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
@@ -84,15 +107,15 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
-					<th class="text-left py-2 font-medium">{tr('labels.name')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.status')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.size')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.created')}</th>
+					<TableColumnHeader {view} columnKey="name" />
+					<TableColumnHeader {view} columnKey="status" />
+					<TableColumnHeader {view} columnKey="size" />
+					<TableColumnHeader {view} columnKey="created" />
 					<th class="text-right py-2 font-medium">{tr('labels.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each backups as b}
+				{#each view.rows as b}
 					<tr class="border-t border-line/50">
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.status}</td>

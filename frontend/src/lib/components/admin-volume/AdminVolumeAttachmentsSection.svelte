@@ -1,18 +1,8 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/ns/admin-storage';
 	import { useAdminVolumeDetailController } from '$lib/stores/adminVolumeDetailController.svelte';
+	import AdminVolumeAttachmentTable from '$lib/components/admin/volumes/id/AdminVolumeAttachmentTable.svelte';
 
 	const s = useAdminVolumeDetailController();
 </script>
 
-<div class="bg-surface-base border border-line rounded-xl p-4">
-	<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('volumeDetail.attachments')}</h3>
-	<div class="space-y-2">
-		{#each s.volume?.attachments ?? [] as att}
-			<div class="text-xs space-y-1">
-				<div class="text-ink-2 font-mono">{att.server_id?.slice(0, 8)}...</div>
-				<div class="text-ink-2">{att.device}</div>
-			</div>
-		{/each}
-	</div>
-</div>
+<AdminVolumeAttachmentTable attachments={s.volume?.attachments ?? []} />

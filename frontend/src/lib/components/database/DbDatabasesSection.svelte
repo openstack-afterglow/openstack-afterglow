@@ -4,6 +4,10 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 
 	const s = useDbInstanceDetailController();
 
@@ -39,13 +43,21 @@
 			</button>
 		</div>
 	{/if}
+	<RegexSearch id="database-detail-databases-search" bind:value={s.databaseSearch} />
+	<TableViewControls view={s.databaseView} />
 	{#if s.databases.length === 0}
 		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
-	{:else}
+	{:else if s.databaseView.rows.length === 0}
+		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
+	{/if}
   <ResponsiveTable>
-   {#snippet cards()}{#each s.databases as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
+   {#snippet cards()}{#each s.databaseView.rows as db (db.name)}<CompactResourceCard><strong class="text-sm break-all">{db.name}</strong>{#snippet actions()}<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingDb === db.name}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
-			{#each s.databases as db}
+			<div class="flex items-center justify-between gap-3 border-b border-line py-2 text-xs text-ink-2">
+				<TableColumnControl view={s.databaseView} columnKey="name" />
+				<span>{tr('labels.actions')}</span>
+			</div>
+			{#each s.databaseView.rows as db}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
 					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
 					<button onclick={() => s.deleteDb(db.name)} disabled={s.deletingDb === db.name}
@@ -56,5 +68,4 @@
 			{/each}
 		</div>
   </ResponsiveTable>
-	{/if}
 </div>

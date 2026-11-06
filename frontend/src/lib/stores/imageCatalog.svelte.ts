@@ -1,10 +1,16 @@
-import { KNOWN_DISTROS } from '$lib/utils/imageOs';
-import { imageReferenceMatchesQuery, imageReferenceMatchScore, parseImageReference } from '$lib/utils/imageReference';
+import { imageReferenceSearchFields, parseImageReference } from '$lib/utils/imageReference';
+import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+import { t } from '$lib/i18n/ns/images-keys';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
 import type { ImageInfo } from '$lib/types/compute';
 
-export type CatalogSortMode = 'newest' | 'oldest' | 'relevance' | 'name';
+
 export type VerificationStatus = 'verified' | 'unverified' | 'unavailable';
-export type VerificationFilter = 'all' | VerificationStatus;
+export interface ImageCatalogState {
+  searchQuery: string;
+  view: TableViewState;
+}
+
 
 export interface ImageTagGroup<T extends ImageInfo = ImageInfo> {
   tag: string;
@@ -20,11 +26,7 @@ export interface ImageRepositoryGroup<T extends ImageInfo = ImageInfo> {
   tags: ImageTagGroup<T>[];
 }
 
-export interface CatalogOption {
-  value: string;
-  label: string;
-  count: number;
-}
+
 
 export function imageVerificationStatus(image: ImageInfo): VerificationStatus {
   return image.verification_status === 'verified' || image.verification_status === 'unavailable'
@@ -72,9 +74,7 @@ function compareUploadDates(a: number | null, b: number | null, oldest: boolean)
   return oldest ? a - b : b - a;
 }
 
-function compareIdentity(a: ImageInfo, b: ImageInfo): number {
-  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-}
+
 
 function compareUploadOrder(a: ImageInfo, b: ImageInfo, times: Map<string, number | null>, oldest = false): number {
   const dateOrder = compareUploadDates(times.get(a.id) ?? null, times.get(b.id) ?? null, oldest);
@@ -96,149 +96,75 @@ export function currentImagesByReference<T extends ImageInfo>(images: readonly T
   return current;
 }
 
-function countOptions(images: readonly ImageInfo[], part: 'repository' | 'tag'): CatalogOption[] {
-  const counts = new Map<string, number>();
-  for (const image of images) {
-    const value = imageReferenceParts(image)[part];
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => part === 'tag'
-      ? (a[0] === 'latest' ? -1 : b[0] === 'latest' ? 1 : a[0].localeCompare(b[0]))
-      : b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([value, count]) => ({ value, label: value, count }));
-}
 
-export function createImageCatalog<T extends ImageInfo>(source: () => T[], canonicalSource: () => T[] = source) {
-  let distroFilter = $state('all');
-  let searchQuery = $state('');
-  let repositoryFilter = $state('all');
-  let tagFilter = $state('all');
-  let verificationFilter = $state<VerificationFilter>('all');
-  let sortMode = $state<CatalogSortMode>('newest');
 
+export function createImageCatalog<T extends ImageInfo>(source: () => T[], canonicalSource: () => T[] = source, retained?: ImageCatalogState) {
+  const state = $state<ImageCatalogState>(retained ?? { searchQuery: '', view: { sort: null, filters: {} } });
+  const columns = $derived<TableColumn<T>[]>([
+    { key: 'repository', label: t('catalogToolbar.repositoryLabel'), value: image => imageReferenceParts(image).repository },
+    { key: 'tag', label: t('catalogToolbar.tagLabel'), value: image => imageReferenceParts(image).tag },
+    { key: 'status', label: t('repositoryDetail.status'), value: image => image.status },
+    { key: 'os_distro', label: t('infoSection.osDistro'), value: image => image.os_distro },
+    { key: 'verification', label: t('catalogToolbar.trustLabel'), value: imageVerificationStatus, format: value => value === 'verified' ? t('catalogToolbar.verified') : value === 'unavailable' ? t('catalogToolbar.unavailable') : t('catalogToolbar.unverified') },
+    { key: 'visibility', label: t('uploadModal.visibility'), value: image => image.visibility },
+    { key: 'size', label: t('repositoryDetail.size'), value: image => image.size },
+    { key: 'created_at', label: t('repositoryDetail.uploaded'), value: imageUploadInstant, filterValues: image => { const time = imageUploadTime(image); return [time === null ? null : new Date(time).toISOString().slice(0, 10)]; }, format: value => typeof value === 'number' ? new Date(value / 1000).toISOString().slice(0, 10) : String(value ?? '') },
+    { key: 'name', label: t('imageEdit.name'), value: image => image.name },
+    { key: 'id', label: t('repositoryDetail.digest'), value: image => image.os_hash_value ?? image.id },
+    { key: 'disk_format', label: t('infoSection.diskFormat'), value: image => image.disk_format },
+    { key: 'owner', label: t('infoSection.owner'), value: image => image.owner },
+  ]);
+  const newest = $derived.by(() => {
+    const times = new Map(source().map(image => [image.id, imageUploadInstant(image)]));
+    return [...source()].sort((a, b) => compareUploadOrder(a, b, times));
+  });
+  const view = createTableView<T>({ rows: () => newest, columns: () => columns, search: () => state.searchQuery, searchable: imageReferenceSearchFields, locale: intlLocale, state: state.view });
   const currentImages = $derived(currentImagesByReference(canonicalSource()));
-  const filteredImages = $derived.by(() => {
-    const query = searchQuery.trim();
-    const list = source().filter((image) => {
-      const reference = imageReferenceParts(image);
-      if (distroFilter !== 'all') {
-        if (distroFilter === 'other') {
-          if (image.os_distro && KNOWN_DISTROS.includes(image.os_distro)) return false;
-        } else if (image.os_distro !== distroFilter) return false;
-      }
-      if (repositoryFilter !== 'all' && reference.repository !== repositoryFilter) return false;
-      if (tagFilter !== 'all' && reference.tag !== tagFilter) return false;
-      if (verificationFilter !== 'all' && imageVerificationStatus(image) !== verificationFilter) return false;
-      return imageReferenceMatchesQuery(image, query);
-    });
-    const times = new Map<string, number | null>();
-    if (sortMode !== 'name') for (const image of list) times.set(image.id, imageUploadInstant(image));
-    list.sort((a, b) => {
-      if (sortMode === 'relevance' && query) {
-        const delta = imageReferenceMatchScore(b, query) - imageReferenceMatchScore(a, query);
-        if (delta) return delta;
-      }
-      if (sortMode === 'name') {
-        const aParts = imageReferenceParts(a);
-        const bParts = imageReferenceParts(b);
-        return aParts.repository.localeCompare(bParts.repository)
-          || aParts.tag.localeCompare(bParts.tag) || compareIdentity(a, b);
-      }
-      return compareUploadOrder(a, b, times, sortMode === 'oldest');
-    });
-    return list;
-  });
+  const filteredImages = $derived(view.rows);
 
-  const distroGroups = $derived.by(() => {
-    const images = source();
-    const counts: Record<string, number> = { all: images.length };
-    for (const image of images) {
-      const distro = image.os_distro && KNOWN_DISTROS.includes(image.os_distro) ? image.os_distro : 'other';
-      counts[distro] = (counts[distro] ?? 0) + 1;
-    }
-    return counts;
-  });
-
-  const repositoryOptions = $derived(countOptions(source(), 'repository'));
-  const tagOptions = $derived(countOptions(repositoryFilter === 'all' ? source() : source().filter((image) =>
-    imageReferenceParts(image).repository === repositoryFilter), 'tag'));
-  const visibleRepositoryCount = $derived.by(() => {
-    const repositories = new Set<string>();
-    for (const image of filteredImages) repositories.add(imageReferenceParts(image).repository);
-    return repositories.size;
-  });
-
-  function buildGroups(images: readonly T[], query: string): ImageRepositoryGroup<T>[] {
+  function buildGroups(images: readonly T[], orderRepresentatives = false): ImageRepositoryGroup<T>[] {
     const groups = new Map<string, T[]>();
-    const times = new Map<string, number | null>();
-    for (const image of images) {
-      times.set(image.id, imageUploadInstant(image));
+    const sorting = orderRepresentatives && view.sort !== null;
+    // Resolve newest displayed versions before applying a column order to their groups.
+    let uploads = images;
+    if (sorting) {
+      const times = new Map(images.map(image => [image.id, imageUploadInstant(image)]));
+      uploads = [...images].sort((a, b) => compareUploadOrder(a, b, times));
+    }
+    for (const image of uploads) {
       const repository = imageReferenceParts(image).repository;
       const entries = groups.get(repository) ?? [];
       entries.push(image);
       groups.set(repository, entries);
     }
-    const relevance = new Map<string, number>();
     const result = [...groups.entries()].map(([repository, entries]): ImageRepositoryGroup<T> => {
-      entries.sort((a, b) => compareUploadOrder(a, b, times));
       const tagGroups = new Map<string, ImageTagGroup<T>>();
       for (const image of entries) {
         const tag = imageReferenceParts(image).tag;
         const existing = tagGroups.get(tag);
         if (existing) existing.images.push(image);
-        else tagGroups.set(tag, {
-          tag, latest: image, current: currentImages.get(JSON.stringify([repository, tag])) ?? image, images: [image],
-        });
+        else tagGroups.set(tag, { tag, latest: image, current: currentImages.get(JSON.stringify([repository, tag])) ?? image, images: [image] });
       }
-      if (sortMode === 'relevance' && query) {
-        let best = -1;
-        for (const image of entries) best = Math.max(best, imageReferenceMatchScore(image, query));
-        relevance.set(repository, best);
-      }
-      return { repository, images: entries, latest: entries[0], tags: [...tagGroups.values()] };
+      const tags = [...tagGroups.values()];
+      const byLatest = sorting ? new Map(tags.map(group => [group.latest, group])) : null;
+      return {
+        repository, images: entries, latest: entries[0],
+        tags: sorting ? view.orderRows(tags.map(group => group.latest)).map(image => byLatest!.get(image)!) : tags,
+      };
     });
-    result.sort((a, b) => {
-      if (sortMode === 'relevance' && query) {
-        const delta = (relevance.get(b.repository) ?? -1) - (relevance.get(a.repository) ?? -1);
-        if (delta) return delta;
-      }
-      if (sortMode === 'name') return a.repository.localeCompare(b.repository);
-      return compareUploadDates(times.get(a.latest.id) ?? null, times.get(b.latest.id) ?? null, sortMode === 'oldest')
-        || a.repository.localeCompare(b.repository);
-    });
-    return result;
+    if (!sorting) return result;
+    const byLatest = new Map(result.map(group => [group.latest, group]));
+    return view.orderRows(result.map(group => group.latest)).map(image => byLatest.get(image)!);
   }
-
-  const allRepositoryGroups = $derived(buildGroups(source(), ''));
-  const repositoryGroups = $derived(buildGroups(filteredImages, searchQuery.trim()));
-  function clearFilters() {
-    searchQuery = '';
-    repositoryFilter = 'all';
-    tagFilter = 'all';
-    distroFilter = 'all';
-    verificationFilter = 'all';
-    sortMode = 'newest';
-  }
-
+  const allRepositoryGroups = $derived(buildGroups(newest));
+  const repositoryGroups = $derived(buildGroups(filteredImages, true));
+  function clearFilters() { state.searchQuery = ''; view.reset(); }
   return {
-    get distroFilter() { return distroFilter; },
-    set distroFilter(value: string) { distroFilter = value; },
-    get searchQuery() { return searchQuery; },
-    set searchQuery(value: string) { searchQuery = value; },
-    get repositoryFilter() { return repositoryFilter; },
-    set repositoryFilter(value: string) { repositoryFilter = value; },
-    get tagFilter() { return tagFilter; },
-    set tagFilter(value: string) { tagFilter = value; },
-    get verificationFilter() { return verificationFilter; },
-    set verificationFilter(value: VerificationFilter) { verificationFilter = value; },
-    get sortMode() { return sortMode; },
-    set sortMode(value: CatalogSortMode) { sortMode = value; },
+    view,
+    get searchQuery() { return state.searchQuery; },
+    set searchQuery(value: string) { state.searchQuery = value; },
     get filteredImages() { return filteredImages; },
-    get distroGroups() { return distroGroups; },
-    get repositoryOptions() { return repositoryOptions; },
-    get tagOptions() { return tagOptions; },
-    get visibleRepositoryCount() { return visibleRepositoryCount; },
+    get visibleRepositoryCount() { return repositoryGroups.length; },
     get repositoryGroups() { return repositoryGroups; },
     get allRepositoryGroups() { return allRepositoryGroups; },
     clearFilters,

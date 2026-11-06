@@ -34,7 +34,6 @@
 	"volumeList.summary.drilldown": "{name} 볼륨 보기",
 	"volumeDetail.loadingInfo": "볼륨 정보 불러오는 중",
 	"volumeDetail.loading": "로딩 중...",
-	"volumeDetail.loadingInfo": "볼륨 정보 불러오는 중",
 	"volumeDetail.attachments": "연결 정보",
 	"volumeDetail.basicInfo": "기본 정보",
 	"volumeDetail.volumeType": "볼륨 유형",

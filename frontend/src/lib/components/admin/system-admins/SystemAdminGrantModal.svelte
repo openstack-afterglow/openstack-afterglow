@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { untrack } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -49,19 +55,22 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 	const authority = $derived(JSON.stringify([token, projectId]));
+	const logicalOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, projectId, $auth.isSystemAdmin, !!token]));
+	let previousOwner = '';
 	const domainsReady = $derived(loadedAuthority === authority && !loadingDomains && !domainsError);
 	const selectedDomain = $derived(domainsReady ? domains.find(domain => domain.id === domainId) : undefined);
-	const filtered = $derived(
-		query.trim()
-			? allUsers.filter(user => `${user.name} ${user.email ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()))
-			: allUsers,
-	);
+	const tableView = createTableView<User>({ rows: () => allUsers, locale: () => intlLocale(), search: () => query, columns: () => [
+		{ key: 'name', label: t('systemTable.name'), value: row => row.name },
+		{ key: 'email', label: t('systemTable.email'), value: row => row.email },
+		{ key: 'id', label: t('systemTable.userId'), value: row => row.id }
+	] });
+	const filtered = $derived(tableView.rows);
 
-	function resetUsers() {
+	function resetUsers(clearView = true) {
 		usersGeneration++;
 		grantGeneration++;
 		allUsers = [];
-		query = '';
+		if (clearView) { query = ''; tableView.reset(); }
 		nextMarker = null;
 		usersError = '';
 		grantError = '';
@@ -77,7 +86,8 @@
 		loadedAuthority = '';
 		domains = [];
 		domainId = '';
-		resetUsers();
+		resetUsers(previousOwner !== logicalOwner);
+		previousOwner = logicalOwner;
 		loadingDomains = true;
 		domainsError = '';
 		try {
@@ -185,20 +195,13 @@
 			<Button variant="secondary" size="sm" onclick={() => loadUsers(!!nextMarker)}>{domainT('actions.refresh')}</Button>
 		{/if}
 
-		<input
-			bind:value={query}
-			type="text"
-			placeholder={t('systemGrant.searchPlaceholder')}
-			aria-label={t('systemGrant.searchPlaceholder')}
-			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm my-3"
-		/>
+		<RegexSearch id={`${id}-search`} bind:value={query} /><TableViewControls view={tableView} />
+		<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
 
 		{#if granting}<div class="mb-3"><LoadingState variant="inline" label={t('systemGrant.granting')} /></div>{/if}
 		<div aria-busy={granting || loadingUsers} class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers && allUsers.length === 0}
 				<div class="text-ink-2 text-sm px-4 py-6 text-center"><LoadingState variant="section" label={t('systemGrant.loading')} /></div>
-			{:else if !usersError && filtered.length === 0}
-				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.empty')}</div>
 			{:else}
         <ResponsiveTable>
           {#snippet cards()}
@@ -211,7 +214,7 @@
               </CompactResourceCard>
             {/each}
           {/snippet}
-				<table class="w-full text-sm">
+				<table class="w-full text-sm"><thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="id" /><th></th></tr></thead>
 					<tbody>
 						{#each filtered as u (u.id)}
 							<tr class="border-b border-line/50 hover:bg-surface-sunken/50 transition-colors">

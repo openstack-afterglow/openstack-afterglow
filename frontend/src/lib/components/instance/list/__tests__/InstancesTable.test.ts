@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Instance } from '$lib/types/compute';
 import InstancesTable from '../InstancesTable.svelte';
 import { t } from '$lib/i18n/ns/instance';
-import type { InstanceSort } from '../instanceSort';
+import { createTableView, type TableView } from '$lib/utils/tableView.svelte';
 
 vi.mock('$lib/stores/auth', () => ({ canWrite: writable(true) }));
 
@@ -41,8 +41,7 @@ const instances: Instance[] = [
 
 function renderTable(overrides: Partial<{
 	instances: Instance[];
-	sort: InstanceSort;
-	onSortChange: (sort: InstanceSort) => void;
+	view: TableView<Instance>;
 	selectedIds: ReadonlySet<string>;
 	selectableIds: ReadonlySet<string>;
 	selectionDisabled: boolean;
@@ -53,7 +52,10 @@ function renderTable(overrides: Partial<{
 }> = {}) {
 	return render(InstancesTable, {
 		instances,
-		onSortChange: vi.fn(),
+		view: createTableView({ rows: () => overrides.instances ?? instances, columns: () => [
+			{ key: 'name', label: t('table.name'), value: row => row.name },
+			{ key: 'status', label: t('table.status'), value: row => row.status },
+		] }),
 		selectedIds: new Set<string>(),
 		selectableIds: new Set(instances.map((instance) => instance.id)),
 		selectionDisabled: false,
@@ -66,24 +68,6 @@ function renderTable(overrides: Partial<{
 }
 
 describe('InstancesTable selection', () => {
-	it.each([true, false])('offers the same six accessible column controls in desktop=%s', async (desktop) => {
-		const onSortChange = vi.fn();
-		const { rerender } = renderTable({ onSortChange });
-		await setDesktop(desktop);
-		const name = () => screen.getByRole('button', { name: `${t('table.sortBy', { label: t('table.name') })}: ${t('table.sortDefault')}` });
-		expect(screen.getAllByRole('button', { name: /정렬:/ })).toHaveLength(6);
-		await fireEvent.click(name());
-		expect(onSortChange).toHaveBeenLastCalledWith({ key: 'name', direction: 'asc' });
-		await rerender({ sort: { key: 'name', direction: 'asc' } });
-		const ascending = screen.getByRole('button', { name: `${t('table.sortBy', { label: t('table.name') })}: ${t('table.sortAscending')}` });
-		if (desktop) expect(ascending.closest('th')?.getAttribute('aria-sort')).toBe('ascending');
-		else expect(ascending.getAttribute('aria-pressed')).toBe('true');
-		await fireEvent.click(ascending);
-		expect(onSortChange).toHaveBeenLastCalledWith({ key: 'name', direction: 'desc' });
-		await rerender({ sort: { key: 'name', direction: 'desc' } });
-		await fireEvent.click(screen.getByRole('button', { name: `${t('table.sortBy', { label: t('table.name') })}: ${t('table.sortDescending')}` }));
-		expect(onSortChange).toHaveBeenLastCalledWith(null);
-	});
 	it.each([true, false])('renders verified specs and historical names without changing row identity in desktop=%s', async desktop => {
 		const onSelect = vi.fn();
 		const cpu = { ...instances[0], flavor_name: 'm1.small', flavor_display_name: 'cpu.2c_1.5g' };

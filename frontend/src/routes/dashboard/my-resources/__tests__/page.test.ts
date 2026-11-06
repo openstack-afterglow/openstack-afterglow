@@ -464,7 +464,6 @@ describe('my resources inventory consumer', () => {
 		const { container } = render(Page);
 		await snapshot(container);
 		expect(screen.getByText(t('myResources.noProjects'))).toBeTruthy();
-		expect(container.querySelector('[data-project-usage]')).toBeNull();
 		expect(container.querySelector('[data-resource-item]')).toBeNull();
 	});
 });

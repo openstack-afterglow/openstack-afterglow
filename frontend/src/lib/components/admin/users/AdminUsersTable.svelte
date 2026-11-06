@@ -1,4 +1,7 @@
 <script lang="ts">
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
   import type { User } from '$lib/types/common';
   import Pagination from '$lib/components/ui/Pagination.svelte';
   import { t } from '$lib/i18n/ns/admin-identity';
@@ -9,6 +12,7 @@
 
   let {
     users,
+    view,
     refreshing,
     page,
     hasPrev,
@@ -21,6 +25,7 @@
     onNext,
   }: {
     users: User[];
+    view: TableView<User>;
     refreshing: boolean;
     page: number;
     hasPrev: boolean;
@@ -34,6 +39,7 @@
   } = $props();
 </script>
 
+  <div data-tour="admin-identity-status-filter"><TableViewControls {view} /></div>
   <ResponsiveTable>
     {#snippet cards()}
       {#each users as u, index (u.id)}
@@ -57,11 +63,11 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-          <th class="text-left py-2 pr-4">{t('userTable.name')}</th>
-          <th class="text-left py-2 pr-4">{t('userTable.email')}</th>
-          <th class="text-left py-2 pr-4">{t('userTable.status')}</th>
-          <th class="text-left py-2 pr-4">{t('userTable.id')}</th>
-          <th class="text-left py-2">{t('userTable.firstActivity')}</th>
+<TableColumnHeader {view} columnKey="name" />
+<TableColumnHeader {view} columnKey="email" />
+<TableColumnHeader {view} columnKey="status" />
+<TableColumnHeader {view} columnKey="id" />
+<TableColumnHeader {view} columnKey="firstActivity" />
           <th class="text-right py-2">{t('userDelete.actions')}</th>
         </tr>
       </thead>

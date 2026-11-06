@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -126,6 +129,8 @@
 	}
 
 	const PERIOD_LABELS: Record<string, string> = { '24h': '24h', '7d': '7d', '30d': '30d' };
+
+	const observationView0 = createObservationView(() => (recentActions), () => ([{ key: 'time', label: t('activity.time'), value: row => row.created_at }, { key: 'action', label: t('activity.action'), value: row => row.action }, { key: 'resource', label: t('activity.resource'), value: row => row.resource_type }, { key: 'target', label: t('activity.target'), value: row => row.resource_name }, { key: 'status', label: t('activity.result'), value: row => row.status }]));
 </script>
 
 <PageShell class="flex flex-col gap-5">
@@ -182,7 +187,9 @@
 			{#if recentActions.length === 0}
 				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">{t('activity.empty')}</div>
 			{:else}
-				<ResponsiveTable class="mt-4">{#snippet cards()}{#each recentActions as action (action.id)}<CompactResourceCard>
+				<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as action (action.id)}<CompactResourceCard>
 					<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{action.resource_name}</h3><StatusChip status={action.status} label={resultLabel(action.status)} /></div><p class="text-xs font-mono">{action.action}</p><p class="text-xs text-ink-2">{formatHour(action.created_at)}</p>
 					{#snippet details()}<p class="text-xs">{t('activity.resource')}: {action.resource_type}</p>{/snippet}
 				</CompactResourceCard>{/each}{/snippet}
@@ -190,15 +197,15 @@
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
-								<th class="text-left pb-2 pr-4 font-medium">{t('activity.time')}</th>
-								<th class="text-left pb-2 pr-4 font-medium">{t('activity.action')}</th>
-								<th class="text-left pb-2 pr-4 font-medium">{t('activity.resource')}</th>
-								<th class="text-left pb-2 pr-4 font-medium">{t('activity.target')}</th>
-								<th class="text-left pb-2 font-medium">{t('activity.result')}</th>
+								<TableColumnHeader view={tableView} columnKey="time" />
+								<TableColumnHeader view={tableView} columnKey="action" />
+								<TableColumnHeader view={tableView} columnKey="resource" />
+								<TableColumnHeader view={tableView} columnKey="target" />
+								<TableColumnHeader view={tableView} columnKey="status" />
 							</tr>
 						</thead>
 						<tbody class="motion-stagger divide-y divide-line/60">
-							{#each recentActions as action (action.id)}
+							{#each tableView.rows as action (action.id)}
 								{@const badge = actionBadgeStyle(action.action)}
 								<tr class="hover:bg-surface-sunken/30 transition-colors">
 									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs tabular-nums whitespace-nowrap">
@@ -221,6 +228,8 @@
 					</table>
 				</div>
 				</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 			{/if}
 		</div>
 	{/if}

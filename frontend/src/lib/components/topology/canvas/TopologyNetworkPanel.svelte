@@ -21,6 +21,10 @@
 	import { fmtRate } from './canvasHelpers';
 	import TrafficSparkline from './TrafficSparkline.svelte';
 	import { untrack } from 'svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Props {
 		networkId: string;
@@ -48,6 +52,15 @@
 	}: Props = $props();
 
 	const net = $derived(data.networks.find((n) => n.id === networkId) ?? null);
+	type SubnetRow = TopologyData['networks'][number]['subnet_details'][number];
+	const columns = (): TableColumn<SubnetRow>[] => [
+		{ key: 'name', label: t('panel.name'), value: row => row.name || row.id },
+		{ key: 'cidr', label: 'CIDR', value: row => row.cidr },
+		{ key: 'gateway', label: t('panel.gateway'), value: row => row.gateway_ip },
+		{ key: 'dhcp', label: 'DHCP', value: row => row.dhcp_enabled, format: value => t(value === true ? 'panel.enabled' : 'panel.disabled') },
+	];
+	const view = createTableView({ rows: () => net?.subnet_details ?? [], columns });
+	$effect(() => { networkId; untrack(() => view.reset()); });
 	const kind = $derived(net ? (net.is_external ? 'external' : net.is_shared ? 'shared' : 'internal') : 'internal');
 	const subnetIds = $derived(new Set((net?.subnet_details ?? []).map((s) => s.id)));
 	const routers = $derived<TopologyRouter[]>(
@@ -242,18 +255,20 @@
 
 		<section class="space-y-2">
 			<SectionHeader title={t('resource.subnet')} meta={t('panel.count', { count: net.subnet_details.length })} />
+			<TableViewControls {view} class={net.subnet_details.length ? 'lg:hidden' : ''} />
+			{#if net.subnet_details.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 			{#if net.subnet_details.length}
-				<ResponsiveTable>{#snippet cards()}{#each net.subnet_details as sub (sub.id)}<CompactResourceCard>
+				<ResponsiveTable>{#snippet cards()}{#each view.rows as sub (sub.id)}<CompactResourceCard>
 					<h3 class="text-sm font-medium">{sub.name || sub.id}</h3><p class="font-mono text-xs">{sub.cidr}</p>
 					{#snippet details()}<p class="text-xs">{t('panel.gateway')}: <code>{sub.gateway_ip ?? '—'}</code></p><p class="text-xs">DHCP: {sub.dhcp_enabled ? t('panel.enabled') : t('panel.disabled')}</p>{/snippet}
 				</CompactResourceCard>{/each}{/snippet}
 				<TableShell density="compact">
 					<table>
 						<thead>
-							<tr><th>{t('panel.name')}</th><th>CIDR</th><th>{t('panel.gateway')}</th><th>DHCP</th></tr>
+							<tr><TableColumnHeader {view} columnKey="name" /><TableColumnHeader {view} columnKey="cidr" /><TableColumnHeader {view} columnKey="gateway" /><TableColumnHeader {view} columnKey="dhcp" /></tr>
 						</thead>
 						<tbody>
-							{#each net.subnet_details as sub (sub.id)}
+							{#each view.rows as sub (sub.id)}
 								<tr>
 									<td>{sub.name || sub.id}</td>
 									<td class="mono">{sub.cidr}</td>

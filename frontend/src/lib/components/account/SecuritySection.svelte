@@ -6,10 +6,15 @@
   import { api, ApiError } from '$lib/api/client';
   import { startLogout } from '$lib/utils/logout';
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+  import { t as tc } from '$lib/i18n/ns/common';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { createTableView } from '$lib/utils/tableView.svelte';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -37,6 +42,26 @@
   let showConfirm = $state(false);
   let deletingJti = $state<string | null>(null); // 삭제 확인 대기 중인 jti
   let removingJti = $state<string | null>(null); // API 요청 진행 중인 jti
+  const uid = $props.id();
+  let search = $state('');
+  const view = createTableView<Session>({
+    locale: () => intlLocale(),
+    rows: () => sessions,
+    search: () => search,
+    columns: () => [
+      { key: 'ip', label: 'IP', value: row => row.origin_ip },
+      { key: 'device', label: tc('table.device'), value: row => deviceLabel(row) },
+      { key: 'status', label: tc('table.status'), value: row => row.blacklisted ? t('security.blocked') : t('security.active') },
+      { key: 'lastUsed', label: tc('table.lastUsed'), value: row => row.last_seen || null, format: value => formatTime(Number(value)) },
+      { key: 'lastIp', label: tc('table.recentIp'), value: row => row.last_ip },
+    ],
+  });
+  let viewOwner = '';
+  const unsubscribeView = auth.subscribe(state => {
+    const next = sessionScopeKey(state);
+    if (viewOwner !== next) { viewOwner = next; search = ''; view.reset(); }
+  });
+  onDestroy(unsubscribeView);
 
   function deviceLabel(sess: Session): string {
     const os = sess.os && sess.os !== 'unknown' ? sess.os : '';
@@ -126,10 +151,13 @@
 
   <!-- 활성 세션 목록 -->
   {#if removingJti}<LoadingState variant="control" label={t('security.deleting')}  />{/if}
+  <RegexSearch id={`${uid}-search`} bind:value={search} />
+  <TableViewControls {view} class="" />
   {#if sessions.length > 0}
     <div class="mb-4 space-y-2">
       <p class="text-xs text-ink-2 mb-2"><RichText segments={t.rich('security.count', { count: sessions.length })} tags={{ count: sessionCount }} /></p>
-      {#each sessions as sess (sess.jti)}
+      {#if view.rows.length === 0}<p role="status" class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
+      {#each view.rows as sess (sess.jti)}
         <div class="bg-surface-sunken/60 rounded-lg px-3 py-2 text-xs {sess.blacklisted ? 'border border-red-800/60' : 'border border-line-2/40'}">
           <div class="flex items-center justify-between gap-2">
             <div class="flex flex-col gap-0.5 min-w-0">

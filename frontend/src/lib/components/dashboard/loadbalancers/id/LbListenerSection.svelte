@@ -5,6 +5,9 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { listenerColumns } from '$lib/utils/loadBalancerTableColumns';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let {
 		listeners,
@@ -26,6 +29,7 @@
 	let listenerForm = $state({ protocol: 'HTTP', protocol_port: 80, name: '' });
 	const pending = createPendingAction();
 	const creatingListener = $derived(pending.isActive('create', saving));
+	const view = createTableView({ rows: () => listeners, columns: listenerColumns });
 
 	async function handleAdd() {
 		const ok = await pending.run('create', () => onAdd(listenerForm));
@@ -56,11 +60,13 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class="" />
+	{#if listeners.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if listeners.length === 0}
 		<p class="text-sm text-ink-2">{t('lb.listeners.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each listeners as l}
+			{#each view.rows as l (l.id)}
 				{@const deletingListener = pending.isActive(`delete:${l.id}`, saving)}
 				<CompactResourceCard>
 					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 break-all">{l.name || l.id.slice(0, 10)}</strong><StatusChip status={l.status} /></div>

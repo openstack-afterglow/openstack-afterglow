@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { Card, Spark, TableShell } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -9,6 +12,8 @@
 	const values = $derived(trafficTrend(snapshot.series, metric));
 	const current = $derived(metricValue(snapshot.totals, metric));
 	const known = $derived(metric === 'request_bytes' ? snapshot.totals?.request_bytes_known : snapshot.totals?.response_bytes_known);
+
+	const observationView0 = createObservationView(() => (snapshot.series), () => ([{ key: 'time', label: t('trend.time'), value: row => row.at }, { key: 'value', label: t('trend.value'), value: row => metricValue(row.metrics, metric) }]));
 </script>
 
 <Card surface="base">
@@ -28,17 +33,21 @@
 	{/if}
 	<details class="mt-3 text-xs text-ink-2">
 		<summary class="cursor-pointer min-h-11 flex items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{t('trend.samples')}</summary>
-		<ResponsiveTable>
+		<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
 			{#snippet cards()}
-				{#each snapshot.series as bucket (bucket.at)}<CompactResourceCard><time datetime={new Date(bucket.at * 1000).toISOString()}>{formatTrafficTime(bucket.at)}</time><p class="tabular-nums">{t(`metrics.${metric}`)}: {formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</p></CompactResourceCard>{/each}
+				{#each tableView.rows as bucket (bucket.at)}<CompactResourceCard><time datetime={new Date(bucket.at * 1000).toISOString()}>{formatTrafficTime(bucket.at)}</time><p class="tabular-nums">{t(`metrics.${metric}`)}: {formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</p></CompactResourceCard>{/each}
 			{/snippet}
 		<TableShell>
 			<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-			<table tabindex="0" aria-label={`${t(`metrics.${metric}`)} · ${t('trend.samples')}`} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><thead><tr><th class="text-left p-2">{t('trend.time')}</th><th class="text-right p-2">{t('trend.value')}</th></tr></thead>
-				<tbody>{#each snapshot.series as bucket (bucket.at)}<tr class="border-t border-line"><td class="p-2 whitespace-nowrap">{formatTrafficTime(bucket.at)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</td></tr>{/each}</tbody>
+			<table tabindex="0" aria-label={`${t(`metrics.${metric}`)} · ${t('trend.samples')}`} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="value" /></tr></thead>
+				<tbody>{#each tableView.rows as bucket (bucket.at)}<tr class="border-t border-line"><td class="p-2 whitespace-nowrap">{formatTrafficTime(bucket.at)}</td><td class="p-2 text-right whitespace-nowrap">{formatTrafficValue(metricValue(bucket.metrics, metric), metric)}</td></tr>{/each}</tbody>
 			</table>
 		</TableShell>
 		</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 	</details>
 </Card>

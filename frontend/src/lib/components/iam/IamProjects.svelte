@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
@@ -107,6 +112,9 @@
 	}
 	onMount(() => { void initialize(); });
 	onDestroy(() => { live = false; revision++; members = []; catalog = null; editing = null; });
+	const tableSearchId = `${uid}-search`;
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof members)[number]>({ rows: () => members, locale: () => intlLocale(), search: () => tableSearch, searchable: row => [row.username || row.user_id, row.user_id, ...row.roles], columns: () => [{ key: 'user', label: t('user'), value: row => row.username || row.user_id }, { key: 'roles', label: t('roles'), value: row => row.roles.join(', '), filterValues: row => row.roles }, { key: 'source', label: t('source'), value: row => row.source ? t(row.source) : null }] });
 </script>
 
 <div class="space-y-4">
@@ -128,8 +136,9 @@
 		<div class="grid items-end gap-4 md:grid-cols-2"><Field label={t('user')} for={`${uid}-user`} help={t('eligibleUsersHelp')}><SelectInput id={`${uid}-user`} bind:value={user} disabled={busy || loading}><option value="">{t('selectUser')}</option>{#each users as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field><div><Button variant="primary" disabled={blocked || !session.canSubmit() || busy || loading || !user} onclick={assign}>{t('assignRoles')}</Button></div></div>
 	{/if}
 	{#if selectedCurrent}
-	<ResponsiveTable>{#snippet cards()}
-		{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
+	<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>{#snippet cards()}
+		{#each tableView.rows as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
 			<h3 class="text-sm font-medium">{member.username || member.user_id}</h3><p class="text-xs">{member.source ? t(member.source) : '—'} · {t('roleCount', { count: member.roles.length })}</p>{#if member.is_owner && ownerCount <= 1}<p class="text-xs text-ink-2">{t('lastOwner')}</p>{/if}
 			{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p>{/snippet}
 			{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' }; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button>{/snippet}
@@ -137,8 +146,8 @@
 		{#if !loading && !error && project && !members.length}<p class="text-sm text-ink-2">{t('emptyMembers')}</p>{/if}
 	{/snippet}
 	<TableShell><table>
-		<thead><tr><th>{t('user')}</th><th>{t('roles')}</th><th>{t('source')}</th><th>{t('actions')}</th></tr></thead>
-		<tbody>{#each members as member (`${member.user_id}-${member.source ?? ''}`)}<tr><td>{member.username || member.user_id}</td><td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td><td>{member.source ? t(member.source) : '—'}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' }; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td></tr>{/each}
+		<thead><tr><TableColumnHeader view={tableView} columnKey="user" /><TableColumnHeader view={tableView} columnKey="roles" /><TableColumnHeader view={tableView} columnKey="source" /><th>{t('actions')}</th></tr></thead>
+		<tbody>{#each tableView.rows as member (`${member.user_id}-${member.source ?? ''}`)}<tr><td>{member.username || member.user_id}</td><td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td><td>{member.source ? t(member.source) : '—'}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => { editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' }; error = ''; }}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td></tr>{/each}
 		{#if !loading && !error && project && !members.length}<tr><td colspan="4">{t('emptyMembers')}</td></tr>{/if}</tbody>
 	</table></TableShell>
 	</ResponsiveTable>

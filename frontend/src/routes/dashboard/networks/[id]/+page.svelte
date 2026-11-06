@@ -16,6 +16,7 @@
 	import DashboardRouterTable from '$lib/components/dashboard/networks/id/DashboardRouterTable.svelte';
 	import type { NetworkDetail } from '$lib/types/networks';
 	import { toast } from '$lib/stores/toast';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
 	let network = $state<NetworkDetail | null>(null);
 	let loading = $state(true);
@@ -97,6 +98,7 @@
 			addingSubnet = false;
 		}
 	}
+	provideTableViewVisibility(() => !error && !loading && network?.id === $page.params.id);
 </script>
 
 <PageShell>
@@ -110,9 +112,13 @@
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
 			{error}
 		</div>
-	{:else if loading}
+	{/if}
+	{#if loading && !network}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tn('networks.title') })} />
-	{:else if network}
+	{/if}
+	{#if network}
+	{#key `${$auth.projectId ?? ''}:${network.id}`}
+	<div hidden={Boolean(error) || loading}>
 		<DashboardNetworkHeader {network} {deleting} canManage={canManageNetwork} onDelete={deleteNetwork} />
 		<DashboardNetworkInfoCard {network} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
@@ -127,8 +133,8 @@
 			addError={subnetError}
 			onAdd={addSubnet}
 		/>
-		{#if network.routers.length > 0}
 			<DashboardRouterTable routers={network.routers} />
-		{/if}
+	</div>
+	{/key}
 	{/if}
 </PageShell>

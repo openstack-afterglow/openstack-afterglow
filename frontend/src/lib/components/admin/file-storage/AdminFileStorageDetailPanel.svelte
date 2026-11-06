@@ -16,6 +16,12 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
 
 	let {
 		fileStorageId,
@@ -39,6 +45,35 @@
 	let diagnosticLoading = $state(false);
 	let diagnosticError = $state('');
 	let forceDeleting = $state(false);
+	let accessSearch = $state('');
+	const accessView = createTableView<AccessRule>({
+		rows: () => accessRules, search: () => accessSearch,
+		searchable: (row) => [row.id, row.access_to, row.access_type ?? '', row.access_level, row.state],
+		columns: () => [
+			{ key: 'to', label: t('fileDetail.accessColumn.to'), value: (row) => row.access_to },
+			{ key: 'type', label: t('fileDetail.accessColumn.type'), value: (row) => row.access_type },
+			{ key: 'level', label: t('fileDetail.accessColumn.level'), value: (row) => row.access_level },
+			{ key: 'state', label: t('fileDetail.accessColumn.state'), value: (row) => row.state },
+			{ key: 'key', label: t('fileDetail.accessColumn.key'), value: (row) => row.access_key ? shortAccessKey(row.access_key) : null },
+		],
+	});
+	let metadataSearch = $state('');
+	const metadataView = createTableView<[string, string]>({
+		rows: () => Object.entries(fileStorage?.metadata ?? {}), search: () => metadataSearch,
+		columns: () => [
+			{ key: 'key', label: commonT('table.key'), value: (row) => row[0] },
+			{ key: 'value', label: commonT('table.value'), value: (row) => row[1] },
+		],
+	});
+	let exportSearch = $state('');
+	const exportView = createTableView<ExportLocationDetail>({
+		rows: () => fileStorage ? exportLocations(fileStorage) : [], search: () => exportSearch,
+		columns: () => [
+			{ key: 'path', label: t('fileTable.column.exportPath'), value: (row) => row.path },
+			{ key: 'preferred', label: t('fileDetail.preferred', { value: '' }), value: (row) => row.preferred },
+			{ key: 'instance', label: t('fileDetail.shareInstanceId', { id: '' }), value: (row) => row.share_instance_id },
+		],
+	});
 
 	const diagnosticStatuses = new Set(['error', 'error_deleting', 'deleting']);
 
@@ -336,9 +371,11 @@
 
 		<section class="bg-surface-base border border-line rounded-lg p-5">
 			<h3 class="text-sm font-semibold text-ink-0 mb-4">{t('fileDetail.exportLocations')}</h3>
-			{#if exportLocations(fileStorage).length > 0}
+			<RegexSearch id="admin-share-export-search" bind:value={exportSearch} />
+			<TableViewControls view={exportView} class="" />
+			{#if exportView.rows.length > 0}
 				<div class="space-y-3">
-					{#each exportLocations(fileStorage) as loc, i}
+					{#each exportView.rows as loc, i}
 						<div class="rounded border border-line bg-surface-canvas/40 p-3 text-sm">
 							<div class="flex items-start justify-between gap-3">
 								<div class="font-mono text-ink-1 break-all">{loc.path}</div>
@@ -364,10 +401,11 @@
 			{#if accessError}
 				<div class="bg-red-900/30 border border-red-800 text-red-300 rounded px-3 py-2 text-sm mb-3">{accessError}</div>
 			{/if}
-			{#if accessRules.length > 0}
+			<RegexSearch id="admin-share-access-search" bind:value={accessSearch} />
+			<TableViewControls view={accessView} />
 				<ResponsiveTable>
 					{#snippet cards()}
-						{#each accessRules as rule (rule.id)}
+						{#each accessView.rows as rule (rule.id)}
 							<CompactResourceCard>
 								<div class="flex items-start justify-between gap-2"><h4 class="break-all font-mono text-sm text-ink-0">{rule.access_to}</h4><StatusChip status={rule.state} /></div><p class="text-xs text-ink-2">{rule.access_type ?? '-'} · {rule.access_level}</p>
 								{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{rule.id}</p><p>{t('fileDetail.accessColumn.key')}: {rule.access_key ? shortAccessKey(rule.access_key) : '-'}</p>{#if rule.access_key}<Button variant="link" size="sm" onclick={() => copyValue(`access-key-${rule.id}`, rule.access_key)}>{copied === `access-key-${rule.id}` ? t('fileDetail.copied') : t('fileDetail.copy')}</Button>{/if}</div>{/snippet}
@@ -378,15 +416,11 @@
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="border-b border-line text-ink-2 text-xs uppercase">
-								<th class="text-left py-2 pr-4">{t('fileDetail.accessColumn.to')}</th>
-								<th class="text-left py-2 pr-4">{t('fileDetail.accessColumn.type')}</th>
-								<th class="text-left py-2 pr-4">{t('fileDetail.accessColumn.level')}</th>
-								<th class="text-left py-2 pr-4">{t('fileDetail.accessColumn.state')}</th>
-								<th class="text-left py-2">{t('fileDetail.accessColumn.key')}</th>
+								{#each accessView.columns as column (column.key)}<TableColumnHeader view={accessView} columnKey={column.key} />{/each}
 							</tr>
 						</thead>
 						<tbody>
-							{#each accessRules as rule}
+							{#each accessView.rows as rule}
 								<tr class="border-b border-line/50 last:border-0">
 									<td class="py-2 pr-4 font-mono text-ink-1">{rule.access_to}</td>
 									<td class="py-2 pr-4 text-ink-2">{rule.access_type ?? '-'}</td>
@@ -406,16 +440,19 @@
 					</table>
 				</div>
 				</ResponsiveTable>
-			{:else if !accessLoading && !accessError}
+			{#if accessView.rows.length === 0 && !accessLoading && !accessError}
 				<div class="text-sm text-ink-2">{t('fileDetail.noAccessRules')}</div>
 			{/if}
 		</section>
 
 		<section class="bg-surface-base border border-line rounded-lg p-5">
 			<h3 class="text-sm font-semibold text-ink-0 mb-4">{t('fileDetail.metadata')}</h3>
-			{#if Object.keys(fileStorage.metadata ?? {}).length > 0}
+			<RegexSearch id="admin-share-metadata-search" bind:value={metadataSearch} />
+			<TableViewControls view={metadataView} />
+			<div class="hidden gap-3 lg:flex">{#each metadataView.columns as column (column.key)}<TableColumnControl view={metadataView} columnKey={column.key} />{/each}</div>
+			{#if metadataView.rows.length > 0}
 				<div class="space-y-2 text-sm">
-					{#each Object.entries(fileStorage.metadata ?? {}) as [key, value]}
+					{#each metadataView.rows as [key, value] (key)}
 						<div class="flex flex-col md:flex-row md:items-start gap-1 md:gap-3">
 							<div class="md:w-48 shrink-0 text-ink-2 font-mono">{key}</div>
 							<div class="text-ink-1 font-mono break-all">{value}</div>

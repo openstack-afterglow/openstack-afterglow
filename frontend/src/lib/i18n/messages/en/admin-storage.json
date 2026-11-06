@@ -34,7 +34,6 @@
 	"volumeList.summary.drilldown": "View {name} volumes",
 	"volumeDetail.loadingInfo": "Loading volume information",
 	"volumeDetail.loading": "Loading...",
-	"volumeDetail.loadingInfo": "Loading volume information",
 	"volumeDetail.attachments": "Attachment information",
 	"volumeDetail.basicInfo": "Basic information",
 	"volumeDetail.volumeType": "Volume type",

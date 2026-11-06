@@ -1,26 +1,21 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { t } from '$lib/i18n/ns/common';
 import AdminInstanceFilters from '../instances/AdminInstanceFilters.svelte';
 
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(cleanup);
 
-describe('AdminInstanceFilters', () => {
-	it('retains immediate select changes and debounced search cleanup', async () => {
-		vi.useFakeTimers();
-		const onChange = vi.fn();
-		const view = render(AdminInstanceFilters, {
-			availableHosts: ['compute-1'], hostFilter: '', statusFilter: '', nameSearch: '', onChange,
-		});
-		await fireEvent.change(screen.getByRole('combobox', { name: '모든 호스트' }), { target: { value: 'compute-1' } });
-		await fireEvent.change(screen.getByRole('combobox', { name: '모든 상태' }), { target: { value: 'ACTIVE' } });
-		expect(onChange).toHaveBeenCalledTimes(2);
-		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'instance' } });
-		expect(onChange).toHaveBeenCalledTimes(2);
-		await vi.advanceTimersByTimeAsync(300);
-		expect(onChange).toHaveBeenCalledTimes(3);
-		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'pending' } });
-		view.unmount();
-		await vi.advanceTimersByTimeAsync(300);
-		expect(onChange).toHaveBeenCalledTimes(3);
+describe('AdminInstanceFilters regex feedback', () => {
+	it('preserves the entered expression and clears invalid-syntax feedback when repaired', async () => {
+		render(AdminInstanceFilters, { nameSearch: '' });
+		const search = screen.getByRole('searchbox') as HTMLInputElement;
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(search.value).toBe('[');
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.getByText(t('table.regexError'))).toBeTruthy();
+		await fireEvent.input(search, { target: { value: '^(vm-one|vm-two)$' } });
+		expect(search.value).toBe('^(vm-one|vm-two)$');
+		expect(search.getAttribute('aria-invalid')).not.toBe('true');
+		expect(screen.queryByText(t('table.regexError'))).toBeNull();
 	});
 });

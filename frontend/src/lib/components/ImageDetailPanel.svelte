@@ -34,11 +34,14 @@
 	provideImageDetailController(s);
 
 
+	let tableOwner = '';
 	$effect(() => {
-		// Track every identity dimension explicitly; controller state must not retrigger this effect.
+		// Reads/mutations still retire on bearer rotation; only nonsecret table choices survive the same logical owner.
 		const current = { imageId, token: $auth.token, projectId: $auth.projectId, isAdmin };
+		const owner = JSON.stringify([imageId, isAdmin, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]);
 		untrack(() => {
-			s.reset();
+			s.reset(owner === tableOwner);
+			tableOwner = owner;
 			if (current.imageId && current.token) void s.loadImage();
 		});
 	});
@@ -63,7 +66,7 @@
 			{/if}
 			{#if s.canManageImage}<ImageVisibilitySection />{/if}
 			{#if s.image.visibility === 'shared' && s.canManageImage}<ImageMembersSection />{/if}
-			{#if Object.keys(s.image.properties).length > 0 || s.canEditMetadata}<ImagePropertiesSection />{/if}
+			{#if Object.keys(s.image.properties).length > 0 || s.canEditMetadata || s.hasPropertyViewConditions}<ImagePropertiesSection />{/if}
 			{#if s.canManageImage}<ImageDeleteAction />{/if}
 		{/if}
 	</div>

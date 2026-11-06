@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
@@ -10,7 +13,8 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Field from '$lib/components/ui/Field.svelte';
-  import TextInput from '$lib/components/ui/TextInput.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
   import SelectInput from '$lib/components/ui/SelectInput.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -21,7 +25,8 @@
   import type { LoginWindow } from '$lib/types/loginMonitoring';
   const ctrl = createLoginMonitoringController();
   let search = $state('');
-  const filtered = $derived(ctrl.users.filter(user => user.id === ctrl.selectedUser || `${user.name} ${user.id}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())));
+  const compiledSearch = $derived(compileRegexSearch(search));
+  const filtered = $derived(ctrl.users.filter(user => matchesRegexSearch(compiledSearch, [user.name, user.id])));
   const date = (value: string | null) => value ? new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value)) : t('unknown');
   const number = (value: number | null) => value === null ? t('unknown') : new Intl.NumberFormat(intlLocale()).format(value);
   function errorMessage(code: string) {
@@ -39,6 +44,8 @@
     const subscriptions = [auth.subscribe(sync), authReady.subscribe(sync), projectSwitching.subscribe(sync)];
     return () => { subscriptions.forEach(unsubscribe => unsubscribe()); ctrl.dispose(); };
   });
+
+	const observationView0 = createObservationView(() => (ctrl.data?.history.events ?? []), () => ([{ key: 'time', label: t('timestamp'), value: row => row.at }, { key: 'action', label: t('action'), value: row => `${row.resource_type} ${row.action}` }, { key: 'status', label: t('status'), value: row => row.status }, { key: 'project', label: t('project'), value: row => row.project_id }, { key: 'method', label: t('method'), value: row => row.auth_method }]));
 </script>
 
 <PageShell>
@@ -49,7 +56,7 @@
   {#if $authReady && !$projectSwitching && !$auth.isSystemAdmin}<Alert class="mb-4">{t('adminDenied')}</Alert>{/if}
   <Card surface="base" class="mb-4">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <Field label={t('search')} help={t('searchNotice')}><TextInput type="search" bind:value={search} ariaLabel={t('search')} disabled={!ctrl.allowed} /></Field>
+      <div><RegexSearch id="login-user-search" bind:value={search} label={t('search')} /><p class="mt-1 text-xs text-ink-2">{t('searchNotice')}</p></div>
       <Field label={t('user')}><SelectInput value={ctrl.selectedUser} ariaLabel={t('user')} disabled={!ctrl.allowed} onchange={event => ctrl.selectUser((event.currentTarget as HTMLSelectElement).value)}>
         <option value="">{t('select')}</option>{#each filtered as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
       </SelectInput></Field>
@@ -105,11 +112,11 @@
     <section class="mt-6 space-y-3" aria-label={t('recent')}>
       <h2 class="text-sm font-semibold">{t('recent')}</h2><p class="text-sm text-ink-2">{t('recentNotice')}</p>
       {#if data.history.events?.length === 0}<p class="text-sm text-ink-2">{t('emptyEvents')}</p>{/if}
-      {#if data.history.events?.length}
-        {@const historyEvents = data.history.events}
-        <ResponsiveTable>
+        <ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
         {#snippet cards()}
-          {#each historyEvents as event}
+          {#each tableView.rows as event}
             <CompactResourceCard>
               <p class="font-medium">{event.resource_type} · {event.action}</p>
               <time datetime={event.at}>{date(event.at)}</time>
@@ -118,9 +125,11 @@
             </CompactResourceCard>
           {/each}
         {/snippet}
-        <TableShell><table><thead><tr><th>{t('timestamp')}</th><th>{t('action')}</th><th>{t('status')}</th><th>{t('project')}</th><th>{t('method')}</th></tr></thead><tbody>
-        {#each historyEvents as event}<tr><td class="tabular-nums">{date(event.at)}</td><td>{event.resource_type} · {event.action}</td><td>{event.status === 'success' ? t('success') : event.status === 'failed' ? t('failed') : event.status === 'started' ? t('startedStatus') : event.status}</td><td class="font-mono">{event.project_id}</td><td>{event.auth_method === 'password' ? t('password') : event.auth_method === 'federated' ? t('federated') : t('unknown')}</td></tr>{/each}
-      </tbody></table></TableShell></ResponsiveTable>{/if}
+        <TableShell><table><thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="action" /><TableColumnHeader view={tableView} columnKey="status" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="method" /></tr></thead><tbody>
+        {#each tableView.rows as event}<tr><td class="tabular-nums">{date(event.at)}</td><td>{event.resource_type} · {event.action}</td><td>{event.status === 'success' ? t('success') : event.status === 'failed' ? t('failed') : event.status === 'started' ? t('startedStatus') : event.status}</td><td class="font-mono">{event.project_id}</td><td>{event.auth_method === 'password' ? t('password') : event.auth_method === 'federated' ? t('federated') : t('unknown')}</td></tr>{/each}
+      </tbody></table></TableShell></ResponsiveTable>
+{/snippet}
+</ObservationTable>
     </section>
   {/if}
 </PageShell>

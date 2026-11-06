@@ -8,6 +8,9 @@
 	// 검색·화면 조작·범례는 고정 그룹으로 유지하고 구조 애니메이션은 명시적으로 켠다.
 	import Button from '$lib/components/ui/Button.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { compileRegexSearch } from '$lib/utils/regexSearch';
 
 	interface Props {
 		query?: string;
@@ -62,12 +65,16 @@
 	}: Props = $props();
 
 	const flowHintId = 'topology-canvas-flow-hint';
+	const compiled = $derived(compileRegexSearch(query));
 </script>
 
 
 <div class="toolbar">
 	<div class="search">
+		<Field for="topology-canvas-search" label={t('toolbar.searchLabel')} help={tc('table.regexHelp')} error={compiled.error ? tc('table.regexError') : undefined}>
 		<TextInput
+			id="topology-canvas-search"
+			ariaInvalid={compiled.error}
 			bind:value={query}
 			bind:element={searchElement}
 			type="search"
@@ -76,6 +83,7 @@
 			class="search-input"
 			onkeydown={onsearchkeydown}
 		/>
+		</Field>
 		{#if matchCount != null}
 			<span class="search-count" aria-hidden="true">{t('toolbar.matchCount', { count: matchCount })}</span>
 		{/if}

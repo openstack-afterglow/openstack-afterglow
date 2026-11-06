@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import type { K3sCluster } from '$lib/types/k3s';
+	import { t as td } from '$lib/i18n/ns/drover';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { untrack } from 'svelte';
@@ -23,6 +29,14 @@
 		userId: () => $auth.userId,
 	});
 
+	let search = $state('');
+	const columns = $derived<TableColumn<K3sCluster>[]>([
+		{ key: 'name', label: td('overview.table.name'), value: row => row.name },
+		{ key: 'status', label: td('overview.table.status'), value: row => row.status },
+		{ key: 'agents', label: td('overview.table.worker'), value: row => row.agent_count },
+		{ key: 'created_at', label: td('overview.table.createdAt'), value: row => row.created_at ? Date.parse(row.created_at) : null },
+	]);
+	const view = createTableView({ rows: () => ctrl.clusters, columns: () => columns, search: () => search });
 	function prefetchCreateDependencies() {
 		if (!$k3sPermissions.editClusters) return;
 		const token = $auth.token ?? undefined;
@@ -79,13 +93,18 @@
 
 	<p class="text-sm text-ink-2 mb-6">{t('dashboard.description')}</p>
 
+	<RegexSearch id="drover-cluster-search" bind:value={search} />
+	<TableViewControls {view} class="" />
 	{#if ctrl.error}
 		<Alert tone="danger" title={t('clusterError.loadFailed')} class="mb-4">{ctrl.error}{#snippet actions()}<Button variant="secondary" size="sm" onclick={ctrl.forceRefresh} disabled={ctrl.refreshing}>{t('clusterError.reload')}</Button>{/snippet}</Alert>
 	{/if}
 
 	{#if ctrl.loading || ctrl.clusters.length > 0 || !ctrl.error}
+	{#if !ctrl.loading && ctrl.clusters.length > 0 && view.rows.length === 0}
+		<p class="py-6 text-sm text-ink-2">{tc('table.noMatches')}</p>
+	{:else}
 	<DroverClusterGrid
-		clusters={ctrl.clusters}
+		clusters={view.rows}
 		loading={ctrl.loading}
 		deletingId={ctrl.deleting}
 		onSelect={panel.open}
@@ -94,5 +113,6 @@
 		onOpenCreate={() => { ctrl.showModal = true; }}
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
+	{/if}
 	{/if}
 </PageShell>

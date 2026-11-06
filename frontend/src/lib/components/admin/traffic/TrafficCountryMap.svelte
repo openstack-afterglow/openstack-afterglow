@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { Button, Card, SelectInput, TableShell } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -25,6 +28,14 @@
 		(code) => { selected = code; hovered = null; },
 		(code) => { hovered = code; }
 	));
+
+	const observationView0 = createObservationView(() => ranking, () => [
+		{ key: 'country', label: t('map.country'), value: row => trafficCountryName(row.country), filterValues: row => [row.country], format: (_value, row) => trafficCountryName(row.country) },
+		{ key: 'requests', label: t('metrics.requests'), value: row => row.requests },
+		{ key: 'errors', label: t('metrics.errors'), value: row => row.errors },
+		{ key: 'visitors', label: t('metrics.unique_visitors'), value: row => row.unique_visitors },
+	]);
+	const observationView1 = createObservationView(() => (networkRanking), () => ([{ key: 'network', label: t('networks.range'), value: row => row.network }, { key: 'kind', label: t('networks.kind'), value: row => row.kind }, { key: 'basis', label: t('networks.basis'), value: row => row.basis }, { key: 'requests', label: t('metrics.requests'), value: row => row.requests }, { key: 'errors', label: t('metrics.errors'), value: row => row.errors }]));
 </script>
 
 <Card surface="base">
@@ -76,9 +87,11 @@
 		{:else}<p class="text-xs text-ink-2">{t('map.select')}</p>{/if}
 	</section>
 	<h3 class="mt-3 text-sm font-medium">{t('map.ranking')}</h3>
-	<ResponsiveTable class="mt-2">
+	<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-2">
 		{#snippet cards()}
-			{#each ranking as row (row.country)}
+			{#each tableView.rows as row (row.country)}
 				<CompactResourceCard selected={selected === row.country}>
 					<Button variant="ghost" ariaPressed={selected === row.country} onclick={() => { selected = row.country; hovered = null; }}>{trafficCountryName(row.country)} ({row.country})</Button>
 					<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('metrics.requests')}</dt><dd>{formatTrafficValue(row.requests)}</dd></div><div><dt>{t('metrics.errors')}</dt><dd>{formatTrafficValue(row.errors)}</dd></div></dl>
@@ -89,11 +102,13 @@
 	<TableShell>
 		<!-- TableShell scrolls horizontally on narrow screens; the table is the keyboard scroll target. -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-		<table tabindex="0" aria-label={t('map.ranking')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><thead><tr><th class="p-2 text-left">{t('map.country')}</th><th class="p-2 text-right">{t('metrics.requests')}</th><th class="p-2 text-right">{t('metrics.errors')}</th><th class="p-2 text-right">{t('metrics.unique_visitors')}</th></tr></thead>
-			<tbody>{#each ranking as row (row.country)}<tr class="border-t border-line"><td class="p-2" onpointerleave={() => { hovered = null; }} onfocusout={() => { hovered = null; }}><Button variant="ghost" ariaPressed={selected === row.country} onclick={() => { selected = row.country; hovered = null; }} onintent={() => { hovered = row.country; }}>{trafficCountryName(row.country)} ({row.country})</Button></td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right">{formatTrafficValue(row.unique_visitors)}</td></tr>{/each}</tbody>
+		<table tabindex="0" aria-label={t('map.ranking')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><thead><tr><TableColumnHeader view={tableView} columnKey="country" /><TableColumnHeader view={tableView} columnKey="requests" /><TableColumnHeader view={tableView} columnKey="errors" /><TableColumnHeader view={tableView} columnKey="visitors" /></tr></thead>
+			<tbody>{#each tableView.rows as row (row.country)}<tr class="border-t border-line"><td class="p-2" onpointerleave={() => { hovered = null; }} onfocusout={() => { hovered = null; }}><Button variant="ghost" ariaPressed={selected === row.country} onclick={() => { selected = row.country; hovered = null; }} onintent={() => { hovered = row.country; }}>{trafficCountryName(row.country)} ({row.country})</Button></td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td><td class="p-2 text-right">{formatTrafficValue(row.unique_visitors)}</td></tr>{/each}</tbody>
 		</table>
 	</TableShell>
 	</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 	<section class="mt-4 border-t border-line pt-4" aria-label={t('networks.title')}>
 		<h3 class="text-sm font-medium">{t('networks.title')}</h3>
 		<p class="mt-2 text-xs text-ink-2">{t('networks.subset')}</p>
@@ -101,10 +116,12 @@
 		<p class="mt-2 text-xs text-ink-2">{t('networks.history')}</p>
 		{#if networkRanking.length === 0}
 			<p class="mt-3 text-xs text-ink-2">{t('networks.empty')}</p>
-		{:else}
-			<ResponsiveTable class="mt-3">
+		{/if}
+			<ObservationTable model={observationView1} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-3">
 				{#snippet cards()}
-					{#each networkRanking as row (`${row.network}:${row.basis}:${row.kind}`)}
+					{#each tableView.rows as row (`${row.network}:${row.basis}:${row.kind}`)}
 						<CompactResourceCard>
 							<p class="font-mono font-medium break-all">{row.network}</p>
 							<p class="text-xs text-ink-2">{t(`networks.kinds.${row.kind}`)}</p>
@@ -116,12 +133,13 @@
 				<TableShell>
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<table tabindex="0" aria-label={t('networks.title')} class="w-full text-xs tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
-						<thead><tr><th class="p-2 text-left">{t('networks.range')}</th><th class="p-2 text-left">{t('networks.kind')}</th><th class="p-2 text-left">{t('networks.basis')}</th><th class="p-2 text-right">{t('metrics.requests')}</th><th class="p-2 text-right">{t('metrics.errors')}</th></tr></thead>
-						<tbody>{#each networkRanking as row (`${row.network}:${row.basis}:${row.kind}`)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.network}</td><td class="p-2">{t(`networks.kinds.${row.kind}`)}</td><td class="p-2">{t(`networks.bases.${row.basis}`)}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td></tr>{/each}</tbody>
+						<thead><tr><TableColumnHeader view={tableView} columnKey="network" /><TableColumnHeader view={tableView} columnKey="kind" /><TableColumnHeader view={tableView} columnKey="basis" /><TableColumnHeader view={tableView} columnKey="requests" /><TableColumnHeader view={tableView} columnKey="errors" /></tr></thead>
+						<tbody>{#each tableView.rows as row (`${row.network}:${row.basis}:${row.kind}`)}<tr class="border-t border-line"><td class="p-2 font-mono whitespace-nowrap">{row.network}</td><td class="p-2">{t(`networks.kinds.${row.kind}`)}</td><td class="p-2">{t(`networks.bases.${row.basis}`)}</td><td class="p-2 text-right">{formatTrafficValue(row.requests)}</td><td class="p-2 text-right">{formatTrafficValue(row.errors)}</td></tr>{/each}</tbody>
 					</table>
 				</TableShell>
 			</ResponsiveTable>
-		{/if}
+{/snippet}
+</ObservationTable>
 	</section>
 </Card>
 

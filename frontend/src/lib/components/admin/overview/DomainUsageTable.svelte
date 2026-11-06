@@ -4,6 +4,11 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { DomainUsage } from '$lib/types/adminOverview';
 	import { Alert, CompactResourceCard, ResourceIdentifier, ResponsiveTable, TableShell } from '$lib/components/ui';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let { domains, loading, error = '' }: { domains: DomainUsage[]; loading: boolean; error?: string } = $props();
 	const ownerKeys = {
@@ -16,15 +21,33 @@
 	function href(domain: DomainUsage, resource: 'instances' | 'volumes'): string | null {
 		return domain.domain_id ? `/admin/${resource}?domain_id=${encodeURIComponent(domain.domain_id)}` : null;
 	}
+	const columns = $derived<TableColumn<DomainUsage>[]>([
+		{ key: 'domain', label: t('overview.domains.domain'), value: (row) => row.domain_name || t(ownerKeys[row.owner_status]) },
+		{ key: 'projects', label: t('overview.domains.projects'), value: (row) => row.project_count, format: (_value, row) => number(row.project_count) },
+		{ key: 'instances', label: 'VM', value: (row) => row.instances, format: (_value, row) => number(row.instances) },
+		{ key: 'vcpus', label: 'vCPU', value: (row) => row.vcpus, format: (_value, row) => number(row.vcpus) },
+		{ key: 'ram', label: 'RAM (GiB)', value: (row) => row.ram_mb === null ? null : row.ram_mb / 1024, format: (_value, row) => number(row.ram_mb === null ? null : row.ram_mb / 1024) },
+		{ key: 'gpu', label: 'GPU VM', value: (row) => row.gpu_instances, format: (_value, row) => number(row.gpu_instances) },
+		{ key: 'volumes', label: t('overview.domains.volumes'), value: (row) => row.volumes, format: (_value, row) => number(row.volumes) },
+		{ key: 'capacity', label: t('overview.domains.capacity'), value: (row) => row.volume_gb, format: (_value, row) => `${number(row.volume_gb)} GiB` },
+		{ key: 'attachedVolumes', label: `${t('overview.domains.attached')} · ${t('overview.domains.volumes')}`, value: (row) => row.attached_volumes, format: (_value, row) => number(row.attached_volumes) },
+		{ key: 'attachedCapacity', label: `${t('overview.domains.attached')} · GiB`, value: (row) => row.attached_gb, format: (_value, row) => `${number(row.attached_gb)} GiB` },
+		{ key: 'availableVolumes', label: `${t('overview.domains.available')} · ${t('overview.domains.volumes')}`, value: (row) => row.available_volumes, format: (_value, row) => number(row.available_volumes) },
+		{ key: 'availableCapacity', label: `${t('overview.domains.available')} · GiB`, value: (row) => row.available_gb, format: (_value, row) => `${number(row.available_gb)} GiB` },
+	]);
+	const detailColumns = new Set(['attachedVolumes', 'attachedCapacity', 'availableVolumes', 'availableCapacity']);
+	const view = createTableView<DomainUsage>({ rows: () => domains, columns: () => columns, locale: intlLocale });
 </script>
 
 <section class="min-w-0 rounded-lg border border-line bg-surface-base p-5" aria-label={t('overview.domains.title')}>
 	<h2 class="mb-2 text-sm font-semibold text-ink-0">{t('overview.domains.title')}</h2>
 	<p class="mb-3 text-xs text-ink-2">{t('overview.domains.description')}</p>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
+	<TableViewControls {view} class={loading ? '' : 'lg:hidden'} />
 	{#if loading}
 		<LoadingState variant="table" columns={6} rows={4} label={t('overview.domains.loading')} />
-	{:else if domains.length > 0}
+	{:else}
+		{#if view.rows.length === 0 && !error}<p class="py-6 text-center text-sm text-ink-2">{domains.length ? tc('table.noMatches') : t('overview.domains.empty')}</p>{/if}
 		{#snippet identity(domain: DomainUsage)}
 			<div class="min-w-0 space-y-1">
 				<p class="break-words font-medium text-ink-0">{domain.domain_name || t(ownerKeys[domain.owner_status])}</p>
@@ -53,7 +76,7 @@
 		{/snippet}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each domains as domain (JSON.stringify([domain.owner_status, domain.domain_id, domain.project_ids]))}
+				{#each view.rows as domain (JSON.stringify([domain.owner_status, domain.domain_id, domain.project_ids]))}
 					<CompactResourceCard>
 						{@render identity(domain)}
 						<dl class="flex flex-wrap gap-3 text-xs">
@@ -74,9 +97,21 @@
 				{/each}
 			{/snippet}
 		<TableShell><table>
-			<thead><tr><th>{t('overview.domains.domain')}</th><th class="text-right">{t('overview.domains.projects')}</th><th class="text-right">VM</th><th class="text-right">vCPU</th><th class="text-right">RAM (GiB)</th><th class="text-right">GPU VM</th><th class="text-right">{t('overview.domains.volumes')}</th><th class="text-right">{t('overview.domains.capacity')}</th><th>{t('overview.domains.details')}</th></tr></thead>
+			<thead><tr>
+				{#each columns as column (column.key)}
+					{#if !detailColumns.has(column.key)}<TableColumnHeader {view} columnKey={column.key} />{/if}
+				{/each}
+				<th scope="col">
+					<span>{t('overview.domains.details')}</span>
+					<div class="mt-1 space-y-1">
+						{#each columns as column (column.key)}
+							{#if detailColumns.has(column.key)}<TableColumnControl {view} columnKey={column.key} />{/if}
+						{/each}
+					</div>
+				</th>
+			</tr></thead>
 				<tbody>
-					{#each domains as domain (JSON.stringify([domain.owner_status, domain.domain_id, domain.project_ids]))}
+					{#each view.rows as domain (JSON.stringify([domain.owner_status, domain.domain_id, domain.project_ids]))}
 						<tr>
 						<td>{@render identity(domain)}</td><td class="text-right tabular-nums">{number(domain.project_count)}</td><td class="text-right tabular-nums">{number(domain.instances)}</td><td class="text-right tabular-nums">{number(domain.vcpus)}</td><td class="text-right tabular-nums">{number(domain.ram_mb === null ? null : domain.ram_mb / 1024)}</td><td class="text-right tabular-nums">{number(domain.gpu_instances)}</td><td class="text-right tabular-nums">{number(domain.volumes)}</td><td class="text-right tabular-nums">{number(domain.volume_gb)} GiB</td>
 							<td><details><summary class="min-h-11 cursor-pointer text-xs text-ink-2">{t('overview.domains.volumeDetails')}</summary>{@render volumeDetails(domain)}</details>{@render links(domain)}</td>
@@ -85,5 +120,5 @@
 				</tbody>
 			</table></TableShell>
 		</ResponsiveTable>
-	{:else if !error}<p class="py-6 text-center text-sm text-ink-2">{t('overview.domains.empty')}</p>{/if}
+	{/if}
 </section>

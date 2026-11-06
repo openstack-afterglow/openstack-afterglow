@@ -4,6 +4,10 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		subnets,
@@ -20,6 +24,13 @@
 		addError: string;
 		onAdd: (form: { name: string; cidr: string; gateway: string; dhcp: boolean }) => Promise<boolean>;
 	} = $props();
+	const columns = (): TableColumn<SubnetDetail>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name },
+		{ key: 'cidr', label: 'CIDR', value: row => row.cidr },
+		{ key: 'gateway', label: t('network.labels.gateway'), value: row => row.gateway_ip },
+		{ key: 'dhcp', label: 'DHCP', value: row => row.dhcp_enabled, format: value => t(value === true ? 'network.state.enabled' : 'network.state.disabled') },
+	];
+	const view = createTableView({ rows: () => subnets, columns });
 
 	let showSubnetForm = $state(false);
 	let subnetForm = $state({ name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true });
@@ -102,10 +113,12 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class={subnets.length ? 'lg:hidden' : ''} />
+	{#if subnets.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if subnets.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each subnets as subnet (subnet.id)}
+				{#each view.rows as subnet (subnet.id)}
 					<CompactResourceCard>
 						<p class="font-medium">{subnet.name || '-'}</p><p class="font-mono">{subnet.cidr}</p>
 						<dl><div><dt>{t('network.labels.gateway')}</dt><dd>{subnet.gateway_ip ?? '-'}</dd></div><div><dt>DHCP</dt><dd>{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div></dl>
@@ -115,14 +128,14 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-2 pr-6">{t('network.labels.name')}</th>
-					<th class="text-left py-2 pr-6">CIDR</th>
-					<th class="text-left py-2 pr-6">{t('network.labels.gateway')}</th>
-					<th class="text-left py-2">DHCP</th>
+					<TableColumnHeader {view} columnKey="name" />
+					<TableColumnHeader {view} columnKey="cidr" />
+					<TableColumnHeader {view} columnKey="gateway" />
+					<TableColumnHeader {view} columnKey="dhcp" />
 				</tr>
 			</thead>
 			<tbody>
-				{#each subnets as subnet}
+				{#each view.rows as subnet (subnet.id)}
 					<tr class="border-b border-line/50">
 						<td class="py-2 pr-6 text-ink-2">{subnet.name || '-'}</td>
 						<td class="py-2 pr-6 text-ink-2 font-mono text-xs">{subnet.cidr}</td>

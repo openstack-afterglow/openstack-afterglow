@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-ops';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -7,30 +8,26 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { Service } from '$lib/types/adminServices';
-	import ServiceListControls from './ServiceListControls.svelte';
-	import ServiceSortHeader from './ServiceSortHeader.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 	import { fmtTime, type ServiceColumn } from './serviceColumns.js';
-	import {
-		buildServiceFilters,
-		createServiceListState,
-		filterAndSortRows,
-		serviceTimestamp,
-		type ServiceListField,
-		type ServiceListState,
-	} from './serviceList';
+	import { serviceTimestamp } from './serviceList';
+	const id = $props.id();
 
 	let {
 		services,
 		columns,
 		loading,
 		emptyMessage,
-		view = $bindable(createServiceListState()),
+		search = $bindable(''),
 	}: {
 		services: Service[];
 		columns: ServiceColumn[];
 		loading: boolean;
 		emptyMessage: string;
-		view?: ServiceListState;
+		search?: string;
 	} = $props();
 
 	function serviceValue(service: Service, column: ServiceColumn['type']): string | null {
@@ -45,37 +42,19 @@
 		}
 	}
 
-	const fields = $derived([
-		...columns.map((column): ServiceListField<Service> => ({
-			key: column.type,
-			label: t(`services.columns.${column.type}`),
-			value: (service) => serviceValue(service, column.type),
-			filter: ['binary', 'host', 'zone', 'status', 'state'].includes(column.type),
-			sortValue: column.type === 'updated' ? (service) => serviceTimestamp(service.updated_at) : undefined,
-		})),
-		...(['disabledReason', 'updated'] as const)
-			.filter((type) => !columns.some((column) => column.type === type))
-			.map((type): ServiceListField<Service> => ({
-				key: type,
-				label: type === 'disabledReason' ? t('services.columns.disabledReason') : t('services.columns.updated'),
-				value: (service) => serviceValue(service, type),
-				sortValue: type === 'updated' ? (service) => serviceTimestamp(service.updated_at) : undefined,
-			})),
-	]);
-	const filters = $derived(buildServiceFilters(services, fields));
-	const sortOptions = $derived(columns.map(({ type }) => ({ key: type, label: t(`services.columns.${type}`) })));
-	const displayedServices = $derived(filterAndSortRows(services, fields, view));
+	const fields: TableColumn<Service>[] = $derived(columns.map((column) => ({
+		key: column.type,
+		label: t(`services.columns.${column.type}`),
+		value: (service: Service) => column.type === 'updated' ? serviceTimestamp(service.updated_at) : serviceValue(service, column.type),
+		format: (_value: unknown, service: Service) => column.type === 'updated' ? fmtTime(service.updated_at) : serviceValue(service, column.type) ?? t('services.state.unknown'),
+	})));
+	const view = createTableView({ locale: intlLocale, rows: () => services, columns: () => fields, search: () => search,
+		searchable: (service) => [service.binary, service.host, service.zone, service.status, service.state, service.disabled_reason, service.updated_at].filter((value) => value != null).map(String) });
+	const displayedServices = $derived(view.rows);
 </script>
 
-<ServiceListControls
-	bind:view
-	{filters}
-	{sortOptions}
-	total={services.length}
-	count={displayedServices.length}
-	{loading}
-	searchPlaceholder={t('services.table.searchPlaceholder')}
-/>
+<RegexSearch id="{id}-search" bind:value={search} placeholder={t('services.table.searchPlaceholder')} />
+<TableViewControls {view} />
 
 {#if services.length === 0}
 	{#if loading}
@@ -85,7 +64,7 @@
 	{/if}
 {:else if displayedServices.length === 0}
 	<EmptyState headline={t('services.table.noMatches')} description={t('services.list.adjustFilters')} />
-{:else}
+{/if}
 	<ResponsiveTable>
 		{#snippet cards()}
 			{#each displayedServices as service (service.id || service.binary + service.host)}
@@ -115,7 +94,7 @@
 			<thead>
 				<tr>
 					{#each columns as column (column.type)}
-						<ServiceSortHeader bind:view column={column.type} label={t(`services.columns.${column.type}`)} />
+						<TableColumnHeader {view} columnKey={column.type} />
 					{/each}
 				</tr>
 			</thead>
@@ -147,4 +126,3 @@
 		</table>
 	</TableShell>
 	</ResponsiveTable>
-{/if}

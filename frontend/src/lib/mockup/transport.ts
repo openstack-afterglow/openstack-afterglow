@@ -12,10 +12,24 @@ import { isTourId } from '$lib/tutorial/tours';
 import { t } from '$lib/i18n/ns/tutorial';
 import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
 import { mockComputePolicy } from '$lib/mockup/computePools';
+import { parseContainerListResponse, type ContainerListResponse } from '$lib/types/zunContainer';
+import type { SecretInfo, ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
 const NOW_ISO = '2026-07-09T00:00:00Z';
+const MOCK_SECRET_ITEMS: SecretInfo[] = [
+	{ id: 'mock-secret-api', name: 'tutorial-api-password', secret_type: 'passphrase', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW_ISO, expires: null, content_types: { default: 'text/plain' }, system_managed: false },
+	{ id: 'mock-secret-cert', name: 'tutorial-tls-certificate', secret_type: 'certificate', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW_ISO, expires: MOCK_EXPIRES_AT_ISO, content_types: { default: 'application/pkix-cert' }, system_managed: true },
+];
+const MOCK_SECRET_CONTAINER_ITEMS: ContainerInfo[] = [
+	{ id: 'mock-secret-container', name: 'tutorial-application-secrets', type: 'generic', status: 'ACTIVE', created: NOW_ISO, secret_refs: [{ name: 'api-password', secret_ref: 'https://barbican.mock.invalid/v1/secrets/mock-secret-api' }] },
+];
+const MOCK_SECRET_ORDER_ITEMS: OrderInfo[] = [
+	{ id: 'mock-secret-order-ready', type: 'key', status: 'ACTIVE', created: NOW_ISO, secret_ref: 'https://barbican.mock.invalid/v1/secrets/mock-secret-api', container_ref: null, meta: { algorithm: 'aes', bit_length: 256 }, error_reason: null },
+	{ id: 'mock-secret-order-pending', type: 'asymmetric', status: 'PENDING', created: NOW_ISO, secret_ref: null, container_ref: null, meta: { algorithm: 'rsa', bit_length: 2048 }, error_reason: null },
+];
+const MOCK_SECRET_QUOTA: QuotaInfo = { secrets: 50, orders: 20, containers: 20, consumers: 100, cas: 5 };
 const MOCK_IMAGES = [
 	{
 		id: 'fixture-image-ubuntu',
@@ -298,6 +312,7 @@ function userInventoryFixture(profile: MockupProfileId, projectId?: string): Use
 			let rows: Record<string, unknown>[] = [];
 			if (project.id === state.selectedProjectId || category === 'keypairs') {
 				if (category === 'subnets') rows = state.topology.networks.filter(net => net.project_id === project.id).flatMap(net => net.subnet_details.map(subnet => ({ ...subnet, network_id: net.id })));
+				else if (category === 'containers') rows = parseContainerListResponse(jsonFixture('GET', paths.containers!, undefined, profile, project.id)).items as unknown as Record<string, unknown>[];
 				else if (paths[category]) rows = jsonFixture('GET', paths[category]!, undefined, profile, project.id) as Record<string, unknown>[];
 			}
 			const items: ResourceItem[] = rows.filter(row => !row.project_id || row.project_id === project.id).map(row => {
@@ -410,6 +425,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			id,
 			grant_id: `mock-mcp-grant-${id}`,
 			name,
+			owner_project_id: requestProjectId ?? state.selectedProjectId,
+			owner_project_name: state.projects.find((project) => project.id === (requestProjectId ?? state.selectedProjectId))?.name ?? (requestProjectId ?? state.selectedProjectId),
 			source: 'personal_token' as const,
 			access_level: accessLevel,
 			project_scope: projectScope as 'selected' | 'all',
@@ -782,7 +799,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/console$/.test(pathname)) return { url: '/mockup-console.html' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/log$/.test(pathname)) return { output: 'cloud-init finished\nk3s service active\nmock workload healthy\n' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/interfaces$/.test(pathname)) return [{ id: 'mock-port-1', name: 'primary', status: 'ACTIVE', device_owner: 'compute:nova', fixed_ips: [{ ip_address: '192.0.2.24' }], project_id: state.selectedProjectId, security_group_ids: ['mock-sg-default'], mac_address: 'fa:16:3e:00:00:01', network_id: 'mock-net-private' }];
-	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/volumes$/.test(pathname)) return [{ id: 'mock-attachment-1', volume_id: 'mock-volume-1', server_id: 'mock-instance-1', device: '/dev/vda', name: 'root-disk', size: 80, status: 'in-use' }];
+	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/volumes$/.test(pathname)) return [{ id: 'mock-attachment-1', volume_id: 'mock-volume-1', server_id: 'mock-instance-1', device: '/dev/vda', name: 'root-disk', size: 80, status: 'in-use', delete_on_termination: false }];
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/security-groups$/.test(pathname)) return { ports: [], security_groups: [{ id: 'mock-sg-default', name: 'default', description: 'Mock default SG', rules: [{ id: 'mock-rule-ssh', direction: 'ingress', protocol: 'tcp', port_range_min: 22, port_range_max: 22, remote_ip_prefix: '0.0.0.0/0', ethertype: 'IPv4' }] }] };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/owner$/.test(pathname)) return { display: 'Sample Cloud Demo / demo-user' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/storage-attachments$/.test(pathname)) return [{ file_storage_id: 'mock-share-1', name: 'demo-dataset', share_proto: 'CEPHFS', status: 'available' }];
@@ -868,7 +885,10 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/loadbalancers') return state.topology.load_balancers;
 	if (method === 'GET' && pathname === '/api/v1/clusters') return [];
 	if (method === 'GET' && pathname === '/api/v1/clusters/templates') return [];
-	if (method === 'GET' && pathname === '/api/v1/containers') return [];
+	if (method === 'GET' && pathname === '/api/v1/containers') {
+		const response: ContainerListResponse = { items: [], service_available: true, message: '' };
+		return response;
+	}
 	if (method === 'GET' && ['/api/v1/database-instances', '/api/v1/admin/database-instances'].includes(pathname)) {
 		return [{
 			id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE',
@@ -1237,6 +1257,11 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			reachability: cluster.status === 'ACTIVE' ? 'direct' : 'unreachable',
 		};
 	}
+	// Match the native consumer Key Manager array contracts; never expose payloads or simulate writes.
+	if (method === 'GET' && pathname === '/api/v1/secrets') return MOCK_SECRET_ITEMS;
+	if (method === 'GET' && pathname === '/api/v1/secret-containers') return MOCK_SECRET_CONTAINER_ITEMS;
+	if (method === 'GET' && pathname === '/api/v1/secret-orders') return MOCK_SECRET_ORDER_ITEMS;
+	if (method === 'GET' && pathname === '/api/v1/secrets/quota/effective') return MOCK_SECRET_QUOTA;
 
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview') return state.admin.overview;
 	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/overview/domains') return state.admin.domains;

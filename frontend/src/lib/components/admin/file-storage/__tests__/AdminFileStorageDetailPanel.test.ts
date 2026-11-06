@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import type { AccessRule, FileStorage, FileStorageDeleteDiagnostic } from '$lib/types/fileStorage';
+import { t } from '$lib/i18n/ns/admin-storage';
 
 const mocks = vi.hoisted(() => ({
 	apiGet: vi.fn(),
@@ -156,6 +157,21 @@ describe('AdminFileStorageDetailPanel', () => {
 			value: { writeText: vi.fn().mockResolvedValue(undefined) },
 			configurable: true,
 		});
+	});
+
+	it('renders instance-specific export records even when they share the same path', async () => {
+		const path = fileStorage.export_location_details[0].path;
+		mockSuccessfulGets({
+			...fileStorage,
+			export_location_details: [
+				{ path, preferred: true, share_instance_id: 'instance-1' },
+				{ path, preferred: false, share_instance_id: 'instance-2' },
+			],
+		});
+		renderPanel();
+		expect(await screen.findAllByText(path)).toHaveLength(2);
+		expect(screen.getByText(t('fileDetail.shareInstanceId', { id: 'instance-1' }))).toBeTruthy();
+		expect(screen.getByText(t('fileDetail.shareInstanceId', { id: 'instance-2' }))).toBeTruthy();
 	});
 
 	it('loads file storage details and read-only access rules', async () => {

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
-import type { Cluster } from '$lib/types/cluster';
+import type { Cluster, StackResource } from '$lib/types/cluster';
+import { t as tc } from '$lib/i18n/ns/common';
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
@@ -66,4 +67,50 @@ describe('K3s cluster detail tabs', () => {
 		await fireEvent.focus(resourcesTab);
 		expect(mockGet).toHaveBeenCalledTimes(2);
 	});
+
+  it('retains resource regex, filters and sort across refresh, tab unmounts and unavailable values', async () => {
+    const resource = (name: string, status = 'CREATE_COMPLETE'): StackResource => ({
+      resource_name: name, resource_status: status, resource_type: 'OS::Nova::Server',
+      physical_resource_id: `physical-${name}`, resource_status_reason: null, created_at: '2026-01-01T00:00:00Z',
+    });
+    let rows = [resource('alpha'), resource('zeta'), resource('failed', 'CREATE_FAILED')];
+    mockGet.mockImplementation((path: string) => {
+      if (path === '/api/v1/clusters/cluster-1') return Promise.resolve(cluster);
+      if (path.endsWith('/stack/resources')) return Promise.resolve(rows);
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const rendered = render(Page);
+    await fireEvent.click(await screen.findByRole('tab', { name: '스택 리소스' }));
+    await screen.findByText('alpha');
+    const search = rendered.container.querySelector('#legacy-cluster-resources-search') as HTMLInputElement;
+    await fireEvent.input(search, { target: { value: '^(alpha|zeta|failed)$' } });
+    let headings = within(rendered.container.querySelector('thead')!);
+    await fireEvent.click(headings.getByRole('button', { name: tc('table.filterColumn', { column: '상태' }) }));
+    const menu = screen.getByRole('dialog', { name: tc('table.filterColumn', { column: '상태' }) });
+    await fireEvent.click(within(menu).getByLabelText('CREATE_FAILED'));
+    await fireEvent.keyDown(menu, { key: 'Escape' });
+    for (const direction of ['none', 'ascending'] as const) {
+      await fireEvent.click(headings.getByRole('button', { name: tc('table.sortColumn', { column: '리소스 이름', direction: tc(`table.${direction}`) }) }));
+    }
+    rows = [resource('alpha'), resource('zeta'), resource('beta')];
+    await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+    await vi.waitFor(() => expect([...rendered.container.querySelectorAll('tbody tr')].map(row => row.firstElementChild?.textContent)).toEqual(['zeta', 'alpha']));
+    expect(search.value).toBe('^(alpha|zeta|failed)$');
+
+    await fireEvent.click(screen.getByRole('tab', { name: '상세' }));
+    await fireEvent.click(screen.getByRole('tab', { name: '스택 리소스' }));
+    expect((rendered.container.querySelector('#legacy-cluster-resources-search') as HTMLInputElement).value).toBe('^(alpha|zeta|failed)$');
+    expect(rendered.container.querySelector('th[aria-sort="descending"]')).toBeTruthy();
+    headings = within(rendered.container.querySelector('thead')!);
+    rows = [resource('alpha', 'CREATE_FAILED')];
+    await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+    await vi.waitFor(() => expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(0));
+    expect(headings.getByRole('button', { name: tc('table.filterColumn', { column: '상태' }) })).toBeTruthy();
+    await fireEvent.click(headings.getByRole('button', { name: tc('table.filterColumn', { column: '상태' }) }));
+    expect(screen.getByLabelText('CREATE_COMPLETE')).toBeTruthy();
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await fireEvent.input(rendered.container.querySelector('#legacy-cluster-resources-search')!, { target: { value: '[' } });
+    expect(screen.getByText(tc('table.regexError'))).toBeTruthy();
+    expect(rendered.container.querySelectorAll('tbody tr')).toHaveLength(0);
+  });
 });

@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writable } from "svelte/store";
 import { t } from '$lib/i18n/ns/admin-chat';
+import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => {
   class ApiError extends Error {
@@ -753,198 +754,55 @@ describe("admin chat model pricing", () => {
     );
   });
 
-  it("preselects an exact catalog match but preserves manual prices", async () => {
+  it.each(["manual", "discovery"])("registers through %s without fetching or importing models.dev prices", async (method) => {
     get.mockImplementation((path: string) => {
-      if (
-        path.startsWith(
-          "/api/v1/chat/admin/models/pricing/models-dev/providers?",
-        )
-      )
-        return Promise.resolve({
-          providers: [{ id: "openai", name: "OpenAI", model_count: 2 }],
-        });
-      if (path.includes("/pricing/models-dev/providers/openai"))
-        return Promise.resolve({
-          models: [
-            {
-              id: "openai/gpt-test",
-              name: "GPT Test",
-              input_price_per_million: "2",
-              output_price_per_million: "8",
-              price_available: true,
-              unsupported_price_fields: ["cost.tiers"],
-            },
-            {
-              id: "openai/manual",
-              name: "Manual",
-              input_price_per_million: "2",
-              output_price_per_million: "8",
-              price_available: true,
-              unsupported_price_fields: [],
-            },
-          ],
-        });
-      if (path === "/api/v1/chat/admin/providers")
-        return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
       if (path === "/api/v1/chat/admin/models") return Promise.resolve(models);
-      if (path === "/api/v1/chat/admin/models/title")
-        return Promise.resolve({ model_id: null });
-      return Promise.resolve([]);
-    });
-    render(ModelPage);
-    await screen.findAllByText("models.dev 가격");
-    await fireEvent.click(screen.getAllByText("models.dev 가격")[0]);
-    await screen.findByText("models.dev 추천 가격");
-    await screen.findByText(/수동 가격 보존/);
-    const checkboxes = screen.getAllByRole("checkbox");
-    expect((checkboxes.at(-3) as HTMLInputElement | undefined)?.checked).toBe(
-      true,
-    );
-    expect((checkboxes.at(-2) as HTMLInputElement | undefined)?.disabled).toBe(
-      true,
-    );
-    expect(
-      screen.getByText(
-        /tier\/cache\/reasoning\/audio 단가는 적용하지 않습니다/,
-      ),
-    ).toBeTruthy();
-  });
-
-  it("searches only the registered catalog candidates", async () => {
-    get.mockImplementation((path: string) => {
-      if (
-        path.startsWith(
-          "/api/v1/chat/admin/models/pricing/models-dev/providers?",
-        )
-      ) {
-        return Promise.resolve({
-          preferred_provider_ids: ["openai"],
-          providers: [
-            { id: "openai", name: "OpenAI", model_count: 2 },
-            { id: "anthropic", name: "Anthropic", model_count: 15 },
-          ],
-        });
+      if (path === "/api/v1/chat/admin/models/title") return Promise.resolve({ model_id: null });
+      if (path === "/api/v1/chat/admin/providers/1/available-models") {
+        return Promise.resolve(discoveryResponse(1, [{ id: "new-text-model", purpose: "chat" }]));
       }
-      if (path.includes("/pricing/models-dev/providers/openai"))
-        return Promise.resolve({ models: [] });
-      if (path.includes("/pricing/models-dev/providers/anthropic"))
-        return Promise.resolve({ models: [] });
-      if (path === "/api/v1/chat/admin/providers")
-        return Promise.resolve([provider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve(models);
-      if (path === "/api/v1/chat/admin/models/title")
-        return Promise.resolve({ model_id: null });
-      return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected GET: ${path}`));
     });
+    post.mockResolvedValue({});
     render(ModelPage);
-    await screen.findAllByText("models.dev 가격");
-    await fireEvent.click(screen.getAllByText("models.dev 가격")[0]);
-    const search = await screen.findByRole("searchbox", {
-      name: "가격표 프로바이더 검색",
-    });
-    await fireEvent.input(search, { target: { value: "anth" } });
-    const providerSelect = screen.getByLabelText("가격표 프로바이더");
-    await waitFor(() =>
-      expect(
-        within(providerSelect).getByRole("option", { name: "Anthropic (15)" }),
-      ).toBeTruthy(),
+    await screen.findByText("models.dev");
+    const dialog = await openModelCreation();
+    if (method === "manual") {
+      await fireEvent.click(within(dialog).getByRole("button", { name: "직접 입력" }));
+      await fireEvent.input(within(dialog).getByPlaceholderText("모델명 (예: gpt-4o)"), { target: { value: "new-text-model" } });
+      await fireEvent.input(within(dialog).getByPlaceholderText("입력 가격 (USD / 1M tokens)"), { target: { value: "1.5" } });
+      await fireEvent.input(within(dialog).getByPlaceholderText("출력 가격 (USD / 1M tokens)"), { target: { value: "6" } });
+      await fireEvent.click(within(dialog).getByRole("button", { name: "+ 모델 추가" }));
+    } else {
+      await fireEvent.click(within(dialog).getByRole("button", { name: "모델 불러오기" }));
+      await fireEvent.click(await within(dialog).findByRole("checkbox", { name: "new-text-model" }));
+      await fireEvent.click(within(dialog).getByRole("button", { name: "선택 모델 검토" }));
+      await fireEvent.click(within(dialog).getByRole("button", { name: "비활성으로 저장" }));
+      expect(get).toHaveBeenCalledWith("/api/v1/chat/admin/providers/1/available-models", "token", "project");
+    }
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/chat/admin/models",
+      expect.objectContaining({
+        provider_id: 1,
+        model_name: "new-text-model",
+        model_kind: "text",
+        ...(method === "manual" ? { input_price_per_million: "1.5", output_price_per_million: "6" } : { is_active: false }),
+      }),
+      "token",
+      "project",
     );
-    expect(
-      within(providerSelect).queryByRole("option", { name: "OpenAI (2)" }),
-    ).toBeNull();
-    await fireEvent.input(search, { target: { value: "missing" } });
-    await screen.findByText("검색 조건에 맞는 가격표 프로바이더가 없습니다.");
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "선택 가격 적용",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-    expect(screen.queryByText("가격표를 불러오는 중…")).toBeNull();
-  });
-
-  it("requires an explicit catalog choice when the current provider has no match", async () => {
-    get.mockImplementation((path: string) => {
-      if (
-        path.startsWith(
-          "/api/v1/chat/admin/models/pricing/models-dev/providers?",
-        )
-      ) {
-        return Promise.resolve({
-          preferred_provider_ids: [],
-          providers: [{ id: "anthropic", name: "Anthropic", model_count: 15 }],
-        });
-      }
-      if (path === "/api/v1/chat/admin/providers") {
-        return Promise.resolve([
-          {
-            ...provider,
-            name: "Custom gateway",
-            provider_type: "custom",
-            models_dev_provider_id: null,
-          },
-        ]);
-      }
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve(models);
-      if (path === "/api/v1/chat/admin/models/title")
-        return Promise.resolve({ model_id: null });
-      return Promise.resolve([]);
-    });
-    render(ModelPage);
-    await screen.findAllByText("models.dev 가격");
-    await fireEvent.click(screen.getAllByText("models.dev 가격")[0]);
-    const providerSelect = (await screen.findByLabelText(
-      "가격표 프로바이더",
-    )) as HTMLSelectElement;
-    expect(providerSelect.value).toBe("");
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "선택 가격 적용",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-
-  it("keeps the modal open and shows a concrete error when import fails", async () => {
-    post.mockRejectedValueOnce(new Error("catalog unavailable"));
-    get.mockImplementation((path: string) => {
-      if (
-        path.startsWith(
-          "/api/v1/chat/admin/models/pricing/models-dev/providers?",
-        )
-      )
-        return Promise.resolve({
-          providers: [{ id: "openai", name: "OpenAI", model_count: 1 }],
-        });
-      if (path.includes("/pricing/models-dev/providers/openai"))
-        return Promise.resolve({
-          models: [
-            {
-              id: "openai/gpt-test",
-              name: "GPT Test",
-              input_price_per_million: "2",
-              output_price_per_million: "8",
-              price_available: true,
-              unsupported_price_fields: [],
-            },
-          ],
-        });
-      if (path === "/api/v1/chat/admin/providers")
-        return Promise.resolve([provider]);
-      if (path === "/api/v1/chat/admin/models") return Promise.resolve(models);
-      if (path === "/api/v1/chat/admin/models/title")
-        return Promise.resolve({ model_id: null });
-      return Promise.resolve([]);
-    });
-    render(ModelPage);
-    await screen.findByText("Test");
-    await fireEvent.click(screen.getByText("models.dev 가격"));
-    await screen.findByText("선택 가격 적용");
-    await fireEvent.click(screen.getByText("선택 가격 적용"));
-    await screen.findByText("가격 import 실패");
-    expect(screen.getByText("models.dev 추천 가격")).toBeTruthy();
+    if (method === "discovery") {
+      expect(post.mock.calls[0][1]).not.toHaveProperty("input_price_per_million");
+      expect(post.mock.calls[0][1]).not.toHaveProperty("output_price_per_million");
+    }
+    for (const request of [get, post, patch, put, deleteRequest]) {
+      expect(request.mock.calls.some(([path]) => String(path).includes("/pricing/models-dev"))).toBe(false);
+    }
+    expect(screen.getByText("models.dev")).toBeTruthy();
+    expect(screen.getByText(/입력 2 · 출력 8 USD/)).toBeTruthy();
   });
 
   it("clears hidden API credentials and opens account management after subscription creation", async () => {
@@ -1191,6 +1049,42 @@ describe("admin chat model pricing", () => {
     expect(screen.getByText("Visible Label")).toBeTruthy();
     await fireEvent.input(screen.getByRole("searchbox", { name: "후보 모델 필터" }), { target: { value: "visible label" } });
     expect(screen.getByRole("checkbox", { name: "static-model" })).toBeTruthy();
+  });
+  it("uses independent regex fields and a shared candidate-kind control without widening malformed searches", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return Promise.resolve(discoveryResponse(1, [
+        { id: "chat-A", display_name: "Alpha Label", purpose: "chat" },
+        { id: "unknown-B", display_name: "Beta Label", purpose: "unknown" },
+      ]));
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await openModelCreation();
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByRole("checkbox", { name: "chat-A" });
+    let input = screen.getByRole("searchbox", { name: t("configuration.filterCandidateModels") });
+    await fireEvent.input(input, { target: { value: "^(chat-a|beta label)$" } });
+    expect(screen.getByRole("checkbox", { name: "chat-A" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "unknown-B" })).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: commonT("table.filterColumn", { column: t("pricing.candidateKindFilter") }) }));
+    const filterDialog = screen.getByRole("dialog", { name: commonT("table.filterColumn", { column: t("pricing.candidateKindFilter") }) });
+    await fireEvent.click(within(filterDialog).getByRole("checkbox", { name: new RegExp(t("configuration.text")) }));
+    await fireEvent.keyDown(filterDialog, { key: "Escape" });
+    expect(screen.getByRole("checkbox", { name: "chat-A" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "unknown-B" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: t("configuration.fetchAgain") }));
+    await screen.findByRole("checkbox", { name: "chat-A" });
+    input = screen.getByRole("searchbox", { name: t("configuration.filterCandidateModels") });
+    expect((input as HTMLInputElement).value).toBe("^(chat-a|beta label)$");
+    expect(screen.queryByRole("checkbox", { name: "unknown-B" })).toBeNull();
+    await fireEvent.input(input, { target: { value: "[" } });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText(commonT("table.regexError"))).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "chat-A" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "unknown-B" })).toBeNull();
   });
 
   it("keeps failed candidates selected and freezes the provider through sequential registration", async () => {

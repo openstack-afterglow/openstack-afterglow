@@ -1,5 +1,6 @@
 <script lang="ts">
 	interface Props {
+		id?: string;
 		checked?: boolean;
 		indeterminate?: boolean;
 		ariaLabel: string;
@@ -11,6 +12,7 @@
 	}
 
 	let {
+		id,
 		checked = false,
 		indeterminate = false,
 		ariaLabel,
@@ -69,6 +71,7 @@
 >
 	<input
 		bind:this={inputEl}
+		{id}
 		type="checkbox"
 		checked={checked}
 		disabled={disabled}

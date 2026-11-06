@@ -5,6 +5,8 @@ import type { ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 import ImageRepositoryCard from '../ImageRepositoryCard.svelte';
 import ImageRepositoryDetail from '../ImageRepositoryDetail.svelte';
 import { t } from '$lib/i18n/ns/images-keys';
+import { t as tc } from '$lib/i18n/ns/common';
+import { createImagesController } from '$lib/stores/imagesController.svelte';
 
 const images: ImageInfo[] = [
 	{ id: 'one', name: 'ubuntu:one', repository: 'ubuntu', tag: 'one', status: 'active', verification_status: 'verified', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' },
@@ -31,6 +33,36 @@ function tagButton(tag: string): HTMLButtonElement {
 }
 
 describe('repository trust', () => {
+	it('retains detail regex, multi-value filters and sort over absent and restored repository rows and remount', async () => {
+		const controller = createImagesController({ token: () => undefined, projectId: () => undefined });
+		const state = controller.repositoryState('ubuntu');
+		const onOpenTag = vi.fn();
+		const props = { group, repository: 'ubuntu', state, onBack: vi.fn(), onOpenTag };
+		const rendered = render(ImageRepositoryDetail, props);
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '^one$|^two$' } });
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.filterColumn', { column: t('catalogToolbar.tagLabel') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'one' }).closest('label')!);
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'two' }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('catalogToolbar.tagLabel'), direction: tc('table.none') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('catalogToolbar.tagLabel'), direction: tc('table.ascending') }) }));
+		const order = () => screen.getAllByRole('row').slice(1).map(row => row.querySelector('td')?.textContent);
+		expect(order()[0]).toContain(':two');
+		await rendered.rerender({ ...props, group: null });
+		expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('^one$|^two$');
+		expect(screen.getAllByRole('row')).toHaveLength(1);
+		expect(state.view.filters).toEqual({ tag: ['one', 'two'] });
+		expect(state.view.sort).toEqual({ key: 'tag', direction: 'desc' });
+		await rendered.rerender(props);
+		expect(order()[0]).toContain(':two');
+		expect(order()[1]).toContain(':one');
+		rendered.unmount();
+		render(ImageRepositoryDetail, props);
+		expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('^one$|^two$');
+		expect(order()[0]).toContain(':two');
+		expect(onOpenTag).not.toHaveBeenCalled();
+	});
 	it('counts every tag including unpreviewed images and labels each preview independently', async () => {
 		const onOpen = vi.fn();
 		const onOpenTag = vi.fn();
@@ -54,6 +86,28 @@ describe('repository trust', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '모든 tag 조회' }));
 		expect(onOpenTag).toHaveBeenCalledExactlyOnceWith(images[1].id);
 		expect(onOpen).toHaveBeenCalledOnce();
+	});
+
+	it('sorts displayed current tag sizes instead of older uploads while preserving exact detail targets', async () => {
+		const oldA: ImageInfo = { id: 'a-old', name: 'demo:a', status: 'active', size: 1, created_at: '2026-01-01T00:00:00Z' };
+		const newA: ImageInfo = { ...oldA, id: 'a-new', size: 100, created_at: '2026-03-01T00:00:00Z' };
+		const newestB: ImageInfo = { id: 'b-new', name: 'demo:b', status: 'active', size: 50, created_at: '2026-02-01T00:00:00Z' };
+		const duplicateGroup: ImageRepositoryGroup = {
+			repository: 'demo', images: [oldA, newestB, newA], latest: newA,
+			tags: [{ tag: 'a', latest: newA, current: newA, images: [newA, oldA] }, { tag: 'b', latest: newestB, current: newestB, images: [newestB] }],
+		};
+		const onOpenTag = vi.fn();
+		render(ImageRepositoryDetail, { group: duplicateGroup, onBack: vi.fn(), onOpenTag });
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('repositoryDetail.size'), direction: tc('table.none') }) }));
+		const displayed = () => screen.getAllByRole('row').filter(row => within(row).queryByRole('button', { name: t('repositoryDetail.viewDetails') }));
+		expect(displayed()[0].textContent).toContain(':b');
+		expect(displayed()[0].textContent).toContain('50 B');
+		expect(displayed()[1].textContent).toContain(':a');
+		expect(displayed()[1].textContent).toContain('100 B');
+		await fireEvent.click(within(displayed()[1]).getByRole('button', { name: t('repositoryDetail.viewDetails') }));
+		expect(onOpenTag).toHaveBeenCalledExactlyOnceWith('a-new');
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: t('repositoryDetail.size'), direction: tc('table.ascending') }) }));
+		expect(displayed()[0].textContent).toContain(':a');
 	});
 
 	it('shows trust for each row and displays upload time rather than update time', async () => {

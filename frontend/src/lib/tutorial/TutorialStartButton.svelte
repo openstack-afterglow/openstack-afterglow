@@ -39,6 +39,32 @@
 		hintTimer = setTimeout(() => (laterHint = false), HINT_MS);
 	}
 
+	// Header actions can sit at either viewport edge, including at browser zoom.
+	function keepBubbleInView(node: HTMLElement) {
+		const viewport = window.visualViewport;
+		function position() {
+			node.style.setProperty('--ts-shift', '0px');
+			if (getComputedStyle(node).position === 'fixed') return;
+			const rect = node.getBoundingClientRect();
+			const left = (viewport?.offsetLeft ?? 0) + 12;
+			const right = (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - 12;
+			const shift = Math.max(left - rect.left, Math.min(0, right - rect.right));
+			node.style.setProperty('--ts-shift', `${shift}px`);
+		}
+		const observer = new ResizeObserver(position);
+		observer.observe(node);
+		window.addEventListener('resize', position);
+		viewport?.addEventListener('resize', position);
+		viewport?.addEventListener('scroll', position);
+		position();
+		return { destroy() {
+			observer.disconnect();
+			window.removeEventListener('resize', position);
+			viewport?.removeEventListener('resize', position);
+			viewport?.removeEventListener('scroll', position);
+		} };
+	}
+
 	onDestroy(() => clearTimeout(hintTimer));
 </script>
 
@@ -51,6 +77,7 @@
 	{#if inviteOpen}
 		<div
 			class="ts-invite"
+			use:keepBubbleInView
 			role="dialog"
 			aria-modal="false"
 			aria-labelledby={`ts-invite-title-${tour}`}
@@ -66,7 +93,7 @@
 	{/if}
 
 	{#if laterHint}
-		<div class="ts-hint" role="status" style={`--ts-hint-ms: ${HINT_MS}ms`}>
+		<div class="ts-hint" role="status" style={`--ts-hint-ms: ${HINT_MS}ms`} use:keepBubbleInView>
 			<span class="ts-hint__arrow" aria-hidden="true"></span>
 			<RichText segments={t.rich('start.hint')} />
 			<span class="ts-hint__progress" aria-hidden="true"></span>
@@ -88,6 +115,7 @@
 		top: calc(100% + 10px);
 		left: 50%;
 		transform: translateX(-50%);
+		translate: var(--ts-shift, 0px) 0;
 		z-index: 50;
 		width: max-content;
 		max-width: 17rem;
@@ -104,7 +132,7 @@
 	.ts-invite__arrow {
 		position: absolute;
 		top: -6px;
-		left: 50%;
+		left: clamp(12px, calc(50% - var(--ts-shift, 0px)), calc(100% - 12px));
 		width: 11px;
 		height: 11px;
 		transform: translateX(-50%) rotate(45deg);
@@ -155,6 +183,7 @@
 		top: calc(100% + 10px);
 		left: 50%;
 		transform: translateX(-50%);
+		translate: var(--ts-shift, 0px) 0;
 		z-index: 50;
 		width: max-content;
 		max-width: 16rem;
@@ -201,7 +230,7 @@
 	.ts-hint__arrow {
 		position: absolute;
 		top: -5px;
-		left: 50%;
+		left: clamp(12px, calc(50% - var(--ts-shift, 0px)), calc(100% - 12px));
 		width: 9px;
 		height: 9px;
 		transform: translateX(-50%) rotate(45deg);

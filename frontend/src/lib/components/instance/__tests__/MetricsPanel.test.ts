@@ -77,7 +77,7 @@ describe('MetricsPanel', () => {
 		mockAllMetrics();
 		auth.update(state => ({ ...state, isSystemAdmin }));
 		render(MetricsPanel, { instanceId: 'inst-1' });
-		await screen.findByText('CPU 사용률');
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
 		expect(screen.queryByRole('button', { name: 'Grafana' })).toBeNull();
 		expect(mockGet.mock.calls.every(([path]) => path.startsWith('/api/v1/instances/inst-1/metrics-'))).toBe(true);
 	});
@@ -89,7 +89,7 @@ describe('MetricsPanel', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: 'Grafana' }));
 		await waitFor(() => expect(mockGet.mock.calls.some(([path]) => path === '/api/v1/grafana/dashboards')).toBe(true));
 		auth.update(state => ({ ...state, isSystemAdmin: false }));
-		await screen.findByText('CPU 사용률');
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
 		expect(screen.queryByRole('button', { name: 'Grafana' })).toBeNull();
 	});
 	it('uses explicit admin metrics paths while preserving caller-native telemetry project', async () => {
@@ -104,10 +104,10 @@ describe('MetricsPanel', () => {
 
 		render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
 
-		expect(await screen.findByText('CPU 사용률')).toBeTruthy();
-		expect(await screen.findByText('메모리 사용률')).toBeTruthy();
-		expect(await screen.findByText('네트워크 I/O')).toBeTruthy();
-		expect(await screen.findByText('디스크 I/O')).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.cpuUsage') })).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.memoryUsage') })).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.networkIo') })).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.diskIo') })).toBeTruthy();
 	});
 
 	it('renders 6 charts for GPU instance', async () => {
@@ -115,9 +115,9 @@ describe('MetricsPanel', () => {
 
 		render(MetricsPanel, { props: { instanceId: 'inst-gpu', isGpu: true } });
 
-		expect(await screen.findByText('CPU 사용률')).toBeTruthy();
-		expect(await screen.findByText('GPU 사용률')).toBeTruthy();
-		expect(await screen.findByText('GPU 메모리')).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.cpuUsage') })).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.gpuUsage') })).toBeTruthy();
+		expect(await screen.findByRole('group', { name: t('metrics.gpuMemory') })).toBeTruthy();
 	});
 
 	it('shows empty state when series is empty', async () => {
@@ -182,13 +182,13 @@ describe('MetricsPanel', () => {
 
 		render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
 
-		await screen.findByText('CPU 사용률');
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
 		const callsBefore = mockGet.mock.calls.length;
 
 		fireEvent.click(screen.getByText('6시간'));
 
 		// after range change, API is called again with new range
-		await screen.findByText('CPU 사용률');
+		await screen.findByRole('group', { name: t('metrics.cpuUsage') });
 		expect(mockGet.mock.calls.length).toBeGreaterThan(callsBefore);
 		const urls: string[] = mockGet.mock.calls.map((c: unknown[]) => c[0] as string);
 		expect(urls.some(u => u.includes('range=6h'))).toBe(true);

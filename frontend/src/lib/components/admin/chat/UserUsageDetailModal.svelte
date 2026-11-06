@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -34,7 +37,7 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const scopeKey = $derived(open && user && token ? `${user.id}:${token}:${projectId ?? ''}` : '');
+	const scopeKey = $derived(open && user && token ? `${user.id}:${projectId ?? ''}` : '');
 	let range = $state<'7d' | '30d' | '90d' | '1y' | 'all'>('30d');
 	let source = $state<'' | 'web' | 'api'>('');
 	let detail = $state<UserUsageDetail | null>(null);
@@ -107,12 +110,19 @@
 			range = '30d';
 			source = '';
 			detail = null;
+			for (const model of [observationView0, observationView1]) {
+				model.search = '';
+				model.view.reset();
+			}
 			void load(true);
 		});
 		return () => {
 			generation += 1;
 		};
 	});
+
+	const observationView0 = createObservationView(() => (detail?.by_model ?? []), () => ([{ key: 'model', label: t('model'), value: row => row.model_name }, { key: 'input', label: t('input'), value: row => row.prompt_tokens }, { key: 'output', label: t('output'), value: row => row.completion_tokens }, { key: 'total', label: t('total'), value: row => row.total_tokens }, { key: 'credit', label: t('credits'), value: row => Number(row.credited_cost) }, { key: 'cost', label: t('cost'), value: row => Number(row.raw_cost) }, { key: 'requests', label: t('requests'), value: row => row.request_count }]));
+	const observationView1 = createObservationView(() => (detail?.records ?? []), () => ([{ key: 'time', label: t('time'), value: row => row.created_at }, { key: 'source', label: t('source'), value: row => row.source }, { key: 'model', label: t('model'), value: row => row.model_name }, { key: 'input', label: t('input'), value: row => row.prompt_tokens }, { key: 'output', label: t('output'), value: row => row.completion_tokens }, { key: 'total', label: t('total'), value: row => row.total_tokens }, { key: 'credit', label: t('credits'), value: row => Number(row.credited_cost) }, { key: 'cost', label: t('cost'), value: row => Number(row.raw_cost) }]));
 </script>
 
 <Modal {open} {onClose} ariaLabel={t('modalLabel')}>
@@ -158,7 +168,8 @@
 
 			{#if loading}
 				<div class="mt-5"><LoadingState variant="section" /></div>
-			{:else if detail}
+			{/if}
+			{#if detail}
 				{@const usageDetail = detail}
 				<div class="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
 					<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3">
@@ -194,17 +205,19 @@
 
 				<section class="mt-6" aria-labelledby="usage-model-title">
 					<h3 id="usage-model-title" class="mb-2 text-sm font-semibold text-[var(--color-ink-1)]">{t('modelUsage')}</h3>
-					<ResponsiveTable>
+					<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
 						{#snippet cards()}
-							{#each usageDetail.by_model as item (`${item.provider ?? ''}:${item.model_name}`)}
+							{#each tableView.rows as item (`${item.provider ?? ''}:${item.model_name}`)}
 								<CompactResourceCard><p class="font-medium">{item.model_name}</p><p class="text-xs text-ink-2">{item.provider ?? t('unknown')}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('totalTokens')}</dt><dd>{formatNumber(item.total_tokens)}</dd></div><div><dt>{t('credits')}</dt><dd>{formatDecimal(item.credited_cost, 2)}</dd></div></dl>{#snippet details()}<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('inputOutput')}</dt><dd>{formatNumber(item.prompt_tokens)} / {formatNumber(item.completion_tokens)}</dd></div><div><dt>{t('requests')}</dt><dd>{formatNumber(item.request_count)}</dd></div><div><dt>{t('cost')}</dt><dd>${formatDecimal(item.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>
 							{:else}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
 						{/snippet}
 						<TableShell density="compact">
 							<table>
-								<thead><tr><th>{t('model')}</th><th>{t('input')}</th><th>{t('output')}</th><th>{t('total')}</th><th>{t('credits')}</th><th>{t('cost')}</th><th>{t('requests')}</th></tr></thead>
+								<thead><tr><TableColumnHeader view={tableView} columnKey="model" /><TableColumnHeader view={tableView} columnKey="input" /><TableColumnHeader view={tableView} columnKey="output" /><TableColumnHeader view={tableView} columnKey="total" /><TableColumnHeader view={tableView} columnKey="credit" /><TableColumnHeader view={tableView} columnKey="cost" /><TableColumnHeader view={tableView} columnKey="requests" /></tr></thead>
 								<tbody>
-									{#each usageDetail.by_model as item (`${item.provider ?? ''}:${item.model_name}`)}
+									{#each tableView.rows as item (`${item.provider ?? ''}:${item.model_name}`)}
 										<tr>
 											<td><div class="font-medium text-[var(--color-ink-1)]">{item.model_name}</div><div class="text-xs text-[var(--color-ink-3)]">{item.provider ?? t('unknown')}</div></td>
 											<td class="tabular-nums">{formatNumber(item.prompt_tokens)}</td>
@@ -220,21 +233,25 @@
 							</table>
 						</TableShell>
 					</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				</section>
 
 				<section class="mt-6" aria-labelledby="usage-ledger-title">
 					<h3 id="usage-ledger-title" class="mb-2 text-sm font-semibold text-[var(--color-ink-1)]">{t('ledger')}</h3>
-					<ResponsiveTable>
+					<ObservationTable model={observationView1} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 						{#snippet cards()}
-							{#each usageDetail.records as record (record.id)}
+							{#each tableView.rows as record (record.id)}
 								<CompactResourceCard><div class="flex flex-wrap items-start justify-between gap-2"><p class="font-medium">{record.model_name}</p><Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill></div><p>{formatDate(record.created_at)}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('totalTokens')}</dt><dd>{formatNumber(record.total_tokens)}</dd></div><div><dt>{t('credits')}</dt><dd>{formatDecimal(record.credited_cost, 2)}</dd></div></dl>{#snippet details()}<p>{record.provider ?? t('unknown')}{record.api_key_id ? t('apiKeySuffix', { id: String(record.api_key_id) }) : ''}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('inputOutput')}</dt><dd>{formatNumber(record.prompt_tokens)} / {formatNumber(record.completion_tokens)}</dd></div><div><dt>{t('cost')}</dt><dd>${formatDecimal(record.raw_cost)}</dd></div></dl>{/snippet}</CompactResourceCard>
 							{:else}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
 						{/snippet}
 						<TableShell density="compact">
 							<table>
-								<thead><tr><th>{t('time')}</th><th>{t('source')}</th><th>{t('model')}</th><th>{t('input')}</th><th>{t('output')}</th><th>{t('total')}</th><th>{t('credits')}</th><th>{t('cost')}</th></tr></thead>
+								<thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="source" /><TableColumnHeader view={tableView} columnKey="model" /><TableColumnHeader view={tableView} columnKey="input" /><TableColumnHeader view={tableView} columnKey="output" /><TableColumnHeader view={tableView} columnKey="total" /><TableColumnHeader view={tableView} columnKey="credit" /><TableColumnHeader view={tableView} columnKey="cost" /></tr></thead>
 								<tbody>
-									{#each usageDetail.records as record (record.id)}
+									{#each tableView.rows as record (record.id)}
 										<tr>
 											<td class="whitespace-nowrap">{formatDate(record.created_at)}</td>
 											<td><Pill tone="neutral" size="xs">{sourceLabel(record.source)}</Pill></td>
@@ -251,6 +268,8 @@
 							</table>
 						</TableShell>
 					</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 					{#if detail.next_before_id}
 						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} ariaBusy={loadingMore} onclick={() => void load(false)}>{#if loadingMore}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
 					{/if}

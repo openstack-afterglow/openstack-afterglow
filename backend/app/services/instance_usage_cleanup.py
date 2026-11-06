@@ -99,7 +99,7 @@ async def _grant_observation(conn, grant, server_id, *, tracked=True):
     if rule is None:
         return None
     share = await usage.sdk_call(manila.get_file_storage, conn, grant["s"])
-    if value(share, "id") != grant["s"] or owner(share) != conn._afterglow_project_id:
+    if value(share, "id") != grant["s"] or owner(share) != usage._target_project(conn):
         raise RuntimeError("Managed Manila share owner changed")
     if not _rule_matches(rule, grant, server_id, tracked=tracked):
         raise RuntimeError("Managed Manila grant authority changed")
@@ -219,7 +219,7 @@ async def _legacy_union_preflight(conn, server, lease):
     try:
         service = await open_connection(keystone.get_service_project_connection)
         access = await usage.sdk_call(service.session.auth.get_access, service.session)
-        await _prove_connection(service, access.project_id)
+        await usage.sdk_call(usage.prove_project_scope, service, access.project_id)
         tracked = {(grant["s"], grant["i"]) for grant in _grants(server)}
         for share_id in shares:
             await _lease(lease)
@@ -524,8 +524,10 @@ async def _once(session, row, receipt, key, mutation, lease):
 
 async def finish_managed_delete(conn, server_id, project_id, lease=None):
     """Observe native absence, then settle existing resource receipts only."""
-    if getattr(conn, "_afterglow_project_id", None) != project_id:
+    if usage._target_project(conn) != project_id:
         raise RuntimeError("Managed cleanup project scope differs")
+    if vars(conn).get("_afterglow_usage_operator_scope") is not None:
+        await usage.sdk_call(usage._assert_operator_scope, conn)
     await _lease(lease)
     if not await _absent(conn, server_id):
         return
@@ -541,7 +543,7 @@ async def finish_managed_delete(conn, server_id, project_id, lease=None):
 
 
 async def _finish_receipt(conn, consume_id, lease):
-    from app.services import keystone, manila
+    from app.services import manila
     from app.services.work_dispatcher import close_connection, open_connection
 
     async with get_session_factory()() as session:
@@ -584,8 +586,8 @@ async def _finish_receipt(conn, consume_id, lease):
                 if service_project == row.project_id:
                     share_conn = conn
                 else:
-                    share_conn = await open_connection(keystone.get_admin_connection_for_project, service_project)
-                    await _prove_connection(share_conn, service_project)
+                    share_conn = await open_connection(usage.operator_connection, service_project)
+                    await usage.sdk_call(usage.prove_project_scope, share_conn, service_project)
                 for grant in rules:
                     rule = await _grant_observation(share_conn, grant, receipt["server_id"], tracked=False)
                     if rule is None:
@@ -665,17 +667,8 @@ async def _finish_receipt(conn, consume_id, lease):
                 await close_connection(share_conn)
 
 
-async def _prove_connection(conn, project):
-    access = await usage.sdk_call(conn.session.auth.get_access, conn.session)
-    if access.project_id != project or access.project_scoped is not True or access.system_scoped is not False:
-        raise RuntimeError("Managed cleanup native project credential differs")
-    conn._afterglow_project_id = project
-    conn._afterglow_authenticated_project_id = project
-
-
 async def reconcile_managed_deletes(*, connection_factory=None, redis=None):
     """Restart-safe resource-only scan, independent of Nova schedule census."""
-    from app.services import keystone
     from app.services.work_dispatcher import close_connection, open_connection
 
     factory = get_session_factory()
@@ -692,8 +685,8 @@ async def reconcile_managed_deletes(*, connection_factory=None, redis=None):
     for project, identity in pending:
         conn = None
         try:
-            conn = await open_connection(connection_factory or keystone.get_admin_connection_for_project, project)
-            await _prove_connection(conn, project)
+            conn = await open_connection(connection_factory or usage.operator_connection, project)
+            await usage.sdk_call(usage.prove_project_scope, conn, project)
             async with usage.usage_lease(conn, project, identity, redis=redis) as lease:
                 if lease is not None:
                     await finish_managed_delete(conn, identity, project, lease)

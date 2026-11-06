@@ -21,6 +21,11 @@
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface ProjectQuota {
 		project_id: string;
@@ -37,6 +42,19 @@
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
+	let search = $state('');
+	const view = createTableView<ProjectQuota>({
+		rows: () => quotas,
+		search: () => search,
+		searchable: (q) => [q.project_id, q.project_quotas.secrets ?? -1, q.project_quotas.orders ?? -1, q.project_quotas.containers ?? -1].map(String),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'project', label: t('secrets.projectId'), value: (q) => q.project_id },
+			{ key: 'secrets', label: t('secrets.secrets'), value: (q) => q.project_quotas.secrets ?? -1 },
+			{ key: 'orders', label: t('secrets.orders'), value: (q) => q.project_quotas.orders ?? -1 },
+			{ key: 'containers', label: t('secrets.containers'), value: (q) => q.project_quotas.containers ?? -1 },
+		],
+	});
 
 	// 쿼터 설정 모달
 	let showSetQuota = $state(false);
@@ -206,18 +224,22 @@
 	{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
 	<div data-tour="admin-key-manager-table">
+	<div class="mb-4 space-y-3">
+		<RegexSearch id="admin-secrets-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else if quotas.length === 0}
+	{:else if view.rows.length === 0}
 		<div class="text-center py-16 text-ink-2" data-tour="admin-key-manager-ready">
 			<div class="text-4xl mb-3">📊</div>
-			<p class="text-sm">{t('secrets.empty')}</p>
+			<p class="text-sm">{quotas.length ? tc('table.noMatches') : t('secrets.empty')}</p>
 		</div>
 	{:else}
 		<div data-tour="admin-key-manager-ready">
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each quotas as q, index (q.project_id)}
+				{#each view.rows as q, index (q.project_id)}
 					<CompactResourceCard>
 						<div><span class="text-xs text-ink-2">{t('secrets.projectId')}</span><p class="font-mono font-medium">{q.project_id}</p></div>
 						<dl>
@@ -242,15 +264,15 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="text-left text-ink-2 border-b border-line-2">
-						<th class="pb-3 pr-4 font-medium">{t('secrets.projectId')}</th>
-						<th class="pb-3 pr-4 font-medium">{t('secrets.secrets')}</th>
-						<th class="pb-3 pr-4 font-medium">{t('secrets.orders')}</th>
-						<th class="pb-3 pr-4 font-medium">{t('secrets.containers')}</th>
+						<TableColumnHeader {view} columnKey="project" />
+						<TableColumnHeader {view} columnKey="secrets" />
+						<TableColumnHeader {view} columnKey="orders" />
+						<TableColumnHeader {view} columnKey="containers" />
 						<th class="pb-3 font-medium">{t('secrets.action')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-line">
-					{#each quotas as q, index}
+					{#each view.rows as q, index}
 						<tr class="hover:bg-surface-sunken/30">
 							<td class="py-3 pr-4 font-mono text-xs text-ink-2">{q.project_id}</td>
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.secrets ?? -1}</td>

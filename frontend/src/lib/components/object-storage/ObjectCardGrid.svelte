@@ -12,7 +12,7 @@
 	const s = useObjectBrowser();
 	const folders = $derived(s.gridRows.filter((row) => row.isDir));
 	const files = $derived(s.gridRows.filter((row) => !row.isDir));
-	const searching = $derived(s.filterText.trim().length > 0);
+	const searching = $derived(s.filterText.length > 0);
 
 	// Keep the route-owned history through tab/view changes and loading skeleton swaps.
 	// Opacity only: cards hold fixed-position action menus.
@@ -56,7 +56,7 @@
 {:else}
  <ResponsiveTable>
   {#snippet cards()}
-   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs"><SelectionCheckbox checked={s.visibleSelectedCount > 0 && s.visibleSelectedCount === s.visibleObjectCount} indeterminate={s.visibleSelectedCount > 0 && s.visibleSelectedCount < s.visibleObjectCount} disabled={s.bulkDeleting || s.bulkMoving} ariaLabel={t('views.cardGrid.selectAllVisible')} onclick={s.toggleSelectAll} /><span>{t('views.cardGrid.objectCount', { count: s.visibleObjectCount })}</span><button class="min-h-11 px-2" onclick={() => s.toggleSort('name')}>{t('views.flatTable.nameSort', { icon: s.sortIcon('name') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('bytes')}>{t('views.flatTable.sizeSort', { icon: s.sortIcon('bytes') })}</button><button class="min-h-11 px-2" onclick={() => s.toggleSort('last_modified')}>{t('views.flatTable.modifiedSort', { icon: s.sortIcon('last_modified') })}</button></div>
+   <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-xs"><SelectionCheckbox checked={s.visibleSelectedCount > 0 && s.visibleSelectedCount === s.visibleObjectCount} indeterminate={s.visibleSelectedCount > 0 && s.visibleSelectedCount < s.visibleObjectCount} disabled={s.bulkDeleting || s.bulkMoving} ariaLabel={t('views.cardGrid.selectAllVisible')} onclick={s.toggleSelectAll} /><span>{t('views.cardGrid.objectCount', { count: s.visibleObjectCount })}</span></div>
    {#each s.gridRows as row (row.obj.name)}{#if row.isDir}<ObjectFolderCard obj={row.obj} />{:else}<ObjectFileCard obj={row.obj} fullPath={row.fullPath} compact />{/if}{/each}
   {/snippet}
 	<div class="space-y-4">

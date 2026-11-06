@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import KeypairListTable from '../KeypairListTable.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
 import KeypairCreateModal from '../KeypairCreateModal.svelte';
 
 const keypairs = [
@@ -10,7 +11,7 @@ const keypairs = [
 
 describe('keypair list operation feedback', () => {
 	it('keeps keyed rows mounted on refresh and indicates only the deleting key', async () => {
-		const props = { keypairs, deleting: null as string | null, copiedFingerprint: null, onCopy: vi.fn(), onDelete: vi.fn(async () => {}) };
+		const props = { keypairs, view: createTableView({ rows: () => keypairs, columns: () => [{ key: 'name', label: 'Name', value: row => row.name }] }), deleting: null as string | null, copiedFingerprint: null, onCopy: vi.fn(), onDelete: vi.fn(async () => {}) };
 		const view = render(KeypairListTable, props);
 		const name = screen.getByText('key-a');
 		await view.rerender({ ...props, keypairs: keypairs.map((keypair) => ({ ...keypair })), deleting: 'key-b' });

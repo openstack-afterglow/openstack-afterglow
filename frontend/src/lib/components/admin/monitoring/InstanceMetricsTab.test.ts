@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
 import { tick } from 'svelte';
 import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-ops';
+import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
@@ -57,6 +58,32 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setLocale('ko'); });
 
 describe('administrator instance telemetry context', () => {
+	it('retains local conditions on refresh but clears them when the inventory context changes', async () => {
+		let reload: (() => void) | undefined;
+		const { rerender } = render(InstanceMetricsTab, { token: 'token-a', projectId: 'admin-project', onReload: fn => { reload = fn; } });
+		await screen.findByRole('button', { name: /vm-a/ });
+		const filterLabel = commonT('table.filterColumn', { column: commonT('table.host') });
+		await fireEvent.click(screen.getByRole('button', { name: filterLabel }));
+		const popup = screen.getByRole('dialog', { name: filterLabel });
+		await fireEvent.click(within(popup).getByRole('checkbox', { name: 'compute-a' }));
+		await fireEvent.click(within(popup).getByRole('button', { name: commonT('table.ascending') }));
+		await fireEvent.keyDown(popup, { key: 'Escape' });
+		await fireEvent.input(screen.getByLabelText(t('monitoring.instances.search')), { target: { value: 'vm-a' } });
+		reload!();
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.startsWith('/api/v1/admin/all-instances'))).toHaveLength(2));
+		await tick();
+		expect((screen.getByLabelText(t('monitoring.instances.search')) as HTMLInputElement).value).toBe('vm-a');
+		expect(screen.queryByRole('button', { name: /vm-a/ })).toBeNull();
+		expect(screen.getByRole('button', { name: filterLabel }).hasAttribute('aria-describedby')).toBe(true);
+
+		mocks.get.mockResolvedValue(list([{ ...instance('fresh-vm', 'tenant-new'), host: 'compute-new' }]));
+		await rerender({ token: 'token-a', projectId: 'new-project', onReload: fn => { reload = fn; } });
+		await screen.findByRole('button', { name: /fresh-vm/ });
+		expect((screen.getByLabelText(t('monitoring.instances.search')) as HTMLInputElement).value).toBe('');
+		expect(screen.getByRole('button', { name: filterLabel }).hasAttribute('aria-describedby')).toBe(false);
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: commonT('table.host'), direction: commonT('table.none') }) })).toBeTruthy();
+	});
+
 	it('uses explicit administrator metrics in caller context and discards a previous instance response', async () => {
 		const oldMetrics = Promise.withResolvers<MetricBatchFixture>();
 		mocks.get.mockImplementation((path: string) => {

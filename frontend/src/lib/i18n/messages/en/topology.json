@@ -168,7 +168,6 @@
 	"toolbar.packetFlow": "Connection animation",
 	"toolbar.createContext": "Connect to the selected network <b>{name}</b>",
 	"canvas.networkTitle": "Network {name}",
-	"card.noStatus": "No status",
 	"card.ports": "Ports {count}",
 	"card.listeners": "Listeners {count}",
 	"canvas.selected": "{kind} {name} selected",

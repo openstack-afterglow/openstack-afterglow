@@ -7,13 +7,17 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import type { TableView } from '$lib/utils/tableView.svelte';
 
 	let {
 		storages,
+		view,
 		selectedId = null,
 		onOpen,
 	}: {
 		storages: AdminFileStorage[];
+		view: TableView<AdminFileStorage>;
 		selectedId?: string | null;
 		onOpen: (storage: AdminFileStorage) => void;
 	} = $props();
@@ -55,14 +59,7 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">{t('fileTable.column.name')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.status')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.size')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.protocol')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.type')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.project')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.createdAt')}</th>
-				<th class="text-left py-2 pr-4">{t('fileTable.column.exportPath')}</th>
+				{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 				<th class="text-left py-2">{t('fileTable.column.actions')}</th>
 			</tr>
 		</thead>

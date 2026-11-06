@@ -14,6 +14,7 @@ vi.mock('$lib/api/client', () => {
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', userId: 'user-a', projectId: 'project-a', canWrite: true, isSystemAdmin: false }),
 	canWrite: writable(true), projectSwitching: writable(false),
+	authReady: writable(true), getAuthVerificationEpoch: () => 1,
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (refresh: (force?: boolean) => Promise<void>) => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60], refresh: () => refresh(true) }),
@@ -43,37 +44,35 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('project volume list sorting', () => {
-	it('renders all four orderings without mutating API inventory or selection, and retains sorting through refresh and snapshot tabs', async () => {
-		const view = render(Page);
+	it('cycles column ordering without mutating inventory and retains sorting through refresh and snapshot tabs', async () => {
+		render(Page);
 		await screen.findByText('Alpha');
-		const sort = view.container.querySelector<HTMLSelectElement>('#project-volume-sort')!;
-		expect(sort.value).toBe('created_desc');
+		const nameSort = (direction: 'none' | 'ascending' | 'descending') => screen.getByRole('button', { name: commonT('table.sortColumn', { column: t('listTable.name'), direction: commonT(`table.${direction}`) }) });
 		expect(namesInPanel()).toEqual(['Alpha', 'Bravo', 'Charlie']);
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Alpha 선택' }));
-		for (const [value, expected] of [
-			['created_asc', ['Bravo', 'Alpha', 'Charlie']],
-			['name_asc', ['Alpha', 'Bravo', 'Charlie']],
-			['name_desc', ['Charlie', 'Bravo', 'Alpha']],
-			['created_desc', ['Alpha', 'Bravo', 'Charlie']],
+		for (const [direction, expected] of [
+			['none', ['Alpha', 'Bravo', 'Charlie']],
+			['ascending', ['Charlie', 'Bravo', 'Alpha']],
+			['descending', ['Alpha', 'Bravo', 'Charlie']],
 		] as const) {
-			await fireEvent.change(sort, { target: { value } });
+			await fireEvent.click(nameSort(direction));
 			expect(namesInPanel()).toEqual(expected);
-			expect((screen.getByRole('checkbox', { name: 'Alpha 선택' }) as HTMLInputElement).checked).toBe(true);
+			expect((screen.getByRole('checkbox', { name: 'Alpha 선택' }) as HTMLInputElement).checked).toBe(false);
 			expect((screen.getByRole('checkbox', { name: 'Bravo 선택' }) as HTMLInputElement).checked).toBe(false);
 			expect((screen.getByRole('checkbox', { name: 'Charlie 선택' }) as HTMLInputElement).checked).toBe(false);
 		}
 		expect(inventory.map(volume => volume.id)).toEqual(['vol-b', 'vol-a', 'vol-c']);
 		expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/volumes')).toHaveLength(1);
-		await fireEvent.change(sort, { target: { value: 'name_desc' } });
+		await fireEvent.click(nameSort('none'));
+		await fireEvent.click(nameSort('ascending'));
 		inventory = [...inventory, makeVolume('vol-d', 'Delta', '2026-10-04T00:00:00Z')];
 		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
 		await waitFor(() => expect(namesInPanel()).toEqual(['Delta', 'Charlie', 'Bravo', 'Alpha']));
-		expect(sort.value).toBe('name_desc');
+		expect(nameSort('descending')).toBeTruthy();
 		expect(mocks.get).toHaveBeenCalledWith('/api/v1/volumes', 'token', 'project-a', { refresh: true });
 		await fireEvent.click(screen.getByRole('tab', { name: /스냅샷/ }));
-		expect(view.container.querySelector('#project-volume-sort')).toBeNull();
 		await fireEvent.click(screen.getByRole('tab', { name: /볼륨/ }));
-		expect(view.container.querySelector<HTMLSelectElement>('#project-volume-sort')!.value).toBe('name_desc');
+		expect(nameSort('descending')).toBeTruthy();
 		expect(namesInPanel()).toEqual(['Delta', 'Charlie', 'Bravo', 'Alpha']);
 	});
 
@@ -82,7 +81,7 @@ describe('project volume list sorting', () => {
 		const view = render(Page);
 		await screen.findByRole('button', { name: 'Dataset 0' });
 		expect(screen.queryByRole('button', { name: 'Dataset 24' })).toBeNull();
-		await fireEvent.input(view.container.querySelector<HTMLInputElement>('#project-volume-search')!, { target: { value: 'Dataset 24' } });
+		await fireEvent.input(view.container.querySelector<HTMLInputElement>('#project-volume-search')!, { target: { value: '^Dataset 24$' } });
 		expect(screen.getByRole('button', { name: 'Dataset 24' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Dataset 0' })).toBeNull();
 		expect(screen.getByTestId('project-volume-footer').textContent).toContain(t('page.resultCount', { filtered: 1, total: 25 }));

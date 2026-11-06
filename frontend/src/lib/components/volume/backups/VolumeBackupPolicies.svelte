@@ -1,4 +1,11 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { auth, canWrite, projectSwitching } from '$lib/stores/auth';
 	import { t } from '$lib/i18n/ns/volume';
@@ -20,6 +27,29 @@
 		try { return parsed.toLocaleString(intlLocale(), { timeZone: timezone, dateStyle: 'medium', timeStyle: 'long' }); }
 		catch { return t('autoPolicy.invalidMetadata'); }
 	}
+ let search = $state('');
+ const searchId = $props.id();
+ type Policy = VolumeBackupPoliciesController['policies'][number];
+ const columns = $derived<TableColumn<Policy>[]>([
+  { key: 'name', label: t('listTable.name'), value: row => controller.volumes.find(volume => volume.id === row.volume_id)?.name || row.volume_id },
+  { key: 'status', label: t('listTable.status'), value: row => row.enabled, format: value => t(value ? 'autoPolicy.active' : 'autoPolicy.paused') },
+  { key: 'daily', label: t('autoPolicy.daily'), value: row => row.max_daily },
+  { key: 'weekly', label: t('autoPolicy.weekly'), value: row => row.max_weekly },
+  { key: 'monthly', label: t('autoPolicy.monthly'), value: row => row.max_monthly },
+  { key: 'weeklyDay', label: t('autoPolicy.weeklyDay'), value: row => row.weekly_day, format: value => t(`autoPolicy.${days[Number(value)]}`) },
+  { key: 'monthlyDay', label: t('autoPolicy.monthlyDay'), value: row => row.monthly_day },
+  { key: 'force', label: t('autoPolicy.force'), value: row => row.force },
+  { key: 'next', label: t('autoPolicy.next'), value: row => row.next_run_at },
+  { key: 'last', label: t('autoPolicy.last'), value: row => row.last_run_at },
+  { key: 'result', label: t('autoPolicy.result'), value: row => row.last_status },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => controller.policies, columns: () => columns, search: () => search, searchable: row => [row.volume_id, controller.volumes.find(volume=>volume.id===row.volume_id)?.name,row.last_status,row.schedule_time,row.timezone].map(value => String(value ?? ''))});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#snippet policyActions(policy: VolumeBackupPoliciesController['policies'][number], name: string)}
@@ -37,6 +67,9 @@
 		</div>
 		{#if !$canWrite}<p class="mt-3 text-sm text-ink-2">{t('autoPolicy.reader')}</p>{/if}
 	</Card>
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class="" />
+{#if !controller.loading && controller.policies.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 	{#if controller.loading}<LoadingState variant="inline" label={t('autoPolicy.loading')} />{/if}
 	{#if controller.error}<Alert tone="danger">{controller.error}</Alert>{/if}
 	{#if controller.volumesError}<Alert tone="danger">{controller.volumesError}</Alert>{/if}
@@ -46,7 +79,7 @@
 	{#if controller.policies.length > 0}
 	<ResponsiveTable>
 		{#snippet cards()}
-			{#each controller.policies as policy (policy.volume_id)}
+			{#each view.rows as policy (policy.volume_id)}
 				{@const name = controller.volumes.find((volume) => volume.id === policy.volume_id)?.name || policy.volume_id}
 				<CompactResourceCard>
 					<div class="flex flex-wrap items-start gap-2 min-w-0"><h3 class="min-w-0 flex-1 break-all font-semibold">{name}</h3><Pill tone={policy.enabled ? 'success' : 'neutral'}>{t(policy.enabled ? 'autoPolicy.active' : 'autoPolicy.paused')}</Pill></div>
@@ -70,7 +103,7 @@
 			{/each}
 		{/snippet}
 	<div class="space-y-4">
-	{#each controller.policies as policy (policy.volume_id)}
+	{#each view.rows as policy (policy.volume_id)}
 		{@const name = controller.volumes.find((volume) => volume.id === policy.volume_id)?.name || policy.volume_id}
 		<Card>
 			<div class="flex flex-wrap items-center gap-3"><h3 class="min-w-0 break-all text-sm font-semibold">{name}</h3><Pill tone={policy.enabled ? 'success' : 'neutral'}>{t(policy.enabled ? 'autoPolicy.active' : 'autoPolicy.paused')}</Pill></div>

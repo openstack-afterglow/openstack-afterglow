@@ -185,7 +185,6 @@
 	"lb.actions.adding": "Adding…",
 	"lb.actions.remove": "Remove",
 	"lb.actions.removing": "Removing…",
-
 	"lb.listeners.title": "Listeners ({count})",
 	"lb.listeners.empty": "No listeners.",
 	"lb.form.optionalName": "Name (optional)",

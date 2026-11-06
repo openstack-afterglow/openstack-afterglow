@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import K3sClusterListTable from '../K3sClusterListTable.svelte';
 import type { Cluster } from '$lib/types/cluster';
+import { createTableView } from '$lib/utils/tableView.svelte';
+const clusterView = () => createTableView<Cluster>({ rows: () => clusters, columns: () => [{ key: 'name', label: 'Name', value: row => row.name }] });
 
 const clusters: Cluster[] = [
   {
@@ -27,6 +29,7 @@ function renderTable(overrides: Partial<{
 }> = {}) {
   return render(K3sClusterListTable, {
     clusters,
+    view: clusterView(),
     deleting: null,
     onNavigate: vi.fn(),
     onDelete: vi.fn(),
@@ -61,6 +64,7 @@ describe('K3sClusterListTable selection', () => {
     const onToggleSelect = vi.fn();
     render(K3sClusterListTable, {
       clusters,
+    view: clusterView(),
       deleting: null,
       selectedIds: new Set<string>(),
       selectableIds: new Set(clusters.map((cluster) => cluster.id)),

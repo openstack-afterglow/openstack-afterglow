@@ -54,8 +54,16 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as commonText } from '$lib/i18n/ns/common';
+	import { createWaygateViewState, type WaygateViewState } from '$lib/utils/waygateView.svelte';
 
-	let { scope, admin = false }: { scope: WaygateProjectScope; admin?: boolean } = $props();
+	let { scope, admin = false, viewState }: { scope: WaygateProjectScope; admin?: boolean; viewState?: WaygateViewState } = $props();
+	const display = untrack(() => viewState ?? createWaygateViewState());
 	// The parent keys this entire workspace by scope; credentials never change in place.
 	const { token, projectId, isCurrent } = untrack(() => scope);
 	const workspaceContext = untrack(() => admin);
@@ -84,15 +92,28 @@
 	}
 
 	let servers = $state<WaygateServer[]>([]);
+	const serverColumns = $derived<TableColumn<WaygateServer>[]>([
+		{ key: 'name', label: t('project.server.label'), value: row => row.name },
+		{ key: 'status', label: t('project.table.status'), value: row => row.status },
+		{ key: 'endpoint', label: t('project.server.endpoint'), value: row => row.endpoint_ip },
+		{ key: 'tunnel', label: t('project.server.tunnelCidr'), value: row => row.tunnel_cidr },
+		{ key: 'peers', label: t('project.server.peerCount'), value: row => row.peer_count },
+		{ key: 'created', label: t('project.details.createdAt'), value: row => row.created_at ? Date.parse(row.created_at) : null, format: (_value, row) => formatDate(row.created_at) },
+	]);
+	const serverView = createTableView({ rows: () => servers, columns: () => serverColumns, search: () => display.servers.search, state: display.servers, locale: intlLocale });
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
 	let selection = createResourceSelection();
 	let busy = $state(false);
-	let selectableIds = $derived(new Set(servers.map((server) => server.id)));
+	let selectableIds = $derived(new Set(serverView.rows.map((server) => server.id)));
 	let selectedCount = $derived([...selectableIds].filter((id) => selection.ids.has(id)).length);
 	let allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
 	let indeterminate = $derived(selectedCount > 0 && !allSelected);
+	$effect(() => {
+		const visibleIds = selectableIds;
+		untrack(() => selection.retain(visibleIds));
+	});
 
 	$effect(() => {
 		if (!can.deleteGateway) untrack(() => selection.clear());
@@ -385,6 +406,10 @@
 
 	function openPanel(id: string) {
 		if (!isCurrent() || !servers.some((server) => server.id === id)) return;
+		if (display.detailTarget !== id) {
+			display.clients.search = ''; clientView.reset(); display.attachments.search = ''; attachmentView.reset();
+			display.detailTarget = id;
+		}
 		resetDetail();
 		serverRequest += 1;
 		selectedServerId = id;
@@ -400,6 +425,17 @@
 
 	// ---- 클라이언트(peer) 관리 ----
 	let clients = $state<WaygateClient[]>([]);
+	const clientColumns = $derived<TableColumn<WaygateClient>[]>([
+		{ key: 'name', label: t('project.client.heading'), value: row => row.name },
+		{ key: 'status', label: t('project.client.status'), value: row => clientStatusLabel(row),
+			filterValues: row => [clientStatusKey(row)], format: (_value, row) => clientStatusLabel(row) },
+		{ key: 'tunnel', label: t('project.client.tunnelIp'), value: row => row.tunnel_ip },
+		{ key: 'owner', label: t('project.client.owner'), value: row => ownerLabel(row),
+			filterValues: row => [row.owner_user_id ?? null], format: (_value, row) => ownerLabel(row) },
+		{ key: 'handshake', label: t('project.client.lastHandshake'), value: row => row.last_handshake_at ? Date.parse(row.last_handshake_at) : null, format: (_value, row) => formatDate(row.last_handshake_at) },
+		{ key: 'created', label: t('project.details.createdAt'), value: row => row.created_at ? Date.parse(row.created_at) : null, format: (_value, row) => formatDate(row.created_at) },
+	]);
+	const clientView = createTableView({ rows: () => clients, columns: () => clientColumns, search: () => display.clients.search, state: display.clients, locale: intlLocale });
 	let clientsLoading = $state(false);
 	let clientsLoaded = $state(false);
 	let clientsError = $state('');
@@ -754,6 +790,15 @@
 
 	// ---- 네트워크 연결 (Phase 2 — 멀티 NIC + SNAT) ----
 	let attachments = $state<WaygateNetworkAttachment[]>([]);
+	const attachmentColumns = $derived<TableColumn<WaygateNetworkAttachment>[]>([
+		{ key: 'network', label: t('project.network.label'), value: row => attachmentNetworkName(row.network_id),
+			filterValues: row => [row.network_id], format: (_value, row) => attachmentNetworkName(row.network_id) },
+		{ key: 'cidr', label: t('project.network.cidrLabel'), value: row => row.cidr },
+		{ key: 'nat', label: t('project.network.natLabel'), value: row => row.nat_mode },
+		{ key: 'status', label: t('project.table.status'), value: row => row.status },
+	]);
+	const attachmentView = createTableView({ rows: () => attachments, columns: () => attachmentColumns, search: () => display.attachments.search, state: display.attachments,
+		searchable: row => [attachmentNetworkName(row.network_id), row.network_id, row.cidr ?? '', row.nat_mode, row.status], locale: intlLocale });
 	let attachmentsLoading = $state(false);
 	let attachmentsLoaded = $state(false);
 	let attachmentsError = $state('');
@@ -1033,13 +1078,16 @@
 		}
 	}
 
-	function clientStatusLabel(client: WaygateClient): string {
-		if (!client.enabled) return t('project.status.disabled');
-		if (!client.last_reported_at || client.online === null) return t('project.status.unknown');
+	function clientStatusKey(client: WaygateClient): 'disabled' | 'unknown' | 'delayed' | 'online' | 'offline' {
+		if (!client.enabled) return 'disabled';
+		if (!client.last_reported_at || client.online === null) return 'unknown';
 		const reportedAt = Date.parse(client.last_reported_at);
 		const freshness = waygateTrafficFreshnessMs(client.report_interval_seconds, peerAr.intervalSeconds);
-		if (!Number.isFinite(reportedAt) || trafficNow - reportedAt > freshness) return t('project.status.delayed');
-		return client.online ? t('project.status.online') : t('project.status.offline');
+		if (!Number.isFinite(reportedAt) || trafficNow - reportedAt > freshness) return 'delayed';
+		return client.online ? 'online' : 'offline';
+	}
+	function clientStatusLabel(client: WaygateClient): string {
+		return t(`project.status.${clientStatusKey(client)}`);
 	}
 
 	function formatDate(iso: string | null): string {
@@ -1072,7 +1120,6 @@
 	<div data-tour="waygate-header">
 	<PageHeader breadcrumb={admin ? t('project.header.adminBreadcrumb') : t('project.header.networkBreadcrumb')} title={admin ? t('project.header.adminTitle') : 'Waygate'}>
 		{#snippet actions()}
-			<TutorialStartButton tour={admin ? 'admin-waygate' : 'waygate'} compactOnMobile />
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -1080,6 +1127,7 @@
 				refreshing={refreshing}
 				onManualRefresh={forceRefresh}
 			/>
+			<TutorialStartButton tour={admin ? 'admin-waygate' : 'waygate'} compactOnMobile />
 			{#if waygateConfigured && can.createGateway}
 				<Button onclick={openCreateServer} variant="accent" size="sm">
 					{t('project.actions.createServer')}
@@ -1100,6 +1148,9 @@
 	{/if}
 
 	<div data-tour="waygate-list">
+	<RegexSearch id="waygate-server-regex" bind:value={display.servers.search} />
+	<TableViewControls view={serverView} class={servers.length ? 'lg:hidden' : ''} />
+	{#if !loading && servers.length && !serverView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
 	<div data-tour={!loading && !error ? 'waygate-ready' : undefined}>
 	{#if loading}
 		<LoadingState variant="surface" />
@@ -1113,7 +1164,7 @@
   <ResponsiveTable>
    {#snippet cards()}
     {#if can.deleteGateway}<div class="responsive-card-toolbar"><SelectionToolbar label={t('project.server.label')} ariaLabel={t('project.selection.all')} checked={allSelected} indeterminate={indeterminate} selectedCount={selectedCount} disabled={busy || selectableIds.size === 0} onToggle={() => { if (isCurrent() && can.deleteGateway) selection.toggleAll(selectableIds); }} /></div>{/if}
-    {#each servers as server (server.id)}
+    {#each serverView.rows as server (server.id)}
      <CompactResourceCard selected={selection.has(server.id)}>
       <div class="flex items-start gap-2">{#if can.deleteGateway}<SelectionCheckbox checked={selection.has(server.id)} disabled={busy} ariaLabel={t('project.selection.server', { name: server.name })} onclick={() => { if (isCurrent() && can.deleteGateway) selection.toggle(server.id); }} />{/if}<button onclick={() => openPanel(server.id)} class="min-w-0 break-all text-left font-medium">{server.name}</button><StatusChip status={server.status} /></div>
       <p class="text-xs font-mono break-all">{t('project.server.endpoint')}: {server.endpoint_ip ?? '-'}</p><p class="text-xs text-ink-2">{t('project.server.tunnelCidr')}: {server.tunnel_cidr} · {t('project.server.peerCount')}: {server.peer_count ?? '-'}</p>
@@ -1126,7 +1177,7 @@
 			<table>
 				<thead>
 					<tr>
-						<th>
+						<th aria-sort={serverView.direction('name')}>
 							{#if can.deleteGateway}
 							<SelectionToolbar
 								label={t('project.server.label')}
@@ -1137,20 +1188,15 @@
 								disabled={busy || selectableIds.size === 0}
 								onToggle={() => { if (isCurrent() && can.deleteGateway) selection.toggleAll(selectableIds); }}
 							/>
-							{:else}
-								{t('project.server.label')}
-								{/if}
+							{/if}
+							<TableColumnControl view={serverView} columnKey="name" />
 						</th>
-						<th>{t('project.table.status')}</th>
-						<th>{t('project.server.endpoint')}</th>
-						<th>{t('project.server.tunnelCidr')}</th>
-						<th>{t('project.server.peerCount')}</th>
-						<th>{t('project.details.createdAt')}</th>
+						{#each serverView.columns.filter(column => column.key !== 'name') as column (column.key)}<TableColumnHeader view={serverView} columnKey={column.key} />{/each}
 						<th></th>
 					</tr>
 				</thead>
 				<tbody class="motion-stagger">
-					{#each servers as server (server.id)}
+					{#each serverView.rows as server (server.id)}
 						<tr class="resource-selection-surface cursor-pointer" data-selected={selection.has(server.id)} onclick={() => openPanel(server.id)}>
 							<td class="text-[var(--color-ink-0)]">
 								{#if can.deleteGateway}
@@ -1188,7 +1234,7 @@
 </div>
 {#if can.deleteGateway}
 <BulkSelectionOverlay
-	count={selection.count}
+	count={selectedCount}
 	ariaLabel={t('project.selection.bulkActions')}
 	actions={[{ key: 'delete', label: t('project.actions.delete'), tone: 'danger', onAction: bulkDeleteServers }]}
 	{busy}
@@ -1283,6 +1329,9 @@
 					onManualRefresh={() => { if (selectedServerId) void fetchClients(selectedServerId, true); }}
 				/>
 			</div>
+			<RegexSearch id="waygate-client-regex" bind:value={display.clients.search} />
+			<TableViewControls view={clientView} class="" />
+			{#if clients.length && !clientView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
 
 			{#if clientsError}
 				<Alert tone="danger" class="mb-4">{clientsError}</Alert>
@@ -1296,7 +1345,7 @@
 				</div>
 			{:else}
 				<div class="motion-stagger space-y-3">
-					{#each clients as client (client.id)}
+					{#each clientView.rows as client (client.id)}
 						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 								<div class="min-w-0">
@@ -1386,6 +1435,9 @@
 				>{t('project.actions.attachNetwork')}</Button>
 				{/if}
 			</div>
+			<RegexSearch id="waygate-attachment-regex" bind:value={display.attachments.search} />
+			<TableViewControls view={attachmentView} class="" />
+			{#if attachments.length && !attachmentView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
 
 			{#if attachmentsError}
 				<Alert tone="danger" class="mb-4">{attachmentsError}</Alert>
@@ -1399,7 +1451,7 @@
 				</div>
 			{:else}
 				<div class="motion-stagger space-y-3">
-					{#each attachments as att (att.id)}
+					{#each attachmentView.rows as att (att.id)}
 						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 								<dl class="grid min-w-0 flex-1 grid-cols-1 gap-2 text-xs lg:grid-cols-3">

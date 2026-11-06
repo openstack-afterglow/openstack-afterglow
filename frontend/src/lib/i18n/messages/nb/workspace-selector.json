@@ -1,7 +1,7 @@
 {
-  "personal": "Personlig",
-  "organization": "Organisasjon",
-  "personalProjectNameHelp": "Navn på personlige prosjekter opprettes automatisk.",
+	"personal": "Personlig",
+	"organization": "Organisasjon",
+	"personalProjectNameHelp": "Navn på personlige prosjekter opprettes automatisk.",
 	"title": "Velg en ressurs",
 	"openSelector": "{project} · {domain}: velg en ressurs",
 	"activeDomain": "Aktivt domene",

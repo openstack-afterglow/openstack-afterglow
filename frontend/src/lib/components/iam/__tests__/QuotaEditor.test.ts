@@ -18,7 +18,7 @@ it('allows the first limit on an unconfigured policy without inventing other lim
 	const instances = container.querySelector('input[id$="-instances"]') as HTMLInputElement;
 	expect(instances.value).toBe('');
 	await fireEvent.input(instances, { target: { value: '5' } });
-	await fireEvent.click(screen.getByRole('button'));
+	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
 	expect(onSave).toHaveBeenCalledExactlyOnceWith({ instances: 5 });
 });
 
@@ -28,7 +28,7 @@ it('preserves zero and unlimited while removing an explicitly cleared policy lim
 	expect((container.querySelector('input[id$="-instances"]') as HTMLInputElement).value).toBe('0');
 	expect((container.querySelector('input[id$="-cores"]') as HTMLInputElement).value).toBe('-1');
 	await fireEvent.input(container.querySelector('input[id$="-ram"]')!, { target: { value: '' } });
-	await fireEvent.click(screen.getByRole('button'));
+	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
 	expect(onSave).toHaveBeenCalledExactlyOnceWith({ instances: 0, cores: -1 });
 });
 
@@ -66,4 +66,23 @@ it('shows and submits native CPU/RAM policy limits without a pool projection', a
 	await fireEvent.input(screen.getByLabelText(t('field.ram')), { target: { value: '24576' } });
 	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
 	expect(onSave).toHaveBeenCalledExactlyOnceWith({ instances: 3, cores: 12, ram: 24576 });
+});
+
+it.each([true, false])('keeps consecutive edits bound to the same field while limit sorting reorders rows (desktop=%s)', async desktop => {
+	viewport.desktop = desktop;
+	const onSave = vi.fn();
+	const { container } = render(QuotaEditor, {
+		values: { instances: 1, cores: 2, ram: 3 },
+		onSave,
+		viewState: { searches: {}, sections: { compute: { sort: { key: 'limit', direction: 'asc' }, filters: {} } } },
+	});
+	const cores = container.querySelector('input[id$="-cores"]') as HTMLInputElement;
+	cores.focus();
+	await fireEvent.input(cores, { target: { value: '20' } });
+	expect(cores.id.endsWith('-cores')).toBe(true);
+	expect(container.querySelector('input[id$="-cores"]')).toBe(cores);
+	await fireEvent.input(cores, { target: { value: '200' } });
+	expect((container.querySelector('input[id$="-ram"]') as HTMLInputElement).value).toBe('3');
+	await fireEvent.click(screen.getByRole('button', { name: t('save') }));
+	expect(onSave).toHaveBeenCalledExactlyOnceWith({ instances: 1, cores: 200, ram: 3 });
 });

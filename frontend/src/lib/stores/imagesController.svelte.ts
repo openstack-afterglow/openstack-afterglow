@@ -1,8 +1,8 @@
 import { t } from '$lib/i18n/ns/images-keys';
 import { api, ApiError } from '$lib/api/client';
 import type { ImageInfo } from '$lib/types/compute';
-import { createImageCatalog } from '$lib/stores/imageCatalog.svelte';
-import type { CatalogSortMode, VerificationFilter } from '$lib/stores/imageCatalog.svelte';
+import { createImageCatalog, type ImageCatalogState } from '$lib/stores/imageCatalog.svelte';
+
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import { executeBulkMutations, type BulkMutationResult } from '$lib/utils/bulkActions';
@@ -12,6 +12,7 @@ import { beginExperienceAction, beginExperienceLoad, experienceApplied, experien
 export interface ImagesControllerOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
+  viewOwner?: () => string;
 }
 export function createImagesController(opts: ImagesControllerOpts) {
   let images = $state<ImageInfo[]>([]);
@@ -30,6 +31,12 @@ export function createImagesController(opts: ImagesControllerOpts) {
   let fetchGeneration = 0;
   let fetchToken: string | undefined;
   let fetchProjectId: string | undefined;
+  let repositoryOwner: string | undefined;
+  let repositoryStates = $state<Record<string, ImageCatalogState>>({});
+  function repositoryState(repository: string): ImageCatalogState {
+    if (!Object.hasOwn(repositoryStates, repository)) repositoryStates = { ...repositoryStates, [repository]: { searchQuery: '', view: { sort: null, filters: {} } } };
+    return repositoryStates[repository];
+  }
 
   function openImagePanel(id: string) {
     selectedImageId = id;
@@ -54,6 +61,11 @@ export function createImagesController(opts: ImagesControllerOpts) {
     const generation = ++fetchGeneration;
     const token = opts.token();
     const projectId = opts.projectId();
+    const viewOwner = opts.viewOwner?.() ?? projectId ?? '';
+    if (repositoryOwner !== viewOwner) {
+      repositoryOwner = viewOwner;
+      repositoryStates = {};
+    }
     if (token !== fetchToken || projectId !== fetchProjectId) {
       images = [];
       selection.clear();
@@ -62,7 +74,8 @@ export function createImagesController(opts: ImagesControllerOpts) {
     }
     fetchToken = token;
     fetchProjectId = projectId;
-    const owns = () => generation === fetchGeneration && opts.token() === token && opts.projectId() === projectId;
+    const owns = () => generation === fetchGeneration && opts.token() === token && opts.projectId() === projectId
+      && (opts.viewOwner?.() ?? opts.projectId() ?? '') === viewOwner;
     if (loading || refreshing) experienceState(experience, 'loading');
     try {
       const fetched = await api.withExperience(experience).get<ImageInfo[]>('/api/v1/images', token, projectId, fetchOpts);
@@ -162,18 +175,13 @@ export function createImagesController(opts: ImagesControllerOpts) {
     get selectedImageId() { return selectedImageId; },
     get bulkActioning() { return bulkActioning; },
     get selection() { return selection; },
-    get distroFilter() { return catalog.distroFilter; },
-    set distroFilter(v: string) { catalog.distroFilter = v; },
+    catalog,
+    view: catalog.view,
+    repositoryState,
+    get repositoryStates() { return repositoryStates; },
     get searchQuery() { return catalog.searchQuery; },
     set searchQuery(v: string) { catalog.searchQuery = v; },
-    get repositoryFilter() { return catalog.repositoryFilter; },
-    set repositoryFilter(v: string) { catalog.repositoryFilter = v; },
-    get tagFilter() { return catalog.tagFilter; },
-    set tagFilter(v: string) { catalog.tagFilter = v; },
-    get verificationFilter() { return catalog.verificationFilter; },
-    set verificationFilter(v: VerificationFilter) { catalog.verificationFilter = v; },
-    get sortMode() { return catalog.sortMode; },
-    set sortMode(v: CatalogSortMode) { catalog.sortMode = v; },
+
     get editTarget() { return editTarget; },
     set editTarget(v: ImageInfo | null) { editTarget = v; },
     get showUploadModal() { return showUploadModal; },
@@ -182,9 +190,7 @@ export function createImagesController(opts: ImagesControllerOpts) {
     get allRepositoryGroups() { return catalog.allRepositoryGroups; },
     set uploadInitialFile(v: File | null) { uploadInitialFile = v; },
     get filteredImages() { return catalog.filteredImages; },
-    get distroGroups() { return catalog.distroGroups; },
-    get repositoryOptions() { return catalog.repositoryOptions; },
-    get tagOptions() { return catalog.tagOptions; },
+
     get visibleRepositoryCount() { return catalog.visibleRepositoryCount; },
     get repositoryGroups() { return catalog.repositoryGroups; },
     openImagePanel,

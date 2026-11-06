@@ -21,7 +21,23 @@
   import K3sClusterListTable from '$lib/components/k3s/K3sClusterListTable.svelte';
   import K3sClusterCreateModal from '$lib/components/k3s/K3sClusterCreateModal.svelte';
 
+  import { t as td } from '$lib/i18n/ns/drover';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
   let clusters = $state<Cluster[]>([]);
+  let search = $state('');
+  const columns = (): TableColumn<Cluster>[] => [
+    { key: 'name', label: td('overview.table.name'), value: row => row.name },
+    { key: 'status', label: td('overview.table.status'), value: row => row.status },
+    { key: 'master_count', label: td('overview.table.master'), value: row => row.master_count },
+    { key: 'node_count', label: td('overview.table.worker'), value: row => row.node_count },
+    { key: 'api_address', label: td('overview.table.apiAddress'), value: row => row.api_address },
+    { key: 'created_at', label: td('overview.table.createdAt'), value: row => row.created_at },
+  ];
+  const view = createTableView({ rows: () => clusters, columns, search: () => search,
+    searchable: row => [row.id, row.name, row.status, row.master_count, row.node_count, row.api_address, row.created_at].map(value => String(value ?? '')), locale: intlLocale });
   let templates = $state<ClusterTemplate[]>([]);
   let loading = $state(true);
   let error = $state('');
@@ -30,7 +46,8 @@
   let showModal = $state(false);
   const selection = createResourceSelection();
   let bulkBusy = $state(false);
-  const selectableIds = $derived(new Set(clusters.map((cluster) => cluster.id)));
+  const selectableIds = $derived(new Set(view.rows.map((cluster) => cluster.id)));
+  $effect(() => { selection.retain(view.rows.map(row => row.id)); });
   async function fetchClusters(force = false) {
     try {
       clusters = await api.get<Cluster[]>('/api/v1/clusters', $auth.token ?? undefined, $auth.projectId ?? undefined, { refresh: force });
@@ -136,10 +153,15 @@
     intervalOptions: [10, 15, 30, 60],
   });
   $effect(() => {
-    if (!$auth.projectId) return;
-    selection.clear();
-    loading = true;
-    untrack(() => { fetchClusters(); });
+    const projectId = $auth.projectId;
+    untrack(() => {
+      selection.clear();
+      search = '';
+      view.reset();
+      if (!projectId) return;
+      loading = true;
+      void fetchClusters();
+    });
   });
 </script>
 
@@ -160,6 +182,8 @@
   </PageHeader>
 
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  <RegexSearch id="legacy-cluster-search" bind:value={search} class="mb-4" />
+  <TableViewControls {view} />
 
   {#if serviceUnavailable}
     <div class="text-center py-20 text-ink-2">
@@ -169,14 +193,18 @@
     </div>
   {:else if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('clusters.list.title') })} />
-  {:else if clusters.length === 0}
-    <div class="text-center py-20 text-ink-2">
-      <p class="text-lg mb-2">{t('clusters.empty.title')}</p>
-      <p class="text-sm">{t('clusters.empty.body')}</p>
-    </div>
   {:else}
+    {#if clusters.length === 0}
+      <div class="text-center py-20 text-ink-2">
+        <p class="text-lg mb-2">{t('clusters.empty.title')}</p>
+        <p class="text-sm">{t('clusters.empty.body')}</p>
+      </div>
+    {:else if view.rows.length === 0}
+      <p role="status" class="text-sm text-ink-2 py-6">{tl('table.noMatches')}</p>
+    {/if}
     <K3sClusterListTable
-      {clusters}
+      clusters={view.rows}
+      {view}
       {deleting}
       selectedIds={selection.ids}
       selectableIds={selectableIds}

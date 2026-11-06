@@ -18,5 +18,3 @@ export interface RoleMetadata {
 	domain_id?: string | null;
 }
 
-export type RoleSort = 'name' | 'id' | 'inheritance';
-export type SortDirection = 'asc' | 'desc';

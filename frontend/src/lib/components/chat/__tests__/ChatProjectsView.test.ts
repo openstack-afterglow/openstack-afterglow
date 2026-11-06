@@ -139,4 +139,35 @@ describe('ChatProjectsView project creation', () => {
 		expect(container.querySelector('.conv-list')?.textContent).toContain('운영 대화');
 		expect(container.querySelector('.conv-list')?.textContent).not.toContain('개발 대화');
 	});
+	it('matches project names, IDs and descriptions independently and retains regex across refreshed rows', async () => {
+		const common = {
+			conversations: [],
+			workspaces: [
+				{ id: 7, name: 'Alpha', description: 'Operations', instructions: null },
+				{ id: 8, name: 'Beta', description: 'Development', instructions: null }
+			],
+			onCreate: vi.fn().mockResolvedValue(true),
+			onUpdate: vi.fn().mockResolvedValue(true),
+			onDelete: vi.fn().mockResolvedValue(true),
+			onAssign: vi.fn(),
+			onOpenConversation: vi.fn(),
+			onNewInProject: vi.fn()
+		};
+		const view = render(ChatProjectsView, common);
+		const input = view.getByRole('searchbox');
+		await fireEvent.input(input, { target: { value: '^(7|development)$' } });
+		expect(view.getByRole('button', { name: /Alpha/ })).toBeTruthy();
+		expect(view.getByRole('button', { name: /Beta/ })).toBeTruthy();
+		await fireEvent.input(input, { target: { value: '^alpha$' } });
+		expect(view.queryByRole('button', { name: /Beta/ })).toBeNull();
+		await view.rerender({ ...common, workspaces: [...common.workspaces].reverse() });
+		expect((input as HTMLInputElement).value).toBe('^alpha$');
+		expect(view.getByRole('button', { name: /Alpha/ })).toBeTruthy();
+		expect(view.queryByRole('button', { name: /Beta/ })).toBeNull();
+		await fireEvent.input(input, { target: { value: '[' } });
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(view.getByRole('alert')).toBeTruthy();
+		expect(view.queryByRole('button', { name: /Alpha/ })).toBeNull();
+		expect(view.queryByRole('button', { name: /Beta/ })).toBeNull();
+	});
 });

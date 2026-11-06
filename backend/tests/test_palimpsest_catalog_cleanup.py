@@ -616,3 +616,69 @@ async def test_removed_marker_never_falls_back_when_sql_authority_is_unavailable
     with pytest.raises(HTTPException) as unavailable:
         await cleanup.lookup_catalog_consume("exact-server", state.server, state.info)
     assert unavailable.value.status_code == 503 and state.denied == [] and state.deletes == []
+
+
+@pytest.fixture
+def scheduled_catalog_operator(cleanup_state):
+    from app.services import instance_usage
+
+    state = cleanup_state
+    access = SimpleNamespace(
+        project_id="fixed-admin-project",
+        user_id="fixed-operator",
+        project_scoped=True,
+        system_scoped=False,
+        is_admin_project=True,
+        auth_token="synthetic-operator-token",
+        role_names=["admin"],
+        _data={"token": {"is_admin_project": True}},
+    )
+    state.conn.session = SimpleNamespace(auth=SimpleNamespace(get_access=lambda _: access))
+    instance_usage.bind_operator_scope(state.conn, PROJECT)
+    lease = SimpleNamespace(current=AsyncMock(return_value=True))
+    return state, access, lease
+
+
+@pytest.mark.asyncio
+async def test_scheduled_catalog_fixed_admin_observes_exact_receipt_without_tenant_rescope(
+    scheduled_catalog_operator, catalog_db
+):
+    from app.services import instance_usage_cleanup
+
+    state, _, lease = scheduled_catalog_operator
+    async with catalog_db() as session:
+        row = await session.get(LayerConsume, state.consume_id)
+    observed = await instance_usage_cleanup._catalog_preflight(state.conn, row, state.server, lease)
+    assert observed == {
+        "port_ids": ["exact-port"],
+        "managed_volume_ids": [],
+        "rules": [{"s": "exact-share", "i": "exact-rule", "t": "ip", "a": "10.0.0.9", "l": "ro", "m": True}],
+        "share_project_id": OTHER,
+    }
+    assert state.conn._afterglow_project_id == "fixed-admin-project"
+    assert state.denied == [] and state.deletes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["owner", "lease", "role", "user", "scope", "binding"])
+async def test_scheduled_catalog_operator_proof_never_accepts_foreign_or_stale_authority(
+    scheduled_catalog_operator, invalid
+):
+    state, access, lease = scheduled_catalog_operator
+    owner = PROJECT
+    if invalid == "owner":
+        owner = OTHER
+    elif invalid == "lease":
+        lease.current.return_value = False
+    elif invalid == "role":
+        access.role_names = ["reader"]
+    elif invalid == "user":
+        access.user_id = "foreign-operator"
+    elif invalid == "scope":
+        access.project_id = "foreign-admin-project"
+    else:
+        state.conn._afterglow_usage_operator_scope = SimpleNamespace(target_project_id=PROJECT)
+    with pytest.raises(HTTPException) as denied:
+        await cleanup._authority(cleanup.ScheduledCleanupAuthority(state.conn, lease), owner)
+    assert denied.value.status_code in {403, 409, 503}
+    assert state.denied == [] and state.deletes == []

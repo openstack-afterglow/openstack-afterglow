@@ -28,7 +28,6 @@
 
 <PageHeader breadcrumb={t('header.breadcrumb')} title={t('cluster.title')}>
 	{#snippet actions()}
-		<TutorialStartButton tour="drover" />
 		<Button variant="secondary" size="sm" onclick={onToggleDeleted} ariaPressed={showDeleted}>
 			{showDeleted ? t('header.hideDeleted') : t('header.showDeleted')}
 		</Button>
@@ -39,6 +38,7 @@
 			{refreshing}
 			onManualRefresh={onForceRefresh}
 		/>
+		<TutorialStartButton tour="drover" />
 		<Button
 			dataTour="drover-create-open"
 			variant="primary"

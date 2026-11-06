@@ -293,10 +293,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 13,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-red-900/40","border-blue-500","border-gray-600","border-gray-700","border-red-700","text-gray-400","text-red-300"],
 	},
-	"frontend/src/lib/components/admin/ports/PortsFilterBar.svelte": {
-		count: 7,
-		tokens: ["bg-gray-800","border-blue-500","border-gray-700","text-gray-300"],
-	},
 	"frontend/src/lib/components/admin/ports/PortsTable.svelte": {
 		count: 16,
 		tokens: ["bg-gray-600","bg-gray-700","bg-gray-800/30","bg-red-900/30","bg-red-900/50","border-gray-800","border-gray-800/50","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],
@@ -612,10 +608,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/dashboard/images/ImageCard.svelte": {
 		count: 33,
 		tokens: ["bg-blue-900/25","bg-blue-900/30","bg-gray-800","bg-gray-800/70","bg-gray-900","bg-red-900/30","bg-teal-900/25","border-blue-800","border-gray-600","border-gray-700","border-gray-800","border-teal-800","text-blue-300","text-blue-400","text-gray-400","text-gray-500","text-gray-600","text-green-300","text-green-400","text-orange-300","text-orange-400","text-red-300","text-red-400","text-teal-400"],
-	},
-	"frontend/src/lib/components/dashboard/images/ImageDistroFilter.svelte": {
-		count: 3,
-		tokens: ["bg-blue-600","bg-gray-800","text-gray-400"],
 	},
 	"frontend/src/lib/components/dashboard/images/ImageDropOverlay.svelte": {
 		count: 5,

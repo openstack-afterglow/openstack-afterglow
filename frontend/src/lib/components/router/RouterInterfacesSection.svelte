@@ -5,6 +5,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	const s = useRouterDetailController();
 	const pending = createPendingAction();
@@ -25,11 +26,13 @@
 		<RouterInterfaceAddForm />
 	{/if}
 
+	<TableViewControls view={s.interfaceView} class="" />
+	{#if s.router!.interfaces.length > 0 && s.interfaceView.rows.length === 0}<p class="text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 	{#if s.router!.interfaces.length === 0}
 		<p class="text-sm text-ink-2">{t('router.interfaces.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each s.router!.interfaces as iface}
+			{#each s.interfaceView.rows as iface (iface.subnet_id)}
 				{@const removing = pending.isActive(`remove:${iface.subnet_id}`, s.saving)}
 				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
 					<div class="text-sm">

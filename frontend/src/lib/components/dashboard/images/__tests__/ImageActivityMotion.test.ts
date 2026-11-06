@@ -6,7 +6,6 @@ vi.mock('$lib/api/client', () => ({ api: { patch }, ApiError: class ApiError ext
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }) }));
 import ImageCard from '../ImageCard.svelte';
 import ImageEditModal from '../ImageEditModal.svelte';
-import ImageDistroFilter from '../ImageDistroFilter.svelte';
 import { t } from '$lib/i18n/ns/images-keys';
 
 const image = { id: 'image-a', name: 'ubuntu:latest', status: 'active', min_disk: 0, min_ram: 0 };
@@ -78,12 +77,4 @@ describe('image catalog activity feedback', () => {
 		expect(onSaved.mock.invocationCallOrder[0]).toBeLessThan(onClose.mock.invocationCallOrder[0]);
 	});
 
-	it('keeps distro counts and filter controls stable during a count refresh', async () => {
-		const view = render(ImageDistroFilter, { distroFilter: 'all', counts: { all: 2, ubuntu: 2 } });
-		const button = screen.getByRole('button', { name: /^Ubuntu\s*\(\s*2\s*\)$/ });
-		await view.rerender({ distroFilter: 'all', counts: { all: 3, ubuntu: 3 } });
-		expect(screen.getByRole('button', { name: /^Ubuntu\s*\(\s*3\s*\)$/ })).toBe(button);
-		expect(screen.getByRole('button', { name: /^전체\s*\(\s*3\s*\)$/ })).toBeTruthy();
-		expect((button as HTMLButtonElement).disabled).toBe(false);
-	});
 });

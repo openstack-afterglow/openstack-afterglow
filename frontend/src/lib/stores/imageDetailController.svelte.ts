@@ -1,4 +1,5 @@
 import { t } from '$lib/i18n/ns/images-keys';
+import type { TableViewState } from '$lib/utils/tableView.svelte';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { ImageDetail, ImageMember } from '$lib/types/adminImage';
@@ -71,6 +72,13 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	let loading = $state(true);
 	let error = $state('');
 	let deleting = $state(false);
+	let tableStates = $state<Record<string, { search: string; state: TableViewState }>>({});
+	let tableViewScope: Pick<ImageDetailScope, 'imageId' | 'projectId' | 'isAdmin'> | null = null;
+	function tableState(key: string) {
+		tableViewScope ??= { imageId: opts.imageId(), projectId: opts.projectId(), isAdmin: opts.isAdmin() };
+		if (!tableStates[key]) tableStates[key] = { search: '', state: { sort: null, filters: {} } };
+		return tableStates[key];
+	}
 
 	// Visibility state
 	let visibilityValue = $state('');
@@ -127,7 +135,11 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		// An explicit reload must not replace an open metadata draft.
 		if (sameContext(loadedScope) && (editingProps || windowsEditing || savingProps || windowsSaving
 			|| savingVisibility || addingMember || removingMember || deleting)) return;
-		if (!sameContext(loadedScope)) reset();
+		if (!sameContext(loadedScope)) {
+			const retainTableViews = tableViewScope !== null && tableViewScope.imageId === opts.imageId()
+				&& tableViewScope.projectId === opts.projectId() && tableViewScope.isAdmin === opts.isAdmin();
+			reset(retainTableViews);
+		}
 		++generation;
 		const scope = captureScope();
 		if (!scope.imageId || !scope.token) return;
@@ -181,7 +193,11 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 		}
 	}
 
-	function reset() {
+	function reset(retainTableViews = false) {
+		if (!retainTableViews) {
+			tableStates = {};
+			tableViewScope = null;
+		}
 		++generation;
 		loadedScope = null;
 		image = null;
@@ -457,6 +473,11 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 	}
 
 	return {
+		tableState,
+		get hasPropertyViewConditions() {
+			const table = tableStates.properties;
+			return !!table && (!!table.search || table.state.sort !== null || Object.keys(table.state.filters).length > 0);
+		},
 		// State getters
 		get image() { return sameContext(loadedScope) ? image : null; },
 		get members() { return sameContext(loadedScope) ? members : []; },
@@ -526,6 +547,8 @@ export function createImageDetailController(opts: ImageDetailControllerOpts): Im
 }
 
 export interface ImageDetailController {
+	tableState(key: string): { search: string; state: TableViewState };
+	readonly hasPropertyViewConditions: boolean;
 	readonly image: ImageDetail | null;
 	readonly members: ImageMember[];
 	readonly loading: boolean;
@@ -567,7 +590,7 @@ export interface ImageDetailController {
 	readonly isAdmin: boolean;
 	loadImage(): Promise<void>;
 	loadMembers(): Promise<void>;
-	reset(): void;
+	reset(retainTableViews?: boolean): void;
 	saveVisibility(): Promise<void>;
 	addMember(): Promise<void>;
 	removeMember(memberId: string): Promise<void>;

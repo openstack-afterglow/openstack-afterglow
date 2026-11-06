@@ -4,13 +4,19 @@
   import Button from '$lib/components/ui/Button.svelte';
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
-  import { untrack } from 'svelte';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { dialogFocus } from '$lib/utils/dialogFocus';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+  import { createTableView } from '$lib/utils/tableView.svelte';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   interface Keypair {
     name: string;
@@ -33,6 +39,24 @@
   let createError = $state('');
   let createdPrivateKey = $state<string | null>(null);
   let form = $state({ name: '', public_key: '' });
+  const uid = $props.id();
+  let search = $state('');
+  const view = createTableView<Keypair>({
+    locale: () => intlLocale(),
+    rows: () => keypairs,
+    search: () => search,
+    columns: () => [
+      { key: 'name', label: t('keypairs.name'), value: row => row.name },
+      { key: 'fingerprint', label: tc('table.fingerprint'), value: row => row.fingerprint },
+      { key: 'type', label: t('keypairs.type'), value: row => row.type },
+    ],
+  });
+  let viewOwner = '';
+  const unsubscribeView = auth.subscribe(state => {
+    const next = sessionScopeKey(state);
+    if (viewOwner !== next) { viewOwner = next; search = ''; view.reset(); }
+  });
+  onDestroy(unsubscribeView);
 
   async function fetchKeypairs() {
     try {
@@ -162,25 +186,27 @@
   {#if error}
     <div class="text-red-400 text-xs mb-3">{error}</div>
   {/if}
+  <RegexSearch id={`${uid}-search`} bind:value={search} />
+  <TableViewControls {view} />
 
   {#if loading}
     <LoadingState variant="section" label={tc('state.loading')}  />
-  {:else if keypairs.length === 0}
-    <div class="text-ink-2 text-xs text-center py-6">{t('keypairs.empty')}</div>
   {:else}
-    <ResponsiveTable>{#snippet cards()}{#each keypairs as kp (kp.name)}<CompactResourceCard>
+    {#if keypairs.length === 0}<div class="text-ink-2 text-xs text-center py-6">{t('keypairs.empty')}</div>
+    {:else if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
+    <ResponsiveTable>{#snippet cards()}{#each view.rows as kp (kp.name)}<CompactResourceCard>
       <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{kp.name}</h4><span class="font-mono text-xs">{kp.type}</span></div>
       {#snippet details()}<code class="text-xs break-all">{kp.fingerprint}</code>{/snippet}
       {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => copyFingerprint(kp.fingerprint)}>{copiedFingerprint === kp.fingerprint ? t('keypairs.copied') : t('keypairs.copy')}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteKeypair(kp.name)} disabled={deleting === kp.name} ariaBusy={deleting === kp.name}>{t('keypairs.delete')}</Button>{/snippet}
     </CompactResourceCard>{/each}{/snippet}
     <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
       <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2 border-b border-line text-xs uppercase tracking-wider text-ink-2">
-        <div>{t('keypairs.nameFingerprint')}</div>
-        <div>{t('keypairs.type')}</div>
+        <div class="flex flex-wrap gap-2"><TableColumnControl {view} columnKey="name" /><TableColumnControl {view} columnKey="fingerprint" /></div>
+        <div><TableColumnControl {view} columnKey="type" /></div>
         <div class="text-right">{t('keypairs.actions')}</div>
       </div>
-      {#each keypairs as kp, i (kp.name)}
-        <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2.5 text-xs items-center {i < keypairs.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
+      {#each view.rows as kp, i (kp.name)}
+        <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2.5 text-xs items-center {i < view.rows.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
           <div class="min-w-0">
             <div class="text-ink-0 font-medium truncate">{kp.name}</div>
             <div class="text-xs text-ink-2 font-mono truncate mt-0.5">{kp.fingerprint}</div>

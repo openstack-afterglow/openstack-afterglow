@@ -201,8 +201,8 @@ describe('admin hypervisor host controls', () => {
 			{ ...server, id: 'vm-2', name: 'second-vm', project_id: 'project-2', project_name: 'Repeated project', domain_id: 'domain-b', domain_name: 'Repeated domain', owner_status: 'known', flavor_id: 'flavor-b', flavor_name: 'Repeated flavor' },
 		]));
 		await openHost();
-		const first = within(await screen.findByRole('group', { name: 'production-vm (vm-1)' }));
-		const second = within(screen.getByRole('group', { name: 'second-vm (vm-2)' }));
+		const first = within(await screen.findByRole('row', { name: 'production-vm (vm-1)' }));
+		const second = within(screen.getByRole('row', { name: 'second-vm (vm-2)' }));
 		for (const [row, domain, project, flavor] of [[first, 'domain-a', 'project-1', 'flavor-a'], [second, 'domain-b', 'project-2', 'flavor-b']] as const) {
 			expect(row.getByText('Repeated domain', { exact: false }).textContent).toContain(domain);
 			expect(row.getByText('Repeated project', { exact: false }).textContent).toContain(project);
@@ -218,16 +218,16 @@ describe('admin hypervisor host controls', () => {
 			{ ...server, id: 'vm-3', name: 'deleted-domain-vm', domain_id: 'deleted-domain-id', domain_name: null, project_name: null, owner_status: 'deleted_domain' },
 		]));
 		await openHost();
-		const deleted = within(await screen.findByRole('group', { name: 'production-vm (vm-1)' }));
+		const deleted = within(await screen.findByRole('row', { name: 'production-vm (vm-1)' }));
 		expect(deleted.getByText('삭제된 프로젝트')).toBeTruthy();
 		expect(deleted.getByText('project-1')).toBeTruthy();
 		expect(deleted.getByText('deleted-flavor-id')).toBeTruthy();
 		expect(deleted.queryByText('Project One')).toBeNull();
-		const unknown = within(screen.getByRole('group', { name: 'unknown-owner-vm (vm-2)' }));
+		const unknown = within(screen.getByRole('row', { name: 'unknown-owner-vm (vm-2)' }));
 		expect(unknown.getAllByText('소유자 미확인').length).toBeGreaterThan(0);
 		expect(unknown.getByText('legacy-flavor')).toBeTruthy();
 		expect((unknown.getByRole('button', { name: 'unknown-owner-vm' }) as HTMLButtonElement).disabled).toBe(true);
-		const deletedDomain = within(screen.getByRole('group', { name: 'deleted-domain-vm (vm-3)' }));
+		const deletedDomain = within(screen.getByRole('row', { name: 'deleted-domain-vm (vm-3)' }));
 		expect(deletedDomain.getByText('삭제된 도메인')).toBeTruthy();
 		expect(deletedDomain.getByText('deleted-domain-id')).toBeTruthy();
 	});

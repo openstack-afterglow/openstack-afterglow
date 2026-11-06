@@ -317,6 +317,8 @@ describe('loaded-only native package search', () => {
     }
     expect(screen.getByText(t('search.empty'))).toBeTruthy();
     await fireEvent.input(search, { target: { value: '   ' } });
+    expect(screen.getByText(t('search.count', { matched: 0, loaded: 2 }))).toBeTruthy();
+    await fireEvent.input(search, { target: { value: '' } });
     expect(screen.getByText(t('search.count', { matched: 2, loaded: 2 }))).toBeTruthy();
     expect(mocks.inventory).toHaveBeenCalledOnce();
     expect(mocks.context).toHaveBeenCalledOnce();

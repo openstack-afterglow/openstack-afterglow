@@ -15,6 +15,10 @@
 	import { t as usage } from '$lib/i18n/ns/usage-schedule';
 	import { Alert } from '$lib/components/ui';
 	import { requiresUsageSchedule } from '$lib/utils/instanceUsage';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
 
 	interface Flavor {
 		id: string;
@@ -99,6 +103,15 @@
 	let specError = $state('');
 	let editingSpecKey = $state<string | null>(null);
 	let editingSpecValue = $state('');
+	let search = $state('');
+	const view = createTableView<[string, string]>({
+		rows: () => Object.entries(flavor.extra_specs).filter(([key]) => isManagedFlavor(flavor) || key !== usageSpec),
+		search: () => search,
+		columns: () => [
+			{ key: 'key', label: commonT('table.key'), value: (row) => row[0] },
+			{ key: 'value', label: commonT('table.value'), value: (row) => row[1] },
+		],
+	});
 
 	// 템플릿 선택 ('' = 직접 입력)
 	let selectedTemplateKey = $state('');
@@ -255,8 +268,10 @@
 	</button>
 </div>
 
+<RegexSearch id="flavor-spec-search" bind:value={search} />
+<TableViewControls {view} class="" />
 {#if isManagedFlavor(flavor)}
-	<dl class="divide-y divide-line">{#each Object.entries(flavor.extra_specs) as [key, value]}<div class="space-y-1 py-3 text-xs"><dt class="break-all font-mono text-ink-1">{key}</dt><dd class="break-all font-mono text-ink-2">{value}</dd></div>{/each}</dl>
+	<dl class="divide-y divide-line">{#each view.rows as [key, value] (key)}<div class="space-y-1 py-3 text-xs"><dt class="break-all font-mono text-ink-1">{key}</dt><dd class="break-all font-mono text-ink-2">{value}</dd></div>{/each}</dl>
 {:else}
 {#if specError}
 	<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{specError}</div>
@@ -266,7 +281,7 @@
 	<div class="text-ink-2 text-sm mb-4">{tr('flavors.specs.empty')}</div>
 {:else}
 	<div class="space-y-1 mb-4">
-		{#each Object.entries(flavor.extra_specs).filter(([key]) => key !== usageSpec) as [k, v]}
+		{#each view.rows as [k, v] (k)}
 			<div class="bg-surface-base border border-line rounded-lg px-3 py-2">
 				{#if editingSpecKey === k}
 					<div class="flex flex-wrap lg:flex-nowrap items-center gap-2">

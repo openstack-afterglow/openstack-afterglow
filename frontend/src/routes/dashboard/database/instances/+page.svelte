@@ -19,6 +19,11 @@
 	import type { DbInstance } from '$lib/types/database';
 	import { toast } from '$lib/stores/toast';
 	import { Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { dbInstanceColumns } from '$lib/utils/databaseTableColumns';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 
 	let instances = $state<DbInstance[]>([]);
 	let loading = $state(true);
@@ -29,7 +34,19 @@
 	let selectedInstanceId = $state<string | null>(null);
 	const selection = createResourceSelection();
 	let bulkBusy = $state(false);
-	const selectableIds = $derived(new Set(instances.map((instance) => instance.id)));
+	let search = $state('');
+	const view = createTableView({
+		rows: () => instances,
+		columns: dbInstanceColumns,
+		search: () => search,
+		searchable: (row) => [row.name, row.id, row.status, row.datastore?.type ?? '', row.datastore?.version ?? '', String(row.size ?? ''), row.created_at],
+		locale: intlLocale,
+	});
+	const selectableIds = $derived(new Set(view.rows.map((instance) => instance.id)));
+	$effect(() => {
+		const visibleIds = view.rows.map((instance) => instance.id);
+		untrack(() => selection.retain(visibleIds));
+	});
 
 	function prefetchCreateMetadata() {
 		const token = $auth.token ?? undefined;
@@ -57,19 +74,20 @@
 		else refreshing = true;
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
+		const ownerSnapshot = $authDisplayContext.key;
 		try {
 			const nextInstances = await api.get<DbInstance[]>('/api/v1/database-instances', tokenSnapshot, projectSnapshot);
-			if ($auth.projectId !== projectSnapshot) return;
+			if ($auth.projectId !== projectSnapshot || $authDisplayContext.key !== ownerSnapshot) return;
 			instances = nextInstances;
 			inventoryLoaded = true;
 			selection.retain(nextInstances.map((instance) => instance.id));
 		} catch {
-			if ($auth.projectId === projectSnapshot) {
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) {
 				instances = [];
 				selection.clear();
 			}
 		} finally {
-			if ($auth.projectId === projectSnapshot) {
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) {
 				loading = false;
 				refreshing = false;
 			}
@@ -79,16 +97,17 @@
 	async function forceRefresh() {
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
+		const ownerSnapshot = $authDisplayContext.key;
 		refreshing = true;
 		try {
 			const nextInstances = await api.get<DbInstance[]>('/api/v1/database-instances', tokenSnapshot, projectSnapshot, { refresh: true });
-			if ($auth.projectId !== projectSnapshot) return;
+			if ($auth.projectId !== projectSnapshot || $authDisplayContext.key !== ownerSnapshot) return;
 			instances = nextInstances;
 			selection.retain(nextInstances.map((instance) => instance.id));
 		} catch {
-			if ($auth.projectId === projectSnapshot) instances = [];
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) instances = [];
 		} finally {
-			if ($auth.projectId === projectSnapshot) refreshing = false;
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) refreshing = false;
 		}
 	}
 
@@ -153,14 +172,18 @@
 		defaultInterval: 15,
 		intervalOptions: [10, 15, 30, 60],
 	});
+	const displayOwner = $derived($authDisplayContext.key);
 
 	$effect(() => {
-		const pid = $auth.projectId;
-		instances = [];
-		inventoryLoaded = false;
-		selection.clear();
-		if (!pid) return;
-		untrack(() => load());
+		void displayOwner;
+		untrack(() => {
+			instances = [];
+			inventoryLoaded = false;
+			search = '';
+			view.reset();
+			selection.clear();
+			if ($authDisplayContext.ready) void load();
+		});
 	});
 </script>
 
@@ -185,6 +208,7 @@
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={tr('instances.toolbar')}>
+		<RegexSearch id="database-instances-search" bind:value={search} />
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -198,11 +222,13 @@
 
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tr('instances.title') })} />
-	{:else if instances.length === 0}
-		<EmptyState headline={tr('instances.empty')} description={tr('instances.emptyHelp')} />
 	{:else}
+		{#if instances.length === 0}
+			<EmptyState headline={tr('instances.empty')} description={tr('instances.emptyHelp')} />
+		{/if}
 		<DbInstancesTable
 			{instances}
+			{view}
 			{refreshing}
 			{restarting}
 			{deleting}

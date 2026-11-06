@@ -554,8 +554,9 @@ async def test_oauth_revocation_blocks_access_and_refresh(issued_refresh):
 @pytest.mark.parametrize("source", ["personal_token", "oauth"])
 @pytest.mark.parametrize("expired", [False, True], ids=["active", "expired"])
 @pytest.mark.parametrize("cleanup_fails", [False, True], ids=["cleanup-confirmed", "cleanup-pending"])
+@pytest.mark.parametrize("selected_project", ["project", "other-domain-project", ""])
 async def test_browser_revocation_removes_access_but_preserves_tombstone(
-    issued_refresh, monkeypatch, source, expired, cleanup_fails
+    issued_refresh, monkeypatch, source, expired, cleanup_fails, selected_project
 ):
     from app.api.deps import get_os_conn, get_token_info
     from app.api.identity import mcp_access
@@ -621,7 +622,7 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
             assert user == owner
             return SimpleNamespace(id=value) if value in remote else None
 
-    caller = {"user_id": owner, "project_id": "project", "username": "owner"}
+    caller = {"user_id": owner, "project_id": selected_project, "username": "owner"}
     monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
     monkeypatch.setitem(
         app.dependency_overrides, get_os_conn, lambda: SimpleNamespace(_afterglow_user_id=owner, identity=Identity())
@@ -643,6 +644,16 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
     listed = await client.get(path)
     assert listed.status_code == 200
     assert {record["id"] for record in listed.json()} == {record_id}
+    caller["user_id"] = "other-user-" + str(uuid4())
+    assert (await client.get(path)).json() == []
+    assert (await client.delete(f"{path}/{record_id}", headers=headers)).status_code == 404
+    async with factory() as session:
+        untouched = await session.get(McpDelegatedGrant, grant_id)
+        assert untouched.status == ("expired" if expired else "active")
+        assert untouched.credential_epoch == epoch
+        assert untouched.application_credential_id == credential_id
+    assert remote == {credential_id}
+    caller["user_id"] = owner
     revoked = await client.delete(f"{path}/{record_id}", headers=headers)
     assert revoked.status_code == 204
     assert (await client.get(path)).json() == []
@@ -655,6 +666,15 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
         assert tombstone.revoked_at is not None
         assert tombstone.cleanup_pending is cleanup_fails
         assert bool(tombstone.application_credential_id) is cleanup_fails
+        assert tombstone.owner_user_id == owner and tombstone.owner_project_id == "project"
+        assert tombstone.project_scope == "current" and tombstone.approved_projects is None
+        audits = (await session.scalars(select(ActivityLog).where(ActivityLog.resource_id == grant_id))).all()
+        assert audits and {audit.project_id for audit in audits} == {"project"}
+        assert {audit.user_id for audit in audits} == {owner}
+        assert (
+            await session.get(McpOwnerLock, {"owner_user_id": owner, "owner_project_id": "other-domain-project"})
+            is None
+        )
         actions = set(await session.scalars(select(ActivityLog.action).where(ActivityLog.resource_id == grant_id)))
         assert actions == (
             {"mcp_grant.revoke"} if cleanup_fails else {"mcp_grant.revoke", "mcp_grant.cleanup_confirmed"}
@@ -706,6 +726,9 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
                 upstream_credential_name="listing-" + grant_id,
                 display_name=status,
                 source=source,
+                approved_projects=[
+                    {"id": project, "name": f"Saved {project}", "roles": ["reader"], "can_write": False}
+                ],
                 access_level="read",
                 status=status,
                 expires_at=datetime.now(UTC) + timedelta(days=30),
@@ -740,14 +763,23 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
                         revoked_at=datetime.now(UTC) if token_revoked else None,
                     )
                 )
-            if status != "revoked" and user == owner and project == "project" and not token_revoked:
+            if status != "revoked" and user == owner and not token_revoked:
                 expected.add(record_id)
     caller = {"user_id": owner, "project_id": "project", "username": "owner"}
     monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
     monkeypatch.setattr(mcp_access, "_session_factory", lambda: factory)
     monkeypatch.setattr(mcp_access, "get_settings", lambda: SimpleNamespace(service_mcp_enabled=True))
     path = "/api/v1/auth/" + ("mcp-tokens" if source == "personal_token" else "mcp-oauth/grants")
-    response = await issued_refresh.client.get(path)
+    for project, domain in (("project", "domain-a"), ("foreign-project", "domain-b"), ("", "domain-b")):
+        caller.update(project_id=project, domain_id=domain)
+        response = await issued_refresh.client.get(path)
+        assert response.status_code == 200
+        assert {record["id"] for record in response.json()} == expected
+        assert {record["owner_project_id"] for record in response.json()} == {"project", "foreign-project"}
+        for record in response.json():
+            assert record["owner_project_name"] == f"Saved {record['owner_project_id']}"
+            assert record["project_ids"] == [record["owner_project_id"]]
+            assert record["projects"] == [{"id": record["owner_project_id"], "name": record["owner_project_name"]}]
     assert response.status_code == 200
     assert {record["id"] for record in response.json()} == expected
     assert {record["status"] for record in response.json()} == {"active", "expired"}
@@ -2754,3 +2786,43 @@ async def test_local_scrub_preserves_uncertain_unactivated_ongoing_issuance(oaut
         assert grant.status == status and grant.issued_at is None
         assert grant.credential_ciphertext == ciphertext and grant.application_credential_id == credential_id
         assert grant.cleanup_pending and grant.orphan_recovery_nonce == recovery_nonce
+
+
+@pytest.mark.parametrize("project_scope", ["selected", "all"])
+async def test_oauth_consent_never_combines_projects_from_multiple_domains(oauth_consent, monkeypatch, project_scope):
+    from app.services.mcp_control_plane.authority import McpAuthorityError
+    from app.services.mcp_control_plane.oauth_authority import approve_consent_ticket
+
+    consent = oauth_consent
+    original_get = consent.conn.session.get
+
+    def memberships(url, **kwargs):
+        response = original_get(url, **kwargs)
+        payload = response.json()
+        for project in payload["projects"]:
+            if project["id"] == "B":
+                project["domain_id"] = "other-domain"
+        return SimpleNamespace(raise_for_status=response.raise_for_status, json=lambda: payload)
+
+    monkeypatch.setattr(consent.conn.session, "get", memberships)
+    if project_scope == "selected":
+        with pytest.raises(McpAuthorityError, match="selected project"):
+            await approve_consent_ticket(
+                consent.factory,
+                ticket=consent.ticket,
+                owner_user_id=consent.owner,
+                owner_project_id="A",
+                username="owner",
+                roles=["member"],
+                conn=consent.conn,
+                access_level="read",
+                project_scope="selected",
+                project_ids=["A", "B"],
+            )
+        assert consent.created == [] and consent.remote == {}
+    else:
+        _, _, grant_id = await approve_and_exchange(consent, access_level="read", project_scope="all")
+        async with consent.factory() as session:
+            grant = await session.get(McpDelegatedGrant, grant_id)
+            assert [project["id"] for project in grant.approved_projects] == ["A"]
+        assert [project for project, _, _ in consent.created] == ["A"]

@@ -3,14 +3,30 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import { untrack } from 'svelte';
+	import { createTableView, type TableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RoleBadges from './RoleBadges.svelte';
 	import { roleTreeRows } from './catalog';
-	import type { ManagedRole, RoleSort, SortDirection } from './types';
-	let { roles, query, sort, direction, onSelect }: {
-		roles: ManagedRole[]; query: string; sort: RoleSort; direction: SortDirection;
+	import type { ManagedRole } from './types';
+	let { roles, view, onSelect }: {
+		roles: ManagedRole[]; view: TableView<ManagedRole>;
 		onSelect: (role: ManagedRole) => void;
 	} = $props();
-	const rows = $derived(roleTreeRows(roles, query, sort, direction));
+	// Order the complete graph with the same typed columns, then retain matching
+	// nodes and their ancestors. Filtering the graph itself would sever edges.
+	const ordering = createTableView<ManagedRole>({ rows: () => roles, columns: () => view.columns, locale: intlLocale });
+	$effect(() => {
+		const sort = view.sort;
+		untrack(() => {
+			ordering.reset();
+			if (sort) {
+				ordering.toggleSort(sort.key);
+				if (sort.direction === 'desc') ordering.toggleSort(sort.key);
+			}
+		});
+	});
+	const rows = $derived(roleTreeRows(roles, ordering.rows, new Set(view.rows.map((role) => role.id))));
 	const knownIds = $derived(new Set(roles.map((role) => role.id)));
 	const unknownEdges = $derived(roles.some((role) => role.implied_role_ids.some((id) => !knownIds.has(id))));
 </script>

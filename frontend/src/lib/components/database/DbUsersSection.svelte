@@ -5,6 +5,10 @@
 	import type { DbUser } from '$lib/types/database';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 
 	const s = useDbInstanceDetailController();
 
@@ -65,22 +69,27 @@
 			</button>
 		</div>
 	{/if}
+	<RegexSearch id="database-detail-users-search" bind:value={s.userSearch} />
+	<TableViewControls view={s.userView} />
 	{#if s.users.length === 0}
 		<div class="text-ink-2 text-xs">{tr('users.empty')}</div>
-	{:else}
+	{:else if s.userView.rows.length === 0}
+		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
+	{/if}
   <ResponsiveTable>
-   {#snippet cards()}{#each s.users as u (u.name + '@' + u.host)}<CompactResourceCard><strong class="text-sm font-mono break-all">{u.name}@{u.host || '%'}</strong>{#snippet details()}{#if u.databases?.length}<p class="text-xs text-ink-2 break-all">{u.databases.map(d => d.name).join(', ')}</p>{/if}{/snippet}{#snippet actions()}<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingUser === userKey(u)}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
+   {#snippet cards()}{#each s.userView.rows as u (u.name + '@' + u.host)}<CompactResourceCard><strong class="text-sm font-mono break-all">{u.name}@{u.host || '%'}</strong>{#snippet details()}{#if u.databases?.length}<p class="text-xs text-ink-2 break-all">{u.databases.map(d => d.name).join(', ')}</p>{/if}{/snippet}{#snippet actions()}<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingUser === userKey(u)}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>{/snippet}</CompactResourceCard>{/each}{/snippet}
 		<div class="space-y-1">
-			{#each s.users as u (u.name + '@' + u.host)}
-				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
-					<div>
-						<span class="text-ink-0 text-sm font-medium font-mono">
-							{u.name}<span class="text-ink-2">@{u.host || '%'}</span>
-						</span>
-						{#if u.databases?.length}
-							<span class="text-ink-2 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
-						{/if}
-					</div>
+			<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 border-b border-line py-2 text-xs text-ink-2">
+				<TableColumnControl view={s.userView} columnKey="name" />
+				<TableColumnControl view={s.userView} columnKey="host" />
+				<TableColumnControl view={s.userView} columnKey="databases" />
+				<span>{tr('labels.actions')}</span>
+			</div>
+			{#each s.userView.rows as u (u.name + '@' + u.host)}
+				<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3 py-1.5 border-b border-line/50">
+					<span class="text-ink-0 text-sm font-medium font-mono break-all">{u.name}</span>
+					<span class="text-ink-2 text-sm font-mono break-all">{u.host || '%'}</span>
+					<span class="text-ink-2 text-xs break-all">{u.databases?.map(d => d.name).join(', ') || '—'}</span>
 					<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)}
 						class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 						{#if s.deletingUser === userKey(u)}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
@@ -89,5 +98,4 @@
 			{/each}
 		</div>
   </ResponsiveTable>
-	{/if}
 </div>

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
@@ -45,6 +49,9 @@
 	}
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; sequence++; rows = []; });
+	const tableSearchId = $props.id();
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof rows)[number]>({ rows: () => rows, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'email', label: t('email'), value: row => row.email }, { key: 'operationKind', label: t('operationKind'), value: row => row.kind }, { key: 'status', label: t('status'), value: row => enrollmentStatusLabel(row.status) }, { key: 'created', label: t('created'), value: row => row.created_at }] });
 </script>
 
 <div class="space-y-4">
@@ -53,9 +60,10 @@
 	{#if loading || busy}<LoadingState variant={busy || rows.length ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-	<ResponsiveTable>
+	<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>
 		{#snippet cards()}
-			{#each rows as row (row.id)}<CompactResourceCard>
+			{#each tableView.rows as row (row.id)}<CompactResourceCard>
 				<h3 class="text-sm font-medium break-all">{row.email}</h3><p class="text-xs">{enrollmentStatusLabel(row.status)} · <code>{row.kind}</code></p>
 				{#snippet details()}<p class="text-xs">{t('created')}: {new Date(row.created_at).toLocaleString(intlLocale())}</p>{/snippet}
 				{#snippet actions()}<Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => recover(row)}>{t('recover')}</Button>{/snippet}
@@ -63,9 +71,9 @@
 			{#if !loading && !error && !rows.length}<p class="text-sm text-ink-2">{t('emptyRecovery')}</p>{/if}
 		{/snippet}
 	<TableShell><table>
-		<thead><tr><th>{t('email')}</th><th>{t('operationKind')}</th><th>{t('status')}</th><th>{t('created')}</th><th>{t('actions')}</th></tr></thead>
+		<thead><tr><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="operationKind" /><TableColumnHeader view={tableView} columnKey="status" /><TableColumnHeader view={tableView} columnKey="created" /><th>{t('actions')}</th></tr></thead>
 		<tbody>
-			{#each rows as row (row.id)}<tr><td>{row.email}</td><td><code>{row.kind}</code></td><td>{enrollmentStatusLabel(row.status)}</td><td>{new Date(row.created_at).toLocaleString(intlLocale())}</td><td><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => recover(row)}>{t('recover')}</Button></td></tr>{/each}
+			{#each tableView.rows as row (row.id)}<tr><td>{row.email}</td><td><code>{row.kind}</code></td><td>{enrollmentStatusLabel(row.status)}</td><td>{new Date(row.created_at).toLocaleString(intlLocale())}</td><td><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => recover(row)}>{t('recover')}</Button></td></tr>{/each}
 			{#if !loading && !error && !rows.length}<tr><td colspan="5">{t('emptyRecovery')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>

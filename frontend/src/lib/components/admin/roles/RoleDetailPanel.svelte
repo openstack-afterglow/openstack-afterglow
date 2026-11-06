@@ -4,10 +4,15 @@
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import { untrack } from 'svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableView } from '$lib/utils/tableView.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import RoleBadges from './RoleBadges.svelte';
-	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, matchesRole, sortRoles } from './catalog';
+	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleColumns } from './catalog';
 	import type { ManagedRole } from './types';
 	import { isRetiredRole } from '$lib/utils/roleCatalog';
 	let { role, roles, busy, stale, error, onClose, onEdit, onDelete, onToggle, onSelect }: {
@@ -17,10 +22,42 @@
 	} = $props();
 	let query = $state('');
 	const graph = $derived(buildRoleGraph(roles));
-	const candidates = $derived(sortRoles(roles.filter((candidate) => matchesRole(candidate, query)), 'name', 'asc'));
+	const candidateView = createTableView<ManagedRole>({
+		rows: () => roles,
+		search: () => query,
+		locale: intlLocale,
+		columns: () => [
+			...roleColumns(),
+			{ key: 'linked', label: t('roleDetail.directChildrenLabel'), value: (candidate) => role.implied_role_ids.includes(candidate.id)
+				? t('roleDetail.directlyLinked') : role.inherited_role_ids.includes(candidate.id) ? t('roleDetail.indirectlyInherited') : t('roleDetail.notLinked') },
+			{ key: 'availability', label: t('roleDetail.candidatesLabel'), value: (candidate) => edgeDisabledReason(graph, role, candidate) },
+		],
+	});
+	const candidates = $derived(candidateView.rows);
 	const direct = $derived(new Set(role.implied_role_ids));
 	const inherited = $derived(role.inherited_role_ids.filter((id) => !direct.has(id)));
 	const deleteReason = $derived(deleteDisabledReason(role));
+	let inheritedQuery = $state('');
+	let parentQuery = $state('');
+	function relatedView(ids: () => string[], search: () => string): TableView<string> {
+		return createTableView<string>({
+			rows: ids, search, locale: intlLocale,
+			columns: () => [
+				{ key: 'name', label: t('form.name'), value: (id) => graph.byId.get(id)?.name },
+				{ key: 'id', label: 'ID', value: (id) => id },
+			],
+		});
+	}
+	const inheritedView = relatedView(() => inherited, () => inheritedQuery);
+	const parentView = relatedView(() => role.parent_role_ids, () => parentQuery);
+	const detailOwner = $derived(role.id);
+	$effect(() => {
+		void detailOwner;
+		untrack(() => {
+			query = ''; inheritedQuery = ''; parentQuery = '';
+			candidateView.reset(); inheritedView.reset(); parentView.reset();
+		});
+	});
 </script>
 
 <SlidePanel {onClose} width="w-full md:w-[32rem] max-w-full" resizable={false} storageKey="admin-roles.detail" ariaLabel={t('rolePage.detailLabel', { name: role.name })}>
@@ -44,7 +81,8 @@
 		<section aria-label={t('roleDetail.directChildrenLabel')} class="space-y-3">
 			<h3 class="text-sm font-semibold text-ink-0">{t('roleDetail.directChildrenHeading', { count: direct.size })}</h3>
 			<p class="text-xs text-ink-2">{t('roleDetail.directChildrenHelp')}</p>
-			<TextInput type="search" bind:value={query} ariaLabel={t('roleDetail.searchChildren')} placeholder={t('rolePage.searchPlaceholder')} />
+			<RegexSearch id="role-child-search" bind:value={query} label={t('roleDetail.searchChildren')} />
+			<TableViewControls view={candidateView} class="" />
 			<ul class="divide-y divide-line" aria-label={t('roleDetail.candidatesLabel')}>
 				{#each candidates as candidate (candidate.id)}
 					{@const checked = direct.has(candidate.id)}
@@ -68,13 +106,13 @@
 			{/each}
 		</section>
 
-		{#snippet related(ids: string[], empty: string)}
-			{#if ids.length === 0}<p class="text-xs text-ink-2">{empty}</p>{:else}
+		{#snippet related(view: TableView<string>, total: number, empty: string)}
+			{#if total === 0}<p class="text-xs text-ink-2">{empty}</p>{:else if view.rows.length === 0}<p class="text-xs text-ink-2">{tc('table.noMatches')}</p>{:else}
 				<ul class="space-y-2">
-					{#each ids as id (id)}
+					{#each view.rows as id (id)}
 						{@const relatedRole = graph.byId.get(id)}
 						<li class="min-w-0 text-sm [overflow-wrap:anywhere]">
-							{#if relatedRole}<Button variant="link" class="max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" onclick={() => { query = ''; onSelect(relatedRole); }}>{relatedRole.name}</Button>
+							{#if relatedRole}<Button variant="link" class="max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" onclick={() => onSelect(relatedRole)}>{relatedRole.name}</Button><p class="text-xs font-mono text-ink-2">{id}</p>
 							{:else}<span class="text-ink-2">{t('roleDetail.missingRelated', { id })}</span>{/if}
 						</li>
 					{/each}
@@ -84,11 +122,15 @@
 		<section aria-label={t('roleDetail.indirectChildrenLabel')} class="space-y-2">
 			<h3 class="text-sm font-semibold text-ink-0">{t('roleDetail.indirectHeading', { count: inherited.length })}</h3>
 			<p class="text-xs text-ink-2">{t('roleDetail.indirectHelp')}</p>
-			{@render related(inherited, t('roleDetail.noIndirect'))}
+			<RegexSearch id="role-inherited-search" bind:value={inheritedQuery} label={t('roleDetail.indirectChildrenLabel')} />
+			<TableViewControls view={inheritedView} class="" />
+			{@render related(inheritedView, inherited.length, t('roleDetail.noIndirect'))}
 		</section>
 		<section aria-label={t('roleDetail.directParentsLabel')} class="space-y-2">
 			<h3 class="text-sm font-semibold text-ink-0">{t('roleDetail.directParentsHeading', { count: role.parent_role_ids.length })}</h3>
-			{@render related(role.parent_role_ids, t('roleDetail.noParents'))}
+			<RegexSearch id="role-parent-search" bind:value={parentQuery} label={t('roleDetail.directParentsLabel')} />
+			<TableViewControls view={parentView} class="" />
+			{@render related(parentView, role.parent_role_ids.length, t('roleDetail.noParents'))}
 		</section>
 	</div>
 </SlidePanel>

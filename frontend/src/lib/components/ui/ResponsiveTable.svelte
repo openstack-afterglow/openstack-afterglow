@@ -1,6 +1,5 @@
 <script module lang="ts">
-	import { MediaQuery } from 'svelte/reactivity';
-	const desktop = new MediaQuery('(min-width: 1024px)', true);
+	import { tableDesktop as desktop } from '$lib/utils/tableBreakpoint';
 </script>
 
 <script lang="ts">

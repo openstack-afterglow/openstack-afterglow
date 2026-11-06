@@ -20,6 +20,12 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let instances = $state<DbInstance[]>([]);
 	let loading = $state(true);
@@ -29,6 +35,22 @@
 	let loadError = $state<string | null>(null);
 
 	let showCreatePanel = $state(false);
+	let search = $state('');
+	const view = createTableView<DbInstance>({
+		rows: () => instances,
+		search: () => search,
+		searchable: (inst) => [inst.name, inst.id, inst.status, inst.datastore?.type, inst.datastore?.version, inst.project_id, inst.size, inst.created_at].map((value) => String(value ?? '')),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: tr('labels.name'), value: (inst) => inst.name },
+			{ key: 'status', label: tr('labels.status'), value: (inst) => inst.status },
+			{ key: 'datastore', label: tr('labels.datastoreEnglish'), value: (inst) => [inst.datastore?.type, inst.datastore?.version].filter(Boolean).join(' ') || null },
+			{ key: 'project', label: tr('labels.project'), value: (inst) => inst.project_id },
+			{ key: 'size', label: tr('labels.sizeGb'), value: (inst) => inst.size },
+			{ key: 'id', label: 'ID', value: (inst) => inst.id },
+			{ key: 'created', label: tr('labels.created'), value: (inst) => inst.created_at },
+		],
+	});
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -105,6 +127,10 @@
 			/>
 		{/snippet}
 	</PageHeader>
+	<div class="mb-4 space-y-3">
+		<RegexSearch id="admin-database-instances-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if loadError}
 		<Alert tone="danger" title={tr('instances.loadFailed')}>
 			{loadError}
@@ -113,12 +139,12 @@
 
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else if instances.length === 0 && !loadError}
-		<div class="text-ink-2 text-sm">{tr('instances.empty')}</div>
-	{:else if instances.length > 0}
+	{:else if view.rows.length === 0 && !loadError}
+		<div class="text-ink-2 text-sm">{instances.length ? tc('table.noMatches') : tr('instances.empty')}</div>
+	{:else if view.rows.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each instances as inst (inst.id)}
+				{#each view.rows as inst (inst.id)}
 					<CompactResourceCard>
 						<div class="flex items-start justify-between gap-2"><a class="min-h-11 break-all font-medium text-warm-text" href={`/admin/database-instances/${inst.id}`}>{inst.name || inst.id.slice(0, 8)}</a><StatusChip status={inst.status} /></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {inst.size ?? '-'} GB</p><p>{tr('labels.project')}: {inst.project_id || '-'}</p></div>
@@ -131,18 +157,18 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.name')}</th>
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.status')}</th>
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.datastoreEnglish')}</th>
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.project')}</th>
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.sizeGb')}</th>
-						<th class="text-left py-3 px-4 font-medium">ID</th>
-						<th class="text-left py-3 px-4 font-medium">{tr('labels.created')}</th>
+						<TableColumnHeader {view} columnKey="name" />
+						<TableColumnHeader {view} columnKey="status" />
+						<TableColumnHeader {view} columnKey="datastore" />
+						<TableColumnHeader {view} columnKey="project" />
+						<TableColumnHeader {view} columnKey="size" />
+						<TableColumnHeader {view} columnKey="id" />
+						<TableColumnHeader {view} columnKey="created" />
 						<th class="text-right py-3 px-4 font-medium">{tr('labels.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each instances as inst}
+					{#each view.rows as inst}
 						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-3 px-4">
 								<a href="/admin/database-instances/{inst.id}" class="text-warm-text hover:text-warm-text-hover font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>

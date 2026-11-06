@@ -74,7 +74,7 @@ describe('project VM observability', () => {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: /own-vm/ }));
 		await screen.findByText(/gnocchi · 사용 가능/);
-		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'unmatched' } });
+		await fireEvent.input(screen.getByRole('searchbox', { name: t('observability.search') }), { target: { value: 'unmatched' } });
 		expect(screen.queryByText(/gnocchi · 사용 가능/)).toBeNull();
 		expect(screen.getByText(t('observability.noResults'))).toBeTruthy();
 	});

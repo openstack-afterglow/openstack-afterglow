@@ -15,6 +15,7 @@ vi.mock('$lib/stores/projectNames', () => ({ projectNames: writable(new Map<stri
 import AdminVolumeTable from '../AdminVolumeTable.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import type { AdminVolume } from '$lib/types/volume';
+import { createTableView } from '$lib/utils/tableView.svelte';
 
 const volume: AdminVolume = {
 	id: 'native-volume-full-id', name: 'Dataset', status: 'available', size: 200, volume_type: 'fast',
@@ -28,6 +29,7 @@ describe('administrator volume ownership and responsive detail access', () => {
 	it('preserves selection and detail/action callbacks across desktop and compact cards without hiding native IDs', async () => {
 		const props = {
 			volumes: [volume], selectedVolumeId: null, openActionMenu: null,
+			view: createTableView<AdminVolume>({ rows: () => [volume], columns: () => [{ key: 'name', label: 'Name', value: row => row.name }] }),
 			selectedIds: new Set([volume.id]), selectableIds: new Set([volume.id]),
 			onSelect: vi.fn(), onToggleSelect: vi.fn(), onToggleAll: vi.fn(), onActionMenuOpen: vi.fn(), onActionMenuClose: vi.fn(),
 			onEdit: vi.fn(), onExtend: vi.fn(), onTransfer: vi.fn(), onReset: vi.fn(), onForceDelete: vi.fn(), onDelete: vi.fn(), onBootFromVolume: vi.fn(),

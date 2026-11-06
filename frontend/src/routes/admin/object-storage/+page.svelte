@@ -173,13 +173,12 @@
 		<LoadingState variant="surface" />
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm">{partial ? t('buckets.adminPage.partialEmpty') : t('buckets.adminPage.empty')}</div>
-	{:else}
-		<BucketTable {containers} arrivals={bucketArrivals} deletingId={deleting} {refreshing} {canDelete} onDelete={deleteContainer} />
+	{/if}
+	<BucketTable {containers} arrivals={bucketArrivals} deletingId={deleting} {refreshing} {canDelete} onDelete={deleteContainer} />
 		{#if containers.some((c) => c.is_quarantine)}
 			<QuarantineNotice />
 		{/if}
 		{#if containers.some((c) => c.is_trash || c.is_deleted)}
 			<TrashNotice />
 		{/if}
-	{/if}
 </PageShell>

@@ -62,4 +62,26 @@ describe('admin port marker generation', () => {
 		expect(mockPrefetch).toHaveBeenCalledOnce();
 		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/all-ports?limit=10&marker=new-marker');
 	});
+	it('does not advance or rewind markers again while the next page is pending', async () => {
+		const next = Promise.withResolvers<{ items: Array<Record<string, unknown>>; next_marker: string | null }>();
+		mockGet.mockImplementation((path: string) => {
+			if (!path.startsWith('/api/v1/admin/all-ports')) return Promise.resolve([]);
+			if (path.includes('marker=next-marker')) return next.promise;
+			return Promise.resolve({ items: [{ id: 'first', name: 'First port' }], next_marker: 'next-marker' });
+		});
+		render(Page);
+		await screen.findByText('First port');
+		await fireEvent.click(screen.getByRole('button', { name: 'Next ports' }));
+		expect(screen.getByRole('button', { name: 'Next ports' })).toHaveProperty('disabled', true);
+		expect(screen.getByRole('button', { name: 'Previous ports' })).toHaveProperty('disabled', true);
+		await fireEvent.click(screen.getByRole('button', { name: 'Next ports' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Previous ports' }));
+		expect(mockGet.mock.calls.filter(([path]) => String(path).startsWith('/api/v1/admin/all-ports'))).toHaveLength(2);
+		expect(screen.getByTestId('marker-depth').textContent).toBe('1');
+		next.resolve({ items: [{ id: 'second', name: 'Second port' }], next_marker: null });
+		await screen.findByText('Second port');
+		await fireEvent.click(screen.getByRole('button', { name: 'Previous ports' }));
+		await screen.findByText('First port');
+		expect(screen.getByTestId('marker-depth').textContent).toBe('0');
+	});
 });

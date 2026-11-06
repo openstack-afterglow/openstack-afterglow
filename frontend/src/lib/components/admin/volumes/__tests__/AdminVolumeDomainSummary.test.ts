@@ -35,8 +35,6 @@ describe('AdminVolumeDomainSummary', () => {
 		expect(screen.getByTestId('admin-volume-analytics-total').textContent).toBe('볼륨 12개 · 1,200 GiB');
 		expect(screen.getByTestId('admin-volume-analytics-filtered-total').textContent).toContain('볼륨 2개 · 250 GiB');
 		for (const label of ['소유자 알 수 없음', '삭제된 프로젝트', '삭제된 도메인']) expect(screen.getByText(label)).toBeTruthy();
-		const buttons = screen.getAllByRole('button');
-		expect(buttons).toHaveLength(1);
 		expect(screen.getByText('deleted-project-a')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Research 볼륨 보기' }));
 		expect(onDomain).toHaveBeenCalledExactlyOnceWith('native-domain');
@@ -48,7 +46,7 @@ describe('AdminVolumeDomainSummary', () => {
 		expect(screen.getAllByText('삭제된 프로젝트')).toHaveLength(2);
 		expect(screen.getByText('deleted-project-a')).toBeTruthy();
 		expect(screen.getByText('deleted-project-b')).toBeTruthy();
-		expect(screen.queryByRole('button')).toBeNull();
+		expect(screen.queryByRole('button', { name: /볼륨 보기$/ })).toBeNull();
 	});
 
 	it('retains every count, capacity and drilldown when switching to mobile and tablet cards', async () => {
@@ -65,7 +63,7 @@ describe('AdminVolumeDomainSummary', () => {
 		expect(onDomain).toHaveBeenCalledExactlyOnceWith('native-domain');
 		media.matches = true; media.dispatchEvent(new Event('change'));
 		await waitFor(() => expect(screen.queryAllByRole('article')).toHaveLength(0));
-		expect(screen.getAllByRole('button')).toHaveLength(1);
+		expect(screen.getByRole('button', { name: 'Research 볼륨 보기' })).toBeTruthy();
 	});
 
 

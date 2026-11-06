@@ -5,6 +5,12 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		users,
@@ -28,6 +34,17 @@
 
 	let showForm = $state(false);
 	let newUser = $state({ name: '', password: '', databases: '' });
+	let search = $state('');
+	const view = createTableView<DbUser>({
+		rows: () => users,
+		search: () => search,
+		searchable: (u) => [u.name, u.host ?? '', ...(u.databases?.map((db) => db.name) ?? [])],
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: tr('labels.name'), value: (u) => u.name },
+			{ key: 'databases', label: tr('labels.databases'), value: (u) => u.databases?.map((db) => db.name).join(', ') || null, filterValues: (u) => u.databases?.map((db) => db.name) ?? [] },
+		],
+	});
 
 	async function handleAdd() {
 		const ok = await onAdd({ ...newUser });
@@ -63,14 +80,18 @@
 			</button>
 		</div>
 	{/if}
+	<div class="mb-3 space-y-3">
+		<RegexSearch id="admin-database-users-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if loadError}
 		<p role="alert" class="text-state-danger-text text-sm">{loadError}</p>
-	{:else if users.length === 0}
-		<div class="text-ink-2 text-xs">{tr('users.empty')}</div>
+	{:else if view.rows.length === 0}
+		<div class="text-ink-2 text-xs">{users.length ? tc('table.noMatches') : tr('users.empty')}</div>
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each users as u}
+				{#each view.rows as u}
 					<CompactResourceCard>
 						<h3 class="break-all font-medium text-ink-0">{u.name}</h3><p class="text-xs text-ink-2">{tr('labels.databases')}: {u.databases?.length ?? 0}</p>
 						{#snippet actions()}{#if canMutate}<Button variant="danger" size="sm" disabled={deletingUser === u.name} onclick={() => onDelete(u.name)}>{#if deletingUser === u.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingUser === u.name ? tr('state.deleting') : tr('actions.delete')}</Button>{/if}{/snippet}
@@ -79,14 +100,15 @@
 				{/each}
 			{/snippet}
 		<div class="space-y-1">
-			{#each users as u}
-				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
-					<div>
-						<span class="text-ink-0 text-sm font-medium">{u.name}</span>
-						{#if u.databases?.length}
-							<span class="text-ink-2 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
-						{/if}
-					</div>
+			<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 border-b border-line py-2 text-xs text-ink-2">
+				<TableColumnControl {view} columnKey="name" />
+				<TableColumnControl {view} columnKey="databases" />
+				{#if canMutate}<span>{tr('labels.actions')}</span>{/if}
+			</div>
+			{#each view.rows as u}
+				<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 py-1.5 border-b border-line/50">
+					<span class="break-all text-ink-0 text-sm font-medium">{u.name}</span>
+					<span class="break-all text-ink-2 text-xs">{u.databases?.map(d => d.name).join(', ') || '-'}</span>
 					{#if canMutate}
 					<button onclick={() => onDelete(u.name)} disabled={deletingUser === u.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">

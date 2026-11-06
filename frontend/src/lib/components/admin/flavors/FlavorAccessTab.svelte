@@ -9,6 +9,9 @@
 	import { get } from 'svelte/store';
 	import AdminProjectPicker from '$lib/components/admin/domains/AdminProjectPicker.svelte';
 	import { isManagedFlavor } from '$lib/api/computePools';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	interface Flavor {
 		id: string;
@@ -36,6 +39,15 @@
 
 
 	let accessList = $state<FlavorAccess[]>([]);
+	let search = $state('');
+	const view = createTableView<FlavorAccess>({
+		rows: () => accessList, search: () => search,
+		searchable: (row) => [row.project_id, row.project_name, row.domain_id ?? '', row.domain_name ?? ''],
+		columns: () => [
+			{ key: 'project', label: t('instances.table.project'), value: (row) => row.project_name || row.project_id },
+			{ key: 'domain', label: t('instances.table.domain'), value: (row) => row.domain_name || row.domain_id },
+		],
+	});
 	let accessLoading = $state(false);
 	let accessError = $state('');
 	let addingId = $state<string | null>(null);
@@ -211,13 +223,15 @@
 	{/if}
 
 	<div class="text-sm text-ink-2 mb-2">{t('flavors.access.projects')}</div>
+	<RegexSearch id="flavor-access-search" bind:value={search} />
+	<TableViewControls {view} class="" />
 	{#if accessLoading}
 		<LoadingState variant="section" label={t('flavors.loading')} />
-	{:else if accessList.length === 0 && !accessError}
+	{:else if view.rows.length === 0 && !accessError}
 		<div class="text-ink-2 text-sm">{t('flavors.access.empty')}</div>
 	{:else}
 		<div class="space-y-2">
-			{#each accessList as a (a.project_id)}
+			{#each view.rows as a (a.project_id)}
 				<div class="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 bg-surface-base border border-line rounded-lg px-3 py-2">
 					<div class="min-w-0 break-all">
 						<div class="text-xs text-ink-1">{a.domain_name || a.domain_id || '—'} / {a.project_name || a.project_id}</div>

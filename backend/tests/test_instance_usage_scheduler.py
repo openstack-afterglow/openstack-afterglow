@@ -893,7 +893,7 @@ async def test_startup_opt_in_controls_real_native_census_and_expiry(monkeypatch
     monkeypatch.setattr(infrastructure_fabric, "monitoring_loop", unrelated)
     monkeypatch.setattr(work_dispatcher, "run_roles", unrelated)
     monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: native)
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", project_connection)
+    monkeypatch.setattr(usage, "operator_connection", project_connection)
     monkeypatch.setattr(scheduler, "_clock", lambda now=None: NOW)
     cleanup = AsyncMock()
     monkeypatch.setattr(instance_usage_cleanup, "reconcile_managed_deletes", cleanup)

@@ -6,6 +6,7 @@ import type { AdminNetwork } from '$lib/types/networks';
 import type { TsPoint } from '$lib/types/common';
 import NetworkTimeseriesProbe from './_NetworkTimeseriesProbe.svelte';
 
+import { setColumnValues } from '$lib/components/admin/services/__tests__/tableInteractions';
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), goto: vi.fn(),
 	refresh: undefined as undefined | (() => void),
@@ -57,7 +58,6 @@ function searchInput() { return screen.getByRole('searchbox'); }
 function resetButton() { return screen.getByRole('button', { name: 'networksPage.filters.reset' }); }
 function rows() { return within(screen.getByRole('table')); }
 async function search(value: string) { await fireEvent.input(searchInput(), { target: { value } }); }
-async function select(label: string, value: string) { await fireEvent.change(screen.getByLabelText(label), { target: { value } }); }
 function installInventory(rows: AdminNetwork[] = inventory) {
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/admin/projects/names') return [{ id: ownerId, name: 'Platform Operations' }];
@@ -111,44 +111,34 @@ describe('administrator network inventory', () => {
 		expect(screen.getByLabelText('Network history')).toBeTruthy();
 	});
 
-	it('intersects independent flags without classifying external/shared overlap as internal', async () => {
+	it('filters exact combined network types with multi-value OR and independent status', async () => {
 		render(Page);
 		await screen.findByRole('button', { name: both.name });
-		await select('외부', 'yes');
+		await setColumnValues('adminNetworkTable.type', ['외부 · 공유', '외부']);
 		expect(rows().getByRole('button', { name: both.name })).toBeTruthy();
 		expect(rows().getByRole('button', { name: external.name })).toBeTruthy();
-		await select('공유', 'yes');
-		expect(screen.getByText('1 of 4 networks')).toBeTruthy();
-		expect(rows().queryByRole('button', { name: external.name })).toBeNull();
-		await select('외부', 'no');
-		expect(rows().getByRole('button', { name: shared.name })).toBeTruthy();
-		await fireEvent.click(resetButton());
-		await select('내부', 'yes');
-		expect(rows().getByRole('button', { name: internal.name })).toBeTruthy();
-		expect(rows().queryByRole('button', { name: both.name })).toBeNull();
-		await select('공유', 'yes');
+		expect(rows().queryByRole('button', { name: internal.name })).toBeNull();
+		await setColumnValues('adminNetworkTable.status', []);
 		expect(screen.getByText('networksPage.noMatches')).toBeTruthy();
-		expect(screen.getByRole('region', { name: 'networksPage.filters.label' })).toBeTruthy();
 		await fireEvent.click(resetButton());
 		expect(screen.getByText('4 of 4 networks')).toBeTruthy();
 	});
 
-	it('uses normalized case-insensitive AND terms across full identities, owner names and localized flags', async () => {
+	it('uses case-insensitive regex over full identities and owner labels and rejects invalid syntax', async () => {
 		render(Page);
 		await screen.findAllByText('Platform Operations');
-		await search(`  ＰＲＯＤＵＣＴＩＯＮ   operations ${both.id.slice(-12)} ${ownerId.slice(-12)} 외부 공유 `);
+		await search('^production');
 		expect(rows().getByRole('button', { name: both.name })).toBeTruthy();
 		expect(screen.getByText('1 of 4 networks')).toBeTruthy();
-		expect(rows().getByTitle(ownerId)).toBeTruthy();
-		await search('private 내부');
+		await search('private|provider');
 		expect(rows().getByRole('button', { name: internal.name })).toBeTruthy();
-		await search('production nonexistent');
+		expect(rows().getByRole('button', { name: external.name })).toBeTruthy();
+		await search('[');
 		expect(screen.getByText('networksPage.noMatches')).toBeTruthy();
-		expect(searchInput()).toHaveProperty('value', 'production nonexistent');
+		expect(searchInput().getAttribute('aria-invalid')).toBe('true');
 		await fireEvent.click(resetButton());
 		expect(rows().getAllByTitle(ownerId)).toHaveLength(4);
 	});
-
 	it('retains controls on successful empty inventory and distinguishes first-load failure from zero', async () => {
 		installInventory([]);
 		const view = render(Page);
@@ -174,7 +164,7 @@ describe('administrator network inventory', () => {
 		render(Page);
 		await screen.findByRole('button', { name: both.name });
 		await expandHistory();
-		await select('외부', 'yes');
+		await setColumnValues('adminNetworkTable.type', ['외부 · 공유']);
 		await search('production');
 		const refresh = deferred<AdminNetwork[]>();
 		mocks.get.mockImplementation((path: string) => path.includes('/timeseries/') ? Promise.reject(new Error('history down')) : refresh.promise);
@@ -185,7 +175,7 @@ describe('administrator network inventory', () => {
 		refresh.reject(new Error('inventory down'));
 		await screen.findByText('networksPage.error.loadFailed');
 		expect(screen.getByText('1 of 4 networks')).toBeTruthy();
-		expect(screen.getByLabelText('외부')).toHaveProperty('value', 'yes');
+		expect(resetButton()).toHaveProperty('disabled', false);
 		expect(within(screen.getByLabelText('Network history')).getByText(JSON.stringify(history))).toBeTruthy();
 		expect(screen.getByText('networksPage.error.timeseriesFailed')).toBeTruthy();
 		await fireEvent.click(resetButton());

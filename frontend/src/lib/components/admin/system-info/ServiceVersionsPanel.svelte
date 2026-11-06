@@ -2,6 +2,11 @@
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { Alert, CompactResourceCard, LoadingState, ResponsiveTable, TableShell } from '$lib/components/ui';
 	import type { ServiceVersion, ServiceVersions } from '$lib/types/adminOverview';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let { data, loading, failure }: {
 		data: ServiceVersions | null;
@@ -15,6 +20,13 @@
 		? row.version : t('systemInfo.services.unknown');
 	const kind = (row: ServiceVersion) => row.status === 'available' && row.version && row.version_kind
 		? t(`systemInfo.services.kind.${row.version_kind}`) : t('systemInfo.services.notReported');
+	const columns = $derived<TableColumn<ServiceVersion>[]>([
+		{ key: 'service', label: t('systemInfo.services.service'), value: (row) => names[row.service] },
+		{ key: 'status', label: t('systemInfo.services.status'), value: (row) => t(`systemInfo.services.status.${row.status}`) },
+		{ key: 'version', label: t('systemInfo.services.version'), value: (row) => row.status === 'available' && row.version_kind ? row.version : null },
+		{ key: 'kind', label: t('systemInfo.services.kind'), value: (row) => row.status === 'available' && row.version && row.version_kind ? kind(row) : null },
+	]);
+	const view = createTableView<ServiceVersion>({ rows: () => data?.services ?? [], columns: () => columns, locale: intlLocale });
 </script>
 
 <section aria-labelledby="service-versions-heading" class="min-w-0 space-y-3">
@@ -26,10 +38,13 @@
 		<Alert tone={failure === 'unavailable' ? 'info' : 'danger'}>{t(`systemInfo.services.${failure === 'unavailable' ? 'endpointUnavailable' : 'loadFailed'}`)}</Alert>
 	{/if}
 	{#if loading}<LoadingState variant={data ? 'inline' : 'section'} label={t('systemInfo.services.loading')} />{/if}
-	{#if data?.services.length}
+	<TableViewControls {view} />
+	{#if !loading && !failure && view.rows.length === 0}
+		<p class="text-sm text-ink-2">{data?.services.length ? tc('table.noMatches') : t('systemInfo.services.empty')}</p>
+	{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each data.services as row (row.service)}
+				{#each view.rows as row (row.service)}
 					<CompactResourceCard>
 						<h3 class="text-sm font-semibold text-ink-0">{names[row.service]}</h3>
 						<p class="text-ink-2">{t(`systemInfo.services.status.${row.status}`)}</p>
@@ -43,12 +58,9 @@
 			<TableShell>
 				<table aria-labelledby="service-versions-heading">
 					<thead><tr>
-						<th scope="col">{t('systemInfo.services.service')}</th>
-						<th scope="col">{t('systemInfo.services.status')}</th>
-						<th scope="col">{t('systemInfo.services.version')}</th>
-						<th scope="col">{t('systemInfo.services.kind')}</th>
+						{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 					</tr></thead>
-					<tbody>{#each data.services as row (row.service)}<tr>
+					<tbody>{#each view.rows as row (row.service)}<tr>
 						<th scope="row" class="text-ink-0">{names[row.service]}</th>
 						<td class="text-ink-2">{t(`systemInfo.services.status.${row.status}`)}</td>
 						<td class="break-all text-ink-1">{version(row)}</td>
@@ -57,7 +69,4 @@
 				</table>
 			</TableShell>
 		</ResponsiveTable>
-	{:else if data && !loading && !failure}
-		<p class="text-sm text-ink-2">{t('systemInfo.services.empty')}</p>
-	{/if}
 </section>

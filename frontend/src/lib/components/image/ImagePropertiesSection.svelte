@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/images-keys';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { useImageDetailController, isReservedKey } from '$lib/stores/imageDetailController.svelte';
@@ -8,6 +13,12 @@
 	const s = useImageDetailController();
 	const setupLocked = $derived(s.windowsEditing || s.windowsSaving);
 	const controlsLocked = $derived(!s.canEditMetadata || s.savingProps || setupLocked || s.savingVisibility);
+	const tableState = s.tableState('properties');
+	const columns = (): TableColumn<[string, string]>[] => [
+		{ key: 'key', label: tc('table.key'), value: row => row[0] },
+		{ key: 'value', label: tc('table.value'), value: row => row[1] },
+	];
+	const view = createTableView({ rows: () => Object.entries(s.image?.properties ?? {}), columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 {#snippet countSnippet(text: string)}
@@ -36,12 +47,16 @@
 	{/if}
 
 	{#if !s.editingProps}
+		<RegexSearch id="image-properties-search" bind:value={tableState.search} />
+		<TableViewControls {view} />
+	{/if}
+	{#if !s.editingProps}
 		{#if Object.keys(s.image!.properties).length === 0}
 			<p class="text-xs text-ink-2">{t('propertiesSection.empty')}</p>
-		{:else}
+		{/if}
 			<ResponsiveTable>
 				{#snippet cards()}
-					{#each Object.entries(s.image!.properties) as [k, v] (k)}
+					{#each view.rows as [k, v] (k)}
 						<CompactResourceCard>
 							<h4 class="text-xs font-medium font-mono text-ink-1 break-all line-clamp-2" title={k}>{k}</h4>
 							<p class="text-xs font-mono text-ink-2 break-all line-clamp-2" title={v}>{v}</p>
@@ -50,8 +65,9 @@
 					{/each}
 				{/snippet}
 			<table class="w-full table-fixed text-xs">
+				<thead><tr>{#each columns() as column}<TableColumnHeader {view} columnKey={column.key} />{/each}</tr></thead>
 				<tbody>
-					{#each Object.entries(s.image!.properties) as [k, v]}
+					{#each view.rows as [k, v] (k)}
 						<tr class="border-b border-line/50">
 							<td class="py-1.5 pr-4 text-ink-2 font-mono w-2/5 break-all align-top">{k}</td>
 							<td class="py-1.5 text-ink-2 font-mono break-all">{v}</td>
@@ -60,7 +76,6 @@
 				</tbody>
 			</table>
 			</ResponsiveTable>
-		{/if}
 	{:else}
 		<ResponsiveTable class="max-lg:mb-3">
 			{#snippet cards()}
@@ -86,8 +101,9 @@
 				{/each}
 			{/snippet}
 		<table class="motion-fade w-full table-fixed text-xs mb-3">
+			<thead><tr>{#each columns() as column}<th class="text-left">{column.label}</th>{/each}<th></th></tr></thead>
 			<tbody>
-				{#each Object.entries(s.propsDraft) as [k, v]}
+				{#each Object.entries(s.propsDraft) as [k, v] (k)}
 					<tr class="border-b border-line/50">
 						<td class="py-1.5 pr-2 font-mono w-2/5 text-ink-2 break-all align-top">
 							{k}{#if isReservedKey(k)}&nbsp;<span class="text-xs text-ink-2">{t('propertiesSection.reserved')}</span>{/if}

@@ -7,6 +7,8 @@ export const TOUR_IDS = [
 	'volume',
 	'drover',
 	'waygate',
+	'images',
+	'admin-images',
 	'admin-compute',
 	'admin-storage',
 	'admin-library',
@@ -73,6 +75,8 @@ const TOUR_META: Record<TourId, { label: string; summary: string }> = {
 	volume: { get label() { return t('tours.volume.label'); }, get summary() { return t('tours.volume.summary'); } },
 	drover: { get label() { return t('tours.drover.label'); }, get summary() { return t('tours.drover.summary'); } },
 	waygate: { get label() { return t('tours.waygate.label'); }, get summary() { return t('tours.waygate.summary'); } },
+	images: { get label() { return t('tours.images.label'); }, get summary() { return t('tours.images.summary'); } },
+	'admin-images': { get label() { return t('tours.adminImages.label'); }, get summary() { return t('tours.adminImages.summary'); } },
 	'admin-compute': {
 		get label() { return t('tours.adminCompute.label'); },
 		get summary() { return t('tours.adminCompute.summary'); },
@@ -286,6 +290,9 @@ function adminComputeSteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="admin-compute-timeseries"]',
+			skipReadyElement: ready,
+			skipIf: () => isTourElementMissing('[data-tour="admin-compute-timeseries"]'),
+			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminCompute.step3.title'); },
 			get description() { return t('tours.adminCompute.step3.description'); },
 		},
@@ -332,11 +339,16 @@ function adminStorageSteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="admin-storage-timeseries"]',
+			beforeReady: () => clickTourElement('#admin-volume-tabs-capacity'),
+			skipReadyElement: '[data-tour="admin-storage-status"]',
+			skipIf: () => isTourElementMissing('[data-tour="admin-storage-timeseries"]'),
+			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminStorage.step2.title'); },
 			get description() { return t('tours.adminStorage.step2.description'); },
 		},
 		{
 			element: '[data-tour="admin-storage-status"]',
+			prepare: () => clickTourElement('#admin-volume-tabs-volumes'),
 			get title() { return t('tours.adminStorage.step3.title'); },
 			get description() { return t('tours.adminStorage.step3.description'); },
 		},
@@ -349,11 +361,13 @@ function adminStorageSteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="admin-storage-filters"]',
+			prepare: () => clickTourElement('#admin-volume-tabs-volumes'),
 			get title() { return t('tours.adminStorage.step5.title'); },
 			get description() { return t('tours.adminStorage.step5.description'); },
 		},
 		{
 			element: '[data-tour="admin-storage-list"]',
+			prepare: () => clickTourElement('#admin-volume-tabs-volumes'),
 			readyElement: ready,
 			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminStorage.step6.title'); },
@@ -713,11 +727,15 @@ function adminIdentitySteps(): TourStep[] {
 		},
 		{
 			element: '[data-tour="admin-identity-filters"]',
+			readyElement: ready,
+			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminIdentity.step3.title'); },
 			get description() { return t('tours.adminIdentity.step3.description'); },
 		},
 		{
-			element: '[data-tour="admin-identity-status-filter"]',
+			element: '[data-tour="admin-identity-list"]',
+			readyElement: ready,
+			waitTimeoutMs: 20000,
 			get title() { return t('tours.adminIdentity.step4.title'); },
 			get description() { return t('tours.adminIdentity.step4.description'); },
 		},
@@ -757,11 +775,38 @@ function waygateSteps(route: string, titleKey: Parameters<typeof t>[0]): TourSte
 	];
 }
 
+function imageSteps(admin: boolean): TourStep[] {
+	const prefix = admin ? 'admin-images' : 'images';
+	return [
+		{
+			element: `[data-tour="${prefix}-header"]`,
+			route: admin ? '/admin/images' : '/dashboard/compute/images',
+			prepare: () => sidebarOpen.close(),
+			get title() { return t('tours.images.step1.title'); },
+			get description() { return t('tours.images.step1.description'); },
+		},
+		{
+			element: `[data-tour="${prefix}-controls"]`,
+			readyElement: `[data-tour="${prefix}-ready"]`,
+			waitTimeoutMs: 20000,
+			get title() { return t('tours.images.step2.title'); },
+			get description() { return t('tours.images.step2.description'); },
+		},
+		{
+			element: `[data-tour="${prefix}-results"]`,
+			get title() { return t('tours.images.step3.title'); },
+			get description() { return t('tours.images.step3.description'); },
+		},
+	];
+}
+
 const STEP_BUILDERS: Record<TourId, () => TourStep[]> = {
 	'vm-create': vmCreateSteps,
 	volume: volumeSteps,
 	drover: droverSteps,
 	waygate: () => waygateSteps('/dashboard/network/waygate', 'tours.waygate.step1.title'),
+	images: () => imageSteps(false),
+	'admin-images': () => imageSteps(true),
 	'admin-compute': adminComputeSteps,
 	'admin-storage': adminStorageSteps,
 	'admin-library': adminLibrarySteps,

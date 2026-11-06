@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import type * as SvelteStore from 'svelte/store';
@@ -8,6 +8,8 @@ import { catalogApi, type CatalogLayer, type CatalogLayerDetail, type CatalogLay
 import { ApiError } from '$lib/api/errors';
 import { getLocale, initLocale } from '$lib/i18n/runtime.svelte';
 import PalimpsestCatalogPanel from '../PalimpsestCatalogPanel.svelte';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as catalogText } from '$lib/i18n/ns/palimpsest-catalog';
 
 vi.mock('$lib/stores/auth', async () => {
   const { writable } = await vi.importActual<typeof SvelteStore>('svelte/store');
@@ -39,23 +41,52 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); initLocale(originalLocale); });
 
-it('searches the server by trimmed name or digest and follows bounded server offsets', async () => {
-  vi.mocked(catalogApi.layers).mockImplementation(async (_identity, _signal, source, q, offset) => {
-    if (q === 'torch' && offset === 0) return { ...page([row], source), has_more: true, next_offset: 81 };
-    return page([{ ...row, name: offset === 81 ? 'later-result' : 'initial-result' }], source, offset);
-  });
+it('applies regex only to loaded fields and retains it through native cursor navigation and refresh', async () => {
+  vi.mocked(catalogApi.layers).mockImplementation(async (_identity, _signal, source, _q, offset) =>
+    offset === 81
+      ? page([{ ...row, name: 'later-result' }], source, offset)
+      : { ...page([row, { ...row, id: '99', name: 'other-result' }], source), has_more: true, next_offset: 81 });
   render(PalimpsestCatalogPanel);
-  await screen.findByText('initial-result');
-  await fireEvent.input(screen.getByLabelText('Search name or digest'), { target: { value: '  torch  ' } });
-  await fireEvent.submit(screen.getByLabelText('Search name or digest').closest('form')!);
   await screen.findByText('torch-runtime');
-  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.objectContaining({ userId: 'user-a', projectId: 'project-a' }), expect.any(AbortSignal), 'managed', 'torch', 0);
+  const search = screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement;
+  await fireEvent.input(search, { target: { value: '^(torch-runtime|later-result)$' } });
+  expect(screen.queryByText('other-result')).toBeNull();
+  expect(catalogApi.layers).toHaveBeenCalledTimes(1);
   await fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
   await screen.findByText('later-result');
-  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'managed', 'torch', 81);
+  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'managed', '', 81);
+  await fireEvent.click(screen.getByRole('button', { name: catalogText('refreshLabel') }));
+  await screen.findByText('later-result');
+  expect(search.value).toBe('^(torch-runtime|later-result)$');
+  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'managed', '', 81);
+  await fireEvent.input(search, { target: { value: '[' } });
+  expect(screen.getByText(commonT('table.regexError'))).toBeTruthy();
+  expect(screen.queryByText('later-result')).toBeNull();
   await fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
+  await tick();
+  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'managed', '', 0);
+  expect(search.value).toBe('[');
+  await fireEvent.input(search, { target: { value: '^torch-runtime$' } });
   await screen.findByText('torch-runtime');
-  expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 'managed', 'torch', 0);
+  expect(screen.queryByText('other-result')).toBeNull();
+});
+
+it('runs a source-wide name predicate from its header without changing the loaded-row regex', async () => {
+  render(PalimpsestCatalogPanel);
+  await screen.findByText('torch-runtime');
+  const regex = screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement;
+  await fireEvent.input(regex, { target: { value: '^torch-runtime$' } });
+  const label = commonT('table.filterColumn', { column: catalogText('name') });
+  await fireEvent.click(screen.getByRole('button', { name: label }));
+  const menu = within(screen.getByRole('dialog', { name: label }));
+  await fireEvent.input(menu.getByLabelText(commonT('table.filterValue')), { target: { value: 'torch' } });
+  await fireEvent.click(menu.getByRole('button', { name: commonT('table.apply') }));
+  await waitFor(() => expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'managed', 'torch', 0));
+  if (screen.queryByRole('dialog')) await fireEvent.click(menu.getByRole('button', { name: commonT('actions.close') }));
+  await screen.findByText('torch-runtime');
+  await fireEvent.click(screen.getByRole('button', { name: catalogText('refreshLabel') }));
+  await waitFor(() => expect(catalogApi.layers).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'managed', 'torch', 0));
+  expect(regex.value).toBe('^torch-runtime$');
 });
 
 it('distinguishes a native service outage from a successfully empty managed catalog', async () => {

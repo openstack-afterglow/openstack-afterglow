@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tableT } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/drover';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -60,6 +64,15 @@
 			deleting = false;
 		}
 	}
+	const tableState = s.tableState('nodegroups');
+	const columns = $derived<TableColumn<K3sNodegroup>[]>([
+		{ key: 'name', label: tableT('table.name'), value: row => row.name },
+		{ key: 'role', label: tableT('table.type'), value: row => row.role },
+		{ key: 'node_count', label: t('overview.table.worker'), value: row => row.node_count },
+		{ key: 'min_size', label: tableT('table.minimum'), value: row => row.min_size },
+		{ key: 'max_size', label: tableT('table.maximum'), value: row => row.max_size },
+	]);
+	const view = createTableView({ rows: () => nodegroups, columns: () => columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
@@ -72,13 +85,15 @@
 		>{t('overview.nodegroups.add')}</button>
 	</div>
 
+	<RegexSearch id="k3s-nodegroups-search" bind:value={tableState.search} />
+	<TableViewControls {view} class="" />
 	{#if loading && nodegroups.length === 0}
 		<div class="text-xs text-ink-2 py-2"><LoadingState variant="control" label={t('overview.nodegroups.loading')} /></div>
 	{:else if nodegroups.length === 0}
 		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.empty')}</div>
 	{:else}
 		<div class="space-y-2">
-			{#each nodegroups as ng (ng.id)}
+			{#each view.rows as ng (ng.id)}
 				<K3sNodegroupCard
 					nodegroup={ng}
 					onEdit={(n) => { editTarget = n; }}

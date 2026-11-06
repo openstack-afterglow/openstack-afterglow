@@ -7,22 +7,53 @@
   import Card from '$lib/components/ui/Card.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
-  import Field from '$lib/components/ui/Field.svelte';
-  import TextInput from '$lib/components/ui/TextInput.svelte';
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as commonText } from '$lib/i18n/ns/common';
+  import { auth } from '$lib/stores/auth';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   let { onbundle }: { onbundle?: (name: string) => void } = $props();
   const catalog = createPalimpsestCatalogController();
-  let search = $state('');
+  let localSearch = $state('');
+  const columns = $derived<TableColumn<CatalogLayer>[]>([
+    { key: 'name', label: t('name'), value: row => row.name,
+      filterMode: 'single', filterFreeValue: true,
+      filterOptions: () => [...new Set((catalog.page?.items ?? []).map(row => row.name))].map(value => ({ value, label: value, count: null })),
+      filterSelection: () => catalog.query ? [catalog.query] : null,
+      onFilterChange: values => { if (!values || values.length === 1) { const query = values?.[0] ?? ''; if (query !== catalog.query) void catalog.search(query); } } },
+    { key: 'origin', label: t('origin'), value: row => row.origin.kind },
+    { key: 'digest', label: t('digest'), value: row => row.blob_digest },
+    { key: 'chain', label: t('chain'), value: row => row.chain_complete, format: value => t(value ? 'chain.complete' : 'chain.incomplete') },
+    { key: 'visibility', label: t('visibility'), value: row => row.visibility, format: (_value, row) => t(`visibility.${row.visibility}`) },
+  ]);
+  const view = createTableView({ rows: () => catalog.page?.items ?? [], columns: () => columns, search: () => localSearch,
+    searchable: row => [row.name, row.kind, row.arch ?? '', row.blob_digest ?? '', row.origin.kind, row.origin.source, row.visibility], locale: intlLocale });
   let inspector = $state<HTMLElement | null>(null);
   let opener: HTMLElement | null = null;
   const sourceOptions = $derived([{ value: 'managed', label: t('source.managed') }, { value: 'hub', label: t('source.hub') }]);
-  onMount(() => { catalog.start(); return () => catalog.dispose(); });
+  onMount(() => {
+    let owner: string | null = null, active = true;
+    const stop = auth.subscribe(state => {
+      const next = sessionScopeKey(state);
+      if (owner !== next) {
+        localSearch = '';
+        // Let the controller synchronously retire its old credential scope first.
+        queueMicrotask(() => { if (active && owner === next) view.reset(); });
+      }
+      owner = next;
+    });
+    catalog.start();
+    return () => { active = false; stop(); catalog.dispose(); };
+  });
   async function inspect(id: string, event?: MouseEvent) {
     if (!catalog.selected && event?.currentTarget instanceof HTMLElement) opener = event.currentTarget;
     const pending = catalog.openDetail(id);
@@ -73,13 +104,12 @@
     <div class="mt-4 space-y-3">
       <ToggleGroup value={catalog.source} options={sourceOptions} ariaLabel={t('source.label')} onchange={(value) => catalog.setSource(value as CatalogSource)} />
       <p class="text-xs text-ink-2">{t(catalog.source === 'managed' ? 'source.managedHelp' : 'source.hubHelp')}</p>
-      <form class="flex flex-col items-stretch gap-2 md:flex-row md:items-end" onsubmit={(event) => { event.preventDefault(); void catalog.search(search); }}>
-        <div class="min-w-0 flex-1"><Field for="palimpsest-catalog-search" label={t('search.label')} help={t('search.help')}><TextInput id="palimpsest-catalog-search" type="search" bind:value={search} maxlength={128} disabled={!catalog.authorized} /></Field></div>
-        <Button type="submit" variant="secondary" disabled={!catalog.authorized}>{t('search.apply')}</Button>
-        <Button variant="ghost" disabled={!catalog.authorized} onclick={() => { search = ''; void catalog.search(''); }}>{t('search.clear')}</Button>
-      </form>
     </div>
   </Card>
+  <RegexSearch id="palimpsest-catalog-regex" bind:value={localSearch} />
+  <p class="text-xs text-ink-2">{commonText('table.mixedScope')}</p>
+  <TableViewControls {view} class={catalog.page?.items.length ? 'lg:hidden' : ''} />
+  {#if catalog.page?.items.length && !view.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
   {#if !catalog.authorized}
     <Alert tone="info">{t('authority')}</Alert>
   {:else if catalog.loading}
@@ -95,7 +125,7 @@
     {:else}
       <ResponsiveTable>
         {#snippet cards()}
-          {#each catalog.page?.items ?? [] as row (row.id)}
+          {#each view.rows as row (row.id)}
             <CompactResourceCard selected={catalog.selected === row.id}>
               <h3 class="text-sm font-medium break-all">{row.name}</h3>
               <p class="text-xs text-ink-2">{row.kind} · {row.arch ?? t('unknown')}</p>
@@ -107,8 +137,8 @@
           {/each}
         {/snippet}
         <TableShell density="compact"><table>
-          <thead><tr><th>{t('name')}</th><th>{t('origin')}</th><th>{t('digest')}</th><th>{t('chain')}</th><th>{t('visibility')}</th><th>{t('details')}</th></tr></thead>
-          <tbody>{#each catalog.page.items as row (row.id)}<tr data-selected={catalog.selected === row.id}>
+          <thead><tr>{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}<th>{t('details')}</th></tr></thead>
+          <tbody>{#each view.rows as row (row.id)}<tr data-selected={catalog.selected === row.id}>
             <td><span class="block max-w-64 truncate" title={row.name}>{row.name}</span><span class="text-xs text-ink-2">{row.kind} · {row.arch ?? t('unknown')}</span></td>
             <td>{@render origin(row)}</td><td><code title={row.blob_digest ?? undefined}>{row.blob_digest ? `${row.blob_digest.slice(0, 19)}…` : t('unknown')}</code></td>
             <td>{t(row.chain_complete ? 'chain.complete' : 'chain.incomplete')}</td><td>{t(`visibility.${row.visibility}`)}</td>

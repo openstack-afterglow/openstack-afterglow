@@ -14,6 +14,8 @@ vi.mock('$lib/stores/projectNames', () => ({
 }));
 
 import AdminFileStorageTable from '../AdminFileStorageTable.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
+const view = () => createTableView<AdminFileStorage>({ rows: () => [storage], columns: () => [{ key: 'name', label: 'Name', value: row => row.name }] });
 
 const storage: AdminFileStorage = {
 	id: 'share-1',
@@ -34,6 +36,7 @@ describe('AdminFileStorageTable', () => {
 		render(AdminFileStorageTable, {
 			props: {
 				storages: [storage],
+				view: view(),
 				onOpen,
 			},
 		});
@@ -51,6 +54,7 @@ describe('AdminFileStorageTable', () => {
 		render(AdminFileStorageTable, {
 			props: {
 				storages: [storage],
+				view: view(),
 				selectedId: 'share-1',
 				onOpen: vi.fn(),
 			},

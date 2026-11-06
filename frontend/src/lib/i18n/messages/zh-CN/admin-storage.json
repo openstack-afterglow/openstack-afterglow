@@ -34,7 +34,6 @@
 	"volumeList.summary.drilldown": "查看 {name} 的卷",
 	"volumeDetail.loadingInfo": "正在加载卷信息",
 	"volumeDetail.loading": "正在加载...",
-	"volumeDetail.loadingInfo": "正在加载卷信息",
 	"volumeDetail.attachments": "挂载信息",
 	"volumeDetail.basicInfo": "基本信息",
 	"volumeDetail.volumeType": "卷类型",

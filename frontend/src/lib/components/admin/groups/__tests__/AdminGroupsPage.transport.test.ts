@@ -17,14 +17,16 @@ vi.mock('$lib/mockup/transport', () => ({
 	symbolNoMatch: noMatch,
 }));
 
-import { auth } from '$lib/stores/auth';
+import { auth, authReady } from '$lib/stores/auth';
 import { t as commonT } from '$lib/i18n/ns/common';
 import Page from '../AdminGroupsPage.svelte';
 
 const initialAuth = get(auth);
+const initialReady = get(authReady);
 afterEach(() => {
 	cleanup();
 	auth.set(initialAuth);
+	authReady.set(initialReady);
 	vi.unstubAllGlobals();
 });
 
@@ -60,6 +62,7 @@ it('a source ABA gets a fresh directory rather than rejoining its earlier pendin
 	auth.set({ ...initialAuth, token: 'synthetic-transport-token', refreshToken: null, accessExpiresAt: 4102444800,
 		userId: 'admin', username: 'Admin', sessionId: 'group-transport-session', identityDomainId: 'accounts',
 		domainId: 'organization', projectId: 'operator-project', isSystemAdmin: true });
+	authReady.set(true);
 
 	async function source(name: string) {
 		await fireEvent.click(screen.getByRole('button', { name: '계정 홈 도메인' }));
@@ -114,6 +117,7 @@ it('keeps group inventory when a successful refresh overlaps adding a member', a
 	auth.set({ ...initialAuth, token: 'synthetic-race-token', refreshToken: null, accessExpiresAt: 4102444800,
 		userId: 'admin', username: 'Admin', sessionId: 'group-race-session', identityDomainId: 'organization',
 		domainId: 'organization', projectId: 'operator-project', isSystemAdmin: true });
+	authReady.set(true);
 	try {
 		render(Page, { domainId: 'organization', domainName: 'Organization' });
 		await screen.findByText('Team');

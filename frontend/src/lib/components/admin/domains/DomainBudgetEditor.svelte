@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { ApiError } from '$lib/api/client';
@@ -37,12 +38,12 @@
 	$effect(() => {
 		const owner = authority; const pending = revision;
 		let live = true;
-		untrack(() => { data = null; loading = true; busy = false; error = ''; verified = ''; confirmed = {}; reloadRequired = false; outcome = ''; });
+		untrack(() => { if (verified !== owner) { data = null; verified = ''; quotaViewState = { searches: {}, sections: {} }; } loading = true; busy = false; error = ''; confirmed = {}; reloadRequired = false; outcome = ''; });
 		if (!untrack(() => $authReady && !$projectSwitching && $auth.isSystemAdmin && !!$auth.token)) { untrack(() => { loading = false; error = t('denied'); }); return; }
 		untrack(() => client().load()).then(snapshot => {
 			if (live && authority === owner && revision === pending) { accept(snapshot); verified = owner; }
 		}).catch(cause => {
-			if (live && authority === owner) error = cause instanceof ApiError ? cause.message : t('loadFailed');
+			if (live && authority === owner) { error = cause instanceof ApiError ? cause.message : t('loadFailed'); reloadRequired = true; }
 		}).finally(() => { if (live && authority === owner) loading = false; });
 		return () => { live = false; };
 	});
@@ -62,6 +63,7 @@
 		catch (cause) { if (owner === authority) { error = cause instanceof ApiError ? cause.message : t('loadFailed'); outcome = t('unknownOutcome'); } }
 		finally { if (owner === authority) { busy = false; reloadRequired = true; confirmed = {}; } }
 	}
+	let quotaViewState = $state<{ searches: Record<string, string>; sections: Record<string, TableViewState> }>({ searches: {}, sections: {} });
 </script>
 
 <PageShell>
@@ -82,7 +84,7 @@
 					<Button variant="secondary" disabled={busy || reloadRequired || !confirmed[operation.id]} onclick={() => reconcile(operation.id)}>{t('reconcile')}</Button>
 				</section>
 			{/each}
-			{#if !reloadRequired}{#key `${authority}:${revision}`}<QuotaEditor values={data.ceilings} disabled={busy || loading || quotaBlocked(data)} onSave={save} />{/key}{/if}
+			{#if !reloadRequired}{#key `${authority}:${revision}`}<QuotaEditor viewState={quotaViewState} values={data.ceilings} disabled={busy || loading || quotaBlocked(data)} onSave={save} />{/key}{/if}
 		{/if}
 	</div>
 </PageShell>

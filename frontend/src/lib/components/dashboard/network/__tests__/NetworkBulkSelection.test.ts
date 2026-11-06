@@ -1,4 +1,7 @@
-vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
+vi.mock('$lib/stores/servicePermissions', () => ({
+  serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+  observedProjectPermissions: writable<PermissionState>({ permissions: null, loading: false, error: '' }),
+}));
 vi.mock('$lib/api/client', () => ({
   api: {
     get: vi.fn(async (path: string) => path === '/api/v1/loadbalancers'
@@ -25,7 +28,8 @@ vi.mock('$lib/api/waygate', () => ({
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { writable, type Writable } from 'svelte/store';
-import { serviceCapabilities } from '$lib/stores/servicePermissions';
+import { observedProjectPermissions, serviceCapabilities } from '$lib/stores/servicePermissions';
+import type { PermissionState } from '$lib/stores/servicePermissions';
 import { auth } from '$lib/stores/auth';
 import NetworksTableCard from '../networks/NetworksTableCard.svelte';
 import FloatingIpCard from '../networks/FloatingIpCard.svelte';
@@ -35,6 +39,12 @@ import LoadBalancerPage from '../../../../../routes/dashboard/network/loadbalanc
 import WaygatePage from '../../../../../routes/dashboard/network/waygate/+page.svelte';
 import type { Network, FloatingIp, Router } from '$lib/types/networks';
 import type { SecurityGroup } from '$lib/types/securityGroup';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import { tick } from 'svelte';
+import { t as tc } from '$lib/i18n/ns/common';
+import { t as tn } from '$lib/i18n/ns/network-resources';
+import LbPoolSection from '$lib/components/dashboard/loadbalancers/id/LbPoolSection.svelte';
+import { memberColumns } from '$lib/utils/loadBalancerTableColumns';
 
 const networks: Network[] = [
   { id: 'private-1', name: 'private', status: 'ACTIVE', subnets: [], is_external: false, is_shared: false },
@@ -60,6 +70,13 @@ describe('network bulk selection controls', () => {
     const onToggleAll = vi.fn();
     render(NetworksTableCard, {
       networks,
+      view: createTableView({ rows: () => networks, columns: () => [
+        { key: 'name', label: 'Name', value: row => row.name },
+        { key: 'cidr', label: 'CIDR', value: row => row.cidrs?.join(', ') },
+        { key: 'type', label: 'Type', value: row => row.is_external ? 'external' : row.is_shared ? 'shared' : 'internal' },
+        { key: 'subnets', label: 'Subnets', value: row => row.subnets.length },
+        { key: 'status', label: 'Status', value: row => row.status },
+      ] }),
       defaultNetworkId: null,
       deleting: null,
       settingDefault: null,
@@ -148,10 +165,35 @@ describe('network bulk selection controls', () => {
     const selectAll = screen.getByRole('checkbox', { name: '전체 로드밸런서 선택' });
     selectAll.click();
     expect(await screen.findByRole('region', { name: '선택한 로드밸런서 일괄 작업' })).toBeTruthy();
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '^drover-k3s$' } });
+    expect(screen.queryByRole('checkbox', { name: 'edge 선택' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'drover-k3s 선택' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: '선택한 로드밸런서 일괄 작업' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: tn('network.labels.name'), direction: tc('table.none') }) }));
+    const statusFilter = tc('table.filterColumn', { column: tn('network.labels.status') });
+    await fireEvent.click(screen.getByRole('button', { name: statusFilter }));
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+    await fireEvent.keyDown(screen.getByRole('dialog', { name: statusFilter }), { key: 'Escape' });
+    auth.update(state => ({ ...state, token: 'rotated-token', refreshToken: 'rotated-refresh' }));
+    await tick();
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('^drover-k3s$');
+    expect(screen.getByRole('button', { name: tc('table.sortColumn', { column: tn('network.labels.name'), direction: tc('table.ascending') }) })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'drover-k3s 선택' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: statusFilter }));
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.resetFilter') }));
+    await fireEvent.keyDown(screen.getByRole('dialog', { name: statusFilter }), { key: 'Escape' });
+    expect(screen.getByRole('checkbox', { name: 'drover-k3s 선택' })).toBeTruthy();
+    await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '[' } });
+    expect(screen.queryByRole('checkbox', { name: 'drover-k3s 선택' })).toBeNull();
+    expect(screen.getByRole('searchbox').getAttribute('aria-invalid')).toBe('true');
   });
 
   it('renders Waygate server selection controls', async () => {
     (serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'waygate-gateways_admin');
+    (observedProjectPermissions as Writable<PermissionState>).set({
+      permissions: { is_owner: false, is_manager: false, can_write: true, service_permissions: { waygate: ['waygate-gateways_admin'] } },
+      loading: false, error: '',
+    });
     auth.set({
       token: 'token',
       refreshToken: null,
@@ -172,5 +214,33 @@ describe('network bulk selection controls', () => {
     selectAll.click();
     expect(await screen.findByRole('region', { name: '선택한 Waygate 서버 일괄 작업' })).toBeTruthy();
     expect(screen.getByText('gateway')).toBeTruthy();
+  });
+
+  it('retains member view state when a selected pool row disappears and returns', async () => {
+    const pools = [{ id: 'pool-1', name: 'pool', protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', status: 'ACTIVE' }];
+    const members = [{ id: 'member-1', address: '10.0.0.2', protocol_port: 80, weight: 1, status: 'ACTIVE' }];
+    const memberView = createTableView({ rows: () => members, columns: memberColumns });
+    const props = {
+      pools, members, memberView, selectedPoolId: 'pool-1', membersLoading: false,
+      saving: false, error: '', addingMember: false, addMemberError: '',
+      onAddPool: vi.fn(async () => true), onDeletePool: vi.fn(async () => {}),
+      onSelectPool: vi.fn(), onAddMember: vi.fn(async () => true), onRemoveMember: vi.fn(async () => {}),
+    };
+    const panel = render(LbPoolSection, props);
+    const address = tn('lb.form.ipAddress');
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: address, direction: tc('table.none') }) }));
+    const addressFilter = tc('table.filterColumn', { column: address });
+    await fireEvent.click(screen.getByRole('button', { name: addressFilter }));
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+    await fireEvent.keyDown(screen.getByRole('dialog', { name: addressFilter }), { key: 'Escape' });
+    await panel.rerender({ ...props, pools: [] });
+    expect(screen.queryByText('10.0.0.2:80')).toBeNull();
+    await panel.rerender({ ...props, pools: structuredClone(pools) });
+    expect(screen.getByRole('button', { name: tc('table.sortColumn', { column: address, direction: tc('table.ascending') }) })).toBeTruthy();
+    expect(screen.queryByText('10.0.0.2:80')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: addressFilter }));
+    await fireEvent.click(screen.getByRole('button', { name: tc('table.resetFilter') }));
+    await fireEvent.keyDown(screen.getByRole('dialog', { name: addressFilter }), { key: 'Escape' });
+    expect(screen.getByText('10.0.0.2:80')).toBeTruthy();
   });
 });

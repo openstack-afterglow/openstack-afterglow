@@ -17,9 +17,8 @@
 	import type { HypervisorDetail } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import type { HostRelocationResult } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import HypervisorMigrateModal from '$lib/components/admin/hypervisors/HypervisorMigrateModal.svelte';
-	import type { AggregatedHost, GpuType, GpuResponse } from '$lib/types/gpu';
+	import type { AggregatedHost, GpuResponse, GpuType } from '$lib/types/gpu';
 	import { t } from '$lib/i18n/ns/admin-compute';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { hasValidRemovalReview, isVerifiedRemoval } from '$lib/components/admin/hypervisors/removal';
 	import type { RemovalInspection, RemovalApproval, RemovalResult } from '$lib/components/admin/hypervisors/removal';
@@ -28,11 +27,9 @@
 	let hypervisors = $state<HypervisorRow[]>([]);
 	let gpuHostMap = $state<Map<string, AggregatedHost>>(new Map());
 	let gpuTypes = $state<GpuType[]>([]);
-	let selectedGpuTypes = $state<Set<string>>(new Set());
+	let hasLoaded = $state(false);
 	let loading = $state(true);
 	let refreshing = $state(false);
-	let sortColumn = $state('');
-	let sortAsc = $state(true);
 
 	let selectedDetail = $state<HypervisorDetail | null>(null);
 	let detailLoading = $state(false);
@@ -103,6 +100,7 @@
 			hypervisors = [];
 			gpuHostMap = new Map();
 			gpuTypes = [];
+			hasLoaded = false;
 			selectedInstanceId = null;
 			selectedProjectId = null;
 			showMigrateModal = false;
@@ -134,6 +132,7 @@
 		if (request !== listRequest || scope !== scopeKey) return false;
 		if (hvResult.status === 'fulfilled') {
 			hypervisors = hvResult.value;
+			hasLoaded = true;
 			listError = '';
 		} else listError = t('hypervisors.page.listRefreshFailed');
 		if (gpuResult.status === 'fulfilled') {
@@ -153,26 +152,12 @@
 		hypervisors.map((h) => {
 			const g = gpuHostMap.get(h.name);
 			if (!g) return h;
-			const gpu_model = g.gpu_groups.map((grp) => grp.device_name).join(', ') || null;
-			return { ...h, gpu_total: g.gpu_total, gpu_used: g.gpu_used, gpu_model };
+			const gpu_models = g.gpu_groups.map((group) => group.device_name);
+			const gpu_model = gpu_models.join(', ') || null;
+			return { ...h, gpu_total: g.gpu_total, gpu_used: g.gpu_used, gpu_model, gpu_models };
 		})
 	);
 
-	function toggleGpuType(deviceName: string) {
-		const next = new Set(selectedGpuTypes);
-		if (next.has(deviceName)) next.delete(deviceName);
-		else next.add(deviceName);
-		selectedGpuTypes = next;
-	}
-
-	let filteredHypervisors = $derived(
-		selectedGpuTypes.size === 0
-			? joinedHypervisors
-			: joinedHypervisors.filter((h) => {
-					const g = gpuHostMap.get(h.name);
-					return g?.gpu_groups.some((grp) => selectedGpuTypes.has(grp.device_name)) ?? false;
-				})
-	);
 
 	async function loadDetail(hvId: string, reset = true): Promise<boolean> {
 		if (reset) {
@@ -330,33 +315,6 @@
 		}
 	}
 
-	function toggleSort(col: string) {
-		if (sortColumn === col) {
-			sortAsc = !sortAsc;
-		} else {
-			sortColumn = col;
-			sortAsc = true;
-		}
-	}
-
-	const STRING_SORT_COLS = new Set(['name', 'cpu_model', 'gpu_model']);
-
-	let sortedHypervisors = $derived(
-		filteredHypervisors.toSorted((a, b) => {
-			if (!sortColumn) return 0;
-			let va: string | number;
-			let vb: string | number;
-			if (STRING_SORT_COLS.has(sortColumn)) {
-				va = (a as unknown as Record<string, string>)[sortColumn] ?? '';
-				vb = (b as unknown as Record<string, string>)[sortColumn] ?? '';
-			} else {
-				va = (a as unknown as Record<string, number>)[sortColumn] ?? 0;
-				vb = (b as unknown as Record<string, number>)[sortColumn] ?? 0;
-			}
-			const cmp = typeof va === 'string' ? va.localeCompare(vb as string, intlLocale()) : (va as number) - (vb as number);
-			return sortAsc ? cmp : -cmp;
-		})
-	);
 
 	let selectedInstanceId = $state<string | null>(null);
 	let selectedProjectId = $state<string | null>(null);
@@ -405,31 +363,22 @@
 
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else if hypervisors.length === 0}
-		<div class="text-ink-2 text-sm">{t('hypervisors.page.empty')}</div>
-	{:else}
-		{#if gpuTypes.length > 0}
-			<div class="flex items-center gap-2 mb-3 flex-wrap">
-				<span class="text-xs text-ink-2">{t('hypervisors.page.gpuFilter')}</span>
-				{#each gpuTypes as gt (gt.device_name)}
-					<button
-						onclick={() => toggleGpuType(gt.device_name)}
-						class="text-xs px-2.5 py-1 rounded transition-colors {selectedGpuTypes.has(gt.device_name) ? 'bg-surface-selected/50 text-warm-text border border-action-warm/50' : 'text-ink-2 hover:text-ink-0 border border-line'}"
-					>{gt.device_name} <span class="text-ink-2">{gt.used}/{gt.total}</span></button>
-				{/each}
-				{#if selectedGpuTypes.size > 0}
-					<button onclick={() => (selectedGpuTypes = new Set())} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('hypervisors.page.resetFilter')}</button>
-				{/if}
-			</div>
-		{/if}
+	{/if}
+	{#if gpuTypes.length > 0}
+		<div class="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-ink-2">
+			{#each gpuTypes as type (type.device_name)}
+				<p>{type.device_name} <span class="tabular-nums">{formatNumber(type.used)}/{formatNumber(type.total)}</span></p>
+			{/each}
+		</div>
+	{/if}
+	{#if hasLoaded}
+		{#key scopeKey}
 			<HypervisorTable
-				hypervisors={sortedHypervisors}
+				hypervisors={joinedHypervisors}
 				selectedId={selectedId}
-				{sortColumn}
-				{sortAsc}
-				onSort={toggleSort}
 				onSelect={(id) => { if (!actionPending) void loadDetail(id); }}
 			/>
+		{/key}
 	{/if}
 	<HostHealthPanel />
 </div>

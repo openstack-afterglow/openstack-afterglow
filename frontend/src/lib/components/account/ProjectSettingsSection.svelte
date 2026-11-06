@@ -4,6 +4,7 @@
 	import { t } from '$lib/i18n/ns/account';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { t as td } from '$lib/i18n/ns/domain-iam';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { auth, canManageDomain } from '$lib/stores/auth';
@@ -16,6 +17,12 @@
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import ProjectMemberRolesModal from './ProjectMemberRolesModal.svelte';
 	import ProjectLifecycleSection from './ProjectLifecycleSection.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -40,6 +47,24 @@
 	let membersFresh = $state(false);
 	let membersError = $state('');
 	let managingUserId = $state<string | null>(null);
+	let search = $state('');
+	const defaultMembers = $derived(members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)));
+	const view = createTableView<ProjectAccessMember>({
+		locale: () => intlLocale(),
+		rows: () => defaultMembers,
+		search: () => search,
+		searchable: row => [row.user_id, row.username ?? '', row.email ?? '', row.group_name ?? '', row.source ?? '', ...(row.roles ?? []), ...row.direct_roles.map(role => role.name)],
+		columns: () => [
+			{ key: 'user', label: t('projectSettings.user'), value: row => row.username || row.user_id },
+			{ key: 'id', label: 'ID', value: row => row.user_id },
+			{ key: 'email', label: t('projectSettings.email'), value: row => row.email },
+			{ key: 'role', label: t('projectSettings.role'), value: row => row.is_owner ? 'owner' : row.is_manager ? 'admin' : 'member' },
+			{ key: 'direct', label: tc('table.directRoles'), value: row => row.direct_roles.map(role => role.name).join(', ') || null, filterValues: row => row.direct_roles.map(role => role.name) },
+			{ key: 'effective', label: tc('table.effectiveRoles'), value: row => row.roles?.join(', ') || null, filterValues: row => row.roles ?? [] },
+			{ key: 'group', label: t('projectSettings.affiliation'), value: row => row.group_name },
+		],
+	});
+	let viewOwner = '';
 
 	async function loadMembers(context: Scope) {
 		if (scope !== context) return;
@@ -107,6 +132,8 @@
 	// Observe every transition synchronously, including A → B → A before effects run.
 	// A fresh object fences old work even when the token/project values return to A.
 	const unsubscribe = derived([auth, authReady, projectSwitching, logoutInProgress], ([state, ready, switching, loggingOut]) => ({ state, active: ready && !switching && !loggingOut })).subscribe(({ state, active }) => {
+		const nextViewOwner = active ? sessionScopeKey(state) : '';
+		if (nextViewOwner !== viewOwner) { viewOwner = nextViewOwner; search = ''; view.reset(); }
 		if (active && scope?.token === state.token && scope?.projectId === state.projectId && scope?.userId === state.userId && scope?.domainId === state.domainId && scope?.identityDomainId === state.identityDomainId && scope?.sessionId === state.sessionId) return;
 		const context: Scope | null = active && state.token && state.projectId && state.domainId && state.userId
 			? { token: state.token, projectId: state.projectId, userId: state.userId, domainId: state.domainId, identityDomainId: state.identityDomainId, sessionId: state.sessionId,
@@ -160,13 +187,15 @@
 
 			{#if managingUserId}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
 			{#if membersLoading && members.length > 0}<LoadingState variant="inline" label={tc('state.loading')}  />{/if}
+			<RegexSearch id={`${uid}-search`} bind:value={search} />
+			<TableViewControls {view} />
 			{#if membersLoading && members.length === 0}
 				<LoadingState variant="section" label={tc('state.loading')}  />
-			{:else if members.length === 0}
-				<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
 			{:else}
+				{#if members.length === 0}<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
+				{:else if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 				<ResponsiveTable>{#snippet cards()}
-					{#each members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)) as m (m.user_id)}<CompactResourceCard>
+					{#each view.rows as m (m.user_id)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{m.username || m.user_id}</h3><span class="text-xs">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span></div><p class="text-sm break-all">{m.email || '—'}</p>{#if m.group_name}<p class="text-xs text-ink-2">{m.group_name}</p>{/if}
 						{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: m.direct_roles.map(role => role.name).join(', ') || '—' })}</p><p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p>{/snippet}
 						{#snippet actions()}{#if canEdit(m)}<Button variant="secondary" size="sm" disabled={managingUserId !== null || !membersFresh} onclick={() => { editMember = m; membersError = ''; }}>{t('projectSettings.editRoles')}</Button>{#if !m.is_owner && (actorOwner || !m.is_manager)}<Button variant="danger" size="sm" disabled={managingUserId !== null || !membersFresh || !(m.direct_role_ids?.length)} onclick={() => removeMember(m)}>{t('projectSettings.removeMember')}</Button>{/if}{:else if ['group', 'inherited'].includes(m.source ?? '')}<span class="text-xs text-ink-2">{t('projectSettings.inheritedReadOnly')}</span>{/if}{/snippet}
@@ -176,15 +205,15 @@
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="border-b border-line-2 text-xs text-ink-2 uppercase tracking-wide">
-								<th class="text-left px-4 py-3">{t('projectSettings.user')}</th>
-								<th class="text-left px-4 py-3">{t('projectSettings.email')}</th>
-								<th class="text-left px-4 py-3">{t('projectSettings.role')}</th>
-								<th class="text-left px-4 py-3">{t('projectSettings.affiliation')}</th>
+								<th class="text-left px-4 py-3" aria-sort={view.direction('user')}><div class="flex flex-wrap gap-2"><TableColumnControl {view} columnKey="user" /><TableColumnControl {view} columnKey="id" /></div></th>
+								<TableColumnHeader {view} columnKey="email" class="text-left px-4 py-3" />
+								<th class="text-left px-4 py-3" aria-sort={view.direction('role')}><div class="flex flex-wrap gap-2"><TableColumnControl {view} columnKey="role" /><TableColumnControl {view} columnKey="direct" /><TableColumnControl {view} columnKey="effective" /></div></th>
+								<TableColumnHeader {view} columnKey="group" class="text-left px-4 py-3" />
 								<th class="px-4 py-3"></th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-line">
-							{#each members.slice().sort((a, b) => (a.source === 'group' ? 1 : 0) - (b.source === 'group' ? 1 : 0)) as m (m.user_id)}
+							{#each view.rows as m (m.user_id)}
 								<tr class="hover:bg-surface-selected/40 transition-colors">
 									<td class="px-4 py-3 font-medium text-ink-0">{m.username || m.user_id}</td>
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>

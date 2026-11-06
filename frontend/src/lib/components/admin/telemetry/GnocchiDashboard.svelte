@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView, nativeObservationFilter, type ObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
 	import { Alert, Button, Card, Field, PageHeader, PageShell, SelectInput, TableShell, TextInput } from '$lib/components/ui';
@@ -94,12 +97,16 @@
 		resourceMarkers = [null]; metricMarkers = [null]; resourceType = 'generic';
 		selectedResource = null; clearMetric();
 		hours = '1'; aggregation = 'mean'; granularity = '';
+		for (const model of [observationView1, observationView2, observationView3, observationView4, observationView5, capabilitiesView, processingView]) {
+			model.search = '';
+			model.view.reset();
+		}
 	}
 	async function loadOverview() {
 		const ticket = context?.capture();
 		if (!ticket) return;
 		const generation = ++overviewGeneration;
-		overview = null; overviewFailure = null; overviewLoading = true;
+		overviewFailure = null; overviewLoading = true;
 		try {
 			const result = await adminTelemetryRequest<GnocchiOverview>('/gnocchi', ticket.authority);
 			if (ticket.current() && generation === overviewGeneration) overview = result;
@@ -141,13 +148,8 @@
 		finally { if (current()) metricsLoading = false; }
 	}
 	function refresh() {
-		reset();
+		selectedResource = null; clearMetric();
 		void loadOverview(); void loadResources(); void loadMetrics();
-	}
-	function changeType(event: Event) {
-		resourceType = (event.currentTarget as HTMLSelectElement).value;
-		resourceMarkers = [null]; selectedResource = null; clearMetric();
-		void loadResources();
 	}
 	function pageResources(direction: 'next' | 'previous') {
 		if (direction === 'next') {
@@ -195,27 +197,40 @@
 		if (allowed) refresh();
 		return () => { ++contextGeneration; reset(); context?.dispose(); };
 	});
+
+	const observationView1 = createObservationView(() => (overview?.archive_policies.data ?? []), () => ([{ key: 'name', label: t('name'), value: row => row.name }, { key: 'window', label: t('gnocchi.backWindow'), value: row => row.back_window }, { key: 'methods', label: t('gnocchi.aggregationMethods'), value: row => row.aggregation_methods?.join(', ') }, { key: 'definition', label: t('gnocchi.definition'), value: row => row.definition?.map(tier => `${tier.granularity} / ${tier.points} / ${tier.timespan}`).join(', ') }]));
+	const observationView2 = createObservationView(() => (overview?.archive_policy_rules.data ?? []), () => ([{ key: 'name', label: t('name'), value: row => row.name }, { key: 'pattern', label: t('gnocchi.pattern'), value: row => row.metric_pattern }, { key: 'policy', label: t('gnocchi.archivePolicy'), value: row => row.archive_policy_name }]));
+	const observationView3 = createObservationView(() => (resources?.items ?? []), () => ([{ key: 'id', label: t('gnocchi.id'), value: row => row.id }, { key: 'type', label: t('type'), value: row => row.type, ...nativeObservationFilter(() => resourceType === 'generic' ? '' : resourceType, value => { resourceType = value || 'generic'; resourceMarkers = [null]; selectedResource = null; clearMetric(); void loadResources(); }, () => types.map(value => ({ value, label: value, count: null })), false) }, { key: 'project', label: t('gnocchi.project'), value: row => row.project_id }, { key: 'started', label: t('gnocchi.started'), value: row => row.started_at }, { key: 'ended', label: t('gnocchi.ended'), value: row => row.ended_at }]));
+	const observationView4 = createObservationView(() => (metrics?.items ?? []), () => ([{ key: 'id', label: t('gnocchi.id'), value: row => row.id }, { key: 'name', label: t('name'), value: row => row.name }, { key: 'unit', label: t('unit'), value: row => row.unit }, { key: 'resource', label: t('gnocchi.resourceId'), value: row => row.resource_id }, { key: 'policy', label: t('gnocchi.archivePolicy'), value: row => policyName(row) }]));
+	const observationView5 = createObservationView(() => (measures?.measures ?? []), () => ([{ key: 'time', label: t('gnocchi.timestamp'), value: row => row.timestamp }, { key: 'grain', label: t('gnocchi.nativeGrain'), value: row => row.granularity }, { key: 'value', label: t('gnocchi.value'), value: row => row.value }, { key: 'unit', label: t('unit'), value: row => measures?.metric?.unit ?? selectedMetric?.unit }]));
+	const capabilitiesView = createObservationView(() => overview?.capabilities.data == null ? [] : diagnosticRows(overview.capabilities.data), () => [{ key: 'field', label: t('gnocchi.field'), value: row => row.path }, { key: 'value', label: t('gnocchi.value'), value: row => typeof row.value === 'string' || typeof row.value === 'number' || typeof row.value === 'boolean' ? row.value : null }]);
+	const processingView = createObservationView(() => overview?.processing.data == null ? [] : diagnosticRows(overview.processing.data), () => [{ key: 'field', label: t('gnocchi.field'), value: row => row.path }, { key: 'value', label: t('gnocchi.value'), value: row => typeof row.value === 'string' || typeof row.value === 'number' || typeof row.value === 'boolean' ? row.value : null }]);
 </script>
 
-{#snippet nativeDiagnostics(label: string, section: NativeSection)}
+{#snippet nativeDiagnostics(label: string, section: NativeSection, model: ObservationView<ReturnType<typeof diagnosticRows>[number]>)}
+	{@const rows = section.data === null ? [] : diagnosticRows(section.data)}
 	<section aria-label={label} class="space-y-3 min-w-0">
 		<h2 class="text-sm font-semibold text-ink-0">{label}</h2>
 		<NativeStatus status={section.status} error={section.error} />
 		{#if section.data === null}
 			<p class="text-sm text-ink-2">{t('gnocchi.noSectionData')}</p>
-		{:else if diagnosticRows(section.data).length === 0}
+		{:else if rows.length === 0}
 			<p class="text-sm text-ink-2">{t('gnocchi.emptySection')}</p>
-		{:else}
-			{@const rows = diagnosticRows(section.data)}
-			<ResponsiveTable>
-				{#snippet cards()}<CompactResourceCard><p class="font-medium">{label}</p><p>{t('gnocchi.field')}: {rows.length.toLocaleString(intlLocale())}</p>{#snippet details()}<dl class="space-y-2">{#each rows as row}<div><dt class="break-all">{row.path}</dt><dd class="tabular-nums break-all">{raw(row.value)}</dd></div>{/each}</dl>{/snippet}</CompactResourceCard>{/snippet}
+		{/if}
+			<ObservationTable {model}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+				{#snippet cards()}{#if rows.length > 0}<CompactResourceCard><p class="font-medium">{label}</p><p>{t('gnocchi.field')}: {rows.length.toLocaleString(intlLocale())}</p>{#snippet details()}<dl class="space-y-2">{#each tableView.rows as row}<div><dt class="break-all">{row.path}</dt><dd class="tabular-nums break-all">{raw(row.value)}</dd></div>{/each}</dl>{/snippet}</CompactResourceCard>{/if}{/snippet}
+			<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 			<div role="region" aria-label={label} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 				<caption class="sr-only">{label}</caption>
-				<thead><tr><th scope="col">{t('gnocchi.field')}</th><th scope="col">{t('gnocchi.value')}</th></tr></thead>
-				<tbody>{#each rows as row}<tr><th scope="row" class="break-all">{row.path}</th><td class="tabular-nums break-all">{raw(row.value)}</td></tr>{/each}</tbody>
+				<thead><tr><TableColumnHeader view={tableView} columnKey="field" /><TableColumnHeader view={tableView} columnKey="value" /></tr></thead>
+				<tbody>{#each tableView.rows as row}<tr><th scope="row" class="break-all">{row.path}</th><td class="tabular-nums break-all">{raw(row.value)}</td></tr>{/each}</tbody>
 			</table></TableShell></div>
 			</ResponsiveTable>
-		{/if}
+{/snippet}
+</ObservationTable>
 	</section>
 {/snippet}
 
@@ -237,38 +252,52 @@
 				<NativeStatus status={overview.status} error={overview.error} />
 				<p class="text-xs text-ink-2">{t('checkedAt')}: <time datetime={overview.checked_at}>{overview.checked_at}</time></p>
 				<div class="grid min-w-0 gap-4 lg:grid-cols-2">
-					<Card>{@render nativeDiagnostics(t('gnocchi.capabilities'), overview.capabilities)}</Card>
-					<Card>{@render nativeDiagnostics(t('gnocchi.processing'), overview.processing)}</Card>
+					<Card>{@render nativeDiagnostics(t('gnocchi.capabilities'), overview.capabilities, capabilitiesView)}</Card>
+					<Card>{@render nativeDiagnostics(t('gnocchi.processing'), overview.processing, processingView)}</Card>
 				</div>
 				<section aria-label={t('gnocchi.archivePolicies')} class="space-y-3">
 					<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.archivePolicies')}</h2>
 					<NativeStatus status={overview.archive_policies.status} error={overview.archive_policies.error} />
-					{#if overview.archive_policies.data?.length}
+					{#if overview.archive_policies.data}
 						{@const archivePolicies = overview.archive_policies.data}
-						<ResponsiveTable>
-							{#snippet cards()}{#each archivePolicies as policy}<CompactResourceCard><p class="font-medium">{policy.name}</p><p>{t('gnocchi.backWindow')}: {raw(policy.back_window)}</p><p>{t('gnocchi.aggregationMethods')}: {policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</p>{#snippet details()}<p>{t('gnocchi.definition')}</p>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}{/snippet}</CompactResourceCard>{/each}{/snippet}
+						<ObservationTable model={observationView1}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+							{#snippet cards()}{#each tableView.rows as policy}<CompactResourceCard><p class="font-medium">{policy.name}</p><p>{t('gnocchi.backWindow')}: {raw(policy.back_window)}</p><p>{t('gnocchi.aggregationMethods')}: {policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</p>{#snippet details()}<p>{t('gnocchi.definition')}</p>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}{/snippet}</CompactResourceCard>{/each}{/snippet}
+						<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 						<div role="region" aria-label={t('gnocchi.archivePolicies')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.archivePolicies')}</caption>
-							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('gnocchi.backWindow')}</th><th scope="col">{t('gnocchi.aggregationMethods')}</th><th scope="col">{t('gnocchi.definition')}</th></tr></thead>
-							<tbody>{#each archivePolicies as policy}<tr><th scope="row">{policy.name}</th><td>{raw(policy.back_window)}</td><td>{policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</td><td>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}</td></tr>{/each}</tbody>
+							<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="window" /><TableColumnHeader view={tableView} columnKey="methods" /><TableColumnHeader view={tableView} columnKey="definition" /></tr></thead>
+							<tbody>{#each tableView.rows as policy}<tr><th scope="row">{policy.name}</th><td>{raw(policy.back_window)}</td><td>{policy.aggregation_methods?.join(', ') ?? t('gnocchi.notReported')}</td><td>{#each policy.definition ?? [] as tier}<div class="tabular-nums">{raw(tier.granularity)} / {raw(tier.points)} / {raw(tier.timespan)}</div>{:else}{t('gnocchi.notReported')}{/each}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
 						</ResponsiveTable>
-					{:else}<p class="text-sm text-ink-2">{t(overview.archive_policies.status === 'available' && overview.archive_policies.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
+{/snippet}
+</ObservationTable>
+					{/if}
+					{#if !overview.archive_policies.data?.length}<p class="text-sm text-ink-2">{t(overview.archive_policies.status === 'available' && overview.archive_policies.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
 				</section>
 				<section aria-label={t('gnocchi.archivePolicyRules')} class="space-y-3">
 					<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.archivePolicyRules')}</h2>
 					<NativeStatus status={overview.archive_policy_rules.status} error={overview.archive_policy_rules.error} />
-					{#if overview.archive_policy_rules.data?.length}
+					{#if overview.archive_policy_rules.data}
 						{@const archivePolicyRules = overview.archive_policy_rules.data}
-						<ResponsiveTable>
-							{#snippet cards()}{#each archivePolicyRules as rule}<CompactResourceCard><p class="font-medium">{rule.name}</p><p>{t('gnocchi.pattern')}: {raw(rule.metric_pattern)}</p><p>{t('gnocchi.archivePolicy')}: {raw(rule.archive_policy_name)}</p></CompactResourceCard>{/each}{/snippet}
+						<ObservationTable model={observationView2}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+							{#snippet cards()}{#each tableView.rows as rule}<CompactResourceCard><p class="font-medium">{rule.name}</p><p>{t('gnocchi.pattern')}: {raw(rule.metric_pattern)}</p><p>{t('gnocchi.archivePolicy')}: {raw(rule.archive_policy_name)}</p></CompactResourceCard>{/each}{/snippet}
+						<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 						<div role="region" aria-label={t('gnocchi.archivePolicyRules')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 							<caption class="sr-only">{t('gnocchi.archivePolicyRules')}</caption>
-							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('gnocchi.pattern')}</th><th scope="col">{t('gnocchi.archivePolicy')}</th></tr></thead>
-							<tbody>{#each archivePolicyRules as rule}<tr><th scope="row">{rule.name}</th><td>{raw(rule.metric_pattern)}</td><td>{raw(rule.archive_policy_name)}</td></tr>{/each}</tbody>
+							<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="pattern" /><TableColumnHeader view={tableView} columnKey="policy" /></tr></thead>
+							<tbody>{#each tableView.rows as rule}<tr><th scope="row">{rule.name}</th><td>{raw(rule.metric_pattern)}</td><td>{raw(rule.archive_policy_name)}</td></tr>{/each}</tbody>
 						</table></TableShell></div>
 						</ResponsiveTable>
-					{:else}<p class="text-sm text-ink-2">{t(overview.archive_policy_rules.status === 'available' && overview.archive_policy_rules.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
+{/snippet}
+</ObservationTable>
+					{/if}
+					{#if !overview.archive_policy_rules.data?.length}<p class="text-sm text-ink-2">{t(overview.archive_policy_rules.status === 'available' && overview.archive_policy_rules.data !== null ? 'gnocchi.emptySection' : 'gnocchi.noSectionData')}</p>{/if}
 				</section>
 				<section aria-label={t('gnocchi.resourceTypes')} class="space-y-3">
 					<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.resourceTypes')}</h2>
@@ -282,26 +311,29 @@
 				<h2 class="text-sm font-semibold text-ink-0">{t('gnocchi.resources')}</h2>
 				<p class="text-sm text-ink-2">{t('gnocchi.resourceHelp')}</p>
 				<div class="flex flex-wrap items-end gap-3">
-					<Field for="gnocchi-resource-type" label={t('gnocchi.resourceType')} class="w-full md:w-64"><SelectInput id="gnocchi-resource-type" value={resourceType} onchange={changeType}>{#each types as type}<option value={type}>{type}</option>{/each}</SelectInput></Field>
 					<Button variant="secondary" onclick={() => { clearMetric(); void loadResources(); }}>{t('refresh')}</Button>
 				</div>
 				{#if resourcesLoading}<LoadingState variant="section" label={t('loading')} />{/if}
 				{#if resources}
 					<NativeStatus status={resources.status} error={resources.error} />
 					{#if resources.status === 'available' || (resources.status === 'partial' && resources.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: resourceMarkers.length, count: resources.items.length })}</p>{/if}
-					{#if resources.items.length}
-						{@const resourceItems = resources.items}
-						<ResponsiveTable>
-							{#snippet cards()}{#each resourceItems as resource}<CompactResourceCard selected={selectedResource?.id === resource.id}><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button><p>{t('type')}: {raw(resource.type)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.project')}</dt><dd class="font-mono break-all">{raw(resource.project_id)}</dd></div><div><dt>{t('gnocchi.started')}</dt><dd>{raw(resource.started_at)}</dd></div><div><dt>{t('gnocchi.ended')}</dt><dd>{raw(resource.ended_at)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
-						<div role="region" aria-label={t('gnocchi.resources')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
-							<caption class="sr-only">{t('gnocchi.resources')}</caption>
-							<thead><tr><th scope="col">{t('gnocchi.id')}</th><th scope="col">{t('type')}</th><th scope="col">{t('gnocchi.project')}</th><th scope="col">{t('gnocchi.started')}</th><th scope="col">{t('gnocchi.ended')}</th></tr></thead>
-							<tbody>{#each resourceItems as resource}<tr data-selected={selectedResource?.id === resource.id}><td><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button></td><td>{raw(resource.type)}</td><td class="font-mono">{raw(resource.project_id)}</td><td>{raw(resource.started_at)}</td><td>{raw(resource.ended_at)}</td></tr>{/each}</tbody>
-						</table></TableShell></div>
-						</ResponsiveTable>
-					{:else}<p class="text-sm text-ink-2">{t(resources.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
+					{#if resources.items.length === 0}<p class="text-sm text-ink-2">{t(resources.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
 					{#if resources.truncated}<Alert tone="warning">{t('gnocchi.pageTruncated')}</Alert>{/if}
 				{/if}
+						<ObservationTable model={observationView3} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
+							{#snippet cards()}{#each tableView.rows as resource}<CompactResourceCard selected={selectedResource?.id === resource.id}><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button><p>{t('type')}: {raw(resource.type)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.project')}</dt><dd class="font-mono break-all">{raw(resource.project_id)}</dd></div><div><dt>{t('gnocchi.started')}</dt><dd>{raw(resource.started_at)}</dd></div><div><dt>{t('gnocchi.ended')}</dt><dd>{raw(resource.ended_at)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
+						<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+						<div role="region" aria-label={t('gnocchi.resources')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
+							<caption class="sr-only">{t('gnocchi.resources')}</caption>
+							<thead><tr><TableColumnHeader view={tableView} columnKey="id" /><TableColumnHeader view={tableView} columnKey="type" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="started" /><TableColumnHeader view={tableView} columnKey="ended" /></tr></thead>
+							<tbody>{#each tableView.rows as resource}<tr data-selected={selectedResource?.id === resource.id}><td><Button variant="link" ariaPressed={selectedResource?.id === resource.id} onclick={() => selectResource(resource)}>{resource.id}</Button></td><td>{raw(resource.type)}</td><td class="font-mono">{raw(resource.project_id)}</td><td>{raw(resource.started_at)}</td><td>{raw(resource.ended_at)}</td></tr>{/each}</tbody>
+						</table></TableShell></div>
+						</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				<div class="flex flex-wrap gap-2" role="group" aria-label={t('gnocchi.resources')}>
 					<Button variant="secondary" disabled={resourceMarkers.length <= 1} onclick={() => pageResources('previous')}>{t('previous')}</Button>
 					<Button variant="secondary" disabled={resourcesLoading || !resources?.next_marker} onclick={() => pageResources('next')}>{t('next')}</Button>
@@ -320,19 +352,23 @@
 				{#if metrics}
 					<NativeStatus status={metrics.status} error={metrics.error} />
 					{#if metrics.status === 'available' || (metrics.status === 'partial' && metrics.items.length > 0)}<p class="text-xs text-ink-2">{t('gnocchi.loadedPage', { page: metricMarkers.length, count: metrics.items.length })}</p>{/if}
-					{#if metrics.items.length}
-						{@const metricItems = metrics.items}
-						<ResponsiveTable>
-							{#snippet cards()}{#each metricItems as metric}<CompactResourceCard selected={selectedMetric?.id === metric.id}><Button variant="link" ariaLabel={metric.name ? `${metric.name} · ${metric.id}` : metric.id} ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.name || metric.id}</Button><p>{t('unit')}: {metric.unit ?? t('gnocchi.unitUnknown')}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.id')}</dt><dd class="font-mono break-all">{metric.id}</dd></div><div><dt>{t('gnocchi.resourceId')}</dt><dd class="font-mono break-all">{raw(metric.resource_id)}</dd></div><div><dt>{t('gnocchi.archivePolicy')}</dt><dd>{policyName(metric)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
-						<div role="region" aria-label={t('gnocchi.metrics')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
-							<caption class="sr-only">{t('gnocchi.metrics')}</caption>
-							<thead><tr><th scope="col">{t('gnocchi.id')}</th><th scope="col">{t('name')}</th><th scope="col">{t('unit')}</th><th scope="col">{t('gnocchi.resourceId')}</th><th scope="col">{t('gnocchi.archivePolicy')}</th></tr></thead>
-							<tbody>{#each metricItems as metric}<tr data-selected={selectedMetric?.id === metric.id}><td><Button variant="link" ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.id}</Button></td><td>{raw(metric.name)}</td><td>{metric.unit ?? t('gnocchi.unitUnknown')}</td><td class="font-mono">{raw(metric.resource_id)}</td><td>{policyName(metric)}</td></tr>{/each}</tbody>
-						</table></TableShell></div>
-						</ResponsiveTable>
-					{:else}<p class="text-sm text-ink-2">{t(metrics.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
+					{#if metrics.items.length === 0}<p class="text-sm text-ink-2">{t(metrics.status === 'available' ? 'gnocchi.emptyPage' : 'gnocchi.unverifiedPage')}</p>{/if}
 					{#if metrics.truncated}<Alert tone="warning">{t('gnocchi.pageTruncated')}</Alert>{/if}
 				{/if}
+						<ObservationTable model={observationView4} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
+							{#snippet cards()}{#each tableView.rows as metric}<CompactResourceCard selected={selectedMetric?.id === metric.id}><Button variant="link" ariaLabel={metric.name ? `${metric.name} · ${metric.id}` : metric.id} ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.name || metric.id}</Button><p>{t('unit')}: {metric.unit ?? t('gnocchi.unitUnknown')}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('gnocchi.id')}</dt><dd class="font-mono break-all">{metric.id}</dd></div><div><dt>{t('gnocchi.resourceId')}</dt><dd class="font-mono break-all">{raw(metric.resource_id)}</dd></div><div><dt>{t('gnocchi.archivePolicy')}</dt><dd>{policyName(metric)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}{/snippet}
+						<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
+						<div role="region" aria-label={t('gnocchi.metrics')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
+							<caption class="sr-only">{t('gnocchi.metrics')}</caption>
+							<thead><tr><TableColumnHeader view={tableView} columnKey="id" /><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="unit" /><TableColumnHeader view={tableView} columnKey="resource" /><TableColumnHeader view={tableView} columnKey="policy" /></tr></thead>
+							<tbody>{#each tableView.rows as metric}<tr data-selected={selectedMetric?.id === metric.id}><td><Button variant="link" ariaPressed={selectedMetric?.id === metric.id} onclick={() => selectMetric(metric)}>{metric.id}</Button></td><td>{raw(metric.name)}</td><td>{metric.unit ?? t('gnocchi.unitUnknown')}</td><td class="font-mono">{raw(metric.resource_id)}</td><td>{policyName(metric)}</td></tr>{/each}</tbody>
+						</table></TableShell></div>
+						</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 				<div class="flex flex-wrap gap-2" role="group" aria-label={t('gnocchi.metrics')}>
 					<Button variant="secondary" disabled={metricMarkers.length <= 1} onclick={() => pageMetrics('previous')}>{t('previous')}</Button>
 					<Button variant="secondary" disabled={metricsLoading || !metrics?.next_marker} onclick={() => pageMetrics('next')}>{t('next')}</Button>
@@ -365,20 +401,24 @@
 								<div><dt class="text-xs text-ink-2">{t('gnocchi.archivePolicy')}</dt><dd class="break-all">{raw(measures.metric.archive_policy_name ?? measures.metric.archive_policy)}</dd></div>
 							</dl>
 						{/if}
-						{#if measures.measures.length}
-							{@const samples = measures.measures}
 							{@const measureUnit = measures.metric?.unit ?? selectedMetric.unit ?? t('gnocchi.unitUnknown')}
 							{@const measuredMetricId = selectedMetric.id}
-							<p class="text-xs text-ink-2">{t('gnocchi.sampleCount', { count: measures.measures.length })}</p>
-							<ResponsiveTable>
-								{#snippet cards()}{#each samples as sample}<CompactResourceCard><time datetime={sample.timestamp}>{sample.timestamp}</time><p class="tabular-nums">{t('gnocchi.value')}: {String(sample.value)} · {measureUnit}</p><p class="tabular-nums">{t('gnocchi.nativeGrain')}: {String(sample.granularity)}</p></CompactResourceCard>{/each}{/snippet}
+							{#if measures.measures.length > 0}<p class="text-xs text-ink-2">{t('gnocchi.sampleCount', { count: measures.measures.length })}</p>{/if}
+							<ObservationTable model={observationView5} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
+								{#snippet cards()}{#each tableView.rows as sample}<CompactResourceCard><time datetime={sample.timestamp}>{sample.timestamp}</time><p class="tabular-nums">{t('gnocchi.value')}: {String(sample.value)} · {measureUnit}</p><p class="tabular-nums">{t('gnocchi.nativeGrain')}: {String(sample.granularity)}</p></CompactResourceCard>{/each}{/snippet}
+							<!-- Keyboard scroll region: focus is required to pan the nested TableShell. -->
+							<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 							<div role="region" aria-label={t('gnocchi.measures')} tabindex="0" onkeydown={scrollTable}><TableShell density="compact"><table>
 								<caption class="sr-only">{t('gnocchi.measures')} · {measuredMetricId}</caption>
-								<thead><tr><th scope="col">{t('gnocchi.timestamp')}</th><th scope="col">{t('gnocchi.nativeGrain')}</th><th scope="col">{t('gnocchi.value')}</th><th scope="col">{t('unit')}</th></tr></thead>
-								<tbody>{#each samples as sample}<tr><td><time datetime={sample.timestamp}>{sample.timestamp}</time></td><td class="tabular-nums">{String(sample.granularity)}</td><td class="tabular-nums">{String(sample.value)}</td><td>{measureUnit}</td></tr>{/each}</tbody>
+								<thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="grain" /><TableColumnHeader view={tableView} columnKey="value" /><TableColumnHeader view={tableView} columnKey="unit" /></tr></thead>
+								<tbody>{#each tableView.rows as sample}<tr><td><time datetime={sample.timestamp}>{sample.timestamp}</time></td><td class="tabular-nums">{String(sample.granularity)}</td><td class="tabular-nums">{String(sample.value)}</td><td>{measureUnit}</td></tr>{/each}</tbody>
 							</table></TableShell></div>
 							</ResponsiveTable>
-						{:else}<p class="text-sm text-ink-2">{t(measures.status === 'available' && !measures.truncated ? 'gnocchi.noData' : 'gnocchi.noVerifiedSamples')}</p>{/if}
+{/snippet}
+</ObservationTable>
+						{#if measures.measures.length === 0}<p class="text-sm text-ink-2">{t(measures.status === 'available' && !measures.truncated ? 'gnocchi.noData' : 'gnocchi.noVerifiedSamples')}</p>{/if}
 						{#if measures.truncated}<Alert tone="warning">{t('gnocchi.samplesTruncated')}</Alert>{/if}
 					{/if}
 				{:else}<p class="text-sm text-ink-2">{t('gnocchi.selectMetric')}</p>{/if}

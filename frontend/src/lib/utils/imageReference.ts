@@ -1,4 +1,5 @@
 import { t } from '$lib/i18n/ns/images-keys';
+import { compileRegexSearch, matchesRegexSearch } from './regexSearch';
 
 const TAG_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?::[0-9]{1,5})?(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
@@ -40,35 +41,29 @@ export interface SearchableImageReference {
 	os_type?: string | null;
 }
 
-export function imageReferenceSearchText(image: SearchableImageReference): string {
+export function imageReferenceSearchFields(image: SearchableImageReference): string[] {
+	let repository = image.repository ?? '';
+	let tag = image.tag ?? 'latest';
+	if (!image.repository || image.tag == null) {
+		try {
+			const parsed = parseImageReference(image.name);
+			repository = image.repository ?? parsed.repository;
+			tag = image.tag ?? parsed.tag;
+		} catch { /* Preserve native legacy names as searchable identities. */ }
+	}
 	return [
 		image.name,
-		image.repository ?? '',
-		image.tag ?? 'latest',
+		repository,
+		tag,
 		image.id ?? '',
 		image.os_hash_value ?? '',
 		image.os_distro ?? '',
 		image.os_type ?? '',
-	].join(' ').toLocaleLowerCase();
+	];
 }
 
 export function imageReferenceMatchesQuery(image: SearchableImageReference, query: string): boolean {
-	const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-	if (terms.length === 0) return true;
-	const haystack = imageReferenceSearchText(image);
-	return terms.every((term) => haystack.includes(term));
+	return matchesRegexSearch(compileRegexSearch(query), imageReferenceSearchFields(image));
 }
 
-export function imageReferenceMatchScore(image: SearchableImageReference, query: string): number {
-	const normalizedQuery = query.trim().toLocaleLowerCase();
-	if (!normalizedQuery) return 0;
-	const name = image.name.toLocaleLowerCase();
-	const repository = (image.repository ?? '').toLocaleLowerCase();
-	const tag = (image.tag ?? 'latest').toLocaleLowerCase();
-	if (name === normalizedQuery) return 100;
-	if (repository === normalizedQuery) return 80;
-	if (tag === normalizedQuery) return 60;
-	if (name.startsWith(normalizedQuery)) return 40;
-	if (repository.startsWith(normalizedQuery)) return 30;
-	return imageReferenceMatchesQuery(image, normalizedQuery) ? 10 : -1;
-}
+

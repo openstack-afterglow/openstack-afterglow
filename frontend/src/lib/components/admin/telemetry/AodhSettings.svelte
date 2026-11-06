@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { onMount } from 'svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button, Field, FormModal, PageHeader, SelectInput, TableShell, TextareaInput, TextInput } from '$lib/components/ui';
@@ -192,6 +195,8 @@
 			}
 		}
 	}
+
+	const observationView0 = createObservationView(() => (alarms?.items ?? []), () => ([{ key: 'name', label: t('settings.name'), value: row => row.name }, { key: 'type', label: t('settings.type'), value: row => row.type }, { key: 'state', label: t('settings.state'), value: row => row.state }, { key: 'severity', label: t('settings.severity'), value: row => row.severity }]));
 </script>
 
 <PageHeader breadcrumb={t('aodh.breadcrumb')} title={t('settings.title')} subtitle={t('settings.description')}>
@@ -214,9 +219,11 @@
 		{@const alarmPage = alarms}
 		<NativeStatus status={alarms.status} error={alarms.error} />
 		<div class="alarm-region" role="region" aria-label={t('settings.title')}>
-		<ResponsiveTable>
+		<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 			{#snippet cards()}
-				{#each alarmPage.items as alarm (alarm.alarm_id)}
+				{#each tableView.rows as alarm (alarm.alarm_id)}
 					<CompactResourceCard selected={selected === alarm.alarm_id}>
 						<Button variant="link" disabled={busy} ariaPressed={selected === alarm.alarm_id} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</Button>
 						<p>{t('settings.state')}: {alarm.state ?? t('settings.unknown')} · {t('settings.severity')}: {alarm.severity ?? t('settings.unknown')}</p>
@@ -226,13 +233,15 @@
 			{/snippet}
 		<TableShell density="compact">
 			<table tabindex="0" aria-label={t('settings.title')}>
-				<thead><tr><th>{t('settings.name')}</th><th>{t('settings.type')}</th><th>{t('settings.state')}</th><th>{t('settings.severity')}</th></tr></thead>
-				<tbody>{#each alarmPage.items as alarm (alarm.alarm_id)}
+				<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="type" /><TableColumnHeader view={tableView} columnKey="state" /><TableColumnHeader view={tableView} columnKey="severity" /></tr></thead>
+				<tbody>{#each tableView.rows as alarm (alarm.alarm_id)}
 					<tr data-selected={selected === alarm.alarm_id}><td><button class="alarm-select" disabled={busy} onclick={() => selectAlarm(alarm.alarm_id)}>{alarm.name}</button><div class="identifier">{alarm.alarm_id}</div></td><td>{alarm.type}</td><td>{alarm.state ?? t('settings.unknown')}</td><td>{alarm.severity ?? t('settings.unknown')}</td></tr>
 				{:else}<tr><td colspan="4">{t(alarmPage.status === 'available' ? 'settings.empty' : 'settings.rowsUnknown')}</td></tr>{/each}</tbody>
 			</table>
 		</TableShell>
 		</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 		</div>
 		{#if alarms.truncated}<p class="support">{t('settings.truncated')}</p>{/if}
 		<div class="paging"><Button variant="secondary" disabled={!marker || loading || busy} onclick={() => loadList(null)}>{t('settings.first')}</Button><Button variant="secondary" disabled={!alarms.next_marker || loading || busy} onclick={() => loadList(alarms?.next_marker ?? null)}>{t('settings.next')}</Button></div>

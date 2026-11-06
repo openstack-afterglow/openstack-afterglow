@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/drover';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -10,6 +14,14 @@
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   const s = useK3sClusterDetailController();
+	const tableState = s.tableState('nodes');
+	const columns = $derived<TableColumn<NonNullable<typeof s.health>['nodes'][number]>[]>([
+		{ key: 'name', label: tc('table.name'), value: row => row.name },
+		{ key: 'ready', label: tc('table.status'), value: row => row.ready, format: value => value ? 'Ready' : 'NotReady' },
+		{ key: 'role', label: tc('table.type'), value: row => row.role },
+		{ key: 'version', label: tc('table.version'), value: row => row.kubelet_version },
+	]);
+	const view = createTableView({ rows: () => s.health?.nodes ?? [], columns: () => columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
@@ -27,12 +39,14 @@
     {/if}
   </div>
 
+  <RegexSearch id="k3s-nodes-search" bind:value={tableState.search} />
+  <TableViewControls {view} class="" />
   {#if s.health && s.health.nodes.length > 0}
-   {@const health = s.health}
+
    <ResponsiveTable>
-    {#snippet cards()}{#each health.nodes as node (node.name)}<CompactResourceCard><strong class="text-sm font-mono break-all">{node.name}</strong><p class="text-xs"><span class={node.ready ? 'text-state-success-text' : 'text-state-danger-text'}>{node.ready ? 'Ready' : 'NotReady'}</span> · {node.role}</p>{#if node.kubelet_version}<p class="text-xs text-ink-2">{node.kubelet_version}</p>{/if}</CompactResourceCard>{/each}{/snippet}
+    {#snippet cards()}{#each view.rows as node (node.name)}<CompactResourceCard><strong class="text-sm font-mono break-all">{node.name}</strong><p class="text-xs"><span class={node.ready ? 'text-state-success-text' : 'text-state-danger-text'}>{node.ready ? 'Ready' : 'NotReady'}</span> · {node.role}</p>{#if node.kubelet_version}<p class="text-xs text-ink-2">{node.kubelet_version}</p>{/if}</CompactResourceCard>{/each}{/snippet}
     <div class="space-y-2">
-      {#each s.health.nodes as node}
+      {#each view.rows as node}
         <div class="flex items-center justify-between py-1.5 border-b border-line last:border-0">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full {node.ready ? 'bg-green-400' : 'bg-red-400'}"></span>

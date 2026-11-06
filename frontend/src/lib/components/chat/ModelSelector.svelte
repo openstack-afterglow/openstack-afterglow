@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import type { AvailableModel } from '$lib/api/chatTree';
+	import Field from '$lib/components/ui/Field.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
+	const uid = $props.id();
 
 	interface Props {
 		models: AvailableModel[];
@@ -34,21 +38,18 @@
 	let root = $state<HTMLDivElement | null>(null);
 	let triggerEl = $state<HTMLButtonElement | null>(null);
 	let searchEl = $state<HTMLInputElement | null>(null);
+	const searchId = `${uid}-model-search`;
 
 	const showSearch = $derived(searchable ?? !compact);
 	const current = $derived(models.find((m) => m.model_name === value) ?? null);
 	const label = $derived(current?.display_name ?? placeholder ?? t('modelSelector.select'));
-	const filtered = $derived.by(() => {
-		const q = filter.trim().toLowerCase();
-		if (!q) return models;
-		return models.filter(
-			(m) =>
-				m.display_name.toLowerCase().includes(q) ||
-				(m.api_model_name || m.model_name).toLowerCase().includes(q) ||
-				(m.api_provider ?? '').toLowerCase().includes(q) ||
-				(m.provider ?? '').toLowerCase().includes(q)
-		);
-	});
+	const compiledFilter = $derived(compileRegexSearch(filter));
+	const filtered = $derived(models.filter((model) =>
+		matchesRegexSearch(compiledFilter, [
+			model.display_name, model.model_name, model.api_model_name ?? '',
+			model.api_provider ?? '', model.provider ?? ''
+		])
+	));
 
 	function toggle() {
 		if (disabled || models.length === 0) return;
@@ -114,10 +115,12 @@
 	{#if open}
 		<div class="menu" class:right={align === 'right'} class:up={dropUp} role="listbox" aria-label={t('modelSelector.select')}>
 			{#if showSearch && models.length > 0}
-				<div class="search">
-					<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-					<input bind:this={searchEl} bind:value={filter} type="text" placeholder={t('modelSelector.search')} />
-				</div>
+				<Field for={searchId} label={t('modelSelector.search')} help={commonT('table.regexHelp')} error={compiledFilter.error ? commonT('table.regexError') : undefined} class="px-3 py-2">
+					<div class="search">
+						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
+						<input id={searchId} bind:this={searchEl} bind:value={filter} type="text" placeholder={t('modelSelector.search')} aria-invalid={compiledFilter.error} aria-describedby={`${searchId}-message`} />
+					</div>
+				</Field>
 			{/if}
 			<ul class="items">
 				{#if models.length === 0}

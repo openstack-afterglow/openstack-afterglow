@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -69,7 +72,6 @@
 	let quotaList = $state<UserQuotaList>(emptyQuotaList());
 	let loading = $state(true);
 	let error = $state('');
-	let search = $state('');
 	let editingRow = $state<QuotaRow | null>(null);
 	let usageRow = $state<QuotaRow | null>(null);
 	let monthlyDraft = $state('');
@@ -86,13 +88,11 @@
 
 	const rows = $derived.by(() => {
 		const quotaByUser = new Map(quotaList.items.map((quota) => [quota.user_id, quota]));
-		const query = search.trim().toLowerCase();
 		return users
 			.map((user): QuotaRow => ({
 				user,
 				quota: quotaByUser.get(user.id) ?? null
 			}))
-			.filter((row) => !query || [row.user.id, row.user.name, row.user.email].some((value) => value.toLowerCase().includes(query)))
 			.sort((left, right) => left.user.name.localeCompare(right.user.name));
 	});
 
@@ -299,6 +299,8 @@
 		}
 	});
 	onDestroy(() => { alive = false; loadGeneration += 1; });
+
+	const observationView0 = createObservationView(() => (rows), () => ([{ key: 'user', label: t('adminQuotas.user'), value: row => `${row.user.name} ${row.user.id} ${row.user.email}` }, { key: 'monthlyLimit', label: t('adminQuotas.monthlyLimit'), value: row => monthlyLimit(row) === null ? 'unlimited' : Number(monthlyLimit(row)), format: (_value, row) => formatCredit(monthlyLimit(row), t('adminQuotas.unlimited')) }, { key: 'monthUsage', label: t('adminQuotas.monthlyUsage'), value: row => row.quota ? Number(row.quota.month_credited_cost) : null }, { key: 'weeklyLimit', label: t('adminQuotas.weeklyLimit'), value: row => row.quota?.weekly_credit_limit != null ? Number(row.quota.weekly_credit_limit) : quotaList.default_weekly_credit_limit != null ? Number(quotaList.default_weekly_credit_limit) : 'within-monthly', format: (_value, row) => weeklyLabel(row) }, { key: 'weekUsage', label: t('adminQuotas.weeklyUsage'), value: row => row.quota ? Number(row.quota.week_credited_cost) : null }]), row => [row.user.name, row.user.id, row.user.email]);
 </script>
 
 	{#snippet creditRateSecondary(text: string)}<span class="text-[var(--color-ink-3)]">{text}</span>{/snippet}
@@ -337,40 +339,38 @@
 		</div>
 	</section>
 
-	<div class="mb-4 max-w-xl">
-		<Field label={t('adminQuotas.searchLabel')} for="quota-user-search" help={t('adminQuotas.searchHelp')}>
-			<TextInput id="quota-user-search" type="search" placeholder={t('adminQuotas.searchPlaceholder')} bind:value={search} />
-		</Field>
-	</div>
 
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else}
-		<ResponsiveTable>
+	{/if}
+		<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 			{#snippet cards()}
-				{#each rows as row (row.user.id)}
+				{#each tableView.rows as row (row.user.id)}
 					<CompactResourceCard>
 						<div data-user-id={row.user.id}><p class="font-medium">{row.user.name}</p>{#if row.user.email}<p class="text-xs text-ink-2">{row.user.email}</p>{/if}</div>
 						<dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.monthlyUsage')}</dt><dd>{formatCredit(row.quota?.month_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.monthlyLimit')}</dt><dd>{formatCredit(monthlyLimit(row), t('adminQuotas.unlimited'))}</dd><dd><Pill tone={monthlyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(monthlyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>
 						{#snippet details()}<p class="font-mono break-all">{row.user.id}</p><dl class="grid grid-cols-2 gap-2 tabular-nums"><div><dt>{t('adminQuotas.weeklyUsage')}</dt><dd>{formatCredit(row.quota?.week_credited_cost ?? '0', '0')}</dd></div><div><dt>{t('adminQuotas.weeklyLimit')}</dt><dd>{weeklyLabel(row)}</dd><dd><Pill tone={weeklyUsesDefault(row) ? 'neutral' : 'info'} size="xs">{t(weeklyUsesDefault(row) ? 'adminQuotas.default' : 'adminQuotas.personal')}</Pill></dd></div></dl>{/snippet}
 						{#snippet actions()}<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button><Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button><Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>{/snippet}
 					</CompactResourceCard>
-				{:else}<EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" />{/each}
+				{/each}
+				{#if rows.length === 0 && !loading && !error}<EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
 			{/snippet}
 		<TableShell>
 			<table class="quota-table">
 				<thead>
 					<tr>
-						<th>{t('adminQuotas.user')}</th>
-						<th>{t('adminQuotas.monthlyLimit')}</th>
-						<th>{t('adminQuotas.monthlyUsage')}</th>
-						<th>{t('adminQuotas.weeklyLimit')}</th>
-						<th>{t('adminQuotas.weeklyUsage')}</th>
+						<TableColumnHeader view={tableView} columnKey="user" />
+						<TableColumnHeader view={tableView} columnKey="monthlyLimit" />
+						<TableColumnHeader view={tableView} columnKey="monthUsage" />
+						<TableColumnHeader view={tableView} columnKey="weeklyLimit" />
+						<TableColumnHeader view={tableView} columnKey="weekUsage" />
 						<th>{t('adminQuotas.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each rows as row (row.user.id)}
+					{#each tableView.rows as row (row.user.id)}
 						<tr data-user-id={row.user.id}>
 							<td class="user-cell" title={row.user.id}>
 								<div class="flex items-center gap-2">
@@ -409,13 +409,15 @@
 							</td>
 						</tr>
 					{/each}
-					{#if rows.length === 0}
+					{#if rows.length === 0 && !loading && !error}
 						<tr><td colspan="6"><EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>
 					{/if}
 				</tbody>
 			</table>
 		</TableShell>
 		</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 		<Pagination
 			page={userMarkerStack.length + 1}
 			hasPrev={userMarkerStack.length > 0}
@@ -424,7 +426,6 @@
 			onNext={() => void nextPage()}
 			note={t('adminQuotas.usersShown', { count: users.length })}
 		/>
-	{/if}
 </PageShell>
 
 <Modal open={editingRow !== null} onClose={closeEditor} dismissible={!saving} ariaLabel={t('adminQuotas.editorAriaLabel')}>

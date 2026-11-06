@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -6,77 +7,40 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import type { StoragePool } from '$lib/types/adminServices';
-	import ServiceListControls from './ServiceListControls.svelte';
-	import {
-		buildServiceFilters,
-		createServiceListState,
-		filterAndSortRows,
-		type ServiceListField,
-		type ServiceListState,
-	} from './serviceList';
-
-	const poolFields: ServiceListField<StoragePool>[] = $derived([
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	const id = $props.id();
+	const poolFields: TableColumn<StoragePool>[] = $derived([
 		{ key: 'name', label: t('services.pools.name'), value: (pool) => pool.name },
-		{ key: 'backend', label: t('services.pools.backend'), value: (pool) => pool.volume_backend_name, filter: true },
-		{ key: 'protocol', label: t('services.pools.protocol'), value: (pool) => pool.storage_protocol, filter: true },
-		{ key: 'vendor', label: t('services.pools.vendor'), value: (pool) => pool.vendor_name, filter: true },
+		{ key: 'backend', label: t('services.pools.backend'), value: (pool) => pool.volume_backend_name },
+		{ key: 'protocol', label: t('services.pools.protocol'), value: (pool) => pool.storage_protocol },
+		{ key: 'vendor', label: t('services.pools.vendor'), value: (pool) => pool.vendor_name },
 		{ key: 'driver', label: t('services.pools.driver'), value: (pool) => pool.driver_version },
-		{
-			key: 'total_capacity',
-			label: t('services.pools.totalCapacity'),
-			value: (pool) => pool.total_capacity_gb,
-			search: false,
-		},
-		{
-			key: 'free_capacity',
-			label: t('services.pools.freeCapacity'),
-			value: (pool) => pool.free_capacity_gb,
-			search: false,
-		},
-		{
-			key: 'allocated_capacity',
-			label: t('services.pools.allocatedCapacity'),
-			value: (pool) => pool.allocated_capacity_gb,
-			search: false,
-		},
-	]);
-
-	const sortOptions = $derived([
-		{ key: 'name', label: t('services.pools.name') },
-		{ key: 'backend', label: t('services.pools.backend') },
-		{ key: 'protocol', label: t('services.pools.protocol') },
-		{ key: 'vendor', label: t('services.pools.vendor') },
-		{ key: 'total_capacity', label: t('services.pools.totalCapacity') },
-		{ key: 'free_capacity', label: t('services.pools.freeCapacity') },
-		{ key: 'allocated_capacity', label: t('services.pools.allocatedCapacity') },
+		{ key: 'total_capacity', label: t('services.pools.totalCapacity'), value: (pool) => pool.total_capacity_gb },
+		{ key: 'free_capacity', label: t('services.pools.freeCapacity'), value: (pool) => pool.free_capacity_gb },
+		{ key: 'allocated_capacity', label: t('services.pools.allocatedCapacity'), value: (pool) => pool.allocated_capacity_gb },
 	]);
 
 	let {
 		pools,
 		loading,
 		emptyMessage,
-		view = $bindable<ServiceListState>(createServiceListState()),
+		search = $bindable(''),
 	}: {
 		pools: StoragePool[];
 		loading: boolean;
 		emptyMessage: string;
-		view?: ServiceListState;
+		search?: string;
 	} = $props();
 
-	const filters = $derived(buildServiceFilters(pools, poolFields));
-	const visiblePools = $derived(filterAndSortRows(pools, poolFields, view));
+	const view = createTableView({ locale: intlLocale, rows: () => pools, columns: () => poolFields, search: () => search });
+	const visiblePools = $derived(view.rows);
 </script>
 
 <div>
-	<ServiceListControls
-		bind:view
-		{filters}
-		{sortOptions}
-		total={pools.length}
-		count={visiblePools.length}
-		{loading}
-		searchPlaceholder={t('services.pools.searchPlaceholder')}
-	/>
+	<RegexSearch id="{id}-search" bind:value={search} placeholder={t('services.pools.searchPlaceholder')} />
+	<TableViewControls {view} class="" />
 	{#if loading && pools.length === 0}
 		<LoadingState variant="section" />
 	{:else if pools.length === 0}

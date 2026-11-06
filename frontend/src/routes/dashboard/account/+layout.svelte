@@ -5,7 +5,6 @@
   import Button from '$lib/components/ui/Button.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import PageShell from '$lib/components/ui/PageShell.svelte';
-  import ProjectSelector from '$lib/components/ProjectSelector.svelte';
 
   let { children } = $props();
   const currentItem = $derived(
@@ -26,10 +25,6 @@
     </Button>
   </div>
 
-  <PageHeader breadcrumb={t('page.title')} title={currentItem.label}>
-    {#snippet actions()}
-      <div class="w-48 max-w-full"><ProjectSelector /></div>
-    {/snippet}
-  </PageHeader>
+  <PageHeader breadcrumb={t('page.title')} title={currentItem.label} />
   {@render children()}
 </PageShell>

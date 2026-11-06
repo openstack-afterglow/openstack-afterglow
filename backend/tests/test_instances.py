@@ -394,6 +394,29 @@ async def test_list_instance_volumes_includes_delete_on_termination(client, mock
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["refresh=true", "cache=false"])
+async def test_volume_delete_policy_bypasses_stale_attachment_cache(client, mock_conn, query):
+    attachment = {"id": "a", "volume_id": "v", "device": "/dev/vda", "delete_on_termination": False}
+    with (
+        patch("app.api.compute.instances.nova.list_volume_attachments", side_effect=lambda *_: [dict(attachment)]),
+        patch(
+            "app.api.compute.instances.cinder.get_volume",
+            return_value=SimpleNamespace(name="root", size=10, status="in-use"),
+        ),
+    ):
+        path = "/api/v1/instances/inst-1/volumes"
+        first = await client.get(f"{path}?cache=true")
+        assert first.status_code == 200
+        assert first.json()[0]["delete_on_termination"] is False
+        attachment["delete_on_termination"] = True
+        stale = await client.get(f"{path}?cache=true")
+        assert stale.json()[0]["delete_on_termination"] is False
+        fresh = await client.get(f"{path}?{query}")
+        assert fresh.status_code == 200
+        assert fresh.json()[0]["delete_on_termination"] is True
+
+
+@pytest.mark.asyncio
 async def test_attach_volume(client, mock_conn):
     with patch("app.api.compute.instances.nova.attach_volume", return_value={"id": "attach-1", "volumeId": "vol-1"}):
         resp = await client.post("/api/v1/instances/inst-1/volumes", json={"volume_id": "vol-1"})

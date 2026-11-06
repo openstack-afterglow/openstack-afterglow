@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
 	let inventoryError = $state('');
@@ -20,6 +22,24 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	let search = $state('');
+	const columns: TableColumn<FloatingIpInfo>[] = $derived([
+		{ key: 'floating', label: t('floatingIpsPage.table.floatingIp'), value: (row) => row.floating_ip_address },
+		{ key: 'fixed', label: t('floatingIpsPage.table.fixedIp'), value: (row) => row.fixed_ip_address },
+		{ key: 'status', label: t('floatingIpsPage.table.status'), value: (row) => row.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned') },
+		{ key: 'project', label: t('floatingIpsPage.table.project'), value: (row) => row.project_id },
+	]);
+	const view = createTableView({ locale: intlLocale, rows: () => fips, columns: () => columns, search: () => search,
+		searchable: (row) => [row.id, row.floating_ip_address, row.fixed_ip_address, row.project_id, row.port_id, row.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned')].filter((value) => value != null).map(String) });
+	let viewOwner = '';
+	$effect(() => {
+		const owner = JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)]);
+		if (owner !== viewOwner) { viewOwner = owner; search = ''; view.reset(); }
+	});
 
 	let fips = $state<FloatingIpInfo[]>([]);
 	let loading = $state(true);
@@ -110,13 +130,16 @@
 		{/snippet}
 	</PageHeader>
 
+	<RegexSearch id="floating-ip-search" bind:value={search} />
+	<TableViewControls {view} />
+	{#if fips.length > 0 && view.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
 		<LoadingState variant="surface" label={t('floatingIpsPage.loading')} />
-	{:else}
+	{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each fips as f (f.id)}
+				{#each view.rows as f (f.id)}
 					<CompactResourceCard>
 						<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono font-medium text-ink-0">{f.floating_ip_address}</h3><span class="text-xs text-ink-2">{f.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned')}</span></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('floatingIpsPage.table.fixedIp')}: {f.fixed_ip_address ?? '-'}</p><p>{t('floatingIpsPage.table.project')}: {f.project_id?.slice(0, 8) ?? '-'}</p></div>
@@ -129,15 +152,12 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.floatingIp')}</th>
-						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.fixedIp')}</th>
-						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.status')}</th>
-						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.project')}</th>
+						{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 						<th class="text-left py-2">{t('floatingIpsPage.table.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each fips as f (f.id)}
+					{#each view.rows as f (f.id)}
 						<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-2 pr-4 font-mono text-green-400">{f.floating_ip_address}</td>
 							<td class="py-2 pr-4 font-mono text-ink-2">{f.fixed_ip_address ?? '-'}</td>
@@ -162,7 +182,6 @@
 			<span class="text-green-400">{t('floatingIpsPage.summary.assigned', { count: fips.filter(f => f.port_id).length })}</span>
 			<span>{t('floatingIpsPage.summary.unassigned', { count: fips.filter(f => !f.port_id).length })}</span>
 		</div>
-	{/if}
 </PageShell>
 
 <!-- 생성 모달 -->

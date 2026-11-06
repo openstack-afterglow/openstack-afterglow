@@ -2,6 +2,7 @@
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/instance';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import { confirmInstanceDeletion } from '$lib/utils/instanceDeleteConfirmation';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, canWrite } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -14,7 +15,7 @@
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, Button, EmptyState, Field, PageHeader, PageShell, ResourceToolbar, TextInput, SelectInput, Pagination } from '$lib/components/ui';
+	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectInput, Pagination } from '$lib/components/ui';
 	import { openWizard, wizardOpen } from '$lib/stores/wizard';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import InstancesTable from '$lib/components/instance/list/InstancesTable.svelte';
@@ -22,24 +23,33 @@
 	import { isTransitional } from '$lib/utils/instanceStatus';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
-	import { sortInstances, type InstanceSort } from '$lib/components/instance/list/instanceSort';
+	import { sortResources } from '$lib/utils/resourceSort';
+	import { consumerInstanceFlavorLabel } from '$lib/utils/flavorDisplay';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { getStatusLabel } from '$lib/config/statusColors';
 	import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceDiscarded, experienceState, type ExperienceContext } from '$lib/utils/experience';
 
 	let instances = $state<Instance[]>([]);
-	let sort = $state<InstanceSort>(null);
+	const columns = $derived<TableColumn<Instance>[]>([
+		{ key: 'name', label: t('table.name'), value: row => row.name },
+		{ key: 'status', label: t('table.status'), value: row => getStatusLabel(row.status, 'server'), filterValues: row => [row.status], format: value => getStatusLabel(String(value), 'server') },
+		{ key: 'image', label: t('table.imageFlavor'), value: row => [row.image_name, consumerInstanceFlavorLabel(row)].filter(Boolean).join(' ') || null },
+		{ key: 'ip', label: 'IP', value: row => (row.ip_addresses.find(ip => ip.type === 'fixed') ?? row.ip_addresses[0])?.addr },
+		{ key: 'library', label: t('table.library'), value: row => row.union_libraries.filter(Boolean).join(', ') || null },
+		{ key: 'strategy', label: t('table.strategy'), value: row => row.union_strategy, format: value => value === 'prebuilt' ? t('row.strategy.prebuilt') : value === 'dynamic' ? t('row.strategy.dynamic') : String(value) },
+	]);
 	let search = $state('');
-	let statusFilter = $state('');
 	let pageSize = $state('20');
 	let currentPage = $state(1);
-	const filteredInstances = $derived(sortInstances(instances.filter((instance) =>
-		(!statusFilter || instance.status === statusFilter)
-		&& (!search.trim() || `${instance.name} ${instance.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
-	), sort, (status) => getStatusLabel(status, 'server'), (strategy) => strategy === 'prebuilt' ? t('row.strategy.prebuilt') : strategy === 'dynamic' ? t('row.strategy.dynamic') : strategy));
+	const view = createTableView({ rows: () => sortResources(instances, 'created_desc'), columns: () => columns, search: () => search, searchable: row => [row.name, row.id, ...columns.map(column => String(column.value(row) ?? ''))], locale: intlLocale });
+	const filteredInstances = $derived(view.rows);
 	const totalPages = $derived(Math.max(1, Math.ceil(filteredInstances.length / Number(pageSize))));
 	const visiblePage = $derived(Math.min(currentPage, totalPages));
 	const visibleInstances = $derived(filteredInstances.slice((visiblePage - 1) * Number(pageSize), visiblePage * Number(pageSize)));
-	const statuses = $derived([...new Set(instances.map((instance) => instance.status))].sort());
+	$effect(() => { search; view.sort; view.filters; untrack(() => { currentPage = 1; selection.clear(); }); });
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let error = $state('');
@@ -239,11 +249,19 @@
 					&& (action !== 'delete' || row.status === 'SHUTOFF');
 			});
 		if (bulkActioning || !owns()) return;
-		if (action === 'stop' || action === 'delete') {
-			const msg = action === 'delete'
-				? `${t('list.confirmBulkDelete', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`
-				: `${t('list.confirmBulkStop', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`;
-			if (!await confirmDialog(msg)) return;
+		if (action === 'delete') {
+			if (!await confirmInstanceDeletion(`${t('list.confirmBulkDelete', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`, {
+				targets: ids.map(id => {
+					const row = instances.find(row => row.id === id);
+					return { id, name: row?.name, upperVolume: !!row?.union_upper_volume_id };
+				}),
+				adminMode: false,
+				token,
+				projectId,
+				isCurrent: owns,
+			})) return;
+		} else if (action === 'stop') {
+			if (!await confirmDialog(`${t('list.confirmBulkStop', { count: ids.length })}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
 		}
 		if (!owns()) return;
 
@@ -341,7 +359,14 @@
 		const owns = () => revision === scopeRevision && targetsAllowed([id], 'delete')
 			&& instances.find((row) => row.id === id)?.project_id === targetProject;
 		if (!owns()) return;
-		if (!await confirmDialog(`${t('list.confirmDelete', { name })}\n\n${t('panel.stoppedQuotaWarning')}`)) return;
+		if (!await confirmInstanceDeletion(`${t('list.confirmDelete', { name })}\n\n${t('panel.stoppedQuotaWarning')}`, {
+			targets: [{ id, name, upperVolume: !!instances.find(row => row.id === id)?.union_upper_volume_id }],
+			adminMode: false,
+			token,
+			projectId,
+			isCurrent: owns,
+			includeRetainedVolumes: true,
+		})) return;
 		if (!owns()) return;
 		const experience = beginExperienceAction('compute', 'delete', 'resource.list');
 		try {
@@ -417,8 +442,7 @@
 	{/if}
 	<ResourceToolbar label={t('list.toolbar')}>
 		{#snippet filters()}
-			<Field label={t('list.search')} for="project-instance-search" class="min-w-0 w-full md:flex-1 md:basis-48"><TextInput id="project-instance-search" type="search" bind:value={search} ariaLabel={t('list.search')} placeholder={t('list.search')} oninput={() => { currentPage = 1; selection.clear(); }} /></Field>
-			<Field label={t('table.status')} for="project-instance-status" class="min-w-0 max-w-full w-full md:w-auto"><SelectInput id="project-instance-status" bind:value={statusFilter} ariaLabel={t('table.status')} onchange={() => { currentPage = 1; selection.clear(); }}><option value="">{t('list.allStatuses')}</option>{#each statuses as status}<option value={status}>{getStatusLabel(status, 'server')}</option>{/each}</SelectInput></Field>
+			<RegexSearch id="project-instance-search" bind:value={search} label={t('list.search')} placeholder={t('list.search')} />
 		{/snippet}
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -430,6 +454,7 @@
 			/>
 		{/snippet}
 	</ResourceToolbar>
+	<TableViewControls {view} />
 
 	{#if error}
 		<Alert tone="danger">{error}</Alert>
@@ -444,14 +469,14 @@
 		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')} />
 	{:else if filteredInstances.length === 0}
 		<EmptyState headline={t('list.filteredEmpty')} description={t('list.filteredEmptyDescription')}>
-			{#snippet cta()}<Button variant="secondary" onclick={() => { search = ''; statusFilter = ''; currentPage = 1; selection.clear(); }}>{t('list.clearFilters')}</Button>{/snippet}
+			{#snippet cta()}<Button variant="secondary" onclick={() => { search = ''; view.reset(); currentPage = 1; selection.clear(); }}>{t('list.clearFilters')}</Button>{/snippet}
 		</EmptyState>
-	{:else}
+	{/if}
+	{#if !loading && instancesRevision === scopeRevision}
 			<InstancesTable
 				instances={visibleInstances}
 				{underutilized}
-				{sort}
-				onSortChange={(next) => { sort = next; currentPage = 1; selection.clear(); }}
+				{view}
 				selectedIds={selection.ids}
 				{selectableIds}
 				selectionDisabled={bulkActioning}

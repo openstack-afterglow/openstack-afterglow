@@ -7,9 +7,13 @@
   import type { ZunContainer } from '$lib/types/zunContainer';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import type { TableView } from '$lib/utils/tableView.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
   interface Props {
     containers: ZunContainer[];
+    view: TableView<ZunContainer>;
     actionTarget?: string | null;
     selectedIds?: ReadonlySet<string>;
     selectableIds?: ReadonlySet<string>;
@@ -23,6 +27,7 @@
   }
   let {
     containers,
+    view,
     actionTarget = null,
     selectedIds = new Set<string>(),
     selectableIds = new Set<string>(),
@@ -41,16 +46,19 @@
   const indeterminate = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
+<TableViewControls {view} />
 {#if containers.length === 0}
   <div class="containers-table__empty text-center py-20">
     <p class="text-lg mb-2">{t('instances.empty.title')}</p>
     <p class="text-sm">{t('instances.empty.description')}</p>
   </div>
-{:else}
+{:else if view.rows.length === 0}
+  <p role="status" class="text-sm text-ink-2 py-6">{tc('table.noMatches')}</p>
+{/if}
  <ResponsiveTable>
   {#snippet cards()}
    <div class="responsive-card-toolbar flex flex-wrap items-center gap-2 text-sm"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('instances.selection.allAria')} onclick={onToggleAll} /><span>{t('instances.selection.all')}</span><span aria-live="polite">{t('instances.selection.count', { count: selectedSelectableCount })}</span></div>
-   {#each containers as c (c.uuid)}
+   {#each view.rows as c (c.uuid)}
     {@const selectable = selectableIds.has(c.uuid)}
     <CompactResourceCard selected={selectedIds.has(c.uuid)}>
      <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(c.uuid)} disabled={selectionDisabled || !selectable} unavailable={!selectable} ariaLabel={t('instances.selection.itemAria', { name: c.name })} title={!selectable ? t('instances.selection.unavailable') : undefined} onclick={() => onToggleSelect(c.uuid)} /><button onclick={() => onOpen(c.uuid)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
@@ -72,17 +80,14 @@
           <th class="text-left py-3 pr-3">
             <div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('instances.selection.allAria')} onclick={onToggleAll} /><span>{t('instances.selection.all')}</span><span class="containers-table__selection-count normal-case" aria-live="polite">{t('instances.selection.count', { count: selectedSelectableCount })}</span></div>
           </th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.name')}</th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.status')}</th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.image')}</th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.cpu')}</th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.memory')}</th>
-          <th class="text-left py-3 pr-6">{t('instances.fields.createdAt')}</th>
+          {#each view.columns as column (column.key)}
+            <TableColumnHeader {view} columnKey={column.key} />
+          {/each}
           <th class="text-left py-3"></th>
         </tr>
       </thead>
       <tbody>
-        {#each containers as c (c.uuid)}
+        {#each view.rows as c (c.uuid)}
           {@const selectable = selectableIds.has(c.uuid)}
           <tr class="resource-selection-surface containers-table__row transition-colors" data-selected={selectedIds.has(c.uuid)}>
             <td class="py-3 pr-3">
@@ -113,7 +118,6 @@
     </table>
   </div>
  </ResponsiveTable>
-{/if}
 
 
 <style>

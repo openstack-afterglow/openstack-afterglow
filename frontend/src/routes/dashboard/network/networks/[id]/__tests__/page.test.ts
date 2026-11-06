@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkDetail, RouterListItem } from '$lib/types/networks';
 
-const { mocks, toastMock, confirmMock } = vi.hoisted(() => ({
+const { mocks, toastMock, confirmMock, refreshCallbacks } = vi.hoisted(() => ({
 	mocks: { get: vi.fn(), post: vi.fn(), delete: vi.fn(), put: vi.fn() },
 	toastMock: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 	confirmMock: vi.fn(),
+	refreshCallbacks: [] as Array<(force?: boolean) => Promise<void>>,
 }));
 
 vi.mock('$lib/api/client', () => ({
@@ -31,8 +32,17 @@ vi.mock('$app/stores', () => ({
 	},
 }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$lib/utils/autoRefresh.svelte', () => ({
+	createAutoRefresh: (callback: (force?: boolean) => Promise<void>) => {
+		refreshCallbacks.push(callback);
+		return { active: false, intervalSeconds: 30, intervalOptions: [10, 30, 60], refresh: () => callback(true) };
+	},
+}));
 
 import Page from '../+page.svelte';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as networkT } from '$lib/i18n/ns/network-pages';
+import { t as resourceT } from '$lib/i18n/ns/network-resources';
 
 const ownedNetwork: NetworkDetail = {
 	id: 'net-1',
@@ -65,11 +75,33 @@ const routers: RouterListItem[] = [
 describe('Network detail page (+page.svelte)', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		refreshCallbacks.length = 0;
 		mocks.get.mockImplementation((path: string) => {
 			if (path === '/api/v1/routers') return Promise.resolve(routers);
 			if (path === '/api/v1/networks/net-1') return Promise.resolve(ownedNetwork);
 			return Promise.resolve(ownedNetwork);
 		});
+	});
+
+	it('closes an open portaled filter on automatic read failure while retaining its display state for recovery', async () => {
+		render(Page);
+		await screen.findByRole('heading', { name: 'my-network' });
+		const filterLabel = commonT('table.filterColumn', { column: 'CIDR' });
+		await fireEvent.click(screen.getByRole('button', { name: filterLabel }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.descending') }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.selectNone') }));
+		expect(screen.getByRole('dialog', { name: filterLabel })).toBeTruthy();
+		mocks.get.mockRejectedValueOnce(new Error('automatic read failed'));
+		await refreshCallbacks[0](true);
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: filterLabel })).toBeNull());
+		expect(screen.getByText(networkT('networkDetail.serverError'))).toBeTruthy();
+		await refreshCallbacks[0](true);
+		await screen.findByRole('heading', { name: 'my-network' });
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: 'CIDR', direction: commonT('table.descending') }) })).toBeTruthy();
+		const subnetSection = screen.getByRole('heading', { name: resourceT('network.subnets.title') }).parentElement!.parentElement!;
+		expect(within(subnetSection).queryByRole('cell', { name: 'subnet-1' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: filterLabel }));
+		expect(screen.getByRole('checkbox', { name: '10.0.0.0/24' })).toHaveProperty('checked', false);
 	});
 
 	it('renders network detail and allows creating subnet with router connection', async () => {

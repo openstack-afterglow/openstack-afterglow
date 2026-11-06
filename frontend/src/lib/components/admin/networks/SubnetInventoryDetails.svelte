@@ -1,10 +1,59 @@
 <script lang="ts">
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import type { AdminSubnetDetail, SubnetPort } from '$lib/types/networks';
+	import type { AdminSubnetDetail, SubnetPort, SubnetAllocation, SubnetAllocationPool, SubnetDhcpBinding } from '$lib/types/networks';
 	import { Alert, Card, EmptyState, Pagination, Pill, SectionHeader, StatTile, TableShell, ToggleGroup } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	const id = $props.id();
+	let poolSearch = $state('');
+	let dhcpSearch = $state('');
+	let allocationSearch = $state('');
+	let portSearch = $state('');
+	const poolColumns: TableColumn<SubnetAllocationPool>[] = $derived([
+		{ key: 'start', label: t('subnetDetailPage.startIp'), value: (row) => row.start },
+		{ key: 'end', label: t('subnetDetailPage.endIp'), value: (row) => row.end },
+	]);
+	const dhcpColumns: TableColumn<SubnetDhcpBinding>[] = $derived([
+		{ key: 'ip', label: t('subnetDetailPage.ipAddress'), filterValues: (row) => row.ip_addresses, value: (row) => row.ip_addresses.join(', ') || null },
+		{ key: 'source', label: t('subnetDetailPage.source'), value: (row) => row.source, format: (value) => value === 'agent' ? t('subnetDetailPage.agent') : t('subnetDetailPage.port') },
+		{ key: 'host', label: t('subnetDetailPage.host'), value: (row) => row.host },
+		{ key: 'binary', label: t('subnetDetailPage.binary'), value: (row) => row.binary },
+		{ key: 'zone', label: t('subnetDetailPage.availabilityZone'), value: (row) => row.availability_zone },
+		{ key: 'agent', label: t('subnetDetailPage.agentId'), value: (row) => row.agent_id },
+		{ key: 'status', label: t('subnetDetailPage.status'), value: (row) => row.alive === null && row.admin_state_up === null ? null : [row.alive === null ? '' : row.alive ? t('subnetDetailPage.healthy') : t('subnetDetailPage.stopped'), row.admin_state_up === null ? '' : row.admin_state_up ? t('subnetDetailPage.up') : t('subnetDetailPage.down')].filter(Boolean).join(' · ') },
+		{ key: 'ports', label: t('subnetDetailPage.relatedPorts'), filterValues: (row) => row.port_ids, value: (row) => row.port_ids.join(', ') || null },
+	]);
+	const allocationColumns: TableColumn<SubnetAllocation>[] = $derived([
+		{ key: 'ip', label: t('subnetDetailPage.ipAddress'), value: (row) => row.ip_address },
+		{ key: 'port', label: t('subnetDetailPage.portId'), value: (row) => row.port_id },
+		{ key: 'name', label: t('subnetDetailPage.portName'), value: (row) => row.port_name },
+		{ key: 'attachment', label: t('subnetDetailPage.attachment'), value: (row) => [attachmentKind(row.device_owner), row.device_owner, row.device_name, row.device_id].filter(Boolean).join(' · ') },
+		{ key: 'project', label: t('subnetDetailPage.projectId'), value: (row) => row.project_id },
+		{ key: 'host', label: `${t('subnetDetailPage.actualNode')} (${t('subnetDetailPage.bindingHost')})`, value: (row) => row.binding_host_id },
+	]);
+	const portColumns: TableColumn<SubnetPort>[] = $derived([
+		{ key: 'id', label: t('subnetDetailPage.portId'), value: (row) => row.id },
+		{ key: 'name', label: t('subnetDetailPage.portName'), value: (row) => row.name },
+		{ key: 'status', label: t('subnetDetailPage.status'), value: (row) => row.status },
+		{ key: 'mac', label: t('subnetDetailPage.macAddress'), value: (row) => row.mac_address },
+		{ key: 'ip', label: t('subnetDetailPage.subnetIp'), filterValues: (row) => row.ip_addresses, value: (row) => row.ip_addresses.join(', ') || null },
+		{ key: 'attachment', label: t('subnetDetailPage.attachment'), value: (row) => [attachmentKind(row.device_owner), row.device_owner, row.device_name, row.device_id].filter(Boolean).join(' · ') },
+		{ key: 'project', label: t('subnetDetailPage.projectId'), value: (row) => row.project_id },
+		{ key: 'host', label: `${t('subnetDetailPage.actualNode')} (${t('subnetDetailPage.bindingHost')})`, value: (row) => row.binding_host_id },
+	]);
+	const poolView = createTableView({ locale: intlLocale, rows: () => subnet.allocation_pools, columns: () => poolColumns, search: () => poolSearch });
+	const dhcpView = createTableView({ locale: intlLocale, rows: () => subnet.dhcp_bindings, columns: () => dhcpColumns, search: () => dhcpSearch,
+		searchable: (row) => [...row.ip_addresses, ...row.port_ids, row.source, row.host, row.binary, row.availability_zone, row.agent_id, row.alive === null ? null : row.alive ? t('subnetDetailPage.healthy') : t('subnetDetailPage.stopped'), row.admin_state_up === null ? null : row.admin_state_up ? t('subnetDetailPage.up') : t('subnetDetailPage.down')].filter((value) => value != null).map(String) });
+	const allocationView = createTableView({ locale: intlLocale, rows: () => subnet.allocations, columns: () => allocationColumns, search: () => allocationSearch,
+		searchable: (row) => [row.ip_address, row.port_id, row.port_name, row.device_owner, row.device_id, row.device_name, attachmentKind(row.device_owner), row.project_id, row.binding_host_id].filter((value) => value != null).map(String) });
+	const portView = createTableView({ locale: intlLocale, rows: () => subnet.ports, columns: () => portColumns, search: () => portSearch,
+		searchable: (row) => [row.id, row.name, row.status, row.mac_address, ...row.ip_addresses, row.device_owner, row.device_id, row.device_name, attachmentKind(row.device_owner), row.project_id, row.binding_host_id].filter((value) => value != null).map(String) });
 
 	let { subnet, showOverview = false }: { subnet: AdminSubnetDetail; showOverview?: boolean } = $props();
 	type ResourceTab = 'allocations' | 'ports';
@@ -16,12 +65,14 @@
 		{ value: 'allocations', label: t('subnetDetailPage.tabs.allocations', { count: subnet.allocations.length }) },
 		{ value: 'ports', label: t('subnetDetailPage.tabs.ports', { count: subnet.ports.length }) },
 	]);
-	const allocationTotalPages = $derived(Math.max(1, Math.ceil(subnet.allocations.length / RESOURCE_PAGE_SIZE)));
-	const portTotalPages = $derived(Math.max(1, Math.ceil(subnet.ports.length / RESOURCE_PAGE_SIZE)));
+	const allocationTotalPages = $derived(Math.max(1, Math.ceil(allocationView.rows.length / RESOURCE_PAGE_SIZE)));
+	const portTotalPages = $derived(Math.max(1, Math.ceil(portView.rows.length / RESOURCE_PAGE_SIZE)));
 	const currentAllocationPage = $derived(Math.min(allocationPage, allocationTotalPages));
 	const currentPortPage = $derived(Math.min(portPage, portTotalPages));
-	const visibleAllocations = $derived(subnet.allocations.slice((currentAllocationPage - 1) * RESOURCE_PAGE_SIZE, currentAllocationPage * RESOURCE_PAGE_SIZE));
-	const visiblePorts = $derived(subnet.ports.slice((currentPortPage - 1) * RESOURCE_PAGE_SIZE, currentPortPage * RESOURCE_PAGE_SIZE));
+	const visibleAllocations = $derived(allocationView.rows.slice((currentAllocationPage - 1) * RESOURCE_PAGE_SIZE, currentAllocationPage * RESOURCE_PAGE_SIZE));
+	const visiblePorts = $derived(portView.rows.slice((currentPortPage - 1) * RESOURCE_PAGE_SIZE, currentPortPage * RESOURCE_PAGE_SIZE));
+	$effect(() => { allocationSearch; allocationView.filters; allocationView.sort; allocationPage = 1; });
+	$effect(() => { portSearch; portView.filters; portView.sort; portPage = 1; });
 	const numberFormat = $derived(new Intl.NumberFormat(intlLocale()));
 	function count(value: string): string { return numberFormat.format(BigInt(value)); }
 	function selectResourceTab(value: string) { activeResourceTab = value as ResourceTab; }
@@ -134,12 +185,15 @@
 					meta={t('subnetDetailPage.totalCount', { count: subnet.allocation_pools.length })}
 					class="mb-3"
 				/>
+				<RegexSearch id="{id}-pool-search" bind:value={poolSearch} />
+				<TableViewControls view={poolView} />
+	{#if subnet.allocation_pools.length > 0 && poolView.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 				{#if subnet.allocation_pools.length === 0}
 					<EmptyState headline={t('subnetDetailPage.poolsEmpty')} description={t('subnetDetailPage.poolsEmptyDescription')} />
-				{:else}
+				{/if}
 					<ResponsiveTable>
 						{#snippet cards()}
-							{#each subnet.allocation_pools as pool}
+							{#each poolView.rows as pool}
 								<CompactResourceCard><p class="break-all font-mono text-xs text-ink-0">{t('subnetDetailPage.startIp')}: {pool.start}</p><p class="break-all font-mono text-xs text-ink-2">{t('subnetDetailPage.endIp')}: {pool.end}</p></CompactResourceCard>
 							{/each}
 						{/snippet}
@@ -147,12 +201,11 @@
 						<table>
 							<thead>
 								<tr class="text-xs uppercase tracking-wide">
-									<th>{t('subnetDetailPage.startIp')}</th>
-									<th>{t('subnetDetailPage.endIp')}</th>
+									{#each poolColumns as column (column.key)}<TableColumnHeader view={poolView} columnKey={column.key} />{/each}
 								</tr>
 							</thead>
 							<tbody>
-								{#each subnet.allocation_pools as pool}
+								{#each poolView.rows as pool}
 									<tr>
 										<td class="font-mono text-sm">{pool.start}</td>
 										<td class="font-mono text-sm">{pool.end}</td>
@@ -162,7 +215,6 @@
 						</table>
 					</TableShell>
 					</ResponsiveTable>
-				{/if}
 			</Card>
 
 			<!-- DHCP Placement & Agent Section -->
@@ -177,12 +229,15 @@
 						{t('subnetDetailPage.schedulerUnavailableDescription')}
 					</Alert>
 				{/if}
+				<RegexSearch id="{id}-dhcp-search" bind:value={dhcpSearch} />
+				<TableViewControls view={dhcpView} />
+	{#if subnet.dhcp_bindings.length > 0 && dhcpView.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 				{#if subnet.dhcp_bindings.length === 0}
 					<EmptyState headline={t('subnetDetailPage.dhcpEmpty')} description={t('subnetDetailPage.dhcpEmptyDescription')} />
-				{:else}
+				{/if}
 					<ResponsiveTable>
 						{#snippet cards()}
-							{#each subnet.dhcp_bindings as binding}
+							{#each dhcpView.rows as binding}
 								<CompactResourceCard>
 									<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono text-sm text-ink-0">{binding.host || binding.ip_addresses[0] || '-'}</h3>{#if binding.alive !== null}<Pill tone={binding.alive ? 'success' : 'danger'}>{binding.alive ? t('subnetDetailPage.healthy') : t('subnetDetailPage.stopped')}</Pill>{/if}{#if binding.admin_state_up !== null}<Pill tone={binding.admin_state_up ? 'info' : 'neutral'}>{binding.admin_state_up ? t('subnetDetailPage.up') : t('subnetDetailPage.down')}</Pill>{/if}</div>
 									<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('subnetDetailPage.ipAddress')}: {binding.ip_addresses[0] ?? '-'}{binding.ip_addresses.length > 1 ? ` (+${binding.ip_addresses.length - 1})` : ''}</p><p>{t('subnetDetailPage.source')}: {binding.source === 'agent' ? t('subnetDetailPage.agent') : t('subnetDetailPage.port')}</p><p>{t('subnetDetailPage.availabilityZone')}: {binding.availability_zone || '-'}</p></div>
@@ -194,18 +249,11 @@
 						<table class="subnet-table subnet-table-dhcp">
 							<thead>
 								<tr class="text-xs uppercase tracking-wide">
-									<th>{t('subnetDetailPage.ipAddress')}</th>
-									<th>{t('subnetDetailPage.source')}</th>
-									<th>{t('subnetDetailPage.host')}</th>
-									<th>{t('subnetDetailPage.binary')}</th>
-									<th>{t('subnetDetailPage.availabilityZone')}</th>
-									<th>{t('subnetDetailPage.agentId')}</th>
-									<th>{t('subnetDetailPage.status')}</th>
-									<th>{t('subnetDetailPage.relatedPorts')}</th>
+									{#each dhcpColumns as column (column.key)}<TableColumnHeader view={dhcpView} columnKey={column.key} />{/each}
 								</tr>
 							</thead>
 							<tbody>
-								{#each subnet.dhcp_bindings as binding}
+								{#each dhcpView.rows as binding}
 									<tr>
 										<td class="font-mono text-sm">
 											{binding.ip_addresses.length > 0 ? binding.ip_addresses.join(', ') : '-'}
@@ -246,7 +294,6 @@
 						</table>
 					</TableShell>
 					</ResponsiveTable>
-				{/if}
 			</Card>
 
 			<Card padding="md">
@@ -270,9 +317,12 @@
 						meta={t('subnetDetailPage.totalCount', { count: subnet.allocations.length })}
 						class="mb-3"
 					/>
+					<RegexSearch id="{id}-allocation-search" bind:value={allocationSearch} />
+					<TableViewControls view={allocationView} />
+	{#if subnet.allocations.length > 0 && allocationView.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 					{#if subnet.allocations.length === 0}
 						<EmptyState headline={t('subnetDetailPage.allocationsEmpty')} description={t('subnetDetailPage.allocationsEmptyDescription')} />
-					{:else}
+					{/if}
 						<ResponsiveTable>
 							{#snippet cards()}
 								{#each visibleAllocations as alloc}
@@ -286,15 +336,7 @@
 							<table class="subnet-table subnet-table-allocations">
 								<thead>
 									<tr class="text-xs uppercase tracking-wide">
-										<th>{t('subnetDetailPage.ipAddress')}</th>
-										<th>{t('subnetDetailPage.portId')}</th>
-										<th>{t('subnetDetailPage.portName')}</th>
-										<th>{t('subnetDetailPage.attachment')}</th>
-										<th>{t('subnetDetailPage.projectId')}</th>
-										<th>
-											{t('subnetDetailPage.actualNode')}
-											<span class="block text-xs normal-case text-ink-2 font-normal">{t('subnetDetailPage.bindingHost')}</span>
-										</th>
+										{#each allocationColumns as column (column.key)}<TableColumnHeader view={allocationView} columnKey={column.key} />{/each}
 									</tr>
 								</thead>
 								<tbody>
@@ -319,19 +361,21 @@
 							hasNext={currentAllocationPage < allocationTotalPages}
 							onPrev={() => (allocationPage = Math.max(1, currentAllocationPage - 1))}
 							onNext={() => (allocationPage = Math.min(allocationTotalPages, currentAllocationPage + 1))}
-							total={subnet.allocations.length}
+							total={allocationView.rows.length}
 							pageSize={RESOURCE_PAGE_SIZE}
 						/>
-					{/if}
 				{:else}
 					<SectionHeader
 						title={t('subnetDetailPage.ports')}
 						meta={t('subnetDetailPage.totalCount', { count: subnet.ports.length })}
 						class="mb-3"
 					/>
+					<RegexSearch id="{id}-port-search" bind:value={portSearch} />
+					<TableViewControls view={portView} />
+	{#if subnet.ports.length > 0 && portView.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 					{#if subnet.ports.length === 0}
 						<EmptyState headline={t('subnetDetailPage.portsEmpty')} description={t('subnetDetailPage.portsEmptyDescription')} />
-					{:else}
+					{/if}
 						<ResponsiveTable>
 							{#snippet cards()}
 								{#each visiblePorts as port (port.id)}
@@ -345,17 +389,7 @@
 							<table class="subnet-table subnet-table-ports">
 								<thead>
 									<tr class="text-xs uppercase tracking-wide">
-										<th>{t('subnetDetailPage.portId')}</th>
-										<th>{t('subnetDetailPage.portName')}</th>
-										<th>{t('subnetDetailPage.status')}</th>
-										<th>{t('subnetDetailPage.macAddress')}</th>
-										<th>{t('subnetDetailPage.subnetIp')}</th>
-										<th>{t('subnetDetailPage.attachment')}</th>
-										<th>{t('subnetDetailPage.projectId')}</th>
-										<th>
-											{t('subnetDetailPage.actualNode')}
-											<span class="block text-xs normal-case text-ink-2 font-normal">{t('subnetDetailPage.bindingHost')}</span>
-										</th>
+										{#each portColumns as column (column.key)}<TableColumnHeader view={portView} columnKey={column.key} />{/each}
 									</tr>
 								</thead>
 								<tbody>
@@ -386,10 +420,9 @@
 							hasNext={currentPortPage < portTotalPages}
 							onPrev={() => (portPage = Math.max(1, currentPortPage - 1))}
 							onNext={() => (portPage = Math.min(portTotalPages, currentPortPage + 1))}
-							total={subnet.ports.length}
+							total={portView.rows.length}
 							pageSize={RESOURCE_PAGE_SIZE}
 						/>
-					{/if}
 				{/if}
 			</Card>
 </div>

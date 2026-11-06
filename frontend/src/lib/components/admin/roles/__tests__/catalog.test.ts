@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleTreeRows, sortRoles } from '../catalog';
+import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleTreeRows, roleColumns } from '../catalog';
+import { createTableView } from '$lib/utils/tableView.svelte';
 import type { ManagedRole } from '../types';
 
 function role(id: string, changes: Partial<ManagedRole> = {}): ManagedRole {
 	return { id, name: id, description: '', domain_id: null, protected: false, system_only: false,
 		implied_role_ids: [], inherited_role_ids: [], parent_role_ids: [], ...changes };
+}
+function projection(roles: ManagedRole[], query = '') {
+	return createTableView<ManagedRole>({ rows: () => roles, columns: roleColumns, search: () => query });
+}
+function tree(roles: ManagedRole[], query = '', key?: string, direction: 'asc' | 'desc' = 'asc') {
+	const view = projection(roles, query);
+	const ordering = projection(roles);
+	if (key) {
+		ordering.toggleSort(key);
+		if (direction === 'desc') ordering.toggleSort(key);
+	}
+	return roleTreeRows(roles, ordering.rows, new Set(view.rows.map((item) => item.id)));
 }
 
 describe('role catalog boundaries', () => {
@@ -12,7 +25,7 @@ describe('role catalog boundaries', () => {
 		const roles = [role('root', { implied_role_ids: ['left', 'right'] }),
 			role('left', { implied_role_ids: ['shared'] }), role('right', { implied_role_ids: ['shared'] }),
 			role('shared', { implied_role_ids: ['leaf'] }), role('leaf'), role('isolated')];
-		const rows = roleTreeRows(roles, '', 'name', 'asc');
+		const rows = tree(roles);
 		expect(rows.filter((row) => row.role.id === 'shared').map((row) => row.parent?.id).sort()).toEqual(['left', 'right']);
 		expect(rows.filter((row) => row.role.id === 'shared' && row.kind === 'shared')).toHaveLength(1);
 		expect(rows.filter((row) => row.parent?.id === 'shared' && row.role.id === 'leaf')).toHaveLength(1);
@@ -23,7 +36,7 @@ describe('role catalog boundaries', () => {
 	it('keeps both parent paths when searching a shared descendant by description', () => {
 		const roles = [role('a', { implied_role_ids: ['c'] }), role('b', { implied_role_ids: ['c'] }),
 			role('c', { description: 'needle' }), role('unrelated')];
-		const rows = roleTreeRows(roles, 'NEEDLE', 'name', 'desc');
+		const rows = tree(roles, '^NEEDLE$', 'name', 'desc');
 		expect(rows.filter((row) => row.role.id === 'c').map((row) => row.parent?.id).sort()).toEqual(['a', 'b']);
 		expect(rows.some((row) => row.role.id === 'unrelated')).toBe(false);
 		expect(rows.filter((row) => !row.matches).map((row) => row.role.id).sort()).toEqual(['a', 'b']);
@@ -31,25 +44,60 @@ describe('role catalog boundaries', () => {
 
 	it('shows rootless cyclic components without recurring forever or hiding isolated nodes', () => {
 		const roles = [role('a', { implied_role_ids: ['b'] }), role('b', { implied_role_ids: ['a'] }), role('alone')];
-		const rows = roleTreeRows(roles, '', 'name', 'asc');
+		const rows = tree(roles);
 		expect(rows).toHaveLength(4);
 		expect(rows.filter((row) => row.kind === 'cycle')).toHaveLength(1);
 		expect(new Set(rows.map((row) => row.role.id))).toEqual(new Set(['a', 'b', 'alone']));
 	});
 
-	it('sorts naturally and deterministically without mutating provider order', () => {
+	it('uses shared natural sorting, stable incoming ties and a third-click default without mutating provider order', () => {
 		const roles = [role('id10', { name: 'Role 10' }), role('id2', { name: 'role 2' }), role('id1', { name: 'ROLE 2' })];
-		expect(sortRoles(roles, 'name', 'asc').map((item) => item.id)).toEqual(['id1', 'id2', 'id10']);
-		expect(sortRoles([...roles].reverse(), 'name', 'asc').map((item) => item.id)).toEqual(['id1', 'id2', 'id10']);
-		expect(sortRoles(roles, 'name', 'desc').map((item) => item.id)).toEqual(['id10', 'id1', 'id2']);
-		expect(sortRoles(roles, 'id', 'desc').map((item) => item.id)).toEqual(['id10', 'id2', 'id1']);
+		const view = projection(roles);
+		view.toggleSort('name');
+		expect(view.rows.map((item) => item.id)).toEqual(['id2', 'id1', 'id10']);
+		view.toggleSort('name');
+		expect(view.rows.map((item) => item.id)).toEqual(['id10', 'id2', 'id1']);
+		view.toggleSort('name');
+		expect(view.rows.map((item) => item.id)).toEqual(['id10', 'id2', 'id1']);
+		expect(view.sort).toBeNull();
+		view.toggleSort('id'); view.toggleSort('id');
+		expect(view.rows.map((item) => item.id)).toEqual(['id10', 'id2', 'id1']);
 		expect(roles.map((item) => item.id)).toEqual(['id10', 'id2', 'id1']);
 	});
 
 	it('orders by effective inheritance count rather than direct edge count', () => {
 		const roles = [role('two', { implied_role_ids: ['one'], inherited_role_ids: ['one', 'leaf'] }),
 			role('one', { implied_role_ids: ['leaf'], inherited_role_ids: ['leaf'] }), role('leaf')];
-		expect(sortRoles(roles, 'inheritance', 'desc').map((item) => item.id)).toEqual(['two', 'one', 'leaf']);
+		const view = projection(roles);
+		view.toggleSort('inheritance'); view.toggleSort('inheritance');
+		expect(view.rows.map((item) => item.id)).toEqual(['two', 'one', 'leaf']);
+	});
+
+	it('keeps ancestors for combined exact facets and regex while sorting only sibling traversal, never flattening paths', () => {
+		const roles = [
+			role('root', { implied_role_ids: ['child2', 'child10'] }),
+			role('child2', { description: 'match', protected: true }),
+			role('child10', { description: 'match', protected: true }),
+			role('outside', { description: 'match' }),
+		];
+		const view = projection(roles, '^match$');
+		view.setFilter('id', ['child2', 'child10']);
+		view.setFilter('description', ['match']);
+		const ordering = projection(roles);
+		ordering.toggleSort('name'); ordering.toggleSort('name');
+		const rows = roleTreeRows(roles, ordering.rows, new Set(view.rows.map((item) => item.id)));
+		expect(rows.map((item) => [item.role.id, item.depth, item.matches])).toEqual([
+			['root', 0, false], ['child10', 1, true], ['child2', 1, true],
+		]);
+	});
+
+	it('returns no hierarchy for invalid regex instead of exposing ancestors or falling back to literal text', () => {
+		const roles = [role('root', { implied_role_ids: ['[leaf'] }), role('[leaf')];
+		const view = projection(roles, '[');
+		expect(view.error).toBe(true);
+		expect(view.rows).toEqual([]);
+		expect(tree(roles, '[')).toEqual([]);
+		expect(tree(roles, '^\\[leaf$').map((item) => item.role.id)).toEqual(['root', '[leaf']);
 	});
 
 	it('blocks privilege elevation through aliases and through an existing low-privilege ancestor', () => {
@@ -106,7 +154,7 @@ describe('retired role history', () => {
 		const custom = role('custom', { name: 'lumen-custom_admin' });
 		const metadataRetired = role('metadata', { name: 'operator_old', retired: true });
 		const graph = buildRoleGraph([retired, custom, metadataRetired]);
-		expect(roleTreeRows([retired, custom], '', 'name', 'asc').some(row => row.parent?.id === retired.id && row.role.id === custom.id)).toBe(true);
+		expect(tree([retired, custom]).some(row => row.parent?.id === retired.id && row.role.id === custom.id)).toBe(true);
 		expect(edgeDisabledReason(graph, retired, custom)).toBeNull();
 		expect(edgeDisabledReason(graph, custom, retired)).toBeTruthy();
 		expect(deleteDisabledReason(retired)).toBeTruthy();

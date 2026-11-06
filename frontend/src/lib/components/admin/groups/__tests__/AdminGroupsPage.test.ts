@@ -9,7 +9,10 @@ import { t as commonT } from '$lib/i18n/ns/common';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(), listDomains: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } } }));
 vi.mock('$lib/api/domains', () => ({ domainsApi: { list: mocks.listDomains } }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'admin-project', userId: 'actor' }) }));
+vi.mock('$lib/stores/auth', () => ({
+  auth: writable({ token: 'token', projectId: 'admin-project', userId: 'actor', isSystemAdmin: true }),
+  authReady: writable(true), projectSwitching: writable(false),
+}));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 60, intervalOptions: [30, 60] }) }));
 import Page from '../AdminGroupsPage.svelte';
 
@@ -33,6 +36,24 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+
+it('retains group regex, expanded candidate regex and exact candidate identity through bearer renewal and manual refresh', async () => {
+  render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
+  await screen.findByText(group.name);
+  await fireEvent.input(screen.getByRole('searchbox', { name: '그룹 검색' }), { target: { value: '^Domain A group$' } });
+  await fireEvent.click(screen.getByRole('button', { name: '멤버' }));
+  await screen.findByText(candidate.email);
+  await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: '^New member$' } });
+  auth.update((value) => ({ ...value, token: 'renewed-token' }));
+  await tick();
+  expect((screen.getByRole('searchbox', { name: '그룹 검색' }) as HTMLInputElement).value).toBe('^Domain A group$');
+  expect((screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement).value).toBe('^New member$');
+  expect(screen.getByText(candidate.id)).toBeTruthy();
+  await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/admin/groups?domain_id=domain-a', 'renewed-token', 'admin-project'));
+  expect((screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement).value).toBe('^New member$');
+  expect(screen.getByText(candidate.id)).toBeTruthy();
+});
 
 
 it('adds multiple selected users using individually scoped authorized requests', async () => {
@@ -149,7 +170,7 @@ describe('domain-scoped group administration', () => {
     await screen.findByText(group.name);
     await fireEvent.click(screen.getByRole('button', { name: '멤버' }));
     await screen.findByText(member.email);
-    await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: '  PIEROOT  ' } });
+    await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: '^PIEROOT$' } });
     expect(screen.getAllByText('pieroot')).toHaveLength(2);
     expect(screen.getByText(candidate.email)).toBeTruthy();
     expect(screen.getByText(candidate.domain_id)).toBeTruthy();
@@ -254,10 +275,10 @@ describe('explicit account home candidates', () => {
       ? Promise.resolve({ domain_id: 'domain-a', user_domain_id: 'accounts', items: [account, second] }) : original(path));
     await openGroup();
     await chooseSource('Accounts accounts');
-    await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: '  PIEROOT  ' } });
+    await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: '^PIEROOT$' } });
     await screen.findByText(second.id);
     expect(screen.getAllByText('pieroot')).toHaveLength(2);
-    for (const query of [' SECOND@EXAMPLE.TEST ', second.id.toUpperCase()]) {
+    for (const query of ['^SECOND@EXAMPLE\\.TEST$', `^${second.id.toUpperCase()}$`]) {
       await fireEvent.input(screen.getByRole('searchbox', { name: '사용자 검색' }), { target: { value: query } });
       expect(screen.queryByText(account.id)).toBeNull();
       expect(screen.getByText(second.id)).toBeTruthy();
@@ -355,7 +376,7 @@ describe('explicit account home candidates', () => {
 });
 
 describe('candidate authority lifetime', () => {
-  it.each(['token', 'userId'] as const)('discards source candidates after an actor %s change', async (key) => {
+  it('discards source candidates after an actor identity change', async () => {
     const pending = Promise.withResolvers<unknown>();
     const original = mocks.get.getMockImplementation()!;
     let sourceCalls = 0;
@@ -365,7 +386,7 @@ describe('candidate authority lifetime', () => {
       : original(path));
     await openGroup();
     await chooseSource('Accounts accounts');
-    auth.update((value) => ({ ...value, [key]: 'changed' }));
+    auth.update((value) => ({ ...value, userId: 'changed' }));
     await waitFor(() => expect(screen.queryByRole('searchbox', { name: '사용자 검색' })).toBeNull());
     await screen.findByText(group.name);
     await fireEvent.click(screen.getByRole('button', { name: '멤버' }));
@@ -379,4 +400,52 @@ describe('candidate authority lifetime', () => {
     expect(screen.queryByText(account.email)).toBeNull();
     expect(mocks.put).not.toHaveBeenCalled();
   });
+});
+
+it.each(['failed refresh', 'empty refresh', 'parent regex'] as const)('preserves nested display state across %s while retiring child mutation state', async (transition) => {
+  const second = { ...candidate, id: 'candidate-other', name: 'Other member', email: 'other@example.test' };
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/domains/domain-a/members'
+    ? Promise.resolve({ domain_id: 'domain-a', items: [candidate, second] }) : original(path));
+  await openGroup();
+  await screen.findByText(second.email);
+  const memberSearch = screen.getByRole('searchbox', { name: '멤버' }) as HTMLInputElement;
+  const candidateSearch = screen.getByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement;
+  await fireEvent.input(memberSearch, { target: { value: '^Current member$' } });
+  await fireEvent.input(candidateSearch, { target: { value: '^(New|Other) member$' } });
+  const candidateControls = within(screen.getAllByRole('group', { name: commonT('table.controls') }).at(-1)!);
+  await fireEvent.click(candidateControls.getByRole('button', { name: commonT('table.sortColumn', { column: '이름', direction: commonT('table.none') }) }));
+  await fireEvent.click(candidateControls.getByRole('button', { name: commonT('table.sortColumn', { column: '이름', direction: commonT('table.ascending') }) }));
+  const emailFilter = commonT('table.filterColumn', { column: '이메일' });
+  await fireEvent.click(candidateControls.getByRole('button', { name: emailFilter }));
+  const options = within(screen.getByRole('dialog', { name: emailFilter }));
+  await fireEvent.click(options.getByRole('checkbox', { name: second.email }));
+  await fireEvent.click(options.getByRole('button', { name: commonT('actions.close') }));
+  expect(screen.queryByText(second.email)).toBeNull();
+  if (transition === 'parent regex') {
+    await fireEvent.input(screen.getByRole('searchbox', { name: '그룹 검색' }), { target: { value: '^no-such-group$' } });
+  } else {
+    if (transition === 'failed refresh') mocks.get.mockRejectedValueOnce(new ApiError(503, 'inventory_unavailable'));
+    else mocks.get.mockResolvedValueOnce([]);
+    await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+    if (transition === 'failed refresh') await screen.findByText('inventory_unavailable');
+  }
+  await waitFor(() => expect(screen.queryByRole('searchbox', { name: '사용자 검색' })).toBeNull());
+  expect(screen.queryByRole('button', { name: '추가' })).toBeNull();
+  expect(candidateSearch.isConnected).toBe(false);
+  expect(mocks.put).not.toHaveBeenCalled();
+  if (transition === 'parent regex') {
+    await fireEvent.input(screen.getByRole('searchbox', { name: '그룹 검색' }), { target: { value: '' } });
+  } else {
+    await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+  }
+  const restoredCandidateSearch = await screen.findByRole('searchbox', { name: '사용자 검색' }) as HTMLInputElement;
+  const restoredMemberSearch = screen.getByRole('searchbox', { name: '멤버' }) as HTMLInputElement;
+  expect(restoredCandidateSearch).not.toBe(candidateSearch);
+  expect(restoredMemberSearch.value).toBe('^Current member$');
+  expect(restoredCandidateSearch.value).toBe('^(New|Other) member$');
+  expect(screen.queryByText(second.email)).toBeNull();
+  expect(screen.getByText(candidate.email)).toBeTruthy();
+  const restoredControls = within(screen.getAllByRole('group', { name: commonT('table.controls') }).at(-1)!);
+  expect(restoredControls.getByRole('button', { name: commonT('table.sortColumn', { column: '이름', direction: commonT('table.descending') }) })).toBeTruthy();
 });

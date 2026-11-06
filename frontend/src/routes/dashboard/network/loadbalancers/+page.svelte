@@ -4,6 +4,7 @@
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
+  import { sessionScopeKey } from '$lib/utils/authSession';
   import { api, ApiError } from '$lib/api/client';
   import type { LoadBalancer } from '$lib/types/loadbalancer';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -22,6 +23,11 @@
   import { t } from '$lib/i18n/ns/network-pages';
   import { CompactResourceCard, Button } from '$lib/components/ui';
   import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as tr } from '$lib/i18n/ns/network-resources';
+  import { t as tc } from '$lib/i18n/ns/common';
 
 
   let selectedLbId = $state<string | null>(null);
@@ -43,9 +49,19 @@
   let stateVersion = 0;
   let live = true;
   onDestroy(() => { live = false; });
+  let search = $state('');
+  const columns = (): TableColumn<LoadBalancer>[] => [
+    { key: 'name', label: tr('network.labels.name'), value: row => row.name || row.id },
+    { key: 'status', label: t('networksTable.status'), value: row => row.status },
+    { key: 'vip', label: 'VIP', value: row => row.vip_address },
+    { key: 'operating', label: t('topologyLoadBalancer.operatingStatus'), value: row => row.operating_status },
+  ];
+  const view = createTableView({ rows: () => loadbalancers, columns, search: () => search, searchable: row => [row.name, row.id, row.status, row.vip_address ?? '', row.operating_status ?? ''] });
+  const visibleSelectableIds = $derived(new Set(view.rows.filter(row => selectableIds.has(row.id)).map(row => row.id)));
+  $effect(() => { const ids = visibleSelectableIds; untrack(() => selection.retain(ids)); });
   let selectableIds = $derived(new Set(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb)).map((lb) => lb.id)));
-  const selectedCount = $derived([...selectableIds].filter((id) => selection.ids.has(id)).length);
-  const allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
+  const selectedCount = $derived([...visibleSelectableIds].filter((id) => selection.ids.has(id)).length);
+  const allSelected = $derived(visibleSelectableIds.size > 0 && selectedCount === visibleSelectableIds.size);
   const indeterminate = $derived(selectedCount > 0 && !allSelected);
 
   async function bulkDelete() {
@@ -105,11 +121,14 @@
     invokeOnMount: false,
   });
 
+  const viewOwner = $derived(sessionScopeKey($auth));
   $effect(() => {
-    const pid = $auth.projectId;
+    viewOwner;
+    const pid = untrack(() => $auth.projectId);
     if (!pid) return;
     untrack(() => {
       selection.clear();
+      search = ''; view.reset();
       void fetchLoadbalancers();
     });
   });
@@ -129,6 +148,9 @@
     {/snippet}
   </PageHeader>
 
+  <RegexSearch id="load-balancer-search" bind:value={search} />
+  <TableViewControls {view} class="" />
+  {#if loadbalancers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
@@ -148,11 +170,11 @@
         checked={allSelected}
         indeterminate={indeterminate}
         selectedCount={selectedCount}
-        disabled={busy || selectableIds.size === 0}
-        onToggle={() => selection.toggleAll(selectableIds)}
+        disabled={busy || visibleSelectableIds.size === 0}
+        onToggle={() => selection.toggleAll(visibleSelectableIds)}
       />
     </div>
-      {#each loadbalancers as lb (lb.id)}
+      {#each view.rows as lb (lb.id)}
         {@const isProtected = isDroverLoadBalancer(lb)}
         <CompactResourceCard selected={selection.has(lb.id)}>
           <div class="flex items-center gap-2">

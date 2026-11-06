@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { page } from '$app/stores';
@@ -27,17 +33,23 @@
 	let membersError = $state('');
 	let loadGeneration = 0;
 	let tab = $state<'overview' | 'members' | 'activity'>('overview');
+	const readOwner = $derived(JSON.stringify([projectId, domainId, $auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, adminProjectId, $auth.isSystemAdmin, $auth.isDomainManager, !!token]));
+	let previousOwner = '';
 
 	$effect(() => {
-		const requestProjectId = projectId;
-		const requestDomain = domainId;
+		const owner = readOwner;
+		const requestProjectId = untrack(() => projectId);
+		const requestDomain = untrack(() => domainId);
 		const requestToken = token;
 		const requestAdminProjectId = adminProjectId;
 		const generation = ++loadGeneration;
 		let live = true;
 		const owns = () => live && generation === loadGeneration && projectId === requestProjectId
 			&& domainId === requestDomain && token === requestToken && adminProjectId === requestAdminProjectId;
-		project = null; members = []; tab = 'overview';
+		if (owner !== previousOwner) {
+			previousOwner = owner;
+			untrack(() => { project = null; members = []; tab = 'overview'; tableSearch = ''; tableView.reset(); });
+		}
 		loading = true; membersLoading = true; error = ''; membersError = '';
 		if (!requestProjectId || !requestDomain) {
 			loading = false; membersLoading = false; error = t('projectDetail.loadFailed');
@@ -59,23 +71,31 @@
 					if (owns()) membersError = memberError instanceof ApiError ? memberError.message : t('projectDetail.membersFailed');
 				}
 			} catch (loadError) {
-				if (owns()) error = loadError instanceof ApiError ? loadError.message : t('projectDetail.loadFailed');
+				if (owns()) {
+					error = loadError instanceof ApiError ? loadError.message : t('projectDetail.loadFailed');
+					if ((loadError instanceof ApiError && [401, 403, 404].includes(loadError.status)) || (loadError instanceof Error && loadError.message === 'foreign domain')) { project = null; members = []; }
+				}
 			} finally {
 				if (owns()) { loading = false; membersLoading = false; }
 			}
 		})();
 		return () => { live = false; loadGeneration += 1; };
 	});
+	const tableSearchId = $props.id();
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof members)[number]>({ rows: () => members, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'user', label: t('projectDetail.user'), value: row => row.user_name }, { key: 'role', label: t('projectDetail.role'), value: row => row.role_name }, { key: 'type', label: t('projectDetail.type'), value: row => row.type === 'group' ? t('projectDetail.groupType') : row.type == null || row.type === 'user' ? t('projectDetail.userType') : row.type }] });
 </script>
 
-{#if loading}
+{#if loading && !project}
 	<PageShell>
 		<LoadingState variant="surface" />
 	</PageShell>
-{:else if error}
+{:else if error && !project}
 	<PageShell class="text-state-danger-text text-sm">{error}</PageShell>
 {:else if project}
 	<PageShell class="flex flex-col gap-6">
+		{#if error}<Alert tone="danger">{error}</Alert>{/if}
+		{#if loading}<LoadingState variant="inline" label={t('state.loading')} />{/if}
 		<PageHeader breadcrumb={t('projectDetail.breadcrumb')} title={project.name} subtitle={t('projectDetail.subtitle')}>
 			{#snippet actions()}
 				<a href={`/admin/projects?domain_id=${encodeURIComponent(domainId)}`} class="text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('projectDetail.back')}</a>
@@ -141,12 +161,11 @@
 					<div class="text-ink-2 text-sm py-8 text-center"><LoadingState variant="section" label={t('projectDetail.membersLoading')} /></div>
 				{:else if membersError}
 					<div class="text-[var(--color-state-danger)] text-sm py-8 text-center">{membersError}</div>
-				{:else if members.length === 0}
-					<div class="text-ink-2 text-sm py-8 text-center">{t('projectDetail.noMembers')}</div>
 				{:else}
-          <ResponsiveTable>
+          <RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>
             {#snippet cards()}
-              {#each members as m (m.user_id + m.role_id)}
+              {#each tableView.rows as m (m.user_id + m.role_id)}
                 <CompactResourceCard>
                   <strong class="break-words text-sm">{m.user_name}</strong>
                   <dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('projectDetail.role')}</dt><dd>{m.role_name}</dd></div><div><dt class="text-ink-2">{t('projectDetail.type')}</dt><dd>{m.type === 'group' ? t('projectDetail.groupType') : m.type == null || m.type === 'user' ? t('projectDetail.userType') : m.type}</dd></div></dl>
@@ -156,13 +175,13 @@
 					<table class="w-full text-sm">
 						<thead class="bg-surface-base/60 text-ink-2 text-xs uppercase tracking-wide">
 							<tr>
-								<th class="px-4 py-3 text-left font-medium">{t('projectDetail.user')}</th>
-								<th class="px-4 py-3 text-left font-medium">{t('projectDetail.role')}</th>
-								<th class="px-4 py-3 text-left font-medium">{t('projectDetail.type')}</th>
+<TableColumnHeader view={tableView} columnKey="user" />
+<TableColumnHeader view={tableView} columnKey="role" />
+<TableColumnHeader view={tableView} columnKey="type" />
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-line">
-							{#each members as m (m.user_id + m.role_id)}
+							{#each tableView.rows as m (m.user_id + m.role_id)}
 								<tr class="hover:bg-surface-sunken/40">
 									<td class="px-4 py-3 text-ink-0">{m.user_name}</td>
 									<td class="px-4 py-3 text-ink-2">{m.role_name}</td>

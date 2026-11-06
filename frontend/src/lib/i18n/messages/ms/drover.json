@@ -7,7 +7,6 @@
 	"steps.initialize": "Mulakan k3s",
 	"steps.completed": "Selesai",
 	"steps.prepare": "Sediakan",
-
 	"rotateProgress.unreported": "Aliran kemajuan telah tamat. Muat semula status kluster untuk menyemak hasilnya.",
 	"steps.cleanupLb": "Bersihkan pengimbang beban",
 	"steps.appCredential": "Kelayakan aplikasi",

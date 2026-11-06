@@ -6,6 +6,8 @@ import { toast } from '$lib/stores/toast';
 import type { LoadBalancerDetail, Listener, Pool, Member, LbStatusNode } from '$lib/types/loadbalancer';
 import { isDroverLoadBalancer, loadBalancerDeleteConfirmation } from '$lib/utils/droverLoadBalancer';
 import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import { listenerColumns, poolColumns, memberColumns } from '$lib/utils/loadBalancerTableColumns';
 
 export function provisioningColor(status: string): string {
   return status === 'ERROR' ? 'text-red-400' : 'text-gray-400';
@@ -38,6 +40,14 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   let poolForm = $state({ protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' });
   let showAddMember = $state(false);
   let memberForm = $state({ address: '', protocol_port: 80, weight: 1, name: '' });
+  const listenerView = createTableView({ rows: () => listeners, columns: listenerColumns });
+  const poolView = createTableView({ rows: () => pools, columns: poolColumns });
+  const memberView = createTableView({ rows: () => selectedPoolMembers, columns: memberColumns });
+  const viewOwner = $derived(JSON.stringify([opts.lbId(), opts.projectId()]));
+  $effect(() => {
+    viewOwner;
+    untrack(() => { listenerView.reset(); poolView.reset(); memberView.reset(); });
+  });
 
   const isErrored = $derived(
     !!lb && (lb.status === 'ERROR' || lb.status?.includes('ERROR')),
@@ -48,6 +58,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   // selectedPoolId 변화 시 멤버 fetch (token/projectId는 untrack)
   $effect(() => {
     const poolId = selectedPoolId;
+    untrack(() => memberView.reset());
     if (!poolId) {
       selectedPoolMembers = [];
       membersError = '';
@@ -290,6 +301,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   return {
+    listenerView, poolView, memberView,
     // State getters
     get lb() { return lb; },
     get listeners() { return listeners; },

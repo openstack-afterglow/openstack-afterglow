@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { get, writable } from 'svelte/store';
 import { tick } from 'svelte';
 
@@ -22,6 +22,8 @@ import Page from '../+page.svelte';
 import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 import type { AdminVolumeStatusSummary } from '$lib/types/volume';
 import { page } from '$app/state';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as storageT } from '$lib/i18n/ns/admin-storage';
 const route = page as unknown as { url: URL };
 
 const volume = { id: 'vol-1', name: 'first-volume', status: 'available', size: 20, volume_type: 'fast', project_id: 'project', project_name: 'Native project', domain_id: 'domain-a', domain_name: 'Research', owner_status: 'known' as const, created_at: null };
@@ -51,109 +53,55 @@ describe('administrator volume complete inventory and publication boundaries', (
 	});
 	afterEach(() => { cleanup(); setAdminInventoryScope('', ''); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-	it('keeps complete domain totals independent of marker pages and sends every detail filter to both full-inventory APIs', async () => {
+	it('keeps complete totals and marker continuation independent of loaded-page regex and retains the expression on refresh', async () => {
 		render(Page);
 		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
 		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('볼륨 200개 · 8,000 GiB');
 		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
 		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
+		const search = screen.getByRole('searchbox') as HTMLInputElement;
+		await fireEvent.input(search, { target: { value: '^first-volume$' } });
+		mocks.get.mockImplementation((path: string) => path.startsWith('/api/v1/admin/all-volumes')
+			? Promise.resolve({ items: [volume, { ...volume, id: 'vol-2', name: 'second-volume' }], next_marker: 'vol-2' })
+			: defaultGet(path));
+		mocks.refresh();
+		await tick();
+		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
+		expect(search.value).toBe('^first-volume$');
+		expect(screen.queryByRole('checkbox', { name: 'second-volume 선택' })).toBeNull();
 		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('볼륨 200개 · 8,000 GiB');
-		expect(mocks.get.mock.calls.filter(([path]) => path.startsWith('/api/v1/admin/volumes/status-summary'))).toHaveLength(1);
-		await fireEvent.change(screen.getByLabelText('상태'), { target: { value: 'available' } });
-		await fireEvent.input(screen.getByLabelText('이름 또는 ID'), { target: { value: 'vol-1' } });
-		await fireEvent.input(screen.getByLabelText('볼륨 유형'), { target: { value: 'fast' } });
-		await fireEvent.input(screen.getByLabelText('최소 용량 (GiB)'), { target: { value: '10' } });
-		await fireEvent.input(screen.getByLabelText('최대 용량 (GiB)'), { target: { value: '30' } });
-		mocks.get.mockImplementation((path: string) => path.startsWith('/api/v1/admin/volumes/status-summary') ? Promise.resolve({ ...summary, filtered_total: 7, filtered_gb: 140 }) : defaultGet(path));
-		await vi.advanceTimersByTimeAsync(300);
-		await vi.waitFor(() => expect(screen.getByTestId('admin-volume-filtered-total').textContent).toContain('볼륨 7개 · 140 GiB'));
+		const path = mocks.get.mock.calls.map(([value]) => String(value)).filter(value => value.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
+		expect(path).toContain('marker=');
+		expect(path).not.toContain('name=');
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.queryByRole('checkbox', { name: 'first-volume 선택' })).toBeNull();
+		expect(screen.getByRole('button', { name: '다음 →' })).toBeTruthy();
+	});
+
+	it('applies server-wide status and arbitrary size range from column popovers to both native inventory endpoints', async () => {
+		render(Page); await screen.findByRole('checkbox', { name: 'first-volume 선택' });
+		const statusLabel = commonT('table.filterColumn', { column: storageT('volumeList.column.status') });
+		await fireEvent.click(screen.getByRole('button', { name: statusLabel }));
+		await fireEvent.click(within(screen.getByRole('dialog', { name: statusLabel })).getByRole('checkbox', { name: 'available' }));
+		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
+		const sizeLabel = commonT('table.filterColumn', { column: storageT('volumeList.column.size') });
+		await fireEvent.click(screen.getByRole('button', { name: sizeLabel }));
+		const range = within(screen.getByRole('dialog', { name: sizeLabel }));
+		await fireEvent.input(range.getByLabelText(commonT('table.minimum')), { target: { value: '10' } });
+		await fireEvent.input(range.getByLabelText(commonT('table.maximum')), { target: { value: '30' } });
+		await fireEvent.click(range.getByRole('button', { name: commonT('table.apply') }));
+		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
 		for (const prefix of ['/api/v1/admin/all-volumes', '/api/v1/admin/volumes/status-summary']) {
 			const path = mocks.get.mock.calls.map(([value]) => String(value)).filter(value => value.startsWith(prefix)).at(-1)!;
-			const params = new URL(path, 'http://localhost').searchParams;
-			expect(Object.fromEntries(params)).toMatchObject({ status: 'available', name: 'vol-1', volume_type: 'fast', min_size: '10', max_size: '30' });
-			expect(params.has('marker')).toBe(false);
-		}
-		expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('볼륨 200개 · 8,000 GiB');
-		await fireEvent.change(screen.getByLabelText('정렬 기준'), { target: { value: 'name_desc' } });
-		await vi.waitFor(() => expect(screen.getByTestId('admin-volume-filtered-total').textContent).toContain('볼륨 7개 · 140 GiB'));
-		const sortedPath = mocks.get.mock.calls.map(([path]) => String(path)).filter(path => path.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
-		expect(Object.fromEntries(new URL(sortedPath, 'http://localhost').searchParams)).toMatchObject({ sort: 'name_desc', status: 'available', name: 'vol-1', volume_type: 'fast', min_size: '10', max_size: '30' });
-	});
-
-	it('clears selection, detail and marker immediately when search changes, before debounce or an old response completes', async () => {
-		const view = render(Page);
-		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
-		await fireEvent.click(await screen.findByRole('checkbox', { name: 'first-volume 선택' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'first-volume' }));
-		expect(view.container.querySelector('[data-tour="admin-storage-detail"]')).toBeTruthy();
-		const oldPage = Promise.withResolvers<{ items: typeof volume[]; next_marker: string }>();
-		mocks.get.mockImplementation((path: string) => path.includes('marker=') ? oldPage.promise : defaultGet(path));
-		mocks.refresh();
-		await tick();
-		await fireEvent.input(screen.getByLabelText('이름 또는 ID'), { target: { value: 'new-query' } });
-		expect(view.container.querySelector('[data-tour="admin-storage-detail"]')).toBeNull();
-		expect(screen.queryByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' })).toBeNull();
-		oldPage.resolve({ items: [{ ...volume, name: 'stale-marker-volume' }], next_marker: 'stale-marker' });
-		await tick();
-		expect(screen.queryByText('stale-marker-volume')).toBeNull();
-		await vi.advanceTimersByTimeAsync(300);
-		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		const lastPath = mocks.get.mock.calls.map(([path]) => String(path)).filter(path => path.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
-		expect(lastPath).toContain('name=new-query');
-		expect(lastPath).not.toContain('marker=');
-	});
-
-	it('resets sorted pages, selection, detail and prefetch without changing totals, and rejects stale marker completions', async () => {
-		const view = render(Page);
-		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		const sort = view.container.querySelector<HTMLSelectElement>('#admin-volume-sort')!;
-		expect(sort.value).toBe('created_desc');
-		expect(mocks.get.mock.calls.some(([path]) => String(path).includes('sort=created_desc'))).toBe(true);
-		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
-		await fireEvent.click(await screen.findByRole('checkbox', { name: 'first-volume 선택' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'first-volume' }));
-		await vi.advanceTimersByTimeAsync(200);
-		const previousPrefetch = mocks.prefetch.mock.calls.at(-1)!;
-		expect(previousPrefetch[3].signal.aborted).toBe(false);
-		const oldPage = Promise.withResolvers<{ items: typeof volume[]; next_marker: string }>();
-		mocks.get.mockImplementation((path: string) => path.includes('marker=') ? oldPage.promise : defaultGet(path));
-		mocks.refresh();
-		await tick();
-		await fireEvent.change(sort, { target: { value: 'name_desc' } });
-		expect(previousPrefetch[3].signal.aborted).toBe(true);
-		expect(view.container.querySelector('[data-tour="admin-storage-detail"]')).toBeNull();
-		expect(screen.queryByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' })).toBeNull();
-		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		oldPage.resolve({ items: [{ ...volume, name: 'stale-sort-volume' }], next_marker: 'stale-marker' });
-		await tick();
-		expect(screen.queryByText('stale-sort-volume')).toBeNull();
-		for (const value of ['created_asc', 'name_asc', 'name_desc', 'created_desc']) {
-			await fireEvent.change(sort, { target: { value } });
-			await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-			const path = mocks.get.mock.calls.map(([value]) => String(value)).filter(value => value.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
-			const params = new URL(path, 'http://localhost').searchParams;
-			expect(params.get('sort')).toBe(value);
-			expect(params.has('marker')).toBe(false);
-			expect(screen.getByTestId('admin-volume-complete-total').textContent).toBe('볼륨 200개 · 8,000 GiB');
-		}
-		await fireEvent.change(sort, { target: { value: 'name_asc' } });
-		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		mocks.refresh();
-		await tick();
-		expect(sort.value).toBe('name_asc');
-		const listPath = mocks.get.mock.calls.map(([path]) => String(path)).filter(path => path.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
-		expect(new URL(listPath, 'http://localhost').searchParams.get('sort')).toBe('name_asc');
-		for (const [path] of mocks.get.mock.calls.filter(([path]) => String(path).startsWith('/api/v1/admin/volumes/status-summary'))) {
-			expect(new URL(String(path), 'http://localhost').searchParams.has('sort')).toBe(false);
+			expect(Object.fromEntries(new URL(path, 'http://localhost').searchParams)).toMatchObject({ status: 'available', min_size: '10', max_size: '30' });
 		}
 	});
-
 	it('opens the complete domain list even when drilling into the already selected domain', async () => {
 		setAdminInventoryScope('domain-a', '');
 		render(Page);
 		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		await fireEvent.input(screen.getByLabelText('이름 또는 ID'), { target: { value: 'narrow-query' } });
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'narrow-query' } });
 		await vi.advanceTimersByTimeAsync(300);
 		await fireEvent.click(screen.getByRole('tab', { name: '용량 분석' }));
 		await screen.findByRole('button', { name: 'Research 볼륨 보기' });
@@ -162,7 +110,7 @@ describe('administrator volume complete inventory and publication boundaries', (
 		const path = mocks.get.mock.calls.map(([value]) => String(value)).filter(value => value.startsWith('/api/v1/admin/all-volumes')).at(-1)!;
 		expect(path).toContain('domain_id=domain-a');
 		expect(path).not.toContain('name=');
-		expect((screen.getByLabelText('이름 또는 ID') as HTMLInputElement).value).toBe('');
+		expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
 	});
 
 	it('keeps refresh controls usable in the capacity view and publishes a newly read summary', async () => {
@@ -201,19 +149,17 @@ describe('administrator volume complete inventory and publication boundaries', (
 		expect(mocks.get.mock.calls.at(-1)?.[0]).toContain('domain_id=domain-a');
 	});
 
-	it('publishes a pending query even when analytics opens before the debounce expires', async () => {
+	it('retains a local regex across analytics tabs without sending it as a provider query', async () => {
 		render(Page);
 		await screen.findByRole('checkbox', { name: 'first-volume 선택' });
-		await fireEvent.input(screen.getByLabelText('이름 또는 ID'), { target: { value: 'pending-query' } });
+		const before = mocks.get.mock.calls.length;
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '^pending-query$' } });
 		await fireEvent.click(screen.getByRole('tab', { name: '용량 분석' }));
-		await vi.advanceTimersByTimeAsync(300);
-		for (const prefix of ['/api/v1/admin/all-volumes', '/api/v1/admin/volumes/status-summary']) {
-			const path = mocks.get.mock.calls.map(([value]) => String(value)).filter(value => value.startsWith(prefix)).at(-1)!;
-			expect(new URL(path, 'http://localhost').searchParams.get('name')).toBe('pending-query');
-		}
+		await tick();
+		expect(mocks.get.mock.calls.length).toBe(before);
 		expect(screen.getByTestId('admin-volume-analytics-total').textContent).toContain('200');
 		await fireEvent.click(screen.getByRole('tab', { name: '리소스 목록' }));
-		expect((screen.getByLabelText('이름 또는 ID') as HTMLInputElement).value).toBe('pending-query');
+		expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('^pending-query$');
 	});
 
 	it('drills a project-scoped capacity report into its exact owning domain through one list navigation', async () => {

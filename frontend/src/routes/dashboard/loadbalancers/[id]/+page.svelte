@@ -8,6 +8,7 @@
 	import LbListenerSection from '$lib/components/dashboard/loadbalancers/id/LbListenerSection.svelte';
 	import LbPoolSection from '$lib/components/dashboard/loadbalancers/id/LbPoolSection.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
 	const ctrl = createLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -16,14 +17,19 @@
 	});
 
 	$effect(() => { if ($auth.projectId) ctrl.fetchAll(); });
+	provideTableViewVisibility(() => !ctrl.error && ctrl.lb?.id === $page.params.id);
 </script>
 
 <PageShell class="text-ink-1">
+	{#if ctrl.error}
+		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
+	{/if}
 	{#if ctrl.loading && ctrl.lb?.id !== $page.params.id}
 		<LoadingState variant="surface" label={t('lb.state.loadingInfo')} />
-	{:else if ctrl.error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
-	{:else if ctrl.lb}
+	{/if}
+	{#if ctrl.lb}
+	{#key `${$auth.projectId ?? ''}:${ctrl.lb.id}`}
+	<div hidden={Boolean(ctrl.error) || ctrl.lb.id !== $page.params.id}>
 		{#if ctrl.loading}<LoadingState variant="inline" label={t('lb.state.loadingInfo')} />{/if}
 		<LoadBalancerHeader
 			lb={ctrl.lb}
@@ -44,6 +50,7 @@
 			pools={ctrl.pools}
 			selectedPoolId={ctrl.selectedPoolId}
 			members={ctrl.selectedPoolMembers}
+			memberView={ctrl.memberView}
 			membersLoading={ctrl.saving}
 			saving={ctrl.saving}
 			error=""
@@ -58,5 +65,7 @@
 			onAddMember={ctrl.addMember}
 			onRemoveMember={ctrl.removeMember}
 		/>
+	</div>
+	{/key}
 	{/if}
 </PageShell>

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
   import { t } from '$lib/i18n/ns/drover';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { untrack } from 'svelte';
@@ -78,6 +81,14 @@
       attachError = e instanceof Error ? e.message : t('networks.detachFailed');
     }
   }
+	const tableState = s.tableState('interfaces');
+	const columns = $derived<TableColumn<NonNullable<typeof currentIfaces>[number]>[]>([
+		{ key: 'port', label: t('networks.port'), value: row => row.port_id },
+		{ key: 'network', label: t('networks.network'), value: row => row.net_id },
+		{ key: 'ip', label: 'IP', value: row => row.fixed_ips.map(ip => ip.ip_address).join(', ') },
+		{ key: 'primary', label: t('networks.primary'), value: row => row.is_primary },
+	]);
+	const view = createTableView({ rows: () => currentIfaces ?? [], columns: () => columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
@@ -108,6 +119,8 @@
       </select>
     </div>
 
+    <RegexSearch id="k3s-interfaces-search" bind:value={tableState.search} />
+    <TableViewControls {view} class="" />
     <!-- 인터페이스 목록 -->
     {#if loadingIfaces}
       <div class="text-xs text-ink-2 py-2"><LoadingState variant="control" label={t('networks.loading')} /></div>
@@ -119,7 +132,7 @@
       <div class="text-xs text-ink-2 py-2">{t('networks.noInterfaces')}</div>
     {:else}
       <div class="space-y-2">
-        {#each currentIfaces as iface}
+        {#each view.rows as iface}
           {@const detachingKey = `${selectedVmId}:${iface.port_id}`}
           <div class="bg-surface-sunken/50 rounded-lg p-3 flex items-start justify-between gap-3">
             <div class="min-w-0">

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { t } from '$lib/i18n/ns/drover';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
@@ -33,6 +37,15 @@
 			.catch(() => { loadError = t('pods.loadFailed'); })
 			.finally(() => { loading = false; });
 	});
+	const tableState = s.tableState('pods');
+	const viewColumns = $derived<TableColumn<PodInfo>[]>([
+		{ key: 'name', label: t('pods.name'), value: row => row.name },
+		{ key: 'phase', label: t('pods.status'), value: row => row.phase },
+		{ key: 'ready', label: t('pods.ready'), value: row => row.ready },
+		{ key: 'restarts', label: t('pods.restarts'), value: row => row.restarts },
+		{ key: 'node', label: t('pods.node'), value: row => row.node },
+	]);
+	const view = createTableView({ rows: () => s.pods, columns: () => viewColumns, search: () => tableState.search, state: tableState.state });
 </script>
 
 {#if viewingLogPod}
@@ -41,6 +54,8 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<SectionHeader title="Pod" meta={t('pods.count', { count: s.pods.length })} />
+	<RegexSearch id="cluster-pods-search" bind:value={tableState.search} />
+	<TableViewControls view={view} />
 
 	{#if loading}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6"><LoadingState variant="section" label={t('pods.loading')} /></div>
@@ -48,10 +63,11 @@
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.pods.length === 0}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.empty')}</div>
-	{:else}
+	{/if}
+	{#if !loading && !loadError}
   <ResponsiveTable>
    {#snippet cards()}
-    {#each s.pods as pod (pod.name)}
+    {#each view.rows as pod (pod.name)}
      {@const actioning = s.workloadActioning === `${s.selectedNamespace}:pod:${pod.name}`}
      <CompactResourceCard>
       <div class="flex flex-wrap items-center gap-2"><strong class="text-sm font-mono break-all">{pod.name}</strong><span class="px-1.5 py-0.5 rounded text-xs bg-surface-sunken text-ink-1">{pod.phase || '—'}</span></div>
@@ -65,16 +81,16 @@
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.name')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.status')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.ready')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.restarts')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.node')}</th>
+						<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey="name" />
+						<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey="phase" />
+						<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey="ready" />
+						<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey="restarts" />
+						<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey="node" />
 						<th class="pb-2"></th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each s.pods as pod}
+					{#each view.rows as pod}
 						{@const actioning = s.workloadActioning === `${s.selectedNamespace}:pod:${pod.name}`}
 						{@const pColor = phaseColor[pod.phase] ?? 'text-ink-2 bg-surface-sunken/50'}
 						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">

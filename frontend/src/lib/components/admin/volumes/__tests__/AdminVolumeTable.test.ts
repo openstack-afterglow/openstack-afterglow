@@ -5,6 +5,8 @@ import { writable } from 'svelte/store';
 vi.mock('$lib/stores/projectNames', () => ({ projectNames: writable(new Map<string, string>()) }));
 
 import AdminVolumeTable from '../AdminVolumeTable.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import type { AdminVolume } from '$lib/types/volume';
 
 const volumes = [
 	{ id: 'vol-1', name: 'first-volume', status: 'available', size: 10, volume_type: 'fast', project_id: 'project-1', project_name: 'Native project', domain_id: 'domain-1', domain_name: 'Research', owner_status: 'known' as const, created_at: '2026-09-01' },
@@ -14,6 +16,7 @@ const volumes = [
 function props(selectedIds: ReadonlySet<string>, onToggleSelect = vi.fn(), onToggleAll = vi.fn()) {
 	return {
 		volumes,
+		view: createTableView<AdminVolume>({ rows: () => volumes, columns: () => [{ key: 'name', label: 'Name', value: row => row.name }] }),
 		selectedVolumeId: null,
 		openActionMenu: null,
 		selectedIds,

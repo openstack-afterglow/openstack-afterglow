@@ -1,7 +1,7 @@
 {
-  "personal": "ব্যক্তিগত",
-  "organization": "সংস্থা",
-  "personalProjectNameHelp": "ব্যক্তিগত প্রকল্পের নাম স্বয়ংক্রিয়ভাবে তৈরি হয়।",
+	"personal": "ব্যক্তিগত",
+	"organization": "সংস্থা",
+	"personalProjectNameHelp": "ব্যক্তিগত প্রকল্পের নাম স্বয়ংক্রিয়ভাবে তৈরি হয়।",
 	"title": "একটি সংস্থান নির্বাচন করুন",
 	"openSelector": "{project} · {domain}: একটি সংস্থান নির্বাচন করুন",
 	"activeDomain": "সক্রিয় ডোমেন",

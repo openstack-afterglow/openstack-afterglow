@@ -9,6 +9,8 @@
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let {
 		router,
@@ -36,6 +38,11 @@
 	let selectedSubnetId = $state('');
 	const pending = createPendingAction();
 	const addingInterface = $derived(pending.isActive('add', saving));
+	const columns = (): TableColumn<RouterDetail['interfaces'][number]>[] => [
+		{ key: 'subnet', label: t('network.subnets.name'), value: row => row.subnet_name || row.subnet_id },
+		{ key: 'address', label: t('lb.form.ipAddress'), value: row => row.ip_address },
+	];
+	const view = createTableView({ rows: () => router.interfaces, columns });
 
 	$effect(() => {
 		if (!selectedNetId) { allSubnets = []; selectedSubnetId = ''; return; }
@@ -95,12 +102,14 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class="" />
+	{#if router.interfaces.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if router.interfaces.length === 0}
 		<p class="text-sm text-ink-2">{t('router.interfaces.empty')}</p>
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each router.interfaces as iface}
+				{#each view.rows as iface (iface.subnet_id)}
 					{@const removing = pending.isActive(`remove:${iface.subnet_id}`, saving)}
 					<CompactResourceCard>
 						<p class="font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</p><p class="font-mono text-xs">{iface.ip_address}</p>
@@ -110,7 +119,7 @@
 				{/each}
 			{/snippet}
 		<div class="space-y-2">
-			{#each router.interfaces as iface}
+			{#each view.rows as iface (iface.subnet_id)}
 				{@const removing = pending.isActive(`remove:${iface.subnet_id}`, saving)}
 				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
 					<div class="text-sm">

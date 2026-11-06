@@ -1,10 +1,34 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import type { AccessRule } from '$lib/stores/fileStorageWizardStore.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button, ResponsiveTable, CompactResourceCard, StatusChip } from '$lib/components/ui';
 
 	const s = useFsWizard();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<AccessRule>[]>([
+  { key: 'target', label: t('accessRules.target'), value: row => row.access_to },
+  { key: 'level', label: t('wizard.access.permission'), value: row => row.access_level },
+  { key: 'status', label: t('wizard.access.status'), value: row => row.state },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => s.accessRules, columns: () => columns, search: () => search, searchable: row => [row.id, row.access_to, row.access_level, row.state].map(value => String(value ?? ''))});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 <div class="flex items-center gap-2 mb-4">
@@ -56,10 +80,13 @@
 	{#if s.ruleError}<Alert tone="danger" class="mt-2">{s.ruleError}</Alert>{/if}
 </div>
 
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class={s.accessRules.length === 0 ? '' : 'lg:hidden'} />
+{#if s.accessRules.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 {#if s.accessRules.length > 0}
 	<ResponsiveTable class="mb-4">
 		{#snippet cards()}
-			{#each s.accessRules as rule (rule.id)}
+			{#each view.rows as rule (rule.id)}
 				<CompactResourceCard>
 					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{rule.access_to}</strong><StatusChip status={rule.state || 'unknown'} /></div>
 					<p class="text-xs text-ink-2">{t('wizard.access.permission')}: {rule.access_level}</p>
@@ -72,14 +99,14 @@
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="border-b border-line-2 text-ink-2 uppercase tracking-wide bg-surface-sunken/50">
-					<th class="text-left px-3 py-2">{s.createdFs!.share_proto === 'NFS' ? 'IP/CIDR' : 'CephX ID'}</th>
-					<th class="text-left px-3 py-2">{t('wizard.access.permission')}</th>
-					<th class="text-left px-3 py-2">{t('wizard.access.status')}</th>
+					<TableColumnHeader {view} columnKey="target" />
+					<TableColumnHeader {view} columnKey="level" />
+					<TableColumnHeader {view} columnKey="status" />
 					{#if s.createdFs!.share_proto !== 'NFS'}<th class="text-left px-3 py-2">{t('wizard.access.accessKey')}</th>{/if}
 				</tr>
 			</thead>
 			<tbody>
-				{#each s.accessRules as rule (rule.id)}
+				{#each view.rows as rule (rule.id)}
 					<tr class="border-b border-line last:border-0">
 						<td class="px-3 py-2 font-mono text-ink-2">{rule.access_to}</td>
 						<td class="px-3 py-2">

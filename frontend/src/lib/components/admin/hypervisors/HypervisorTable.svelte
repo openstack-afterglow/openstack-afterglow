@@ -4,7 +4,11 @@
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	export interface HypervisorRow {
 		id: string;
@@ -23,37 +27,39 @@
 		gpu_total?: number;
 		gpu_used?: number;
 		gpu_model?: string | null;
+		gpu_models?: readonly string[];
 		cpu_model?: string | null;
 	}
 
 	let {
 		hypervisors,
 		selectedId,
-		sortColumn,
-		sortAsc,
-		onSort,
 		onSelect,
 	}: {
 		hypervisors: HypervisorRow[];
 		selectedId: string | null;
-		sortColumn: string;
-		sortAsc: boolean;
-		onSort: (col: string) => void;
 		onSelect: (id: string) => void;
 	} = $props();
 
-	function sortIcon(col: string): string {
-		if (sortColumn !== col) return '↕';
-		return sortAsc ? '↑' : '↓';
-	}
+	const columns = $derived<TableColumn<HypervisorRow>[]>([
+		{ key: 'name', label: t('hypervisors.table.hostname'), value: (row) => row.name },
+		{ key: 'state', label: t('hypervisors.connection.label'), value: (row) => t(row.state === 'up' ? 'hypervisors.connection.up' : 'hypervisors.connection.down') },
+		{ key: 'status', label: t('hypervisors.scheduling.label'), value: (row) => t(row.status === 'enabled' ? 'hypervisors.scheduling.enabled' : 'hypervisors.scheduling.disabled') },
+		{ key: 'running_vms', label: t('hypervisors.table.vmCount'), value: (row) => row.running_vms, format: (_value, row) => formatNumber(row.running_vms) },
+		{ key: 'cpu_model', label: t('hypervisors.cpuModel'), value: (row) => row.cpu_model },
+		{ key: 'vcpus_used', label: 'vCPU', value: (row) => row.vcpus_used, format: (_value, row) => formatNumber(row.vcpus_used) },
+		{ key: 'memory_used_mb', label: t('hypervisors.table.ram'), value: (row) => row.memory_used_mb, format: (value) => typeof value === 'number' ? `${formatNumber(Math.round(value / 1024))} GB` : '—' },
+		{ key: 'gpu_model', label: t('hypervisors.table.gpuModel'), value: (row) => row.gpu_model, filterValues: (row) => row.gpu_models ?? (row.gpu_model ? [row.gpu_model] : []) },
+		{ key: 'gpu_used', label: t('hypervisors.table.gpuCount'), value: (row) => (row.gpu_total ?? 0) > 0 ? row.gpu_used ?? 0 : null, format: (value) => typeof value === 'number' ? formatNumber(value) : '—' },
+	]);
+	const view = createTableView<HypervisorRow>({ rows: () => hypervisors, columns: () => columns, locale: intlLocale });
 </script>
 
+<TableViewControls {view} />
+{#if view.rows.length === 0}<p class="py-4 text-sm text-ink-2">{hypervisors.length ? tc('table.noMatches') : t('hypervisors.page.empty')}</p>{/if}
 <ResponsiveTable>
 	{#snippet cards()}
-		<div class="responsive-card-toolbar">
-			<Button variant="ghost" size="sm" onclick={() => onSort('name')}>{t('hypervisors.table.hostname')} {sortIcon('name')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('running_vms')}>{t('hypervisors.table.vmCount')} {sortIcon('running_vms')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('cpu_model')}>{t('hypervisors.cpuModel')} {sortIcon('cpu_model')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('vcpus_used')}>vCPU {sortIcon('vcpus_used')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('memory_used_mb')}>{t('hypervisors.table.ram')} {sortIcon('memory_used_mb')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('gpu_model')}>{t('hypervisors.table.gpuModel')} {sortIcon('gpu_model')}</Button><Button variant="ghost" size="sm" onclick={() => onSort('gpu_used')}>{t('hypervisors.table.gpuCount')} {sortIcon('gpu_used')}</Button>
-		</div>
-		{#each hypervisors as h (h.id)}
+		{#each view.rows as h (h.id)}
 			<CompactResourceCard selected={selectedId === h.id}>
 				<button type="button" class="min-h-11 break-all text-left font-mono font-medium text-ink-0" onclick={() => onSelect(h.id)}>{h.name}</button>
 				<div class="flex flex-wrap gap-2 text-xs"><span class={h.state === 'up' ? 'text-state-success-text' : 'text-state-danger-text'}>{t(h.state === 'up' ? 'hypervisors.connection.up' : 'hypervisors.connection.down')}</span><span class={h.status === 'enabled' ? 'text-state-success-text' : 'text-state-warning-text'}>{t(h.status === 'enabled' ? 'hypervisors.scheduling.enabled' : 'hypervisors.scheduling.disabled')}</span></div>
@@ -66,47 +72,11 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">
-					<button onclick={() => onSort('name')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.table.hostname')} <span class="text-ink-2">{sortIcon('name')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2 pr-4">{t('hypervisors.connection.label')}</th>
-				<th class="text-left py-2 pr-4">{t('hypervisors.scheduling.label')}</th>
-				<th class="text-left py-2 pr-4">
-					<button onclick={() => onSort('running_vms')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.table.vmCount')} <span class="text-ink-2">{sortIcon('running_vms')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2 pr-4 max-lg:hidden">
-					<button onclick={() => onSort('cpu_model')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.cpuModel')} <span class="text-ink-2">{sortIcon('cpu_model')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2 pr-4">
-					<button onclick={() => onSort('vcpus_used')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						vCPU <span class="text-ink-2">{sortIcon('vcpus_used')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2 pr-4">
-					<button onclick={() => onSort('memory_used_mb')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.table.ram')} <span class="text-ink-2">{sortIcon('memory_used_mb')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2 pr-4">
-					<button onclick={() => onSort('gpu_model')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.table.gpuModel')} <span class="text-ink-2">{sortIcon('gpu_model')}</span>
-					</button>
-				</th>
-				<th class="text-left py-2">
-					<button onclick={() => onSort('gpu_used')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						{t('hypervisors.table.gpuCount')} <span class="text-ink-2">{sortIcon('gpu_used')}</span>
-					</button>
-				</th>
+				{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 			</tr>
 		</thead>
 		<tbody>
-			{#each hypervisors as h (h.id)}
+			{#each view.rows as h (h.id)}
 				<tr
 					class="border-b border-line/50 text-xs transition-colors {selectedId === h.id ? 'bg-surface-sunken/70' : ''}"
 				>

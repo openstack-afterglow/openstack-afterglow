@@ -212,9 +212,7 @@ describe('provider catalog administration', () => {
 		const modelView = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
 		expect(rowOrder(modelView.container)).toEqual([70, 71, 20]);
-		for (const label of ['models.dev 가격', '등록 모델 프로바이더 필터']) {
-			expect(within(screen.getByLabelText(label)).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
-		}
+		expect(within(screen.getByLabelText('등록 모델 프로바이더 필터')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 		await fireEvent.click(screen.getByRole('button', { name: '+ 모델 추가' }));
 		expect(within(screen.getByLabelText('조회 프로바이더')).getAllByRole('option').slice(1).map((option) => option.textContent)).toEqual(['NVIDIA NIM', 'Empty', 'Other']);
 		await fireEvent.click(screen.getByRole('button', { name: '직접 입력' }));
@@ -224,12 +222,10 @@ describe('provider catalog administration', () => {
 	it('clears selection on registered filter changes and bulk deletes only visible models independently of creation selection', async () => {
 		const view = render(ModelPage);
 		await screen.findByRole('checkbox', { name: 'Nemotron 선택' });
-		await fireEvent.change(screen.getByLabelText('models.dev 가격'), { target: { value: '2' } });
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Hidden 선택' }));
 		await fireEvent.change(screen.getByLabelText('등록 모델 프로바이더 필터'), { target: { value: '7' } });
 		expect(screen.queryByRole('button', { name: /선택 삭제/ })).toBeNull();
 		expect(screen.queryByRole('checkbox', { name: 'Hidden 선택' })).toBeNull();
-		expect((screen.getByLabelText('models.dev 가격') as HTMLSelectElement).value).toBe('2');
 		expect(screen.queryByLabelText('조회 프로바이더')).toBeNull();
 		expect(rowOrder(view.container)).toEqual([71, 70]);
 		for (const action of ['가격 수정', '기능 수정', 'Nemotron 위로 이동', 'Nemotron 아래로 이동', '비활성화', '제목요약 해제', '삭제']) {

@@ -1,4 +1,14 @@
 {
+	"tours.images.label": "이미지 탐색",
+	"tours.images.summary": "이미지 검색과 저장소·태그·검증 상태를 살펴봅니다.",
+	"tours.adminImages.label": "이미지 관리",
+	"tours.adminImages.summary": "전체 프로젝트의 이미지와 공개 범위·검증 상태를 안전하게 확인합니다.",
+	"tours.images.step1.title": "이미지 작업",
+	"tours.images.step1.description": "최상단 업로드 버튼에서 이미지를 등록할 수 있습니다. 이 안내에서는 업로드나 다른 변경 작업을 실행하지 않습니다.",
+	"tours.images.step2.title": "검색과 열 조건",
+	"tours.images.step2.description": "검색은 항상 정규식으로 동작합니다. 열 제목으로 정렬하고 옆의 필터에서 값을 선택하세요. 새로고침해도 조건은 유지됩니다.",
+	"tours.images.step3.title": "이미지와 버전 확인",
+	"tours.images.step3.description": "저장소와 태그별 버전, 이미지 식별자와 검증 상태를 확인하세요. 빈 목록은 현재 검색·필터 조건의 결과일 수 있습니다.",
 	"tours.vmCreate.label": "VM 생성",
 	"tours.vmCreate.summary": "위저드로 인스턴스를 만들고 배포 과정을 지켜봅니다.",
 	"tours.volume.label": "볼륨 생성·관리",
@@ -183,7 +193,7 @@
 	"engine.next": "다음",
 	"engine.previous": "이전",
 	"engine.complete": "완료",
-	"engine.close": "Close",
+	"engine.close": "닫기",
 	"engine.stepTitle": "{title} ({current}/{total})",
 	"mockup.unsupported": "튜토리얼 모드에서는 이 작업을 아직 지원하지 않습니다."
 }

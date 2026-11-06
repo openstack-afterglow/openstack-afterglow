@@ -1,4 +1,11 @@
 <script lang="ts">
+	import { createObservationView, nativeObservationFilter, observationOptions } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import type { TableOption } from '$lib/utils/tableView.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { get } from 'svelte/store';
@@ -8,6 +15,7 @@
 	import { Alert, Button, Card, Field, PageHeader, PageShell, Pill, SelectInput, TableShell, TextInput } from '$lib/components/ui';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { t } from '$lib/i18n/ns/admin-ops';
+	import { t as common } from '$lib/i18n/ns/common';
 	import { t as tLogin } from '$lib/i18n/ns/login-monitoring';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -61,9 +69,9 @@
 	const base = '/api/v1/admin/events';
 
 	let range = $state('7d');
+	let service = $state('');
 	let user = $state('');
 	let username = $state('');
-	let service = $state('');
 	let pageFilter = $state('');
 	let resource = $state('');
 	let resourceId = $state('');
@@ -87,8 +95,14 @@
 	let timeline = $state<EventRecord[]>([]);
 	let timelineLoading = $state(false);
 	let timelineError = $state<string | null>(null);
-	let timelineSource = $state('');
-	const visibleTimeline = $derived(timeline.filter(row => !timelineSource || row.source === timelineSource));
+	const timelineView = createObservationView(() => timeline, () => [
+		{ key: 'time', label: t('events.time'), value: row => row.created_at },
+		{ key: 'source', label: t('events.source'), value: row => row.source },
+		{ key: 'action', label: t('events.action'), value: row => row.action },
+		{ key: 'status', label: t('events.status'), value: row => row.status },
+		{ key: 'route', label: t('events.route'), value: row => row.extra?.route ?? row.page },
+	]);
+	const visibleTimeline = $derived(timelineView.view.rows);
 	let generation = 0;
 	let detailGeneration = 0;
 	let authorityRevision = $state(0);
@@ -178,9 +192,7 @@
 		selected = null;
 		timeline = []; timelineError = null; timelineLoading = false;
 		detailError = null;
-		events = [];
 		cursor = null;
-		stats = null;
 		listError = null;
 		statsError = null;
 		loading = false;
@@ -209,7 +221,9 @@
 		reload(applied);
 	}
 	function reset() {
-		range = '7d'; user = ''; username = ''; service = ''; pageFilter = ''; resource = ''; resourceId = ''; action = ''; status = ''; source = ''; requestId = ''; interactionId = '';
+		range = '7d'; service = ''; user = ''; username = ''; pageFilter = ''; resource = ''; resourceId = ''; action = ''; status = ''; source = ''; requestId = ''; interactionId = '';
+		observationView0.search = '';
+		observationView0.view.reset();
 		setAdminInventoryScope('', '');
 		applied = query();
 		reload(applied);
@@ -232,11 +246,16 @@
 		timeline = []; timelineError = null; timelineLoading = false;
 	}
 	async function showDetail(row: EventRecord) {
+		const changedSelection = selected?.id !== row.id;
 		const current = ++detailGeneration;
 		selected = row;
 		detailLoading = true;
 		detailError = null;
-		timeline = []; timelineError = null; timelineLoading = false; timelineSource = '';
+		timeline = []; timelineError = null; timelineLoading = false;
+		if (changedSelection) {
+			timelineView.search = '';
+			timelineView.view.reset();
+		}
 		const token = $auth.token;
 		const projectId = $auth.projectId ?? undefined;
 		const owns = () => current === detailGeneration && $auth.token === token && ($auth.projectId ?? undefined) === projectId;
@@ -283,7 +302,40 @@
 		});
 	});
 	onDestroy(() => { ++generation; ++detailGeneration; for (const unsubscribe of subscriptions) unsubscribe(); });
+
+	function eventFilter(param: string, selection: () => string, update: (value: string) => void, options: () => TableOption[], free = true) {
+		return nativeObservationFilter(selection, value => {
+			update(value);
+			// A header condition must not submit unrelated, unapplied form drafts.
+			const params = new URLSearchParams(applied);
+			if (value.trim()) params.set(param, value.trim());
+			else params.delete(param);
+			applied = params.toString();
+			reload(applied);
+		}, options, free);
+	}
+	const observationView0 = createObservationView(() => events, () => [
+		{ key: 'time', label: t('events.time'), value: row => row.created_at },
+		{ key: 'status', label: t('events.status'), value: row => row.status, ...eventFilter('status', () => status, value => { status = value; }, () => ['started', 'success', 'failed', 'observed'].map(value => ({ value, label: t(value === 'started' ? 'events.started' : value === 'success' ? 'events.success' : value === 'failed' ? 'events.failed' : 'events.observed'), count: null })), false) },
+		{ key: 'service', label: t('events.service'), value: row => row.service, ...eventFilter('service', () => service, value => { service = value; }, () => observationOptions(events.map(row => row.service))) },
+		{ key: 'source', label: t('events.source'), value: row => row.source, ...eventFilter('source', () => source, value => { source = value; }, () => observationOptions(['afterglow', 'openstack', 'browser']), false) },
+		{ key: 'page', label: t('events.pagePath'), value: row => row.page, ...eventFilter('page', () => pageFilter, value => { pageFilter = value; }, () => observationOptions(events.map(row => row.page))) },
+		{ key: 'project', label: t('events.projectId'), value: row => row.project_id },
+		{ key: 'userId', label: t('events.userId'), value: row => row.user_id, ...eventFilter('user_id', () => user, value => { user = value; }, () => observationOptions(events.map(row => row.user_id))) },
+		{ key: 'username', label: t('events.username'), value: row => row.username, ...eventFilter('username', () => username, value => { username = value; }, () => observationOptions(events.map(row => row.username))) },
+		{ key: 'resource', label: t('events.resourceName'), value: row => row.resource_name },
+		{ key: 'resourceType', label: t('events.resourceType'), value: row => row.resource_type, ...eventFilter('resource_type', () => resource, value => { resource = value; }, () => observationOptions(events.map(row => row.resource_type))) },
+		{ key: 'resourceId', label: t('events.resourceId'), value: row => row.resource_id, ...eventFilter('resource_id', () => resourceId, value => { resourceId = value; }, () => observationOptions(events.map(row => row.resource_id))) },
+		{ key: 'action', label: t('events.action'), value: row => row.action, ...eventFilter('action', () => action, value => { action = value; }, () => observationOptions(events.map(row => row.action))) },
+	], row => [row.created_at, row.status, row.service ?? '', row.source, row.project_id, row.username, row.user_id, row.resource_type, row.resource_name ?? '', row.resource_id ?? '', row.action, row.request_id ?? '', row.page ?? '', row.extra?.route ?? '', row.error_message ?? '']);
+	function headingDirection(keys: string[]) {
+		const sort = observationView0.view.sort;
+		return sort && keys.includes(sort.key) ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none';
+	}
+
 </script>
+
+{#snippet eventHeading(keys: string[])}<div class="flex flex-wrap gap-x-3 gap-y-1">{#each keys as key}<TableColumnControl view={observationView0.view} columnKey={key} />{/each}</div>{/snippet}
 
 <PageShell>
 	<PageHeader breadcrumb={t('events.breadcrumb')} title={t('events.title')}>
@@ -296,20 +348,12 @@
 	{#if $siteConfig.experience_enabled === true}<ExperienceReplayPanel />{/if}
 
 	<Card surface="base" class="mb-6">
-		<form onsubmit={apply} aria-label={t('events.filters')}>
+		<p class="mb-3 text-xs text-ink-2">{common('table.nativeQueryHelp')}</p>
+	<form onsubmit={apply} aria-label={t('events.filters')}>
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 				<Field label={t('events.period')} for="event-range">
 					<SelectInput id="event-range" bind:value={range}><option value="1d">{t('events.lastDay')}</option><option value="7d">{t('events.lastWeek')}</option><option value="30d">{t('events.lastMonth')}</option></SelectInput>
 				</Field>
-				<Field label={t('events.userId')} for="event-user"><TextInput id="event-user" bind:value={user} /></Field>
-				<Field label={t('events.username')} for="event-username"><TextInput id="event-username" bind:value={username} /></Field>
-				<Field label={t('events.service')} for="event-service"><TextInput id="event-service" bind:value={service} /></Field>
-				<Field label={t('events.pagePath')} for="event-page"><TextInput id="event-page" bind:value={pageFilter} placeholder="/admin/instances" /></Field>
-				<Field label={t('events.resourceType')} for="event-resource"><TextInput id="event-resource" bind:value={resource} /></Field>
-				<Field label={t('events.resourceId')} for="event-resource-id"><TextInput id="event-resource-id" bind:value={resourceId} /></Field>
-				<Field label={t('events.action')} for="event-action"><TextInput id="event-action" bind:value={action} /></Field>
-				<Field label={t('events.status')} for="event-status"><SelectInput id="event-status" bind:value={status}><option value="">{t('events.all')}</option><option value="started">{t('events.started')}</option><option value="success">{t('events.success')}</option><option value="failed">{t('events.failed')}</option><option value="observed">{t('events.observed')}</option></SelectInput></Field>
-				<Field label={t('events.source')} for="event-source"><SelectInput id="event-source" bind:value={source}><option value="">{t('events.all')}</option><option value="afterglow">Afterglow</option><option value="openstack">OpenStack</option><option value="browser">{t('events.browser')}</option></SelectInput></Field>
 				<Field label={t('events.requestId')} for="event-request"><TextInput id="event-request" bind:value={requestId} /></Field>
 				<Field label={t('events.interactionId')} for="event-interaction"><TextInput id="event-interaction" bind:value={interactionId} /></Field>
 			</div>
@@ -345,10 +389,12 @@
 		{#if listError}<Alert tone="danger" title={t('events.listFailed')}>{listError} <Button variant="secondary" size="sm" onclick={retryList}>{t('events.retry')}</Button></Alert>{/if}
 		{#if loading}<LoadingState variant="table" columns={7} label={t('events.listLoading')} />
 		{:else if events.length === 0 && !listError}<Card surface="base"><p class="text-sm text-ink-2">{t('events.noEvents')}</p></Card>
-		{:else if events.length > 0}
-			<ResponsiveTable>
+		{/if}
+			<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 				{#snippet cards()}
-					{#each events as row (row.id)}
+					{#each tableView.rows as row (row.id)}
 						<CompactResourceCard>
 							<div class="flex min-w-0 items-start justify-between gap-2">
 								<span class="min-w-0 font-medium">{row.resource_name || row.resource_type}</span>
@@ -374,16 +420,17 @@
 					{/each}
 				{/snippet}
 			<TableShell>
-				<table><thead><tr><th scope="col">{t('events.time')}</th><th scope="col">{t('events.status')}</th><th scope="col">{t('events.serviceSource')}</th><th scope="col">{t('events.projectUser')}</th><th scope="col">{t('events.resource')}</th><th scope="col">{t('events.action')}</th><th scope="col">{t('events.details')}</th></tr></thead>
-					<tbody>{#each events as row (row.id)}
+				<table><thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="status" /><th scope="col" aria-sort={headingDirection(['service', 'source', 'page'])}>{@render eventHeading(['service', 'source', 'page'])}</th><th scope="col" aria-sort={headingDirection(['project', 'username', 'userId'])}>{@render eventHeading(['project', 'username', 'userId'])}</th><th scope="col" aria-sort={headingDirection(['resource', 'resourceType', 'resourceId'])}>{@render eventHeading(['resource', 'resourceType', 'resourceId'])}</th><TableColumnHeader view={tableView} columnKey="action" /><th scope="col">{t('events.details')}</th></tr></thead>
+					<tbody>{#each tableView.rows as row (row.id)}
 						<tr><td class="whitespace-nowrap tabular-nums">{date(row.created_at)}</td><td><Pill tone={row.status === 'failed' ? 'danger' : row.status === 'success' ? 'success' : row.status === 'started' ? 'info' : 'neutral'}>{row.status === 'failed' ? t('events.failed') : row.status === 'success' ? t('events.success') : row.status === 'started' ? t('events.started') : row.status === 'observed' ? t('events.observed') : row.status}</Pill></td>
-						<td>{row.service || t('events.unknown')} <span class="text-ink-2">/ {row.source}</span></td><td><span class="block max-w-40 truncate" title={row.project_id}>{row.project_id || t('events.unknown')}</span><span class="block max-w-40 truncate text-ink-2" title={row.username || row.user_id}>{row.username || row.user_id || t('events.unknown')}</span></td>
+						<td>{row.service || t('events.unknown')} <span class="text-ink-2">/ {row.source}</span>{#if row.page}<span class="block max-w-40 truncate text-xs text-ink-2" title={row.page}>{row.page}</span>{/if}</td><td><span class="block max-w-40 truncate" title={row.project_id}>{row.project_id || t('events.unknown')}</span><span class="block max-w-40 truncate text-ink-2" title={row.username || row.user_id}>{row.username || row.user_id || t('events.unknown')}</span></td>
 						<td><span class="block max-w-40 truncate" title={row.resource_name || row.resource_type}>{row.resource_name || row.resource_type}</span><span class="block text-ink-2">{row.resource_type}</span></td><td>{row.action}</td><td><Button variant="secondary" size="sm" onclick={() => showDetail(row)} ariaLabel={t('events.viewDetailsAria', { action: row.action, id: row.id })}>{t('events.viewDetails')}</Button></td></tr>
 					{/each}</tbody></table>
 			</TableShell>
 			</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 			{#if cursor}<div class="mt-4 flex justify-center"><Button variant="secondary" disabled={moreLoading || !!listError} ariaBusy={moreLoading} onclick={loadMore}>{#if moreLoading}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{moreLoading ? t('events.loading') : t('events.showMore')}</Button></div>{/if}
-		{/if}
 	</section>
 
 	{#if selected}
@@ -405,7 +452,9 @@
 						{#if timelineLoading}<LoadingState variant="section" label={t('events.detailLoading')} />{/if}
 						{#if timelineError}<Alert tone="danger" title={t('events.timelineFailed')}>{timelineError} <Button variant="secondary" size="sm" onclick={() => selected && showDetail(selected)}>{t('events.retry')}</Button></Alert>{/if}
 						{#if !timelineLoading && !timelineError}
-							<Field label={t('events.source')} for="timeline-source"><SelectInput id="timeline-source" bind:value={timelineSource}><option value="">{t('events.all')}</option><option value="browser">{t('events.browser')}</option><option value="afterglow">Afterglow</option><option value="openstack">OpenStack</option></SelectInput></Field>
+							<RegexSearch id="timeline-search" bind:value={timelineView.search} />
+							<TableViewControls view={timelineView.view} class="" />
+							<p class="text-xs text-ink-2">{common('table.loadedScope')}</p>
 							{#if !visibleTimeline.length}<p class="mt-3 text-sm text-ink-2">{t('events.noTimeline')}</p>
 							{:else}<div class="mt-3 max-h-96 overflow-auto rounded-md border border-line p-3" role="region" aria-label={t('events.timeline')}>
 								<ol class="space-y-4">

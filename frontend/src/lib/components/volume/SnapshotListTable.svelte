@@ -1,4 +1,6 @@
 <script lang="ts">
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import { t } from '$lib/i18n/ns/volume';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -7,6 +9,7 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import type { TableView } from '$lib/utils/tableView.svelte';
 
 	interface Snapshot {
 		id: string;
@@ -20,6 +23,7 @@
 
 	let {
 		snapshots,
+		view,
 		deleting,
 		openSnapshotActionMenu,
 		selectedIds,
@@ -32,6 +36,7 @@
 		onDelete,
 	}: {
 		snapshots: Snapshot[];
+		view: TableView<Snapshot>;
 		deleting: string | null;
 		openSnapshotActionMenu: string | null;
 		selectedIds: ReadonlySet<string>;
@@ -44,6 +49,7 @@
 		onDelete: (id: string, name: string) => void;
 	} = $props();
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
+	const snapshotGridClass = 'grid min-w-[68rem] grid-cols-[32px_minmax(220px,1.6fr)_minmax(200px,1.2fr)_112px_160px_136px_56px] gap-2';
 </script>
 
 {#snippet snapshotActions(snap: Snapshot)}
@@ -61,9 +67,9 @@
 
 {#if snapshots.length === 0}
 	<div class="text-center py-16 text-ink-2">
-		<p class="text-sm">{t('snapshotListTable.empty')}</p>
+		<p class="text-sm">{storageCommonT('table.noMatches')}</p>
 	</div>
-{:else}
+{/if}
 	<ResponsiveTable>
 		{#snippet cards()}
 			<div class="responsive-card-toolbar">
@@ -93,18 +99,18 @@
 				</CompactResourceCard>
 			{/each}
 		{/snippet}
-	<div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-		<div class="grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
+	<div class="motion-stagger min-w-0 max-w-full bg-[#0B1220] border border-line rounded-lg overflow-x-auto" role="region" tabindex="0" aria-label={t('snapshotsPage.title')}>
+		<div class="{snapshotGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 			<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotListTable.selectAll')} /></div>
-			<div>{t('snapshotListTable.name')}</div>
-			<div>{t('snapshotListTable.sourceVolume')}</div>
-			<div>{t('snapshotListTable.size')}</div>
-			<div>{t('snapshotListTable.created')}</div>
-			<div>{t('snapshotListTable.status')}</div>
+			<div><TableColumnControl {view} columnKey="name" /></div>
+			<div><TableColumnControl {view} columnKey="volume" /></div>
+			<div><TableColumnControl {view} columnKey="size" /></div>
+			<div><TableColumnControl {view} columnKey="created" /></div>
+			<div><TableColumnControl {view} columnKey="status" /></div>
 			<div></div>
 		</div>
 		{#each snapshots as snap (snap.id)}
-			<div class="resource-selection-surface grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-3 text-[13px] items-center border-b border-line hover:bg-surface-sunken/30 transition-colors last:border-b-0" data-selected={selectedIds.has(snap.id)}>
+			<div class="resource-selection-surface {snapshotGridClass} px-4 py-3 text-[13px] items-center border-b border-line hover:bg-surface-sunken/30 transition-colors last:border-b-0" data-selected={selectedIds.has(snap.id)}>
 				<div><SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={t('snapshotListTable.selectSnapshot', { name: snap.name || snap.id })} /></div>
 				<div class="min-w-0">
 					<div class="text-ink-0 font-medium truncate">{snap.name || snap.id.slice(0, 12)}</div>
@@ -126,4 +132,3 @@
 		{/each}
 	</div>
 	</ResponsiveTable>
-{/if}

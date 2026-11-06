@@ -66,8 +66,16 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   }
   function setAuthority(next: CredentialAuthority) {
     if (next.token && next.token === deniedToken) next = { ...next, admin: false };
-    if (['token', 'userId', 'projectId', 'admin', 'ready'].every(key => next[key as keyof CredentialAuthority] === authority[key as keyof CredentialAuthority])) return;
-    authority = { ...next }; reset();
+    if (['sessionId', 'token', 'userId', 'projectId', 'admin', 'ready'].every(key => next[key as keyof CredentialAuthority] === authority[key as keyof CredentialAuthority])) return;
+    const ownerChanged = ['sessionId', 'userId', 'projectId', 'admin', 'ready'].some(key => next[key as keyof CredentialAuthority] !== authority[key as keyof CredentialAuthority]);
+    authority = { ...next };
+    if (ownerChanged) reset();
+    else {
+      // Renewed bearer: fence old requests and secret-bearing dialogs, retaining the same directory target and settled rows.
+      ++epoch; ++listTicket; ++directoryTicket; close();
+      loading = false; directoryLoading = false;
+      if (allowed()) { void loadAttempt(); void loadUsers(); }
+    }
   }
   async function loadUsers() {
     if (!allowed()) return;

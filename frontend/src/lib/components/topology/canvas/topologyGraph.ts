@@ -10,6 +10,7 @@ import type {
 	TrafficRate,
 } from '$lib/types/topology';
 import { _ipv4InCidr, byName, cmpArr, edgeIntensity, flowDotCount, flowRate, NO_TELEMETRY_STYLE, normalizeMac, slug, uniq } from './canvasHelpers';
+import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 import type {
 	CanvasEdge,
 	CanvasFip,
@@ -315,64 +316,32 @@ export function buildMemberEdges(graph: CanvasGraph, lbId: string, pos?: Readonl
 	return out;
 }
 
-/**
- * 검색어 해석: CIDR(포함 검사) → IP prefix → MAC(콜론 유무 무관) → 이름 포함.
- * 빈 검색어는 null. 매칭된 네트워크의 스위치는 항상 nodes 에 포함된다.
- */
+/** Regex highlights never alter ownership, graph layout, or relationship edges. */
 export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null {
-	const q = raw.trim().toLowerCase();
-	if (!q) return null;
+	const compiled = compileRegexSearch(raw);
+	if (!compiled.regex && !compiled.error) return null;
 	const nodes = new Set<string>();
 	const nets = new Set<string>();
-	const isCidr = /^\d+\.\d+\.\d+\.\d+\/\d+$/.test(q);
-	const isIpish = /^[\d.]+$/.test(q);
-	const macQ = normalizeMac(q);
-	const isMac = !isIpish && macQ.length >= 4 && /^[0-9a-f:.\-]+$/.test(q);
-	for (const n of graph.nets) {
-		const ownerHit = !isCidr && !isIpish && !isMac && (graph.domainGroups?.some((group) => group.netIds.includes(n.id) && [group.name, group.domainId, n.project_id, n.raw.project_name].some((value) => value?.toLowerCase().includes(q))) ?? false);
-		const hit = ownerHit || (isCidr
-			? n.cidrs.some((c) => c === q || _ipv4InCidr(c.split('/')[0], q))
-			: isIpish
-				? n.cidrs.some((c) => c.includes(q))
-				: isMac
-					? false
-					: n.name.toLowerCase().includes(q) || n.cidrs.some((c) => c.includes(q)));
-		if (hit) {
-			nets.add(n.id);
-			nodes.add(switchId(n.id));
-			if (n.kind === 'external') nodes.add(internetId(n.id));
+	for (const net of graph.nets) {
+		const ownerHit = graph.domainGroups?.some(group => group.netIds.includes(net.id)
+			&& matchesRegexSearch(compiled, [group.name ?? '', group.domainId ?? '', net.project_id ?? '', net.raw.project_name ?? '']));
+		if (ownerHit || matchesRegexSearch(compiled, [net.name, net.id, ...net.cidrs])) {
+			nets.add(net.id);
 		}
 	}
 	for (const node of graph.nodes.values()) {
-		let hit = false;
+		const fields = [node.name, node.id];
 		if (node.kind === 'vm') {
-			if (isCidr) hit = node.nics.some((nic) => nic.ips.some((ip) => _ipv4InCidr(ip, q)) || nic.fips.some((f) => _ipv4InCidr(f.addr, q)));
-			else if (isIpish) hit = node.nics.some((nic) => nic.ips.some((ip) => ip.startsWith(q)) || nic.fips.some((f) => f.addr.startsWith(q)));
-			else if (isMac) hit = node.nics.some((nic) => Boolean(nic.mac) && normalizeMac(nic.mac).includes(macQ));
-			else hit = node.name.toLowerCase().includes(q);
+			for (const nic of node.nics) fields.push(...nic.ips, ...nic.fips.map(fip => fip.addr), nic.mac ?? '', nic.mac ? normalizeMac(nic.mac) : '');
 		} else if (node.kind === 'router') {
-			hit = isCidr
-				? node.ports.some((p) => Boolean(p.ip) && _ipv4InCidr(p.ip as string, q))
-				: isIpish
-					? node.ports.some((p) => Boolean(p.ip) && (p.ip as string).startsWith(q))
-					: isMac
-						? false
-						: node.name.toLowerCase().includes(q);
+			for (const port of node.ports) if (port.ip) fields.push(port.ip);
 		} else if (node.kind === 'lb') {
-			hit = isCidr
-				? Boolean(node.vip) && _ipv4InCidr(node.vip as string, q)
-				: isIpish
-					? (node.vip ?? '').startsWith(q)
-					: isMac
-						? false
-						: node.name.toLowerCase().includes(q);
-		} else if (node.kind === 'switch' || node.kind === 'internet') {
-			if (!isCidr && !isIpish && !isMac && node.name.toLowerCase().includes(q)) {
-				hit = true;
-				nets.add(node.netId);
-			}
+			if (node.vip) fields.push(node.vip);
 		}
-		if (hit) nodes.add(node.id);
+		if (matchesRegexSearch(compiled, fields)) {
+			nodes.add(node.id);
+			if (node.kind === 'switch' || node.kind === 'internet') nets.add(node.netId);
+		}
 	}
 	for (const nid of nets) {
 		nodes.add(switchId(nid));

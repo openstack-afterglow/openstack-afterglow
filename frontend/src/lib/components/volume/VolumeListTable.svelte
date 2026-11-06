@@ -1,4 +1,5 @@
 <script lang="ts">
+ import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import { t } from '$lib/i18n/ns/volume';
 	import type { Volume } from '$lib/types/volume';
 	import { formatStorage } from '$lib/utils/format';
@@ -10,8 +11,10 @@
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { ResourceIdentifier } from '$lib/components/ui';
+	import type { TableView } from '$lib/utils/tableView.svelte';
 	let {
 		volumes,
+		view,
 		selectedVolumeId,
 		deleting,
 		openActionMenu,
@@ -35,6 +38,7 @@
 		onDelete,
 	}: {
 		volumes: Volume[];
+		view: TableView<Volume>;
 		selectedVolumeId: string | null;
 		deleting: string | null;
 		openActionMenu: string | null;
@@ -58,7 +62,7 @@
 		onDelete: (id: string, name: string) => void;
 	} = $props();
 
-	const volumeGridClass = 'grid min-w-[880px] grid-cols-[32px_minmax(180px,1.6fr)_70px_80px_110px_minmax(90px,1fr)_60px_80px_44px] gap-2';
+	const volumeGridClass = 'grid min-w-[72rem] grid-cols-[32px_minmax(220px,1.6fr)_112px_112px_136px_minmax(160px,1fr)_112px_100px_44px] gap-2';
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
@@ -122,15 +126,15 @@
 			</CompactResourceCard>
 		{/each}
 	{/snippet}
-<div class="bg-surface-base border border-line rounded-lg overflow-x-auto">
+<div class="min-w-0 max-w-full bg-surface-base border border-line rounded-lg overflow-x-auto" role="region" tabindex="0" aria-label={t('page.title')}>
 	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-[13px] text-ink-2 font-medium">
 		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} /></div>
-		<div>{t('listTable.name')}</div>
-		<div class="text-right">{t('listTable.size')}</div>
-		<div class="hidden sm:block">{t('listTable.type')}</div>
-		<div class="whitespace-nowrap">{t('listTable.status')}</div>
-		<div class="hidden lg:block">{t('listTable.attachments')}</div>
-		<div class="hidden lg:block">{t('listTable.boot')}</div>
+		<div><TableColumnControl {view} columnKey="name" /></div>
+		<div class="text-right"><TableColumnControl {view} columnKey="size" /></div>
+		<div class="hidden sm:block"><TableColumnControl {view} columnKey="type" /></div>
+		<div class="whitespace-nowrap"><TableColumnControl {view} columnKey="status" /></div>
+		<div class="hidden lg:block"><TableColumnControl {view} columnKey="attachments" /></div>
+		<div class="hidden lg:block"><TableColumnControl {view} columnKey="bootable" /></div>
 		<div class="hidden lg:block text-center whitespace-nowrap">{t('listTable.autoBackup')}</div>
 		<div class="hidden lg:block"></div>
 	</div>

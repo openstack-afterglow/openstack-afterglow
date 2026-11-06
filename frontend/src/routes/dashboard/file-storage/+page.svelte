@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import { t as tc } from '$lib/i18n/ns/common';
@@ -42,8 +48,19 @@
   let selectedId = $state<string | null>(null);
   let showWizard = $state(false);
   const selection = createResourceSelection();
-  const selectableIds = $derived(new Set(fileStorages.map((storage) => storage.id)));
+  let search = $state('');
+ const columns = $derived<TableColumn<FileStorage>[]>([
+  { key: 'name', label: t('networkTable.name'), value: row => row.name },
+  { key: 'status', label: t('info.status'), value: row => row.status },
+  { key: 'size', label: t('info.size'), value: row => row.size },
+  { key: 'protocol', label: t('info.protocol'), value: row => row.share_proto },
+  { key: 'type', label: t('info.shareType'), value: row => row.share_type_name },
+  { key: 'created', label: t('info.createdAt'), value: row => row.created_at },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => fileStorages, columns: () => columns, search: () => search, searchable: row => [row.name, row.id, row.status, row.share_proto, row.share_type_name, row.library_name].map(value => String(value ?? ''))});
+ const selectableIds = $derived(new Set(view.rows.map((storage) => storage.id)));
   let bulkBusy = $state(false);
+ $effect(() => { const ids = selectableIds; untrack(() => selection.retain(ids)); });
 
   function openDetailPanel(id: string) {
     selectedId = id;
@@ -145,6 +162,12 @@
       void refresh.run();
     });
   });
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 <FileStorageWizard
@@ -159,6 +182,7 @@
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('list.toolbar')}>
+ {#snippet filters()}<RegexSearch id="file-storage-search" bind:value={search} /><TableViewControls {view} class="" />{/snippet}
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -170,6 +194,7 @@
     {/snippet}
   </ResourceToolbar>
 
+  {#if !loading && fileStorages.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
@@ -181,7 +206,7 @@
   {:else}
     <SelectionToolbar label={t('list.title')} ariaLabel={t('list.selectAll')} checked={selectableIds.size > 0 && [...selectableIds].every((id) => selection.has(id))} indeterminate={selection.count > 0 && ![...selectableIds].every((id) => selection.has(id))} selectedCount={selection.count} disabled={bulkBusy} onToggle={() => selection.toggleAll(selectableIds)} />
     <div class="motion-stagger mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-      {#each fileStorages as fs (fs.id)}
+      {#each view.rows as fs (fs.id)}
         <FileStorageCard
           {fs}
           quotaLimit={quota?.gigabytes?.limit ?? 0}

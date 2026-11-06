@@ -127,8 +127,7 @@
       </div>
       {#if fileStorages.length === 0}
         <div class="text-ink-2 text-sm py-8 text-center">{t('list.empty')}</div>
-      {:else}
-        <FileStorageManageGrid {fileStorages} />
       {/if}
+      <FileStorageManageGrid {fileStorages} />
   {/if}
 </PageShell>

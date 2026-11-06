@@ -9,8 +9,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import Field from '$lib/components/ui/Field.svelte';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	let { member, roles, busy, submitDisabled = false, error, onSave, onClose }: {
 		member: ProjectAccessMember; roles: AssignableProjectRole[];
 		busy: boolean; submitDisabled?: boolean; error: string; onSave: (ids: string[]) => void; onClose: () => void;
@@ -25,11 +25,8 @@
 	const implied = $derived(impliedRoleIds(selected));
 	const externalInherited = $derived(new Set(member.external_role_ids));
 	const directEditable = $derived(!['group', 'inherited'].includes(member.source ?? ''));
-	const query = $derived(search.trim().toLowerCase());
-	const visibleRoles = $derived(selectableRoles.filter(role => !query || [role.name, role.id, role.description ?? ''].some(value => value.toLowerCase().includes(query))));
-	function updateSearch(event: Event) {
-		search = (event.currentTarget as HTMLInputElement).value;
-	}
+	const query = $derived(compileRegexSearch(search));
+	const visibleRoles = $derived(selectableRoles.filter(role => matchesRegexSearch(query, [role.name, role.id, role.description ?? ''])));
 	function editable(role: AssignableProjectRole) {
 		// Singleton ownership changes only through the explicit transfer workflow.
 		return isAssignableRole(role) && !(role.area === 'project' && role.grade === 'owner');
@@ -67,9 +64,7 @@
 	<Card surface="modal" padding="none" class="flex h-[min(48rem,calc(100dvh-2rem))] w-[min(56rem,calc(100vw-2rem))] min-h-0 flex-col">
 		<header class="shrink-0 space-y-3 border-b border-line p-4">
 			<h2 id={titleId} class="truncate text-lg font-semibold text-ink-0" title={t('projectMemberRoles.title', { user: member.username || member.user_id })}>{t('projectMemberRoles.title', { user: member.username || member.user_id })}</h2>
-			<Field label={t('projectMemberRoles.searchLabel')} for={searchId}>
-				<TextInput id={searchId} type="search" value={search} oninput={updateSearch} placeholder={t('projectMemberRoles.searchPlaceholder')} disabled={busy} ariaDescribedBy={visibleRoles.length === 0 ? `${searchId}-message` : ''} />
-			</Field>
+			<RegexSearch id={searchId} bind:value={search} disabled={busy} label={t('projectMemberRoles.searchLabel')} placeholder={t('projectMemberRoles.searchPlaceholder')} />
 		</header>
 		<div class="min-w-0 min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
 				<Alert tone="info">{t('projectMemberRoles.directOnlyHelp')}</Alert>

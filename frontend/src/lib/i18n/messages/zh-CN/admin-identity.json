@@ -2,7 +2,6 @@
 	"projectDelete.cleanup": "移除",
 	"projectDelete.cleanupLabel": "打开{resource}移除页面",
 	"projectDelete.cleanupHelp": "每个移除按钮都会打开按此项目筛选的资源监视器。请在该页面逐个删除，然后返回并重新检查。",
-	"projectDelete.resources.child_projects": "子项目",
 	"resourceMonitor.title": "项目资源监视器",
 	"resourceMonitor.help": "所选项目的完整清单。仅支持逐个正常删除，不进行强制或批量删除。原生服务的所有权、状态和保护策略仍然适用。",
 	"resourceMonitor.back": "返回项目列表",
@@ -29,6 +28,7 @@
 	"resourceMonitor.refused": "删除请求被拒绝。请检查权限、所有权、资源状态和依赖关系，然后刷新清单。请求不会自动重发。",
 	"resourceMonitor.pending": "删除已受理 · 等待完成",
 	"resourceMonitor.unknownStatus": "删除结果未知",
+	"projectDelete.resources.child_projects": "子项目",
 	"userDelete.actions": "操作",
 	"userDelete.actionLabel": "删除用户 {name}",
 	"userDelete.selfProtected": "不能删除自己的账户",
@@ -641,7 +641,6 @@
 	"roleMetadata.namePreview": "名称预览：<name>{name}</name>",
 	"roleMetadata.invalidName": "领域和等级使用英文字母、数字和连字符。所有空白字符都会替换为连字符。",
 	"roleMetadata.domain": "域 ID（可选）",
-
 	"rolePresets.preview": "预览角色预设",
 	"rolePresets.confirm": "应用角色预设吗？将添加缺少的角色和项目继承关联，并移除列出的旧服务继承关联。保留角色 ID 和直接分配。请先部署新的服务端策略。",
 	"rolePresets.apply": "应用预设",

@@ -6,9 +6,11 @@
 	import { domainGroupLabel } from '../domainGroups';
 	import { matchesQuery, switchId } from './topologyGraph';
 	import type { CanvasGraph, CanvasNet, CanvasNode } from './types';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 
 	let { graph, query, onopen }: { graph: CanvasGraph; query: string; onopen: (id: string) => void } = $props();
 	type Project = { id: string | null; name: string | null; nets: CanvasNet[]; nodes: CanvasNode[] };
+	const compiled = $derived(compileRegexSearch(query));
 	const groups = $derived.by(() => {
 		const domains = new Map<string, { id: string; label: string; projects: Map<string, Project> }>();
 		const projects = new Map<string, Project>();
@@ -47,12 +49,11 @@
 			}
 			project.nodes.push(node);
 		}
-		const q = query.trim().toLocaleLowerCase();
 		const matches = matchesQuery(graph, query);
 		return [...domains.values()].sort((a, b) => a.label.localeCompare(b.label)).map((domain) => ({
 			...domain,
 			projects: [...domain.projects.values()].sort((a, b) => (a.name ?? a.id ?? '').localeCompare(b.name ?? b.id ?? '')).filter((project) =>
-				!q || domain.label.toLocaleLowerCase().includes(q) || `${project.name ?? ''} ${project.id ?? ''}`.toLocaleLowerCase().includes(q)
+				matchesRegexSearch(compiled, [domain.label, project.name ?? '', project.id ?? ''])
 				|| project.nets.some((net) => matches?.nets.has(net.id)) || project.nodes.some((node) => matches?.nodes.has(node.id))),
 		})).filter((domain) => domain.projects.length > 0);
 	});

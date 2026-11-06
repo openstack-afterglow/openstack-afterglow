@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DbInstancesTable from '../DbInstancesTable.svelte';
 import type { DbInstance } from '$lib/types/database';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import { dbInstanceColumns } from '$lib/utils/databaseTableColumns';
+import { t as common } from '$lib/i18n/ns/common';
+import { t as database } from '$lib/i18n/ns/database';
+import { within } from '@testing-library/svelte';
 
 const media = vi.hoisted(() => {
   const events = new EventTarget();
@@ -31,6 +36,7 @@ function renderTable(overrides: Partial<{
 }> = {}) {
   return render(DbInstancesTable, {
     instances,
+    view: createTableView({ rows: () => instances, columns: dbInstanceColumns }),
     refreshing: false,
     restarting: null,
     deleting: null,
@@ -68,6 +74,7 @@ describe('DbInstancesTable selection', () => {
     const onToggleSelect = vi.fn();
     render(DbInstancesTable, {
       instances,
+      view: createTableView({ rows: () => instances, columns: dbInstanceColumns }),
       refreshing: false,
       restarting: null,
       deleting: null,
@@ -88,7 +95,7 @@ describe('DbInstancesTable selection', () => {
     const onOpen = vi.fn();
     const onRestart = vi.fn();
     const onToggleSelect = vi.fn();
-    render(DbInstancesTable, { instances, refreshing: false, restarting: 'db-1', deleting: null, selectedIds: new Set(['db-1']), selectableIds: new Set(['db-1']), onToggleSelect, onToggleAll: vi.fn(), onOpen, onRestart, onDelete: vi.fn() });
+    render(DbInstancesTable, { instances, view: createTableView({ rows: () => instances, columns: dbInstanceColumns }), refreshing: false, restarting: 'db-1', deleting: null, selectedIds: new Set(['db-1']), selectableIds: new Set(['db-1']), onToggleSelect, onToggleAll: vi.fn(), onOpen, onRestart, onDelete: vi.fn() });
     media.matches = false;
     media.dispatchEvent(new Event('change'));
     await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
@@ -107,5 +114,39 @@ describe('DbInstancesTable selection', () => {
     await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
     expect((screen.getByLabelText('primary-db 선택') as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('article')).toBeNull();
+  });
+});
+
+describe('DbInstancesTable typed column controls', () => {
+  it('cycles numeric sorting, keeps default row order, and can recover from selecting no values', async () => {
+    renderTable();
+    const table = screen.getByRole('table');
+    const rowNames = () => within(table).getAllByRole('row').slice(1).map((row) => row.textContent);
+    const sizeSort = () => within(table).getByRole('button', { name: common('table.sortColumn', { column: database('labels.sizeGb'), direction: common(`table.${table.querySelector('th[aria-sort="ascending"]') ? 'ascending' : table.querySelector('th[aria-sort="descending"]') ? 'descending' : 'none'}`) }) });
+    await fireEvent.click(sizeSort());
+    expect(rowNames()[0]).toContain('primary-db');
+    await fireEvent.click(sizeSort());
+    expect(rowNames()[0]).toContain('replica-db');
+    await fireEvent.click(sizeSort());
+    expect(rowNames()[0]).toContain('primary-db');
+    await fireEvent.click(within(table).getByRole('button', { name: common('table.filterColumn', { column: database('labels.status') }) }));
+    await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: common('table.selectNone') }));
+    expect(within(table).getAllByRole('row')).toHaveLength(1);
+    expect(screen.getByText(common('table.noMatches'))).toBeTruthy();
+    await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: common('table.resetFilter') }));
+    expect(rowNames()).toHaveLength(2);
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    media.matches = false;
+    media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.queryByRole('table')).toBeNull());
+    await fireEvent.click(screen.getByRole('button', { name: common('table.filterColumn', { column: database('labels.status') }) }));
+    await fireEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'BUILD' }));
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'primary-db' })).toBeTruthy();
+    await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    media.matches = true;
+    media.dispatchEvent(new Event('change'));
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+    expect(within(screen.getByRole('table')).queryByText('replica-db')).toBeNull();
   });
 });

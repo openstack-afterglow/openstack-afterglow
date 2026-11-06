@@ -1,8 +1,10 @@
 <script lang="ts">
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Button, Field, ResourceToolbar, SelectInput, TextInput, ToggleGroup } from '$lib/components/ui';
+	import { Button, Field, ResourceToolbar, SelectInput, ToggleGroup } from '$lib/components/ui';
 	import type { ObjectView } from '$lib/utils/objectViewPreference';
 	import { t } from '$lib/i18n/ns/object-storage';
 
@@ -16,10 +18,8 @@
 
 <ResourceToolbar label={t('browserToolbar.filter')} class="mb-4">
 	{#snippet filters()}
-		<Field label={t('browserToolbar.filter')} for={`${componentId}-filter`} class="min-w-0 w-full md:flex-1 md:basis-48">
-			<TextInput id={`${componentId}-filter`} type="search" bind:value={s.filterText} placeholder={t('browserToolbar.filter')} />
-		</Field>
-		{#if s.mode === 'user' && s.filterText.trim()}
+		<RegexSearch id={`${componentId}-filter`} bind:value={s.filterText} label={t('browserToolbar.filter')} />
+		{#if s.mode === 'user' && s.filterText.length > 0}
 			<Field label={t('browserToolbar.searchScope')} for={`${componentId}-scope`} class="min-w-0 max-w-full w-full md:w-auto">
 				<SelectInput id={`${componentId}-scope`} bind:value={() => s.searchScope, (value) => s.searchScope = value as 'current' | 'expanded' | 'all'}>
 					<option value="current">{t('browserToolbar.currentFolder')}</option>
@@ -45,7 +45,7 @@
 				onchange={(v) => { s.viewMode = v as ObjectView; }}
 			/>
 		{/if}
-		<Button variant="outline" size="sm" class="max-w-full !whitespace-normal" onclick={() => s.toggleSort('name')}>{t('browserToolbar.nameSort', { icon: s.sortIcon('name') })}</Button>
+		<TableViewControls view={s.view} class={(s.mode === 'user' && s.viewMode === 'grid') || (s.mode === 'user' ? s.treeRows.length : s.objects.length) === 0 ? '' : 'lg:hidden'} />
 	{/snippet}
 	{#snippet actions()}
 		{#if s.prefix}

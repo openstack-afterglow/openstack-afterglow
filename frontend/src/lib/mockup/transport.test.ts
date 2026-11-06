@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_MCP_CONSENT_TICKET, MOCKUP_SESSION_KEY } from '$lib/mockup/contracts';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
 import type { K3sCluster } from '$lib/types/k3s';
+import { parseContainerListResponse } from '$lib/types/zunContainer';
+import type { UserDashboardSummary } from '$lib/types/userDashboard';
+import type { SecretInfo, ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
 let fetchMock = vi.fn();
 
 beforeEach(() => {
@@ -22,6 +25,37 @@ afterEach(() => {
 });
 
 describe('mockup transport', () => {
+	it('serves native Key Manager metadata arrays without payloads or simulated writes', async () => {
+		// resetModules must recreate the tutorial singleton for this transport-boundary test.
+		const { maybeMockJson } = await import('./transport');
+		const token = 'mock-token-tutorial-scoped';
+		const project = 'mock-project-1';
+		const secrets = await maybeMockJson<SecretInfo[]>('GET', '/api/v1/secrets', undefined, token, project);
+		const containers = await maybeMockJson<ContainerInfo[]>('GET', '/api/v1/secret-containers', undefined, token, project);
+		const orders = await maybeMockJson<OrderInfo[]>('GET', '/api/v1/secret-orders', undefined, token, project);
+		const quota = await maybeMockJson<QuotaInfo>('GET', '/api/v1/secrets/quota/effective', undefined, token, project);
+		if (!Array.isArray(secrets) || !Array.isArray(containers) || !Array.isArray(orders)) throw new Error('Expected native Key Manager arrays');
+		expect(secrets.length).toBeGreaterThan(0);
+		expect(secrets.every(secret => typeof secret.id === 'string' && typeof secret.system_managed === 'boolean')).toBe(true);
+		for (const secret of secrets) expect(secret).not.toHaveProperty('payload');
+		expect(containers[0].secret_refs).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'api-password', secret_ref: expect.any(String) })]));
+		expect(orders.map(order => order.status)).toEqual(['ACTIVE', 'PENDING']);
+		expect(quota).toMatchObject({ secrets: 50, orders: 20, containers: 20, consumers: 100, cas: 5 });
+		await expect(maybeMockJson('GET', `/api/v1/secrets/${secrets[0].id}/payload`, undefined, token, project)).rejects.toMatchObject({ status: 409 });
+		await expect(maybeMockJson('POST', '/api/v1/secrets', { name: 'must-not-create' }, token, project)).rejects.toMatchObject({ status: 409 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('uses the native container envelope for inventory and unwraps it for My Resources', async () => {
+		// resetModules recreates the mutable tutorial singleton at this transport boundary.
+		const { maybeMockJson } = await import('./transport');
+		const response = await maybeMockJson('GET', '/api/v1/containers', undefined, 'mock-token-tutorial-scoped', 'mock-project-1');
+		expect(parseContainerListResponse(response)).toEqual({ items: [], service_available: true, message: '' });
+		const summary = await maybeMockJson<UserDashboardSummary>('GET', '/api/v1/user-dashboard/summary', undefined, 'mock-token-tutorial-scoped', 'mock-project-1');
+		if (!summary || typeof summary !== 'object' || !('projects' in summary)) throw new Error('Expected tutorial user-dashboard summary');
+		expect(summary.projects.find(project => project.project_id === 'mock-project-1')?.resources.containers).toMatchObject({ state: 'ready', count: 0, items: [] });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 	it('serves domain-owned administrator resource totals without the retired project quota monitor', async () => {
 		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
 		// Module-boundary test: vi.resetModules recreates the mutable fixture singleton.

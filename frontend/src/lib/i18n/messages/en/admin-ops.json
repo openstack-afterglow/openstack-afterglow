@@ -393,7 +393,6 @@
 	"monitoring.rabbitmq.breadcrumb": "MONITORING / RABBITMQ",
 	"monitoring.rabbitmq.title": "RabbitMQ metrics",
 	"monitoring.rabbitmq.description": "Metrics collected through the rabbitmq_prometheus plugin.",
-	"overview.loading": "Loading overview",
 	"overview.kpi.hypervisors": "Hypervisors",
 	"overview.kpi.details": "Details →",
 	"overview.kpi.totalVms": "Total VMs",

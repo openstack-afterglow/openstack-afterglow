@@ -9,7 +9,7 @@ vi.mock('$lib/api/client', () => ({
 	api: { get: mockGet, post: vi.fn(), delete: vi.fn() },
 	ApiError: class ApiError extends Error { status = 500; },
 }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', userId: 'user-a', projectId: 'project', canWrite: true }), authReady: writable(true), canWrite: writable(true), projectSwitching: writable(false), getAuthVerificationEpoch: () => 1 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({
 		active: false,

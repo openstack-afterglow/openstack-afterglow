@@ -6,6 +6,7 @@ import type { StampedeStatus } from '$lib/types/k3s';
 const mocks = vi.hoisted(() => ({
 	apiGet: vi.fn(),
 	controller: {
+		tableState: () => ({ search: '', state: { sort: null, filters: {} } }),
 		projectId: 'resource-project',
 		cluster: { id: 'cluster-1', status: 'ACTIVE' },
 	},

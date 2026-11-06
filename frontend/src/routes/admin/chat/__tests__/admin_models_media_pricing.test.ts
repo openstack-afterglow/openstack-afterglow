@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
+import { t } from '$lib/i18n/ns/admin-chat';
+import { t as commonT } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => {
 	class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -62,6 +64,90 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('admin multimodal pricing consumer', () => {
+	it.each([
+		{ kind: 'text', primary: '텍스트 토큰 단가', input: '입력' },
+		{ kind: 'image', primary: '이미지 토큰 단가', input: '이미지 입력' },
+		{ kind: 'tts', primary: '오디오 토큰 단가', input: '오디오 입력' },
+		{ kind: 'stt', primary: '오디오 토큰 단가', input: '오디오 입력' },
+		{ kind: 'realtime', primary: '오디오 토큰 단가', input: '오디오 입력' }
+	])('shows only $kind prices until an extra modality is selected, preserving text/cache drafts', async ({ kind, primary, input }) => {
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '직접 입력' }));
+		await fireEvent.change(within(dialog).getByLabelText('모델 종류'), { target: { value: kind } });
+		if (kind !== 'text') {
+			expect(within(dialog).queryByRole('group', { name: primary })).toBeNull();
+			expect(within(dialog).queryByLabelText(input)).toBeNull();
+			await fireEvent.change(dialog.querySelector('#model-create-billing-basis')!, { target: { value: 'tokens' } });
+		}
+		expect(within(dialog).getByRole('group', { name: primary })).toBeTruthy();
+		expect(within(dialog).getByLabelText(input)).toBeTruthy();
+		if (kind !== 'text') {
+			expect(within(dialog).queryByLabelText('입력')).toBeNull();
+			expect(within(dialog).queryByLabelText('캐시 읽기')).toBeNull();
+			await fireEvent.click(within(dialog).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
+		}
+		const text = within(dialog).getByRole('group', { name: '텍스트 토큰 단가' });
+		await fireEvent.input(within(text).getByLabelText('입력'), { target: { value: '2' } });
+		await fireEvent.input(within(text).getByLabelText('캐시 읽기'), { target: { value: '0' } });
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
+		expect(within(dialog).queryByLabelText('캐시 읽기')).toBeNull();
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
+		const restored = within(dialog).getByRole('group', { name: '텍스트 토큰 단가' });
+		expect((within(restored).getByLabelText('입력') as HTMLInputElement).value).toBe('2');
+		expect((within(restored).getByLabelText('캐시 읽기') as HTMLInputElement).value).toBe('0');
+		expect(within(restored).getByLabelText('캐시 쓰기 5분')).toBeTruthy();
+		expect(within(restored).getByLabelText('캐시 쓰기 1시간')).toBeTruthy();
+	});
+	it('updates default price groups when a discovered model kind changes and saves explicit extra text rates', async () => {
+		candidates = [{ id: 'primary-only', purpose: 'chat', model_kind: 'text' }];
+		render(ModelPage);
+		const dialog = await openDiscovery();
+		await fireEvent.click(within(dialog).getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'primary-only' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: '선택 모델 검토' }));
+		const entry = within(dialog).getByTestId('registration-entry');
+		expect(within(entry).getByRole('group', { name: '텍스트 토큰 단가' })).toBeTruthy();
+		expect(within(entry).queryByLabelText('이미지 입력')).toBeNull();
+		await fireEvent.change(within(entry).getByLabelText('모델 종류 · primary-only'), { target: { value: 'image' } });
+		expect(within(entry).queryByLabelText('입력 단가 · primary-only')).toBeNull();
+		expect(within(entry).queryByLabelText('캐시 읽기')).toBeNull();
+		expect(within(entry).queryByLabelText('이미지 출력')).toBeNull();
+		await fireEvent.change(within(entry).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		await fireEvent.input(within(entry).getByLabelText('요청 전체 예약 상한'), { target: { value: '1' } });
+		expect(within(entry).getByLabelText('이미지 출력')).toBeTruthy();
+		await fireEvent.click(within(entry).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
+		await fireEvent.input(within(entry).getByLabelText('입력 단가 · primary-only'), { target: { value: '3' } });
+		await fireEvent.input(within(entry).getByLabelText('캐시 읽기'), { target: { value: '0' } });
+		await fireEvent.input(within(entry).getByLabelText('이미지 출력'), { target: { value: '40' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {
+			provider_id: 1, model_name: 'primary-only', model_kind: 'image', input_price_per_million: '3',
+			cache_read_price_per_million: '0', media_pricing: { billing_basis: 'tokens', reservation_usd: '1', token_rates: { image: { output_per_million: '40' } } }, is_active: false
+		}, 'token', 'project'));
+	});
+	it('follows the selected billing basis without deleting alternate stored token prices', async () => {
+		rows = [model('image', { image_per_unit: '0.04' })];
+		render(ModelPage);
+		const dialog = await openEditor();
+		expect(within(dialog).queryByLabelText('이미지 출력')).toBeNull();
+		expect((within(dialog).getByLabelText('이미지 기본 단가') as HTMLInputElement).value).toBe('0.04');
+		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		await fireEvent.input(within(dialog).getByLabelText('요청 전체 예약 상한'), { target: { value: '1' } });
+		expect(within(dialog).getByLabelText('이미지 출력')).toBeTruthy();
+		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'unit' } });
+		expect(within(dialog).queryByLabelText('이미지 출력')).toBeNull();
+		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'tokens' } });
+		await fireEvent.input(within(dialog).getByLabelText('이미지 출력'), { target: { value: '40' } });
+		await fireEvent.change(within(dialog).getByLabelText('이미지 과금 기준'), { target: { value: 'unit' } });
+		expect((within(dialog).getByLabelText('이미지 출력') as HTMLInputElement).value).toBe('40');
+		await fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: '모델 가격 수정' })).toBeNull());
+		const reopened = await openEditor();
+		expect((within(reopened).getByLabelText('이미지 과금 기준') as HTMLSelectElement).value).toBe('unit');
+		expect((within(reopened).getByLabelText('이미지 출력') as HTMLInputElement).value).toBe('40');
+		expect((within(reopened).getByLabelText('이미지 기본 단가') as HTMLInputElement).value).toBe('0.04');
+	});
 	it('filters registered image models independently and clears hidden selections', async () => {
 		rows = [model(), { ...model('text'), id: 2, display_name: 'Text model' }]; render(ModelPage);
 		await fireEvent.click(await screen.findByRole('checkbox', { name: 'Media model 선택' }));
@@ -139,13 +225,19 @@ describe('admin multimodal pricing consumer', () => {
 		await screen.findAllByRole('option', { name: 'OpenAI' });
 		await fireEvent.click(screen.getByRole('button', { name: '모델 불러오기' }));
 		await screen.findByRole('checkbox', { name: 'opaque-image' });
-		await fireEvent.change(screen.getByLabelText('후보 종류 필터'), { target: { value: 'image' } });
+		const filterName = commonT('table.filterColumn', { column: t('pricing.candidateKindFilter') });
+		await fireEvent.click(screen.getByRole('button', { name: filterName }));
+		const kindOptions = screen.getByRole('dialog', { name: filterName });
+		await fireEvent.click(within(kindOptions).getByRole('checkbox', { name: t('configuration.image') }));
+		await fireEvent.keyDown(kindOptions, { key: 'Escape' });
+		expect(screen.getByRole('checkbox', { name: 'opaque-image' })).toBeTruthy();
 		expect(screen.queryByRole('checkbox', { name: 'opaque-text' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '전체 선택' }));
 		await fireEvent.click(screen.getByRole('button', { name: '선택 모델 검토' }));
 		expect((screen.getByLabelText('모델 종류 · opaque-image') as HTMLSelectElement).value).toBe('image');
 		await fireEvent.click(screen.getByRole('button', { name: '비활성으로 저장' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', { provider_id: 1, model_name: 'opaque-image', model_kind: 'image', is_active: false }, 'token', 'project'));
+		expect(mocks.post).toHaveBeenCalledTimes(1);
 	});
 	it('requires an explicit manual kind for unknown non-chat candidates', async () => {
 		candidates = [{ id: 'unclassified', purpose: 'non_chat', model_kind: null }];
@@ -274,6 +366,7 @@ describe('admin multimodal pricing consumer', () => {
 		await fireEvent.input(screen.getByLabelText('모델명 (예: gpt-4o)'), { target: { value: 'exact-image-route' } });
 		await fireEvent.input(screen.getByLabelText('표시 이름 · provider-image'), { target: { value: 'Reviewed image' } });
 		await fireEvent.input(screen.getByLabelText('이미지 기본 단가'), { target: { value: '0.04' } });
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: '텍스트 토큰 단가' }));
 		await fireEvent.input(screen.getByLabelText('캐시 읽기'), { target: { value: '0' } });
 		await fireEvent.click(screen.getByRole('button', { name: '비활성으로 저장' }));
 		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/chat/admin/models', {

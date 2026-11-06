@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -10,14 +11,13 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { projectNames } from '$lib/stores/projectNames';
-	import { createImageCatalog, currentImagesByReference } from '$lib/stores/imageCatalog.svelte';
+	import { createImageCatalog, currentImagesByReference, imageReferenceParts } from '$lib/stores/imageCatalog.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import ImageUploadModal from '$lib/components/ImageUploadModal.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import ImageCatalogToolbar, { type CatalogViewMode } from '$lib/components/dashboard/images/ImageCatalogToolbar.svelte';
 	import ImageRepositoryCard from '$lib/components/dashboard/images/ImageRepositoryCard.svelte';
-	import ImageDistroFilter from '$lib/components/dashboard/images/ImageDistroFilter.svelte';
 	import AdminImagesTable from '$lib/components/admin/images/AdminImagesTable.svelte';
 	import ImageEditModal from '$lib/components/admin/images/ImageEditModal.svelte';
 	import { Alert, Button, Card, EmptyState, Field, PageHeader, PageShell, Pagination, ResourceToolbar, SelectInput } from '$lib/components/ui';
@@ -25,7 +25,6 @@
 
 	let images = $state<AdminImage[]>([]);
 	let loading = $state(true), refreshing = $state(false), error = $state('');
-	let visibilityFilter = $state('all');
 	let pageSize = $state('12'), page = $state(1);
 	let viewMode = $state<CatalogViewMode>('repositories');
 	let selectedRepository = $state<string | null>(null);
@@ -41,12 +40,11 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const visibleImages = $derived(visibilityFilter === 'all' ? images : images.filter((image) => image.visibility === visibilityFilter));
-	const catalog = createImageCatalog(() => visibleImages, () => images);
+	const catalog = createImageCatalog(() => images, () => images);
 	const currentImageIds = $derived(new Set([...currentImagesByReference(images).values()].map((image) => image.id)));
-	const selectedGroup = $derived(catalog.repositoryGroups.find((group) => group.repository === selectedRepository) ?? null);
-	const showingRepositories = $derived(viewMode === 'repositories' && !selectedGroup);
-	const tagImages = $derived(selectedGroup?.images ?? catalog.filteredImages);
+	const selectedGroup = $derived(catalog.allRepositoryGroups.find((group) => group.repository === selectedRepository) ?? null);
+	const showingRepositories = $derived(viewMode === 'repositories' && selectedRepository === null);
+	const tagImages = $derived(selectedRepository ? catalog.filteredImages.filter(image => imageReferenceParts(image).repository === selectedRepository) : catalog.filteredImages);
 	const resultCount = $derived(showingRepositories ? catalog.repositoryGroups.length : tagImages.length);
 	const totalPages = $derived(Math.max(1, Math.ceil(resultCount / Number(pageSize))));
 	const currentPage = $derived(Math.min(page, totalPages));
@@ -57,12 +55,8 @@
 
 	$effect(() => {
 		// Filter/view changes reset UI pagination; background refresh keeps the current page.
-		void [catalog.searchQuery, catalog.repositoryFilter, catalog.tagFilter, catalog.distroFilter,
-			catalog.verificationFilter, catalog.sortMode, visibilityFilter, viewMode, selectedRepository, pageSize];
+		void [catalog.searchQuery, catalog.view.sort, catalog.view.filters, viewMode, selectedRepository, pageSize];
 		page = 1;
-	});
-	$effect(() => {
-		if (selectedRepository && !selectedGroup) selectedRepository = null;
 	});
 
 	async function load(forceRefresh = false) {
@@ -97,11 +91,6 @@
 		}
 	}
 
-	function clearFilters() {
-		catalog.clearFilters();
-		visibilityFilter = 'all';
-		selectedRepository = null;
-	}
 	function changeViewMode(mode: CatalogViewMode) {
 		viewMode = mode;
 		selectedRepository = null;
@@ -173,17 +162,13 @@
 </script>
 
 <PageShell class="space-y-4">
+	<div data-tour="admin-images-header">
 	<PageHeader breadcrumb={t('images.breadcrumb')} title={t('images.title')}>
-		{#snippet actions()}<Button variant="primary" onclick={() => showUploadModal = true}>{t('images.upload')}</Button>{/snippet}
+		{#snippet actions()}<TutorialStartButton tour="admin-images" /><Button variant="primary" onclick={() => showUploadModal = true}>{t('images.upload')}</Button>{/snippet}
 	</PageHeader>
+	</div>
 	<ResourceToolbar label={t('images.toolbarLabel')}>
 		{#snippet filters()}
-			<Field label={t('images.visibility.label')} for="admin-image-visibility" class="min-w-0 max-w-full w-full md:w-auto">
-				<SelectInput id="admin-image-visibility" bind:value={visibilityFilter}>
-					<option value="all">{t('images.visibility.all')}</option><option value="public">{t('images.visibility.public')}</option>
-					<option value="community">{t('images.visibility.community')}</option><option value="shared">{t('images.visibility.shared')}</option><option value="private">{t('images.visibility.private')}</option>
-				</SelectInput>
-			</Field>
 			<Field label={t('images.pageSize')} for="admin-image-page-size" class="min-w-0 max-w-full w-full md:w-auto">
 				<SelectInput id="admin-image-page-size" bind:value={pageSize}>
 					{#each [12, 24, 48] as size}<option value={String(size)}>{t('images.pageSizeCount', { count: size })}</option>{/each}
@@ -201,20 +186,17 @@
 		</Alert>
 	{/if}
 	{#if verificationUnavailable}<Alert tone="warning">{t('images.verification.unavailable')}</Alert>{/if}
+	<ImageCatalogToolbar {catalog} {viewMode} namespace="admin-compute" tourPrefix="admin-images" columnControls={showingRepositories ? 'all' : 'compact'} onViewModeChange={changeViewMode} />
+	<div data-tour="admin-images-results">
 	{#if loading}
 		<LoadingState variant="surface" />
 	{:else}
-		<ImageCatalogToolbar bind:searchQuery={catalog.searchQuery} bind:repositoryFilter={catalog.repositoryFilter}
-			bind:tagFilter={catalog.tagFilter} bind:verificationFilter={catalog.verificationFilter} bind:sortMode={catalog.sortMode}
-			{viewMode} repositoryOptions={catalog.repositoryOptions} tagOptions={catalog.tagOptions}
-			resultCount={catalog.filteredImages.length} totalCount={images.length} repositoryCount={catalog.visibleRepositoryCount}
-			onClear={clearFilters} onViewModeChange={changeViewMode} />
-		<ImageDistroFilter bind:distroFilter={catalog.distroFilter} counts={catalog.distroGroups} />
+		<div data-tour="admin-images-ready">
 		<p class="text-xs text-ink-2">{t('images.verification.help')}</p>
 		{#if resultCount === 0}
 			<EmptyState headline={error ? t('images.empty.unavailable') : images.length ? t('images.empty.noResults') : t('images.empty.noImages')}
 				description={images.length ? t('images.empty.filterHelp') : t('images.empty.uploadHelp')} />
-		{:else}
+		{/if}
 			{#if showingRepositories}
 				<div class="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3" aria-label={t('images.repositoryList')}>
 					{#each pageGroups as group (group.repository)}
@@ -222,22 +204,25 @@
 					{/each}
 				</div>
 			{:else}
-				{#if selectedGroup}
+				{#if selectedRepository}
 					<Card padding="lg">
 						<Button variant="ghost" size="sm" onclick={() => selectedRepository = null}>{t('images.repositoryBack')}</Button>
-						<h2 class="mt-2 break-all font-mono text-base font-semibold text-ink-0">{selectedGroup.repository}</h2>
-						<p class="mt-1 text-xs text-ink-2">{t('images.repositorySummary', { tagCount: selectedGroup.tags.length, uploadCount: selectedGroup.images.length })}</p>
+						<h2 class="mt-2 break-all font-mono text-base font-semibold text-ink-0">{selectedRepository}</h2>
+						{#if selectedGroup}<p class="mt-1 text-xs text-ink-2">{t('images.repositorySummary', { tagCount: selectedGroup.tags.length, uploadCount: selectedGroup.images.length })}</p>{/if}
 					</Card>
 				{/if}
-				<AdminImagesTable images={pageImages} {selectedImageId} {togglingId} {verifyingId} {deletingId} {currentImageIds}
+				<AdminImagesTable images={pageImages} view={catalog.view} {selectedImageId} {togglingId} {verifyingId} {deletingId} {currentImageIds}
 					onOpenDetail={(img) => selectedImageId = img.id} onEdit={openEdit} onToggleActivation={toggleActivation}
 					onDelete={deleteImage} onToggleVerification={toggleVerification} />
 			{/if}
+		{#if resultCount > 0}
 			<Pagination page={currentPage} {totalPages} total={resultCount} pageSize={Number(pageSize)}
 				hasPrev={currentPage > 1} hasNext={currentPage < totalPages} note={showingRepositories ? t('images.repositoryNote') : t('images.imageNote')}
 				onPrev={() => page = currentPage - 1} onNext={() => page = currentPage + 1} />
 		{/if}
+		</div>
 	{/if}
+	</div>
 </PageShell>
 
 {#if selectedImageId}

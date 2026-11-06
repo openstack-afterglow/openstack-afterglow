@@ -6,6 +6,8 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	const s = useNetworkDetailController();
 </script>
@@ -49,10 +51,12 @@
 		</div>
 	{/if}
 
+	<TableViewControls view={s.routerView} class="" />
+	{#if s.network!.routers.length > 0 && s.routerView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if s.network!.routers.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each s.network!.routers as router (router.id)}
+				{#each s.routerView.rows as router (router.id)}
 					<CompactResourceCard>
 						<div class="flex items-center justify-between gap-2"><span class="font-medium">{router.name || router.id.slice(0, 8)}</span><StatusChip status={router.status} /></div>
 						{#snippet details()}<p class="font-mono">{router.id}</p>{/snippet}
@@ -61,7 +65,7 @@
 				{/each}
 			{/snippet}
 		<div class="space-y-2">
-			{#each s.network!.routers as router}
+			{#each s.routerView.rows as router (router.id)}
 				<div class="flex items-center justify-between py-1">
 					<div>
 						<div class="text-xs text-ink-0">{router.name || router.id.slice(0, 8)}</div>

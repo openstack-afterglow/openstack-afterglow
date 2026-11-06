@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { InfrastructureTopologySnapshot, SwitchPort, TopologySelection } from '$lib/types/infrastructureTopology';
 	import type { InfrastructureTopologyController } from '$lib/stores/infrastructureTopologyController.svelte';
@@ -28,6 +31,10 @@
 	const activeTrace = $derived(host?.traces.some(trace => trace.status === 'queued' || trace.status === 'running') ?? false);
 	const devicePorts = $derived(snapshot.fabric.ports.filter(item => item.device_id === device?.id).sort((a, b) => a.ifindex - b.ifindex || naturalId(a.id, b.id)));
 	function currentRate(item: SwitchPort, value: number | null) { return ctrl.verified && item.state === 'fresh' ? value : null; }
+
+	const observationView0 = createObservationView(() => (port ? ['rx', 'tx'] : []), () => ([{ key: 'metric', label: t('metric'), value: row => row === 'rx' ? t('rx') : t('tx'), filterValues: row => [row], format: (_value, row) => row === 'rx' ? t('rx') : t('tx') }, { key: 'pps', label: t('workspace.pps'), value: row => currentRate(port!, row === 'rx' ? port!.rx_packets_per_second : port!.tx_packets_per_second) }, { key: 'bps', label: t('workspace.Bps'), value: row => currentRate(port!, row === 'rx' ? port!.rx_bytes_per_second : port!.tx_bytes_per_second) }]));
+	const observationView1 = createObservationView(() => (edge?.flow ? edge.observations ?? [edge.flow] : []), () => ([{ key: 'host', label: t('workspace.reportingHost'), value: row => row.reporting_host_id }, { key: 'nic', label: t('nic'), value: row => row.interface }, { key: 'direction', label: t('workspace.direction'), value: row => row.direction }, { key: 'pps', label: t('workspace.pps'), value: row => ctrl.verified && row.state === 'fresh' ? row.packets_per_second : null }, { key: 'bps', label: t('workspace.Bps'), value: row => ctrl.verified && row.state === 'fresh' ? row.bytes_per_second : null }, { key: 'measurement', label: t('workspace.measurement'), value: row => row.captured_at }]));
+	const observationView2 = createObservationView(() => (devicePorts), () => ([{ key: 'port', label: t('port'), value: row => row.name }, { key: 'state', label: t('operstate'), value: row => row.operstate }, { key: 'rx', label: t('rx'), value: row => currentRate(row, row.rx_packets_per_second) }, { key: 'tx', label: t('tx'), value: row => currentRate(row, row.tx_packets_per_second) }, { key: 'measurement', label: t('workspace.measurement'), value: row => row.captured_at }]));
 </script>
 
 {#snippet portMetrics(item: SwitchPort)}
@@ -37,13 +44,16 @@
 		<p class="text-xs text-ink-2">IF-MIB · ifIndex {item.ifindex.toLocaleString(intlLocale(), { useGrouping: false })} · {windowLabel(item.window_seconds)} · {timestamp(item.captured_at)}</p>
 		{#if item.reason}<p class="text-xs text-ink-2">{t(`workspace.reason.${item.reason}`)}</p>{/if}
 		<p class="text-xs text-ink-2">{t('workspace.snmpNotice')}</p>
-		<ResponsiveTable>
-			{#snippet cards()}{#each ['rx', 'tx'] as direction}<CompactResourceCard><p class="font-medium">{direction === 'rx' ? t('rx') : t('tx')}</p><p>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_packets_per_second : item.tx_packets_per_second), 'pps')}</p><p>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_bytes_per_second : item.tx_bytes_per_second), 'Bps')}</p></CompactResourceCard>{/each}{/snippet}
-		<TableShell><table><caption>{t('workspace.portRates')}</caption><thead><tr><th scope="col">{t('metric')}</th><th scope="col">{t('workspace.pps')}</th><th scope="col">{t('workspace.Bps')}</th></tr></thead><tbody>
-			<tr><th scope="row">{t('rx')}</th><td>{rateLabel(currentRate(item, item.rx_packets_per_second), 'pps')}</td><td>{rateLabel(currentRate(item, item.rx_bytes_per_second), 'Bps')}</td></tr>
-			<tr><th scope="row">{t('tx')}</th><td>{rateLabel(currentRate(item, item.tx_packets_per_second), 'pps')}</td><td>{rateLabel(currentRate(item, item.tx_bytes_per_second), 'Bps')}</td></tr>
+		<ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+			{#snippet cards()}{#each tableView.rows as direction}<CompactResourceCard><p class="font-medium">{direction === 'rx' ? t('rx') : t('tx')}</p><p>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_packets_per_second : item.tx_packets_per_second), 'pps')}</p><p>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_bytes_per_second : item.tx_bytes_per_second), 'Bps')}</p></CompactResourceCard>{/each}{/snippet}
+		<TableShell><table><caption>{t('workspace.portRates')}</caption><thead><tr><TableColumnHeader view={tableView} columnKey="metric" /><TableColumnHeader view={tableView} columnKey="pps" /><TableColumnHeader view={tableView} columnKey="bps" /></tr></thead><tbody>
+			{#each tableView.rows as direction}<tr><th scope="row">{direction === 'rx' ? t('rx') : t('tx')}</th><td>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_packets_per_second : item.tx_packets_per_second), 'pps')}</td><td>{rateLabel(currentRate(item, direction === 'rx' ? item.rx_bytes_per_second : item.tx_bytes_per_second), 'Bps')}</td></tr>{/each}
 		</tbody></table></TableShell>
 		</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 	</section>
 {/snippet}
 
@@ -58,12 +68,16 @@
 			<p class="text-xs text-ink-2">{t('workspace.flowNotice')}</p>
 			<dl class="metadata"><div><dt>{t('workspace.reportingHost')}</dt><dd>{edge.flow.reporting_host_id}</dd></div><div><dt>{t('nic')}</dt><dd>{edge.flow.interface}</dd></div><div><dt>{t('captured')}</dt><dd>{timestamp(edge.flow.captured_at)}</dd></div><div><dt>{t('workspace.measurement')}</dt><dd>{t('workspace.skb')}</dd></div></dl>
 			<p class="text-xs">{t(edge.receiverOnly ? 'workspace.receiver' : 'workspace.sender')} · {windowLabel(edge.flow.window_seconds)}</p>
-			<ResponsiveTable>
-				{#snippet cards()}{#each flowObservations as row (row.id)}<CompactResourceCard><div data-observation-id={row.id}><p class="font-medium">{row.reporting_host_id} · {row.interface}</p>{#if row.id === selectedFlow.id}<p>{t('workspace.drawn')}</p>{/if}</div><p>{t(row.direction === 'egress' ? 'workspace.sender' : 'workspace.receiver')} · {t(`state.${ctrl.verified ? row.state : 'stale'}`)}</p><p>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.packets_per_second : null, 'pps')} · {rateLabel(ctrl.verified && row.state === 'fresh' ? row.bytes_per_second : null, 'Bps')}</p>{#snippet details()}<p>{t('workspace.skb')}</p><p>{windowLabel(row.window_seconds)} · {timestamp(row.captured_at)}</p>{#if row.reason}<p>{t(`workspace.reason.${row.reason}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
-			<TableShell><table><caption>{t('workspace.observations')}</caption><thead><tr><th scope="col">{t('workspace.reportingHost')}</th><th scope="col">{t('nic')}</th><th scope="col">{t('workspace.direction')}</th><th scope="col">{t('workspace.pps')}</th><th scope="col">{t('workspace.Bps')}</th><th scope="col">{t('workspace.measurement')}</th></tr></thead>
-				<tbody>{#each flowObservations as row (row.id)}<tr data-observation-id={row.id}><th scope="row">{row.reporting_host_id}{#if row.id === selectedFlow.id}<p class="text-xs">{t('workspace.drawn')}</p>{/if}</th><td>{row.interface}</td><td>{t(row.direction === 'egress' ? 'workspace.sender' : 'workspace.receiver')}</td><td>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.packets_per_second : null, 'pps')}</td><td>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.bytes_per_second : null, 'Bps')}</td><td>{t(`state.${ctrl.verified ? row.state : 'stale'}`)}{#if row.reason}<p class="text-xs">{t(`workspace.reason.${row.reason}`)}</p>{/if}<p class="text-xs">{windowLabel(row.window_seconds)}</p><p class="text-xs">{timestamp(row.captured_at)}</p></td></tr>{/each}</tbody>
+			<ObservationTable model={observationView1}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+				{#snippet cards()}{#each tableView.rows as row (row.id)}<CompactResourceCard><div data-observation-id={row.id}><p class="font-medium">{row.reporting_host_id} · {row.interface}</p>{#if row.id === selectedFlow.id}<p>{t('workspace.drawn')}</p>{/if}</div><p>{t(row.direction === 'egress' ? 'workspace.sender' : 'workspace.receiver')} · {t(`state.${ctrl.verified ? row.state : 'stale'}`)}</p><p>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.packets_per_second : null, 'pps')} · {rateLabel(ctrl.verified && row.state === 'fresh' ? row.bytes_per_second : null, 'Bps')}</p>{#snippet details()}<p>{t('workspace.skb')}</p><p>{windowLabel(row.window_seconds)} · {timestamp(row.captured_at)}</p>{#if row.reason}<p>{t(`workspace.reason.${row.reason}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
+			<TableShell><table><caption>{t('workspace.observations')}</caption><thead><tr><TableColumnHeader view={tableView} columnKey="host" /><TableColumnHeader view={tableView} columnKey="nic" /><TableColumnHeader view={tableView} columnKey="direction" /><TableColumnHeader view={tableView} columnKey="pps" /><TableColumnHeader view={tableView} columnKey="bps" /><TableColumnHeader view={tableView} columnKey="measurement" /></tr></thead>
+				<tbody>{#each tableView.rows as row (row.id)}<tr data-observation-id={row.id}><th scope="row">{row.reporting_host_id}{#if row.id === selectedFlow.id}<p class="text-xs">{t('workspace.drawn')}</p>{/if}</th><td>{row.interface}</td><td>{t(row.direction === 'egress' ? 'workspace.sender' : 'workspace.receiver')}</td><td>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.packets_per_second : null, 'pps')}</td><td>{rateLabel(ctrl.verified && row.state === 'fresh' ? row.bytes_per_second : null, 'Bps')}</td><td>{t(`state.${ctrl.verified ? row.state : 'stale'}`)}{#if row.reason}<p class="text-xs">{t(`workspace.reason.${row.reason}`)}</p>{/if}<p class="text-xs">{windowLabel(row.window_seconds)}</p><p class="text-xs">{timestamp(row.captured_at)}</p></td></tr>{/each}</tbody>
 			</table></TableShell>
 			</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 		{/if}
 		{#if edge.link}
 			<p class="text-xs text-ink-2">{t('workspace.physicalNotice')}</p>
@@ -80,11 +94,15 @@
 		{#if !devicePorts.length}<Alert tone="info">{t('workspace.portUnknown')}</Alert>{/if}
 	{/if}
 	{#if port}{@render portMetrics(port)}{/if}
-	{#if device && !port && devicePorts.length}<ResponsiveTable>
-		{#snippet cards()}{#each devicePorts as item (item.id)}<CompactResourceCard><Button variant="ghost" onclick={() => onselect({ kind: 'node', id: `port:${item.id}` })}>{item.name}</Button><p>{t('operstate')}: {t(`workspace.operstate.${item.operstate}`)} · {t(`state.${ctrl.verified ? item.state : 'stale'}`)}</p><dl class="grid grid-cols-2 gap-2"><div><dt>{t('rx')}</dt><dd>{rateLabel(currentRate(item, item.rx_packets_per_second), 'pps')}</dd></div><div><dt>{t('tx')}</dt><dd>{rateLabel(currentRate(item, item.tx_packets_per_second), 'pps')}</dd></div></dl>{#snippet details()}<p>{t('rx')}: {rateLabel(currentRate(item, item.rx_bytes_per_second), 'Bps')}</p><p>{t('tx')}: {rateLabel(currentRate(item, item.tx_bytes_per_second), 'Bps')}</p><p>{windowLabel(item.window_seconds)}</p>{#if item.reason}<p>{t(`workspace.reason.${item.reason}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
-		<TableShell><table><caption>{t('workspace.ports')}</caption><thead><tr><th scope="col">{t('port')}</th><th scope="col">{t('operstate')}</th><th scope="col">{t('rx')}</th><th scope="col">{t('tx')}</th><th scope="col">{t('workspace.measurement')}</th></tr></thead><tbody>
-		{#each devicePorts as item (item.id)}<tr><th scope="row"><Button variant="ghost" onclick={() => onselect({ kind: 'node', id: `port:${item.id}` })}>{item.name}</Button></th><td>{t(`workspace.operstate.${item.operstate}`)}</td><td>{rateLabel(currentRate(item, item.rx_packets_per_second), 'pps')}<p>{rateLabel(currentRate(item, item.rx_bytes_per_second), 'Bps')}</p></td><td>{rateLabel(currentRate(item, item.tx_packets_per_second), 'pps')}<p>{rateLabel(currentRate(item, item.tx_bytes_per_second), 'Bps')}</p></td><td>{t(`state.${ctrl.verified ? item.state : 'stale'}`)}{#if item.reason}<p>{t(`workspace.reason.${item.reason}`)}</p>{/if}<p>{windowLabel(item.window_seconds)}</p></td></tr>{/each}
-	</tbody></table></TableShell></ResponsiveTable>{/if}
+	{#if device && !port}<ObservationTable model={observationView2}>
+{#snippet children(tableView)}
+<ResponsiveTable>
+		{#snippet cards()}{#each tableView.rows as item (item.id)}<CompactResourceCard><Button variant="ghost" onclick={() => onselect({ kind: 'node', id: `port:${item.id}` })}>{item.name}</Button><p>{t('operstate')}: {t(`workspace.operstate.${item.operstate}`)} · {t(`state.${ctrl.verified ? item.state : 'stale'}`)}</p><dl class="grid grid-cols-2 gap-2"><div><dt>{t('rx')}</dt><dd>{rateLabel(currentRate(item, item.rx_packets_per_second), 'pps')}</dd></div><div><dt>{t('tx')}</dt><dd>{rateLabel(currentRate(item, item.tx_packets_per_second), 'pps')}</dd></div></dl>{#snippet details()}<p>{t('rx')}: {rateLabel(currentRate(item, item.rx_bytes_per_second), 'Bps')}</p><p>{t('tx')}: {rateLabel(currentRate(item, item.tx_bytes_per_second), 'Bps')}</p><p>{windowLabel(item.window_seconds)}</p>{#if item.reason}<p>{t(`workspace.reason.${item.reason}`)}</p>{/if}{/snippet}</CompactResourceCard>{/each}{/snippet}
+		<TableShell><table><caption>{t('workspace.ports')}</caption><thead><tr><TableColumnHeader view={tableView} columnKey="port" /><TableColumnHeader view={tableView} columnKey="state" /><TableColumnHeader view={tableView} columnKey="rx" /><TableColumnHeader view={tableView} columnKey="tx" /><TableColumnHeader view={tableView} columnKey="measurement" /></tr></thead><tbody>
+		{#each tableView.rows as item (item.id)}<tr><th scope="row"><Button variant="ghost" onclick={() => onselect({ kind: 'node', id: `port:${item.id}` })}>{item.name}</Button></th><td>{t(`workspace.operstate.${item.operstate}`)}</td><td>{rateLabel(currentRate(item, item.rx_packets_per_second), 'pps')}<p>{rateLabel(currentRate(item, item.rx_bytes_per_second), 'Bps')}</p></td><td>{rateLabel(currentRate(item, item.tx_packets_per_second), 'pps')}<p>{rateLabel(currentRate(item, item.tx_bytes_per_second), 'Bps')}</p></td><td>{t(`state.${ctrl.verified ? item.state : 'stale'}`)}{#if item.reason}<p>{t(`workspace.reason.${item.reason}`)}</p>{/if}<p>{windowLabel(item.window_seconds)}</p></td></tr>{/each}
+	</tbody></table></TableShell></ResponsiveTable>
+{/snippet}
+</ObservationTable>{/if}
 	{#if adjacent.length}<section class="space-y-2"><h3 class="font-semibold">{t('workspace.related')}</h3>{#each adjacent as item (item.id)}<Button variant="ghost" class="w-full" onclick={() => onselect({ kind: 'edge', id: item.id })}>{edgeLabel(item, graph, 'pps')}</Button>{/each}</section>{/if}
 	{#if node && (node.kind === 'gap' || node.kind === 'router' || node.kind === 'destination')}<p class="text-xs text-ink-2">{t('traceNotice')} {node.kind === 'gap' ? t('network.gapHelp') : t('network.shared')}</p>{/if}
 	{#if host}

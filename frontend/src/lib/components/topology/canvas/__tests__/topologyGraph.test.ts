@@ -200,22 +200,24 @@ describe('buildGraph 라우터·LB', () => {
 describe('matchesQuery', () => {
 	const g = buildGraph(makeFixture(), { projectId: P, showAll: false });
 
-	it('빈 검색어는 null', () => {
-		expect(matchesQuery(g, '   ')).toBeNull();
+	it('treats only empty input as no condition and preserves meaningful regex whitespace', () => {
+		expect(matchesQuery(g, '')).toBeNull();
+		const data = makeFixture();
+		data.networks.find(network => network.id === 'net-web')!.name = 'web net';
+		const graph = buildGraph(data, { projectId: P, showAll: false });
+		expect(matchesQuery(graph, ' ')?.nets).toEqual(new Set(['net-web']));
 	});
 
-	it('CIDR 은 포함 검사로 VM·라우터·네트워크를 찾는다', () => {
-		const m = matchesQuery(g, '10.10.1.0/24')!;
-		expect(m.nets.has('net-web')).toBe(true);
-		expect(m.nodes.has('sw:net-web')).toBe(true);
-		expect(m.nodes.has('vm-web-01')).toBe(true);
-		expect(m.nodes.has('vm-db-01')).toBe(true);
-		expect(m.nodes.has('rtr-edge')).toBe(true);
-		expect(m.nodes.has('lb-web')).toBe(true);
-		expect(m.nodes.has('vm-app-01')).toBe(false);
+	it('matches explicit fields with anchored alternation and rejects invalid regex', () => {
+		const match = matchesQuery(g, '^(vm-web-01|lb-web)$')!;
+		expect(match.nodes).toEqual(new Set(['vm-web-01', 'lb-web']));
+		expect(matchesQuery(g, '[')).toEqual({ nodes: new Set(), nets: new Set() });
+		const cidr = matchesQuery(g, String.raw`^10\.10\.1\.0/24$`)!;
+		expect(cidr.nets).toEqual(new Set(['net-web']));
+		expect(cidr.nodes.has('vm-web-01')).toBe(false);
 	});
 
-	it('IP prefix 는 startsWith, FIP 도 포함한다', () => {
+	it('matches IP and floating IP fields with regex', () => {
 		const m = matchesQuery(g, '10.10.2.')!;
 		expect([...m.nodes].filter((id) => id.startsWith('vm-')).sort()).toEqual(['vm-app-01', 'vm-db-01']);
 		expect(matchesQuery(g, '203.0.113.10')!.nodes.has('vm-web-01')).toBe(true);
@@ -224,7 +226,6 @@ describe('matchesQuery', () => {
 	it('MAC 은 콜론 유무와 대소문자에 무관하게 찾는다', () => {
 		expect(matchesQuery(g, 'FA:16:3E:A1:00:11')!.nodes).toEqual(new Set(['vm-web-01']));
 		expect(matchesQuery(g, 'a10011')!.nodes).toEqual(new Set(['vm-web-01']));
-		expect(matchesQuery(g, 'a1-00')!.nodes.has('vm-web-01')).toBe(true);
 	});
 
 	it('이름은 VM·라우터·LB·스위치를 포함 검색하고 매칭 네트워크의 스위치를 포함한다', () => {

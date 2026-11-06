@@ -16,9 +16,6 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 		setBoost: vi.fn(),
 	}),
 }));
-vi.mock('$lib/components/admin/instances/AdminInstanceTable.svelte', async () => ({
-	default: (await import('./_AdminInstanceTableProbe.svelte')).default,
-}));
 
 import Page from '../+page.svelte';
 
@@ -83,10 +80,11 @@ describe('admin instance marker generation', () => {
 			return Promise.resolve([]);
 		});
 
-		const { container } = render(Page);
+		render(Page);
 		expect(await screen.findByText('First page instance')).toBeTruthy();
-		const selector = container.querySelector<HTMLSelectElement>('#admin-instance-sort')!;
-		expect(selector.value).toBe('created_desc');
+		const nameSort = (direction: 'none' | 'ascending' | 'descending') => screen.getByRole('button', {
+			name: commonT('table.sortColumn', { column: t('instances.table.name'), direction: commonT(`table.${direction}`) }),
+		});
 		await fireEvent.click(screen.getByRole('button', { name: commonT('pagination.next') }));
 		expect(await screen.findByText('Second page instance')).toBeTruthy();
 		expect(screen.getByText(commonT('pagination.page', { page: 2 }))).toBeTruthy();
@@ -96,10 +94,10 @@ describe('admin instance marker generation', () => {
 		const signal = prefetched[3].signal as AbortSignal;
 		expect(signal.aborted).toBe(false);
 
-		await fireEvent.change(selector, { target: { value: 'name_asc' } });
+		await fireEvent.click(nameSort('none'));
 		expect(signal.aborted).toBe(true);
 		expect(mockGet.mock.calls.at(-1)![0]).toBe('/api/v1/admin/all-instances?limit=20&sort=name_asc');
-		await fireEvent.change(selector, { target: { value: 'name_desc' } });
+		await fireEvent.click(nameSort('ascending'));
 		latestSort.resolve({ items: [{ id: 'new', name: 'Latest sorted instance' }], next_marker: 'latest-marker' });
 		expect(await screen.findByText('Latest sorted instance')).toBeTruthy();
 		expect(screen.getByText(commonT('pagination.page', { page: 1 }))).toBeTruthy();
@@ -112,6 +110,6 @@ describe('admin instance marker generation', () => {
 		await fireEvent.click(screen.getByTitle(commonT('autoRefresh.refreshNow')));
 		await vi.waitFor(() => expect(listRequests()).toHaveLength(beforeRefresh + 1));
 		expect(listRequests().at(-1)![0]).toBe('/api/v1/admin/all-instances?limit=20&sort=name_desc');
-		expect(selector.value).toBe('name_desc');
+		expect(nameSort('descending')).toBeTruthy();
 	});
 });

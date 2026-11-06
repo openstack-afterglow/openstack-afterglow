@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { untrack } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import { auth, authReady, logoutInProgress, projectSwitching } from '$lib/stores/auth';
@@ -86,7 +91,7 @@
 		const loggingOut = $logoutInProgress; const switching = $projectSwitching;
 		untrack(() => {
 			controller?.abort(); selected = null; confirmation = ''; submitting = false;
-			inventory = null; outcomes = {}; notice = null; error = ''; loading = false;
+			inventory = null; outcomes = {}; notice = null; error = ''; loading = false; tableSearch = ''; tableView.reset();
 			scope = target && domain && validKind(category) && !loggingOut && !switching
 				? { project: target, domain, kind: category, revision } : null;
 			if (scope && ready) void load(scope);
@@ -153,6 +158,12 @@
 			selected = null; confirmation = ''; inventory = null;
 		} finally { if (scope === target) submitting = false; }
 	}
+	let tableSearch = $state('');
+	const tableView = createTableView<Resource>({ rows: () => inventory?.resources ?? [], locale: () => intlLocale(), search: () => tableSearch, columns: () => [
+		{ key: 'name', label: t('form.name'), value: row => row.name },
+		{ key: 'id', label: t('credentials.id'), value: row => row.id },
+		{ key: 'status', label: t('projectDetail.status'), value: row => row.status }
+	] });
 </script>
 
 <PageShell class="space-y-5">
@@ -176,6 +187,7 @@
 		</Field></div>
 		<Button variant="secondary" class="min-h-11" disabled={!ready || !scope || loading || submitting} onclick={() => { if (scope) { selected = null; confirmation = ''; void load(scope, true); } }}>{t('resourceMonitor.refresh')}</Button>
 	</div>
+	<RegexSearch id={`${id}-search`} bind:value={tableSearch} /><TableViewControls view={tableView} class="" />
 	{#if ready}
 		{#if notice}<Alert tone="warning">{t(`resourceMonitor.${notice}`)}</Alert>{/if}
 		{#if error}<Alert tone="danger">{error}</Alert>{/if}
@@ -188,7 +200,7 @@
 				<p class="text-sm text-ink-2" role="status">{t('resourceMonitor.count', { count: inventory.count ?? 0 })}</p>
 				{#if inventory.resources.length === 0}<p class="text-sm text-ink-2">{t('resourceMonitor.empty')}</p>{/if}
 				<ul aria-label={t('resourceMonitor.list')} class="divide-y divide-line rounded-lg border border-line bg-surface-base">
-					{#each inventory.resources as resource (resource.id)}
+					{#each tableView.rows as resource (resource.id)}
 						<li class="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
 							<div class="min-w-0 space-y-1">
 								{#if resource.name}<p class="break-words text-sm font-medium">{resource.name}</p>{/if}

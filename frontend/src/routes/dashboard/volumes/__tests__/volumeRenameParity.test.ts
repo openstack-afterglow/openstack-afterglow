@@ -19,6 +19,9 @@ vi.mock('$lib/api/client', () => {
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project-a', isSystemAdmin: false }),
 	canWrite: writable(true),
+	authReady: writable(true),
+	projectSwitching: writable(false),
+	getAuthVerificationEpoch: () => 1,
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (refresh: (force: boolean) => Promise<void>) => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60], refresh: () => refresh(true) }),

@@ -1,8 +1,8 @@
 import { t } from '$lib/i18n/ns/admin-identity';
-import type { ManagedRole, RoleSort, SortDirection } from './types';
+import type { ManagedRole } from './types';
+import type { TableColumn } from '$lib/utils/tableView.svelte';
 import { isRetiredRole } from '$lib/utils/roleCatalog';
 
-const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const coreRank: Record<string, number | undefined> = { admin: 0, manager: 1, member: 2, reader: 3 };
 
 function privilegeRank(name: string): number | undefined {
@@ -10,20 +10,28 @@ function privilegeRank(name: string): number | undefined {
 	return Object.hasOwn(coreRank, normalized) ? coreRank[normalized] : undefined;
 }
 
-export function matchesRole(role: ManagedRole, query: string): boolean {
-	const term = query.trim().toLocaleLowerCase();
-	return !term || [role.name, role.id, role.description].some((value) => value.toLocaleLowerCase().includes(term));
-}
-
-export function sortRoles(roles: readonly ManagedRole[], key: RoleSort, direction: SortDirection): ManagedRole[] {
-	const sign = direction === 'asc' ? 1 : -1;
-	return [...roles].sort((a, b) => {
-		const comparison = key === 'inheritance'
-			? a.inherited_role_ids.length - b.inherited_role_ids.length
-			: collator.compare(a[key], b[key]);
-		// ID tie-break keeps equal/case-folded names stable across provider reordering.
-		return comparison * sign || collator.compare(a.id, b.id) || a.id.localeCompare(b.id);
-	});
+export function roleColumns(): TableColumn<ManagedRole>[] {
+	const kindLabels: Record<string, string> = {
+		retired: t('roleBadges.retired'), protected: t('roleBadges.protected'), system_only: t('roleBadges.systemOnly'),
+	};
+	return [
+		{ key: 'name', label: t('form.name'), value: (role) => role.name },
+		{ key: 'id', label: 'ID', value: (role) => role.id },
+		{ key: 'kind', label: t('rolePage.columns.kind'), value: (role) => [
+			isRetiredRole(role) ? 'retired' : '',
+			role.protected ? 'protected' : '',
+			role.system_only ? 'system_only' : '',
+		].filter(Boolean).join(' · ') || null, filterValues: (role) => [
+			...(isRetiredRole(role) ? ['retired'] : []),
+			...(role.protected ? ['protected'] : []),
+			...(role.system_only ? ['system_only'] : []),
+		], format: (value) => value == null ? '' : String(value).split(' · ').map((kind) => kindLabels[kind] ?? kind).join(' · ') },
+		{ key: 'children', label: t('rolePage.columns.directChildren'), value: (role) => role.implied_role_ids.length },
+		{ key: 'inheritance', label: t('rolePage.columns.inherited'), value: (role) => role.inherited_role_ids.length },
+		{ key: 'parents', label: t('rolePage.columns.directParents'), value: (role) => role.parent_role_ids.length },
+		{ key: 'description', label: t('form.description'), value: (role) => role.description },
+		{ key: 'domain', label: t('projectDetail.domainId'), value: (role) => role.domain_id ?? t('roleDetail.global') },
+	];
 }
 
 export interface RoleGraph {
@@ -105,13 +113,14 @@ export interface RoleTreeRow {
 }
 
 /** Expand each role once; shared children still appear under every direct parent. */
-export function roleTreeRows(roles: readonly ManagedRole[], query: string, key: RoleSort, direction: SortDirection): RoleTreeRow[] {
-	const ordered = sortRoles(roles, key, direction);
-	const graph = buildRoleGraph(ordered);
+export function roleTreeRows(
+	roles: readonly ManagedRole[],
+	ordered: readonly ManagedRole[],
+	matchingIds: ReadonlySet<string>,
+): RoleTreeRow[] {
+	const graph = buildRoleGraph(roles);
 	const visible = new Set<string>();
-	for (const role of ordered) {
-		if (matchesRole(role, query)) for (const id of graph.reachable(role.id, true)) visible.add(id);
-	}
+	for (const id of matchingIds) for (const ancestor of graph.reachable(id, true)) visible.add(ancestor);
 	const position = new Map(ordered.map((role, index) => [role.id, index]));
 	const expanded = new Set<string>();
 	const rows: RoleTreeRow[] = [];
@@ -125,7 +134,7 @@ export function roleTreeRows(roles: readonly ManagedRole[], query: string, key: 
 			const cycle = path.has(role.id);
 			const shared = expanded.has(role.id);
 			rows.push({ key: parent ? `${parent.id}->${role.id}` : `root:${role.id}`, role, parent, depth,
-				kind: cycle ? 'cycle' : shared ? 'shared' : parent ? 'edge' : rootless ? 'component' : 'root', matches: matchesRole(role, query) });
+				kind: cycle ? 'cycle' : shared ? 'shared' : parent ? 'edge' : rootless ? 'component' : 'root', matches: matchingIds.has(role.id) });
 			if (cycle || shared) continue;
 			expanded.add(role.id);
 			const nextPath = new Set(path).add(role.id);

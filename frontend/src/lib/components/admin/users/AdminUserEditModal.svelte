@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
   import { onMount, untrack } from 'svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -175,6 +179,7 @@
     const callerEpoch = ownerEpoch;
     untrack(() => {
       scope = selectedId && user?.domain_id === selectedDomain ? { userId: selectedId, domainId: selectedDomain, ownerKey: callerOwner, projectId: callerProject, ownerEpoch: callerEpoch } : null;
+      sessionsView.reset(); permissionsView.reset(); sessionsSearch = ''; permissionsSearch = '';
       name = selectedName;
       email = selectedEmail;
       enabled = selectedEnabled;
@@ -265,6 +270,21 @@
   }
 
   function close() { if (!resettingPassword) user = null; }
+  const viewUid = $props.id();
+  let sessionsSearch = $state('');
+  let permissionsSearch = $state('');
+  const sessionsView = createTableView<AdminSession>({ rows: () => sessions, locale: () => intlLocale(), search: () => sessionsSearch, columns: () => [
+    { key: 'originIp', label: t('userEdit.originIp'), value: row => row.origin_ip },
+    { key: 'device', label: t('userEdit.device'), value: row => deviceLabel(row) },
+    { key: 'lastUsed', label: t('userEdit.lastUsed'), value: row => row.last_seen },
+    { key: 'status', label: t('userEdit.status'), value: row => row.blacklisted ? t('userEdit.blocked') : t('userEdit.enabled') }
+  ] });
+  const permissionsView = createTableView<UserPermission>({ rows: () => permissions, locale: () => intlLocale(), search: () => permissionsSearch, columns: () => [
+    { key: 'scope', label: t('userEdit.permissionsTitle'), value: row => row.scope_name },
+    { key: 'type', label: t('userEdit.domainScope'), value: row => t(scopeLabels[row.scope_type]) },
+    { key: 'id', label: t('userTable.id'), value: row => row.scope_id },
+    { key: 'roles', label: t('projectDetail.role'), value: row => row.roles.map(role => role.name).join(', ') }
+  ] });
 </script>
 
 {#snippet passwordHint(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
@@ -322,6 +342,7 @@
         <section aria-labelledby="admin-user-permissions-title" aria-busy={permissionsStatus === 'loading'} class="min-w-0">
           <h3 id="admin-user-permissions-title" class="text-sm font-medium text-ink-0 mb-2">{t('userEdit.permissionsTitle')}</h3>
           <p class="text-xs text-ink-2 mb-3">{t('userEdit.permissionsHelp')}</p>
+          <RegexSearch id={`${viewUid}-permissions`} bind:value={permissionsSearch} /><TableViewControls view={permissionsView} class="" />
           {#if permissionsStatus === 'loading'}
             <LoadingState variant="inline" label={t('userEdit.permissionsLoading')} />
           {:else if permissionsStatus === 'error'}
@@ -331,7 +352,7 @@
             <p class="text-xs text-ink-2">{t('userEdit.noPermissions')}</p>
           {:else}
             <ul class="space-y-3">
-              {#each permissions as permission (`${permission.scope_type}:${permission.scope_id}`)}
+              {#each permissionsView.rows as permission (`${permission.scope_type}:${permission.scope_id}`)}
                 <li class="bg-surface-sunken border border-line rounded-lg p-3 min-w-0">
                   <p class="text-xs text-ink-2">{t(scopeLabels[permission.scope_type])}</p>
                   <p class="text-sm font-medium text-ink-0 [overflow-wrap:anywhere]">{permission.scope_name}</p>
@@ -354,6 +375,7 @@
               <span class="text-xs text-ink-2">{t('userEdit.sessionCount', { count: sessions.length })}</span>
             {/if}
           </div>
+          <RegexSearch id={`${viewUid}-sessions`} bind:value={sessionsSearch} /><TableViewControls view={sessionsView} />
           {#if loadingSessions}
             <LoadingState variant="inline" label={t('userEdit.loading')} />
           {:else if sessionsError}
@@ -362,7 +384,7 @@
           {:else if sessions.length > 0}
             <ResponsiveTable>
               {#snippet cards()}
-                {#each sessions as sess (sess.jti)}
+                {#each sessionsView.rows as sess (sess.jti)}
                   <CompactResourceCard>
                     <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{deviceLabel(sess)}</strong><Pill tone={sess.blacklisted ? 'danger' : 'success'}>{sess.blacklisted ? t('userEdit.blocked') : t('userEdit.enabled')}</Pill></div>
                     <dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('userEdit.originIp')}</dt><dd class="break-all font-mono">{sess.origin_ip || '—'}</dd></div><div><dt class="text-ink-2">{t('userEdit.lastUsed')}</dt><dd>{formatSessionTime(sess.last_seen)}</dd></div></dl>
@@ -373,14 +395,14 @@
               <table class="w-full text-xs">
                 <thead>
                   <tr class="border-b border-line-2 text-ink-2 uppercase tracking-wide text-xs">
-                    <th class="text-left py-1 pr-3">{t('userEdit.originIp')}</th>
-                    <th class="text-left py-1 pr-3">{t('userEdit.device')}</th>
-                    <th class="text-left py-1 pr-3">{t('userEdit.lastUsed')}</th>
-                    <th class="text-left py-1">{t('userEdit.status')}</th>
+<TableColumnHeader view={sessionsView} columnKey="originIp" />
+<TableColumnHeader view={sessionsView} columnKey="device" />
+<TableColumnHeader view={sessionsView} columnKey="lastUsed" />
+<TableColumnHeader view={sessionsView} columnKey="status" />
                   </tr>
                 </thead>
                 <tbody>
-                  {#each sessions as sess (sess.jti)}
+                  {#each sessionsView.rows as sess (sess.jti)}
                     <tr class="border-b border-line/50">
                       <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
                       <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>

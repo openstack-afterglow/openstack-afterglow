@@ -15,6 +15,7 @@
 	import type { Network } from '$lib/types/networks';
 	import { toast } from '$lib/stores/toast';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
 	const id = $derived($page.params.id);
 
@@ -136,15 +137,20 @@
 			saving = false;
 		}
 	}
+	provideTableViewVisibility(() => !error && !loading && router?.id === id);
 </script>
 
 <!-- loading은 첫 조회에만 켜지므로 섹션 진입은 최초 도착에서만 재생된다. -->
 <PageShell class="motion-stagger text-ink-1">
-	{#if loading}
-		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('routers.title') })}  />
-	{:else if error}
+	{#if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
-	{:else if router}
+	{/if}
+	{#if loading && !router}
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('routers.title') })} />
+	{/if}
+	{#if router}
+	{#key `${projectId ?? ''}:${router.id}`}
+	<div hidden={Boolean(error) || loading}>
 		<RouterDetailWithRefreshHeader
 			{router}
 			{saving}
@@ -172,5 +178,7 @@
 			onAdd={addInterface}
 			onRemove={removeInterface}
 		/>
+	</div>
+	{/key}
 	{/if}
 </PageShell>

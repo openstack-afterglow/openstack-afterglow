@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { onDestroy, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
@@ -112,6 +117,22 @@
 	function number(value: number) { return value === -1 ? t('unlimited') : new Intl.NumberFormat(intlLocale()).format(value); }
 	function date(value: string) { const time = new Date(value); return Number.isNaN(time.getTime()) ? value : new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(time); }
 	$effect(() => { void epoch; void adminMode; void session; void blocked; untrack(() => { reset(); if (allowed()) void load(); }); });
+	let tableSearch = $state('');
+	const tableState = $state<import('$lib/utils/tableView.svelte').TableViewState>({ sort: null, filters: {} });
+	const tableView = createTableView<GpuQuotaRequest>({ rows: () => rows, locale: () => intlLocale(), search: () => tableSearch, state: tableState, columns: () => [
+		{ key: 'profile', label: t('profile'), value: row => row.gpu_profile_name },
+		{ key: 'project', label: t('project'), value: row => row.project_id },
+		{ key: 'domain', label: t('domain'), value: row => row.domain_id },
+		{ key: 'status', label: tc('table.status'), value: row => t(row.status),
+			filterMode: 'single',
+			filterOptions: () => (['pending', 'fulfilled', 'rejected'] as const).map(value => ({ value, label: t(value), count: null })),
+			filterSelection: () => status === 'all' ? null : [status],
+			onFilterChange: values => { const next = values?.[0]; const selected: GpuQuotaRequestFilter = next === 'pending' || next === 'fulfilled' || next === 'rejected' ? next : 'all'; if (selected !== status && !loading && !busy && allowed()) { status = selected; void load(); } } },
+		{ key: 'additional', label: t('additional'), value: row => row.additional },
+		{ key: 'target', label: t('targetLabel'), value: row => row.target_limit },
+		{ key: 'created', label: t('created'), value: row => row.created_at }
+	] });
+	$effect(() => { void epoch; void adminMode; void session; void blocked; untrack(() => { tableSearch = ''; tableState.sort = null; tableState.filters = {}; }); });
 </script>
 
 <Card class="mb-6 min-w-0">
@@ -142,11 +163,12 @@
 				</form>
 			{/if}
 		{/if}
-		<div class="border-t border-line pt-4"><Field for={`${uid}-status`} label={t('history')}><SelectInput id={`${uid}-status`} bind:value={status} disabled={busy || loading || !allowed()} onchange={() => load()}>{#each ['pending', 'fulfilled', 'rejected', 'all'] as filter}<option value={filter}>{t(filter as GpuQuotaRequestFilter)}</option>{/each}</SelectInput></Field></div>
+		<RegexSearch id={`${uid}-search`} bind:value={tableSearch} /><TableViewControls view={tableView} class="" />
+		<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
 		{#if loading}<LoadingState variant="section" label={t('loading')}  />{:else if loaded && allowed()}
 			{#if !rows.length}<p class="text-sm text-ink-2">{t('empty')}</p>{:else}
 				<ul class="divide-y divide-line">
-					{#each rows as row (row.id)}
+					{#each tableView.rows as row (row.id)}
 						<li class="min-w-0 space-y-3 py-4">
 							<div class="flex flex-wrap items-center gap-2"><h3 class="min-w-0 break-all text-sm font-semibold text-ink-0">{row.gpu_profile_name}</h3><Pill tone={row.status === 'pending' ? 'warning' : row.status === 'fulfilled' ? 'success' : 'neutral'}>{t(row.status)}</Pill></div>
 							<dl class="grid min-w-0 grid-cols-1 gap-2 text-sm md:grid-cols-2"><div><dt class="text-ink-2">{t('project')}</dt><dd class="break-all"><code>{row.project_id}</code></dd></div><div><dt class="text-ink-2">{t('domain')}</dt><dd class="break-all"><code>{row.domain_id}</code></dd></div><div><dt class="text-ink-2">{t('additional')}</dt><dd class="tabular-nums">{number(row.additional)}</dd></div><div><dt class="text-ink-2">{t('targetLabel')}</dt><dd class="tabular-nums">{number(row.baseline_limit)} → {number(row.target_limit)}</dd></div></dl>

@@ -249,6 +249,30 @@ describe('VM tour engine behavior', () => {
 });
 
 
+describe('image inventory tutorial behavior', () => {
+	it.each(['images', 'admin-images'] as const)('waits for %s inventory and completes without invoking upload', async (tourId) => {
+		const route = tourId === 'images' ? '/dashboard/compute/images' : '/admin/images';
+		window.history.replaceState({}, '', route);
+		document.body.innerHTML = `<div data-tour="${tourId}-header"><button>upload</button></div>`;
+		const upload = vi.fn();
+		document.querySelector('button')!.addEventListener('click', upload);
+		const complete = vi.fn();
+		window.addEventListener('afterglow:tour-complete', complete, { once: true });
+		await startTour(tourId);
+		driverHarness.options().onNextClick();
+		expect(driverHarness.highlight).toHaveBeenCalledTimes(1);
+		document.body.insertAdjacentHTML('beforeend', `<div data-tour="${tourId}-controls"></div><div data-tour="${tourId}-ready"></div><div data-tour="${tourId}-results"></div>`);
+		await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId, stepIndex: 1 }));
+		await vi.waitFor(() => expect(driverHarness.highlight).toHaveBeenCalledTimes(2));
+		driverHarness.options().onNextClick();
+		await vi.waitFor(() => expect(readPersistedTour()).toEqual({ tourId, stepIndex: 2 }));
+		driverHarness.options().onNextClick();
+		await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+		expect(readPersistedTour()).toBeNull();
+		expect(upload).not.toHaveBeenCalled();
+	});
+});
+
 describe('administrator tour engine behavior', () => {
 	it('waits for settlement before skipping an empty detail chain and completes', async () => {
 		document.body.innerHTML = `

@@ -119,14 +119,8 @@
 			{#if adminsError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.adminsFailed')}>{adminsError}</Alert>
 			{/if}
-			{#if admins.length === 0}
-				<div class="text-ink-2 text-sm py-12 text-center">
-					{t('systemPage.empty')}
-				</div>
-			{:else}
-				<SystemAdminTable {admins} onRevoked={load} />
-			{/if}
 	{/if}
+	<SystemAdminTable {admins} onRevoked={load} />
 </PageShell>
 
 {#if showGrant}

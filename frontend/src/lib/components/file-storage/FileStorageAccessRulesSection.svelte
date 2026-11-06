@@ -1,4 +1,13 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import type { AccessRule } from '$lib/types/fileStorage';
+ import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+ import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t } from '$lib/i18n/ns/file-storage';
 	import Button from '$lib/components/ui/Button.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -7,6 +16,15 @@
 	import { ResponsiveTable, CompactResourceCard } from '$lib/components/ui';
 
 	const s = useFileStorageDetailController();
+ let { search = $bindable(''), tableState }: { search?: string; tableState: TableViewState } = $props();
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<AccessRule>[]>([
+  { key: 'target', label: t('accessRules.target'), value: row => row.access_to },
+  { key: 'level', label: t('accessRules.permission'), value: row => row.access_level },
+  { key: 'status', label: t('accessRules.status'), value: row => row.state },
+ ]);
+ // Parent retains this object across error-gated remounts; scope resets mutate it in place.
+ const view = createTableView({ state: untrack(() => tableState), locale: intlLocale,rows: () => s.accessRules, columns: () => columns, search: () => search, searchable: row => [row.id, row.access_to, row.access_level, row.state].map(value => String(value ?? ''))});
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
@@ -61,6 +79,9 @@
 		</div>
 	{/if}
 
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class={s.accessRules.length === 0 ? '' : 'lg:hidden'} />
+{#if !s.accessLoading && s.accessRules.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 	{#if s.accessLoading}
 		<div class="flex justify-center py-4"><LoadingState variant="section" label={t('accessRules.loading')} /></div>
 	{:else if s.accessError}
@@ -72,7 +93,7 @@
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each s.accessRules as rule (rule.id)}
+				{#each view.rows as rule (rule.id)}
 					<CompactResourceCard>
 						<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{rule.access_to ?? '-'}</strong><StatusChip status={rule.state || 'unknown'} class="text-xs" /></div>
 						<p class="text-xs text-ink-2">{t('accessRules.permission')}: {rule.access_level}</p>
@@ -88,15 +109,15 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">{t('accessRules.target')}</th>
-						<th class="text-left py-2 pr-4">{t('accessRules.permission')}</th>
-						<th class="text-left py-2 pr-4">{t('accessRules.status')}</th>
+						<TableColumnHeader {view} columnKey="target" />
+						<TableColumnHeader {view} columnKey="level" />
+						<TableColumnHeader {view} columnKey="status" />
 						<th class="text-left py-2 pr-4">{t('accessRules.accessKey')}</th>
 						<th class="text-right py-2"></th>
 					</tr>
 				</thead>
 				<tbody class="motion-stagger">
-					{#each s.accessRules as rule (rule.id)}
+					{#each view.rows as rule (rule.id)}
 						<tr class="border-b border-line/50">
 							<td class="py-2 pr-4 font-mono text-xs text-ink-2">{rule.access_to ?? '-'}</td>
 							<td class="py-2 pr-4">

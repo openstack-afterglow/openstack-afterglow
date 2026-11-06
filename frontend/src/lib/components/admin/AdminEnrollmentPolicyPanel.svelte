@@ -10,6 +10,11 @@
 	import { Alert, Button, Card, Field, SelectInput, TextInput } from '$lib/components/ui';
 	import type { EnrollmentPolicy, EnrollmentPolicyWrite, SignupRequest, SignupRequestFilter, SignupRequestPage } from '$lib/types/enrollmentPolicy';
 	import PersonalQuotaConvergence from './PersonalQuotaConvergence.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { createTableView, type TableViewState } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let { section = 'all' }: { section?: 'all' | 'policy' | 'quotas' | 'requests' } = $props();
 	const uid = $props.id();
@@ -42,6 +47,37 @@
 	let queueNotice = $state('');
 	let policyRead = 0;
 	let queueRead = 0;
+	let queueSearch = $state('');
+	const queuePresentation = $state<TableViewState>({ sort: null, filters: {} });
+	const queueView = createTableView<SignupRequest>({
+		rows: () => authorized ? page?.items ?? [] : [],
+		search: () => queueSearch,
+		state: queuePresentation,
+		columns: () => [
+			{ key: 'email', label: tc('table.email'), value: (row) => row.email },
+			{ key: 'id', label: t('enrollment.requestId'), value: (row) => row.id },
+			{
+				key: 'status', label: t('enrollment.status'), value: (row) => row.status,
+				format: (_value, row) => t(`enrollment.status.${row.status}`),
+				filterMode: 'single',
+				filterOptions: () => filters.filter((status) => status !== 'all').map((status) => ({ value: status, label: t(`enrollment.status.${status}`), count: null })),
+				filterSelection: () => filter === 'all' ? null : [filter],
+				onFilterChange: (values) => {
+					if (!allowed() || decisionId) return;
+					const next = values?.[0] ?? 'all';
+					if (!filters.includes(next as SignupRequestFilter)) return;
+					filter = next as SignupRequestFilter;
+					void loadQueue(null, []);
+				},
+			},
+			{ key: 'source', label: t('enrollment.source'), value: (row) => row.source, format: (_value, row) => t(`enrollment.source.${row.source}`) },
+			{ key: 'domain', label: t('enrollment.domain'), value: (row) => row.domain_id },
+			{ key: 'provider', label: t('enrollment.provider'), value: (row) => row.provider_id },
+			{ key: 'created', label: t('enrollment.created'), value: (row) => row.created_at },
+			{ key: 'reviewed', label: t('enrollment.reviewed'), value: (row) => row.reviewed_at },
+			{ key: 'reviewer', label: t('enrollment.reviewer'), value: (row) => row.reviewed_by_user_id },
+		],
+	});
 
 	function allowed() {
 		const state = get(auth);
@@ -58,11 +94,15 @@
 			current: () => allowed() && epoch === ticket };
 	}
 
-	function clearPrivateState() {
+	function clearPrivateState(preservePresentation = false) {
 		policy = null; page = null; quotas = {}; publicSignup = false; signupButtonVisible = false; approvalMode = 'auto';
 		policyError = ''; policyNotice = ''; queueError = ''; queueNotice = '';
 		saving = false; decisionId = null; policyLoading = false; queueLoading = false;
-		reloadRequired = false; cursor = null; history = []; filter = 'pending';
+		reloadRequired = false; cursor = null; history = [];
+		if (!preservePresentation) {
+			filter = 'pending'; queueSearch = '';
+			queuePresentation.sort = null; queuePresentation.filters = {};
+		}
 	}
 
 	onMount(() => {
@@ -73,13 +113,21 @@
 				state.token, state.projectId, state.isSystemAdmin, get(authReady), get(projectSwitching), get(logoutInProgress)]);
 		};
 		let key = fingerprint();
+		const displayFingerprint = () => {
+			const state = get(auth);
+			return JSON.stringify([sessionScopeKey(state), state.isSystemAdmin, get(authReady), get(projectSwitching), get(logoutInProgress)]);
+		};
+		let displayKey = displayFingerprint();
 		const changed = () => {
 			const next = fingerprint();
 			if (next === key) return;
+			const nextDisplayKey = displayFingerprint();
+			const preservePresentation = nextDisplayKey === displayKey && allowed();
 			key = next;
-			// Synchronous invalidation catches A → B → A even before Svelte flushes.
+			displayKey = nextDisplayKey;
+			// Invalidate credentials and pending work even when retaining display-only conditions.
 			++epoch;
-			clearPrivateState();
+			clearPrivateState(preservePresentation);
 		};
 		const unsubscribers = [auth.subscribe(changed), authReady.subscribe(changed), projectSwitching.subscribe(changed), logoutInProgress.subscribe(changed)];
 		return () => { mounted = false; ++epoch; for (const unsubscribe of unsubscribers) unsubscribe(); };
@@ -260,19 +308,20 @@
 				<Button variant="subtle" onclick={() => loadQueue(null, [])} disabled={!authorized || queueLoading || decisionId !== null}>{t('enrollment.reloadQueue')}</Button>
 			</div>
 			<p>{t('enrollment.mailUnconfirmed')}</p>
-			<Field label={t('enrollment.filter')} for={`${uid}-request-filter`}>
-				<SelectInput id={`${uid}-request-filter`} bind:value={filter} disabled={!authorized || decisionId !== null} onchange={() => loadQueue(null, [])}>
-					{#each filters as status}<option value={status}>{t(`enrollment.status.${status}`)}</option>{/each}
-				</SelectInput>
-			</Field>
+			<fieldset disabled={!authorized || decisionId !== null} aria-label={t('enrollment.filter')}>
+				<RegexSearch id={`${uid}-request-search`} bind:value={queueSearch} />
+				<p>{tc('table.loadedScope')}</p>
+				<TableViewControls view={queueView} class="" />
+			</fieldset>
 			{#if queueError}<Alert tone="danger">{queueError}</Alert>{/if}
 			{#if queueNotice}<Alert tone="success">{queueNotice}</Alert>{/if}
 			{#if queueLoading}<LoadingState variant="section" label={t('enrollment.queueLoading')} />{/if}
 			{#if page && authorized}
 				<p>{t('enrollment.loadedCount', { count: page.items.length })}</p>
 				{#if page.items.length === 0}<p>{t('enrollment.empty')}</p>{/if}
+				{#if page.items.length > 0 && queueView.rows.length === 0}<p>{tc('table.noMatches')}</p>{/if}
 				<ul class="requests">
-					{#each page.items as request (request.id)}
+					{#each queueView.rows as request (request.id)}
 						<li data-request-id={request.id}>
 							<article aria-label={t('enrollment.requestLabel', { email: request.email, id: request.id })}>
 								<h3>{request.email}</h3>

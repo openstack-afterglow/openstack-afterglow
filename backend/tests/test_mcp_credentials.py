@@ -412,7 +412,9 @@ async def test_personal_token_listing_marks_only_selected_lumen_default():
         revoked_at=None,
         client_observations=None,
     )
-    grant_b = SimpleNamespace(**{**grant_a.__dict__, "id": "grant-b", "display_name": "second"})
+    grant_b = SimpleNamespace(
+        **{**grant_a.__dict__, "id": "grant-b", "display_name": "second", "owner_project_id": "project-b"}
+    )
     token_a = SimpleNamespace(
         id="token-a", visible_prefix="mcp-afgl-first", issued_at=grant_a.expires_at, last_used_at=None
     )
@@ -425,16 +427,18 @@ async def test_personal_token_listing_marks_only_selected_lumen_default():
             return [(grant_a, token_a), (grant_b, token_b)]
 
     class Session:
-        async def scalar(self, _):
-            return "grant-b"
+        async def scalars(self, _):
+            return ["grant-b"]
 
         async def execute(self, _):
             return Result()
 
-    result = await list_personal_tokens(Session(), owner_user_id="user-a", owner_project_id="project-a")
+    result = await list_personal_tokens(Session(), owner_user_id="user-a")
 
     assert [token["is_lumen_default"] for token in result] == [False, True]
     assert mcp_access.McpTokenView.model_validate(result[1]).is_lumen_default is True
+    assert [token["owner_project_id"] for token in result] == ["project-a", "project-b"]
+    assert [token["owner_project_name"] for token in result] == ["project-a", "project-b"]
 
 
 @pytest.mark.asyncio

@@ -7,8 +7,29 @@ const options = [
 	{ value: 'user-2', label: 'LeeSongHeon', description: 'user-2' },
 	{ value: 'user-3', label: 'afterglow-admin', description: 'user-3' },
 ];
+import { t } from '$lib/i18n/ns/common';
 
 describe('SearchSelect', () => {
+	it('uses field-wise anchored regex and blocks selection for invalid syntax until corrected', async () => {
+		const onchange = vi.fn();
+		render(SearchSelect, { id: 'regex-picker', options, ariaLabel: 'Resource', searchPlaceholder: 'Find resource', onchange });
+		await fireEvent.click(screen.getByRole('button', { name: 'Resource' }));
+		const search = screen.getByRole('combobox', { name: 'Find resource' });
+		await fireEvent.input(search, { target: { value: '^(leesongheon|user-3)$' } });
+		expect(screen.queryByRole('option', { name: /dustywindow/ })).toBeNull();
+		expect(screen.getByRole('option', { name: /LeeSongHeon/ })).toBeTruthy();
+		expect(screen.getByRole('option', { name: /afterglow-admin/ })).toBeTruthy();
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(screen.queryAllByRole('option')).toHaveLength(0);
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.getByRole('alert').textContent).toBe(t('table.regexError'));
+		await fireEvent.keyDown(search, { key: 'Enter' });
+		expect(onchange).not.toHaveBeenCalled();
+		await fireEvent.input(search, { target: { value: '^afterglow-admin$' } });
+		await fireEvent.keyDown(search, { key: 'Enter' });
+		expect(onchange).toHaveBeenCalledWith('user-3');
+	});
+
 	it('filters by visible label or identifier and selects the result', async () => {
 		const onchange = vi.fn();
 		render(SearchSelect, {

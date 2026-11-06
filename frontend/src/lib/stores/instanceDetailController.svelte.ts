@@ -5,6 +5,7 @@ import { api, ApiError } from '$lib/api/client';
 import { createAutoRefresh, type AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 import { isTransitional, RESIZABLE_STATUSES } from '$lib/utils/instanceStatus';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import { confirmInstanceDeletion } from '$lib/utils/instanceDeleteConfirmation';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/instance';
 import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -577,13 +578,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function deleteInstance() {
 		const context = captureMutationContext();
 		if (!instance || !context || context.status !== 'SHUTOFF' || mutationBusy()) return;
-		const autoDeleteVols = volumes.filter(v => v.delete_on_termination);
-		const keepVols = volumes.filter(v => !v.delete_on_termination);
-		const lines = [t('controller.delete.confirm', { name: instance.name })];
-		if (autoDeleteVols.length) lines.push(t('controller.delete.autoDeleteVolumes', { volumes: autoDeleteVols.map(v => v.name || v.device).join(', ') }));
-		if (keepVols.length) lines.push(t('controller.delete.keepVolumes', { volumes: keepVols.map(v => v.name || v.device).join(', ') }));
-		if (instance.union_upper_volume_id) lines.push(t('controller.delete.upperVolumeNotice'));
-		if (!(await confirmDialog(lines.join('\n')))) return;
+		if (!await confirmInstanceDeletion(t('controller.delete.confirm', { name: instance.name }), {
+			targets: [{ id: context.id, name: instance.name, upperVolume: !!instance.union_upper_volume_id }],
+			adminMode: context.adminMode,
+			token: context.token,
+			projectId: context.adminMode ? context.ownProjectId : context.effectiveProjectId,
+			isCurrent: () => ownsMutationContext(context) && !mutationBusy(),
+			includeRetainedVolumes: true,
+		})) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
 		deleting = true;
 		const experience = beginExperienceAction('compute', 'delete', 'resource.detail');

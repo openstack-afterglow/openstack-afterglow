@@ -22,6 +22,7 @@
 
 	let routers = $state<AdminRouter[]>([]);
 	let loading = $state(true);
+	let hasInventory = $state(false);
 	let showCreate = $state(false);
 	let externalNets = $state<AdminNetwork[]>([]);
 	let editRouter = $state<AdminRouter | null>(null);
@@ -35,6 +36,7 @@
 		inventoryError = '';
 		try {
 			routers = await api.get<AdminRouter[]>('/api/v1/admin/all-routers', token, projectId, { refresh: force });
+			hasInventory = true;
 		} catch (reason) {
 			routers = []; inventoryError = reason instanceof Error ? reason.message : scopeT('state.unavailable');
 		} finally {
@@ -111,10 +113,12 @@
 	</PageHeader>
 
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
-	{:else if loading}
-		<LoadingState variant="surface" label={t('routersPage.loading')} />
-	{:else}
-		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
-		<div class="mt-3 text-xs text-ink-2">{t('routersPage.summary.total', { count: routers.length })}</div>
 	{/if}
+	{#if loading && !hasInventory}
+		<LoadingState variant="surface" label={t('routersPage.loading')} />
+	{/if}
+	{#key JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)])}
+		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
+	{/key}
+		<div class="mt-3 text-xs text-ink-2">{t('routersPage.summary.total', { count: routers.length })}</div>
 </PageShell>

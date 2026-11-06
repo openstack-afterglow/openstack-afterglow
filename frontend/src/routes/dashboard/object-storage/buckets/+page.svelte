@@ -1,4 +1,9 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/object-storage';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -23,6 +28,16 @@
 
 	let containers = $state<SwiftContainer[]>([]);
 	let deletedContainers = $state<SwiftContainer[]>([]);
+ let search = $state('');
+ let trashSearch = $state('');
+ const columns = $derived<TableColumn<SwiftContainer>[]>([
+  { key: 'name', label: t('buckets.table.name'), value: row => row.name },
+  { key: 'count', label: t('buckets.table.objectCount'), value: row => row.count },
+  { key: 'bytes', label: t('buckets.table.capacity'), value: row => row.bytes },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => containers, columns: () => columns, search: () => search, searchable: row => row.name});
+ const trashView = createTableView({ locale: intlLocale,rows: () => deletedContainers, columns: () => columns, search: () => trashSearch, searchable: row => row.name});
+ $effect(() => { const names = selectionDomain === 'active' ? view.rows.map(row=>row.name) : trashView.rows.map(row=>row.name); untrack(() => selection.retain(names)); });
 	let account = $state<AccountMeta | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
@@ -52,8 +67,8 @@
 
 	function retainSelection() {
 		selection.retain(selectionDomain === 'active'
-			? containers.map((c) => c.name)
-			: deletedContainers.map((c) => c.name));
+			? view.rows.map((c) => c.name)
+			: trashView.rows.map((c) => c.name));
 	}
 
 	async function load(refresh = false) {
@@ -223,6 +238,12 @@
 		}
 		untrack(() => load());
 	});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; trashSearch = ''; view.reset(); trashView.reset(); });
+ }));
 </script>
 
 <BucketCreateDialog bind:open={showModal} onCreate={createContainer} />
@@ -234,6 +255,7 @@
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('buckets.dashboardPage.toolbar')}>
+ {#snippet filters()}<RegexSearch id="bucket-search" bind:value={search} /><TableViewControls {view} class="" />{/snippet}
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -260,6 +282,7 @@
 		{/if}
 	</section>
 
+	{#if !loading && containers.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
 	{#if activeError}
 		<Alert tone="danger" class="mb-4" title={t('buckets.dashboardPage.loadFailed')}>{activeError}</Alert>
 	{/if}
@@ -275,15 +298,15 @@
 				<SelectionToolbar
 					label={t('buckets.dashboardPage.title')}
 					ariaLabel={t('buckets.dashboardPage.selectAll')}
-					checked={selectionDomain === 'active' && selection.count === containers.length}
-					indeterminate={selectionDomain === 'active' && selection.count > 0 && selection.count < containers.length}
+					checked={selectionDomain === 'active' && selection.count === view.rows.length}
+					indeterminate={selectionDomain === 'active' && selection.count > 0 && selection.count < view.rows.length}
 					selectedCount={selectionDomain === 'active' ? selection.count : 0}
 					disabled={busy}
-					onToggle={() => { setSelectionDomain('active'); selection.toggleAll(containers.map((c) => c.name)); }}
+					onToggle={() => { setSelectionDomain('active'); selection.toggleAll(view.rows.map((c) => c.name)); }}
 				/>
 			</div>
 			<BucketCardGrid
-				{containers}
+				containers={view.rows}
 				{deleting}
 				{refreshing}
 				arrivals={bucketArrivals}
@@ -301,22 +324,24 @@
 			<Alert tone="danger" class="mt-8" title={t('buckets.dashboardPage.trashLoadFailed')}>{trashError}</Alert>
 		{/if}
 
-		{#if deletedContainers.length > 0}
+		{#if deletedContainers.length > 0 || trashSearch || Object.keys(trashView.filters).length > 0 || trashView.sort}
 			<div class="mt-8">
 				<h2 class="text-sm font-medium text-ink-2 mb-3 flex items-center gap-2">
 					<span class="text-red-400">🗑</span> {t('buckets.dashboardPage.trashTitle')}
 				</h2>
+				<RegexSearch id="bucket-trash-search" bind:value={trashSearch} /><TableViewControls view={trashView} class="" />
+{#if trashView.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
 				<SelectionToolbar
 					label={t('buckets.dashboardPage.trashBuckets')}
 					ariaLabel={t('buckets.dashboardPage.selectAllTrash')}
-					checked={selectionDomain === 'trash' && selection.count === deletedContainers.length}
-					indeterminate={selectionDomain === 'trash' && selection.count > 0 && selection.count < deletedContainers.length}
+					checked={selectionDomain === 'trash' && selection.count === trashView.rows.length}
+					indeterminate={selectionDomain === 'trash' && selection.count > 0 && selection.count < trashView.rows.length}
 					selectedCount={selectionDomain === 'trash' ? selection.count : 0}
 					disabled={busy}
-					onToggle={() => { setSelectionDomain('trash'); selection.toggleAll(deletedContainers.map((c) => c.name)); }}
+					onToggle={() => { setSelectionDomain('trash'); selection.toggleAll(trashView.rows.map((c) => c.name)); }}
 				/>
 				<div class="space-y-2 mt-3">
-					{#each deletedContainers as c (c.name)}
+					{#each trashView.rows as c (c.name)}
 						{@const deletedAt = (c as SwiftContainer & { deleted_at?: number }).deleted_at}
 						{@const entrance = trashArrivals.next(c.name)}
 						<div

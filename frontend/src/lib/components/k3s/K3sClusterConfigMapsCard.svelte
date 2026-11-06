@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tableT } from '$lib/i18n/ns/common';
   import { t } from '$lib/i18n/ns/drover';
   import { t as commonT } from '$lib/i18n/ns/common';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -62,6 +66,11 @@
     if (!$k3sPermissions.workloads) return;
     await s.deleteCm(name);
   }
+	const tableState = s.tableState('configmaps');
+	const columns = $derived<TableColumn<(typeof s.configMaps)[number]>[]>([
+		{ key: 'name', label: tableT('table.name'), value: row => row.name },
+	]);
+	const view = createTableView({ rows: () => s.configMaps, columns: () => columns, search: () => tableState.search, state: tableState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
@@ -96,7 +105,9 @@
     </div>
   {/if}
 
-  {#if loading}
+  <RegexSearch id="k3s-configmaps-search" bind:value={tableState.search} />
+	<TableViewControls {view} class="" />
+	{#if loading}
     <LoadingState variant="inline" label={commonT('state.loadingNamed', { name: 'ConfigMaps' })} />
   {/if}
   {#if loadError}
@@ -105,7 +116,7 @@
     <p class="text-xs text-ink-2">{t('configMaps.empty')}</p>
   {:else}
     <div class="space-y-2">
-      {#each s.configMaps as cm}
+      {#each view.rows as cm}
         {@const actionKey = `${s.selectedNamespace}:${cm.name}`}
         <div class="bg-surface-sunken/50 rounded-lg p-3">
           <div class="flex items-center justify-between gap-3 mb-2">

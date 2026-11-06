@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import type { SecurityGroup, SecurityGroupRule } from '$lib/types/securityGroup';
 
@@ -15,6 +15,8 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 import { auth } from '$lib/stores/auth';
 import { t as commonT } from '$lib/i18n/ns/common';
 import Page from '../+page.svelte';
+import { t as networkT } from '$lib/i18n/ns/network-pages';
+import { tick } from 'svelte';
 
 const groups: SecurityGroup[] = [
 	{ id: 'sg-web', name: 'web', description: '', rules: [{
@@ -53,6 +55,7 @@ function installApi(quota = { security_group: { limit: 10, in_use: 2 }, security
 		if (index < 0) throw new Error(`Missing rule ${id}`);
 		inventory[0].rules.splice(index, 1);
 	});
+	return inventory;
 }
 
 beforeEach(() => {
@@ -66,6 +69,66 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('project security-group management', () => {
+	it('keeps remote-group facets distinct by ID and active through a target rename', async () => {
+		const inventory = installApi(undefined, [
+			{ ...groups[0], rules: [groups[0].rules[0], { ...groups[0].rules[0], id: 'rule-2', remote_group_id: 'sg-db-2' }] },
+			{ ...groups[1], name: 'duplicate' },
+			{ id: 'sg-db-2', name: 'duplicate', description: '', rules: [] },
+		]);
+		render(Page);
+		await screen.findByText('vm-main');
+		const filterLabel = commonT('table.filterColumn', { column: networkT('securityGroupRules.sourceTarget') });
+		await fireEvent.click(screen.getByRole('button', { name: filterLabel }));
+		let options = within(screen.getByRole('dialog', { name: filterLabel }));
+		const duplicateLabel = networkT('securityGroupRules.remoteGroup', { name: 'duplicate' });
+		expect(options.getByRole('checkbox', { name: `${duplicateLabel} (sg-db-2)` })).toBeTruthy();
+		await fireEvent.click(options.getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(options.getByRole('checkbox', { name: `${duplicateLabel} (sg-db)` }));
+		await fireEvent.keyDown(screen.getByRole('dialog', { name: filterLabel }), { key: 'Escape' });
+		const rules = within(screen.getByRole('region', { name: networkT('securityGroupRules.rulesLabel') }));
+		expect(rules.getByTitle('sg-db')).toBeTruthy();
+		expect(rules.queryByTitle('sg-db-2')).toBeNull();
+		inventory.find(group => group.id === 'sg-db')!.name = 'renamed';
+		await fireEvent.click(screen.getByTitle('지금 새로고침'));
+		await waitFor(() => expect(rules.getByTitle('sg-db').textContent).toContain('renamed'));
+		expect(rules.queryByTitle('sg-db-2')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: filterLabel }));
+		options = within(screen.getByRole('dialog', { name: filterLabel }));
+		expect(options.getByRole('checkbox', { name: `${networkT('securityGroupRules.remoteGroup', { name: 'renamed' })} (sg-db)` })).toHaveProperty('checked', true);
+		expect(options.getByRole('checkbox', { name: `${duplicateLabel} (sg-db-2)` })).toHaveProperty('checked', false);
+	});
+
+	it('retains nested rule filters and sorting when refresh replaces the same group object', async () => {
+		const inventory = installApi();
+		render(Page);
+		await screen.findByText('vm-main');
+		const version = networkT('securityGroupRules.ipVersion');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: version, direction: commonT('table.none') }) }));
+		const protocolFilter = commonT('table.filterColumn', { column: networkT('securityGroupRules.protocol') });
+		await fireEvent.click(screen.getByRole('button', { name: protocolFilter }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.keyDown(screen.getByRole('dialog', { name: protocolFilter }), { key: 'Escape' });
+		expect(screen.queryByTitle('sg-db')).toBeNull();
+		await fireEvent.click(screen.getByTitle('지금 새로고침'));
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path === '/api/v1/security-groups')).toHaveLength(2));
+		await tick();
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: version, direction: commonT('table.ascending') }) })).toBeTruthy();
+		expect(screen.queryByTitle('sg-db')).toBeNull();
+		const snapshot = structuredClone(inventory);
+		inventory.length = 0;
+		await fireEvent.click(await screen.findByTitle('지금 새로고침'));
+		await waitFor(() => expect(screen.queryByRole('region', { name: networkT('securityGroupRules.rulesLabel') })).toBeNull());
+		inventory.push(...snapshot);
+		await fireEvent.click(await screen.findByTitle('지금 새로고침'));
+		await screen.findByRole('region', { name: networkT('securityGroupRules.rulesLabel') });
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: version, direction: commonT('table.ascending') }) })).toBeTruthy();
+		expect(screen.queryByTitle('sg-db')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: protocolFilter }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.resetFilter') }));
+		await fireEvent.keyDown(screen.getByRole('dialog', { name: protocolFilter }), { key: 'Escape' });
+		expect(screen.getByTitle('sg-db')).toBeTruthy();
+	});
+
 	it('shows quota and attached VM; submits default CIDR and a single TCP port from within the rule table', async () => {
 		installApi();
 		render(Page);
@@ -96,6 +159,15 @@ describe('project security-group management', () => {
 		expect(table.getByText('IPv4')).toBeTruthy();
 		expect(table.getByText('IPv6')).toBeTruthy();
 		expect(table.getByText('::/0')).toBeTruthy();
+		const protocolFilter = commonT('table.filterColumn', { column: networkT('securityGroupRules.protocol') });
+		await fireEvent.click(screen.getByRole('button', { name: protocolFilter }));
+		const options = within(screen.getByRole('dialog', { name: protocolFilter }));
+		expect(options.queryByRole('checkbox', { name: commonT('table.missing') })).toBeNull();
+		await fireEvent.click(options.getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(options.getByRole('checkbox', { name: networkT('securityGroupRules.anyProtocol') }));
+		await fireEvent.keyDown(screen.getByRole('dialog', { name: protocolFilter }), { key: 'Escape' });
+		expect(table.getByText('IPv6')).toBeTruthy();
+		expect(table.queryByText('IPv4')).toBeNull();
 	});
 
 	it('saves an edited group-targeted rule without duplicating the rule or changing its target', async () => {

@@ -1,9 +1,14 @@
 <script lang="ts" generics="T extends { id: string }">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	let {
 		title,
@@ -11,10 +16,11 @@
 		selected = $bindable(new Set<string>()),
 		emptyMessage,
 		headerNote,
-		headers,
+		columns,
 		row,
     cardSummary,
     cardDetails,
+		cleanupDisabled = false,
 		onCleanup,
 	}: {
 		title: string;
@@ -22,16 +28,26 @@
 		selected?: Set<string>;
 		emptyMessage: string;
 		headerNote?: Snippet;
-		headers: Snippet;
+		columns: TableColumn<T>[];
 		row: Snippet<[T]>;
     cardSummary: Snippet<[T]>;
     cardDetails: Snippet<[T]>;
+		cleanupDisabled?: boolean;
 		onCleanup: () => void;
 	} = $props();
 
-	const allSelected = $derived(items.length > 0 && selected.size === items.length);
+	const view = createTableView<T>({ rows: () => items, columns: () => columns, locale: intlLocale });
+	const allSelected = $derived(view.rows.length > 0 && view.rows.every((item) => selected.has(item.id)));
 	const hasSelection = $derived(selected.size > 0);
-	const partiallySelected = $derived(hasSelection && !allSelected);
+	const partiallySelected = $derived(view.rows.some((item) => selected.has(item.id)) && !allSelected);
+
+	$effect(() => {
+		const visible = new Set(view.rows.map((item) => item.id));
+		untrack(() => {
+			const next = new Set([...selected].filter((id) => visible.has(id)));
+			if (next.size !== selected.size) selected = next;
+		});
+	});
 
 	function toggle(id: string) {
 		const next = new Set(selected);
@@ -41,8 +57,8 @@
 	}
 
 	function toggleAll() {
-		if (selected.size === items.length) selected = new Set();
-		else selected = new Set(items.map((i) => i.id));
+		if (allSelected) selected = new Set();
+		else selected = new Set(view.rows.map((item) => item.id));
 	}
 </script>
 
@@ -51,7 +67,7 @@
 		<h2 class="text-base font-semibold text-ink-0">{t('orphanSection.title', { title, count: items.length })}</h2>
 		<button
 			onclick={onCleanup}
-			disabled={selected.size === 0}
+			disabled={cleanupDisabled || selected.size === 0}
       class="min-h-11 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-ink-0 text-xs font-medium rounded-lg disabled:opacity-30 lg:min-h-0"
 		>
 			{t('orphanSection.cleanSelected', { count: selected.size })}
@@ -60,15 +76,16 @@
 
 	{@render headerNote?.()}
 
-	{#if items.length === 0}
+	<TableViewControls {view} />
+	{#if view.rows.length === 0}
 		<div class="text-xs text-ink-2 bg-surface-base border border-line rounded-lg p-4">
-			{emptyMessage}
+			{items.length === 0 ? emptyMessage : tc('table.noMatches')}
 		</div>
-	{:else}
+	{/if}
     <ResponsiveTable>
       {#snippet cards()}
         <div class="responsive-card-toolbar flex min-h-11 items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={partiallySelected} onclick={toggleAll} ariaLabel={t('orphanSection.selectAll', { title })} /><span class="text-xs text-ink-2">{t('orphanSection.selectAll', { title })}</span></div>
-        {#each items as item (item.id)}
+        {#each view.rows as item (item.id)}
           <CompactResourceCard selected={selected.has(item.id)}>
             <div class="flex items-start gap-2"><SelectionCheckbox checked={selected.has(item.id)} onclick={() => toggle(item.id)} ariaLabel={t('orphanSection.selectItem', { id: item.id })} /><div class="min-w-0 flex-1 space-y-2">{@render cardSummary(item)}</div></div>
             {#snippet details()}{@render cardDetails(item)}{/snippet}
@@ -89,11 +106,11 @@
 								/>
 							</div>
 						</th>
-						{@render headers()}
+						{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 					</tr>
 				</thead>
 				<tbody>
-					{#each items as item (item.id)}
+					{#each view.rows as item (item.id)}
 						<tr class="orphan-row border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors" class:is-selected={selected.has(item.id)}>
 							<td class="py-2 pr-4">
 								<div class="selection-reveal" class:is-selected={selected.has(item.id)}>
@@ -111,7 +128,6 @@
 			</table>
 		</div>
     </ResponsiveTable>
-	{/if}
 </section>
 
 <style>

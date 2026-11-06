@@ -287,6 +287,33 @@ def _assert_operator_scope(conn):
         raise HTTPException(403, "Native usage operator identity or scope changed")
 
 
+def operator_connection(project_id):
+    """Keep service authentication fixed; bind only the authorized resource target."""
+    from app.services.keystone import get_admin_project_connection
+
+    conn = get_admin_project_connection()
+    try:
+        bind_operator_scope(conn, project_id)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def prove_project_scope(conn, project_id):
+    """Verify native project credentials or the separately bound service executor."""
+    if vars(conn).get("_afterglow_usage_operator_scope") is not None:
+        _assert_operator_scope(conn)
+        if _target_project(conn) != project_id:
+            raise HTTPException(403, "Native usage operator target project changed")
+        return
+    access = conn.session.auth.get_access(conn.session)
+    if access.project_id != project_id or access.project_scoped is not True or access.system_scoped is not False:
+        raise RuntimeError("Native credentials do not prove the exact scheduled project")
+    conn._afterglow_project_id = project_id
+    conn._afterglow_authenticated_project_id = project_id
+
+
 def require_server_scope(conn, server, instance_id=None) -> str:
     project = _target_project(conn)
     authenticated = getattr(conn, "_afterglow_authenticated_project_id", project)

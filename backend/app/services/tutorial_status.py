@@ -20,6 +20,8 @@ TOUR_IDS: tuple[str, ...] = (
     "volume",
     "drover",
     "waygate",
+    "images",
+    "admin-images",
     "admin-compute",
     "admin-storage",
     "admin-library",

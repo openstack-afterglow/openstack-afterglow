@@ -1,4 +1,12 @@
 <script lang="ts">
+ import { untrack } from 'svelte';
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { t as commonT } from '$lib/i18n/ns/common';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
   import { t } from '$lib/i18n/ns/volume';
   import { attachmentServerId, useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -6,14 +14,30 @@
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 
   const s = useVolumeDetailController();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<Record<string,unknown>>[]>([
+ {key:'instance',label:t('attachmentsList.title'),value:row=>{const id=attachmentServerId(row);const name=s.attachmentName(id);return name.state==='resolved'?name.name:id||null;}},
+ {key:'device',label:commonT('table.device'),value:row=>typeof row.device==='string'?row.device:null}
+ ]);
+ const view = createTableView({ locale: intlLocale,rows:()=>s.volume?.attachments??[],columns:()=>columns,search:()=>search,searchable:row=>columns.map(column=>String(column.value(row) ?? ''))});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
-{#if s.volume!.attachments.length > 0}
+{#if s.volume!.attachments.length > 0 || search || Object.keys(view.filters).length > 0 || view.sort}
   <div class="mb-4">
     <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('attachmentsList.title')}</h3>
+    <RegexSearch id={searchId} bind:value={search} />
+    <TableViewControls {view} class="" />
+{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
     <ResponsiveTable>
       {#snippet cards()}
-        {#each s.volume!.attachments as att}
+        {#each view.rows as att}
           {@const serverId = attachmentServerId(att)}
           {@const instance = s.attachmentName(serverId)}
           {@const device = typeof att.device === 'string' ? att.device : ''}
@@ -34,7 +58,7 @@
         {/each}
       {/snippet}
     <ul class="space-y-1" aria-label={t('attachmentsList.title')}>
-      {#each s.volume!.attachments as att}
+      {#each view.rows as att}
         {@const serverId = attachmentServerId(att)}
         {@const instance = s.attachmentName(serverId)}
         {@const device = typeof att.device === 'string' ? att.device : ''}

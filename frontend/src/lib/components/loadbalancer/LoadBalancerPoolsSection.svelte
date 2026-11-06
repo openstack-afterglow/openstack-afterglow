@@ -6,6 +6,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
   import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as tc } from '$lib/i18n/ns/common';
 
   const s = useLoadbalancerDetailController();
   const pending = createPendingAction();
@@ -24,11 +26,13 @@
 
   <PoolAddForm />
 
+  <TableViewControls view={s.poolView} class="" />
+  {#if s.pools.length > 0 && s.poolView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if s.pools.length === 0}
     <p class="text-sm text-ink-2">{t('lb.pools.empty')}</p>
   {:else}
     <div class="space-y-2">
-      {#each s.pools as pool}
+      {#each s.poolView.rows as pool (pool.id)}
         {@const deletingPool = pending.isActive(`delete:${pool.id}`, s.saving)}
         <div>
           <CompactResourceCard selected={s.selectedPoolId === pool.id}>

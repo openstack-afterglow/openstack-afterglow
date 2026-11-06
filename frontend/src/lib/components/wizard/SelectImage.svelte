@@ -3,13 +3,16 @@
 	import type { FlavorOption } from '$lib/types/flavor';
 	import { hasGpuImageMetadata, imageFlavorProfile, imageRecommendations } from '$lib/utils/imageRecommendation';
 	import { createImageCatalog, currentImagesByReference, imageReferenceParts, imageUploadInstant } from '$lib/stores/imageCatalog.svelte';
-	import { imageReferenceMatchesQuery } from '$lib/utils/imageReference';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import type { ImageTagGroup } from '$lib/stores/imageCatalog.svelte';
 	import { formatSize } from '$lib/utils/format';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { Alert, Button, CompactResourceCard, ResponsiveTable, StatusChip, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import { t } from '$lib/i18n/ns/vm-wizard';
-	import RichText from '$lib/i18n/RichText.svelte';
 	let { images, selectedId, onSelect, selectedFlavor = null }: {
 		images: ImageInfo[];
 		selectedId: string | null;
@@ -17,7 +20,6 @@
 		selectedFlavor?: FlavorOption | null;
 	} = $props();
 
-	let activeDistro = $state<string | null>(null);
 	const OTHER_DISTRO = '__other__';
 
 	function referenceName(image: ImageInfo): string {
@@ -32,9 +34,6 @@
 	const chooserId = $props.id();
 	let expandedRepository = $state<string | null | undefined>(undefined);
 	let tagSearch = $state('');
-	let searchTerm = $state('');
-	let filtersOpen = $state(false);
-	const activeFilterCount = $derived((searchTerm.trim() ? 1 : 0) + (activeDistro === null ? 0 : 1));
 
 	const distroLabels: Record<string, string> = {
 		ubuntu: 'Ubuntu', centos: 'CentOS', rocky: 'Rocky Linux',
@@ -69,25 +68,7 @@
 		? images.find(image => image.id === selectedId) ?? null
 		: null);
 	const previousSelectedMissing = $derived(selectedId !== null && !currentIds.has(selectedId) && !previousSelected);
-	const distros = $derived(
-		[...new Set(currentImages.map(i => i.os_distro ?? OTHER_DISTRO))].sort((a, b) => {
-			if (a === OTHER_DISTRO) return 1;
-			if (b === OTHER_DISTRO) return -1;
-			return a.localeCompare(b);
-		})
-	);
-
-	// Resolve each reference from the full input before applying UI filters.
-	const distroFiltered = $derived(
-		activeDistro === null
-			? currentImages
-			: currentImages.filter(i => (i.os_distro ?? OTHER_DISTRO) === activeDistro)
-	);
-
-	const filteredImages = $derived(
-		distroFiltered.filter((image) => imageReferenceMatchesQuery(image, searchTerm))
-	);
-	const catalog = createImageCatalog(() => filteredImages, () => images);
+	const catalog = createImageCatalog(() => currentImages, () => images);
 	const repositoryGroups = $derived(catalog.repositoryGroups);
 	const selectedImage = $derived(images.find(image => image.id === selectedId));
 	const flavorProfile = $derived(imageFlavorProfile(selectedFlavor));
@@ -97,14 +78,20 @@
 		? selectedImage ? imageReferenceParts(selectedImage).repository : null
 		: expandedRepository);
 	const openGroup = $derived(repositoryGroups.find(group => group.repository === openRepository));
-	const tagQuery = $derived(tagSearch.trim().toLowerCase());
-	const visibleTags = $derived(openGroup?.tags.filter(tag => tag.tag.toLowerCase().includes(tagQuery)) ?? []);
+	const tagColumns = $derived<TableColumn<ImageTagGroup>[]>([
+		{ key: 'tag', label: t('image.columns.tag'), value: row => row.tag },
+		{ key: 'hash', label: t('image.columns.hash'), value: row => row.current.os_hash_value ?? row.current.id },
+		{ key: 'uploaded', label: t('image.columns.uploadedAt'), value: row => imageUploadInstant(row.current) },
+		{ key: 'size', label: t('image.columns.size'), value: row => row.current.size },
+	]);
+	const tagView = createTableView({ rows: () => openGroup?.tags ?? [], columns: () => tagColumns, search: () => tagSearch });
+	const visibleTags = $derived(tagView.rows);
+	const retainedTagConditions = $derived(Boolean(tagSearch || tagView.sort || Object.keys(tagView.filters).length));
 	const uploadFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), {
 		year: 'numeric', month: '2-digit', day: '2-digit',
 		hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
 	}));
 
-	const repositoryTotal = $derived(new Set(currentImages.map(image => imageReferenceParts(image).repository)).size);
 
 	function distroLabel(d: string): string {
 		return d === OTHER_DISTRO ? t('image.distro.other') : distroLabels[d] ?? d;
@@ -129,67 +116,14 @@
 
 </script>
 
-<div class="mb-4 flex items-center justify-between">
-	<button
-		type="button"
-		aria-controls="vm-image-filters"
-		aria-expanded={filtersOpen}
-		onclick={() => filtersOpen = !filtersOpen}
-		class="inline-flex items-center gap-2 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-3 py-2 text-sm font-medium text-[var(--color-ink-1)] transition-colors hover:border-[var(--color-line-2)] hover:bg-[var(--color-surface-sunken)]"
-	>
-		<svg class="h-4 w-4 text-[var(--color-ink-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 5h18M6 12h12m-9 7h6"/>
-		</svg>
-		{t('image.filters.title')}
-		{#if activeFilterCount > 0}
-			<span class="rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-action-on-accent)]">{activeFilterCount}</span>
-		{/if}
-	</button>
-</div>
-
-{#if filtersOpen}
-	<div id="vm-image-filters" class="mb-5 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
-		<div class="relative mb-3">
-			<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-3)]">
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<circle cx="11" cy="11" r="7"/>
-					<path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3"/>
-				</svg>
-			</span>
-			<label for="vm-image-search" class="sr-only">{t('image.searchLabel')}</label>
-			<input
-				id="vm-image-search"
-				type="search"
-				bind:value={searchTerm}
-				placeholder={t('image.searchPlaceholder')}
-				class="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-2 pl-9 pr-3 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
-			/>
-		</div>
-
-		<div>
-			<p class="mb-2 text-xs font-medium text-[var(--color-ink-2)]">{t('image.filters.osType')}</p>
-			<div class="flex flex-wrap gap-2">
-				<button
-					onclick={() => activeDistro = null}
-					class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === null
-						? 'bg-[var(--color-accent)] text-[var(--color-action-on-accent)]'
-						: 'bg-[var(--color-surface-raised)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-base)]'}"
-				>
-					{#snippet countBadge(text: string)}<span class="font-mono text-[10.5px] opacity-70">{text}</span>{/snippet}
-					<RichText segments={t.rich('image.filters.all', { count: repositoryTotal })} tags={{ count: countBadge }} />
-				</button>
-				{#each distros as d}
-					{@const count = new Set(currentImages.filter(image => (image.os_distro ?? OTHER_DISTRO) === d).map(image => imageReferenceParts(image).repository)).size}
-					<button
-						onclick={() => activeDistro = d}
-						class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === d
-							? 'bg-[var(--color-accent)] text-[var(--color-action-on-accent)]'
-							: 'bg-[var(--color-surface-raised)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-base)]'}"
-					>{distroLabel(d)} <span class="font-mono text-[10.5px] opacity-70">{count}</span></button>
-				{/each}
-			</div>
-		</div>
-	</div>
+<RegexSearch id="vm-image-search" bind:value={catalog.searchQuery} label={t('image.searchLabel')} placeholder={t('image.searchPlaceholder')} />
+<TableViewControls view={catalog.view} class="" />
+{#if !openGroup && retainedTagConditions}
+	<section aria-label={t('image.columns.tag')} class="mb-4 space-y-3">
+		<RegexSearch id={`${chooserId}-retained-tag-search`} bind:value={tagSearch} label={t('image.columns.tag')} placeholder={t('image.tagSearchPlaceholder')} />
+		<TableViewControls view={tagView} class="" />
+		<p class="text-sm text-ink-2">{t('image.tagSearchEmpty')}</p>
+	</section>
 {/if}
 
 {#if flavorProfile}
@@ -267,15 +201,9 @@
 			{#if expanded}
 				<section id={panelId} aria-label={t('image.tagsTitle', { name: group.repository })} class="min-w-0 border-t border-[var(--color-line)] p-3 @lg/panel:p-4">
 					<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('image.tagsHelp')}</p>
-					<label for={`${panelId}-search`} class="sr-only">{t('image.tagSearchLabel', { name: group.repository })}</label>
-					<input
-						id={`${panelId}-search`}
-						type="search"
-						bind:value={tagSearch}
-						placeholder={t('image.tagSearchPlaceholder')}
-						class="mb-3 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
-					/>
-					{#if visibleTags.length > 0}
+					<RegexSearch id={`${panelId}-search`} bind:value={tagSearch} label={t('image.tagSearchLabel', { name: group.repository })} placeholder={t('image.tagSearchPlaceholder')} />
+					<TableViewControls view={tagView} />
+					{#if visibleTags.length === 0}<p role="status" class="py-6 text-center text-sm text-ink-2">{t('image.tagSearchEmpty')}</p>{/if}
 						<ResponsiveTable>
 							{#snippet cards()}
 								{#each visibleTags as tag (tag.tag)}
@@ -298,11 +226,8 @@
 							{/snippet}
 						<TableShell density="compact">
 							<div class="min-w-[39rem]">
-								<div class="tag-row bg-[var(--color-surface-sunken)] px-3 py-2 text-xs font-medium text-[var(--color-ink-2)]" aria-hidden="true">
-									<span>{t('image.columns.tag')}</span>
-									<span>{t('image.columns.hash')}</span>
-									<span>{t('image.columns.uploadedAt')}</span>
-									<span class="text-right">{t('image.columns.size')}</span>
+								<div class="tag-row bg-[var(--color-surface-sunken)] px-3 py-2 text-xs font-medium text-[var(--color-ink-2)]">
+									{#each tagColumns as column}<TableColumnControl view={tagView} columnKey={column.key} />{/each}
 								</div>
 								<ul class="m-0 list-none p-0">
 									{#each visibleTags as tag (tag.tag)}
@@ -347,9 +272,6 @@
 							</div>
 						</TableShell>
 						</ResponsiveTable>
-					{:else}
-						<p role="status" class="py-6 text-center text-sm text-[var(--color-ink-2)]">{t('image.tagSearchEmpty')}</p>
-					{/if}
 				</section>
 			{/if}
 		</div>

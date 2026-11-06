@@ -4,7 +4,7 @@
 	import { ActionMenu, FileIcon, SelectionCheckbox } from '$lib/components/ui';
 	import type { SwiftObject } from '$lib/types/objectStorage';
 
-	let { obj, fullPath = false }: { obj: SwiftObject; fullPath?: boolean } = $props();
+	let { obj, fullPath = false, selectable = true }: { obj: SwiftObject; fullPath?: boolean; selectable?: boolean } = $props();
 
 	const s = useObjectBrowser();
 	const label = $derived(fullPath ? obj.name : (s.baseName(obj.name) || obj.name));
@@ -15,6 +15,7 @@
 	}
 
 	function onCardClick(event: MouseEvent) {
+		if (!selectable) return;
 		const target = event.target as HTMLElement;
 		if (target.closest('button, input, a, label')) return;
 		s.toggleSelect(obj.name);
@@ -25,7 +26,7 @@
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			open();
-		} else if (event.key === ' ') {
+		} else if (event.key === ' ' && selectable) {
 			event.preventDefault();
 			s.toggleSelect(obj.name);
 		}
@@ -34,7 +35,7 @@
 
 <div
 	class="resource-selection-surface group flex items-center gap-2.5 rounded-lg border border-line bg-surface-base px-3 py-2.5 transition-colors hover:bg-surface-sunken/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	data-selected={s.selected.has(obj.name)}
+	data-selected={selectable && s.selected.has(obj.name)}
 	role="button"
 	tabindex="0"
 	aria-label={t('views.folderCard.ariaLabel', { name: label })}
@@ -43,8 +44,8 @@
 	onkeydown={onKeydown}
 >
 	<SelectionCheckbox
-		checked={s.selected.has(obj.name)}
-		disabled={s.bulkDeleting || s.bulkMoving}
+		checked={selectable && s.selected.has(obj.name)}
+		disabled={!selectable || s.bulkDeleting || s.bulkMoving}
 		ariaLabel={t('views.folderCard.select', { name: label })}
 		onclick={() => s.toggleSelect(obj.name)}
 	/>

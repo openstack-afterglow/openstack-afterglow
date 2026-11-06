@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -26,13 +28,32 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	let search = $state('');
+	const columns: TableColumn<LoadBalancer>[] = $derived([
+		{ key: 'name', label: t('loadbalancersPage.table.nameId'), value: (row) => row.name || row.id },
+		{ key: 'project', label: t('loadbalancersPage.table.projectId'), value: (row) => row.project_id },
+		{ key: 'vip', label: t('loadbalancersPage.table.vipAddress'), value: (row) => row.vip_address },
+		{ key: 'status', label: t('loadbalancersPage.table.provisioningStatus'), value: (row) => row.status },
+		{ key: 'operating', label: t('loadbalancersPage.table.operatingStatus'), value: (row) => row.operating_status },
+	]);
+	const view = createTableView({ locale: intlLocale, rows: () => loadbalancers, columns: () => columns, search: () => search,
+		searchable: (row) => [row.id, row.name, row.project_id, row.vip_address, row.status, row.operating_status].filter((value) => value != null).map(String) });
+	let viewOwner = '';
+	$effect(() => {
+		const owner = JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)]);
+		if (owner !== viewOwner) { viewOwner = owner; search = ''; view.reset(); }
+	});
 	let loadbalancers = $state<LoadBalancer[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let selectedLbId = $state<string | null>(null);
 	let selection = createResourceSelection();
 	let busy = $state(false);
-	let selectableIds = $derived(new Set(loadbalancers.filter((lb) => !isDroverLoadBalancer(lb) && !!lb.project_id && lb.project_id === $auth.projectId).map((lb) => lb.id)));
+	let selectableIds = $derived(new Set(view.rows.filter((lb) => !isDroverLoadBalancer(lb) && !!lb.project_id && lb.project_id === $auth.projectId).map((lb) => lb.id)));
 	const selectedCount = $derived([...selectableIds].filter((id) => selection.ids.has(id)).length);
 	const allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
 	const indeterminate = $derived(selectedCount > 0 && !allSelected);
@@ -106,6 +127,9 @@
 		{/snippet}
 	</PageHeader>
 
+	<RegexSearch id="loadbalancer-search" bind:value={search} />
+	<TableViewControls {view} />
+	{#if loadbalancers.length > 0 && view.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 	{#if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">
 			{error}
@@ -119,7 +143,7 @@
 			<div class="text-5xl mb-4">{t('loadbalancersPage.emptyIcon')}</div>
 			<p class="text-lg">{t('loadbalancersPage.empty')}</p>
 		</div>
-	{:else if !error}
+	{/if}
 		<div class="flex justify-end mb-3">
 			<SelectionToolbar
 				label={t('loadbalancersPage.title')}
@@ -133,7 +157,7 @@
 		</div>
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each loadbalancers as lb (lb.id)}
+				{#each view.rows as lb (lb.id)}
 					{@const isProtected = isDroverLoadBalancer(lb)}
 					<CompactResourceCard selected={selection.has(lb.id)}>
 						<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(lb.id)} disabled={busy || !selectableIds.has(lb.id)} unavailable={!selectableIds.has(lb.id)} title={isProtected ? t('loadbalancersPage.selection.protected') : undefined} ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })} onclick={() => selection.toggle(lb.id)} /><button type="button" class="min-h-11 min-w-0 flex-1 break-all text-left font-medium text-ink-0" onclick={() => openLbPanel(lb.id)}>{lb.name || lb.id.slice(0, 12)}</button><StatusChip status={lb.status ?? '—'} /></div>
@@ -149,16 +173,12 @@
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="py-2 pr-3 w-8 text-left" aria-label={t('loadbalancersPage.selection.label')}></th>
-						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.nameId')}</th>
-						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.projectId')}</th>
-						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.vipAddress')}</th>
-						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.provisioningStatus')}</th>
-						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.operatingStatus')}</th>
+						{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 						<th class="text-left py-2">{t('loadbalancersPage.table.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each loadbalancers as lb (lb.id)}
+					{#each view.rows as lb (lb.id)}
 						{@const isProtected = isDroverLoadBalancer(lb)}
 						<tr class="resource-selection-surface border-b border-line/30 text-xs transition-colors hover:bg-surface-sunken/10" data-selected={selection.has(lb.id)}>
 							<td class="py-3 pr-3 text-left" onclick={(e) => e.stopPropagation()}>
@@ -214,7 +234,6 @@
 			<div class="mt-4 text-xs text-ink-2">{t('loadbalancersPage.summary.total', { count: loadbalancers.length })}</div>
 		</div>
 		</ResponsiveTable>
-	{/if}
 </PageShell>
 
 <BulkSelectionOverlay

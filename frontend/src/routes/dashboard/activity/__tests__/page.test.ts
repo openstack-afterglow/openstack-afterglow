@@ -81,7 +81,7 @@ describe('activity auto-refresh', () => {
 		// Keyed rows survive the poll: a new entry is added above them instead of every row being repainted.
 		expect(screen.getByText('vm-alpha').closest('tr')).toBe(alphaRow);
 		expect(screen.getByText('vm-beta').closest('tr')).toBe(betaRow);
-		const rows = screen.getAllByRole('row').slice(1).map((row) => row.textContent ?? '');
+		const rows = [...screen.getByText('vm-alpha').closest('tbody')!.querySelectorAll('tr')].map(row => row.textContent ?? '');
 		expect(rows.map((text) => text.match(/vm-\w+/)?.[0])).toEqual(['vm-gamma', 'vm-beta', 'vm-alpha']);
 		expect(statText('성공률')).toContain('80%');
 		expect(statText('실패한 작업')).toContain('1/5');

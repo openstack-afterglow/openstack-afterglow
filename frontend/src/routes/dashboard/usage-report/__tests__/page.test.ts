@@ -14,12 +14,17 @@ vi.mock('$lib/api/client', () => ({ api: { get: mockGet, withExperience: () => (
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project', projectName: 'Project One' }),
 	authReady: writable(true),
+	projectSwitching: writable(false),
+	getAuthVerificationEpoch: () => 0,
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (callback: () => unknown) => {
 		refreshCallbacks.push(callback);
 		return { active: false, intervalSeconds: 300, intervalOptions: [60, 300] };
 	},
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	observedProjectPermissions: writable({ loading: false, error: null, permissions: null }),
 }));
 
 import Page from '../+page.svelte';
@@ -301,6 +306,57 @@ describe('usage report page', () => {
 		await tick();
 		expect(screen.queryByText('old-project-flavor')).toBeNull();
 		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
+	});
+
+	it.each(['userId', 'sessionId', 'identityDomainId', 'domainId'] as const)('clears report, inventory and chat on same-project %s replacement without clearing them on renewal', async field => {
+		const chat = { found: true, month_prompt_tokens: 123456789, month_completion_tokens: 0, month_credited_cost: 0, month_request_count: 1, quota_used: 1, quota_max: 10 };
+		mockGet.mockImplementation((path: string) => Promise.resolve(
+			path.startsWith('/api/v1/dashboard/usage-report') ? report() : path === '/api/v1/dashboard/quotas' ? QUOTAS : chat,
+		));
+		render(Page);
+		const oldRouter = await screen.findByText('라우터');
+		await screen.findAllByText('123,456,789');
+		await screen.findByText('cpu.4c_8g');
+
+		const oldReport = Promise.withResolvers<unknown>();
+		const oldInventory = Promise.withResolvers<unknown>();
+		const oldChat = Promise.withResolvers<unknown>();
+		mockGet.mockImplementation((path: string) => path.startsWith('/api/v1/dashboard/usage-report') ? oldReport.promise : path === '/api/v1/dashboard/quotas' ? oldInventory.promise : oldChat.promise);
+		auth.set({ ...initialAuth, token: 'renewed-token' });
+		await tick();
+		expect(screen.getByText('라우터')).toBe(oldRouter);
+		expect(screen.getByText('cpu.4c_8g')).toBeTruthy();
+		expect(screen.getAllByText('123,456,789').length).toBeGreaterThan(0);
+		expect(mockGet).toHaveBeenCalledWith('/api/v1/dashboard/usage-report?range=30d', 'renewed-token', 'project');
+
+		const nextReport = Promise.withResolvers<unknown>();
+		const nextInventory = Promise.withResolvers<unknown>();
+		const nextChat = Promise.withResolvers<unknown>();
+		mockGet.mockImplementation((path: string) => path.startsWith('/api/v1/dashboard/usage-report') ? nextReport.promise : path === '/api/v1/dashboard/quotas' ? nextInventory.promise : nextChat.promise);
+		auth.set({ ...initialAuth, token: 'renewed-token', [field]: 'replacement-owner' });
+		await tick();
+		expect(screen.queryByText('cpu.4c_8g')).toBeNull();
+		expect(screen.queryByText('라우터')).toBeNull();
+		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
+
+		oldReport.resolve({ ...report(), flavor_hours: [{ ...report().flavor_hours[0], flavor: 'stale-owner-flavor' }] });
+		oldInventory.resolve(QUOTAS);
+		oldChat.resolve(chat);
+		await Promise.all([oldReport.promise, oldInventory.promise, oldChat.promise]);
+		await tick();
+		expect(screen.queryByText('stale-owner-flavor')).toBeNull();
+		expect(screen.queryByText('라우터')).toBeNull();
+		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
+
+		nextReport.resolve({ ...report(), flavor_hours: [{ ...report().flavor_hours[0], flavor: 'replacement-owner-flavor' }] });
+		await screen.findByText('replacement-owner-flavor');
+		expect(screen.queryByText('라우터')).toBeNull();
+		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
+		nextInventory.resolve({ ...QUOTAS, network: { ...QUOTAS.network, router: { limit: 10, in_use: 6 } } });
+		nextChat.resolve({ ...chat, month_prompt_tokens: 987654321 });
+		const newRouter = await screen.findByText('라우터');
+		expect(newRouter.parentElement?.textContent?.replace(/\s+/g, '')).toContain('6/10');
+		await screen.findAllByText('987,654,321');
 	});
 
 	it('labels shared domain consumption and explicit cap-limited remaining without project-derived forecasts', async () => {

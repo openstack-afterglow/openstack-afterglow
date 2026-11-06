@@ -42,6 +42,9 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import type { ResourceSort } from '$lib/utils/resourceSort';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
 	import { page } from '$app/state';
@@ -72,12 +75,46 @@
 	let openActionMenu = $state<string | null>(null);
 	let selectedVolumeId = $state<string | null>(null);
 
-	let statusFilter = $state('');
 	let nameSearch = $state('');
-	let volumeType = $state('');
+	let statusFilter = $state('');
+	let nativeName = $state('');
+	let nativeType = $state('');
 	let minSize = $state('');
 	let maxSize = $state('');
-	let sort = $state<ResourceSort>('created_desc');
+	let nativeSort = $state<ResourceSort>('created_desc');
+	const tableView = createTableView<AdminVolume>({
+		rows: () => allVolumes,
+		search: () => nameSearch,
+		searchable: (row) => [row.name, row.id, row.status, row.volume_type ?? '', row.domain_name ?? '', row.domain_id ?? '', row.project_name ?? '', row.project_id ?? ''],
+		columns: () => [
+			{ key: 'name', label: t('volumeList.column.name'), value: (row) => row.name,
+				filterMode: 'single', filterFreeValue: true, filterOptions: () => [],
+				filterSelection: () => nativeName ? [nativeName] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === nativeName) return; nativeName = next; onFilterChange(); } },
+			{ key: 'status', label: t('volumeList.column.status'), value: (row) => row.status,
+				filterMode: 'single', filterOptions: () => (statusSummary?.statuses ?? []).map(row => ({ value: row.status, label: row.status, count: row.count })),
+				filterSelection: () => statusFilter ? [statusFilter] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === statusFilter) return; statusFilter = next; onFilterChange(); } },
+			{ key: 'size', label: t('volumeList.column.size'), value: (row) => row.size,
+				filterMode: 'single', filterOptions: () => [...new Set(allVolumes.map(row => row.size))].map(size => ({ value: String(size), label: `${size} GiB`, count: null })),
+				filterSelection: () => minSize !== '' && minSize === maxSize ? [minSize] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === minSize && next === maxSize) return; minSize = maxSize = next; onFilterChange(); },
+				rangeFilter: { min: () => minSize, max: () => maxSize, onchange: (min, max) => { minSize = min; maxSize = max; onFilterChange(); } } },
+			{ key: 'type', label: t('volumeDetail.volumeType'), value: (row) => row.volume_type,
+				filterMode: 'single', filterFreeValue: true, filterOptions: () => [...new Set(allVolumes.flatMap(row => row.volume_type ? [row.volume_type] : []))].map(value => ({ value, label: value, count: null })),
+				filterSelection: () => nativeType ? [nativeType] : null,
+				onFilterChange: (values) => { const next = values?.[0] ?? ''; if (next === nativeType) return; nativeType = next; onFilterChange(); } },
+			{ key: 'domain', label: t('volumeList.column.domain'), value: (row) => row.domain_name ?? row.domain_id },
+			{ key: 'project', label: t('volumeList.column.project'), value: (row) => row.project_name ?? row.project_id },
+			{ key: 'created', label: t('volumeList.column.createdAt'), value: (row) => row.created_at },
+		],
+		onSortChange: (sort) => {
+			const next: ResourceSort = sort?.key === 'name' ? sort.direction === 'asc' ? 'name_asc' : 'name_desc'
+				: sort?.key === 'created' && sort.direction === 'asc' ? 'created_asc' : 'created_desc';
+			if (next === nativeSort) return;
+			nativeSort = next; onFilterChange();
+		},
+	});
 
 	let editVolume = $state<AdminVolume | null>(null);
 	let deleteVolume = $state<AdminVolume | null>(null);
@@ -97,18 +134,14 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-	const selectableIds = $derived(new Set(allVolumes.map((volume) => volume.id)));
-	const statusOptions = $derived(
-		(statusSummary?.statuses ?? [])
-			.filter((item) => item.count > 0)
-			.map((item) => item.status),
-	);
+	const selectableIds = $derived(new Set(tableView.rows.map((volume) => volume.id)));
+	$effect(() => { const ids = [...selectableIds]; untrack(() => selection.retain(ids)); });
 	const nextPrefetch = createIntentPrefetchScheduler();
 	function filterParams(): URLSearchParams {
 		const params = new URLSearchParams();
 		if (statusFilter) params.set('status', statusFilter);
-		if (nameSearch) params.set('name', nameSearch);
-		if (volumeType) params.set('volume_type', volumeType);
+		if (nativeName) params.set('name', nativeName);
+		if (nativeType) params.set('volume_type', nativeType);
 		if (minSize !== '') params.set('min_size', minSize);
 		if (maxSize !== '') params.set('max_size', maxSize);
 		return params;
@@ -118,7 +151,7 @@
 		return `/api/v1/admin/volumes/status-summary${query ? `?${query}` : ''}`;
 	}
 	function listPath(marker?: string): string {
-		const params = new URLSearchParams({ limit: String(pageSize), sort });
+		const params = new URLSearchParams({ limit: String(pageSize), sort: nativeSort });
 		if (marker) params.set('marker', marker);
 		for (const [key, value] of filterParams()) params.set(key, value);
 		return `/api/v1/admin/all-volumes?${params}`;
@@ -164,17 +197,7 @@
 			);
 			if (!owns()) return false;
 			statusSummary = summary;
-			const activeStatusDisappeared = statusFilter !== ''
-				&& !summary.statuses.some((item) => item.status === statusFilter && item.count > 0);
-			if (activeStatusDisappeared) {
-				statusSummaryLoading = false;
-				statusSummary = { ...summary, filtered_total: summary.total, filtered_gb: summary.total_gb };
-				statusFilter = '';
-				resetResultBoundary();
-				if (opts?.reloadOnReset !== false) void load(undefined, { clearSelection: true });
-				void loadStatusSummary({ background: true });
-			}
-			return activeStatusDisappeared;
+			return false;
 		} catch {
 			if (owns()) statusSummary = null;
 			return false;
@@ -213,7 +236,7 @@
 		url.searchParams.delete('project_id');
 		url.searchParams.delete('tab');
 		if (api.filter.domainId === domainId && !api.filter.projectId) {
-			statusFilter = ''; nameSearch = ''; volumeType = ''; minSize = ''; maxSize = '';
+			statusFilter = ''; nativeName = ''; nativeType = ''; minSize = ''; maxSize = ''; nativeSort = 'created_desc'; nameSearch = ''; tableView.reset();
 			onFilterChange();
 		}
 		view = 'volumes';
@@ -242,15 +265,11 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
-		const requestStatusFilter = statusFilter;
-		const requestNameSearch = nameSearch;
 		const requestPath = listPath(marker);
 		const owns = () => api.isCurrent() && generation === loadGeneration
 			&& ($auth.token ?? undefined) === requestToken
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
-			&& statusFilter === requestStatusFilter
-			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
 		if (opts?.clearSelection) {
@@ -374,6 +393,7 @@
 	<div data-tour="admin-storage-header">
 	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={statusSummaryLoading || !statusSummary ? t('volumeList.title') : t('volumeList.titleWithCount', { title: t('volumeList.title'), count: statusSummary.total })}>
 		{#snippet actions()}
+		<TutorialStartButton tour="admin-storage" compactOnMobile />
 			<Button variant="outline" onclick={() => { receiveTransfer = true; }}>{volumeT('transferModal.receiveTitle')}</Button>
 		{/snippet}
 	</PageHeader>
@@ -392,36 +412,28 @@
 	<Tabs id="admin-volume-tabs" value={view} items={[{ value: 'volumes', label: t('volumeList.resourceTab'), panelId: 'admin-volume-list-panel' }, { value: 'capacity', label: t('volumeList.capacityTab'), panelId: 'admin-volume-capacity-panel' }]} onchange={changeView} ariaLabel={t('volumeList.views')} />
 	<div data-tour="admin-storage-filters">
 	{#snippet volumeFilters()}
-		<AdminVolumeFilters
-			bind:statusFilter
-			bind:nameSearch
-			bind:volumeType
-			bind:minSize
-			bind:maxSize
-			bind:sort
-			statusOptions={statusOptions}
-			onChange={onFilterChange}
-			onInvalidate={invalidateSearch}
-		/>
+		<AdminVolumeFilters bind:nameSearch />
 	{/snippet}
 	<ResourceToolbar label={volumeT('page.toolbar')} class="mb-4" filters={volumeFilters} controlsHidden={view !== 'volumes'}>
 	{#snippet actions()}
-		<TutorialStartButton tour="admin-storage" compactOnMobile />
 		<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing} onManualRefresh={() => { void load(markerStack[markerStack.length - 1], { refresh: true }); void loadStatusSummary(); void loadTimeseries(tsRange); }} />
 	{/snippet}
 	</ResourceToolbar>
 	</div>
 	<div id="admin-volume-list-panel" role="tabpanel" aria-labelledby="admin-volume-tabs-volumes" tabindex="0" hidden={view !== 'volumes'}>
 
+	<p class="text-xs text-ink-2">{commonT('table.mixedScope')}</p>
+	<TableViewControls view={tableView} class={loading || inventoryError ? '' : 'lg:hidden'} />
 	<div data-tour="admin-storage-list">
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
 		<LoadingState variant="surface" />
 	{:else}
 		<div data-tour="admin-storage-ready">
-		{#if allVolumes.length === 0}<p class="py-6 text-sm text-ink-2" role="status">{t('volumeList.empty')}</p>{/if}
+		{#if tableView.rows.length === 0}<p class="py-6 text-sm text-ink-2" role="status">{t('volumeList.empty')}</p>{/if}
 			<AdminVolumeTable
-				volumes={allVolumes}
+				volumes={tableView.rows}
+				view={tableView}
 				{selectedVolumeId}
 				{openActionMenu}
 				selectedIds={selection.ids}

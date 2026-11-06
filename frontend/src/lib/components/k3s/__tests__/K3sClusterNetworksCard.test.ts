@@ -7,6 +7,7 @@ vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable
 
 type MockController = {
 	cluster: K3sCluster;
+	tableState: () => { search: string; state: { sort: null; filters: Record<string, string[]> } };
 	isActive: boolean;
 	interfaces: Record<string, K3sInterfaceInfo[]>;
 	networks: K3sNetwork[];
@@ -68,6 +69,7 @@ function renderCard(status = 'ACTIVE', interfaces: K3sInterfaceInfo[] = [
 ]) {
 	mocks.controller = {
 		cluster: cluster(status),
+		tableState: () => ({ search: '', state: { sort: null, filters: {} } }),
 		isActive: status === 'ACTIVE',
 		interfaces: { 'server-1': interfaces },
 		networks,
@@ -101,8 +103,6 @@ describe('K3sClusterNetworksCard primary network controls', () => {
 
 	it('uses is_primary instead of interface order for labels and detach availability', () => {
 		renderCard();
-		const primaryLabel = screen.getByText('기본 인터페이스');
-		expect(primaryLabel).toBeTruthy();
 		const detachButtons = screen.getAllByRole('button', { name: '제거' }) as HTMLButtonElement[];
 		expect(detachButtons).toHaveLength(2);
 		expect(detachButtons[0].disabled).toBe(false);

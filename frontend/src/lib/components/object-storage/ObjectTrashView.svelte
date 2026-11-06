@@ -1,4 +1,12 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import { untrack } from 'svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { api, ApiError } from '$lib/api/client';
@@ -40,6 +48,15 @@
 	let purging = $state<string | null>(null);
 	let busy = $state(false);
 	const selection = createResourceSelection();
+ let search = $state('');
+ const searchId = $props.id();
+ const columns = $derived<TableColumn<TrashObject>[]>([
+  { key: 'name', label: t('dialogs.trash.columns.originalName'), value: row => row.original_name },
+  { key: 'deleted', label: t('dialogs.trash.columns.deletedAt'), value: row => row.deleted_at },
+  { key: 'size', label: t('dialogs.trash.columns.size'), value: row => row.bytes },
+ ]);
+ const view = createTableView({ locale: intlLocale,rows: () => items, columns: () => columns, search: () => search, searchable: row => [row.original_name,row.content_type].map(value => String(value ?? ''))});
+ $effect(() => { const ids = view.rows.map(row => row.trash_key); untrack(() => selection.retain(ids)); });
 
 	async function load() {
 		loading = true;
@@ -124,17 +141,24 @@
 	$effect(() => {
 		const currentContainer = containerName;
 		const currentProject = projectId;
-		selection.clear();
-		if (!currentContainer || !currentProject) {
-			items = [];
-			loading = false;
-			return;
-		}
-		load();
+		untrack(() => {
+			search = ''; view.reset(); selection.clear();
+			if (!currentContainer || !currentProject) { items = []; loading = false; return; }
+			void load();
+		});
 	});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 <div class="mt-2">
+<RegexSearch id={searchId} bind:value={search} />
+<TableViewControls {view} class={items.length === 0 ? '' : 'lg:hidden'} />
+{#if !loading && items.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 	{#if loading}
 		<LoadingState variant="section" label={t('dialogs.trash.loading')} />
 	{:else if items.length === 0}
@@ -146,17 +170,17 @@
 				<SelectionToolbar
 					label={t('dialogs.trash.selectionLabel')}
 					ariaLabel={t('dialogs.trash.selectAll')}
-					checked={selection.count === items.length}
-					indeterminate={selection.count > 0 && selection.count < items.length}
+					checked={selection.count === view.rows.length}
+					indeterminate={selection.count > 0 && selection.count < view.rows.length}
 					selectedCount={selection.count}
 					disabled={busy}
-					onToggle={() => selection.toggleAll(items.map((item) => item.trash_key))}
+					onToggle={() => selection.toggleAll(view.rows.map((item) => item.trash_key))}
 				/>
 			</div>
 		{/if}
   <ResponsiveTable>
    {#snippet cards()}
-    {#each items as item (item.trash_key)}
+    {#each view.rows as item (item.trash_key)}
      <CompactResourceCard selected={selectionEnabled && selection.has(item.trash_key)}>
       <div class="flex items-start gap-2">{#if selectionEnabled}<SelectionCheckbox checked={selection.has(item.trash_key)} disabled={busy} ariaLabel={t('dialogs.trash.selectObject', { name: item.original_name })} onclick={() => selection.toggle(item.trash_key)} />{/if}<strong class="min-w-0 text-sm font-mono break-all">{item.original_name}</strong></div>
       <p class="text-xs text-ink-2">{t('dialogs.trash.columns.size')}: {formatStorage(item.bytes / 1_073_741_824)}</p><p class="text-xs text-ink-2">{t('dialogs.trash.columns.deletedAt')}: {item.deleted_at ? new Date(item.deleted_at * 1000).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }) : '—'}</p>
@@ -168,14 +192,14 @@
 			<thead>
 				<tr class="border-b border-line text-ink-2">
 					{#if selectionEnabled}<th class="py-2 px-3 text-left font-medium w-10">{t('dialogs.trash.columns.select')}</th>{/if}
-					<th class="py-2 px-3 text-left font-medium">{t('dialogs.trash.columns.originalName')}</th>
-					<th class="py-2 px-3 text-left font-medium">{t('dialogs.trash.columns.deletedAt')}</th>
-					<th class="py-2 px-3 text-right font-medium">{t('dialogs.trash.columns.size')}</th>
+					<TableColumnHeader {view} columnKey="name" />
+					<TableColumnHeader {view} columnKey="deleted" />
+					<TableColumnHeader {view} columnKey="size" />
 					<th class="py-2 px-3 text-right font-medium">{t('dialogs.trash.columns.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each items as item (item.trash_key)}
+				{#each view.rows as item (item.trash_key)}
 					<tr class="resource-selection-surface border-b border-line/40 hover:bg-surface-sunken/20 transition-colors" data-selected={selectionEnabled && selection.has(item.trash_key)}>
 						{#if selectionEnabled}
 							<td class="py-2 px-3">

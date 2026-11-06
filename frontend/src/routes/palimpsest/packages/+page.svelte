@@ -31,6 +31,13 @@
   import AssetSearchPanel from '$lib/components/palimpsest/AssetSearchPanel.svelte';
   import { t as assetText } from '$lib/i18n/ns/palimpsest-assets';
   import type { AssetIdentity } from '$lib/api/palimpsestAssets';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import type { PackageVersion } from '$lib/api/palimpsestPackages';
+  import { t as commonText } from '$lib/i18n/ns/common';
+  import { t as hubText } from '$lib/i18n/ns/palimpsest-hub';
 
   const selectedIdentity = derived([auth, authReady, projectSwitching, logoutInProgress], ([$auth, ready, switching, loggingOut]): PackageIdentity | null =>
     ready && !switching && !loggingOut && $auth.token && $auth.projectId && $auth.userId
@@ -41,17 +48,41 @@
   const controller = createPalimpsestPackagesController(() => workspace === 'packages' ? get(selectedIdentity) : null, undefined, (leaf) => $serviceCapabilities(leaf), (leaf) => $serviceDenials(leaf));
   let tab = $state('inventory');
   let search = $state('');
-  const visibleInventory = $derived.by(() => {
-    const query = search.trim().toLowerCase();
-    return (controller.inventory ?? []).filter((item) => {
-      if (!query) return true;
+  const inventoryColumns = $derived<TableColumn<PackageSummary>[]>([
+    { key: 'package', label: t('columns.package'), value: item => `${item.namespace}/${item.name}` },
+    { key: 'tags', label: t('columns.tags'), value: item => item.tags.map(tag => tag.tag).join(', ') },
+    { key: 'platforms', label: t('columns.platforms'), value: item => item.platforms.length ? platforms(item.platforms) : null,
+      filterValues: item => item.platforms.map(platform => platforms([platform])) },
+    { key: 'size', label: t('columns.size'), value: item => controller.latestVersions[item.package_id]?.version?.total_bytes, format: (_value, item) => { const bytes = controller.latestVersions[item.package_id]?.version?.total_bytes; return bytes == null ? t('metadata.unavailable') : size(bytes); } },
+  ]);
+  const inventoryView = createTableView({ rows: () => controller.inventory ?? [], columns: () => inventoryColumns, search: () => search,
+    searchable: item => {
       const latest = controller.latestVersions[item.package_id]?.version;
-      return [item.namespace, item.name, `${item.namespace}/${item.name}`,
-        ...item.tags.flatMap((tag) => [tag.tag, tag.digest]), latest?.root_digest ?? '',
-        ...[...item.platforms, ...latest?.platforms ?? []].map((platform) => `${platform.os}/${platform.architecture}${platform.variant ? `/${platform.variant}` : ''}`),
-      ].some((value) => value.toLowerCase().includes(query));
-    });
-  });
+      return [item.namespace, item.name, `${item.namespace}/${item.name}`, ...item.tags.flatMap(tag => [tag.tag, tag.digest]),
+        latest?.root_digest ?? '', ...[...item.platforms, ...latest?.platforms ?? []].map(platform => platforms([platform]))];
+    }, locale: intlLocale });
+  const visibleInventory = $derived(inventoryView.rows);
+  let keySearch = $state('');
+  const keyColumns = $derived<TableColumn<PackageKey>[]>([
+    { key: 'key', label: t('columns.key'), value: key => key.name },
+    { key: 'scope', label: t('columns.scope'), value: key => key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', '),
+      filterValues: key => [key.scope.all_packages ? 'all' : `packages:${key.scope.packages.join('\n')}`],
+      format: (_value, key) => key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ') },
+    { key: 'permissions', label: t('columns.permissions'), value: key => key.actions.join(', ') },
+    { key: 'dates', label: t('columns.dates'), value: key => Date.parse(key.created_at), format: (_value, key) => timestamp(key.created_at) },
+  ]);
+  const keyView = createTableView({ rows: () => controller.keys ?? [], columns: () => keyColumns, search: () => keySearch,
+    searchable: key => [key.name, key.key_id, ...key.actions, ...(key.scope.all_packages ? [t('keys.allPackages')] : key.scope.packages), keyStatus(key)], locale: intlLocale });
+  let versionSearch = $state('');
+  const versionColumns = $derived<TableColumn<PackageVersion>[]>([
+    { key: 'digest', label: hubText('digest'), value: row => row.root_digest },
+    { key: 'size', label: t('columns.size'), value: row => row.total_bytes, format: (_value, row) => size(row.total_bytes) },
+    { key: 'platforms', label: t('columns.platforms'), value: row => row.platforms.length ? platforms(row.platforms) : null,
+      filterValues: row => row.platforms.map(platform => platforms([platform])) },
+    { key: 'date', label: t('columns.dates'), value: row => Date.parse(row.pushed_at), format: (_value, row) => timestamp(row.pushed_at) },
+  ]);
+  const versionView = createTableView({ rows: () => controller.versions ?? [], columns: () => versionColumns, search: () => versionSearch,
+    searchable: row => [row.root_digest, row.pushed_by, ...row.platforms.map(platform => platforms([platform]))], locale: intlLocale });
   let showCreate = $state(false);
   let keyName = $state('');
   let packageNames = $state('');
@@ -75,7 +106,7 @@
   onMount(() => {
     let previous: PackageIdentity | null = null;
     const stop = selectedIdentity.subscribe((identity) => {
-      if (!samePackageIdentity(previous, identity)) { resetForm(); linkHandled = ''; tab = 'inventory'; search = ''; }
+      if (!samePackageIdentity(previous, identity)) { resetForm(); linkHandled = ''; tab = 'inventory'; search = ''; keySearch = ''; versionSearch = ''; inventoryView.reset(); keyView.reset(); versionView.reset(); }
       previous = identity;
       controller.bindIdentity();
     });
@@ -85,6 +116,14 @@
   });
   beforeNavigate(() => { resetForm(); controller.discardSecret(); });
   $effect(() => { workspace; $selectedIdentity; untrack(() => controller.bindIdentity()); });
+  let versionOwner = '';
+  $effect(() => {
+    const owner = controller.detail?.package_id ?? '';
+    if (owner !== versionOwner) {
+      versionOwner = owner;
+      untrack(() => { versionSearch = ''; versionView.reset(); });
+    }
+  });
   $effect(() => {
     controller.syncCapabilities();
     if (controller.issueDenied) resetForm();
@@ -216,7 +255,9 @@
             {#if !controller.canRead}<Alert tone="warning">{t('inventory.denied')}</Alert>
             {:else if controller.busy.inventory && controller.inventory === null}<LoadingState variant="section" label={t('inventory.loading')} />
             {:else if controller.inventory !== null}
-              <Field label={t('search.label')} for="native-package-search" help={t('search.scope')}><TextInput id="native-package-search" type="search" bind:value={search} /></Field>
+              <RegexSearch id="native-package-search" bind:value={search} label={t('search.label')} />
+              <p class="text-xs text-ink-2">{t('search.scope')}</p>
+              <TableViewControls view={inventoryView} class={visibleInventory.length ? 'lg:hidden' : ''} />
               <p class="text-sm text-ink-2" role="status">{t('search.count', { matched: visibleInventory.length, loaded: controller.inventory.length })}</p>
               {#if controller.inventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('inventory.empty')}</p></Card>
               {:else if visibleInventory.length === 0}<Card surface="base"><p class="text-sm text-ink-2">{t('search.empty')}</p></Card>
@@ -227,7 +268,7 @@
                   {#snippet details()}<div class="space-y-1 text-xs">{@render latestMetadata(item)}{#each item.tags as tag}<p class="break-all font-mono">{tag.tag} → {tag.digest}</p>{/each}{#if !item.tags.length}<p>{t('inventory.noTags')}</p>{/if}<p>{platforms(item.platforms)}</p><p class="break-all">{item.latest_pushed_by ?? t('inventory.noPublisher')} · {timestamp(item.latest_pushed_at)}</p><p>{t('context.private')}</p></div>{/snippet}
                   {#snippet actions()}{@render packageActions(item)}{/snippet}
                 </CompactResourceCard>{/each}{/snippet}
-                <TableShell><table><thead><tr><th scope="col">{t('columns.package')}</th><th scope="col">{t('columns.tags')}</th><th scope="col">{t('columns.platforms')}</th><th scope="col">{t('columns.size')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>
+                <TableShell><table><thead><tr>{#each inventoryView.columns as column (column.key)}<TableColumnHeader view={inventoryView} columnKey={column.key} />{/each}<th scope="col">{t('columns.actions')}</th></tr></thead><tbody>
                   {#each visibleInventory as item (item.package_id)}<tr>
                     <td><span class="font-mono">{item.namespace}/{item.name}</span><p class="mt-1 text-xs text-ink-2">{packageType(item.package_type)} · {t('inventory.versions', { count: item.version_count })}</p></td>
                     <td>{#each item.tags as tag}<p class="font-mono text-xs" title={tag.digest}>{tag.tag} → {shortDigest(tag.digest)}</p>{/each}{#if !item.tags.length}<span class="text-ink-2">{t('inventory.noTags')}</span>{/if}</td>
@@ -245,18 +286,21 @@
         {:else}
           <div id="package-keys" role="tabpanel" aria-labelledby="package-tabs-keys" tabindex="0" class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3"><p class="text-sm text-ink-2">{t('keys.description')}</p><Button disabled={!controller.canIssue || !!controller.busy.issue || !!controller.busy.revoke || !!controller.issued} onclick={() => { resetForm(); showCreate = true; }}>{t('keys.issue')}</Button></div>
+            <RegexSearch id="native-package-key-search" bind:value={keySearch} />
+            <TableViewControls view={keyView} class={keyView.rows.length ? 'lg:hidden' : ''} />
+            {#if controller.keys?.length && !keyView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
             {#if !controller.canIssue}<Alert tone="warning">{t('keys.denied')}</Alert>{/if}
             {#if controller.errors.keys}<Alert tone="danger">{controller.errors.keys}</Alert><Button variant="secondary" onclick={() => controller.loadKeys()}>{t('keys.retry')}</Button>{/if}
             {#if controller.errors.issue}<Alert tone="danger">{controller.errors.issue}</Alert>{/if}
             {#if controller.errors.revoke}<Alert tone="danger">{controller.errors.revoke}</Alert>{/if}
             {#if controller.busy.keys && controller.keys === null}<LoadingState variant="section" label={t('keys.loading')} />{:else if controller.keys !== null}
               {#if !controller.keys.length}<Card surface="base"><p class="text-sm text-ink-2">{t('keys.empty')}</p></Card>{:else}
-                <ResponsiveTable>{#snippet cards()}{#each controller.keys as key (key.key_id)}<CompactResourceCard>
+                <ResponsiveTable>{#snippet cards()}{#each keyView.rows as key (key.key_id)}<CompactResourceCard>
                   <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="text-sm font-medium">{key.name}</h2><StatusChip status={keyStatus(key)} /></div><p class="break-words font-mono text-xs">{key.actions.join(', ')}</p>
                   {#snippet details()}<p class="break-all text-xs font-mono">{t('keys.publicId')}: {key.key_id}</p><p class="break-all text-xs">{t('columns.scope')}: {key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</p><p class="text-xs text-ink-2">{t('keys.dates', { created: timestamp(key.created_at), expires: timestamp(key.expires_at) })}</p>{/snippet}
                   {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => copy(key.key_id)}>{t('keys.copyId')}</Button><Button variant="danger-outline" disabled={!controller.canRevoke || !!key.revoked_at || !!controller.busy.issue || !!controller.busy.revoke} onclick={() => { revokeTarget = key; }}>{t('actions.revoke')}</Button>{/snippet}
                 </CompactResourceCard>{/each}{/snippet}
-                <TableShell><table><thead><tr><th scope="col">{t('columns.key')}</th><th scope="col">{t('columns.scope')}</th><th scope="col">{t('columns.permissions')}</th><th scope="col">{t('columns.dates')}</th><th scope="col">{t('columns.actions')}</th></tr></thead><tbody>{#each controller.keys as key (key.key_id)}<tr><td>{key.name}<div class="mt-1"><StatusChip status={keyStatus(key)} /></div></td><td class="max-w-64 break-all">{key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</td><td class="max-w-56 break-words font-mono text-xs">{key.actions.join(', ')}</td><td class="tabular-nums">{timestamp(key.created_at)}<p class="text-xs text-ink-2">{timestamp(key.expires_at)}</p></td><td>{@render keyRevoke(key)}</td></tr>{/each}</tbody></table></TableShell></ResponsiveTable>
+                <TableShell><table><thead><tr>{#each keyView.columns as column (column.key)}<TableColumnHeader view={keyView} columnKey={column.key} />{/each}<th scope="col">{t('columns.actions')}</th></tr></thead><tbody>{#each keyView.rows as key (key.key_id)}<tr><td>{key.name}<div class="mt-1"><StatusChip status={keyStatus(key)} /></div></td><td class="max-w-64 break-all">{key.scope.all_packages ? t('keys.allPackages') : key.scope.packages.join(', ')}</td><td class="max-w-56 break-words font-mono text-xs">{key.actions.join(', ')}</td><td class="tabular-nums">{timestamp(key.created_at)}<p class="text-xs text-ink-2">{timestamp(key.expires_at)}</p></td><td>{@render keyRevoke(key)}</td></tr>{/each}</tbody></table></TableShell></ResponsiveTable>
               {/if}
             {/if}
           </div>
@@ -297,8 +341,12 @@
     <p class="text-sm text-ink-2">{packageType(controller.detail.package_type)} · {t('context.private')} · {platforms(controller.detail.platforms)}</p>
     <div class="flex flex-wrap gap-2">{#each controller.detail.tags as tag}<Button variant="secondary" disabled={!!controller.busy.version} onclick={() => controller.resolveTag(tag.tag)}>{t('detail.resolve', { tag: tag.tag })}</Button>{/each}</div>
     <h3 class="text-sm font-semibold">{t('detail.history')}</h3>
+    <RegexSearch id="native-package-version-search" bind:value={versionSearch} />
+    <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+    <TableViewControls view={versionView} class="" />
+    {#if controller.versions?.length && !versionView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
     {#if controller.errors.detail}<Alert tone="danger">{controller.errors.detail}</Alert>{/if}
-    {#each controller.versions ?? [] as item (item.root_digest)}
+    {#each versionView.rows as item (item.root_digest)}
       <Card surface="base" padding="sm">
         <p class="break-all font-mono text-xs">{item.root_digest}</p>
         <p class="my-2 text-xs text-ink-2">{size(item.total_bytes)} · {platforms(item.platforms)} · {item.pushed_by} · {timestamp(item.pushed_at)}</p>

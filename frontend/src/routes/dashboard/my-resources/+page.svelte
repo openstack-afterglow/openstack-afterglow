@@ -15,12 +15,16 @@
 	import ResourceInventoryCard from '$lib/components/dashboard/my-resources/ResourceInventoryCard.svelte';
 	import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 	import type { UserDashboardSummary } from '$lib/types/userDashboard';
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
 
 	let data = $state<UserDashboardSummary | null>(null);
 	let initialLoading = $state(false);
 	let refreshing = $state(false);
 	let error = $state<string | null>(null);
 	let snapshotOwner = $state('');
+	let projectTableSearch = $state('');
+	let projectTableState = $state<TableViewState>({ sort: null, filters: {} });
+	let tableOwner = '';
 	let active = false;
 	let owner = '';
 	let ownerEpoch = 0;
@@ -71,7 +75,15 @@
 	}
 
 	function syncOwner() {
-		const next = ownerKey(get(auth), get(projectSwitching));
+		const state = get(auth);
+		const switching = get(projectSwitching);
+		const next = ownerKey(state, switching);
+		const nextTableOwner = JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId, !!state.token, switching, state.isSystemAdmin, state.isDomainManager, state.canWrite, [...(state.roles ?? [])].sort()]);
+		if (nextTableOwner !== tableOwner) {
+			tableOwner = nextTableOwner;
+			projectTableSearch = '';
+			projectTableState = { sort: null, filters: {} };
+		}
 		if (next === owner) return;
 		owner = next;
 		ownerEpoch++;
@@ -124,7 +136,7 @@
 	{:else if visibleData}
 		<div data-resource-snapshot>
 			<MyResourcesSummary totals={visibleData.totals} />
-			<ProjectUsageTable projects={visibleData.projects} />
+			<ProjectUsageTable projects={visibleData.projects} bind:search={projectTableSearch} state={projectTableState} />
 			{#if visibleData.projects.length === 0}
 				<EmptyState headline={t('myResources.noProjects')} description={t('myResources.invitationHelp')} />
 			{/if}

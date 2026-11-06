@@ -479,3 +479,61 @@ async def test_legacy_name_only_union_rule_blocks_without_revoking(monkeypatch):
         await cleanup.prepare_managed_delete(native.conn, native.server, False, native.lease)
     deny.assert_not_called()
     assert native.deleted == []
+
+
+@pytest.mark.parametrize("share_owner", [PROJECT, "fixed-admin-project", "foreign-project"])
+async def test_fixed_admin_cleanup_uses_bound_share_owner_and_keeps_disks(managed, monkeypatch, share_owner):
+    import json
+
+    from app.services import manila
+
+    native, factory, consume_id = managed
+    access = SimpleNamespace(
+        project_id="fixed-admin-project",
+        user_id="fixed-operator",
+        project_scoped=True,
+        system_scoped=False,
+        is_admin_project=True,
+        auth_token="synthetic-operator-token",
+        role_names=["admin"],
+        _data={"token": {"is_admin_project": True}},
+    )
+    native.conn.session.auth = SimpleNamespace(get_access=lambda _: access)
+    usage.bind_operator_scope(native.conn, PROJECT)
+    grant = dict(s="share", i="rule", t="ip", a="10.0.0.2", l="rw", m=True)
+    native.server.metadata[manila.INSTANCE_STORAGE_GRANT_PREFIX + "proof"] = json.dumps(grant)
+    state = {"present": True, "revoked": []}
+    rule = dict(
+        id="rule",
+        access_type="ip",
+        access_to="10.0.0.2",
+        access_level="rw",
+        metadata={"afterglow_instance_id": SERVER},
+    )
+
+    def revoke(_conn, share, identity):
+        state["revoked"].append((share, identity))
+        state["present"] = False
+
+    monkeypatch.setattr(manila, "get_file_storage", lambda *_: SimpleNamespace(id="share", project_id=share_owner))
+    monkeypatch.setattr(manila, "get_access_rule", lambda *_: dict(rule) if state["present"] else None)
+    monkeypatch.setattr(manila, "revoke_access_rule", revoke)
+    if share_owner != PROJECT:
+        with pytest.raises(RuntimeError):
+            await cleanup.prepare_managed_delete(native.conn, native.server, False, native.lease)
+            await cleanup.finalize_managed_delete_preflight(native.conn, native.server, native.lease)
+        assert state["revoked"] == []
+        assert native.deleted == []
+        assert set(native.volumes) == {LAYER, UPPER}
+        return
+    await cleanup.prepare_managed_delete(native.conn, native.server, False, native.lease)
+    await cleanup.finalize_managed_delete_preflight(native.conn, native.server, native.lease)
+    assert state["revoked"] == [("share", "rule")]
+    native.delete_server(SERVER)
+    await cleanup.finish_managed_delete(native.conn, SERVER, PROJECT, native.lease)
+    async with factory() as session:
+        row = await session.get(LayerConsume, consume_id)
+        assert row.status == "deleted" and row.cleanup_state == "complete"
+        assert row.resource_snapshot[cleanup.RECEIPT]["complete"]
+    assert set(native.volumes) == {LAYER, UPPER}
+    assert native.deleted == [("server", SERVER)]

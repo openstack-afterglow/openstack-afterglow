@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/topology';
 	import { formatBps } from './topologyHelpers.ts';
 	import type { TopologyTraffic } from './types.ts';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
 	let {
 		searchTerm = $bindable(''),
@@ -17,15 +18,7 @@
 </script>
 
 <div class="flex items-center gap-3 mb-4 flex-wrap">
-	<input
-		type="text"
-		placeholder={t('header.search')}
-		bind:value={searchTerm}
-		class="text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:border-action-warm w-52
-			{isLight
-				? 'bg-gray-100 border border-gray-300 text-gray-900 placeholder-ink-3'
-				: 'bg-surface-sunken border border-line-2 text-ink-1 placeholder-ink-3'}"
-	/>
+	<RegexSearch id="topology-lane-search" bind:value={searchTerm} label={t('toolbar.searchLabel')} placeholder={t('header.search')} class="min-w-0 flex-1" />
 	{#if traffic?.interfaces || traffic?.ts}
 		<div class="ml-auto flex items-center gap-3 text-xs"
 		     style="color: {isLight ? '#6b7280' : '#9ca3af'}">

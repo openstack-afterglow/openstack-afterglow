@@ -7,6 +7,9 @@ import { toast } from '$lib/stores/toast';
 import type { DbInstance, DbFlavor, DbDatabase, DbUser, DbBackup } from '$lib/types/database';
 import type { FloatingIp } from '$lib/types/networks';
 import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
+import { createTableView } from '$lib/utils/tableView.svelte';
+import { dbBackupColumns, dbDatabaseColumns, dbUserColumns } from '$lib/utils/databaseTableColumns';
 
 export interface DbInstanceDetailControllerOpts {
 	instanceId: () => string;
@@ -58,6 +61,19 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	let autoBackupConfig = $state<AutoBackupConfig | null>(null);
 	let loadingAutoBackup = $state(false);
 	let savingAutoBackup = $state(false);
+	let backupSearch = $state('');
+	let userSearch = $state('');
+	let databaseSearch = $state('');
+	const backupView = createTableView({
+		rows: () => backups, columns: () => dbBackupColumns(), search: () => backupSearch,
+		searchable: (row) => [row.name, row.id, row.status, String(row.size ?? ''), row.created_at, row.description ?? ''], locale: intlLocale,
+	});
+	const userView = createTableView({
+		rows: () => users, columns: dbUserColumns, search: () => userSearch, locale: intlLocale,
+	});
+	const databaseView = createTableView({
+		rows: () => databases, columns: dbDatabaseColumns, search: () => databaseSearch, locale: intlLocale,
+	});
 	function observe(action: ExperienceAction, parent?: ExperienceContext) {
 		const ctx = parent ? experienceRequest(parent).context ?? parent : (action === 'load' ? beginExperienceLoad('database', 'resource.detail') : beginExperienceAction('database', action, 'resource.detail'));
 		return {
@@ -230,6 +246,12 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		backups = [];
 		rootInfo = null;
 		loading = true;
+		backupSearch = '';
+		userSearch = '';
+		databaseSearch = '';
+		backupView.reset();
+		userView.reset();
+		databaseView.reset();
 	}
 
 	async function attachFip() {
@@ -446,6 +468,15 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	return {
 		// AutoRefresh (직접 바인딩용)
 		get ar() { return ar; },
+		backupView,
+		userView,
+		databaseView,
+		get backupSearch() { return backupSearch; },
+		set backupSearch(value: string) { backupSearch = value; },
+		get userSearch() { return userSearch; },
+		set userSearch(value: string) { userSearch = value; },
+		get databaseSearch() { return databaseSearch; },
+		set databaseSearch(value: string) { databaseSearch = value; },
 
 		// State getters
 		get instance() { return instance; },

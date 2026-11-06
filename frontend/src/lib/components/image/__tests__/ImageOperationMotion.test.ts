@@ -14,6 +14,7 @@ import ImageDeleteAction from '../ImageDeleteAction.svelte';
 
 beforeEach(() => {
 	controller.current = {
+		tableState: () => ({ search: '', state: { sort: null, filters: {} } }),
 		image: { id: 'image-a', name: 'ubuntu:latest', status: 'active', visibility: 'private', properties: { architecture: 'x86_64' } },
 		newMemberId: '', loadingMembers: false, members: [], memberError: '',
 		addingMember: false, removingMember: null, visibilityValue: 'public',

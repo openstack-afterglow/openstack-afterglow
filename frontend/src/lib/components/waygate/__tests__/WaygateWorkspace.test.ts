@@ -1,3 +1,4 @@
+import type { PermissionState } from '$lib/stores/servicePermissions';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
@@ -16,8 +17,14 @@ vi.mock('$lib/api/client', () => ({
 		constructor(public status: number, message: string) { super(message); }
 	},
 }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }) }));
-vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }),
+	authReady: writable(true), projectSwitching: writable(false),
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+	observedProjectPermissions: writable<PermissionState>({ permissions: null, loading: false, error: '' }),
+}));
 vi.mock('qrcode', () => ({ default: { toDataURL: mocks.qr } }));
 vi.mock('$lib/config/site', () => ({ siteConfig: writable({ services: { waygate: true } }) }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }));
@@ -31,11 +38,13 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 
 import { auth } from '$lib/stores/auth';
-import { serviceCapabilities } from '$lib/stores/servicePermissions';
+import { observedProjectPermissions, serviceCapabilities } from '$lib/stores/servicePermissions';
+import { t as commonT } from '$lib/i18n/ns/common';
 import { ApiError } from '$lib/api/client';
 import { t } from '$lib/i18n/ns/waygate';
 import type { WaygateClient, WaygateServer } from '$lib/types/waygate';
 import WaygateWorkspace from '../WaygateWorkspace.svelte';
+import { getLocale, initLocale } from '$lib/i18n/runtime.svelte';
 
 const base = '/api/v1/waygate/servers';
 const capabilityStore = serviceCapabilities as Writable<(leaf: string) => boolean>;
@@ -76,6 +85,7 @@ async function openDetail() {
 	await fireEvent.click(await screen.findByText('gateway-a'));
 	await screen.findByText('laptop-a');
 }
+const originalLocale = getLocale();
 async function settle() {
 	// Drain the API adapter's promise chain before asserting absence of stale effects.
 	await nextTurn();
@@ -87,6 +97,7 @@ beforeEach(() => {
 	vi.resetAllMocks();
 	mocks.refresh.length = 0;
 	auth.update((value) => ({ ...value, token: 'token-a', projectId: 'project-a', userId: 'user-a', isSystemAdmin: false, roles: ['member'] }));
+	(observedProjectPermissions as Writable<PermissionState>).set({ permissions: null, loading: false, error: '' });
 	grant(...allWaygateLeaves);
 	Element.prototype.animate = vi.fn().mockReturnValue({ finished: Promise.resolve(), cancel: vi.fn(), play: vi.fn() });
 	vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
@@ -108,11 +119,110 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
+	initLocale(originalLocale);
 	if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate);
 	else Reflect.deleteProperty(Element.prototype, 'animate');
 });
 
+	it('prunes hidden selections so bulk actions and visible selection share one set', async () => {
+		mocks.get.mockResolvedValueOnce([server('a'), { ...server('b'), project_id: 'project-a' }]);
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-b');
+		await fireEvent.click(screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-a' }) }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-b' }) }));
+		const search = screen.getByRole('searchbox', { name: commonT('table.search') });
+		await fireEvent.input(search, { target: { value: '^gateway-a$' } });
+		expect(screen.queryByText('gateway-b')).toBeNull();
+		await fireEvent.input(search, { target: { value: '' } });
+		expect((screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-a' }) }) as HTMLInputElement).checked).toBe(true);
+		expect((screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-b' }) }) as HTMLInputElement).checked).toBe(false);
+		await fireEvent.input(search, { target: { value: '^missing$' } });
+		expect(screen.queryByLabelText(t('project.selection.bulkActions'))).toBeNull();
+		await fireEvent.input(search, { target: { value: '' } });
+		expect((screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-a' }) }) as HTMLInputElement).checked).toBe(false);
+		expect((screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-b' }) }) as HTMLInputElement).checked).toBe(false);
+	});
+
 describe('Waygate workspace project isolation', () => {
+	it('retains stable client status and owner facets when locale changes', async () => {
+		initLocale('en');
+		render(WaygateWorkspace);
+		await openDetail();
+		for (const key of ['project.client.status', 'project.client.owner'] as const) {
+			const label = commonT('table.filterColumn', { column: t(key) });
+			await fireEvent.click(screen.getByRole('button', { name: label }));
+			const menu = within(screen.getByRole('dialog', { name: label }));
+			await fireEvent.click(menu.getByRole('button', { name: commonT('table.selectNone') }));
+			await fireEvent.click(menu.getByRole('checkbox'));
+			await fireEvent.click(menu.getByRole('button', { name: commonT('actions.close') }));
+		}
+		initLocale('ko');
+		await tick();
+		expect(screen.getByText('laptop-a')).toBeTruthy();
+		for (const key of ['project.client.status', 'project.client.owner'] as const) {
+			const label = commonT('table.filterColumn', { column: t(key) });
+			await fireEvent.click(screen.getByRole('button', { name: label }));
+			const menu = within(screen.getByRole('dialog', { name: label }));
+			expect((menu.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+			await fireEvent.click(menu.getByRole('button', { name: commonT('actions.close') }));
+		}
+	});
+
+	it('retains display conditions through token renewal without retaining mutation or selection lifetimes', async () => {
+		const confirmation = deferred<boolean>();
+		mocks.confirm.mockReturnValue(confirmation.promise);
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		const search = () => screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement;
+		await fireEvent.input(search(), { target: { value: '^gateway-a$' } });
+		const name = t('project.server.label');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.none') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.ascending') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column: name }) }));
+		const menu = within(screen.getByRole('dialog', { name: commonT('table.filterColumn', { column: name }) }));
+		await fireEvent.click(menu.getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(menu.getByRole('checkbox', { name: 'gateway-a' }));
+		await fireEvent.click(menu.getByRole('button', { name: commonT('actions.close') }));
+		const gatewaySelection = screen.getByRole('checkbox', { name: t('project.selection.server', { name: 'gateway-a' }) });
+		await fireEvent.click(gatewaySelection);
+		await fireEvent.click(within(gatewaySelection.closest<HTMLElement>('article, tr')!).getByRole('button', { name: t('project.actions.delete') }));
+		auth.update(value => ({ ...value, token: 'renewed-token' }));
+		await settle();
+		confirmation.resolve(true);
+		await settle();
+		expect(mocks.delete).not.toHaveBeenCalled();
+		expect(search().value).toBe('^gateway-a$');
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.descending') }) })).toBeTruthy();
+		expect((screen.getByRole('checkbox', { name: 'gateway-a 선택' }) as HTMLInputElement).checked).toBe(false);
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column: name }) }));
+		const restored = within(screen.getByRole('dialog', { name: commonT('table.filterColumn', { column: name }) }));
+		expect((restored.getByRole('checkbox', { name: 'gateway-a' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(restored.getByRole('button', { name: commonT('actions.close') }));
+		switchProject('project-b');
+		await screen.findByText('gateway-b');
+		expect(search().value).toBe('');
+		expect(screen.getByRole('button', { name: commonT('table.sortColumn', { column: name, direction: commonT('table.none') }) })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: commonT('table.resetView') })).toBeNull();
+	});
+
+	it('keeps display state during authority revalidation and clears it on a changed authoritative result', async () => {
+		const permissions = observedProjectPermissions as Writable<PermissionState>;
+		const authority = { is_owner: false, is_manager: false, can_write: true, service_permissions: { waygate: ['waygate-inventory_reader'] } };
+		permissions.set({ permissions: authority, loading: false, error: '' });
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		await fireEvent.input(screen.getByRole('searchbox', { name: commonT('table.search') }), { target: { value: '^gateway-a$' } });
+		permissions.set({ permissions: null, loading: true, error: '' });
+		await tick();
+		expect((screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement).value).toBe('^gateway-a$');
+		permissions.set({ permissions: authority, loading: false, error: '' });
+		await tick();
+		expect((screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement).value).toBe('^gateway-a$');
+		permissions.set({ permissions: { ...authority, can_write: false }, loading: false, error: '' });
+		await settle();
+		expect((screen.getByRole('searchbox', { name: commonT('table.search') }) as HTMLInputElement).value).toBe('');
+	});
+
 	it('does not request an implicit admin all-project view, including callbacks from a retired timer', async () => {
 		switchProject(null);
 		render(WaygateWorkspace, { admin: true });

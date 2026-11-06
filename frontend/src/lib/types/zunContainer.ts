@@ -16,6 +16,25 @@ export interface ContainerListResponse {
   message: string;
 }
 
+/** Validate the native envelope before publishing it to reactive inventory consumers. */
+export function parseContainerListResponse(value: unknown): ContainerListResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('invalid_container_list_response');
+  const response = value as Record<string, unknown>;
+  if (!Array.isArray(response.items) || typeof response.service_available !== 'boolean' || typeof response.message !== 'string') {
+    throw new TypeError('invalid_container_list_response');
+  }
+  for (const item of response.items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new TypeError('invalid_container_list_item');
+    const row = item as Record<string, unknown>;
+    if (typeof row.uuid !== 'string' || typeof row.name !== 'string' || typeof row.status !== 'string'
+      || (row.cpu !== null && (typeof row.cpu !== 'number' || !Number.isFinite(row.cpu)))
+      || ['status_reason', 'image', 'command', 'memory', 'created_at'].some(key => row[key] !== null && typeof row[key] !== 'string')) {
+      throw new TypeError('invalid_container_list_item');
+    }
+  }
+  return value as ContainerListResponse;
+}
+
 export interface EnvVar {
   key: string;
   value: string;

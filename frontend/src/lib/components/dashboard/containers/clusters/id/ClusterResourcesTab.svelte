@@ -5,23 +5,34 @@
   import { resourceStatusColor } from '$lib/types/cluster';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+  import { t as tc } from '$lib/i18n/ns/common';
+  import type { TableView } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
-  let { resources, loading, onRefresh }: { resources: StackResource[]; loading: boolean; onRefresh: () => void } = $props();
+  let { resources, view, search = $bindable(''), loading, onRefresh }: {
+    resources: StackResource[]; view: TableView<StackResource>; search?: string; loading: boolean; onRefresh: () => void;
+  } = $props();
 </script>
 
 <div class="flex items-center justify-between mb-3">
   <div class="text-sm text-ink-2">{t('clusters.resources.count', { count: resources.length })}</div>
   <button onclick={onRefresh} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('clusters.actions.refresh')}</button>
 </div>
+<RegexSearch id="legacy-cluster-resources-search" bind:value={search} class="mb-3" />
+<TableViewControls {view} />
 {#if loading && resources.length > 0}<LoadingState variant="inline" />{/if}
 {#if loading && resources.length === 0}
   <LoadingState variant="section" />
 {:else if resources.length === 0}
   <div class="text-ink-2 text-sm">{t('clusters.resources.unavailable')}</div>
-{:else}
+{:else if view.rows.length === 0}
+  <p role="status" class="text-ink-2 text-sm">{tc('table.noMatches')}</p>
+{/if}
  <ResponsiveTable>
   {#snippet cards()}
-   {#each resources as r}
+   {#each view.rows as r}
     <CompactResourceCard>
      <strong class="text-sm break-all">{r.resource_name}</strong><span class="text-xs {resourceStatusColor(r.resource_status)}">{r.resource_status}</span><p class="text-xs font-mono break-all">{r.resource_type}</p>
      {#snippet details()}<p class="text-xs break-all">{t('clusters.resources.physicalId')}: {r.physical_resource_id || t('clusters.placeholder')}</p>{#if r.resource_status_reason}<p class="text-xs break-all">{r.resource_status_reason}</p>{/if}<p class="text-xs">{t('clusters.resources.createdAt')}: {r.created_at?.slice(0, 16).replace('T', ' ') ?? t('clusters.placeholder')}</p>{/snippet}
@@ -32,15 +43,13 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-          <th class="text-left py-2 pr-4">{t('clusters.resources.name')}</th>
-          <th class="text-left py-2 pr-4">{t('clusters.resources.type')}</th>
-          <th class="text-left py-2 pr-4">{t('clusters.resources.physicalId')}</th>
-          <th class="text-left py-2 pr-4">{t('clusters.resources.status')}</th>
-          <th class="text-left py-2">{t('clusters.resources.createdAt')}</th>
+          {#each view.columns as column (column.key)}
+            <TableColumnHeader {view} columnKey={column.key} />
+          {/each}
         </tr>
       </thead>
       <tbody>
-        {#each resources as r}
+        {#each view.rows as r}
           <tr class="border-b border-line/50 text-xs">
             <td class="py-2 pr-4 text-ink-0 font-medium"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.resource_name}>{r.resource_name}</span></td>
             <td class="py-2 pr-4 text-ink-2 font-mono text-xs">{r.resource_type}</td>
@@ -58,4 +67,3 @@
     </table>
   </div>
  </ResponsiveTable>
-{/if}

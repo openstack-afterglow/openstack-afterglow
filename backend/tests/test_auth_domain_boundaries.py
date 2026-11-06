@@ -2268,3 +2268,109 @@ async def test_me_never_trusts_a_plain_metadata_dto(domain_client, monkeypatch):
     monkeypatch.setattr(auth, "_domain_metadata", fresh)
     current = await auth.me(principal)
     assert current.available_domains == [] and current.can_create_domain is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/v1/auth/mcp-tokens"),
+        ("GET", "/api/v1/auth/mcp-oauth/grants"),
+        ("DELETE", "/api/v1/auth/mcp-tokens/owned-token"),
+        ("DELETE", "/api/v1/auth/mcp-oauth/grants/owned-grant"),
+    ],
+)
+@pytest.mark.parametrize("projectless", [False, True])
+@pytest.mark.parametrize("selected", ["foreign", "lost-project"])
+async def test_account_mcp_management_ignores_workspace_without_native_rescope(
+    domain_client, monkeypatch, method, path, projectless, selected
+):
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup") if projectless else await login(client)
+    if not projectless:
+        state.grants["user"].remove("own")
+    before = deepcopy((state.projects, state.grants))
+    original_validate = deps._cached_validate
+    validated = []
+
+    async def validate(token, project_id, **kwargs):
+        validated.append(project_id)
+        return await original_validate(token, project_id, **kwargs)
+
+    monkeypatch.setattr(deps, "_cached_validate", validate)
+    request = boundary_request(path)
+    request.scope["method"] = method
+    principal = await deps._resolve_jwt_token_info(request, tokens["token"], selected)
+    assert principal["user_id"] == ("signup" if projectless else "user")
+    assert principal["project_id"] == principal["connection_project_id"] == ""
+    assert principal["roles"] == []
+    assert validated and set(validated) == {""}
+    assert deepcopy((state.projects, state.grants)) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["home", "user", "revoked"])
+async def test_account_mcp_management_preserves_native_identity_proof(domain_client, monkeypatch, invalid):
+    client, _ = domain_client
+    tokens = await login(client)
+    original_validate = deps._cached_validate
+
+    async def validate(token, project_id, **kwargs):
+        if invalid == "revoked":
+            raise Unauthorized()
+        root = await original_validate(token, project_id, **kwargs)
+        return {**root, **({"identity_domain_id": "foreign-home"} if invalid == "home" else {"user_id": "other"})}
+
+    monkeypatch.setattr(deps, "_cached_validate", validate)
+    with pytest.raises(HTTPException) as rejected:
+        await deps._resolve_jwt_token_info(boundary_request("/api/v1/auth/mcp-tokens"), tokens["token"], "foreign")
+    assert rejected.value.status_code == (401 if invalid == "revoked" else 403)
+    assert (await client.get("/api/v1/auth/mcp-tokens")).status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("POST", "/api/v1/auth/mcp-tokens"),
+        ("POST", "/api/v1/auth/mcp-tokens/verify"),
+        ("PUT", "/api/v1/auth/mcp-tokens/owned-token/lumen-default"),
+        ("DELETE", "/api/v1/auth/mcp-tokens/lumen-default"),
+        ("GET", "/api/v1/auth/mcp-projects"),
+        ("GET", "/api/v1/auth/mcp-tokens/owned-token"),
+        ("GET", "/api/v1/auth/mcp-oauth/grants/owned-grant"),
+    ],
+)
+async def test_account_mcp_exception_does_not_broaden_issuance_or_lumen(domain_client, method, path):
+    client, _ = domain_client
+    tokens = await login(client)
+    request = boundary_request(path)
+    request.scope["method"] = method
+    assert deps._account_mcp_management_request(request) is False
+    with pytest.raises(HTTPException) as denied:
+        await deps._resolve_jwt_token_info(request, tokens["token"], "foreign")
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_account_mcp_cleanup_uses_only_unscoped_caller_and_closes_connection(domain_client, monkeypatch):
+    client, state = domain_client
+    tokens = await legacy_projectless_login(client, state, "signup")
+    request = boundary_request("/api/v1/auth/mcp-tokens/owned-token")
+    request.scope["method"] = "DELETE"
+    principal = await deps._resolve_jwt_token_info(request, tokens["token"], "foreign")
+    calls = []
+    conn = SimpleNamespace(close=lambda: calls.append("closed"))
+
+    def connect(token, project_id, **kwargs):
+        calls.append((token, project_id, kwargs))
+        return conn
+
+    monkeypatch.setattr(keystone, "get_openstack_connection", connect)
+    dependency = deps.get_os_conn(request, principal)
+    assert await anext(dependency) is conn
+    assert conn._afterglow_user_id == "signup"
+    assert conn._afterglow_authenticated_project_id == ""
+    assert calls == [(principal["session_token"], "", {})]
+    await dependency.aclose()
+    assert calls[-1] == "closed"

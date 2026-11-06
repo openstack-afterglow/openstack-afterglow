@@ -5,6 +5,7 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/network-resources';
 import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 
 interface Options {
 	networkId: () => string;
@@ -27,6 +28,23 @@ function createNetworkDetailController(opts: Options) {
 	let showSubnetForm = $state(false);
 	let addingSubnet = $state(false);
 	let subnetError = $state('');
+	const subnetColumns = (): TableColumn<NetworkDetail['subnet_details'][number]>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name || row.id },
+		{ key: 'cidr', label: 'CIDR', value: row => row.cidr },
+		{ key: 'gateway', label: t('network.labels.gateway'), value: row => row.gateway_ip },
+		{ key: 'dhcp', label: 'DHCP', value: row => row.dhcp_enabled, format: value => t(value === true ? 'network.state.enabled' : 'network.state.disabled') },
+	];
+	const routerColumns = (): TableColumn<NetworkRouterInfo>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name || row.id },
+		{ key: 'status', label: t('network.labels.status'), value: row => row.status },
+	];
+	const subnetView = createTableView({ rows: () => network?.subnet_details ?? [], columns: subnetColumns });
+	const routerView = createTableView({ rows: () => network?.routers ?? [], columns: routerColumns });
+	const viewOwner = $derived(JSON.stringify([opts.networkId(), opts.projectId()]));
+	$effect(() => {
+		viewOwner;
+		untrack(() => { subnetView.reset(); routerView.reset(); });
+	});
 
 	const isUserPanel = $derived(opts.apiBase() === '/api/v1/networks');
 	const canManageNetwork = $derived(
@@ -182,6 +200,7 @@ function createNetworkDetailController(opts: Options) {
 	}
 
 	return {
+		subnetView, routerView,
 		get network() { return network; },
 		get loading() { return loading; },
 		get error() { return error; },

@@ -1,23 +1,17 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { NetworkAgent, Service } from '$lib/types/adminServices';
 import NetworkAgentTable from '../NetworkAgentTable.svelte';
 import ServiceTable from '../ServiceTable.svelte';
 import { COMPUTE_COLUMNS } from '../serviceColumns';
+import { setLocale } from '$lib/i18n/runtime.svelte';
+import { t } from '$lib/i18n/ns/admin-ops';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { clearColumn, setColumnValues, sortColumn } from './tableInteractions';
+beforeEach(() => setLocale('en'));
 
 afterEach(cleanup);
 
-function optionValue(label: string, optionLabel: string): string {
-	const select = screen.getByLabelText(label) as HTMLSelectElement;
-	const option = [...select.options].find((item) => item.textContent === optionLabel);
-	if (!option) throw new Error(`Missing ${optionLabel} option for ${label}`);
-	return option.value;
-}
-
-async function selectOption(label: string, optionLabel: string) {
-	const select = screen.getByLabelText(label) as HTMLSelectElement;
-	await fireEvent.change(select, { target: { value: optionValue(label, optionLabel) } });
-}
 
 function tableColumn(column: number): string[] {
 	return screen.getAllByRole('row').slice(1).map((row) => {
@@ -42,73 +36,65 @@ const agents: NetworkAgent[] = [
 ];
 
 describe('NetworkAgentTable', () => {
-	it('AND-combines Host, Alive, and Admin State while keeping unknown Alive distinct from down', async () => {
-		render(NetworkAgentTable, { props: { agents, loading: false, emptyMessage: '데이터 없음' } });
-
-		await selectOption('Host', 'host-a');
-		await selectOption('Alive', 'down');
-		await selectOption('Admin State', 'DOWN');
+	it('combines multiple values within a column and intersects other columns while preserving unknown alive', async () => {
+		render(NetworkAgentTable, { props: { agents, loading: false, emptyMessage: 'No data' } });
+		await setColumnValues(t('services.columns.host'), ['host-a']);
+		await setColumnValues(t('services.columns.alive'), [t('services.state.down'), commonT('table.missing')]);
+		expect(tableColumn(2)).toEqual(['host-a', 'host-a']);
+		await setColumnValues(t('services.columns.alive'), [commonT('table.missing')]);
 		expect(tableColumn(2)).toEqual(['host-a']);
-		expect(tableColumn(4)).toEqual(['down']);
-
-		await selectOption('Alive', '미확인');
-		expect(tableColumn(2)).toEqual(['host-a']);
-
-		await selectOption('Admin State', 'UP');
-		expect(screen.queryByRole('table')).toBeNull();
+		await setColumnValues(t('services.columns.adminState'), []);
+		expect(tableColumn(2)).toEqual([]);
+		expect(screen.getAllByRole('columnheader')).toHaveLength(7);
 	});
 
-	it('sorts hosts naturally in both directions', async () => {
+	it('cycles natural host sorting ascending, descending and incoming order', async () => {
 		const sortable = [
-			{ ...agents[0], id: 'ten', host: 'host10' },
 			{ ...agents[1], id: 'two', host: 'host2' },
+			{ ...agents[0], id: 'ten', host: 'host10' },
 			{ ...agents[2], id: 'one', host: 'host1' },
 		];
-		render(NetworkAgentTable, { props: { agents: sortable, loading: false, emptyMessage: '데이터 없음' } });
-
-		const hostSort = screen.getByRole('button', { name: 'Host 정렬' });
-		await fireEvent.click(hostSort);
+		render(NetworkAgentTable, { props: { agents: sortable, loading: false, emptyMessage: 'No data' } });
+		await sortColumn(t('services.columns.host'));
 		expect(tableColumn(2)).toEqual(['host1', 'host2', 'host10']);
-		await fireEvent.click(hostSort);
+		await sortColumn(t('services.columns.host'));
 		expect(tableColumn(2)).toEqual(['host10', 'host2', 'host1']);
+		await sortColumn(t('services.columns.host'));
+		expect(tableColumn(2)).toEqual(['host2', 'host10', 'host1']);
 	});
 
-	it('keeps a filter through refreshed rows and recovers after a zero-match refresh', async () => {
-		const view = render(NetworkAgentTable, { props: { agents, loading: false, emptyMessage: '데이터 없음' } });
-		await selectOption('Host', 'host-a');
-
-		const refreshed = [
-			{ ...agents[0], id: 'agent-refreshed', host: 'host-a', updated_at: '2026-09-14T11:00:00Z' },
-			{ ...agents[2], id: 'agent-other', host: 'host-c' },
-		];
-		await view.rerender({ agents: refreshed, loading: true, emptyMessage: '데이터 없음' });
-		expect(tableColumn(2)).toEqual(['host-a']);
-
-		await view.rerender({ agents: [{ ...agents[2], id: 'agent-only', host: 'host-c' }], loading: false, emptyMessage: '데이터 없음' });
-		expect(screen.queryByRole('table')).toBeNull();
-		expect(screen.getByRole('option', { name: 'host-a (현재 데이터 없음)' })).toBeTruthy();
-
-		await selectOption('Host', '전체');
-		expect(tableColumn(2)).toEqual(['host-c']);
+	it('retains regex, filters and descending sort through loading and absent-value refresh', async () => {
+		const rendered = render(NetworkAgentTable, { props: { agents, loading: false, emptyMessage: 'No data' } });
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '^host-(a|b)$' } });
+		await setColumnValues(t('services.columns.host'), ['host-a']);
+		await sortColumn(t('services.columns.updated'));
+		await sortColumn(t('services.columns.updated'));
+		expect(tableColumn(2)).toEqual(['host-a', 'host-a']);
+		await rendered.rerender({ agents: [{ ...agents[2], id: 'new', host: 'host-b' }], loading: true, emptyMessage: 'No data' });
+		expect(tableColumn(2)).toEqual([]);
+		await clearColumn(t('services.columns.host'));
+		expect(tableColumn(2)).toEqual(['host-b']);
+		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: '[' } });
+		expect(tableColumn(2)).toEqual([]);
+		expect(screen.getByRole('searchbox').getAttribute('aria-invalid')).toBe('true');
 	});
 });
 
 describe('ServiceTable', () => {
-	it('filters Status and State independently', async () => {
+	it('filters Status and State independently and keeps invalid timestamps last in descending order', async () => {
 		const services: Service[] = [
 			{ id: 'enabled-up', binary: 'nova-compute', host: 'host-1', status: 'enabled', state: 'up', zone: 'zone-a', updated_at: null, disabled_reason: null },
-			{ id: 'enabled-down', binary: 'nova-compute', host: 'host-2', status: 'enabled', state: 'down', zone: 'zone-a', updated_at: null, disabled_reason: 'maintenance' },
-			{ id: 'disabled-up', binary: 'nova-compute', host: 'host-3', status: 'disabled', state: 'up', zone: 'zone-b', updated_at: null, disabled_reason: 'manual' },
+			{ id: 'enabled-down', binary: 'nova-compute', host: 'host-2', status: 'enabled', state: 'down', zone: 'zone-a', updated_at: '2026-09-14T10:00:00Z', disabled_reason: 'maintenance' },
+			{ id: 'disabled-up', binary: 'nova-compute', host: 'host-3', status: 'disabled', state: 'up', zone: 'zone-b', updated_at: 'invalid', disabled_reason: 'manual' },
 		];
-		render(ServiceTable, { props: { services, columns: COMPUTE_COLUMNS, loading: false, emptyMessage: '데이터 없음' } });
-
-		await selectOption('Status', 'enabled');
-		await selectOption('State', 'down');
+		render(ServiceTable, { props: { services, columns: COMPUTE_COLUMNS, loading: false, emptyMessage: 'No data' } });
+		await setColumnValues(t('services.columns.status'), ['enabled']);
+		await setColumnValues(t('services.columns.state'), ['down']);
 		expect(tableColumn(1)).toEqual(['host-2']);
-		expect(screen.getByText('maintenance')).toBeTruthy();
-
-		await selectOption('State', 'up');
-		expect(tableColumn(1)).toEqual(['host-1']);
-		expect(screen.queryByText('maintenance')).toBeNull();
+		await clearColumn(t('services.columns.status'));
+		await clearColumn(t('services.columns.state'));
+		await sortColumn(t('services.columns.updated'));
+		await sortColumn(t('services.columns.updated'));
+		expect(tableColumn(1)).toEqual(['host-2', 'host-1', 'host-3']);
 	});
 });

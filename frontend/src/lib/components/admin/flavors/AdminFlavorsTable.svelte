@@ -9,9 +9,14 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { isManagedFlavor } from '$lib/api/computePools';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import type { createTableView } from '$lib/utils/tableView.svelte';
 
 	let {
 		flavors,
+		view,
+		search = '',
 		totalUnfiltered,
 		pageSize,
 		refreshing,
@@ -20,6 +25,8 @@
 		onDelete,
 	}: {
 		flavors: Flavor[];
+		view: ReturnType<typeof createTableView<Flavor>>;
+		search?: string;
 		totalUnfiltered: number;
 		pageSize: number;
 		refreshing: boolean;
@@ -28,68 +35,34 @@
 		onDelete: (id: string) => Promise<void>;
 	} = $props();
 
-	let sortColumn = $state('');
-	let sortAsc = $state(true);
 	let currentPage = $state(0);
-
-	function toggleSort(col: string) {
-		if (sortColumn === col) {
-			sortAsc = !sortAsc;
-		} else {
-			sortColumn = col;
-			sortAsc = true;
-		}
-	}
-
-	function sortIcon(col: string): string {
-		if (sortColumn !== col) return '↕';
-		return sortAsc ? '↑' : '↓';
-	}
 
 	function formatRam(mb: number): string {
 		if (mb >= 1024) return `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)} GB`;
 		return `${mb} MB`;
 	}
 
-	let sortedFlavors = $derived(
-		flavors.toSorted((a, b) => {
-			if (!sortColumn) return 0;
-			let va: string | number, vb: string | number;
-			if (sortColumn === 'is_public') {
-				va = a.is_public ? 1 : 0;
-				vb = b.is_public ? 1 : 0;
-			} else if (sortColumn === 'name') {
-				va = a.display_name ?? a.name;
-				vb = b.display_name ?? b.name;
-			} else {
-				va = (a as unknown as Record<string, unknown>)[sortColumn] as string | number;
-				vb = (b as unknown as Record<string, unknown>)[sortColumn] as string | number;
-			}
-			const cmp =
-				typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number);
-			return sortAsc ? cmp : -cmp;
-		}),
-	);
 
 	let totalPages = $derived(Math.max(1, Math.ceil(flavors.length / pageSize)));
 
 	let pagedFlavors = $derived(
-		sortedFlavors.slice(currentPage * pageSize, (currentPage + 1) * pageSize),
+		flavors.slice(currentPage * pageSize, (currentPage + 1) * pageSize),
 	);
 
-	// Reset to page 0 when flavors list or pageSize changes
+	// View criteria reset paging; refreshed arrays only clamp a now-missing page.
 	$effect(() => {
-		flavors;
-		pageSize;
+		void pageSize;
+		void search;
+		void view.sort;
+		void view.filters;
 		currentPage = 0;
 	});
+	$effect(() => { if (currentPage >= totalPages) currentPage = totalPages - 1; });
 </script>
 
+<TableViewControls {view} />
 <ResponsiveTable>
 	{#snippet cards()}
-		<div class="responsive-card-toolbar">
-			<Button variant="ghost" size="sm" onclick={() => toggleSort('name')}>{t('flavors.fields.name')} {sortIcon('name')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('vcpus')}>{t('flavors.fields.vcpu')} {sortIcon('vcpus')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('ram')}>{t('flavors.fields.ram')} {sortIcon('ram')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('disk')}>{t('flavors.fields.disk')} {sortIcon('disk')}</Button><Button variant="ghost" size="sm" onclick={() => toggleSort('is_public')}>{t('flavors.fields.public')} {sortIcon('is_public')}</Button>
-		</div>
 		{#each pagedFlavors as f (f.id)}
 			<CompactResourceCard>
 				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.display_name ?? f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.gpu_count === null || f.is_gpu === null}<Pill tone="neutral" size="xs">GPU · {poolText('unknown')}</Pill>{:else if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
@@ -104,27 +77,9 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
-						onclick={() => toggleSort('name')}
-					>{t('flavors.fields.name')} <span class="text-ink-2">{sortIcon('name')}</span></th>
-					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
-						onclick={() => toggleSort('vcpus')}
-					>{t('flavors.fields.vcpu')} <span class="text-ink-2">{sortIcon('vcpus')}</span></th>
-					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
-						onclick={() => toggleSort('ram')}
-					>{t('flavors.fields.ram')} <span class="text-ink-2">{sortIcon('ram')}</span></th>
-					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
-						onclick={() => toggleSort('disk')}
-					>{t('flavors.fields.disk')} <span class="text-ink-2">{sortIcon('disk')}</span></th>
-					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
-						onclick={() => toggleSort('is_public')}
-					>{t('flavors.fields.public')} <span class="text-ink-2">{sortIcon('is_public')}</span></th>
-					<th class="text-left py-2 pr-4">{t('flavors.fields.gpu')}</th>
+					{#each view.columns as column (column.key)}
+						<TableColumnHeader {view} columnKey={column.key} />
+					{/each}
 					<th class="text-right py-2">{t('flavors.table.actions')}</th>
 				</tr>
 			</thead>

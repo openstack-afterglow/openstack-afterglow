@@ -17,6 +17,7 @@
 	import SubnetTableSection from '$lib/components/dashboard/networks/SubnetTableSection.svelte';
 	import ConnectedRouterTable from '$lib/components/dashboard/networks/ConnectedRouterTable.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
 	let network = $state<NetworkDetail | null>(null);
 	let loading = $state(true);
@@ -230,6 +231,7 @@
 			toast.error(t('networkDetail.subnetDeleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
+	provideTableViewVisibility(() => !error && !loading && network?.id === $page.params.id);
 </script>
 
 <PageShell>
@@ -241,9 +243,13 @@
 
 	{#if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
-	{:else if loading}
+	{/if}
+	{#if loading && !network}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('networks.title') })} />
-	{:else if network}
+	{/if}
+	{#if network}
+	{#key `${$auth.projectId ?? ''}:${network.id}`}
+	<div hidden={Boolean(error) || loading}>
 		<NetworkDetailHeader
 			{network}
 			{deleting}
@@ -289,5 +295,7 @@
 			onConnect={connectRouter}
 			onDisconnect={disconnectRouter}
 		/>
+	</div>
+	{/key}
 	{/if}
 </PageShell>

@@ -8,11 +8,26 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import { getStatusLabel } from '$lib/config/statusColors';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
 	let { summary, loading, scoped, onDomain }: {
 		summary: AdminVolumeStatusSummary | null; loading: boolean; scoped: boolean;
 		onDomain: (domainId: string) => void;
 	} = $props();
+	let search = $state('');
+	const view = createTableView<AdminVolumeDomainSummary>({
+		rows: () => summary?.domains ?? [], search: () => search,
+		searchable: (row) => [ownerLabel(row), row.domain_id ?? '', ...row.project_ids],
+		columns: () => [
+			{ key: 'domain', label: t('volumeList.column.domain'), value: ownerLabel },
+			{ key: 'all', label: t('volumeList.all'), value: (row) => row.volume_gb, filterValues: (row) => [`${row.volumes}:${row.volume_gb}`], format: (_, row) => capacity(row.volumes, row.volume_gb) },
+			{ key: 'attached', label: t('volumeList.summary.attached'), value: (row) => row.attached_gb, filterValues: (row) => [`${row.attached_volumes}:${row.attached_gb}`], format: (_, row) => capacity(row.attached_volumes, row.attached_gb) },
+			{ key: 'available', label: getStatusLabel('available', 'volume'), value: (row) => row.available_gb, filterValues: (row) => [`${row.available_volumes}:${row.available_gb}`], format: (_, row) => capacity(row.available_volumes, row.available_gb) },
+		],
+	});
 	function ownerLabel(row: AdminVolumeDomainSummary): string {
 		if (row.owner_status === 'known') return row.domain_name || row.domain_id || t('volumeList.owner.unknown_owner');
 		return t(`volumeList.owner.${row.owner_status}`);
@@ -35,10 +50,12 @@
 			<div><dt class="text-xs text-ink-2">{getStatusLabel('available', 'volume')}</dt><dd class="text-sm tabular-nums text-ink-0">{loading ? '—' : capacity(summary?.available_count, summary?.available_gb)}</dd></div>
 		</dl>
 	</Card>
+	<RegexSearch id="admin-volume-domain-search" bind:value={search} />
+	<TableViewControls {view} />
 	{#if !loading && summary}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each summary.domains as row (ownerKey(row))}
+				{#each view.rows as row (ownerKey(row))}
 					<CompactResourceCard>
 						<h3 class="break-all text-sm font-medium text-ink-0">{ownerLabel(row)}</h3>
 						{#if !row.domain_id && row.project_ids.length}<p class="break-all font-mono text-xs text-ink-2">{row.project_ids.join(', ')}</p>{/if}
@@ -54,8 +71,8 @@
 			{/snippet}
 			<TableShell density="compact">
 			<table class="w-full text-left text-xs">
-				<thead><tr class="border-b border-line text-ink-2"><th class="p-3">{t('volumeList.column.domain')}</th><th class="p-3">{t('volumeList.all')}</th><th class="p-3">{t('volumeList.summary.attached')}</th><th class="p-3">{getStatusLabel('available', 'volume')}</th><th class="p-3">{t('volumeList.column.actions')}</th></tr></thead>
-				<tbody>{#each summary.domains as row (ownerKey(row))}<tr class="border-b border-line"><td class="p-3 text-ink-0"><span title={row.domain_id ?? undefined}>{ownerLabel(row)}</span>{#if !row.domain_id && row.project_ids.length}<p class="font-mono text-xs text-ink-2">{row.project_ids.join(', ')}</p>{/if}</td><td class="p-3 tabular-nums">{capacity(row.volumes, row.volume_gb)}</td><td class="p-3 tabular-nums">{capacity(row.attached_volumes, row.attached_gb)}</td><td class="p-3 tabular-nums">{capacity(row.available_volumes, row.available_gb)}</td><td class="p-3">{#if row.owner_status === 'known' && row.domain_id}<Button variant="outline" size="sm" onclick={() => onDomain(row.domain_id!)}>{t('volumeList.summary.drilldown', { name: ownerLabel(row) })}</Button>{/if}</td></tr>{/each}</tbody>
+				<thead><tr class="border-b border-line text-ink-2">{#each view.columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}<th class="p-3">{t('volumeList.column.actions')}</th></tr></thead>
+				<tbody>{#each view.rows as row (ownerKey(row))}<tr class="border-b border-line"><td class="p-3 text-ink-0"><span title={row.domain_id ?? undefined}>{ownerLabel(row)}</span>{#if !row.domain_id && row.project_ids.length}<p class="font-mono text-xs text-ink-2">{row.project_ids.join(', ')}</p>{/if}</td><td class="p-3 tabular-nums">{capacity(row.volumes, row.volume_gb)}</td><td class="p-3 tabular-nums">{capacity(row.attached_volumes, row.attached_gb)}</td><td class="p-3 tabular-nums">{capacity(row.available_volumes, row.available_gb)}</td><td class="p-3">{#if row.owner_status === 'known' && row.domain_id}<Button variant="outline" size="sm" onclick={() => onDomain(row.domain_id!)}>{t('volumeList.summary.drilldown', { name: ownerLabel(row) })}</Button>{/if}</td></tr>{/each}</tbody>
 			</table>
 			</TableShell>
 		</ResponsiveTable>

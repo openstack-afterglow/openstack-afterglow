@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
+	import { derived, get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
-	import Field from '$lib/components/ui/Field.svelte';
-	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -36,10 +37,12 @@
 	let nextMarker = $state<string | null>(null);
 	let total = $state(0);
 	let search = $state('');
-	let filterStatus = $state('all');
+	let nativeSearch = $state('');
+	let filterStatus = $state<'all' | 'enabled' | 'disabled'>('all');
+
 	let error = $state('');
-	let searchTimer: ReturnType<typeof setTimeout> | undefined;
-	const hasFilters = $derived(Boolean(search.trim() || filterStatus !== 'all'));
+
+	const hasFilters = $derived.by(() => Boolean(search || Object.keys(tableView.filters).length || tableView.sort));
 
 	let showCreate = $state(false);
 	let editProject = $state<Project | null>(null);
@@ -53,11 +56,30 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 	const nextPrefetch = createIntentPrefetchScheduler();
+	let ownerRevision = 0;
+	let observedOwner: string | undefined;
+	const unsubscribeOwner = derived([auth, authReady, projectSwitching, logoutInProgress], ([state, ready, switching, loggingOut]) => JSON.stringify([
+		state.sessionId, state.userId, state.identityDomainId, state.domainId, state.projectId,
+		state.isSystemAdmin, state.isDomainManager,
+		!!state.token, ready, switching, loggingOut
+	])).subscribe(owner => {
+		if (owner === observedOwner) return;
+		const changed = observedOwner !== undefined;
+		observedOwner = owner; ownerRevision++;
+		if (!changed) return;
+		loadGeneration++; nextPrefetch.cancel();
+		projects = []; markerStack = []; nextMarker = null; total = 0;
+		search = ''; nativeSearch = ''; filterStatus = 'all'; tableView.reset();
+		loading = false; refreshing = false; error = '';
+		editProject = null; deleteProject = null; accessProject = null; showCreate = false;
+	});
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize), domain_id: domainId });
 		if (marker) params.set('marker', marker);
-		if (search.trim()) params.set('search', search.trim());
+		if (nativeSearch.trim()) params.set('search', nativeSearch.trim());
 		if (filterStatus !== 'all') params.set('enabled', String(filterStatus === 'enabled'));
+
+
 		return `/api/v1/admin/projects?${params}`;
 	}
 	function prefetchNext() {
@@ -67,24 +89,19 @@
 		nextPrefetch.intent(key, (signal) => api.prefetch(path, token, projectId, { signal }));
 	}
 
-	function resetList(delayed = false) {
-		clearTimeout(searchTimer);
+	function resetList() {
 		loadGeneration += 1;
 		nextPrefetch.cancel();
 		markerStack = [];
 		nextMarker = null;
-		if (delayed) {
-			refreshing = true;
-			searchTimer = setTimeout(() => load(), 250);
-		} else {
-			load();
-		}
+		void load();
 	}
 
 	function clearFilters() {
-		search = '';
-		filterStatus = 'all';
-		resetList();
+		const reload = Boolean(nativeSearch || filterStatus !== 'all');
+		search = ''; nativeSearch = ''; filterStatus = 'all';
+		tableView.reset();
+		if (reload) resetList();
 	}
 
 	function copyId(id: string) {
@@ -95,16 +112,17 @@
 	}
 
 	async function load(marker?: string) {
-		clearTimeout(searchTimer);
-		if (disposed || !domainId) return;
+
+		if (disposed || !domainId || !get(authReady) || get(projectSwitching) || get(logoutInProgress)) return;
 		const generation = ++loadGeneration;
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		const requestPageSize = pageSize;
 		const requestPath = listPath(marker);
 		const requestDomainId = domainId;
+		const requestOwner = ownerRevision;
 		const owns = () => !disposed && domainId === requestDomainId && generation === loadGeneration
-			&& ($auth.token ?? undefined) === requestToken
+			&& ownerRevision === requestOwner
 			&& ($auth.projectId ?? undefined) === requestProjectId
 			&& pageSize === requestPageSize
 			&& listPath(marker) === requestPath;
@@ -120,8 +138,9 @@
 			nextMarker = res.next_marker;
 			total = res.total;
 			const path = nextMarker ? listPath(nextMarker) : null;
-			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
-			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, requestToken, requestProjectId, { signal }) : undefined);
+			const prefetchToken = token, prefetchProject = projectId;
+			const key = path ? JSON.stringify([path, prefetchToken ?? null, prefetchProject ?? null]) : null;
+			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, prefetchToken, prefetchProject, { signal }) : undefined);
 		} catch (e) {
 			if (owns()) {
 				projects = [];
@@ -152,7 +171,22 @@
 		load();
 	});
 
-	onDestroy(() => { disposed = true; loadGeneration += 1; clearTimeout(searchTimer); nextPrefetch.cancel(); });
+	onDestroy(() => { disposed = true; loadGeneration += 1; unsubscribeOwner(); nextPrefetch.cancel(); });
+	const tableView = createTableView<Project>({ rows: () => projects, locale: () => intlLocale(), search: () => search, columns: () => [
+		{ key: 'name', label: t('form.name'), value: row => row.name,
+			filterMode: 'single', filterFreeValue: true,
+			filterOptions: () => projects.map(row => ({ value: row.name, label: row.name, count: null })),
+			filterSelection: () => nativeSearch ? [nativeSearch] : null,
+			onFilterChange: values => { const next = values?.[0] ?? ''; if (next !== nativeSearch) { nativeSearch = next; resetList(); } } },
+		{ key: 'description', label: t('form.description'), value: row => row.description },
+		{ key: 'status', label: t('projectTable.status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'state.enabled' : 'state.disabled'),
+			filterMode: 'single',
+			filterOptions: () => [{ value: 'enabled', label: t('state.enabled'), count: null }, { value: 'disabled', label: t('state.disabled'), count: null }],
+			filterSelection: () => filterStatus === 'all' ? null : [filterStatus],
+			onFilterChange: values => { const next = values?.[0] === 'enabled' ? 'enabled' : values?.[0] === 'disabled' ? 'disabled' : 'all'; if (next !== filterStatus) { filterStatus = next; resetList(); } } },
+		{ key: 'id', label: t('projectDetail.projectId'), value: row => row.id },
+		{ key: 'created', label: t('projectTable.createdAt'), value: row => row.created_at }
+	] });
 </script>
 
 <PageShell>
@@ -167,7 +201,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={() => resetList()}
+				onManualRefresh={autoRefreshLoad}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('projectPage.show')}
@@ -182,35 +216,22 @@
 	</PageHeader>
 
 	<ResourceToolbar label={t('projectPage.filters')} class="mb-3">
-		<Field label={t('projectPage.search')} for="admin-project-search" class="min-w-0 w-full md:flex-1 md:basis-64">
-			<TextInput id="admin-project-search" type="search" value={search} ariaLabel={t('projectPage.search')} placeholder={t('projectPage.searchPlaceholder')}
-				oninput={(event) => { search = (event.target as HTMLInputElement).value; resetList(true); }} />
-		</Field>
-		<Field label={t('projectPage.status')} for="admin-project-status" class="min-w-0 max-w-full w-full md:w-auto">
-			<SelectInput id="admin-project-status" value={filterStatus} ariaLabel={t('projectPage.status')}
-				onchange={(event) => { filterStatus = (event.target as HTMLSelectElement).value; resetList(); }}>
-				<option value="all">{t('projectPage.allStatuses')}</option>
-				<option value="enabled">{t('state.enabled')}</option>
-				<option value="disabled">{t('state.disabled')}</option>
-			</SelectInput>
-		</Field>
+		<RegexSearch id="admin-project-search" bind:value={search} />
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={clearFilters}>{t('projectPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
 		{#if !loading}<span aria-live="polite">{error ? t('projectPage.resultsUnavailable') : t('projectPage.results', { total: total.toLocaleString(intlLocale()) })}</span>{/if}
-		<span>{t('projectPage.sortNotice')}</span>
+		<span>{tc('table.loadedScope')}</span>
 	</div>
 	{#if error}<Alert class="mb-3">{error}</Alert>{/if}
 
 	{#if loading}
 		<LoadingState variant="surface" label={t('projectPage.loading')} />
-	{:else if !error}
+	{:else}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
-			{#if projects.length === 0}
-				<p class="text-center text-ink-2 text-sm py-8">{hasFilters ? t('projectPage.noMatches') : t('projectPage.empty')}</p>
-			{:else}
 			<AdminProjectTable
-				{projects}
+				projects={tableView.rows}
+				view={tableView}
 				{domainId}
 				{copiedId}
 				onCopyId={copyId}
@@ -218,7 +239,7 @@
 				onAccess={(p) => (accessProject = p)}
 				onDelete={(p) => (deleteProject = p)}
 			/>
-			{/if}
+
 		</div>
 		<Pagination
 			page={markerStack.length + 1}

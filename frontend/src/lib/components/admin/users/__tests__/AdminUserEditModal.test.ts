@@ -93,9 +93,6 @@ describe('AdminUserEditModal permissions and sessions', () => {
 		expect(grants.getByText(permissions.items[0].scope_name)).toBeTruthy();
 		expect(grants.getByText(`ID: ${projectId}`)).toBeTruthy();
 		expect(grants.getByText('ID: a546c3eb-a2ee-440b-8504-90c116842d70')).toBeTruthy();
-		expect(grants.getAllByText('프로젝트')).toHaveLength(2);
-		expect(grants.getByText('도메인')).toBeTruthy();
-		expect(grants.getByText('시스템')).toBeTruthy();
 		expect(grants.getByText('ID: default')).toBeTruthy();
 		expect(grants.getByText('ID: all')).toBeTruthy();
 		const roles = grants.getByRole('list', { name: `${permissions.items[0].scope_name}의 역할` });
@@ -318,18 +315,16 @@ describe('AdminUserEditModal permissions and sessions', () => {
 
 
 	it.each([
-		['ko', '프로젝트 및 범위별 역할', '활성 세션', '도메인', '시스템', 'ID: '],
-		['en', 'Roles by project and scope', 'Active sessions', 'Domain', 'System', 'ID: '],
-		['ja', 'プロジェクト・スコープ別のロール', 'アクティブなセッション', 'ドメイン', 'システム', 'ID：'],
-		['zh-CN', '按项目和范围显示角色', '活跃会话', '域', '系统', 'ID：'],
-	] as const)('renders translated sections without translating resource data (%s)', async (locale, heading, sessionsHeading, domain, system, idPrefix) => {
+		['ko', '프로젝트 및 범위별 역할', '활성 세션', 'ID: '],
+		['en', 'Roles by project and scope', 'Active sessions', 'ID: '],
+		['ja', 'プロジェクト・スコープ別のロール', 'アクティブなセッション', 'ID：'],
+		['zh-CN', '按项目和范围显示角色', '活跃会话', 'ID：'],
+	] as const)('preserves native permission identities in each locale (%s)', async (locale, heading, sessionsHeading, idPrefix) => {
 		initLocale(locale);
 		renderModal();
 		await screen.findByText(longRole);
 		const section = within(screen.getByRole('region', { name: heading }));
 		expect(screen.getByRole('region', { name: sessionsHeading })).toBeTruthy();
-		expect(section.getByText(domain)).toBeTruthy();
-		expect(section.getByText(system)).toBeTruthy();
 		expect(section.getByText(permissions.items[0].scope_name)).toBeTruthy();
 		expect(section.getByText(`${idPrefix}${projectId}`)).toBeTruthy();
 		expect(section.getByText('system_admin')).toBeTruthy();

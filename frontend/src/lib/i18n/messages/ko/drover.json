@@ -7,7 +7,6 @@
 	"steps.initialize": "k3s 초기화",
 	"steps.completed": "완료",
 	"steps.prepare": "준비",
-
 	"rotateProgress.unreported": "진행 스트림이 종료되었습니다. 클러스터 상태를 새로고침해 결과를 확인하세요.",
 	"steps.cleanupLb": "LB 정리",
 	"steps.appCredential": "App Credential",

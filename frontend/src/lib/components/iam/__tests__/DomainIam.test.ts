@@ -135,17 +135,17 @@ describe('server-verified IAM identity boundary', () => {
 		await screen.findByText('Corporate SSO');
 		await fireEvent.click(screen.getByRole('button', { name: '편집' }));
 		const dialog = screen.getByRole('dialog');
-		await fireEvent.input(screen.getByLabelText(/^이름/), { target: { value: 'Draft SSO' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이름/ }), { target: { value: 'Draft SSO' } });
 		await fireEvent.input(screen.getByLabelText('클라이언트 비밀'), { target: { value: 'copied-from-idp-console' } });
 		const pending = deferred<unknown>(); api.get.mockImplementation((path: string) => path.endsWith('/context') ? pending.promise : Promise.resolve(fixture(path)));
 		await fireEvent.focus(window);
 		expect(screen.getByRole('dialog')).toBe(dialog);
 		expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true);
-		expect((screen.getByLabelText(/^이름/) as HTMLInputElement).disabled).toBe(false);
+		expect((screen.getByRole('textbox', { name: /^이름/ }) as HTMLInputElement).disabled).toBe(false);
 		pending.resolve({ domain_id: 'domain-a', domain_name: 'Domain A', is_domain_manager: true });
 		await waitFor(() => expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(false));
 		expect(screen.getByRole('dialog')).toBe(dialog);
-		expect((screen.getByLabelText(/^이름/) as HTMLInputElement).value).toBe('Draft SSO');
+		expect((screen.getByRole('textbox', { name: /^이름/ }) as HTMLInputElement).value).toBe('Draft SSO');
 		expect((screen.getByLabelText('클라이언트 비밀') as HTMLInputElement).value).toBe('copied-from-idp-console');
 		expect(api.patch).not.toHaveBeenCalled();
 	});
@@ -165,7 +165,7 @@ describe('server-verified IAM identity boundary', () => {
 		render(DomainIamConsole); await screen.findByText('Alice');
 		await fireEvent.click(screen.getByRole('button', { name: '사용자 및 비밀번호 편집' }));
 		const dialog = screen.getByRole('dialog');
-		await fireEvent.input(screen.getByLabelText(/^이름/), { target: { value: 'Rotated draft' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이름/ }), { target: { value: 'Rotated draft' } });
 		auth.update(state => ({ ...state, token: 'rotated-token' }));
 		expect(screen.getByRole('dialog')).toBe(dialog);
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -185,13 +185,13 @@ describe('user and provider secret lifecycles', () => {
 		const pending = deferred<unknown>(); api.patch.mockReturnValue(pending.promise);
 		render(IamUsers, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
 		await fireEvent.click(screen.getByRole('button', { name: '사용자 및 비밀번호 편집' }));
-		await fireEvent.input(screen.getByLabelText(/^이름/), { target: { value: 'Updated' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이름/ }), { target: { value: 'Updated' } });
 		await fireEvent.input(screen.getByLabelText('새 비밀번호 (선택)'), { target: { value: 'private-password' } });
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 		expect((screen.getByLabelText('새 비밀번호 (선택)') as HTMLInputElement).value).toBe('');
 		expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true);
 		pending.reject(new Error('update failed')); await screen.findByText('update failed');
-		expect((screen.getByLabelText(/^이름/) as HTMLInputElement).value).toBe('Updated');
+		expect((screen.getByRole('textbox', { name: /^이름/ }) as HTMLInputElement).value).toBe('Updated');
 		api.patch.mockResolvedValue(user); await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 		expect(api.patch.mock.calls[1][1]).toEqual({ name: 'Updated', email: user.email, enabled: true });
 	});
@@ -229,7 +229,7 @@ describe('user and provider secret lifecycles', () => {
 		api.patch.mockResolvedValue(provider);
 		render(IamLogin, { session, onDenied: vi.fn() }); await screen.findByText('Corporate SSO');
 		await fireEvent.click(screen.getByRole('button', { name: '편집' }));
-		await fireEvent.input(screen.getByLabelText(/^이름/), { target: { value: 'Renamed SSO' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이름/ }), { target: { value: 'Renamed SSO' } });
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 		expect(api.patch.mock.calls[0][1]).toEqual({ revision: 3, name: 'Renamed SSO' });
 	});
@@ -237,7 +237,7 @@ describe('user and provider secret lifecycles', () => {
 		render(IamLogin, { session, onDenied: vi.fn() }); await screen.findByText('Corporate SSO');
 		await fireEvent.click(screen.getByRole('button', { name: '편집' }));
 		await fireEvent.input(screen.getByLabelText(/^OIDC 발급자 URL/), { target: { value: 'https://new-issuer.example.com' } });
-		expect((screen.getByLabelText(/^클라이언트 비밀/) as HTMLInputElement).required).toBe(true);
+		expect((within(screen.getByRole('dialog')).getByLabelText(/^클라이언트 비밀/) as HTMLInputElement).required).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 		expect(api.patch).not.toHaveBeenCalled();
 	});
@@ -293,7 +293,7 @@ describe('project grant and invitation boundaries', () => {
 		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { ...catalog, roles: [{ ...catalog.roles[0], name: 'project_reader', area: 'project', grade: 'reader' }] } : fixture(path)));
 		render(IamInvitations, { session, onDenied: vi.fn() }); await screen.findByText('invitee@example.com');
 		expect(screen.queryByRole('checkbox')).toBeNull();
-		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'new@example.com' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이메일/ }), { target: { value: 'new@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: '초대 이메일 발송' }));
 		expect(api.post).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('checkbox', { name: /Project A/ }));
@@ -306,7 +306,7 @@ describe('project grant and invitation boundaries', () => {
 	it('sends Default-only invitations only after modal confirmation without fetching a role catalog', async () => {
 		api.post.mockResolvedValue(invitation);
 		render(IamInvitations, { session, onDenied: vi.fn() }); await screen.findByText('invitee@example.com');
-		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'joined@example.com' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이메일/ }), { target: { value: 'joined@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: '초대 이메일 발송' }));
 		expect(api.post).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: ti('inviteProjectsSend') }));
@@ -318,7 +318,7 @@ describe('project grant and invitation boundaries', () => {
 		render(DomainIamConsole); await screen.findByText('Alice');
 		await fireEvent.click(screen.getByRole('button', { name: ti('invitations') }));
 		await screen.findByText('invitee@example.com');
-		await fireEvent.input(screen.getByLabelText(/^이메일/), { target: { value: 'scope-private@example.com' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^이메일/ }), { target: { value: 'scope-private@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: ti('sendInvite') }));
 		const modal = within(screen.getByRole('dialog'));
 		await fireEvent.click(modal.getByRole('checkbox', { name: /Project A/ }));
@@ -329,7 +329,7 @@ describe('project grant and invitation boundaries', () => {
 		expect(api.post).not.toHaveBeenCalled();
 		auth.update(state => ({ ...state, domainId: 'domain-a' }));
 		await screen.findByRole('button', { name: ti('sendInvite') });
-		expect((screen.getByLabelText(/^이메일/) as HTMLInputElement).value).toBe('');
+		expect((screen.getByRole('textbox', { name: /^이메일/ }) as HTMLInputElement).value).toBe('');
 		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 	it('makes only pending invitations revocable and fences confirmation after unmount', async () => {

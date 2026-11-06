@@ -7,7 +7,6 @@
 	"steps.initialize": "Initialize k3s",
 	"steps.completed": "Complete",
 	"steps.prepare": "Prepare",
-
 	"rotateProgress.unreported": "The progress stream ended. Refresh the cluster status to check the result.",
 	"steps.cleanupLb": "Clean up LB",
 	"steps.appCredential": "Application credential",

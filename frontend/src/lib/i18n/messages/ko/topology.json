@@ -168,7 +168,6 @@
 	"toolbar.packetFlow": "연결 구조 애니메이션",
 	"toolbar.createContext": "선택한 네트워크 <b>{name}</b> 에 연결",
 	"canvas.networkTitle": "네트워크 {name}",
-	"card.noStatus": "상태 없음",
 	"card.ports": "포트 {count}",
 	"card.listeners": "리스너 {count}",
 	"canvas.selected": "{kind} {name} 선택됨",

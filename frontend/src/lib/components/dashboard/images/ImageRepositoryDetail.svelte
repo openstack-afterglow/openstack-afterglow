@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { AnimatedNumber, Button, Card, CompactResourceCard, Pill, ResponsiveTable, StatusChip } from '$lib/components/ui';
-	import { imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
+	import { createImageCatalog, imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup, type ImageCatalogState } from '$lib/stores/imageCatalog.svelte';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import type { ImageInfo } from '$lib/types/compute';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
@@ -9,14 +13,21 @@
 
 	let {
 		group,
+		repository,
+		state: retainedState,
 		onBack,
 		onOpenTag,
 	}: {
-		group: ImageRepositoryGroup;
+		group: ImageRepositoryGroup | null;
+		repository?: string;
+		state?: ImageCatalogState;
 		onBack: () => void;
 		onOpenTag: (imageId: string) => void;
 	} = $props();
 
+	const repositoryName = $derived(group?.repository ?? repository ?? '');
+	const catalog = createImageCatalog(() => group?.images ?? [], () => group?.images ?? [], untrack(() => retainedState));
+	const versions = $derived(catalog.repositoryGroups.find(item => item.repository === repositoryName)?.tags ?? []);
 	let expandedTags = $state<Set<string>>(new Set());
 	function formatSize(bytes: number | null | undefined): string {
 		if (bytes == null) return '-';
@@ -86,14 +97,16 @@
 		<Button variant="ghost" size="icon" ariaLabel={t('repositoryDetail.back')} onclick={onBack}>‹</Button>
 		<div class="detail-heading">
 			<p class="detail-kicker">{t('repositoryDetail.kicker')}</p>
-			<h2>{group.repository}</h2>
-			<p><AnimatedNumber value={group.tags.length} format={(value) => t('repositoryDetail.description', { tagCount: Math.round(value), imageCount: group.images.length })} /></p>
+			<h2>{repositoryName}</h2>
+			<p><AnimatedNumber value={group?.tags.length ?? 0} format={(value) => t('repositoryDetail.description', { tagCount: Math.round(value), imageCount: group?.images.length ?? 0 })} /></p>
 		</div>
 	</div>
 
+	<RegexSearch id="repository-detail-search" bind:value={catalog.searchQuery} />
+	<TableViewControls view={catalog.view} />
 	<ResponsiveTable>
 		{#snippet cards()}
-			{#each group.tags as version (version.tag)}
+			{#each versions as version (version.tag)}
 				<div class="min-w-0 space-y-2 p-3">
 					{@render versionCard(version.latest, version.tag, version.latest.id === version.current.id)}
 					{#if version.images.length > 1}
@@ -111,18 +124,18 @@
 		<table>
 			<thead>
 				<tr>
-					<th>{t('repositoryDetail.tag')}</th>
-					<th>{t('repositoryDetail.digest')}</th>
-					<th>{t('repositoryDetail.status')}</th>
-					<th>{t('repositoryDetail.trust')}</th>
-					<th>{t('repositoryDetail.os')}</th>
-					<th>{t('repositoryDetail.size')}</th>
-					<th>{t('repositoryDetail.uploaded')}</th>
+					<TableColumnHeader view={catalog.view} columnKey="tag" />
+					<TableColumnHeader view={catalog.view} columnKey="id" />
+					<TableColumnHeader view={catalog.view} columnKey="status" />
+					<TableColumnHeader view={catalog.view} columnKey="verification" />
+					<TableColumnHeader view={catalog.view} columnKey="os_distro" />
+					<TableColumnHeader view={catalog.view} columnKey="size" />
+					<TableColumnHeader view={catalog.view} columnKey="created_at" />
 					<th><span class="sr-only">{t('repositoryDetail.actions')}</span></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each group.tags as version (version.tag)}
+				{#each versions as version (version.tag)}
 					{@render versionRow(version.latest, version.tag, version.latest.id === version.current.id)}
 					{#if version.images.length > 1}
 						<tr><td colspan="8">
@@ -150,8 +163,8 @@
 	.detail-heading p:last-child { margin: 0.35rem 0 0; color: var(--color-ink-2); font-size: 0.75rem; }
 	.table-wrap { overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; min-width: 48rem; }
-	th, td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); text-align: left; white-space: nowrap; }
-	th { color: var(--color-ink-2); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+	.table-wrap :global(th), td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); text-align: left; white-space: nowrap; }
+	.table-wrap :global(th) { color: var(--color-ink-2); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 	td { color: var(--color-ink-1); font-size: 0.75rem; }
 	tbody tr:hover { background: var(--color-surface-sunken); }
 	.tag-name { display: inline-block; max-width: 14rem; margin-right: 0.4rem; color: var(--color-ink-0); font-family: var(--font-mono); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }

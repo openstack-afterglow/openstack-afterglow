@@ -1,8 +1,13 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import EndpointsTable from '../EndpointsTable.svelte';
 import StoragePoolsList from '../StoragePoolsList.svelte';
 import type { EndpointGroup, StoragePool } from '$lib/types/adminServices';
+import { setLocale } from '$lib/i18n/runtime.svelte';
+import { t } from '$lib/i18n/ns/admin-ops';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { setColumnValues } from './tableInteractions';
+beforeEach(() => setLocale('en'));
 
 afterEach(cleanup);
 
@@ -72,8 +77,8 @@ describe('admin service endpoint and storage pool lists', () => {
 			props: { endpoints, loading: false, emptyMessage: 'No endpoints' },
 		});
 
-		await fireEvent.change(screen.getByLabelText('서비스 유형'), { target: { value: 'value:compute' } });
-		await fireEvent.change(screen.getByLabelText('리전'), { target: { value: 'value:RegionOne' } });
+		await setColumnValues(t('services.endpoints.serviceType'), ['compute']);
+		await setColumnValues(t('services.endpoints.region'), ['RegionOne']);
 
 		expect(screen.getByRole('cell', { name: 'nova' })).toBeTruthy();
 		expect(screen.getByText('https://nova.public.example/v2')).toBeTruthy();
@@ -88,16 +93,18 @@ describe('admin service endpoint and storage pool lists', () => {
 
 	it('searches endpoint hosts, distinguishes no matches, and resets the full endpoint list', async () => {
 		render(EndpointsTable, { props: { endpoints, loading: false, emptyMessage: 'No endpoints' } });
-		const search = screen.getByLabelText('검색');
+		const search = screen.getByRole('searchbox');
 
 		await fireEvent.input(search, { target: { value: 'nova.internal.example' } });
 		expect(screen.getByRole('cell', { name: 'nova' })).toBeTruthy();
 		expect(screen.queryByRole('cell', { name: 'keystone' })).toBeNull();
 
 		await fireEvent.input(search, { target: { value: 'does-not-exist' } });
-		expect(screen.queryByRole('table')).toBeNull();
-
-		await fireEvent.click(screen.getByRole('button', { name: '필터·정렬 초기화' }));
+		expect(screen.getAllByRole('row')).toHaveLength(1);
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(screen.getAllByRole('row')).toHaveLength(1);
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		await fireEvent.input(search, { target: { value: '' } });
 		expect(screen.getByRole('cell', { name: 'nova' })).toBeTruthy();
 		expect(screen.getByRole('cell', { name: 'keystone' })).toBeTruthy();
 		expect(screen.getByRole('cell', { name: 'nova-west' })).toBeTruthy();
@@ -106,12 +113,13 @@ describe('admin service endpoint and storage pool lists', () => {
 	it('sorts storage pools by numeric capacity rather than formatted capacity text', async () => {
 		render(StoragePoolsList, { props: { pools, loading: false, emptyMessage: 'No pools' } });
 
-		await fireEvent.change(screen.getByLabelText('정렬 기준'), { target: { value: 'total_capacity' } });
+		const controls = within(screen.getByRole('group', { name: commonT('table.controls') }));
+		await fireEvent.click(controls.getByRole('button', { name: commonT('table.sortColumn', { column: t('services.pools.totalCapacity'), direction: commonT('table.none') }) }));
 
 		expect(screen.getAllByRole('article').map((pool) => pool.getAttribute('aria-label'))).toEqual([
-			'nine-gib 스토리지 풀',
-			'twenty-gib 스토리지 풀',
-			'hundred-gib 스토리지 풀',
+			t('services.pools.poolLabel', { name: pools[1].name }),
+			t('services.pools.poolLabel', { name: pools[2].name }),
+			t('services.pools.poolLabel', { name: pools[0].name }),
 		]);
 	});
 });

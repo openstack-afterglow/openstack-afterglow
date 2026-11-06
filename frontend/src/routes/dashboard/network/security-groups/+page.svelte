@@ -4,6 +4,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -19,6 +20,10 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tr } from '$lib/i18n/ns/network-resources';
 
 	function emptyRule(): SecurityGroupRuleDraft {
 		return { direction: 'ingress', protocol: '', port_range_min: '', port_range_max: '', remote_ip_prefix: '', remote_group_id: '', ethertype: 'IPv4' };
@@ -37,6 +42,7 @@
 	let sgError = $state('');
 	let showSgModal = $state(false);
 	let selectedSg = $state<string | null>(null);
+	const ruleViewState = $state<TableViewState>({ sort: null, filters: {} });
 	let addRuleOpen = $state(false);
 	let originalRuleId = $state<string | null>(null);
 	let originalRuleRemoved = $state(false);
@@ -48,6 +54,15 @@
 	let groupRequest = 0;
 	let quotaRequest = 0;
 	let instanceRequest = 0;
+	let search = $state('');
+	const columns = (): TableColumn<SecurityGroup>[] => [
+		{ key: 'name', label: tr('network.labels.name'), value: row => row.name },
+		{ key: 'description', label: t('securityGroupCreate.description'), value: row => row.description },
+		{ key: 'rules', label: t('securityGroupRules.rulesLabel'), value: row => row.rules.length },
+	];
+	const view = createTableView({ rows: () => securityGroups, columns, search: () => search, searchable: row => [row.id, row.name, row.description ?? ''] });
+	const visibleSelectableIds = $derived(new Set(view.rows.filter(row => row.name !== 'default').map(row => row.id)));
+	$effect(() => { const ids = visibleSelectableIds; untrack(() => selection.retain(ids)); });
 
 	let selectableIds = $derived(new Set(securityGroups.filter((group) => group.name !== 'default').map((group) => group.id)));
 	let curSg = $derived(securityGroups.find((group) => group.id === selectedSg) ?? null);
@@ -65,7 +80,6 @@
 			securityGroups = groups;
 			sgError = '';
 			if (selection.count > 0) selection.retain(groups.map((group) => group.id));
-			if (selectedSg && !groups.some((group) => group.id === selectedSg)) selectedSg = null;
 			if (!selectedSg && groups.length > 0 && window.matchMedia('(min-width: 768px)').matches) selectedSg = groups[0].id;
 		} catch (e) {
 			if (generation === projectGeneration && request === groupRequest) sgError = e instanceof ApiError ? t('securityGroups.loadStatusFailed', { status: e.status, message: e.message }) : t('securityGroups.loadFailed');
@@ -110,7 +124,7 @@
 	async function refreshResources(opts?: { refresh?: boolean }) {
 		const previousSelection = selectedSg;
 		await Promise.all([fetchSecurityGroups(opts), fetchQuota()]);
-		if (selectedSg && selectedSg === previousSelection) await fetchInstances(selectedSg);
+		if (selectedSg && selectedSg === previousSelection && securityGroups.some(group => group.id === selectedSg)) await fetchInstances(selectedSg);
 	}
 
 	async function forceRefresh() {
@@ -346,8 +360,10 @@
 	}
 
 
+	const viewOwner = $derived(sessionScopeKey($auth));
 	$effect(() => {
-		const pid = $auth.projectId;
+		viewOwner;
+		const pid = untrack(() => $auth.projectId);
 		untrack(() => {
 			projectGeneration++;
 			groupRequest++;
@@ -358,6 +374,7 @@
 			instances = [];
 			selectedSg = null;
 			selection.clear();
+			search = ''; view.reset();
 			cancelAddRule();
 			loading = !!pid;
 			if (pid) void refreshResources();
@@ -365,9 +382,12 @@
 	});
 
 	$effect(() => {
-		const pid = $auth.projectId;
+		viewOwner;
+		const pid = untrack(() => $auth.projectId);
 		const id = selectedSg;
 		untrack(() => {
+			ruleViewState.sort = null;
+			ruleViewState.filters = {};
 			instanceRequest++;
 			instances = [];
 			instancesError = '';
@@ -396,6 +416,9 @@
 			<div class="sm:col-span-2"><LoadingState variant="section" label={t('securityGroups.quotaLoading')}  /></div>
 		{/if}
 	</div>
+	<RegexSearch id="security-group-search" bind:value={search} />
+	<TableViewControls {view} class="" />
+	{#if securityGroups.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
 	{#if sgError}<p role="alert" class="text-sm text-state-danger-text mb-4">{sgError}</p>{/if}
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('securityGroups.title') })} />
@@ -404,10 +427,11 @@
 	{:else}
 		<div class="security-group-workspace">
 			<div class="security-group-list">
-				<SecurityGroupList groups={securityGroups} bind:selectedSg selectedIds={selection.ids} {selectableIds} selectionDisabled={busy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} />
+				<SecurityGroupList groups={view.rows} bind:selectedSg selectedIds={selection.ids} selectableIds={visibleSelectableIds} selectionDisabled={busy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(visibleSelectableIds)} />
 			</div>
 			{#if curSg}
 				<SecurityGroupRulesPanel
+					viewState={ruleViewState}
 					group={curSg} groups={securityGroups} {instances} {instancesError} {instancesLoading}
 					{addRuleOpen} {originalRuleId} addingRule={sgCreating} canSaveRule={canSaveRule} addError={sgCreateError} bind:ruleForm bind:targetType
 					requiresRemovalFirst={originalRuleId !== null && !originalRuleRemoved && quota !== null && !canCreateRule && curSg.rules.some((rule) => rule.id === originalRuleId)}

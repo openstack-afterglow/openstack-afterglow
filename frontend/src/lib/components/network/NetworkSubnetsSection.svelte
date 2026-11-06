@@ -10,6 +10,8 @@
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	const s = useNetworkDetailController();
 	let form = $state({ name: '', cidr: '', gateway: '', dhcp: true, routerId: '' });
@@ -75,10 +77,12 @@
 		</form>
 	{/if}
 
+	<TableViewControls view={s.subnetView} class="" />
+	{#if s.network!.subnet_details.length > 0 && s.subnetView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if s.network!.subnet_details.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each s.network!.subnet_details as subnet (subnet.id)}
+				{#each s.subnetView.rows as subnet (subnet.id)}
 					<CompactResourceCard>
 						<p class="font-medium">{subnet.name || subnet.id.slice(0, 8)}</p><p class="font-mono text-xs">{subnet.cidr}</p>
 						<dl><div><dt>{t('network.labels.gateway')}</dt><dd>{subnet.gateway_ip || '-'}</dd></div><div><dt>DHCP</dt><dd>{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div></dl>
@@ -86,7 +90,7 @@
 				{/each}
 			{/snippet}
 		<div class="space-y-3">
-			{#each s.network!.subnet_details as subnet}
+			{#each s.subnetView.rows as subnet (subnet.id)}
 				<div class="border-b border-line/50 pb-2 last:border-0 last:pb-0">
 					<div class="text-xs text-ink-0 font-medium">{subnet.name || subnet.id.slice(0, 8)}</div>
 					<dl class="mt-1 space-y-1 text-xs">

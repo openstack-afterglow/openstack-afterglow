@@ -21,6 +21,7 @@ import { flavorCreateBlock, type FlavorCreateBlock, type FlavorOption } from '$l
 import type { ImageInfo } from '$lib/types/compute';
 import { defaultUsageDraft, requiresUsageSchedule, usageDraftError, usagePayload } from '$lib/utils/instanceUsage';
 import { flavorGpuRequests } from '$lib/utils/flavorGpu';
+import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 import {
 	isGithubSshEligible,
 	isSshAccessReady,
@@ -332,14 +333,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let adminSelectedProjectName = $state<string | null>(null);
 
 	// Derived
-	const filteredAdminProjects = $derived.by(() => {
-		const q = adminProjectSearch.trim().toLowerCase();
-		if (!q) return adminProjects;
-		return adminProjects.filter(p =>
-			p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
-			|| (p.domain_name ?? '').toLowerCase().includes(q) || (p.domain_id ?? '').toLowerCase().includes(q)
-		);
-	});
+	const adminProjectPattern = $derived(compileRegexSearch(adminProjectSearch));
+	const filteredAdminProjects = $derived(adminProjects.filter(p =>
+		matchesRegexSearch(adminProjectPattern, [p.name, p.id, p.domain_name ?? '', p.domain_id ?? ''])
+	));
 
 
 

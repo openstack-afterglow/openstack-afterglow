@@ -1,6 +1,7 @@
 import type { TopologyData, TopologyTraffic, TopologyNetwork, ItemRow, LBItem, Anchor } from './types.ts';
 import { EXT_COLORS, SHR_COLORS, INT_COLORS, LANE_W, LANE_GAP, LANE_PAD, SIDEBAR_W, _ipv4InCidr, edgeIntensity, NO_TELEMETRY_STYLE } from './topologyHelpers.ts';
 import { groupNetworksByDomain } from './domainGroups';
+import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 
 export interface ConnectionSpec {
 	key: string; netId: string; color: string; opacity: number; width: number;
@@ -203,23 +204,11 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 		return m;
 	});
 
-	const filteredRows = $derived.by(() => {
-		const q = opts.searchTerm().trim().toLowerCase();
-		if (!q) return rows;
-		return rows.filter(r =>
-			r.name.toLowerCase().includes(q) ||
-			[...r.netIps.values()].flat().some(ip => ip.includes(q)) ||
-			[...r.floatingNetIps.values()].flat().some(ip => ip.includes(q))
-		);
-	});
-
-	const filteredLbItems = $derived.by(() => {
-		const q = opts.searchTerm().trim().toLowerCase();
-		if (!q) return lbItems;
-		return lbItems.filter(({ lb }) =>
-			lb.name.toLowerCase().includes(q) || (lb.vip_address ?? '').includes(q)
-		);
-	});
+	const compiledSearch = $derived(compileRegexSearch(opts.searchTerm()));
+	const filteredRows = $derived(rows.filter(row => matchesRegexSearch(compiledSearch,
+		[row.name, row.id, ...[...row.netIps.values()].flat(), ...[...row.floatingNetIps.values()].flat()])));
+	const filteredLbItems = $derived(lbItems.filter(({ lb }) =>
+		matchesRegexSearch(compiledSearch, [lb.name, lb.id, lb.vip_address ?? ''])));
 
 	const routerRows = $derived(filteredRows.filter(r => r.type === 'router'));
 	const instanceRows = $derived(filteredRows.filter(r => r.type === 'instance'));

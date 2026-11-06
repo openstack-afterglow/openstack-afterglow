@@ -217,7 +217,7 @@ def list_volume_attachments(conn: openstack.connection.Connection, server_id: st
             "volume_id": a.volume_id,
             "device": a.device,
             "server_id": a.server_id,
-            "delete_on_termination": getattr(a, "delete_on_termination", False),
+            "delete_on_termination": getattr(a, "delete_on_termination", None),
         }
         for a in conn.compute.volume_attachments(server_id)
     ]

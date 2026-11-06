@@ -24,6 +24,8 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 }));
 import { auth } from '$lib/stores/auth';
 import { t as commonT } from '$lib/i18n/ns/common';
+import { t as imageT } from '$lib/i18n/ns/images-keys';
+import { t as computeT } from '$lib/i18n/ns/admin-compute';
 import Page from '../+page.svelte';
 import InventoryBoundary from '$lib/components/admin/domains/_AdminInventoryBoundaryHarness.svelte';
 
@@ -96,7 +98,11 @@ describe.each([true, false])('administrator image catalog (desktop=%s)', desktop
 		expect(await screen.findByText(alias.id, { selector: 'dd' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '패널 닫기 버튼' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
-		await fireEvent.change(screen.getByLabelText('공개 범위'), { target: { value: 'public' } });
+		const visibilityLabel = commonT('table.filterColumn', { column: imageT('uploadModal.visibility') });
+		await fireEvent.click(screen.getByRole('button', { name: visibilityLabel }));
+		const visibilityMenu = within(screen.getByRole('dialog', { name: visibilityLabel }));
+		await fireEvent.click(visibilityMenu.getByRole('checkbox', { name: 'private' }));
+		await fireEvent.click(visibilityMenu.getByRole('button', { name: commonT('actions.close') }));
 		const publicTags = within(document.body);
 		const previous = publicTags.getByRole('button', { name: 'ubuntu:24.04 (old-uuid) 상세' });
 		expect(within(previous.closest('tr, article')!).getByText('이전')).toBeTruthy();
@@ -127,6 +133,22 @@ describe.each([true, false])('administrator image catalog (desktop=%s)', desktop
 		expect(within(actions).queryByRole('button', { name: '검증 해제' })).toBeNull();
 	});
 
+	it('retains repository navigation and regex through an empty refresh and restores matching rows', async () => {
+		mocks.get.mockResolvedValue({ items: [ubuntuOld, debian], next_marker: null });
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'ubuntu' }));
+		const search = screen.getByRole('searchbox') as HTMLInputElement;
+		await fireEvent.input(search, { target: { value: '^ubuntu:22[.]04$' } });
+		mocks.get.mockResolvedValue({ items: [], next_marker: null });
+		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+		await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'ubuntu:22.04 (u-old) 상세' })).toBeNull());
+		expect(search.value).toBe('^ubuntu:22[.]04$');
+		expect(screen.getByRole('button', { name: computeT('images.repositoryBack') })).toBeTruthy();
+		mocks.get.mockResolvedValue({ items: [ubuntuOld, debian], next_marker: null });
+		await fireEvent.click(screen.getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+		expect(await screen.findByRole('button', { name: 'ubuntu:22.04 (u-old) 상세' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'debian:13 (d-new) 상세' })).toBeNull();
+	});
 	it('keeps the complete catalog on a failed refresh rather than showing a partial page', async () => {
 		mocks.get.mockResolvedValueOnce({ items: [ubuntuOld, debian], next_marker: null });
 		render(Page);

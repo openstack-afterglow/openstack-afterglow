@@ -1,4 +1,4 @@
-"""Browser-only management routes for project-bound inbound MCP authority."""
+"""Browser management of account-owned MCP authority with project-bound execution."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ from app.services.mcp_control_plane.authority import (
     McpAuthorityError,
     McpGrantLimitError,
     McpGrantNotFoundError,
+    account_oauth_grant_owner_project,
+    account_personal_token_owner,
     confirm_keystone_cleanup,
     issue_personal_token,
     list_oauth_grants,
@@ -85,6 +87,8 @@ class McpTokenView(BaseModel):
     grant_id: str
     name: str
     source: str
+    owner_project_id: str
+    owner_project_name: str
     access_level: str
     status: str
     visible_prefix: str | None
@@ -180,9 +184,7 @@ async def get_mcp_tokens(request: Request, http_response: Response, token_info: 
     http_response.headers["Cache-Control"] = "no-store"
     http_response.headers["Pragma"] = "no-cache"
     async with _session_factory()() as session:
-        return await list_personal_tokens(
-            session, owner_user_id=token_info["user_id"], owner_project_id=token_info["project_id"]
-        )
+        return await list_personal_tokens(session, owner_user_id=token_info["user_id"])
 
 
 @router.post("/mcp-tokens", response_model=CreateMcpTokenResponse, status_code=status.HTTP_201_CREATED)
@@ -218,6 +220,15 @@ async def create_mcp_token(
         name=body.name.strip(),
         source="personal_token",
         access_level=issued.access_level,
+        owner_project_id=token_info["project_id"],
+        owner_project_name=next(
+            (
+                project["name"]
+                for project in issued.approved_projects
+                if project["id"] == token_info["project_id"] and project["name"]
+            ),
+            token_info["project_id"],
+        ),
         project_scope=issued.project_scope,
         project_ids=[project["id"] for project in issued.approved_projects],
         projects=[McpProjectView(id=project["id"], name=project["name"]) for project in issued.approved_projects],
@@ -356,17 +367,14 @@ async def delete_mcp_token(
     factory = _session_factory()
     try:
         async with factory() as session:
-            grant_id = await personal_token_grant_id(
-                session,
-                token_id=token_id,
-                owner_user_id=token_info["user_id"],
-                owner_project_id=token_info["project_id"],
+            grant_id, owner_project_id = await account_personal_token_owner(
+                session, token_id=token_id, owner_user_id=token_info["user_id"]
             )
         credential_id, _ = await revoke_grant(
             factory,
             grant_id=grant_id,
             owner_user_id=token_info["user_id"],
-            owner_project_id=token_info["project_id"],
+            owner_project_id=owner_project_id,
             username=token_info.get("username", token_info["user_id"]),
         )
         await confirm_keystone_cleanup(
@@ -374,7 +382,7 @@ async def delete_mcp_token(
             conn=conn,
             grant_id=grant_id,
             owner_user_id=token_info["user_id"],
-            owner_project_id=token_info["project_id"],
+            owner_project_id=owner_project_id,
             username=token_info.get("username", token_info["user_id"]),
             application_credential_id=credential_id,
         )
@@ -419,9 +427,7 @@ async def get_mcp_oauth_grants(request: Request, http_response: Response, token_
     http_response.headers["Cache-Control"] = "no-store"
     http_response.headers["Pragma"] = "no-cache"
     async with _session_factory()() as session:
-        return await list_oauth_grants(
-            session, owner_user_id=token_info["user_id"], owner_project_id=token_info["project_id"]
-        )
+        return await list_oauth_grants(session, owner_user_id=token_info["user_id"])
 
 
 @router.delete("/mcp-oauth/grants/{grant_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -434,11 +440,15 @@ async def delete_mcp_oauth_grant(
     _require_browser_mutation(request)
     factory = _session_factory()
     try:
+        async with factory() as session:
+            owner_project_id = await account_oauth_grant_owner_project(
+                session, grant_id=grant_id, owner_user_id=token_info["user_id"]
+            )
         credential_id, _ = await revoke_grant(
             factory,
             grant_id=grant_id,
             owner_user_id=token_info["user_id"],
-            owner_project_id=token_info["project_id"],
+            owner_project_id=owner_project_id,
             username=token_info.get("username", token_info["user_id"]),
         )
         await confirm_keystone_cleanup(
@@ -446,7 +456,7 @@ async def delete_mcp_oauth_grant(
             conn=conn,
             grant_id=grant_id,
             owner_user_id=token_info["user_id"],
-            owner_project_id=token_info["project_id"],
+            owner_project_id=owner_project_id,
             username=token_info.get("username", token_info["user_id"]),
             application_credential_id=credential_id,
         )

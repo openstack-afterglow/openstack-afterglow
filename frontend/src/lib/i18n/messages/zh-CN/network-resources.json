@@ -185,7 +185,6 @@
 	"lb.actions.adding": "正在添加…",
 	"lb.actions.remove": "移除",
 	"lb.actions.removing": "正在移除…",
-
 	"lb.listeners.title": "监听器（{count}）",
 	"lb.listeners.empty": "没有监听器。",
 	"lb.form.optionalName": "名称（可选）",

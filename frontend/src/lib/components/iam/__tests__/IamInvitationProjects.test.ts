@@ -12,7 +12,7 @@ const projects = [{ id: 'project-a', name: 'Project A' }, { id: 'project-b', nam
 async function open() {
 	render(IamInvitations, { session, onDenied: vi.fn() });
 	await waitFor(() => expect((screen.getByRole('button', { name: t('sendInvite') }) as HTMLButtonElement).disabled).toBe(false));
-	await fireEvent.input(screen.getByLabelText(new RegExp(t('email'))), { target: { value: 'invitee@example.com' } });
+	await fireEvent.input(screen.getByRole('textbox', { name: new RegExp(t('email')) }), { target: { value: 'invitee@example.com' } });
 	await fireEvent.click(screen.getByRole('button', { name: t('sendInvite') }));
 	return within(screen.getByRole('dialog'));
 }
@@ -75,14 +75,14 @@ describe('multi-project invitation modal', () => {
 		let current = true;
 		const view = render(IamInvitations, { session: { ...session, isCurrent: () => current }, onDenied: vi.fn() });
 		await waitFor(() => expect((screen.getByRole('button', { name: t('sendInvite') }) as HTMLButtonElement).disabled).toBe(false));
-		await fireEvent.input(screen.getByLabelText(new RegExp(t('email'))), { target: { value: 'private@example.com' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: new RegExp(t('email')) }), { target: { value: 'private@example.com' } });
 		await fireEvent.click(screen.getByRole('button', { name: t('sendInvite') }));
 		current = false;
 		await fireEvent.click(screen.getByRole('button', { name: t('inviteProjectsSend') }));
 		expect(api.post).not.toHaveBeenCalled();
 		view.unmount();
 		render(IamInvitations, { session, onDenied: vi.fn() });
-		expect((screen.getByLabelText(new RegExp(t('email'))) as HTMLInputElement).value).toBe('');
+		expect((screen.getByRole('textbox', { name: new RegExp(t('email')) }) as HTMLInputElement).value).toBe('');
 		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 });

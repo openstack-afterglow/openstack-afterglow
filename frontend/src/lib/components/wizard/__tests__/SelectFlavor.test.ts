@@ -235,6 +235,33 @@ describe('SelectFlavor', () => {
 		}
 	});
 
+	it.each([true, false])('matches independent flavor fields with Unicode regex and rejects malformed patterns without selecting in desktop=%s', async desktop => {
+		media.matches = desktop;
+		const selected = { ...flavorWith('flavor-a', 'cpu.alpha'), display_name: '연구용', ram: 3072 };
+		const other = { ...flavorWith('flavor-b', 'cpu.beta'), ram: 6144 };
+		const blocked = flavorWith('blocked', 'cpu.blocked', { selectable: false });
+		const { onSelect, onRefresh, rerender } = renderFlavors({ flavors: [selected, other, blocked], selectedId: selected.id });
+		const search = screen.getByRole('searchbox');
+		for (const pattern of ['^CPU\\.ALPHA$', '^연구용$', '^flavor-a$', '^2 vCPU · 3 GiB RAM$']) {
+			await fireEvent.input(search, { target: { value: pattern } });
+			expect(screen.getByRole('button', { name: selectionName(selected) }).getAttribute('aria-pressed')).toBe('true');
+			expect(screen.queryByRole('button', { name: selectionName(other) })).toBeNull();
+		}
+		await fireEvent.input(search, { target: { value: '^cpu\\.(alpha|beta)$' } });
+		expect(screen.getAllByRole('button', { name: /플레이버 선택$/ })).toHaveLength(2);
+		await fireEvent.input(search, { target: { value: '[' } });
+		expect(search.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.getByText(tc('table.regexError'))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /플레이버 선택$/ })).toBeNull();
+		await rerender({ flavors: [selected, other, blocked], backgroundRefreshing: true });
+		expect((search as HTMLInputElement).value).toBe('[');
+		expect(screen.queryByRole('button', { name: /플레이버 선택$/ })).toBeNull();
+		await fireEvent.input(search, { target: { value: '^flavor-a$' } });
+		expect(screen.getByRole('button', { name: selectionName(selected) }).getAttribute('aria-pressed')).toBe('true');
+		expect(onSelect).not.toHaveBeenCalled();
+		expect(onRefresh).not.toHaveBeenCalled();
+	});
+
 	it.each([true, false])('keeps duplicate CPU labels independently selectable in desktop=%s', async desktop => {
 		media.matches = desktop;
 		const first = { ...flavorWith('cpu-a', 'm1.small'), display_name: 'cpu.2c_4g' };

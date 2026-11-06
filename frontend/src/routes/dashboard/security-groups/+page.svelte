@@ -4,6 +4,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import SecurityGroupCard from '$lib/components/dashboard/security-groups/SecurityGroupCard.svelte';
@@ -11,11 +12,23 @@
 
 	import type { SecurityGroupRule, SecurityGroup } from '$lib/types/securityGroup';
 	import { toast } from '$lib/stores/toast';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { untrack } from 'svelte';
+	import { t as tp } from '$lib/i18n/ns/network-pages';
 
 	let securityGroups = $state<SecurityGroup[]>([]);
 	let loading = $state(true);
 	let sgError = $state('');
 	let showSgModal = $state(false);
+	let search = $state('');
+	const columns = (): TableColumn<SecurityGroup>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name },
+		{ key: 'description', label: t('securityGroup.create.description'), value: row => row.description },
+		{ key: 'rules', label: tp('securityGroupRules.rulesLabel'), value: row => row.rules.length },
+	];
+	const view = createTableView({ rows: () => securityGroups, columns, search: () => search, searchable: row => [row.name, row.id, row.description ?? ''] });
 
 	async function fetchSecurityGroups() {
 		try {
@@ -79,8 +92,14 @@
 		}
 	}
 
+	const viewOwner = $derived(sessionScopeKey($auth));
 	$effect(() => {
-		if ($auth.projectId) fetchSecurityGroups();
+		viewOwner;
+		const projectId = untrack(() => $auth.projectId);
+		untrack(() => {
+			search = ''; view.reset();
+			if (projectId) void fetchSecurityGroups();
+		});
 	});
 </script>
 
@@ -100,6 +119,9 @@
 		>{t('securityGroup.page.create')}</button>
 	</div>
 
+	<RegexSearch id="legacy-security-group-search" bind:value={search} />
+	<TableViewControls {view} class="" />
+	{#if securityGroups.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
 	{#if sgError}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{sgError}</div>
 	{/if}
@@ -113,7 +135,7 @@
 		</div>
 	{:else}
 		<div class="motion-stagger space-y-3">
-			{#each securityGroups as sg (sg.id)}
+			{#each view.rows as sg (sg.id)}
 				<SecurityGroupCard
 					{sg}
 					onDelete={deleteSecurityGroup}

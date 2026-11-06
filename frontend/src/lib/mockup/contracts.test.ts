@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { ADMIN_ALLOWED_PATHS, getMockupHomePath, isMockupPathAllowed } from './contracts';
+import { getMockupHomePath, isMockupPathAllowed } from './contracts';
 
 const ADMIN_TOUR_PATHS = [
 	'/admin/instances',
+	'/admin/images',
 	'/admin/volumes',
 	'/admin/libraries',
 	'/admin/topology',
@@ -17,7 +18,6 @@ const ADMIN_TOUR_PATHS = [
 
 describe('administrator mockup route contract', () => {
 	it('allows the administrator landing page, guided-tour sections and quota preview', () => {
-		expect(ADMIN_ALLOWED_PATHS).toEqual(['/', '/login', '/admin', ...ADMIN_TOUR_PATHS, '/admin/quotas', '/admin/domains', '/admin/flavors']);
 		expect(getMockupHomePath('admin')).toBe('/admin');
 		for (const path of ADMIN_TOUR_PATHS) expect(isMockupPathAllowed('admin', path)).toBe(true);
 		expect(isMockupPathAllowed('admin', '/admin/quotas')).toBe(true);

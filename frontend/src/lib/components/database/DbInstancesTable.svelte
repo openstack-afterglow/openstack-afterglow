@@ -6,9 +6,14 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
   let {
     instances,
+		view,
     refreshing,
     restarting,
     deleting,
@@ -22,6 +27,7 @@
     onDelete,
   }: {
     instances: DbInstance[];
+		view: TableView<DbInstance>;
     refreshing: boolean;
     restarting: string | null;
     deleting: string | null;
@@ -40,13 +46,15 @@
   const indeterminate = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
+<TableViewControls {view} />
+{#if instances.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
     <div class="responsive-card-toolbar text-sm">
       <SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allInstances')} onclick={onToggleAll} />
       <span>{tr('selection.all')}</span><span aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span>
     </div>
-    {#each instances as inst (inst.id)}
+    {#each view.rows as inst (inst.id)}
       <CompactResourceCard selected={selectedIds.has(inst.id)}>
         <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /><button onclick={() => onOpen(inst.id)} class="min-w-0 break-all text-left font-medium">{inst.name}</button><StatusChip status={inst.status} /></div>
         <p class="text-xs text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {tr('labels.sizeGb')}: {inst.size ?? '-'}</p>
@@ -63,22 +71,22 @@
     <thead>
       <tr class="db-instances-table__head text-xs uppercase tracking-wide">
         <th class="text-left py-3 px-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allInstances')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span class="db-instances-table__selection-count normal-case" aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div></th>
-        <th class="text-left py-3 px-4 font-medium">{tr('labels.name')}</th>
-        <th class="text-left py-3 px-4 font-medium">{tr('labels.status')}</th>
-        <th class="text-left py-3 px-4 font-medium">{tr('labels.datastoreEnglish')}</th>
-        <th class="text-left py-3 px-4 font-medium">{tr('labels.sizeGb')}</th>
-        <th class="text-left py-3 px-4 font-medium">{tr('labels.created')}</th>
+        <TableColumnHeader {view} columnKey="name" />
+        <TableColumnHeader {view} columnKey="status" />
+        <TableColumnHeader {view} columnKey="datastore" />
+        <TableColumnHeader {view} columnKey="size" />
+        <TableColumnHeader {view} columnKey="created" />
         <th class="text-right py-3 px-4 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
     <tbody class="motion-stagger">
-      {#each instances as inst (inst.id)}
+      {#each view.rows as inst (inst.id)}
         <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)}>
           <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /></td>
           <td class="py-3 px-4"><button onclick={() => onOpen(inst.id)} class="db-instances-table__name font-medium text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</button></td>
           <td class="py-3 px-4"><StatusChip status={inst.status} /></td>
           <td class="db-instances-table__detail py-3 px-4">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
-          <td class="db-instances-table__detail py-3 px-4">{inst.size || '-'}</td>
+          <td class="db-instances-table__detail py-3 px-4">{inst.size ?? '-'}</td>
           <td class="db-instances-table__selection-count py-3 px-4 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
           <td class="py-3 px-4 text-right">
             <div class="flex justify-end gap-1">

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
 	import type { Keypair } from '$lib/types/keypair';
 	import { t } from '$lib/i18n/ns/images-keys';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -7,12 +9,14 @@
 
 	let {
 		keypairs,
+		view,
 		deleting,
 		copiedFingerprint,
 		onCopy,
 		onDelete,
 	}: {
 		keypairs: Keypair[];
+		view: TableView<Keypair>;
 		deleting: string | null;
 		copiedFingerprint: string | null;
 		onCopy: (fp: string) => void;
@@ -32,9 +36,9 @@
  {/snippet}
 <div class="bg-surface-base border border-line rounded-lg overflow-hidden">
 	<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
-		<div>{t('keypairTable.columns.name')}</div>
-		<div class="hidden md:block">{t('keypairTable.columns.type')}</div>
-		<div class="hidden md:block">{t('keypairTable.columns.fingerprint')}</div>
+		<TableColumnControl {view} columnKey="name" />
+		<TableColumnControl {view} columnKey="type" />
+		<TableColumnControl {view} columnKey="fingerprint" />
 		<div class="text-right">{t('keypairTable.columns.actions')}</div>
 	</div>
 	{#each keypairs as kp, i (kp.name)}

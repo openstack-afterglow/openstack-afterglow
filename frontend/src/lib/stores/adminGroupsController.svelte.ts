@@ -11,6 +11,7 @@ export interface AdminGroupsControllerOpts {
   projectId: () => string | undefined;
   domainId: () => string;
   actorId?: () => string | undefined;
+  owner?: () => string;
 }
 
 export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
@@ -48,6 +49,9 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   let listGeneration = 0;
   let usersGeneration = 0;
   const memberGenerations: Record<string, number> = {};
+  const ownerKey = $derived(JSON.stringify([
+    opts.owner?.(), !!opts.token(), opts.projectId(), opts.domainId(), opts.actorId?.(),
+  ]));
 
   function capture() {
     const generation = epoch;
@@ -55,10 +59,11 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     const projectId = opts.projectId();
     const domainId = opts.domainId();
     const actorId = opts.actorId?.();
+    const owner = ownerKey;
     return {
       token, projectId, domainId,
-      owns: () => generation === epoch && !!domainId && opts.domainId() === domainId
-        && opts.token() === token && opts.projectId() === projectId && opts.actorId?.() === actorId,
+      owns: () => generation === epoch && !!domainId && !!opts.token() && ownerKey === owner
+        && opts.domainId() === domainId && opts.projectId() === projectId && opts.actorId?.() === actorId,
       path: (path: string) => `${path}${path.includes('?') ? '&' : '?'}domain_id=${encodeURIComponent(domainId)}`,
     };
   }
@@ -66,7 +71,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   const ownsGroup = (id: string) => groups.some((group) => group.id === id && group.domain_id === opts.domainId());
 
   $effect(() => {
-    void opts.token(); void opts.projectId(); void opts.domainId(); void opts.actorId?.();
+    void ownerKey;
     untrack(() => {
       epoch += 1;
       groups = []; allUsers = []; groupMembers = {}; membersLoading = {}; membersError = {};

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/drover';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -109,12 +113,30 @@
 		}
 		return '';
 	}
+	const tableState = s.tableState('stampede-events');
+	const columns = $derived<TableColumn<StampedeEvent>[]>([
+		{ key: 'action', label: tc('table.type'), value: row => row.action },
+		{ key: 'status', label: tc('table.status'), value: row => row.status },
+		{ key: 'nodegroup', label: tc('table.source'), value: row => row.nodegroup_id },
+		{ key: 'created_at', label: t('nodes.createdAt'), value: row => row.created_at ? Date.parse(row.created_at) : null },
+		{ key: 'description', label: tc('table.description'), value: row => extraSummary(row.action, row.extra) || null },
+	]);
+	const view = createTableView({ rows: () => events, columns: () => columns, search: () => tableState.search, state: tableState.state });
+	const nodegroupState = s.tableState('stampede-nodegroups');
+	const nodegroupColumns = $derived<TableColumn<StampedeStatus['nodegroups'][number]>[]>([
+		{ key: 'name', label: tc('table.name'), value: row => row.name },
+		{ key: 'id', label: 'ID', value: row => row.id },
+		{ key: 'role', label: tc('table.type'), value: row => row.role },
+	]);
+	const nodegroupView = createTableView({ rows: () => status?.nodegroups ?? [], columns: () => nodegroupColumns, search: () => nodegroupState.search, state: nodegroupState.state });
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
+	<RegexSearch id="stampede-nodegroups-search" bind:value={nodegroupState.search} />
+	<TableViewControls view={nodegroupView} class="" />
 	{#if status?.nodegroups?.length}
 		<div class="grid gap-2 mb-4 md:grid-cols-2">
-			{#each status.nodegroups as ng (ng.id)}
+			{#each nodegroupView.rows as ng (ng.id)}
 				<div class="rounded-lg border border-line bg-surface-canvas/40 p-3">
 					<div class="flex items-center justify-between gap-2">
 						<div class="text-sm font-medium text-ink-1">{ng.name}</div>
@@ -163,6 +185,9 @@
 		</button>
 	</div>
 
+	<RegexSearch id="stampede-events-search" bind:value={tableState.search} />
+	<TableViewControls {view} class="" />
+	<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
 	{#if error}
 		<div class="text-xs text-red-400 py-2">{error}</div>
 	{:else if loading && events.length === 0}
@@ -175,7 +200,7 @@
 		</div>
 	{:else}
 		<div class="space-y-0.5">
-			{#each events as ev (ev.id)}
+			{#each view.rows as ev (ev.id)}
 				<div class="flex items-start gap-3 py-2 border-b border-line/60 last:border-b-0">
 					<span class="text-sm mt-0.5 {actionColor(ev.action, ev.status)} w-4 text-center flex-shrink-0">
 						{actionIcon(ev.action)}

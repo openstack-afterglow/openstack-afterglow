@@ -6,6 +6,8 @@
 	import { createWorkspaceController } from '$lib/stores/workspaceController.svelte';
 	import { sortWorkspaceResources, type ResourceKind } from '$lib/stores/workspacePreferences';
 	import { t } from '$lib/i18n/ns/workspace-selector';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -21,6 +23,8 @@
 	const componentId = $props.id();
 	let search = $state('');
 	let domainSearch = $state('');
+	const compiledSearch = $derived(compileRegexSearch(search));
+	const compiledDomainSearch = $derived(compileRegexSearch(domainSearch));
 	// A fresh chooser shows authorized resources even before any recent/pinned history exists.
 	let view = $state<'recent' | 'pinned' | 'all'>('all');
 	let settings = $state(false);
@@ -37,14 +41,14 @@
 	const disabled = $derived(!controller.ready || controller.loading || mutationBusy || $projectSwitching);
 	$effect(() => { busy = mutationBusy; });
 	const orderedDomains = $derived(sortWorkspaceResources(controller.domains, controller.preferences.domains, false, row => row.kind === 'personal' ? -1 : 0));
-	const matchingDomains = $derived(orderedDomains.filter(row => (settings || !controller.preferences.domains[row.id]?.hidden || row.id === controller.domainId || row.id === $auth.domainId) && `${row.name} ${row.id}`.toLocaleLowerCase().includes(domainSearch.toLocaleLowerCase())));
+	const matchingDomains = $derived(orderedDomains.filter(row => (settings || !controller.preferences.domains[row.id]?.hidden || row.id === controller.domainId || row.id === $auth.domainId) && matchesRegexSearch(compiledDomainSearch, [row.name, row.id])));
 	const orderedProjects = $derived(sortWorkspaceResources(controller.inventory?.projects ?? [], controller.preferences.projects, view === 'recent' && !settings));
 	const views = ['recent', 'pinned', 'all'] as const;
 	const projects = $derived(orderedProjects.filter(row => {
 		const preference = controller.preferences.projects[row.id];
 		return (settings || !preference?.hidden || row.id === $auth.projectId)
 			&& (settings || view === 'all' || (view === 'pinned' ? preference?.pinned : preference?.visited))
-			&& `${row.name} ${row.id} ${row.description ?? ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase());
+			&& matchesRegexSearch(compiledSearch, [row.name, row.id, row.description ?? '']);
 	}));
 	$effect(() => {
 		if (!pageExperience) return;
@@ -133,7 +137,7 @@
 		{#if controller.storageFailed}<Alert tone="warning">{t('storageFailed')}</Alert>{/if}
 		{#if controller.loading}<LoadingState variant={controller.ready ? 'inline' : 'section'} label={t('loading')}  />{/if}
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-			<Field label={t('domainSearch')} for={`${componentId}-domain-search`}><TextInput id={`${componentId}-domain-search`} bind:value={domainSearch} disabled={mutationBusy} /></Field>
+			<Field label={t('domainSearch')} for={`${componentId}-domain-search`} help={tc('table.regexHelp')} error={compiledDomainSearch.error ? tc('table.regexError') : undefined}><TextInput id={`${componentId}-domain-search`} type="search" bind:value={domainSearch} ariaInvalid={compiledDomainSearch.error} disabled={mutationBusy} /></Field>
 			<Field label={t('domain')} for={`${componentId}-domain`}>
 				<SelectInput id={`${componentId}-domain`} value={controller.domainId} disabled={controller.loading || mutationBusy || !controller.domains.length || $projectSwitching} onchange={(event) => { void selectDomain((event.currentTarget as HTMLSelectElement).value); }}>
 					{#each matchingDomains as domain (domain.id)}<option value={domain.id}>{controller.preferences.domains[domain.id]?.pinned ? '★ ' : ''}{domain.name} · {domain.id}{domain.kind === 'personal' || domain.kind === 'organization' ? ` · ${t(domain.kind)}` : ''}</option>{/each}
@@ -168,7 +172,7 @@
 				{#each views as tab}<Button variant={view === tab ? 'secondary' : 'ghost'} ariaPressed={view === tab} onclick={() => { view = tab; }} disabled={mutationBusy}>{t(tab)}</Button>{/each}
 			</div>
 		{/if}
-		<Field label={t('projectSearch')} for={`${componentId}-project-search`}><TextInput id={`${componentId}-project-search`} bind:value={search} disabled={mutationBusy} /></Field>
+		<Field label={t('projectSearch')} for={`${componentId}-project-search`} help={tc('table.regexHelp')} error={compiledSearch.error ? tc('table.regexError') : undefined}><TextInput id={`${componentId}-project-search`} type="search" bind:value={search} ariaInvalid={compiledSearch.error} disabled={mutationBusy} /></Field>
 		{#if controller.ready}
 			{#if !projects.length}<p class="py-4 text-sm text-ink-2">{t('empty')}</p>{/if}
 			<ul class="divide-y divide-line rounded-lg border border-line" aria-label={t('projects')}>

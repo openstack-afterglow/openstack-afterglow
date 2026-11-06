@@ -1,4 +1,6 @@
 import { setContext, getContext, untrack } from 'svelte';
+import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
@@ -12,6 +14,7 @@ import { executeBulkMutations } from '$lib/utils/bulkActions';
 import { toast } from '$lib/stores/toast';
 import { t } from '$lib/i18n/ns/object-storage';
 import source from '$lib/i18n/messages/ko/object-storage.json';
+import { shortContentType } from '$lib/utils/format';
 import { beginExperienceAction, beginExperienceLoad, experienceRequest, experienceState, experienceApplied, experienceDiscarded, type ExperienceAction, type ExperienceContext } from '$lib/utils/experience';
 
 const moveRoot = source['dialogs.controller.move.rootToken'];
@@ -23,6 +26,7 @@ export type TreeRow = {
 	isExpanded: boolean;
 	isLoading: boolean;
 	fullPath: boolean;
+	contextOnly: boolean;
 };
 
 interface ObjectBrowserOpts {
@@ -52,8 +56,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	let bulkDeleting = $state(false);
 
 	let filterText = $state('');
-	let sortKey = $state<'name' | 'bytes' | 'last_modified'>('name');
-	let sortAsc = $state(true);
+
 
 	let showUpload = $state(false);
 	let dragActive = $state(false);
@@ -233,10 +236,6 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		return idx >= 0 ? stripped.slice(idx + 1) : stripped;
 	}
 
-	function sortIcon(key: typeof sortKey) {
-		if (sortKey !== key) return '';
-		return sortAsc ? '↑' : '↓';
-	}
 
 	function breadcrumbPrefix(idx: number) {
 		return breadcrumbs.slice(0, idx + 1).join('/') + '/';
@@ -347,12 +346,12 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				if (results.some((result) => result.status === 'rejected')) failed = true;
 			}
 			objects = dirCache.get(prefix) ?? objects;
-			if (searchScope === 'all' && filterText.trim()) {
+			if (searchScope === 'all' && filterText.length > 0) {
 				await fetchAllObjects({ silent: true, experience: observation.ctx });
 				if (!observation.current()) { experienceDiscarded(observation.ctx, 'scope_changed'); return; }
 				if (allObjectsError) failed = true;
 			}
-			const available = searchScope === 'all' && filterText.trim() && allObjectsCache
+			const available = searchScope === 'all' && filterText.length > 0 && allObjectsCache
 				? allObjectsCache
 				: [...dirCache.values()].flat();
 			pruneSelected(available.map((item) => item.name));
@@ -449,56 +448,43 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	// ——— 정렬/필터/선택 ———
-	function toggleSort(key: typeof sortKey) {
-		if (sortKey === key) sortAsc = !sortAsc;
-		else { sortKey = key; sortAsc = true; }
-	}
 
 	function toggleSelect(name: string) {
 		if (bulkDeleting || bulkMoving) return;
+		if (isContextOnly(name)) return;
 		const next = new Set(selected);
 		if (next.has(name)) next.delete(name);
 		else next.add(name);
 		selected = next;
 	}
 
-	// ——— admin 평탄 목록 ———
-	const filteredObjects = $derived(() => {
-		let list = objects.filter(o => {
-			if (o.name === prefix) return false;
-			const rel = displayName(o.name);
-			const check = rel.endsWith('/') ? rel.slice(0, -1) : rel;
-			if (check.includes('/')) return false;
-			return true;
-		});
-		if (filterText.trim()) {
-			const q = filterText.trim().toLowerCase();
-			list = list.filter(o => displayName(o.name).toLowerCase().includes(q));
-		}
-		return [...list].sort((a, b) => {
-			const aDir = isDirectory(a) ? 0 : 1;
-			const bDir = isDirectory(b) ? 0 : 1;
-			if (aDir !== bDir) return aDir - bDir;
-			let cmp = 0;
-			if (sortKey === 'name') cmp = displayName(a.name).localeCompare(displayName(b.name));
-			else if (sortKey === 'bytes') cmp = (a.bytes || 0) - (b.bytes || 0);
-			else if (sortKey === 'last_modified') cmp = (a.last_modified || '').localeCompare(b.last_modified || '');
-			return sortAsc ? cmp : -cmp;
-		});
+	const columns = $derived<TableColumn<SwiftObject>[]>([
+		{ key: 'name', label: t('views.flatTable.nameSort', { icon: '' }).trim(), value: row => searchScope === 'all' && filterText.length > 0 ? row.name : baseName(row.name) },
+		{ key: 'bytes', label: t('views.flatTable.sizeSort', { icon: '' }).trim(), value: row => isDirectory(row) ? null : row.bytes },
+		{ key: 'type', label: t('views.flatTable.type'), value: row => isDirectory(row) ? 'application/directory' : row.content_type, format: value => value === 'application/directory' ? t('views.flatTable.folder') : shortContentType(String(value ?? '')) },
+		{ key: 'last_modified', label: t('views.flatTable.modifiedSort', { icon: '' }).trim(), value: row => isDirectory(row) ? null : row.last_modified },
+	]);
+	// Column projection owns no navigation: tree order is rebuilt per sibling set below.
+	const sourceObjects = $derived.by(() => {
+		let source: SwiftObject[];
+		if (opts.mode() !== 'user') source = directChildren(prefix, objects);
+		else if (filterText.length > 0 && searchScope === 'all') source = (allObjectsCache ?? []).filter(row => !isDirectory(row));
+		else if (viewMode === 'grid' || (filterText.length > 0 && searchScope === 'current')) source = directChildren(prefix, dirCache.get(prefix));
+		else source = [...dirCache.values()].flat().filter(row => row.name !== prefix && row.name.startsWith(prefix));
+		const unique = [...new Map(source.map(row => [row.name, row])).values()];
+		return unique.sort(defaultObjectOrder);
 	});
-
-	// ——— user 트리 ———
-	function sortItems(items: SwiftObject[]): SwiftObject[] {
-		return [...items].sort((a, b) => {
-			const aDir = isDirectory(a) ? 0 : 1;
-			const bDir = isDirectory(b) ? 0 : 1;
-			if (aDir !== bDir) return aDir - bDir;
-			let cmp = 0;
-			if (sortKey === 'name') cmp = baseName(a.name).localeCompare(baseName(b.name));
-			else if (sortKey === 'bytes') cmp = (a.bytes || 0) - (b.bytes || 0);
-			else if (sortKey === 'last_modified') cmp = (a.last_modified || '').localeCompare(b.last_modified || '');
-			return sortAsc ? cmp : -cmp;
-		});
+	const view = createTableView({ rows: () => sourceObjects, columns: () => columns, search: () => filterText, searchable: row => searchScope === 'all' ? row.name : baseName(row.name), locale: intlLocale });
+	// Predicate actions clear targets synchronously; navigation and refresh keep their existing selection rules.
+	const setColumnFilter = view.setFilter;
+	view.setFilter = (key, values) => { selected = new Set(); setColumnFilter(key, values); };
+	const clearColumnFilter = view.clearFilter;
+	view.clearFilter = (key) => { if (Object.hasOwn(view.filters, key)) selected = new Set(); clearColumnFilter(key); };
+	const resetColumnView = view.reset;
+	view.reset = () => { if (Object.keys(view.filters).length > 0) selected = new Set(); resetColumnView(); };
+	const filteredObjects = $derived(() => view.rows);
+	function defaultObjectOrder(a: SwiftObject, b: SwiftObject): number {
+		return Number(isDirectory(b)) - Number(isDirectory(a)) || baseName(a.name).localeCompare(baseName(b.name), intlLocale());
 	}
 
 	function directChildren(parentPrefix: string, items: SwiftObject[] | undefined): SwiftObject[] {
@@ -518,7 +504,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		effectiveExpanded: Set<string> | SvelteSet<string>,
 		matchSet: Set<string> | null
 	): TreeRow[] {
-		const items = sortItems(directChildren(p, dirCache.get(p)));
+		const items = view.orderRows(directChildren(p, dirCache.get(p)).sort(defaultObjectOrder));
 		const rows: TreeRow[] = [];
 		for (const obj of items) {
 			const isDir = isDirectory(obj);
@@ -531,7 +517,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				if (!selfMatch && children.length === 0) continue;
 			}
 			const isLoading = isDir && effectiveExpanded.has(obj.name) && dirLoading.has(obj.name) && !dirCache.has(obj.name);
-			rows.push({ obj, depth, isDir, isExpanded: isDir && effectiveExpanded.has(obj.name), isLoading, fullPath: false });
+			rows.push({ obj, depth, isDir, isExpanded: isDir && effectiveExpanded.has(obj.name), isLoading, fullPath: false, contextOnly: matchSet !== null && !matchSet.has(obj.name) });
 			rows.push(...children);
 		}
 		return rows;
@@ -551,48 +537,33 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	const treeRows = $derived(() => {
-		const q = filterText.trim().toLowerCase();
-		if (!q) return buildTreeRows(prefix, 0, expandedDirs, null);
-		if (searchScope === 'all') {
-			if (!allObjectsCache) return [];
-			const matched = allObjectsCache
-				.filter(o => o.name.toLowerCase().includes(q))
-				.filter(o => !o.name.endsWith('/'));
-			return sortItems(matched).map(obj => ({
-				obj, depth: 0, isDir: false, isExpanded: false, isLoading: false, fullPath: true,
-			}));
-		}
-		if (searchScope === 'expanded') {
-			const matchSet = new Set<string>();
-			const ancestorSet = new Set<string>();
-			for (const items of dirCache.values()) {
-				for (const o of items) {
-					if (baseName(o.name).toLowerCase().includes(q)) {
-						matchSet.add(o.name);
-						for (const a of ancestorPrefixes(o.name)) ancestorSet.add(a);
-					}
-				}
-			}
-			const effective = new Set<string>([...expandedDirs, ...ancestorSet]);
-			return buildTreeRows(prefix, 0, effective, matchSet);
-		}
-		const items = sortItems(
-			directChildren(prefix, dirCache.get(prefix)).filter(o =>
-				baseName(o.name).toLowerCase().includes(q)
-			)
-		);
-		return items.map(obj => ({
-			obj, depth: 0, isDir: isDirectory(obj), isExpanded: false, isLoading: false, fullPath: false,
-		}));
+		const hasQuery = filterText.length > 0;
+		const constrained = hasQuery || Object.keys(view.filters).length > 0;
+		if (hasQuery && searchScope === 'all') return view.rows.map(obj => ({ obj, depth: 0, isDir: false, isExpanded: false, isLoading: false, fullPath: true, contextOnly: false }));
+		if (hasQuery && searchScope === 'current') return view.rows.map(obj => ({ obj, depth: 0, isDir: isDirectory(obj), isExpanded: false, isLoading: false, fullPath: false, contextOnly: false }));
+		if (!constrained) return buildTreeRows(prefix, 0, expandedDirs, null);
+		const matchSet = new Set(view.rows.map(row => row.name));
+		const effective = new Set(expandedDirs);
+		if ((hasQuery && searchScope === 'expanded') || Object.keys(view.filters).length > 0) for (const row of view.rows) for (const ancestor of ancestorPrefixes(row.name)) effective.add(ancestor);
+		return buildTreeRows(prefix, 0, effective, matchSet);
 	});
 
 	// 그리드는 현재 prefix 의 직속 자식만 보여준다 — expandedDirs 와 무관하다.
-	const gridRows = $derived(() => treeRows().filter((row) => row.depth === 0));
+	const gridRows = $derived(() => view.rows.map(obj => ({
+		obj, depth: 0, isDir: isDirectory(obj), isExpanded: false, isLoading: false,
+		fullPath: searchScope === 'all' && filterText.length > 0,
+		contextOnly: false,
+	})));
+
+	function isContextOnly(name: string): boolean {
+		return opts.mode() === 'user' && viewMode === 'list' && treeRows().some(row => row.contextOnly && row.obj.name === name);
+	}
 
 	function visibleObjectNames(): string[] {
 		if (opts.mode() !== 'user') return filteredObjects().map((object) => object.name);
-		return (viewMode === 'grid' ? gridRows() : treeRows()).map((row) => row.obj.name);
+		return (viewMode === 'grid' ? gridRows() : treeRows()).filter(row => !row.contextOnly).map((row) => row.obj.name);
 	}
+
 
 	function visibleSelectedCount(): number {
 		return visibleObjectNames().filter((name) => selected.has(name)).length;
@@ -608,7 +579,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 
 	// ——— 액션 ———
 	async function bulkDelete() {
-		const submitted = [...selected];
+		const submitted = [...selected].filter(name => !isContextOnly(name));
+		if (submitted.length === 0) return;
 		const requestContainer = opts.containerName();
 		const requestToken = opts.token();
 		const requestProject = opts.projectId();
@@ -851,6 +823,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function openBulkMove() {
+		if (![...selected].some(name => !isContextOnly(name))) return;
 		moveDest = ''; moveDestContainer = opts.containerName();
 		moveDestinationChosen = false;
 		moveSelectedDir = ''; moveError = ''; showBulkMove = true;
@@ -859,9 +832,11 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function doBulkMove() {
+		if (selected.size === 0) return;
 		if (!moveDestinationChosen) { moveError = t('dialogs.controller.move.destinationRequired'); return; }
 		const requestDest = moveDest.trim();
-		const submitted = [...selected];
+		const submitted = [...selected].filter(name => !isContextOnly(name));
+		if (submitted.length === 0) return;
 		const requestContainer = opts.containerName();
 		const requestToken = opts.token();
 		const requestProject = opts.projectId();
@@ -933,7 +908,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 
 	// ——— effects ———
 	$effect(() => {
-		if (opts.mode() === 'user' && searchScope === 'all' && filterText.trim() && allObjectsCache === null && !allObjectsLoading && !allObjectsError) {
+		if (opts.mode() === 'user' && searchScope === 'all' && filterText.length > 0 && allObjectsCache === null && !allObjectsLoading && !allObjectsError) {
 			fetchAllObjects();
 		}
 	});
@@ -956,6 +931,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			allErrorExperience = undefined;
 			selected = new Set();
 			filterText = '';
+			view.reset();
 			selectedMeta = null;
 			showPreview = false;
 			containerMeta = null;
@@ -986,9 +962,9 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		get containerName() { return opts.containerName(); },
 		get objects() { return objects; },
 		get loading() { return loading; },
-		get loadError() { return loadError || (searchScope === 'all' && filterText.trim().length > 0 && allObjectsError); },
+		get loadError() { return loadError || (searchScope === 'all' && filterText.length > 0 && allObjectsError); },
 		get loadErrorExperience() {
-			return searchScope === 'all' && filterText.trim().length > 0 && allObjectsError
+			return searchScope === 'all' && filterText.length > 0 && allObjectsError
 				? allErrorExperience : loadError ? listErrorExperience : undefined;
 		},
 		get prefix() { return prefix; },
@@ -1002,8 +978,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			if (filterText !== v) selected = new Set();
 			filterText = v;
 		},
-		get sortKey() { return sortKey; },
-		get sortAsc() { return sortAsc; },
+		view,
 		get showUpload() { return showUpload; },
 		set showUpload(v: boolean) { showUpload = v; },
 		get dragActive() { return dragActive; },
@@ -1075,7 +1050,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		get filteredObjects() { return filteredObjects(); },
 		get treeRows() { return treeRows(); },
 		get gridRows() { return gridRows(); },
-		get selectedCount() { return selected.size; },
+		get selectedCount() { return [...selected].filter(name => !isContextOnly(name)).length; },
 		get visibleObjectCount() { return visibleObjectNames().length; },
 		get visibleSelectedCount() { return visibleSelectedCount(); },
 		// helpers
@@ -1083,7 +1058,6 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		isPreviewable,
 		displayName,
 		baseName,
-		sortIcon,
 		breadcrumbPrefix,
 		encObj,
 		isThumbnailable,
@@ -1100,7 +1074,6 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		navigatePrefix,
 		toggleSelect,
 		toggleSelectAll,
-		toggleSort,
 		bulkDelete,
 		downloadObject,
 		deleteObject,

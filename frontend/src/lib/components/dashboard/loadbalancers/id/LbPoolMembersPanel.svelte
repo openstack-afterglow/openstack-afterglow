@@ -5,9 +5,12 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let {
 		members,
+		view,
 		membersLoading,
 		adding,
 		error,
@@ -15,6 +18,7 @@
 		onRemove,
 	}: {
 		members: Member[];
+		view: TableView<Member>;
 		membersLoading: boolean;
 		adding: boolean;
 		error: string;
@@ -52,12 +56,14 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class="" />
+	{#if members.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if membersLoading}<LoadingState variant="inline" label={tc('state.loading')} />{/if}
 	{#if members.length === 0 && !membersLoading}
 		<p class="text-xs text-ink-2">{t('lb.members.empty')}</p>
 	{:else}
 		<div class="space-y-1.5">
-			{#each members as member}
+			{#each view.rows as member (member.id)}
 				{@const removingMember = pending.isActive(`remove:${member.id}`, adding)}
 				<CompactResourceCard>
 					<div class="flex items-center gap-2"><strong class="min-w-0 flex-1 font-mono break-all">{member.address}:{member.protocol_port}</strong><StatusChip status={member.status} /></div>

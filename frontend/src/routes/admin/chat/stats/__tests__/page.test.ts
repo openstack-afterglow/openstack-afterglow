@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get, writable } from 'svelte/store';
 
@@ -14,6 +14,7 @@ import StatsPage from '$lib/components/admin/chat/AdminChatStatsPage.svelte';
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
 import { t } from '$lib/i18n/ns/chat-studio';
+import { t as common } from '$lib/i18n/ns/common';
 import { t as usageT } from '$lib/i18n/ns/admin-chat-usage';
 import { ApiError } from '$lib/api/client';
 import { tick } from 'svelte';
@@ -146,7 +147,7 @@ describe('chat admin statistics activity', () => {
 		expect(pages.every(([path]) => new URL(path, 'https://test.invalid').searchParams.get('offset') === '20')).toBe(true);
 	});
 
-	it.each(['sessionId', 'userId', 'identityDomainId', 'domainId', 'projectId', 'token'] as const)('does not publish an old overview after %s ABA', async key => {
+	it.each(['sessionId', 'userId', 'identityDomainId', 'domainId', 'projectId'] as const)('does not publish an old overview after %s ABA', async key => {
 		const old = Promise.withResolvers<unknown>();
 		mocks.get.mockImplementation((path: string) => path.includes('/timeseries?') ? Promise.resolve({ series: [] }) : old.promise);
 		render(StatsPage);
@@ -158,6 +159,55 @@ describe('chat admin statistics activity', () => {
 		await tick(); await tick();
 		old.resolve(response); await tick(); await tick();
 		expect(screen.queryByText('User 0 (user-0)')).toBeNull();
+	});
+
+	it('retains same-owner reads and view conditions across bearer renewal and uses the renewed credential for continuation', async () => {
+		const pending = Promise.withResolvers<unknown>();
+		mocks.get.mockImplementation((path: string) => path.includes('/timeseries?') ? Promise.resolve({ series: [] }) : pending.promise);
+		render(StatsPage);
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => path.includes('/stats?'))).toBe(true));
+		auth.update(state => ({ ...state, token: 'renewed-token' }));
+		await tick();
+		pending.resolve(response);
+		const firstUser = await screen.findByText('User 0 (user-0)');
+		const section = firstUser.closest('section')!;
+		const search = within(section).getByRole('searchbox', { name: common('table.search') }) as HTMLInputElement;
+		await fireEvent.input(search, { target: { value: '^User 0' } });
+		expect(within(section).queryByText('User 1 (user-1)')).toBeNull();
+		auth.update(state => ({ ...state, token: 'latest-token' }));
+		await tick();
+		expect(search.value).toBe('^User 0');
+		expect(within(section).getByText('User 0 (user-0)')).toBe(firstUser);
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/stats/users?') ? { users: [] } : path.includes('/timeseries?') ? { series: [] } : response));
+		await fireEvent.click(within(section).getByRole('button', { name: t('adminStats.loadMore') }));
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path, token]) => path.includes('/stats/users?') && token === 'latest-token')).toBe(true));
+		expect(search.value).toBe('^User 0');
+	});
+
+	it.each([false, true])('keeps retained user conditions removable after an empty source result (whole report empty=%s)', async allEmpty => {
+		render(StatsPage);
+		const user = await screen.findByText('User 0 (user-0)');
+		const initialSection = user.closest('section')!;
+		await fireEvent.input(within(initialSection).getByRole('searchbox', { name: common('table.search') }), { target: { value: '^User 0' } });
+		const filterName = common('table.filterColumn', { column: t('adminStats.user') });
+		await fireEvent.click(within(initialSection).getByRole('button', { name: filterName }));
+		let popup = screen.getByRole('dialog', { name: filterName });
+		await fireEvent.click(within(popup).getByRole('button', { name: common('table.selectNone') }));
+		await fireEvent.click(within(popup).getByRole('checkbox', { name: 'User 0 (user-0)' }));
+		await fireEvent.click(within(popup).getByRole('button', { name: common('actions.close') }));
+		await fireEvent.click(within(initialSection).getByRole('button', { name: common('table.sortColumn', { column: t('adminStats.user'), direction: common('table.none') }) }));
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.includes('/timeseries?') ? { series: [] } : { ...response, by_user: [], by_model: allEmpty ? [] : response.by_model, overview: { ...response.overview, request_count: allEmpty ? 0 : 1 } }));
+		await fireEvent.click(screen.getByRole('button', { name: t('adminStats.range90Days') }));
+		await screen.findAllByText(t('adminStats.userEmpty'));
+		const retainedSearch = screen.getAllByRole('searchbox', { name: common('table.search') }).find(input => (input as HTMLInputElement).value === '^User 0') as HTMLInputElement;
+		expect(retainedSearch).toBeTruthy();
+		const currentSection = retainedSearch.closest('section')!;
+		expect(within(currentSection).getByRole('button', { name: common('table.sortColumn', { column: t('adminStats.user'), direction: common('table.ascending') }) })).toBeTruthy();
+		await fireEvent.click(within(currentSection).getByRole('button', { name: filterName }));
+		popup = screen.getByRole('dialog', { name: filterName });
+		expect((within(popup).getByRole('checkbox', { name: 'User 0 (user-0)' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(within(popup).getByRole('button', { name: common('table.resetFilter') }));
+		expect(within(popup).queryByRole('checkbox', { name: 'User 0 (user-0)' })).toBeNull();
 	});
 
 	it('clears private rows on authority loss and distinguishes denial from verified empty usage', async () => {

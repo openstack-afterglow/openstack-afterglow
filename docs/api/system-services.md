@@ -90,6 +90,8 @@ nav_order: 65
 
 사용자별 튜토리얼(투어) 진행 이력을 관리합니다. `user_id`는 항상 서버가 `token_info`로 계산합니다(IDOR 방지). `tour_id`/`status`는 서비스 레이어에서 화이트리스트로 검증합니다.
 
+현재 허용 ID는 `vm-create`, `volume`, `drover`, `waygate`, `images`, `admin-images`, `admin-compute`, `admin-storage`, `admin-library`, `admin-waygate`, `admin-network`, `admin-containers`, `admin-key-manager`, `admin-monitoring`, `admin-system`, `admin-identity`입니다. 새 이미지 두 투어는 사용자·관리자 목록의 최상단 업로드 옆에서 시작하는 읽기 전용 안내이며 업로드를 실행하지 않습니다. ID 추가는 기존 사용자별 upsert 테이블을 재사용하며 새 schema나 native cloud 권한을 추가하지 않습니다.
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/tutorials/status` | 본인의 투어 진행 상태 맵 |
@@ -100,7 +102,7 @@ nav_order: 65
 **응답 (200 OK)**
 
 ```json
-{ "statuses": { "welcome": "completed", "storage": "dismissed" } }
+{ "statuses": { "images": "completed", "volume": "dismissed" } }
 ```
 
 기록이 없는 투어는 키에 없습니다(프론트에서 강조 대상으로 판단). 값은 `completed` 또는 `dismissed`.
@@ -118,6 +120,7 @@ nav_order: 65
 | `status` | string | 예 | 허용값: `completed`, `dismissed`. 위반 시 `422` |
 
 - 저장소 장애 시 `503`.
+- 허용 목록에 없는 `tour_id`는 DB 접근 전에 `422`로 거부합니다. 조회는 기존대로 DB 미설정/장애 시 빈 상태 맵으로 반환하지만 저장 성공을 합성하지 않습니다.
 
 **응답**: `204 No Content`
 

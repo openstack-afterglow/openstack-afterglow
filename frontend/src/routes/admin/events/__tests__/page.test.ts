@@ -13,6 +13,23 @@ vi.mock('$lib/stores/auth', () => ({
 import { auth } from '$lib/stores/auth';
 import Page from '$lib/components/admin/AdminEventsPage.svelte';
 import { setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as eventsT } from '$lib/i18n/ns/admin-ops';
+
+async function editNativeFilter(column: string, value: string, apply = true) {
+	await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column }) }));
+	const dialog = screen.getByRole('dialog', { name: commonT('table.filterColumn', { column }) });
+	await fireEvent.input(within(dialog).getByLabelText(commonT('table.filterValue')), { target: { value } });
+	if (apply) await fireEvent.click(within(dialog).getByRole('button', { name: commonT('table.apply') }));
+	await fireEvent.keyDown(dialog, { key: 'Escape' });
+}
+
+async function chooseNativeFilter(column: string, value: string) {
+	await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column }) }));
+	const dialog = screen.getByRole('dialog', { name: commonT('table.filterColumn', { column }) });
+	await fireEvent.click(within(dialog).getByRole('checkbox', { name: value }));
+	await fireEvent.keyDown(dialog, { key: 'Escape' });
+}
 
 const record = {
 	id: 42, created_at: '2026-09-28T08:30:00Z', project_id: 'tenant-1', user_id: 'actor-1',
@@ -65,13 +82,31 @@ describe('admin event viewer', () => {
 		const now = Date.parse(first.get('to_at')!) + 60_000;
 		const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
 		try {
-			await fireEvent.input(screen.getByLabelText('사용자 ID'), { target: { value: 'unsaved' } });
+			await editNativeFilter('사용자 ID', 'unsaved', false);
+			await fireEvent.change(screen.getByLabelText(eventsT('events.period')), { target: { value: '1d' } });
+			await fireEvent.input(screen.getByLabelText(eventsT('events.requestId')), { target: { value: 'unsaved-request' } });
+			await fireEvent.input(screen.getByLabelText(eventsT('events.interactionId')), { target: { value: 'unsaved-interaction' } });
+			const callBoundary = mockGet.mock.calls.length;
+			await chooseNativeFilter('상태', '실패');
+			await waitFor(() => {
+				const requests = mockGet.mock.calls.slice(callBoundary).map(([path]) => new URL(path, 'http://localhost'));
+				expect(requests.map(url => url.pathname).sort()).toEqual(['/api/v1/admin/events', '/api/v1/admin/events/stats']);
+				for (const url of requests) {
+					expect(url.searchParams.get('status')).toBe('failed');
+					expect(url.searchParams.has('request_id')).toBe(false);
+					expect(url.searchParams.has('interaction_id')).toBe(false);
+					expect(url.searchParams.get('from_at')).toBe(first.get('from_at'));
+				}
+			});
 			await fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
 			const lastPath = mockGet.mock.calls.filter(([path]) => !path.includes('/stats')).at(-1)![0] as string;
 			const last = new URL(lastPath, 'http://localhost').searchParams;
 			expect(Date.parse(last.get('to_at')!)).toBe(now);
 			expect(Date.parse(last.get('from_at')!) - Date.parse(first.get('from_at')!)).toBe(60_000);
 			expect(last.has('user_id')).toBe(false);
+			expect(last.get('status')).toBe('failed');
+			expect(last.has('request_id')).toBe(false);
+			expect(last.has('interaction_id')).toBe(false);
 		} finally {
 			clock.mockRestore();
 		}
@@ -85,10 +120,9 @@ describe('admin event viewer', () => {
 		for (const [label, value] of [
 			['사용자 ID', 'actor-a'], ['사용자 이름', 'operator-a'], ['서비스', 'nova'],
 			['페이지 경로', '/admin/instances'], ['리소스 유형', 'instance'], ['리소스 ID', 'vm-a'], ['액션', 'instance.create'],
-		]) await fireEvent.input(screen.getByLabelText(label), { target: { value } });
-		await fireEvent.change(screen.getByLabelText('상태'), { target: { value: 'failed' } });
-		await fireEvent.change(screen.getByLabelText('출처'), { target: { value: 'openstack' } });
-		await fireEvent.click(screen.getByRole('button', { name: '필터 적용' }));
+		]) await editNativeFilter(label, value);
+		await chooseNativeFilter('상태', '실패');
+		await chooseNativeFilter('출처', 'openstack');
 		await waitFor(() => {
 			const paths = mockGet.mock.calls.map(([path]) => path as string);
 			const list = paths.filter((path: string) => new URL(path, 'http://localhost').pathname === '/api/v1/admin/events').at(-1)!;

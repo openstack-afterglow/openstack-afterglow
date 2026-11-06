@@ -1,11 +1,14 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { Alert, Button, Field, Pagination, ResourceToolbar, SelectInput, TextInput } from '$lib/components/ui';
+	import { Alert, Button, Field, Pagination, ResourceToolbar, SelectInput } from '$lib/components/ui';
 	import { projectNames } from '$lib/stores/projectNames';
-	import { filterNetworks, type NetworkFlagFilter } from '$lib/components/admin/networks/networkList';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -36,27 +39,36 @@
 	let ownerDomains = $state<ReadonlyMap<string, string>>(new Map());
 	let ownerWarning = $state(false);
 	let search = $state('');
-	let external = $state<NetworkFlagFilter>('all');
-	let shared = $state<NetworkFlagFilter>('all');
-	let internal = $state<NetworkFlagFilter>('all');
 	let displayPage = $state(1);
 	let pageSize = $state(20);
 	let analyticsOpen = $state(false);
 	let requestGeneration = 0;
 	let timeseriesGeneration = 0;
 	let scopeGeneration = 0;
-	const filteredNetworks = $derived(filterNetworks(networks, { search, external, shared, internal }, ownerNames, {
-		external: t('adminNetworkTable.external'), shared: t('adminNetworkTable.shared'), internal: t('adminNetworkTable.internal'),
-	}));
-	const hasFilters = $derived(Boolean(search || external !== 'all' || shared !== 'all' || internal !== 'all'));
+	const columns: TableColumn<AdminNetwork>[] = $derived([
+		{ key: 'name', label: t('adminNetworkTable.name'), value: (row) => row.name || row.id },
+		{ key: 'owner', label: t('adminNetworkTable.owner'), value: (row) => row.project_id, format: (_value, row) => row.project_id ? ownerNames.get(row.project_id) ?? row.project_name ?? row.project_id : '—' },
+		{ key: 'status', label: t('adminNetworkTable.status'), value: (row) => row.status },
+		{ key: 'type', label: t('adminNetworkTable.type'), value: (row) => `${row.is_external ? t('adminNetworkTable.external') : t('adminNetworkTable.internal')}${row.is_shared ? ` · ${t('adminNetworkTable.shared')}` : ''}` },
+		{ key: 'subnets', label: t('adminNetworkTable.subnets'), value: (row) => row.subnets.length },
+	]);
+	const view = createTableView({ locale: intlLocale, rows: () => networks, columns: () => columns, search: () => search,
+		searchable: (row) => [row.name, row.id, row.project_id, row.project_name, row.project_id ? ownerNames.get(row.project_id) : '', row.status, row.is_external ? t('adminNetworkTable.external') : t('adminNetworkTable.internal'), row.is_shared ? t('adminNetworkTable.shared') : ''].filter((value) => value != null).map(String) });
+	let viewOwner = '';
+	$effect(() => {
+		const owner = JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)]);
+		if (owner !== viewOwner) { viewOwner = owner; search = ''; view.reset(); }
+	});
+	const filteredNetworks = $derived(view.rows);
+	const hasFilters = $derived(Boolean(search || Object.keys(view.filters).length || view.sort));
 	const pageCount = $derived(Math.max(1, Math.ceil(filteredNetworks.length / pageSize)));
 	const visibleNetworks = $derived(filteredNetworks.slice((Math.min(displayPage, pageCount) - 1) * pageSize, Math.min(displayPage, pageCount) * pageSize));
-	$effect(() => { search; external; shared; internal; pageSize; displayPage = 1; });
+	$effect(() => { search; view.filters; view.sort; pageSize; displayPage = 1; });
 	$effect(() => { if (displayPage > pageCount) displayPage = pageCount; });
 
 	function resetFilters() {
 		search = '';
-		external = shared = internal = 'all';
+		view.reset();
 	}
 
 	function scopeKey() {
@@ -224,35 +236,13 @@
 	</div>
 
 	<ResourceToolbar label={t('networksPage.filters.label')} class="mb-3">
-		<Field label={t('networksPage.filters.search')} for="network-search" class="min-w-0 w-full md:flex-1 md:basis-64">
-			<TextInput id="network-search" type="search" bind:value={search} placeholder={t('networksPage.filters.searchPlaceholder')} />
-		</Field>
-		<Field label={t('adminNetworkTable.external')} for="network-external" class="min-w-0 max-w-full w-full md:w-auto">
-			<SelectInput id="network-external" bind:value={() => external, (value) => external = value as NetworkFlagFilter}>
-				<option value="all">{t('networksPage.filters.all')}</option>
-				<option value="yes">{t('networksPage.filters.yes')}</option>
-				<option value="no">{t('networksPage.filters.no')}</option>
-			</SelectInput>
-		</Field>
-		<Field label={t('adminNetworkTable.shared')} for="network-shared" class="min-w-0 max-w-full w-full md:w-auto">
-			<SelectInput id="network-shared" bind:value={() => shared, (value) => shared = value as NetworkFlagFilter}>
-				<option value="all">{t('networksPage.filters.all')}</option>
-				<option value="yes">{t('networksPage.filters.yes')}</option>
-				<option value="no">{t('networksPage.filters.no')}</option>
-			</SelectInput>
-		</Field>
-		<Field label={t('adminNetworkTable.internal')} for="network-internal" class="min-w-0 max-w-full w-full md:w-auto">
-			<SelectInput id="network-internal" bind:value={() => internal, (value) => internal = value as NetworkFlagFilter}>
-				<option value="all">{t('networksPage.filters.all')}</option>
-				<option value="yes">{t('networksPage.filters.yes')}</option>
-				<option value="no">{t('networksPage.filters.no')}</option>
-			</SelectInput>
-		</Field>
+		<RegexSearch id="network-search" bind:value={search} label={t('networksPage.filters.search')} placeholder={t('networksPage.filters.searchPlaceholder')} />
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={resetFilters}>{t('networksPage.filters.reset')}</Button>
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading} onManualRefresh={() => refreshAll(true)} />
 		{/snippet}
 	</ResourceToolbar>
+	<TableViewControls {view} />
 	{#if error}
 		<Alert tone="danger" title={t('networksPage.error.loadTitle')}>
 			{error}
@@ -265,6 +255,7 @@
 	{:else}
 	<AdminNetworkTable
 		networks={visibleNetworks}
+		{view}
 		{ownerNames}
 		{ownerDomains}
 		emptyMessage={hasInventory ? (hasFilters ? t('networksPage.noMatches') : t('networksPage.empty')) : ''}

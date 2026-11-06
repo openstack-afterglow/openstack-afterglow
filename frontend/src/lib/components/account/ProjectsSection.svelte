@@ -1,10 +1,16 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import ProjectSelector from '$lib/components/ProjectSelector.svelte';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { createTableView } from '$lib/utils/tableView.svelte';
+  import { onDestroy } from 'svelte';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   interface Project {
     id: string;
@@ -21,6 +27,26 @@
   let defaultProjectId = $state('');
   let error = $state('');
   let defaultMsg = $state('');
+  const uid = $props.id();
+  let search = $state('');
+  const view = createTableView<Project>({
+    locale: () => intlLocale(),
+    rows: () => projects,
+    search: () => search,
+    columns: () => [
+      { key: 'name', label: t('keypairs.name'), value: row => row.name },
+      { key: 'id', label: 'ID', value: row => row.id },
+      { key: 'description', label: t('profile.description'), value: row => row.description },
+      { key: 'active', label: t('projects.active'), value: row => row.id === $auth.projectId, format: value => value ? t('projects.active') : '—' },
+      { key: 'default', label: t('projects.default'), value: row => row.id === defaultProjectId, format: value => value ? t('projects.default') : '—' },
+    ],
+  });
+  let viewOwner = '';
+  const unsubscribeView = auth.subscribe(state => {
+    const next = sessionScopeKey(state);
+    if (viewOwner !== next) { viewOwner = next; search = ''; view.reset(); }
+  });
+  onDestroy(unsubscribeView);
 
   async function load() {
     loading = true;
@@ -88,14 +114,18 @@
   {#if defaultMsg}
     <div class="text-green-400 text-xs mb-2">{defaultMsg}</div>
   {/if}
+  <RegexSearch id={`${uid}-search`} bind:value={search} />
+  <TableViewControls {view} class="" />
 
   {#if loading}
     <LoadingState variant="section" label={tc('state.loading')}  />
   {:else if projects.length === 0}
     <div class="text-ink-2 text-xs text-center py-4">{t('projects.empty')}</div>
+  {:else if view.rows.length === 0}
+    <p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>
   {:else}
     <div class="space-y-2">
-      {#each projects as proj (proj.id)}
+      {#each view.rows as proj (proj.id)}
         {@const isActive = $auth.projectId === proj.id}
         {@const isDefault = defaultProjectId === proj.id}
         <div

@@ -22,8 +22,14 @@ vi.mock('$lib/api/client', () => ({
 		},
 	},
 }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'TOKEN_CANARY', userId: 'user-a', projectId: 'project-a', domainId: 'domain-a' }) }));
-vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable((leaf: string) => leaf === 'waygate-inventory_reader') }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'TOKEN_CANARY', userId: 'user-a', projectId: 'project-a', domainId: 'domain-a' }),
+	authReady: writable(true), projectSwitching: writable(false),
+}));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable((leaf: string) => leaf === 'waygate-inventory_reader'),
+	observedProjectPermissions: writable({ permissions: null, loading: false, error: '' }),
+}));
 vi.mock('$lib/config/site', () => ({ siteConfig: writable({ services: { waygate: true } }) }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { auth } from '$lib/stores/auth';

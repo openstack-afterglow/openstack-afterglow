@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
@@ -142,6 +147,9 @@
 	}
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; revision++; secret = ''; providers = []; policy = null; });
+	const tableSearchId = `${uid}-search`;
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof providers)[number]>({ rows: () => providers, locale: () => intlLocale(), search: () => tableSearch, columns: () => [{ key: 'name', label: t('name'), value: row => row.name }, { key: 'kind', label: t('kind'), value: row => row.kind, format: (_, row) => t(row.kind === 'oidc' ? 'oidc' : 'github') }, { key: 'status', label: t('status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'enabled' : 'disabled') }, { key: 'secretStatus', label: t('secretStatus'), value: row => row.client_secret_configured, format: (_, row) => t(row.client_secret_configured ? 'configured' : 'notConfigured') }] });
 </script>
 
 <div class="space-y-4">
@@ -168,16 +176,17 @@
 		<Alert tone="info">{t('federationHelp')}</Alert>
 		{#if policy}<p class="my-3 text-sm text-ink-2">{t('usableProviders', { count: policy.usable_provider_count })}</p>{/if}
 		<p class="mb-3 text-sm text-ink-2">{t('verificationHelp')}</p>
-		<ResponsiveTable>{#snippet cards()}
-			{#each providers as provider (provider.id)}<CompactResourceCard>
+		<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>{#snippet cards()}
+			{#each tableView.rows as provider (provider.id)}<CompactResourceCard>
 				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{provider.name}</h3><span class="text-xs">{provider.enabled ? t('enabled') : t('disabled')}</span></div><p class="text-xs">{provider.kind === 'oidc' ? t('oidc') : t('github')} · {provider.verified && provider.verified_revision === provider.revision ? t('verifiedProvider') : t('unverifiedProvider')}</p>
 				{#snippet details()}<p class="text-xs">{t('secretStatus')}: {provider.client_secret_configured ? t('configured') : t('notConfigured')}</p>{/snippet}
 				{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || loading} onclick={() => edit(provider)}>{t('edit')}</Button><Button variant="secondary" size="sm" disabled={blocked || busy || loading} onclick={() => toggle(provider)}>{provider.enabled ? t('disable') : t('enable')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => remove(provider)}>{t('delete')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
 			{#if !loading && !error && !providers.length}<p class="text-sm text-ink-2">{t('emptyProviders')}</p>{/if}
 		{/snippet}
-		<TableShell><table><thead><tr><th>{t('name')}</th><th>{t('kind')}</th><th>{t('status')}</th><th>{t('secretStatus')}</th><th>{t('actions')}</th></tr></thead><tbody>
-			{#each providers as provider (provider.id)}<tr><td>{provider.name}</td><td>{provider.kind === 'oidc' ? t('oidc') : t('github')}</td><td>{provider.enabled ? t('enabled') : t('disabled')}<span class="block text-xs text-ink-2">{provider.verified && provider.verified_revision === provider.revision ? t('verifiedProvider') : t('unverifiedProvider')}</span></td><td>{provider.client_secret_configured ? t('configured') : t('notConfigured')}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading} onclick={() => edit(provider)}>{t('edit')}</Button><Button variant="secondary" size="sm" disabled={blocked || busy || loading} onclick={() => toggle(provider)}>{provider.enabled ? t('disable') : t('enable')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => remove(provider)}>{t('delete')}</Button></div></td></tr>{/each}
+		<TableShell><table><thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="kind" /><TableColumnHeader view={tableView} columnKey="status" /><TableColumnHeader view={tableView} columnKey="secretStatus" /><th>{t('actions')}</th></tr></thead><tbody>
+			{#each tableView.rows as provider (provider.id)}<tr><td>{provider.name}</td><td>{provider.kind === 'oidc' ? t('oidc') : t('github')}</td><td>{provider.enabled ? t('enabled') : t('disabled')}<span class="block text-xs text-ink-2">{provider.verified && provider.verified_revision === provider.revision ? t('verifiedProvider') : t('unverifiedProvider')}</span></td><td>{provider.client_secret_configured ? t('configured') : t('notConfigured')}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || loading} onclick={() => edit(provider)}>{t('edit')}</Button><Button variant="secondary" size="sm" disabled={blocked || busy || loading} onclick={() => toggle(provider)}>{provider.enabled ? t('disable') : t('enable')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading} onclick={() => remove(provider)}>{t('delete')}</Button></div></td></tr>{/each}
 			{#if !loading && !error && !providers.length}<tr><td colspan="5">{t('emptyProviders')}</td></tr>{/if}
 		</tbody></table></TableShell>
 		</ResponsiveTable>

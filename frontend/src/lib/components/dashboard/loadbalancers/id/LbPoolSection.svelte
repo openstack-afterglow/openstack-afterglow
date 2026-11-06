@@ -6,11 +6,15 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { CompactResourceCard, Button, StatusChip } from '$lib/components/ui';
+	import { createTableView, type TableView } from '$lib/utils/tableView.svelte';
+	import { poolColumns } from '$lib/utils/loadBalancerTableColumns';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let {
 		pools,
 		selectedPoolId,
 		members,
+		memberView,
 		membersLoading,
 		saving,
 		error,
@@ -25,6 +29,7 @@
 		pools: Pool[];
 		selectedPoolId: string | null;
 		members: Member[];
+		memberView: TableView<Member>;
 		membersLoading: boolean;
 		saving: boolean;
 		error: string;
@@ -41,6 +46,7 @@
 	let poolForm = $state({ protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' });
 	const pending = createPendingAction();
 	const creatingPool = $derived(pending.isActive('create', saving));
+	const view = createTableView({ rows: () => pools, columns: poolColumns });
 
 	async function handleAddPool() {
 		const ok = await pending.run('create', () => onAddPool(poolForm));
@@ -75,11 +81,13 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class="" />
+	{#if pools.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if pools.length === 0}
 		<p class="text-sm text-ink-2">{t('lb.pools.empty')}</p>
 	{:else}
 		<div class="space-y-2">
-			{#each pools as pool}
+			{#each view.rows as pool (pool.id)}
 				{@const deletingPool = pending.isActive(`delete:${pool.id}`, saving)}
 				<div>
 					<CompactResourceCard selected={selectedPoolId === pool.id}>
@@ -94,6 +102,7 @@
 
 					{#if selectedPoolId === pool.id}
 						<LbPoolMembersPanel
+							view={memberView}
 							{members}
 							{membersLoading}
 							adding={addingMember}

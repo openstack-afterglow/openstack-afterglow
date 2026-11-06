@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { get, type Writable } from 'svelte/store';
 import type * as SvelteStore from 'svelte/store';
@@ -15,6 +15,8 @@ import PackagesPage from '../../../routes/palimpsest/packages/+page.svelte';
 import type { ReusableAsset, CloudEnvironment } from '$lib/api/palimpsestAssets';
 import { refreshAuthState } from '$lib/utils/authSession';
 import { defaultUsageDraft, toLocalDateTime } from '$lib/utils/instanceUsage';
+import { t as commonText } from '$lib/i18n/ns/common';
+import { t as assetText } from '$lib/i18n/ns/palimpsest-assets';
 
 vi.mock('$lib/stores/servicePermissions', async () => {
   const { writable } = await vi.importActual<typeof SvelteStore>('svelte/store');
@@ -57,6 +59,27 @@ afterEach(() => {
   authReady.set(initialAuthReady); logoutInProgress.set(initialLogout); projectSwitching.set(initialSwitching);
   if (initialClipboard) Object.defineProperty(navigator, 'clipboard', initialClipboard);
   else Reflect.deleteProperty(navigator, 'clipboard');
+});
+
+it('keeps source-wide name lookup in the package header and retains it with the independent regex on refresh', async () => {
+  render(AssetSearchPanel, { identity, onGuide: vi.fn() });
+  await screen.findByRole('heading', { name: pkg.name });
+  const regex = document.getElementById('asset-loaded-regex') as HTMLInputElement;
+  await fireEvent.input(regex, { target: { value: '^torch-training$' } });
+  const section = screen.getByRole('heading', { name: assetText('source.packages') }).closest('section')!;
+  const label = commonText('table.filterColumn', { column: assetText('name') });
+  await fireEvent.click(within(section).getByRole('button', { name: label }));
+  const menu = within(screen.getByRole('dialog', { name: label }));
+  await fireEvent.input(menu.getByLabelText(commonText('table.filterValue')), { target: { value: 'torch' } });
+  await fireEvent.click(menu.getByRole('button', { name: commonText('table.apply') }));
+  await waitFor(() => expect(assetApi.packages).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'torch', undefined));
+  expect(assetApi.hub).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'torch', 0);
+  expect(assetApi.environments).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'torch', 0);
+  if (screen.queryByRole('dialog')) await fireEvent.click(menu.getByRole('button', { name: commonText('actions.close') }));
+  await screen.findByRole('heading', { name: pkg.name });
+  await fireEvent.click(screen.getByRole('button', { name: commonText('autoRefresh.refresh') }));
+  await waitFor(() => expect(assetApi.packages).toHaveBeenLastCalledWith(expect.anything(), expect.any(AbortSignal), 'torch', undefined));
+  expect(regex.value).toBe('^torch-training$');
 });
 
 it('opens a real controller package selection, chooses its immutable version and offers safe executable local guidance', async () => {

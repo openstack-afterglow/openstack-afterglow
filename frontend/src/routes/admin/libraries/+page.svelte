@@ -30,6 +30,11 @@
   import type { CloudFlavor } from '$lib/api/palimpsestAssets';
   import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
   import { sessionScopeKey } from '$lib/utils/authSession';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as commonText } from '$lib/i18n/ns/common';
 
   // ---------------------------------------------------------------------------
   // 타입
@@ -313,6 +318,8 @@
     const stop = auth.subscribe(state => {
       const next = sessionScopeKey(state);
       if (owner !== next) {
+        profileSearch = ''; artifactSearch = ''; importSearch = ''; buildSearch = ''; consumeSearch = '';
+        profileView.reset(); artifactView.reset(); importView.reset(); buildView.reset(); consumeView.reset();
         ++consumerScopeGeneration; ++consumerFlavorRequest;
         consumerFlavors = []; consumerFlavorError = ''; consumerFlavorsLoading = false;
         dockerfileUsage = defaultUsageDraft(); historyUsage = defaultUsageDraft();
@@ -1175,6 +1182,50 @@
     }
     return build.pip_packages?.length ? `pip: ${build.pip_packages.join(', ')}` : '—';
   }
+  let profileSearch = $state(''), artifactSearch = $state(''), importSearch = $state(''), buildSearch = $state(''), consumeSearch = $state('');
+  const profileColumns = $derived<TableColumn<LayerProfile>[]>([
+    { key: 'name', label: t('columns.name'), value: row => row.name },
+    { key: 'chain', label: t('columns.layerChain'), value: row => row.layers.join(' → ') },
+    { key: 'active', label: t('columns.activeConsumes'), value: row => blockingConsumesForProfile(row.name).length },
+    { key: 'published', label: t('publication.public'), value: row => row.is_published, format: value => t(value ? 'publication.public' : 'publication.private') },
+  ]);
+  const profileView = createTableView({ rows: () => profiles, columns: () => profileColumns, search: () => profileSearch, locale: intlLocale });
+  const artifactColumns = $derived<TableColumn<LayerArtifact>[]>([
+    { key: 'name', label: t('columns.artifact'), value: row => row.name },
+    { key: 'lineage', label: t('columns.lineage'), value: row => artifactChainLabel(row) },
+    { key: 'packages', label: t('columns.packages'), value: row => packageLabel(row) },
+    { key: 'deletion', label: t('columns.deletion'), value: row => row.can_delete, format: (_value, row) => row.can_delete ? t('artifacts.deletable') : t('artifacts.blocked', { count: row.delete_blockers.length }) },
+  ]);
+  const artifactView = createTableView({ rows: () => artifacts, columns: () => artifactColumns, search: () => artifactSearch,
+    searchable: row => [String(row.id), row.name, row.kind, row.python_version ?? '', ubuntuBaseLabel(row), artifactChainLabel(row), packageLabel(row)], locale: intlLocale });
+  const importColumns = $derived<TableColumn<LayerImportJob>[]>([
+    { key: 'id', label: 'ID', value: row => row.id },
+    { key: 'profile', label: t('columns.profileEnglish'), value: row => row.profile_name },
+    { key: 'base', label: t('columns.baseImage'), value: row => row.base_image_name || row.base_image_id },
+    { key: 'status', label: t('columns.statusEnglish'), value: row => row.status },
+  ]);
+  const importView = createTableView({ rows: () => importJobs, columns: () => importColumns, search: () => importSearch, locale: intlLocale });
+  const buildColumns = $derived<TableColumn<LayerBuild>[]>([
+    { key: 'name', label: t('columns.layerName'), value: row => row.layer_name },
+    { key: 'kind', label: t('columns.kindPython'), value: row => [row.kind, row.python_version, ubuntuBaseLabel(row)].filter(Boolean).join(' · '),
+      filterValues: row => [[row.kind, row.python_version ?? '', row.ubuntu_base].join('\n')],
+      format: (_value, row) => [row.kind, row.python_version, ubuntuBaseLabel(row)].filter(Boolean).join(' · ') },
+    { key: 'status', label: t('columns.status'), value: row => row.status },
+    { key: 'step', label: t('columns.step'), value: row => row.progress_step },
+    { key: 'progress', label: t('columns.progress'), value: row => row.progress_pct },
+    { key: 'vm', label: t('labels.vm'), value: row => row.server_id },
+    { key: 'started', label: t('columns.started'), value: row => row.started_at ? Date.parse(row.started_at) : null, format: (_value, row) => fmtDate(row.started_at) },
+  ]);
+  const buildView = createTableView({ rows: () => builds, columns: () => buildColumns, search: () => buildSearch,
+    searchable: row => [row.layer_name, row.status, row.kind, row.python_version ?? '', row.progress_step, row.server_id ?? '', buildPackageLabel(row), ubuntuBaseLabel(row)], locale: intlLocale });
+  const consumeColumns = $derived<TableColumn<LayerConsume>[]>([
+    { key: 'name', label: t('columns.serverName'), value: row => row.server_name },
+    { key: 'profile', label: t('columns.profile'), value: row => row.profile_name },
+    { key: 'status', label: t('columns.status'), value: row => row.status },
+    { key: 'server', label: t('columns.serverId'), value: row => row.server_id },
+    { key: 'created', label: t('columns.created'), value: row => row.created_at ? Date.parse(row.created_at) : null, format: (_value, row) => fmtDate(row.created_at) },
+  ]);
+  const consumeView = createTableView({ rows: () => consumes, columns: () => consumeColumns, search: () => consumeSearch, locale: intlLocale });
 
 </script>
 
@@ -1182,9 +1233,9 @@
   <div data-tour="admin-library-header">
     <PageHeader title={t('page.title')} breadcrumb="Palimpsest" subtitle={t('page.subtitle')}>
       {#snippet actions()}
+        <TutorialStartButton tour="admin-library" compactOnMobile />
         {#if workspace !== 'studio'}<Button variant="primary" onclick={() => openWorkspace('studio')}>{t('workspace.createBuild')}</Button>{/if}
         <Button variant="secondary" href="/palimpsest/packages">{t('actions.projectPackages')}</Button>
-        <TutorialStartButton tour="admin-library" compactOnMobile />
         <Button variant="secondary" onclick={() => loadAll(true)}>{t('actions.refresh')}</Button>
       {/snippet}
     </PageHeader>
@@ -1514,10 +1565,14 @@
             <p>{t('profiles.timestamps', { created: fmtDate(selectedHistoricalProfile.created_at), updated: fmtDate(selectedHistoricalProfile.updated_at) })}</p>
           </div>
         {/if}
+        <RegexSearch id="library-profile-regex" bind:value={profileSearch} />
+        <TableViewControls view={profileView} class={profiles.length ? 'lg:hidden' : ''} />
+        <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+        {#if profiles.length && !profileView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
             {#if profiles.length > 0}
               <div class="pt-3 border-t border-line-2">
                 <p class="text-xs text-ink-2 mb-2">{t('summary.profiles')}</p>
-                <ResponsiveTable>{#snippet cards()}{#each profiles as profile (profile.id)}{@const blockers = blockingConsumesForProfile(profile.name)}<CompactResourceCard>
+                <ResponsiveTable>{#snippet cards()}{#each profileView.rows as profile (profile.id)}{@const blockers = blockingConsumesForProfile(profile.name)}<CompactResourceCard>
                   <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{profile.name}</h3><span class="text-xs">{profile.is_published ? t('publication.public') : t('publication.private')}</span></div><p class="text-xs">{t('columns.activeConsumes')}: {blockers.length}</p>
                   {#snippet details()}<p class="text-xs">{t('columns.layerChain')}: {profile.layers.join(' → ')}</p>{/snippet}
                   {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => selectedProfileId = profile.id}>{t('actions.details')}</Button><Button variant="secondary" size="sm" onclick={() => setProfilePublication(profile, !profile.is_published)} disabled={publicationUpdating === `profile:${profile.name}`}>{#if publicationUpdating === `profile:${profile.name}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}</Button><Button variant="danger-outline" size="sm" onclick={() => deleteProfile(profile)} disabled={blockers.length > 0 || profileDeletingName === profile.name} title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}>{#if profileDeletingName === profile.name}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}</Button>{/snippet}
@@ -1526,15 +1581,12 @@
                   <table class="w-full text-xs">
                     <thead>
                       <tr class="text-ink-2 bg-surface-base/80">
-                        <th class="text-left px-3 py-2">{t('columns.name')}</th>
-                        <th class="text-left px-3 py-2">{t('columns.layerChain')}</th>
-                        <th class="text-left px-3 py-2">{t('columns.activeConsumes')}</th>
-                        <th class="text-left px-3 py-2">{t('publication.public')}</th>
+                        {#each profileView.columns as column (column.key)}<TableColumnHeader view={profileView} columnKey={column.key} />{/each}
                         <th class="px-3 py-2"></th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-line/50">
-                      {#each profiles as profile (profile.id)}
+                      {#each profileView.rows as profile (profile.id)}
                         {@const blockers = blockingConsumesForProfile(profile.name)}
                         <tr>
                           <td class="px-3 py-2 font-mono text-ink-1">{profile.name}</td>
@@ -1588,12 +1640,16 @@
     {#if workspace === 'artifacts'}
     <div id="library-artifacts" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-artifacts" class="mb-6" data-tour="admin-library-artifacts">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('artifacts.title')}</h3>
+      <RegexSearch id="library-artifact-regex" bind:value={artifactSearch} />
+      <TableViewControls view={artifactView} class={artifacts.length ? 'lg:hidden' : ''} />
+      <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+      {#if artifacts.length && !artifactView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if artifacts.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           {t('artifacts.empty')}
         </div>
       {:else}
-        <ResponsiveTable>{#snippet cards()}{#each artifacts as a (a.id)}<CompactResourceCard>
+        <ResponsiveTable>{#snippet cards()}{#each artifactView.rows as a (a.id)}<CompactResourceCard>
           <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">#{a.id} {a.name}</h4><span class="text-xs">{a.is_sealed ? t('artifacts.sealed') : t('artifacts.unsealed')}</span></div><p class="text-xs">{a.kind}{#if a.python_version} · py{a.python_version}{/if} · {a.can_delete ? t('artifacts.deletable') : t('artifacts.blocked', { count: a.delete_blockers.length })}</p>
           {#snippet details()}<p class="text-xs">{t('labels.ubuntu', { base: ubuntuBaseLabel(a) })}</p><p class="text-xs">{t('columns.lineage')}: {artifactChainLabel(a)}</p><p class="text-xs">{t('columns.packages')}: {packageLabel(a)}</p>{/snippet}
           {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => setArtifactPublication(a, !a.is_published)} disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`} title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}>{#if publicationUpdating === `artifact:${a.id}`}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</Button><Button variant="danger-outline" size="sm" onclick={() => openDeletePreview(a)}>{t('artifacts.reviewDeletion')}</Button>{/snippet}
@@ -1603,15 +1659,12 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">{t('columns.artifact')}</th>
-                  <th class="text-left px-4 py-2.5 hidden md:table-cell">{t('columns.lineage')}</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.packages')}</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('columns.deletion')}</th>
+                  {#each artifactView.columns as column (column.key)}<TableColumnHeader view={artifactView} columnKey={column.key} />{/each}
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-line/50">
-                {#each artifacts as a (a.id)}
+                {#each artifactView.rows as a (a.id)}
                   <tr class="hover:bg-surface-selected/30 transition-colors">
                     <td class="px-4 py-2.5">
                       <div class="font-mono text-ink-0">#{a.id} {a.name}</div>
@@ -1628,7 +1681,7 @@
                     <td class="px-4 py-2.5 text-ink-2 text-xs hidden lg:table-cell max-w-xs truncate" title={packageLabel(a)}>
                       {packageLabel(a)}
                     </td>
-                    <td class="px-4 py-2.5 text-xs hidden xl:table-cell">
+                    <td class="px-4 py-2.5 text-xs">
                       {#if a.can_delete}
                         <span class="text-green-400">{t('artifacts.deletable')}</span>
                       {:else}
@@ -1728,8 +1781,12 @@
               {/each}
             </section>
           {/if}
+          <RegexSearch id="library-import-regex" bind:value={importSearch} />
+          <TableViewControls view={importView} class={importJobs.length ? 'lg:hidden' : ''} />
+          <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+          {#if importJobs.length && !importView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
           {#if importJobs.length > 0}
-            <ResponsiveTable class="mt-3">{#snippet cards()}{#each importJobs as job}<CompactResourceCard>
+            <ResponsiveTable class="mt-3">{#snippet cards()}{#each importView.rows as job (job.id)}<CompactResourceCard>
               <div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">#{job.id} {job.profile_name}</h3><StatusChip status={job.status} /></div><p class="text-xs">{job.progress_step || job.status} · {job.progress_pct}%</p>
               {#snippet details()}<p class="text-xs">{t('columns.baseImage')}: {job.base_image_name || shortId(job.base_image_id)}</p>{#if job.consumer_status || job.consume_id}<p class="text-xs">VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-xs text-state-danger-text">{job.error_message}</p>{/if}{/snippet}
               {#snippet actions()}<Button variant="secondary" size="sm" ariaLabel={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>{t('actions.details')}</Button>{/snippet}
@@ -1738,14 +1795,11 @@
               <table class="min-w-full text-xs">
                 <thead class="bg-surface-base text-ink-2">
                   <tr>
-                    <th class="px-3 py-2 text-left">ID</th>
-                    <th class="px-3 py-2 text-left">{t('columns.profileEnglish')}</th>
-                    <th class="px-3 py-2 text-left">{t('columns.baseImage')}</th>
-                    <th class="px-3 py-2 text-left">{t('columns.statusEnglish')}</th>
+                    {#each importView.columns as column (column.key)}<TableColumnHeader view={importView} columnKey={column.key} />{/each}
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
-                  {#each importJobs as job}
+                  {#each importView.rows as job (job.id)}
                     <tr>
                       <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
@@ -1765,12 +1819,16 @@
           <span class="ml-2 text-warm-text normal-case">{t('builds.autoRefresh')}</span>
         {/if}
       </h3>
+      <RegexSearch id="library-build-regex" bind:value={buildSearch} />
+      <TableViewControls view={buildView} class={builds.length ? 'lg:hidden' : ''} />
+      <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+      {#if builds.length && !buildView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if builds.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           {t('builds.empty')}
         </div>
       {:else}
-        <ResponsiveTable>{#snippet cards()}{#each builds as build (build.id)}{@const isDone = TERMINAL.has(build.status)}<CompactResourceCard>
+        <ResponsiveTable>{#snippet cards()}{#each buildView.rows as build (build.id)}{@const isDone = TERMINAL.has(build.status)}<CompactResourceCard>
           <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{build.layer_name}</h4><StatusChip status={build.status} /></div><p class="text-xs">{build.progress_step || '—'} · {build.progress_pct}%</p>
           {#snippet details()}<p class="text-xs">{buildPackageLabel(build)}</p><p class="text-xs">{build.kind ?? 'python'} · {build.python_version ?? ''}</p><p class="text-xs">{t('labels.ubuntu', { base: ubuntuBaseLabel(build) })}</p><p class="text-xs">{t('labels.vm')}: {build.server_id || '—'}</p><p class="text-xs">{t('columns.started')}: {fmtRelative(build.started_at)}</p><ProgressTrack value={build.progress_pct} label={t('builds.progressLabel', { name: build.layer_name })} tone={jobProgressTone(build.status)} active={!isDone} size="xs" />{/snippet}
           {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openBuildDetail(build)}>{t('actions.details')}</Button>{/snippet}
@@ -1780,18 +1838,12 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">{t('columns.layerName')}</th>
-                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">{t('columns.kindPython')}</th>
-                  <th class="text-left px-4 py-2.5">{t('columns.status')}</th>
-                  <th class="text-left px-4 py-2.5 hidden md:table-cell">{t('columns.step')}</th>
-                  <th class="text-left px-4 py-2.5 w-36 hidden lg:table-cell">{t('columns.progress')}</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('labels.vm')}</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.started')}</th>
+                  {#each buildView.columns as column (column.key)}<TableColumnHeader view={buildView} columnKey={column.key} />{/each}
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-line/50">
-                {#each builds as build (build.id)}
+                {#each buildView.rows as build (build.id)}
                   {@const isDone = TERMINAL.has(build.status)}
                   <tr
                     class="hover:bg-surface-selected/30 transition-colors cursor-pointer {isDone ? 'opacity-50' : ''}"
@@ -1830,7 +1882,7 @@
                         <span class="text-xs text-ink-2 w-8 text-right">{build.progress_pct}%</span>
                       </div>
                     </td>
-                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden xl:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono">
                       {build.server_id ? build.server_id.slice(0, 8) + '…' : '—'}
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs hidden lg:table-cell">
@@ -1860,12 +1912,16 @@
     {#if workspace === 'instances'}
     <div id="library-instances" role="tabpanel" tabindex="0" aria-labelledby="library-workspace-tabs-instances" data-tour="admin-library-consumes">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('consumes.title')}</h3>
+      <RegexSearch id="library-consume-regex" bind:value={consumeSearch} />
+      <TableViewControls view={consumeView} class={consumes.length ? 'lg:hidden' : ''} />
+      <p class="text-xs text-ink-2">{commonText('table.loadedScope')}</p>
+      {#if consumes.length && !consumeView.rows.length}<p class="text-sm text-ink-2">{commonText('table.noMatches')}</p>{/if}
       {#if consumes.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           {t('consumes.empty')}
         </div>
       {:else}
-        <ResponsiveTable>{#snippet cards()}{#each consumes as c (c.id)}<CompactResourceCard>
+        <ResponsiveTable>{#snippet cards()}{#each consumeView.rows as c (c.id)}<CompactResourceCard>
           <div class="flex flex-wrap justify-between gap-2"><h4 class="text-sm font-medium">{c.server_name ?? '—'}</h4><StatusChip status={c.status} /></div><p class="text-xs">{c.profile_name}</p>
           {#snippet details()}<p class="text-xs">{t('columns.serverId')}: <code>{c.server_id || '—'}</code></p><p class="text-xs">{t('columns.created')}: {fmtRelative(c.created_at)}</p>{/snippet}
           {#snippet actions()}<Button variant="secondary" size="sm" onclick={() => openConsumeDetail(c)}>{t('actions.details')}</Button>{/snippet}
@@ -1875,16 +1931,12 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">{t('columns.serverName')}</th>
-                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">{t('columns.profile')}</th>
-                  <th class="text-left px-4 py-2.5">{t('columns.status')}</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('columns.serverId')}</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.created')}</th>
+                  {#each consumeView.columns as column (column.key)}<TableColumnHeader view={consumeView} columnKey={column.key} />{/each}
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-line/50">
-                {#each consumes as c (c.id)}
+                {#each consumeView.rows as c (c.id)}
                   <tr
                     class="hover:bg-surface-selected/30 transition-colors cursor-pointer"
                     onclick={() => openConsumeDetail(c)}
@@ -1894,7 +1946,7 @@
                     <td class="px-4 py-2.5">
                       <StatusChip status={c.status} />
                     </td>
-                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden xl:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono">
                       {c.server_id ? c.server_id.slice(0, 8) + '…' : '—'}
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs hidden lg:table-cell">

@@ -21,6 +21,8 @@ interface MockMcpAccessRecord {
 	id: string;
 	grant_id: string;
 	name: string;
+	owner_project_id: string;
+	owner_project_name: string;
 	source: 'personal_token' | 'oauth';
 	access_level: 'read' | 'manage';
 	project_scope: 'current' | 'selected' | 'all';
@@ -253,6 +255,8 @@ function seedState(): MockupState {
 					id: 'mock-mcp-token-lumen',
 					grant_id: 'mock-mcp-grant-lumen',
 					name: 'Lumen',
+					owner_project_id: PROJECT_ID,
+					owner_project_name: 'sample-project-alpha',
 					source: 'personal_token',
 					access_level: 'read',
 					project_scope: 'current',
@@ -276,6 +280,8 @@ function seedState(): MockupState {
 					id: 'mock-mcp-oauth-desktop',
 					grant_id: 'mock-mcp-oauth-grant-desktop',
 					name: 'Desktop MCP client',
+					owner_project_id: PROJECT_ID,
+					owner_project_name: 'sample-project-alpha',
 					source: 'oauth',
 					access_level: 'read',
 					project_scope: 'selected',

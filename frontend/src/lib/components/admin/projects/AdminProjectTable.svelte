@@ -1,4 +1,7 @@
 <script lang="ts">
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -16,6 +19,7 @@
 
 	let {
 		projects,
+		view,
 		domainId,
 		copiedId,
 		onCopyId,
@@ -24,6 +28,7 @@
 		onDelete,
 	}: {
 		projects: Project[];
+		view: TableView<Project>;
 		domainId: string;
 		copiedId: string | null;
 		onCopyId: (id: string) => void;
@@ -33,6 +38,7 @@
 	} = $props();
 </script>
 
+<TableViewControls {view} />
 <ResponsiveTable>
   {#snippet cards()}
     {#each projects as p (p.id)}
@@ -61,11 +67,11 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">{t('form.name')}</th>
-				<th class="text-left py-2 pr-4">{t('form.description')}</th>
-				<th class="text-left py-2 pr-4">{t('projectTable.status')}</th>
-				<th class="text-left py-2 pr-4">ID</th>
-				<th class="text-left py-2 pr-4">{t('projectTable.createdAt')}</th>
+				<TableColumnHeader {view} columnKey="name" />
+				<TableColumnHeader {view} columnKey="description" />
+				<TableColumnHeader {view} columnKey="status" />
+				<TableColumnHeader {view} columnKey="id" />
+				<TableColumnHeader {view} columnKey="created" />
 				<th class="text-left py-2">{t('projectTable.actions')}</th>
 			</tr>
 		</thead>

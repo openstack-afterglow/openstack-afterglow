@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -14,6 +18,13 @@
 		['os_admin_user', 'windowsSetup.current.account'],
 		['img_config_drive', 'windowsSetup.current.configDrive'],
 	] as const;
+	const tableState = s.tableState('windows-changes');
+	const viewColumns = $derived<TableColumn<(typeof s.windowsChanges)[number]>[]>([
+		{ key: 'key', label: t('windowsSetup.property'), value: row => row.key },
+		{ key: 'current', label: t('windowsSetup.currentValue'), value: row => row.current },
+		{ key: 'proposed', label: t('windowsSetup.proposedValue'), value: row => row.proposed },
+	]);
+	const view = createTableView({ rows: () => s.windowsChanges, columns: () => viewColumns, search: () => tableState.search, state: tableState.state });
 </script>
 
 {#snippet currentPreviewValue(value: string | undefined)}
@@ -137,12 +148,14 @@
 
 						<div class="space-y-2 text-xs" data-testid="windows-setup-preview">
 							<h4 class="font-semibold text-ink-1">{t('windowsSetup.changesTitle')}</h4>
+	<RegexSearch id="image-windows-changes-search" bind:value={tableState.search} />
+	<TableViewControls view={view} />
 							{#if s.windowsChanges.length === 0}
 								<p class="text-ink-2">{t('windowsSetup.noChanges')}</p>
-							{:else}
+							{/if}
 								<ResponsiveTable>
 									{#snippet cards()}
-										{#each s.windowsChanges as change (change.key)}
+										{#each view.rows as change (change.key)}
 											<CompactResourceCard>
 												<div data-testid="windows-setup-change" data-property={change.key} class="min-w-0 space-y-2">
 													<h5 class="font-mono font-medium text-ink-1 break-all">{change.key}</h5>
@@ -156,9 +169,9 @@
 									{/snippet}
 								<TableShell class="min-w-0">
 								<table class="!min-w-0 w-full table-fixed">
-									<thead class="sr-only"><tr><th scope="col">{t('windowsSetup.property')}</th><th scope="col">{t('windowsSetup.currentValue')}</th><th scope="col">{t('windowsSetup.proposedValue')}</th></tr></thead>
+									<thead><tr>{#each viewColumns as column}<TableColumnHeader {view} columnKey={column.key} />{/each}</tr></thead>
 									<tbody class="divide-y divide-line">
-										{#each s.windowsChanges as change (change.key)}
+										{#each view.rows as change (change.key)}
 											<tr data-testid="windows-setup-change" data-property={change.key}>
 												<td class="min-w-0 font-mono text-ink-1 break-all align-top md:py-2 md:pr-3"><span class="sr-only">{t('windowsSetup.property')}: </span>{change.key}</td>
 												<td class="min-w-0 space-y-1 align-top md:py-2 md:pr-3">
@@ -175,7 +188,6 @@
 								</table>
 								</TableShell>
 								</ResponsiveTable>
-							{/if}
 							<p class="text-ink-2 leading-relaxed">{t('windowsSetup.preserved')}</p>
 						</div>
 

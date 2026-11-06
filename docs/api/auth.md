@@ -116,9 +116,11 @@ Helm `session.timeoutSeconds`·Kolla template·K8s generator 기본값도604800�
 | `POST` | `/api/v1/auth/recovery/password/complete` | 없음·이메일 proof | 비밀번호 복구 (5회/분) |
 | `POST` | `/api/v1/auth/email/changes` | 필요·현재 password | 검증된 프로필 이메일 변경 요청 (3회/분) |
 | `POST` | `/api/v1/auth/email/changes/accept` | 없음·이메일 proof | 새 이메일 확인·변경 (5회/분) |
-| `GET/POST` | `/api/v1/auth/mcp-tokens` | 필요 | 현재 사용자·프로젝트의 개인 MCP 키 조회/발급 (MCP 활성화 필요) |
+| `GET/POST` | `/api/v1/auth/mcp-tokens` | 필요 | 본인 전체 발급 프로젝트의 개인 MCP 키 조회 / 현재 작업 domain·project에서 발급 (MCP 활성화 필요) |
 | `POST` | `/api/v1/auth/mcp-tokens/verify` | 필요·동일 사이트 | 본인 개인 키로 공개 MCP 초기화·도구 목록 확인 (6회/분) |
 | `DELETE` | `/api/v1/auth/mcp-tokens/{id}` | 필요·동일 사이트 | 본인 키 회수 |
+| `GET` | `/api/v1/auth/mcp-oauth/grants` | 필요 | 선택 workspace와 무관한 본인 OAuth 연결 목록 |
+| `DELETE` | `/api/v1/auth/mcp-oauth/grants/{grant_id}` | 필요·동일 사이트 | 저장된 발급 프로젝트 기준으로 본인 연결 회수 |
 
 ---
 
@@ -915,7 +917,9 @@ OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `O
 
 
 
-`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. 내부 Lumen 위임의 기존 finite TTL은 바뀌지 않습니다.
+`GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 로그인 사용자 본인의 모든 발급 프로젝트·도메인에 저장된 metadata를 반환합니다. Working project 미선택 상태에서도 조회할 수 있으며 `X-Project-Id`로 범위를 좁히거나 타인 연결을 조회하지 않습니다. 각 행의 `owner_project_id`·`owner_project_name`은 저장된 발급 origin이며 이름 snapshot이 없으면 exact ID를 사용합니다.
+
+`POST /api/v1/auth/mcp-tokens`는 기존 작업 domain·project 검증을 유지하며 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. 내부 Lumen 위임의 기존 finite TTL은 바뀌지 않습니다.
 
 UI는 기본1달과1일·1주일·3달·6달·1년·만료 없음·직접 선택을 제공합니다. 일·주는 UTC elapsed time, 월·년은 UTC calendar arithmetic으로 target month-end를 보정하고 현지 custom 시각은 UTC로 변환합니다. Finite POST는 실제 `expires_at`만, 만료 없음은 `non_expiring: true`만 보냅니다. 무기한도 현재 멤버십·역할·user/project binding·revocation·credential epoch·dispatch 한계를 우회하지 않습니다.
 
@@ -931,6 +935,8 @@ Refresh token과 제한된 Keystone application credential은 취소 전까지 �
 
 `project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않습니다. 실제 대상 scoped token과 현재 역할 교집합에서 `member`/`admin`이 확인된 프로젝트만 저장된 `can_write=true`를 가지며, `reader` 프로젝트도 같은 grant에 읽기 전용으로 포함됩니다. `mcp:write`는 grant의 최대 scope일 뿐이고 mutation은 대상별 저장 ceiling을 다시 검사합니다. 사용자가 `read`를 선택하면 모든 프로젝트의 변경 호출이 금지됩니다. 기존 grant의 승인 목록·ceiling은 자동 확대하지 않습니다.
 
+`selected`와 `all`은 현재 작업 도메인 안의 실제 사용자 멤버십만 대상으로 하므로 하나의 OAuth 승인에서 같은 도메인의 여러 프로젝트를 선택할 수 있습니다. 다른 도메인의 프로젝트를 한 승인에 합치거나 나중에 가입한 프로젝트를 자동 추가하지 않습니다. 여러 도메인에서 만든 본인 연결이 계정 목록에 함께 보이는 것과 실행 범위는 별개입니다.
+
 `GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, Drover·Palimpsest·Waygate의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. Lumen 서비스·API 키 권한은 MCP 제어 대상이 아니므로 조회하거나 표시하지 않습니다. Lumen이 승인된 클라우드 MCP를 소비하는 별도 bridge는 유지합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면은 같은 component를 사용합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
 
 이 표시는 위임 생성이나 서비스 연결 자체가 아닙니다. 승인은 현재 권한을 다시 읽으며 실행 시에도 restricted credential·대상 소유권·현재 native service policy를 적용합니다. 기존 registry에 없는 서비스 기능을 이 preview가 새 MCP 도구로 공개하지 않습니다. 미확인 서비스나 회수된 권한은 실행을 허용하지 않습니다.
@@ -939,7 +945,7 @@ Preview는 독립 SDK 연결의 project worker를 최대3개로 제한하고 각
 
 
 
-`GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 명시적으로 폐기된 항목을 제외합니다. 아직 폐기하지 않은 만료 항목은 표시하여 사용자가 폐기할 수 있습니다. `DELETE /api/v1/auth/mcp-tokens/{token_id}`와 `DELETE /api/v1/auth/mcp-oauth/grants/{grant_id}`는 본인·현재 프로젝트 소유 항목만 `204`로 폐기하며, 만료 항목도 `revoked`로 전환합니다. 반복 폐기는 같은 결과를 유지합니다. 계정 화면은 성공 뒤 두 목록을 다시 조회하므로 항목·개수·빈 상태가 즉시 갱신되고 새로고침 뒤에도 유지됩니다.
+두 목록은 명시적으로 폐기된 항목을 제외하고 아직 폐기하지 않은 만료 항목은 유지합니다. 두 exact-resource `DELETE`는 선택 project/domain·`X-Project-Id`와 무관하게 본인 소유를 확인한 뒤 DB에 저장된 원래 발급 프로젝트의 lock·감사·cleanup으로 `204` 폐기합니다. 같은 도메인의 다른 사용자 연결도 `404`이며 caller가 발급 origin을 지정하지 않습니다. 반복 폐기는 같은 결과를 유지하고 화면은 성공 뒤 두 목록을 다시 읽습니다. 목록·폐기에만 적용되는 identity-only 경계이며 발급·preview·verify·Lumen 선택·실제 MCP 실행의 프로젝트/도메인 권한은 완화하지 않습니다.
 
 폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 선택된 Lumen 기본 토큰은 해제합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.
 

@@ -40,7 +40,7 @@ function hasManagedGpuProjection(flavor: Flavor): boolean {
 		flavor.description?.startsWith('afterglow:domain-compute-v1:') === true;
 }
 
-function gpuAliases(flavor: Flavor): string[] {
+export function gpuAliases(flavor: Flavor): string[] {
 	return hasManagedGpuProjection(flavor)
 		? (flavor.gpu_primary_aliases ?? []).map(alias => alias.name)
 		: parseGpuAliasSpecs(flavor.extra_specs);

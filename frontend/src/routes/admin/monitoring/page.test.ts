@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), refresh: undefined as (() => Pro
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get } }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', projectId: 'project-a', userId: 'admin-a', sessionId: 'session-a', isSystemAdmin: true }),
+	authReady: writable(true),
+	projectSwitching: writable(false),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (refresh: () => Promise<void>) => {

@@ -10,6 +10,7 @@
 	import DbDatabasesSection from '$lib/components/database/DbDatabasesSection.svelte';
 	import DbUsersSection from '$lib/components/database/DbUsersSection.svelte';
 	import DbBackupsSection from '$lib/components/database/DbBackupsSection.svelte';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 
 	interface Props {
 		instanceId: string;
@@ -28,13 +29,15 @@
 		onDeleted: () => onDeleted?.(),
 	});
 	provideDbInstanceDetailController(s);
+	let previousOwner = '';
 
 	$effect(() => {
+		const owner = JSON.stringify([instanceId, projectId, $authDisplayContext.key]);
 		void token;
-		void projectId;
 		if (instanceId) {
 			untrack(() => {
-				s.reset();
+				if (previousOwner !== owner) s.reset();
+				previousOwner = owner;
 				void s.loadAll();
 			});
 		}

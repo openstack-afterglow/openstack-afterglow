@@ -1,7 +1,10 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView, nativeObservationFilter } from '$lib/components/admin/observation/observationView.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
-	import { Alert, Button, Card, Field, PageHeader, SelectInput, TableShell } from '$lib/components/ui';
+	import { Alert, Button, Card, PageHeader, TableShell } from '$lib/components/ui';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { adminTelemetryRequest, TelemetryError } from '$lib/api/adminTelemetry';
@@ -127,12 +130,6 @@
 			if (ticket.current() && generation === pageGeneration) pageLoading = false;
 		}
 	}
-	function filterChanged(event: Event) {
-		stateFilter = (event.currentTarget as HTMLSelectElement).value;
-		markers = [null];
-		pageIndex = 0;
-		void loadPage();
-	}
 	function nextPage() {
 		if (pageLoading || !page?.items.length || !page.next_marker) return;
 		markers = [...markers.slice(0, pageIndex + 1), page.next_marker];
@@ -175,6 +172,10 @@
 			stateFilter = '';
 			markers = [null];
 			pageIndex = 0;
+			for (const model of [observationView0, observationView1]) {
+				model.search = '';
+				model.view.reset();
+			}
 			allowed = context?.allowed() ?? false;
 			queueMicrotask(() => {
 				if (generation === contextGeneration && context?.allowed()) void loadOverview();
@@ -184,6 +185,9 @@
 		void loadOverview();
 		return () => { ++contextGeneration; context?.dispose(); };
 	});
+
+	const observationView0 = createObservationView(() => (page?.items ?? []), () => ([{ key: 'name', label: t('name'), value: row => row.name }, { key: 'state', label: t('state'), value: row => row.state, ...nativeObservationFilter(() => stateFilter, value => { stateFilter = value; markers = [null]; pageIndex = 0; void loadPage(); }, () => knownStates.map(value => ({ value, label: stateLabel(value), count: null })), false) }, { key: 'type', label: t('type'), value: row => row.type }, { key: 'enabled', label: t('aodh.enabled'), value: row => row.enabled }, { key: 'severity', label: t('aodh.severity'), value: row => row.severity }]));
+	const observationView1 = createObservationView(() => (detail?.history?.items ?? []), () => ([{ key: 'event', label: t('aodh.event'), value: row => row.type }, { key: 'time', label: t('aodh.timestamp'), value: row => row.timestamp }, { key: 'id', label: t('aodh.eventId'), value: row => row.event_id }, { key: 'user', label: t('aodh.userId'), value: row => row.user_id }, { key: 'project', label: t('aodh.projectId'), value: row => row.project_id }]));
 </script>
 
 <PageHeader breadcrumb={t('aodh.breadcrumb')} title={t('aodh.title')} subtitle={t('aodh.description')}>
@@ -226,11 +230,7 @@
 		<section aria-label={t('aodh.alarms')} class="space-y-3">
 			<div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
 				<h2 class="text-sm font-semibold text-ink-0">{t('aodh.alarms')}</h2>
-				<Field label={t('aodh.filter')} for="aodh-state-filter" class="w-full md:w-64">
-					<SelectInput id="aodh-state-filter" bind:value={stateFilter} onchange={filterChanged}>
-						<option value="">{t('aodh.allStates')}</option><option value="ok">{t('aodh.ok')}</option><option value="alarm">{t('aodh.alarm')}</option><option value="insufficient data">{t('aodh.insufficientData')}</option>
-					</SelectInput>
-				</Field>
+				
 			</div>
 			<Card>
 				<section aria-label={t('aodh.loadedCounts')}>
@@ -251,11 +251,15 @@
 			{:else if pageFailure}<NativeStatus status={pageFailure} /><Button variant="secondary" onclick={() => void loadPage()}>{t('retry')}</Button>
 			{:else if page}
 				<NativeStatus status={page.status} error={page.error} />
-				{#if page.items.length}
-					{@const alarmItems = page.items}
-					<ResponsiveTable>
+				{#if page.items.length === 0 && page.status === 'available'}<p role="status" class="text-sm text-ink-2">{t('aodh.emptyPage')}</p>{/if}
+				{#if page.truncated}<Alert tone="warning">{t('truncated')}</Alert>{/if}
+				{#if page.status !== 'available'}<Button variant="secondary" onclick={() => void loadPage()}>{t('retry')}</Button>{/if}
+			{/if}
+					<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 						{#snippet cards()}
-							{#each alarmItems as alarm (alarm.alarm_id)}
+							{#each tableView.rows as alarm (alarm.alarm_id)}
 								<CompactResourceCard selected={selectedId === alarm.alarm_id}>
 									<Button variant="link" ariaLabel={t('aodh.selectNamed', { name: alarm.name || alarm.alarm_id })} ariaPressed={selectedId === alarm.alarm_id} onclick={() => void selectAlarm(alarm.alarm_id)}>{alarm.name || alarm.alarm_id}</Button>
 									<p>{t('state')}: {stateLabel(alarm.state)} · {t('aodh.severity')}: {reported(alarm.severity)}</p>
@@ -266,8 +270,8 @@
 					<TableShell density="compact">
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<table tabindex="0" aria-label={t('aodh.alarms')} class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
-							<thead><tr><th scope="col">{t('name')}</th><th scope="col">{t('state')}</th><th scope="col">{t('type')}</th><th scope="col">{t('aodh.enabled')}</th><th scope="col">{t('aodh.severity')}</th></tr></thead>
-							<tbody>{#each alarmItems as alarm (alarm.alarm_id)}
+							<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="state" /><TableColumnHeader view={tableView} columnKey="type" /><TableColumnHeader view={tableView} columnKey="enabled" /><TableColumnHeader view={tableView} columnKey="severity" /></tr></thead>
+							<tbody>{#each tableView.rows as alarm (alarm.alarm_id)}
 								<tr data-selected={selectedId === alarm.alarm_id}>
 									<td><Button variant="link" ariaLabel={t('aodh.selectNamed', { name: alarm.name || alarm.alarm_id })} ariaPressed={selectedId === alarm.alarm_id} onclick={() => void selectAlarm(alarm.alarm_id)}>{alarm.name || alarm.alarm_id}</Button></td>
 									<td>{stateLabel(alarm.state)}</td><td class="font-mono">{alarm.type}</td><td>{reported(alarm.enabled)}</td><td>{reported(alarm.severity)}</td>
@@ -276,10 +280,8 @@
 						</table>
 					</TableShell>
 					</ResponsiveTable>
-				{:else if page.status === 'available'}<p role="status" class="text-sm text-ink-2">{t('aodh.emptyPage')}</p>{/if}
-				{#if page.truncated}<Alert tone="warning">{t('truncated')}</Alert>{/if}
-				{#if page.status !== 'available'}<Button variant="secondary" onclick={() => void loadPage()}>{t('retry')}</Button>{/if}
-			{/if}
+{/snippet}
+</ObservationTable>
 			<p class="text-xs text-ink-2">{t('aodh.paginationHelp')}</p>
 			<div class="flex flex-wrap gap-2 items-center">
 				<Button variant="secondary" disabled={pageLoading || pageIndex === 0} onclick={previousPage}>{t('previous')}</Button>
@@ -335,21 +337,23 @@
 						<h3 class="text-sm font-semibold text-ink-0">{t('history')}</h3>
 						<p class="text-xs text-ink-2">{t('aodh.historyBound')}</p>
 						<NativeStatus status={detail.history.status} error={detail.history.error} />
-						{#if detail.history.items.length}
-							{@const historyEvents = detail.history.items}
-							<ResponsiveTable>
+							<ObservationTable model={observationView1} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable>
 								{#snippet cards()}
-									{#each historyEvents as event}<CompactResourceCard><p class="font-medium">{reported(event.type)}</p><p>{timestamp(event.timestamp)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('aodh.eventId')}</dt><dd class="font-mono break-all">{reported(event.event_id)}</dd></div><div><dt>{t('aodh.userId')}</dt><dd class="font-mono break-all">{reported(event.user_id)}</dd></div><div><dt>{t('aodh.projectId')}</dt><dd class="font-mono break-all">{reported(event.project_id)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
+									{#each tableView.rows as event}<CompactResourceCard><p class="font-medium">{reported(event.type)}</p><p>{timestamp(event.timestamp)}</p>{#snippet details()}<dl class="space-y-2"><div><dt>{t('aodh.eventId')}</dt><dd class="font-mono break-all">{reported(event.event_id)}</dd></div><div><dt>{t('aodh.userId')}</dt><dd class="font-mono break-all">{reported(event.user_id)}</dd></div><div><dt>{t('aodh.projectId')}</dt><dd class="font-mono break-all">{reported(event.project_id)}</dd></div></dl>{/snippet}</CompactResourceCard>{/each}
 								{/snippet}
 							<TableShell density="compact">
 								<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 								<table tabindex="0" aria-label={t('history')} class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
-									<thead><tr><th scope="col">{t('aodh.event')}</th><th scope="col">{t('aodh.timestamp')}</th><th scope="col">{t('aodh.eventId')}</th><th scope="col">{t('aodh.userId')}</th><th scope="col">{t('aodh.projectId')}</th></tr></thead>
-									<tbody>{#each historyEvents as event}<tr><td>{reported(event.type)}</td><td>{timestamp(event.timestamp)}</td><td class="font-mono">{reported(event.event_id)}</td><td class="font-mono">{reported(event.user_id)}</td><td class="font-mono">{reported(event.project_id)}</td></tr>{/each}</tbody>
+									<thead><tr><TableColumnHeader view={tableView} columnKey="event" /><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="id" /><TableColumnHeader view={tableView} columnKey="user" /><TableColumnHeader view={tableView} columnKey="project" /></tr></thead>
+									<tbody>{#each tableView.rows as event}<tr><td>{reported(event.type)}</td><td>{timestamp(event.timestamp)}</td><td class="font-mono">{reported(event.event_id)}</td><td class="font-mono">{reported(event.user_id)}</td><td class="font-mono">{reported(event.project_id)}</td></tr>{/each}</tbody>
 								</table>
 							</TableShell>
 							</ResponsiveTable>
-						{:else if detail.history.status === 'available'}<p class="text-sm text-ink-2">{t('aodh.historyEmpty')}</p>{/if}
+{/snippet}
+</ObservationTable>
+						{#if detail.history.items.length === 0 && detail.history.status === 'available'}<p class="text-sm text-ink-2">{t('aodh.historyEmpty')}</p>{/if}
 						{#if detail.history.truncated}<Alert tone="warning">{t('truncated')}</Alert>{/if}
 					</section>
 				{/if}

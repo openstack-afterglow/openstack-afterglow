@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import { onMount } from 'svelte';
 	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { t } from '$lib/i18n/ns/common';
@@ -86,6 +89,7 @@
 		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
 		return seriesSpec?.formatValue?.(value) ?? value.toLocaleString(intlLocale());
 	}
+	const chartDataView = createObservationView(() => seriesSpec?.data ?? [], () => [{ key: 'category', label: xLabel ?? (seriesSpec?.kind === 'time-series' ? t('chart.time') : t('chart.category')), value: row => seriesSpec ? row[seriesSpec.xKey] : null, format: value => category(typeof value === 'boolean' ? String(value) : value) }, ...(seriesSpec?.series ?? []).map(series => ({ key: series.key, label: series.label, value: (row: Record<string, string | number | null | undefined>) => row[series.key] }))]);
 </script>
 
 <div
@@ -101,10 +105,11 @@
 	{#if canShowData && seriesSpec}
 		<details class="mt-2 text-[length:var(--type-support)] text-ink-2" bind:open={dataOpen}>
 			<summary class="w-fit cursor-pointer rounded-sm py-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">{t('chart.data')}</summary>
-			{#if dataOpen}
-				<ResponsiveTable>
+				<ObservationTable model={chartDataView}>
+{#snippet children(tableView)}
+<ResponsiveTable>
 					{#snippet cards()}
-						{#each seriesSpec.data as row}
+						{#each tableView.rows as row}
 							{#snippet remainingSeries()}<dl>{#each seriesSpec.series.slice(2) as series}<div><dt>{series.label}</dt><dd>{number(row[series.key])}</dd></div>{/each}</dl>{/snippet}
 							<CompactResourceCard details={seriesSpec.series.length > 2 ? remainingSeries : undefined}>
 								<p class="font-medium text-ink-0">{category(row[seriesSpec.xKey])}</p>
@@ -116,12 +121,13 @@
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div class="max-h-64 overflow-auto" tabindex="0" role="region" aria-label={label ?? t('chart.data')}>
 					<TableShell density="compact" class="min-w-max"><table>
-						<thead><tr><th scope="col">{xLabel ?? (seriesSpec.kind === 'time-series' ? t('chart.time') : t('chart.category'))}</th>{#each seriesSpec.series as series}<th scope="col">{series.label}</th>{/each}</tr></thead>
-						<tbody>{#each seriesSpec.data as row}<tr><th class="font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td>{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
+						<thead><tr><TableColumnHeader view={tableView} columnKey="category" />{#each seriesSpec.series as series}<TableColumnHeader view={tableView} columnKey={series.key} />{/each}</tr></thead>
+						<tbody>{#each tableView.rows as row}<tr><th class="font-normal" scope="row">{category(row[seriesSpec.xKey])}</th>{#each seriesSpec.series as series}<td>{number(row[series.key])}</td>{/each}</tr>{/each}</tbody>
 					</table></TableShell>
 				</div>
 				</ResponsiveTable>
-			{/if}
+{/snippet}
+</ObservationTable>
 		</details>
 	{/if}
 </div>

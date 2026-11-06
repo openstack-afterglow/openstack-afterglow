@@ -22,7 +22,7 @@ from app.database import get_session_factory
 from app.models.db import RuntimeSetting
 from app.models.instance_usage import aware_timestamp
 from app.services import cinder, domain_projects, identity_roles, instance_usage, keystone, nova
-from app.services.instance_usage_scheduler import _connection, _prove_project
+from app.services.instance_usage_scheduler import _connection
 from app.services.work_dispatcher import checkpoint
 
 _logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def _quota_signal(resource, entry, project_id):
 
 def _observe_project(conn, project_id, clock):
     """Complete each observation group independently; no unknown-to-zero fallback."""
-    _prove_project(conn, project_id)
+    instance_usage.prove_project_scope(conn, project_id)
     signals, groups = {}, set()
     try:
         servers = list(instance_usage.safe_compute_proxy(conn).servers(details=True))

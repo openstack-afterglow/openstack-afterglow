@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { writable } from 'svelte/store';
 import { ApiError } from '$lib/api/errors';
 import type { ImageDetail } from '$lib/types/adminImage';
 import type { ImageDetailController } from '$lib/stores/imageDetailController.svelte';
 import { initLocale } from '$lib/i18n/runtime.svelte';
+import { auth } from '$lib/stores/auth';
+import { t as imageText } from '$lib/i18n/ns/images-keys';
+import { t as tc } from '$lib/i18n/ns/common';
 import { originalImage } from './windowsSetupFixtures';
 
 const boundary = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn(), confirm: vi.fn() }));
@@ -35,10 +38,60 @@ beforeEach(() => {
 	boundary.confirm.mockResolvedValue(true);
 	boundary.get.mockResolvedValue(foreignImage());
 	initLocale('ko');
+	auth.update(state => ({ ...state, token: 'token-a' }));
 });
 afterEach(() => cleanup());
 
 describe('administrator image detail with a Personal project context', () => {
+	it('keeps empty read-only property controls reachable until retained conditions are explicitly cleared', async () => {
+		let image: ImageDetail = { ...foreignImage(), status: 'saving', properties: { audit: 'observed' } };
+		boundary.get.mockImplementation(async () => image);
+		render(Panel, { imageId: 'image-a', isAdmin: false });
+		const properties = await screen.findByTestId('image-properties-section');
+		await fireEvent.input(within(properties).getByRole('searchbox'), { target: { value: '^audit$' } });
+		await fireEvent.click(within(properties).getByRole('button', { name: tc('table.filterColumn', { column: tc('table.key') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'audit' }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		for (const direction of ['none', 'ascending'] as const) await fireEvent.click(within(properties).getByRole('button', { name: tc('table.sortColumn', { column: tc('table.value'), direction: tc(`table.${direction}`) }) }));
+		image = { ...image, properties: {} };
+		auth.update(state => ({ ...state, token: 'token-renewed' }));
+		await waitFor(() => expect(screen.getByTestId('image-properties-section')).not.toBe(properties));
+		const emptyProperties = screen.getByTestId('image-properties-section');
+		expect(within(emptyProperties).getByText(imageText('propertiesSection.empty'))).toBeTruthy();
+		expect(within(emptyProperties).getByText(imageText('propertiesSection.readonly'))).toBeTruthy();
+		expect((within(emptyProperties).getByRole('searchbox') as HTMLInputElement).value).toBe('^audit$');
+		await fireEvent.click(within(emptyProperties).getByRole('button', { name: tc('table.filterColumn', { column: tc('table.key') }) }));
+		expect((screen.getByRole('checkbox', { name: 'audit' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.resetFilter') }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		await fireEvent.click(within(emptyProperties).getByRole('button', { name: tc('table.sortColumn', { column: tc('table.value'), direction: tc('table.descending') }) }));
+		await fireEvent.input(within(emptyProperties).getByRole('searchbox'), { target: { value: '' } });
+		expect(screen.queryByTestId('image-properties-section')).toBeNull();
+		expect(boundary.patch).not.toHaveBeenCalled();
+	});
+	it('keeps property regex, exact key filter and sort when reload remounts the section', async () => {
+		const { controller } = await mount();
+		const properties = () => screen.getByRole('region', { name: 'Image properties consumer' });
+		await fireEvent.input(within(properties()).getByRole('searchbox'), { target: { value: '^support_ticket$' } });
+		await fireEvent.click(within(properties()).getByRole('button', { name: tc('table.filterColumn', { column: tc('table.key') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.selectNone') }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'support_ticket' }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: tc('actions.close') }));
+		await fireEvent.click(within(properties()).getByRole('button', { name: tc('table.sortColumn', { column: tc('table.value'), direction: tc('table.none') }) }));
+		await fireEvent.click(within(properties()).getByRole('button', { name: tc('table.sortColumn', { column: tc('table.value'), direction: tc('table.ascending') }) }));
+		await controller.loadImage();
+		await waitFor(() => expect(within(properties()).getByRole('searchbox')).toBeTruthy());
+		expect((within(properties()).getByRole('searchbox') as HTMLInputElement).value).toBe('^support_ticket$');
+		expect(controller.tableState('properties').state.filters).toEqual({ key: ['support_ticket'] });
+		expect(controller.tableState('properties').state.sort).toEqual({ key: 'value', direction: 'desc' });
+		await fireEvent.input(within(properties()).getByRole('searchbox'), { target: { value: '[' } });
+		await controller.loadImage();
+		expect(await screen.findByText(tc('table.regexError'))).toBeTruthy();
+		expect(boundary.patch).not.toHaveBeenCalled();
+		controller.reset();
+		expect(controller.tableState('properties')).toEqual({ search: '', state: { sort: null, filters: {} } });
+	});
 	it('renders foreign private detail and existing native admin controls without exporting via caller credentials', async () => {
 		render(Panel, { imageId: 'image-a', isAdmin: true });
 		expect(await screen.findByText('foreign-project')).toBeTruthy();

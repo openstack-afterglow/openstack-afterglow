@@ -18,6 +18,8 @@ vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn() }));
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import Page from '../+page.svelte';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import { t as commonT } from '$lib/i18n/ns/common';
+import { t as identityT } from '$lib/i18n/ns/admin-identity';
 
 const admin: AuthState = { token: 'admin-token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin',
 	projectId: 'project-a', projectName: 'A', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false, domainId: 'domain-1', domainName: 'Domain', isDomainManager: false };
@@ -92,6 +94,35 @@ describe('role dashboard authorization and stale responses', () => {
 		mocks.get.mockResolvedValueOnce([role('custom-role')]);
 		await fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
 		await waitFor(() => expect((detail.getByRole('button', { name: '이름·설명 편집' }) as HTMLButtonElement).disabled).toBe(false));
+	});
+
+	it('keeps regex, exact facets, ordering and detail search through bearer renewal and same-owner refresh', async () => {
+		const rows = [role('a', { name: 'custom-alpha' }), role('b', { name: 'custom-beta' })];
+		mocks.get.mockResolvedValue(rows);
+		render(Page);
+		await screen.findByRole('button', { name: 'custom-alpha 역할 상세' });
+		await fireEvent.input(screen.getByRole('searchbox', { name: '역할 검색' }), { target: { value: '^custom-(alpha|beta)$' } });
+		const table = screen.getByRole('table', { name: identityT('projectAccess.roleListLabel') });
+		const sortName = (direction: 'none' | 'ascending' | 'descending') => commonT('table.sortColumn', { column: identityT('form.name'), direction: commonT(`table.${direction}`) });
+		await fireEvent.click(within(table).getByRole('button', { name: sortName('none') }));
+		await fireEvent.click(within(table).getByRole('button', { name: sortName('ascending') }));
+		const filterName = commonT('table.filterColumn', { column: identityT('form.name') });
+		await fireEvent.click(within(table).getByRole('button', { name: filterName }));
+		await fireEvent.click(within(screen.getByRole('dialog', { name: filterName })).getByRole('checkbox', { name: 'custom-beta' }));
+		await fireEvent.click(within(screen.getByRole('dialog', { name: filterName })).getByRole('button', { name: commonT('actions.close') }));
+		expect(within(table).queryByRole('button', { name: 'custom-beta 역할 상세' })).toBeNull();
+		await fireEvent.click(within(table).getByRole('button', { name: 'custom-alpha 역할 상세' }));
+		await fireEvent.input(screen.getByRole('searchbox', { name: '하위 역할 검색' }), { target: { value: '^custom-beta$' } });
+		auth.set({ ...admin, token: 'renewed-token' });
+		await tick();
+		expect(screen.getByRole('dialog', { name: 'custom-alpha 역할 상세' })).toBeTruthy();
+		expect((screen.getByRole('searchbox', { name: '하위 역할 검색' }) as HTMLInputElement).value).toBe('^custom-beta$');
+		await fireEvent.click(screen.getByTitle('지금 새로고침'));
+		await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith('/api/v1/admin/roles', 'renewed-token', 'project-a', expect.anything()));
+		expect((screen.getByRole('searchbox', { name: '역할 검색' }) as HTMLInputElement).value).toBe('^custom-(alpha|beta)$');
+		expect((screen.getByRole('searchbox', { name: '하위 역할 검색' }) as HTMLInputElement).value).toBe('^custom-beta$');
+		expect(within(table).getByRole('button', { name: sortName('descending') }).closest('th')?.getAttribute('aria-sort')).toBe('descending');
+		expect(within(table).queryByRole('button', { name: 'custom-beta 역할 상세' })).toBeNull();
 	});
 
 	it('does not re-open a modal or publish mutation success after auth identity changes', async () => {

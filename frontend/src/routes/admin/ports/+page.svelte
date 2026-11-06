@@ -19,17 +19,16 @@
 	import PortCreateModal from '$lib/components/admin/ports/PortCreateModal.svelte';
 	import PortEditModal from '$lib/components/admin/ports/PortEditModal.svelte';
 	import PortDeleteModal from '$lib/components/admin/ports/PortDeleteModal.svelte';
-	import PortsFilterBar from '$lib/components/admin/ports/PortsFilterBar.svelte';
 	import type { PortInfo, NetworkInfo } from '$lib/types/networks';
 	import type { PagedResponse } from '$lib/types/adminPort';
 	import { t } from '$lib/i18n/ns/admin-network';
 
 	let ports = $state<PortInfo[]>([]);
 	let loading = $state(true);
+	let hasInventory = $state(false);
 	let pageSize = $state(20);
 	let markerStack = $state<string[]>([]);
 	let nextMarker = $state<string | null>(null);
-	let filter = $state('');
 	let allNetworks = $state<NetworkInfo[]>([]);
 
 	let editPort = $state<PortInfo | null>(null);
@@ -56,16 +55,6 @@
 		nextPrefetch.intent(key, (signal) => api.prefetch(path, token, projectId, { signal }));
 	}
 
-	const filtered = $derived(
-		filter
-			? ports.filter(p =>
-				p.name?.includes(filter) ||
-				p.device_owner?.includes(filter) ||
-				p.fixed_ips.some(ip => ip.ip_address?.includes(filter)) ||
-				(p.project_id && ($projectNames.get(p.project_id) ?? p.project_id)?.includes(filter))
-			)
-			: ports
-	);
 
 	async function load(marker?: string, force = false) {
 		const generation = ++loadGeneration;
@@ -85,6 +74,7 @@
 			const res = await api.get<PagedResponse<PortInfo>>(requestPath, requestToken, requestProjectId, force ? { refresh: true } : undefined);
 			if (!owns()) return;
 			ports = res.items || [];
+			hasInventory = true;
 			nextMarker = res.next_marker;
 			const path = nextMarker ? listPath(nextMarker) : null;
 			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
@@ -178,7 +168,7 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading}
-				onManualRefresh={() => { markerStack = []; nextMarker = null; return load(undefined, true); }}
+				onManualRefresh={() => load(markerStack[markerStack.length - 1], true)}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				{t('portsPage.pageSize')}
@@ -192,32 +182,34 @@
 		{/snippet}
 	</PageHeader>
 
-	<PortsFilterBar
-		bind:search={filter}
-	/>
+	
 
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
-	{:else if loading}
+	{/if}
+	{#if loading && !hasInventory}
 		<LoadingState variant="surface" label={t('portsPage.loading')} />
-	{:else}
+	{/if}
+	{#key JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)])}
 		<PortsTable
-			ports={filtered}
+			{ports}
 			{markerStack}
 			{nextMarker}
+			{loading}
 			onEdit={(p) => { editPort = p; editError = ''; }}
 			onDelete={(p) => { deletePort = p; }}
 			onPrev={() => {
+				if (loading || markerStack.length === 0) return;
 				const prev = markerStack.slice(0, -1);
 				const marker = prev[prev.length - 1];
 				markerStack = prev;
 				load(marker);
 			}}
 			onNext={() => {
-				if (!nextMarker) return;
+				if (loading || !nextMarker) return;
 				markerStack = [...markerStack, nextMarker];
 				load(nextMarker);
 			}}
 			onintent={prefetchNext}
 		/>
-	{/if}
+	{/key}
 </PageShell>

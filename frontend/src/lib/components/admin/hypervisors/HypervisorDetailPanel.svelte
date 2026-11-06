@@ -13,6 +13,11 @@
 	import type { RemovalInspection, RemovalApproval, RemovalResult } from './removal';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	export interface HypervisorDetail {
 		id: string;
@@ -129,6 +134,18 @@
 		onCheckRemoval: () => Promise<void>;
 		onRemove: (approval: RemovalApproval) => Promise<void>;
 	} = $props();
+	const serverView = createTableView<HypervisorServer>({
+		rows: () => detail?.servers ?? [],
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('hypervisors.removal.name'), value: (server) => server.name || server.id },
+			{ key: 'id', label: t('hypervisors.removal.serverId'), value: (server) => server.id },
+			{ key: 'status', label: t('hypervisors.removal.status'), value: (server) => server.status },
+			{ key: 'domain', label: t('hypervisors.detail.domain'), value: (server) => server.domain_name || server.domain_id },
+			{ key: 'project', label: t('hypervisors.detail.project'), value: (server) => server.project_name || server.project_id || null },
+			{ key: 'flavor', label: t('hypervisors.detail.flavor'), value: (server) => server.flavor_display_name ?? (server.flavor_name || server.flavor_id || server.flavor || null) },
+		],
+	});
 
 	async function submitIntent() {
 		const current = intent;
@@ -350,12 +367,13 @@
 			{/if}
 
 			<!-- VM 목록 -->
-			{#if detail.servers.length > 0}
 				<div class="bg-surface-base border border-line rounded-xl p-4">
 					<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('hypervisors.detail.vmList', { count: detail.servers.length })}</h3>
+					<TableViewControls view={serverView} />
+					{#if serverView.rows.length === 0}<p class="py-3 text-xs text-ink-2">{detail.servers.length ? tc('table.noMatches') : t('hypervisors.removal.serversEmpty')}</p>{/if}
 					<ResponsiveTable>
 						{#snippet cards()}
-							{#each detail?.servers ?? [] as s (s.id)}
+							{#each serverView.rows as s (s.id)}
 								<CompactResourceCard>
 									<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" disabled={!s.project_id} onclick={() => { if (s.project_id) onOpenDetail(s.id, s.project_id); }}>{s.name || s.id}</button><StatusChip status={s.status} /></div>
 									{@render serverIdentity(s)}
@@ -364,20 +382,36 @@
 								</CompactResourceCard>
 							{/each}
 						{/snippet}
-					<div class="space-y-1.5">
-						{#each detail.servers as s}
-							<div role="group" aria-label={`${s.name || s.id} (${s.id})`} class="flex items-start justify-between gap-2 py-1.5 border-b border-line/50 last:border-0">
-								<div class="flex-1 min-w-0">
-									<button
-										type="button"
-										disabled={!s.project_id}
-										onclick={() => { if (s.project_id) onOpenDetail(s.id, s.project_id); }}
-										class="min-h-11 break-all text-xs text-ink-2 hover:text-warm-text-hover transition-colors block w-full text-left"
-									>{s.name || s.id}</button>
-									{@render serverIdentity(s)}
+					<div class="min-w-0" role="table" aria-label={t('hypervisors.detail.vmList', { count: detail.servers.length })}>
+						<div role="row" class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] items-start gap-2 border-b border-line py-2">
+							<div role="columnheader" class="min-w-0 space-y-1">
+								<TableColumnControl view={serverView} columnKey="name" />
+								<TableColumnControl view={serverView} columnKey="id" />
+								<TableColumnControl view={serverView} columnKey="flavor" />
+							</div>
+							<div role="columnheader" class="min-w-0 space-y-1">
+								<TableColumnControl view={serverView} columnKey="domain" />
+								<TableColumnControl view={serverView} columnKey="project" />
+							</div>
+							<div role="columnheader"><TableColumnControl view={serverView} columnKey="status" /></div>
+							<div role="columnheader"><span class="sr-only">{t('hypervisors.detail.move')}</span></div>
+						</div>
+						{#each serverView.rows as s (s.id)}
+							<div role="row" aria-label={`${s.name || s.id} (${s.id})`} class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] items-start gap-2 border-b border-line/50 py-2 text-xs last:border-0">
+								<div role="cell" class="min-w-0 space-y-1 break-all text-ink-2">
+									<button type="button" disabled={!s.project_id} onclick={() => { if (s.project_id) onOpenDetail(s.id, s.project_id); }} class="min-h-11 w-full break-all text-left transition-colors hover:text-warm-text-hover">{s.name || s.id}</button>
+									<p class="font-mono">{s.id}</p>
+									<dl><div><dt>{t('hypervisors.detail.flavor')}</dt><dd>{s.flavor_display_name ?? (s.flavor_name || s.flavor_id || s.flavor || t('hypervisors.detail.unavailable'))}{#if s.flavor_name && s.flavor_id} <span class="font-mono">({s.flavor_id})</span>{/if}</dd></div></dl>
 								</div>
-								<div class="flex items-center gap-1 ml-2 flex-shrink-0">
-									<StatusChip status={s.status} />
+								<div role="cell" class="min-w-0 space-y-1 break-all text-ink-2">
+									<dl class="space-y-1">
+										<div><dt>{t('hypervisors.detail.domain')}</dt><dd>{s.domain_name || s.domain_id || t('hypervisors.detail.unknownDomain')}{#if s.domain_name && s.domain_id} <span class="font-mono">({s.domain_id})</span>{/if}</dd></div>
+										<div><dt>{t('hypervisors.detail.project')}</dt><dd>{s.project_name || s.project_id || t('hypervisors.detail.unknownOwner')}{#if s.project_name && s.project_id} <span class="font-mono">({s.project_id})</span>{/if}</dd></div>
+									</dl>
+									{#if s.owner_status && s.owner_status !== 'known'}<p>{t(s.owner_status === 'deleted_project' ? 'hypervisors.detail.deletedProject' : s.owner_status === 'deleted_domain' ? 'hypervisors.detail.deletedDomain' : 'hypervisors.detail.unknownOwner')}</p>{/if}
+								</div>
+								<div role="cell"><StatusChip status={s.status} /></div>
+								<div role="cell">
 									{#if s.status === 'ACTIVE'}
 										<Button variant="outline" size="sm" disabled={pending} onclick={() => onMigrate(s.id, s.name, 'live')}>{t('hypervisors.detail.move')}</Button>
 									{:else if s.status === 'SHUTOFF'}
@@ -389,7 +423,6 @@
 					</div>
 					</ResponsiveTable>
 				</div>
-			{/if}
 		</div>
 	{/if}
 </div>

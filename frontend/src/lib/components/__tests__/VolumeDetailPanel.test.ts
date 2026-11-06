@@ -18,7 +18,7 @@ vi.mock('$lib/api/client', () => {
 });
 vi.mock('$lib/stores/wizard', () => ({ wizard: { update: mocks.wizardUpdate }, openWizard: mocks.openWizard }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }), canWrite: writable(true), projectSwitching: writable(false) }));
+vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', userId: 'user-a', projectId: 'project-a', canWrite: true }), authReady: writable(true), canWrite: writable(true), projectSwitching: writable(false), getAuthVerificationEpoch: () => 1 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
 }));

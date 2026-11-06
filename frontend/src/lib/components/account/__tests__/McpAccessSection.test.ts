@@ -1,11 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acceptAuthVerification, authReady, clearAuth, getAuthVerificationEpoch, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
+import { acceptAuthVerification, auth, authReady, clearAuth, getAuthVerificationEpoch, logoutInProgress, projectSwitching, setAuth, setProject } from '$lib/stores/auth';
 import { siteConfig } from '$lib/config/site';
 import { t } from '$lib/i18n/ns/account';
 import { t as tp } from '$lib/i18n/ns/public-entry';
 import type { McpConsentProject } from '$lib/utils/mcpConsentPermissions';
 import { initLocale, intlLocale } from '$lib/i18n/runtime.svelte';
+import { get } from 'svelte/store';
 
 const { api, ApiError, confirmDialog, getBaseUrl } = vi.hoisted(() => ({
 	api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -15,7 +16,7 @@ const { api, ApiError, confirmDialog, getBaseUrl } = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/api/client', () => ({ api, ApiError, getBaseUrl }));
-vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));
+vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog, dialogState: { requestId: 0, open: false, reject: vi.fn() } }));
 vi.mock('$app/stores', async () => {
 	const { readable } = await import('svelte/store');
 	return { page: readable({ data: {}, url: new URL('https://afterglow.example.test/dashboard/account') }) };
@@ -41,6 +42,8 @@ const activeToken = {
 	id: 'token-1',
 	grant_id: 'grant-1',
 	name: 'Lumen',
+	owner_project_id: 'project',
+	owner_project_name: 'Saved issuance origin',
 	source: 'personal_token',
 	access_level: 'read',
 	project_scope: 'current',
@@ -135,11 +138,14 @@ describe('McpAccessSection', () => {
 			username: 'user',
 			projectId: 'project',
 			projectName: 'Project',
+			domainId: 'domain-a',
+			identityDomainId: 'identity-home',
 			accessExpiresAt: null,
 			roles: [],
 		});
 		verifyAuth();
 		projectSwitching.set(false);
+		logoutInProgress.set(false);
 		siteConfig.update((config) => ({ ...config, mcp_url: '', services: { ...config.services, mcp: true } }));
 		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path)));
 		api.post.mockResolvedValue({ ...activeToken, id: 'token-2', grant_id: 'grant-2', token: 'mcp-afgl-secret-value' });
@@ -152,8 +158,133 @@ describe('McpAccessSection', () => {
 		if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
 		else Reflect.deleteProperty(navigator, 'clipboard');
 		projectSwitching.set(false);
+		logoutInProgress.set(false);
 		clearAuth();
 		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
+	});
+
+	it.each(['oauth', 'api'] as const)('lists the same account-owned %s connection across projects, domains and no workspace', async (selected) => {
+		const record = { ...activeToken, name: 'Account-owned connection', owner_project_id: 'issuance-project', owner_project_name: 'Saved origin',
+			projects: [{ id: 'approved-one', name: 'Saved approved one' }, { id: 'approved-two', name: 'Saved approved two' }] };
+		let removed = false;
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects')
+			? accountResponse(path) : path.includes('oauth') === (selected === 'oauth') && !removed ? [record] : []));
+		api.delete.mockImplementation(() => { removed = true; return Promise.resolve(); });
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		for (const workspace of [
+			{ projectId: 'project', domainId: 'domain-a' },
+			{ projectId: 'other', domainId: 'domain-a' },
+			{ projectId: 'domain-b-project', domainId: 'domain-b' },
+			{ projectId: null, domainId: null },
+		]) {
+			setAuth({ token: 'token', ...workspace });
+			verifyAuth();
+			await screen.findByText(t('mcp.issuingProject', { project: 'Saved origin' }));
+			const restrictions = screen.getByRole('group', { name: t('mcp.savedRestrictions') });
+			expect(restrictions.textContent).toContain('Saved approved one');
+			expect(restrictions.textContent).toContain('Saved approved two');
+			expect(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }).hasAttribute('disabled')).toBe(false);
+			expect(screen.queryByRole('button', { name: t('mcp.setLumen') })).toBeNull();
+			expect(screen.queryByRole('button', { name: t('mcp.clearLumen') })).toBeNull();
+		}
+		expect(screen.getByText(t('mcp.workspaceRequired'))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('mcp.create') })).toBeNull();
+		expect(screen.queryByRole('button', { name: t('mcp.verify') })).toBeNull();
+		expect(screen.queryByRole('heading', { name: t('mcp.previewTitle') })).toBeNull();
+		for (const [path, token, project] of api.get.mock.calls) {
+			if (!path.startsWith('/api/v1/auth/mcp-projects')) {
+				expect(token).toBe('token');
+				expect(project).toBeUndefined();
+			}
+		}
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth'
+			? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token'));
+		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
+	});
+
+	it.each(['oauth', 'api'] as const)('loads and revokes %s with only a verified identity and never fetches issuance projects', async (selected) => {
+		setAuth({ token: 'token', projectId: null, domainId: null });
+		verifyAuth();
+		const record = { ...activeToken, name: 'Identity-only connection' };
+		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('oauth') === (selected === 'oauth') ? [record] : []));
+		api.delete.mockResolvedValue(undefined);
+		const writeText = clipboard();
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByText(t('mcp.issuingProject', { project: record.owner_project_name }));
+		expect(api.get.mock.calls.some(([path]) => path.startsWith('/api/v1/auth/mcp-projects'))).toBe(false);
+		expect(screen.queryByLabelText(t('mcp.name'))).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.copyOAuthConfig' : 'mcp.copySetupConfig') }));
+		await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth'
+			? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token'));
+	});
+
+	it.each(['oauth', 'api'] as const)('clears %s account rows and pending confirmation on a different actor', async (selected) => {
+		const confirmation = deferred<boolean>();
+		confirmDialog.mockReturnValue(confirmation.promise);
+		api.get.mockImplementation((path: string, token: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects')
+			? accountResponse(path) : token === 'token' && path.includes('oauth') === (selected === 'oauth') ? [activeToken] : []));
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+		setAuth({ token: 'other-actor-token', userId: 'other-actor', projectId: null });
+		verifyAuth();
+		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
+		await act(async () => { confirmation.resolve(true); });
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(screen.queryByRole('group', { name: t('mcp.savedRestrictions') })).toBeNull();
+	});
+
+	it.each((['oauth', 'api'] as const).flatMap(selected => (['actor', 'logout'] as const).map(boundary => [selected, boundary] as const)))('drops late %s revoke feedback after %s invalidates account state', async (selected, boundary) => {
+		const mutation = deferred<void>();
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects')
+			? accountResponse(path) : path.includes('oauth') === (selected === 'oauth') ? [activeToken] : []));
+		api.delete.mockReturnValue(mutation.promise);
+		render(McpAccessSection);
+		if (selected === 'api') await selectMethod('api');
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
+		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledOnce());
+		if (boundary === 'logout') logoutInProgress.set(true);
+		else setAuth({ userId: 'different-actor', token: 'different-token', projectId: null });
+		await waitFor(() => expect(screen.queryByRole('group', { name: t('mcp.savedRestrictions') })).toBeNull());
+		await act(async () => { mutation.reject(new ApiError('Old actor mutation error')); });
+		expect(screen.queryByText('Old actor mutation error')).toBeNull();
+		expect(screen.queryByRole('heading', { name: t('mcp.title') })).toBeNull();
+		expect(api.delete).toHaveBeenCalledOnce();
+	});
+
+	it.each(['identity-domain', 'working-domain', 'session', 'readiness', 'logout'] as const)('fences account list reads and removal through same-tick %s ABA', async (boundary) => {
+		const confirmation = deferred<boolean>();
+		const stale = deferred<typeof activeToken[]>();
+		confirmDialog.mockReturnValue(confirmation.promise);
+		await renderApi();
+		await screen.findByRole('group', { name: t('mcp.savedRestrictions') });
+		await fireEvent.click(screen.getByRole('button', { name: t('mcp.revoke') }));
+		api.get.mockImplementation((path: string) => path === '/api/v1/auth/mcp-tokens' ? stale.promise : Promise.resolve(accountResponse(path)));
+		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
+		const signal = api.get.mock.calls.findLast(([path]) => path === '/api/v1/auth/mcp-tokens')![3].signal as AbortSignal;
+		api.get.mockImplementation((path: string) => Promise.resolve(accountResponse(path, [{ ...activeToken, name: 'Fresh account row' }])));
+		const before = get(auth);
+		if (boundary === 'readiness') { authReady.set(false); authReady.set(true); }
+		else if (boundary === 'logout') { logoutInProgress.set(true); logoutInProgress.set(false); }
+		else {
+			const key = boundary === 'session' ? 'sessionId' : boundary === 'working-domain' ? 'domainId' : 'identityDomainId';
+			setAuth({ token: 'token', [key]: 'foreign' });
+			setAuth({ token: 'token', [key]: before[key] });
+			verifyAuth();
+		}
+		await screen.findByText('Fresh account row');
+		await act(async () => { confirmation.resolve(true); stale.resolve([{ ...activeToken, name: 'Stale account row' }]); });
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(screen.queryByText('Stale account row')).toBeNull();
+		expect(screen.getByText('Fresh account row')).toBeTruthy();
+		expect(signal.aborted).toBe(true);
 	});
 
 	it.each((['ko', 'en', 'ja', 'zh-CN'] as const).flatMap((locale) => (['oauth', 'api'] as const).map((method) => [locale, method] as const)))('shows grant-owned escaped client identity with details closed and credential-wide removal in %s via %s', async (locale, selected) => {
@@ -196,7 +327,7 @@ describe('McpAccessSection', () => {
 		expect(document.body.textContent).not.toContain('must-not-render-secret');
 		await screen.findByText(t('mcp.count', { count: 1 }));
 		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.revokeAccess' : 'mcp.revoke') }));
-		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth' ? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token', 'project'));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith(selected === 'oauth' ? '/api/v1/auth/mcp-oauth/grants/grant-1' : '/api/v1/auth/mcp-tokens/token-1', 'token'));
 		expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(selected === 'oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: selected === 'oauth' ? `${t('mcp.oauth')} 1` : record.name }));
 		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
 		expect(screen.queryByRole('group', { name: t('mcp.observations') })).toBeNull();
@@ -223,7 +354,7 @@ describe('McpAccessSection', () => {
 		expect(container.innerHTML).not.toContain('second-project-uuid');
 		await fireEvent.click(within(cards[1] as HTMLElement).getByRole('button', { name: t('mcp.revokeAccess') }));
 		expect(confirmDialog).toHaveBeenCalledWith(t('mcp.revokeOAuthConfirm', { name: `${t('mcp.oauth')} 2` }));
-		expect(api.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/mcp-oauth/grants/grant-two', 'token', 'project');
+		expect(api.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/mcp-oauth/grants/grant-two', 'token');
 	});
 
 	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('shows an allowlisted product fallback and its header evidence without claiming the key name as identity in %s', async (locale) => {
@@ -345,7 +476,6 @@ describe('McpAccessSection', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
 		const retry = await screen.findByRole('button', { name: t('mcp.retryList') });
 		expect(screen.getByText(t('mcp.loadFailed'))).toBeTruthy();
-		expect(screen.queryByText(record.name)).toBeNull();
 		expect(screen.queryByText(t('mcp.count', { count: 0 }))).toBeNull();
 		expect(screen.queryByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'))).toBeNull();
 		await fireEvent.click(oldAction);
@@ -709,7 +839,7 @@ describe('McpAccessSection', () => {
 		expect(projectCheckbox('other', 'Other project').checked).toBe(true);
 	});
 
-	it('hides stale saved rows and discards previous project choices when collection reload fails', async () => {
+	it('blocks issuance and discards previous project choices when collection reload fails', async () => {
 		await renderApi();
 		const button = await createButton();
 		expect(screen.getByRole('group', { name: t('mcp.savedRestrictions') })).toBeTruthy();
@@ -717,11 +847,9 @@ describe('McpAccessSection', () => {
 		const reload = deferred<typeof activeToken[]>();
 		api.get.mockImplementation((path: string) => path.endsWith('/mcp-tokens') ? reload.promise : Promise.resolve(accountResponse(path)));
 		await fireEvent.click(screen.getByRole('button', { name: t('mcp.refresh') }));
-		expect(screen.queryByRole('group', { name: t('mcp.savedRestrictions') })).toBeNull();
 		expect(button.hasAttribute('disabled')).toBe(true);
 		await act(async () => { reload.reject(new ApiError('Collection unavailable')); });
 		await screen.findByText('Collection unavailable');
-		expect(screen.queryByRole('group', { name: t('mcp.savedRestrictions') })).toBeNull();
 		expect((screen.getByLabelText(t('mcp.projects')) as HTMLSelectElement).value).toBe('selected');
 		expect(projectCheckbox('project', 'Project').checked).toBe(false);
 		expect(projectCheckbox('other', 'Other project').checked).toBe(false);
@@ -939,7 +1067,6 @@ describe('McpAccessSection', () => {
 		await renderApi();
 
 		await createButton();
-		await waitFor(() => expect(screen.getByText('Lumen 기본 토큰')).toBeTruthy());
 		expect(screen.queryByText('mcp-afgl-secret-value')).toBeNull();
 		expect(screen.getByRole('button', { name: 'Lumen 해제' })).toBeTruthy();
 	});
@@ -947,9 +1074,8 @@ describe('McpAccessSection', () => {
 	it('displays a newly issued token once after creation', async () => {
 		await renderApi();
 		await createButton();
-		await waitFor(() => expect(screen.getByLabelText(/이름/)).toBeTruthy());
 
-		await fireEvent.input(screen.getByLabelText(/이름/), { target: { value: 'Desktop client' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /이름/ }), { target: { value: 'Desktop client' } });
 		await fireEvent.click(await createButton());
 
 		expect(await screen.findByText('mcp-afgl-secret-value')).toBeTruthy();
@@ -995,32 +1121,34 @@ describe('McpAccessSection', () => {
 		});
 		expect(screen.getByText('https://cloud.dmslab.re.kr/mcp/oauth/authorize')).toBeTruthy();
 	});
-	it('hides project-owned tokens and issued secrets while the new scope loads', async () => {
+	it('clears one-time secrets during workspace reload without filtering the account list', async () => {
 		const tokens = deferred<typeof activeToken[]>();
 		const grants = deferred<typeof activeToken[]>();
-		api.get.mockImplementation((path: string, _token: string, project: string) => path.startsWith('/api/v1/auth/mcp-projects')
+		let reloading = false;
+		api.get.mockImplementation((path: string) => path.startsWith('/api/v1/auth/mcp-projects')
 			? Promise.resolve(accountResponse(path))
-			: project === 'other' ? (path.includes('oauth') ? grants.promise : tokens.promise)
+			: reloading ? (path.includes('oauth') ? grants.promise : tokens.promise)
 				: Promise.resolve(accountResponse(path)));
 		await renderApi();
 		await createButton();
 		await screen.findByText('Lumen', { selector: '.record-title strong' });
 		await fireEvent.click(await createButton());
 		await screen.findByText('mcp-afgl-secret-value');
+		reloading = true;
 		setProject('other', 'Other project');
 		verifyAuth();
 		await waitFor(() => {
-			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', 'token', 'other', scopedGetOptions);
-			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-oauth/grants', 'token', 'other', scopedGetOptions);
+			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', 'token', undefined, scopedGetOptions);
+			expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-oauth/grants', 'token', undefined, scopedGetOptions);
 		});
 		await waitFor(() => {
 			expect(screen.queryByText('Lumen', { selector: '.record-title strong' })).toBeNull();
 			expect(screen.queryByText('mcp-afgl-secret-value')).toBeNull();
 			expect(screen.queryByRole('button', { name: 'Lumen 해제' })).toBeNull();
 		});
-		tokens.resolve([{ ...activeToken, id: 'token-b', name: 'Beta token' }]);
+		tokens.resolve([activeToken]);
 		grants.resolve([]);
-		await screen.findByText('Beta token');
+		await screen.findByText('Lumen', { selector: '.record-title strong' });
 		expect(screen.queryByText('mcp-afgl-secret-value')).toBeNull();
 	});
 
@@ -1029,10 +1157,10 @@ describe('McpAccessSection', () => {
 		const bTokens = deferred<typeof activeToken[]>();
 		let aReads = 0;
 		confirmDialog.mockReturnValue(confirm.promise);
-		api.get.mockImplementation((path: string, _token: string, project: string) => {
+		api.get.mockImplementation((path: string) => {
 			if (path.startsWith('/api/v1/auth/mcp-projects')) return Promise.resolve(accountResponse(path));
 			if (path.includes('oauth')) return Promise.resolve([]);
-			if (project === 'other') return bTokens.promise;
+			if (get(auth).projectId === 'other') return bTokens.promise;
 			aReads += 1;
 			return Promise.resolve([{ ...activeToken, name: aReads === 1 ? 'Original A token' : 'Fresh A token' }]);
 		});
@@ -1043,7 +1171,7 @@ describe('McpAccessSection', () => {
 		setProject('other', 'Other project');
 		verifyAuth();
 		await waitFor(() => expect(screen.queryByText('Original A token')).toBeNull());
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-tokens', 'token', 'other', scopedGetOptions));
+		await waitFor(() => expect(api.get.mock.calls.filter(([path]) => path === '/api/v1/auth/mcp-tokens')).toHaveLength(2));
 		setProject('project', 'Project');
 		verifyAuth();
 		await screen.findByText('Fresh A token');
@@ -1660,7 +1788,8 @@ describe('McpAccessSection', () => {
 			await fireEvent.click(await openAction());
 			await waitFor(() => {
 				if (action === 'set-default') expect(api.put).toHaveBeenCalledExactlyOnceWith(path, {}, 'token', 'project');
-				else expect(api.delete).toHaveBeenCalledExactlyOnceWith(path, 'token', 'project');
+				else if (action === 'clear-default') expect(api.delete).toHaveBeenCalledExactlyOnceWith(path, 'token', 'project');
+				else expect(api.delete).toHaveBeenCalledExactlyOnceWith(path, 'token');
 			});
 			if (action.startsWith('revoke')) expect(confirmDialog).toHaveBeenCalledExactlyOnceWith(t(action === 'revoke-oauth' ? 'mcp.revokeOAuthConfirm' : 'mcp.revokeConfirm', { name: action === 'revoke-oauth' ? `${t('mcp.oauth')} 1` : record.name }));
 			else expect(confirmDialog).not.toHaveBeenCalled();
@@ -1672,7 +1801,7 @@ describe('McpAccessSection', () => {
 				await screen.findByText(t(action === 'revoke-oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
 				expect(screen.queryByText(record.name)).toBeNull();
 			}
-			expect(api.get).toHaveBeenCalledWith(action === 'revoke-oauth' ? '/api/v1/auth/mcp-oauth/grants' : '/api/v1/auth/mcp-tokens', 'token', 'project', scopedGetOptions);
+			expect(api.get).toHaveBeenCalledWith(action === 'revoke-oauth' ? '/api/v1/auth/mcp-oauth/grants' : '/api/v1/auth/mcp-tokens', 'token', undefined, scopedGetOptions);
 		});
 
 		it('keeps the record and localizes a failed mutation', async () => {

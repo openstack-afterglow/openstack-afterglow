@@ -8,6 +8,7 @@
 
   let {
     floatingIps,
+    emptyLabel = t('floatingIpCard.empty'),
     hasExternalNetwork,
     selectedIds,
     selectableIds,
@@ -17,6 +18,7 @@
     onAllocateClick,
   }: {
     floatingIps: FloatingIp[];
+    emptyLabel?: string;
     hasExternalNetwork: boolean;
     selectedIds: ReadonlySet<string>;
     selectableIds: ReadonlySet<string>;
@@ -52,7 +54,7 @@
     </div>
   </div>
   {#if floatingIps.length === 0}
-    <div class="text-center py-8 text-ink-2 text-sm">{t('floatingIpCard.empty')}</div>
+    <div class="text-center py-8 text-ink-2 text-sm">{emptyLabel}</div>
   {:else}
     <div class="motion-stagger grid grid-cols-1 lg:grid-cols-3 gap-2.5">
       {#each floatingIps as fip (fip.id)}

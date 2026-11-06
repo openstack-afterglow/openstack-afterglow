@@ -6,6 +6,10 @@ export interface ConfirmDialogOptions {
 	confirmLabel?: string;
 	/** 긍정 버튼 variant. 기본값 danger 라 기존 파괴적 흐름은 그대로다. */
 	confirmVariant?: ButtonVariant;
+	/** 지정한 문자열과 정확히 일치하는 입력이 있어야 확인할 수 있다. */
+	requiredText?: string;
+	/** 필수 입력의 표시 레이블. 생략하면 requiredText 를 사용한다. */
+	requiredTextLabel?: string;
 }
 
 let _resolve: ((v: boolean) => void) | null = null;
@@ -13,6 +17,9 @@ let _open = $state(false);
 let _message = $state('');
 let _confirmLabel = $state<string | undefined>(undefined);
 let _confirmVariant = $state<ButtonVariant>('danger');
+let _requiredText = $state<string | undefined>(undefined);
+let _requiredTextLabel = $state<string | undefined>(undefined);
+let _requestId = $state(0);
 
 export function confirmDialog(message: string, options: ConfirmDialogOptions = {}): Promise<boolean> {
 	return new Promise(resolve => {
@@ -21,6 +28,9 @@ export function confirmDialog(message: string, options: ConfirmDialogOptions = {
 		// 한 번 쓴 accent variant 가 다음 삭제 확인으로 새어 들어간다.
 		_confirmLabel = options.confirmLabel;
 		_confirmVariant = options.confirmVariant ?? 'danger';
+		_requiredText = options.requiredText;
+		_requiredTextLabel = options.requiredTextLabel;
+		_requestId += 1;
 		_open = true;
 		_resolve = resolve;
 	});
@@ -31,6 +41,14 @@ export const dialogState = {
 	get message() { return _message; },
 	get confirmLabel() { return _confirmLabel; },
 	get confirmVariant() { return _confirmVariant; },
-	accept() { _open = false; _resolve?.(true); _resolve = null; },
+	get requiredText() { return _requiredText; },
+	get requiredTextLabel() { return _requiredTextLabel; },
+	get requestId() { return _requestId; },
+	accept(value?: string) {
+		if (_requiredText !== undefined && value !== _requiredText) return;
+		_open = false;
+		_resolve?.(true);
+		_resolve = null;
+	},
 	reject() { _open = false; _resolve?.(false); _resolve = null; },
 };

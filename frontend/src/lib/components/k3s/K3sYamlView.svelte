@@ -29,6 +29,16 @@
 
   let revealed = $state(new Set<string>());
 
+  $effect.pre(() => {
+    // A reveal belongs only to the supplied secret snapshot, never its next value.
+    void text;
+    for (const masked of maskedKeys) {
+      void masked.key;
+      void masked.value;
+    }
+    revealed = new Set();
+  });
+
   function toggle(key: string) {
     const next = new Set(revealed);
     if (next.has(key)) next.delete(key);

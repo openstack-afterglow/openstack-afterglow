@@ -11,6 +11,10 @@
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { t as v } from '$lib/i18n/ns/volume';
 	import type { AdminVolume } from '$lib/types/volume';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
 	let { volume, initialMode = 'create', onClose, onSuccess }: {
 		volume: Pick<AdminVolume, 'id' | 'name' | 'status'> | null; initialMode?: 'create' | 'receive'; onClose: () => void; onSuccess: () => void;
@@ -27,6 +31,11 @@
 	let key = $state('');
 	let lookup = $state<VolumeTransferLookup | null>(null);
 	let pending = $state<VolumeTransfer[]>([]);
+	let pendingSearch = $state('');
+	const pendingView = createTableView<VolumeTransfer>({
+		rows: () => pending, search: () => pendingSearch,
+		columns: () => [{ key: 'id', label: v('transferModal.idLabel'), value: (row) => row.id }],
+	});
 	let busy = $state(false);
 	let error = $state('');
 	let copied = $state<'id' | 'key' | null>(null);
@@ -168,9 +177,11 @@
 			{/if}
 			{#if pending.length}
 				<Alert tone="warning">{t('volumeTransfer.recoveryHelp')}</Alert>
+				<RegexSearch id={`${id}-pending-search`} bind:value={pendingSearch} />
+				<TableViewControls view={pendingView} />
 				<ResponsiveTable>
-					{#snippet cards()}{#each pending as transfer (transfer.id)}<CompactResourceCard><p class="break-all font-mono text-xs">{transfer.id}</p><Button variant="danger" disabled={busy || uncertain} onclick={() => cancel(transfer)}>{v('transferModal.cancel')}</Button></CompactResourceCard>{/each}{/snippet}
-					<table class="w-full text-sm"><thead><tr><th class="text-left">{v('transferModal.idLabel')}</th><th>{v('transferModal.cancel')}</th></tr></thead><tbody>{#each pending as transfer (transfer.id)}<tr><td class="break-all font-mono text-xs">{transfer.id}</td><td><Button variant="danger" disabled={busy || uncertain} onclick={() => cancel(transfer)}>{v('transferModal.cancel')}</Button></td></tr>{/each}</tbody></table>
+					{#snippet cards()}{#each pendingView.rows as transfer (transfer.id)}<CompactResourceCard><p class="break-all font-mono text-xs">{transfer.id}</p><Button variant="danger" disabled={busy || uncertain} onclick={() => cancel(transfer)}>{v('transferModal.cancel')}</Button></CompactResourceCard>{/each}{/snippet}
+					<table class="w-full text-sm"><thead><tr><TableColumnHeader view={pendingView} columnKey="id" /><th>{v('transferModal.cancel')}</th></tr></thead><tbody>{#each pendingView.rows as transfer (transfer.id)}<tr><td class="break-all font-mono text-xs">{transfer.id}</td><td><Button variant="danger" disabled={busy || uncertain} onclick={() => cancel(transfer)}>{v('transferModal.cancel')}</Button></td></tr>{/each}</tbody></table>
 				</ResponsiveTable>
 			{/if}
 		{/if}

@@ -13,6 +13,10 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	const metricKeys: HostMetricKey[] = ['cpu', 'memory', 'disk', 'network_rx', 'network_tx'];
 	const scope = $derived(JSON.stringify([$auth.userId, $auth.projectId, $auth.token, $auth.isSystemAdmin, $authReady, $projectSwitching]));
@@ -27,6 +31,16 @@
 	const snapshot = $derived(owner === scope && $auth.isSystemAdmin && $authReady && !$projectSwitching ? stored : null);
 	const age = $derived(snapshot?.collected_at ? now - Date.parse(snapshot.collected_at) : Number.POSITIVE_INFINITY);
 	const verified = $derived(Boolean(snapshot?.enabled && !snapshot.stale && !loadFailed && age >= -5_000 && age < 30_000 && now - receivedAt < 30_000));
+	const columns = $derived<TableColumn<MonitoredHost>[]>([
+		{ key: 'host', label: t('hostHealth.host'), value: (host) => host.name },
+		{ key: 'probe', label: t('hostHealth.probe'), value: (host) => t(`hostHealth.connection.${verified ? host.reachability.status : 'unknown'}`) },
+		{ key: 'service', label: t('hostHealth.service'), value: (host) => t(`hostHealth.heartbeat.${verified ? host.heartbeat.status : 'unknown'}`) },
+		...metricKeys.map((key): TableColumn<MonitoredHost> => ({
+			key, label: t(`hostHealth.metric.${key}`),
+			value: (host) => verified && host.reachability.status === 'up' ? host.metrics[key].value : null,
+		})),
+	]);
+	const view = createTableView<MonitoredHost>({ rows: () => snapshot?.enabled ? snapshot.hosts : [], columns: () => columns, locale: intlLocale });
 
 	function date(value: string | null): string {
 		if (!value || !Number.isFinite(Date.parse(value))) return t('hostHealth.unmeasured');
@@ -113,14 +127,19 @@
 	{#if loadFailed}<Alert tone="danger">{t('hostHealth.loadFailed')}</Alert>{/if}
 	{#if snapshot?.error}<Alert tone="warning">{t('hostHealth.collectionFailed')} <code>{snapshot.error}</code></Alert>{/if}
 	{#if snapshot?.enabled && !verified && !loading && !loadFailed}<Alert tone="warning">{t('hostHealth.stale')}</Alert>{/if}
+	<TableViewControls {view} />
 	{#if loading}
 		<LoadingState variant="section" />
 	{:else if snapshot && !snapshot.enabled}
 		<Alert tone="neutral">{t('hostHealth.disabled')}</Alert>
-	{:else if snapshot?.hosts.length}
+	{:else}
+		{#if snapshot && !snapshot.error && verified && view.rows.length === 0}
+			<Alert tone="neutral">{snapshot.hosts.length ? tc('table.noMatches') : t('hostHealth.noHosts')}</Alert>
+		{/if}
+	{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each snapshot?.hosts ?? [] as host (host.id)}
+				{#each view.rows as host (host.id)}
 					<CompactResourceCard>
 						<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono text-sm text-ink-0">{host.name}</h3><span class="text-xs text-ink-2">{t(`hostHealth.role.${host.role}`)}</span></div>
 						<div class="flex flex-wrap gap-2"><Pill dot tone={verified && host.reachability.status === 'up' ? 'success' : verified && host.reachability.status === 'down' ? 'danger' : 'neutral'}>{t(`hostHealth.connection.${verified ? host.reachability.status : 'unknown'}`)}</Pill><Pill dot tone={verified && host.heartbeat.status === 'up' ? 'success' : verified && host.heartbeat.status === 'down' ? 'danger' : 'neutral'}>{t(`hostHealth.heartbeat.${verified ? host.heartbeat.status : 'unknown'}`)}</Pill></div>
@@ -132,11 +151,10 @@
 			<TableShell density="compact">
 				<table aria-label={t('hostHealth.title')}>
 					<thead><tr>
-						<th>{t('hostHealth.host')}</th><th>{t('hostHealth.probe')}</th><th>{t('hostHealth.service')}</th>
-						{#each metricKeys as key}<th>{t(`hostHealth.metric.${key}`)}</th>{/each}
+						{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 					</tr></thead>
 					<tbody>
-						{#each snapshot.hosts as host (host.id)}
+						{#each view.rows as host (host.id)}
 							<tr>
 								<td><span class="block font-mono text-xs text-ink-0">{host.name}</span><span class="block text-xs text-ink-2">{t(`hostHealth.role.${host.role}`)}</span><span class="block font-mono text-xs text-ink-2">{host.address ?? '—'}</span></td>
 								<td>{@render connection(host)}</td><td>{@render heartbeat(host)}</td>
@@ -149,9 +167,6 @@
 			</TableShell>
 		</ResponsiveTable>
 		<p class="text-xs text-ink-2">{t('hostHealth.trendNote')}</p>
-	{:else if snapshot && !snapshot.error && verified}
-		<Alert tone="neutral">{t('hostHealth.noHosts')}</Alert>
-	{/if}
 </section>
 
 <style>

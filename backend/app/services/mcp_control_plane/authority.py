@@ -1,8 +1,8 @@
 """Project-bound personal-token delegated authority.
 
 Only this module creates, decrypts, or revokes server-held Keystone application
-credentials.  Callers supply a connection already scoped to the exact owner
-and project; no manager or administrator connection is ever used here.
+credentials. Issuance requires the exact owner/project connection; account
+management uses exact-user ownership and retains the saved project lock scope.
 """
 
 from __future__ import annotations
@@ -1116,15 +1116,22 @@ def grant_public_view(
     grant: McpDelegatedGrant, token: McpPersonalToken | None = None, *, is_lumen_default: bool = False
 ) -> dict[str, object]:
     """Return management metadata only; no credential, hash, or opaque secret leaves this layer."""
+    projects = approved_project_metadata(grant)
+    owner_project_name = next(
+        (project["name"] for project in projects if project["id"] == grant.owner_project_id and project["name"]),
+        grant.owner_project_id,
+    )
     return {
         "id": token.id if token else grant.id,
         "grant_id": grant.id,
         "name": grant.display_name,
         "source": grant.source,
+        "owner_project_id": grant.owner_project_id,
+        "owner_project_name": owner_project_name,
         "access_level": grant.access_level,
         "project_scope": getattr(grant, "project_scope", None) or "current",
         "project_ids": list(grant_project_ids(grant)),
-        "projects": approved_project_metadata(grant),
+        "projects": projects,
         "status": grant.status,
         "visible_prefix": token.visible_prefix if token else None,
         "issued_at": grant.issued_at or (token.issued_at if token else None),
@@ -1136,13 +1143,10 @@ def grant_public_view(
     }
 
 
-async def list_personal_tokens(
-    session: AsyncSession, *, owner_user_id: str, owner_project_id: str
-) -> list[dict[str, object]]:
-    selected_grant_id = await session.scalar(
-        select(McpLumenSelection.grant_id).where(
-            McpLumenSelection.owner_user_id == owner_user_id,
-            McpLumenSelection.owner_project_id == owner_project_id,
+async def list_personal_tokens(session: AsyncSession, *, owner_user_id: str) -> list[dict[str, object]]:
+    selected_grant_ids = set(
+        await session.scalars(
+            select(McpLumenSelection.grant_id).where(McpLumenSelection.owner_user_id == owner_user_id)
         )
     )
     rows = (
@@ -1151,7 +1155,6 @@ async def list_personal_tokens(
             .join(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
             .where(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
-                McpDelegatedGrant.owner_project_id == owner_project_id,
                 McpDelegatedGrant.source == "personal_token",
                 McpDelegatedGrant.status != "revoked",
                 McpPersonalToken.revoked_at.is_(None),
@@ -1159,18 +1162,15 @@ async def list_personal_tokens(
             .order_by(McpPersonalToken.issued_at.desc())
         )
     ).all()
-    return [grant_public_view(grant, token, is_lumen_default=grant.id == selected_grant_id) for grant, token in rows]
+    return [grant_public_view(grant, token, is_lumen_default=grant.id in selected_grant_ids) for grant, token in rows]
 
 
-async def list_oauth_grants(
-    session: AsyncSession, *, owner_user_id: str, owner_project_id: str
-) -> list[dict[str, object]]:
+async def list_oauth_grants(session: AsyncSession, *, owner_user_id: str) -> list[dict[str, object]]:
     grants = (
         await session.scalars(
             select(McpDelegatedGrant)
             .where(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
-                McpDelegatedGrant.owner_project_id == owner_project_id,
                 McpDelegatedGrant.source == "oauth",
                 McpDelegatedGrant.status != "revoked",
             )
@@ -1178,6 +1178,37 @@ async def list_oauth_grants(
         )
     ).all()
     return [grant_public_view(grant) for grant in grants]
+
+
+async def account_personal_token_owner(session: AsyncSession, *, token_id: str, owner_user_id: str) -> tuple[str, str]:
+    """Resolve server-held issuance origin, never a selected browser project."""
+    row = (
+        await session.execute(
+            select(McpDelegatedGrant.id, McpDelegatedGrant.owner_project_id)
+            .join(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
+            .where(
+                McpPersonalToken.id == token_id,
+                McpDelegatedGrant.owner_user_id == owner_user_id,
+                McpDelegatedGrant.source == "personal_token",
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise McpGrantNotFoundError("MCP personal token was not found")
+    return row[0], row[1]
+
+
+async def account_oauth_grant_owner_project(session: AsyncSession, *, grant_id: str, owner_user_id: str) -> str:
+    project_id = await session.scalar(
+        select(McpDelegatedGrant.owner_project_id).where(
+            McpDelegatedGrant.id == grant_id,
+            McpDelegatedGrant.owner_user_id == owner_user_id,
+            McpDelegatedGrant.source == "oauth",
+        )
+    )
+    if project_id is None:
+        raise McpGrantNotFoundError("MCP OAuth grant was not found")
+    return project_id
 
 
 async def personal_token_grant_id(

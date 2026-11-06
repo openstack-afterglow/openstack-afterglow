@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { writable } from 'svelte/store';
 import type { AdminSubnetDetail, SubnetDetail } from '$lib/types/networks';
 import { subnetFixture } from './subnetFixture';
+import { t } from '$lib/i18n/ns/admin-network';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get }, ApiError: class extends Error {} }));
@@ -38,7 +39,7 @@ describe('network card inline IP inventories', () => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(detail(path.split('/').pop()!)));
 		render(SubnetSection, { subnets, onAdd: vi.fn(), onSave: vi.fn(), onDelete: vi.fn(), deletingSubnetId: null, addError: '', saveError: '', addingSubnet: false, savingSubnet: false });
 		expect(screen.getByText('IPv6')).toBeTruthy();
-		const expand = screen.getAllByRole('button', { expanded: false });
+		const expand = screen.getAllByRole('button', { name: t('subnetSection.showInventory') });
 		await fireEvent.click(expand[0]);
 		expect(await inventory('sub-first').findByText('10.200.0.15')).toBeTruthy();
 		expect(screen.queryByText('2001:db8::15')).toBeNull();
@@ -46,12 +47,12 @@ describe('network card inline IP inventories', () => {
 		expect(await inventory('sub-second').findByText('2001:db8::15')).toBeTruthy();
 		expect(inventory('sub-second').queryByText('10.200.0.15')).toBeNull();
 		mocks.get.mockRejectedValue(new Error('port provider unavailable'));
-		const firstRefresh = inventory('sub-first').getAllByRole('button')[0];
+		const firstRefresh = inventory('sub-first').getByRole('button', { name: t('subnetDetailPage.refresh') });
 		await fireEvent.click(firstRefresh);
 		expect(await inventory('sub-first').findByRole('alert')).toBeTruthy();
 		expect(inventory('sub-first').getByText('10.200.0.15')).toBeTruthy();
 		expect(inventory('sub-second').getByText('2001:db8::15')).toBeTruthy();
-		await fireEvent.click(screen.getAllByRole('button', { expanded: true })[0]);
+		await fireEvent.click(screen.getAllByRole('button', { name: t('subnetSection.hideInventory') })[0]);
 		await waitFor(() => expect(screen.queryByText('10.200.0.15')).toBeNull());
 		expect(inventory('sub-second').getByText('2001:db8::15')).toBeTruthy();
 	});

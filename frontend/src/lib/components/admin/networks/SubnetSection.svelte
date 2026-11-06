@@ -1,9 +1,25 @@
 <script lang="ts">
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import { t } from '$lib/i18n/ns/admin-network';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import type { SubnetDetail } from '$lib/types/networks';
 	import { Button } from '$lib/components/ui';
 	import SubnetIpInventory from './SubnetIpInventory.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	const id = $props.id();
+	let search = $state('');
+	const columns: TableColumn<SubnetDetail>[] = $derived([
+		{ key: 'name', label: t('subnetSection.name'), value: (row) => row.name || row.id },
+		{ key: 'cidr', label: t('subnetDetailPage.cidrVersion'), value: (row) => row.cidr },
+		{ key: 'gateway', label: t('subnetSection.gateway'), value: (row) => row.gateway_ip },
+		{ key: 'dhcp', label: t('subnetSection.enableDhcp'), value: (row) => row.dhcp_enabled, format: (value) => value ? t('subnetSection.active') : t('subnetSection.inactive') },
+		{ key: 'version', label: t('subnetSection.ipVersion'), value: (row) => row.ip_version },
+	]);
+	const view = createTableView({ locale: intlLocale, rows: () => subnets, columns: () => columns, search: () => search,
+		searchable: (row) => [row.id, row.name, row.cidr, row.gateway_ip, row.ip_version, row.dhcp_enabled ? t('subnetSection.active') : t('subnetSection.inactive')].filter((value) => value != null).map(String) });
 
 	let {
 		subnets,
@@ -129,9 +145,12 @@
 		</div>
 	{/if}
 
+	<RegexSearch id="{id}-search" bind:value={search} />
+	<TableViewControls {view} class="" />
+	{#if subnets.length > 0 && view.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 	{#if subnets.length > 0}
 		<div class="space-y-3">
-			{#each subnets as subnet (subnet.id)}
+			{#each view.rows as subnet (subnet.id)}
 				{#if editingSubnetId === subnet.id}
 					<div class="bg-surface-sunken rounded-lg p-4 space-y-3">
 						<div class="grid grid-cols-2 gap-3">

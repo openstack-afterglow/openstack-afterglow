@@ -185,7 +185,6 @@
 	"lb.actions.adding": "追加中…",
 	"lb.actions.remove": "除去",
 	"lb.actions.removing": "除去中…",
-
 	"lb.listeners.title": "リスナー（{count}）",
 	"lb.listeners.empty": "リスナーがありません。",
 	"lb.form.optionalName": "名前（任意）",

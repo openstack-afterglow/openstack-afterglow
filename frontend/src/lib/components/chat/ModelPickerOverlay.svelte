@@ -7,6 +7,9 @@
 	import { toast } from '$lib/stores/toast';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import Field from '$lib/components/ui/Field.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 
 	interface Props {
 		open: boolean;
@@ -22,6 +25,7 @@
 
 	let query = $state('');
 	let activeProvider = $state<number | null>(null);
+	let activeProviderName = $state<string | null>(null);
 
 	function providerLabel(provider: string | null): string {
 		return provider === null ? t('modelPicker.otherProvider') : provider;
@@ -40,11 +44,14 @@
 		}
 		return counts;
 	});
-	const providers = $derived([...providerCounts.values()]);
-	const showProviderNav = $derived(providers.length > 1);
-	$effect(() => {
-		if (activeProvider !== null && !providerCounts.has(activeProvider)) activeProvider = null;
+	const providers = $derived.by(() => {
+		const available = [...providerCounts.values()];
+		if (activeProvider !== null && !providerCounts.has(activeProvider)) {
+			available.push({ id: activeProvider, name: activeProviderName, count: 0 });
+		}
+		return available;
 	});
+	const showProviderNav = $derived(providers.length > 1 || activeProvider !== null);
 
 	function apiModelName(model: AvailableModel): string {
 		return model.api_model_name || model.model_name;
@@ -53,15 +60,12 @@
 	function apiProvider(model: AvailableModel): string {
 		return model.api_provider || model.provider || 'unknown';
 	}
+	const compiledQuery = $derived(compileRegexSearch(query));
 	const grouped = $derived.by((): Group[] => {
-		const q = query.trim().toLowerCase();
 		const match = (m: AvailableModel) =>
-			(!q ||
-				m.display_name.toLowerCase().includes(q) ||
-				apiModelName(m).toLowerCase().includes(q) ||
-				apiProvider(m).toLowerCase().includes(q) ||
-				(m.provider ?? '').toLowerCase().includes(q)) &&
-			(activeProvider === null || m.provider_id === activeProvider);
+			matchesRegexSearch(compiledQuery, [
+				m.display_name, m.model_name, apiModelName(m), apiProvider(m), m.provider ?? ''
+			]) && (activeProvider === null || m.provider_id === activeProvider);
 		const byProvider = new Map<number, Group>();
 		for (const m of models) {
 			if (!match(m)) continue;
@@ -121,11 +125,13 @@
 			<Alert tone="danger" class="mx-4 mb-2">{refreshError}</Alert>
 		{/if}
 
-		<div class="search">
-			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-			<!-- svelte-ignore a11y_autofocus -->
-			<input type="text" placeholder={t('modelPicker.search')} bind:value={query} autofocus />
-		</div>
+		<Field for="model-picker-search" label={t('modelPicker.search')} help={commonT('table.regexHelp')} error={compiledQuery.error ? commonT('table.regexError') : undefined} class="mx-4 mt-3">
+			<div class="search">
+				<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
+				<!-- svelte-ignore a11y_autofocus -->
+				<input id="model-picker-search" type="text" placeholder={t('modelPicker.search')} bind:value={query} aria-invalid={compiledQuery.error} aria-describedby="model-picker-search-message" autofocus />
+			</div>
+		</Field>
 		<p id="model-picker-help" class="help"><RichText segments={t.rich('modelPicker.help')} /></p>
 
 		<div class="picker-body" class:with-providers={showProviderNav}>
@@ -135,7 +141,7 @@
 						type="button"
 						class:active={activeProvider === null}
 						aria-pressed={activeProvider === null}
-						onclick={() => (activeProvider = null)}
+						onclick={() => { activeProvider = null; activeProviderName = null; }}
 					>
 						<span>{t('modelPicker.all')}</span>
 						<span class="provider-count">{models.length}</span>
@@ -145,7 +151,7 @@
 							type="button"
 							class:active={activeProvider === provider.id}
 							aria-pressed={activeProvider === provider.id}
-							onclick={() => (activeProvider = provider.id)}
+							onclick={() => { activeProvider = provider.id; activeProviderName = provider.name; }}
 						>
 							<span>{providerLabel(provider.name)}</span>
 							<span class="provider-count">{provider.count}</span>
@@ -256,7 +262,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		margin: 0 1.1rem 0.6rem;
 		padding: 0.6rem 0.8rem;
 		border-radius: 0.7rem;
 		border: 1px solid var(--color-line);

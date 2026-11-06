@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { domainIam, type IamSession, type IamUser } from '$lib/api/domainIam';
 	import { projectAuthority } from '$lib/api/projectAuthority';
@@ -28,7 +33,7 @@
 	}
 	async function load() {
 		if (!current() || busy) return;
-		const pending = ++revision; loading = true; error = ''; creators = null;
+		const pending = ++revision; loading = true; error = '';
 		try {
 			const [status, rows] = await Promise.all([client.creators(), directory.users()]);
 			if (!current() || pending !== revision) return;
@@ -58,6 +63,12 @@
 	}
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; revision++; creators = null; users = []; });
+	let tableSearch = $state('');
+	const tableView = createTableView<ProjectCreators['users'][number]>({ rows: () => creators?.users ?? [], locale: () => intlLocale(), search: () => tableSearch, columns: () => [
+		{ key: 'name', label: t('name'), value: row => row.name || row.id },
+		{ key: 'id', label: t('user'), value: row => row.id },
+		{ key: 'source', label: t('source'), value: row => t(row.source) }
+	] });
 </script>
 
 <section class="space-y-3 rounded-lg border border-line p-4" aria-label={t('projectCreators')}>
@@ -66,11 +77,12 @@
 	{#if loading}<LoadingState variant={creators ? 'inline' : 'surface'} label={t('loading')}  />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if needsRefresh}<Alert tone="warning">{t('mutationUncertain')}</Alert>{/if}
+	<RegexSearch id={`${uid}-search`} bind:value={tableSearch} /><TableViewControls view={tableView} class="" />
 	{#if creators}
 		{#if !creators.role}<Alert tone="warning">{t('creatorPresetMissing')}</Alert>{:else}
 			<div class="grid items-end gap-3 md:grid-cols-2"><Field label={t('user')} for={`${uid}-creator`} help={t('eligibleUsersHelp')}><SelectInput id={`${uid}-creator`} bind:value={selected} disabled={busy || loading}><option value="">{t('selectUser')}</option>{#each users.filter(row => !creators?.users.some(creator => creator.id === row.id && creator.direct)) as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field><div><Button variant="secondary" disabled={!canChange(selected, true)} onclick={() => change(selected, true)}>{t('grantCreator')}</Button></div></div>
 		{/if}
-		<ul class="space-y-2">{#each creators.users as row (row.id)}<li class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3"><span class="text-sm text-ink-1 [overflow-wrap:anywhere]">{row.name || row.id} · {t(row.source)}{#if row.direct && row.source !== 'direct'} · {t('direct')}{/if}</span><Button variant="danger-outline" size="sm" disabled={!canChange(row.id, false)} onclick={() => change(row.id, false)}>{t('revokeCreator')}</Button></li>{/each}</ul>
+		<ul class="space-y-2">{#each tableView.rows as row (row.id)}<li class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3"><span class="text-sm text-ink-1 [overflow-wrap:anywhere]">{row.name || row.id} · {t(row.source)}{#if row.direct && row.source !== 'direct'} · {t('direct')}{/if}</span><Button variant="danger-outline" size="sm" disabled={!canChange(row.id, false)} onclick={() => change(row.id, false)}>{t('revokeCreator')}</Button></li>{/each}</ul>
 		{#if creators.role && !creators.users.length}<p class="text-sm text-ink-2">{t('emptyCreators')}</p>{/if}
 	{/if}
 </section>

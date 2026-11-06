@@ -1447,25 +1447,39 @@ def _layer_resource(conn, kind, resource_id, *, name, project_id, marker, allow_
     from app.services import build_work
     from app.services.layer_consume_resources import owner, value
 
+    operator = vars(conn).get("_afterglow_usage_operator_scope") is not None
+    if operator:
+        from app.services import instance_usage
+
+        instance_usage._assert_operator_scope(conn)
+        if instance_usage._target_project(conn) != project_id:
+            raise build_work.SubmissionUnknown("Usage operator target differs from resource owner")
+    if not resource_id:
+        query = {"name": name}
+        if operator:
+            query["project_id"] = project_id
+            if kind in {"server", "volume"}:
+                query["all_projects"] = True
+            elif kind != "port":
+                query["all_tenants"] = "1"
+
     try:
         if kind == "port":
-            candidates = [conn.network.get_port(resource_id)] if resource_id else list(conn.network.ports(name=name))
+            candidates = [conn.network.get_port(resource_id)] if resource_id else list(conn.network.ports(**query))
         elif kind == "server":
-            candidates = (
-                [conn.compute.get_server(resource_id)] if resource_id else list(conn.compute.servers(name=name))
-            )
+            candidates = [conn.compute.get_server(resource_id)] if resource_id else list(conn.compute.servers(**query))
         elif kind == "volume":
             candidates = (
                 [conn.block_storage.get_volume(resource_id)]
                 if resource_id
-                else list(conn.block_storage.volumes(name=name))
+                else list(conn.block_storage.volumes(**query))
             )
         else:
             client = manila.get_client(conn)
             candidates = (
                 [client.get(f"shares/{resource_id}")["share"]]
                 if resource_id
-                else client.get("shares/detail", params={"name": name})["shares"]
+                else client.get("shares/detail", params=query)["shares"]
             )
     except ResourceNotFound:
         return None

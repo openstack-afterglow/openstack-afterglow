@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { t } from '$lib/i18n/ns/drover';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
@@ -26,6 +30,22 @@
 			.catch(() => { loadError = t('deployments.loadFailed'); })
 			.finally(() => { loading = false; });
 	});
+	const tableState = s.tableState('deployments');
+	const columns = $derived<TableColumn<DeploymentInfo>[]>([
+		{ key: 'name', label: t('deployments.name'), value: row => row.name },
+		{ key: 'replicas', label: t('deployments.replicas'), value: row => row.replicas },
+		{ key: 'strategy', label: t('deployments.strategy'), value: row => row.strategy },
+		{ key: 'images', label: t('deployments.image'), value: row => row.images.join(', ') },
+	]);
+	const view = createTableView({ rows: () => s.deployments, columns: () => columns, search: () => tableState.search, state: tableState.state });
+	const replicaState = s.tableState('replicasets');
+	const replicaColumns = $derived<TableColumn<(typeof s.replicasets)[number]>[]>([
+		{ key: 'name', label: t('deployments.name'), value: row => row.name },
+		{ key: 'replicas', label: t('deployments.replicas'), value: row => row.replicas },
+		{ key: 'owner', label: t('deployments.owner'), value: row => [row.owner_kind, row.owner_name].filter(Boolean).join(' ') || null },
+		{ key: 'images', label: t('deployments.image'), value: row => row.images.join(', ') },
+	]);
+	const replicaView = createTableView({ rows: () => s.replicasets, columns: () => replicaColumns, search: () => replicaState.search, state: replicaState.state });
 </script>
 
 {#if scalingDeploy && $k3sPermissions.workloads}
@@ -40,6 +60,8 @@
 <!-- Deployments -->
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<SectionHeader title="Deployment" meta={t('deployments.count', { count: s.deployments.length })} />
+	<RegexSearch id="cluster-deployments-search" bind:value={tableState.search} />
+	<TableViewControls {view} />
 
 	{#if loading}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6"><LoadingState variant="section" label={t('deployments.loading')} /></div>
@@ -47,10 +69,11 @@
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.deployments.length === 0}
 		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('deployments.empty')}</div>
-	{:else}
+	{/if}
+	{#if !loading && !loadError}
   <ResponsiveTable>
    {#snippet cards()}
-    {#each s.deployments as dep (dep.name)}
+    {#each view.rows as dep (dep.name)}
      {@const actioning = s.workloadActioning === `${s.selectedNamespace}:deploy:${dep.name}`}
      <CompactResourceCard>
       <strong class="text-sm font-mono break-all">{dep.name}</strong>
@@ -64,16 +87,10 @@
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
-					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.name')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.replicas')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.strategy')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.image')}</th>
-						<th class="pb-2"></th>
-					</tr>
+					<tr class="border-b border-line">{#each columns as column}<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={view} columnKey={column.key} />{/each}<th></th></tr>
 				</thead>
 				<tbody>
-					{#each s.deployments as dep}
+					{#each view.rows as dep}
 						{@const actioning = s.workloadActioning === `${s.selectedNamespace}:deploy:${dep.name}`}
 						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-2.5 text-ink-0 font-medium font-mono"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={dep.name}>{dep.name}</span></td>
@@ -109,12 +126,14 @@
 </div>
 
 <!-- ReplicaSets -->
-{#if s.replicasets.length > 0}
+{#if !loading && !loadError}
 	<div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 		<SectionHeader title="ReplicaSet" meta={t('deployments.count', { count: s.replicasets.length })} />
+	<RegexSearch id="cluster-replicas-search" bind:value={replicaState.search} />
+	<TableViewControls view={replicaView} />
   <ResponsiveTable>
    {#snippet cards()}
-    {#each s.replicasets as rs (rs.name)}
+    {#each replicaView.rows as rs (rs.name)}
      <CompactResourceCard>
       <strong class="text-sm font-mono break-all">{rs.name}</strong>
       <p class="text-xs">{t('deployments.replicas')}: {rs.ready}/{rs.replicas}</p>
@@ -126,15 +145,10 @@
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
-					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.name')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.replicas')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.owner')}</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.image')}</th>
-					</tr>
+					<tr class="border-b border-line">{#each replicaColumns as column}<TableColumnHeader class="text-left pb-2 text-xs tracking-wide text-ink-2 font-medium" view={replicaView} columnKey={column.key} />{/each}</tr>
 				</thead>
 				<tbody>
-					{#each s.replicasets as rs}
+					{#each replicaView.rows as rs}
 						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-2.5 text-ink-2 font-mono"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={rs.name}>{rs.name}</span></td>
 							<td class="py-2.5 tabular-nums text-ink-2">{rs.ready}/{rs.replicas}</td>

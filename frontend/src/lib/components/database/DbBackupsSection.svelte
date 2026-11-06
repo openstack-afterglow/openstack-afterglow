@@ -7,6 +7,10 @@
 	import type { DbBackup } from '$lib/types/database';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	const s = useDbInstanceDetailController();
 
@@ -185,12 +189,17 @@
 			</button>
 		</div>
 	{/if}
+	<RegexSearch id="database-detail-backups-search" bind:value={s.backupSearch} />
+	<TableViewControls view={s.backupView} />
 	{#if s.backups.length === 0}
 		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
-	{:else}
+	{/if}
+	{#if s.backups.length > 0 && s.backupView.rows.length === 0}
+		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
+	{/if}
     <ResponsiveTable>
       {#snippet cards()}
-        {#each s.backups as b (b.id)}
+        {#each s.backupView.rows as b (b.id)}
           <CompactResourceCard>
             <div class="flex flex-wrap items-center gap-2"><strong class="min-w-0 break-all">{b.name}</strong><StatusChip status={b.status} />{#if isStuck(b)}<span class="text-xs text-state-danger-text" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}</div>
             <p class="text-xs text-ink-2">{tr('labels.size')}: {b.size == null ? '-' : `${b.size} GB`}</p>
@@ -205,15 +214,15 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
-					<th class="text-left py-2 font-medium">{tr('labels.name')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.status')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.size')}</th>
-					<th class="text-left py-2 font-medium">{tr('labels.created')}</th>
+					<TableColumnHeader view={s.backupView} columnKey="name" />
+					<TableColumnHeader view={s.backupView} columnKey="status" />
+					<TableColumnHeader view={s.backupView} columnKey="size" />
+					<TableColumnHeader view={s.backupView} columnKey="created" />
 					<th class="text-right py-2 font-medium">{tr('labels.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each s.backups as b}
+				{#each s.backupView.rows as b}
 					<tr class="border-t border-line/50">
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2">
@@ -224,7 +233,7 @@
 								{/if}
 							</div>
 						</td>
-						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
+						<td class="py-2 text-ink-2 text-xs">{b.size == null ? '-' : `${b.size} GB`}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
@@ -243,5 +252,4 @@
 			</tbody>
 		</table>
     </ResponsiveTable>
-	{/if}
 </div>

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '$lib/api/client';
 import type { ImageInfo } from '$lib/types/compute';
 import { createImagesController } from './imagesController.svelte';
-import type { ImageRepositoryGroup } from './imageCatalog.svelte';
+import { createImageCatalog, type ImageRepositoryGroup } from './imageCatalog.svelte';
 
 vi.mock('$lib/api/client', () => ({
   ApiError: class ApiError extends Error {},
@@ -108,22 +108,22 @@ describe('createImagesController repository catalog', () => {
 
   it('keeps the detail view unfiltered while the catalog respects tag filters', async () => {
     const controller = await createController();
-    controller.tagFilter = 'latest';
+    controller.view.setFilter('tag', ['latest']);
 
     expect(controller.repositoryGroups).toHaveLength(1);
     expect(controller.repositoryGroups[0].images).toHaveLength(1);
     expect(controller.allRepositoryGroups[0].images).toHaveLength(3);
   });
 
-  it('ranks an exact repository tag reference above a substring match in relevance mode', async () => {
+  it('applies anchored regex to explicit reference fields and rejects invalid syntax', async () => {
     const controller = await createController();
-    controller.sortMode = 'relevance';
-    controller.searchQuery = 'ubuntu:24.04';
-
-    expect(controller.filteredImages.map((image) => image.id)).toEqual([
-      'ubuntu-2404',
-      'ubuntu-2404-extended',
-    ]);
+    controller.searchQuery = '^ubuntu:24\\.04$';
+    expect(ids(controller.filteredImages)).toEqual(['ubuntu-2404']);
+    controller.searchQuery = '^ubuntu-minimal$|^latest$';
+    expect(ids(controller.filteredImages)).toEqual(['ubuntu-latest', 'ubuntu-minimal-2404']);
+    controller.searchQuery = '[';
+    expect(controller.view.error).toBe(true);
+    expect(controller.filteredImages).toEqual([]);
   });
   it('orders by parsed upload instants across offsets, with invalid dates last in both directions', async () => {
     const controller = await createController([
@@ -137,10 +137,34 @@ describe('createImagesController repository catalog', () => {
     expect(controller.repositoryGroups[0].latest.id).toBe('a-late');
     expect(controller.repositoryGroups[0].images.map((image) => image.id)).toEqual(['a-late', 'a-early']);
 
-    controller.sortMode = 'oldest';
+    controller.view.toggleSort('created_at');
     expect(controller.repositoryGroups.map((group) => group.repository)).toEqual(['beta', 'alpha', 'charlie', 'delta']);
     expect(controller.repositoryGroups[1].latest.id).toBe('a-late');
     expect(controller.filteredImages.slice(-2).map((image) => image.id)).toEqual(['c-invalid', 'd-missing']);
+  });
+
+  it('orders grouped tags and repositories by displayed newest representatives, never an older hidden upload', async () => {
+    const oldA: ImageInfo = { id: 'a-old', name: 'demo:a', status: 'active', size: 1, created_at: '2026-01-01T00:00:00Z' };
+    const newA: ImageInfo = { id: 'a-new', name: 'demo:a', status: 'active', size: 100, created_at: '2026-03-01T00:00:00Z' };
+    const newestB: ImageInfo = { id: 'b-new', name: 'demo:b', status: 'active', size: 50, created_at: '2026-02-01T00:00:00Z' };
+    const controller = await createController([oldA, newestB, newA]);
+    controller.view.toggleSort('size');
+    expect(ids(controller.filteredImages)).toEqual(['a-old', 'b-new', 'a-new']);
+    expect(controller.repositoryGroups[0].tags.map(tag => [tag.tag, tag.latest.size])).toEqual([['b', 50], ['a', 100]]);
+    const tagA = controller.repositoryGroups[0].tags.find(tag => tag.tag === 'a')!;
+    expect(tagA.latest.id).toBe('a-new');
+    expect(tagA.current.id).toBe('a-new');
+    expect(ids(tagA.images)).toEqual(['a-new', 'a-old']);
+    controller.view.toggleSort('size');
+    expect(controller.repositoryGroups[0].tags.map(tag => tag.tag)).toEqual(['a', 'b']);
+    controller.view.toggleSort('size');
+    expect(controller.repositoryGroups[0].tags.map(tag => tag.tag)).toEqual(['a', 'b']);
+    const repositories = await createController([
+      { ...oldA, name: 'alpha:latest' }, { ...newestB, name: 'beta:latest' }, { ...newA, name: 'alpha:latest' },
+    ]);
+    repositories.view.toggleSort('size');
+    expect(repositories.repositoryGroups.map(group => [group.repository, group.latest.size])).toEqual([['beta', 50], ['alpha', 100]]);
+    expect(repositories.allRepositoryGroups.map(group => group.repository)).toEqual(['alpha', 'beta']);
   });
 
   it('interprets naive Glance timestamps as UTC and rejects malformed calendar dates', async () => {
@@ -150,8 +174,69 @@ describe('createImagesController repository catalog', () => {
       { id: 'bad-day', name: 'invalid:one', status: 'active', created_at: '2026-02-30T00:00:00Z' },
     ]);
     expect(controller.repositoryGroups.map((group) => group.repository)).toEqual(['naive', 'offset', 'invalid']);
-    controller.sortMode = 'oldest';
+    controller.view.toggleSort('created_at');
     expect(controller.repositoryGroups.map((group) => group.repository)).toEqual(['offset', 'naive', 'invalid']);
+  });
+
+  it('retains per-repository detail conditions through empty refresh, remount and restoration, clearing a new owner', async () => {
+    let owner = 'owner-a';
+    let token = 'token-a';
+    vi.mocked(api.get).mockResolvedValue(images);
+    const controller = createImagesController({ token: () => token, projectId: () => 'project-1', viewOwner: () => owner });
+    await controller.fetchImages();
+    const retained = controller.repositoryState('ubuntu');
+    const detail = createImageCatalog(() => controller.allRepositoryGroups.find(group => group.repository === 'ubuntu')?.images ?? [], () => controller.images, retained);
+    detail.searchQuery = '^24\\.04$';
+    detail.view.setFilter('tag', ['24.04']);
+    detail.view.setFilter('status', ['active']);
+    detail.view.toggleSort('created_at');
+    detail.view.toggleSort('created_at');
+    expect(ids(detail.filteredImages)).toEqual(['ubuntu-2404']);
+    vi.mocked(api.get).mockResolvedValue([]);
+    await controller.forceRefresh();
+    expect(controller.allRepositoryGroups).toEqual([]);
+    expect(detail.filteredImages).toEqual([]);
+    expect(controller.repositoryState('ubuntu')).toBe(retained);
+    vi.mocked(api.get).mockResolvedValue([...images].reverse());
+    await controller.forceRefresh();
+    const remounted = createImageCatalog(() => controller.allRepositoryGroups.find(group => group.repository === 'ubuntu')?.images ?? [], () => controller.images, controller.repositoryState('ubuntu'));
+    expect(remounted.searchQuery).toBe('^24\\.04$');
+    expect(remounted.view.filters).toEqual({ tag: ['24.04'], status: ['active'] });
+    expect(remounted.view.sort).toEqual({ key: 'created_at', direction: 'desc' });
+    expect(ids(remounted.filteredImages)).toEqual(['ubuntu-2404']);
+    token = 'token-renewed';
+    await controller.fetchImages();
+    expect(controller.repositoryState('ubuntu')).toBe(retained);
+    owner = 'owner-b';
+    await controller.fetchImages();
+    expect(controller.repositoryState('ubuntu')).not.toBe(retained);
+    expect(controller.repositoryState('ubuntu')).toEqual({ searchQuery: '', view: { sort: null, filters: {} } });
+  });
+
+  it('retains regex, multi-value facets and descending order across manual refresh and absent values', async () => {
+    const controller = await createController();
+    controller.searchQuery = '^ubuntu(?:-minimal)?$';
+    controller.view.setFilter('tag', ['latest', '24.04']);
+    controller.view.setFilter('os_distro', ['ubuntu']);
+    controller.view.toggleSort('name');
+    controller.view.toggleSort('name');
+    const before = ids(controller.filteredImages);
+    vi.mocked(api.get).mockResolvedValue([...images].reverse());
+    await controller.forceRefresh();
+    expect(controller.searchQuery).toBe('^ubuntu(?:-minimal)?$');
+    expect(controller.view.selected('tag')).toEqual(['latest', '24.04']);
+    expect(controller.view.sort).toEqual({ key: 'name', direction: 'desc' });
+    expect(ids(controller.filteredImages)).toEqual(before);
+    vi.mocked(api.get).mockResolvedValue(images.filter(image => image.tag !== 'latest'));
+    await controller.forceRefresh();
+    expect(controller.view.options('tag')).toContainEqual(expect.objectContaining({ value: 'latest', count: 0 }));
+    controller.searchQuery = '[';
+    await controller.forceRefresh();
+    expect(controller.view.error).toBe(true);
+    expect(controller.filteredImages).toEqual([]);
+    controller.clearFilters();
+    expect(controller.view.filters).toEqual({});
+    expect(controller.view.sort).toBeNull();
   });
 
   it('keeps metadata-only updates from changing upload order', async () => {
@@ -168,29 +253,29 @@ describe('createImagesController repository catalog', () => {
       { id: 'legacy', name: 'same:legacy', status: 'active', visibility: 'public' },
       { id: 'unknown', name: 'same:unknown', status: 'active', visibility: 'public', verification_status: 'unavailable' },
     ]);
-    controller.verificationFilter = 'verified';
+    controller.view.setFilter('verification', ['verified']);
     expect(controller.repositoryGroups[0].images.map((image) => image.id)).toEqual(['approved']);
     expect(controller.allRepositoryGroups[0].images).toHaveLength(3);
-    controller.verificationFilter = 'unverified';
+    controller.view.setFilter('verification', ['unverified']);
     expect(controller.filteredImages.map((image) => image.id)).toEqual(['legacy']);
-    controller.verificationFilter = 'unavailable';
+    controller.view.setFilter('verification', ['unavailable']);
     expect(controller.filteredImages.map((image) => image.id)).toEqual(['unknown']);
     controller.clearFilters();
     expect(controller.filteredImages).toHaveLength(3);
-    expect(controller.verificationFilter).toBe('all');
-    expect(controller.sortMode).toBe('newest');
+    expect(controller.view.filters).toEqual({});
+    expect(controller.view.sort).toBeNull();
   });
 
-  it('ranks repositories by their best matching tag and honors name sorting', async () => {
+  it('sorts repository display without changing canonical current-upload identity', async () => {
     const controller = await createController([
       { id: 'old-exact', name: 'ubuntu:24.04', status: 'active', created_at: '2024-01-01T00:00:00Z' },
       { id: 'new-partial', name: 'alpha/ubuntu:24.04', status: 'active', created_at: '2026-01-01T00:00:00Z' },
     ]);
     controller.searchQuery = 'ubuntu:24.04';
-    controller.sortMode = 'relevance';
-    expect(controller.repositoryGroups.map((group) => group.repository)).toEqual(['ubuntu', 'alpha/ubuntu']);
-    controller.sortMode = 'name';
-    expect(controller.repositoryGroups.map((group) => group.repository)).toEqual(['alpha/ubuntu', 'ubuntu']);
+    controller.view.toggleSort('repository');
+    expect(controller.repositoryGroups.map(group => group.repository)).toEqual(['alpha/ubuntu', 'ubuntu']);
+    controller.view.toggleSort('repository');
+    expect(controller.repositoryGroups.map(group => group.repository)).toEqual(['ubuntu', 'alpha/ubuntu']);
   });
 
   it('resolves the current duplicate reference from exact microsecond instants across offsets, independent of input order', async () => {
@@ -207,7 +292,7 @@ describe('createImagesController repository catalog', () => {
       expect(ids(tag.images)).toEqual([UUID.first, UUID.last, UUID.middle]);
       expect(controller.repositoryGroups[0].latest.id).toBe(UUID.first);
 
-      controller.sortMode = 'oldest';
+      controller.view.toggleSort('created_at');
       expect(ids(controller.filteredImages)).toEqual([UUID.middle, UUID.last, UUID.first]);
       expect(tagGroupOf(controller.repositoryGroups).current.id).toBe(UUID.first);
     }
@@ -272,14 +357,14 @@ describe('createImagesController repository catalog', () => {
     // A newer upload of the same tag in another repository must not become ubuntu:24.04's current.
     const controller = await createController([oldest, images[2], approved, newest]);
 
-    controller.verificationFilter = 'verified';
+    controller.view.setFilter('verification', ['verified']);
     let tag = tagGroupOf(controller.repositoryGroups);
     expect(ids(tag.images)).toEqual([UUID.middle, UUID.last]);
     expect(tag.latest.id).toBe(UUID.middle);
     expect(tag.current.id).toBe(UUID.first);
     expect(tagGroupOf(controller.allRepositoryGroups).latest.id).toBe(UUID.first);
 
-    controller.verificationFilter = 'all';
+    controller.view.clearFilter('verification');
     controller.searchQuery = UUID.last;
     tag = tagGroupOf(controller.repositoryGroups);
     expect(ids(tag.images)).toEqual([UUID.last]);

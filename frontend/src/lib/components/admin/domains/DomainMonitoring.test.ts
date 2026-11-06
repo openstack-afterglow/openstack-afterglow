@@ -1,7 +1,9 @@
-import { cleanup, render, screen, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
+import { t as common } from '$lib/i18n/ns/common';
+import { t } from '$lib/i18n/ns/domain-admin';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { ApiError } from '$lib/api/errors';
 import type { DomainMonitoring } from '$lib/api/domains';
@@ -37,6 +39,26 @@ describe('whole-domain observations', () => {
     expect(screen.getByText('Valid sessions are not online users. Recent activity represents observed requests only.')).toBeTruthy();
   });
 
+  it('keeps request-service conditions removable when refresh returns an empty service set', async () => {
+    mocks.monitoring.mockResolvedValueOnce({ ...snapshot, requests: { ...snapshot.requests, services: [{ service: 'nova-api', requests: 4, errors: 1 }] } }).mockResolvedValue(snapshot);
+    render(DomainMonitoringComponent, { domainId: 'tenant-a', domainName: 'Research' });
+    const section = (await screen.findByText('nova-api')).closest('section')!;
+    await fireEvent.input(within(section).getByRole('searchbox', { name: common('table.search') }), { target: { value: '^nova-api$' } });
+    const filterName = common('table.filterColumn', { column: t('monitor.service') });
+    await fireEvent.click(within(section).getByRole('button', { name: filterName }));
+    let popup = screen.getByRole('dialog', { name: filterName });
+    await fireEvent.click(within(popup).getByRole('button', { name: common('table.selectNone') }));
+    await fireEvent.click(within(popup).getByRole('checkbox', { name: 'nova-api' }));
+    await fireEvent.click(within(popup).getByRole('button', { name: common('actions.close') }));
+    await fireEvent.click(screen.getByRole('button', { name: t('actions.refresh') }));
+    await within(section).findByText(t('monitor.noData'));
+    expect((within(section).getByRole('searchbox', { name: common('table.search') }) as HTMLInputElement).value).toBe('^nova-api$');
+    await fireEvent.click(within(section).getByRole('button', { name: filterName }));
+    popup = screen.getByRole('dialog', { name: filterName });
+    expect((within(popup).getByRole('checkbox', { name: 'nova-api' }) as HTMLInputElement).checked).toBe(true);
+    await fireEvent.click(within(popup).getByRole('button', { name: common('table.resetFilter') }));
+    expect(within(popup).queryByRole('checkbox', { name: 'nova-api' })).toBeNull();
+  });
   it('shows native denial without a successful empty dashboard', async () => {
     mocks.monitoring.mockRejectedValue(new ApiError(403, 'domain_monitoring_native_denied'));
     render(DomainMonitoringComponent, { domainId: 'tenant-a', domainName: 'Research' });

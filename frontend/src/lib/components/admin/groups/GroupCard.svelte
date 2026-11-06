@@ -1,18 +1,41 @@
+<script module lang="ts">
+	import type { TableViewState } from '$lib/utils/tableView.svelte';
+	export interface GroupCardViewState {
+		memberSearch: string;
+		candidateSearch: string;
+		member: TableViewState;
+		candidate: TableViewState;
+		memberOwner: string;
+		candidateSource: string;
+	}
+	export function createGroupCardViewState(): GroupCardViewState {
+		return {
+			memberSearch: '', candidateSearch: '',
+			member: { sort: null, filters: {} }, candidate: { sort: null, filters: {} },
+			memberOwner: '', candidateSource: '',
+		};
+	}
+</script>
+
 <script lang="ts">
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { untrack } from 'svelte';
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import type { AdminDomain } from '$lib/api/domains';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
-	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface Props {
 		group: Group;
+		viewState?: GroupCardViewState;
 		expanded: boolean;
 		members: GroupMember[];
 		membersLoading: boolean;
@@ -36,9 +59,11 @@
 		onRemoveMember: (userId: string) => Promise<void>;
 		onRetryUsers: () => Promise<void>;
 	}
+	const fallbackViewState = $state(createGroupCardViewState());
 
 	let {
 		group,
+		viewState = fallbackViewState,
 		expanded,
 		members,
 		membersLoading,
@@ -63,7 +88,25 @@
 		onRetryUsers
 	}: Props = $props();
 
-	let addMemberSearchText = $state('');
+	function identityColumns<Row extends User | GroupMember>(): TableColumn<Row>[] {
+		return [
+			{ key: 'name', label: t('form.name'), value: (user) => user.name },
+			{ key: 'email', label: t('groupCard.email'), value: (user) => user.email || null },
+			{ key: 'id', label: t('groupCard.userId'), value: (user) => user.id },
+			{ key: 'domain', label: t('groupCard.homeDomain'), value: (user) => user.domain_id },
+		];
+	}
+	const memberView = createTableView<GroupMember>({ rows: () => members, columns: () => identityColumns<GroupMember>(), search: () => viewState.memberSearch, locale: intlLocale, state: untrack(() => viewState.member) });
+	const candidateView = createTableView<User>({
+		rows: () => {
+			const existingIds = new Set(members.map((member) => member.id));
+			return allUsers.filter((user) => user.enabled && !existingIds.has(user.id));
+		},
+		columns: () => identityColumns<User>(),
+		search: () => viewState.candidateSearch,
+		locale: intlLocale,
+		state: untrack(() => viewState.candidate),
+	});
 	let selectedIds = $state<string[]>([]);
 	let batchSaving = $state(false);
 	let removingMemberId = $state<string | null>(null);
@@ -71,23 +114,26 @@
 		{ value: '', label: t('groupCard.sourceDefault'), description: group.domain_id ?? undefined },
 		...sourceDomains.map((domain) => ({ value: domain.id, label: domain.name, description: domain.id })),
 	]);
-	let searchGeneration: number | undefined;
-	let searchDomain: string | undefined;
-	let searchExpanded: boolean | undefined;
 	$effect(() => {
-		if (searchGeneration === sourceGeneration && searchDomain === userDomainId && searchExpanded === expanded) return;
-		searchGeneration = sourceGeneration;
-		searchDomain = userDomainId;
-		searchExpanded = expanded;
-		addMemberSearchText = '';
-		selectedIds = [];
+		const source = JSON.stringify([group.id, sourceGeneration, userDomainId, expanded]);
+		untrack(() => {
+			if (viewState.candidateSource === source) return;
+			viewState.candidateSource = source;
+			viewState.candidateSearch = '';
+			selectedIds = [];
+			candidateView.reset();
+		});
 	});
-	const searchQuery = $derived(addMemberSearchText.trim().toLowerCase());
-	const candidateUsers = $derived.by(() => {
-		const existingIds = new Set(members.map((member) => member.id));
-		return allUsers.filter((user) => user.enabled && !existingIds.has(user.id)
-			&& [user.name, user.email, user.id, user.domain_id].some((value) => value?.toLowerCase().includes(searchQuery)));
+	$effect(() => {
+		const owner = `${group.id}:${expanded}`;
+		untrack(() => {
+			if (owner === viewState.memberOwner) return;
+			viewState.memberOwner = owner;
+			viewState.memberSearch = '';
+			memberView.reset();
+		});
 	});
+	const candidateUsers = $derived(candidateView.rows);
 	const allVisibleSelected = $derived(candidateUsers.length > 0 && candidateUsers.every((user) => selectedIds.includes(user.id)));
 
 	function selectCandidate(id: string, checked: boolean) {
@@ -136,7 +182,6 @@
 		const ok = await onAddMember(userId);
 		if (ok && expanded && generation === sourceGeneration && source === userDomainId) {
 			selectedIds = selectedIds.filter((selected) => selected !== userId);
-			addMemberSearchText = '';
 		}
 	}
 </script>
@@ -174,6 +219,8 @@
 
 	{#if expanded}
 		<div class="border-t border-line bg-surface-base/50 px-4 py-4">
+			<RegexSearch id={`group-member-search-${group.id}`} bind:value={viewState.memberSearch} label={t('groupCard.membersHeading')} />
+			<TableViewControls view={memberView} class="" />
 			{#if membersLoading}
 				<div class="text-xs text-ink-2 py-2"><LoadingState variant="inline" label={t('state.loading')} /></div>
 			{:else if membersError}
@@ -182,9 +229,11 @@
 				<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('groupCard.membersHeading')}</div>
 				{#if members.length === 0}
 					<div class="text-xs text-ink-2 mb-3">{t('groupCard.noMembers')}</div>
+				{:else if memberView.rows.length === 0}
+					<p class="text-xs text-ink-2 mb-3">{tc('table.noMatches')}</p>
 				{:else}
 					<ul class="space-y-1 mb-3" aria-label={t('groupCard.membersHeading')}>
-						{#each members as m (m.id)}
+						{#each memberView.rows as m (m.id)}
 							<li data-group-member-id={m.id} class="flex flex-wrap items-start justify-between gap-2 bg-surface-sunken/50 rounded px-3 py-2">
 								{@render userIdentity(m)}
 								<Button variant="danger-outline" size="xs" class="min-h-11 shrink-0 lg:min-h-0" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null || batchSaving || addSaving} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
@@ -210,9 +259,8 @@
 							</Alert>
 						{/if}
 					</div>
-					<Field for={`group-user-search-${group.id}`} label={t('groupCard.userSearch')}>
-						<TextInput id={`group-user-search-${group.id}`} type="search" placeholder={t('groupCard.searchPlaceholder')} bind:value={addMemberSearchText} />
-					</Field>
+					<RegexSearch id={`group-user-search-${group.id}`} bind:value={viewState.candidateSearch} label={t('groupCard.userSearch')} />
+					<TableViewControls view={candidateView} class="" />
 					{#if addSaving}<div class="mt-2"><LoadingState variant="inline" label={t('groupCard.addingMember')} /></div>{/if}
 					{#if usersLoading}
 						<div class="mt-2" role="status"><LoadingState variant="inline" label={t('groupCard.usersLoading')} /></div>

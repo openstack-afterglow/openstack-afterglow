@@ -1,20 +1,36 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { TableShell } from '$lib/components/ui';
 	import { RESOURCE_CATEGORIES } from '$lib/types/userDashboard';
 	import type { ProjectResourceInventory } from '$lib/types/userDashboard';
 
-	let { projects }: { projects: ProjectResourceInventory[] } = $props();
+	let { projects, search = $bindable(''), state: retainedState }: { projects: ProjectResourceInventory[]; search?: string; state?: TableViewState } = $props();
+	const metrics = ['vcpus', 'ram_mb', 'storage_gb'] as const;
+	const columns = $derived<TableColumn<ProjectResourceInventory>[]>([
+		{ key: 'project', label: t('projectUsage.project'), value: row => row.project_name },
+		...RESOURCE_CATEGORIES.map(category => ({ key: category, label: t(`myResources.category.${category}`), value: (row: ProjectResourceInventory) => row.resources[category].state === 'ready' ? row.resources[category].count : null })),
+		...metrics.map(metric => ({ key: metric, label: t(`myResources.usage.${metric}`), value: (row: ProjectResourceInventory) => row.usage[metric] })),
+	]);
+	const view = createTableView({ rows: () => projects, columns: () => columns, search: () => search, state: untrack(() => retainedState) });
 </script>
 
-{#if projects.length > 0}
+
 	<section data-project-usage class="min-w-0 mb-5" aria-labelledby="project-usage-title">
 		<h2 id="project-usage-title" class="text-sm font-semibold text-ink-0 mb-3">{t('projectUsage.title')}</h2>
 		<p class="text-xs text-ink-2 mb-3">{t('myResources.keypairContext')}</p>
+		<RegexSearch id="project-usage-search" bind:value={search} />
+		<TableViewControls {view} />
+		{#if projects.length > 0 && view.rows.length === 0}<p class="py-3 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 		<ResponsiveTable>{#snippet cards()}
-			{#each projects as project (project.project_id)}
+			{#each view.rows as project (project.project_id)}
 				{@const important = RESOURCE_CATEGORIES.filter(category => project.resources[category].state !== 'ready' || project.resources[category].count !== 0)}
 				<CompactResourceCard>
 					<h3 class="text-sm font-medium">{project.project_name}</h3>
@@ -27,14 +43,10 @@
 			<TableShell density="compact" class="min-w-max">
 				<table class="min-w-max">
 					<thead><tr>
-						<th scope="col">{t('projectUsage.project')}</th>
-						{#each RESOURCE_CATEGORIES as category (category)}<th scope="col">{t(`myResources.category.${category}`)}</th>{/each}
-						<th scope="col">{t('myResources.usage.vcpus')}</th>
-						<th scope="col">{t('myResources.usage.ram_mb')}</th>
-						<th scope="col">{t('myResources.usage.storage_gb')}</th>
+						{#each columns as column}<TableColumnHeader {view} columnKey={column.key} />{/each}
 					</tr></thead>
 					<tbody>
-						{#each projects as project (project.project_id)}
+						{#each view.rows as project (project.project_id)}
 							<tr data-usage-project={project.project_id}>
 								<th scope="row" class="text-ink-0">{project.project_name}</th>
 								{#each RESOURCE_CATEGORIES as category (category)}
@@ -56,4 +68,3 @@
 		</div>
 		</ResponsiveTable>
 	</section>
-{/if}

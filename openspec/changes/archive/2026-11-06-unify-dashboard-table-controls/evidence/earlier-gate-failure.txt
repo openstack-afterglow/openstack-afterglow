@@ -1,0 +1,17 @@
+Earlier e152d865 source gate failure; preserved rather than hidden by later successful runs. The test timeout/assertion was not weakened.
+
+>       assert result["nova"]["status"] == result["neutron"]["status"] == "available"
+E       AssertionError: assert 'unavailable' == 'available'
+E         
+E         - available
+E         + unavailable
+E         ? ++
+
+tests/test_admin_service_versions.py:168: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_admin_service_versions.py::test_partial_timeout_status_malformed_redirect_and_no_leakage - AssertionError: assert 'unavailable' == 'available'
+  
+  - available
+  + unavailable
+  ? ++
+==== 1 failed, 14503 passed, 94 skipped, 381 warnings in 156.50s (0:02:36) =====

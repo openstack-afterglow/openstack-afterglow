@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
@@ -30,6 +33,8 @@
     xKey: 'hour', series: [{ key: 'successes', label: t('count'), color: 'var(--color-chart-1)' }],
     domain: [0, hourPeak || 1], formatValue: number,
   });
+
+	const observationView0 = createObservationView(() => (timeline), () => ([{ key: 'time', label: t('timestamp'), value: row => row.at }, { key: 'count', label: t('count'), value: row => row.successes }]));
 </script>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -40,16 +45,20 @@
     {#if timeline.length}<p class="flex justify-between gap-3 text-xs text-ink-2 mt-2"><span>{date(timeline[0].at)}</span><span>{date(timeline[timeline.length - 1].at)}</span></p>{/if}
     <details class="mt-3 text-sm"><summary class="min-h-11 cursor-pointer text-ink-1">{t('timelineDetails')}</summary>
       <div class="max-h-64 overflow-y-auto">
-      <ResponsiveTable>
+      <ObservationTable model={observationView0}>
+{#snippet children(tableView)}
+<ResponsiveTable>
         {#snippet cards()}
-          {#each timeline as bucket (bucket.at)}
+          {#each tableView.rows as bucket (bucket.at)}
             <CompactResourceCard><time datetime={bucket.at}>{date(bucket.at)}</time><p class="tabular-nums">{t('count')}: {number(bucket.successes)}</p></CompactResourceCard>
           {/each}
         {/snippet}
-      <TableShell><table><thead><tr><th>{t('timestamp')}</th><th>{t('count')}</th></tr></thead><tbody>
-        {#each timeline as bucket (bucket.at)}<tr><td>{date(bucket.at)}</td><td class="tabular-nums">{number(bucket.successes)}</td></tr>{/each}
+      <TableShell><table><thead><tr><TableColumnHeader view={tableView} columnKey="time" /><TableColumnHeader view={tableView} columnKey="count" /></tr></thead><tbody>
+        {#each tableView.rows as bucket (bucket.at)}<tr><td>{date(bucket.at)}</td><td class="tabular-nums">{number(bucket.successes)}</td></tr>{/each}
       </tbody></table></TableShell>
       </ResponsiveTable>
+{/snippet}
+</ObservationTable>
       </div>
     </details>
   </Card>

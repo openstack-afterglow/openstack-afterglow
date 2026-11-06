@@ -1,9 +1,15 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
   import { t as tc } from '$lib/i18n/ns/common';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import LoadingState from '$lib/components/ui/LoadingState.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { createTableView } from '$lib/utils/tableView.svelte';
+  import { onDestroy } from 'svelte';
+  import { sessionScopeKey } from '$lib/utils/authSession';
 
   interface Group {
     id: string;
@@ -18,6 +24,24 @@
   let loading = $state(true);
   let error = $state('');
   let noPermission = $state(false);
+  const uid = $props.id();
+  let search = $state('');
+  const view = createTableView<Group>({
+    locale: () => intlLocale(),
+    rows: () => groups,
+    search: () => search,
+    columns: () => [
+      { key: 'name', label: t('keypairs.name'), value: row => row.name },
+      { key: 'id', label: 'ID', value: row => row.id },
+      { key: 'description', label: t('profile.description'), value: row => row.description },
+    ],
+  });
+  let viewOwner = '';
+  const unsubscribeView = auth.subscribe(state => {
+    const next = sessionScopeKey(state);
+    if (viewOwner !== next) { viewOwner = next; search = ''; view.reset(); }
+  });
+  onDestroy(unsubscribeView);
 
   async function load() {
     loading = true;
@@ -40,6 +64,8 @@
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('groups.title')}</h3>
+  <RegexSearch id={`${uid}-search`} bind:value={search} />
+  <TableViewControls {view} class="" />
 
   {#if error}
     <div class="text-red-400 text-xs">{error}</div>
@@ -47,9 +73,11 @@
     <LoadingState variant="section" label={tc('state.loading')}  />
   {:else if noPermission}
     <div class="text-ink-2 text-xs text-center py-4">{t('groups.empty')}</div>
+  {:else if view.rows.length === 0}
+    <p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>
   {:else}
     <div class="space-y-2">
-      {#each groups as grp (grp.id)}
+      {#each view.rows as grp (grp.id)}
         <div class="flex items-center gap-3 px-3 py-2.5 bg-surface-sunken/50 rounded-lg">
           <div class="w-7 h-7 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

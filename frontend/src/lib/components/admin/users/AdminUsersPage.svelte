@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -57,9 +61,6 @@
 
 	// 검색·정렬·필터 (auto-refresh 갱신 시에도 유지됨)
 	let search = $state('');
-	let sortBy = $state<'name' | 'first_seen'>('name');
-	let sortDir = $state<'asc' | 'desc'>('asc');
-	let filterStatus = $state<'all' | 'enabled' | 'disabled'>('all');
 
 	// 클라이언트 페이지네이션
 	let currentPage = $state(1);
@@ -88,30 +89,22 @@
 	});
 
 	// 검색 + 필터 + 정렬
-	const filteredUsers = $derived.by(() => {
-		let list = allUsers;
-		if (search.trim()) {
-			const q = search.trim().toLowerCase();
-			list = list.filter(
-				(u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-			);
-		}
-		if (filterStatus !== 'all') {
-			list = list.filter((u) => (filterStatus === 'enabled' ? u.enabled : !u.enabled));
-		}
-		list = [...list].sort((a, b) => {
-			let av: string, bv: string;
-			if (sortBy === 'name') {
-				av = a.name.toLowerCase();
-				bv = b.name.toLowerCase();
-			} else {
-				av = a.first_seen ?? '';
-				bv = b.first_seen ?? '';
-			}
-			return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-		});
-		return list;
-	});
+	const tableView = createTableView<User>({ rows: () => allUsers, locale: () => intlLocale(), search: () => search, searchable: row => [row.name, row.email, row.id, row.domain_id].map(value => String(value ?? '')), columns: () => [
+		{ key: 'name', label: t('userTable.name'), value: row => row.name },
+		{ key: 'email', label: t('userTable.email'), value: row => row.email },
+		{ key: 'status', label: t('userTable.status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'userTable.enabled' : 'userTable.disabled') },
+		{ key: 'id', label: t('userTable.id'), value: row => row.id },
+		{ key: 'firstActivity', label: t('userTable.firstActivity'), value: row => row.first_seen ?? row.created_at }
+	] });
+	const filteredUsers = $derived(tableView.rows);
+	let activitySearch = $state('');
+	const activityView = createTableView<ActivityEvent>({ rows: () => activityLog, locale: () => intlLocale(), search: () => activitySearch, columns: () => [
+		{ key: 'created', label: tc('table.issued'), value: row => row.created_at },
+		{ key: 'user', label: t('userTable.name'), value: row => row.username },
+		{ key: 'action', label: t('projectTable.actions'), value: row => row.action },
+		{ key: 'resource', label: t('form.name'), value: row => row.resource_name },
+		{ key: 'status', label: t('userTable.status'), value: row => row.status }
+	] });
 
 	const totalPages = $derived(Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE)));
 	const pagedUsers = $derived(
@@ -122,9 +115,8 @@
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		search;
-		filterStatus;
-		sortBy;
-		sortDir;
+		JSON.stringify(tableView.filters);
+		tableView.sort;
 		currentPage = 1;
 	});
 	$effect(() => { if (currentPage > totalPages) currentPage = totalPages; });
@@ -369,13 +361,16 @@
 			<!-- 최근 변경 로그 -->
 			<div class="bg-surface-base border border-line rounded-lg p-4">
 				<p class="text-xs font-semibold text-ink-2 mb-2">{t('userPage.recentChanges')}</p>
+				<RegexSearch id="admin-users-activity-search" bind:value={activitySearch} />
+				<TableViewControls view={activityView} class="" />
+				<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
 				{#if loadingActivity}
 					<p class="text-xs text-ink-2"><LoadingState variant="inline" label={t('userPage.loading')} /></p>
 				{:else if activityLog.length === 0}
 					<p class="text-xs text-ink-2">{t('userPage.noChanges')}</p>
 				{:else}
 					<ul class="space-y-1.5">
-						{#each activityLog.slice(0, 5) as ev (ev.id)}
+						{#each activityView.rows.slice(0, 5) as ev (ev.id)}
 							<li class="text-xs text-ink-2 flex justify-between gap-2">
 								<span class="truncate"
 									><span class="text-ink-2">{ev.username}</span>
@@ -388,46 +383,19 @@
 				{/if}
 			</div>
 		</div>
+	{/if}
 
 		<!-- 검색 · 정렬 · 필터 바 -->
 		<div class="flex flex-wrap gap-2 mb-3" data-tour="admin-identity-filters">
-			<input
-				bind:value={search}
-				type="text"
-				placeholder={t('userPage.searchPlaceholder')}
-				class="flex-1 min-w-[180px] bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-			/>
-			<select
-				bind:value={filterStatus}
-				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
-				data-tour="admin-identity-status-filter"
-			>
-				<option value="all">{t('userPage.allStatuses')}</option>
-				<option value="enabled">{t('userPage.enabledOnly')}</option>
-				<option value="disabled">{t('userPage.disabledOnly')}</option>
-			</select>
-			<select
-				bind:value={sortBy}
-				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
-			>
-				<option value="name">{t('userPage.sortName')}</option>
-				<option value="first_seen">{t('userPage.sortFirstActivity')}</option>
-			</select>
-			<button
-				onclick={() => {
-					sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-				}}
-				class="px-3 py-1.5 bg-surface-sunken border border-line-2 rounded-lg text-sm text-ink-2 hover:bg-surface-selected transition-colors"
-			>{sortDir === 'asc' ? t('userPage.ascending') : t('userPage.descending')}</button>
+			<RegexSearch id="admin-users-search" bind:value={search} placeholder={t('userPage.searchPlaceholder')} />
 		</div>
 
 		<div class="bg-surface-base border border-line rounded-lg p-5" data-tour="admin-identity-list">
-			{#if pagedUsers.length === 0}
-				<p class="text-xs text-ink-2 text-center py-6" data-tour="admin-identity-list-ready">{t('userPage.noResults')}</p>
-			{:else}
-				<div data-tour="admin-identity-list-ready">
+				<div data-tour={!loading && !loadError ? 'admin-identity-list-ready' : undefined}>
+				{#if !loading && !loadError && !pagedUsers.length}<p class="py-6 text-center text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 				<AdminUsersTable
 					users={pagedUsers}
+					view={tableView}
 					{refreshing}
 					page={currentPage}
 					hasPrev={currentPage > 1}
@@ -446,7 +414,5 @@
 					}}
 				/>
 				</div>
-			{/if}
 		</div>
-	{/if}
 </PageShell>

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
@@ -94,6 +98,9 @@
 	function projectNames(row: IamInvitation) { return row.projects?.map(project => project.project_name || project.project_id).join(', ') || row.project_name || row.project_id || t('defaultMembership'); }
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; close(); email = ''; rows = []; projects = []; });
+	const tableSearchId = `${uid}-search`;
+	let tableSearch = $state('');
+	const tableView = createTableView<(typeof rows)[number]>({ rows: () => rows, locale: () => intlLocale(), search: () => tableSearch, searchable: row => [row.email, row.id, enrollmentStatusLabel(row.status), ...(row.projects?.map(project => project.project_name || project.project_id) ?? [row.project_name || row.project_id || t('defaultMembership')])].map(value => String(value ?? '')), columns: () => [{ key: 'email', label: t('email'), value: row => row.email }, { key: 'project', label: t('project'), value: row => projectNames(row), filterValues: row => row.projects?.map(project => project.project_name || project.project_id) ?? [row.project_name || row.project_id || t('defaultMembership')] }, { key: 'status', label: t('status'), value: row => enrollmentStatusLabel(row.status) }, { key: 'expires', label: t('expires'), value: row => row.expires_at }] });
 </script>
 
 <div class="space-y-4">
@@ -106,17 +113,18 @@
 		<Button type="submit" variant="primary" disabled={blocked || !session.canSubmit() || busy || loading}>{t('sendInvite')}</Button>
 	</form></Card>
 	<div><Button variant="secondary" disabled={busy || loading} onclick={load}>{t('refresh')}</Button></div>
-	<ResponsiveTable>
+	<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+<ResponsiveTable>
 		{#snippet cards()}
-			{#each rows as row (row.id)}<CompactResourceCard>
+			{#each tableView.rows as row (row.id)}<CompactResourceCard>
 				<h3 class="text-sm font-medium break-all">{row.email}</h3><p class="text-xs">{enrollmentStatusLabel(row.status)}</p><p class="text-sm [overflow-wrap:anywhere]">{projectNames(row)}</p>
 				{#snippet details()}<p class="text-xs">{t('expires')}: {date(row.expires_at)}</p>{/snippet}
 				{#snippet actions()}<Button variant="danger-outline" size="sm" disabled={blocked || busy || loading || !(row.status === 'pending' || row.recovery_required)} onclick={() => revoke(row)}>{t('revoke')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
 			{#if !loading && !error && !rows.length}<p class="text-sm text-ink-2">{t('emptyInvites')}</p>{/if}
 		{/snippet}
-		<TableShell><table><thead><tr><th>{t('email')}</th><th>{t('project')}</th><th>{t('status')}</th><th>{t('expires')}</th><th>{t('actions')}</th></tr></thead>
-			<tbody>{#each rows as row (row.id)}<tr><td>{row.email}</td><td class="[overflow-wrap:anywhere]">{projectNames(row)}</td><td>{enrollmentStatusLabel(row.status)}</td><td>{date(row.expires_at)}</td><td><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading || !(row.status === 'pending' || row.recovery_required)} onclick={() => revoke(row)}>{t('revoke')}</Button></td></tr>{/each}{#if !loading && !error && !rows.length}<tr><td colspan="5">{t('emptyInvites')}</td></tr>{/if}</tbody>
+		<TableShell><table><thead><tr><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="status" /><TableColumnHeader view={tableView} columnKey="expires" /><th>{t('actions')}</th></tr></thead>
+			<tbody>{#each tableView.rows as row (row.id)}<tr><td>{row.email}</td><td class="[overflow-wrap:anywhere]">{projectNames(row)}</td><td>{enrollmentStatusLabel(row.status)}</td><td>{date(row.expires_at)}</td><td><Button variant="danger-outline" size="sm" disabled={blocked || busy || loading || !(row.status === 'pending' || row.recovery_required)} onclick={() => revoke(row)}>{t('revoke')}</Button></td></tr>{/each}{#if !loading && !error && !rows.length}<tr><td colspan="5">{t('emptyInvites')}</td></tr>{/if}</tbody>
 		</table></TableShell>
 	</ResponsiveTable>
 </div>

@@ -20,6 +20,7 @@ import { ApiError } from '$lib/api/client';
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-system';
+import { t as tc } from '$lib/i18n/ns/common';
 import AdminEnrollmentPolicyPanel from '../AdminEnrollmentPolicyPanel.svelte';
 
 const policyPath = '/api/v1/admin/enrollment-policy';
@@ -54,6 +55,14 @@ function submit() { return fireEvent.submit(screen.getByRole('form', { name: t('
 function row(value: SignupRequest) { return screen.getByRole('article', { name: t('enrollment.requestLabel', { email: value.email, id: value.id }) }); }
 function field(name: string) { return screen.getByRole('textbox', { name }) as HTMLInputElement; }
 function button(key: Parameters<typeof t>[0]) { return screen.getByRole('button', { name: t(key) }) as HTMLButtonElement; }
+
+async function chooseStatus(status: string) {
+	await fireEvent.click(screen.getByRole('button', { name: tc('table.filterColumn', { column: t('enrollment.status') }) }));
+	const dialog = await screen.findByRole('dialog', { name: tc('table.filterColumn', { column: t('enrollment.status') }) });
+	if (status === 'all') await fireEvent.click(within(dialog).getByRole('button', { name: tc('table.selectAll') }));
+	else await fireEvent.click(within(dialog).getByRole('checkbox', { name: t(`enrollment.status.${status as 'pending' | 'approved' | 'rejected'}`) }));
+	await fireEvent.click(within(dialog).getByRole('button', { name: tc('actions.close') }));
+}
 
 beforeEach(() => {
 	vi.resetAllMocks(); initLocale('en');
@@ -225,7 +234,7 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		await fireEvent.click(within(row(request('request-b'))).getByRole('button', { name: t('enrollment.approve') }));
 		expect(mocks.post.mock.calls).toEqual([[`${queuePath}/request-a/${action}`, {}, 'token-a', 'project-a', writeOptions]]);
 		expect(button('enrollment.reloadQueue').disabled).toBe(true);
-		expect((screen.getByRole('combobox', { name: t('enrollment.filter') }) as HTMLSelectElement).disabled).toBe(true);
+		expect((screen.getByRole('group', { name: t('enrollment.filter') }) as HTMLFieldSetElement).disabled).toBe(true);
 		decision.resolve(request('request-a', action === 'approve' ? 'approved' : 'rejected'));
 		await screen.findByText(t('enrollment.decisionRecorded', { email: request().email, status: t(`enrollment.status.${action === 'approve' ? 'approved' : 'rejected'}`) }));
 		expect(screen.queryByRole('article', { name: t('enrollment.requestLabel', { email: request().email, id: request().id }) })).toBeNull();
@@ -234,7 +243,7 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 
 	it('renders the returned decision status in all-status view rather than assuming the requested transition', async () => {
 		render(AdminEnrollmentPolicyPanel); await loaded();
-		await fireEvent.change(screen.getByRole('combobox', { name: t('enrollment.filter') }), { target: { value: 'all' } });
+		await chooseStatus('all');
 		await screen.findByRole('article'); mocks.post.mockResolvedValueOnce(request('request-a', 'consumed'));
 		await fireEvent.click(button('enrollment.approve'));
 		await within(row(request())).findByText(t('enrollment.status.consumed'));
@@ -253,7 +262,7 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		await fireEvent.click(button('enrollment.previous')); await screen.findByText(request().email);
 		expect(button('enrollment.previous').disabled).toBe(true);
 		for (const status of ['approved', 'rejected', 'all', 'pending']) {
-			await fireEvent.change(screen.getByRole('combobox', { name: t('enrollment.filter') }), { target: { value: status } });
+			await chooseStatus(status);
 			await screen.findByRole('article');
 			expect(mocks.get.mock.calls.at(-1)).toEqual([`${queuePath}?status=${status}`, 'token-a', 'project-a', readOptions]);
 			expect(button('enrollment.previous').disabled).toBe(true);
@@ -264,9 +273,8 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		const older = deferred<SignupRequestPage>();
 		render(AdminEnrollmentPolicyPanel); await loaded();
 		mocks.get.mockReturnValueOnce(older.promise).mockResolvedValueOnce(page([request('current')]));
-		const filter = screen.getByRole('combobox', { name: t('enrollment.filter') });
-		await fireEvent.change(filter, { target: { value: 'approved' } });
-		await fireEvent.change(filter, { target: { value: 'all' } });
+		await chooseStatus('approved');
+		await chooseStatus('all');
 		await screen.findByText('current@example.test'); older.resolve(page([request('late')])); await settle();
 		expect(screen.queryByText('late@example.test')).toBeNull();
 		mocks.post.mockRejectedValueOnce(new ApiError(409, 'request_already_reviewed'));
@@ -291,7 +299,7 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		await screen.findByText(t('enrollment.notificationFailed'));
 		expect(screen.queryByText(t('enrollment.decisionFailed'))).toBeNull(); expect(screen.queryByRole('article')).toBeNull();
 		mocks.get.mockResolvedValueOnce(page([request('request-a', 'approved')]));
-		await fireEvent.change(screen.getByRole('combobox', { name: t('enrollment.filter') }), { target: { value: 'approved' } });
+		await chooseStatus('approved');
 		const approved = await screen.findByRole('article', { name: t('enrollment.requestLabel', { email: request().email, id: request().id }) });
 		await within(approved).findByText(t('enrollment.status.approved'));
 		expect(screen.queryByRole('button', { name: t('enrollment.approve') })).toBeNull(); expect(mocks.post).toHaveBeenCalledTimes(1);
@@ -301,6 +309,26 @@ describe('AdminEnrollmentPolicyPanel consumer', () => {
 		mocks.get.mockImplementation((path: string) => path === policyPath ? Promise.resolve(policy()) : Promise.reject(new Error('unavailable')));
 		render(AdminEnrollmentPolicyPanel); await screen.findByText(t('enrollment.queueFailed'));
 		expect(screen.queryByText(t('enrollment.empty'))).toBeNull(); expect(screen.queryByRole('article')).toBeNull();
+	});
+
+	it('keeps native status, regex and sort through a queue refresh and never widens an invalid regex', async () => {
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path === policyPath ? policy() : page([request(), request('request-b')])));
+		render(AdminEnrollmentPolicyPanel); await loaded();
+		await chooseStatus('approved');
+		await screen.findByRole('article', { name: t('enrollment.requestLabel', { email: request().email, id: request().id }) });
+		const search = screen.getByRole('searchbox', { name: tc('table.search') });
+		await fireEvent.input(search, { target: { value: '^request-a@example\\.test$' } });
+		expect(screen.queryByRole('article', { name: t('enrollment.requestLabel', { email: request('request-b').email, id: request('request-b').id }) })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: tc('table.sortColumn', { column: tc('table.email'), direction: tc('table.none') }) }));
+		await fireEvent.click(button('enrollment.reloadQueue'));
+		await screen.findByRole('article', { name: t('enrollment.requestLabel', { email: request().email, id: request().id }) });
+		expect((search as HTMLInputElement).value).toBe('^request-a@example\\.test$');
+		expect(mocks.get.mock.calls.at(-1)?.[0]).toBe(`${queuePath}?status=approved`);
+		expect(screen.getByRole('button', { name: tc('table.sortColumn', { column: tc('table.email'), direction: tc('table.ascending') }) })).toBeTruthy();
+		expect(screen.queryByRole('article', { name: t('enrollment.requestLabel', { email: request('request-b').email, id: request('request-b').id }) })).toBeNull();
+		await fireEvent.input(search, { target: { value: '[' } });
+		await screen.findByText(tc('table.regexError'));
+		expect(screen.queryByRole('article')).toBeNull();
 	});
 
 	it('waits for root readiness and hides private data and late mutation results on authority loss', async () => {

@@ -5,6 +5,7 @@
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
+  import { sessionScopeKey } from '$lib/utils/authSession';
   import { api, ApiError } from '$lib/api/client';
   import type { Router, Network } from '$lib/types/networks';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -22,6 +23,10 @@
   import { executeBulkMutations } from '$lib/utils/bulkActions';
   import { toast } from '$lib/stores/toast';
   import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import { t as tr } from '$lib/i18n/ns/network-resources';
 
   let selectedRouterId = $state<string | null>(null);
 
@@ -45,6 +50,16 @@
   let stateVersion = 0;
   let live = true;
   onDestroy(() => { live = false; });
+  let search = $state('');
+  const columns = (): TableColumn<Router>[] => [
+    { key: 'name', label: tr('network.labels.name'), value: row => row.name || row.id },
+    { key: 'status', label: t('networksTable.status'), value: row => row.status },
+    { key: 'gateway', label: tr('network.routers.externalGateway'), value: row => row.external_gateway_network_id },
+    { key: 'subnets', label: tr('network.routers.connectedSubnets'), value: row => row.connected_subnet_ids.length },
+  ];
+  const view = createTableView({ rows: () => routers, columns, search: () => search, searchable: row => [row.name, row.id, row.status, row.external_gateway_network_id ?? ''] });
+  const visibleSelectableIds = $derived(new Set(view.rows.filter(row => selectableIds.has(row.id)).map(row => row.id)));
+  $effect(() => { const ids = visibleSelectableIds; untrack(() => selection.retain(ids)); });
   let selectableIds = $derived(new Set(routers.filter((router) => router.project_id && router.project_id === $auth.projectId).map((router) => router.id)));
 
   async function bulkDelete() {
@@ -143,11 +158,14 @@
     invokeOnMount: false,
   });
 
+  const viewOwner = $derived(sessionScopeKey($auth));
   $effect(() => {
-    const projectId = $auth.projectId;
+    viewOwner;
+    const projectId = untrack(() => $auth.projectId);
     if (!projectId) return;
     untrack(() => {
       selection.clear();
+      search = ''; view.reset();
       loading = true;
       void fetchRouters();
     });
@@ -169,6 +187,9 @@
     {/snippet}
   </PageHeader>
 
+  <RegexSearch id="router-search" bind:value={search} />
+  <TableViewControls {view} class="" />
+  {#if routers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
@@ -177,12 +198,12 @@
     <RouterEmptyState />
   {:else}
     <RouterCardGrid
-      {routers} {externalNetworkName}
+      routers={view.rows} {externalNetworkName}
       selectedIds={selection.ids}
-      selectableIds={selectableIds}
+      selectableIds={visibleSelectableIds}
       selectionDisabled={busy}
       onToggleSelect={(id) => selection.toggle(id)}
-      onToggleAll={() => selection.toggleAll(selectableIds)}
+      onToggleAll={() => selection.toggleAll(visibleSelectableIds)}
       onOpen={openRouterPanel}
     />
   {/if}

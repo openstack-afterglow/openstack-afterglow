@@ -20,6 +20,12 @@
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface AdminContainer {
 		uuid: string;
@@ -37,6 +43,22 @@
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let selectedContainerId = $state<string | null>(null);
+	let search = $state('');
+	const view = createTableView<AdminContainer>({
+		rows: () => containers,
+		search: () => search,
+		searchable: (c) => [c.name, c.uuid, c.status, c.image, c.cpu, c.memory, c.host, c.created_at, c.project_id].map((value) => String(value ?? '')),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('containers.name'), value: (c) => c.name || c.uuid },
+			{ key: 'status', label: t('containers.status'), value: (c) => c.status },
+			{ key: 'image', label: t('containers.image'), value: (c) => c.image },
+			{ key: 'cpu', label: t('containers.cpu'), value: (c) => c.cpu },
+			{ key: 'memory', label: t('containers.memory'), value: (c) => c.memory || null },
+			{ key: 'host', label: t('containers.host'), value: (c) => c.host },
+			{ key: 'created', label: t('containers.created'), value: (c) => c.created_at },
+		],
+	});
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -83,16 +105,20 @@
 	</div>
 
 	<div data-tour="admin-containers-list">
+	<div class="mb-4 space-y-3">
+		<RegexSearch id="admin-containers-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
+	</div>
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
 		<LoadingState variant="surface" />
-	{:else if containers.length === 0}
-		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">{t('containers.empty')}</div>
+	{:else if view.rows.length === 0}
+		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">{containers.length ? tc('table.noMatches') : t('containers.empty')}</div>
 	{:else}
 		<ResponsiveTable>
 			{#snippet cards()}
 				<div class="contents" data-tour="admin-containers-ready">
-				{#each containers as c, index (c.uuid)}
+				{#each view.rows as c, index (c.uuid)}
 					<CompactResourceCard selected={selectedContainerId === c.uuid}>
 						<div class="flex items-start justify-between gap-2"><button type="button" class="min-h-11 break-all text-left font-medium text-ink-0" data-tour={index === 0 ? 'admin-containers-row' : undefined} onclick={() => selectedContainerId = c.uuid}>{c.name || c.uuid.slice(0, 8)}</button><StatusChip status={c.status} /></div>
 						<div class="space-y-1 text-xs text-ink-2"><p>{t('containers.cpu')}: {c.cpu ?? '-'} · {t('containers.memory')}: {c.memory || '-'}</p><p>{t('containers.host')}: {c.host || '-'}</p></div>
@@ -105,17 +131,17 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">{t('containers.name')}</th>
-						<th class="text-left py-2 pr-4">{t('containers.status')}</th>
-						<th class="text-left py-2 pr-4">{t('containers.image')}</th>
-						<th class="text-left py-2 pr-4">{t('containers.cpu')}</th>
-						<th class="text-left py-2 pr-4">{t('containers.memory')}</th>
-						<th class="text-left py-2 pr-4">{t('containers.host')}</th>
-						<th class="text-left py-2">{t('containers.created')}</th>
+						<TableColumnHeader {view} columnKey="name" />
+						<TableColumnHeader {view} columnKey="status" />
+						<TableColumnHeader {view} columnKey="image" />
+						<TableColumnHeader {view} columnKey="cpu" />
+						<TableColumnHeader {view} columnKey="memory" />
+						<TableColumnHeader {view} columnKey="host" />
+						<TableColumnHeader {view} columnKey="created" />
 					</tr>
 				</thead>
 				<tbody>
-					{#each containers as c, index (c.uuid)}
+					{#each view.rows as c, index (c.uuid)}
 						<tr
 							class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors cursor-pointer {selectedContainerId === c.uuid ? 'bg-surface-sunken/50' : ''}"
 							onclick={() => (selectedContainerId = c.uuid)}

@@ -5,6 +5,11 @@
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import { t as common } from '$lib/i18n/ns/common';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
 	export interface AdminInstance {
@@ -40,34 +45,24 @@
 	let selectedInst = $state<AdminInstance | null>(null);
 	let listContext = $state('');
 	let requestVersion = 0;
-	let authRevision = $state(0);
-	function authKey(state: typeof $auth) {
-		return JSON.stringify([state.sessionId, state.userId, state.identityDomainId, state.domainId, state.token, state.projectId, state.isSystemAdmin]);
-	}
-	const context = $derived(JSON.stringify([authKey($auth), token, projectId, authRevision]));
+	const viewScope = createPrivateViewScope();
+	const context = $derived(JSON.stringify([$viewScope, projectId]));
 	const selected = $derived(listContext === context ? selectedInst : null);
-	let previousAuth = '';
-	const unsubscribe = auth.subscribe((state) => {
-		const next = authKey(state);
-		if (next === previousAuth) return;
-		previousAuth = next;
-		requestVersion++;
-		authRevision++;
-		instanceList = [];
-		nextMarker = null;
-		selectedInst = null;
-		loadingInstances = false;
+	onDestroy(() => { requestVersion++; });
+	const instanceView = createTableView({
+		rows: () => listContext === context ? instanceList : [],
+		search: () => search,
+		searchable: row => [row.name, row.id, row.project_id ?? ''],
+		columns: () => [
+			{ key: 'name', label: common('table.name'), value: row => row.name },
+			{ key: 'id', label: common('table.key'), value: row => row.id },
+			{ key: 'status', label: common('table.status'), value: row => row.status },
+			{ key: 'project', label: common('table.project'), value: row => row.project_id },
+			{ key: 'flavor', label: common('table.flavor'), value: row => row.flavor },
+			{ key: 'host', label: common('table.host'), value: row => row.host },
+		],
 	});
-	onDestroy(() => { requestVersion++; unsubscribe(); });
-
-	const filtered = $derived(
-		listContext !== context ? [] : search
-			? instanceList.filter(i =>
-				i.name.toLowerCase().includes(search.toLowerCase()) ||
-				(i.project_id ?? '').includes(search)
-			)
-			: instanceList
-	);
+	const filtered = $derived(instanceView.rows);
 
 	async function loadInstances(reset = false) {
 		if (loadingInstances && !reset) return;
@@ -75,7 +70,7 @@
 		const version = ++requestVersion;
 		const requestToken = token;
 		const requestProject = projectId;
-		const current = () => version === requestVersion && owner === JSON.stringify([authKey(get(auth)), token, projectId, authRevision]);
+		const current = () => version === requestVersion && owner === context;
 		if (reset) { instanceList = []; nextMarker = null; selectedInst = null; listContext = ''; }
 		if (!requestToken || !get(auth).isSystemAdmin) { loadingInstances = false; return; }
 		loadingInstances = true;
@@ -103,7 +98,7 @@
 
 	$effect(() => {
 		void context;
-		untrack(() => { search = ''; void loadInstances(true); });
+		untrack(() => { search = ''; instanceView.reset(); void loadInstances(true); });
 	});
 </script>
 
@@ -112,13 +107,9 @@
 	<div data-tour="admin-monitoring-list" class="w-full md:w-72 flex-shrink-0 bg-surface-base border border-line rounded-xl overflow-hidden flex flex-col
 		{selected ? 'hidden md:flex' : 'flex'}">
 		<div class="p-3 border-b border-line">
-			<input
-				type="text"
-				placeholder={t('monitoring.instances.search')}
-				aria-label={t('monitoring.instances.search')}
-				bind:value={search}
-				class="w-full bg-surface-sunken rounded-lg px-3 py-1.5 text-sm text-ink-2 placeholder-ink-3 outline-none focus:ring-1 focus:ring-line-2"
-			/>
+			<RegexSearch id="admin-metrics-instance-search" bind:value={search} label={t('monitoring.instances.search')} />
+			<TableViewControls view={instanceView} class="" />
+			<p class="mt-2 text-xs text-ink-2">{common('table.loadedScope')}</p>
 		</div>
 
 		<div class="overflow-y-auto flex-1">
@@ -153,7 +144,7 @@
 				{/each}
 			{/if}
 
-			{#if nextMarker && !search}
+			{#if nextMarker}
 				<button
 					onclick={() => loadInstances()}
 					disabled={loadingInstances}

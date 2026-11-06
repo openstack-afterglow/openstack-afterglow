@@ -10,6 +10,7 @@
 	import { tick } from 'svelte';
 	import { t } from '$lib/i18n/ns/common';
 	import LoadingState from './LoadingState.svelte';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 
 	interface Props {
 		id: string;
@@ -75,14 +76,9 @@
 
 	const listboxId = $derived(`${id}-options`);
 	const selected = $derived(options.find((option) => option.value === value) ?? null);
-	const filteredOptions = $derived.by(() => {
-		const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-		if (terms.length === 0) return options;
-		return options.filter((option) => {
-			const haystack = `${option.label} ${option.description ?? ''}`.toLocaleLowerCase();
-			return terms.every((term) => haystack.includes(term));
-		});
-	});
+	const compiled = $derived(compileRegexSearch(query));
+	const filteredOptions = $derived(query === '' ? options : options.filter(option =>
+		matchesRegexSearch(compiled, [option.label, option.description ?? ''])));
 	const activeOption = $derived(filteredOptions[activeIndex] ?? null);
 
 	function optionId(option: SearchSelectOption): string {
@@ -190,9 +186,12 @@
 				aria-controls={listboxId}
 				aria-expanded="true"
 				aria-activedescendant={activeOption ? optionId(activeOption) : undefined}
+				aria-invalid={compiled.error ? 'true' : undefined}
+				aria-describedby={`${id}-regex-message`}
 				oninput={handleSearchInput}
 				onkeydown={handleSearchKeydown}
 			/>
+			<p id={`${id}-regex-message`} role={compiled.error ? 'alert' : undefined} class="px-3 py-2 text-xs text-ink-2">{t(compiled.error ? 'table.regexError' : 'table.regexHelp')}</p>
 			<div id={listboxId} class="search-select-options" role="listbox" aria-label={ariaLabel ?? placeholder}>
 				{#each filteredOptions as option, index (option.value)}
 					<button
@@ -246,7 +245,7 @@
 	.search-select-input:focus-visible { outline: none; border-color: var(--color-line-2); box-shadow: var(--focus-ring); }
 	.search-select-trigger:disabled { cursor: not-allowed; color: var(--color-ink-2); background: var(--color-surface-input-disabled); border-color: var(--color-line); }
 	.chevron { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-0.125rem) rotate(45deg); color: var(--color-ink-2); }
-	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); }
+	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto auto minmax(4rem, 1fr); overflow: auto; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); color: var(--color-ink-1); }
 	.search-select-input { border: 0; border-bottom: 1px solid var(--color-line); border-radius: 0; padding: 0.625rem 0.75rem; }
 	.search-select-input::placeholder { color: var(--color-ink-2); }
 	.search-select-options { min-height: 0; overflow-y: auto; }

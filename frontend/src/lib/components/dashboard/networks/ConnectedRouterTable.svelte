@@ -7,6 +7,9 @@
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let {
 		routers,
@@ -34,6 +37,12 @@
 	let selectedSubnetId = $state('');
 	const pending = createPendingAction();
 	const connectingRouter = $derived(pending.isActive('connect', connecting));
+	const columns = (): TableColumn<NetworkRouterInfo>[] => [
+		{ key: 'name', label: t('network.labels.name'), value: row => row.name },
+		{ key: 'gateway', label: t('network.routers.externalGateway'), value: row => row.external_gateway_network_id },
+		{ key: 'subnets', label: t('network.routers.connectedSubnets'), value: row => row.connected_subnet_ids.map(id => subnets.find(subnet => subnet.id === id)?.name || id).join(', ') || null, filterValues: row => row.connected_subnet_ids.length ? row.connected_subnet_ids : [null], format: value => subnets.find(subnet => subnet.id === value)?.name || String(value ?? '—') },
+	];
+	const view = createTableView({ rows: () => routers, columns });
 
 	function openConnect() {
 		selectedRouterId = availableRouters[0]?.id ?? '';
@@ -114,10 +123,12 @@
 		</div>
 	{/if}
 
+	<TableViewControls {view} class={routers.length ? 'lg:hidden' : ''} />
+	{#if routers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 	{#if routers.length > 0}
 		<ResponsiveTable>
 			{#snippet cards()}
-				{#each routers as router (router.id)}
+				{#each view.rows as router (router.id)}
 					<CompactResourceCard>
 						<p class="font-medium">{router.name || router.id.slice(0, 12)}</p>
 						<p class="text-xs text-ink-2">{t('network.routers.subnetCount', { count: router.connected_subnet_ids.length })}</p>
@@ -137,16 +148,16 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-2 pr-6">{t('network.labels.name')}</th>
-					<th class="text-left py-2 pr-6">{t('network.routers.externalGateway')}</th>
-					<th class="text-left py-2 pr-6">{t('network.routers.connectedSubnets')}</th>
+					<TableColumnHeader {view} columnKey="name" />
+					<TableColumnHeader {view} columnKey="gateway" />
+					<TableColumnHeader {view} columnKey="subnets" />
 					{#if canManage && onDisconnect}
 						<th class="text-right py-2">{t('network.labels.actions')}</th>
 					{/if}
 				</tr>
 			</thead>
 			<tbody>
-				{#each routers as router}
+				{#each view.rows as router (router.id)}
 					<tr class="border-b border-line/50">
 						<td class="py-2 pr-6 text-ink-2"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={router.name || router.id}>{router.name || router.id.slice(0, 12) + '…'}</span></td>
 						<td class="py-2 pr-6">

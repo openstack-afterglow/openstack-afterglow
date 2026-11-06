@@ -13,6 +13,10 @@
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
@@ -24,25 +28,52 @@
 	import RoleTree from '$lib/components/admin/roles/RoleTree.svelte';
 	import RoleDetailPanel from '$lib/components/admin/roles/RoleDetailPanel.svelte';
 	import RoleMetadataModal from '$lib/components/admin/roles/RoleMetadataModal.svelte';
-	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, matchesRole, sortRoles } from '$lib/components/admin/roles/catalog';
-	import type { ManagedRole, RoleMetadata, RoleSort, SortDirection } from '$lib/components/admin/roles/types';
+	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleColumns } from '$lib/components/admin/roles/catalog';
+	import type { ManagedRole, RoleMetadata } from '$lib/components/admin/roles/types';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { isNativeRole } from '$lib/components/admin/roles/naming';
 	import { isRetiredRole } from '$lib/utils/roleCatalog';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	const privateScope = createPrivateViewScope();
 	type RolePreset = { name: string; description: string; area: string; grade: string; parent: string | null };
 	type PresetPreview = { roles: RolePreset[]; implications: { prior: string; implied: string }[]; retired_implications: { prior: string; implied: string }[]; project_roles: RolePreset[] };
 	let preset = $state<PresetPreview | null>(null);
 	let presetLoading = $state(false);
 	let presetVersion = 0;
+	let presetQuery = $state('');
+	const presetRoleView = createTableView<RolePreset>({
+		rows: () => preset ? [...preset.project_roles, ...preset.roles].filter((item) => !isRetiredRole(item)) : [],
+		search: () => presetQuery,
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('form.name'), value: (item) => item.name },
+			{ key: 'description', label: t('form.description'), value: (item) => item.description },
+		],
+	});
+	type PresetEdge = { prior: string; implied: string };
+	const edgeColumns = () => [
+		{ key: 'prior', label: t('roleDetail.directParentsLabel'), value: (edge: PresetEdge) => edge.prior },
+		{ key: 'implied', label: t('roleDetail.directChildrenLabel'), value: (edge: PresetEdge) => edge.implied },
+	];
+	const presetEdgeView = createTableView<PresetEdge>({
+		rows: () => preset?.implications.filter((edge) => !isRetiredRole({ name: edge.prior }) && !isRetiredRole({ name: edge.implied })) ?? [],
+		search: () => presetQuery, columns: edgeColumns, locale: intlLocale,
+	});
+	const retiredEdgeView = createTableView<PresetEdge>({
+		rows: () => preset?.retired_implications ?? [],
+		search: () => presetQuery, columns: edgeColumns, locale: intlLocale,
+	});
 
-	function identityKey(state: AuthState, verified: boolean, switching: boolean): string | null {
+	function identityKey(state: AuthState, verified: boolean, switching: boolean, revision: number): string | null {
 		return verified && !switching && state.isSystemAdmin === true && state.token
-			? JSON.stringify([state.token, state.userId, state.projectId]) : null;
+			? JSON.stringify([sessionScopeKey(state), revision]) : null;
 	}
-	const scope = $derived(identityKey($auth, $authReady, $projectSwitching));
-	const authorization = derived([auth, authReady, projectSwitching], ([state, verified, switching]) => identityKey(state, verified, switching));
+	const scope = $derived(identityKey($auth, $authReady, $projectSwitching, $privateScope));
+	const authorization = derived([auth, authReady, projectSwitching, privateScope], ([state, verified, switching, revision]) => identityKey(state, verified, switching, revision));
 	let loadedScope = $state<string | null>(null);
 	let roles = $state<ManagedRole[]>([]);
 	let loading = $state(false);
@@ -53,8 +84,7 @@
 	let notice = $state('');
 	let busy = $state(false);
 	let query = $state('');
-	let sort = $state<RoleSort>('name');
-	let direction = $state<SortDirection>('asc');
+	const roleView = createTableView<ManagedRole>({ rows: () => roles, columns: roleColumns, search: () => query, locale: intlLocale });
 	let view = $state('list');
 	let selectedId = $state<string | null>(null);
 	let editor = $state<'create' | 'edit' | null>(null);
@@ -68,11 +98,11 @@
 	const selected = $derived(roles.find((role) => role.id === selectedId) ?? null);
 	const editRole = $derived(roles.find((role) => role.id === editId) ?? null);
 	const deleteRole = $derived(roles.find((role) => role.id === deleteId) ?? null);
-	const filtered = $derived(sortRoles(roles.filter((role) => matchesRole(role, query)), sort, direction));
+	const filtered = $derived(roleView.rows);
 	const canMutate = $derived(fresh && !busy && !loading && !refreshing);
 
 	function isCurrent(key: string | null): boolean {
-		return mounted && key !== null && key === loadedScope && key === identityKey(get(auth), get(authReady), get(projectSwitching));
+		return mounted && key !== null && key === loadedScope && key === identityKey(get(auth), get(authReady), get(projectSwitching), get(privateScope));
 	}
 	function message(error: unknown): string {
 		return error instanceof ApiError || error instanceof Error ? error.message : t('rolePage.requestFailed');
@@ -121,23 +151,17 @@
 			++operationVersion;
 			controller?.abort(); controller = null;
 			loadedScope = key;
+			query = ''; roleView.reset();
 			roles = []; fresh = false; loading = false; refreshing = false; busy = false;
 			selectedId = null; editor = null; editId = null; deleteId = null; confirmation = '';
 			preset = null; presetLoading = false; ++presetVersion;
 			loadError = ''; actionError = ''; notice = '';
+			presetQuery = ''; presetRoleView.reset(); presetEdgeView.reset(); retiredEdgeView.reset();
 			if (key) void load();
 		});
 		return () => { mounted = false; ++requestVersion; ++operationVersion; controller?.abort(); unsubscribe(); };
 	});
 
-	function chooseSort(key: RoleSort) {
-		if (sort === key) direction = direction === 'asc' ? 'desc' : 'asc';
-		else { sort = key; direction = 'asc'; }
-	}
-	function ariaSort(key: RoleSort): 'ascending' | 'descending' | 'none' {
-		return sort !== key ? 'none' : direction === 'asc' ? 'ascending' : 'descending';
-	}
-	function sortLabel(key: RoleSort): string { return sort === key ? direction === 'asc' ? ' ↑' : ' ↓' : ''; }
 	function selectRole(role: ManagedRole) { selectedId = role.id; actionError = ''; }
 	function openEditor(role: ManagedRole | null) {
 		if (!canMutate || (role && isRetiredRole(role))) return;
@@ -193,6 +217,7 @@
 		const key = loadedScope;
 		if (!isCurrent(key) || !canMutate || presetLoading) return;
 		const version = ++presetVersion;
+		presetQuery = ''; presetRoleView.reset(); presetEdgeView.reset(); retiredEdgeView.reset();
 		presetLoading = true; actionError = '';
 		const state = get(auth);
 		try {
@@ -226,28 +251,28 @@
 		<div class="space-y-4 min-w-0">
 			<Card surface="base" padding="md" class="min-w-0">
 				<div class="flex min-w-0 flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
-					<div class="min-w-0 flex-1"><TextInput type="search" bind:value={query} ariaLabel={t('rolePage.searchLabel')} placeholder={t('rolePage.searchPlaceholder')} /></div>
+					<div class="min-w-0 flex-1"><RegexSearch id="admin-role-search" bind:value={query} label={t('rolePage.searchLabel')} /></div>
 					<ToggleGroup value={view} options={[{ value: 'list', label: t('rolePage.viewList') }, { value: 'tree', label: t('rolePage.viewTree') }]} onchange={(value) => { view = value; }} ariaLabel={t('rolePage.viewLabel')} />
 				</div>
 				<div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-2">
-					<span>{t('rolePage.sort')}</span>
-					{#each [{ key: 'name', label: t('form.name') }, { key: 'id', label: 'ID' }, { key: 'inheritance', label: t('rolePage.sortInheritance') }] as option}
-						<Button variant="subtle" size="sm" ariaPressed={sort === option.key} ariaLabel={t('rolePage.sortButtonLabel', { label: option.label, indicator: sortLabel(option.key as RoleSort) })} onclick={() => chooseSort(option.key as RoleSort)}>{option.label}{sortLabel(option.key as RoleSort)}</Button>
-					{/each}
 					<span aria-live="polite">{t('rolePage.count', { shown: filtered.length, total: roles.length })}</span>
 				</div>
 			</Card>
+			<TableViewControls view={roleView} class={view === 'tree' ? '' : 'lg:hidden'} />
+			<p class="text-xs text-ink-2">{tc('table.loadedScope')}</p>
 			{#if loadError}<Alert tone="danger">{loadError} {roles.length ? t('rolePage.previousListShown') : ''} <Button variant="secondary" size="sm" disabled={busy} onclick={() => { void load(); }}>{t('rolePage.retry')}</Button></Alert>{/if}
 			{#if actionError && !editor && !deleteId && !selected}<Alert tone="danger">{actionError}</Alert>{/if}
 			{#if notice}<Alert tone="success">{notice}</Alert>{/if}
 			{#if refreshing}<LoadingState variant="inline" label={t('rolePage.refreshing')} />{/if}
 			{#if loading}<LoadingState variant="surface" />
 			{:else if roles.length === 0 && !loadError}<EmptyState headline={t('rolePage.empty')} description={t('rolePage.emptyDescription')} />
-			{:else if filtered.length === 0 && roles.length > 0}<EmptyState headline={t('rolePage.noResults')} description={t('rolePage.noResultsDescription')}>{#snippet cta()}<Button variant="secondary" onclick={() => { query = ''; }}>{t('rolePage.clearSearch')}</Button>{/snippet}</EmptyState>
-			{:else if view === 'tree'}<RoleTree {roles} {query} {sort} {direction} onSelect={selectRole} />
+			{:else if view === 'tree'}
+				{#if filtered.length === 0 && roles.length > 0}<EmptyState headline={t('rolePage.noResults')} description={t('rolePage.noResultsDescription')}>{#snippet cta()}<Button variant="secondary" onclick={() => { query = ''; roleView.reset(); }}>{t('rolePage.clearSearch')}</Button>{/snippet}</EmptyState>{/if}
+				<RoleTree {roles} view={roleView} onSelect={selectRole} />
 			{:else if roles.length > 0}
 				<ResponsiveTable>
 					{#snippet cards()}
+						{#if filtered.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
 						{#each filtered as role (role.id)}
 							<CompactResourceCard selected={selectedId === role.id}>
 								<div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
@@ -269,16 +294,15 @@
 					<TableShell class="max-w-full">
 					<table aria-label={t('projectAccess.roleListLabel')}>
 						<thead><tr>
-							<th aria-sort={ariaSort('name')}><Button variant="ghost" size="sm" onclick={() => chooseSort('name')}>{t('form.name')}{sortLabel('name')}</Button></th>
-							<th aria-sort={ariaSort('id')}><Button variant="ghost" size="sm" onclick={() => chooseSort('id')}>ID{sortLabel('id')}</Button></th>
-							<th>{t('rolePage.columns.kind')}</th><th>{t('rolePage.columns.directChildren')}</th>
-							<th aria-sort={ariaSort('inheritance')}><Button variant="ghost" size="sm" onclick={() => chooseSort('inheritance')}>{t('rolePage.columns.inherited')}{sortLabel('inheritance')}</Button></th><th>{t('rolePage.columns.directParents')}</th>
+							{#each roleView.columns as column (column.key)}<TableColumnHeader view={roleView} columnKey={column.key} />{/each}
 						</tr></thead>
 						<tbody>{#each filtered as role (role.id)}<tr data-selected={selectedId === role.id}>
 							<td><Button variant="link" class="max-w-64 truncate" ariaLabel={t('rolePage.detailLabel', { name: role.name })} title={role.name} onclick={() => selectRole(role)}>{role.name}</Button></td>
 							<td class="font-mono text-ink-2" title={role.id}>{role.id.slice(0, 12)}</td><td><RoleBadges {role} /></td>
 							<td>{role.implied_role_ids.length}</td><td>{role.inherited_role_ids.length}</td><td>{role.parent_role_ids.length}</td>
-						</tr>{/each}</tbody>
+							<td class="max-w-64 whitespace-pre-wrap break-words">{role.description || t('rolePage.noDescription')}</td>
+							<td class="font-mono break-all">{role.domain_id ?? t('roleDetail.global')}</td>
+						</tr>{:else}<tr><td colspan={roleView.columns.length}>{tc('table.noMatches')}</td></tr>{/each}</tbody>
 					</table>
 					</TableShell>
 				</ResponsiveTable>
@@ -297,11 +321,15 @@
 			<div class="space-y-4 min-w-0">
 				<Alert tone="info">{t('rolePresets.previewHelp')}</Alert>
 				{#if actionError || loadError}<Alert tone="danger">{actionError || loadError}</Alert>{/if}
-				<ul class="space-y-2 text-sm">{#each [...preset.project_roles, ...preset.roles].filter(item => !isRetiredRole(item)) as item}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{/each}</ul>
+				<RegexSearch id="role-preset-search" bind:value={presetQuery} label={tc('table.search')} />
+				<TableViewControls view={presetRoleView} class="" />
+				<ul class="space-y-2 text-sm">{#each presetRoleView.rows as item (item.name)}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{:else}<li class="text-ink-2">{tc('table.noMatches')}</li>{/each}</ul>
 				<h3 class="text-sm font-semibold">{t('rolePresets.directImplications')}</h3>
-				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.implications.filter(edge => !isRetiredRole({ name: edge.prior }) && !isRetiredRole({ name: edge.implied })) as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
+				<TableViewControls view={presetEdgeView} class="" />
+				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each presetEdgeView.rows as edge (`${edge.prior}:${edge.implied}`)}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{:else}<li>{tc('table.noMatches')}</li>{/each}</ul>
 				<h3 class="text-sm font-semibold">{t('rolePresets.retiredImplications')}</h3>
-				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.retired_implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
+				<TableViewControls view={retiredEdgeView} class="" />
+				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each retiredEdgeView.rows as edge (`${edge.prior}:${edge.implied}`)}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{:else}<li>{tc('table.noMatches')}</li>{/each}</ul>
 			</div>
 			{#snippet actions()}
 				<Button variant="secondary" disabled={busy} onclick={() => { preset = null; ++presetVersion; }}>{tc('actions.cancel')}</Button>

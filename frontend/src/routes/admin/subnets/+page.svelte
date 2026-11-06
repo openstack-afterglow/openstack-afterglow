@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api as baseApi, ApiError } from '$lib/api/client';
@@ -8,6 +10,25 @@
 	import { t } from '$lib/i18n/ns/admin-network';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	let search = $state('');
+	const columns: TableColumn<AdminSubnet>[] = $derived([
+		{ key: 'name', label: t('subnetSection.name'), value: (row) => row.name || row.id },
+		{ key: 'cidr', label: t('subnetDetailPage.cidrVersion'), value: (row) => row.cidr },
+		{ key: 'network', label: t('subnetDetailPage.network'), value: (row) => row.network_id },
+		{ key: 'project', label: t('subnetDetailPage.projectId'), value: (row) => row.project_id },
+		{ key: 'gateway', label: t('subnetSection.gateway'), value: (row) => row.gateway_ip },
+	]);
+	const view = createTableView({ locale: intlLocale, rows: () => subnets, columns: () => columns, search: () => search,
+		searchable: (row) => [row.id, row.name, row.cidr, row.network_id, row.project_id, row.gateway_ip].filter((value) => value != null).map(String) });
+	let viewOwner = '';
+	$effect(() => {
+		const owner = JSON.stringify([$auth.userId, $auth.projectId, Boolean($auth.token)]);
+		if (owner !== viewOwner) { viewOwner = owner; search = ''; view.reset(); }
+	});
 
 	interface AdminSubnet { id: string; name: string; network_id: string; cidr: string; gateway_ip: string | null; project_id: string | null }
 	const api = createAdminInventoryApi(baseApi);
@@ -17,8 +38,10 @@
 	let error = $state('');
 	let page = $state(1);
 	const pageSize = 20;
-	const totalPages = $derived(Math.max(1, Math.ceil(subnets.length / pageSize)));
-	const rows = $derived(subnets.slice((page - 1) * pageSize, page * pageSize));
+	const totalPages = $derived(Math.max(1, Math.ceil(view.rows.length / pageSize)));
+	const rows = $derived(view.rows.slice((Math.min(page, totalPages) - 1) * pageSize, Math.min(page, totalPages) * pageSize));
+	$effect(() => { search; view.sort; view.filters; page = 1; });
+	$effect(() => { if (page > totalPages) page = totalPages; });
 	let generation = 0;
 	async function load() {
 		const request = ++generation;
@@ -39,10 +62,13 @@
 	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={t('subnetSection.title')}>
 		{#snippet actions()}<Button variant="secondary" size="sm" disabled={loading} onclick={load}>{t('subnetDetailPage.refresh')}</Button>{/snippet}
 	</PageHeader>
+	<RegexSearch id="subnet-search" bind:value={search} />
+	<TableViewControls {view} />
+	{#if subnets.length > 0 && view.rows.length === 0}<p class="my-3 text-sm text-ink-2">{commonT('table.noMatches')}</p>{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}<LoadingState variant="surface" />
 	{:else if !error && subnets.length === 0}<EmptyState headline={t('subnetSection.empty')} />
-	{:else if subnets.length > 0}
+	{/if}
 		<ResponsiveTable>
 			{#snippet cards()}
 				{#each rows as subnet (subnet.id)}
@@ -56,7 +82,7 @@
 		<TableShell>
 			<table>
 			<thead><tr>
-				<th>{t('subnetSection.name')}</th><th>{t('subnetDetailPage.cidrVersion')}</th><th>{t('subnetDetailPage.network')}</th><th>{t('subnetDetailPage.projectId')}</th><th>{t('subnetSection.gateway')}</th>
+				{#each columns as column (column.key)}<TableColumnHeader {view} columnKey={column.key} />{/each}
 			</tr></thead>
 			<tbody>{#each rows as subnet (subnet.id)}<tr>
 				<td><a class="text-accent hover:underline" href={`/admin/subnets/${encodeURIComponent(subnet.id)}`}>{subnet.name || subnet.id}</a></td>
@@ -67,6 +93,5 @@
 			</table>
 		</TableShell>
 		</ResponsiveTable>
-		<Pagination {page} {totalPages} total={subnets.length} {pageSize} hasPrev={page > 1} hasNext={page < totalPages} onPrev={() => page -= 1} onNext={() => page += 1} />
-	{/if}
+		<Pagination {page} {totalPages} total={view.rows.length} {pageSize} hasPrev={page > 1} hasNext={page < totalPages} onPrev={() => page -= 1} onNext={() => page += 1} />
 </PageShell>

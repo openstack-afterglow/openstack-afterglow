@@ -9,8 +9,27 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { Alert, Button, Card } from '$lib/components/ui';
 	import FlavorAutomationPolicyPanel from './FlavorAutomationPolicyPanel.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { t as computeT } from '$lib/i18n/ns/admin-compute';
 	let { onChanged }: { onChanged?: () => void } = $props();
 	let data = $state<FlavorAutomationStatus | null>(null);
+	let reportSearch = $state('');
+	const reportView = createTableView<FlavorAutomationStatus['items'][number]>({
+		rows: () => data?.items ?? [], search: () => reportSearch,
+		searchable: (row) => [row.id, row.name, row.display_name ?? '', row.status, row.gpu_resource_class ?? '', row.reason ?? ''],
+		columns: () => [
+			{ key: 'name', label: commonT('table.name'), value: (row) => row.display_name ?? row.name },
+			{ key: 'status', label: commonT('table.status'), value: (row) => row.status, format: (_, row) => t(`itemStatus.${row.status}`) },
+			{ key: 'id', label: commonT('table.key'), value: (row) => row.id },
+			{ key: 'cpu', label: computeT('flavors.fields.vcpu'), value: (row) => row.vcpus },
+			{ key: 'ram', label: computeT('flavors.fields.ram'), value: (row) => row.ram },
+			{ key: 'gpu', label: computeT('flavors.fields.gpu'), value: (row) => row.gpu_count },
+			{ key: 'projects', label: commonT('table.project'), value: (row) => row.projects },
+		],
+	});
 	const ready = $derived(data?.readiness?.verified === true);
 	let loading = $state(false), busy = $state(false), reloadRequired = $state(false), enabled = $state(false);
 	let error = $state(''), outcome = $state(''), epoch = $state(0), refresh = $state(0);
@@ -72,7 +91,7 @@
 			<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" bind:checked={enabled} disabled={busy || reloadRequired || (!ready && !data.enabled)} />{t('enableAutomation')}</label>
 			<div class="flex flex-wrap gap-2"><Button variant="accent" disabled={busy || reloadRequired || enabled === data.enabled || (!ready && enabled)} onclick={() => mutate()}>{#if busy}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{busy ? t('saving') : t('saveAutomation')}</Button><Button variant="secondary" disabled={busy || reloadRequired || !ready || !data.enabled || data.status === 'running'} onclick={() => mutate(true)}>{t('reconcile')}</Button></div>
 			{#if data.diagnostics.length}<details><summary class="min-h-11 cursor-pointer py-3 text-sm text-ink-1">{t('diagnostics')}</summary><ul class="space-y-2 text-xs text-ink-2">{#each data.diagnostics as row}<li class="break-words"><code>{row.code}</code> · {row.message}</li>{/each}</ul></details>{/if}
-			{#if data.items.length}<details><summary class="min-h-11 cursor-pointer py-3 text-sm text-ink-1">{t('report', { count: data.items.length })}</summary><ul class="divide-y divide-line">{#each data.items as row (row.id)}<li class="space-y-1 py-3 text-sm"><div class="flex flex-wrap justify-between gap-2"><strong class="break-all font-medium">{row.display_name ?? row.name}</strong><span>{t(`itemStatus.${row.status}`)}</span></div>{#if row.display_name}<p class="break-all text-xs text-ink-2">{row.name}</p>{/if}<code class="block break-all text-xs text-ink-2">{row.id}</code><p class="break-words text-xs text-ink-2">{row.vcpus} vCPU · {row.ram} MiB · GPU {row.gpu_count ?? t('unknown')} · {t('publishedProjects', { count: row.projects })}</p>{#if row.gpu_resource_class}<code class="block break-all text-xs text-ink-2">{row.gpu_resource_class}</code>{/if}{#if row.reason}<p class="break-words text-xs text-ink-2">{row.reason}</p>{/if}</li>{/each}</ul></details>{/if}
+			{#if data.items.length}<details><summary class="min-h-11 cursor-pointer py-3 text-sm text-ink-1">{t('report', { count: data.items.length })}</summary><RegexSearch id="flavor-automation-report-search" bind:value={reportSearch} /><TableViewControls view={reportView} class="" /><ul class="divide-y divide-line">{#each reportView.rows as row (row.id)}<li class="space-y-1 py-3 text-sm"><div class="flex flex-wrap justify-between gap-2"><strong class="break-all font-medium">{row.display_name ?? row.name}</strong><span>{t(`itemStatus.${row.status}`)}</span></div>{#if row.display_name}<p class="break-all text-xs text-ink-2">{row.name}</p>{/if}<code class="block break-all text-xs text-ink-2">{row.id}</code><p class="break-words text-xs text-ink-2">{row.vcpus} vCPU · {row.ram} MiB · GPU {row.gpu_count ?? t('unknown')} · {t('publishedProjects', { count: row.projects })}</p>{#if row.gpu_resource_class}<code class="block break-all text-xs text-ink-2">{row.gpu_resource_class}</code>{/if}{#if row.reason}<p class="break-words text-xs text-ink-2">{row.reason}</p>{/if}</li>{/each}</ul></details>{/if}
 		{/if}
 	</section>
 </Card>

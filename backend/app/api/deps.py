@@ -22,6 +22,19 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _account_mcp_management_request(request: Request) -> bool:
+    """Only exact account list/revoke routes may ignore workspace selection."""
+    path = getattr(getattr(request, "url", None), "path", "")
+    method = getattr(request, "method", "")
+    if method == "GET":
+        return path in {"/api/v1/auth/mcp-tokens", "/api/v1/auth/mcp-oauth/grants"}
+    return (
+        method == "DELETE"
+        and path != "/api/v1/auth/mcp-tokens/lumen-default"
+        and re.fullmatch(r"/api/v1/auth/(?:mcp-tokens|mcp-oauth/grants)/[^/]+", path) is not None
+    )
+
+
 def validate_keystone_id(value: object) -> str:
     """Validate native package identities without rewriting opaque Keystone IDs."""
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value):
@@ -356,16 +369,19 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
         return await require_admin(principal) if system_admin else principal
 
     home_project_id = payload.get("project_id", "")
+    account_mcp = _account_mcp_management_request(request)
     logical_workspace = isinstance(sess.get("target_project_id"), str)
-    target_project_id = x_project_id or (sess["target_project_id"] if logical_workspace else home_project_id)
-    if x_project_id is not None:
+    target_project_id = (
+        "" if account_mcp else x_project_id or (sess["target_project_id"] if logical_workspace else home_project_id)
+    )
+    if x_project_id is not None and not account_mcp:
         validate_keystone_id(x_project_id)
     path = getattr(getattr(request, "url", None), "path", "")
     service_path = (
         path.startswith(("/api/v1/chat/", "/api/v1/k3s/", "/api/v1/waygate/", "/api/v1/palimpsest/"))
         or path == "/api/v1/projects/current/permissions"
     )
-    context_path = path in {
+    context_path = account_mcp or path in {
         "/api/v1/auth/me",
         "/api/v1/auth/domains",
         "/api/v1/auth/workspaces",
@@ -392,14 +408,15 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
         request.method == "DELETE" and re.fullmatch(r"/api/v1/auth/sessions/[^/]+", path) is not None
     )
     is_system_admin = await operation.run(keystone._is_system_admin, payload["sub"], operation=operation)
-    if logical_workspace and not is_system_admin:
+    if logical_workspace and not is_system_admin and not account_mcp:
         raise HTTPException(status_code=403, detail="Current system administrator authority is required")
-    admin_context = is_system_admin and logical_workspace and context_path
+    admin_context = is_system_admin and logical_workspace and context_path and not account_mcp
     service_admin = is_system_admin and service_path
     if service_admin:
         await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)
     admin_target = bool(
-        (target_project_id != home_project_id or logical_workspace)
+        not account_mcp
+        and (target_project_id != home_project_id or logical_workspace)
         and is_system_admin
         and (path.startswith("/api/v1/admin/") or service_path or admin_context)
     )
@@ -682,7 +699,12 @@ async def get_os_conn(
     is_system_admin = token_info.get("is_system_admin", False)
     conn = None
     try:
-        if not connection_project_id:
+        if not connection_project_id and _account_mcp_management_request(request):
+            # Account cleanup uses only this authenticated human's unscoped
+            # credential; no selected project or administrative fallback.
+            scoped_token = token_info["session_token"]
+            conn = keystone.get_openstack_connection(scoped_token, "")
+        elif not connection_project_id:
             if not request.url.path.startswith("/api/v1/admin/"):
                 raise HTTPException(status_code=403, detail="A project scope is required")
             if token_info.get("_live_system_admin") is not True:

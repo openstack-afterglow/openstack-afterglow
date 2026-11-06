@@ -1,17 +1,23 @@
 <script lang="ts">
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { createAdminGroupsController } from '$lib/stores/adminGroupsController.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
-	import Field from '$lib/components/ui/Field.svelte';
-	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import { untrack } from 'svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import type { Group } from '$lib/types/adminGroup';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { sessionScopeKey } from '$lib/utils/authSession';
+	import { createPrivateViewScope } from '$lib/utils/privateViewScope';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import GroupCard from '$lib/components/admin/groups/GroupCard.svelte';
+	import GroupCard, { createGroupCardViewState, type GroupCardViewState } from '$lib/components/admin/groups/GroupCard.svelte';
 	import GroupCreateModal from '$lib/components/admin/groups/GroupCreateModal.svelte';
 	import GroupEditModal from '$lib/components/admin/groups/GroupEditModal.svelte';
 	import GroupDeleteConfirmModal from '$lib/components/admin/groups/GroupDeleteConfirmModal.svelte';
@@ -19,21 +25,43 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let { domainId }: { domainId: string; domainName: string } = $props();
+	const privateScope = createPrivateViewScope();
+	const owner = $derived(JSON.stringify([sessionScopeKey($auth), $privateScope, $authReady, $projectSwitching, !!$auth.token]));
+	const viewOwner = $derived(JSON.stringify([domainId, owner]));
 
 	const ctrl = createAdminGroupsController({
-		token: () => $auth.token ?? undefined,
+		token: () => $authReady && !$projectSwitching && $auth.isSystemAdmin ? $auth.token ?? undefined : undefined,
 		projectId: () => $auth.projectId ?? undefined,
 		domainId: () => domainId,
 		actorId: () => $auth.userId ?? undefined,
+		owner: () => owner,
 	});
 
 	let search = $state('');
-	const hasFilters = $derived(Boolean(search.trim()));
-	const filteredGroups = $derived.by(() => {
-		const query = search.trim().toLocaleLowerCase();
-		return ctrl.groups.filter((group) =>
-			!query || [group.name, group.id, group.description].some((value) => value.toLocaleLowerCase().includes(query))
-		);
+	const cardViews = new Map<string, GroupCardViewState>();
+	function cardView(id: string): GroupCardViewState {
+		const existing = cardViews.get(id);
+		if (existing) return existing;
+		const state = $state(createGroupCardViewState());
+		cardViews.set(id, state);
+		return state;
+	}
+	const groupView = createTableView<Group>({
+		rows: () => ctrl.groups,
+		search: () => search,
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('form.name'), value: (group) => group.name },
+			{ key: 'id', label: 'ID', value: (group) => group.id },
+			{ key: 'description', label: t('form.description'), value: (group) => group.description },
+			{ key: 'created', label: t('projectTable.createdAt'), value: (group) => group.created_at ? Date.parse(group.created_at) : null, format: (_value, group) => group.created_at ? new Date(group.created_at).toLocaleDateString(intlLocale(), { timeZone: 'UTC' }) : t('groupCard.unknownDate') },
+		],
+	});
+	const hasFilters = $derived(Boolean(search) || Object.keys(groupView.filters).length > 0);
+	const filteredGroups = $derived(groupView.rows);
+	$effect(() => {
+		void viewOwner;
+		untrack(() => { search = ''; groupView.reset(); cardViews.clear(); });
 	});
 
 	const ar = createAutoRefresh(ctrl.load, {
@@ -61,14 +89,13 @@
 	</PageHeader>
 
 	<ResourceToolbar label={t('groupPage.filters')} class="mb-3">
-		<Field label={t('groupPage.search')} for="admin-group-search" class="min-w-0 w-full md:flex-1 md:basis-64">
-			<TextInput id="admin-group-search" type="search" bind:value={search} ariaLabel={t('groupPage.search')} placeholder={t('groupPage.searchPlaceholder')} />
-		</Field>
-		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; }}>{t('groupPage.reset')}</Button>
+		<RegexSearch id="admin-group-search" bind:value={search} label={t('groupPage.search')} class="min-w-0 w-full md:flex-1 md:basis-64" />
+		<Button variant="ghost" size="sm" disabled={!hasFilters && !groupView.sort} onclick={() => { search = ''; groupView.reset(); }}>{t('groupPage.reset')}</Button>
 	</ResourceToolbar>
+	<TableViewControls view={groupView} class="" />
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
 		{#if !ctrl.loading}<span aria-live="polite">{ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>{/if}
-		<span>{t('groupPage.sortNotice')}</span>
+		<span>{tc('table.loadedScope')}</span>
 	</div>
 
 	{#if ctrl.error}
@@ -85,6 +112,7 @@
 				{#each filteredGroups as g (g.id)}
 					<GroupCard
 						group={g}
+						viewState={cardView(g.id)}
 						expanded={ctrl.expandedGroup === g.id}
 						members={ctrl.groupMembers[g.id] ?? []}
 						membersLoading={ctrl.membersLoading[g.id] ?? false}

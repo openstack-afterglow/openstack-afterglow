@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
@@ -35,7 +41,17 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 	const enabled = $derived($betaFeatures.fileStorageSnapshots);
 	const selection = createResourceSelection();
-	const selectableIds = $derived(new Set(snapshots.map((snapshot) => snapshot.id)));
+	let search = $state('');
+ const columns = $derived<TableColumn<ShareSnapshot>[]>([
+  { key: 'name', label: t('snapshotTable.name'), value: row => row.name },
+  { key: 'status', label: t('snapshotTable.status'), value: row => row.status },
+  { key: 'size', label: t('snapshotTable.size'), value: row => row.size },
+  { key: 'storage', label: t('snapshotTable.storageId'), value: row => row.share_id },
+  { key: 'description', label: t('snapshotTable.description'), value: row => row.description },
+  { key: 'created', label: t('snapshotTable.createdAt'), value: row => row.created_at },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => snapshots, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const selectableIds = $derived(new Set(view.rows.map((snapshot) => snapshot.id)));
 	const fileStorageSnapshotsEnabled = $derived($betaFeatures.fileStorageSnapshots);
 
 	function clearState() {
@@ -158,6 +174,12 @@
 		const ids = selectableIds;
 		untrack(() => selection.retain(ids));
 	});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#if !enabled}
@@ -171,13 +193,16 @@
 				<button onclick={openCreateModal} onpointerenter={prefetchFileStorages} onfocus={prefetchFileStorages} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('snapshots.create')}</button>
 			{/snippet}
 		</PageHeader>
+ <RegexSearch id="SnapshotListTable-search" bind:value={search} />
+ <TableViewControls {view} class={snapshots.length === 0 ? '' : 'lg:hidden'} />
+ 
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshots.title') })} />
 		{:else if snapshots.length === 0}
 			<SnapshotsEmptyState onCreate={openCreateModal} />
 		{:else}
-			<SnapshotListTable {snapshots} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
+			<SnapshotListTable snapshots={view.rows} {view} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel={t('snapshots.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
 	</PageShell>

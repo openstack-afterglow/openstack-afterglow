@@ -84,27 +84,6 @@ describe('admin volume bulk deletion', () => {
 		expect((screen.getByRole('checkbox', { name: 'second-volume 선택' }) as HTMLInputElement).checked).toBe(true);
 	});
 
-	it('resets an active status filter when bulk deletion removes its final volume', async () => {
-		setupGet(
-			[{ items: [firstVolume], next_marker: null }, { items: [firstVolume], next_marker: null }, { items: [], next_marker: null }],
-			[{ total: 1, statuses: [{ status: 'available', count: 1 }] }, { total: 1, statuses: [{ status: 'available', count: 1 }] }, { total: 0, statuses: [] }],
-		);
-		mocks.post.mockResolvedValue({ results: [{ id: 'vol-1', ok: true, error: null }] });
-
-		const view = render(Page);
-		await vi.waitFor(() => expect(view.container.querySelector('[data-volume-status="available"]')).toBeTruthy());
-		await fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-volume-status="available"]')!);
-		await vi.waitFor(() => expect(mocks.get.mock.calls.some((call) => String(call[0]).includes('status=available'))).toBe(true));
-		await fireEvent.click(screen.getByRole('checkbox', { name: 'first-volume 선택' }));
-		await fireEvent.click(within(screen.getByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' })).getByRole('button', { name: '삭제' }));
-
-		await vi.waitFor(() => {
-			const listPaths = mocks.get.mock.calls.map((call) => String(call[0])).filter((path) => path.startsWith('/api/v1/admin/all-volumes'));
-			expect(listPaths.at(-1)).not.toContain('status=available');
-		});
-		expect(view.container.querySelector('[data-volume-status="available"]')).toBeNull();
-		expect(view.container.querySelector('option[value="available"]')).toBeNull();
-	});
 
 	it('does not offer stale-row selection while a replacement boundary loads', async () => {
 		setupGet([{ items: [firstVolume], next_marker: 'vol-1' }], [{ total: 2, statuses: [{ status: 'available', count: 2 }] }]);

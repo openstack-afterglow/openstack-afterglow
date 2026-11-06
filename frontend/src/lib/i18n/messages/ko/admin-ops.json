@@ -393,7 +393,6 @@
 	"monitoring.rabbitmq.breadcrumb": "MONITORING / RABBITMQ",
 	"monitoring.rabbitmq.title": "RabbitMQ 메트릭",
 	"monitoring.rabbitmq.description": "rabbitmq_prometheus 플러그인을 통해 수집된 메트릭입니다.",
-	"overview.loading": "개요를 불러오는 중",
 	"overview.kpi.hypervisors": "하이퍼바이저",
 	"overview.kpi.details": "상세 →",
 	"overview.kpi.totalVms": "총 VM",

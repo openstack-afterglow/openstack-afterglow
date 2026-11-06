@@ -5,6 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { auth } from '$lib/stores/auth';
+	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { toast } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -27,6 +28,10 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 
 	type Tab = 'secrets' | 'containers' | 'orders' | 'quota';
 	const selection = createResourceSelection();
@@ -39,7 +44,36 @@
 	let quota = $state<QuotaInfo | null>(null);
 	let loading = $state(true);
 	let refreshing = $state(false);
-	let error = $state('');
+	let loaded = $state<Record<Tab, boolean>>({ secrets: false, containers: false, orders: false, quota: false });
+	let readErrors = $state<Record<Tab, string>>({ secrets: '', containers: '', orders: '', quota: '' });
+	const error = $derived(readErrors[activeTab]);
+	let secretSearch = $state('');
+	let containerSearch = $state('');
+	let orderSearch = $state('');
+	const secretColumns = (): TableColumn<SecretInfo>[] => [
+		{ key: 'name', label: t('secrets.form.name'), value: row => row.name || row.id },
+		{ key: 'type', label: t('secrets.form.type'), value: row => row.secret_type, format: value => SECRET_TYPE_LABEL[String(value)] ?? String(value) },
+		{ key: 'status', label: t('secrets.table.status'), value: row => row.status },
+		{ key: 'created', label: t('secrets.table.created'), value: row => row.created ? Date.parse(row.created) : null, format: (_value, row) => row.created ? new Date(row.created).toLocaleDateString(intlLocale()) : '—' },
+		{ key: 'expires', label: t('secrets.table.expires'), value: row => row.expires ? Date.parse(row.expires) : null, format: (_value, row) => row.expires ? new Date(row.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry') },
+	];
+	const containerColumns = (): TableColumn<ContainerInfo>[] => [
+		{ key: 'name', label: t('secrets.form.name'), value: row => row.name || row.id },
+		{ key: 'type', label: t('secrets.form.type'), value: row => row.type },
+		{ key: 'status', label: t('secrets.table.status'), value: row => row.status },
+		{ key: 'secrets', label: t('secrets.table.secrets'), value: row => row.secret_refs.length },
+	];
+	const orderColumns = (): TableColumn<OrderInfo>[] => [
+		{ key: 'id', label: 'ID', value: row => row.id },
+		{ key: 'type', label: t('secrets.form.type'), value: row => row.type },
+		{ key: 'status', label: t('secrets.table.status'), value: row => row.status },
+		{ key: 'created', label: t('secrets.table.created'), value: row => row.created ? Date.parse(row.created) : null, format: (_value, row) => row.created ? new Date(row.created).toLocaleDateString(intlLocale()) : '—' },
+		{ key: 'result', label: t('secrets.table.result'), value: row => row.secret_ref ? t('secrets.order.secretCreated') : row.error_reason || t('secrets.order.pending') },
+	];
+	const secretView = createTableView({ rows: () => secrets, columns: secretColumns, search: () => secretSearch, searchable: row => [row.name ?? '', row.id, row.secret_type, row.status ?? ''] });
+	const containerView = createTableView({ rows: () => containers, columns: containerColumns, search: () => containerSearch, searchable: row => [row.name ?? '', row.id, row.type, row.status ?? ''] });
+	const orderView = createTableView({ rows: () => orders, columns: orderColumns, search: () => orderSearch, searchable: row => [row.id, row.type, row.status ?? '', row.error_reason ?? ''] });
+	$effect(() => { const ids = selectableIds(); untrack(() => selection.retain(ids)); });
 
 	// 비밀 생성 모달
 	let showCreateSecret = $state(false);
@@ -68,8 +102,8 @@
 	let deletingContainerId = $state<string | null>(null);
 
 	function selectableIds(tab: Tab = activeTab): string[] {
-		if (tab === 'secrets') return secrets.filter((item) => !item.system_managed).map((item) => item.id);
-		if (tab === 'containers') return containers.map((item) => item.id);
+		if (tab === 'secrets') return secretView.rows.filter((item) => !item.system_managed).map((item) => item.id);
+		if (tab === 'containers') return containerView.rows.map((item) => item.id);
 		return [];
 	}
 
@@ -85,14 +119,20 @@
 		containers = [];
 		orders = [];
 		quota = null;
-		error = '';
+		loaded = { secrets: false, containers: false, orders: false, quota: false };
+		readErrors = { secrets: '', containers: '', orders: '', quota: '' };
 		selection.clear();
+		payloadVisible = {};
+		secretSearch = ''; containerSearch = ''; orderSearch = '';
+		secretView.reset(); containerView.reset(); orderView.reset();
 	}
 
 
 	async function fetchAll(force = false) {
 		const requestToken = $auth.token ?? undefined;
 		const requestProject = $auth.projectId ?? undefined;
+		const requestOwner = sessionScopeKey($auth);
+		const current = () => sessionScopeKey($auth) === requestOwner && keyManagerEnabled;
 		if (!keyManagerEnabled) {
 			clearKeyManagerState();
 			loading = false;
@@ -105,19 +145,27 @@
 				secretsApi.listOrders(requestToken, requestProject, force),
 				secretsApi.getEffectiveQuota(requestToken, requestProject, force),
 			]);
-			if ($auth.projectId !== requestProject || !keyManagerEnabled) return;
+			if (!current()) return;
 			if (s.status === 'fulfilled') secrets = s.value;
 			if (c.status === 'fulfilled') containers = c.value;
 			if (o.status === 'fulfilled') orders = o.value;
 			if (q.status === 'fulfilled') quota = q.value;
 			selection.retain(selectableIds());
-			error = [s, c, o, q].some(result => result.status === 'rejected') ? t('secrets.error.server') : '';
+			for (const [tab, result] of [['secrets', s], ['containers', c], ['orders', o], ['quota', q]] as const) {
+				if (result.status === 'fulfilled') {
+					loaded[tab] = true;
+					readErrors[tab] = '';
+				} else {
+					readErrors[tab] = result.reason instanceof ApiError ? t('secrets.error.loadFailed', { status: result.reason.status }) : t('secrets.error.server');
+				}
+			}
 		} catch (e) {
-			if ($auth.projectId === requestProject && keyManagerEnabled) {
-				error = e instanceof ApiError ? t('secrets.error.loadFailed', { status: e.status }) : t('secrets.error.server');
+			if (current()) {
+				const message = e instanceof ApiError ? t('secrets.error.loadFailed', { status: e.status }) : t('secrets.error.server');
+				readErrors = { secrets: message, containers: message, orders: message, quota: message };
 			}
 		} finally {
-			if ($auth.projectId === requestProject && keyManagerEnabled) loading = false;
+			if (current()) loading = false;
 		}
 	}
 
@@ -135,21 +183,19 @@
 		intervalOptions: [10, 15, 30, 60],
 	});
 
+	const viewOwner = $derived(sessionScopeKey($auth));
 	$effect(() => {
-		const pid = $auth.projectId;
-		if (!keyManagerEnabled) {
-			clearKeyManagerState();
-			loading = false;
-			return;
-		}
-		if (!pid) {
-			clearKeyManagerState();
-			loading = false;
-			return;
-		}
+		viewOwner;
+		const enabled = keyManagerEnabled;
 		untrack(() => {
-			selection.clear();
-			fetchAll();
+			if (!enabled || !$auth.projectId) {
+				clearKeyManagerState();
+				loading = false;
+				return;
+			}
+			clearKeyManagerState();
+			loading = true;
+			void fetchAll();
 		});
 	});
 
@@ -484,12 +530,26 @@
 		</div>
 	{/if}
 
-	{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+	{#if error}<div role="alert" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+	{#if error && loaded[activeTab]}<p class="text-sm text-ink-2">{tc('table.lastSuccessfulRead')}</p>{/if}
 
+	{#if activeTab === 'secrets'}
+		<RegexSearch id="secret-search" bind:value={secretSearch} />
+		<TableViewControls view={secretView} class={!loading && secrets.length ? 'lg:hidden' : ''} />
+		{#if loaded.secrets && !readErrors.secrets && secrets.length > 0 && secretView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
+	{:else if activeTab === 'containers'}
+		<RegexSearch id="secret-container-search" bind:value={containerSearch} />
+		<TableViewControls view={containerView} class={!loading && containers.length ? 'lg:hidden' : ''} />
+		{#if loaded.containers && !readErrors.containers && containers.length > 0 && containerView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
+	{:else if activeTab === 'orders'}
+		<RegexSearch id="secret-order-search" bind:value={orderSearch} />
+		<TableViewControls view={orderView} class={!loading && orders.length ? 'lg:hidden' : ''} />
+		{#if loaded.orders && !readErrors.orders && orders.length > 0 && orderView.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
+	{/if}
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('secrets.page.title') })} />
 	{:else if activeTab === 'secrets'}
-		{#if secrets.length === 0}
+		{#if loaded.secrets && !readErrors.secrets && secrets.length === 0}
 			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">🔑</div>
 				<p class="text-sm">{t('secrets.empty.secrets')}</p>
@@ -507,7 +567,7 @@
 					onToggle={() => selection.toggleAll(selectableIds('secrets'))}
 				/>
 			</div>
-			<ResponsiveTable>{#snippet cards()}{#each secrets as s (s.id)}<CompactResourceCard selected={selection.has(s.id)}>
+			<ResponsiveTable>{#snippet cards()}{#each secretView.rows as s (s.id)}<CompactResourceCard selected={selection.has(s.id)}>
 				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(s.id)} disabled={s.system_managed || selectionBusy} unavailable={s.system_managed} title={s.system_managed ? t('secrets.selection.systemManaged') : undefined} ariaLabel={t('secrets.selection.item', { name: s.name ?? s.id })} onclick={() => selection.toggle(s.id)} /><h3 class="text-sm font-medium break-all">{s.name ?? s.id}</h3><span class="ml-auto text-xs">{s.status ?? '-'}</span></div><p class="text-xs text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}{#if s.system_managed} · {t('secrets.secret.system')}{/if}</p>
 				{#if payloadVisible[s.id] !== undefined}<code class="text-xs break-all">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>{/if}
 				{#snippet details()}<p class="text-xs break-all font-mono">{s.id}</p><p class="text-xs">{t('secrets.table.created')}: {s.created ? new Date(s.created).toLocaleDateString(intlLocale()) : '-'}</p><p class="text-xs">{t('secrets.table.expires')}: {s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</p>{/snippet}
@@ -518,16 +578,16 @@
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
 							<th class="pb-3 pr-4 font-medium w-10">{t('secrets.table.select')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.form.name')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.created')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.expires')}</th>
+							<TableColumnHeader view={secretView} columnKey="name" />
+							<TableColumnHeader view={secretView} columnKey="type" />
+							<TableColumnHeader view={secretView} columnKey="status" />
+							<TableColumnHeader view={secretView} columnKey="created" />
+							<TableColumnHeader view={secretView} columnKey="expires" />
 							<th class="pb-3 font-medium">{t('secrets.table.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
-						{#each secrets as s (s.id)}
+						{#each secretView.rows as s (s.id)}
 							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(s.id)}>
 								<td class="py-3 pr-4">
 									<SelectionCheckbox
@@ -571,7 +631,7 @@
 		{/if}
 
 	{:else if activeTab === 'containers'}
-		{#if containers.length === 0}
+		{#if loaded.containers && !readErrors.containers && containers.length === 0}
 			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">📦</div>
 				<p class="text-sm">{t('secrets.empty.containers')}</p>
@@ -582,14 +642,14 @@
 				<SelectionToolbar
 					label={t('secrets.tabs.containers')}
 					ariaLabel={t('secrets.selection.allContainers')}
-					checked={selection.count === containers.length && selection.count > 0}
-					indeterminate={selection.count > 0 && selection.count < containers.length}
+					checked={selection.count === selectableIds('containers').length && selection.count > 0}
+					indeterminate={selection.count > 0 && selection.count < selectableIds('containers').length}
 					selectedCount={selection.count}
 					disabled={selectionBusy}
 					onToggle={() => selection.toggleAll(selectableIds('containers'))}
 				/>
 			</div>
-			<ResponsiveTable>{#snippet cards()}{#each containers as c (c.id)}<CompactResourceCard selected={selection.has(c.id)}>
+			<ResponsiveTable>{#snippet cards()}{#each containerView.rows as c (c.id)}<CompactResourceCard selected={selection.has(c.id)}>
 				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={t('secrets.selection.item', { name: c.name ?? c.id })} onclick={() => selection.toggle(c.id)} /><h3 class="text-sm font-medium">{c.name ?? '-'}</h3><span class="ml-auto text-xs">{c.status ?? '-'}</span></div><p class="text-xs">{c.type} · {t('secrets.container.secretCount', { count: c.secret_refs.length })}</p>
 				{#snippet details()}<code class="text-xs break-all">{c.id}</code>{/snippet}
 				{#snippet actions()}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy || deletingContainerId !== null} ariaBusy={deletingContainerId === c.id}>{t('secrets.actions.delete')}</Button>{/snippet}
@@ -599,15 +659,15 @@
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
 							<th class="pb-3 pr-4 font-medium w-10">{t('secrets.table.select')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.form.name')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.secrets')}</th>
+							<TableColumnHeader view={containerView} columnKey="name" />
+							<TableColumnHeader view={containerView} columnKey="type" />
+							<TableColumnHeader view={containerView} columnKey="status" />
+							<TableColumnHeader view={containerView} columnKey="secrets" />
 							<th class="pb-3 font-medium">{t('secrets.table.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
-						{#each containers as c (c.id)}
+						{#each containerView.rows as c (c.id)}
 							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(c.id)}>
 								<td class="py-3 pr-4"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={t('secrets.selection.item', { name: c.name ?? c.id })} onclick={() => selection.toggle(c.id)} /></td>
 								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-2 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
@@ -624,14 +684,14 @@
 		{/if}
 
 	{:else if activeTab === 'orders'}
-		{#if orders.length === 0}
+		{#if loaded.orders && !readErrors.orders && orders.length === 0}
 			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">⚙️</div>
 				<p class="text-sm">{t('secrets.empty.orders')}</p>
 				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createOrder')}</button>
 			</div>
 		{:else}
-			<ResponsiveTable>{#snippet cards()}{#each orders as o (o.id)}<CompactResourceCard>
+			<ResponsiveTable>{#snippet cards()}{#each orderView.rows as o (o.id)}<CompactResourceCard>
 				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{o.type}</h3><span class="text-xs">{o.status ?? '-'}</span></div><p class="text-xs">{#if o.secret_ref}{t('secrets.order.secretCreated')}{:else if o.error_reason}<span class="text-state-danger-text">{t('activity.failure')}</span>{:else}{t('secrets.order.pending')}{/if}</p>{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}<LoadingState variant="control" label={t('secrets.order.pending')}  />{/if}
 				{#snippet details()}<code class="text-xs break-all">{o.id}</code><p class="text-xs">{t('secrets.table.created')}: {o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</p>{#if o.error_reason}<p class="text-xs text-state-danger-text">{o.error_reason}</p>{/if}{/snippet}
 			</CompactResourceCard>{/each}{/snippet}
@@ -639,15 +699,15 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
-							<th class="pb-3 pr-4 font-medium">ID</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
-							<th class="pb-3 pr-4 font-medium">{t('secrets.table.created')}</th>
-							<th class="pb-3 font-medium">{t('secrets.table.result')}</th>
+							<TableColumnHeader view={orderView} columnKey="id" />
+							<TableColumnHeader view={orderView} columnKey="type" />
+							<TableColumnHeader view={orderView} columnKey="status" />
+							<TableColumnHeader view={orderView} columnKey="created" />
+							<TableColumnHeader view={orderView} columnKey="result" />
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
-						{#each orders as o (o.id)}
+						{#each orderView.rows as o (o.id)}
 							<tr class="hover:bg-surface-sunken/30">
 								<td class="py-3 pr-4 font-mono text-xs text-ink-2">{o.id}</td>
 								<td class="py-3 pr-4 text-ink-2">{o.type}</td>

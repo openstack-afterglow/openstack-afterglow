@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ObservationTable from '$lib/components/admin/observation/ObservationTable.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import { createObservationView } from '$lib/components/admin/observation/observationView.svelte';
 	import { t as tl } from '$lib/i18n/ns/common';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
@@ -209,6 +212,9 @@
 	function usageValue(value: number | null | undefined, status: string): number | null {
 		return value != null && (status === 'available' || status === 'partial') ? value : null;
 	}
+
+	const instanceRanks = $derived(new Map((data?.top_instances ?? []).map((instance, index) => [instance.id, index + 1])));
+	const observationView0 = createObservationView(() => (data?.top_instances ?? []), () => ([{ key: 'rank', label: '#', value: row => instanceRanks.get(row.id) }, { key: 'instance', label: t('usage.instance'), value: row => row.name }, { key: 'flavor', label: t('usage.flavor'), value: row => row.flavor_display_name || row.flavor_name }, { key: 'cpu', label: 'vCPU', value: row => usageValue(row.cpu_pct, row.cpu_status) }, { key: 'ram', label: 'RAM', value: row => usageValue(row.ram_pct, row.ram_status) }, { key: 'status', label: t('usage.status'), value: row => row.status }]));
 </script>
 
 	{#snippet usageTelemetry(source: string | null, status: string, nativeStatus: string | null, hasValue: boolean)}
@@ -320,9 +326,11 @@
 			{#if data.top_instances.length === 0}
 				<div class="mt-6 text-center text-sm text-ink-2 py-6">{t('usage.empty')}</div>
 			{:else}
-				<ResponsiveTable class="mt-4">{#snippet cards()}{#each data?.top_instances ?? [] as inst, i (inst.id)}
+				<ObservationTable model={observationView0} loaded>
+{#snippet children(tableView)}
+<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as inst, i (inst.id)}
 					{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
-					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
+					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{instanceRanks.get(inst.id) ?? i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
 						<p class="text-xs tabular-nums">vCPU: {inst.vcpus} · {cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}</p><p class="text-xs tabular-nums">RAM: {Math.round(inst.ram_mb / 1024)} GB · {ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}</p>
 						{#snippet details()}<p class="text-xs font-mono">{inst.flavor_display_name ?? inst.flavor_name}</p>{#if isGpu(inst.flavor_name)}<Pill tone="accent">GPU</Pill>{/if}{@render usageTelemetry(inst.cpu_source, inst.cpu_status, inst.cpu_native_status, cpuPct !== null)}{@render usageTelemetry(inst.ram_source, inst.ram_status, inst.ram_native_status, ramPct !== null)}{/snippet}
 					</CompactResourceCard>
@@ -331,20 +339,20 @@
 					<table class="w-full text-xs">
 						<thead>
 							<tr class="border-b border-line">
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-8">#</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.instance')}</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.flavor')}</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">vCPU</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">RAM</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.status')}</th>
+								<TableColumnHeader view={tableView} columnKey="rank" />
+								<TableColumnHeader view={tableView} columnKey="instance" />
+								<TableColumnHeader view={tableView} columnKey="flavor" />
+								<TableColumnHeader view={tableView} columnKey="cpu" />
+								<TableColumnHeader view={tableView} columnKey="ram" />
+								<TableColumnHeader view={tableView} columnKey="status" />
 							</tr>
 						</thead>
 						<tbody class="motion-stagger">
-							{#each data.top_instances as inst, i (inst.id)}
+							{#each tableView.rows as inst, i (inst.id)}
 								{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}
 								{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
 								<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
-									<td class="py-2.5 text-ink-2 font-mono">{i + 1}</td>
+									<td class="py-2.5 text-ink-2 font-mono">{instanceRanks.get(inst.id) ?? i + 1}</td>
 									<td class="py-2.5">
 										<div class="flex items-center gap-2">
 											<span class="text-ink-0 font-medium truncate max-w-[140px]">{inst.name}</span>
@@ -391,6 +399,8 @@
 					</table>
 				</div>
 				</ResponsiveTable>
+{/snippet}
+</ObservationTable>
 			{/if}
 		</div>
 	{:else}

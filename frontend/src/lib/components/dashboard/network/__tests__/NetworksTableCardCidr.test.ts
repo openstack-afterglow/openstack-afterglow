@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import NetworksTableCard from '../networks/NetworksTableCard.svelte';
 import type { Network } from '$lib/types/networks';
+import { createTableView } from '$lib/utils/tableView.svelte';
 
 const singleCidrNet: Network = {
   id: 'net-single',
@@ -43,6 +44,13 @@ const emptyCidrNet: Network = {
 };
 
 const commonProps = {
+  view: createTableView({ rows: () => [singleCidrNet, multiCidrNet, missingCidrNet, emptyCidrNet], columns: () => [
+    { key: 'name', label: 'Name', value: row => row.name },
+    { key: 'cidr', label: 'CIDR', value: row => row.cidrs?.join(', ') },
+    { key: 'type', label: 'Type', value: row => row.is_external ? 'external' : row.is_shared ? 'shared' : 'internal' },
+    { key: 'subnets', label: 'Subnets', value: row => row.subnets.length },
+    { key: 'status', label: 'Status', value: row => row.status },
+  ] }),
   defaultNetworkId: null,
   deleting: null,
   settingDefault: null,

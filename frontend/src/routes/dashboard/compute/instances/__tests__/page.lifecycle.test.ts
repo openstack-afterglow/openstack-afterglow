@@ -4,7 +4,7 @@ import { derived, get, writable, type Writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
 
 const mocks = vi.hoisted(() => ({
-	get: vi.fn(), post: vi.fn(), delete: vi.fn(), confirm: vi.fn(),
+	get: vi.fn(), post: vi.fn(), delete: vi.fn(), confirm: vi.fn(), error: vi.fn(),
 	refresh: undefined as undefined | (() => Promise<void>),
 }));
 vi.mock('$lib/api/client', () => ({
@@ -18,7 +18,7 @@ vi.mock('$lib/stores/auth', () => {
 });
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/api/mutations', () => ({ apiMut: (_label: string, dispatch: () => Promise<unknown>) => dispatch() }));
-vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('$lib/stores/toast', () => ({ toast: { success: vi.fn(), error: mocks.error, info: vi.fn() } }));
 vi.mock('$lib/utils/swr.svelte', () => ({ createSwr: () => ({ swrGet: () => null, swrSet: vi.fn() }) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: (refresh: () => Promise<void>) => {
@@ -33,6 +33,7 @@ import { wizardOpen } from '$lib/stores/wizard';
 import { sidebarOpen } from '$lib/stores/sidebar';
 import { t } from '$lib/i18n/ns/instance';
 import { t as commonT } from '$lib/i18n/ns/common';
+import { getStatusLabel } from '$lib/config/statusColors';
 import Page from '../+page.svelte';
 const mockPage = page as unknown as Writable<{ url: URL; data: { mockup?: { active: boolean; profile: string } } }>;
 
@@ -41,6 +42,8 @@ const instance = (id: string, status = 'SHUTOFF'): Instance => ({
 	created_at: null, union_libraries: [], union_strategy: null, project_id: 'project-a',
 });
 let rows: Instance[];
+let volumes: Array<{ volume_id: string; name: string; delete_on_termination?: boolean }> = [];
+let volumeReadFails = false;
 async function mount() {
 	render(Page);
 	await screen.findByRole('button', { name: 'vm-a' });
@@ -68,13 +71,17 @@ async function settle(pending: { resolve(value: boolean): void }) {
 describe('consumer instance list lifecycle safety', () => {
 	beforeEach(() => {
 		rows = [instance('vm-a'), instance('vm-b')];
+		volumes = [];
+		volumeReadFails = false;
+		mocks.error.mockReset();
 		wizardOpen.set(false);
 		sidebarOpen.close();
 		mockPage.set({ url: new URL('http://localhost/dashboard/compute/instances'), data: {} });
 		auth.update((state) => ({ ...state, token: 'token-a', projectId: 'project-a', canWrite: true }));
-		mocks.get.mockReset().mockImplementation((path: string) => Promise.resolve(
-			path.endsWith('metrics-summary-batch') ? { monitoring_available: false, instances: {} } : rows,
-		));
+		mocks.get.mockReset().mockImplementation((path: string) => {
+			if (path.endsWith('/volumes')) return volumeReadFails ? Promise.reject(new Error('volume read unavailable')) : Promise.resolve(volumes);
+			return Promise.resolve(path.endsWith('metrics-summary-batch') ? { monitoring_available: false, instances: {} } : rows);
+		});
 		mocks.post.mockReset().mockResolvedValue({ results: [{ id: 'vm-a', ok: true }, { id: 'vm-b', ok: true }] });
 		mocks.delete.mockReset().mockResolvedValue(undefined);
 		mocks.confirm.mockReset().mockResolvedValue(true);
@@ -108,7 +115,7 @@ describe('consumer instance list lifecycle safety', () => {
 		const { container } = render(Page);
 		await screen.findByRole('button', { name: 'vm-a' });
 		const order = () => screen.getAllByRole('button', { name: /^vm-[a-d]$/ }).map((button) => button.textContent?.trim());
-		const sortName = () => screen.getByRole('button', { name: new RegExp(t('table.sortBy', { label: t('table.name') })) });
+		const sortName = () => within(screen.getAllByRole('columnheader').find(header => within(header).queryByText(t('table.name')))!).getAllByRole('button')[0];
 		expect(container.querySelector('#project-instance-sort')).toBeNull();
 		expect(order()).toEqual(['vm-b', 'vm-c', 'vm-a']);
 		await select('vm-a');
@@ -149,7 +156,9 @@ describe('consumer instance list lifecycle safety', () => {
 		expect(screen.getByRole('button', { name: 'vm-22' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: commonT('pagination.previous') }).hasAttribute('disabled')).toBe(true);
 		await fireEvent.input(search, { target: { value: 'vm-0' } });
-		await fireEvent.change(container.querySelector('#project-instance-status')!, { target: { value: 'ACTIVE' } });
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column: t('table.status') }) }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: getStatusLabel('SHUTOFF', 'server') }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: commonT('actions.close') }));
 		expect(screen.getAllByRole('button', { name: /^vm-\d\d$/ })).toHaveLength(5);
 		await fireEvent.input(search, { target: { value: 'missing-resource' } });
 		expect(screen.getByText(t('list.filteredEmpty'))).toBeTruthy();
@@ -157,6 +166,34 @@ describe('consumer instance list lifecycle safety', () => {
 		await fireEvent.click(screen.getByRole('button', { name: t('list.clearFilters') }));
 		expect(screen.getAllByRole('button', { name: /^vm-\d\d$/ })).toHaveLength(10);
 		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('retains regex, column choices and descending order across repeated refresh and invalid searches', async () => {
+		await mount();
+		const search = screen.getByRole('searchbox', { name: t('list.search') });
+		await fireEvent.input(search, { target: { value: '^vm-(a|b)$' } });
+		const nameHeader = screen.getAllByRole('columnheader').find(header => within(header).queryByText(t('table.name')))!;
+		await fireEvent.click(within(nameHeader).getAllByRole('button')[0]);
+		await fireEvent.click(within(nameHeader).getAllByRole('button')[0]);
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column: t('table.status') }) }));
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: getStatusLabel('SHUTOFF', 'server') }).closest('label')!);
+		await fireEvent.click(screen.getByRole('button', { name: commonT('actions.close') }));
+		rows = [instance('vm-a'), instance('vm-c'), instance('vm-b')];
+		await mocks.refresh!();
+		expect((search as HTMLInputElement).value).toBe('^vm-(a|b)$');
+		expect(screen.getAllByRole('button', { name: /^vm-[abc]$/ }).map(button => button.textContent)).toEqual(['vm-b', 'vm-a']);
+		rows = rows.map(row => ({ ...row, status: 'ACTIVE' }));
+		await mocks.refresh!();
+		expect(screen.getByText(t('list.filteredEmpty'))).toBeTruthy();
+		expect(nameHeader.getAttribute('aria-sort')).toBe('descending');
+		await fireEvent.click(screen.getByRole('button', { name: commonT('table.filterColumn', { column: t('table.status') }) }));
+		expect((screen.getByRole('checkbox', { name: 'SHUTOFF' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: commonT('actions.close') }));
+		await fireEvent.input(search, { target: { value: '[' } });
+		await mocks.refresh!();
+		expect(screen.getByText(commonT('table.regexError'))).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'vm-a' })).toBeNull();
 	});
 
 	it('does not describe first-load query failure as an empty project', async () => {
@@ -196,6 +233,53 @@ describe('consumer instance list lifecycle safety', () => {
 		expect(mocks.confirm.mock.calls[0][0]).toContain(t('panel.stoppedQuotaWarning'));
 	});
 
+	it('permits individual deletion with a retained data volume after confirmation', async () => {
+		await mount();
+		volumes = [{ volume_id: 'data', name: 'retained data', delete_on_termination: false }];
+		await openAction('delete');
+		await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/instances/vm-a', 'token-a', 'project-a'));
+	});
+
+	it.each(['single', 'bulk'] as const)('requires typed confirmation for fresh auto-delete volumes in %s deletion', async kind => {
+		await mount();
+		volumes = [{ volume_id: 'root', name: 'system disk', delete_on_termination: true }];
+		mocks.confirm.mockResolvedValueOnce(false);
+		if (kind === 'single') await openAction('delete');
+		else {
+			await select('vm-a');
+			await select('vm-b');
+			await fireEvent.click(bulkDelete()!);
+		}
+		await waitFor(() => expect(mocks.confirm).toHaveBeenCalledOnce());
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/instances/vm-a/volumes', 'token-a', 'project-a', { refresh: true, cache: 'no-store' });
+		if (kind === 'bulk') expect(mocks.get).toHaveBeenCalledWith('/api/v1/instances/vm-b/volumes', 'token-a', 'project-a', { refresh: true, cache: 'no-store' });
+		const requiredText = t('controller.delete.requiredText');
+		expect(mocks.confirm).toHaveBeenCalledWith(expect.stringContaining(t('controller.delete.autoDeleteVolumes', { volumes: 'system disk' })), {
+			requiredText,
+			requiredTextLabel: t('controller.delete.requiredTextLabel', { text: requiredText }),
+		});
+		expect(mocks.delete).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['single', 'missing'], ['single', 'failed'], ['bulk', 'missing'], ['bulk', 'failed'],
+	] as const)('blocks %s deletion when fresh attachment metadata is %s', async (kind, failure) => {
+		await mount();
+		volumes = [{ volume_id: 'unknown', name: 'unknown disk' }];
+		volumeReadFails = failure === 'failed';
+		if (kind === 'single') await openAction('delete');
+		else {
+			await select('vm-a');
+			await select('vm-b');
+			await fireEvent.click(bulkDelete()!);
+		}
+		await waitFor(() => expect(mocks.error).toHaveBeenCalledOnce());
+		expect(mocks.confirm).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
 	it.each(['live', 'missing', 'selection', 'scope', 'permission'] as const)(
 		'blocks a bulk confirmation after %s changes', async (change) => {
 			await mount();
@@ -203,6 +287,7 @@ describe('consumer instance list lifecycle safety', () => {
 			await select('vm-b');
 			const pending = await pendingConfirmation();
 			await fireEvent.click(bulkDelete()!);
+			await waitFor(() => expect(mocks.confirm).toHaveBeenCalledOnce());
 			if (change === 'live' || change === 'missing') {
 				rows = change === 'live' ? [instance('vm-a'), instance('vm-b', 'ACTIVE')] : [instance('vm-a')];
 				await mocks.refresh!();

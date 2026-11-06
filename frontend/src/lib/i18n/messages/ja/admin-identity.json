@@ -2,7 +2,6 @@
 	"projectDelete.cleanup": "削除",
 	"projectDelete.cleanupLabel": "{resource}の削除画面を開く",
 	"projectDelete.cleanupHelp": "各削除ボタンは、このプロジェクトで絞り込んだリソースモニターを開きます。移動先で個別に削除し、戻って再確認してください。",
-	"projectDelete.resources.child_projects": "子プロジェクト",
 	"resourceMonitor.title": "プロジェクトリソースモニター",
 	"resourceMonitor.help": "選択したプロジェクトの全一覧です。個別の通常削除のみ対応し、強制・一括削除は行いません。ネイティブの所有権・状態・保護ポリシーが適用されます。",
 	"resourceMonitor.back": "プロジェクト一覧に戻る",
@@ -29,6 +28,7 @@
 	"resourceMonitor.refused": "削除要求が拒否されました。権限・所有権・リソース状態・依存関係を確認し、一覧を更新してください。要求を自動再送しません。",
 	"resourceMonitor.pending": "削除受付済み · 完了待ち",
 	"resourceMonitor.unknownStatus": "削除結果不明",
+	"projectDelete.resources.child_projects": "子プロジェクト",
 	"userDelete.actions": "操作",
 	"userDelete.actionLabel": "ユーザー {name} を削除",
 	"userDelete.selfProtected": "自分のアカウントは削除できません",
@@ -641,7 +641,6 @@
 	"roleMetadata.namePreview": "名前のプレビュー：<name>{name}</name>",
 	"roleMetadata.invalidName": "領域と等級には英字・数字・ハイフンを使用します。すべての空白はハイフンに置き換えられます。",
 	"roleMetadata.domain": "ドメインID（任意）",
-
 	"rolePresets.preview": "ロールプリセットをプレビュー",
 	"rolePresets.confirm": "ロールプリセットを適用しますか？不足するロールとプロジェクトの継承リンクを追加し、表示された旧サービス継承リンクを削除します。ロールIDと直接の割り当ては維持します。先に新しいサービス側ポリシーを配備してください。",
 	"rolePresets.apply": "プリセットを適用",

@@ -2,7 +2,6 @@
 	"projectDelete.cleanup": "Remove",
 	"projectDelete.cleanupLabel": "Open the removal screen for {resource}",
 	"projectDelete.cleanupHelp": "Each Remove button opens a resource monitor filtered to this project. Delete resources individually there, then return and check resources again.",
-	"projectDelete.resources.child_projects": "Child projects",
 	"resourceMonitor.title": "Project resource monitor",
 	"resourceMonitor.help": "Complete inventory for the selected project. Only individual normal deletion is supported, never force or bulk deletion. Native ownership, state and protection policies apply.",
 	"resourceMonitor.back": "Back to projects",
@@ -29,6 +28,7 @@
 	"resourceMonitor.refused": "The deletion request was refused. Check permissions, ownership, resource state and dependencies, then refresh the inventory. The request is not repeated automatically.",
 	"resourceMonitor.pending": "Deletion accepted · pending completion",
 	"resourceMonitor.unknownStatus": "Deletion outcome unknown",
+	"projectDelete.resources.child_projects": "Child projects",
 	"userDelete.actions": "Actions",
 	"userDelete.actionLabel": "Delete user {name}",
 	"userDelete.selfProtected": "You cannot delete your own account",
@@ -641,7 +641,6 @@
 	"roleMetadata.namePreview": "Name preview: <name>{name}</name>",
 	"roleMetadata.invalidName": "Areas and grades use Latin letters, numbers, and hyphens. All whitespace is replaced with hyphens.",
 	"roleMetadata.domain": "Domain ID (optional)",
-
 	"rolePresets.preview": "Preview role presets",
 	"rolePresets.confirm": "Apply role presets? Missing roles and project inheritance links will be added; the listed legacy service inheritance links will be removed. Role IDs and direct assignments are preserved. Deploy the new native service policies first.",
 	"rolePresets.apply": "Apply presets",

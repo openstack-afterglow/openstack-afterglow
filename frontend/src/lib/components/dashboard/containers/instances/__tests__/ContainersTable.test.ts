@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import ContainersTable from '../ContainersTable.svelte';
 import type { ZunContainer } from '$lib/types/zunContainer';
+import { createTableView } from '$lib/utils/tableView.svelte';
 
 const containers: ZunContainer[] = [
   {
@@ -13,11 +14,23 @@ const containers: ZunContainer[] = [
     image: 'ubuntu', command: null, cpu: 2, memory: '1G', created_at: '2026-01-02T00:00:00Z',
   },
 ];
+const createView = () => createTableView({
+  rows: () => containers,
+  columns: () => [
+    { key: 'name', label: '이름', value: row => row.name },
+    { key: 'status', label: '상태', value: row => row.status },
+    { key: 'image', label: '이미지', value: row => row.image },
+    { key: 'cpu', label: 'CPU', value: row => row.cpu },
+    { key: 'memory', label: '메모리', value: row => row.memory },
+    { key: 'created_at', label: '생성일', value: row => row.created_at },
+  ],
+});
 
 describe('ContainersTable selection', () => {
   it('renders visible row checkboxes and disables selection while a bulk action is busy', () => {
     const { container } = render(ContainersTable, {
       containers,
+      view: createView(),
       selectedIds: new Set(['stopped-1']),
       selectableIds: new Set(containers.map((item) => item.uuid)),
       selectionDisabled: true,
@@ -40,6 +53,7 @@ describe('ContainersTable selection', () => {
     const onToggleSelect = vi.fn();
     const { container } = render(ContainersTable, {
       containers,
+      view: createView(),
       selectedIds: new Set(['stopped-1']),
       selectableIds: new Set(containers.map((item) => item.uuid)),
       onToggleSelect,
@@ -63,6 +77,7 @@ describe('ContainersTable selection', () => {
     const onToggleSelect = vi.fn();
     render(ContainersTable, {
       containers,
+      view: createView(),
       selectedIds: new Set<string>(),
       selectableIds: new Set(containers.map((item) => item.uuid)),
       onToggleSelect,
@@ -82,6 +97,7 @@ describe('ContainersTable selection', () => {
     const onOpen = vi.fn();
     render(ContainersTable, {
       containers,
+      view: createView(),
       selectedIds: new Set<string>(),
       selectableIds: new Set(containers.map((item) => item.uuid)),
       onToggleSelect: vi.fn(),

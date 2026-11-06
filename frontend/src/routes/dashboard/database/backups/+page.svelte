@@ -16,6 +16,11 @@
 	import DbBackupsTable from '$lib/components/database/DbBackupsTable.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { dbBackupColumns } from '$lib/utils/databaseTableColumns';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { authDisplayContext } from '$lib/stores/authDisplayContext';
 	let backups = $state<DbBackup[]>([]);
 	let instances = $state<DbInstance[]>([]);
 	let flavors = $state<DbFlavor[]>([]);
@@ -28,7 +33,19 @@
 	let selectedBackup = $state<DbBackup | null>(null);
 	const selection = createResourceSelection();
 	let bulkBusy = $state(false);
-	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
+	let search = $state('');
+	const view = createTableView({
+		rows: () => backups,
+		columns: () => dbBackupColumns(instances),
+		search: () => search,
+		searchable: (row) => [row.name, row.id, row.status, row.instance_id ?? '', instances.find((instance) => instance.id === row.instance_id)?.name ?? '', row.datastore?.type ?? '', row.datastore?.version ?? '', String(row.size ?? ''), row.created_at, row.description ?? ''],
+		locale: intlLocale,
+	});
+	const selectableIds = $derived(new Set(view.rows.map((backup) => backup.id)));
+	$effect(() => {
+		const visibleIds = view.rows.map((backup) => backup.id);
+		untrack(() => selection.retain(visibleIds));
+	});
 	const STUCK_MS = 6 * 3600 * 1000;
 	function isStuck(backup: DbBackup): boolean {
 		return backup.status === 'BUILDING' && (Date.now() - new Date(backup.created_at).getTime()) > STUCK_MS;
@@ -49,25 +66,27 @@
 	async function fetchBackups(force = false) {
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
+		const ownerSnapshot = $authDisplayContext.key;
 		try {
 			const nextBackups = await api.get<DbBackup[]>('/api/v1/database-instances/backups', tokenSnapshot, projectSnapshot, { refresh: force });
-			if ($auth.projectId !== projectSnapshot) return;
+			if ($auth.projectId !== projectSnapshot || $authDisplayContext.key !== ownerSnapshot) return;
 			backups = nextBackups;
 			selection.retain(nextBackups.map((backup) => backup.id));
 			error = '';
 		} catch (e) {
-			if ($auth.projectId === projectSnapshot) error = e instanceof ApiError ? tr('errors.lookupStatus', { status: e.status }) : tr('errors.server');
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) error = e instanceof ApiError ? tr('errors.lookupStatus', { status: e.status }) : tr('errors.server');
 		} finally {
-			if ($auth.projectId === projectSnapshot) loading = false;
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) loading = false;
 		}
 	}
 
 	async function fetchInstances() {
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
+		const ownerSnapshot = $authDisplayContext.key;
 		try {
 			const nextInstances = await api.get<DbInstance[]>('/api/v1/database-instances', tokenSnapshot, projectSnapshot);
-			if ($auth.projectId === projectSnapshot) instances = nextInstances;
+			if ($auth.projectId === projectSnapshot && $authDisplayContext.key === ownerSnapshot) instances = nextInstances;
 		} catch { /* ignore */ }
 	}
 
@@ -138,13 +157,16 @@
 		defaultInterval: 15,
 		intervalOptions: [10, 15, 30, 60],
 	});
+	const displayOwner = $derived($authDisplayContext.key);
 
 	$effect(() => {
-		const pid = $auth.projectId;
-		clearBackupsState();
-		loading = Boolean(pid);
-		if (!pid) return;
+		void displayOwner;
 		untrack(() => {
+			clearBackupsState();
+			search = '';
+			view.reset();
+			loading = $authDisplayContext.ready;
+			if (!$authDisplayContext.ready) return;
 			void fetchBackups();
 			void fetchInstances();
 			// Restore-only flavors remain lazy until restore intent.
@@ -163,6 +185,7 @@
 <PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb={tr('breadcrumbs.backups')} title={tr('backups.title')} />
 	<ResourceToolbar label={tr('backups.toolbar')}>
+		<RegexSearch id="database-backups-search" bind:value={search} />
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -180,12 +203,14 @@
 
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: tr('backups.title') })} />
-	{:else if backups.length === 0}
-		<EmptyState headline={tr('backups.listEmpty')} description={tr('backups.emptyHelp')} />
 	{:else}
+		{#if backups.length === 0}
+			<EmptyState headline={tr('backups.listEmpty')} description={tr('backups.emptyHelp')} />
+		{/if}
 		<DbBackupsTable
 			{backups}
 			{instances}
+			{view}
 			selectedIds={selection.ids}
 			selectableIds={selectableIds}
 			selectionDisabled={bulkBusy}

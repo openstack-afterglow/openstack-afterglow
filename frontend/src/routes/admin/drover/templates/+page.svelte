@@ -13,6 +13,13 @@
 	import K3sClusterTemplateModal from '$lib/components/admin/drover/K3sClusterTemplateModal.svelte';
 	import type { K3sClusterTemplate } from '$lib/types/k3s';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
 
 	let templates = $state<K3sClusterTemplate[]>([]);
 	let loading = $state(true);
@@ -21,6 +28,24 @@
 	let editTarget = $state<K3sClusterTemplate | null>(null);
 	let deleteTarget = $state<K3sClusterTemplate | null>(null);
 	let deleteError = $state('');
+	let loadError = $state('');
+	let search = $state('');
+	const enabledPlugins = (template: K3sClusterTemplate) => Object.entries(template.plugins_enabled).filter(([, enabled]) => enabled).map(([name]) => name).join(', ');
+	const view = createTableView<K3sClusterTemplate>({
+		rows: () => templates,
+		search: () => search,
+		searchable: (template) => [template.name, template.id, template.description, template.k3s_version, template.default_node_count, template.os_type, ...Object.entries(template.plugins_enabled).filter(([, enabled]) => enabled).map(([name]) => name), template.public_visible ? t('templateModal.public') : t('templateCard.private')].map((value) => String(value ?? '')),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('form.name'), value: (template) => template.name },
+			{ key: 'description', label: t('templateModal.description'), value: (template) => template.description },
+			{ key: 'version', label: t('templateCard.version'), value: (template) => template.k3s_version },
+			{ key: 'agents', label: t('templateCard.agents'), value: (template) => template.default_node_count },
+			{ key: 'os', label: t('form.osType'), value: (template) => template.os_type },
+			{ key: 'plugins', label: t('templateCard.plugins'), value: enabledPlugins, filterValues: (template) => Object.entries(template.plugins_enabled).filter(([, enabled]) => enabled).map(([name]) => name) },
+			{ key: 'public', label: t('templateModal.public'), value: (template) => template.public_visible, format: (value) => value ? t('templateModal.public') : t('templateCard.private') },
+		],
+	});
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -30,8 +55,9 @@
 		else refreshing = true;
 		try {
 			templates = await api.get<K3sClusterTemplate[]>('/api/v1/admin/k3s-cluster-templates', token, projectId, { refresh: force });
-		} catch {
-			templates = [];
+			loadError = '';
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : scopeT('state.unavailable');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -79,15 +105,20 @@
 			/>
 		{/snippet}
 	</PageHeader>
+	<div class="mb-4 space-y-3">
+		<RegexSearch id="admin-drover-templates-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class="" />
+	</div>
+	{#if loadError}<Alert tone="danger" class="mb-4">{loadError}</Alert>{/if}
 
 	{#if loading}
 		<LoadingState variant="surface" />
 	{:else}
-			{#if templates.length === 0}
-				<div class="text-ink-2 text-sm py-12 text-center">{t('templates.empty')}</div>
-			{:else}
+			{#if view.rows.length === 0 && !loadError}
+				<div class="text-ink-2 text-sm py-12 text-center">{templates.length ? tc('table.noMatches') : t('templates.empty')}</div>
+			{:else if view.rows.length > 0}
 				<div class="motion-stagger grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-					{#each templates as template (template.id)}
+					{#each view.rows as template (template.id)}
 						<K3sClusterTemplateCard
 							template={template}
 							onEdit={(tmpl) => (editTarget = tmpl)}

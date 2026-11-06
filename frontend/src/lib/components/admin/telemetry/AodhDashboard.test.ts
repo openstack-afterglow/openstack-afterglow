@@ -25,6 +25,7 @@ vi.mock('$lib/api/adminTelemetry', async importOriginal => ({
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-telemetry';
+import { t as commonT } from '$lib/i18n/ns/common';
 import { TelemetryError } from '$lib/api/adminTelemetry';
 import AodhPage from '../../../../routes/admin/monitoring/aodh/+page.svelte';
 
@@ -56,6 +57,14 @@ function count(label: string) {
 	return within(region).getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
 }
 function readAlarm(name = 'CPU high') { return screen.getByRole('button', { name: t('aodh.selectNamed', { name }) }); }
+async function selectNativeState(state: 'alarm' | 'ok' | 'insufficient data') {
+	const label = commonT('table.filterColumn', { column: t('state') });
+	await fireEvent.click(screen.getByRole('button', { name: label }));
+	const popup = screen.getByRole('dialog', { name: label });
+	const choice = state === 'alarm' ? t('aodh.alarm') : state === 'ok' ? t('aodh.ok') : t('aodh.insufficientData');
+	await fireEvent.click(within(popup).getByRole('checkbox', { name: choice }));
+	await fireEvent.keyDown(popup, { key: 'Escape' });
+}
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -67,6 +76,42 @@ beforeEach(() => {
 afterEach(() => { cleanup(); auth.set({ ...initialAuth }); authReady.set(true); projectSwitching.set(false); logoutInProgress.set(false); initLocale('ko'); });
 
 describe('rendered Aodh route', () => {
+	it.each(['alarms', 'history'] as const)('retains %s conditions on refresh but clears them for a different actor', async kind => {
+		mocks.request.mockImplementation((path: string) => Promise.resolve(path.startsWith(`/aodh/alarms/${firstId}`) ? details() : overview()));
+		render(AodhPage);
+		await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
+		const regionLabel = kind === 'alarms' ? t('aodh.alarms') : t('history');
+		const ui = () => within(screen.getByRole('region', { name: regionLabel }));
+		if (kind === 'history') await fireEvent.click(readAlarm());
+		await waitFor(() => expect(ui().getByRole('table')).toBeTruthy());
+		const column = kind === 'alarms' ? t('type') : t('aodh.event');
+		const filterLabel = commonT('table.filterColumn', { column });
+		await fireEvent.click(ui().getByRole('button', { name: filterLabel }));
+		const popup = screen.getByRole('dialog', { name: filterLabel });
+		await fireEvent.click(within(popup).getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(within(popup).getByRole('button', { name: commonT('table.ascending') }));
+		await fireEvent.keyDown(popup, { key: 'Escape' });
+		await fireEvent.input(ui().getByLabelText(commonT('table.search')), { target: { value: 'owner-a-only' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('refresh') }));
+		await waitFor(() => expect(mocks.request.mock.calls.filter(([path]) => path === '/aodh?limit=25')).toHaveLength(2));
+		if (kind === 'history') await fireEvent.click(await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) }));
+		await waitFor(() => expect(ui().getByLabelText(commonT('table.search'))).toBeTruthy());
+		expect((ui().getByLabelText(commonT('table.search')) as HTMLInputElement).value).toBe('owner-a-only');
+		expect(ui().getByText(commonT('table.noMatches'))).toBeTruthy();
+		expect(ui().getByRole('button', { name: filterLabel }).closest('th')?.getAttribute('aria-sort')).toBe('ascending');
+
+		auth.update(state => ({ ...state, userId: 'user-b', sessionId: 'session-b' }));
+		await waitFor(() => expect(mocks.request.mock.calls.filter(([path]) => path === '/aodh?limit=25')).toHaveLength(3));
+		await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
+		if (kind === 'history') await fireEvent.click(readAlarm());
+		await waitFor(() => expect(ui().getByRole('table')).toBeTruthy());
+		expect((ui().getByLabelText(commonT('table.search')) as HTMLInputElement).value).toBe('');
+		expect(ui().queryByText(commonT('table.noMatches'))).toBeNull();
+		expect(ui().getByRole('table').querySelectorAll('tbody tr').length).toBeGreaterThan(0);
+		expect(ui().getByRole('button', { name: filterLabel }).hasAttribute('aria-describedby')).toBe(false);
+		expect(ui().getByRole('button', { name: filterLabel }).closest('th')?.getAttribute('aria-sort')).toBe('none');
+	});
+
 	it('keeps compact alarm selection, history disclosure and native paging reachable', async () => {
 		viewport.desktop = false;
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(details()).mockResolvedValueOnce(page([alarm(secondId, 'Next alarm', 'ok')]));
@@ -86,7 +131,7 @@ describe('rendered Aodh route', () => {
 	it('counts only verified current-page native states and opens without mutations', async () => {
 		mocks.request.mockResolvedValue(overview(page([alarm(), alarm(secondId, 'Healthy', 'ok'), alarm(thirdId, 'No sample', 'insufficient data'), alarm('44444444-4444-4444-8444-444444444444', 'Unknown', 'new-native-state')])));
 		render(AodhPage);
-		await screen.findByRole('table', { name: t('aodh.alarms') });
+		await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		expect(count(t('aodh.loaded'))).toBe('4');
 		expect(count(t('aodh.ok'))).toBe('1');
 		expect(count(t('aodh.alarm'))).toBe('1');
@@ -141,12 +186,11 @@ describe('rendered Aodh route', () => {
 		const alarmRead = deferred<NativePage<NativeAlarm>>();
 		const okRead = deferred<NativePage<NativeAlarm>>();
 		mocks.request.mockResolvedValueOnce(overview()).mockReturnValueOnce(alarmRead.promise).mockReturnValueOnce(okRead.promise);
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
-		const filter = screen.getByRole('combobox', { name: t('aodh.filter') });
-		await fireEvent.change(filter, { target: { value: 'alarm' } });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
+		await selectNativeState('alarm');
 		expect(screen.getByText(t('aodh.countsUnknown'))).toBeTruthy();
-		expect(screen.queryByRole('table', { name: t('aodh.alarms') })).toBeNull();
-		await fireEvent.change(filter, { target: { value: 'ok' } });
+		expect(screen.queryByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) })).toBeNull();
+		await selectNativeState('ok');
 		okRead.resolve(page([alarm(secondId, 'Current OK', 'ok')]));
 		await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'Current OK' }) });
 		alarmRead.resolve(page([alarm(firstId, 'Late alarm')])); await settle();
@@ -158,7 +202,7 @@ describe('rendered Aodh route', () => {
 
 	it('continues short marker pages until explicit empty, supports previous and refreshes the current page', async () => {
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(page([alarm(secondId, 'Second page', 'ok')])).mockResolvedValueOnce(page()).mockResolvedValueOnce(page([alarm(secondId, 'Second page', 'ok')])).mockResolvedValueOnce(overview(page([alarm(thirdId, 'Refreshed page', 'insufficient data')])));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		await fireEvent.click(screen.getByRole('button', { name: t('next') }));
 		await screen.findByText('Second page');
 		expect(count(t('aodh.loaded'))).toBe('1');
@@ -176,9 +220,9 @@ describe('rendered Aodh route', () => {
 	it('resets pagination on filter change and rejects an older page result', async () => {
 		const oldPage = deferred<NativePage<NativeAlarm>>();
 		mocks.request.mockResolvedValueOnce(overview()).mockReturnValueOnce(oldPage.promise).mockResolvedValueOnce(page([alarm(secondId, 'Filtered only', 'insufficient data')]));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		await fireEvent.click(screen.getByRole('button', { name: t('next') }));
-		await fireEvent.change(screen.getByRole('combobox', { name: t('aodh.filter') }), { target: { value: 'insufficient data' } });
+		await selectNativeState('insufficient data');
 		await screen.findByText('Filtered only'); oldPage.resolve(page([alarm(thirdId, 'Late page')])); await settle();
 		expect(screen.queryByText('Late page')).toBeNull();
 		expect((screen.getByRole('button', { name: t('previous') }) as HTMLButtonElement).disabled).toBe(true);
@@ -190,7 +234,7 @@ describe('rendered Aodh route', () => {
 		Object.assign(value, { description: 'Known description', state_reason: 'Native state reason', alarm_actions: ['https://receiver.invalid/alarm?secret=private-a'], ok_actions: ['log://'], insufficient_data_actions: ['https://receiver.invalid/missing?secret=private-b'], gnocchi_resources_threshold_rule: { metric: 'cpu', threshold: 0 }, time_constraints: [{ name: 'office', start: '0 9 * * *', duration: 3600 }], unexpected_secret: 'DO NOT RENDER', });
 		const response = details(value); response.status = 'partial'; response.history = { status: 'forbidden', error: 'telemetry_native_forbidden', items: [], next_marker: null, truncated: false };
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(response);
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		await fireEvent.click(readAlarm());
 		await screen.findByText('Known description');
 		expect(screen.getByRole('link', { name: t('aodh.edit') }).getAttribute('href')).toBe(`/admin/monitoring/aodh/settings?alarm=${firstId}`);
@@ -210,7 +254,7 @@ describe('rendered Aodh route', () => {
 		const response = details(); response.history.truncated = true;
 		const emptyHistory = details(); emptyHistory.history.items = [];
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(response).mockResolvedValueOnce(emptyHistory);
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') }); await fireEvent.click(readAlarm());
+		render(AodhPage); await fireEvent.click(await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) }));
 		const history = await screen.findByRole('table', { name: t('history') });
 		expect(history.getAttribute('tabindex')).toBe('0'); expect(within(history).getByText('event-a')).toBeTruthy();
 		expect(within(screen.getByRole('region', { name: t('history') })).getByText(t('truncated'))).toBeTruthy();
@@ -220,12 +264,12 @@ describe('rendered Aodh route', () => {
 	it('fences late details after selection changes, close and filter changes', async () => {
 		const first = deferred<AodhDetail>(); const closing = deferred<AodhDetail>(); const filtering = deferred<AodhDetail>();
 		mocks.request.mockResolvedValueOnce(overview(page([alarm(), alarm(secondId, 'Second')]))).mockReturnValueOnce(first.promise).mockResolvedValueOnce(details(alarm(secondId, 'Current second'))).mockReturnValueOnce(closing.promise).mockReturnValueOnce(filtering.promise).mockResolvedValueOnce(page());
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		await fireEvent.click(readAlarm()); await fireEvent.click(readAlarm('Second')); await screen.findByText('Current second');
 		first.resolve(details(alarm(firstId, 'Late first details'))); await settle(); expect(screen.queryByText('Late first details')).toBeNull();
 		await fireEvent.click(readAlarm()); await fireEvent.click(screen.getByRole('button', { name: t('close') }));
 		closing.resolve(details(alarm(firstId, 'Closed detail'))); await settle(); expect(screen.queryByText('Closed detail')).toBeNull();
-		await fireEvent.click(readAlarm()); await fireEvent.change(screen.getByRole('combobox', { name: t('aodh.filter') }), { target: { value: 'ok' } });
+		await fireEvent.click(readAlarm()); await selectNativeState('ok');
 		filtering.resolve(details(alarm(firstId, 'Filtered detail'))); await screen.findByText(t('aodh.emptyPage')); await settle();
 		expect(screen.queryByText('Filtered detail')).toBeNull(); expect(screen.getByText(t('aodh.selectAlarm'))).toBeTruthy();
 	});
@@ -234,7 +278,7 @@ describe('rendered Aodh route', () => {
 		const initial = deferred<AodhOverview>();
 		mocks.request.mockReturnValueOnce(initial.promise).mockResolvedValueOnce(page([alarm(secondId, 'Current filtered', 'ok')]));
 		render(AodhPage);
-		await fireEvent.change(screen.getByRole('combobox', { name: t('aodh.filter') }), { target: { value: 'ok' } });
+		await selectNativeState('ok');
 		await screen.findByText('Current filtered'); initial.resolve(overview(page([alarm(firstId, 'Late overview')]))); await settle();
 		expect(screen.queryByText('Late overview')).toBeNull(); expect(count(t('aodh.ok'))).toBe('1');
 		expect(screen.getByText(/"alarms": true/)).toBeTruthy();
@@ -244,7 +288,7 @@ describe('rendered Aodh route', () => {
 		const lateDetail = deferred<AodhDetail>();
 		const privateAlarm = alarm(); privateAlarm.alarm_actions = ['https://receiver.invalid/private'];
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(details(privateAlarm)).mockReturnValueOnce(lateDetail.promise).mockResolvedValueOnce(overview(page([alarm(secondId, 'Fresh context')])));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') }); await fireEvent.click(readAlarm());
+		render(AodhPage); await fireEvent.click(await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) }));
 		await screen.findByText('https://receiver.invalid/private');
 		await fireEvent.click(screen.getByRole('button', { name: t('aodh.detailRetry') }));
 		auth.update(value => ({ ...value, projectId: 'project-b' })); auth.update(value => ({ ...value, projectId: 'project-a' }));
@@ -266,7 +310,7 @@ describe('rendered Aodh route', () => {
 	it('rejects a late marker page across context ABA', async () => {
 		const old = deferred<NativePage<NativeAlarm>>();
 		mocks.request.mockResolvedValueOnce(overview()).mockReturnValueOnce(old.promise).mockResolvedValueOnce(overview(page([alarm(secondId, 'New context first page')])));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') }); await fireEvent.click(screen.getByRole('button', { name: t('next') }));
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) }); await fireEvent.click(screen.getByRole('button', { name: t('next') }));
 		auth.update(value => ({ ...value, sessionId: 'session-b' })); auth.update(value => ({ ...value, sessionId: 'session-a' }));
 		await screen.findByText('New context first page'); old.resolve(page([alarm(thirdId, 'Stale marker page')])); await settle();
 		expect(screen.queryByText('Stale marker page')).toBeNull();
@@ -276,7 +320,7 @@ describe('rendered Aodh route', () => {
 	it('treats nullable native metadata as unreported without inventing a known state', async () => {
 		const value: NativeAlarm = { ...alarm(), state: null, description: null, severity: null, state_reason: null, state_timestamp: null, evaluate_timestamp: null, timestamp: null, project_id: null, user_id: null };
 		mocks.request.mockResolvedValueOnce(overview(page([value]))).mockResolvedValueOnce(details(value));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') });
+		render(AodhPage); await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) });
 		expect(count(t('aodh.unknownState'))).toBe('1'); expect(count(t('aodh.alarm'))).toBe('0');
 		await fireEvent.click(readAlarm()); await screen.findByRole('link', { name: t('aodh.edit') });
 		const selected = screen.getByRole('region', { name: t('aodh.selectedAlarm') });
@@ -287,7 +331,7 @@ describe('rendered Aodh route', () => {
 	it('clears loaded private fields and stops reads on authority loss', async () => {
 		const privateAlarm = alarm(); privateAlarm.ok_actions = ['https://receiver.invalid/private-ok'];
 		mocks.request.mockResolvedValueOnce(overview()).mockResolvedValueOnce(details(privateAlarm));
-		render(AodhPage); await screen.findByRole('table', { name: t('aodh.alarms') }); await fireEvent.click(readAlarm()); await screen.findByText('https://receiver.invalid/private-ok');
+		render(AodhPage); await fireEvent.click(await screen.findByRole('button', { name: t('aodh.selectNamed', { name: 'CPU high' }) })); await screen.findByText('https://receiver.invalid/private-ok');
 		projectSwitching.set(true); await settle();
 		expect(screen.queryByText('https://receiver.invalid/private-ok')).toBeNull(); expect(screen.getByText(t('aodh.authorityRequired'))).toBeTruthy();
 		expect(mocks.request).toHaveBeenCalledTimes(2);

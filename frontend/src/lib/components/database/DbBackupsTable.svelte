@@ -6,10 +6,15 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import { t as tl } from '$lib/i18n/ns/common';
+	import type { TableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
   let {
     backups,
     instances,
+		view,
     selectedIds = new Set<string>(),
     selectableIds = new Set<string>(),
     selectionDisabled = false,
@@ -22,6 +27,7 @@
   }: {
     backups: DbBackup[];
     instances: DbInstance[];
+		view: TableView<DbBackup>;
     selectedIds?: ReadonlySet<string>;
     selectableIds?: ReadonlySet<string>;
     selectionDisabled?: boolean;
@@ -47,7 +53,7 @@
   }
 
   function formatSize(size: number | undefined): string {
-    return size ? `${size} GB` : '-';
+    return size == null ? '-' : `${size} GB`;
   }
 
   function formatDate(value: string | undefined): string {
@@ -62,10 +68,12 @@
   }
 </script>
 
+<TableViewControls {view} />
+{#if backups.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
     <div class="responsive-card-toolbar text-sm"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allBackups')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div>
-    {#each backups as backup (backup.id)}
+    {#each view.rows as backup (backup.id)}
       {@const instance = findInstance(backup)}
       {@const stuck = isStuck(backup)}
       <CompactResourceCard selected={selectedIds.has(backup.id)}>
@@ -85,17 +93,17 @@
     <thead>
       <tr class="db-backups-table__head text-xs">
         <th class="text-left px-3 py-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allBackups')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span class="db-backups-table__selection-count normal-case" aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div></th>
-        <th class="text-left px-4 py-3 font-medium">{tr('labels.name')}</th>
-        <th class="text-left px-4 py-3 font-medium">{tr('labels.status')}</th>
-        <th class="text-left px-4 py-3 font-medium">{tr('backups.source')}</th>
-        <th class="text-left px-4 py-3 font-medium">{tr('labels.datastoreEnglish')}</th>
-        <th class="text-left px-4 py-3 font-medium">{tr('labels.size')}</th>
-        <th class="text-left px-4 py-3 font-medium">{tr('labels.created')}</th>
+        <TableColumnHeader {view} columnKey="name" />
+        <TableColumnHeader {view} columnKey="status" />
+        <TableColumnHeader {view} columnKey="source" />
+        <TableColumnHeader {view} columnKey="datastore" />
+        <TableColumnHeader {view} columnKey="size" />
+        <TableColumnHeader {view} columnKey="created" />
         <th class="text-right px-4 py-3 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
     <tbody class="motion-stagger">
-      {#each backups as backup (backup.id)}
+      {#each view.rows as backup (backup.id)}
         {@const instance = findInstance(backup)}
         {@const stuck = isStuck(backup)}
         <tr class="resource-selection-surface db-backups-table__row transition-colors" data-selected={selectedIds.has(backup.id)}>

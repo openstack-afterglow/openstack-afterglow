@@ -4,6 +4,7 @@ import { writable } from 'svelte/store';
 import { tick } from 'svelte';
 import { setLocale } from '$lib/i18n/runtime.svelte';
 import { t } from '$lib/i18n/ns/admin-telemetry';
+import { t as commonT } from '$lib/i18n/ns/common';
 import type { GnocchiOverview, MetricMeasures, NativeMetric, NativePage, NativeResource, TelemetryAuthority } from '$lib/api/adminTelemetry';
 import type * as AdminTelemetryApi from '$lib/api/adminTelemetry';
 import type * as SvelteReactivity from 'svelte/reactivity';
@@ -65,6 +66,13 @@ const sectionUI = (key: MessageKey) => within(screen.getByRole('heading', { name
 const pagination = (key: MessageKey) => within(screen.getByRole('group', { name: t(key) }));
 async function settle() { await tick(); await Promise.resolve(); await tick(); }
 async function selectFirstMetric() { await fireEvent.click(await screen.findByRole('button', { name: m1 })); }
+async function selectResourceType(type: 'instance' | 'generic') {
+	const label = commonT('table.filterColumn', { column: t('type') });
+	await fireEvent.click(sectionUI('gnocchi.resources').getByRole('button', { name: label }));
+	const popup = screen.getByRole('dialog', { name: label });
+	await fireEvent.click(within(popup).getByRole('checkbox', { name: type }));
+	await fireEvent.keyDown(popup, { key: 'Escape' });
+}
 
 beforeEach(() => {
 	viewport.desktop = true;
@@ -207,7 +215,6 @@ describe('Gnocchi route read-only service diagnostics', () => {
 		mocks.request.mockImplementation((path: string) => Promise.resolve(path.includes('/measures') ? { ...samples(), measures: [] } : respond(path)));
 		render(Page); await selectFirstMetric();
 		await screen.findByText(t('gnocchi.noData'));
-		expect(screen.queryByRole('table', { name: `${t('gnocchi.measures')} · ${m1}` })).toBeNull();
 		mocks.request.mockImplementation((path: string) => Promise.resolve(path.includes('/measures') ? samples(123456789.125) : respond(path)));
 		await fireEvent.click(screen.getByRole('button', { name: t('gnocchi.readMeasures') }));
 		await screen.findByText('123456789.125');
@@ -272,7 +279,6 @@ describe('Gnocchi route read-only service diagnostics', () => {
 		await waitFor(() => expect(sectionUI('gnocchi.measures').getByText(t('status.forbidden'))).toBeTruthy());
 		expect(screen.getByText(t('gnocchi.noVerifiedSamples'))).toBeTruthy();
 		expect(screen.queryByText(t('gnocchi.noData'))).toBeNull();
-		expect(screen.queryByRole('table', { name: `${t('gnocchi.measures')} · ${m1}` })).toBeNull();
 	});
 
 	it.each(['resources', 'metrics'] as const)('does not label an empty partial %s page as a verified zero count', async kind => {
@@ -301,6 +307,47 @@ describe('Gnocchi route read-only service diagnostics', () => {
 });
 
 describe('Gnocchi mounted consumer request ownership', () => {
+	it.each([
+		['gnocchi.archivePolicies', 'name'],
+		['gnocchi.archivePolicyRules', 'name'],
+		['gnocchi.resources', 'gnocchi.project'],
+		['gnocchi.metrics', 'unit'],
+		['gnocchi.measures', 'gnocchi.value'],
+		['gnocchi.capabilities', 'gnocchi.field'],
+		['gnocchi.processing', 'gnocchi.field'],
+	] as const)('keeps %s view conditions on refresh and clears them for a different project', async (section, column) => {
+		render(Page);
+		await screen.findByRole('button', { name: m1 });
+		if (section === 'gnocchi.measures') await selectFirstMetric();
+		await waitFor(() => expect(sectionUI(section).getByRole('table')).toBeTruthy());
+		const filterLabel = commonT('table.filterColumn', { column: t(column) });
+		await fireEvent.click(sectionUI(section).getByRole('button', { name: filterLabel }));
+		const popup = screen.getByRole('dialog', { name: filterLabel });
+		await fireEvent.click(within(popup).getByRole('button', { name: commonT('table.selectNone') }));
+		await fireEvent.click(within(popup).getByRole('button', { name: commonT('table.ascending') }));
+		await fireEvent.keyDown(popup, { key: 'Escape' });
+		await fireEvent.input(sectionUI(section).getByLabelText(commonT('table.search')), { target: { value: 'owner-a-only' } });
+		await fireEvent.click(screen.getAllByRole('button', { name: t('refresh') })[0]);
+		await waitFor(() => expect(mocks.request.mock.calls.filter(([path]) => path === '/gnocchi')).toHaveLength(2));
+		if (section === 'gnocchi.measures') await selectFirstMetric();
+		await waitFor(() => expect(sectionUI(section).getByLabelText(commonT('table.search'))).toBeTruthy());
+		expect((sectionUI(section).getByLabelText(commonT('table.search')) as HTMLInputElement).value).toBe('owner-a-only');
+		expect(sectionUI(section).getByText(commonT('table.noMatches'))).toBeTruthy();
+		expect(sectionUI(section).getByRole('button', { name: filterLabel }).hasAttribute('aria-describedby')).toBe(true);
+		expect(sectionUI(section).getByRole('button', { name: filterLabel }).closest('th')?.getAttribute('aria-sort')).toBe('ascending');
+
+		auth.update(state => ({ ...state, projectId: 'project-b' }));
+		await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/gnocchi', { token: 'token-a', projectId: 'project-b' }));
+		await screen.findByRole('button', { name: m1 });
+		if (section === 'gnocchi.measures') await selectFirstMetric();
+		await waitFor(() => expect(sectionUI(section).getByRole('table')).toBeTruthy());
+		expect((sectionUI(section).getByLabelText(commonT('table.search')) as HTMLInputElement).value).toBe('');
+		expect(sectionUI(section).queryByText(commonT('table.noMatches'))).toBeNull();
+		expect(sectionUI(section).getByRole('table').querySelectorAll('tbody tr').length).toBeGreaterThan(0);
+		expect(sectionUI(section).getByRole('button', { name: filterLabel }).hasAttribute('aria-describedby')).toBe(false);
+		expect(sectionUI(section).getByRole('button', { name: filterLabel }).closest('th')?.getAttribute('aria-sort')).toBe('none');
+	});
+
 	it('ignores a previous metric selection even when the same metric is selected again (ABA)', async () => {
 		const old = Promise.withResolvers<MetricMeasures>();
 		let reads = 0;
@@ -349,21 +396,40 @@ describe('Gnocchi mounted consumer request ownership', () => {
 		expect(screen.getByText('42')).toBeTruthy();
 	});
 
-	it('drops a late resource type page and clears resource links and measurements on type change', async () => {
+	it('resets the native marker, drops a late type page and clears resource links and pending measurements on type change', async () => {
 		const old = Promise.withResolvers<NativePage<NativeResource>>();
+		const oldMeasures = Promise.withResolvers<MetricMeasures>();
+		mocks.request.mockImplementation((path: string) => {
+			if (path.startsWith('/gnocchi/resources?')) return Promise.resolve(path.includes('marker=') ? page([resource(r2)], r2) : page([resource()], r1));
+			return Promise.resolve(respond(path));
+		});
 		render(Page);
-		await fireEvent.click(await screen.findByRole('button', { name: r1 }));
+		await screen.findByRole('button', { name: r1 });
+		await fireEvent.click(pagination('gnocchi.resources').getByRole('button', { name: t('next') }));
+		await fireEvent.click(await screen.findByRole('button', { name: r2 }));
 		await fireEvent.click(screen.getByRole('button', { name: `cpu · ${m1}` }));
 		await screen.findByRole('table', { name: `${t('gnocchi.measures')} · ${m1}` });
-		mocks.request.mockImplementation((path: string) => path.startsWith('/gnocchi/resources?') && path.includes('type=instance') ? old.promise : Promise.resolve(respond(path)));
-		await fireEvent.change(screen.getByLabelText(t('gnocchi.resourceType')), { target: { value: 'instance' } });
+		mocks.request.mockImplementation((path: string) => {
+			if (path.includes('/measures')) return oldMeasures.promise;
+			if (path.startsWith('/gnocchi/resources?') && path.includes('type=instance')) return old.promise;
+			return Promise.resolve(respond(path));
+		});
+		await fireEvent.click(screen.getByRole('button', { name: t('gnocchi.readMeasures') }));
+		await selectResourceType('instance');
 		expect(screen.queryByRole('button', { name: `cpu · ${m1}` })).toBeNull();
 		expect(screen.getByText(t('gnocchi.selectMetric'))).toBeTruthy();
-		await fireEvent.change(screen.getByLabelText(t('gnocchi.resourceType')), { target: { value: 'generic' } });
+		expect((pagination('gnocchi.resources').getByRole('button', { name: t('previous') }) as HTMLButtonElement).disabled).toBe(true);
+		expect(sectionUI('gnocchi.resources').queryByText(t('gnocchi.emptyPage'))).toBeNull();
+		expect(sectionUI('gnocchi.resources').queryByText(t('gnocchi.loadedPage', { page: 1, count: 0 }))).toBeNull();
+		await selectResourceType('generic');
 		await screen.findByRole('button', { name: r1 });
-		old.resolve(page([resource('late-resource-type')])); await old.promise; await settle();
+		old.resolve(page([resource('late-resource-type')])); oldMeasures.resolve(samples(987654));
+		await Promise.all([old.promise, oldMeasures.promise]); await settle();
 		expect(screen.queryByRole('button', { name: 'late-resource-type' })).toBeNull();
+		expect(screen.queryByText('987654')).toBeNull();
+		expect(screen.getByText(t('gnocchi.selectMetric'))).toBeTruthy();
 		expect(mocks.request).toHaveBeenCalledWith('/gnocchi/resources?type=instance&limit=25', expect.anything());
+		expect(mocks.request).toHaveBeenLastCalledWith('/gnocchi/resources?type=generic&limit=25', expect.anything());
 	});
 
 	it.each(['resources', 'metrics'] as const)('discards a late %s next page after returning to the previous marker', async kind => {

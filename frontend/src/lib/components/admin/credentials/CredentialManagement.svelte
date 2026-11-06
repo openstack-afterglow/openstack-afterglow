@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import { compileRegexSearch, matchesRegexSearch } from '$lib/utils/regexSearch';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onMount, untrack } from 'svelte';
   import { get } from 'svelte/store';
@@ -27,35 +32,31 @@
   const ctrl = createAdminCredentialsController(kind, domainId);
   const componentId = $props.id();
   const modalTitleId = `${componentId}-credential-title`;
-  let search = $state(''), userSearch = $state(''), projectFilter = $state(''), typeFilter = $state(''), expiryFilter = $state('');
-  $effect(() => { const id = domainId; untrack(() => ctrl.setScope(id)); search = ''; userSearch = ''; projectFilter = ''; typeFilter = ''; expiryFilter = ''; });
+  let search = $state(''), userSearch = $state('');
+  $effect(() => { const id = domainId; untrack(() => { ctrl.setScope(id); search = ''; userSearch = ''; tableView.reset(); }); });
   const title = $derived(t(kind === 'application' ? 'credentials.applicationTitle' : 'credentials.userTitle'));
   const expiryFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }));
   function expiryLabel(value: string) {
     const timestamp = Date.parse(value);
     return Number.isFinite(timestamp) ? expiryFormatter.format(timestamp) : value;
   }
-  const projects = $derived([...new Set(ctrl.items.flatMap(item => item.project_id ? [item.project_id] : []))].sort());
-  const types = $derived([...new Set(ctrl.items.flatMap(item => 'type' in item ? [item.type] : []))].sort());
-  const hasFilters = $derived(Boolean(search || projectFilter || typeFilter || expiryFilter));
-  const filtered = $derived(ctrl.items.filter(item => {
-    if (projectFilter && item.project_id !== projectFilter) return false;
-    if (typeFilter && (!('type' in item) || item.type !== typeFilter)) return false;
-    if (expiryFilter && 'expires_at' in item) {
-      const expires = item.expires_at === null ? null : Date.parse(item.expires_at);
-      if (expiryFilter === 'never' && expires !== null) return false;
-      if (expiryFilter === 'expired' && (expires === null || !(expires <= Date.now()))) return false;
-      if (expiryFilter === 'active' && expires !== null && !(expires > Date.now())) return false;
-    }
-    return [item.id, item.user_id, item.project_id, 'name' in item ? item.name : item.type, 'description' in item ? item.description : ''].some(value => value?.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  }));
-  const filteredUsers = $derived(ctrl.users.filter(user => user.id === ctrl.selectedUser || `${user.name} ${user.id}`.toLocaleLowerCase().includes(userSearch.toLocaleLowerCase())));
+  const tableView = createTableView<(typeof ctrl.items)[number]>({ rows: () => ctrl.items, locale: () => intlLocale(), search: () => search, searchable: row => [row.id, row.user_id, row.project_id, 'name' in row ? row.name : row.type, 'description' in row ? row.description : ''].map(value => String(value ?? '')), columns: () => [
+    { key: 'name', label: t(kind === 'application' ? 'form.name' : 'credentials.type'), value: row => 'name' in row ? row.name : row.type },
+    { key: 'id', label: t('credentials.id'), value: row => row.id },
+    { key: 'project', label: t('credentials.project'), value: row => row.project_id },
+    { key: 'user', label: t('credentials.user'), value: row => row.user_id },
+    ...(kind === 'application' ? [{ key: 'expiry', label: t('credentials.expiry'), value: (row: (typeof ctrl.items)[number]) => 'expires_at' in row ? row.expires_at : null }] : [])
+  ] });
+  const filtered = $derived(tableView.rows);
+  const hasFilters = $derived(Boolean(search || Object.keys(tableView.filters).length || tableView.sort));
+  const userPattern = $derived(compileRegexSearch(userSearch));
+  const filteredUsers = $derived(ctrl.users.filter(user => matchesRegexSearch(userPattern, [user.name, user.id])));
   const modalOpen = $derived(ctrl.mode !== null);
   const modalTitle = $derived(ctrl.mode === 'issued' ? t('credentials.issued') : ctrl.mode === 'delete' ? t('credentials.deleteTitle') : ctrl.mode === 'edit' ? t('credentials.editTitle') : ctrl.mode === 'create' ? t('credentials.createTitle') : t('credentials.detailTitle'));
   onMount(() => {
     const sync = () => {
       const state = get(auth);
-      ctrl.setAuthority({ token: state.token ?? undefined, userId: state.userId ?? undefined, projectId: state.projectId ?? undefined, admin: state.isSystemAdmin, ready: get(authReady) && !get(projectSwitching) });
+      ctrl.setAuthority({ sessionId: state.sessionId ?? undefined, token: state.token ?? undefined, userId: state.userId ?? undefined, projectId: state.projectId ?? undefined, admin: state.isSystemAdmin, ready: get(authReady) && !get(projectSwitching) });
     };
     const subscriptions = [auth.subscribe(sync), authReady.subscribe(sync), projectSwitching.subscribe(sync)];
     return () => { for (const unsubscribe of subscriptions) unsubscribe(); ctrl.dispose(); };
@@ -71,49 +72,22 @@
   </PageHeader>
   <Alert tone="info" class="mb-4">{t(kind === 'application' ? 'credentials.applicationNotice' : 'credentials.userNotice')}</Alert>
   <ResourceToolbar label={t('credentials.filters')} class="mb-4">
-    <Field label={t('credentials.search')} for="credential-search" class="min-w-0 w-full md:flex-1 md:basis-56">
-      <TextInput id="credential-search" type="search" bind:value={search} ariaLabel={t('credentials.search')} placeholder={t('credentials.search')} />
-    </Field>
-    <Field label={t('credentials.userSearch')} for="credential-user-search" class="min-w-0 w-full md:flex-1 md:basis-56">
-      <TextInput id="credential-user-search" type="search" bind:value={userSearch} ariaLabel={t('credentials.userSearch')} placeholder={t('credentials.userSearch')} />
-    </Field>
+    <RegexSearch id="credential-search" bind:value={search} label={t('credentials.search')} />
+    <RegexSearch id="credential-user-search" bind:value={userSearch} label={t('credentials.userSearch')} />
     <Field label={t('credentials.user')} for="credential-user" class="min-w-0 w-full md:flex-1 md:basis-48">
       <SelectInput id="credential-user" value={ctrl.selectedUser} ariaLabel={t('credentials.user')} onchange={(event) => ctrl.selectUser((event.currentTarget as HTMLSelectElement).value)}>
         <option value="">{kind === 'user' ? t('credentials.allUsers') : dt('credentials.chooseUser')}</option>
         {#each filteredUsers as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}
       </SelectInput>
     </Field>
-    <Field label={t('credentials.project')} for="credential-project" class="min-w-0 w-full md:flex-1 md:basis-48">
-      <SelectInput id="credential-project" bind:value={projectFilter} ariaLabel={t('credentials.project')}>
-        <option value="">{dt('credentials.allProjects')}</option>
-        {#each projects as project}<option value={project}>{project}</option>{/each}
-      </SelectInput>
-    </Field>
-    {#if kind === 'user'}
-      <Field label={t('credentials.type')} for="credential-type" class="min-w-0 max-w-full w-full md:w-auto">
-        <SelectInput id="credential-type" bind:value={typeFilter} ariaLabel={t('credentials.type')}>
-          <option value="">{dt('credentials.allTypes')}</option>
-          {#each types as type}<option value={type}>{type}</option>{/each}
-        </SelectInput>
-      </Field>
-    {:else}
-      <Field label={t('credentials.expiry')} for="credential-expiry" class="min-w-0 max-w-full w-full md:w-auto">
-        <SelectInput id="credential-expiry" bind:value={expiryFilter} ariaLabel={t('credentials.expiry')}>
-          <option value="">{dt('credentials.allExpiries')}</option>
-          <option value="expired">{dt('credentials.expired')}</option>
-          <option value="active">{dt('credentials.active')}</option>
-          <option value="never">{dt('credentials.neverExpires')}</option>
-        </SelectInput>
-      </Field>
-    {/if}
   </ResourceToolbar>
+  <TableViewControls view={tableView} />
   {#if ctrl.directoryLoading}<LoadingState variant="inline" label={t('credentials.directoryLoading')} />{/if}
   {#if ctrl.directoryError}<Alert class="mb-3">{ctrl.directoryError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{t('credentials.retryDirectory')}</Button></Alert>{/if}
   {#if ctrl.error}<Alert class="mb-4">{ctrl.error}</Alert>{/if}
   {#if ctrl.loading}<LoadingState variant="surface" label={t('state.loading')} />
   {:else if ctrl.allowed && !ctrl.error && kind === 'application' && !ctrl.selectedUser && !ctrl.directoryLoading && !ctrl.directoryError}<p class="text-sm text-ink-2 py-8 text-center">{dt('credentials.chooseUser')}</p>
-  {:else if !ctrl.error && !ctrl.directoryLoading && !ctrl.directoryError && ctrl.allowed && filtered.length === 0}<p class="text-sm text-ink-2 py-8 text-center">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>
-  {:else if ctrl.allowed && filtered.length}
+  {:else if ctrl.allowed}
     <ResponsiveTable>
       {#snippet cards()}
         {#each filtered as item (item.id)}
@@ -126,15 +100,15 @@
             {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button>{/snippet}
             {#snippet details()}<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('credentials.id')}</dt><dd class="break-all font-mono">{item.id}</dd></div><div><dt class="text-ink-2">{t('credentials.user')}</dt><dd class="break-all">{item.user_id}</dd></div></dl>{/snippet}
           </CompactResourceCard>
-        {/each}
+        {:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<p class="text-sm text-ink-2">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>{/if}{/each}
       {/snippet}
     <TableShell><table>
-      <thead><tr><th>{t(kind === 'application' ? 'form.name' : 'credentials.type')}</th><th>{t('credentials.id')}</th><th>{t('credentials.project')}</th><th>{t('credentials.user')}</th>{#if kind === 'application'}<th>{t('credentials.expiry')}</th>{/if}<th>{t('credentials.actions')}</th></tr></thead>
+      <thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="id" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="user" />{#if kind === 'application'}<TableColumnHeader view={tableView} columnKey="expiry" />{/if}<th>{t('credentials.actions')}</th></tr></thead>
       <tbody>{#each filtered as item (item.id)}<tr>
         <td>{'name' in item ? item.name : item.type}</td><td class="font-mono">{item.id}</td><td>{item.project_id ?? t('credentials.none')}</td><td>{item.user_id}</td>
         {#if 'expires_at' in item}<td>{#if item.expires_at}<time datetime={item.expires_at} title={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</td>{/if}
         <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button></div></td>
-      </tr>{/each}</tbody>
+      </tr>{:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<tr><td colspan={kind === 'application' ? 6 : 5}>{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</td></tr>{/if}{/each}</tbody>
     </table></TableShell>
     </ResponsiveTable>
   {/if}

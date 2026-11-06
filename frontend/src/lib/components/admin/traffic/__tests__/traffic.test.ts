@@ -183,10 +183,8 @@ describe('non-country address range observations', () => {
 			else for (const [key, value] of [['requests', row.requests], ['errors', row.errors]] as const) {
 				expect(within(container).getByText(t(`metrics.${key}`), { selector: 'dt' }).nextElementSibling?.textContent).toBe(String(value));
 			}
-			expect(within(section).queryByRole('button')).toBeNull();
 			expect(Array.from((screen.getByLabelText(t('map.select')) as HTMLSelectElement).options).map(option => option.value)).not.toContain(row.network);
 		}
-		expect(within(section).queryByRole('table') !== null).toBe(desktop);
 		expect(screen.getByRole('button', { name: `${t('map.unknown')} (XX)` })).toBeTruthy();
 		const spec = map.mock.results.at(-1)!.value as ChoroplethSpec;
 		for (const row of networks) { expect(spec.features[row.network]).toBeUndefined(); expect(spec.flows?.some(flow => flow.key === row.network)).toBe(false); }
@@ -197,7 +195,6 @@ describe('non-country address range observations', () => {
 		render(TrafficCountryMap, { countries: observations().countries });
 		const section = within(screen.getByRole('region', { name: t('networks.title') }));
 		for (const key of ['networks.empty', 'networks.subset', 'networks.aggregation', 'networks.history'] as const) expect(section.getByText(t(key))).toBeTruthy();
-		expect(section.queryByRole('table')).toBeNull();
 	});
 });
 

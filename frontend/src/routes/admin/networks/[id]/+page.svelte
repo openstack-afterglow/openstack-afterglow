@@ -30,6 +30,7 @@
 	let ownerWarning = $state(false);
 	let requestGeneration = 0;
 	let ownerGeneration = 0;
+	let logicalOwner = '';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -44,8 +45,10 @@
 		const id = $page.params.id;
 		const tok = token;
 		const project = projectId;
+		const owner = JSON.stringify([$auth.userId, $auth.projectId, id, $page.url.pathname]);
 		untrack(() => {
-			network = null;
+			if (logicalOwner !== owner || !tok) network = null;
+			logicalOwner = owner;
 			error = '';
 			ownerNames = new Map();
 			ownerWarning = false;
@@ -215,7 +218,7 @@
 		<NetworkHeader {network} {deleting} onDelete={deleteNetwork} />
 		{#if ownerWarning}<Alert tone="warning" class="mb-4" title={t('networksPage.ownerWarning')}>{t('networksPage.ownerWarningBody')}</Alert>{/if}
 		<NetworkInfoCard {network} ownerName={network.project_id ? ownerNames.get(network.project_id) : undefined} />
-		{#key network.id}
+		{#key JSON.stringify([$auth.userId, $auth.projectId, network.id])}
 			<SubnetSection
 				subnets={network.subnet_details}
 				onAdd={addSubnet}
@@ -228,8 +231,6 @@
 				{savingSubnet}
 			/>
 		{/key}
-		{#if network.routers.length > 0}
 			<RouterTable routers={network.routers} />
-		{/if}
 	{/if}
 </PageShell>

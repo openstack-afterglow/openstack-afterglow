@@ -1,4 +1,7 @@
 <script lang="ts">
+ import { t as storageCommonT } from '$lib/i18n/ns/common';
+ import type { TableView } from '$lib/utils/tableView.svelte';
+ import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
   import type { VolumeSnapshot } from '$lib/types/volume';
   import { formatStorage } from '$lib/utils/format';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -10,8 +13,8 @@
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
-  let { snapshots, deleting, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
-    snapshots: VolumeSnapshot[]; deleting: string | null; selectedIds: ReadonlySet<string>;
+  let { view, snapshots, deleting, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
+    view: TableView<VolumeSnapshot>; snapshots: VolumeSnapshot[]; deleting: string | null; selectedIds: ReadonlySet<string>;
     selectableIds: ReadonlySet<string>; selectionDisabled: boolean;
     onToggleSelect: (id: string) => void; onToggleAll: () => void;
     onDelete: (id: string, name: string) => Promise<void>;
@@ -19,6 +22,7 @@
   const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
+{#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
 <ResponsiveTable>
   {#snippet cards()}
     <div class="responsive-card-toolbar">
@@ -57,12 +61,12 @@
     <thead>
       <tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
         <th class="text-left py-3 pr-3"><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotsTable.selectAll')} /></th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.name')}</th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.status')}</th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.size')}</th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.volumeId')}</th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.description')}</th>
-        <th class="text-left py-3 pr-6">{t('snapshotsTable.createdAt')}</th>
+        <TableColumnHeader {view} columnKey="name" />
+        <TableColumnHeader {view} columnKey="status" />
+        <TableColumnHeader {view} columnKey="size" />
+        <TableColumnHeader {view} columnKey="volume" />
+        <TableColumnHeader {view} columnKey="description" />
+        <TableColumnHeader {view} columnKey="created" />
         <th class="text-right py-3">{t('snapshotsTable.actions')}</th>
       </tr>
     </thead>

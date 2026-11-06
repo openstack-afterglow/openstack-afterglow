@@ -10,45 +10,69 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
   import { buildContainerCreatePayload } from '$lib/utils/containerCreatePayload';
-  import type { ZunContainer, ContainerListResponse, EnvVar, PortMapping } from '$lib/types/zunContainer';
+  import { parseContainerListResponse, type ZunContainer, type EnvVar, type PortMapping } from '$lib/types/zunContainer';
   import ZunServiceBanner from '$lib/components/dashboard/containers/instances/ZunServiceBanner.svelte';
   import ZunServiceUnavailable from '$lib/components/dashboard/containers/instances/ZunServiceUnavailable.svelte';
   import ContainersTable from '$lib/components/dashboard/containers/instances/ContainersTable.svelte';
   import ContainerCreateModal from '$lib/components/dashboard/containers/instances/ContainerCreateModal.svelte';
   import { toast } from '$lib/stores/toast';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+  const inventoryOwner = $derived(JSON.stringify([$auth.sessionId, $auth.userId, $auth.identityDomainId, $auth.domainId, $auth.projectId, !!$auth.token, $auth.isSystemAdmin, $auth.isDomainManager, $auth.canWrite, [...($auth.roles ?? [])].sort()]));
+  let loadGeneration = 0;
   let containers = $state<ZunContainer[]>([]);
+  let search = $state('');
+  const columns = (): TableColumn<ZunContainer>[] => [
+    { key: 'name', label: t('instances.fields.name'), value: row => row.name },
+    { key: 'status', label: t('instances.fields.status'), value: row => row.status },
+    { key: 'image', label: t('instances.fields.image'), value: row => row.image },
+    { key: 'cpu', label: t('instances.fields.cpu'), value: row => row.cpu },
+    { key: 'memory', label: t('instances.fields.memory'), value: row => row.memory },
+    { key: 'created_at', label: t('instances.fields.createdAt'), value: row => row.created_at },
+  ];
+  const view = createTableView({ rows: () => containers, columns, search: () => search,
+    searchable: row => [row.name, row.uuid, row.status, row.image, row.cpu, row.memory, row.created_at].map(value => String(value ?? '')), locale: intlLocale });
   let serviceAvailable = $state(true);
   let serviceMessage = $state('');
   let loading = $state(true);
   let refreshing = $state(false);
   let error = $state('');
+  let loaded = $state(false);
   let actionTarget = $state<string | null>(null);
   let showModal = $state(false);
   let creating = $state(false);
   let createError = $state('');
   const selection = createResourceSelection();
   let bulkBusy = $state(false);
-  const selectableIds = $derived(new Set(containers.map((container) => container.uuid)));
+  const selectableIds = $derived(new Set(view.rows.map((container) => container.uuid)));
   const startIds = $derived(new Set(containers.filter((container) => container.status === 'Stopped' || container.status === 'Created').map((container) => container.uuid)));
   const stopIds = $derived(new Set(containers.filter((container) => container.status === 'Running').map((container) => container.uuid)));
+  $effect(() => { selection.retain(view.rows.map(row => row.uuid)); });
 
   async function fetchContainers(opts?: { refresh?: boolean }) {
+    const owner = inventoryOwner;
+    const generation = ++loadGeneration;
+    const current = () => owner === inventoryOwner && generation === loadGeneration;
     try {
-      const resp = await api.get<ContainerListResponse>('/api/v1/containers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
+      const resp = parseContainerListResponse(await api.get<unknown>('/api/v1/containers', $auth.token ?? undefined, $auth.projectId ?? undefined, opts));
+      if (!current()) return;
       containers = resp.items;
       selection.retain(resp.items.map((container) => container.uuid));
       serviceAvailable = resp.service_available;
       serviceMessage = resp.message;
+      loaded = true;
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? t('instances.errors.listLoadFailed', { status: e.status, message: e.message }) : t('instances.errors.server');
+      if (current()) error = e instanceof ApiError ? t('instances.errors.listLoadFailed', { status: e.status, message: e.message }) : t('instances.errors.server');
     } finally {
-      loading = false;
+      if (current()) loading = false;
     }
   }
 
@@ -174,10 +198,18 @@
   });
 
   $effect(() => {
-    const projectId = $auth.projectId;
+    void inventoryOwner;
     untrack(() => {
+      loadGeneration += 1;
       selection.clear();
-      if (!projectId) return;
+      search = '';
+      view.reset();
+      containers = [];
+      loaded = false;
+      error = '';
+      serviceAvailable = true;
+      serviceMessage = '';
+      if (!$auth.projectId || !$auth.token) { loading = false; return; }
       loading = true;
       void fetchContainers();
     });
@@ -209,17 +241,21 @@
     {/snippet}
   </PageHeader>
 
-  {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  {#if error}<div role="alert" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   <ZunServiceBanner available={serviceAvailable} message={serviceMessage} />
+  <RegexSearch id="zun-container-search" bind:value={search} class="mb-4" />
 
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('instances.list.title') })} />
   {:else if !serviceAvailable}
     <ZunServiceUnavailable />
+  {:else if error && !loaded}
+    <Button variant="secondary" onclick={forceRefresh}>{tl('autoRefresh.refreshNow')}</Button>
   {:else}
     <ContainersTable
       {containers}
+      {view}
       {actionTarget}
       selectedIds={selection.ids}
       selectableIds={selectableIds}

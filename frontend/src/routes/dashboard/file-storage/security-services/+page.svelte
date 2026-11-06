@@ -1,4 +1,10 @@
 <script lang="ts">
+ import { authDisplayContext } from '$lib/stores/authDisplayContext';
+ import { intlLocale } from '$lib/i18n/runtime.svelte';
+ import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+ import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+ import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+
 	import { t as tl } from '$lib/i18n/ns/common';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
@@ -43,7 +49,17 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 	const enabled = $derived($betaFeatures.fileStorageSecurityServices);
 	const selection = createResourceSelection();
-	const selectableIds = $derived(new Set(services.map((service) => service.id)));
+	let search = $state('');
+ const columns = $derived<TableColumn<SecurityService>[]>([
+  { key: 'name', label: t('securityTable.name'), value: row => row.name },
+  { key: 'type', label: t('securityTable.type'), value: row => row.type },
+  { key: 'status', label: t('securityTable.status'), value: row => row.status },
+  { key: 'dns', label: t('securityTable.dnsIp'), value: row => row.dns_ip },
+  { key: 'server', label: t('securityTable.server'), value: row => row.server },
+  { key: 'domain', label: t('securityTable.domain'), value: row => row.domain },
+ ]);
+ const view = createTableView({ locale: intlLocale, rows: () => services, columns: () => columns, search: () => search, searchable: row => [row.id, ...columns.map(column => column.value(row))].map(value => String(value ?? '')) });
+ const selectableIds = $derived(new Set(view.rows.map((service) => service.id)));
 
 	function clearState() {
 		services = [];
@@ -187,6 +203,12 @@
 		const ids = selectableIds;
 		untrack(() => selection.retain(ids));
 	});
+ let viewOwner = '';
+ $effect(() => authDisplayContext.subscribe(({ key }) => {
+  if (viewOwner === key) return;
+  viewOwner = key;
+  untrack(() => { search = ''; view.reset(); });
+ }));
 </script>
 
 {#if !enabled}
@@ -202,11 +224,16 @@
 			{/snippet}
 		</PageHeader>
 		<p class="text-sm text-ink-2 mb-6">{t('security.description')}</p>
+ <RegexSearch id="SecurityServiceTable-search" bind:value={search} />
+ <TableViewControls {view} class={loading ? '' : 'lg:hidden'} />
+ 
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('security.title') })} />
 		{:else}
-			<SecurityServiceTable {services} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onAttachClick={openAttachModal} onDelete={deleteService} onCreateClick={() => { showModal = true; }} />
+			{#if !error && services.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{t('securityTable.empty')}</p>
+			{:else if services.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
+			<SecurityServiceTable services={view.rows} {view} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onAttachClick={openAttachModal} onDelete={deleteService} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel={t('security.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
 	</PageShell>

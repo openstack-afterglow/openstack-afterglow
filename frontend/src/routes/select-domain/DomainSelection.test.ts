@@ -400,7 +400,7 @@ it('does not observe search keystrokes or mislabel a filtered workspace list as 
 	render(Page);
 	await screen.findByRole('button', { name: /^Home project/ });
 	const applied = experience.applied.mock.calls.length, states = experience.state.mock.calls.length, records = experience.record.mock.calls.length;
-	await fireEvent.input(screen.getByRole('textbox', { name: t('projectSearch') }), { target: { value: 'private search with no match' } });
+	await fireEvent.input(screen.getByRole('searchbox', { name: t('projectSearch') }), { target: { value: 'private search with no match' } });
 	await screen.findByText(t('empty'));
 	expect(experience.applied).toHaveBeenCalledTimes(applied);
 	expect(experience.state).toHaveBeenCalledTimes(states);

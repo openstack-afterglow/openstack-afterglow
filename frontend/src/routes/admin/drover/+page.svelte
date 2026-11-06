@@ -15,11 +15,16 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
-	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
  import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
  import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import ClusterFailure from '$lib/components/dashboard/drover/ClusterFailure.svelte';
 	import { Alert, Button } from '$lib/components/ui';
+	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface AdminK3sCluster {
 		id: string;
@@ -42,7 +47,32 @@
 	let loadGeneration = 0;
 	onDestroy(() => { loadGeneration++; });
 	const privateScope = createPrivateViewScope();
-	let statusFilter = $state<'all' | 'active' | 'pending' | 'error' | 'deleted'>('all');
+	let nativeStatuses = $state<string[] | null>(null);
+	let search = $state('');
+	const view = createTableView<AdminK3sCluster>({
+		rows: () => clusters,
+		search: () => search,
+		searchable: (c) => [c.name, c.id, c.status, c.project_id, c.project_id ? $projectNames.get(c.project_id) : '', c.server_ip, c.agent_count, c.k3s_version, c.created_at, c.status_reason].map((value) => String(value ?? '')),
+		locale: intlLocale,
+		columns: () => [
+			{ key: 'name', label: t('form.name'), value: (c) => c.name },
+			{
+				key: 'status', label: t('admin.status'), value: (c) => c.status,
+				filterMode: 'multiple',
+				filterOptions: () => [...new Set([
+					'ACTIVE', 'CREATING', 'PROVISIONING', 'SCALING', 'DELETING', 'ERROR', 'FAILED', 'DELETED',
+					...clusters.map((cluster) => cluster.status).filter(Boolean),
+				])].map((status) => ({ value: status, label: status, count: null })),
+				filterSelection: () => nativeStatuses,
+				onFilterChange: setNativeStatuses,
+			},
+			{ key: 'project', label: t('admin.project'), value: (c) => c.project_id ? ($projectNames.get(c.project_id) ?? c.project_id) : null },
+			{ key: 'serverIp', label: t('admin.serverIp'), value: (c) => c.server_ip },
+			{ key: 'nodes', label: t('admin.nodes'), value: (c) => c.agent_vm_ids?.length ?? 0 },
+			{ key: 'version', label: t('admin.version'), value: (c) => c.k3s_version },
+			{ key: 'created', label: t('admin.created'), value: (c) => c.created_at },
+		],
+	});
 	// 슬라이드 패널
 	let selectedClusterId = $state<string | null>(null);
 	let selectedProjectId = $state<string | null>(null);
@@ -73,13 +103,9 @@
 		try {
 			let url = '/api/v1/admin/k3s-clusters';
 			const params = new URLSearchParams();
-			if (statusFilter === 'active') params.set('status', 'ACTIVE');
-			else if (statusFilter === 'pending') params.set('status', 'CREATING,PROVISIONING,SCALING,DELETING');
-			else if (statusFilter === 'error') params.set('status', 'ERROR,FAILED');
-			else if (statusFilter === 'deleted') {
-				params.set('include_deleted', 'true');
-				params.set('status', 'DELETED');
-			}
+			// A nonempty comma is parsed by native Drover as an empty status set.
+			if (nativeStatuses !== null) params.set('status', nativeStatuses.length ? nativeStatuses.join(',') : ',');
+			if (nativeStatuses?.includes('DELETED')) params.set('include_deleted', 'true');
 			if (params.toString()) url += `?${params.toString()}`;
 			const response = await api.get<AdminK3sCluster[]>(url, requestToken, requestProject, { refresh: force });
 			if (!owns()) return;
@@ -92,8 +118,8 @@
 		}
 	}
 
-	function setStatusFilter(filter: typeof statusFilter) {
-		statusFilter = filter;
+	function setNativeStatuses(values: string[] | null) {
+		nativeStatuses = values === null ? null : [...values];
 		clusters = [];
 		void load();
 	}
@@ -131,34 +157,20 @@
 			/>
 		{/snippet}
 	</PageHeader>
-	<div class="mb-4 flex min-w-0 items-center gap-2">
-		<span class="shrink-0 text-xs text-ink-2">{t('admin.statusFilter')}</span>
-		<div class="min-w-0 overflow-x-auto pb-1">
-			<ToggleGroup
-				value={statusFilter}
-				options={[
-					{ value: 'all', label: t('admin.all') },
-					{ value: 'active', label: t('admin.active') },
-					{ value: 'pending', label: t('admin.pending') },
-					{ value: 'error', label: t('admin.error') },
-					{ value: 'deleted', label: t('admin.deleted') }
-				]}
-				onchange={(value) => setStatusFilter(value as typeof statusFilter)}
-				size="xs"
-				ariaLabel={t('admin.statusFilterLabel')}
-			/>
-		</div>
+	<div class="mb-4 space-y-3">
+		<RegexSearch id="admin-drover-search" bind:value={search} label={tc('table.search')} />
+		<TableViewControls {view} class={view.rows.length ? 'lg:hidden' : ''} />
 	</div>
 
 	{#if error}<Alert tone="danger" title={t('clusterError.loadFailed')} class="mb-4">{#if error !== t('clusterError.loadFailed')}{error}{/if}{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => load(true)} disabled={refreshing}>{t('clusterError.reload')}</Button>{/snippet}</Alert>{/if}
 	{#if loading}
 		<LoadingState variant="surface" />
-	{:else if clusters.length === 0 && !error}
-		<EmptyState headline={t('cluster.empty')} />
-	{:else if clusters.length > 0}
+	{:else if view.rows.length === 0 && !error}
+		<EmptyState headline={clusters.length ? tc('table.noMatches') : t('cluster.empty')} />
+	{:else if view.rows.length > 0}
   <ResponsiveTable>
    {#snippet cards()}
-    {#each clusters as c (c.id)}
+    {#each view.rows as c (c.id)}
      <CompactResourceCard>
       <div class="flex flex-wrap items-start gap-2"><button onclick={() => openClusterPanel(c.id)} class="min-w-0 break-all text-left font-medium">{c.name}</button><StatusChip status={c.status} /></div>
       <p class="text-xs text-ink-2 break-all">{t('admin.project')}: {c.project_id ? ($projectNames.get(c.project_id) ?? c.project_id.slice(0, 8)) : '-'}</p><p class="text-xs">{t('admin.nodeCount', { current: c.agent_vm_ids?.length ?? 0, total: c.agent_count })} · {c.k3s_version || '-'}</p>
@@ -171,17 +183,17 @@
 			<table class="min-w-[58rem] text-sm">
 				<thead>
 					<tr class="text-xs uppercase tracking-wide">
-						<th>{t('form.name')}</th>
-						<th>{t('admin.status')}</th>
-						<th>{t('admin.project')}</th>
-						<th>{t('admin.serverIp')}</th>
-						<th>{t('admin.nodes')}</th>
-						<th>{t('admin.version')}</th>
-						<th>{t('admin.created')}</th>
+						<TableColumnHeader {view} columnKey="name" />
+						<TableColumnHeader {view} columnKey="status" />
+						<TableColumnHeader {view} columnKey="project" />
+						<TableColumnHeader {view} columnKey="serverIp" />
+						<TableColumnHeader {view} columnKey="nodes" />
+						<TableColumnHeader {view} columnKey="version" />
+						<TableColumnHeader {view} columnKey="created" />
 					</tr>
 				</thead>
 				<tbody>
-					{#each clusters as c (c.id)}
+					{#each view.rows as c (c.id)}
 						<tr
 							class="cursor-pointer text-xs transition-colors focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 							onclick={() => openClusterPanel(c.id)}

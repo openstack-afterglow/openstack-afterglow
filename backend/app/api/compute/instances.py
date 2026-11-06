@@ -1446,6 +1446,7 @@ async def list_interfaces(
 async def list_instance_volumes(
     instance_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
 ):
     pid = conn._afterglow_project_id
 
@@ -1461,7 +1462,13 @@ async def list_instance_volumes(
         return result
 
     try:
-        return await cached_call(f"afterglow:cinder:{pid}:vol_attach:{instance_id}", ttl_normal(), _fetch)
+        return await cached_call(
+            f"afterglow:cinder:{pid}:vol_attach:{instance_id}",
+            ttl_normal(),
+            _fetch,
+            enabled=cm.enabled,
+            refresh=cm.refresh,
+        )
     except Exception:
         raise HTTPException(status_code=500, detail="작업 실패")
 

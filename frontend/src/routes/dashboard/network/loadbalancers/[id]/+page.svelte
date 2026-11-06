@@ -14,6 +14,7 @@
 	import PoolSection from '$lib/components/dashboard/loadbalancers/PoolSection.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
+	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
 	const ctrl = createNetworkLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -31,6 +32,7 @@
 
 	$effect(() => { if ($auth.projectId) untrack(() => ctrl.fetchAll()); });
 	$effect(() => { ctrl.loadPoolMembers(); });
+	provideTableViewVisibility(() => !ctrl.error && ctrl.lb?.id === $page.params.id);
 </script>
 
 <PageShell class="text-ink-1">
@@ -47,11 +49,15 @@
 		/>
 	</div>
 
-	{#if ctrl.loading && ctrl.lb?.id !== $page.params.id}
-		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })}  />
-	{:else if ctrl.error}
+	{#if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
-	{:else if ctrl.lb}
+	{/if}
+	{#if ctrl.loading && ctrl.lb?.id !== $page.params.id}
+		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })} />
+	{/if}
+	{#if ctrl.lb}
+	{#key `${$auth.projectId ?? ''}:${ctrl.lb.id}`}
+	<div hidden={Boolean(ctrl.error) || ctrl.lb.id !== $page.params.id}>
 		{#if ctrl.loading}<LoadingState variant="inline" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })} />{/if}
 		<LbDetailHeader lb={ctrl.lb} saving={ctrl.saving} onDelete={ctrl.deleteLb} />
 
@@ -76,5 +82,7 @@
 			onAddMember={ctrl.addMember}
 			onRemoveMember={ctrl.removeMember}
 		/>
+	</div>
+	{/key}
 	{/if}
 </PageShell>

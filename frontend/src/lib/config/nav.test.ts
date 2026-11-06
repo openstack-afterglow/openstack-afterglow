@@ -104,14 +104,14 @@ describe('allNavItems service inheritance', () => {
 });
 
 describe('project-independent authenticated routes', () => {
-	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects'])('does not require a selected project for %s', (path) => {
+	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects', '/dashboard/account', '/dashboard/account/mcp', '/dashboard/account/keypairs', '/dashboard/account/sessions', '/dashboard/account/beta', '/dashboard/account/activity'])('does not require a selected project for %s', (path) => {
 		expect(isProjectAgnosticPath(path, false, false)).toBe(true);
 	});
 	it.each(['/admin', '/admin/domains'])('keeps the project exemption on %s system-admin-only', (path) => {
 		expect(isProjectAgnosticPath(path, false, false)).toBe(false);
 		expect(isProjectAgnosticPath(path, true, false)).toBe(true);
 	});
-	it.each(['/select-domain-other', '/dashboard/iam-other', '/dashboard/compute/instances'])('does not exempt lookalike or project-bound route %s', (path) => {
+	it.each(['/select-domain-other', '/dashboard/iam-other', '/dashboard/account-other', '/dashboard/compute/instances'])('does not exempt lookalike or project-bound route %s', (path) => {
 		expect(isProjectAgnosticPath(path, false, false)).toBe(false);
 	});
 	it('permits projectless usage review only with verified current-domain manager authority', () => {

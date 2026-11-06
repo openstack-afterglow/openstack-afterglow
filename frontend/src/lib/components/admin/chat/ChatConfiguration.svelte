@@ -27,6 +27,10 @@
 	import ModelKindEditor from './ModelKindEditor.svelte';
 	import ProviderAccountsPanel from './ProviderAccountsPanel.svelte';
 	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
+	import { t as commonT } from '$lib/i18n/ns/common';
+	import { compileRegexSearch } from '$lib/utils/regexSearch';
+	import { createTableView } from '$lib/utils/tableView.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
 
@@ -386,7 +390,6 @@
 	let creationMethod = $state<'discover' | 'manual'>('discover');
 	let creationGeneration = 0;
 	let manualOutcomeUnknown = $state(false);
-	let catalogProviderId = $state<number | ''>('');
 	let uncertainRegistrations = $state<Record<string, boolean>>({});
 	function registrationUncertain(providerId: number | '', name: string): boolean {
 		return Boolean(uncertainRegistrations[JSON.stringify([providerId, name.trim()])]);
@@ -467,31 +470,6 @@
 	let modelOrderSaving = $state(false);
 	let modelOrderSaveError = $state('');
 
-	interface ModelsDevProvider { id: string; name: string; model_count: number }
-	interface ModelsDevModel {
-		id: string; name: string; last_updated: string | null;
-		input_price_per_million: string | null; output_price_per_million: string | null;
-		price_available: boolean; unsupported_price_fields: string[];
-	}
-	let modelsDevOpen = $state(false);
-	let modelsDevProvider = $state<Provider | null>(null);
-	let modelsDevProviders = $state<ModelsDevProvider[]>([]);
-	let selectedModelsDevProviderId = $state('');
-	let modelsDevProviderSearch = $state('');
-	let modelsDevModels = $state<ModelsDevModel[]>([]);
-	let modelsDevSelections = $state<Record<number, string>>({});
-	let modelsDevLoading = $state(false);
-	let modelsDevError = $state('');
-	let modelsDevImporting = $state(false);
-	function filterModelsDevProviders(query: string): ModelsDevProvider[] {
-		const normalizedQuery = query.trim().toLocaleLowerCase();
-		if (!normalizedQuery) return modelsDevProviders;
-		return modelsDevProviders.filter((provider) =>
-			`${provider.name} ${provider.id}`.toLocaleLowerCase().includes(normalizedQuery)
-		);
-	}
-
-	const filteredModelsDevProviders = $derived.by(() => filterModelsDevProviders(modelsDevProviderSearch));
 
 	// 등록된 모델 일괄 선택/삭제
 	let selectedModelIds = $state<Record<number, boolean>>({});
@@ -552,7 +530,6 @@
 	let discovery = $state<DiscoveryResult | null>(null);
 	let discoveryError = $state('');
 	let availFilter = $state('');
-	let availKind = $state<ModelKind | 'unknown' | ''>('');
 	let selectedAvail = $state<Record<string, boolean>>({});
 	let discovering = $state(false);
 	let registeringBulk = $state(false);
@@ -573,7 +550,7 @@
 		discovery = null;
 		discoveryError = '';
 		availFilter = '';
-		availKind = '';
+		availableView.reset();
 		selectedAvail = {};
 		discovering = false;
 		registeringBulk = false;
@@ -637,14 +614,36 @@
 		);
 	}
 
-	const filteredAvailable = $derived.by(() => {
+	const compiledAvailFilter = $derived(compileRegexSearch(availFilter));
+	const availableCandidates = $derived.by(() => {
 		if (discoverId === null || !discovery || discovery.live_status === 'error') return [];
 		const reg = registeredNames(discoverId);
-		const filter = availFilter.toLocaleLowerCase();
-		const candidates = discovery.candidates;
-		return candidates.filter((candidate) =>
-			!reg.has(candidate.id) && !registrationUncertain(discoverId ?? '', candidate.id) && !['success', 'unknown'].includes(registrationOutcomes[candidate.id]) && (availKind === '' || (candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown')) === availKind) && `${candidate.id} ${candidate.display_name ?? ''}`.toLocaleLowerCase().includes(filter)
+		return discovery.candidates.filter((candidate) =>
+			!reg.has(candidate.id) && !registrationUncertain(discoverId ?? '', candidate.id) &&
+			!['success', 'unknown'].includes(registrationOutcomes[candidate.id])
 		);
+	});
+	const availableView = createTableView({
+		rows: () => availableCandidates,
+		search: () => availFilter,
+		searchable: (candidate) => [candidate.id, candidate.display_name ?? ''],
+		columns: () => [{
+			key: 'kind',
+			label: t('pricing.candidateKindFilter'),
+			value: (candidate) => candidate.model_kind ?? (candidate.purpose === 'chat' ? 'text' : 'unknown'),
+			format: (value) => value === 'unknown' ? t('pricing.unknownKind') : MEDIA_LABELS[value as ModelKind],
+			sortable: false,
+			filterMode: 'single',
+		}]
+	});
+	const filteredAvailable = $derived(availableView.rows);
+	let previousAvailableKind = '';
+	$effect(() => {
+		const selectedKind = availableView.selected('kind').join(',');
+		if (selectedKind !== previousAvailableKind) {
+			previousAvailableKind = selectedKind;
+			untrack(() => { selectedAvail = {}; });
+		}
 	});
 
 	function reviewPriceError(entry: RegistrationEntry): string | undefined {
@@ -1366,116 +1365,6 @@
 		}
 	}
 
-	async function fetchModelsDevProviders(provider: Provider) {
-		const query = new URLSearchParams({
-			local_provider_id: String(provider.id)
-		});
-		const result = await api.get<{ providers: ModelsDevProvider[]; preferred_provider_ids?: string[] }>(
-			`/api/v1/chat/admin/models/pricing/models-dev/providers?${query}`,
-			token,
-			projectId
-		);
-		modelsDevProviders = result.providers;
-		modelsDevProviderSearch = '';
-		selectedModelsDevProviderId = result.providers.some(
-			(candidate) => candidate.id === provider.models_dev_provider_id
-		)
-			? provider.models_dev_provider_id!
-			: result.preferred_provider_ids?.[0] ?? '';
-	}
-
-	async function openModelsDev(provider: Provider) {
-		modelsDevOpen = true;
-		modelsDevProvider = provider;
-		modelsDevError = '';
-		modelsDevModels = [];
-		modelsDevSelections = {};
-		modelsDevLoading = true;
-		try {
-			await fetchModelsDevProviders(provider);
-			await loadModelsDevProvider();
-		} catch (e) {
-			modelsDevError = e instanceof ApiError ? e.message : t('configuration.couldNotLoadTheModelsDevPriceList');
-		} finally {
-			modelsDevLoading = false;
-		}
-	}
-
-
-	function updateModelsDevProviderSearch(event: Event) {
-		modelsDevProviderSearch = (event.currentTarget as HTMLInputElement).value;
-		const candidates = filterModelsDevProviders(modelsDevProviderSearch);
-		if (candidates.some((candidate) => candidate.id === selectedModelsDevProviderId)) return;
-		selectedModelsDevProviderId = candidates[0]?.id ?? '';
-		modelsDevModels = [];
-		modelsDevSelections = {};
-		if (selectedModelsDevProviderId) {
-			void loadModelsDevProvider();
-		} else {
-			modelsDevLoading = false;
-		}
-	}
-
-	async function loadModelsDevProvider() {
-		const providerId = selectedModelsDevProviderId;
-		if (!providerId) {
-			modelsDevLoading = false;
-			modelsDevModels = [];
-			modelsDevSelections = {};
-			return;
-		}
-		modelsDevLoading = true;
-		try {
-			const result = await api.get<{ models: ModelsDevModel[] }>(
-				`/api/v1/chat/admin/models/pricing/models-dev/providers/${encodeURIComponent(providerId)}`,
-				token,
-				projectId
-			);
-			if (providerId !== selectedModelsDevProviderId) return;
-			modelsDevModels = result.models;
-			modelsDevSelections = Object.fromEntries(
-				models
-					.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text' && model.price_source !== 'manual')
-					.flatMap((model) => {
-						const exact = result.models.find((external) => external.price_available && external.id === model.model_name);
-						return exact ? [[model.id, exact.id]] : [];
-					})
-			);
-		} catch (e) {
-			if (providerId === selectedModelsDevProviderId) {
-				modelsDevError = e instanceof ApiError ? e.message : t('configuration.couldNotLoadTheModelsDevModelList');
-			}
-		} finally {
-			if (providerId === selectedModelsDevProviderId) modelsDevLoading = false;
-		}
-	}
-
-	async function importModelsDevPrices() {
-		if (!modelsDevProvider) return;
-		const selections = Object.entries(modelsDevSelections)
-			.filter(([localModelId, externalId]) => externalId && models.some((model) => model.id === Number(localModelId) && (model.model_kind ?? 'text') === 'text'))
-			.map(([localModelId, modelsDevModelId]) => ({ local_model_id: Number(localModelId), models_dev_model_id: modelsDevModelId }));
-		if (selections.length === 0) {
-			toast.error(t('configuration.selectModelsToApplyPricesTo'));
-			return;
-		}
-		modelsDevImporting = true;
-		try {
-			await api.post('/api/v1/chat/admin/models/pricing/models-dev/import', {
-				local_provider_id: modelsDevProvider.id,
-				models_dev_provider_id: selectedModelsDevProviderId,
-				selections
-			}, token, projectId);
-			invalidateChatModels();
-			modelsDevOpen = false;
-			await load();
-			toast.success(t('configuration.modelsDevSuggestedPricesApplied'));
-		} catch (e) {
-			modelsDevError = e instanceof ApiError ? e.message : t('configuration.priceImportFailed');
-		} finally {
-			modelsDevImporting = false;
-		}
-	}
 
 	async function discover(providerId: number) {
 		if (discoverId === providerId) {
@@ -1738,7 +1627,6 @@
 			++loadGeneration;
 			uncertainRegistrations = {};
 			resetCreation();
-			catalogProviderId = '';
 			editingKind = null;
 			clearProviderSecrets();
 			closeBillingKeyModal();
@@ -2105,13 +1993,6 @@
 		</p>
 		<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
 			<Button onclick={openCreation} disabled={loading || providers.length === 0 || modelOrderBusy}>{t('configuration.addModel')}</Button>
-			<div class="flex flex-wrap items-center gap-2">
-				<select class={inputCls} aria-label={t('configuration.modelsDevPricing')} bind:value={catalogProviderId}>
-					<option value="">{providers.length === 1 ? providers[0].name : t('configuration.selectProvider')}</option>
-					{#each providers as provider (provider.id)}<option value={provider.id}>{provider.name}</option>{/each}
-				</select>
-				<Button variant="secondary" onclick={() => { const provider = providers.find((candidate) => candidate.id === catalogProviderId) ?? (providers.length === 1 ? providers[0] : null); if (provider) void openModelsDev(provider); }} disabled={!catalogProviderId && providers.length !== 1}>{t('configuration.modelsDevPricing')}</Button>
-			</div>
 		</div>
 
 		<div class="mb-3">
@@ -2296,14 +2177,21 @@
 											<Field label={t('pricing.reviewKind', { name: entry.name })} for="review-kind-{index}" error={reviewPriceError(entry)}>
 												<SelectInput id="review-kind-{index}" bind:value={entry.kind} disabled={registeringBulk}><option value="">{t('pricing.selectKind')}</option>{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}</SelectInput>
 											</Field>
-											<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
-											<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
 										</div>
-										<ModelMediaPricingEditor kind={entry.kind || 'text'} bind:draft={entry.mediaPricing} prefix="review-media-{index}" disabled={registeringBulk} />
+										{#if entry.kind}
+										<ModelMediaPricingEditor kind={entry.kind} bind:draft={entry.mediaPricing} prefix="review-media-{index}" disabled={registeringBulk}>
+											{#snippet textPricing()}
+												<div class="grid gap-3 sm:grid-cols-2">
+													<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+													<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}><TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} /></Field>
+												</div>
 										{#if cachePricingAvailable}
 											<div class="mt-3 grid gap-3 sm:grid-cols-3">
 												{#each CACHE_PRICE_FIELDS as field (field.key)}<Field label={field.label} for="review-cache-{index}-{field.slug}" help={t('configuration.usd1mTokens')} error={cachePriceError(entry.cachePrices[field.key])}><TextInput id="review-cache-{index}-{field.slug}" bind:value={entry.cachePrices[field.key]} inputmode="decimal" disabled={registeringBulk} /></Field>{/each}
 											</div>
+										{/if}
+											{/snippet}
+										</ModelMediaPricingEditor>
 										{/if}
 									{/if}
 								</div>
@@ -2366,17 +2254,13 @@
 								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>{t('configuration.clearSelection')}</Button>
 							</div>
 							<div class="mb-3">
-								<Field label={t('configuration.filterCandidateModels')} for="discovery-candidate-filter">
-									<TextInput id="discovery-candidate-filter" type="search" placeholder={t('configuration.searchModelIdOrDisplayName')} bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} />
-								</Field>
-								<Field label={t('pricing.candidateKindFilter')} for="discovery-kind-filter">
-									<SelectInput id="discovery-kind-filter" bind:value={availKind} disabled={registeringBulk} onchange={() => { selectedAvail = {}; }}>
-										<option value="">{t('pricing.allKinds')}</option>
-										{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
-										<option value="unknown">{t('pricing.unknownKind')}</option>
-									</SelectInput>
+								<Field label={t('configuration.filterCandidateModels')} for="discovery-candidate-filter" help={commonT('table.regexHelp')} error={compiledAvailFilter.error ? commonT('table.regexError') : undefined}>
+									<TextInput id="discovery-candidate-filter" type="search" placeholder={t('configuration.searchModelIdOrDisplayName')} bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} ariaInvalid={compiledAvailFilter.error} />
 								</Field>
 							</div>
+							<fieldset disabled={registeringBulk}>
+								<TableViewControls view={availableView} class="" />
+							</fieldset>
 							<div class="space-y-1 rounded-lg border border-line p-2">
 								{#each filteredAvailable as candidate (candidate.id)}
 									<label class="flex items-start gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-ink-1)] hover:bg-[var(--color-surface-selected)]">
@@ -2406,15 +2290,16 @@
 				<input class={inputCls} placeholder={t('configuration.modelNameEGGpt4o')} bind:value={mName} disabled={addingModel} />
 				<input class={inputCls} placeholder={t('configuration.displayNameOptional')} bind:value={mDisplay} disabled={addingModel} />
 			</div>
-			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
+			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel}>
+				{#snippet textPricing()}
 			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} disabled={addingModel} />
-				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
+				<Field label={t('configuration.input')} for="model-create-input-price" help={t('configuration.usd1mTokens')}>
+					<TextInput id="model-create-input-price" inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} disabled={addingModel} />
+				</Field>
+				<Field label={t('configuration.output')} for="model-create-output-price" help={t('configuration.usd1mTokens')}>
+					<TextInput id="model-create-output-price" inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} disabled={addingModel} />
+				</Field>
 			</div>
-			{#if mKind !== 'text' && mProviderId && !mediaProviderSupported(mProviderId)}
-				<Alert tone="warning" class="mt-3">{t('configuration.mediaModelsCanOnlyBeRegisteredWithDirectlyConnected')}</Alert>
-			{/if}
-			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel} />
 			{#if cachePricingAvailable}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
 				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
@@ -2437,6 +2322,11 @@
 					{/each}
 				</div>
 			</div>
+			{/if}
+				{/snippet}
+			</ModelMediaPricingEditor>
+			{#if mKind !== 'text' && mProviderId && !mediaProviderSupported(mProviderId)}
+				<Alert tone="warning" class="mt-3">{t('configuration.mediaModelsCanOnlyBeRegisteredWithDirectlyConnected')}</Alert>
 			{/if}
 			{#if manualOutcomeUnknown || registrationUncertain(mProviderId, mName)}<Alert tone="warning" class="mt-3">{t('configuration.registrationOutcomeUnknown')}</Alert>{/if}
 		</div>
@@ -2463,7 +2353,8 @@
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.editModelPricing')}</h3>
 			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice?.model_kind ?? 'text']} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
 			{#if editingPrice}
-			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
+			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} prefix="model-edit" disabled={priceSaving} hasStoredTextPrices={editingPrice.input_price_per_million != null || editingPrice.output_price_per_million != null || CACHE_PRICE_FIELDS.some(({ key }) => editingPrice?.[key] != null)}>
+				{#snippet textPricing()}
 				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{t('pricing.independentTextEditHelp')}</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
 				<Field label={t('configuration.input')} for="model-edit-input-price">
@@ -2496,7 +2387,8 @@
 				</div>
 			</div>
 			{/if}
-			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} prefix="model-edit" disabled={priceSaving} />
+				{/snippet}
+			</ModelMediaPricingEditor>
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" disabled={priceSaving} onclick={() => (editingPrice = null)}>{t('configuration.cancel')}</Button>
@@ -2538,89 +2430,6 @@
 		</div>
 	</Modal>
 
-	<Modal bind:open={modelsDevOpen} ariaLabel={t('configuration.modelsDevSuggestedPricing')}>
-		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.modelsDevSuggestedPricing')}</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-2)]">
-				{#snippet rich140markup1(text: string)}<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">{text}</a>{/snippet}{#snippet rich140markup2(text: string)}<strong class="font-medium text-[var(--color-ink-1)]">{text}</strong>{/snippet}<RichText segments={t.rich('configuration.modelsDevPriceImportGuidance')} tags={{ markup1: rich140markup1, markup2: rich140markup2 }} />
-			</p>
-			{#if modelsDevError}<Alert tone="warning" class="mt-3">{modelsDevError}</Alert>{/if}
-			<div class="mt-4 space-y-3">
-				<div>
-					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider-search">{t('configuration.searchPricingProviders')}</label>
-					<TextInput
-						id="models-dev-provider-search"
-						type="search"
-						placeholder={t('configuration.searchByNameOrId')}
-						value={modelsDevProviderSearch}
-						oninput={updateModelsDevProviderSearch}
-					/>
-				</div>
-				<div aria-live="polite">
-					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider">{t('configuration.pricingProvider')}</label>
-					{#if modelsDevLoading && modelsDevProviders.length === 0}
-						<LoadingState variant="section" label={t('configuration.loadingPricingProviders')} />
-					{:else if filteredModelsDevProviders.length > 0}
-						<select id="models-dev-provider" class={inputCls} bind:value={selectedModelsDevProviderId} onchange={loadModelsDevProvider}>
-							<option value="" disabled>{t('configuration.selectPricingProvider')}</option>
-							{#each filteredModelsDevProviders as provider (provider.id)}<option value={provider.id}>{provider.name} ({formatNumber(provider.model_count)})</option>{/each}
-						</select>
-					{:else if modelsDevProviders.length > 0}
-						<EmptyState headline={t('configuration.noPricingProvidersMatchYourSearch')} class="py-4 [&_.motion-enter]:animate-none" />
-					{:else}
-						<EmptyState headline={t('configuration.noModelsDevPriceListMatchesARegisteredProvider')} class="py-4 [&_.motion-enter]:animate-none" />
-					{/if}
-				</div>
-				<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.onlyPriceListsMatchingRegisteredProvidersAreShown')}</p>
-			</div>
-			{#if modelsDevLoading}
-				<LoadingState variant="section" label={t('configuration.loadingPriceList')} class="mt-4 text-sm text-ink-2" />
-			{:else}
-				<div class="mt-4 space-y-2">
-					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text') as model (model.id)}
-						<div class="rounded-lg border border-[var(--color-line)] p-3">
-							<div class="flex items-center gap-2">
-								<input
-									type="checkbox"
-									checked={Boolean(modelsDevSelections[model.id])}
-									disabled={model.price_source === 'manual'}
-									onchange={(event) => {
-										modelsDevSelections = {
-											...modelsDevSelections,
-											[model.id]: event.currentTarget.checked
-												? (modelsDevModels.find((external) => external.price_available && external.id === model.model_name)?.id ?? '')
-												: ''
-										};
-									}}
-								/>
-								<span class="min-w-0 flex-1 truncate text-sm text-[var(--color-ink-1)]">
-									{model.model_name}{model.price_source === 'manual' ? t('configuration.manualPricesPreserved') : ''}
-								</span>
-								<select class={inputCls} disabled={model.price_source === 'manual'} bind:value={modelsDevSelections[model.id]}>
-									<option value="">{t('configuration.selectModelsFromPriceList')}</option>
-									{#each modelsDevModels.filter((external) => external.price_available) as external (external.id)}
-										<option value={external.id}>{external.id} · ${displayPrice(external.input_price_per_million)}/${displayPrice(external.output_price_per_million)} / 1M</option>
-									{/each}
-								</select>
-							</div>
-							{#if modelsDevSelections[model.id]}
-								{@const selected = modelsDevModels.find((external) => external.id === modelsDevSelections[model.id])}
-								{#if selected && selected.unsupported_price_fields.length > 0}
-									<Alert tone="warning" class="mt-2">{t('configuration.modelsDevExcludedPrices', { v0: selected.unsupported_price_fields.join(', ') })}</Alert>
-								{/if}
-							{/if}
-						</div>
-					{/each}
-				</div>
-			{/if}
-			<div class="mt-5 flex justify-end gap-2">
-				<Button variant="secondary" onclick={() => (modelsDevOpen = false)}>{t('configuration.cancel')}</Button>
-				<Button onclick={importModelsDevPrices} disabled={modelsDevImporting || modelsDevLoading || !selectedModelsDevProviderId} ariaBusy={modelsDevImporting}>
-					{#if modelsDevImporting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
-				</Button>
-			</div>
-		</div>
-	</Modal>
 	{/if}
 
 

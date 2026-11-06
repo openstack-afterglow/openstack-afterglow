@@ -141,4 +141,25 @@ describe('per-subnet inventory request lifecycle', () => {
 		await tick();
 		expect(screen.queryByText('10.200.0.15')).toBeNull();
 	});
+	it('retains same-owner regex state through token rotation while discarding a late old-token response', async () => {
+		const oldRefresh = deferred<AdminSubnetDetail>();
+		const renewed = deferred<AdminSubnetDetail>();
+		mockGet.mockResolvedValueOnce(subnetFixture).mockReturnValueOnce(oldRefresh.promise).mockReturnValueOnce(renewed.promise);
+		render(SubnetIpInventory, { subnetId: 'sub-100' });
+		await screen.findByText('10.200.0.15');
+		const search = screen.getAllByRole('searchbox').find((input) => input.id.endsWith('-allocation-search'))!;
+		await fireEvent.input(search, { target: { value: '^10\\.200\\.0\\.15$' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('subnetDetailPage.refresh') }));
+		setAuth({ ...initialAuth, token: 'renewed-token' });
+		await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+		expect(search).toHaveProperty('value', '^10\\.200\\.0\\.15$');
+		expect(screen.getByText('10.200.0.15')).toBeTruthy();
+		renewed.resolve({ ...subnetFixture });
+		await waitFor(() => expect(screen.getByRole('button', { name: t('subnetDetailPage.refresh') }).hasAttribute('disabled')).toBe(false));
+		oldRefresh.resolve({ ...subnetFixture, allocations: [{ ...subnetFixture.allocations[0], ip_address: '10.200.0.99' }] });
+		await tick();
+		expect(screen.queryByText('10.200.0.99')).toBeNull();
+		expect(screen.getByText('10.200.0.15')).toBeTruthy();
+		expect(search).toHaveProperty('value', '^10\\.200\\.0\\.15$');
+	});
 });

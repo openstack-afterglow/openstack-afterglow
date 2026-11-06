@@ -1,0 +1,18 @@
+{
+  "boundary": "Production Node app, isolated synthetic profile; 390x300 short viewport, not a physical soft keyboard",
+  "before": {
+    "width": 390,
+    "height": 300,
+    "popover": {
+      "top": 116.13780975341797,
+      "bottom": 261.45592498779297,
+      "height": 145.318115234375,
+      "scrollHeight": 153,
+      "overflowY": "auto"
+    },
+    "optionAreaHeight": 60.160003662109375,
+    "options": 1,
+    "overflow": false
+  },
+  "selectionCompleted": true
+}

@@ -17,6 +17,7 @@ const media = vi.hoisted(() => {
 	return query;
 });
 
+import { createTableView } from '$lib/utils/tableView.svelte';
 import VolumeListTable from '../VolumeListTable.svelte';
 import SnapshotListTable from '../SnapshotListTable.svelte';
 import VolumeBackupListTable from '../backups/VolumeBackupListTable.svelte';
@@ -56,7 +57,7 @@ function selection(id: string) {
 
 function volumeProps() {
 	return {
-		volumes, selectedVolumeId: 'volume-a', deleting: null, openActionMenu: null,
+		volumes, view: createTableView({ rows: () => volumes, columns: () => [{ key:'name', label:t('listTable.name'), value:row=>row.name }] }), selectedVolumeId: 'volume-a', deleting: null, openActionMenu: null,
 		...selection('volume-a'), isSystemAdmin: false,
 		onOpenDetail: vi.fn(), onActionMenuOpen: vi.fn(), onActionMenuClose: vi.fn(),
 		onRename: vi.fn(), onBoot: vi.fn(), onExtend: vi.fn(), onBackup: vi.fn(), onSnapshot: vi.fn(),
@@ -97,7 +98,7 @@ describe('compact volume resource behavior', () => {
 
 	it('keeps snapshot list menu callbacks and deleting state in cards', async () => {
 		const props = {
-			snapshots: [snapshot], deleting: null, openSnapshotActionMenu: null, ...selection(snapshot.id),
+			snapshots: [snapshot], view: createTableView({rows:()=>[snapshot],columns:()=>[{key:'name',label:t('snapshotsTable.name'),value:row=>row.name}]}), deleting: null, openSnapshotActionMenu: null, ...selection(snapshot.id),
 			onActionMenuOpen: vi.fn(), onActionMenuClose: vi.fn(), onDelete: vi.fn(),
 		};
 		const view = render(SnapshotListTable, props);
@@ -119,7 +120,7 @@ describe('compact volume resource behavior', () => {
 
 	it('keeps backup restore/delete, select-all and missing-date metadata available', async () => {
 		const props = {
-			backups: [backup], deletingId: null, ...selection(backup.id),
+			backups: [backup], view: createTableView({rows:()=>[backup],columns:()=>[{key:'name',label:t('backupListTable.name'),value:row=>row.name}]}), deletingId: null, ...selection(backup.id),
 			onRestore: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined),
 		};
 		const view = render(VolumeBackupListTable, props);
@@ -147,7 +148,7 @@ describe('compact volume resource behavior', () => {
 
 	it('keeps full snapshot metadata in disclosure while preserving row deletion and selection', async () => {
 		const props = {
-			snapshots: [snapshot], deleting: null, ...selection(snapshot.id), onDelete: vi.fn().mockResolvedValue(undefined),
+			snapshots: [snapshot], view: createTableView({rows:()=>[snapshot],columns:()=>[{key:'name',label:t('snapshotsTable.name'),value:row=>row.name}]}), deleting: null, ...selection(snapshot.id), onDelete: vi.fn().mockResolvedValue(undefined),
 		};
 		const view = render(VolumeSnapshotsTable, props);
 		await setDesktop(false, 1);

@@ -6,6 +6,10 @@
 	import type { SecurityGroupUnionGroup, SecurityGroupUnionRow } from '$lib/utils/securityGroupUnion';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { CompactResourceCard, ResponsiveTable } from '$lib/components/ui';
+	import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
+	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Props {
 		groupIds: readonly string[];
@@ -20,12 +24,20 @@
 	let outbound = $derived(union.rows.filter((row) => row.direction === 'egress'));
 	let inboundOpen = $state(false);
 	let outboundOpen = $state(false);
+	const columns = (direction: 'ingress' | 'egress'): TableColumn<SecurityGroupUnionRow>[] => [
+		{ key: 'version', label: t('securityGroupUnion.column.ipVersion'), value: row => row.ethertype },
+		{ key: 'protocol', label: t('securityGroupUnion.column.protocol'), value: row => row.protocol ?? 'any', format: (_value, row) => row.protocolLabel },
+		{ key: 'port', label: t('securityGroupUnion.column.portIcmp'), value: row => `${row.portRangeMin ?? 'any'}:${row.portRangeMax ?? 'any'}`, format: (_value, row) => row.portLabel },
+		{ key: 'remote', label: t(direction === 'ingress' ? 'securityGroupUnion.column.source' : 'securityGroupUnion.column.destination'), value: row => `${row.remote.kind}:${row.remote.value}`, format: (_value, row) => row.remoteLabel },
+	];
+	const inboundView = createTableView({ rows: () => inbound, columns: () => columns('ingress') });
+	const outboundView = createTableView({ rows: () => outbound, columns: () => columns('egress') });
 
 	function toggleInbound() { inboundOpen = !inboundOpen; }
 	function toggleOutbound() { outboundOpen = !outboundOpen; }
 </script>
 
-{#snippet directionTable(rows: SecurityGroupUnionRow[], direction: 'ingress' | 'egress', remoteHeading: string, expanded: boolean, onToggle: () => void)}
+{#snippet directionTable(view: typeof inboundView, direction: 'ingress' | 'egress', remoteHeading: string, expanded: boolean, onToggle: () => void)}
 	<div class="min-w-0 max-w-full space-y-2">
 		<h4>
 			<Button variant="ghost" size="sm" class="w-full min-h-11" ariaExpanded={expanded} ariaLabel={t(expanded ? 'securityGroupUnion.collapseRules' : 'securityGroupUnion.expandRules', { direction })} onclick={onToggle}>
@@ -41,28 +53,29 @@
 			</Button>
 		</h4>
 		{#if expanded}
+			<TableViewControls {view} />
 			<ResponsiveTable>
 				{#snippet cards()}
-					{#each rows as row (row.key)}
+					{#each view.rows as row (row.key)}
 						{#snippet remoteDetails()}<p class="break-all font-mono text-xs">{row.remote.kind === 'group' ? row.remote.value : row.remoteLabel}</p>{/snippet}
 						<CompactResourceCard details={row.remote.kind === 'group' ? remoteDetails : undefined}>
 							<h5 class="text-sm font-medium">{row.protocolLabel} · {row.portLabel}</h5>
 							<dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('securityGroupUnion.column.ipVersion')}</dt><dd>{row.ethertype}</dd></div><div><dt class="text-ink-2">{remoteHeading}</dt><dd class="break-all">{row.remoteLabel}</dd></div></dl>
 						</CompactResourceCard>
-					{:else}<p class="col-span-full text-xs text-ink-2">{t('securityGroupUnion.emptyDirection', { direction })}</p>{/each}
+					{:else}<p class="col-span-full text-xs text-ink-2">{(direction === 'ingress' ? inbound : outbound).length ? tc('table.noMatches') : t('securityGroupUnion.emptyDirection', { direction })}</p>{/each}
 				{/snippet}
 			<TableShell density="compact" class="motion-fade min-w-0 max-w-full">
 				<table aria-label={t('securityGroupUnion.rulesLabel', { direction })}>
 					<thead>
 						<tr>
-							<th scope="col">{t('securityGroupUnion.column.ipVersion')}</th>
-							<th scope="col">{t('securityGroupUnion.column.protocol')}</th>
-							<th scope="col">{t('securityGroupUnion.column.portIcmp')}</th>
-							<th scope="col">{remoteHeading}</th>
+							<TableColumnHeader {view} columnKey="version" />
+							<TableColumnHeader {view} columnKey="protocol" />
+							<TableColumnHeader {view} columnKey="port" />
+							<TableColumnHeader {view} columnKey="remote" />
 						</tr>
 					</thead>
 					<tbody>
-						{#each rows as row (row.key)}
+						{#each view.rows as row (row.key)}
 							<tr>
 								<td>{row.ethertype}</td>
 								<td>{row.protocolLabel}</td>
@@ -70,7 +83,7 @@
 								<td title={row.remote.kind === 'group' ? row.remote.value : undefined}>{row.remoteLabel}</td>
 							</tr>
 						{:else}
-							<tr><td colspan="4" class="text-ink-2">{t('securityGroupUnion.emptyDirection', { direction })}</td></tr>
+							<tr><td colspan="4" class="text-ink-2">{(direction === 'ingress' ? inbound : outbound).length ? tc('table.noMatches') : t('securityGroupUnion.emptyDirection', { direction })}</td></tr>
 						{/each}
 					</tbody>
 				</table>
@@ -103,10 +116,10 @@
 				{/each}
 			</ul>
 		</div>
-	{:else if union.rows.length === 0}
+	{:else if union.rows.length === 0 && !inboundView.sort && !outboundView.sort && !Object.keys(inboundView.filters).length && !Object.keys(outboundView.filters).length}
 		<p class="text-xs leading-relaxed text-ink-2">{t('securityGroupUnion.noRules')}</p>
 	{:else}
-		{@render directionTable(inbound, 'ingress', t('securityGroupUnion.column.source'), inboundOpen, toggleInbound)}
-		{@render directionTable(outbound, 'egress', t('securityGroupUnion.column.destination'), outboundOpen, toggleOutbound)}
+		{@render directionTable(inboundView, 'ingress', t('securityGroupUnion.column.source'), inboundOpen, toggleInbound)}
+		{@render directionTable(outboundView, 'egress', t('securityGroupUnion.column.destination'), outboundOpen, toggleOutbound)}
 	{/if}
 </section>

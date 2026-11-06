@@ -5,10 +5,18 @@ import { tick } from 'svelte';
 import AdminEventsPage from '../AdminEventsPage.svelte';
 import { auth } from '$lib/stores/auth';
 import { adminInventoryScope, setAdminInventoryScope } from '$lib/stores/adminInventoryScope';
+import { t as common } from '$lib/i18n/ns/common';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('$lib/api/client', async () => ({ api: mocks, ...(await vi.importActual('$lib/api/errors')) }));
+async function selectNative(column: string, value: string) {
+	const name = common('table.filterColumn', { column });
+	await fireEvent.click(screen.getByRole('button', { name }));
+	const popup = screen.getByRole('dialog', { name });
+	await fireEvent.click(within(popup).getByRole('checkbox', { name: value }));
+	await fireEvent.click(within(popup).getByRole('button', { name: common('actions.close') }));
+}
 const initial = get(auth);
 const event = (id: number, source = 'browser') => ({
 	id, created_at: `2026-11-01T00:00:0${id}Z`, project_id: 'project-a', user_id: 'actor', username: 'operator',
@@ -30,8 +38,8 @@ describe('operational event viewer', () => {
 	it('filters browser observations and both distinct correlation identifiers without changing caller scope', async () => {
 		render(AdminEventsPage);
 		await screen.findAllByRole('button', { name: 'View details for click event 1' });
-		await fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'observed' } });
-		await fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'browser' } });
+		await selectNative('Status', 'Observed');
+		await selectNative('Source', 'browser');
 		await fireEvent.input(screen.getByLabelText('Request ID'), { target: { value: 'server-request' } });
 		await fireEvent.input(screen.getByLabelText('Client interaction ID'), { target: { value: 'client-interaction' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
@@ -50,10 +58,17 @@ describe('operational event viewer', () => {
 		const timeline = await screen.findByRole('region', { name: 'Correlation timeline' });
 		expect(within(timeline).getAllByRole('listitem')).toHaveLength(2);
 		expect(within(timeline).getAllByRole('listitem')[0].textContent).toContain('Browser');
-		await fireEvent.change(screen.getByLabelText('Source', { selector: '#timeline-source' }), { target: { value: 'afterglow' } });
-		expect(within(timeline).getAllByRole('listitem')).toHaveLength(1);
-		expect(within(timeline).getByText(/GET \/api\/v1\/instances/)).toBeTruthy();
-		expect(within(timeline).getByRole('button', { name: 'View details for request event 2' })).toBeTruthy();
+		const timelineSection = screen.getByRole('heading', { name: 'Correlation timeline' }).closest('section')!;
+		const filterName = common('table.filterColumn', { column: 'Source' });
+		await fireEvent.click(within(timelineSection).getByRole('button', { name: filterName }));
+		const popup = screen.getByRole('dialog', { name: filterName });
+		await fireEvent.click(within(popup).getByRole('button', { name: common('table.selectNone') }));
+		await fireEvent.click(within(popup).getByRole('checkbox', { name: 'afterglow' }));
+		await fireEvent.click(within(popup).getByRole('button', { name: common('actions.close') }));
+		const filteredTimeline = screen.getByRole('region', { name: 'Correlation timeline' });
+		expect(within(filteredTimeline).getAllByRole('listitem')).toHaveLength(1);
+		expect(within(filteredTimeline).getByText(/GET \/api\/v1\/instances/)).toBeTruthy();
+		expect(within(filteredTimeline).getByRole('button', { name: 'View details for request event 2' })).toBeTruthy();
 	});
 
 	it('discards stale detail and timeline responses across scope ABA and logout', async () => {

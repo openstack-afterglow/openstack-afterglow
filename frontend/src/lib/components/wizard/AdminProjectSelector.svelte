@@ -3,7 +3,7 @@
 	import { closeWizard } from '$lib/stores/wizard';
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
-	import { Alert, Button } from '$lib/components/ui';
+	import { Alert, Button, RegexSearch } from '$lib/components/ui';
 
 	const s = useVmCreate();
 </script>
@@ -28,25 +28,13 @@
 {:else if s.adminProjects.length === 0}
 	<div class="py-10 text-center text-sm text-ink-2">{t('adminProject.catalogEmpty')}</div>
 {:else}
-	<div class="relative mb-3">
-		<svg class="w-4 h-4 text-ink-2 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z"/>
-		</svg>
-		<input
-			type="text"
-			aria-label={t('adminProject.search')}
-			bind:value={s.adminProjectSearch}
-			placeholder={t('adminProject.search')}
-			class="w-full min-h-11 md:min-h-9 rounded-lg border border-line bg-surface-base pl-9 pr-12 py-2 text-sm text-ink-1 placeholder-ink-2 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-		/>
-		{#if s.adminProjectSearch}
-			<button
-				onclick={() => (s.adminProjectSearch = '')}
-				class="absolute right-1 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-ink-2 hover:text-ink-0"
-				aria-label={t('adminProject.clearSearch')}
-			><svg class="h-4 w-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="1.5" d="m6 6 12 12M18 6 6 18" /></svg></button>
-		{/if}
-	</div>
+	<RegexSearch
+		id="vm-admin-project-search"
+		bind:value={s.adminProjectSearch}
+		label={t('adminProject.search')}
+		placeholder={t('adminProject.search')}
+		class="mb-3"
+	/>
 
 	{#if s.filteredAdminProjects.length === 0}
 		<div class="py-10 text-center text-sm text-ink-2"><p>{t('adminProject.empty')}</p><Button variant="secondary" size="sm" class="mt-3" onclick={() => (s.adminProjectSearch = '')}>{t('adminProject.clearSearch')}</Button></div>
