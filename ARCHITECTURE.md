@@ -2097,9 +2097,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "70816363cd133aaf07e7ac8a877013f3bf8a64c171c2717d6369959e8f244ea0",
-  "reviewed_at": "2026-11-07T08:52:57Z",
-  "summary": "MCP never connects a domain's Default project (name-based, surrounding whitespace and case ignored): discovery, all/selected/current candidates, OAuth approval and key issuance reject it, stored grants naming it are refused at use, and connection._validate_current_roles refuses a live token whose project name is Default so pre-migration grants that saved only the project ID are covered; endpoint-level and legacy-grant regressions cover list, preview, issuance and dispatch. One is_reserved_default_name helper guards user create, administrator create and rename. Afterglow's own write gates return to {admin, member}; manager stays Default-only domain administration while Drover, Waygate, Palimpsest and Lumen keep their own manager policies. No schema, role-graph, grant, native-policy or deployment change; source/local only."
+  "source_sha256": "ca9c7483c8e60370830a20ddbaea6d09b5d1a1d8bc5b6c10ef0f8c3feed5f06c",
+  "reviewed_at": "2026-11-07T09:09:00Z",
+  "summary": "MCP never connects a domain's Default project (name-based, surrounding whitespace and case ignored): discovery, all/selected/current candidates, OAuth approval and key issuance reject it, stored grants naming it are refused at use, and connection._validate_current_roles refuses a live token whose project name is Default so pre-migration grants that saved only the project ID are covered; endpoint-level and legacy-grant regressions cover list, preview, issuance and dispatch, and the endpoint regression restores app.dependency_overrides by hand so it cannot leak into later tests. One is_reserved_default_name helper guards user create, administrator create and rename. Afterglow's own write gates return to {admin, member}; manager stays Default-only domain administration while Drover, Waygate, Palimpsest and Lumen keep their own manager policies. No schema, role-graph, grant, native-policy or deployment change; source/local only."
 }
 ```
 <!-- architecture-review:end -->

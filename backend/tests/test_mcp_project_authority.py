@@ -1408,8 +1408,6 @@ async def test_mcp_http_hides_and_refuses_a_domain_default_project(client, proje
 
     caller = {"user_id": provider.user, "project_id": provider.a, "username": "fixture-owner", "roles": ["member"]}
     monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
-    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
-    monkeypatch.setitem(app.dependency_overrides, get_os_conn, lambda: provider.conn)
     # A refusal must precede every database access: nothing here can open a session.
     monkeypatch.setattr(mcp_access, "_session_factory", lambda: None)
     monkeypatch.setattr(
@@ -1423,26 +1421,33 @@ async def test_mcp_http_hides_and_refuses_a_domain_default_project(client, proje
         ),
     )
     headers = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "same-site"}
+    request = {"name": "Desktop", "access_level": "read", "non_expiring": True}
+    # Restore by hand: the client fixture clears the whole dict first, so monkeypatch.setitem would
+    # put its stale override functions back afterwards and leak them into later tests.
+    previous = app.dependency_overrides.copy()
+    app.dependency_overrides[get_token_info] = lambda: caller
+    app.dependency_overrides[get_os_conn] = lambda: provider.conn
+    try:
+        listed = await client.get("/api/v1/auth/mcp-projects")
+        previewed = await client.get("/api/v1/auth/mcp-projects?preview=true")
+        selected = await client.post(
+            "/api/v1/auth/mcp-tokens",
+            json={**request, "project_scope": "selected", "project_ids": [default_id]},
+            headers=headers,
+        )
+        provider.conn.access.project_name = "Default"
+        current = await client.post(
+            "/api/v1/auth/mcp-tokens", json={**request, "project_scope": "current"}, headers=headers
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
-    listed = await client.get("/api/v1/auth/mcp-projects")
     assert listed.status_code == 200
     assert listed.json() == [{"id": provider.a, "name": "A"}, {"id": provider.b, "name": "B"}]
-    previewed = await client.get("/api/v1/auth/mcp-projects?preview=true")
     assert previewed.status_code == 200
     assert {row["id"] for row in previewed.json()} == {provider.a, provider.b}
-
-    request = {"name": "Desktop", "access_level": "read", "non_expiring": True}
-    selected = await client.post(
-        "/api/v1/auth/mcp-tokens",
-        json={**request, "project_scope": "selected", "project_ids": [default_id]},
-        headers=headers,
-    )
     assert selected.status_code == 400 and "Default project" in selected.json()["detail"]
-
-    provider.conn.access.project_name = "Default"
-    current = await client.post(
-        "/api/v1/auth/mcp-tokens", json={**request, "project_scope": "current"}, headers=headers
-    )
     assert current.status_code == 400 and "Default project" in current.json()["detail"]
     assert not provider.created and not provider.remote
 
