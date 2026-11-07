@@ -115,6 +115,7 @@ def _build_connection(application_credential_id: str, application_credential_sec
 
 async def _validate_current_roles(conn: object, principal: McpPrincipal) -> None:
     """Fence live assignments and the approval snapshot before provider dispatch."""
+    from app.services.domain_projects import is_reserved_default_name
     from app.services.project_service import get_project_delegation_roles
 
     access = await run_sdk(conn.session.auth.get_access, conn.session)
@@ -128,6 +129,9 @@ async def _validate_current_roles(conn: object, principal: McpPrincipal) -> None
         or any(not isinstance(value, str) or not value for value in [*names, *role_ids])
     ):
         raise McpConsumerConnectionError("MCP credential role identity is unavailable")
+    if is_reserved_default_name(getattr(access, "project_name", None)):
+        # Pre-migration grants saved the bare project ID as the name, so only the live token can say.
+        raise McpConsumerConnectionError("MCP cannot use a domain's Default project")
     current = await get_project_delegation_roles(principal.project_id, principal.user_id)
     live = {role["id"]: role["name"] for role in current}
     if any(live.get(role_id) != name for role_id, name in zip(role_ids, names, strict=True)):

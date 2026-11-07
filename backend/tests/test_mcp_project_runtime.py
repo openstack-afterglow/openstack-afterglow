@@ -377,6 +377,33 @@ async def test_consumer_role_ceiling_requires_live_exact_approved_roles(runtime,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("live_name", ["Default", "default", " DEFAULT "])
+@pytest.mark.parametrize("legacy", [False, True], ids=["saved-name", "legacy-id-as-name"])
+async def test_consumer_connection_refuses_a_live_default_project_even_for_legacy_grants(
+    runtime, monkeypatch, live_name, legacy
+):
+    from app.services import project_service
+
+    if legacy:
+        # Pre-migration singleton rows keep no approved_projects, so the saved name is just the project ID.
+        runtime.grant.approved_projects = None
+    access = SimpleNamespace(
+        user_id="user", project_id="a", project_name=live_name, role_names=["member"], role_ids=["member-id"]
+    )
+    conn = SimpleNamespace(session=SimpleNamespace(auth=SimpleNamespace(get_access=lambda session: access)))
+
+    async def current(project_id, user_id):
+        return [{"id": "member-id", "name": "member", "inherited_role_ids": []}]
+
+    monkeypatch.setattr(project_service, "get_project_delegation_roles", current)
+    with pytest.raises(connection.McpConsumerConnectionError, match="Default project"):
+        await connection._validate_current_roles(conn, runtime.principal)
+    # The same grant and token stay usable once the live project is an ordinary one.
+    access.project_name = "Alpha"
+    await connection._validate_current_roles(conn, runtime.principal)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("native_role", ["member", "admin", "Admin"])
 async def test_current_native_role_selects_private_flavor_visibility_without_system_escalation(
     runtime, monkeypatch, native_role

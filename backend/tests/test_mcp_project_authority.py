@@ -1393,6 +1393,60 @@ def test_existing_grant_on_a_domain_default_project_is_refused_at_use():
             authority.validate_grant_project(grant(name), "project-1")
 
 
+async def test_mcp_http_hides_and_refuses_a_domain_default_project(client, project_provider, monkeypatch):
+    from app.api.deps import get_os_conn, get_token_info
+    from app.main import app
+    from app.services import service_proxy
+
+    provider = project_provider
+    default_id = str(uuid4())
+    provider.roles[default_id] = ["member"]
+    provider.memberships.append({"id": default_id, "name": " Default", "enabled": True, "domain_id": "tenant-a"})
+
+    async def policy(service, principal, *, timeout=None):
+        return {"service": service, "capabilities": [], "actions": []}
+
+    caller = {"user_id": provider.user, "project_id": provider.a, "username": "fixture-owner", "roles": ["member"]}
+    monkeypatch.setattr(service_proxy, "get_policy_capabilities", policy)
+    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: caller)
+    monkeypatch.setitem(app.dependency_overrides, get_os_conn, lambda: provider.conn)
+    # A refusal must precede every database access: nothing here can open a session.
+    monkeypatch.setattr(mcp_access, "_session_factory", lambda: None)
+    monkeypatch.setattr(
+        mcp_access,
+        "get_settings",
+        lambda: SimpleNamespace(
+            service_mcp_enabled=True,
+            frontend_base_url="https://app.example.test",
+            public_api_base="https://api.example.test",
+            cors_origin_list=("https://app.example.test",),
+        ),
+    )
+    headers = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "same-site"}
+
+    listed = await client.get("/api/v1/auth/mcp-projects")
+    assert listed.status_code == 200
+    assert listed.json() == [{"id": provider.a, "name": "A"}, {"id": provider.b, "name": "B"}]
+    previewed = await client.get("/api/v1/auth/mcp-projects?preview=true")
+    assert previewed.status_code == 200
+    assert {row["id"] for row in previewed.json()} == {provider.a, provider.b}
+
+    request = {"name": "Desktop", "access_level": "read", "non_expiring": True}
+    selected = await client.post(
+        "/api/v1/auth/mcp-tokens",
+        json={**request, "project_scope": "selected", "project_ids": [default_id]},
+        headers=headers,
+    )
+    assert selected.status_code == 400 and "Default project" in selected.json()["detail"]
+
+    provider.conn.access.project_name = "Default"
+    current = await client.post(
+        "/api/v1/auth/mcp-tokens", json={**request, "project_scope": "current"}, headers=headers
+    )
+    assert current.status_code == 400 and "Default project" in current.json()["detail"]
+    assert not provider.created and not provider.remote
+
+
 async def test_current_scope_reuses_verified_token_and_saves_real_project_name(project_provider):
     provider = project_provider
     provider.conn.access.project_name = "Current project"
