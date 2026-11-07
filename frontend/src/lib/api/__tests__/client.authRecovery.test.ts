@@ -39,6 +39,33 @@ describe('authentication recovery state', () => {
 		expect(mockFetch).toHaveBeenCalledOnce();
 	});
 
+	it.each([
+		{ label: 'ordinary', options: { timeoutMs: 40000 } },
+		{ label: 'forced-refresh', options: { timeoutMs: 40000, refresh: true } },
+	])('recovers an expired access token for a $label read with an explicit deadline', async ({ options }) => {
+		const s = await session();
+		s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900 });
+		const resourceTokens: Array<string | null> = [];
+		let renewals = 0;
+		mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+			if (url.includes('/auth/refresh')) {
+				renewals++;
+				return Response.json({ token: 'fresh-access', refresh_token: 'fresh-refresh', domain_id: 'domain-1',
+					identity_domain_id: 'domain-1', identity_domain_name: 'Domain', expires_at: new Date(Date.now() + 900000).toISOString() });
+			}
+			const credential = new Headers(init.headers).get('Authorization');
+			resourceTokens.push(credential);
+			return credential === 'Bearer fresh-access'
+				? Response.json({ items: [{ id: 'visible-volume' }] })
+				: Response.json({ detail: 'Access token expired' }, { status: 401 });
+		});
+		await expect(s.api.get('/api/v1/volumes', 'old-access', undefined, options))
+			.resolves.toEqual({ items: [{ id: 'visible-volume' }] });
+		expect(resourceTokens).toEqual(['Bearer old-access', 'Bearer fresh-access']);
+		expect(renewals).toBe(1);
+		expect(get(s.auth).token).toBe('fresh-access');
+	});
+
 	it('does not turn an ordinary resource outage into an authentication outage', async () => {
 		const s = await session();
 		s.setAuth({ token: 'old-access', accessExpiresAt: Math.floor(Date.now() / 1000) + 900 });

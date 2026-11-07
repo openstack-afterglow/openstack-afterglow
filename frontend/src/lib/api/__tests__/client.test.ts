@@ -114,6 +114,35 @@ describe('api client', () => {
     } finally { deadline.mockRestore(); }
   });
 
+  it.each([undefined, 'no-store'] as const)('keeps an explicit preview budget independent from the default read deadline (cache=%s)', async cache => {
+    const normalDeadline = new AbortController();
+    const previewDeadline = new AbortController();
+    const caller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms =>
+      ms === 40_000 ? previewDeadline.signal : normalDeadline.signal);
+    mockFetch.mockImplementation((_url, options) => {
+      const { promise, reject } = Promise.withResolvers<Response>();
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      return promise;
+    });
+    try {
+      const path = `/api/v1/auth/mcp-projects?preview=true&case=${cache ?? 'ordinary'}`;
+      const normal = api.get(path);
+      const normalRejected = expect(normal).rejects.toMatchObject({ name: 'TimeoutError' });
+      const preview = api.get(path, undefined, undefined, { timeoutMs: 40_000, cache, signal: caller.signal });
+      const previewRejected = expect(preview).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+      normalDeadline.abort(new DOMException('Normal deadline elapsed', 'TimeoutError'));
+      await normalRejected;
+      expect(mockFetch.mock.calls[1][1].signal.aborted).toBe(false);
+      caller.abort();
+      await previewRejected;
+      expect(previewDeadline.signal.aborted).toBe(false);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
 
   it.each([false, true])('retains link tickets only in structured metadata, not error text (nested=%s)', async (nested) => {
     const ticket = { code: 'account_link_required', link_token: 'private-one-use-ticket', domain_id: 'original-home' };

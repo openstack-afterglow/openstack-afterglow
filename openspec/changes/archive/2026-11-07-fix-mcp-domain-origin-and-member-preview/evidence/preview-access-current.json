@@ -1,0 +1,606 @@
+{
+  "qualification": "Readonly access records; route query not logged and no human/member binding or preview response body, so not a production cause determination.",
+  "controllers": [
+    {
+      "host": "172.30.0.11",
+      "exit": 0,
+      "result": {
+        "observed_at": "2026-11-07T04:30:28.356636+00:00",
+        "files": [
+          {
+            "name": "backend-2026-11-04-01.log",
+            "lines": 180569,
+            "json_lines": 180569,
+            "bytes_at_start": 52428556,
+            "bytes_at_end": 52428556,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-02.log",
+            "lines": 180029,
+            "json_lines": 180029,
+            "bytes_at_start": 52428643,
+            "bytes_at_end": 52428643,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-03.log",
+            "lines": 185001,
+            "json_lines": 185001,
+            "bytes_at_start": 52428723,
+            "bytes_at_end": 52428723,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-04.log",
+            "lines": 108682,
+            "json_lines": 108682,
+            "bytes_at_start": 30710283,
+            "bytes_at_end": 30710283,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04.log",
+            "lines": 183865,
+            "json_lines": 183865,
+            "bytes_at_start": 52428779,
+            "bytes_at_end": 52428779,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-01.log",
+            "lines": 181232,
+            "json_lines": 181232,
+            "bytes_at_start": 52428643,
+            "bytes_at_end": 52428643,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-02.log",
+            "lines": 180118,
+            "json_lines": 180118,
+            "bytes_at_start": 52428770,
+            "bytes_at_end": 52428770,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-03.log",
+            "lines": 87176,
+            "json_lines": 87176,
+            "bytes_at_start": 27308703,
+            "bytes_at_end": 27308703,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05.log",
+            "lines": 170733,
+            "json_lines": 170733,
+            "bytes_at_start": 52428666,
+            "bytes_at_end": 52428666,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-06-01.log",
+            "lines": 28457,
+            "json_lines": 28457,
+            "bytes_at_start": 23894920,
+            "bytes_at_end": 23894920,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-06.log",
+            "lines": 74837,
+            "json_lines": 74837,
+            "bytes_at_start": 52428164,
+            "bytes_at_end": 52428164,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-07.log",
+            "lines": 5221,
+            "json_lines": 5221,
+            "bytes_at_start": 3369607,
+            "bytes_at_end": 3369607,
+            "reached_eof": true,
+            "line_cap": null
+          }
+        ],
+        "mcp_requests": [
+          {
+            "file": "backend-2026-11-04-01.log",
+            "timestamp": "2026-11-04T07:44:33.684690+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 3396.06,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04-01.log",
+            "timestamp": "2026-11-04T07:44:45.989580+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 12279.02,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:13:18.990018+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2945.62,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-07.log",
+            "timestamp": "2026-11-07T02:28:28.457450+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2659.6,
+            "request_id": "req-43911e39ea4a4493b7c2df58f65de75e",
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-07.log",
+            "timestamp": "2026-11-07T02:48:48.142996+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2665.74,
+            "request_id": "req-2fe650c243f849698ed9deb95c78f57a",
+            "query_recorded": false
+          }
+        ],
+        "policy_requests": [],
+        "positive_access_control": {
+          "file": "backend-2026-11-04-01.log",
+          "timestamp": "2026-11-04T05:17:27.708500+00:00",
+          "method": "POST",
+          "path": "/api/v1/monitoring/traffic/events",
+          "status": 200,
+          "duration_ms": 850.49,
+          "query_recorded": false
+        },
+        "warning_counts": {},
+        "query_visibility": "Source access logger stores route template without query; cannot label every mcp-projects GET as preview=true.",
+        "summary": {
+          "route_requests": 5,
+          "statuses": {
+            "200": 5
+          },
+          "at_least30s": 0,
+          "at_least35s": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.12",
+      "exit": 0,
+      "result": {
+        "observed_at": "2026-11-07T04:30:28.562590+00:00",
+        "files": [
+          {
+            "name": "backend-2026-11-04-01.log",
+            "lines": 180975,
+            "json_lines": 180975,
+            "bytes_at_start": 52428498,
+            "bytes_at_end": 52428498,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-02.log",
+            "lines": 180931,
+            "json_lines": 180931,
+            "bytes_at_start": 52428629,
+            "bytes_at_end": 52428629,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-03.log",
+            "lines": 186813,
+            "json_lines": 186813,
+            "bytes_at_start": 52428491,
+            "bytes_at_end": 52428491,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-04.log",
+            "lines": 113619,
+            "json_lines": 113619,
+            "bytes_at_start": 31876808,
+            "bytes_at_end": 31876808,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04.log",
+            "lines": 184524,
+            "json_lines": 184524,
+            "bytes_at_start": 52428795,
+            "bytes_at_end": 52428795,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-01.log",
+            "lines": 181628,
+            "json_lines": 181628,
+            "bytes_at_start": 52428480,
+            "bytes_at_end": 52428480,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-02.log",
+            "lines": 180721,
+            "json_lines": 180721,
+            "bytes_at_start": 52428635,
+            "bytes_at_end": 52428635,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-03.log",
+            "lines": 88884,
+            "json_lines": 88884,
+            "bytes_at_start": 26194718,
+            "bytes_at_end": 26194718,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05.log",
+            "lines": 171104,
+            "json_lines": 171104,
+            "bytes_at_start": 52428765,
+            "bytes_at_end": 52428765,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-06.log",
+            "lines": 81461,
+            "json_lines": 81461,
+            "bytes_at_start": 51147462,
+            "bytes_at_end": 51147462,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-07.log",
+            "lines": 3590,
+            "json_lines": 3590,
+            "bytes_at_start": 2201070,
+            "bytes_at_end": 2201070,
+            "reached_eof": true,
+            "line_cap": null
+          }
+        ],
+        "mcp_requests": [
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:12:41.378618+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2809.31,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:15:14.078551+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2973.1,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T03:11:18.444233+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2886.73,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-06.log",
+            "timestamp": "2026-11-06T08:03:13.014148+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2637.2,
+            "request_id": "req-5f48e4a85b044461aebd95d7f868fe69",
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-06.log",
+            "timestamp": "2026-11-06T08:03:28.471271+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 9561.45,
+            "request_id": "req-1f19e4d046e44c549b036bdd2414e0e1",
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-06.log",
+            "timestamp": "2026-11-06T08:07:16.705424+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 9341.61,
+            "request_id": "req-f7e8359210ff4e80a1579ec0fb785b15",
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-07.log",
+            "timestamp": "2026-11-07T02:27:54.588078+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2746.51,
+            "request_id": "req-22046e2c09b24f16ab8c8db3572ef7b1",
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-07.log",
+            "timestamp": "2026-11-07T02:29:44.723686+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 9019.99,
+            "request_id": "req-94d767ceef9540eb96b114faeb38c5d4",
+            "query_recorded": false
+          }
+        ],
+        "policy_requests": [],
+        "positive_access_control": {
+          "file": "backend-2026-11-04-01.log",
+          "timestamp": "2026-11-04T05:15:42.760135+00:00",
+          "method": "GET",
+          "path": "/api/v1/monitoring/host-observations/{host_id}/jobs",
+          "status": 200,
+          "duration_ms": 5.4,
+          "query_recorded": false
+        },
+        "warning_counts": {},
+        "query_visibility": "Source access logger stores route template without query; cannot label every mcp-projects GET as preview=true.",
+        "summary": {
+          "route_requests": 8,
+          "statuses": {
+            "200": 8
+          },
+          "at_least30s": 0,
+          "at_least35s": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.13",
+      "exit": 0,
+      "result": {
+        "observed_at": "2026-11-07T04:30:28.223870+00:00",
+        "files": [
+          {
+            "name": "backend-2026-11-04-01.log",
+            "lines": 182658,
+            "json_lines": 182658,
+            "bytes_at_start": 52428714,
+            "bytes_at_end": 52428714,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-02.log",
+            "lines": 182199,
+            "json_lines": 182199,
+            "bytes_at_start": 52428676,
+            "bytes_at_end": 52428676,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-03.log",
+            "lines": 188141,
+            "json_lines": 188141,
+            "bytes_at_start": 52428622,
+            "bytes_at_end": 52428622,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04-04.log",
+            "lines": 120978,
+            "json_lines": 120978,
+            "bytes_at_start": 33709050,
+            "bytes_at_end": 33709050,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-04.log",
+            "lines": 185907,
+            "json_lines": 185907,
+            "bytes_at_start": 52428565,
+            "bytes_at_end": 52428565,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-01.log",
+            "lines": 183509,
+            "json_lines": 183509,
+            "bytes_at_start": 52428462,
+            "bytes_at_end": 52428462,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-02.log",
+            "lines": 183219,
+            "json_lines": 183219,
+            "bytes_at_start": 52428783,
+            "bytes_at_end": 52428783,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05-03.log",
+            "lines": 90369,
+            "json_lines": 90369,
+            "bytes_at_start": 27566480,
+            "bytes_at_end": 27566480,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-05.log",
+            "lines": 172886,
+            "json_lines": 172886,
+            "bytes_at_start": 52428470,
+            "bytes_at_end": 52428470,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-06-01.log",
+            "lines": 2554,
+            "json_lines": 2554,
+            "bytes_at_start": 2105509,
+            "bytes_at_end": 2105509,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-06.log",
+            "lines": 81972,
+            "json_lines": 81972,
+            "bytes_at_start": 52428013,
+            "bytes_at_end": 52428013,
+            "reached_eof": true,
+            "line_cap": null
+          },
+          {
+            "name": "backend-2026-11-07.log",
+            "lines": 6113,
+            "json_lines": 6113,
+            "bytes_at_start": 5093279,
+            "bytes_at_end": 5093279,
+            "reached_eof": true,
+            "line_cap": null
+          }
+        ],
+        "mcp_requests": [
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:12:56.136235+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 1983.11,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:13:30.506874+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2371.2,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T00:14:12.368593+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 5562.39,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T03:11:21.343912+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2902.12,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-04.log",
+            "timestamp": "2026-11-04T03:14:58.643445+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 1910.78,
+            "request_id": null,
+            "query_recorded": false
+          },
+          {
+            "file": "backend-2026-11-06.log",
+            "timestamp": "2026-11-06T08:06:03.642450+00:00",
+            "method": "GET",
+            "path": "/api/v1/auth/mcp-projects",
+            "status": 200,
+            "duration_ms": 2632.5,
+            "request_id": "req-e8b267245ea7454fb14e8de14386500b",
+            "query_recorded": false
+          }
+        ],
+        "policy_requests": [],
+        "positive_access_control": {
+          "file": "backend-2026-11-04-01.log",
+          "timestamp": "2026-11-04T05:13:09.927369+00:00",
+          "method": "POST",
+          "path": "/api/v1/monitoring/host-observations/{host_id}/reports",
+          "status": 202,
+          "duration_ms": 29.13,
+          "query_recorded": false
+        },
+        "warning_counts": {},
+        "query_visibility": "Source access logger stores route template without query; cannot label every mcp-projects GET as preview=true.",
+        "summary": {
+          "route_requests": 6,
+          "statuses": {
+            "200": 6
+          },
+          "at_least30s": 0,
+          "at_least35s": 0
+        }
+      },
+      "error": null
+    }
+  ]
+}

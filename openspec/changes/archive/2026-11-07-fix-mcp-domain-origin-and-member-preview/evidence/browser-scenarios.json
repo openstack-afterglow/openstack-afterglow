@@ -1,0 +1,121 @@
+{
+  "boundary": "Real isolated account route/API client; fixture identity and provider responses, not production recovery",
+  "scenarios": [
+    {
+      "scenario": "member manage key",
+      "state": [
+        {
+          "project": "Research A project-alpha",
+          "native": " 클라우드 관리 가능",
+          "effective": " 클라우드: 읽기·쓰기",
+          "leaves": [
+            "drover-inventory_reader",
+            "drover-clusters_editor",
+            "palimpsest-inventory_reader",
+            "palimpsest-publish_editor",
+            "waygate-inventory_reader",
+            "waygate-clients_editor"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "reader not upgraded by manage selection",
+      "state": [
+        {
+          "project": "Research A project-alpha",
+          "native": " 클라우드 관리 가능",
+          "effective": " 클라우드: 읽기·쓰기"
+        },
+        {
+          "project": "Read-only A project-alpha-reader",
+          "native": " 클라우드 읽기 전용 권한",
+          "effective": " 클라우드: 읽기 전용"
+        }
+      ]
+    },
+    {
+      "scenario": "read key caps native member management",
+      "state": [
+        {
+          "project": "Research A project-alpha",
+          "native": " 클라우드 관리 가능",
+          "effective": " 클라우드: 읽기 전용",
+          "leaves": [
+            "drover-inventory_reader",
+            "palimpsest-inventory_reader",
+            "waygate-inventory_reader"
+          ]
+        },
+        {
+          "project": "Read-only A project-alpha-reader",
+          "native": " 클라우드 읽기 전용 권한",
+          "effective": " 클라우드: 읽기 전용",
+          "leaves": [
+            "drover-inventory_reader",
+            "palimpsest-inventory_reader",
+            "waygate-inventory_reader"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "scope failure is not three service role demands",
+      "warnings": [
+        "프로젝트 인증 범위를 확인하지 못해 서비스 정책을 조회하지 않았습니다. 권한 부족이 확정된 것은 아닙니다."
+      ],
+      "serviceRows": 0,
+      "native": " 클라우드 권한 미확인"
+    },
+    {
+      "scenario": "unknown scope blocks otherwise valid manage form",
+      "createEnabled": false
+    },
+    {
+      "scenario": "genuine service failure remains isolated",
+      "native": " 클라우드 관리 가능",
+      "services": [
+        {
+          "name": "Drover",
+          "unavailable": true,
+          "leaves": []
+        },
+        {
+          "name": "Palimpsest",
+          "unavailable": false,
+          "leaves": [
+            "palimpsest-inventory_reader"
+          ]
+        },
+        {
+          "name": "Waygate",
+          "unavailable": false,
+          "leaves": [
+            "waygate-inventory_reader"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "independent HTTP preview response exceeds original 30s client deadline",
+      "delayMs": 31000,
+      "elapsedMs": 31056,
+      "committed": true
+    },
+    {
+      "scenario": "same owner, different current domain/project context",
+      "currentDomain": "domain-beta",
+      "state": {
+        "origins": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "oldOriginVisible": false,
+        "recordParentClass": "records svelte-1h71xsj"
+      }
+    }
+  ],
+  "readOnly": true,
+  "delayHarnessNote": "An in-kernel delayed fixture hit the browser tool default wait deadline and was rejected as acceptance; independent Node HTTP peer completed real31s response and UI committed at31056ms."
+}

@@ -44,6 +44,8 @@ const activeToken = {
 	name: 'Lumen',
 	owner_project_id: 'project',
 	owner_project_name: 'Saved issuance origin',
+	authorization_domain_id: 'approval-domain',
+	authorization_domain_name: 'Approval domain',
 	source: 'personal_token',
 	access_level: 'read',
 	project_scope: 'current',
@@ -180,7 +182,9 @@ describe('McpAccessSection', () => {
 		]) {
 			setAuth({ token: 'token', ...workspace });
 			verifyAuth();
-			await screen.findByText(t('mcp.issuingProject', { project: 'Saved origin' }));
+			await screen.findByText(selected === 'oauth'
+				? t('mcp.authorizationDomain', { domain: 'Approval domain (approval-domain)' })
+				: t('mcp.issuingProject', { project: 'Saved origin' }));
 			const restrictions = screen.getByRole('group', { name: t('mcp.savedRestrictions') });
 			expect(restrictions.textContent).toContain('Saved approved one');
 			expect(restrictions.textContent).toContain('Saved approved two');
@@ -204,6 +208,34 @@ describe('McpAccessSection', () => {
 		await screen.findByText(t(selected === 'oauth' ? 'mcp.emptyOAuth' : 'mcp.emptyTokens'));
 	});
 
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('distinguishes OAuth authorization domains and legacy unknown origin independently of the workspace in %s', async (locale) => {
+		initLocale(locale);
+		const grants = [
+			{ ...activeToken, id: 'oauth-a', grant_id: 'grant-a', source: 'oauth', owner_project_name: 'SYSTEM',
+				authorization_domain_id: 'domain-a', authorization_domain_name: 'Research' },
+			{ ...activeToken, id: 'oauth-b', grant_id: 'grant-b', source: 'oauth', owner_project_name: 'SYSTEM',
+				authorization_domain_id: 'domain-b', authorization_domain_name: 'Research' },
+			{ ...activeToken, id: 'oauth-old', grant_id: 'grant-old', source: 'oauth', owner_project_name: 'SYSTEM',
+				authorization_domain_id: null, authorization_domain_name: null },
+		];
+		api.get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/auth/mcp-projects')
+			? accountResponse(path) : path.includes('oauth') ? grants : []));
+		render(McpAccessSection);
+		for (const workspace of [
+			{ projectId: 'project', domainId: 'unrelated-current-domain' },
+			{ projectId: 'other', domainId: 'domain-b' },
+			{ projectId: null, domainId: null },
+		]) {
+			setAuth({ token: 'token', ...workspace });
+			verifyAuth();
+			await screen.findByText(t('mcp.authorizationDomain', { domain: 'Research (domain-a)' }));
+			expect(screen.getByText(t('mcp.authorizationDomain', { domain: 'Research (domain-b)' }))).toBeTruthy();
+			expect(screen.getByText(t('mcp.authorizationDomain', { domain: t('mcp.authorizationDomainUnknown') }))).toBeTruthy();
+			expect(screen.queryByText(t('mcp.issuingProject', { project: 'SYSTEM' }))).toBeNull();
+			expect(screen.getAllByText(t('mcp.savedProjects', { projects: 'Saved home project' }))).toHaveLength(3);
+		}
+	});
+
 	it.each(['oauth', 'api'] as const)('loads and revokes %s with only a verified identity and never fetches issuance projects', async (selected) => {
 		setAuth({ token: 'token', projectId: null, domainId: null });
 		verifyAuth();
@@ -213,7 +245,9 @@ describe('McpAccessSection', () => {
 		const writeText = clipboard();
 		render(McpAccessSection);
 		if (selected === 'api') await selectMethod('api');
-		await screen.findByText(t('mcp.issuingProject', { project: record.owner_project_name }));
+		await screen.findByText(selected === 'oauth'
+			? t('mcp.authorizationDomain', { domain: 'Approval domain (approval-domain)' })
+			: t('mcp.issuingProject', { project: record.owner_project_name }));
 		expect(api.get.mock.calls.some(([path]) => path.startsWith('/api/v1/auth/mcp-projects'))).toBe(false);
 		expect(screen.queryByLabelText(t('mcp.name'))).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t(selected === 'oauth' ? 'mcp.copyOAuthConfig' : 'mcp.copySetupConfig') }));
@@ -671,7 +705,7 @@ describe('McpAccessSection', () => {
 		await selectMethod('api');
 		const button = await createButton();
 		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects', 'token', 'project', scopedGetOptions);
-		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects?preview=true', 'token', 'project', scopedGetOptions);
+		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects?preview=true', 'token', 'project', { ...scopedGetOptions, cache: 'no-store', replayOnUnauthorized: true, timeoutMs: 40_000 });
 		expect(screen.getByText(tp('mcpConsent.preview.loading'))).toBeTruthy();
 		expect(screen.getByText(tp('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
 		await fireEvent.change(screen.getByLabelText(t('mcp.permission')), { target: { value: 'manage' } });

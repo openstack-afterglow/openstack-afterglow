@@ -216,7 +216,7 @@ describe('MCP OAuth consent route', () => {
 		expect(pendingMcpConsentTicket()).toBe(ticket);
 		expect(replaceState).toHaveBeenCalledWith(null, '', '/oauth/mcp/authorize');
 		expect(api.get).toHaveBeenCalledWith(`/api/v1/auth/mcp-oauth/consents/${ticket}`, actor.token, actor.projectId, getOptions);
-		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects?preview=true', actor.token, actor.projectId, getOptions);
+		expect(api.get).toHaveBeenCalledWith('/api/v1/auth/mcp-projects?preview=true', actor.token, actor.projectId, { ...getOptions, cache: 'no-store', replayOnUnauthorized: true, timeoutMs: 40_000 });
 		expect(checkbox('project-a').checked).toBe(true);
 		expect(checkbox('project-b').checked).toBe(false);
 		expect(goto).not.toHaveBeenCalled();

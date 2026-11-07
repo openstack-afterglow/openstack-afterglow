@@ -23,9 +23,10 @@ Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·inst
 
 **MCP VM 생성 명시 선택 (source/local):** `afterglow_vm_create`는 이미지·flavor·네트워크·부팅 볼륨 크기·현재 사용자 SSH 키와 대상 프로젝트 보안그룹을 모두 명시해야 한다. Preview와 native 쓰기 전에 provider 소유권을 재검증하고 선택 내용을 승인 fingerprint에 포함한다. 기존 VM·권한은 변경하지 않으며 이 source 변경은 운영 배포가 아니다.
 
-**MCP member 권한·클라이언트 식별 (source/local):** 프로젝트의 native cloud 관리 가능 여부와 키/동의의 선택된 접근 상한을 분리해 표시한다. 검증된 `member`의 기존 관리 허용·현재 역할/저장 프로젝트/발급 role ceiling 교집합은 유지하며 read key·reader·unknown을 쓰기로 승격하지 않는다. 프로젝트 preview는 검증한 request-local `AccessInfo` catalog를 독립 native 정책 조회에 전달해 불필요한 동일 token 재교환을 피한다. Native 서비스의404/403·미확인을 관리 허용으로 바꾸지는 않는다. 연결 카드에서는 기존 정제 관측의 이름·버전·신고/추정 근거를 접지 않은 요약에 표시하고, 플랫폼·날짜·제품 추론은 상세에 둔다. Client ID·프로젝트 UUID masking과 exact grant 폐기·Lumen MCP 제외는 유지한다. 새 schema·권위 cache·운영 배포는 없다.
+**MCP member 권한·클라이언트 식별 (source/local):** 프로젝트의 native cloud 관리 가능 여부와 키/동의의 선택된 접근 상한을 분리한다. 검증된 `member`·`manager`·`admin`의 관리 해석과 현재 역할/저장 프로젝트/발급 ceiling 교집합을 유지하며 reader/read key/unknown을 승격하지 않는다. Preview의 exact-current 연결은 검증된 실제 `AccessInfo`·인증 token/catalog만 별도 소유 SDK session에 재사용하고 재발급하지 않는다. 다른 프로젝트는 `validate_session`이 검증한 사람의 unscoped 원본이 있으면 request-local metadata로 전달해 파생하고, 없으면 기존 caller subject의 실제 native 허용 여부를 따른다. 실제 user/project/domain/current-role 검증 실패는 `scope_error`와 unknown이다. Native 서비스의 독립 deny/404/403/timeout을 member라는 이유로 허용하지 않는다. 원본 token은 응답·관측 metadata에 내보내지 않는다.
+운영 원인 판정은 위 source 보완과 별개다. 제한적인 scoped-rescope 거부 HTTP peer는 회귀 조건이지 운영 설정 증거가 아니다. 2026-11-07 읽기 전용 관측에서 controller1의 해당 Keystone override는 없고 설치 기본값은 true였으며, 현재 세 서비스의 발견 URL은 policy 경로를 공개하고 무인증 요청에401을 반환했다. 이는 실제 member의 policy 허용이나 보고된 실패의 원인을 증명하지 않는다. 과거 Drover404/Palimpsest403 기록도 현재 원인으로 재사용하지 않으며 독립 native 거부를 이 수정으로 해결했다고 주장하지 않는다.
 
-**계정 소유 MCP inventory (source/local):** 개인 키·OAuth 목록은 선택 workspace가 아니라 인증된 exact user의 전체 발급 프로젝트를 조회한다. 저장된 발급 프로젝트와 승인 프로젝트를 표시하며 다른 사용자의 연결은 공개하지 않는다. 두 GET과 exact-key/grant DELETE만 원래 세션·사용자/home 검증을 유지한 identity-only 관리 경계를 사용하고, 폐기는 DB에서 원래 프로젝트를 찾아 기존 lock·audit·cleanup을 수행한다. 프로젝트 미선택 상태도 계정 경로에 진입할 수 있지만 새 발급·권한 preview·연결 확인과 Lumen 선택은 기존 workspace 권위를 요구한다. 단일 working domain 내 다중 프로젝트 승인·실행 상한은 그대로이며 schema migration·운영 배포는 없다.
+**계정 소유 MCP inventory (source/local):** 개인 키·OAuth 목록은 선택 workspace가 아니라 exact user의 전체 연결을 조회한다. OAuth는 저장된 immutable 발급 project→domain exact 조회로 `authorization_domain_id/name`을 projection하고 UI는 승인 도메인을 표시한다. 이름은 현재 directory label이며 과거 snapshot이 아니다. 소유자 SQL 조회/whitelist materialization 후 session을 닫고 고정 operator의 metadata GET만 최대3개씩 수행하며, per-read5초·shared10초 dispatch budget과 SDK drain을 따른다. 삭제된 project·metadata 실패는 명시 unknown이고 현재/home domain으로 대체하지 않는다. 개인 키의 발급 project 및 원래 project-bound 실행·폐기 lock/audit/cleanup은 유지한다. 새 schema·migration·native 권한 부여·운영 배포는 없다.
 
 
 
@@ -2093,9 +2094,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "73d5f8c0f9a431a6e4c8a931afee2ae72a4a1478cf460a65502972db730c5dbe",
-  "reviewed_at": "2026-11-06T15:24:33Z",
-  "summary": "1.32.9 고정 후보와 review blocker 수정: exact-user MCP origin, regex/header views, 안전한 property/metadata 편집, secret identity masking, logical-owner view resets, validated operator catalog cleanup 및 target-specific native recovery를 검토. 기존 native/lease/marker/무재실행·schema/topology 보존. 원본 회귀 실패와 SQL/Redis/SDK·실제 UI smoke 확인; 최종 전체 gate·CI/images/Helm을 이 snapshot으로 검증."
+  "source_sha256": "641f2f3b5a1a289e160c6ef609fa720161466c92752672216d650082c4c74cbc",
+  "reviewed_at": "2026-11-07T06:04:43Z",
+  "summary": "MCP domain/member source-local boundaries; ordinary explicit-deadline GET401 recovery retained; qualified readonly native policy observations, not production member acceptance. Test-only: widened wall-clock margin of test_partial_timeout_status_malformed_redirect_and_no_leakage (0.15s->0.75s budget, lumen delay 0.3s->1.5s) after it failed deterministically under changed xdist distribution; assertions unchanged, no runtime/architecture change."
 }
 ```
 <!-- architecture-review:end -->

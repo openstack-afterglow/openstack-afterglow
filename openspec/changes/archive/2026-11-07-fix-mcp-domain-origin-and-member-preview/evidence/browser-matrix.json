@@ -1,0 +1,1517 @@
+{
+  "boundary": "Actual isolated full SvelteKit account route and API client; HTTP identity/grant/permission responses synthetic; no production/native authorization acceptance",
+  "matrix": [
+    {
+      "locale": "ko",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "ko",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ko",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "ko",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ko",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "ko",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ko",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "ko",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ko",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "ko",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ko",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "ko",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-alpha) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A",
+          "저장된 제한 (변경 불가) 승인 도메인: Research domain (domain-beta) 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research B",
+          "저장된 제한 (변경 불가) 승인 도메인: 도메인을 확인할 수 없음 접근 권한: 관리 발급 당시 접근 가능한 전체 프로젝트 (고정 목록) 프로젝트: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 클라우드 관리 가능",
+        "effective": " 클라우드: 읽기 전용",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "en",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "en",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "en",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "en",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "en",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "en",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "en",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-alpha) Access: Manage All accessible projects at issuance (fixed set) Projects: Research A",
+          "Saved restrictions (cannot be edited) Authorization domain: Research domain (domain-beta) Access: Manage All accessible projects at issuance (fixed set) Projects: Research B",
+          "Saved restrictions (cannot be edited) Authorization domain: Domain could not be verified Access: Manage All accessible projects at issuance (fixed set) Projects: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Cloud management available",
+        "effective": " Cloud: read only",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "ja",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "ja",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "ja",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "ja",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "ja",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ja",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "ja",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-alpha) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A",
+          "保存された制限（変更不可） 承認ドメイン: Research domain (domain-beta) アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research B",
+          "保存された制限（変更不可） 承認ドメイン: ドメインを確認できません アクセス権限: 管理 発行時にアクセス可能だったすべてのプロジェクト（固定一覧） プロジェクト: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " クラウド管理が可能",
+        "effective": " クラウド：読み取り専用",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "zh-CN",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "zh-CN",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "已保存的限制（不可更改） 授权域：Research domain (domain-alpha) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A",
+          "已保存的限制（不可更改） 授权域：Research domain (domain-beta) 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research B",
+          "已保存的限制（不可更改） 授权域：无法验证域 访问权限：管理 签发时可访问的全部项目（固定列表） 项目：Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " 可管理云资源",
+        "effective": " 云资源：只读",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "sw",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "sw",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "sw",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "sw",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "sw",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "sw",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "sw",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-alpha) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Research domain (domain-beta) Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research B",
+          "Vizuizi vilivyohifadhiwa (haviwezi kuhaririwa) Kikoa cha idhini: Kikoa hakikuweza kuthibitishwa Ufikiaji: Kusimamia Miradi yote iliyoweza kufikiwa wakati wa kutoa tokeni (orodha isiyobadilika) Miradi: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Usimamizi wa wingu unapatikana",
+        "effective": " Wingu: kusoma pekee",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "nb",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "nb",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "nb",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "nb",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "nb",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "nb",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "nb",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-alpha) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Research domain (domain-beta) Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research B",
+          "Lagrede begrensninger (kan ikke redigeres) Godkjenningsdomene: Domenet kunne ikke bekreftes Tilgang: Administrer Alle tilgjengelige prosjekter ved utstedelse (fast sett) Prosjekter: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Skyadministrasjon tilgjengelig",
+        "effective": " Sky: kun lesing",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "ms",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "ms",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "ms",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "ms",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "ms",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "ms",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "ms",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-alpha) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Research domain (domain-beta) Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research B",
+          "Sekatan yang disimpan (tidak boleh disunting) Domain kelulusan: Domain tidak dapat disahkan Akses: Urus Semua projek yang boleh diakses ketika pengeluaran (set tetap) Projek: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Pengurusan awan tersedia",
+        "effective": " Awan: baca sahaja",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "vi",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "vi",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "vi",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "vi",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "vi",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "vi",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "vi",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-alpha) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Research domain (domain-beta) Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research B",
+          "Các giới hạn đã lưu (không thể chỉnh sửa) Miền phê duyệt: Không thể xác minh miền Quyền truy cập: Quản lý Tất cả dự án có thể truy cập tại thời điểm phát hành (tập hợp cố định) Dự án: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " Có thể quản lý đám mây",
+        "effective": " Đám mây: chỉ đọc",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 390,
+      "theme": "light",
+      "origin": {
+        "locale": "bn",
+        "width": 390,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 390,
+      "theme": "dark",
+      "origin": {
+        "locale": "bn",
+        "width": 390,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 900,
+      "theme": "light",
+      "origin": {
+        "locale": "bn",
+        "width": 900,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 900,
+      "theme": "dark",
+      "origin": {
+        "locale": "bn",
+        "width": 900,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 1440,
+      "theme": "light",
+      "origin": {
+        "locale": "bn",
+        "width": 1440,
+        "light": true,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    },
+    {
+      "locale": "bn",
+      "width": 1440,
+      "theme": "dark",
+      "origin": {
+        "locale": "bn",
+        "width": 1440,
+        "light": false,
+        "overflow": false,
+        "domains": [
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-alpha) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: Research domain (domain-beta) অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research B",
+          "সংরক্ষিত বিধিনিষেধ (সম্পাদনাযোগ্য নয়) অনুমোদনের ডোমেইন: ডোমেইন যাচাই করা যায়নি অ্যাক্সেস: পরিচালনা ইস্যু করার সময়ে অ্যাক্সেসযোগ্য সকল প্রকল্প (নির্দিষ্ট সেট) প্রকল্প: Research A"
+        ],
+        "projectOriginShown": false
+      },
+      "preview": {
+        "native": " ক্লাউড ব্যবস্থাপনা করা যাবে",
+        "effective": " ক্লাউড: শুধু পড়া",
+        "leaves": [
+          "drover-inventory_reader",
+          "palimpsest-inventory_reader",
+          "waygate-inventory_reader"
+        ],
+        "warnings": 0,
+        "overflow": false
+      }
+    }
+  ]
+}

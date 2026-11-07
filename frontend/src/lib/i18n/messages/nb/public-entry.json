@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "Ingen tjenestetilgang",
 	"mcpConsent.preview.service.attenuated": "Ingen tillatelser tillatt av skrivebeskyttet samtykke",
 	"mcpConsent.preview.service.unavailable": "Tillatelseskontroll utilgjengelig — tilgang ukjent",
+	"mcpConsent.preview.scopeUnavailable": "Prosjektets autentiseringsomfang kunne ikke bekreftes, så tjenestepolicyene ble ikke kontrollert. Dette fastslår ikke at tilgang er nektet.",
 	"mcpConsent.preview.unknownWrite": "Skrivetillatelsen kunne ikke bekreftes for et prosjekt. Administrasjon kan ikke godkjennes. Velg kun lesing eller åpne forespørselen på nytt.",
 	"mcpConsent.preview.selectedReadOnly": "Utvalget inneholder et skrivebeskyttet prosjekt, så administrasjon kan ikke godkjennes. Velg kun lesing, eller fjern de skrivebeskyttede prosjektene fra utvalget.",
 	"mcpConsent.permission.droverInventory": "Les klyngestatus og hendelser (uten hemmeligheter)",

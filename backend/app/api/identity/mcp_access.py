@@ -64,6 +64,7 @@ class McpProjectView(BaseModel):
 
 class McpProjectPermissionView(McpProjectView):
     can_write: bool | None
+    scope_error: Literal["scope_validation_unavailable"] | None = None
     service_permissions: dict[str, list[str]]
     service_errors: dict[str, str]
 
@@ -89,6 +90,8 @@ class McpTokenView(BaseModel):
     source: str
     owner_project_id: str
     owner_project_name: str
+    authorization_domain_id: str | None = None
+    authorization_domain_name: str | None = None
     access_level: str
     status: str
     visible_prefix: str | None
@@ -426,8 +429,7 @@ async def get_mcp_oauth_grants(request: Request, http_response: Response, token_
     _require_mcp_enabled()
     http_response.headers["Cache-Control"] = "no-store"
     http_response.headers["Pragma"] = "no-cache"
-    async with _session_factory()() as session:
-        return await list_oauth_grants(session, owner_user_id=token_info["user_id"])
+    return await list_oauth_grants(_session_factory(), owner_user_id=token_info["user_id"])
 
 
 @router.delete("/mcp-oauth/grants/{grant_id}", status_code=status.HTTP_204_NO_CONTENT)

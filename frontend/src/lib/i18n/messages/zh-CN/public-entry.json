@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "无服务访问权限",
 	"mcpConsent.preview.service.attenuated": "只读授权下没有允许的权限",
 	"mcpConsent.preview.service.unavailable": "无法检查权限 — 访问权限未确认",
+	"mcpConsent.preview.scopeUnavailable": "无法验证项目的身份验证范围，因此尚未检查服务策略。这并不表示访问已被拒绝。",
 	"mcpConsent.preview.unknownWrite": "无法确认某个项目的写入权限，因此无法批准管理权限。请选择只读或重新打开请求。",
 	"mcpConsent.preview.selectedReadOnly": "所选项目包含只读项目，无法批准管理权限。请选择只读，或取消选择只读项目。",
 	"mcpConsent.permission.droverInventory": "读取集群状态和事件（不含秘密信息）",

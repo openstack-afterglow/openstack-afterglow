@@ -36,6 +36,9 @@
 						<dd><StatusChip status={cloudAccess} label={t(`mcpConsent.preview.cloud.${cloudAccess}`)} /></dd>
 					</div>
 				</dl>
+				{#if project.scope_error}
+					<p class="permission-unavailable">{t('mcpConsent.preview.scopeUnavailable')}</p>
+				{:else}
 				<dl class="service-permissions">
 					{#each MCP_CONSENT_SERVICES as service (service.id)}
 						{@const native = consentServiceAccess(project, service.id, accessLevel)}
@@ -56,6 +59,7 @@
 						</div>
 					{/each}
 				</dl>
+				{/if}
 			</li>
 		{/each}
 	</ul>
@@ -84,6 +88,7 @@
 	.permission-leaves span { color: var(--color-ink-1); }
 	.permission-leaves code { color: var(--color-ink-2); font-size: var(--type-identifier); }
 	.permission-unavailable { color: var(--color-state-warning-text); }
+	.preview-project > p { margin: 0.75rem 0 0; font-size: var(--type-support); line-height: 1.5; overflow-wrap: anywhere; }
 	@media (max-width: 767px) {
 		.cloud-permission, .service-permission { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
 	}

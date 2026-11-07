@@ -1,0 +1,4456 @@
+{
+  "qualification": "Temporal window only; no human principal, native correlation ID or preview query/body binding. All printed statuses are unrelated-or-related window traffic, NOT attribution. Generic warning labels/duplicate traceback lines are not independent errors. Initial cross-service file read failed; owning Keystone container read succeeded.",
+  "controllers": [
+    {
+      "host": "172.30.0.11",
+      "exit": 0,
+      "result": {
+        "window_utc": [
+          "2026-11-07T02:29:30+00:00",
+          "2026-11-07T02:29:55+00:00"
+        ],
+        "files": [
+          {
+            "name": "keystone.log",
+            "available": true,
+            "lines": 766944,
+            "matched_window_lines": 426,
+            "first_time": "2026-11-07T00:00:10.604000+00:00",
+            "last_time": "2026-11-07T04:36:38.004000+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-apache-public-access.log",
+            "available": true,
+            "lines": 1110034,
+            "matched_window_lines": 178,
+            "first_time": "2026-11-04T06:30:09+00:00",
+            "last_time": "2026-11-07T04:37:02+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "apache-access.log",
+            "available": true,
+            "lines": 0,
+            "matched_window_lines": 0,
+            "first_time": null,
+            "last_time": null,
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-uwsgi.log",
+            "available": true,
+            "lines": 814254,
+            "matched_window_lines": 426,
+            "first_time": "2026-11-07T00:00:10.604000+00:00",
+            "last_time": "2026-11-07T04:36:59.759000+00:00",
+            "reached_eof": true
+          }
+        ],
+        "requests": [
+          {
+            "at": "2026-11-07T02:29:33+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/regions",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:52+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:55+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:55+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:55+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:55+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:55+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          }
+        ],
+        "status_counts": {
+          "200": 59,
+          "201": 23,
+          "300": 17,
+          "404": 2
+        },
+        "errorCategorySummary": {
+          "warning_or_error": 852
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.12",
+      "exit": 0,
+      "result": {
+        "window_utc": [
+          "2026-11-07T02:29:30+00:00",
+          "2026-11-07T02:29:55+00:00"
+        ],
+        "files": [
+          {
+            "name": "keystone.log",
+            "available": true,
+            "lines": 761985,
+            "matched_window_lines": 116,
+            "first_time": "2026-11-07T00:00:02.727000+00:00",
+            "last_time": "2026-11-07T13:35:47.371000+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-apache-public-access.log",
+            "available": true,
+            "lines": 109757,
+            "matched_window_lines": 317,
+            "first_time": "2026-11-06T21:43:56+00:00",
+            "last_time": "2026-11-07T04:36:41+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "apache-access.log",
+            "available": true,
+            "lines": 0,
+            "matched_window_lines": 0,
+            "first_time": null,
+            "last_time": null,
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-uwsgi.log",
+            "available": true,
+            "lines": 223128,
+            "matched_window_lines": 0,
+            "first_time": "2026-11-07T06:44:21.536000+00:00",
+            "last_time": "2026-11-07T13:36:43.375000+00:00",
+            "reached_eof": true
+          }
+        ],
+        "requests": [
+          {
+            "at": "2026-11-07T02:29:31+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:32+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/regions",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:48+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:48+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:50+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:52+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          }
+        ],
+        "status_counts": {
+          "200": 167,
+          "201": 34,
+          "300": 34,
+          "404": 4
+        },
+        "errorCategorySummary": {
+          "warning_or_error": 116
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.13",
+      "exit": 0,
+      "result": {
+        "window_utc": [
+          "2026-11-07T02:29:30+00:00",
+          "2026-11-07T02:29:55+00:00"
+        ],
+        "files": [
+          {
+            "name": "keystone.log",
+            "available": true,
+            "lines": 729554,
+            "matched_window_lines": 1224,
+            "first_time": "2026-11-07T00:00:00.645000+00:00",
+            "last_time": "2026-11-07T04:36:34.592000+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-apache-public-access.log",
+            "available": true,
+            "lines": 418848,
+            "matched_window_lines": 338,
+            "first_time": "2026-11-06T06:30:04+00:00",
+            "last_time": "2026-11-07T04:36:44+00:00",
+            "reached_eof": true
+          },
+          {
+            "name": "apache-access.log",
+            "available": true,
+            "lines": 0,
+            "matched_window_lines": 0,
+            "first_time": null,
+            "last_time": null,
+            "reached_eof": true
+          },
+          {
+            "name": "keystone-uwsgi.log",
+            "available": true,
+            "lines": 786949,
+            "matched_window_lines": 1224,
+            "first_time": "2026-11-07T00:00:00.645000+00:00",
+            "last_time": "2026-11-07T04:36:47.281000+00:00",
+            "reached_eof": true
+          }
+        ],
+        "requests": [
+          {
+            "at": "2026-11-07T02:29:30+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:30+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:32+00:00",
+            "method": "POST",
+            "path_category": "/v3/s3tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:34+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:35+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:36+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/groups/{id}/users",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:37+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:38+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:39+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:40+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:41+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:42+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:43+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/users/{id}/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/projects/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/domains/{id}",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/roles",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_inferences",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/role_assignments",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:44+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 401,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:45+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 201,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:47+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:49+00:00",
+            "method": "POST",
+            "path_category": "/v3/auth/tokens",
+            "status": 404,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:51+00:00",
+            "method": "GET",
+            "path_category": "/v3/auth/tokens",
+            "status": 200,
+            "file": "keystone-apache-public-access.log"
+          },
+          {
+            "at": "2026-11-07T02:29:53+00:00",
+            "method": "GET",
+            "path_category": "/",
+            "status": 300,
+            "file": "keystone-apache-public-access.log"
+          }
+        ],
+        "status_counts": {
+          "200": 227,
+          "201": 10,
+          "300": 20,
+          "401": 1,
+          "404": 2
+        },
+        "errorCategorySummary": {
+          "warning_or_error": 2442,
+          "unauthorized": 2
+        }
+      },
+      "error": null
+    }
+  ],
+  "summary": [
+    {
+      "host": "172.30.0.11",
+      "exit": 0,
+      "statusCounts": {
+        "200": 59,
+        "201": 23,
+        "300": 17,
+        "404": 2
+      },
+      "authPostStatuses": {
+        "201": 23
+      },
+      "nonSuccessRequests": {
+        "POST /v3/s3tokens 404": 2
+      },
+      "errorCategories": {
+        "warning_or_error": 852
+      },
+      "qualification": "Window-only metadata; generic warning labels are not a failure cause and duplicate traceback lines are not independent requests."
+    },
+    {
+      "host": "172.30.0.12",
+      "exit": 0,
+      "statusCounts": {
+        "200": 167,
+        "201": 34,
+        "300": 34,
+        "404": 4
+      },
+      "authPostStatuses": {
+        "201": 34
+      },
+      "nonSuccessRequests": {
+        "POST /v3/s3tokens 404": 3,
+        "GET /v3/auth/tokens 404": 1
+      },
+      "errorCategories": {
+        "warning_or_error": 116
+      },
+      "qualification": "Window-only metadata; generic warning labels are not a failure cause and duplicate traceback lines are not independent requests."
+    },
+    {
+      "host": "172.30.0.13",
+      "exit": 0,
+      "statusCounts": {
+        "200": 227,
+        "201": 10,
+        "300": 20,
+        "401": 1,
+        "404": 2
+      },
+      "authPostStatuses": {
+        "201": 10,
+        "401": 1,
+        "404": 1
+      },
+      "nonSuccessRequests": {
+        "POST /v3/s3tokens 404": 1,
+        "POST /v3/auth/tokens 401": 1,
+        "POST /v3/auth/tokens 404": 1
+      },
+      "errorCategories": {
+        "warning_or_error": 2442,
+        "unauthorized": 2
+      },
+      "qualification": "Window-only metadata; generic warning labels are not a failure cause and duplicate traceback lines are not independent requests."
+    }
+  ]
+}

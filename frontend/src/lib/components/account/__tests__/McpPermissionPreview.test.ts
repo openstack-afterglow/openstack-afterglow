@@ -54,6 +54,27 @@ describe('MCP permission preview authority separation', () => {
 		expect(screen.queryByText('lumen-keys_editor')).toBeNull();
 	});
 
+	it.each(['ko', 'en', 'ja', 'zh-CN', 'bn', 'ms', 'nb', 'sw', 'vi'] as const)('shows one scope-validation reason rather than three service-role failures in %s', async (locale) => {
+		initLocale(locale);
+		const unknown: McpConsentProject = {
+			...member, can_write: null, scope_error: 'scope_validation_unavailable',
+			service_permissions: {}, service_errors: { drover: 'unavailable', palimpsest: 'unavailable', waygate: 'unavailable' },
+		};
+		const view = render(McpPermissionPreview, { projects: [unknown], accessLevel: 'read' });
+		for (const accessLevel of ['read', 'manage'] as const) {
+			await view.rerender({ projects: [unknown], accessLevel });
+			expect(screen.getAllByText(t('mcpConsent.preview.scopeUnavailable'))).toHaveLength(1);
+			expect(screen.queryByText(t('mcpConsent.preview.service.unavailable'))).toBeNull();
+			expect(screen.queryByText('Drover')).toBeNull();
+			expect(cloud(unknown, 'native').getByText(t('mcpConsent.preview.nativeCloudAccess.unknown'))).toBeTruthy();
+			expect(cloud(unknown, 'effective').getByText(t('mcpConsent.preview.cloud.unknown'))).toBeTruthy();
+		}
+		await view.rerender({ projects: [{ ...member, scope_error: null, service_errors: { waygate: 'unavailable' } }], accessLevel: 'manage' });
+		expect(screen.queryByText(t('mcpConsent.preview.scopeUnavailable'))).toBeNull();
+		expect(screen.getByText(t('mcpConsent.preview.service.unavailable'))).toBeTruthy();
+		expect(screen.getByText('drover-clusters_editor')).toBeTruthy();
+	});
+
 	it('keeps unknown authority unknown across access changes and only restores independently confirmed services', async () => {
 		const unknown = { ...member, can_write: null, service_errors: { drover: 'permission_check_unavailable' } };
 		const view = render(McpPermissionPreview, { projects: [unknown], accessLevel: 'read' });

@@ -913,11 +913,11 @@ Canonical registry `2026-11-03.2`는 기존 도구를 보존하고 아래18개 �
 
 OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `OAuth 연결`과 현재 목록 순번을, 승인 프로젝트는 UUID 없이 이름을 표시한다. 순번은 영구 ID가 아니며 삭제는 정확한 grant ID로 처리한다. 표시를 가린 것이므로 인증된 사용자에게 반환하는 API 응답의 identifier는 변하지 않는다. Client ID는 public OAuth client의 식별자이며 access/refresh token이나 client secret과 구분한다.
 
-권한 preview는 프로젝트의 `can_write`에 따른 native cloud capability와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 현재 검증된 `member`는 cloud 관리 가능하며, `manage`를 명시 선택한 키·동의만 그 ceiling까지 쓸 수 있다. 기존 read grant는 자동 확대하지 않는다. 전체 프로젝트의 reader는 읽기 제한을, null/missing metadata는 unknown을 유지하고 native 서비스의 독립 정책 오류를 cloud member라는 이유로 허용하지 않는다. Preview는 해당 요청에서 검증한 exact target-token/project `AccessInfo` catalog를 재사용하며 별도 native 정책 조회용 token 재교환이나 관리자 fallback을 하지 않는다.
+권한 preview는 프로젝트의 `can_write`와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 검증된 `member`·`manager`·`admin`은 cloud 관리로 해석하되 reader/read grant/unknown을 승격하지 않는다. Exact-current SDK session은 실제 인증 token의 검증된 `AccessInfo`/catalog로 독립 생성해 동일 scope를 재발급하지 않는다. 다른 scope에는 `get_os_conn`이 보존한 검증된 사람의 session root가 있으면 이를 사용하고, 없으면 기존 caller subject의 실제 native 허용 여부를 따른다. 모든 결과의 owner/project/domain/현재 role 교집합을 재검증하며 session root는 API로 반환하지 않는다. Native 서비스의 deny/404/403/timeout은 여전히 독립이며 관리자 credential로 대체하지 않는다.
 
 
 
-`GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 로그인 사용자 본인의 모든 발급 프로젝트·도메인에 저장된 metadata를 반환합니다. Working project 미선택 상태에서도 조회할 수 있으며 `X-Project-Id`로 범위를 좁히거나 타인 연결을 조회하지 않습니다. 각 행의 `owner_project_id`·`owner_project_name`은 저장된 발급 origin이며 이름 snapshot이 없으면 exact ID를 사용합니다.
+`GET /api/v1/auth/mcp-tokens`와 `GET /api/v1/auth/mcp-oauth/grants`는 로그인 exact user의 모든 발급 origin metadata를 반환한다. `X-Project-Id`로 타인/현재 workspace 목록으로 바꾸지 않는다. `owner_project_id/name`은 원래 실행·폐기 binding으로 유지한다. OAuth에는 nullable `authorization_domain_id/name`을 추가한다: 소유자 SQL read를 종료한 뒤 저장된 project ID→domain ID→현재 표시 이름을 고정 operator로 exact 조회한다. 동명 도메인은 ID로 구분하며 metadata 실패/삭제/불일치는 둘 다 null이고 현재/home domain fallback이 없다. 이름은 발급 당시 snapshot이 아니다. 개인 키의 두 추가 field는 기본 null이며 발급 project UI는 유지한다. 새 schema/migration은 없다.
 
 `POST /api/v1/auth/mcp-tokens`는 기존 작업 domain·project 검증을 유지하며 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp, non_expiring?: boolean, project_scope?, project_ids?}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 개인 키의 finite 최대 기간은 `max(366일, mcp.max_grant_ttl_days)`이며 만료 field를 모두 생략한 API 요청은 기존 서버 기본 기간을 사용합니다. 명시적 `non_expiring: true`는 만료 없는 개인 키를 만들고 응답/목록의 `expires_at`은 `null`입니다. 미래 `expires_at`과 `non_expiring: true`의 동시 입력, 문자열 boolean, 과거·naive timestamp는 거부합니다. Finite expiry는 UTC `Z` timestamp로 Keystone에 전달하며 무기한 credential에는 expiry를 보내지 않습니다. 내부 Lumen 위임의 기존 finite TTL은 바뀌지 않습니다.
 
@@ -933,11 +933,13 @@ Refresh token과 제한된 Keystone application credential은 취소 전까지 �
 
 ### 전체 프로젝트의 혼합 권한 동의
 
-`project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않습니다. 실제 대상 scoped token과 현재 역할 교집합에서 `member`/`admin`이 확인된 프로젝트만 저장된 `can_write=true`를 가지며, `reader` 프로젝트도 같은 grant에 읽기 전용으로 포함됩니다. `mcp:write`는 grant의 최대 scope일 뿐이고 mutation은 대상별 저장 ceiling을 다시 검사합니다. 사용자가 `read`를 선택하면 모든 프로젝트의 변경 호출이 금지됩니다. 기존 grant의 승인 목록·ceiling은 자동 확대하지 않습니다.
+`project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않는다. 실제 대상 token과 현재 역할 교집합의 `member`/`manager`/`admin`만 `can_write=true`이며 reader는 같은 grant에서도 읽기 전용이다. `mcp:write`는 최대 scope일 뿐이고 대상별 저장 ceiling·resource ownership/native policy를 다시 검사한다. 명시 read는 모든 mutation을 금지하고 기존 grant는 자동 확대하지 않는다.
 
 `selected`와 `all`은 현재 작업 도메인 안의 실제 사용자 멤버십만 대상으로 하므로 하나의 OAuth 승인에서 같은 도메인의 여러 프로젝트를 선택할 수 있습니다. 다른 도메인의 프로젝트를 한 승인에 합치거나 나중에 가입한 프로젝트를 자동 추가하지 않습니다. 여러 도메인에서 만든 본인 연결이 계정 목록에 함께 보이는 것과 실행 범위는 별개입니다.
 
 `GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, Drover·Palimpsest·Waygate의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. Lumen 서비스·API 키 권한은 MCP 제어 대상이 아니므로 조회하거나 표시하지 않습니다. Lumen이 승인된 클라우드 MCP를 소비하는 별도 bridge는 유지합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면은 같은 component를 사용합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
+
+Preview에는 nullable `scope_error: "scope_validation_unavailable"|null`도 포함한다. Project authentication/role-scope 검증 실패는 `can_write=null`과 scope error이고 서비스의 추가 역할 요구로 표시하지 않는다. Scoped connection이 유효하면 `scope_error=null`이며 개별 native 정책 실패는 기존 `service_errors`에만 남긴다. 계정·동의 화면의 preview 요청은 no-store/40초의 독립 read budget과 기존 actor AbortController·동일 소유자401 recovery를 사용해 API35초 budget보다 먼저30초에 중단하지 않는다. 기본 GET30초 및 일반 cache/coalescing은 그대로다. SDK drain 때문에 deadline이 엄격한 전체 wall-clock 보장은 아니다.
 
 이 표시는 위임 생성이나 서비스 연결 자체가 아닙니다. 승인은 현재 권한을 다시 읽으며 실행 시에도 restricted credential·대상 소유권·현재 native service policy를 적용합니다. 기존 registry에 없는 서비스 기능을 이 preview가 새 MCP 도구로 공개하지 않습니다. 미확인 서비스나 회수된 권한은 실행을 허용하지 않습니다.
 

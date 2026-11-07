@@ -55,6 +55,9 @@ Preset 적용은 현재 시스템 관리자의 명시 작업이며 정확히 과
 
 권한 preview의 project worker3개와 native transport/policy5초 한계는 서비스별·project별 unknown 상태를 만들며 기본 membership 목록과 read 키 발급은 독립적이다. 전체35초 deadline과 SDK thread drain이 있어 큰 집합/느린 native 종료의 지연 가능성은 남는다. 정책/identity 결정이 합성인 로컬 HTTP/TLS/browser 결과는 운영 Keystone·서비스 정책·실제 grant 성공을 대신하지 않는다. 이 source 변경은 운영 배포·권한 부여·credential 재발급 승인을 포함하지 않는다.
 
+MCP domain-origin/member preview 보완은 schema 변경이 없다. OAuth 승인 domain projection에는 configured fixed operator의 exact Keystone `get_project`/`get_domain` 권한이 필요하다. 거부/삭제/불일치/조회 장애는 null unknown으로 격리하며 all-unknown 목록을 정상 legacy 판정 증거로 쓰지 않는다. Metadata dispatch shared10초와 개별5초 이후에도 진행 중 SDK worker/authentication은 drain하며 기존 native authentication timeout이 남는다. Keystone `allow_rescope_scoped_token=false` 같은 설정에서는 scoped subject 재발급이 거부될 수 있으므로 검증된 기존 사람의 unscoped session root 전달과 실제 current scope 재사용이 필요하다. 원본이 없는 credential의 파생 거부는 그대로다. 이 수정의 synthetic SDK/HTTP/browser 검증은 운영 설정·현재 세션·정책의 성공을 대신하지 않으며 서비스별 자원 소유권/관리 범위도 유지한다.
+운영 원인/완료 판정에는 `docs/testing.md`의2026-11-07 읽기 전용 관측을 따른다. 현재 policy route 존재/무인증401은 member 허용을 뜻하지 않으며 과거 Drover404·Palimpsest403이 현재도 발생한다고 단정하지 않는다. Controller1에서 scoped-rescope false 설정은 확인되지 않았다(override 없음, 설치 기본true). 실제 member 실패 원인과 복구는 미검증이다. Source 보완을 배포하면 모든 서비스 unknown이 해소된다고 약속하지 않으며, 실제 caller/native trace로 확인된 독립 호환성·거부는 해당 서비스에서 별도 처리한다.
+
 
 
 ## 리소스 정책 자동 초기화·갱신

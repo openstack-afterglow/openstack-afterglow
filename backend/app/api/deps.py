@@ -735,6 +735,9 @@ async def get_os_conn(
                     scoped_token, connection_project_id, native_access=native_access
                 )
         conn._afterglow_token = scoped_token
+        # The verified unscoped human login proof remains the source for MCP
+        # target-project token derivation; a project token may forbid rescoping.
+        conn._afterglow_session_token = token_info.get("session_token")
         conn._afterglow_project_id = project_id
         conn._afterglow_authenticated_project_id = connection_project_id
         conn._afterglow_is_system_admin = is_system_admin

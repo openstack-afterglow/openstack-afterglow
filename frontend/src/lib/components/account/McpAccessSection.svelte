@@ -20,6 +20,8 @@
 		name: string;
 		owner_project_id: string;
 		owner_project_name: string;
+		authorization_domain_id?: string | null;
+		authorization_domain_name?: string | null;
 		source: string;
 		access_level: string;
 		project_scope: 'current' | 'selected' | 'all';
@@ -137,13 +139,18 @@
 	let grantSearch = $state('');
 	let clientViews = $state<Record<string, { search: string; table: TableViewState }>>({});
 	let viewOwner = '';
+	function authorizationDomain(record: McpAccessRecord): string {
+		return record.authorization_domain_id && record.authorization_domain_name
+			? `${record.authorization_domain_name} (${record.authorization_domain_id})`
+			: t('mcp.authorizationDomainUnknown');
+	}
 	function accessColumns(oauth = false): TableColumn<McpAccessRecord>[] {
 		return [
 			{ key: 'name', label: t('mcp.name'), value: row => oauth ? `${t('mcp.oauth')} ${oauthGrants.indexOf(row) + 1}` : row.name },
 			{ key: 'status', label: tc('table.status'), value: row => row.status },
 			{ key: 'access', label: t('mcp.permission'), value: row => row.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') },
 			{ key: 'projects', label: t('mcp.projects'), value: row => row.projects.map(project => project.name).join(', ') || null, filterValues: row => row.projects.map(project => project.name) },
-			{ key: 'origin', label: t('mcp.issuingProjectLabel'), value: row => row.owner_project_name },
+			{ key: 'origin', label: t(oauth ? 'mcp.authorizationDomainLabel' : 'mcp.issuingProjectLabel'), value: row => oauth ? authorizationDomain(row) : row.owner_project_name },
 			{ key: 'scope', label: t('mcp.savedRestrictions'), value: row => row.project_scope === 'all' ? t('mcp.savedAllProjects') : row.project_scope === 'selected' ? t('mcp.savedSelectedProjects') : t('mcp.savedCurrentProject') },
 			{ key: 'expires', label: tc('table.expires'), value: row => row.expires_at ? Date.parse(row.expires_at) : null, format: (_value, row) => row.expires_at ? formatDate(row.expires_at) : t('mcp.expiryNever') },
 			...(!oauth ? [
@@ -161,7 +168,7 @@
 	const grantView = createTableView<McpAccessRecord>({
 		locale: () => intlLocale(),
 		rows: () => oauthGrants, columns: () => accessColumns(true), search: () => grantSearch,
-		searchable: row => [`${t('mcp.oauth')} ${oauthGrants.indexOf(row) + 1}`, row.status, row.access_level, row.owner_project_name, ...row.projects.map(project => project.name)],
+		searchable: row => [`${t('mcp.oauth')} ${oauthGrants.indexOf(row) + 1}`, row.status, row.access_level, authorizationDomain(row), ...row.projects.map(project => project.name)],
 	});
 	let actionError = $state('');
 	let creating = $state(false);
@@ -286,8 +293,8 @@
 		try {
 			const available = await api.get<McpConsentProject[]>('/api/v1/auth/mcp-projects?preview=true',
 				owner.token, owner.projectId, {
-					refresh: true, suppressAuthRedirect: true,
-					signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
+					refresh: true, suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: true, timeoutMs: 40_000,
+					signal: controller.signal,
 				});
 			if (current()) permissionProjects = available;
 		} catch {
@@ -726,7 +733,11 @@
 {#snippet savedRestrictions(record: McpAccessRecord, hideIdentifiers = false)}
 	<div class="saved-restrictions" role="group" aria-label={t('mcp.savedRestrictions')}>
 		<p class="restriction-heading">{t('mcp.savedRestrictions')}</p>
-		<p>{t('mcp.issuingProject', { project: record.owner_project_name })}</p>
+		{#if hideIdentifiers}
+			<p>{t('mcp.authorizationDomain', { domain: authorizationDomain(record) })}</p>
+		{:else}
+			<p>{t('mcp.issuingProject', { project: record.owner_project_name })}</p>
+		{/if}
 		<p>{t('mcp.savedAccess', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') })}</p>
 		{#if record.project_scope === 'all'}
 			<p>{t('mcp.savedAllProjects')}</p>

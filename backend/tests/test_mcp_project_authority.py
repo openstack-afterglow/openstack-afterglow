@@ -117,9 +117,11 @@ def project_provider(monkeypatch):
         def close(self):
             self.closed = True
 
-    def connect(token, project_id, *, api_timeout=30):
+    def connect(token, project_id, *, api_timeout=30, native_access=None):
         assert api_timeout > 0
         assert token.startswith("scoped-token-")
+        if native_access is not None:
+            assert native_access.auth_token == token and native_access.project_id == project_id
         rescopes.append((token, project_id))
         return Connection(project_id)
 
@@ -393,10 +395,10 @@ async def test_preview_transport_timeout_settles_real_sdk_threads_without_erasin
     original_connect = projects.keystone.get_openstack_connection
     monkeypatch.setattr(projects, "_PREVIEW_PROJECT_TIMEOUT", 0.03)
 
-    def connect(token, project_id, *, api_timeout=30):
+    def connect(token, project_id, *, api_timeout=30, native_access=None):
         seen_timeouts.append(api_timeout)
         assert api_timeout == 0.03
-        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+        scoped = original_connect(token, project_id, api_timeout=api_timeout, native_access=native_access)
         if project_id in slow_ids:
 
             def access(session):
@@ -420,6 +422,8 @@ async def test_preview_transport_timeout_settles_real_sdk_threads_without_erasin
     assert by_id[provider.a]["can_write"] is True
     assert by_id[provider.a]["service_permissions"]["drover"] == ["drover-inventory_reader"]
     assert all(by_id[project_id]["can_write"] is None for project_id in slow_ids)
+    assert by_id[provider.a]["scope_error"] is None
+    assert all(by_id[project_id]["scope_error"] == "scope_validation_unavailable" for project_id in slow_ids)
     assert seen_timeouts == [0.03] * 5
     assert all(conn.closed for conn in provider.connections if conn is not provider.conn)
     assert not provider.conn.closed
@@ -442,10 +446,10 @@ async def test_project_preview_isolates_unknown_projects_and_independent_service
     canceled_policy = asyncio.Event()
     canceled_authority = asyncio.Event()
 
-    def connect(token, project_id, *, api_timeout=30):
+    def connect(token, project_id, *, api_timeout=30, native_access=None):
         if project_id == provider.b and failure == "rescope":
             raise RuntimeError("private-endpoint-and-native-token")
-        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+        scoped = original_connect(token, project_id, api_timeout=api_timeout, native_access=native_access)
         if project_id == provider.b and failure == "domain":
             scoped.access.project_domain_id = "foreign-domain"
         return scoped
@@ -489,6 +493,8 @@ async def test_project_preview_isolates_unknown_projects_and_independent_service
     assert "lumen" not in a["service_permissions"]
     assert a["service_errors"] == {"waygate": "permission_check_unavailable"}
     assert b["can_write"] is None
+    assert a["scope_error"] is None and c["scope_error"] is None
+    assert b["scope_error"] == "scope_validation_unavailable"
     mcp_services = {service for service in availability if service != "lumen"}
     assert b["service_permissions"] == {service: [] for service in mcp_services}
     assert b["service_errors"] == {service: "permission_check_unavailable" for service in mcp_services}
@@ -569,9 +575,9 @@ async def test_project_preview_cancellation_drains_owned_native_workers_before_c
     release = threading.Event()
     original_connect = projects.keystone.get_openstack_connection
 
-    def connect(token, project_id, *, api_timeout=30):
+    def connect(token, project_id, *, api_timeout=30, native_access=None):
         assert api_timeout == 5.0
-        scoped = original_connect(token, project_id, api_timeout=api_timeout)
+        scoped = original_connect(token, project_id, api_timeout=api_timeout, native_access=native_access)
 
         def block():
             entered[project_id].set()
@@ -632,6 +638,27 @@ async def test_project_preview_timeout_returns_only_safe_unavailability(client, 
     assert "native-token" not in response.text and "private-endpoint" not in response.text
 
 
+async def test_project_preview_keeps_original_rescope_subject_when_current_authentication_issued_a_new_token(
+    project_provider, monkeypatch
+):
+    from app.services import service_authorization
+
+    provider = project_provider
+    original_subject = provider.conn._afterglow_token
+    provider.conn.access.auth_token = "scoped-token-authenticated-current"
+
+    async def native(principal, **kwargs):
+        return {}, {}
+
+    monkeypatch.setattr(service_authorization, "service_permission_snapshot", native)
+    rows = await projects.project_permission_preview(provider.conn, provider.user)
+    assert all(row["scope_error"] is None for row in rows)
+    assert ("scoped-token-authenticated-current", provider.a) in provider.rescopes
+    assert (original_subject, provider.b) in provider.rescopes
+    assert all(conn.closed for conn in provider.connections if conn is not provider.conn)
+    assert not provider.conn.closed
+
+
 @pytest.mark.parametrize("palimpsest_enabled", [True, False])
 async def test_preview_never_presents_stale_token_service_roles_as_delegated_permissions(
     project_provider, monkeypatch, palimpsest_enabled
@@ -671,6 +698,7 @@ async def test_preview_never_presents_stale_token_service_roles_as_delegated_per
     monkeypatch.setattr(service_authorization, "service_permission_snapshot", native)
     preview = (await projects.project_permission_preview(provider.conn, provider.user))[0]
     assert preview["can_write"] is True
+    assert preview["scope_error"] is None
     assert all(leaves == [] for leaves in preview["service_permissions"].values())
     assert preview["service_errors"] == {
         service: "permission_check_unavailable"
@@ -740,30 +768,26 @@ async def test_project_preview_endpoint_excludes_lumen_without_changing_native_p
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     rows = response.json()
-    assert rows == [
-        {
-            "id": provider.a,
-            "name": "A",
-            "can_write": True,
-            "service_permissions": {
-                "drover": ["drover-inventory_reader"],
-                "waygate": [],
-                "palimpsest": ["palimpsest-download_user"],
-            },
-            "service_errors": {},
-        },
-        {
-            "id": provider.b,
-            "name": "B",
-            "can_write": False,
-            "service_permissions": {
-                "drover": ["drover-clusters_editor", "drover-inventory_reader"],
-                "waygate": [],
-                "palimpsest": ["palimpsest-download_user"],
-            },
-            "service_errors": {},
-        },
-    ]
+    by_project = {row["id"]: row for row in rows}
+    assert len(rows) == 2 and set(by_project) == {provider.a, provider.b}
+    # The public preview must not leak request-local credentials or scope proof metadata.
+    assert all(
+        set(row) == {"id", "name", "can_write", "service_permissions", "service_errors", "scope_error"} for row in rows
+    )
+    assert by_project[provider.a]["can_write"] is True
+    assert by_project[provider.b]["can_write"] is False
+    assert all(row["scope_error"] is None and row["service_errors"] == {} for row in rows)
+    assert by_project[provider.a]["service_permissions"] == {
+        "drover": ["drover-inventory_reader"],
+        "waygate": [],
+        "palimpsest": ["palimpsest-download_user"],
+    }
+    # Native service leaves are not rewritten from the cloud write ceiling.
+    assert by_project[provider.b]["service_permissions"] == {
+        "drover": ["drover-clusters_editor", "drover-inventory_reader"],
+        "waygate": [],
+        "palimpsest": ["palimpsest-download_user"],
+    }
     assert set(observed) == {
         (project_id, service)
         for project_id in (provider.a, provider.b)

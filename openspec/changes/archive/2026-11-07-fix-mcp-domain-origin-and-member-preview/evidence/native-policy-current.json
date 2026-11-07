@@ -1,0 +1,389 @@
+{
+  "status": "readonly-observation-not-member-acceptance",
+  "observedAt": "2026-11-07T03:58:42.946Z",
+  "access": "Documented wireguard deployment host172.30.0.50 and native parsed control inventory. No deployment/config/IAM mutation.",
+  "historical": {
+    "record": "docs/testing.md MCP member2026-11-04",
+    "drover": "policy404 on all3 nodes",
+    "palimpsest": "controller1 policy403",
+    "waygate": "unexplained",
+    "qualification": "Historical, not a demonstrated current failure"
+  },
+  "persistentLogs": [
+    {
+      "host": "172.30.0.11",
+      "exit": 0,
+      "result": {
+        "files": [
+          "backend-2026-11-06-01.log",
+          "backend-2026-11-06.log",
+          "backend-2026-11-07.log"
+        ],
+        "counts": [],
+        "first": [],
+        "last": [],
+        "scope_markers": {},
+        "observed_at": "2026-11-07T03:49:15.481560+00:00"
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.12",
+      "exit": 0,
+      "result": {
+        "files": [
+          "backend-2026-11-06.log",
+          "backend-2026-11-07.log"
+        ],
+        "counts": [],
+        "first": [],
+        "last": [],
+        "scope_markers": {},
+        "observed_at": "2026-11-07T03:49:15.688729+00:00"
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.13",
+      "exit": 0,
+      "result": {
+        "files": [
+          "backend-2026-11-06-01.log",
+          "backend-2026-11-06.log",
+          "backend-2026-11-07.log"
+        ],
+        "counts": [],
+        "first": [],
+        "last": [],
+        "scope_markers": {},
+        "observed_at": "2026-11-07T03:58:42.921561+00:00"
+      },
+      "error": null
+    }
+  ],
+  "containerStdoutAttempt": [
+    {
+      "host": "172.30.0.11",
+      "exitCode": 0,
+      "result": {
+        "observed_at": "2026-11-07T03:47:02.057913+00:00",
+        "window": "24h",
+        "limit_per_container": 12000,
+        "containers": {
+          "afterglow_backend": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "drover_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "palimpsest_hub_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "waygate_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          }
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.12",
+      "exitCode": 0,
+      "result": {
+        "observed_at": "2026-11-07T03:47:02.938911+00:00",
+        "window": "24h",
+        "limit_per_container": 12000,
+        "containers": {
+          "afterglow_backend": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "drover_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "palimpsest_hub_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "waygate_api": {
+            "log_exit": 0,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          }
+        }
+      },
+      "error": null
+    },
+    {
+      "host": "172.30.0.13",
+      "exitCode": 0,
+      "result": {
+        "observed_at": "2026-11-07T03:47:02.505773+00:00",
+        "window": "24h",
+        "limit_per_container": 12000,
+        "containers": {
+          "afterglow_backend": {
+            "log_exit": 1,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "drover_api": {
+            "log_exit": 1,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "palimpsest_hub_api": {
+            "log_exit": 1,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          },
+          "waygate_api": {
+            "log_exit": 1,
+            "policy_count": 0,
+            "counts": [],
+            "first": [],
+            "last": []
+          }
+        }
+      },
+      "error": null
+    }
+  ],
+  "identities": {
+    "controller1": {
+      "afterglow_backend": {
+        "image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:f1905d36f94534946c97a7486d52fde52b0e7ed5f4d6e05345b67bed9a0634a1",
+        "version": null,
+        "revision": "dcf1c4b9d04b23af76aadbc0d065dff70f147808",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "drover_api": {
+        "image": "ghcr.io/openstack-afterglow/drover-api@sha256:4a31a9a50e743467396226ff52d8677d7c39ad0cd260a368dbe0e03c00d28320",
+        "version": "0.4.17",
+        "revision": "8526860ff3237262fa53cc113aa0ce2213256d3e",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "palimpsest_hub_api": {
+        "image": "ghcr.io/openstack-afterglow/palimpsest-hub-api@sha256:ac23f7152845187cb5af1fb6365a0c8912c6c19227afe7338df6679945c6f902",
+        "version": "sha-57ab180",
+        "revision": "57ab180c5429ced6fa477a883d1b9ba6645d72bf",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "waygate_api": {
+        "image": "ghcr.io/openstack-afterglow/waygate-api@sha256:5cbfc730c7915247233fec04ac80d6287f2907d4fe75facfc2ff0ed8e6d846d1",
+        "version": "0.3.7",
+        "revision": "89cdd1b9d7138abed168839b25072ba085943506",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      }
+    },
+    "controller2": {
+      "afterglow_backend": {
+        "image": "ghcr.io/openstack-afterglow/afterglow-api@sha256:f1905d36f94534946c97a7486d52fde52b0e7ed5f4d6e05345b67bed9a0634a1",
+        "version": null,
+        "revision": "dcf1c4b9d04b23af76aadbc0d065dff70f147808",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "drover_api": {
+        "image": "ghcr.io/openstack-afterglow/drover-api@sha256:4a31a9a50e743467396226ff52d8677d7c39ad0cd260a368dbe0e03c00d28320",
+        "version": "0.4.17",
+        "revision": "8526860ff3237262fa53cc113aa0ce2213256d3e",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "palimpsest_hub_api": {
+        "image": "ghcr.io/openstack-afterglow/palimpsest-hub-api@sha256:ac23f7152845187cb5af1fb6365a0c8912c6c19227afe7338df6679945c6f902",
+        "version": "sha-57ab180",
+        "revision": "57ab180c5429ced6fa477a883d1b9ba6645d72bf",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      },
+      "waygate_api": {
+        "image": "ghcr.io/openstack-afterglow/waygate-api@sha256:5cbfc730c7915247233fec04ac80d6287f2907d4fe75facfc2ff0ed8e6d846d1",
+        "version": "0.3.7",
+        "revision": "89cdd1b9d7138abed168839b25072ba085943506",
+        "logs": [
+          {
+            "source": "/var/lib/docker/volumes/kolla_logs/_data",
+            "destination": "/var/log/kolla"
+          }
+        ],
+        "log_directories": {
+          "afterglow": []
+        }
+      }
+    },
+    "controller3": "Same Afterglow f1905d36/dcf1c4b9, Drover4a31a9a5/8526860f, Palimpsestac23f715/57ab180c, Waygate5cbfc730/89cdd1b9 confirmed with existing passwordless sudo readonly Docker inspect"
+  },
+  "routingAndUnauthenticatedHttp": {
+    "drover": {
+      "endpoint": "http://172.30.0.253:8011",
+      "unauthenticated_policy_status": 401,
+      "openapi_status": 200,
+      "policy_routes": [
+        "/v1/policy/capabilities"
+      ]
+    },
+    "palimpsest": {
+      "endpoint": "https://palimpsest.dmslab.re.kr",
+      "unauthenticated_policy_status": 401,
+      "openapi_status": 200,
+      "policy_routes": [
+        "/v1/policy/capabilities"
+      ]
+    },
+    "waygate": {
+      "endpoint": "http://172.30.0.253:8010",
+      "unauthenticated_policy_status": 401,
+      "openapi_status": 200,
+      "policy_routes": [
+        "/v1/policy/capabilities"
+      ]
+    }
+  },
+  "keystoneController1": {
+    "configuredOverride": false,
+    "installedDefault": true,
+    "qualification": "Rendered token allow_rescope_scoped_token absent; installed Keystone option defaultTrue. Restrictive scoped-rescope false fixture is NOT demonstrated production configuration."
+  },
+  "metadataProbe": {
+    "subject": "configured service account; metadata-only, not user impersonation",
+    "project": "06020453ded64757b552591d8c557ec3",
+    "role_count": 0,
+    "elapsed_seconds": 0.892
+  },
+  "limits": [
+    "No interactive human-preview or new-key management-policy acceptance was performed. Existing delegated OAuth readonly tools succeeded separately; this does not establish the failing human session scope or its cause.",
+    "No current policy requests were present in the bounded backend log files; absence is not success or a cause determination.",
+    "Current catalog/override URLs expose policy route in OpenAPI and return401 without credentials; this does not prove member authorization.",
+    "The source-local token reuse/root propagation fix does not repair genuine native403/404 and is not a proven production root cause."
+  ],
+  "nextEvidence": "Authenticated caller preview response and matching native request/span needed to determine remaining actual member failure; fix native endpoints only if current authenticated evidence shows incompatibility/deny, with separate operational approval.",
+  "existingDelegatedReads": {
+    "observedAt": "2026-11-07T04:20:22.740Z",
+    "targetProject": "06020453ded64757b552591d8c557ec3",
+    "authority": "Existing mounted OAuth grant; saved project IDs match the screenshot. Only readonly list methods were requested; no new key/grant creation or human impersonation was requested.",
+    "drover": {
+      "tool": "afterglow_k3s_cluster_list",
+      "success": true,
+      "returnedCount": 0
+    },
+    "waygate": {
+      "tool": "afterglow_waygate_server_list",
+      "success": true,
+      "returnedCount": 1
+    },
+    "limits": "Successful existing-grant read responses are not an interactive human-preview or fresh manage-key acceptance; cache/native policy dispatch details were not independently traced. Read calls may update ordinary usage/audit metadata. No native resource/config/IAM mutation."
+  },
+  "exactDirectoryRead": {
+    "originProject": "a4da5d82465b44d5afda1dc0388b687d",
+    "success": true,
+    "domainId": "3de8d34d778e423ab7a92a4992378583",
+    "directoryName": "dmslab",
+    "domainDisplayLabel": null
+  },
+  "previewAccessObservation": {
+    "file": "preview-access-current.json",
+    "availableDatedFiles": 35,
+    "lines": 4700675,
+    "requests": 19,
+    "statuses": [
+      200
+    ],
+    "maximumDurationMs": 12279.02,
+    "queryAndBodyRecorded": false,
+    "qualification": "No30/35s endpoint timeout observed in these route records; cannot identify preview=true or the reported caller, nor prove per-row authority success."
+  },
+  "policyLogObservability": "The initial controller3 stdout attempt was permission-denied/unobserved; later owning/authorized persistent reads succeeded. Backend policy path strings had no historical positive control either, so zero matches do NOT establish zero policy errors or absent policy calls. Access request-record positive controls succeeded on all3controllers.",
+  "identityWindowObservation": {
+    "file": "identity-preview-window.json",
+    "qualification": "Unattributed identity traffic in a25s window; neither auth201 nor unrelated401/404 identifies the preview failure."
+  }
+}

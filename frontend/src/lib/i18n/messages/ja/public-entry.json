@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "サービスへのアクセス権なし",
 	"mcpConsent.preview.service.attenuated": "読み取り専用の同意で許可される権限なし",
 	"mcpConsent.preview.service.unavailable": "権限を確認できません — アクセス可否は未確認",
+	"mcpConsent.preview.scopeUnavailable": "プロジェクトの認証スコープを確認できないため、サービスのポリシーは確認していません。アクセスが拒否されたと確定したわけではありません。",
 	"mcpConsent.preview.unknownWrite": "書き込み権限を確認できないプロジェクトがあります。管理権限は承認できません。読み取り専用を選ぶか、リクエストを開き直してください。",
 	"mcpConsent.preview.selectedReadOnly": "選択に読み取り専用プロジェクトが含まれるため、管理権限は承認できません。読み取り専用を選ぶか、読み取り専用プロジェクトを選択から外してください。",
 	"mcpConsent.permission.droverInventory": "クラスターの状態・イベントを参照（秘密情報を除く）",

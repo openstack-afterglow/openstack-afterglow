@@ -7,23 +7,41 @@ import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from fastapi import Request
 from keystoneauth1 import access
+from keystoneauth1.exceptions.http import Forbidden
 
+from app.api.deps import get_os_conn
+from app.api.identity import mcp_access
 from app.config import get_settings
-from app.services import keystone, project_service, service_proxy
+from app.services import keystone, service_proxy
 from app.services.mcp_control_plane import authority, projects
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("waygate_status", [200, 403, 404, 503])
+@pytest.mark.parametrize(
+    ("waygate_status", "root_case"),
+    [
+        (200, "valid"),
+        (403, "valid"),
+        (404, "valid"),
+        (503, "valid"),
+        (200, "absent"),
+        (200, "wrong_owner"),
+        (200, "wrong_domain"),
+        (200, "stale_roles"),
+        (200, "denied"),
+    ],
+)
+@pytest.mark.parametrize("member_role", ["member", "manager"])
 async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_token_reexchange(
-    monkeypatch, waygate_status
+    monkeypatch, waygate_status, member_role, root_case
 ):
     calls = []
-    roles = {"member-project": "member", "reader-project": "reader"}
+    roles = {"member-project": member_role, "reader-project": "reader"}
 
     def token_body(project_id):
         return {
@@ -63,13 +81,39 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            if "password" in body["auth"]["identity"]["methods"]:
+                assert body["auth"]["identity"]["password"]["user"]["name"] == "preview-operator"
+                assert body["auth"]["scope"]["project"]["name"] == "preview-operator-project"
+                calls.append(("PASSWORD", self.path, "operator"))
+                operator = token_body("member-project")
+                operator["token"]["user"]["id"] = "preview-operator"
+                operator["token"]["project"]["id"] = "preview-operator-project"
+                operator["token"]["catalog"].append(
+                    {
+                        "type": "identity",
+                        "name": "keystone",
+                        "endpoints": [{"interface": "internal", "region": "RegionOne", "url": base + "/v3"}],
+                    }
+                )
+                self.reply(201, operator, token="operator-token")
+                return
             subject = body["auth"]["identity"]["token"]["id"]
             calls.append(("POST", self.path, subject))
-            if self.path != "/v3/auth/tokens" or subject != "browser-token":
-                self.reply(403, {"error": {"message": "restricted token cannot be re-exchanged"}})
-                return
             target = body["auth"]["scope"]["project"]["id"]
-            self.reply(201, token_body(target), token="restricted-" + target)
+            # Model Keystone allow_rescope_scoped_token=false: no scoped
+            # subject may mint ANY target token, including its own project.
+            if self.path != "/v3/auth/tokens" or subject != "login-root":
+                self.reply(403, {"error": {"message": "rescope a scoped token"}})
+                return
+            if root_case == "denied":
+                self.reply(403, {"error": {"message": "target scope denied"}})
+                return
+            target_body = token_body(target)
+            if root_case == "wrong_owner":
+                target_body["token"]["user"]["id"] = "foreign-owner"
+            if root_case == "wrong_domain":
+                target_body["token"]["project"]["domain"]["id"] = "foreign-domain"
+            self.reply(201, target_body, token="restricted-" + target)
 
         def do_GET(self):
             path = urlsplit(self.path).path.rstrip("/")
@@ -96,9 +140,38 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
                         ]
                     },
                 )
+            elif path == "/v3/roles" and subject == "operator-token":
+                self.reply(
+                    200,
+                    {"roles": [{"id": "role-" + role, "name": role} for role in sorted(set(roles.values()))]},
+                )
+            elif path == "/v3/role_inferences" and subject == "operator-token":
+                self.reply(200, {"role_inferences": []})
+            elif path == "/v3/role_assignments" and subject == "operator-token":
+                query = parse_qs(urlsplit(self.path).query)
+                target = query.get("scope.project.id", [None])[0]
+                assert query.get("user.id") == ["owner"] and query.get("effective") == ["True"]
+                assert target in roles
+                self.reply(
+                    200,
+                    {
+                        "role_assignments": (
+                            [
+                                {
+                                    "user": {"id": "owner"},
+                                    "role": {"id": "role-" + roles[target]},
+                                    "scope": {"project": {"id": target}},
+                                }
+                            ]
+                            if root_case != "stale_roles" or target == "member-project"
+                            else []
+                        )
+                    },
+                )
             elif path in {"/drover/v1/policy/capabilities", "/waygate/v1/policy/capabilities"}:
                 target = self.headers.get("x-project-id")
-                if target not in roles or subject != "restricted-" + target:
+                expected_subject = "browser-token" if target == "member-project" else "restricted-" + str(target)
+                if target not in roles or subject != expected_subject:
                     self.reply(403, {})
                     return
                 service = path.split("/")[1]
@@ -106,7 +179,7 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
                     self.reply(waygate_status, {})
                     return
                 leaves = [service + "-inventory_reader"]
-                if service == "drover" and roles[target] == "member":
+                if service == "drover" and roles[target] in {"member", "manager"}:
                     leaves.append("drover-clusters_editor")
                 self.reply(200, {"service": service, "capabilities": leaves, "actions": []})
             else:
@@ -127,34 +200,61 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
             "service_waygate_enabled": True,
             "service_palimpsest_enabled": False,
             "service_chat_enabled": True,
+            "service_mcp_enabled": True,
+            "os_username": "preview-operator",
+            "os_password": "preview-operator-password",
+            "os_project_name": "preview-operator-project",
+            "os_user_domain_name": "tenant",
+            "os_project_domain_name": "tenant",
         }
     )
     monkeypatch.setattr("app.config.get_settings", lambda: settings)
     monkeypatch.setattr(keystone, "get_settings", lambda: settings)
     monkeypatch.setattr(service_proxy, "get_settings", lambda: settings)
+    monkeypatch.setattr(mcp_access, "get_settings", lambda: settings)
 
-    async def current_roles(project_id, user_id):
-        assert user_id == "owner"
-        return [{"id": "role-" + roles[project_id], "name": roles[project_id], "inherited_role_ids": []}]
-
-    monkeypatch.setattr(project_service, "get_project_delegation_roles", current_roles)
     native = access.create(body=token_body("member-project"), auth_token="browser-token")
-    conn = keystone.get_openstack_connection("browser-token", "member-project", native_access=native)
-    conn._afterglow_user_id = "owner"
-    conn._afterglow_token = "browser-token"
-    conn._afterglow_domain_id = "tenant"
-    conn._afterglow_identity_domain_id = "tenant"
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/auth/mcp-projects", "headers": []})
+    request.state._afterglow_native_access = native
+    token_info = {
+        "token": "browser-token",
+        "user_id": "owner",
+        "project_id": "member-project",
+        "connection_project_id": "member-project",
+        "domain_id": "tenant",
+        "domain_name": "Tenant",
+        "identity_domain_id": "tenant",
+        "roles": [member_role],
+        "is_system_admin": False,
+    }
+    if root_case != "absent":
+        token_info["session_token"] = "login-root"
+    connection = get_os_conn(request, token_info=token_info)
+    conn = await anext(connection)
+    assert conn._afterglow_session_token == token_info.get("session_token")
     try:
-        preview = await projects.project_permission_preview(conn, "owner")
+        response = await mcp_access.get_mcp_projects(request, preview=True, token_info=token_info, conn=conn)
+        assert response.headers["cache-control"] == "no-store"
+        assert b"login-root" not in response.body and b"browser-token" not in response.body
+        preview = json.loads(response.body)
         by_id = {row["id"]: row for row in preview}
         assert by_id["member-project"]["can_write"] is True
-        assert by_id["reader-project"]["can_write"] is False
+        assert by_id["member-project"]["scope_error"] is None
+        secondary = by_id["reader-project"]
+        if root_case == "valid":
+            assert secondary["can_write"] is False
+            assert secondary["scope_error"] is None
+            assert secondary["service_permissions"]["drover"] == ["drover-inventory_reader"]
+        else:
+            assert secondary["can_write"] is None
+            assert secondary["scope_error"] == "scope_validation_unavailable"
+            assert not any(secondary["service_permissions"].values())
         assert by_id["member-project"]["service_permissions"]["drover"] == [
             "drover-clusters_editor",
             "drover-inventory_reader",
         ]
-        assert by_id["reader-project"]["service_permissions"]["drover"] == ["drover-inventory_reader"]
-        for row in preview:
+        valid_rows = [row for row in preview if row["scope_error"] is None]
+        for row in valid_rows:
             assert "lumen" not in row["service_permissions"] and "lumen" not in row["service_errors"]
             if waygate_status == 200:
                 assert row["service_permissions"]["waygate"] == ["waygate-inventory_reader"]
@@ -162,9 +262,23 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
             else:
                 assert row["service_permissions"]["waygate"] == []
                 assert row["service_errors"]["waygate"] == "permission_check_unavailable"
-        # Only initial target rescopes may exchange the browser token. Native
-        # capability calls must reuse each validated restricted-token catalog.
-        assert all(subject == "browser-token" for method, _, subject in calls if method == "POST")
+        # Current scope uses its validated catalog without issuing another
+        # token. Only the proven unscoped browser login derives other scopes.
+        rescope_subject = "browser-token" if root_case == "absent" else "login-root"
+        assert [(method, path, subject) for method, path, subject in calls if method == "POST"] == [
+            ("POST", "/v3/auth/tokens", rescope_subject)
+        ]
+        assignment_reads = [path for method, path, subject in calls if method == "GET" and subject == "operator-token"]
+        expected_assignment_reads = 2 if root_case in {"valid", "stale_roles"} else 1
+        assert assignment_reads.count("/v3/role_assignments") == expected_assignment_reads
+        if root_case != "valid":
+            expected_error = Forbidden if root_case in {"absent", "denied"} else authority.McpAuthorityError
+            with pytest.raises(expected_error):
+                await projects.resolve_project_scope(
+                    conn, "owner", "member-project", ["member"], project_scope="all", access_level="manage"
+                )
+            assert not any(method == "GET" and subject == "restricted-reader-project" for method, _, subject in calls)
+            return
         metadata = await projects.resolve_project_scope(
             conn, "owner", "member-project", ["reader"], project_scope="all", access_level="manage"
         )
@@ -176,7 +290,7 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
         with pytest.raises(authority.McpGrantStateError, match="management"):
             authority.validate_grant_project(grant, "member-project", write=True)
     finally:
-        conn.close()
+        await connection.aclose()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

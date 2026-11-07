@@ -1,0 +1,141 @@
+{
+  "status": "complete-source-local",
+  "productionStatus": "blocked: actual authenticated member failure cause/recovery not demonstrated; user Chrome relay extension is not connected",
+  "productionObservation": "native-policy-current.json",
+  "previewAccessObservation": "preview-access-current.json",
+  "identityWindowObservation": "identity-preview-window.json",
+  "previewAccessQualification": "Available Nov4–7 dated backend log files read to EOF on all3controllers with positive access-record controls:19 mcp-projects GET records, all200, max12279.02ms. No query or response body, so cannot identify each as preview=true or attribute it to the reported member; this is not evidence that30/35s timeout caused this failure.",
+  "source": {
+    "branch": "dev",
+    "sha256": "289b93231c93163d3fda11e2716d2d0ff14252867293ac82ed0c20b424d85ad5",
+    "files": 4172,
+    "commitCreated": false,
+    "deployed": false,
+    "index": "Preserved; staged guard independently checked existing index73d5f8c0, not a staging of this work"
+  },
+  "changes": {
+    "oauth": "authorization_domain_id/name nullable metadata from saved owner project through exact fixed-operator Keystone reads; current labels, no current/home fallback or schema change; SQL read released before metadata wait",
+    "preview": "exact-current authenticated AccessInfo/catalog reused in owned session; verified human session root retained request-locally for other-project derivation; exact output/current role/read ceiling validation remains",
+    "scope_error": "scope_validation_unavailable means authentication scope unverified, not an extra native-service role requirement",
+    "transport": "preview-only40s independent/no-store budget with original actor cancellation/401 recovery; explicit ordinary/forced deadlines preserve default401 replay; consuming no-store alone keeps replay defaultfalse; ordinary cache/coalescing unchanged"
+  },
+  "gate": {
+    "command": "npm run test:gate",
+    "exitCode": 0,
+    "log": "gate-summary.txt",
+    "backend": {
+      "passed": 14543,
+      "skipped": 94
+    },
+    "frontend": {
+      "files": 550,
+      "passed": 7615
+    },
+    "contracts": {
+      "passed": 261
+    },
+    "functional": {
+      "passed": 284,
+      "skipped": 46,
+      "deselected": 123
+    },
+    "ruff": {
+      "formattedFiles": 879
+    }
+  },
+  "focused": {
+    "postReview": {
+      "failedBefore": 2,
+      "transportFiles": 2,
+      "transportPassed": 85,
+      "publicPreviewIsolationPassed": 2
+    },
+    "apiTransport": {
+      "files": 3,
+      "passed": 116
+    },
+    "accountConsentProjection": {
+      "files": 4,
+      "passed": 350
+    },
+    "backendAuthorityMetadata": {
+      "passed": 103,
+      "dbSkipped": 19,
+      "dbFollowupExecuted": true
+    },
+    "installedSdkHttp": {
+      "passed": 18,
+      "provider": "Loopback Keystone rejects every scoped-token rescope; only a proven login-root may derive target scopes; owner/domain/stale-role and service403/404/503 cases remain fail closed"
+    },
+    "realSql": {
+      "passed": 152,
+      "deselected": 40,
+      "singleConnectionPoolRelease": true
+    },
+    "nativeDirectory": {
+      "receipt": "native-origin.json",
+      "result": "Known domain resolved through actual installed client and fixed-operator authentication, exact project/domain GETs only"
+    }
+  },
+  "static": {
+    "errors": 0,
+    "warnings": 15,
+    "files": 3019,
+    "log": "static-checks.txt",
+    "i18n": {
+      "errors": 0,
+      "warnings": 0,
+      "namespaces": 54,
+      "messages": 12725,
+      "hardcodedKorean": 0
+    }
+  },
+  "build": {
+    "exitCode": 0,
+    "log": "build-summary.txt"
+  },
+  "browser": {
+    "realFullAccountRoute": true,
+    "sourceParity": "source-parity.json",
+    "matrix": "browser-matrix.json",
+    "scenarios": "browser-scenarios.json",
+    "cases": 54,
+    "locales": 9,
+    "widths": [
+      390,
+      900,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "independentDelayedPreview": {
+      "delayMs": 31000,
+      "observedCommitMs": 31056,
+      "log": "delay-http.log"
+    },
+    "grantMutations": 0,
+    "diagnosticPosts": "Fixture rejects automatic activity interaction posts with405; no production endpoint contacted",
+    "visuals": "/Users/pieroot/.local/share/afterglow-proofs/mcp-domain-member-20261107/{oauth-domains.png,member-manage-preview.png}"
+  },
+  "limits": [
+    "Real browser identity/provider payloads were synthetic; native SDK/HTTP/SQL paths were separately exercised, not production authentication or native service rollout acceptance",
+    "Authenticated production relay extension was unavailable. Actual customer/member failure boundary and cause remain undemonstrated. Later readonly native observations are recorded in native-policy-current.json; these do not prove member acceptance.",
+    "Current discovered service URLs advertise policy paths and return401 anonymously. Historical Drover404/Palimpsest403 are not assumed current. Controller1 has no scoped-rescope override and installed defaultTrue; the restrictive false peer is not demonstrated production configuration.",
+    "Source token reuse/root propagation and scope_error do not fix genuine native403/404. Authenticated caller preview and matching native trace remain required to diagnose current service failures; native changes require their own qualified scope.",
+    "The54-case UI matrix/31s response and23-file source parity belong to pre-followup sourcea6cafaf5. The later client-only replay-default correction affects ordinary explicit-deadline reads, not MCP's explicit replay=true; targeted tests exercise the new cases. A raw-module standalone browser attempt failed framework version bootstrap and is not acceptance.",
+    "Configured operator must permit exact get_project/get_domain. Deleted/missing/denied metadata remains unknown; an all-unknown inventory is not proof that every origin is legitimately legacy",
+    "Domain labels are current directory labels, not approval-time snapshots; native project-bound credentials, saved allowed projects and revocation stay unchanged",
+    "Member is not unconditional access to every object/action: native Palimpsest own-resource restrictions and all service deny/ownership checks remain",
+    "No IAM role grants, production resource/config mutations, release, commit or deployment requested/performed; existing OAuth readonly MCP calls may update normal usage/audit metadata"
+  ],
+  "earlierCorrections": [
+    "Whole-response equality rejected new nullable scope_error; replaced with behavioral role/service/scope assertions while retaining exact membership/no duplicates and public-field whitelisting",
+    "Post-review normal/forced explicit-deadline GET401 regression failed2cases before fix and related2files85tests passed after; focused public-preview isolation2selectors passed",
+    "An in-kernel delay fixture hit browser tool default wait and was not accepted as app timeout proof; independent Node HTTP31s peer succeeded"
+  ],
+  "cleanup": "Owned browsers, frontend servers and HTTP peers stopped; three exclusively owned tmpfs datastore containers/network removed; isolated source/profile/temporary scripts moved to macOS Trash. Original configs, services and shared index preserved.",
+  "archive": "2026-11-07-fix-mcp-domain-origin-and-member-preview",
+  "schema": "rapid"
+}

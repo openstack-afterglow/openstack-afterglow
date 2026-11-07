@@ -172,7 +172,7 @@
 					request.token, request.projectId, { refresh: true, suppressAuthRedirect: true, signal: request.controller.signal, ...request.experience.options },
 				),
 				api.get<McpConsentProject[]>('/api/v1/auth/mcp-projects?preview=true', request.token, request.projectId,
-					{ refresh: true, suppressAuthRedirect: true, signal: request.controller.signal, ...request.experience.options }),
+					{ refresh: true, suppressAuthRedirect: true, cache: 'no-store', replayOnUnauthorized: true, timeoutMs: 40_000, signal: request.controller.signal, ...request.experience.options }),
 			]);
 			if (!isCurrent(request)) { request.experience.discard(request.controller.signal.aborted ? 'aborted' : 'stale'); return; }
 			consent = details;

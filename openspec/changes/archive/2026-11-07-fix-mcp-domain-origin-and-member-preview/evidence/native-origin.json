@@ -1,0 +1,24 @@
+{
+  "boundary": "Actual installed keystoneclient/native auth/cache/metadata projection with isolated loopback provider; not production policy",
+  "result": {
+    "origin-a": {
+      "id": "domain-a",
+      "name": "Known domain"
+    }
+  },
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/v3/auth/tokens",
+      "scope": "fixed-operator-project"
+    },
+    {
+      "method": "GET",
+      "path": "/v3/projects/origin-a"
+    },
+    {
+      "method": "GET",
+      "path": "/v3/domains/domain-a"
+    }
+  ]
+}

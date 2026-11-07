@@ -565,6 +565,11 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
     from app.services.mcp_control_plane.crypto import encrypt_application_credential
     from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, resolve_oauth_access_token
 
+    async def unknown_origins(_project_ids):
+        return {}
+
+    monkeypatch.setattr(authority, "_oauth_origin_metadata", unknown_origins)
+
     factory = issued_refresh.factory
     now = datetime.now(UTC)
     raw_token = "mcp-afgl-" + uuid4().hex
@@ -699,12 +704,79 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
     assert remote == ({credential_id} if cleanup_fails else set())
 
 
+async def test_oauth_listing_releases_single_connection_pool_before_directory_wait(
+    issued_refresh, db_tables, monkeypatch
+):
+    from app.api.deps import get_token_info
+    from app.api.identity import mcp_access
+    from app.main import app
+    from app.services.mcp_control_plane import authority
+
+    async with issued_refresh.factory() as session:
+        owner = await session.scalar(
+            select(McpDelegatedGrant.owner_user_id).where(McpDelegatedGrant.id == issued_refresh.grant_id)
+        )
+    engine = create_async_engine(db_tables, pool_size=1, max_overflow=0)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_directory(_project_ids):
+        started.set()
+        await release.wait()
+        return {}
+
+    monkeypatch.setattr(authority, "_oauth_origin_metadata", slow_directory)
+    monkeypatch.setattr(mcp_access, "_session_factory", lambda: factory)
+    monkeypatch.setattr(mcp_access, "get_settings", lambda: SimpleNamespace(service_mcp_enabled=True))
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_token_info,
+        lambda: {"user_id": owner, "project_id": "project", "username": "owner"},
+    )
+    pending = asyncio.create_task(issued_refresh.client.get("/api/v1/auth/mcp-oauth/grants"))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        async with factory() as session:
+            assert await asyncio.wait_for(session.scalar(select(1)), timeout=1) == 1
+    finally:
+        release.set()
+        response = await pending
+        await engine.dispose()
+    assert response.status_code == 200
+    assert [row["grant_id"] for row in response.json()] == [issued_refresh.grant_id]
+
+
 @pytest.mark.parametrize("source", ["personal_token", "oauth"])
 async def test_browser_access_lists_omit_revocations_without_crossing_owner_scope(issued_refresh, monkeypatch, source):
     from app.api.deps import get_token_info
     from app.api.identity import mcp_access
     from app.main import app
+    from app.services import keystone
     from app.services.mcp_control_plane.authority import _token_hash
+
+    directory_reads = []
+
+    def project_metadata(project_id):
+        directory_reads.append(("project", project_id))
+        if project_id == "legacy-project":
+            raise RuntimeError("deleted origin project")
+        assert project_id in {"project", "foreign-project"}
+        return {"id": project_id, "domain_id": "domain-a" if project_id == "project" else "domain-b"}
+
+    def domain_metadata(domain_id):
+        directory_reads.append(("domain", domain_id))
+        assert domain_id in {"domain-a", "domain-b"}
+        return {"id": domain_id, "name": "native-" + domain_id, "afterglow_display_name": "Label " + domain_id}
+
+    monkeypatch.setattr(
+        keystone,
+        "_get_admin_ks_client",
+        lambda: SimpleNamespace(
+            projects=SimpleNamespace(get=project_metadata),
+            domains=SimpleNamespace(get=domain_metadata),
+            session=SimpleNamespace(timeout=15, session=SimpleNamespace(close=lambda: None)),
+        ),
+    )
 
     factory = issued_refresh.factory
     owner = "list-owner-" + str(uuid4())
@@ -714,8 +786,9 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
             ("active", owner, "project", False),
             ("expired", owner, "project", False),
             ("revoked", owner, "project", False),
-            ("active", "foreign-" + str(uuid4()), "project", False),
+            ("active", "foreign-" + str(uuid4()), "foreign-owner-project", False),
             ("active", owner, "foreign-project", False),
+            ("active", owner, "legacy-project", False),
             *(([("expired", owner, "project", True)]) if source == "personal_token" else []),
         ):
             grant_id = str(uuid4())
@@ -772,14 +845,34 @@ async def test_browser_access_lists_omit_revocations_without_crossing_owner_scop
     path = "/api/v1/auth/" + ("mcp-tokens" if source == "personal_token" else "mcp-oauth/grants")
     for project, domain in (("project", "domain-a"), ("foreign-project", "domain-b"), ("", "domain-b")):
         caller.update(project_id=project, domain_id=domain)
+        directory_reads.clear()
         response = await issued_refresh.client.get(path)
         assert response.status_code == 200
         assert {record["id"] for record in response.json()} == expected
-        assert {record["owner_project_id"] for record in response.json()} == {"project", "foreign-project"}
+        assert {record["owner_project_id"] for record in response.json()} == {
+            "project",
+            "foreign-project",
+            "legacy-project",
+        }
         for record in response.json():
             assert record["owner_project_name"] == f"Saved {record['owner_project_id']}"
             assert record["project_ids"] == [record["owner_project_id"]]
             assert record["projects"] == [{"id": record["owner_project_id"], "name": record["owner_project_name"]}]
+            domain_id = {"project": "domain-a", "foreign-project": "domain-b"}.get(record["owner_project_id"])
+            assert record["authorization_domain_id"] == (domain_id if source == "oauth" else None)
+            assert record["authorization_domain_name"] == (
+                "Label " + domain_id if source == "oauth" and domain_id else None
+            )
+        if source == "oauth":
+            assert sorted(directory_reads) == [
+                ("domain", "domain-a"),
+                ("domain", "domain-b"),
+                ("project", "foreign-project"),
+                ("project", "legacy-project"),
+                ("project", "project"),
+            ]
+        else:
+            assert directory_reads == []
     assert response.status_code == 200
     assert {record["id"] for record in response.json()} == expected
     assert {record["status"] for record in response.json()} == {"active", "expired"}

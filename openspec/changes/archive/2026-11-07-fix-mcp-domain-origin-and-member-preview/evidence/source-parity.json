@@ -1,0 +1,99 @@
+{
+  "scope": "23 changed UI/transport/locale files exactly match shared dev; only QA runtime config/cache directory differ",
+  "hashes": [
+    {
+      "file": "src/lib/components/account/McpAccessSection.svelte",
+      "sha256": "911f8474cbf9467a7bbfbdf15f524014a0bfe3f2d89e916117d40556cff836c0"
+    },
+    {
+      "file": "src/lib/components/account/McpPermissionPreview.svelte",
+      "sha256": "8ad804ccabb0fa5f7d80ae192c49f936386fd8a8bbf0ab80be43a7f0684c1524"
+    },
+    {
+      "file": "src/lib/utils/mcpConsentPermissions.ts",
+      "sha256": "a3eb5a19e5d9bce9497896ddf4ec9bb2a7efbd2cc06d29eccc05e6cd330ce527"
+    },
+    {
+      "file": "src/lib/api/client.ts",
+      "sha256": "f64e15f4a83033c67b23ff205f63bba896935b037a290eebb41da2c903f8f93e"
+    },
+    {
+      "file": "src/routes/oauth/mcp/authorize/+page.svelte",
+      "sha256": "eaff48a0a0bb63db3f5db73bb639ddc46f136eb7995044df99b2d85822332cee"
+    },
+    {
+      "file": "src/lib/i18n/messages/ko/account.json",
+      "sha256": "6c8b617d7907c1eca388e785a236198d1123a298d9396ba0c5d568ce3cc22858"
+    },
+    {
+      "file": "src/lib/i18n/messages/ko/public-entry.json",
+      "sha256": "4c02066482a61bcc321a3e2255668597ce15a6b33bd0d65479283bd0781b495d"
+    },
+    {
+      "file": "src/lib/i18n/messages/en/account.json",
+      "sha256": "59ed7efd51841ba6b10b66f43a64c8adf2fee25137db8274b3a308ba6e8c6480"
+    },
+    {
+      "file": "src/lib/i18n/messages/en/public-entry.json",
+      "sha256": "9481759d6511911aca755c939d50d85055f4c077938057e85922ed1a214e33c2"
+    },
+    {
+      "file": "src/lib/i18n/messages/ja/account.json",
+      "sha256": "b620999642c5f520a396e767e5427be3382bfb67b9b5fe5808a1772ebb118c7f"
+    },
+    {
+      "file": "src/lib/i18n/messages/ja/public-entry.json",
+      "sha256": "1af5c5b06371baa9b257595f599e1eb3c4f2fc17bbcb3e72ced47230218c00a5"
+    },
+    {
+      "file": "src/lib/i18n/messages/zh-CN/account.json",
+      "sha256": "39ed02126e83f938f0fb25c5c2d2a99e8206120e056da0aa8d50a6e3563f0095"
+    },
+    {
+      "file": "src/lib/i18n/messages/zh-CN/public-entry.json",
+      "sha256": "2c7c0e863c48d309f51173916136d7c83561467baff2d81765e760da3a6050b2"
+    },
+    {
+      "file": "src/lib/i18n/messages/sw/account.json",
+      "sha256": "faf091f9bef17b3bca57776104feab9ffcbc63a49409b2e6caf26fd3629b0db5"
+    },
+    {
+      "file": "src/lib/i18n/messages/sw/public-entry.json",
+      "sha256": "e0c87b18ac0556f7ed7307bb7b5a0bd98aa6e7130e694ae7960046d90739202a"
+    },
+    {
+      "file": "src/lib/i18n/messages/nb/account.json",
+      "sha256": "6b2812e386f4e1304c7f63ea71236078461d1b418d3c6abf85deece06326fa53"
+    },
+    {
+      "file": "src/lib/i18n/messages/nb/public-entry.json",
+      "sha256": "8df5022159d176f47e643565d5cc653e3135b0cbd8093abfa2895bbb2ac726e3"
+    },
+    {
+      "file": "src/lib/i18n/messages/ms/account.json",
+      "sha256": "10ed46fd63856e9fd86ef407c499e3900c391924865621537a2838a5ceba0efd"
+    },
+    {
+      "file": "src/lib/i18n/messages/ms/public-entry.json",
+      "sha256": "c6be50e6a9d786c9799d53f300f0e245443853f469307e04eba461b052d92614"
+    },
+    {
+      "file": "src/lib/i18n/messages/vi/account.json",
+      "sha256": "d1d4fd48b3e7262988bc45df0631889b36c5562c02c3e5782dc9ca18e7656418"
+    },
+    {
+      "file": "src/lib/i18n/messages/vi/public-entry.json",
+      "sha256": "65332d809d20becda636f5a7689771e93f2cefbc4fef9c23bd89e80517e1a7a5"
+    },
+    {
+      "file": "src/lib/i18n/messages/bn/account.json",
+      "sha256": "18515c86ae5cf8f0fb2f2796ee114fadf6f1ce3bc6636189161e1ba5292b9e02"
+    },
+    {
+      "file": "src/lib/i18n/messages/bn/public-entry.json",
+      "sha256": "0727f9c214bfcaada192dc20cc3cac0a725bda62a3e669cb0a8c40ffc787009e"
+    }
+  ],
+  "grantMutations": [],
+  "deniedDiagnosticPosts": 97
+}

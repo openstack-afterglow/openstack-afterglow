@@ -1,0 +1,11 @@
+Final canonical npm run test:gate; exit0; Python3.12.13; exclusively owned tmpfs datastores on assigned loopback ports.
+checked working source_sha256=289b93231c93163d3fda11e2716d2d0ff14252867293ac82ed0c20b424d85ad5 files=4172
+========= 14543 passed, 94 skipped, 381 warnings in 153.10s (0:02:33) ==========
+ Test Files  550 passed (550)
+      Tests  7615 passed (7615)
+   Start at  13:12:11
+   Duration  42.76s (transform 64.14s, setup 4.28s, import 216.77s, tests 331.22s, environment 124.46s)
+======================= 261 passed, 7 warnings in 1.89s ========================
+========= 284 passed, 46 skipped, 123 deselected, 5 warnings in 23.81s =========
+All checks passed!
+879 files already formatted

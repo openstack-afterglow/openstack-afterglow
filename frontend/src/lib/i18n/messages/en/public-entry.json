@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "No service access",
 	"mcpConsent.preview.service.attenuated": "No permissions allowed by read-only consent",
 	"mcpConsent.preview.service.unavailable": "Permission check unavailable — access unknown",
+	"mcpConsent.preview.scopeUnavailable": "The project's authentication scope could not be verified, so service policies were not checked. This does not establish that access is denied.",
 	"mcpConsent.preview.unknownWrite": "Write permission could not be verified for a project. Manage approval is unavailable. Choose read only or reopen the request.",
 	"mcpConsent.preview.selectedReadOnly": "Your selection includes a read-only project, so manage approval is unavailable. Choose read only, or deselect the read-only projects.",
 	"mcpConsent.permission.droverInventory": "Read cluster status and events (no secrets)",

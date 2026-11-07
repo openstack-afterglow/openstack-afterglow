@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "Hakuna ufikiaji wa huduma",
 	"mcpConsent.preview.service.attenuated": "Hakuna ruhusa zinazoruhusiwa na idhini ya kusoma pekee",
 	"mcpConsent.preview.service.unavailable": "Ukaguzi wa ruhusa haupatikani — ufikiaji haujulikani",
+	"mcpConsent.preview.scopeUnavailable": "Wigo wa uthibitishaji wa mradi haukuweza kuthibitishwa, kwa hivyo sera za huduma hazikukaguliwa. Hii haithibitishi kuwa ufikiaji umekataliwa.",
 	"mcpConsent.preview.unknownWrite": "Ruhusa ya kuandika ya mradi mmoja haikuweza kuthibitishwa. Idhini ya usimamizi haipatikani. Chagua kusoma pekee au fungua ombi tena.",
 	"mcpConsent.preview.selectedReadOnly": "Uchaguzi wako unajumuisha mradi wa kusoma pekee, kwa hivyo idhini ya usimamizi haipatikani. Chagua kusoma pekee au ondoa miradi ya kusoma pekee kwenye uchaguzi.",
 	"mcpConsent.permission.droverInventory": "Soma hali na matukio ya klasta (bila siri)",

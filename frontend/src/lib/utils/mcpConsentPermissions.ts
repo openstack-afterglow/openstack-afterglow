@@ -3,6 +3,7 @@ export interface McpConsentProject {
 	name: string;
 	// Older or unavailable metadata is unknown, never proof of write access.
 	can_write?: boolean | null;
+	scope_error?: 'scope_validation_unavailable' | null;
 	service_permissions?: Record<string, string[]>;
 	service_errors?: Record<string, string>;
 }
@@ -23,6 +24,7 @@ const READ_SERVICE_LEAVES: Record<string, true> = {
 
 /** Native project capability, independent of a key's selected access ceiling. */
 export function nativeCloudAccess(project: McpConsentProject): 'read' | 'manage' | 'unknown' {
+	if (project.scope_error) return 'unknown';
 	if (typeof project.can_write !== 'boolean') return 'unknown';
 	return project.can_write ? 'manage' : 'read';
 }
@@ -34,6 +36,7 @@ export function consentCloudAccess(project: McpConsentProject, access: 'read' | 
 }
 
 export function consentServiceAccess(project: McpConsentProject, service: string, access: 'read' | 'manage') {
+	if (project.scope_error) return { state: 'unavailable' as const, leaves: [] };
 	if (service === 'lumen') return { state: 'unavailable' as const, leaves: [] };
 	const leaves = project.service_permissions?.[service];
 	if (Object.hasOwn(project.service_errors ?? {}, service) || !Array.isArray(leaves)

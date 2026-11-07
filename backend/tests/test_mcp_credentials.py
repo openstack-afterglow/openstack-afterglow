@@ -442,6 +442,57 @@ async def test_personal_token_listing_marks_only_selected_lumen_default():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", ["missing-project", "project-mismatch", "missing-domain", "domain-mismatch", "invalid-name"]
+)
+async def test_oauth_origin_metadata_uses_exact_saved_bindings_and_isolates_unknown(monkeypatch, failure):
+    from app.services import keystone
+    from app.services.mcp_control_plane import authority
+
+    reads = []
+    closed = []
+
+    def project(project_id):
+        reads.append(("project", project_id))
+        if project_id == "broken" and failure == "missing-project":
+            raise RuntimeError("deleted project")
+        return {
+            "id": "different-project" if project_id == "broken" and failure == "project-mismatch" else project_id,
+            "domain_id": "domain-b" if project_id == "broken" else "domain-a",
+        }
+
+    def domain(domain_id):
+        reads.append(("domain", domain_id))
+        if domain_id == "domain-b" and failure == "missing-domain":
+            raise RuntimeError("directory unavailable")
+        return {
+            "id": "different-domain" if domain_id == "domain-b" and failure == "domain-mismatch" else domain_id,
+            "name": "native-name",
+            "afterglow_display_name": "" if domain_id == "domain-b" and failure == "invalid-name" else "Current label",
+            "private_metadata": "must not leave directory",
+        }
+
+    monkeypatch.setattr(
+        keystone,
+        "_get_admin_ks_client",
+        lambda: SimpleNamespace(
+            projects=SimpleNamespace(get=project),
+            domains=SimpleNamespace(get=domain),
+            session=SimpleNamespace(timeout=15, session=SimpleNamespace(close=lambda: closed.append(True))),
+        ),
+    )
+    result = await authority._oauth_origin_metadata({"project-a", "project-b", "broken"})
+    assert result == {
+        "project-a": {"id": "domain-a", "name": "Current label"},
+        "project-b": {"id": "domain-a", "name": "Current label"},
+    }
+    assert reads.count(("domain", "domain-a")) == 1
+    assert len(closed) == len(reads)
+    assert await authority._oauth_origin_metadata(set()) == {}
+    assert len(closed) == len(reads)
+
+
+@pytest.mark.asyncio
 async def test_mounted_mcp_token_endpoint_returns_the_one_time_plaintext_token(client, monkeypatch):
     expires_at = datetime.now(UTC) + timedelta(days=30)
     settings = SimpleNamespace(

@@ -1,0 +1,7 @@
+Final source289b93231c93163d3fda11e2716d2d0ff14252867293ac82ed0c20b424d85ad5; npm run check && npm run build exit0.
+✓ built in 5.72s
+✓ built in 11.81s
+Run npm run preview to preview your production build locally.
+
+> Using @sveltejs/adapter-node
+  ✔ done

@@ -159,8 +159,8 @@ async def test_actual_http_original_sdk_catalog_discovers_openstack_and_native_a
 
 @pytest.mark.asyncio
 async def test_partial_timeout_status_malformed_redirect_and_no_leakage(native, monkeypatch):
-    monkeypatch.setattr(svc, "_TIMEOUT", 0.15)
-    native.delays["/lumen/v1/"] = 0.3
+    monkeypatch.setattr(svc, "_TIMEOUT", 0.75)
+    native.delays["/lumen/v1/"] = 1.5
     native.responses["/drover/v1/"] = (403, {"error": "private-token http://private-host"}, {"Server": "private"})
     native.responses["/palimpsest/v1/"] = (200, b"not json private-token", {})
     native.responses["/waygate/v1/"] = (302, {}, {"Location": native.base + "/credential-leak"})

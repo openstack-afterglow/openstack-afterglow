@@ -1,0 +1,35 @@
+
+> frontend@1.32.9 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+1794021471901 START "/Users/pieroot/code/afterglow/frontend"
+1794021471904 WARNING "src/lib/components/wizard/VmResourcePreparation.svelte" 40:3 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471904 WARNING "src/lib/components/wizard/WizardStep5Config.svelte" 45:6 "`cloudInitFileInput` is updated, but is not declared with `$state(...)`. Changing its value will not correctly trigger updates\nhttps://svelte.dev/e/non_reactive_update"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 226:4 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 269:7 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 291:7 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 329:7 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 364:7 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/admin/telemetry/GnocchiDashboard.svelte" 413:8 "Non-interactive element `<div>` should not be assigned mouse or keyboard event listeners\nhttps://svelte.dev/e/a11y_no_noninteractive_element_interactions"
+1794021471905 WARNING "src/lib/components/dashboard/my-resources/ProjectUsageTable.svelte" 42:3 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471905 WARNING "src/lib/components/docs/DocCodeBlock.svelte" 26:2 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471905 WARNING "src/lib/components/object-storage/ObjectTreeTable.svelte" 83:2 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471905 WARNING "src/lib/components/object-storage/ObjectFlatTable.svelte" 73:2 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471905 WARNING "src/lib/components/volume/VolumeListTable.svelte" 129:1 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471905 WARNING "src/lib/components/volume/SnapshotListTable.svelte" 102:2 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471906 WARNING "src/lib/components/admin/telemetry/AodhSettings.svelte" 235:4 "noninteractive element cannot have nonnegative tabIndex value\nhttps://svelte.dev/e/a11y_no_noninteractive_tabindex"
+1794021471907 COMPLETED 3019 FILES 0 ERRORS 15 WARNINGS 10 FILES_WITH_PROBLEMS
+
+> frontend@1.32.9 i18n:check
+> node scripts/i18n.mjs check
+
+0 errors, 0 warnings · 54 namespaces · 12725 source messages
+
+> frontend@1.32.9 i18n:scan
+> node scripts/i18n.mjs scan
+
+0 hard-coded Korean lines in 1321 files
+
+Final post-review source289b93231c93163d3fda11e2716d2d0ff14252867293ac82ed0c20b424d85ad5:
+1794024879105 COMPLETED 3019 FILES 0 ERRORS 15 WARNINGS 10 FILES_WITH_PROBLEMS
+The preceding i18n results remain the unchanged-locale qualification.

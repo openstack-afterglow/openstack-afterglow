@@ -649,7 +649,7 @@ interface WarmEntry {
 	expiresAt: number;
 }
 
-export interface ApiReadOptions { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; experience?: ExperienceContext }
+export interface ApiReadOptions { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; timeoutMs?: number; experience?: ExperienceContext }
 export interface ApiMutationOptions { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache; replayOnUnauthorized?: boolean; beforeDispatch?: () => void; timeoutMs?: number; experience?: ExperienceContext }
 interface PhysicalObservation { spanId?: string; independent?: boolean; received?: boolean }
 const speculativeObservations = new WeakMap<Promise<void>, PhysicalObservation>();
@@ -1225,10 +1225,12 @@ export const api = {
 			}
 			return value;
 		});
-		// Token inspection can consume authority on GET. Do not warm, coalesce, cache or replay it.
-		if (opts?.cache === 'no-store') {
-			return publish(request<T>(path, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
-				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.replayOnUnauthorized ?? false, experience: opts.experience,
+		// Consuming reads and explicit deadlines own their transport; a shared
+		// default-budget flight must not shorten a longer preview's deadline.
+		if (opts?.cache === 'no-store' || opts?.timeoutMs !== undefined) {
+			const requestPath = opts.cache === 'no-store' ? path : normalizeGetPath(path, scope, opts.refresh).requestPath;
+			return publish(request<T>(requestPath, { method: 'GET', signal: opts.signal, cache: 'no-store' }, token, projectId, {
+				baseUrl: scope.baseUrl, suppressAuthRedirect: opts.suppressAuthRedirect, replayOnUnauthorized: opts.cache === 'no-store' ? opts.replayOnUnauthorized ?? false : opts.replayOnUnauthorized, timeoutMs: opts.timeoutMs, experience: opts.experience,
 			}));
 		}
 		const normalized = normalizeGetPath(path, scope, opts?.refresh);

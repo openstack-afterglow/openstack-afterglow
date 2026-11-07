@@ -35,7 +35,7 @@ from app.models.mcp_authority import (
 )
 from app.services.mcp_control_plane.clients import public_client_observations
 from app.services.mcp_control_plane.crypto import decrypt_application_credential, encrypt_application_credential
-from app.services.mcp_control_plane.sdk import _drain
+from app.services.mcp_control_plane.sdk import _drain, gather_sdk, run_sdk
 
 PERSONAL_TOKEN_PREFIX = "mcp-afgl-"
 PERSONAL_TOKEN_BYTES = 32
@@ -423,7 +423,7 @@ async def _prepare_connection_projects(
         for project in metadata:
             scoped = await project_connection(conn, user_id, project["id"])
             role_snapshot = scoped._afterglow_roles
-            can_write = bool({role["name"].casefold() for role in role_snapshot} & {"admin", "member"})
+            can_write = bool({role["name"].casefold() for role in role_snapshot} & {"admin", "manager", "member"})
             if access_level == "manage" and not can_write and project_scope != "all":
                 if scoped is not conn:
                     await asyncio.to_thread(scoped.close)
@@ -1165,19 +1165,90 @@ async def list_personal_tokens(session: AsyncSession, *, owner_user_id: str) -> 
     return [grant_public_view(grant, token, is_lumen_default=grant.id in selected_grant_ids) for grant, token in rows]
 
 
-async def list_oauth_grants(session: AsyncSession, *, owner_user_id: str) -> list[dict[str, object]]:
-    grants = (
-        await session.scalars(
-            select(McpDelegatedGrant)
-            .where(
-                McpDelegatedGrant.owner_user_id == owner_user_id,
-                McpDelegatedGrant.source == "oauth",
-                McpDelegatedGrant.status != "revoked",
+async def _oauth_origin_metadata(project_ids: set[str]) -> dict[str, dict[str, str]]:
+    """Resolve immutable saved project bindings, never the browser's current domain.
+
+    Names are current directory labels, not historical approval snapshots.
+    Directory failures affect metadata only, never the owner's connection list.
+    """
+    from app.services import domain_display, keystone
+    from app.services.identity_roles import _field
+
+    slots = asyncio.Semaphore(3)
+    deadline = asyncio.get_running_loop().time() + 10
+
+    def read_exact(kind: str, resource_id: str) -> dict[str, str]:
+        client = keystone._get_admin_ks_client()
+        try:
+            client.session.timeout = 5
+            resource = getattr(client, kind).get(resource_id)
+            if _field(resource, "id") != resource_id:
+                raise ValueError("OAuth origin directory identity does not match")
+            if kind == "projects":
+                domain_id = _field(resource, "domain_id")
+                if not isinstance(domain_id, str) or not domain_id.strip() or domain_id != domain_id.strip():
+                    raise ValueError("OAuth origin project domain is unavailable")
+                return {"id": domain_id}
+            return {"id": resource_id, "name": domain_display.display_name(resource)}
+        finally:
+            client.session.session.close()
+
+    async def read(kind: str, resource_id: str) -> dict[str, str] | None:
+        async with slots:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None
+            try:
+                return await asyncio.wait_for(run_sdk(read_exact, kind, resource_id), timeout=min(5, remaining))
+            except Exception:
+                return None
+
+    # Deduplicate both projects and domains request-locally. Cancellation keeps
+    # every native worker/slot owned until its bounded HTTP read has drained.
+    projects = sorted(project_ids)
+    project_results = await gather_sdk(*(read("projects", project_id) for project_id in projects))
+    project_domains = {
+        project_id: result["id"]
+        for project_id, result in zip(projects, project_results, strict=True)
+        if isinstance(result, dict)
+    }
+    domain_ids = sorted(set(project_domains.values()))
+    domain_results = await gather_sdk(*(read("domains", domain_id) for domain_id in domain_ids))
+    domains = {
+        domain_id: result
+        for domain_id, result in zip(domain_ids, domain_results, strict=True)
+        if isinstance(result, dict)
+    }
+    return {project_id: domains[domain_id] for project_id, domain_id in project_domains.items() if domain_id in domains}
+
+
+async def list_oauth_grants(
+    session_factory: async_sessionmaker[AsyncSession], *, owner_user_id: str
+) -> list[dict[str, object]]:
+    async with session_factory() as session:
+        grants = (
+            await session.scalars(
+                select(McpDelegatedGrant)
+                .where(
+                    McpDelegatedGrant.owner_user_id == owner_user_id,
+                    McpDelegatedGrant.source == "oauth",
+                    McpDelegatedGrant.status != "revoked",
+                )
+                .order_by(McpDelegatedGrant.created_at.desc())
             )
-            .order_by(McpDelegatedGrant.created_at.desc())
-        )
-    ).all()
-    return [grant_public_view(grant) for grant in grants]
+        ).all()
+        project_ids = {grant.owner_project_id for grant in grants}
+        records = [grant_public_view(grant) for grant in grants]
+    # Directory latency must not retain a SQL read transaction or pool slot.
+    origins = await _oauth_origin_metadata(project_ids)
+    return [
+        {
+            **record,
+            "authorization_domain_id": origins.get(record["owner_project_id"], {}).get("id"),
+            "authorization_domain_name": origins.get(record["owner_project_id"], {}).get("name"),
+        }
+        for record in records
+    ]
 
 
 async def account_personal_token_owner(session: AsyncSession, *, token_id: str, owner_user_id: str) -> tuple[str, str]:

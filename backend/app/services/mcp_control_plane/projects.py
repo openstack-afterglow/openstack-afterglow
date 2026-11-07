@@ -63,6 +63,7 @@ class _CallerScope:
     identity_domain_id: str
     domain_id: str
     project_id: str | None
+    native_access: Any
 
 
 async def _caller_scope(conn: Any, owner_user_id: str) -> _CallerScope:
@@ -90,7 +91,15 @@ async def _caller_scope(conn: Any, owner_user_id: str) -> _CallerScope:
         raise McpAuthorityError("authenticated domain is unavailable")
     if getattr(conn, "_afterglow_identity_domain_id", None) != identity_domain_id:
         raise McpAuthorityError("authenticated identity domain does not match the MCP owner")
-    return _CallerScope(owner_user_id, token, identity_domain_id, domain_id, access.project_id)
+    # get_os_conn carries this request's validate_session-proven unscoped
+    # human subject. Scoped tokens can forbid every token-method rescope.
+    # Runtime/application-credential connections have no such login proof.
+    session_token = getattr(conn, "_afterglow_session_token", None)
+    if session_token is not None:
+        if not isinstance(session_token, str) or not session_token:
+            raise McpAuthorityError("caller Keystone session proof is unavailable")
+        token = session_token
+    return _CallerScope(owner_user_id, token, identity_domain_id, domain_id, access.project_id, access)
 
 
 async def _validated_project_connection(scoped: Any, caller: _CallerScope, project_id: str) -> Any:
@@ -144,10 +153,14 @@ async def _independent_project_connection(
 ) -> Any:
     scoped = await run_sdk(
         keystone.get_openstack_connection,
-        caller.token,
+        caller.native_access.auth_token if caller.project_id == project_id else caller.token,
         project_id,
         cancellation_cleanup=lambda created: created.close(),
         **({"api_timeout": api_timeout} if api_timeout is not None else {}),
+        # Own auth/session state, but do not exchange an already validated
+        # exact-project subject merely to clone its catalog. Restricted subjects
+        # may authorize native reads while forbidding another token issuance.
+        **({"native_access": caller.native_access} if caller.project_id == project_id else {}),
     )
     try:
         return await _validated_project_connection(scoped, caller, project_id)
@@ -216,6 +229,7 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
         return {
             **project,
             "can_write": None,
+            "scope_error": "scope_validation_unavailable",
             "service_permissions": {service: [] for service in enabled},
             "service_errors": {service: "permission_check_unavailable" for service in enabled},
         }
@@ -258,9 +272,12 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
                 permissions = {service: [] for service in permissions}
             return {
                 **project,
-                "can_write": bool({role["name"].casefold() for role in scoped._afterglow_roles} & {"admin", "member"}),
+                "can_write": bool(
+                    {role["name"].casefold() for role in scoped._afterglow_roles} & {"admin", "manager", "member"}
+                ),
                 "service_permissions": permissions,
                 "service_errors": errors,
+                "scope_error": None,
             }
         finally:
             if scoped is not None:

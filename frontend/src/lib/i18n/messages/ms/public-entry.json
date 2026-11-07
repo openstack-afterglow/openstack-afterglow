@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "Tiada akses perkhidmatan",
 	"mcpConsent.preview.service.attenuated": "Tiada kebenaran dibenarkan oleh persetujuan baca sahaja",
 	"mcpConsent.preview.service.unavailable": "Semakan kebenaran tidak tersedia — akses tidak diketahui",
+	"mcpConsent.preview.scopeUnavailable": "Skop pengesahan projek tidak dapat disahkan, jadi dasar perkhidmatan tidak diperiksa. Ini tidak membuktikan bahawa akses ditolak.",
 	"mcpConsent.preview.unknownWrite": "Kebenaran tulis bagi satu projek tidak dapat disahkan. Kelulusan pengurusan tidak tersedia. Pilih baca sahaja atau buka semula permintaan.",
 	"mcpConsent.preview.selectedReadOnly": "Pilihan anda merangkumi projek baca sahaja, jadi kelulusan pengurusan tidak tersedia. Pilih baca sahaja atau nyahpilih projek baca sahaja.",
 	"mcpConsent.permission.droverInventory": "Baca status dan peristiwa kluster (tanpa rahsia)",

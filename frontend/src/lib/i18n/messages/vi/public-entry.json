@@ -191,6 +191,7 @@
 	"mcpConsent.preview.service.denied": "Không có quyền truy cập dịch vụ",
 	"mcpConsent.preview.service.attenuated": "Không có quyền nào được cho phép bởi chấp thuận chỉ đọc",
 	"mcpConsent.preview.service.unavailable": "Không thể kiểm tra quyền — chưa rõ quyền truy cập",
+	"mcpConsent.preview.scopeUnavailable": "Không thể xác minh phạm vi xác thực của dự án nên chưa kiểm tra chính sách dịch vụ. Điều này không khẳng định rằng quyền truy cập bị từ chối.",
 	"mcpConsent.preview.unknownWrite": "Không thể xác minh quyền ghi cho một dự án. Không thể phê duyệt quyền quản lý. Hãy chọn chỉ đọc hoặc mở lại yêu cầu.",
 	"mcpConsent.preview.selectedReadOnly": "Lựa chọn của bạn có dự án chỉ đọc nên không thể phê duyệt quyền quản lý. Hãy chọn chỉ đọc hoặc bỏ chọn các dự án chỉ đọc.",
 	"mcpConsent.permission.droverInventory": "Đọc trạng thái và sự kiện cụm (không gồm bí mật)",
