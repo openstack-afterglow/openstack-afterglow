@@ -500,3 +500,17 @@ def test_native_denial_and_unavailability_remain_exact_http_errors(native_wire, 
     assert len(refusals) == 1
     assert refusals[0]["token"] == "issued-1-alice-project-a"
     assert refusals[0]["project"] == "project-a"
+
+
+def test_shared_adapter_keeps_a_deliberately_sized_socket_pool_per_host():
+    """requests' default of 10 would open and discard sockets under page-load bursts."""
+    native_transport.close_pools()
+    session = native_transport.create_session(timeout=5)
+    try:
+        for url in ("http://keystone.test/v3", "https://keystone.test/v3"):
+            adapter = session.session.get_adapter(url)
+            assert adapter.poolmanager.connection_pool_kw["maxsize"] == native_transport._POOL_MAXSIZE
+        assert native_transport._POOL_MAXSIZE > 10
+    finally:
+        session.session.close()
+        native_transport.close_pools()

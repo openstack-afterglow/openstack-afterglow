@@ -468,7 +468,17 @@ async def request_logging_middleware(request: Request, call_next):
         response = await call_next(request)
         status = response.status_code
         # Numeric server work only: no URL, identity, token, query or cache key.
-        response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - start) * 1000:.2f}"
+        existing_st = response.headers.get("Server-Timing")
+        app_st = f"app;dur={(time.perf_counter() - start) * 1000:.2f}"
+        # get_token_info's own duration (JWT, session, native identity/scope checks), so a slow
+        # authenticated route can be split into "auth" and handler work without a profiler.
+        auth_ms = getattr(request.state, "auth_ms", None)
+        parts = [app_st]
+        if isinstance(auth_ms, float):
+            parts.append(f"auth;dur={auth_ms:.2f}")
+        if existing_st:
+            parts.append(existing_st)
+        response.headers["Server-Timing"] = ", ".join(parts)
         return response
     finally:
         duration_ms = (time.perf_counter() - start) * 1000

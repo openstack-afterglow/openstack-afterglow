@@ -1,6 +1,7 @@
 """Actual summary HTTP with deterministic identity/cloud/native read boundaries."""
 
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -140,7 +141,7 @@ class InventoryState:
             role_names=self.native_roles.get(
                 project, [role["name"] for role in self.directory.roles if role["id"] in role_ids]
             ),
-            expires=None,
+            expires=getattr(self, "token_expires", None),
         )
 
     def rows(self, project, category):
@@ -168,13 +169,15 @@ class InventoryState:
         }[key]
         return {key: self.rows(project, category)}
 
-    def connection(self, token, project):
+    def connection(self, token, project, *, system_scope=False, native_access=None, **kwargs):
         self.events.append(("connection", token, project))
-        issued = f"issued:{token}:{project}"
+        if native_access is not None:
+            self.events.append(("native_access_reuse", token, project))
+        issued = token if native_access is not None else f"issued:{token}:{project}"
 
         def access(session):
             self.events.append(("identity", project))
-            return self.native_access(issued, project)
+            return native_access if native_access is not None else self.native_access(issued, project)
 
         conn = SimpleNamespace(
             close=lambda: self.events.append(("close", project)),
@@ -329,6 +332,7 @@ async def inventory_http(monkeypatch, auth_directory):
             raise state.membership_error
         return state.memberships
 
+    inventory._SCOPED_ACCESS_CACHE.clear()
     old_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[get_token_info] = subject
     monkeypatch.setattr(inventory, "get_settings", lambda: state.settings)
@@ -365,6 +369,7 @@ async def inventory_http(monkeypatch, auth_directory):
             yield state, client
         assert not state.mutations
     finally:
+        inventory._SCOPED_ACCESS_CACHE.clear()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(old_overrides)
 
@@ -1138,3 +1143,93 @@ async def test_summary_zun_native_next_rejects_unsafe_or_malformed_url(inventory
     assert response.status_code == 200
     value = response.json()["projects"][0]["resources"]["containers"]
     assert value == {"state": "failed", "count": None, "items": [], "error": "inventory_unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_scoped_connection_reuses_valid_token(inventory_http, monkeypatch):
+    state, client = inventory_http
+    from app.services import domain_projects
+
+    state.token_expires = datetime.now(UTC) + timedelta(hours=1)
+    membership_calls = []
+    real_assert = domain_projects.assert_project_membership
+
+    def spy_assert(user_id, project_id, **kwargs):
+        membership_calls.append((user_id, project_id))
+        return real_assert(user_id, project_id, **kwargs)
+
+    monkeypatch.setattr(domain_projects, "assert_project_membership", spy_assert)
+
+    inventory._SCOPED_ACCESS_CACHE.clear()
+    state.events.clear()
+    res1 = await client.get(URL)
+    assert res1.status_code == 200
+    assert len([e for e in state.events if e[0] == "native_access_reuse"]) == 0
+    checks_pass1 = len(membership_calls)
+    assert checks_pass1 > 0
+
+    state.events.clear()
+    res2 = await client.get(URL)
+    assert res2.status_code == 200
+    assert res1.json() == res2.json()
+    assert len([e for e in state.events if e[0] == "native_access_reuse"]) > 0
+    assert len(membership_calls) == checks_pass1 * 2
+
+    def fail_assert(user_id, project_id, **kwargs):
+        raise PermissionError("Membership revoked externally")
+
+    monkeypatch.setattr(domain_projects, "assert_project_membership", fail_assert)
+    res3 = await client.get(URL)
+    assert res3.status_code == 200
+    for project in res3.json()["projects"]:
+        assert all(res["state"] == "denied" for res in project["resources"].values())
+
+
+def _reused_projects(state):
+    return sorted(event[2] for event in state.events if event[0] == "native_access_reuse")
+
+
+@pytest.mark.asyncio
+async def test_scoped_credential_is_reissued_when_the_live_role_set_changes(inventory_http):
+    state, client = inventory_http
+    state.token_expires = datetime.now(UTC) + timedelta(hours=1)
+    inventory._SCOPED_ACCESS_CACHE.clear()
+    state.events.clear()
+    assert (await client.get(URL)).status_code == 200
+    cold_p_a_connections = len([e for e in state.events if e[0] == "connection" and e[2] == "p-a"])
+    assert cold_p_a_connections >= 1
+
+    state.roles["p-a"] = ["reader"]
+    state.events.clear()
+    assert (await client.get(URL)).status_code == 200
+    # p-b kept its role set and may reuse its credential; p-a's changed role set must rescope.
+    assert _reused_projects(state) == ["p-b"]
+    p_a_connections = len([e for e in state.events if e[0] == "connection" and e[2] == "p-a"])
+    assert p_a_connections == cold_p_a_connections, "p-a must take the same fresh path as a cold request"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lifetime", [None, timedelta(seconds=30), timedelta(seconds=-5)])
+async def test_scoped_credential_without_a_comfortable_lifetime_is_never_reused(inventory_http, lifetime):
+    state, client = inventory_http
+    state.token_expires = None if lifetime is None else datetime.now(UTC) + lifetime
+    inventory._SCOPED_ACCESS_CACHE.clear()
+    assert (await client.get(URL)).status_code == 200
+    assert inventory._SCOPED_ACCESS_CACHE == {}
+
+    state.events.clear()
+    assert (await client.get(URL)).status_code == 200
+    assert _reused_projects(state) == []
+
+
+@pytest.mark.asyncio
+async def test_scoped_credential_is_not_shared_across_source_tokens(inventory_http):
+    state, client = inventory_http
+    state.token_expires = datetime.now(UTC) + timedelta(hours=1)
+    inventory._SCOPED_ACCESS_CACHE.clear()
+    assert (await client.get(URL)).status_code == 200
+
+    state.subject["token"] = "renewed-native-token"
+    state.events.clear()
+    assert (await client.get(URL)).status_code == 200
+    assert _reused_projects(state) == []

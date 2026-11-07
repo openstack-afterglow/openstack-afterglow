@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.9`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend `1.32.10`이며, Cloud Shell image/CLI source는 독립 `openstack-client` 저장소가 소유한다. Backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`를 manifest에 고정한다. Vite manifest 범위는 `^8.2.0`이며 frozen lock의 설치·빌드 버전은 `8.2.2`다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **1.32.9 발행:** 요청 시점의 공개 source snapshot에 계정 소유 MCP 목록·원래 origin 폐기, 공통 정규식/열 정렬·값 필터, 모델 가격 그룹/수동 가격 입력, 인스턴스 자동 삭제 볼륨 확인과 usage background operator scope 수정을 포함한다. 격리 검증·공유 dev 통합 후 source commit`dcf1c4b9d04b23af76aadbc0d065dff70f147808`의 exact-SHA CI를 통과했고 immutable numeric tag·한영 Release를 발행했다. 세 GHCR image의`1.32.9`/`latest` digest·revision과 실제 container 버전, frontend canonical image의 실제 UI, Helm OCI1.32.9를 확인했다. 현재 발행 architecture는`linux/amd64`이며 API/worker image 검증은 network-none 버전 실행으로 한정한다. 후속 동시 source·main merge·운영 Kolla/native/schema 변경은 포함하지 않는다. 상세 receipt는`docs/testing.md`에 구분한다.
 
@@ -174,6 +174,8 @@ Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `
 운영자 도구 `scripts/oidc_group_probe.py`는 별도 client의 one-shot loopback `/callback`을 제공한다. Code/PKCE·state/browser cookie·nonce·RS256 issuer/audience/azp/hash와 UserInfo subject를 확인하고 ID-token/UserInfo 그룹을 원문 배열·missing/invalid로 분리해0700 directory/0600 파일에만 기록한다. Application 설정/DB/Redis·Keystone federation/매핑·IAM·production listener를 호출하거나 바꾸지 않으며 새 app route/schema/dependency는 없다. Mapping 입력 export는 명시 source의 candidate이며 native Apache transport proof와 다르다. [운영자 절차](docs/oidc-group-diagnostics.md)에 새 client 등록과 검증 한계를 기록한다.
 
 응답 지연 개선은 사용자 권한 관측 cache를 추가하지 않는다. `require_admin`의 새 `NativeOperation`은 매 guard마다 실제 계정·scope·system 권위를 다시 읽되 작업 내부 catalog/directory만 재사용한다. `keystone._get_admin_ks_client()`는 서비스 계정 AccessInfo만 process-wide로 공유하고 요청마다 독립 Session/Client/auth plugin을 생성한다. 만료300초 전 renewal은 single-flight로 성공·실패를 공유하며401은 해당 관측 token만 폐기하고 자격/endpoint/TLS 설정 변경은 별도 cache로 분리한다. `get_os_conn`은 같은 요청에서 검증된 exact user/home/project/token의 AccessInfo를 사용해 추가 token 재교환을 피한다. `Server-Timing: app;dur`는 backend 헤더 생성 전 시간이며 native 단독 latency·전체 스트림·브라우저 렌더 시간과 다르다.
+
+인증 요청의 고정 비용은 요청마다 직렬로 수행하는 네이티브 읽기 수에 비례한다(일반 멤버 요청 1회 합성 프로브 19회, `require_admin`의 새 `NativeOperation`이 같은 체인을 한 번 더 돈다). `Server-Timing`은 `app;dur`(헤더 생성 전 총시간), `auth;dur`(`get_token_info` 구간, 거부 응답 포함), 핸들러가 설정한 하위 항목을 이 순서로 병합하며 숫자만 노출한다. `domain_projects._accessible_domains`는 워크스페이스·도메인의 독립 exact 읽기를 `_warm_exact`(공용 `parallel.run_parallel`)로 같은 `operation.reads` 메모에 요청당 최대 4개(`_WARM_FANOUT`)로 동시에 선읽기하고 판정은 기존 순차 루프가 그대로 수행한다. 동시 요청이 공유하는 `native_transport._SharedAdapter`의 호스트당 소켓 풀은 `_POOL_MAXSIZE=32`로 명시해(requests 기본 10은 폭주 시 소켓을 열고 버린다) 팬아웃이 새 TCP/TLS 연결 폭증이 되지 않게 한다. 선읽기 실패는 저장하지 않아 순차 판정이 같은 위치에서 다시 읽어 같은 오류를 보고하므로 읽는 집합·판정 순서·오류 우선순위·fail-closed가 변하지 않으며 요청 간 공유 cache는 없다. `user-dashboard/summary`의 프로젝트 scoped Keystone credential은 `user_inventory._SCOPED_ACCESS_CACHE`(프로세스 내, 원문 대신 token SHA-256·user·project·정렬된 live 역할 집합 키, 만료 60초 초과일 때만 `min(만료-30초, 30분)`)로만 재사용하며, 현재 assignment graph(`get_project_access`)·`domain_context`·`assert_project_membership`는 매 요청 실행하고 거부는 항목을 폐기한 뒤 전파한다. 조립된 summary 자체는 어떤 cache에도 저장하지 않는다. 남은 직렬 단계(독립 단계의 동시 선읽기, 관리자 읽기 라우트의 중복 guard)는 오류 우선순위·단일 비행 메모·보안 정책 결정이 필요한 미조치 항목이다(`docs/testing.md`).
 
 로그인 I/O 축소는 현재 보안 판정을 삭제하지 않는다. `GET /auth/me`는 JWT dependency의 살아 있는 `NativeOperation`에서 domain metadata를 materialize하고 exact user/home/working domain/project/JTI/native token/admin owner에 묶인 private snapshot만 handler로 전달한다. Client/operation은 요청 밖으로 넘기지 않으며 live-admin 별도 guard 뒤에는 invalidate한다. Refresh/JWT의 native exchange 전후 provider·password·조직·이메일 정책 검사는 중간 폐기를 막으므로 양쪽 fresh fence를 유지한다. 정상 Personal 준비는 graph lease 안의 catalog·검증된 도메인·같은 단계 assignment sources만 재사용하고 provisioning 뒤에는 fresh 해석한다. Intent/enrollment·deferred receipt·native-OIDC 삭제-primary 정리가 쓰기를 할 수 있어 잠금을 없애지 않는다. 비밀번호의 일반 username만 완전한 raw native core-name/home inventory에서 exact 후보 전체를 hydrate하며 SDK/불완전 projection·이메일 alias와 계정 생성 유일성 검사는 전체 상세 검증을 유지한다. 새 schema/config·권위 cache·서비스 topology 변경은 없다.
 
@@ -2033,6 +2035,8 @@ GitHub Actions 실제 실행은 검증하지 않았다. job 토큰의 `actions: 
 | targeted backend | `npm run test:target -- backend:tests/<path>` | 선택한 테스트의 명시적 외부 전제 |
 | Palimpsest layer named target | `npm run test:target -- layers` | backend layer/build/consume 테스트와 frontend Dockerfile lint page/panel 및 squashfs VM wizard selector를 `scripts/test-target.js`에서 함께 실행 |
 | Waygate client dashboard capability | `openspec validate waygate-vpn-client-dashboard --strict --no-interactive` | OpenSpec CLI; the archived UI contract is validated independently of live infrastructure |
+| latency harness verification | `npm run test:latency` | Node 24, Chromium/Chrome executable (`AFTERGLOW_LATENCY_CHROME` or platform default); exercises loopback fixture pages and HTTP endpoints |
+| latency CLI entrypoint | `npm run latency -- --target <origin> [options]` | Target frontend + backend API; reports JSON/MD under `latency-reports/` with redacted credentials |
 | 전체 기존 gate | `npm run test:gate` | disposable DB/Redis와 backend/frontend dependency; 2026-09-26/27 Waygate candidate integration gate passed |
 
 architecture 회귀 테스트는 API mock으로 문서를 확인하지 않고 실제 CLI subprocess와 작은 Git fixture로 fresh/stale/restamp, staged isolation, add/delete/rename/mode/lock/CI, docs 제외, source Markdown, malformed marker, conflict, NUL 경로, symlink 및 source-content 비출력을 검증한다. 2026-09-08 focused 실행에서 13건이 통과했다.
@@ -2097,9 +2101,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ca9c7483c8e60370830a20ddbaea6d09b5d1a1d8bc5b6c10ef0f8c3feed5f06c",
-  "reviewed_at": "2026-11-07T09:09:00Z",
-  "summary": "MCP never connects a domain's Default project (name-based, surrounding whitespace and case ignored): discovery, all/selected/current candidates, OAuth approval and key issuance reject it, stored grants naming it are refused at use, and connection._validate_current_roles refuses a live token whose project name is Default so pre-migration grants that saved only the project ID are covered; endpoint-level and legacy-grant regressions cover list, preview, issuance and dispatch, and the endpoint regression restores app.dependency_overrides by hand so it cannot leak into later tests. One is_reserved_default_name helper guards user create, administrator create and rename. Afterglow's own write gates return to {admin, member}; manager stays Default-only domain administration while Drover, Waygate, Palimpsest and Lumen keep their own manager policies. No schema, role-graph, grant, native-policy or deployment change; source/local only."
+  "source_sha256": "53845ed79c06da72997a039605c035ef3667fbb1ffd942aa915d7741b6b61239",
+  "reviewed_at": "2026-11-07T10:55:30Z",
+  "summary": "Release 1.32.10 metadata: root/backend/frontend/Chart versions synced and the architecture version statement updated. Reviewed the auth-chain, capped concurrent exact-read warm-up, shared socket pool size, scoped credential invariants, error mapping, and the test-isolation fix for a pre-existing hermetic-guard flake; no new authority or cache. Publication receipt to follow after exact-SHA CI."
 }
 ```
 <!-- architecture-review:end -->

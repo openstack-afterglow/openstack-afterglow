@@ -6,6 +6,111 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.10 릴리스 게이트 증거와 미해결 프런트엔드 실패 (2026-11-07, source/local)
+
+- 결론: 이 워크스테이션(macOS arm64, 18코어, Node 24.14.1, vitest 4.1.11, jsdom 25.0.1)에서 표준 `npm run test:gate`는 프런트엔드 단위 단계를 통과하지 못한다. 이 실패는 변경 없는 `580f9c29`(깨끗한 별도 워크트리, `npm ci`)에서도 같은 수치로 재현되므로 1.32.10 변경이 만든 것이 아니다. 원인은 규명하지 못했다. 사용자 결정으로 이 실패를 명시한 채 `dev`에 푸시하고, 불변 태그는 해당 SHA의 CI(Node 22, 2개 shard)가 통과한 뒤에만 붙인다. 로컬 프런트엔드 증거는 정본이 아니며 CI 결과가 정본이다.
+- 게이트 단계별 결과(최종 트리, 버전 `1.32.10` 동기화 상태):
+
+  | 단계 | 결과 | 비고 |
+  |---|---|---|
+  | `docs:check`, `experience:catalog:check` | 통과 | |
+  | `test:orchestration`·`test:target:js` | 통과 | 시스템 python3.9는 `tomllib`이 없어 6건이 실패하므로 프로젝트 Python을 PATH에 두고 실행 |
+  | 백엔드 단위 | 14,580 passed / 94 skipped | 아래 두 건의 비재현 실패 참조 |
+  | 계약 | 261 passed | |
+  | 기능(`test:functional`) | 284 passed / 46 skipped / 131 deselected | 포트 3307 충돌을 해소한 뒤 실행 |
+  | 프런트엔드 단위 | **82개 파일·1,123개 테스트 실패**(수집 7,417건) | 변경 없는 HEAD도 동일 |
+
+- 프런트엔드 실패의 반복 확인된 사실(여러 번 같은 결과가 나온 것만 적는다):
+  - 전체 실행에서 같은 82개 jsdom 파일이 실패한다. 첫 실패는 `localStorage`가 `undefined`라는 `TypeError`다(`reading 'setItem'`/`'clear'`/`'getItem'`).
+  - 82개 파일은 단독 실행과 82개만 묶은 실행(82 파일·1,770 테스트)에서 모두 통과한다. 전체 실행에서만 실패한다.
+  - 실패 파일 82개는 모두 jsdom 환경이다(`@vitest-environment node` 파일은 0개). jsdom 환경 설치 직전에 전역에 이미 `localStorage` get/set 접근자가 존재하며, vitest `getWindowKeys`는 `k in global`인 키를 `KEYS`에 없으면 설치하지 않는다(`localStorage`는 `KEYS`에 없다). 따라서 새 jsdom `localStorage`가 설치되지 않는다. 이 낡은 접근자를 남기는 주체는 찾지 못했다.
+  - Node 자체에는 전역 `localStorage`가 없다(`'localStorage' in globalThis`가 `false`, 워커 스레드도 동일).
+- 반증한 가설(각각 실험으로 반증): Node 자체 webstorage, jsdom 불투명 출처(`about:blank`), 워커 수(`--maxWorkers` 3·4·6·8·12·기본 모두 동일), 풀 종류(threads/forks), vitest 결과 캐시, `node_modules/.vite` deps 캐시(콜드 캐시에서도 실패), 낡은 `node_modules`(락 기준 `npm ci` 기준선도 실패), 단순 CPU 부하(부하 18~24에서 3회 모두 동일).
+- 철회한 주장(이 세션에서 한 오진이며 반복 검증하지 않은 단일 관측이었다):
+  - "기본 병렬도 의존성이고 `--maxWorkers=3`이면 550 파일·7,615 테스트가 통과한다": 한 번만 통과했고 같은 옵션으로 이후 두 번 실패했다.
+  - "`vi.stubGlobal('localStorage', undefined)`를 쓰는 3개 파일을 제외하면(547/547) 또는 그 3줄을 지우면(550/550) 원인이 확정된다": 각각 한 번만 실행했다. 이를 근거로 테스트 3개와 신규 SSR 파일 2개를 고쳐 8회 반복(기본 5회 + `--maxWorkers` 2·6·12)했으나 전부 82개 파일이 실패했다. 변경은 모두 되돌렸고 커밋에 포함하지 않았다.
+  - 같은 입력(첫 80개 파일)이 한 번은 실패하고 다섯 번은 통과한 관측이 있어, 실패는 파일 집합만으로 결정되지 않는다. 정확한 조건은 모른다.
+- 백엔드 단위 스위트의 비재현 실패 두 건: (1) `tests/test_host_observer.py::test_command_bounded_output_real_local_process`가 전체 실행 1회에서 `timeout`으로 실패했다(2초 안에 256KiB 출력 상한에 도달하지 못함). 이 테스트와 `scripts/host_observer.py`는 변경하지 않았고, 단독 5회와 busy-loop 프로세스 36개로 18코어를 포화시킨 상태의 6회가 모두 통과했으며(CPU 포화로는 재현되지 않았다), 이후 백엔드 전체 실행에서도 통과했다. 원인은 규명하지 못했다. (2) hermetic 가드 에러는 아래 "선재 플레이크" 항목에서 다룬다.
+- 기능 테스트 환경 조치: `scripts/test-db.js`가 `127.0.0.1:3307`을 하드코딩하는데 3일 전 다른 QA 세션의 컨테이너 `ag-experience-20261104-7d91-mariadb-1`(tmpfs, 현재 연결 없음)이 점유하고 있었다. 사용자의 명시적 승인을 받아 그 프로젝트의 컨테이너 3개(mariadb·postgres·test-redis)만 제거했다(볼륨 0, tmpfs 데이터는 소실). 같은 네트워크에 붙어 있던 승인 범위 밖 컨테이너 2개(`ag-remediation-images-7d91-backend-1`·`-frontend-1`)와 그 네트워크는 건드리지 않았다. 광역 prune이나 `--volumes`는 쓰지 않았다.
+- 후속 과제(이번 릴리스에 포함하지 않음): 프런트엔드 전체 실행 82개 파일 실패의 원인 규명. 다음 단계는 jsdom 환경 설치 코드에 직접 계측해 낡은 `localStorage` 접근자가 남는 순간을 잡는 것이다.
+
+## 웹 라우트·API 응답 지연 하네스 (2026-11-07, source/local)
+
+- 목적: 전체 웹 페이지(160개 라우트)의 브라우저 로딩부터 준비 완료까지의 지연과, 모든 API 엔드포인트에 대한 단일/동시 요청 시의 왕복 지연을 인증 단계와 분리하여 측정·분석하는 독립 하네스를 추가했다 (`scripts/latency/`).
+- 설계:
+  - **코어** (`core.mjs`): SvelteKit `+page.svelte` 파일 시스템 스캔으로 160개 라우트 정본 인벤토리를 수집하고, 동적 세그먼트(`[id]`, `[name]`, `[token]`)는 `--route-fixtures` 매핑으로 치환한다. 또한 브라우저 크롤 중 수집된 온페이지 동일 origin 링크로부터 동적 라우트 매칭 경로를 자동 수확(`harvestDynamicRoutes`)하여 수동 fixture 없이도 세부 페이지를 자동 측정한다. 수확되지 않은 동적 라우트와 세션 파괴 라우트(`/logout`, `/auth/callback`, `/oauth/*/authorize`)는 사유와 함께 명시 제외하여 `측정 라우트 + 제외 라우트 = 전체 160개` 보존을 보장한다. URL 정제(`redactUrl`)는 자격증명·시크릿 쿼리 키를 마스킹하고, 엔드포인트 템플릿화(`endpointKey`)는 UUID/숫자 경로 세그먼트를 `:id`로 묶어 리포트에 원본 식별자가 누출되지 않는다. 비-사설/루프백 대상은 `--allow-remote` 없이는 즉시 거부한다.
+  - **API 레인** (`api-lane.mjs`): `POST /api/v1/auth/login` 레이트 리밋(10회/분)을 준수하도록 단일 세션 토큰을 재사용한다. 엔드포인트별 순차 측정(`total_ms`, `ttfb_ms`, `server_dur_ms`)과 동시성 램프(기본 1, 5, 10, 20 동시 요청)를 실행하며, 배치 단위의 실제 벽시계(wall-clock) 완료 시간과 처리량(req/s)을 집계한다. 백엔드가 `Server-Timing: app;dur=<ms>`로 응답하는 경우 `dur=` 값을 파싱해 백엔드 순수 연산 지연(`server_dur_ms`)과 네트워크 왕복 지연을 분리한다. 인증 지연은 `--auth-samples`(기본 5, 최대 9)로 분리 측정하며, 로그인 + 탐침 GET의 합산 콜드 패스 시간을 별도로 보고한다.
+    - **401 가드**: `401`은 지연 샘플이 아니다(만료·폐기 토큰의 빠른 경로라 엔드포인트가 빠르게 보인다). 측정 전 탐침(`/api/v1/auth/me`)으로 토큰을 확인하고, 거부되면 `refreshAuth`(자격증명이 있는 실행에서 재로그인)로 한 번 갱신한다. 동시 `401`은 단일 갱신(single-flight)으로 합류해 로그인 레이트 리밋을 소모하지 않는다. 갱신할 수 없으면 거부된 엔드포인트를 `INVALID`로 표시하고 이후 측정과 램프를 중단하며(`aborted`), 리포트 상단에 배너로 알리고 `--budget-api-p95-ms` 실행은 통과하지 못한다. 브라우저 세션 토큰은 refresh 쿠키가 닫힌 브라우저 프로필에 있어 이 경로로는 갱신할 수 없다.
+  - **브라우저 레인** (`browser-lane.mjs`): 추가 패키지 설치 없이 Node 24 내장 `WebSocket`으로 격리 헤드리스 Chromium을 Chrome DevTools Protocol(CDP)로 직접 구동한다. 실제 로그인 폼 제출로 브라우저 세션을 수립하고, 1차는 cold 캐시, 이후는 warm 캐시로 순회한다. 페이지 준비 완료(ready)는 `load` 이벤트 발생 + `/api/*` 인플라이트 0개 + 500ms 무활동 구간 경과로 판정한다. 루트 레이아웃이 주기적으로 발송하는 백그라운드 텔레메트리(`POST /api/v1/activity/experience-events`)는 준비 완료 인플라이트에서 제외하고 별도 `telemetry` 버킷으로 분리 집계하여 사용자 체감 준비 지연의 왜곡을 방지한다. 응답 헤더의 `Server-Timing`과 `download_ms`도 기록한다.
+  - **리포트 & CLI** (`report.mjs`, `run.mjs`): JSON 원본과 Markdown 요약 표(`latency-reports/<timestamp>/`)를 자동 생성한다. 백엔드 처리 지연(`server_dur_ms`), 다운로드 지연(`download_ms`), 배경 텔레메트리 현황을 표로 분리 제공한다. `--budget-ready-p95-ms`, `--budget-api-p95-ms` 임계값 검사는 완전 opt-in이다.
+- 검증 증거:
+  - 단위 테스트: `scripts/latency/core.test.mjs`, `api-lane.test.mjs`, `run.test.mjs` (29 tests passed). 지연 모사 fixture 서버에서 로그인 지연 분리, 10개 동시 200ms 요청의 배치 중첩 완료, Server-Timing 파싱, 동적 라우트 자동 수확 회귀를 확인했다.
+  - 브라우저 검증: `scripts/latency/browser-lane.test.mjs` (8 tests passed). 지연 API 완료까지 대기, 600ms 텔레메트리 플러시의 준비 지연 배제 증명, Server-Timing 및 download_ms 캡처, 온페이지 링크 기반 동적 라우트 자동 수확 및 cold/warm 2회 순회를 실제 Chromium에서 검증했다 (`npm run test:latency`, 총 37 tests passed).
+  - 오케스트레이션 통합: `npm run test:orchestration`에 비-브라우저 3개 스위트를 연결하여 259 tests exit 0으로 통과.
+  - 로컬 스모크: 실제 160개 라우트 스캔 기반으로 2개 라우트 필터와 1개 엔드포인트에 대해 Chromium + HTTP fixture를 구동하여 157ms ready time, L1/L3 동시성 램프 완료, 비밀번호/토큰의 JSON/MD 미노출을 확인했다.
+- 검증 한계 및 미실행 범위 명시:
+  - 본 검증은 로컬 루프백 fixture 서버와 격리 헤드리스 Chromium을 이용한 기능·하네스 검증이다. 워크스테이션에 실제 Afterglow 프론트엔드/백엔드 서비스가 기동되어 있지 않고 라이브 OpenStack 자격증명이 없어, 실제 운영/개발 클러스터 대상의 전수 측정은 실행하지 않았다.
+  - 전체 게이트인 `npm run test:gate` (`test:all`의 도커 기반 임시 MariaDB/PostgreSQL/Redis 기능 테스트)는 본 변경에서 미실행이다. 오케스트레이션 계약(`npm run test:orchestration`), JS 타겟 검증(`npm run test:target:js`), 아키텍처 가드(`scripts/check_architecture.py`), 백엔드 린트(`npm run lint:backend`)만 실행했다.
+## 사용자 인벤토리 스코프 토큰 재사용·디렉터리 사용자 병렬 조회 (2026-11-07, source/local)
+
+- 목적: `cloud.dmslab.re.kr` 실측에서 확인된 `GET /api/v1/user-dashboard/summary`(15.1초) 및 `GET /api/v1/iam/users`(9.7초)의 백엔드 연산 병목을 인가 보안 계약을 훼손하지 않고 단축한다.
+- 설계 및 불변식 보존:
+  - **서머리 전체 캐싱 금지**: 전체 집계 서머리를 Redis에 저장하면 멤버십 탈퇴나 역할 강등 시 캐시 TTL 동안 무단 자원 조회가 가능해지므로, 실시간 역할 그래프 검증(`get_project_access`)과 활성 멤버십 검증(`assert_project_membership`), 도메인 바인딩(`domain_context`)은 매 요청 반드시 실시간으로 실행한다.
+  - **역할 지문 기반 스코프 토큰 인메모리 재사용** (`user_inventory.py`):
+    - 캐시 키를 `(sha256(token), user_id, project_id, tuple(sorted(roles)))`로 지정하고, 토큰 원문 대신 해시를 사용하며 최대 2048개 용량 제한 및 만료 항목 가지치기를 적용한다.
+    - `AccessInfo.expires`가 유효한 `datetime`인 경우에만 만료 30초 전까지 재사용한다.
+    - 역할이나 토큰이 바뀌면 캐시 미스로 즉시 신규 스코프 토큰을 재발급한다.
+    - `assert_project_membership` 또는 `domain_context`에서 `PermissionError` 발생 시 즉시 캐시 항목을 폐기하고 침묵 대체 없이 거부로 전파한다.
+  - **단일 요청 내 카탈로그 조회 공유** (`project_service.py`, `user_dashboard.py`):
+    - 단일 서머리 요청 내 N개 프로젝트 간에 불변 역할 카탈로그(`identity_roles._trusted_catalog`)와 관리자 클라이언트를 1회 로드하여 전달함으로써 N번의 중복 로드를 제거한다.
+  - **디렉터리 사용자 병렬 조회** (`domain_iam.py`):
+    - `directory_users`의 사용자별 Keystone 순차 동기 호출 루프를 `asyncio.gather`를 통한 병렬 비동기 조회로 전환하여, live directory 검증을 유지하면서 N개 순차 네트워크 RTT를 1회 수준으로 단축한다.
+  - **`Server-Timing` 서브 메트릭 보존** (`main.py`, `user_dashboard.py`):
+    - `request_logging_middleware`가 핸들러가 기 설정한 `Server-Timing` 헤더(`memberships;dur=..., inventories;dur=...`)를 덮어쓰지 않고 `app;dur=...`와 병합하여 진단 가시성을 확보한다.
+- 검증 증거:
+  - `backend/tests/test_user_dashboard.py`: 66개 전체 통과 (`uv run pytest tests/test_user_dashboard.py -v`).
+  - 스코프 토큰 재사용 스파이 검증: `test_scoped_connection_reuses_valid_token`에서 2회차 요청 시 `native_access_reuse` 발생 및 `assert_project_membership` 실시간 재실행 검증, 멤버십 거부 시 캐시 폐기 및 자원 `denied` 전파 확인.
+  - 도메인 IAM/멤버십 검증: `backend/tests/test_admin_domains.py`, `test_domain_membership.py` 57개 전체 통과.
+  - 린트 및 포맷: `npm run lint:backend` 879개 파일 정렬 통과.
+
+## 인증 체인 지연 분해·워크스페이스 읽기 병렬화 (2026-11-07, source/local)
+
+- 발견(실측, `cloud.dmslab.re.kr` 하네스 API 레인의 유효 200 구간 12개 엔드포인트, 순차·동시성 없음, 엔드포인트당 3회): 인증이 필요한 사소한 엔드포인트가 p50 `auth/me` 2.4초, `announcements/unread-count` 2.4초, `usage-schedules` 2.3초, `tutorials/status` 2.6초, `profile/image` 2.4초이고 인증 없는 `site-config`는 34ms다. 관리자 라우트는 `admin/overview` 4.8초로 약 2배다. 동시성이 없는데도 고정 비용이 있으므로 스레드풀 포화가 아니라 요청마다 직렬로 수행하는 네이티브(Keystone) 읽기 비용이다. 같은 실행에서 후반 API 레인 샘플은 만료된 토큰의 `401`이어서 무효이며 위 표에서 제외했다.
+- 합성 재현(실제 `get_token_info`, 실제 JWT/Redis, 합성 Keystone에 호출당 지연 주입. 처분용 프로브, 커밋하지 않음): 일반 멤버 요청 1회가 네이티브 읽기 **19회**(`domains.get`·`projects.get`·`role_assignments.list` 각 4회 등)를 직렬로 수행한다. 호출당 0.1초에서 1.98초이며, 운영 호출당 약 120ms를 가정하면 약 2.3초로 위 라이브 값과 일치한다([INFERENCE]: 운영 호출당 지연은 직접 측정하지 않았다). 관리자 라우트는 `get_token_info` 12회 + `require_admin`의 새 `NativeOperation` 12회로 같은 체인을 한 번 더 돈다. 스택 추적으로 가장 큰 단일 원인은 `domain_context → assert_membership → _accessible_domains`가 사용자 역할 할당 프로젝트마다 `projects.get`, `domains.get`을 하나씩 직렬로 읽는 N+1이었다(호출 수가 워크스페이스 수에 비례).
+- 조치: `_warm_exact`(`domain_projects.py`)가 그 독립 읽기를 공용 `parallel.run_parallel`로 동시에 `operation.reads`에 선읽기한다. 순차 판정 루프와 모든 검사는 그대로이고, 선읽기 실패는 저장하지 않으므로 순차 판정이 같은 위치에서 다시 읽어 같은 오류를 낸다. 팬아웃은 요청당 최대 4개(`_WARM_FANOUT`, `run_parallel(max_workers=)`; 기존 사용처의 기본 상한 8은 그대로)로 제한하고, 프로세스 전역 공유 어댑터(`native_transport._SharedAdapter`)의 호스트당 소켓 풀을 requests 기본 10에서 명시 32(`_POOL_MAXSIZE`)로 키웠다. 합성 `time.sleep` 프로브(읽기 19회 동일, 0.45초 → 0.36초, 호출당 20ms, 프로젝트 4개 사용자)는 소켓·풀 동작을 보여 주지 못하므로 아래 실소켓 측정으로 대체한다.
+- 실소켓 측정(처분용 스크립트, 커밋하지 않음): 실제 `native_transport.create_session` + 실제 keystoneclient `projects.get`/`domains.get`을 keep-alive 루프백 HTTP Keystone(호출당 20ms, 연결당 핸드셰이크 지연 모사)에 보냈다. 워크스페이스 프로젝트 8개·도메인 3개, 동시 요청 수 C, 6회 중 첫 회 제외 중앙값. 핸드셰이크 100ms 기준:
+
+  | 설정 | C | 벽시계 | 요청당 | 새 TCP/버스트 |
+  |---|---:|---:|---:|---:|
+  | 직렬, 풀 10 (변경 전) | 1 | 274ms | 273ms | 0 |
+  | 팬아웃 8, 풀 10 (처음 출하한 상태) | 1 | 53ms | 53ms | 0 |
+  | 팬아웃 4, 풀 32 (현재) | 1 | 78ms | 78ms | 0 |
+  | 직렬, 풀 10 | 12 | 382ms | 289ms | 2 |
+  | 팬아웃 8, 풀 10 | 12 | 201ms | 179ms | 79 |
+  | 팬아웃 4, 풀 32 | 12 | 204ms | 121ms | 16 |
+  | 직렬, 풀 10 | 32 | 404ms | 346ms | 22 |
+  | 팬아웃 8, 풀 10 | 32 | 307ms | 225ms | 203 |
+  | 팬아웃 4, 풀 32 | 32 | 260ms | 200ms | 85 |
+
+  결론: 풀 10에서 상한 없는 팬아웃은 동시 요청이 늘면 이득이 줄고 새 연결(= 운영에서는 TCP+TLS 핸드셰이크와 Keystone 연결 부하)이 직렬의 최대 40배까지 늘었다(C=12에서 2 → 79). 상한 4와 풀 32는 같은 조건에서 새 연결을 약 5배(79 → 16, C=32는 203 → 85) 줄이고 요청당 지연도 더 낮다. 핸드셰이크 40ms에서도 같은 방향이다. 상한 4와 풀 32는 이 측정에서 고른 값이며 운영 튜닝 결과가 아니다.
+- 회귀 테스트: `test_accessible_domains_fan_out_is_capped_per_request`(리터럴 4와 비교, 상한을 8로 바꾼 변조에서 `peak=8`로 실패 확인), `test_parallel.py`(입력 순서 결과, 호출자 상한, 기본 상한 8 불변, 가장 앞선 호출의 예외 우선), `test_shared_adapter_keeps_a_deliberately_sized_socket_pool_per_host`(풀 크기를 10으로 되돌린 변조에서 실패 확인).
+- `Server-Timing: auth;dur=`: 인증 구간을 응답에서 직접 볼 수 있게 했다(거부된 응답 포함). `backend/tests/test_server_timing.py`는 실제 `get_token_info`와 실제 미들웨어로 `app`·`auth`·핸들러 항목의 순서와 값, 거부 시 `auth` 포함, 인증 없는 라우트에는 `app`만 있음을 검증한다.
+- 오류 의미 수정: `GET /object-storage/{container}/objects`의 모든 예외를 로그 없는 `500`으로 바꾸던 것을 `native_resource_read_failure` 규약(404/403/401 → 불투명 404, 그 외 → 고정 문구 503, 경고 로그)으로 맞췄다(`test_list_objects_provider_failure_status` 5건). 라이브 실측의 `chat-attachments/objects` 500의 원인은 직접 확인하지 못했다. 이 수정은 원인을 숨기지 않고 상태를 정확히 보고하게 하는 것이며 실제 컨테이너 상태는 별도 확인이 필요하다. 같은 실측의 `/clusters` 404는 `magnum` 서비스가 꺼진 배포에서 하네스가 메뉴에 없는 페이지를 직접 방문한 결과로 보이며 결함으로 보지 않는다.
+- 회귀 증거: 새 `test_accessible_domains_*` 3건은 선읽기를 끄면 `peak=1`로 실패하고 켜면 읽기가 겹침을 확인한다(읽기 중복 없음, 결과 불변, 선읽기 실패가 503으로 보고됨, 비활성 워크스페이스 판정 유지). 스코프 토큰 재사용의 부정 테스트 4건(역할 집합 변경 시 재발급, 만료 정보 없음·30초 남음·이미 만료는 캐시하지 않음, 다른 원본 토큰과 공유하지 않음)은 캐시 키에서 `roles`를 빼거나 만료 하한을 없앤 변조에서 각각 실패하는 것을 확인한 뒤 원복했다. 도메인·인증 스위트(`test_domain_projects`, `test_domain_membership`, `test_auth_domain_boundaries`, `test_admin_domains`, `test_domain_iam`, `test_user_dashboard`, `test_dashboard`, `test_object_storage*`, `test_token_binding`, `test_admin_route_authority`, `test_identity_roles`)와 `npm run lint:backend`(880개 파일), `npm run test:latency` 44건, `npm run test:orchestration` 266건이 통과했다(오케스트레이션은 `tomllib`이 있는 프로젝트 Python을 PATH에 둔 상태에서, 시스템 python3.9에서는 6건이 `No module named 'tomllib'`로 실패한다).
+- 남은 항목과 한계(조치하지 않음):
+  - 인증 체인의 나머지 직렬 읽기(일반 요청 약 15회 깊이). 독립 단계(`domain_context`, `_is_system_admin`, `assert_project_domain`+`assert_project_membership`, 스코프 토큰 검증)를 동시에 선읽기하는 설계가 가능하지만, `NativeOperation.read`가 동시 호출에서 중복 읽기를 허용하고(`_raw`의 전체 role_assignments 목록이 가장 큼) 오류 우선순위가 보안 계약이라, 단일 비행(single-flight) 메모와 순서 보존 평가를 함께 설계·검증해야 한다.
+  - `require_admin`이 읽기(GET) 관리자 라우트에서도 같은 체인을 새 `NativeOperation`으로 한 번 더 도는 것은 "영속적 관리 변경을 캐시된 권한으로 승인하지 않는다"는 의도된 설계다. 읽기 전용 라우트에서 같은 요청 안의 직전 검증을 재사용할지는 보안 정책 결정이며 이번에 바꾸지 않았다.
+  - `_accessible_domains`의 프로젝트별 `_sources`(그룹 기반 할당의 그룹·구성원 읽기)는 여전히 순차다.
+  - **열린 위험(실제 Keystone 미검증)**: 위 측정은 루프백, 선읽기 읽기만 보낸 단일 버스트, 무제한 동시 처리 서버다. 실제 Keystone/HAProxy의 연결 상한·TLS 비용·서버측 동시 처리와 다른 요청이 같은 풀을 쓰는 경우는 모사하지 않았다. 현재 설정도 동시 요청이 12 × 4 = 48 소켓을 넘는 순간 풀 32를 초과해 기준선보다 새 연결(C=12에서 16 대 2)을 만든다. 풀 32의 유휴 keep-alive가 프로세스·워커마다 Keystone/HAProxy에 남는 비용도 측정하지 않았다. 운영에서는 배포 후 `auth;dur=`와 Keystone 연결 수·핸드셰이크율을 함께 보고, 악화되면 상한을 3 이하로 낮추거나 `_WARM_FANOUT = 1`로 되돌려 직렬 동작을 복원한다(선읽기는 순수 최적화라 판정 결과는 같다).
+  - 이번 변경의 운영 효과는 측정하지 않았다. 배포하지 않았고 변경 전후 라이브 재측정도 하지 않았다(위 효과는 루프백 소켓 측정과 단위 테스트 근거다).
+- 선재(先在) 플레이크 `tests/test_personal_login_defaults.py::test_system_admin_personal_member_is_not_published_as_project_manager`(hermetic 가드 `non-hermetic test: blocked non-loopback network access: getaddrinfo(b'drover-api' …)`):
+  - 이 변경이 만든 것이 아니다. 변경이 없는 `580f9c29`의 깨끗한 워크트리(로컬 `.env`·`afterglow.conf` 없음)에서 전체 단위 스위트를 유효하게 돌린 11회(내부 오류로 무효가 된 1회와 수집 전용 실행은 제외) 모두 같은 에러가 났다. 이번 변경이 포함된 트리에서는 전체 단위 스위트를 4회 돌려 2회 나타났다(`-n 4 --dist worksteal` 스케줄링에 따라 같은 워커에서 앞선 테스트 때문에 나타나므로 단독 실행은 항상 통과한다). 두 트리의 발생 비율이 다르게 보이는 것은 표본이 작고 워커 배정이 비결정적이기 때문이며, 변경의 영향을 시사하지 않는다.
+  - 확정된 메커니즘(호출 스택으로 확인): `/projects/current/permissions` → `service_authorization.evaluate` → `service_proxy.get_policy_capabilities`가 sibling 엔드포인트로 httpx 연결을 시도하고, 같은 프로세스의 `os.environ`에 `SERVICE_DROVER/LUMEN/WAYGATE/PALIMPSEST_INTERNAL_URL=http://*-api:80xx`가 남아 있으면 `_configured_internal_endpoint`가 이를 반환해 호스트 이름 해석이 일어난다. 같은 역할을 검증하는 형제 테스트(`test_rbac_project_roles.py`, `test_role_visibility.py`)는 `get_policy_capabilities`를 합성으로 고정하지만 이 테스트만 빠져 있었다. 프로브가 실패 시점에 `configured='http://drover-api:8011'`·`sources=[]`(로드된 TOML 없음)를 보고했다.
+  - 조치: 이 테스트도 `get_policy_capabilities`를 `{"capabilities": []}`로 고정한다(검증 대상인 `roles`·`is_manager`·`is_owner`·`can_write`·`is_system_admin`은 서비스 capability에 의존하지 않는다). 결정적 검증: 같은 누수 환경 변수(네 개)를 주고 `test_personal_login_defaults.py`를 실행하면 수정 전(`580f9c29`)은 같은 에러 `21 passed, 1 error`, 수정 후는 `21 passed`다.
+  - 미해결(원인을 특정하지 못함): 위 환경 변수를 프로세스 환경에 **처음** 남기는 테스트. `os.environ`의 `setitem`/`update`/`setdefault`/`putenv` 훅과 테스트 경계 폴링으로 추적했으나 최초 `미설정 → 설정` 전이는 `monkeypatch`/`patch.dict` 복원 쓰기로만 관측됐고(복원 대상 스냅샷에 이미 값이 있었다는 뜻), 그 이전의 기록 지점은 찾지 못했다. 프로세스 시작과 수집 직후에는 값이 없다. 따라서 이 수정은 증상(합성되지 않은 sibling 호출)의 경계를 막지만 환경 오염의 원점은 제거하지 않았다. 같은 누수에 노출되면서 `get_policy_capabilities`를 합성하지 않는 다른 테스트가 있으면 같은 에러가 다른 테스트에서 나타날 수 있다.
+  - 이 항목이 릴리스 게이트에서 처음 발견된 것은 이번 세션의 `npm run test:gate`가 이 에러로 실패했기 때문이다. 게이트를 우회하지 않고 위 최소 수정으로 해소했다.
+
+
 ## Default 프로젝트 MCP 제외·이름 점유·manager 범위 (2026-11-07, source/local)
 
 - 정의: 프로젝트 리소스 제어는 reader/member 경계뿐이며 `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이다. manager는 Default 프로젝트에만 부여할 수 있고(`manager_requires_default_project`, `test_manager_assignment_and_inference_addition_are_Default_only`) 그 Default의 effective manager가 도메인 전체 권한을 행사한다(`test_read_manager_is_Default_effective_not_home_domain_or_admin`). Drover·Waygate·Palimpsest·Lumen의 sibling source는 이미 manager를 쓰기/관리 역할에 포함한다(Drover `_MANAGE_ROLES`, Waygate `_PROJECT_MANAGE_ROLES`, Palimpsest `PROJECT_WRITE_ROLES`, Lumen `PROJECT_WRITE_ROLES`). 핵심 OpenStack은 native 정책이 결정한다. 따라서 Afterglow 자체 게이트(웹 쓰기 판정·Cloud Shell·프런트 `canWrite`·MCP capability)는 `service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, member}`로 유지하며 manager로 넓히지 않는다. 이 범위는 사용자 결정이며, 앞서 app-wide로 넓힌 `ec82f9da`와 직전 세션의 MCP manager 해석을 되돌렸다. MCP `access_level`은 `read|manage` 둘뿐이다.

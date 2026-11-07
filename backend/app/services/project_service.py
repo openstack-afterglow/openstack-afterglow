@@ -283,13 +283,15 @@ def _access(rows, catalog, user_id):
     }
 
 
-async def get_project_access(project_id: str, user_id: str) -> dict:
+async def get_project_access(project_id: str, user_id: str, *, ks=None, catalog=None) -> dict:
     """Uncached trusted effective assignments are the sole management authority.
 
     Provider/graph failures are errors, never stale DB or token-role fallbacks.
     """
-    ks = await _provider_call(keystone._get_admin_ks_client)
-    catalog = await _provider_call(identity_roles._trusted_catalog)
+    if ks is None:
+        ks = await _provider_call(keystone._get_admin_ks_client)
+    if catalog is None:
+        catalog = await _provider_call(identity_roles._trusted_catalog)
     rows = await _provider_call(_assignment_rows, ks, project_id, effective=True)
     return _access(rows, catalog, user_id)
 

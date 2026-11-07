@@ -240,6 +240,8 @@ logs/*
 !logs/.gitkeep
 *.log
 backend/logs/
+latency-reports/
+output/latency/
 
 # OS 파일
 .DS_Store

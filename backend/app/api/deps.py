@@ -522,6 +522,7 @@ async def get_token_info(
     """
     if authorization and authorization.startswith("Bearer "):
         bearer = authorization[7:]
+        started = time.perf_counter()
         try:
             info = await _resolve_jwt_token_info(request, bearer, x_project_id)
             request.state.token_info = info
@@ -531,6 +532,8 @@ async def get_token_info(
         except Exception as exc:
             _logger.error("Unexpected error in get_token_info: %s", exc, exc_info=True)
             raise HTTPException(status_code=503, detail="인증 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+        finally:
+            request.state.auth_ms = (time.perf_counter() - started) * 1000
     raise HTTPException(status_code=401, detail="Authorization Bearer 토큰이 필요합니다")
 
 

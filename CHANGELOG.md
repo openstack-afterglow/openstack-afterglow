@@ -7,10 +7,24 @@
 
 ## [Unreleased]
 
+## [1.32.10] - 2026-11-07
+
+### Added
+
+- 웹 라우트 및 API 응답 지연·동시성 측정 하네스를 추가합니다 (`scripts/latency/`, `npm run latency`, `npm run test:latency`). SvelteKit `+page.svelte` 160개 라우트 정본 인벤토리 스캔, 동적 라우트 fixture 매핑, 비-사설 원격지 보호 allow-list, Node 24 내장 `WebSocket` 기반 Chrome DevTools Protocol(CDP) 브라우저 구동, 네트워크/DOM quiescence 기반 페이지 준비(ready) 감지, 엔드포인트별 순차·동시성 램프(1/5/10/20) 및 배치 벽시계 시간 집계, `POST /api/v1/auth/login` 레이트 리밋 인식 분리 인증 지연 측정, 시크릿 마스킹된 JSON/Markdown 리포트 생성을 지원합니다.
+- 모든 인증 요청의 `Server-Timing`에 `auth;dur=`(= `get_token_info` 소요 시간)을 추가합니다. 인증이 거부된 응답에도 포함되며 숫자만 노출합니다. 느린 인증 라우트를 인증 구간과 핸들러 구간으로 라이브에서 분해할 수 있습니다.
+
 ### Changed
 
+- `user-dashboard/summary`: 동일 토큰·프로젝트·역할 지문(`token_hash, user_id, project_id, roles`)에 대해 유효기간 내 발급된 Keystone 스코프 토큰을 프로세스 내 메모리에서 안전하게 재사용합니다. 실시간 역할 할당(`get_project_access`), 활성 멤버십(`assert_project_membership`), 도메인 바인딩 검증은 매 요청마다 그대로 실시간 실행되며, 인가 거부 시 즉시 캐시를 폐기하고 거부로 전파합니다. 또한 단일 요청 내에서 역할 카탈로그 조회를 공유합니다.
+- `iam/users`: `directory_users`의 사용자별 Keystone 조회 루프를 `asyncio.gather`를 통해 병렬 비동기 조회로 전환하여 live directory 검증을 유지하면서 순차 네트워크 지연을 단축합니다.
+- 모든 인증 요청: `domain_context`의 도메인 멤버십 판정(`domain_projects._accessible_domains`)이 사용자의 워크스페이스(프로젝트)마다 `projects.get`·`domains.get`을 한 번씩 직렬로 읽어 요청 지연이 워크스페이스 수에 비례하던 문제를, 같은 읽기를 동시에 선읽기(`_warm_exact`)하도록 바꿔 줄입니다. 읽는 객체 집합, 판정 순서, 오류 우선순위, fail-closed 동작은 그대로이며(선읽기 실패는 저장하지 않고 순차 판정이 같은 위치에서 다시 읽어 보고), 캐시는 추가하지 않습니다. 팬아웃은 요청당 4개로 제한하고(`run_parallel(max_workers=)`, 기존 사용처의 기본 상한 8은 불변), 프로세스 전역 공유 Keystone/SDK 소켓 풀의 호스트당 크기를 requests 기본 10에서 32로 명시했습니다. 루프백 실소켓 측정(동시 요청 12개)에서 새 TCP 연결은 직렬 기준 2개, 풀 10 + 상한 없는 팬아웃 79개, 상한 4 + 풀 32 16개였고 요청당 지연은 뒤의 설정이 더 낮았습니다. 실제 Keystone에서의 연결·핸드셰이크 영향은 측정하지 않았으며 운영에서 `auth;dur=`와 함께 확인해야 합니다(`docs/testing.md`).
+- `Server-Timing`: 미들웨어가 핸들러에서 기 설정한 `Server-Timing` 서브 메트릭(예: `memberships;dur=..., inventories;dur=...`)을 덮어쓰지 않고 병합 보존하도록 개선했습니다.
 - OAuth 연결의 origin을 발급 프로젝트 대신 승인 도메인 이름·ID로 표시합니다. 저장된 원래 프로젝트로 도메인을 확인하며, 삭제·조회 불가는 현재 도메인으로 대체하지 않습니다. 개인 키의 발급 프로젝트와 기존 실행·폐기 범위는 유지합니다.
 - 프로젝트 리소스 제어는 reader와 member의 경계(`admin`·`member`)로 유지합니다. 웹의 프로젝트 쓰기 판정·Cloud Shell 쓰기 권한 재검증·프런트엔드 `canWrite` 폴백·MCP 관리 가능 판정은 `manager`를 쓰기 역할로 넓히지 않습니다. MCP는 이전에 `manager`도 관리 가능으로 해석했으나, `manager`는 Default에만 부여되고 Default는 MCP 대상에서 제외되므로 연결 가능한 프로젝트에는 영향이 없습니다. Drover·Waygate·Palimpsest·Lumen은 각자의 policy로 manager를 member 이상으로 취급하며 이 변경과 무관합니다.
+
+### Removed
+
 - 모든 도메인의 `Default` 프로젝트는 MCP로 연결할 수 없습니다. 새 개인 키·OAuth 승인·권한 미리보기·프로젝트 목록에서 제외하고, 이미 저장된 연결은 사용 시 승인 프로젝트 이름과 실제 token의 프로젝트 이름으로 거부합니다. 이름이 ID로만 저장된 구형 연결도 포함됩니다. 이전 방식으로 개인 도메인에 만든 `Default`도 같은 규칙이 적용되므로, 다른 프로젝트가 없는 그 사용자는 MCP를 쓸 수 없습니다. 기존 연결은 삭제하거나 자동 회수하지 않습니다.
 
 ### Fixed
@@ -18,6 +32,12 @@
 - MCP member 권한 미리보기에서 검증된 현재 token을 불필요하게 재발급하거나 다른 프로젝트용 사람의 session root를 누락해 미확인으로 떨어지는 경로를 수정합니다. 프로젝트 인증 실패와 개별 서비스 정책 장애를 구분하며 읽기 키·reader·현재 역할/소유권 제한은 유지합니다. Preview만 독립40초 read budget을 사용해 API35초보다 먼저 중단하지 않고, OAuth 도메인 metadata 조회 전에 SQL read connection을 반환합니다.
 - 명시 제한 시간을 사용하는 일반·강제 새로고침 GET도 기존401 세션 복구를 유지합니다. 소모성 no-store 읽기의 비재전송 기본값은 그대로 유지합니다.
 - `Default` 프로젝트 이름 점유 검사가 앞뒤 공백이 붙은 이름(` Default`, `DEFAULT `)을 같은 이름으로 보지 못해 생성·개명 경로에서 통과하던 문제를 수정합니다. 사용자·도메인 manager·관리자의 프로젝트 생성과 다른 프로젝트의 개명이 같은 검사를 사용합니다. 기존 프로젝트 이름은 바꾸지 않습니다.
+- `GET /api/v1/object-storage/{container}/objects`가 존재하지 않거나 접근할 수 없는 컨테이너(Swift 404/403/401)와 Swift 장애를 모두 로그 없는 `500`으로 돌려주던 문제를 수정합니다. 이제 형제 핸들러(`metadata`·`preview`·`download`)와 같은 규약으로 404/403/401은 불투명한 `404`, 그 외 장애는 고정 문구의 `503`이며 경고 로그를 남깁니다. 기존 테스트가 고정하던 `500`/"내부 서버 오류"는 이 계약으로 갱신했습니다(실패한 페이지를 부분 결과로 캐시하지 않는다는 단언은 유지).
+- 지연 하네스 API 레인이 만료된 토큰의 `401` 응답을 지연 샘플로 기록하던 문제를 수정합니다. 측정 전 탐침, 거부 시 `refreshAuth` 1회 갱신(동시 `401`은 로그인 1회로 합류), 갱신 불가 시 즉시 중단과 `INVALID` 표시를 하며, API p95 예산이 있는 실행은 중단되면 통과하지 못합니다.
+
+### Known issues
+
+- 릴리스 워크스테이션(macOS arm64, 18코어, Node 24.14.1, vitest 4.1.11, jsdom 25.0.1)에서 프런트엔드 단위 테스트 전체 실행이 82개 파일·1,123개 테스트로 실패합니다(`localStorage`가 `undefined`인 jsdom 환경). 변경 없는 직전 커밋(`580f9c29`)에서도 같은 수치로 재현되며 이 릴리스의 변경과 무관합니다. 82개 파일은 단독 실행에서는 통과하고 원인은 규명하지 못했습니다. 이 릴리스의 프런트엔드 정본 증거는 해당 SHA의 CI(Node 22) 결과이며 `docs/testing.md`에 구분해 기록했습니다.
 
 
 ## [1.32.9] - 2026-11-07

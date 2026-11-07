@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import math
+from contextlib import suppress
 from urllib.parse import parse_qsl, quote, urlsplit
 
 from fastapi import HTTPException, Request
@@ -95,7 +96,67 @@ def number(value):
     )
 
 
-def scoped_connection(token: str, user_id: str, project_id: str):
+_SCOPED_ACCESS_CACHE: dict[tuple[str, str, str, tuple[str, ...]], tuple[str, any, float]] = {}
+_SCOPED_ACCESS_CACHE_MAX = 2048
+
+
+def _prune_scoped_token_cache(now: float) -> None:
+    expired = [k for k, (_, _, exp) in _SCOPED_ACCESS_CACHE.items() if exp <= now]
+    for k in expired:
+        _SCOPED_ACCESS_CACHE.pop(k, None)
+    while len(_SCOPED_ACCESS_CACHE) >= _SCOPED_ACCESS_CACHE_MAX:
+        _SCOPED_ACCESS_CACHE.pop(next(iter(_SCOPED_ACCESS_CACHE)), None)
+
+
+def scoped_connection(token: str, user_id: str, project_id: str, roles: tuple[str, ...] = ()):
+    import time
+    from datetime import datetime
+
+    now = time.time()
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    cache_key = (token_hash, user_id, project_id, roles)
+    cached = _SCOPED_ACCESS_CACHE.get(cache_key)
+    if cached is not None:
+        cached_token, cached_access, expires_at = cached
+        if now < expires_at:
+            conn = keystone.get_openstack_connection(cached_token, project_id, native_access=cached_access)
+            try:
+                access = cached_access
+                if access.user_id != user_id or access.project_id != project_id:
+                    raise PermissionError("Scoped identity mismatch")
+                identity_domain_id = getattr(access, "user_domain_id", None)
+                domain_id = getattr(access, "project_domain_id", None)
+                if (
+                    not isinstance(identity_domain_id, str)
+                    or not identity_domain_id
+                    or not isinstance(domain_id, str)
+                    or not domain_id
+                ):
+                    raise PermissionError("Scoped domain identity is unavailable")
+                from app.services.domain_projects import assert_project_membership
+                from app.services.domain_scope import domain_context
+
+                context = domain_context(user_id, domain_id)
+                if context["identity_domain_id"] != identity_domain_id:
+                    raise PermissionError("Scoped identity domain mismatch")
+                assert_project_membership(user_id, project_id)
+                conn._afterglow_token = cached_token
+                conn._afterglow_user_id = user_id
+                conn._afterglow_project_id = project_id
+                conn._afterglow_domain_id = domain_id
+                conn._afterglow_identity_domain_id = identity_domain_id
+                conn._afterglow_roles = tuple(access.role_names or [])
+                return conn, cached_token
+            except PermissionError:
+                _SCOPED_ACCESS_CACHE.pop(cache_key, None)
+                with suppress(Exception):
+                    conn.close()
+                raise
+            except Exception:
+                _SCOPED_ACCESS_CACHE.pop(cache_key, None)
+                with suppress(Exception):
+                    conn.close()
+
     conn = keystone.get_openstack_connection(token, project_id)
     try:
         access = conn.session.auth.get_access(conn.session)
@@ -120,14 +181,18 @@ def scoped_connection(token: str, user_id: str, project_id: str):
         scoped_token = conn.session.get_token()
         if not isinstance(scoped_token, str) or not scoped_token:
             raise PermissionError("Scoped credential unavailable")
-        # REST wrappers must use the issued project credential, not the source
-        # token plus a different project header (not equivalent authorization).
         conn._afterglow_token = scoped_token
         conn._afterglow_user_id = user_id
         conn._afterglow_project_id = project_id
         conn._afterglow_domain_id = domain_id
         conn._afterglow_identity_domain_id = identity_domain_id
         conn._afterglow_roles = tuple(access.role_names or [])
+        expires = getattr(access, "expires", None)
+        if isinstance(expires, datetime):
+            expires_at = expires.timestamp()
+            if expires_at > now + 60:
+                _prune_scoped_token_cache(now)
+                _SCOPED_ACCESS_CACHE[cache_key] = (scoped_token, access, min(expires_at - 30, now + 1800))
         return conn, scoped_token
     except Exception:
         conn.close()
@@ -418,7 +483,9 @@ def usage(resources: dict) -> dict:
     }
 
 
-async def query_project(request: Request, token: str, user_id: str, project: dict, cm) -> dict:
+async def query_project(
+    request: Request, token: str, user_id: str, project: dict, cm, *, ks=None, catalog=None
+) -> dict:
     project_id, project_name = project["id"], project["name"]
     settings = get_settings()
     resources = {}
@@ -427,12 +494,17 @@ async def query_project(request: Request, token: str, user_id: str, project: dic
             resources[category] = unavailable("disabled", "service_disabled")
     conn = None
     try:
-        # Always fresh, before cache: current membership/role-ID graph and a real
-        # Keystone rescope. Never rely on the caller's verified system-admin bit.
-        access = await project_service.get_project_access(project_id, user_id)
+        # Always fresh, before cache: current membership/role-ID graph and the live
+        # membership/domain checks in scoped_connection. Only the scoped Keystone credential
+        # may be reused (same token hash, user, project and role set, unexpired); a changed
+        # role set or any denial forces a real rescope. Never rely on the caller's verified
+        # system-admin bit.
+        access = await project_service.get_project_access(project_id, user_id, ks=ks, catalog=catalog)
         if not access["roles"]:
             raise PermissionError("Current project membership required")
-        conn, scoped_token = await asyncio.to_thread(scoped_connection, token, user_id, project_id)
+        conn, scoped_token = await asyncio.to_thread(
+            scoped_connection, token, user_id, project_id, tuple(sorted(access["roles"]))
+        )
         info = {
             "user_id": user_id,
             "project_id": project_id,

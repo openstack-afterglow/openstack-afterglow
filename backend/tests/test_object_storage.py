@@ -929,9 +929,10 @@ async def test_object_listing_route_navigates_and_rejects_failed_page_without_ca
     )
     with patch("app.services.swift._apply_endpoint_override"):
         failed = await client.get(failing_url)
-    assert failed.status_code == 500
-    # main.py intentionally redacts 5xx details; the route still logs its public error.
-    assert failed.json()["detail"] == "내부 서버 오류"
+    assert failed.status_code == 503
+    # A provider outage is reported as unavailable (never as a 200 partial list or an opaque 500),
+    # with the static public message shared by the sibling object reads.
+    assert failed.json()["detail"] == "오브젝트 스토리지 서비스에 연결할 수 없습니다"
     swift.fail_when = lambda *_args: None
     with patch("app.services.swift._apply_endpoint_override"):
         recovered = await client.get(failing_url)
@@ -1607,6 +1608,27 @@ async def test_list_objects_uses_cached_call(client, mock_conn):
         cache_key = mock_call.call_args[0][0]
         assert "objects" in cache_key
         assert "my-bucket" in cache_key
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider_status", "expected"),
+    [(404, 404), (403, 404), (401, 404), (500, 503), (503, 503)],
+)
+async def test_list_objects_provider_failure_status(client, mock_conn, provider_status, expected):
+    """A missing/denied container is opaque 404; a Swift outage is 503, never an unlogged 500."""
+    from openstack.exceptions import HttpException
+
+    async def _run_through(key, ttl, fn, **_kwargs):
+        return fn()
+
+    with (
+        patch("app.api.object_storage.containers.cache.cached_call", side_effect=_run_through),
+        patch("app.services.swift.list_objects", side_effect=HttpException(http_status=provider_status)),
+    ):
+        resp = await client.get("/api/v1/object-storage/chat-attachments/objects")
+
+    assert resp.status_code == expected
 
 
 @pytest.mark.asyncio

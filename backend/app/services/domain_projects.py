@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import HTTPException
 
 from app.services import account_spaces, cache, domain_display, identity_roles, keystone
+from app.services.parallel import run_parallel
 
 _field = identity_roles._field
 _PROJECTION_PREFIX = "afterglow-default-managers-"
@@ -117,6 +118,35 @@ def _exact(manager, object_id, *, reads=None, operation=None):
     if reads is not None:
         reads[key] = row
     return row
+
+
+# Per-request cap: authenticated requests already overlap each other on the shared per-host
+# socket pool (native_transport), so a request's own fan-out stays small. Measured on real
+# sockets: 4 keeps the latency win without a connection storm.
+_WARM_FANOUT = 4
+
+
+def _warm_exact(manager, object_ids, *, reads):
+    """Fetch independent exact objects concurrently into this operation's read memo.
+
+    Latency only, for loops that would otherwise read each object in turn (one
+    native round trip per project/domain). The ordered pass that follows still
+    runs every check and re-reads anything that failed here, so results, error
+    order and fail-closed behaviour are unchanged; nothing is shared across
+    operations.
+    """
+    pending = [object_id for object_id in dict.fromkeys(object_ids) if (id(manager), object_id) not in reads]
+    if len(pending) < 2:
+        return
+
+    def fetch(object_id):
+        def run():
+            with suppress(Exception):  # the ordered pass re-reads and reports it
+                _exact(manager, object_id, reads=reads)
+
+        return run
+
+    run_parallel(*(fetch(object_id) for object_id in pending), max_workers=_WARM_FANOUT)
 
 
 def _enabled(row):
@@ -472,6 +502,18 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
             raise _unavailable()
         reads[effective_key] = parsed
     project_ids = {meta["scope_id"] for meta in reads[effective_key] if meta["kind"] == "project"}
+    # One native round trip per project and per distinct domain, in turn, made every request
+    # as slow as the user's workspace count; read them concurrently, then judge in order.
+    _warm_exact(ks.projects, sorted(project_ids), reads=reads)
+    _warm_exact(
+        ks.domains,
+        [
+            domain_id
+            for project_id in sorted(project_ids)
+            if isinstance(domain_id := _field(reads.get((id(ks.projects), project_id)), "domain_id"), str) and domain_id
+        ],
+        reads=reads,
+    )
     for project_id in sorted(project_ids):
         project = _exact(ks.projects, project_id, reads=reads)
         domain_id = _field(project, "domain_id")

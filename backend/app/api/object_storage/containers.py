@@ -496,8 +496,13 @@ async def list_objects(
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
-    except Exception:
-        raise HTTPException(status_code=500, detail="오브젝트 목록 조회 실패")
+    except Exception as exc:
+        _logger.warning("오브젝트 목록 조회 실패 container=%s", container_name, exc_info=True)
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="컨테이너를 찾을 수 없습니다",
+            unavailable_detail="오브젝트 스토리지 서비스에 연결할 수 없습니다",
+        ) from exc
 
 
 @router.post("/{container_name}/objects", status_code=201)

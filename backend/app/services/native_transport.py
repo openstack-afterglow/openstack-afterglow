@@ -17,10 +17,17 @@ if TYPE_CHECKING:
     import openstack
 
 
+# Sockets kept per host (requests defaults to 10, with overflow sockets opened and discarded).
+# Concurrent authenticated requests each hold a thread in the API executor plus a few
+# fan-out workers, so a burst such as a page load needs more than 10 reusable sockets;
+# overflow pays a fresh TCP+TLS handshake and adds load on Keystone.
+_POOL_MAXSIZE = 32
+
+
 class _SharedAdapter(ks_session.TCPKeepAliveAdapter):
     def __init__(self):
         self._proxy_lock = threading.Lock()
-        super().__init__()
+        super().__init__(pool_maxsize=_POOL_MAXSIZE)
 
     def proxy_manager_for(self, proxy, **proxy_kwargs):
         # Requests' lazy proxy-manager dictionary is not synchronized. Network

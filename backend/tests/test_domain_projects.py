@@ -677,6 +677,86 @@ def test_multidomain_membership_excludes_stale_projection_and_disabled_resources
         domain_projects.accessible_domains("creator")
 
 
+def _track_exact_reads(n, delay=0.03):
+    """Make each exact native read take `delay` and record how many ran at once."""
+    state = SimpleNamespace(inflight=0, peak=0, lock=threading.Lock())
+    serial_get_row = n.get_row
+
+    def timed(kind, rows, id):
+        with state.lock:
+            state.inflight += 1
+            state.peak = max(state.peak, state.inflight)
+        try:
+            time.sleep(delay)
+            return serial_get_row(kind, rows, id)
+        finally:
+            with state.lock:
+                state.inflight -= 1
+
+    n.get_row = timed
+    return state
+
+
+def test_accessible_domains_reads_workspaces_concurrently_without_changing_the_answer(domain_native):
+    n = domain_native
+    n.raw += [grant("reader", user="creator", project="work-b"), grant("reader", user="creator", project="work-a")]
+    expected = domain_projects.accessible_domains("creator")
+    n.read_calls.clear()
+    reads = _track_exact_reads(n)
+
+    started = time.perf_counter()
+    actual = domain_projects.accessible_domains("creator")
+    elapsed = time.perf_counter() - started
+
+    assert actual == expected
+    assert reads.peak >= 2, "independent project reads must overlap"
+    project_reads = [call for call in n.read_calls if call[0] == "project"]
+    assert len(project_reads) == len(set(project_reads)), "each project is still read exactly once"
+    # work-a, work-b, default-a plus their domains: strictly serial would exceed 7 reads x 30 ms.
+    assert elapsed < 7 * 0.03
+
+
+def test_accessible_domains_fan_out_is_capped_per_request(domain_native):
+    n = domain_native
+    for index in range(8):
+        pid = f"extra-{index}"
+        n.project_rows[pid] = row(id=pid, name=pid, domain_id="tenant-a", enabled=True, parent_id="tenant-a")
+        n.raw.append(grant("reader", user="creator", project=pid))
+    reads = _track_exact_reads(n, delay=0.02)
+
+    domain_projects.accessible_domains("creator")
+
+    # 4 is the measured cap (shared per-host socket pool); it is deliberately not read from the constant.
+    assert 2 <= reads.peak <= 4
+
+
+def test_accessible_domains_read_failure_is_reported_by_the_ordered_pass_not_hidden(domain_native):
+    n = domain_native
+    n.raw += [grant("reader", user="creator", project="work-b")]
+    serial_get_row = n.get_row
+
+    def broken(kind, rows, id):
+        if (kind, id) == ("project", "work-b"):
+            raise RuntimeError("native outage")
+        return serial_get_row(kind, rows, id)
+
+    n.get_row = broken
+    with pytest.raises(HTTPException) as failed:
+        domain_projects.accessible_domains("creator")
+    assert failed.value.status_code == 503
+
+    n.get_row = serial_get_row
+    assert {d["id"] for d in domain_projects.accessible_domains("creator")} == {"home", "tenant-a", "tenant-b"}
+
+
+def test_accessible_domains_still_denies_a_disabled_workspace_read_concurrently(domain_native):
+    n = domain_native
+    n.raw += [grant("reader", user="creator", project="work-b")]
+    n.project_rows["work-b"].enabled = False
+    _track_exact_reads(n, delay=0.01)
+    assert {d["id"] for d in domain_projects.accessible_domains("creator")} == {"home", "tenant-a"}
+
+
 @pytest.mark.parametrize(
     "change",
     [

@@ -197,8 +197,14 @@ async def test_remembered_exchange_subject_scope_substitution_never_becomes_pers
 
 
 @pytest.mark.asyncio
-async def test_system_admin_personal_member_is_not_published_as_project_manager(native_login):
+async def test_system_admin_personal_member_is_not_published_as_project_manager(native_login, monkeypatch):
     client, native = native_login
+    # This test asserts core project-role presentation. Sibling-service policy is a separate native
+    # boundary: keep it synthetic (as test_role_visibility does) so the request never resolves or
+    # contacts a real drover/lumen/waygate/palimpsest host.
+    monkeypatch.setattr(
+        "app.services.service_proxy.get_policy_capabilities", AsyncMock(return_value={"capabilities": []})
+    )
     native.raw.append(row(user={"id": "ordinary"}, role={"id": "admin"}, scope={"system": {"all": True}}))
     signed_in = await login(client)
     assert signed_in.status_code == 200, signed_in.text

@@ -183,8 +183,8 @@ async def directory_users(domain_id, *, ks=None, skip_missing=False):
         ids.update(uid for source in sources for uid in source["users"] if uid in effective_ids)
     if any(not isinstance(uid, str) or not uid for uid in ids):
         raise HTTPException(503, "Domain directory identity is unavailable")
-    result = []
-    for uid in sorted(ids):
+
+    async def fetch_user(uid):
         reads = {}
         try:
             user = await _provider_call(domain_projects._exact, ks.users, uid, reads=reads)
@@ -193,15 +193,16 @@ async def directory_users(domain_id, *, ks=None, skip_missing=False):
             # is not a candidate. Never soften home-domain or authority reads.
             if not skip_missing or exc.status_code != 404:
                 raise
-            continue
+            return None
         if uid in home_ids:
             domain_scope.assert_domain_resource(domain_id, _field(user, "domain_id"))
             domain_projects._enabled(user)
         else:
             user = await _provider_call(domain_projects._active_user, ks, uid, reads=reads)
-        if user is not None:
-            result.append(user)
-    return result
+        return user
+
+    users = await asyncio.gather(*(fetch_user(uid) for uid in sorted(ids)))
+    return [user for user in users if user is not None]
 
 
 async def assert_joined_user(domain_id, user_id, *, ks=None):
