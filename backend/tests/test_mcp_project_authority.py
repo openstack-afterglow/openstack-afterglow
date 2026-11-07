@@ -1336,6 +1336,31 @@ async def test_manage_uses_target_roles_not_current_roles_or_admin_flag(project_
     assert metadata == [{"id": provider.b, "name": "B", "roles": ["member"], "can_write": True}]
 
 
+async def test_manager_without_member_assignment_may_hold_manage_but_never_a_third_tier(project_provider):
+    provider = project_provider
+    provider.roles[provider.b] = ["manager"]
+    metadata = await projects.resolve_project_scope(
+        provider.conn,
+        provider.user,
+        provider.a,
+        ["reader"],
+        project_scope="selected",
+        project_ids=[provider.b],
+        access_level="manage",
+    )
+    assert metadata == [{"id": provider.b, "name": "B", "roles": ["manager"], "can_write": True}]
+    with pytest.raises(authority.McpAuthorityError):
+        await projects.resolve_project_scope(
+            provider.conn,
+            provider.user,
+            provider.a,
+            ["reader"],
+            project_scope="selected",
+            project_ids=[provider.b],
+            access_level="manager",
+        )
+
+
 async def test_current_scope_reuses_verified_token_and_saves_real_project_name(project_provider):
     provider = project_provider
     provider.conn.access.project_name = "Current project"

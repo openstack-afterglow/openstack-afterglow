@@ -82,6 +82,11 @@ describe('auth store', () => {
     setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['reader'], isSystemAdmin: true });
     expect(get(isReader)).toBe(false);
     expect(get(canWrite)).toBe(true);
+
+    // 5. manager는 별도 member 배정 없이도 member로 취급되며 reader가 아니다
+    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['manager'], isSystemAdmin: false });
+    expect(get(isReader)).toBe(false);
+    expect(get(canWrite)).toBe(true);
   });
 
   it('역할 이름이 숨겨져도 검증된 쓰기 권한을 유지하고 권한 회수를 반영함', () => {

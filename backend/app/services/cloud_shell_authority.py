@@ -139,6 +139,7 @@ def inspect_native_token(token: str, binding: dict) -> dict:
     """GET the exact subject; never mint extra untracked monitor credentials."""
     from app.services import domain_scope, project_service
     from app.services.native_operation import NativeOperation
+    from app.services.service_permissions import PROJECT_WRITE_ROLE_NAMES
 
     with NativeOperation() as operation:
         access = operation.ks.tokens.validate(token, include_catalog=False)
@@ -158,7 +159,7 @@ def inspect_native_token(token: str, binding: dict) -> dict:
             operation.ks, binding["project_id"], effective=True, user_id=binding["user_id"]
         )
         roles = project_service._access(rows, operation.catalog(), binding["user_id"])["roles"]
-        if not {"admin", "member"}.intersection(roles):
+        if not PROJECT_WRITE_ROLE_NAMES.intersection(roles):
             raise ShellAuthorityError("Cloud Shell project write authority was revoked")
         user = keystone.get_identity_user(binding["user_id"], operation=operation)
         return {**context, "user_id": binding["user_id"], "email": user["email"]}

@@ -329,7 +329,8 @@ export const canWrite = derived(
 	auth,
 	($auth) =>
 		$auth.isSystemAdmin === true ||
-		($auth.canWrite ?? $auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase())))
+		// Mirrors backend PROJECT_WRITE_ROLE_NAMES: manager counts as member (and reader).
+		($auth.canWrite ?? $auth.roles.some((r) => ['admin', 'manager', 'member'].includes(r.toLowerCase())))
 );
 export const isReader = derived(
 	[auth, canWrite],

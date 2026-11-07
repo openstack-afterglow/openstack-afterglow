@@ -8,6 +8,7 @@ from typing import Any
 
 from app.services import keystone
 from app.services.mcp_control_plane.sdk import gather_sdk, run_sdk
+from app.services.service_permissions import PROJECT_WRITE_ROLE_NAMES
 
 
 async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict[str, str]]:
@@ -273,7 +274,7 @@ async def project_permission_preview(conn: Any, owner_user_id: str) -> list[dict
             return {
                 **project,
                 "can_write": bool(
-                    {role["name"].casefold() for role in scoped._afterglow_roles} & {"admin", "manager", "member"}
+                    {role["name"].casefold() for role in scoped._afterglow_roles} & PROJECT_WRITE_ROLE_NAMES
                 ),
                 "service_permissions": permissions,
                 "service_errors": errors,

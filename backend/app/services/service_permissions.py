@@ -12,6 +12,11 @@ from collections.abc import Mapping
 from fastapi import HTTPException
 
 CORE_ROLE_NAMES = frozenset({"admin", "manager", "member", "reader"})
+# Application-layer meaning of "may mutate project resources". Resource control
+# is only the reader/member boundary; `manager` is extra domain administration
+# and counts as member (and reader) even without a direct `member` assignment.
+# This is not native authority: each service still applies its own policy.
+PROJECT_WRITE_ROLE_NAMES = frozenset({"admin", "manager", "member"})
 PROJECT_ROLE_NAMES = ("project_owner", "project_admin", "project_member", "project_reader")
 SERVICE_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "waygate": (

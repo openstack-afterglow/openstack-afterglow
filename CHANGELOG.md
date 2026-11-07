@@ -10,6 +10,7 @@
 ### Changed
 
 - OAuth 연결의 origin을 발급 프로젝트 대신 승인 도메인 이름·ID로 표시합니다. 저장된 원래 프로젝트로 도메인을 확인하며, 삭제·조회 불가는 현재 도메인으로 대체하지 않습니다. 개인 키의 발급 프로젝트와 기존 실행·폐기 범위는 유지합니다.
+- 프로젝트 리소스 제어는 reader와 member의 경계로만 정의합니다. `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이며, 별도 `member` 배정이 없어도 member(와 reader)로 취급합니다. 웹의 프로젝트 쓰기 판정·Cloud Shell 쓰기 권한 재검증·프런트엔드 `canWrite` 폴백이 MCP와 같은 `admin`/`manager`/`member` 기준을 사용합니다. MCP 연결은 계속 읽기 전용 또는 편집 중 하나만 선택하며 manager 전용 단계는 없습니다. Native 서비스의 자체 정책은 바꾸지 않으므로, native 정책이 manager token을 허용하지 않는 서비스의 변경은 계속 거부됩니다.
 
 ### Fixed
 

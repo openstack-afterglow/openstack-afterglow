@@ -6,6 +6,13 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## manager = member 동치 (2026-11-07, source/local)
+
+- 정의: 프로젝트 리소스 제어는 reader/member 경계뿐이며 `manager`는 추가 도메인 관리 권한으로 별도 `member` 배정 없이 member·reader로 취급한다. 시드 role graph에는 `manager → member` edge가 없어, 변경 전 웹 쓰기 판정(`admin`/`member`)은 manager 단독 사용자를 읽기 전용으로 보았고 MCP만 manager를 관리 가능으로 해석했다. 공유 `service_permissions.PROJECT_WRITE_ROLE_NAMES={admin,manager,member}`로 웹 쓰기 판정(`has_project_write_permission`·`require_project_write`·세션/`permissions`의 `can_write`)·Cloud Shell 쓰기 권한·프런트엔드 `canWrite` 폴백·MCP capability를 통일했다. MCP `access_level`은 `^(read|manage)$` 둘뿐이며 manager 전용 단계는 없다.
+- 회귀: manager 단독/대소문자/reader 병행의 `require_project_write` 통과, 실제 provider role 조회를 모사한 caller permissions의 `can_write=true`·`is_reader=false`(reader 단독은 변경 없음), MCP `manage` 발급이 manager 단독 대상에 허용되고 `access_level="manager"`는 거부, 프런트엔드 store의 manager 단독 `canWrite`. 기존 `test_role_visibility`의 `["manager","reader"]→can_write=False` 기대는 변경된 정의 자체를 고정하고 있어 `True`로 갱신했고 공개 role 목록의 시스템 role 숨김(`visible`)은 그대로다.
+- 최종 source`7cb29401…`/4,172files에서 canonical `npm run test:gate`가 exit0: backend14,550passed/94skip, frontend550files/7,615passed, contracts261passed, functional284passed/46skip/124deselected, Ruff879files. Svelte check 0errors/기존15warnings, experience catalog 통과. Python3.12 venv를 PATH 앞에 두고 전용 MariaDB/PostgreSQL/Redis(19339/19356/19382)를 사용했다.
+- 한계: 이 기준은 앱 계층이며 native 권한이 아니다. Nova/Cinder/Neutron은 사용자 token에 자체 정책을 적용하므로 manager 단독 token은 native 정책이나 role implication이 허용해야 변경에 성공한다. 또 `manager`는 Default에서만 직접 부여되고 다른 프로젝트에는 `project_reader` projection만 있어(`docs/api/iam.md`) 일반 프로젝트의 읽기 전용은 바뀌지 않는다. 실제 클라우드·운영 확인은 하지 않았다.
+
 ## MCP 승인 도메인·member preview (2026-11-07, source/local)
 
 - OAuth origin은 owner SQL-filtered immutable project→domain exact metadata로 표시하며 현재/home domain fallback을 하지 않는다. 설치된 실제 Keystone client/auth/cache를 loopback HTTP에 연결해 고정 operator 프로젝트로 한 번 인증하고 exact project/domain GET 두 번으로 `Known domain`을 projection했다. 이는 synthetic native provider이며 운영 directory 정책 수용이 아니다.

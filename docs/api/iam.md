@@ -117,6 +117,8 @@ Native `admin`은 catalog/checkbox에 노출하지 않으며 신규 PUT·초대 
 
 Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관리 주체**로 남으며 native `project_reader` 읽기 접근을 받습니다. 일반 프로젝트에 manager 또는 manager를 암시하는 역할을 별도로 부여할 수 없습니다. 각 프로젝트의 `project_owner/admin/member/reader` 위임은 그대로 유지됩니다. 마지막 유효 manager·Default rename/disable/delete·관리용 읽기 projection을 보호하고, grant/group/account/role graph 변경은 공유 graph lease 아래 최신 상태를 재검증합니다. Native 변경 뒤 응답만 실패해도 실제 상태를 다시 읽어 읽기 projection과 관련 권위 cache를 정리하며 요청 자체를 성공으로 표시하지 않습니다. Native의 group membership 제거는 unscoped 증명까지 사용자 전체 토큰을 회수할 수 있으므로 이 경우의 재로그인은 유지합니다.
 
+프로젝트 리소스 제어는 reader와 member의 경계뿐입니다. `manager`는 그 위에 얹힌 도메인 관리 권한(사용자·프로젝트·role·group)이며 별도 `member` 배정이 없어도 앱 계층에서 member와 reader로 취급합니다. 공유 기준은 `service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, manager, member}`이고 웹의 프로젝트 쓰기 판정·`can_write`·Cloud Shell 쓰기 권한·MCP 프로젝트 capability가 이를 사용합니다. 이는 native 권한이 아닙니다. 또한 위 설명처럼 `manager`는 Default에서만 직접 부여되므로 다른 프로젝트에서는 기존 `project_reader` 읽기 projection이 유지됩니다.
+
 ### 소유권 계층과 project_creator
 
 도메인 관리 우선순위 `manager > owner`는 **관리 authority**이지 `manager → project_owner` native inference edge가 아닙니다. 기존 `project_owner → project_admin → project_member → project_reader`, `project_member → member`, `project_reader → reader` DAG를 유지합니다. 일반 프로젝트 생성자는 단일 명시적 직접 owner가 되고 admin/member/reader는 복수 사용자가 가능합니다. 두 번째 owner·그룹/상속 owner 생성·마지막 owner 제거를 일반 grant로 처리하지 않습니다. 기존 다중 owner는 자동 선택·회수하지 않고 명시적으로 해결해야 합니다.

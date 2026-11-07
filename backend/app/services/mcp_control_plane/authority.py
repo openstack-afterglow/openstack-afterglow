@@ -36,6 +36,7 @@ from app.models.mcp_authority import (
 from app.services.mcp_control_plane.clients import public_client_observations
 from app.services.mcp_control_plane.crypto import decrypt_application_credential, encrypt_application_credential
 from app.services.mcp_control_plane.sdk import _drain, gather_sdk, run_sdk
+from app.services.service_permissions import PROJECT_WRITE_ROLE_NAMES
 
 PERSONAL_TOKEN_PREFIX = "mcp-afgl-"
 PERSONAL_TOKEN_BYTES = 32
@@ -423,7 +424,7 @@ async def _prepare_connection_projects(
         for project in metadata:
             scoped = await project_connection(conn, user_id, project["id"])
             role_snapshot = scoped._afterglow_roles
-            can_write = bool({role["name"].casefold() for role in role_snapshot} & {"admin", "manager", "member"})
+            can_write = bool({role["name"].casefold() for role in role_snapshot} & PROJECT_WRITE_ROLE_NAMES)
             if access_level == "manage" and not can_write and project_scope != "all":
                 if scoped is not conn:
                     await asyncio.to_thread(scoped.close)

@@ -10,6 +10,7 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 발행 전 검토에서 카탈로그 VM의 scheduled cleanup도 기존 `_OperatorScope`를 fresh 검증하고 immutable receipt owner와 별도 target을 비교하도록 보완했다. 일반 tenant/MCP/human native 증명은 바꾸지 않는다. `layer_build._layer_resource`는 검증된 usage operator에만 Nova/Cinder의 all-project/project, Manila all-tenant/project, Neutron project 인자를 적용하고 native owner/name/marker·단일 일치와 unknown 무재실행을 유지한다. 단, native provider가 요청한 목록 scope를 준수해야 한다. 현재 foreign-owner-only 응답은 제외 후 `allow_absent=True`에서 `None`이 되며 `SubmissionUnknown`으로 승격되지 않는다. Scope를 무시하거나 제한된 목록만 반환하는 provider에서의 부재 증명은 남은 위험이며 `docs/testing.md`에 재현 범위와 한계를 기록한다.
 
+프로젝트 쓰기 판정(`deps.has_project_write_permission`, 세션·`/projects/*/permissions`의 `can_write`, `require_project_write`), Cloud Shell 쓰기 권한 재검증, MCP 프로젝트 capability, 프런트엔드 `canWrite` 폴백은 `service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, manager, member}` 하나를 기준으로 한다. 리소스 제어는 reader/member 경계뿐이며 `manager`는 별도 member 배정 없이 member·reader로 취급하는 추가 도메인 관리 권한이다. MCP `access_level`은 계속 `read|manage` 둘뿐이다. 이 기준은 native 서비스 정책을 대신하지 않으며 manager가 없는 프로젝트(일반 프로젝트의 `project_reader` projection)는 바뀌지 않는다.
 이미지 draft 행은 편집 중 read filter/sort와 분리하고 key identity를 유지한다. 파일 스토리지 메타데이터의 편집 projection은 명시 view/owner 전환에서만 다시 계산하고 새 행은 즉시 표시한다. Kubernetes secret child 수명은 project/cluster/namespace/name에 묶이며 YAML/값 변경은 reveal을 초기화한다. 사용자별 usage·monitoring·telemetry view는 기존 owner reset 경계를 따르고 usage report는 공통 private-view epoch를 독립 적용한다. 동일 owner의 갱신/refresh는 보존하며 새 schema·auth 권한·시각 primitive는 없다.
 Kolla backend launcher는 `afterglow_backend_workers` 양의 정수로 호스트당 Uvicorn 프로세스 수를 지정하며 기본값은 1이다. 프로세스별 connection pool·cache·startup 작업과 스트림 중단 가능성을 고려해야 하며 설정 변경만으로 운영에 적용되지 않는다. 기존 ASGI factory 및 proxy trust 경계는 유지한다.
 Kolla의 `afterglow-kolla` Python distribution은 role·aggregate playbook·installer를 환경의 `share/afterglow/kolla`에 소유한다. 예전 `openstack-afterglow` distribution이 설치된 환경은 동일 자산의 이중 소유를 막도록 이전 패키지를 먼저 제거하고 새 artifact를 설치·재설치해야 하며, installer는 이전 metadata가 남으면 거부한다. 안정 Kolla 경로는 설치된 자산을 가리키는 링크이며 정확히 식별한 구 checkout 링크만 이관한다. Role/site가 다른 checkout을 가리키면 `AFTERGLOW_LEGACY_ROLE_TARGET`·`AFTERGLOW_LEGACY_SITE_TARGET`에 각각 전체 절대 링크 text를 지정하고, 미지정 target만 `AFTERGLOW_REPO_DIR`에서 도출한다. 두 경로를 모두 preflight하며 source checkout·설정·foreign 경로는 보존한다. 패키지 갱신은 이미 연결된 파일을 갱신하지만 최초 stock-site import와 Kolla 재설치 후 복원은 별도 installer가 필요하다. 패키지 설치는 서비스 배포가 아니며 아직 미발행 소스다.
@@ -2094,9 +2095,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "641f2f3b5a1a289e160c6ef609fa720161466c92752672216d650082c4c74cbc",
-  "reviewed_at": "2026-11-07T06:04:43Z",
-  "summary": "MCP domain/member source-local boundaries; ordinary explicit-deadline GET401 recovery retained; qualified readonly native policy observations, not production member acceptance. Test-only: widened wall-clock margin of test_partial_timeout_status_malformed_redirect_and_no_leakage (0.15s->0.75s budget, lumen delay 0.3s->1.5s) after it failed deterministically under changed xdist distribution; assertions unchanged, no runtime/architecture change."
+  "source_sha256": "7cb2940117cf63e6478abcff0ebbcd177eda7c328cb8bc2add215f3f493a23bd",
+  "reviewed_at": "2026-11-07T06:34:18Z",
+  "summary": "Resource control is only the reader/member boundary; manager (extra domain administration) counts as member and reader without a direct member assignment. One shared PROJECT_WRITE_ROLE_NAMES={admin,manager,member} drives the web project-write gate and can_write, Cloud Shell write authority, the frontend canWrite fallback and MCP project capability; MCP access_level stays read|manage. No schema, role-graph, grant or native-policy change; native services keep their own policy. Tests: manager-only web gate/caller permissions, MCP manage issuance, frontend store; role_visibility expectation updated."
 }
 ```
 <!-- architecture-review:end -->
