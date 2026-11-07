@@ -33,6 +33,17 @@ nav_order: 8
 - 백엔드 단위 스위트의 비재현 실패 두 건: (1) `tests/test_host_observer.py::test_command_bounded_output_real_local_process`가 전체 실행 1회에서 `timeout`으로 실패했다(2초 안에 256KiB 출력 상한에 도달하지 못함). 이 테스트와 `scripts/host_observer.py`는 변경하지 않았고, 단독 5회와 busy-loop 프로세스 36개로 18코어를 포화시킨 상태의 6회가 모두 통과했으며(CPU 포화로는 재현되지 않았다), 이후 백엔드 전체 실행에서도 통과했다. 원인은 규명하지 못했다. (2) hermetic 가드 에러는 아래 "선재 플레이크" 항목에서 다룬다.
 - 기능 테스트 환경 조치: `scripts/test-db.js`가 `127.0.0.1:3307`을 하드코딩하는데 3일 전 다른 QA 세션의 컨테이너 `ag-experience-20261104-7d91-mariadb-1`(tmpfs, 현재 연결 없음)이 점유하고 있었다. 사용자의 명시적 승인을 받아 그 프로젝트의 컨테이너 3개(mariadb·postgres·test-redis)만 제거했다(볼륨 0, tmpfs 데이터는 소실). 같은 네트워크에 붙어 있던 승인 범위 밖 컨테이너 2개(`ag-remediation-images-7d91-backend-1`·`-frontend-1`)와 그 네트워크는 건드리지 않았다. 광역 prune이나 `--volumes`는 쓰지 않았다.
 - 후속 과제(이번 릴리스에 포함하지 않음): 프런트엔드 전체 실행 82개 파일 실패의 원인 규명. 다음 단계는 jsdom 환경 설치 코드에 직접 계측해 낡은 `localStorage` 접근자가 남는 순간을 잡는 것이다.
+- **발행 영수증(실제로 읽은 값)**:
+  - Source commit `d5f9f7cbc6ae3e2e1861e26bd7e94ea778691590`을 `origin/dev`에 일반 푸시(fast-forward)했고, 같은 SHA의 dev CI(`Docker Build & Push` run `42379549102`)가 잡 18개 중 성공 13·스킵 5(PR 전용·라이브 자격증명·네이티브 Keystone 아티팩트)·실패 0으로 통과했다. 프런트엔드 단위 shard 1/2와 2/2, 백엔드(단위+린트), 계약, 기능(임시 DB), 버전·오케스트레이션 잡이 모두 성공이다.
+  - 이 결과는 로컬 프런트엔드 실패(82개 파일)가 이 워크스테이션 환경에 고유할 가능성을 강하게 지지한다. 단 CI와 로컬은 Node 버전(22 대 24.14.1) 외에 코어 수·OS·캐시도 달라 원인을 Node 버전으로 확정할 수 없다. 원인은 여전히 규명되지 않았다.
+  - 그 뒤에 주석 태그 `1.32.10`(tag object `f171174350f6663d1d1c06802b8d4f4692df1966`)을 같은 SHA에 만들어 푸시했다. 원격 `refs/tags/1.32.10^{}`가 `d5f9f7cb…`를 가리킨다. 기존 태그는 이동하지 않았고 `main`에는 직접 커밋·병합하지 않았다.
+  - 태그 CI(`Docker Build & Push` run `42380213380`)가 같은 18개 잡 구성으로 통과했고(프런트엔드 shard 2개 포함), `Helm Chart Release`(run `42380213436`)의 두 잡이 성공했다.
+  - GHCR 이미지 세 개(`afterglow-api`·`afterglow`·`afterglow-worker`)의 `1.32.10`과 `latest`가 같은 root manifest digest다: api `sha256:aacc97a2f13c1567…`, frontend `sha256:3a2dde569dcda778…`, worker `sha256:5614ba664e481935…`. 세 이미지의 OCI revision 라벨이 모두 위 source commit과 일치하고, 이전 `1.32.9`와 digest가 다르다. 발행 플랫폼은 세 이미지 모두 `linux/amd64`뿐이다.
+  - digest로 받은 이미지를 `--network none --read-only`로 실행해 패키지된 앱의 버전을 읽었다: 백엔드·워커 `read_app_version()` 모두 `1.32.10`, 프런트엔드 이미지 `package.json`은 `1.32.10`. 확인용으로 받은 이미지는 제거했다. 이는 버전 확인이며 이미지 기능 검증이 아니다.
+  - Helm OCI 차트 `oci://ghcr.io/openstack-afterglow/charts/afterglow:1.32.10`의 `version`·`appVersion`이 모두 `1.32.10`이다.
+  - GitHub Release `1.32.10`(2026-11-07 23:17 KST, 초안·prerelease 아님, Latest)을 한국어·영어 두 언어로 게시했다. 두 언어 모두 버전, 발행일(Asia/Seoul, UTC+09:00), 비교 기준, 추가·변경·지원 중단(`없음`/`None`)·삭제·수정·알려진 제한을 담고 항목 수가 대응한다.
+  - **하지 않은 것**: 운영 배포(Kolla `reconfigure`, `cloud.dmslab.re.kr`의 실행 버전·readiness·화면 확인)는 별도 승인·선행 조건이 필요해 이 요청 범위에 포함하지 않았다. 따라서 이 릴리스의 변경이 운영에서 동작함을 확인한 것이 아니다. 실제 Keystone/HAProxy에서의 연결·TLS 영향과 변경 전후 라이브 재측정도 하지 않았다.
+  - 이 발행과 무관한 기존 문제(수정하지 않음): `Promote Kolla role release tags` 스케줄 워크플로의 최근 5회 실행이 모두 실패했다(확인한 가장 오래된 실행은 2026-11-06 10:58 UTC이며 그 이전 이력은 보지 않았다). 마지막 실패 실행의 로그 원인은 `GitHub Actions is not permitted to create or approve pull requests`(저장소 설정)다. GitHub는 푸시 응답에서 기본 브랜치에 대해 Dependabot 취약점 165건(critical 15·high 80·moderate 58·low 12)을 알렸다. 둘 다 이 변경이 만든 것이 아니다.
 
 ## 웹 라우트·API 응답 지연 하네스 (2026-11-07, source/local)
 
