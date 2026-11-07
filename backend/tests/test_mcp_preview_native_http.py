@@ -36,7 +36,7 @@ from app.services.mcp_control_plane import authority, projects
         (200, "denied"),
     ],
 )
-@pytest.mark.parametrize("member_role", ["member", "manager"])
+@pytest.mark.parametrize("member_role", ["member"])
 async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_token_reexchange(
     monkeypatch, waygate_status, member_role, root_case
 ):

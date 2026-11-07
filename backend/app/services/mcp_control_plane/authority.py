@@ -306,6 +306,11 @@ def approved_project_metadata(grant: McpDelegatedGrant) -> list[dict[str, str]]:
 def validate_grant_project(grant: McpDelegatedGrant, project_id: str, *, write: bool = False) -> dict[str, object]:
     for metadata in _approved_project_authority(grant):
         if metadata["id"] == project_id:
+            from app.services.domain_projects import is_reserved_default_name
+
+            if is_reserved_default_name(metadata["name"]):
+                # Saved real names catch grants issued before the Default exclusion.
+                raise McpGrantStateError("MCP cannot use a domain's Default project")
             if write and (grant.access_level != "manage" or not metadata["can_write"]):
                 raise McpGrantStateError("MCP project does not allow management")
             ceiling = getattr(grant, "issued_role_ceiling", None)
@@ -415,7 +420,12 @@ async def _prepare_connection_projects(
     project_ids: list[str] | None,
     access_level: str,
 ) -> list[ApprovedProject]:
-    from app.services.mcp_control_plane.projects import project_candidates, project_connection
+    from app.services.domain_projects import is_reserved_default_name
+    from app.services.mcp_control_plane.projects import (
+        DEFAULT_PROJECT_NOT_CONNECTABLE,
+        project_candidates,
+        project_connection,
+    )
 
     _validate_access_level(access_level)
     metadata = await project_candidates(conn, user_id, project_id, project_scope, project_ids)
@@ -423,6 +433,10 @@ async def _prepare_connection_projects(
     try:
         for project in metadata:
             scoped = await project_connection(conn, user_id, project["id"])
+            if is_reserved_default_name(scoped._afterglow_project_name):
+                if scoped is not conn:
+                    await asyncio.to_thread(scoped.close)
+                raise McpAuthorityError(DEFAULT_PROJECT_NOT_CONNECTABLE)
             role_snapshot = scoped._afterglow_roles
             can_write = bool({role["name"].casefold() for role in role_snapshot} & PROJECT_WRITE_ROLE_NAMES)
             if access_level == "manage" and not can_write and project_scope != "all":

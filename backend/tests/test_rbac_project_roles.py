@@ -80,24 +80,6 @@ def test_require_project_write_direct():
     assert exc_info.value.status_code == 403
 
 
-@pytest.mark.parametrize("roles", [["manager"], ["manager", "reader"], ["Manager"]])
-def test_manager_without_member_assignment_acts_as_member(roles):
-    token = make_token_info(roles=roles)
-    assert require_project_write(token) == token
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("roles", "can_write"), [(["manager"], True), (["manager", "reader"], True), (["reader"], False)]
-)
-async def test_caller_permissions_treat_manager_as_member_and_never_as_reader(project_authority, roles, can_write):
-    project_authority.roles = roles
-    permissions = await get_caller_project_permissions(token_info=make_token_info(roles=["reader"]))
-    assert permissions["can_read"] is True
-    assert permissions["can_write"] is can_write
-    assert permissions["is_reader"] is (not can_write)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("current_role,stale_role,can_write", [("reader", "member", False), ("member", "reader", True)])
 async def test_get_caller_project_permissions_direct(project_authority, current_role, stale_role, can_write):

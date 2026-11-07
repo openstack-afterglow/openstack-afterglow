@@ -10,12 +10,14 @@
 ### Changed
 
 - OAuth 연결의 origin을 발급 프로젝트 대신 승인 도메인 이름·ID로 표시합니다. 저장된 원래 프로젝트로 도메인을 확인하며, 삭제·조회 불가는 현재 도메인으로 대체하지 않습니다. 개인 키의 발급 프로젝트와 기존 실행·폐기 범위는 유지합니다.
-- 프로젝트 리소스 제어는 reader와 member의 경계로만 정의합니다. `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이며, 별도 `member` 배정이 없어도 member(와 reader)로 취급합니다. 웹의 프로젝트 쓰기 판정·Cloud Shell 쓰기 권한 재검증·프런트엔드 `canWrite` 폴백이 MCP와 같은 `admin`/`manager`/`member` 기준을 사용합니다. MCP 연결은 계속 읽기 전용 또는 편집 중 하나만 선택하며 manager 전용 단계는 없습니다. Native 서비스의 자체 정책은 바꾸지 않으므로, native 정책이 manager token을 허용하지 않는 서비스의 변경은 계속 거부됩니다.
+- 프로젝트 리소스 제어는 reader와 member의 경계(`admin`·`member`)로 유지합니다. 웹의 프로젝트 쓰기 판정·Cloud Shell 쓰기 권한 재검증·프런트엔드 `canWrite` 폴백·MCP 관리 가능 판정은 `manager`를 쓰기 역할로 넓히지 않습니다. MCP는 이전에 `manager`도 관리 가능으로 해석했으나, `manager`는 Default에만 부여되고 Default는 MCP 대상에서 제외되므로 연결 가능한 프로젝트에는 영향이 없습니다. Drover·Waygate·Palimpsest·Lumen은 각자의 policy로 manager를 member 이상으로 취급하며 이 변경과 무관합니다.
+- 모든 도메인의 `Default` 프로젝트는 MCP로 연결할 수 없습니다. 새 개인 키·OAuth 승인·권한 미리보기·프로젝트 목록에서 제외하고, 이미 저장된 승인 프로젝트 이름이 Default인 연결은 사용 시 거부합니다. 이름이 ID로만 저장된 구형 연결은 이름으로 식별할 수 없어 이 거부에 포함되지 않습니다. 기존 연결은 삭제하거나 자동 회수하지 않습니다.
 
 ### Fixed
 
-- MCP member/manager 권한 미리보기에서 검증된 현재 token을 불필요하게 재발급하거나 다른 프로젝트용 사람의 session root를 누락해 미확인으로 떨어지는 경로를 수정합니다. 프로젝트 인증 실패와 개별 서비스 정책 장애를 구분하며 읽기 키·reader·현재 역할/소유권 제한은 유지합니다. Preview만 독립40초 read budget을 사용해 API35초보다 먼저 중단하지 않고, OAuth 도메인 metadata 조회 전에 SQL read connection을 반환합니다.
+- MCP member 권한 미리보기에서 검증된 현재 token을 불필요하게 재발급하거나 다른 프로젝트용 사람의 session root를 누락해 미확인으로 떨어지는 경로를 수정합니다. 프로젝트 인증 실패와 개별 서비스 정책 장애를 구분하며 읽기 키·reader·현재 역할/소유권 제한은 유지합니다. Preview만 독립40초 read budget을 사용해 API35초보다 먼저 중단하지 않고, OAuth 도메인 metadata 조회 전에 SQL read connection을 반환합니다.
 - 명시 제한 시간을 사용하는 일반·강제 새로고침 GET도 기존401 세션 복구를 유지합니다. 소모성 no-store 읽기의 비재전송 기본값은 그대로 유지합니다.
+- `Default` 프로젝트 이름 점유 검사가 앞뒤 공백이 붙은 이름(` Default`, `DEFAULT `)을 같은 이름으로 보지 못해 생성·개명 경로에서 통과하던 문제를 수정합니다. 사용자·도메인 manager·관리자의 프로젝트 생성과 다른 프로젝트의 개명이 같은 검사를 사용합니다. 기존 프로젝트 이름은 바꾸지 않습니다.
 
 
 ## [1.32.9] - 2026-11-07

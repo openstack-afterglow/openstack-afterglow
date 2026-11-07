@@ -117,7 +117,7 @@ Native `admin`은 catalog/checkbox에 노출하지 않으며 신규 PUT·초대 
 
 Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관리 주체**로 남으며 native `project_reader` 읽기 접근을 받습니다. 일반 프로젝트에 manager 또는 manager를 암시하는 역할을 별도로 부여할 수 없습니다. 각 프로젝트의 `project_owner/admin/member/reader` 위임은 그대로 유지됩니다. 마지막 유효 manager·Default rename/disable/delete·관리용 읽기 projection을 보호하고, grant/group/account/role graph 변경은 공유 graph lease 아래 최신 상태를 재검증합니다. Native 변경 뒤 응답만 실패해도 실제 상태를 다시 읽어 읽기 projection과 관련 권위 cache를 정리하며 요청 자체를 성공으로 표시하지 않습니다. Native의 group membership 제거는 unscoped 증명까지 사용자 전체 토큰을 회수할 수 있으므로 이 경우의 재로그인은 유지합니다.
 
-프로젝트 리소스 제어는 reader와 member의 경계뿐입니다. `manager`는 그 위에 얹힌 도메인 관리 권한(사용자·프로젝트·role·group)이며 별도 `member` 배정이 없어도 앱 계층에서 member와 reader로 취급합니다. 공유 기준은 `service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, manager, member}`이고 웹의 프로젝트 쓰기 판정·`can_write`·Cloud Shell 쓰기 권한·MCP 프로젝트 capability가 이를 사용합니다. 이는 native 권한이 아닙니다. 또한 위 설명처럼 `manager`는 Default에서만 직접 부여되므로 다른 프로젝트에서는 기존 `project_reader` 읽기 projection이 유지됩니다.
+프로젝트 리소스 제어는 reader와 member의 경계뿐입니다(`service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, member}`). `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이며 **Default 프로젝트에만** 부여할 수 있고(`manager_requires_default_project`), 그 Default의 effective manager가 도메인 전체 관리 권한을 행사합니다. Drover·Waygate·Palimpsest·Lumen은 각자의 policy에서 이미 manager를 member 이상의 쓰기 역할로 포함하고 핵심 OpenStack 서비스는 native 정책이 결정하므로 Afterglow 자체 쓰기 판정은 manager로 넓히지 않습니다. `Default`는 시스템이 점유한 이름입니다. 사용자·도메인 manager·관리자는 이 이름(대소문자·앞뒤 공백을 무시)의 프로젝트를 만들 수 없고 다른 프로젝트를 Default로 개명할 수도 없습니다. 모든 도메인의 Default는 MCP로 연결할 수 없습니다([인증 API](auth.md#전체-프로젝트의-혼합-권한-동의)).
 
 ### 소유권 계층과 project_creator
 

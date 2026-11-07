@@ -626,7 +626,7 @@ def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
     """프로젝트 내 리소스 생성/수정/삭제(mutation) 권한 검증.
 
     - system_admin: 허용
-    - role에 'admin', 'manager' 또는 'member'가 포함된 경우: 허용 (manager는 별도 member 배정 없이도 member로 취급)
+    - role에 'admin' 또는 'member'가 포함된 경우: 허용
     - role에 'reader'만 있거나 쓰기 권한이 없는 경우: 403 Forbidden
     """
     if has_project_write_permission(token_info):

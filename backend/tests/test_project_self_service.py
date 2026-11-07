@@ -196,9 +196,10 @@ async def test_manager_project_creation_propagates_native_rejection_without_succ
 
 
 @pytest.mark.asyncio
-async def test_manager_project_creation_keeps_default_name_reserved(directory):
+@pytest.mark.parametrize("name", ["Default", "default", " DEFAULT ", "Default "])
+async def test_manager_project_creation_keeps_default_name_reserved(directory, name):
     with pytest.raises(HTTPException) as denied:
-        await project_service.create_project_for_user("Default", "", "domain-manager", "manager", "domain")
+        await project_service.create_project_for_user(name, "", "domain-manager", "manager", "domain")
     assert denied.value.status_code == 409
     assert not directory.calls and not directory.personal_projects
 

@@ -1,3 +1,5 @@
+> **Superseded** by `2026-11-07-fix-default-project-mcp-exclusion`: the application-wide `{admin, manager, member}` widening described below was reverted at the owner's direction. Afterglow's own gates use `{admin, member}`; treating `manager` as member-or-more applies only inside the Drover, Waygate, Palimpsest and Lumen policies.
+
 ## Why
 Resource control is defined only by the reader/member boundary. `manager` is an extra domain-administration authority (users, projects, roles, groups), not a separate resource tier, and a manager must by default act as member and reader even when no direct `member` assignment exists. The seeded Keystone role graph has no `manager -> member` edge, so the web application's project-write gates (`admin`/`member` only) treated a manager-only user as read-only while MCP already treated `manager` as manageable. The two surfaces disagreed.
 

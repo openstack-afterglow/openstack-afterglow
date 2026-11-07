@@ -742,7 +742,7 @@ async def create_project(
         raise HTTPException(403, "Identity-only domain cannot contain projects")
     if kind == "personal":
         raise HTTPException(403, "personal_project_user_creation_required")
-    if req.name.casefold() == "default":
+    if domain_projects.is_reserved_default_name(req.name):
         raise HTTPException(409, "Default is reserved for the domain authority project")
 
     def _create():

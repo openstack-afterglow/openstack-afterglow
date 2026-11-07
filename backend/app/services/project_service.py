@@ -59,7 +59,7 @@ async def create_project_for_user(
         raise HTTPException(422, "프로젝트 이름을 입력하세요")
     if not await can_create_project(user_id, domain["id"]):
         raise HTTPException(status_code=403, detail="Domain project creation capability required")
-    if name.casefold() == "default":
+    if domain_projects.is_reserved_default_name(name):
         raise HTTPException(status_code=409, detail="Default is reserved for the domain authority project")
 
     conn = await _provider_call(keystone.get_admin_project_connection)

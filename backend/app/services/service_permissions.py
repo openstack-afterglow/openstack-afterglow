@@ -12,11 +12,12 @@ from collections.abc import Mapping
 from fastapi import HTTPException
 
 CORE_ROLE_NAMES = frozenset({"admin", "manager", "member", "reader"})
-# Application-layer meaning of "may mutate project resources". Resource control
-# is only the reader/member boundary; `manager` is extra domain administration
-# and counts as member (and reader) even without a direct `member` assignment.
-# This is not native authority: each service still applies its own policy.
-PROJECT_WRITE_ROLE_NAMES = frozenset({"admin", "manager", "member"})
+# Afterglow's own gates: resource control is the reader/member boundary.
+# `manager` is domain administration held on the Default project; it is not
+# treated as a resource role here. Drover, Waygate, Palimpsest and Lumen already
+# admit manager as member in their own policies and core OpenStack services apply
+# their native policy, so neither is widened by this application-layer set.
+PROJECT_WRITE_ROLE_NAMES = frozenset({"admin", "member"})
 PROJECT_ROLE_NAMES = ("project_owner", "project_admin", "project_member", "project_reader")
 SERVICE_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "waygate": (

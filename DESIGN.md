@@ -20,7 +20,7 @@ Drover 작업의 초기 비결정 progress는 전체 track 너비에 분산한�
 
 OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 지역화된 OAuth 이름+현재 목록 순번을 사용한다. Origin은 발급 project 대신 승인 도메인의 현재 이름+ID로 표시해 동명 도메인을 구분하고, 확인 불가 시 현재/home domain을 대신 넣지 않는다. 저장된 승인 프로젝트는 이름으로 계속 표시하며 만료·접근 상한·클라이언트 관측·exact grant 제거를 유지한다. 순번은 영구 식별자가 아니고 도메인 이름은 승인 당시 snapshot이 아니다. 개인 API 키의 발급 project·일회성 평문은 바꾸지 않는다.
 
-MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member/manager가 read key를 선택해도 관리 가능한 프로젝트의 상태는 남고 연결의 읽기 제한만 바뀐다. 프로젝트 인증 범위 검증 실패는 단일 scope 안내로 표시해 서비스별 추가 역할 요구처럼 보이지 않게 하며, 검증된 scope에서의 개별 native 정책 오류는 그 서비스에만 남긴다. Reader와 unknown은 관리로 추정하지 않는다. 클라이언트 관측의 이름·버전·신고/추정 근거·privacy와9locale·모바일 줄바꿈 계약은 유지한다.
+MCP 권한 preview는 `프로젝트의 클라우드 권한`과 `이 연결에 허용할 접근`을 별도 label/StatusChip 행으로 표시한다. Member가 read key를 선택해도 관리 가능한 프로젝트의 상태는 남고 연결의 읽기 제한만 바뀐다. 프로젝트 인증 범위 검증 실패는 단일 scope 안내로 표시해 서비스별 추가 역할 요구처럼 보이지 않게 하며, 검증된 scope에서의 개별 native 정책 오류는 그 서비스에만 남긴다. Reader와 unknown은 관리로 추정하지 않는다. 모든 도메인의 `Default` 프로젝트는 MCP 선택 목록에 나타나지 않으며 별도 placeholder나 새 시각 요소를 만들지 않는다. 클라이언트 관측의 이름·버전·신고/추정 근거·privacy와9locale·모바일 줄바꿈 계약은 유지한다.
 
 
 

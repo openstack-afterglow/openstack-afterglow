@@ -913,7 +913,7 @@ Canonical registry `2026-11-03.2`는 기존 도구를 보존하고 아래18개 �
 
 OAuth 연결 카드와 삭제 확인은 client ID 기반 저장 이름 대신 `OAuth 연결`과 현재 목록 순번을, 승인 프로젝트는 UUID 없이 이름을 표시한다. 순번은 영구 ID가 아니며 삭제는 정확한 grant ID로 처리한다. 표시를 가린 것이므로 인증된 사용자에게 반환하는 API 응답의 identifier는 변하지 않는다. Client ID는 public OAuth client의 식별자이며 access/refresh token이나 client secret과 구분한다.
 
-권한 preview는 프로젝트의 `can_write`와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 검증된 `member`·`manager`·`admin`은 cloud 관리로 해석하되 reader/read grant/unknown을 승격하지 않는다. Exact-current SDK session은 실제 인증 token의 검증된 `AccessInfo`/catalog로 독립 생성해 동일 scope를 재발급하지 않는다. 다른 scope에는 `get_os_conn`이 보존한 검증된 사람의 session root가 있으면 이를 사용하고, 없으면 기존 caller subject의 실제 native 허용 여부를 따른다. 모든 결과의 owner/project/domain/현재 role 교집합을 재검증하며 session root는 API로 반환하지 않는다. Native 서비스의 deny/404/403/timeout은 여전히 독립이며 관리자 credential로 대체하지 않는다.
+권한 preview는 프로젝트의 `can_write`와 선택한 `read`/`manage` 연결 상한을 별도 행으로 표시한다. 검증된 `member`·`admin`은 cloud 관리로 해석하되 reader/read grant/unknown을 승격하지 않는다. Exact-current SDK session은 실제 인증 token의 검증된 `AccessInfo`/catalog로 독립 생성해 동일 scope를 재발급하지 않는다. 다른 scope에는 `get_os_conn`이 보존한 검증된 사람의 session root가 있으면 이를 사용하고, 없으면 기존 caller subject의 실제 native 허용 여부를 따른다. 모든 결과의 owner/project/domain/현재 role 교집합을 재검증하며 session root는 API로 반환하지 않는다. Native 서비스의 deny/404/403/timeout은 여전히 독립이며 관리자 credential로 대체하지 않는다.
 
 
 
@@ -933,9 +933,11 @@ Refresh token과 제한된 Keystone application credential은 취소 전까지 �
 
 ### 전체 프로젝트의 혼합 권한 동의
 
-`project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않는다. 실제 대상 token과 현재 역할 교집합의 `member`/`manager`/`admin`만 `can_write=true`이며 reader는 같은 grant에서도 읽기 전용이다. `mcp:write`는 최대 scope일 뿐이고 대상별 저장 ceiling·resource ownership/native policy를 다시 검사한다. 명시 read는 모든 mutation을 금지하고 기존 grant는 자동 확대하지 않는다.
+`project_scope="all"`의 `manage` 승인은 모든 프로젝트를 writer로 승격하지 않는다. 실제 대상 token과 현재 역할 교집합의 `member`/`admin`만 `can_write=true`이며 reader는 같은 grant에서도 읽기 전용이다. `mcp:write`는 최대 scope일 뿐이고 대상별 저장 ceiling·resource ownership/native policy를 다시 검사한다. 명시 read는 모든 mutation을 금지하고 기존 grant는 자동 확대하지 않는다.
 
 `selected`와 `all`은 현재 작업 도메인 안의 실제 사용자 멤버십만 대상으로 하므로 하나의 OAuth 승인에서 같은 도메인의 여러 프로젝트를 선택할 수 있습니다. 다른 도메인의 프로젝트를 한 승인에 합치거나 나중에 가입한 프로젝트를 자동 추가하지 않습니다. 여러 도메인에서 만든 본인 연결이 계정 목록에 함께 보이는 것과 실행 범위는 별개입니다.
+
+모든 도메인의 `Default` 프로젝트는 MCP로 연결할 수 없다. `GET /api/v1/auth/mcp-projects`(기본·`preview=true`)와 `project_scope="all"`은 Default를 제외하고, `current` 범위의 작업 프로젝트가 Default이거나 `selected`에 Default의 ID가 있으면 `400`(`MCP cannot connect to a domain's Default project`)으로 거부한다. 개인 키 발급·OAuth 승인 모두 같은 검사를 쓴다. 이미 저장된 승인 프로젝트 이름이 Default인 grant는 실행 시 거부하며 삭제하지 않는다. 이름이 ID로만 저장된 구형 grant는 이름으로 식별할 수 없다. `manager`는 Default에만 부여되고 Default는 연결할 수 없으므로 MCP 접근 수준에 manager 단계는 없다.
 
 `GET /api/v1/auth/mcp-projects`의 기본 응답은 native 서비스 정책을 조회하지 않는 기존 `{id,name}` 멤버십 목록입니다. `?preview=true`를 명시하면 프로젝트별 `can_write: boolean|null`, Drover·Palimpsest·Waygate의 native action leaf 목록 `service_permissions`, 조회 불가 상태 `service_errors`를 추가합니다. Lumen 서비스·API 키 권한은 MCP 제어 대상이 아니므로 조회하거나 표시하지 않습니다. Lumen이 승인된 클라우드 MCP를 소비하는 별도 bridge는 유지합니다. `null`은 cloud 권한 미확인이며 reader의 `false`와 다릅니다. OAuth 승인과 개인 API 키 발급 화면은 같은 component를 사용합니다. 계정 화면은 저비용 목록과 preview를 별도 요청으로 소유하므로 서비스 지연·장애가 읽기 전용 키 발급의 멤버십 목록을 없애지 않습니다. 관리 발급에는 확인된 cloud ceiling이 필요합니다. 서비스 권한은 일반 cloud `member`/`admin`에서 추론하지 않으며 native policy가 허용한 범위만 표시합니다. 장애는 권한 없음이나 성공으로 숨기지 않고 미확인으로 구분합니다.
 

@@ -17,7 +17,7 @@ from tests.conftest import make_token_info
     [
         (["admin", "manager", "member", "reader"], False, ["member", "reader"], True),
         (["ADMIN"], False, [], True),
-        (["manager", "reader"], False, ["reader"], True),
+        (["manager", "reader"], False, ["reader"], False),
         (["reader"], False, ["reader"], False),
         (["admin", "manager", "reader"], True, ["admin", "manager", "reader"], True),
     ],

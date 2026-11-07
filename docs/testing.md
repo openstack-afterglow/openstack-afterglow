@@ -6,12 +6,12 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
-## manager = member 동치 (2026-11-07, source/local)
+## Default 프로젝트 MCP 제외·이름 점유·manager 범위 (2026-11-07, source/local)
 
-- 정의: 프로젝트 리소스 제어는 reader/member 경계뿐이며 `manager`는 추가 도메인 관리 권한으로 별도 `member` 배정 없이 member·reader로 취급한다. 시드 role graph에는 `manager → member` edge가 없어, 변경 전 웹 쓰기 판정(`admin`/`member`)은 manager 단독 사용자를 읽기 전용으로 보았고 MCP만 manager를 관리 가능으로 해석했다. 공유 `service_permissions.PROJECT_WRITE_ROLE_NAMES={admin,manager,member}`로 웹 쓰기 판정(`has_project_write_permission`·`require_project_write`·세션/`permissions`의 `can_write`)·Cloud Shell 쓰기 권한·프런트엔드 `canWrite` 폴백·MCP capability를 통일했다. MCP `access_level`은 `^(read|manage)$` 둘뿐이며 manager 전용 단계는 없다.
-- 회귀: manager 단독/대소문자/reader 병행의 `require_project_write` 통과, 실제 provider role 조회를 모사한 caller permissions의 `can_write=true`·`is_reader=false`(reader 단독은 변경 없음), MCP `manage` 발급이 manager 단독 대상에 허용되고 `access_level="manager"`는 거부, 프런트엔드 store의 manager 단독 `canWrite`. 기존 `test_role_visibility`의 `["manager","reader"]→can_write=False` 기대는 변경된 정의 자체를 고정하고 있어 `True`로 갱신했고 공개 role 목록의 시스템 role 숨김(`visible`)은 그대로다.
-- 최종 source`7cb29401…`/4,172files에서 canonical `npm run test:gate`가 exit0: backend14,550passed/94skip, frontend550files/7,615passed, contracts261passed, functional284passed/46skip/124deselected, Ruff879files. Svelte check 0errors/기존15warnings, experience catalog 통과. Python3.12 venv를 PATH 앞에 두고 전용 MariaDB/PostgreSQL/Redis(19339/19356/19382)를 사용했다.
-- 한계: 이 기준은 앱 계층이며 native 권한이 아니다. Nova/Cinder/Neutron은 사용자 token에 자체 정책을 적용하므로 manager 단독 token은 native 정책이나 role implication이 허용해야 변경에 성공한다. 또 `manager`는 Default에서만 직접 부여되고 다른 프로젝트에는 `project_reader` projection만 있어(`docs/api/iam.md`) 일반 프로젝트의 읽기 전용은 바뀌지 않는다. 실제 클라우드·운영 확인은 하지 않았다.
+- 정의: 프로젝트 리소스 제어는 reader/member 경계뿐이며 `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이다. manager는 Default 프로젝트에만 부여할 수 있고(`manager_requires_default_project`, `test_manager_assignment_and_inference_addition_are_Default_only`) 그 Default의 effective manager가 도메인 전체 권한을 행사한다(`test_read_manager_is_Default_effective_not_home_domain_or_admin`). Drover·Waygate·Palimpsest·Lumen의 sibling source는 이미 manager를 쓰기/관리 역할에 포함한다(Drover `_MANAGE_ROLES`, Waygate `_PROJECT_MANAGE_ROLES`, Palimpsest `PROJECT_WRITE_ROLES`, Lumen `PROJECT_WRITE_ROLES`). 핵심 OpenStack은 native 정책이 결정한다. 따라서 Afterglow 자체 게이트(웹 쓰기 판정·Cloud Shell·프런트 `canWrite`·MCP capability)는 `service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, member}`로 유지하며 manager로 넓히지 않는다. 이 범위는 사용자 결정이며, 앞서 app-wide로 넓힌 `ec82f9da`와 직전 세션의 MCP manager 해석을 되돌렸다. MCP `access_level`은 `read|manage` 둘뿐이다.
+- Default 제외: 모든 도메인의 Default 프로젝트는 MCP로 연결할 수 없다. 회귀는 `Default`·`default`·` DEFAULT ` 멤버십이 발견 목록·`all` 후보에서 빠지고 `selected`로 지정하면 `Default project` 오류, 작업 프로젝트가 Default인 `current` 발급 거부(read/manage, 자격·원격 credential 생성 없음), 저장된 승인 이름이 Default인 기존 grant의 실행 시 거부와 일반 이름 허용을 확인한다. 이름이 ID로만 저장된 구형 grant는 이름으로 식별할 수 없다.
+- 이름 점유 강화: 기존 세 진입점(사용자 생성 `project_service.create_project_for_user`, 관리자 생성 `admin_identity.create_project`, 개명 `domain_projects.assert_default_immutable`)은 `name.casefold() == "default"`만 비교해 앞뒤 공백이 붙은 이름은 구분하지 못했다. 판정을 casefold-only로 일시 되돌린 mutation 실행에서 공백 변형 6건이 실패하고 나머지 6건이 통과해, 새 회귀가 이 수정을 실제로 고정함을 확인했다. 공통 `domain_projects.is_reserved_default_name`(strip 후 casefold)을 세 진입점이 쓰고 `Default|default| Default|DEFAULT ` 변형 회귀를 추가했다.
+- 한계: 개인 계정 프로젝트는 `account_spaces.project_name`이 `<이름>-<무작위>`로 생성하므로 이 제외에 해당하지 않는다(소스 확인). 기존 grant는 삭제·자동 회수하지 않는다. 실제 클라우드·운영 확인과 배포는 하지 않았다.
 
 ## MCP 승인 도메인·member preview (2026-11-07, source/local)
 

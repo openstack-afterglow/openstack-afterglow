@@ -10,8 +10,10 @@ from app.services import keystone
 from app.services.mcp_control_plane.sdk import gather_sdk, run_sdk
 from app.services.service_permissions import PROJECT_WRITE_ROLE_NAMES
 
+DEFAULT_PROJECT_NOT_CONNECTABLE = "MCP cannot connect to a domain's Default project"
 
-async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict[str, str]]:
+
+async def _all_membership_projects(conn: Any, owner_user_id: str) -> list[dict[str, str]]:
     from app.services.mcp_control_plane.authority import McpAuthorityError
 
     if getattr(conn, "_afterglow_user_id", None) != owner_user_id:
@@ -55,6 +57,17 @@ async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict
         if isinstance(project_id, str) and project_id and project.get("enabled", True):
             result[project_id] = {"id": project_id, "name": project.get("name") or project_id}
     return sorted(result.values(), key=lambda project: (project["name"], project["id"]))
+
+
+async def caller_membership_projects(conn: Any, owner_user_id: str) -> list[dict[str, str]]:
+    """Enabled caller memberships MCP may use; every domain's Default is system-owned and excluded."""
+    from app.services.domain_projects import is_reserved_default_name
+
+    return [
+        project
+        for project in await _all_membership_projects(conn, owner_user_id)
+        if not is_reserved_default_name(project["name"])
+    ]
 
 
 @dataclass(frozen=True)
@@ -185,6 +198,7 @@ async def project_candidates(
     project_scope: str = "current",
     project_ids: list[str] | None = None,
 ) -> list[dict[str, str]]:
+    from app.services.domain_projects import is_reserved_default_name
     from app.services.mcp_control_plane.authority import McpAuthorityError
 
     if project_scope not in {"current", "selected", "all"}:
@@ -194,17 +208,19 @@ async def project_candidates(
             raise McpAuthorityError("current scope only allows the current project")
         candidates = [{"id": owner_project_id, "name": owner_project_id}]
     else:
-        memberships = await caller_membership_projects(conn, owner_user_id)
+        memberships = await _all_membership_projects(conn, owner_user_id)
         if project_scope == "all":
             if project_ids:
                 raise McpAuthorityError("all scope cannot include selected project IDs")
-            candidates = memberships
+            candidates = [project for project in memberships if not is_reserved_default_name(project["name"])]
         else:
             if not project_ids or len(project_ids) != len(set(project_ids)):
                 raise McpAuthorityError("selected scope requires unique project IDs")
             by_id = {project["id"]: project for project in memberships}
             if any(project_id not in by_id for project_id in project_ids):
                 raise McpAuthorityError("selected project is not an enabled caller membership")
+            if any(is_reserved_default_name(by_id[project_id]["name"]) for project_id in project_ids):
+                raise McpAuthorityError(DEFAULT_PROJECT_NOT_CONNECTABLE)
             candidates = [by_id[project_id] for project_id in project_ids]
     if not candidates:
         raise McpAuthorityError("no enabled caller project memberships are available")

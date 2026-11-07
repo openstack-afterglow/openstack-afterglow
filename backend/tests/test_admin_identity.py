@@ -1069,10 +1069,20 @@ async def test_default_project_delete_rejected_before_resource_inspection(
 
 
 @pytest.mark.asyncio
-async def test_ordinary_project_cannot_be_renamed_to_default(admin_client, mock_conn, domain_native):
+@pytest.mark.parametrize("name", ["Default", "default", " Default", "DEFAULT "])
+async def test_ordinary_project_cannot_be_renamed_to_default(admin_client, mock_conn, domain_native, name):
     mock_conn.identity.get_project.return_value = SimpleNamespace(
         id="tenant", name="Tenant", domain_id="default", is_enabled=True
     )
-    response = await admin_client.patch("/api/v1/admin/projects/tenant?domain_id=default", json={"name": "Default"})
+    response = await admin_client.patch("/api/v1/admin/projects/tenant?domain_id=default", json={"name": name})
     assert response.status_code == 422
     mock_conn.identity.update_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["Default", "default", " Default", "DEFAULT "])
+async def test_administrator_cannot_create_a_project_named_default(admin_client, mock_conn, domain_native, name):
+    mock_conn.identity.get_domain.return_value = SimpleNamespace(id="tenant-a", name="tenant-a")
+    response = await admin_client.post("/api/v1/admin/projects", json={"name": name, "domain_id": "tenant-a"})
+    assert response.status_code == 409
+    mock_conn.identity.create_project.assert_not_called()

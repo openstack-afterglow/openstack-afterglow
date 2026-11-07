@@ -1336,29 +1336,61 @@ async def test_manage_uses_target_roles_not_current_roles_or_admin_flag(project_
     assert metadata == [{"id": provider.b, "name": "B", "roles": ["member"], "can_write": True}]
 
 
-async def test_manager_without_member_assignment_may_hold_manage_but_never_a_third_tier(project_provider):
+async def test_mcp_access_level_has_no_manager_tier(project_provider):
     provider = project_provider
-    provider.roles[provider.b] = ["manager"]
-    metadata = await projects.resolve_project_scope(
-        provider.conn,
-        provider.user,
-        provider.a,
-        ["reader"],
-        project_scope="selected",
-        project_ids=[provider.b],
-        access_level="manage",
-    )
-    assert metadata == [{"id": provider.b, "name": "B", "roles": ["manager"], "can_write": True}]
     with pytest.raises(authority.McpAuthorityError):
+        await projects.resolve_project_scope(
+            provider.conn, provider.user, provider.a, ["member"], project_scope="current", access_level="manager"
+        )
+
+
+@pytest.mark.parametrize("name", ["Default", "default", " DEFAULT "])
+async def test_domain_default_project_is_never_discoverable_or_selectable_for_mcp(project_provider, name):
+    provider = project_provider
+    default_id = str(uuid4())
+    provider.roles[default_id] = ["member"]
+    provider.memberships.append({"id": default_id, "name": name, "enabled": True, "domain_id": "tenant-a"})
+    discovered = await projects.caller_membership_projects(provider.conn, provider.user)
+    assert {row["id"] for row in discovered} == {provider.a, provider.b}
+    everything = await projects.project_candidates(provider.conn, provider.user, provider.a, "all")
+    assert {row["id"] for row in everything} == {provider.a, provider.b}
+    with pytest.raises(authority.McpAuthorityError, match="Default project"):
+        await projects.project_candidates(provider.conn, provider.user, provider.a, "selected", [default_id])
+    with pytest.raises(authority.McpAuthorityError, match="Default project"):
         await projects.resolve_project_scope(
             provider.conn,
             provider.user,
             provider.a,
-            ["reader"],
+            ["member"],
             project_scope="selected",
-            project_ids=[provider.b],
-            access_level="manager",
+            project_ids=[default_id],
+            access_level="read",
         )
+
+
+@pytest.mark.parametrize("access_level", ["read", "manage"])
+async def test_current_project_that_is_a_domain_default_cannot_be_connected(project_provider, access_level):
+    provider = project_provider
+    provider.conn.access.project_name = "Default"
+    with pytest.raises(authority.McpAuthorityError, match="Default project"):
+        await projects.resolve_project_scope(
+            provider.conn, provider.user, provider.a, ["member"], project_scope="current", access_level=access_level
+        )
+    assert not provider.created and not provider.remote
+
+
+def test_existing_grant_on_a_domain_default_project_is_refused_at_use():
+    def grant(name):
+        return SimpleNamespace(
+            access_level="manage",
+            issued_role_ceiling=None,
+            approved_projects=[{"id": "project-1", "name": name, "roles": ["member"], "can_write": True}],
+        )
+
+    assert authority.validate_grant_project(grant("Ordinary"), "project-1", write=True)["id"] == "project-1"
+    for name in ("Default", "default", " Default "):
+        with pytest.raises(authority.McpGrantStateError, match="Default project"):
+            authority.validate_grant_project(grant(name), "project-1")
 
 
 async def test_current_scope_reuses_verified_token_and_saves_real_project_name(project_provider):

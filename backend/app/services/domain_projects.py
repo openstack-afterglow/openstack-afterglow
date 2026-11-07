@@ -27,6 +27,15 @@ def _unavailable():
     return HTTPException(503, "domain_default_authority_unavailable")
 
 
+def is_reserved_default_name(name) -> bool:
+    """The domain-authority project name, ignoring case and surrounding space.
+
+    Keystone accepts a name such as " Default", which a person cannot tell apart
+    from the system-owned project, so every creation and rename path uses this.
+    """
+    return isinstance(name, str) and name.strip().casefold() == "default"
+
+
 def _call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
@@ -579,7 +588,7 @@ def assert_default_immutable(project_id, *, attrs=None, delete=False, ks=None, p
     if not isinstance(name, str):
         raise _unavailable()
     if name.casefold() != "default":
-        if "name" in attrs and attrs["name"].casefold() == "default":
+        if "name" in attrs and is_reserved_default_name(attrs["name"]):
             raise HTTPException(422, "domain_default_is_immutable")
         return
     if delete or any(
