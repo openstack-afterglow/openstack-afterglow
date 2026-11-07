@@ -34,11 +34,6 @@ class TransferOwnershipRequest(BaseModel):
     user_id: str = Field(min_length=1)
 
 
-class ProjectCreatorRequest(BaseModel):
-    domain_id: str | None = Field(default=None, min_length=1)
-    enabled: bool = Field(strict=True)
-
-
 class OwnershipReconcileRequest(BaseModel):
     operation_id: str = Field(min_length=1)
     domain_id: str | None = Field(default=None, min_length=1)
@@ -130,29 +125,6 @@ async def project_capabilities(
             "is_domain_manager": context["is_domain_manager"],
             "can_create_project": await can_create_project(token_info["user_id"], target, operation=operation),
         }
-
-
-@router.get("/creators")
-async def list_project_creators(
-    domain_id: str | None = Query(None, min_length=1),
-    token_info: dict = Depends(get_token_info),
-):
-    from app.services.project_service import project_creators
-
-    return await project_creators(domain_id or token_info["domain_id"], token_info["user_id"])
-
-
-@router.put("/creators/{user_id}")
-async def delegate_project_creator(
-    user_id: str,
-    req: ProjectCreatorRequest,
-    token_info: dict = Depends(get_token_info),
-):
-    from app.services.project_service import change_project_creator
-
-    return await change_project_creator(
-        req.domain_id or token_info["domain_id"], user_id, req.enabled, token_info["user_id"]
-    )
 
 
 @router.get("/{project_id}/eligible-users")

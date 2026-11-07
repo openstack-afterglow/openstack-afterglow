@@ -15,8 +15,8 @@
 	import { get } from 'svelte/store';
 	import { auth } from '$lib/stores/auth';
 	import { continueAfterProjectDeletion } from '$lib/utils/projectDeletionContinuation';
-	let { session, project, callerProject, blocked = false, onChanged, onDeleted, onDenied = () => {} }: {
-		session: IamSession; project: Project; callerProject?: string; blocked?: boolean;
+	let { session, project, callerProject, blocked = false, showDelete = true, onChanged, onDeleted, onDenied = () => {} }: {
+		session: IamSession; project: Project; callerProject?: string; blocked?: boolean; showDelete?: boolean;
 		onChanged: () => void; onDeleted: () => void; onDenied?: () => void;
 	} = $props();
 	const client = untrack(() => projectAuthority(session, callerProject));
@@ -99,9 +99,11 @@
 		{#if ownership.can_transfer}
 			<div class="grid items-end gap-3 md:grid-cols-2"><Field label={t('newOwner')} for={`${uid}-owner`} help={t('eligibleUsersHelp')}><SelectInput id={`${uid}-owner`} bind:value={target} disabled={busy || loading}><option value="">{t('selectUser')}</option>{#each transferUsers as row (row.id)}<option value={row.id}>{row.name} · {row.email || row.id}</option>{/each}</SelectInput></Field><div><Button variant="secondary" disabled={!canTransfer()} ariaBusy={busy} onclick={transfer}>{t('transferOwnership')}</Button></div></div>
 		{/if}
+		{#if showDelete}
 		<p class="text-xs text-ink-2">{t('safeDeleteHelp')}</p>
 		{#if $auth.projectId === project.id && $auth.domainId === session.domainId}<p class="text-xs text-ink-2">{t('activeDeletionHelp')}</p>{/if}
 		<Button variant="danger-outline" disabled={blocked || !session.canSubmit() || busy || loading || needsRefresh || !!pendingTransfer || !ownership.can_delete} onclick={() => { if (current() && session.canSubmit() && !blocked && !pendingTransfer && ownership?.can_delete) deleting = true; }}>{t('deleteProject')}</Button>
+		{/if}
 	{/if}
 </section>
 {#if deleting && current()}

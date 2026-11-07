@@ -85,7 +85,7 @@
 	onDestroy(() => { live = false; sequence++; password = ''; users = []; });
 	const tableSearchId = `${uid}-search`;
 	let tableSearch = $state('');
-	const tableView = createTableView<(typeof users)[number]>({ rows: () => users, locale: () => intlLocale(), search: () => tableSearch, searchable: row => [row.name, row.email, row.id, row.domain_id], columns: () => [{ key: 'name', label: t('name'), value: row => row.name }, { key: 'email', label: t('email'), value: row => row.email }, { key: 'identityDomain', label: t('identityDomain'), value: row => row.domain_id }, { key: 'status', label: t('status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'enabled' : 'disabled') }] });
+	const tableView = createTableView<(typeof users)[number]>({ rows: () => users, locale: () => intlLocale(), search: () => tableSearch, searchable: row => [row.name, row.email, row.id], columns: () => [{ key: 'name', label: t('name'), value: row => row.name }, { key: 'email', label: t('email'), value: row => row.email }, { key: 'status', label: t('status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'enabled' : 'disabled') }] });
 </script>
 
 <div class="space-y-4">
@@ -101,16 +101,16 @@
 				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{user.name}</h3><span class="text-xs">{user.enabled ? t('enabled') : t('disabled')}</span></div>
 				<p class="text-sm break-all">{user.email || '—'}</p>
 				{#if user.protected}<p class="text-xs text-ink-2">{t('protected')}</p>{/if}
-				{#snippet details()}<p class="text-xs">{t('identityDomain')}: <code>{user.domain_id}</code></p>{#if user.domain_id !== session.domainId}<p class="text-xs text-ink-2">{t('foreignIdentity')}</p>{/if}{/snippet}
+				{#snippet details()}{#if user.domain_id !== session.domainId}<p class="text-xs text-ink-2">{t('foreignIdentity')}</p>{/if}{/snippet}
 				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
 			{#if !loading && !error && !users.length}<p class="text-sm text-ink-2">{t('emptyUsers')}</p>{/if}
 		{/snippet}
 	<TableShell><table>
-		<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="identityDomain" /><TableColumnHeader view={tableView} columnKey="status" /><th>{t('actions')}</th></tr></thead>
+		<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="status" /><th>{t('actions')}</th></tr></thead>
 		<tbody>
-			{#each tableView.rows as user (user.id)}<tr><td>{user.name}</td><td>{user.email || '—'}</td><td><code>{user.domain_id}</code>{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button></div></td></tr>{/each}
-			{#if !loading && !error && !users.length}<tr><td colspan="5">{t('emptyUsers')}</td></tr>{/if}
+			{#each tableView.rows as user (user.id)}<tr><td>{user.name}</td><td>{user.email || '—'}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button></div></td></tr>{/each}
+			{#if !loading && !error && !users.length}<tr><td colspan="4">{t('emptyUsers')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>
 	</ResponsiveTable>

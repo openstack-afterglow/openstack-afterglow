@@ -176,7 +176,8 @@ class Directory:
                     scope = {"project": {"id": target.id}}
                     if inherited:
                         scope["OS-INHERIT:inherited_to"] = "projects"
-                    result.append(row(user={"id": uid}, role=source.role, scope=scope))
+                    extra = {"links": {"membership": f"/groups/{gid}/users/{uid}"}} if gid else {}
+                    result.append(row(user={"id": uid}, role=source.role, scope=scope, **extra))
         return result
 
     def assign(self, role, *, user=None, group=None, project=None, domain=None, os_inherit_extension_inherited=False):
@@ -187,17 +188,14 @@ class Directory:
         if not any(vars(r) == vars(added) for r in self.raw):
             self.raw.append(added)
 
-    def revoke(self, role, *, user=None, project=None, **_):
+    def revoke(
+        self, role, *, user=None, group=None, project=None, domain=None, os_inherit_extension_inherited=False, **_
+    ):
         self.calls.append(("revoke", role, user, project))
-        self.raw = [
-            r
-            for r in self.raw
-            if not (
-                r.role["id"] == role
-                and getattr(r, "user", {}).get("id") == user
-                and r.scope.get("project", {}).get("id") == project
-            )
-        ]
+        target = grant(
+            role, user=user, group=group, project=project, domain=domain, inherited=os_inherit_extension_inherited
+        )
+        self.raw = [r for r in self.raw if vars(r) != vars(target)]
 
     def create_domain(self, *, name, description="", enabled, **extra):
         self.calls.append(("domain.create", enabled))
@@ -433,7 +431,12 @@ async def test_creation_anchors_exact_cross_identity_creator_and_reader(domain_n
         "direct_roles": {"manager", "project_owner", "project_reader"},
         "projection_members": {"creator"},
     }
-    assert not any(r.scope.get("domain", {}).get("id") == "created-domain" and r.role["id"] == "manager" for r in n.raw)
+    assert not any(
+        r.scope.get("domain", {}).get("id") == "created-domain"
+        and r.role["id"] == "manager"
+        and getattr(r, "user", None)
+        for r in n.raw
+    )
 
 
 @pytest.mark.asyncio
@@ -456,13 +459,16 @@ async def test_login_grants_only_reader_then_projection_covers_existing_and_futu
     assert not domain_projects.has_manager("ordinary", "tenant-a")
     for target in ("work-a", "default-a"):
         assert any(
-            r.user["id"] == "creator" and r.role["id"] == "project_reader"
+            r.user["id"] == "creator" and r.role["id"] == "manager"
             for r in n.assignments(project=target, effective=True)
         )
     n.project_rows["future"] = row(id="future", name="Future", enabled=True, domain_id="tenant-a", parent_id="tenant-a")
-    assert [r.role["id"] for r in n.assignments(project="future", user="creator", effective=True)] == ["project_reader"]
+    assert [r.role["id"] for r in n.assignments(project="future", user="creator", effective=True)] == ["manager"]
     assert not n.assignments(project="work-b", user="creator", effective=True)
-    assert not any(r.role["id"] == "manager" and r.scope.get("project", {}).get("id") != "default-a" for r in n.raw)
+    assert not any(
+        r.role["id"] == "manager" and getattr(r, "user", None) and r.scope.get("project", {}).get("id") != "default-a"
+        for r in n.raw
+    )
 
 
 @pytest.mark.asyncio
@@ -526,7 +532,7 @@ async def test_projection_resync_removes_revoked_managers_and_live_project_fence
     n = domain_native
     await domain_projects.ensure_login_access("creator", "tenant-a")
     await login_proofs.store("creator")
-    assert "reader" in await login_proofs.roles("creator", "work-a")
+    assert "manager" in await login_proofs.roles("creator", "work-a")
     assert await login_proofs.manager("creator")
     n.raw = [r for r in n.raw if r.role["id"] != "manager"]
     assert n.members["projection-tenant-a"] == {"creator"}
@@ -564,7 +570,7 @@ async def test_usage_governance_rejects_stale_projection_but_allows_direct_reade
     n.raw = [r for r in n.raw if r.role["id"] != "manager"]
     domain_projects.assert_membership("creator", "tenant-a")
     assert not domain_projects.has_manager("creator", "tenant-a")
-    assert any(r.user["id"] == "creator" for r in n.assignments(project="work-a", effective=True))
+    assert any(r.user["id"] == "creator" for r in n.assignments(project="default-a", effective=True))
     mock_conn._afterglow_project_id = "work-a"
     app.dependency_overrides[get_governance_conn] = lambda: mock_conn
     app.dependency_overrides[get_token_info] = lambda: {
@@ -647,7 +653,7 @@ async def test_projection_sync_external_manager_changes_preserve_stored_login(do
     await domain_projects.sync_manager_access("tenant-a")
     assert n.members["projection-tenant-a"] == {"creator", "second"}
     assert await login_proofs.manager("second")
-    assert "reader" in await login_proofs.roles("second", "work-a")
+    assert "manager" in await login_proofs.roles("second", "work-a")
     domain_projects.assert_project_membership("second", "work-a")
     await login_proofs.preserved()
 
@@ -1011,16 +1017,19 @@ async def test_canonical_role_and_native_reader_hierarchy_validated_before_any_w
 
 
 @pytest.fixture
-def creator_native(domain_native):
+def legacy_creator_native(domain_native):
     domain_native.role_rows.append(row(id="project_creator", name="project_creator", domain_id=None))
-    domain_native.raw.append(grant("project_creator", user="ordinary", project="default-a"))
+    domain_native.raw += [
+        grant("project_reader", user="ordinary", project="default-a"),
+        grant("project_creator", user="ordinary", project="default-a"),
+    ]
     return domain_native
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["direct", "group", "implication", "domain-inherited", "ancestor-inherited"])
-async def test_creator_capability_proves_current_effective_default_sources(creator_native, source):
-    n = creator_native
+async def test_legacy_project_creator_grant_never_authorizes_creation(legacy_creator_native, source):
+    n = legacy_creator_native
     n.raw = [r for r in n.raw if r.role["id"] != "project_creator"]
     if source == "group":
         n.group_rows["creators"] = row(id="creators", name="Creators", domain_id="tenant-a")
@@ -1037,134 +1046,41 @@ async def test_creator_capability_proves_current_effective_default_sources(creat
         n.raw.append(grant("project_creator", user="ordinary", project="work-a", inherited=True))
     else:
         n.raw.append(grant("project_creator", user="ordinary", project="default-a"))
-    assert await project_service.can_create_project("ordinary", "tenant-a")
+    assert not await project_service.can_create_project("ordinary", "tenant-a")
     assert not domain_projects.has_manager("ordinary", "tenant-a")
-    n.raw = [r for r in n.raw if r.role["id"] not in {"project_creator", "creator-alias"}]
-    assert not await project_service.can_create_project("ordinary", "tenant-a")
+    assert await project_service.can_create_project("creator", "tenant-a")
     assert n.calls == []
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scope", ["legacy-domain", "ordinary-project", "other-default", "missing-default"])
-async def test_creator_wrong_scope_never_authorizes_creation(creator_native, scope):
-    n = creator_native
-    n.raw = []
-    if scope == "legacy-domain":
-        n.raw.append(grant("project_creator", user="ordinary", domain="tenant-a"))
-    elif scope == "ordinary-project":
-        n.raw.append(grant("project_creator", user="ordinary", project="work-a"))
-    elif scope == "other-default":
-        n.raw.append(grant("project_creator", user="ordinary", project="default-b"))
-    else:
-        del n.project_rows["default-a"]
-    assert not await project_service.can_create_project("ordinary", "tenant-a")
-    assert n.calls == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "fault",
-    [
-        "disabled-default",
-        "duplicate-default",
-        "lookalike-default",
-        "duplicate-role",
-        "lookalike-role",
-        "disabled-user",
-        "disabled-home",
-        "missing-provenance",
-        "wrong-effective-scope",
-    ],
-)
-async def test_creator_native_authority_faults_fail_closed(creator_native, fault):
-    n = creator_native
-    if fault == "disabled-default":
-        n.project_rows["default-a"].enabled = False
-    elif fault == "duplicate-default":
-        n.project_rows["duplicate"] = row(id="duplicate", name="Default", domain_id="tenant-a", enabled=True)
-    elif fault == "lookalike-default":
-        n.project_rows["default-a"].name = "default"
-    elif fault == "duplicate-role":
-        n.role_rows.append(row(id="duplicate-role", name="Project_Creator", domain_id=None))
-    elif fault == "lookalike-role":
+@pytest.mark.parametrize("variant", ["canonical", "duplicate", "lookalike"])
+async def test_legacy_project_creator_identity_does_not_break_membership_or_manager_authority(
+    legacy_creator_native, variant
+):
+    n = legacy_creator_native
+    if variant == "duplicate":
+        n.role_rows.append(row(id="duplicate-creator", name="Project_Creator", domain_id=None))
+        n.raw.append(grant("duplicate-creator", user="ordinary", project="default-a"))
+    elif variant == "lookalike":
         n.role_rows[-1].name = "Project_Creator"
-    elif fault == "disabled-user":
-        n.user_rows["ordinary"].enabled = False
-    elif fault == "disabled-home":
-        n.domain_rows["tenant-a"].enabled = False
-    else:
-        original = n.role_assignments.list
-
-        def broken(**kwargs):
-            if fault == "missing-provenance" and not kwargs:
-                return [r for r in n.raw if r.role["id"] != "project_creator"]
-            rows = original(**kwargs)
-            if fault == "wrong-effective-scope" and kwargs.get("project") == "default-a" and kwargs.get("effective"):
-                rows.append(grant("project_creator", user="ordinary", project="work-a"))
-            return rows
-
-        n.role_assignments.list = broken
-    with pytest.raises(HTTPException) as denied:
-        await project_service.can_create_project("ordinary", "tenant-a")
-    assert denied.value.status_code in {401, 403, 503}
+    domain_projects.assert_membership("ordinary", "tenant-a")
+    assert {d["id"] for d in domain_projects.accessible_domains("ordinary")} >= {"tenant-a"}
+    assert not domain_projects.has_manager("ordinary", "tenant-a")
+    assert domain_projects.has_manager("creator", "tenant-a")
+    assert not await project_service.can_create_project("ordinary", "tenant-a")
+    assert await project_service.can_create_project("creator", "tenant-a")
     assert n.calls == []
+    await domain_projects.ensure_login_access("ordinary", "tenant-a")
+    assert not any("project_creator" in call or "duplicate-creator" in call for call in n.calls)
 
 
-def test_creator_project_assignment_targets_only_canonical_default(creator_native):
-    n = creator_native
-    domain_projects.assert_creator_assignment("default-a", "project_creator")
-    with pytest.raises(HTTPException) as denied:
-        domain_projects.assert_creator_assignment("work-a", "project_creator")
-    assert denied.value.detail == "project_creator_requires_default_project"
-    n.role_rows.append(row(id="creator-alias", name="creator-alias", domain_id=None))
-    n.edges.append({"prior_role": {"id": "creator-alias"}, "implies": [{"id": "project_creator"}]})
-    with pytest.raises(HTTPException) as denied:
-        domain_projects.assert_creator_assignment("work-a", "creator-alias")
-    assert denied.value.status_code == 422
-    assert n.calls == []
+def test_retired_project_creator_service_and_routes_are_removed():
+    from app.api.identity import projects
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("source", ["group", "implication", "domain-inherited"])
-async def test_creator_delegation_preserves_non_direct_effective_grants(creator_native, source):
-    n = creator_native
-    n.raw = [r for r in n.raw if r.role["id"] != "project_creator"]
-    if source == "group":
-        n.group_rows["creators"] = row(id="creators", name="Creators", domain_id="tenant-a")
-        n.members["creators"] = {"ordinary"}
-        n.raw.append(grant("project_creator", group="creators", project="default-a"))
-    elif source == "implication":
-        n.role_rows.append(row(id="creator-alias", name="creator-alias", domain_id=None))
-        n.edges.append({"prior_role": {"id": "creator-alias"}, "implies": [{"id": "project_creator"}]})
-        n.raw.append(grant("creator-alias", user="ordinary", project="default-a"))
-    else:
-        n.raw.append(grant("project_creator", user="ordinary", domain="tenant-a", inherited=True))
-    listed = await project_service.project_creators("tenant-a", "creator")
-    assert listed["users"][0]["id"] == "ordinary"
-    assert listed["users"][0]["direct"] is False and listed["users"][0]["source"] == "inherited"
-    unchanged = await project_service.change_project_creator("tenant-a", "ordinary", False, "creator")
-    assert unchanged["users"] == listed["users"]
-    assert await project_service.can_create_project("ordinary", "tenant-a")
-    assert n.calls == []
-
-
-@pytest.mark.asyncio
-async def test_creator_listing_reuses_one_effective_default_assignment_read_for_500_users(creator_native):
-    n = creator_native
-    n.raw = [source for source in n.raw if source.role["id"] != "project_creator"]
-    expected = {f"scale-creator-{index:03d}" for index in range(500)}
-    for uid in sorted(expected):
-        n.user_rows[uid] = row(id=uid, name=uid, enabled=True, domain_id="tenant-a")
-        n.raw.append(grant("project_creator", user=uid, project="default-a"))
-    n.read_calls.clear()
-    listed = await project_service.project_creators("tenant-a", "creator")
-    assert {user["id"] for user in listed["users"]} == expected
-    assignment_reads = [call for call in n.read_calls if call[0] == "assignments.list"]
-    assert sum(call[1] == "default-a" and call[4] is True for call in assignment_reads) == 1
-    assert sum(call[1] == "default-a" and call[4] is False for call in assignment_reads) == 1
-    assert not any(call[2] in expected for call in assignment_reads)
-    assert all(user["direct"] is True and user["source"] == "direct" for user in listed["users"])
-    assert n.calls == []
+    assert not hasattr(project_service, "project_creators")
+    assert not hasattr(project_service, "change_project_creator")
+    assert not hasattr(domain_projects, "assert_creator_assignment")
+    assert not any("/creators" in getattr(route, "path", "") for route in projects.router.routes)
 
 
 @pytest.mark.parametrize("kind", ["ambiguous", "disabled", "case", "foreign"])
@@ -1955,7 +1871,7 @@ async def test_login_repairs_entire_stale_projection_not_only_login_user(
     assert n.calls
     assert n.members[gid] == expected
     assert [vars(r) for r in n.assignments(group=gid)] == [
-        vars(grant("project_reader", group=gid, domain="tenant-a", inherited=True))
+        vars(grant("manager", group=gid, domain="tenant-a", inherited=True))
     ]
     for uid in ("creator", "second", "other"):
         assert domain_projects.has_manager(uid, "tenant-a") is (uid in expected)

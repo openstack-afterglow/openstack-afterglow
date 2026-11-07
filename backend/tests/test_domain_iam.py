@@ -445,9 +445,8 @@ async def test_own_domain_lists_and_foreign_targets(directory):
     users = await domain_iam.list_resources("users", manager())
     assert "foreign" not in {u["id"] for u in users["items"]}
     assert next(u for u in users["items"] if u["id"] == "domain-manager")["protected"]
-    for kind in ["projects", "groups"]:
-        rows = await domain_iam.list_resources(kind, manager())
-        assert all(row["domain_id"] == "domain" for row in rows["items"])
+    rows = await domain_iam.list_resources("projects", manager())
+    assert all(row["domain_id"] == "domain" for row in rows["items"])
     with pytest.raises(HTTPException) as denied:
         await domain_iam.update_user("foreign", {"password": PASSWORD}, manager())
     assert denied.value.status_code == 403
@@ -1175,14 +1174,6 @@ async def test_existing_email_signup_response_is_generic_and_never_resets(direct
             await domain_iam.redeem(token, "registration", session, name="new-name", password="attacker-password")
         assert exists.value.status_code == 409
     assert directory.users["member"].password == PASSWORD and not directory.creates
-
-
-@pytest.mark.asyncio
-async def test_foreign_directory_response_fails_closed_before_publication(directory):
-    directory.ks.groups.list = lambda **kwargs: [SimpleNamespace(id="other-team", name="Other", domain_id="other")]
-    with pytest.raises(HTTPException) as denied:
-        await domain_iam.list_resources("groups", manager())
-    assert denied.value.status_code == 403
 
 
 @pytest.mark.asyncio

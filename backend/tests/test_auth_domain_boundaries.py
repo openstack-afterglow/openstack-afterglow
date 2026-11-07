@@ -1290,14 +1290,35 @@ async def test_rotation_publication_rechecks_native_authority(domain_client, mon
 @pytest.mark.parametrize(
     "path",
     [
-        "/api/v1/chat/admin/providers",
         "/api/v1/k3s/clusters",
         "/api/v1/waygate/servers",
         "/api/v1/palimpsest/hub/layers",
         "/api/v1/projects/current/permissions",
     ],
 )
-async def test_service_system_admin_target_needs_no_project_membership(domain_client, path):
+async def test_service_user_pages_use_ordinary_membership_even_for_system_admin(domain_client, path):
+    client, state = domain_client
+    state.assignments.append(
+        {
+            "user": {"id": "user"},
+            "role": {"id": "admin-role"},
+            "scope": {"system": {"all": True}},
+        }
+    )
+    state.grants["user"] = ["own"]
+    tokens = await native_project_login(client)
+    with pytest.raises(HTTPException) as denied:
+        await deps._resolve_jwt_token_info(boundary_request(path), tokens["token"], "second")
+    assert denied.value.status_code == 403
+    assert denied.value.detail == "project_membership_denied"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/chat/admin/providers", "/api/v1/waygate/admin/resource-policies"],
+)
+async def test_service_admin_subpath_keeps_system_elevation_without_project_membership(domain_client, path):
     client, state = domain_client
     state.assignments.append(
         {
@@ -1316,13 +1337,61 @@ async def test_service_system_admin_target_needs_no_project_membership(domain_cl
 
 
 @pytest.mark.asyncio
+async def test_service_user_page_system_admin_with_membership_uses_ordinary_project_scope(domain_client):
+    client, state = domain_client
+    state.assignments.append(
+        {
+            "user": {"id": "user"},
+            "role": {"id": "admin-role"},
+            "scope": {"system": {"all": True}},
+        }
+    )
+    state.grants["user"] = ["own", "second"]
+    tokens = await native_project_login(client)
+    info = await deps._resolve_jwt_token_info(boundary_request("/api/v1/waygate/servers"), tokens["token"], "second")
+    assert (info["project_id"], info["connection_project_id"]) == ("second", "second")
+    assert info.get("_live_system_admin") is not True
+
+
+@pytest.mark.asyncio
+async def test_service_user_page_system_admin_default_manager_uses_projection_membership(domain_client, monkeypatch):
+    # Production shape: a system admin who is also the domain's Default manager, with no direct grant
+    # on the target. Membership comes from the managed projection (domain-inherited reader row) plus
+    # the Default manager proof. The fake directory has no projection group, so only the internal
+    # collection helpers are stubbed to the production-shaped answers, after login; the real
+    # assert_project_membership check runs.
+    from app.services import domain_projects
+
+    client, state = domain_client
+    state.assignments.append({"user": {"id": "user"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}})
+    state.grants["user"] = ["own", "second"]
+    tokens = await native_project_login(client)
+    monkeypatch.setattr(domain_projects, "_effective", lambda *a, **k: [{"user": {"id": "user"}}])
+    monkeypatch.setattr(domain_projects, "_sources", lambda *a, **k: [])
+    monkeypatch.setattr(domain_projects, "default_project", lambda *a, **k: {"id": "default-tenant-a"})
+    monkeypatch.setattr(domain_projects, "_manager_users", lambda *a, **k: {"user"})
+    calls = []
+    original = domain_projects.assert_project_membership
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(domain_projects, "assert_project_membership", spy)
+    info = await deps._resolve_jwt_token_info(boundary_request("/api/v1/waygate/servers"), tokens["token"], "second")
+    assert calls and calls[0][1] == "second"
+    assert (info["project_id"], info["connection_project_id"]) == ("second", "second")
+    assert info.get("_live_system_admin") is not True
+
+
+@pytest.mark.asyncio
 async def test_service_cached_admin_cannot_outlive_current_system_assignment(domain_client):
     client, state = domain_client
     grant = {"user": {"id": "user"}, "role": {"id": "admin-role"}, "scope": {"system": {"all": True}}}
     state.assignments.append(grant)
     state.grants["user"] = ["own"]
     tokens = await login(client)
-    request = boundary_request("/api/v1/waygate/servers")
+    request = boundary_request("/api/v1/waygate/admin/resource-policies")
     await deps._resolve_jwt_token_info(request, tokens["token"], "second")
     state.assignments.remove(grant)
     with pytest.raises(HTTPException) as denied:
@@ -1439,7 +1508,9 @@ async def test_system_admin_project_loss_keeps_context_and_refresh(domain_client
     assert stored["family_id"] == original["family_id"]
     assert stored["started_at"] == original["started_at"]
     assert state.grants["user"] == []
-    info = await deps._resolve_jwt_token_info(boundary_request("/api/v1/waygate/servers"), tokens["token"], "foreign")
+    info = await deps._resolve_jwt_token_info(
+        boundary_request("/api/v1/waygate/admin/resource-policies"), tokens["token"], "foreign"
+    )
     assert info["connection_project_id"] == "" and info["_live_system_admin"] is True
     with pytest.raises(HTTPException) as core_denied:
         await deps._resolve_jwt_token_info(boundary_request("/api/v1/networks"), tokens["token"], "foreign")

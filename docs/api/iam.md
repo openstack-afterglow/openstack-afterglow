@@ -8,7 +8,7 @@ nav_order: 13
 
 > 기본 경로: `/api/v1/iam`
 
-현재 선택한 canonical **작업 도메인** 안에서 사용자·프로젝트 멤버·초대·로그인 방법·할당 예산과 관측을 관리합니다. 계정 소속 **identity/home 도메인**과 작업 도메인은 다르며, 다른 도메인 가입으로 기존 identity가 이동하지 않습니다. 시스템 전체 domain inventory 및 Default manager bootstrap은 [관리자 API](admin.md#도메인-관리와-관측), 공개 로그인·링크 수락과 작업 도메인 전환은 [인증 API](auth.md)를 사용합니다.
+현재 선택한 canonical **작업 도메인** 안에서 사용자·프로젝트(이름·설명과 멤버)·그룹·초대·로그인 방법·할당 예산과 관측을 관리합니다. 계정 소속 **identity/home 도메인**과 작업 도메인은 다르며, 다른 도메인 가입으로 기존 identity가 이동하지 않습니다. 시스템 전체 domain inventory 및 Default manager bootstrap은 [관리자 API](admin.md#도메인-관리와-관측), 공개 로그인·링크 수락과 작업 도메인 전환은 [인증 API](auth.md)를 사용합니다.
 
 사용자에게 어떤 프로젝트·서비스 역할이 필요한지는 [서비스별 사용자 IAM 안내](../user-guide.md#서비스별-사용자-iam)와 콘솔 `/docs/iam`을 참고하세요. 이 API 문서는 요청·응답 계약, 공개 가이드는 manager와 프로젝트·서비스별 관리 등급까지의 기능 조건·권한 조합을 설명합니다.
 
@@ -16,7 +16,7 @@ nav_order: 13
 
 모든 route는 access bearer와 `require_domain_manager`를 요구합니다. 서버는 작업 도메인의 canonical `Default` 프로젝트에서 현재 유효한 `manager`를 확인합니다. 직접·그룹·범위 상속·실제 역할 ID 추론을 포함하되 다른 프로젝트의 manager/admin 이름이나 JWT의 과거 flag는 권한 근거가 아닙니다. **System admin만으로는 사용자 IAM을 우회할 수 없습니다.** 선택 프로젝트와 무관하므로 읽기 전용 일반 프로젝트 또는 프로젝트 미선택 상태에서도 해당 Default manager는 접근합니다. Body/query 또는 `X-Project-Id`로 작업 도메인을 바꾸지 못하며, 인증 API의 명시적 도메인 전환을 먼저 수행해야 합니다.
 
-사용자 화면은 `/dashboard/iam/users`와 `/dashboard/iam/projects`로 분리한다. 사용자 관리의 users/invitations/login/recovery/monitoring 및 도메인 전체 프로젝트 관리는 위 manager 경계를 유지한다. 프로젝트 관리에는 현재 Default `project_creator`도 진입할 수 있지만 `/api/v1/projects`의 현재 프로젝트 owner/admin 권한으로만 멤버·소유권을 관리하며, creator라는 이유로 사용자 directory·creator 위임·다른 사용자의 프로젝트를 관리하지 못한다. 프로젝트 선택창의 새 프로젝트는 같은 fresh capability를 사용하고 활성 조직 도메인의 프로젝트 관리로 이동할 수 있다.
+사용자 화면은 사용자(`/dashboard/iam/users`)·프로젝트(`/dashboard/iam/projects`)·그룹(`/dashboard/iam/groups`) 관리 페이지로 분리한다. 세 페이지 모두 위 manager 경계를 유지하며 fresh manager 확인 전에는 목록을 조회하지 않는다. 사용자 관리는 users/invitations/login/recovery/monitoring을 다루며 작업 도메인 카드나 identity 도메인 열을 표시하지 않는다. 프로젝트 관리는 `/api/v1/projects/capabilities`의 `is_domain_manager`가 확인된 조직 도메인에서만 열리고, 프로젝트 목록은 편집·멤버·제거 액션을 가진 표이며 편집·멤버 상세는 오른쪽 slide-in으로 연다. 과거 `project_creator` 진입·위임 UI는 제거되었다. 프로젝트 선택창의 새 프로젝트는 같은 fresh capability를 사용하고 활성 조직 도메인의 프로젝트 관리로 이동할 수 있다.
 
 Project·조회한 group은 native 작업 domain ID를 다시 확인합니다. 사용자 directory는 home 사용자와 현재 native 명시적 할당·유효 멤버십으로 확인되는 **joined 사용자**를 포함하며, manager 읽기 projection만으로 외부 사용자를 가입자로 만들지 않습니다. User의 `domain_id`는 실제 home identity 도메인으로, 작업 도메인과 다를 수 있습니다. Joined 사용자는 프로젝트 멤버로 관리할 수 있지만 **name/email/password뿐 아니라 enabled 변경도 home-bound**입니다. 다른 도메인의 manager는 그 계정 자체를 편집할 수 없습니다. 새 멤버 변경 대상 프로젝트는 enabled여야 합니다. Foreign domain/비활성 프로젝트/현재 권한 없음은403, native object 없음은404, 확인 불가는503입니다. IAM credential 변경은 operational account 및 privileged/service/federated 계정을 보호합니다. Enabled-only 변경도 마지막 활성 effective common manager와 소유권 보호를 통과해야 합니다. 보호 대상은 조회 가능하되 허용되지 않은 편집을 UI에 제공하지 않습니다.
 
@@ -34,7 +34,14 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `PATCH /users/{user_id}` | UpdateUser | User; 20회/분 |
 | `DELETE /users/{user_id}` | 없음 | `{status:"removed",domain_id,user_id}`; 현재 도메인에서만 내보내기, 20회/분 |
 | `GET /projects` | 없음 | `{items:[Resource]}` |
-| `GET /groups` | 없음 | `{items:[Resource]}` |
+| `PATCH /projects/{project_id}` | UpdateProject `{name?,description?}` | `{id,name,description,enabled}`; 20회/분 |
+| `GET /groups` | 없음 | `{items:[Group]}`; manager projection group 제외 |
+| `POST /groups` | `{name,description?}` | 201 Group; 20회/분 |
+| `PATCH /groups/{group_id}` | `{name?,description?}` | Group; 20회/분 |
+| `DELETE /groups/{group_id}` | 없음 | 204; 20회/분 |
+| `GET /groups/{group_id}/members` | 없음 | `{items:[GroupMember]}` |
+| `PUT /groups/{group_id}/members/{user_id}` | 없음 | 204; 20회/분 |
+| `DELETE /groups/{group_id}/members/{user_id}` | 없음 | 204; 20회/분 |
 | `GET /projects/{project_id}/members` | 없음 | `{items:[Member]}` |
 | `GET /projects/{project_id}/assignable-roles` | 없음 | `{roles,is_owner,can_manage_owners}` |
 | `PUT /projects/{project_id}/members/{user_id}/roles` | `{role_ids:["exact-role-id"]}` | 갱신된 Member |
@@ -85,7 +92,7 @@ Directory 목록에는 limit/marker 계약이 없고 native 작업 domain invent
 
 ## 사용자 요청·응답
 
-`User={id,name,email,enabled,domain_id,protected}`. `domain_id`는 home 도메인이며 joined 사용자의 작업 도메인으로 덮어쓰지 않습니다. `protected`는 credential/profile 보호 판정으로 외부 home 사용자도 true입니다. Enabled-only 변경은 별도 보호 판정을 하므로 이 boolean이 모든 필드의 편집 허가를 뜻하지는 않습니다. `Resource={id,name,description,domain_id,enabled}`이고 project/group 목록에 공통 사용합니다.
+`User={id,name,email,enabled,domain_id,protected}`. `domain_id`는 home 도메인이며 joined 사용자의 작업 도메인으로 덮어쓰지 않습니다. `protected`는 credential/profile 보호 판정으로 외부 home 사용자도 true입니다. Enabled-only 변경은 별도 보호 판정을 하므로 이 boolean이 모든 필드의 편집 허가를 뜻하지는 않습니다. `Resource={id,name,description,domain_id,enabled}`이고 project 목록에 사용합니다. Group 목록은 아래 [그룹 관리](#그룹-관리)의 `Group` DTO를 사용합니다.
 
 조직 manager는 `POST /invitations`로 이메일 초대를 발행하며 직접 human 생성은 제공하지 않습니다. Native 신규 계정은 검증된 초대 수락 또는 공개 가입/신뢰된 외부 가입에서 shared accounts에 만들고 shared personal의 자기 primary project를 준비합니다. Explicit system-admin의 새 human 생성은 [관리자 API](admin.md)를 사용하며 선택 domain의 Default에는 자동 가입하지 않습니다. 기존 identity·credentials·home을 조직으로 옮기거나 복제하지 않습니다.
 
@@ -103,6 +110,31 @@ UpdateUser는 `{name?,email?,password?,enabled?}`만 받습니다. 최소 하나
 
 사용자 결정(2026-10-26): 이 작업의 내보내기는 잘못 연결된 외부-home 계정의 **현재 접근만 회수**하는 기능이며 영구 가입 금지/계정 연결 이전이 아니다. SSO auto-join 정책과 기존 pending 초대를 유지한다. 따라서 다음 SSO 로그인에서 기존 trusted auto-join 규칙을 통과하거나 기존 초대를 수락하면 다시 가입할 수 있다. 확인창·사용자 도움말도 이 한계를 명시하며 enrollment revoke/tombstone/identity merge를 부수 효과로 수행하지 않는다.
 
+### 프로젝트 이름·설명 편집
+
+`PATCH /projects/{project_id}`는 현재 작업 도메인 manager가 native project의 `name`·`description`만 바꾸는 경로다. Body는 `{name?,description?}`이며 extra field(`enabled`, `domain_id`, `parent_id` 등)는422 `Invalid IAM request`, 빈 body·null 값은422 `Supply non-null project fields`다. Name은 Personal 표시 이름과 같은 규칙(control/format 문자 금지, trim 뒤1–64자)이며 trim된 값을 저장한다. Description은 최대4096자 문자열이고 `""`는 설명을 비운다. 활성화/비활성화·도메인/상위 이동·소유권 변경은 이 경로에 없다.
+
+Fresh manager 재확인 뒤 role graph lease 아래 native project를 exact ID로 읽고 현재 도메인 소속을 확인한다(외부 도메인403 `Resource is outside the current domain`, 부재404 `project_not_found`). 공유 Default 불변 규칙에 따라 Default 프로젝트 이름 변경과 다른 프로젝트의 `Default` 이름 사용(대소문자·앞뒤 공백 무시)은422 `domain_default_is_immutable`다. Default의 **description 변경은 시스템 관리자 경로와 같이 허용**한다. 미완료 ownership journal은409 `project_ownership_native_operation_unresolved`로 차단한다. Disabled 프로젝트도 이름·설명은 편집할 수 있다.
+
+이름 중복은 Keystone의 도메인 내 uniqueness가 판정하며 사전 조회하지 않는다. Native 실패는 409→409 `project_name_conflict`, 400/422→422 `project_update_invalid`, 401/403→403 `project_update_denied`, 404→404 `project_not_found`, 그 밖→503 `project_update_unavailable`로만 공개하고 native 메시지는 노출하지 않는다. 쓰기 결과의 ID·도메인·요청 값이 일치하지 않으면503 `project_update_unverified`다. 성공·실패와 무관하게 도메인 권위/작업 directory, 해당 도메인의 모든 사용자 프로젝트 목록, 관리자 프로젝트 목록·이름 cache를 무효화하고 `project.update` activity를 기록한다. 자동 retry는 하지 않는다.
+
+### 그룹 관리
+
+`/groups` route는 작업 도메인의 Keystone group을 manager가 관리하는 경로다. 도메인은 항상 인증 세션에서 정하며 body/query로 바꿀 수 없다. 모든 mutation은 fresh manager 재확인과 role graph lease 아래 실행되고 20회/분이며, extra field는422 `Invalid IAM request`다.
+
+`Group={id,name,description,domain_id,member_count,protected,sso_mapped}`. `GET /groups`는 이름 casefold·ID 순으로 반환하며 내부 manager projection group(`afterglow-default-managers-*`)은 **목록에서 숨긴다**(이전 `Resource` 목록은 이를 표시했다). ID로 직접 지정해도403 `domain_manager_projection_is_private`이고, 생성·이름 변경에서 projection 이름 prefix나 description marker를 쓰는 것도 같은 코드로 거부한다. 다른 도메인 group은403 `Resource is outside the current domain`, 부재는404 `domain_group_not_found`다.
+
+`protected=true`는 그 group이 가진 grant 중 하나라도 **이 도메인의 프로젝트(또는 이 도메인 자체)에 대한, domain manager가 프로젝트에 부여할 수 있는 표준 프로젝트 등급 역할**(`project_owner/admin/member/reader`와 native `member`/`reader`의 안전한 catalog binding)이 아닌 경우다. 예를 들어 system-scope grant, 다른 도메인 프로젝트 grant, 서비스 역할·`manager`·custom 역할 grant가 있으면 protected다. Protected group은 읽기 전용이라 이름·설명 변경, 삭제, 멤버 변경이 모두403 `domain_group_read_only`다. `sso_mapped=true`는 이 도메인에 설정된 SSO mapping이 이름으로 해석하는 group이며, 이름 변경·삭제는403 `domain_group_read_only`(설명만 변경은 허용)이고 다른 group을 그 이름으로 만들거나 바꾸는 것은403 `domain_group_name_reserved`다. Mapping을 읽을 수 없으면 mapped가 아닌 것으로 간주하지 않고503이다.
+
+- `POST /groups`: `{name, description?}`. Name은1–64자이고 앞뒤 공백 불가, description은 최대255자(기본 `""`)다. 같은 도메인의 기존 이름과 대소문자 무시로 같으면409 `domain_group_name_exists`다. 성공201 Group(`member_count:0`, `protected:false`).
+- `PATCH /groups/{group_id}`: `{name?, description?}`이며 같은 길이 규칙을 따른다. 빈 body·null 값은422 `Supply non-null group fields`다. 이름이 실제로 바뀔 때만 중복(409 `domain_group_name_exists`)과 SSO 예약 이름을 검사한다.
+- `DELETE /groups/{group_id}`: 204. Manager 본인을 제외한 privileged account가 멤버로 있으면403 `Privileged accounts are read-only in domain IAM`이다.
+- `GET /groups/{group_id}/members`: `GroupMember=User+{identity_read_only}`. `protected`는 본인이 아닌 privileged account 여부, `identity_read_only`는 home 도메인이 작업 도메인과 다른지 여부다.
+- `PUT /groups/{group_id}/members/{user_id}`: 204. 대상은 현재 도메인 home/joined 사용자여야 하며 아니면403 `User has not joined this domain`, 이미 멤버면409 `domain_group_member_exists`다.
+- `DELETE /groups/{group_id}/members/{user_id}`: 204. 멤버가 아니면404 `domain_group_member_not_found`다.
+
+Privileged account(다른 privileged/service 계정)는 group에 추가·제거할 수 없고(403 `Privileged accounts are read-only in domain IAM`), manager는 자기 자신의 membership은 변경할 수 있다. 멤버 변경·삭제는 일반 group 경로의 마지막 유효 manager 보호와 owner-bearing group grant 보호(409 `Owner-bearing group grants require an explicit project ownership transition`)를 그대로 거친다. 이 IAM API는 group 역할 할당을 제공하지 않으며 프로젝트 접근은 프로젝트 멤버 화면(`/projects/{project_id}/members`)에서 관리한다.
+
 ## 멤버·역할과 `can_manage_owners`
 
 `Member`는 `{user_id,username,email,source,roles,is_owner,is_manager,direct_role_ids,direct_roles,effective_role_ids,external_role_ids,group_name?}`입니다. Source는 direct/group/inherited/mixed이며 direct/effective/external ID를 구분합니다. `direct_roles`는 실제 직접 역할의 `{id,name,inherited_role_ids}` 읽기 전용 metadata로, 편집 목록에 없는 역할의 이름·전체 descendant도 보존하지만 부여 가능 목록은 아닙니다. `external_role_ids`는 group/domain 상속만 나타냅니다. Assignable role은 현재 catalog의 `{id,name,description,domain_id,protected,system_only,implied_role_ids,inherited_role_ids,parent_role_ids,area,grade}`입니다.
@@ -119,13 +151,13 @@ Default의 manager들은 같은 도메인의 모든 프로젝트에 **공통 관
 
 프로젝트 리소스 제어는 reader와 member의 경계뿐입니다(`service_permissions.PROJECT_WRITE_ROLE_NAMES = {admin, member}`). `manager`는 사용자·프로젝트·role·group을 다루는 추가 도메인 관리 권한이며 **Default 프로젝트에만** 부여할 수 있고(`manager_requires_default_project`), 그 Default의 effective manager가 도메인 전체 관리 권한을 행사합니다. Drover·Waygate·Palimpsest·Lumen은 각자의 policy에서 이미 manager를 member 이상의 쓰기 역할로 포함하고 핵심 OpenStack 서비스는 native 정책이 결정하므로 Afterglow 자체 쓰기 판정은 manager로 넓히지 않습니다. `Default`는 시스템이 점유한 이름입니다. 사용자·도메인 manager·관리자는 이 이름(대소문자·앞뒤 공백을 무시)의 프로젝트를 만들 수 없고 다른 프로젝트를 Default로 개명할 수도 없습니다. 모든 도메인의 Default는 MCP로 연결할 수 없습니다([인증 API](auth.md#전체-프로젝트의-혼합-권한-동의)).
 
-### 소유권 계층과 project_creator
+### 소유권 계층과 프로젝트 생성
 
 도메인 관리 우선순위 `manager > owner`는 **관리 authority**이지 `manager → project_owner` native inference edge가 아닙니다. 기존 `project_owner → project_admin → project_member → project_reader`, `project_member → member`, `project_reader → reader` DAG를 유지합니다. 일반 프로젝트 생성자는 단일 명시적 직접 owner가 되고 admin/member/reader는 복수 사용자가 가능합니다. 두 번째 owner·그룹/상속 owner 생성·마지막 owner 제거를 일반 grant로 처리하지 않습니다. 기존 다중 owner는 자동 선택·회수하지 않고 명시적으로 해결해야 합니다.
 
-현재 enabled canonical Default 프로젝트의 effective `manager` 또는 `project_creator`가 프로젝트를 만들 수 있습니다. Creator capability는 다른 project membership grade·domain-scope 동명 grant·system-admin 권한이 아니며 login/startup에서 role/grant를 자동 seed하거나 기존 domain grant를 이동하지 않습니다. Manager의 위임은 같은 Default project의 직접 creator grant이며 사전 명시적 preset setup과 enabled joined 사용자가 필요합니다. 일반 사용자의 삭제에는 현재 creator capability와 sole ownership이 모두 필요하고 manager는 domain authority를 사용합니다. 어느 경우든 Default·리소스/자식 프로젝트가 있는 프로젝트·삭제 확인 불가 상태는 삭제할 수 없으며 force/teardown은 없습니다. 이 흐름은 `/api/v1/projects`의 capabilities·creators·eligible-users·ownership·ownership-transfer·deletion-check API를 사용하며 `/iam`에 별도 creator/ownership route는 없습니다.
+조직/legacy 도메인에서는 현재 enabled canonical Default 프로젝트의 effective `manager`(도메인 manager)만 프로젝트를 만들 수 있습니다. `project_creator` 위임은 폐지되었습니다(`/api/v1/projects/creators` 제거, 역할 프리셋에서도 제외). 남아 있는 native `project_creator` role/grant는 읽거나 삭제·거부하지 않는 비활성 데이터이며 생성·삭제 권위가 아닙니다. 삭제는 manager의 domain authority 또는 `can_create_project`와 sole ownership을 함께 요구하므로, 조직/legacy에서 manager가 아닌 sole owner는 personal이 아닌 프로젝트를 스스로 삭제할 수 없습니다. 어느 경우든 Default·리소스/자식 프로젝트가 있는 프로젝트·삭제 확인 불가 상태는 삭제할 수 없으며 force/teardown은 없습니다. 생성·소유권 흐름은 `/api/v1/projects`의 capabilities·eligible-users·ownership·ownership-transfer·deletion-check API를 사용하며 `/iam`에는 이름·설명 편집(`PATCH /projects/{project_id}`) 외에 별도 생성/ownership route가 없습니다.
 
-IAM 프로젝트 접근 화면의 **새 프로젝트**도 같은 `/api/v1/projects` 경로와 fresh capability를 사용한다. Manager는 `project_creator` 할당이나 프리셋 존재와 무관하게 생성하며 위임 경고는 생성 차단이 아니다. 실제 생성 UUID를 목록에 다시 읽고 선택한다. 생성 불명은 재전송하지 않는다.
+IAM 프로젝트 관리 화면의 **새 프로젝트**도 같은 `/api/v1/projects` 경로와 fresh capability를 사용한다. 실제 생성 UUID를 목록에 다시 읽고 선택한다. 생성 불명은 재전송하지 않는다.
 
 ## 초대 요청과 링크
 

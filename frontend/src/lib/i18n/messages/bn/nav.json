@@ -92,6 +92,7 @@
 	"items.systemAdmins": "সিস্টেম প্রশাসক",
 	"items.iamUsers": "ব্যবহারকারী পরিচালনা",
 	"items.iamProjects": "প্রকল্প পরিচালনা",
+	"items.iamGroups": "গ্রুপ পরিচালনা",
 	"items.projectSettings": "প্রকল্প সেটিংস",
 	"routes.dashboard": "ড্যাশবোর্ড",
 	"routes.admin": "প্রশাসক",

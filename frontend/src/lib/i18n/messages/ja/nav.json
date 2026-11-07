@@ -92,6 +92,7 @@
 	"items.systemAdmins": "システム管理者",
 	"items.iamUsers": "ユーザー管理",
 	"items.iamProjects": "プロジェクト管理",
+	"items.iamGroups": "グループ管理",
 	"items.projectSettings": "プロジェクト設定",
 	"routes.dashboard": "ダッシュボード",
 	"routes.admin": "管理",

@@ -378,10 +378,9 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
     if x_project_id is not None and not account_mcp:
         validate_keystone_id(x_project_id)
     path = getattr(getattr(request, "url", None), "path", "")
-    service_path = (
-        path.startswith(("/api/v1/chat/", "/api/v1/k3s/", "/api/v1/waygate/", "/api/v1/palimpsest/"))
-        or path == "/api/v1/projects/current/permissions"
-    )
+    # Ordinary service pages use the caller's ordinary project role, even for system admins;
+    # only explicit service admin subpaths keep the system-scoped elevation.
+    service_admin_path = re.match(r"/api/v1/(?:chat|k3s|waygate|palimpsest)/admin(?:/|$)", path) is not None
     context_path = account_mcp or path in {
         "/api/v1/auth/me",
         "/api/v1/auth/domains",
@@ -412,14 +411,14 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
     if logical_workspace and not is_system_admin and not account_mcp:
         raise HTTPException(status_code=403, detail="Current system administrator authority is required")
     admin_context = is_system_admin and logical_workspace and context_path and not account_mcp
-    service_admin = is_system_admin and service_path
+    service_admin = is_system_admin and service_admin_path
     if service_admin:
         await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)
     admin_target = bool(
         not account_mcp
         and (target_project_id != home_project_id or logical_workspace)
         and is_system_admin
-        and (path.startswith("/api/v1/admin/") or service_path or admin_context)
+        and (path.startswith("/api/v1/admin/") or service_admin_path or admin_context)
     )
     if target_project_id and not admin_target and not service_admin:
         await operation.run(assert_project_domain, domain_id, target_project_id, operation=operation)

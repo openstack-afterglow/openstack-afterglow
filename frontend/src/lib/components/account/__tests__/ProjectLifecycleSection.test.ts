@@ -15,11 +15,9 @@ vi.mock('$lib/stores/projectNames', () => ({ projectNames }));
 vi.mock('$lib/utils/projectDeletionContinuation', () => ({ continueAfterProjectDeletion: continueDeletion }));
 import { ApiError } from '$lib/api/client';
 import ProjectLifecycleSection from '../ProjectLifecycleSection.svelte';
-import IamProjectCreators from '../../iam/IamProjectCreators.svelte';
 const project = { id: 'project-a', name: 'Project A', description: '', domain_id: 'domain-a', enabled: true, created_at: null };
 const joined = { id: 'joined', name: 'Joined user', email: 'joined@example.com', domain_id: 'foreign-home', enabled: true };
 const ownership = { project_id: 'project-a', status: 'unique', owner_user_id: 'actor', owners: [{ user_id: 'actor', name: 'Current owner', source: 'direct' }], can_transfer: true, can_delete: true, transfer_operation: null };
-const creators = { domain_id: 'domain-a', role: { id: 'creator-role', name: 'project_creator' }, users: [] };
 const resource = { kind: 'child_projects', service: 'identity', status: 'ok', count: 0, samples: [], reason: null };
 const proof = { project_id: 'project-a', checked_at: '2026-10-16T00:00:00Z', can_delete: true, resources: [resource] };
 let valid = true; let allowed = true;
@@ -29,7 +27,6 @@ function fixture(path: string) {
 	if (path.endsWith('/eligible-users')) return [joined];
 	if (path.endsWith('/ownership')) return ownership;
 	if (path.endsWith('/deletion-check')) return proof;
-	if (path.includes('/projects/creators?')) return creators;
 	if (path.endsWith('/iam/users')) return { items: [{ ...joined, protected: false }] };
 	throw new Error(`Unexpected path: ${path}`);
 }
@@ -117,33 +114,10 @@ describe('explicit project ownership and safe deletion', () => {
 		await waitFor(() => expect(remove.disabled).toBe(false)); await fireEvent.click(remove);
 		await waitFor(() => expect(continueDeletion).toHaveBeenCalledWith('project-a', 'domain-a'));
 	});
-});
-
-describe('domain project-creator delegation', () => {
-	it('grants direct creation capability to an enabled joined identity with no replay', async () => {
-		api.put.mockResolvedValue({ ...creators, users: [{ ...joined, source: 'direct', direct: true }] });
-		render(IamProjectCreators, { session, onDenied: vi.fn() });
-		await screen.findByRole('option', { name: 'Joined user · joined@example.com' });
-		await fireEvent.change(screen.getByLabelText('사용자'), { target: { value: joined.id } });
-		await fireEvent.click(screen.getByRole('button', { name: '생성 권한 부여' }));
-		expect(api.put).toHaveBeenCalledWith('/api/v1/projects/creators/joined', { domain_id: 'domain-a', enabled: true }, 'token', undefined, { replayOnUnauthorized: false });
-	});
-	it('requires an explicit preset setup instead of inventing a missing creator role', async () => {
-		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('/projects/creators?') ? { ...creators, role: null } : fixture(path)));
-		render(IamProjectCreators, { session, onDenied: vi.fn() }); await screen.findByText(/project_creator 기본 역할이 없습니다/);
-		expect(screen.queryByRole('button', { name: '생성 권한 부여' })).toBeNull(); expect(api.put).not.toHaveBeenCalled();
-	});
-	it('keeps inherited creator capability read-only', async () => {
-		api.get.mockImplementation((path: string) => Promise.resolve(path.includes('/projects/creators?') ? { ...creators, users: [{ ...joined, source: 'inherited', direct: false }] } : fixture(path)));
-		render(IamProjectCreators, { session, onDenied: vi.fn() });
-		const revoke = await screen.findByRole('button', { name: '직접 생성 권한 회수' });
-		expect((revoke as HTMLButtonElement).disabled).toBe(true);
-	});
-	it('does not submit a creator grant after authority changes during confirmation', async () => {
-		const decision = deferred<boolean>(); confirmDialog.mockReturnValue(decision.promise);
-		render(IamProjectCreators, { session, onDenied: vi.fn() }); await screen.findByRole('option', { name: 'Joined user · joined@example.com' });
-		await fireEvent.change(screen.getByLabelText('사용자'), { target: { value: joined.id } });
-		await fireEvent.click(screen.getByRole('button', { name: '생성 권한 부여' }));
-		allowed = false; decision.resolve(true); await Promise.resolve(); expect(api.put).not.toHaveBeenCalled();
+	it('offers ownership transfer but no deletion when the host hides deletion', async () => {
+		render(ProjectLifecycleSection, { session, project, callerProject: 'project-a', showDelete: false, onChanged: vi.fn(), onDeleted: vi.fn() });
+		await screen.findByLabelText('새 소유자');
+		expect(screen.queryByRole('button', { name: '프로젝트 삭제' })).toBeNull();
+		expect(screen.queryByText(/Default는 삭제할 수 없습니다/)).toBeNull();
 	});
 });

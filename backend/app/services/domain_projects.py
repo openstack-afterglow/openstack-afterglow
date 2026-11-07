@@ -3,7 +3,7 @@
 Reads never provision roles or projects. Native writes share the identity role
 lease; Keystone remains authoritative, including external group/inference grants.
 Operation-local observations are discarded before leased guards and after writes.
-Login skips mutation only after proving the direct reader and full projection.
+Login skips mutation only after proving the direct reader and the full manager projection; v1 reader grants migrate under the lease.
 Role changes invalidate validation snapshots, never durable login families/proof.
 The projection is derived access, not an independent domain membership grant.
 """
@@ -262,6 +262,22 @@ def _effective(ks, project_id, catalog, *, reads=None, operation=None):
     return reads[key]
 
 
+def _derived_rows(ks, project_id, domain_id, catalog, *, reads):
+    """Effective rows not inherited through the managed projection group.
+
+    The projection is derived access: its domain-inherited grant also covers Default, so counting
+    those rows would make projection membership prove the manager set that defines the projection.
+    """
+    from app.services.project_service import _group_ids
+
+    rows = _effective(ks, project_id, catalog, reads=reads)
+    group = _projection(domain_id, ks, reads=reads)
+    if group is None:
+        return rows
+    gid = _field(group, "id")
+    return [row for row in rows if gid not in _group_ids(row)]
+
+
 def _manager_users(ks, project, catalog, *, reads=None, raw=None, operation=None):
     from app.services.project_service import _expanded_role_ids
 
@@ -270,7 +286,7 @@ def _manager_users(ks, project, catalog, *, reads=None, raw=None, operation=None
     if key in reads:
         return reads[key]
     manager = _canonical(catalog, "manager")["id"]
-    rows = _effective(ks, project["id"], catalog, reads=reads)
+    rows = _derived_rows(ks, project["id"], _field(project, "domain_id"), catalog, reads=reads)
     users = {_field(_field(row, "user"), "id") for row in rows}
     native_project = _exact(ks.projects, project["id"], reads=reads)
     sources = _sources(ks, native_project, catalog, raw, exclude_projection=True, reads=reads)
@@ -281,46 +297,6 @@ def _manager_users(ks, project, catalog, *, reads=None, raw=None, operation=None
         for uid in source["users"]
     }
     effective = {uid for uid in users if manager in _expanded_role_ids(rows, catalog, uid)}
-    active = {uid for uid in effective | legitimate if _active_user(ks, uid, reads=reads)}
-    effective &= active
-    legitimate &= active
-    if effective != legitimate:
-        raise _unavailable()
-    reads[key] = effective
-    return effective
-
-
-def _creator_users(ks, project, catalog, *, operation=None):
-    """Prove all current Default creator grants in one operation-local read phase."""
-    from app.services.project_service import _expanded_role_ids
-
-    ks, reads = _read_context(ks, operation=operation)
-    key = ("domain_projects", "creators", project["id"], id(catalog))
-    if key in reads:
-        return reads[key]
-    creator = _canonical(catalog, "project_creator")["id"]
-    native = _exact(ks.projects, project["id"], reads=reads)
-    if (
-        _field(native, "domain_id") != project["domain_id"]
-        or _field(native, "name") != "Default"
-        or not _enabled(native)
-    ):
-        raise _unavailable()
-    rows = _effective(ks, project["id"], catalog, reads=reads)
-    by_user = {}
-    for assignment in rows:
-        uid = _field(_field(assignment, "user"), "id")
-        by_user.setdefault(uid, []).append(assignment)
-    effective = {
-        uid for uid, assignments in by_user.items() if creator in _expanded_role_ids(assignments, catalog, uid)
-    }
-    sources = _sources(ks, native, catalog, exclude_projection=True, reads=reads)
-    legitimate = {
-        uid
-        for source in sources
-        if creator in {source["role_id"]} | identity_roles._descendant_ids(catalog, source["role_id"])
-        for uid in source["users"]
-    }
     active = {uid for uid in effective | legitimate if _active_user(ks, uid, reads=reads)}
     effective &= active
     legitimate &= active
@@ -597,22 +573,6 @@ def assert_manager_assignment(project_id, role_id, *, catalog=None, ks=None):
         raise HTTPException(422, "manager_requires_default_project")
 
 
-def assert_creator_assignment(project_id, role_id, *, catalog=None, ks=None):
-    """Creator-bearing native project grants belong on the canonical Default."""
-    ks = _client(ks)
-    catalog = catalog if catalog is not None else _catalog(ks)
-    matches = [r for r in catalog if r["domain_id"] is None and r["name"].casefold() == "project_creator"]
-    if not matches:
-        return
-    creator = _canonical(catalog, "project_creator")["id"]
-    if creator not in {role_id} | identity_roles._descendant_ids(catalog, role_id):
-        return
-    project = _exact(ks.projects, project_id)
-    default = default_project(_field(project, "domain_id"), ks=ks)
-    if default is None or default["id"] != project_id:
-        raise HTTPException(422, "project_creator_requires_default_project")
-
-
 def assert_default_immutable(project_id, *, attrs=None, delete=False, ks=None, project=None):
     if project is None:
         ks = _client(ks)
@@ -756,7 +716,7 @@ def assert_managers_remain(
         if graph_change:
             _roles(changed_catalog)
         native_project = _exact(ks.projects, project["id"])
-        sources = _sources(ks, native_project, catalog, raw)
+        sources = _sources(ks, native_project, catalog, raw, exclude_projection=True)
         if group_id is not None and any(source["group_id"] == group_id for source in sources):
             affected.add(domain_id)
         if project_id == project["id"] or graph_change:
@@ -852,7 +812,7 @@ async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_pr
         project = staged_project
     if project is None:
         return
-    _, reader = _roles(catalog)
+    manager, reader = _roles(catalog)
     managers = await asyncio.to_thread(_manager_users, ks, project, catalog)
     group = await asyncio.to_thread(_projection, domain_id, ks)
     if group is None:
@@ -884,18 +844,20 @@ async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_pr
         members.add(uid)
     grants = list(await asyncio.to_thread(ks.role_assignments.list, group=gid))
     wanted = {
-        "role_id": reader["id"],
+        "role_id": manager["id"],
         "kind": "domain",
         "scope_id": domain_id,
         "inherited": True,
         "user_id": None,
         "group_id": gid,
     }
+    # Only the exact v1 reader grant may be migrated; any other shape is tampering or foreign authority.
+    legacy = {**wanted, "role_id": reader["id"]}
     parsed = [_assignment(row, catalog) for row in grants]
-    if any(row != wanted for row in parsed):
-        # Never trust or erase a tampered managed group with foreign/stronger grants.
+    if parsed not in ([], [wanted], [legacy]):
         raise _unavailable()
-    changed = members != managers or not parsed
+    migrate = parsed == [legacy]
+    changed = members != managers or parsed != [wanted]
     if changed:
         await identity_roles._session_ready(members | managers)
     try:
@@ -903,9 +865,14 @@ async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_pr
             await identity_roles._write(lease, ks.users.remove_from_group, uid, gid)
         for uid in sorted(managers - members):
             await identity_roles._write(lease, ks.users.add_to_group, uid, gid)
-        if not parsed:
+        if migrate:
+            # v1 projections granted reader; revoke that exact grant under this lease, then grant manager.
             await identity_roles._write(
-                lease, ks.roles.grant, reader["id"], group=gid, domain=domain_id, os_inherit_extension_inherited=True
+                lease, ks.roles.revoke, reader["id"], group=gid, domain=domain_id, os_inherit_extension_inherited=True
+            )
+        if parsed != [wanted]:
+            await identity_roles._write(
+                lease, ks.roles.grant, manager["id"], group=gid, domain=domain_id, os_inherit_extension_inherited=True
             )
         checked_members = {_field(u, "id") for u in await asyncio.to_thread(ks.users.list, group=gid)}
         checked_grants = [_assignment(r, catalog) for r in await asyncio.to_thread(ks.role_assignments.list, group=gid)]
@@ -933,7 +900,7 @@ def _login_access_current(user_id, domain_id, project, *, operation):
     """Prove the entire projection, never just the login subject's access."""
     ks, reads = _read_context(None, operation=operation)
     catalog = _catalog(ks, operation=operation)
-    _, reader = _roles(catalog)
+    manager, reader = _roles(catalog)
     wanted_direct = {
         "role_id": reader["id"],
         "kind": "project",
@@ -950,7 +917,7 @@ def _login_access_current(user_id, domain_id, project, *, operation):
         return False
     gid = _field(group, "id")
     wanted_projection = {
-        "role_id": reader["id"],
+        "role_id": manager["id"],
         "kind": "domain",
         "scope_id": domain_id,
         "inherited": True,
@@ -1116,7 +1083,7 @@ async def _bootstrap(domain_id, creator_id, lease, ks, catalog, *, grant_manager
                         meta["kind"] != "domain"
                         or meta["scope_id"] != domain_id
                         or not meta["inherited"]
-                        or meta["role_id"] != _roles(catalog)[1]["id"]
+                        or meta["role_id"] != _roles(catalog)[0]["id"]
                         or meta["group_id"] != gid
                     ):
                         raise _unavailable()

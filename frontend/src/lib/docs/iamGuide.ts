@@ -30,7 +30,8 @@ export const iamGuide: DocGuide = {
 			],
 			bullets: [
 				'사용자 관리: 조직 참여자 조회, 이메일 초대·회수, 허용된 계정 정보 변경과 현재 조직에서 내보내기. 다른 홈 도메인의 계정 자체나 보호된 계정은 수정할 수 없습니다. 내보내기는 계정·VM·볼륨 삭제나 영구 재가입 차단이 아닙니다.',
-				'프로젝트 관리: 조직 프로젝트 생성, 멤버와 위임 가능한 역할 관리, project_admin 위임, 전용 절차를 통한 소유권 이전과 안전 삭제. 마지막 manager·소유권·Default 프로젝트 보호는 유지됩니다.',
+				'프로젝트 관리: 프로젝트 목록에서 수정·멤버·제거를 수행하며 수정과 멤버 편집은 오른쪽 패널에서 합니다. 조직 프로젝트 생성, 멤버와 위임 가능한 역할 관리, project_admin 위임, 전용 절차를 통한 소유권 이전과 안전 삭제. 마지막 manager·소유권·Default 프로젝트 보호는 유지됩니다.',
+				'그룹 관리: 조직 그룹의 생성·수정·삭제와 구성원 관리. 시스템 권한이나 관리 권한이 연결된 보호 그룹은 읽기 전용입니다.',
 				'로그인과 배분: 해당 조직의 로그인 방법·정책, 모니터링, 허용된 예산 안의 프로젝트 쿼터와 공용 compute pool의 프로젝트별 추가 상한을 관리합니다. 조직 공용 풀 자체의 한도를 임의로 늘리는 권한은 아닙니다.',
 				'조직 Default의 manager가 가진 IAM 권한과 자원 작업의 현재 프로젝트 범위는 구분합니다. 네 서비스의 자원 관리는 해당 자원 프로젝트에서 유효한 native member·manager·admin을 검사합니다. 여기서 manager는 해당 프로젝트 범위의 표준 역할이며 Default의 조직 manager 권한을 다른 프로젝트로 자동 옮기지 않습니다. 다른 프로젝트·다른 사용자의 비밀·전역 운영 권한도 얻지는 않습니다.'
 			],
@@ -40,7 +41,7 @@ export const iamGuide: DocGuide = {
 			id: 'project-roles', title: '3. 프로젝트 역할: 접근·쓰기·멤버 관리를 구분합니다',
 			hierarchy: {
 				title: '프로젝트 역할 포함 관계',
-				description: '화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager와 project_creator는 이 계층에 속하지 않습니다.',
+				description: '화살표는 상위 역할이 포함하는 하위 역할을 가리킵니다. 실제 Keystone 역할 연결이 준비되어 있어야 하며 manager는 이 계층에 속하지 않습니다.',
 				relation: '포함',
 				levels: [
 					{ role: 'project_owner' },
@@ -55,7 +56,7 @@ export const iamGuide: DocGuide = {
 				'project_admin: 해당 프로젝트 구성원과 위임 가능한 프로젝트 역할을 관리합니다. project_member 권한도 포함하지만 다른 project_admin의 추가·회수와 소유권 변경을 일반 멤버 편집으로 할 수는 없습니다.',
 				'project_owner: 프로젝트 소유자입니다. project_admin을 위임하고 전용 소유권 이전 절차를 이용합니다. 일반 역할 선택으로 두 번째 소유자를 만들지 않으며 소유권을 정리하지 않은 삭제·탈퇴는 차단될 수 있습니다.',
 				'프로젝트 계층은 project_owner → project_admin → project_member → project_reader이고, project_member → member 및 project_reader → reader가 연결됩니다. 실제 Keystone 연결이 준비되어 있어야 하며 이름만 같은 사용자 정의 역할로 대체하지 않습니다.',
-				'project_creator: 조직 Default에서 프로젝트 생성을 위임받는 별도 역할입니다. manager도 별도 creator 없이 생성할 수 있습니다. 생성자는 새 프로젝트의 소유자가 되지만 다른 프로젝트·조직 사용자·로그인 정책을 관리할 권한까지 얻지는 않습니다. 일반 생성자의 프로젝트 삭제에는 현재 생성 권한과 단독 소유권, 빈 프로젝트 확인이 함께 필요합니다.',
+				'프로젝트 생성: 도메인 manager만 조직 프로젝트를 만들 수 있습니다. 생성자는 새 프로젝트의 소유자가 되지만 다른 프로젝트·조직 사용자·로그인 정책을 관리할 권한까지 얻지는 않습니다. 이전에 project_creator로 위임된 권한은 더 이상 사용하지 않으며, 조직 프로젝트의 삭제는 도메인 manager가 빈 프로젝트 확인 후 수행합니다.',
 				'reader는 허용된 일반 조회, member·manager·admin은 현재 프로젝트 자원 관리에 사용합니다. member가 project_admin의 멤버 관리 권한을 자동으로 얻지는 않습니다. 사용자 정의·프로젝트 역할은 현재 native 역할 그래프의 실제 연결로 표준 core 권한을 얻은 경우에만 그 권한으로 인정합니다. 이름이나 정책 설정만으로 core reader·member 권한을 만들지는 않습니다.'
 			],
 			links: [{ label: '프로젝트 관리', href: '/dashboard/iam/projects' }]

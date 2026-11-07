@@ -42,6 +42,7 @@ export { default as SectionLabel } from './SectionLabel.svelte';
 export { default as SearchSelect } from './SearchSelect.svelte';
 export type { SearchSelectOption } from './SearchSelect.svelte';
 export { default as SelectInput } from './SelectInput.svelte';
+export { default as SlideOver } from './SlideOver.svelte';
 export { default as Spark } from './Spark.svelte';
 export { default as StatTile } from './StatTile.svelte';
 export { default as StatusChip } from './StatusChip.svelte';

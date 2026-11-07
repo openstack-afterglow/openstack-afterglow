@@ -1065,7 +1065,8 @@ async def test_legacy_builds_preserve_native_system_and_operator_policy_decision
     assert response.status_code == native_status
     assert response.json() == state.payload
     assert state.paths == ["/v1/builds"]
-    connection_project = PROJECT if system_admin else (asserted_project or PROJECT)
+    # User pages use the ordinary asserted project for system admins too; only admin subpaths elevate.
+    connection_project = asserted_project or PROJECT
     assert state.actors[0]["x-project-id"] == connection_project
     assert state.actors[0]["x-auth-token"] == f"project-subject:{USER}:{connection_project}"
     assert state.actors[0].get("x-target-project-id", connection_project) == (asserted_project or PROJECT)

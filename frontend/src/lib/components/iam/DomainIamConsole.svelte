@@ -79,10 +79,6 @@
 	{:else if error}<Alert tone="danger">{error}</Alert>
 	{:else if !session}<Alert tone="warning">{t('denied')}</Alert>{/if}
 	{#if session && context && verifiedSession}
-		<div class="mb-4 rounded-lg border border-line bg-surface-base p-3 text-sm text-ink-1 [overflow-wrap:anywhere]">
-			<strong>{t('domain')}</strong> · {context.domain_name} <code class="text-xs text-ink-2">{context.domain_id}</code>
-			<p class="mt-1 text-xs text-ink-2">{t('domainHelp')}</p>
-		</div>
 		<nav class="mb-4 flex flex-wrap gap-2" aria-label={t('sections')}>
 			{#each ['users', 'invitations', 'login', 'recovery'] as section}
 				<Button variant={tab === section ? 'secondary' : 'ghost'} ariaPressed={tab === section} onclick={() => tab = section as typeof tab}>{t(section as 'users' | 'invitations' | 'login' | 'recovery')}</Button>

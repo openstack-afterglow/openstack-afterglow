@@ -221,7 +221,7 @@ async def list_resources(kind, token_info):
     if kind == "users":
         rows = await directory_users(did)
     else:
-        rows = await _provider_call(lambda: list(getattr(ks, kind).list(domain=did)))
+        rows = await _provider_call(lambda: list(ks.projects.list(domain=did)))
     items = []
     for row in rows:
         if kind != "users":

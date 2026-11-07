@@ -62,13 +62,6 @@ SERVICE_CAPABILITIES: dict[str, tuple[str, ...]] = {
 
 ROLE_PRESETS = (
     {
-        "name": "project_creator",
-        "description": "Default 프로젝트 역할로 위임하는 도메인 프로젝트 생성 권한",
-        "area": "domain",
-        "grade": "creator",
-        "parent": None,
-    },
-    {
         "name": "project_owner",
         "description": "프로젝트 소유권·관리자 위임",
         "area": "project",

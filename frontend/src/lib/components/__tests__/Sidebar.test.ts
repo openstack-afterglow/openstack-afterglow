@@ -263,10 +263,12 @@ describe('Sidebar global navigation', () => {
 		expect(menu.getByRole('button', { name: /리소스 선택/ }).getAttribute('aria-haspopup')).toBe('dialog');
 		destination(menu, '/dashboard/iam/users');
 		destination(menu, '/dashboard/iam/projects');
+		destination(menu, '/dashboard/iam/groups');
 		expect(queryDestination(menu, '/admin')).toBeNull();
 		auth.update(current => ({ ...current, isDomainManager: false, isSystemAdmin: true }));
 		await tick();
 		expect(queryDestination(menu, '/dashboard/iam/users')).toBeNull();
+		expect(queryDestination(menu, '/dashboard/iam/groups')).toBeNull();
 		destination(menu, '/dashboard/iam/projects');
 		(canManageOrganizationProjects as Writable<boolean>).set(false);
 		await tick();

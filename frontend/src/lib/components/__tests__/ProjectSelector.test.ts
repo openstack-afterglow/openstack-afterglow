@@ -83,6 +83,7 @@ describe('authorized workspace selector', () => {
 			if (path.includes('/auth/workspaces')) return { ...inventory(), projects: [...projects], is_domain_manager: false };
 			if (path.startsWith('/api/v1/projects/capabilities')) return { domain_id: home.id, can_create_project: true };
 			if (path.startsWith('/api/v1/projects?')) return { items: [...projects] };
+			if (path === '/api/v1/iam/projects') return { items: [...projects] };
 			if (path.endsWith('/members')) return { items: [] };
 			if (path.endsWith('/assignable-roles')) return { roles: [], is_owner: false, can_manage_owners: false };
 			if (path.endsWith('/eligible-users')) return [];
@@ -95,8 +96,8 @@ describe('authorized workspace selector', () => {
 		});
 		render(ProjectSelector); await open();
 		await fireEvent.click(screen.getByRole('button', { name: t('close') }));
-		render(IamProjects, { session: { token: () => 'original-token', userId: 'alice', domainId: home.id, isCurrent: () => true, canSubmit: () => true }, domainManager: false, onDenied: vi.fn() });
-		await screen.findByRole('combobox', { name: 'Project' });
+		render(IamProjects, { session: { token: () => 'original-token', userId: 'alice', domainId: home.id, isCurrent: () => true, canSubmit: () => true }, onDenied: vi.fn() });
+		await screen.findAllByText(first.name, { selector: 'td span' });
 		await fireEvent.click(screen.getByRole('button', { name: t('newProject') }));
 		const input = screen.getByRole('textbox', { name: t('projectName') });
 		await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));

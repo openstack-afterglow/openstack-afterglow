@@ -92,6 +92,7 @@
 	"items.systemAdmins": "Quản trị viên hệ thống",
 	"items.iamUsers": "Quản lý người dùng",
 	"items.iamProjects": "Quản lý dự án",
+	"items.iamGroups": "Quản lý nhóm",
 	"items.projectSettings": "Cài đặt dự án",
 	"routes.dashboard": "Bảng điều khiển",
 	"routes.admin": "Quản trị viên",

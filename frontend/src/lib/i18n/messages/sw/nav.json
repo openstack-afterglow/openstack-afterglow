@@ -92,6 +92,7 @@
 	"items.systemAdmins": "Wasimamizi wa mfumo",
 	"items.iamUsers": "Usimamizi wa watumiaji",
 	"items.iamProjects": "Usimamizi wa miradi",
+	"items.iamGroups": "Usimamizi wa vikundi",
 	"items.projectSettings": "Mipangilio ya mradi",
 	"routes.dashboard": "Dashibodi",
 	"routes.admin": "Msimamizi",

@@ -129,7 +129,7 @@ describe('frontend health', () => {
 });
 
 describe('authenticated project-independent account and domain surfaces', () => {
-	it.each(['/select-domain', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects', '/dashboard/account', '/dashboard/account/mcp', '/dashboard/account/keypairs'])('keeps %s authenticated without requiring a project cookie', async (path) => {
+	it.each(['/select-domain', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects', '/dashboard/iam/groups', '/dashboard/account', '/dashboard/account/mcp', '/dashboard/account/keypairs'])('keeps %s authenticated without requiring a project cookie', async (path) => {
 		const { handle } = await loadHandle();
 		const anonymous = createRequest(`http://frontend.example.com${path}`, {}, path);
 		const denied = await handle({ event: anonymous.event, resolve: anonymous.resolve });

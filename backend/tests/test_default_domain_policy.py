@@ -128,7 +128,7 @@ async def test_admin_created_project_has_common_native_readers_and_explicit_sole
     )
     assert native.members["projection-tenant-a"] == {"creator"}
     manager_access = await project_service.get_project_access(created["id"], "creator")
-    assert manager_access == {"is_owner": False, "is_manager": False, "roles": ["project_reader", "reader"]}
+    assert manager_access == {"is_owner": False, "is_manager": False, "roles": ["manager"]}
     assert await project_service.get_project_access(created["id"], "operator") == {
         "is_owner": True,
         "is_manager": True,
@@ -353,7 +353,7 @@ async def test_generic_group_inputs_cannot_spoof_or_poison_manager_projection(
     await domain_projects.sync_manager_access("tenant-a")
     assert native.members["projection-tenant-a"] == {"creator"}
     assert domain_projects.has_manager("creator", "tenant-a")
-    assert (await project_service.get_project_access("work-a", "creator"))["roles"] == ["project_reader", "reader"]
+    assert (await project_service.get_project_access("work-a", "creator"))["roles"] == ["manager"]
 
 
 @pytest.mark.asyncio

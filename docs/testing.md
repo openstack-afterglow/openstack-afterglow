@@ -6,6 +6,28 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.32.11 게이트 실행 기록 (2026-11-08, source/local)
+
+- 대상 트리: `e8587663` 위 미커밋 작업 트리(도메인 IAM 그룹·프로젝트 표·manager 전용 생성, 사용자 페이지 시스템 관리자 범위 수정, manager 투영). `docs:check` 통과 뒤 `project_service.py`에 `ruff format`만 적용하고 아키텍처 리뷰를 다시 스탬프했다(소스 해시 `ea513eb0…`, 4206 파일).
+- 결과: `npm run docs:check` OK, backend unit 14,619 passed/94 skipped(포맷 적용 뒤 재실행), contract 261 passed, functional 284 passed/46 skipped/131 deselected, `lint:backend` OK(포맷 적용 뒤).
+- 프런트엔드 단위: 이 기록의 `npm run test:gate` 실행에서는 82개 파일·1,123개 테스트가 실패했다(551 files 중). 1.32.10 직전 커밋과 같은 수치이며 원인은 미규명이다. 아래 IAM 섹션의 "551 files/7,621 tests 통과" 주장과 이 실행은 상충하므로 그 주장은 이 실행으로 재확인되지 않았다. 같은 SHA의 CI를 프런트엔드 정본 증거로 삼는다.
+- 커밋 구성: 두 OpenSpec change(`2026-11-07-scope-user-page-system-admin-authority`, `2026-11-08-domain-iam-groups-and-manager-only-projects`)가 `domain_projects.py`·`project_service.py`·테스트 파일을 공유하고, 아키텍처 스탬프가 전체 소스 해시라서 중간 커밋을 개별로 게이트할 수 없다. 그래서 한 커밋으로 묶고 메시지에 두 change를 모두 적었다.
+- 미검증·남은 위험: 새 IAM 화면의 실행 중 브라우저 확인, 실제 Keystone에서의 reader→manager 투영 migration, 두 change의 archive(라이브 검증 후).
+
+## 도메인 IAM 그룹·프로젝트 표·manager 전용 프로젝트 생성 (2026-11-08, source/local)
+
+- 범위: 사용자 화면의 working-domain 카드·계정 신원 도메인 열 제거, 프로젝트 화면을 표(수정·멤버·제거)와 오른쪽 `SlideOver` 상세로 교체, 도메인 manager 그룹 관리(`/api/v1/iam/groups*`, `/dashboard/iam/groups`)와 프로젝트 수정(`PATCH /api/v1/iam/projects/{id}`) 추가, 프로젝트 생성을 도메인 manager 전용으로 제한하고 `project_creator` 위임·preset 폐기. OpenSpec `2026-11-08-domain-iam-groups-and-manager-only-projects`.
+- 백엔드: `test_domain_iam_groups.py` 10, `test_domain_iam_project_edit.py` 40, creator 폐기 회귀(`test_domain_projects.py`, `test_project_authority_lifecycle.py`, `test_project_self_service.py`, `test_identity_roles.py`, `test_service_authorization.py`). 잔존 native `project_creator` 역할·grant가 login·membership·manager 판정을 깨지 않고 생성 권한도 주지 않음을 고정했다. 그룹 테스트는 non-manager 403, 타 도메인 group/user, 투영 그룹, 읽기 전용(보호) 그룹, 중복·미존재, 주입된 `domain_id`, privileged 구성원, owner-grant 409를 실제 라우트와 `require_domain_manager`로 확인한다.
+- 프런트엔드: `IamProjects`(표·slide-in 수정/멤버·생성·삭제 modal), `ProjectIamConsole`(manager 전용 진입, 도메인 식별자·신원 열 비노출), `IamGroups` 6, `ProjectLifecycleSection`(`showDelete=false`), nav/Sidebar. 전체 frontend unit 551 files/7,621 tests 통과, `svelte-check` 0 errors, `i18n:check` 0 errors, `i18n:scan` 0 hard-coded, `experience:catalog:check` 갱신 후 통과.
+- 한계: 실행 중 스택의 브라우저에서 새 화면을 열어 보지 않았다(합성 client mock 컴포넌트 테스트만). 운영 배포·native IAM 변경·실제 domain manager의 NLP Waygate 생성 재검증은 수행하지 않았다.
+
+## 사용자 페이지 시스템 관리자 권한 범위 (2026-11-07, source/local)
+
+- 범위: `deps._resolve_jwt_session`의 system-admin 승격을 `/api/v1/{chat,k3s,waygate,palimpsest}/admin/*`로 제한했다. 사용자 페이지의 서비스 요청과 `/api/v1/projects/current/permissions`는 일반 프로젝트 권한(member/manager/reader)과 `assert_project_membership`을 사용한다. OpenSpec `2026-11-07-scope-user-page-system-admin-authority`.
+- 회귀: 운영 형태(시스템 관리자 + Default manager + 투영 membership, 대상 직접 grant 없음)를 `test_service_user_page_system_admin_default_manager_uses_projection_membership`으로 고정했다. 실제 `assert_project_membership`을 실행하고 내부 collection helper만 운영 응답 형태로 대체했다(fake directory에는 투영 그룹이 없다). 기대값은 connection=target, `_live_system_admin` 없음이다. 이전 라우팅에서는 connection=`own`으로 실패함을 확인했다.
+- 검증: 관련 백엔드 스위트 653 passed(Waygate 인가, auth domain boundary, service/lumen/palimpsest proxy 계약, palimpsest 패키지, flavors, dashboard usage). `npm run docs:check` 통과.
+- 투영 reader→manager(승인됨): 도메인 상속 manager 투영, v1 reader migration, 투영 파생 row의 manager/creator/last-manager 제외를 적용했다. 검증: 영향 파일 16개 1,295 passed, `domain_projects`를 import하는 70개 파일 3,884 passed/168 skipped/0 failed, ruff check·format 통과. 형제 서비스(Lumen·Drover·Palimpsest·Waygate) 정책은 native `manager`를 허용함을 코드로 확인했다. 미실행·한계: `npm run test:gate`, 커밋·배포·라이브 재검증. Waygate 생성 UI는 `waygate-gateways_editor` capability 투영에 의존하므로 manager 단독 사용자의 표시는 배포 후 확인이 필요하다. NLP 생성 성공은 배포 후 domain manager 계정으로 재검증 전까지 보장하지 않는다.
+
 ## 1.32.10 릴리스 게이트 증거와 미해결 프런트엔드 실패 (2026-11-07, source/local)
 
 - 결론: 이 워크스테이션(macOS arm64, 18코어, Node 24.14.1, vitest 4.1.11, jsdom 25.0.1)에서 표준 `npm run test:gate`는 프런트엔드 단위 단계를 통과하지 못한다. 이 실패는 변경 없는 `580f9c29`(깨끗한 별도 워크트리, `npm ci`)에서도 같은 수치로 재현되므로 1.32.10 변경이 만든 것이 아니다. 원인은 규명하지 못했다. 사용자 결정으로 이 실패를 명시한 채 `dev`에 푸시하고, 불변 태그는 해당 SHA의 CI(Node 22, 2개 shard)가 통과한 뒤에만 붙인다. 로컬 프런트엔드 증거는 정본이 아니며 CI 결과가 정본이다.

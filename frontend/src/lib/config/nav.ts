@@ -207,6 +207,7 @@ export const userNavSections: NavSection[] = [
     items: [
       withLabel('items.iamUsers', { href: '/dashboard/iam/users', icon: navIcons.users, service: null, capability: 'domainManager' as const }),
       withLabel('items.iamProjects', { href: '/dashboard/iam/projects', icon: navIcons.folder, service: null, capability: 'projectManagement' as const }),
+      withLabel('items.iamGroups', { href: '/dashboard/iam/groups', icon: navIcons.cluster, service: null, capability: 'domainManager' as const }),
     ],
   }),
   accountNavSection,

@@ -18,7 +18,7 @@ from tests.ownership_journal import ownership_journal as ownership_journal
 from tests.test_domain_iam import directory as directory
 from tests.test_domain_iam import enrollments as enrollments
 from tests.test_domain_iam import manager
-from tests.test_project_membership_roles import PROJECT, assignment, rid
+from tests.test_project_membership_roles import PROJECT, rid
 
 pytestmark = pytest.mark.usefixtures("ownership_journal")
 
@@ -54,33 +54,28 @@ async def test_project_create_and_invite_deny_ordinary_project_roles(directory, 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor,creator_preset,revoke_before_activation",
-    [
-        ("domain-manager", True, False),
-        ("domain-manager", False, False),
-        ("member", True, False),
-        ("member", True, True),
-    ],
+    "legacy_creator_role,revoke_before_activation",
+    [(True, False), (False, False), (True, True)],
 )
-async def test_project_create_explicit_domain_and_real_creator_owner(
-    directory, monkeypatch, actor, creator_preset, revoke_before_activation
+async def test_project_create_explicit_domain_and_manager_owner(
+    directory, monkeypatch, legacy_creator_role, revoke_before_activation
 ):
     created_attrs = []
+    actor = "domain-manager"
     from app.services import domain_quotas
 
     directory.direct = []
     directory.project = None
-    if not creator_preset:
-        directory.catalog = [role for role in directory.catalog if role["name"] != "project_creator"]
-    if actor == "member":
-        directory.default_direct.append(assignment(actor, "project_creator", project_id="default-project"))
+    if legacy_creator_role:
+        # A leftover native project_creator identity is neither required nor honored.
+        directory.add_roles("project_creator")
     assert directory.domain_direct == []  # The manager has no creator grant.
 
     async def quota_defaults(conn, domain_id, project_id, *, lease):
         assert directory.project.enabled is False
         assert domain_id == "domain" and project_id == PROJECT
         if revoke_before_activation:
-            directory.default_direct.clear()
+            directory.managers.clear()
 
     quota = AsyncMock(side_effect=quota_defaults)
     monkeypatch.setattr(domain_quotas, "apply_project_defaults", quota)
@@ -142,12 +137,10 @@ async def test_manager_cannot_create_project_in_other_domain(directory):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("actor", ["domain-manager", "member"])
-async def test_project_creation_rechecks_authority_inside_graph_lock(directory, monkeypatch, actor):
+async def test_project_creation_rechecks_authority_inside_graph_lock(directory, monkeypatch):
     from app.services import identity_roles
 
-    if actor == "member":
-        directory.default_direct.append(assignment(actor, "project_creator", project_id="default-project"))
+    actor = "domain-manager"
     graph_lock = identity_roles._graph_lock
 
     @asynccontextmanager

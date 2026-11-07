@@ -863,7 +863,7 @@ async def management_projects(user_id, domain_id):
 
 
 async def can_create_project(user_id: str, domain_id: str, *, operation=None) -> bool:
-    """Exact native capability; callers may share only their current read phase."""
+    """Personal own-project rule or current domain manager; callers may share one read phase."""
     from app.services.domain_scope import domain_context
     from app.services.native_operation import NativeOperation
 
@@ -877,22 +877,7 @@ async def can_create_project(user_id: str, domain_id: str, *, operation=None) ->
 
             project = await operation.run(personal_project, user_id, operation=operation)
             return project is not None and project.get("enabled") is True
-        if context["is_domain_manager"]:
-            return True
-        ks = await operation.run(getattr, operation, "ks")
-        catalog = await operation.run(operation.catalog)
-        matches = [r for r in catalog if r["domain_id"] is None and r["name"].casefold() == "project_creator"]
-        if not matches:
-            return False
-        if len(matches) != 1 or matches[0]["name"] != "project_creator":
-            raise identity_roles._unavailable("Project creator role is ambiguous")
-        from app.services import domain_projects
-
-        default = await operation.run(domain_projects.default_project, domain_id, operation=operation)
-        if default is None:
-            return False
-        users = await operation.run(domain_projects._creator_users, ks, default, catalog, operation=operation)
-        return user_id in users
+        return context["is_domain_manager"] is True
     except Exception as exc:
         raise identity_roles._provider_error(exc) from exc
 
@@ -1109,7 +1094,9 @@ async def transfer_project_ownership(project_id, user_id, token_info):
 async def project_deletion_check(project_id, token_info):
     ownership = await project_ownership(project_id, token_info)
     if not ownership["can_delete"]:
-        raise HTTPException(403, "Project deletion requires a manager or creator with sole ownership")
+        raise HTTPException(
+            403, "Project deletion requires a domain manager or a sole owner allowed to create projects"
+        )
     return await inspect_project_empty(project_id)
 
 
@@ -1240,116 +1227,6 @@ async def initialize_system_project_owner(project_id, user_id, domain_id, *, lea
     role = _required_project_role(catalog, "project_owner", require_hierarchy=True)
     await _write_initial_owner(ks, catalog, lease, project_id, user_id, role)
     await invalidate_project_lists(user_id, domain_id)
-
-
-async def project_creators(domain_id, user_id):
-    from app.services import domain_projects
-    from app.services.domain_scope import domain_context
-    from app.services.native_operation import NativeOperation
-
-    async with NativeOperation() as operation:
-        context = await operation.run(domain_context, user_id, domain_id, operation=operation)
-        if not context["is_domain_manager"]:
-            raise HTTPException(403, "Domain manager required to delegate project creation")
-        ks = await operation.run(domain_projects._call, getattr, operation, "ks")
-        catalog = await operation.run(domain_projects._call, operation.catalog)
-        role = identity_roles._validate_preset_catalog(catalog).get("project_creator")
-        default = await operation.run(domain_projects.default_project, domain_id, operation=operation)
-        if default is None:
-            raise identity_roles._unavailable("Project creator Default is unavailable")
-        result = {
-            "domain_id": domain_id,
-            "role": {"id": role["id"], "name": role["name"]} if role else None,
-            "users": [],
-        }
-        if role is None:
-            return result
-        users = await operation.run(domain_projects._creator_users, ks, default, catalog, operation=operation)
-        direct = await operation.run(domain_projects._call, _creator_assignments, ks, catalog, default["id"])
-        for uid in sorted(users):
-            user = await operation.run(domain_projects._active_user, ks, uid, operation=operation)
-            if user is None:
-                continue
-            explicit = role["id"] in _direct_ids(direct, uid)
-            result["users"].append(
-                {
-                    "id": uid,
-                    "name": identity_roles._field(user, "name") or uid,
-                    "email": identity_roles._field(user, "email") or "",
-                    "domain_id": identity_roles._field(user, "domain_id"),
-                    "enabled": True,
-                    "source": "direct" if explicit else "inherited",
-                    "direct": explicit,
-                }
-            )
-        return result
-
-
-@identity_roles._complete_mutation
-async def change_project_creator(domain_id, user_id, enabled, actor_id):
-    from app.services import domain_projects
-    from app.services.domain_scope import domain_context
-
-    conn = await _provider_call(keystone.get_admin_project_connection)
-    try:
-        async with identity_roles._graph_lock(conn, wait=True) as lease:
-            context = await _provider_call(domain_context, actor_id, domain_id)
-            if not context["is_domain_manager"]:
-                raise HTTPException(403, "Domain manager required to delegate project creation")
-            ks = await _provider_call(keystone._get_admin_ks_client)
-            catalog = await _provider_call(identity_roles.load_catalog, conn)
-            role = identity_roles._validate_preset_catalog(catalog).get("project_creator")
-            if role is None:
-                raise HTTPException(409, "Explicit administrator project_creator preset setup required")
-            default = await _provider_call(domain_projects.default_project, domain_id, ks=ks)
-            if default is None:
-                raise identity_roles._unavailable("Project creator Default is unavailable")
-            await _eligible_user(ks, domain_id, user_id)
-            direct = await _provider_call(_creator_assignments, ks, catalog, default["id"])
-            present = role["id"] in _direct_ids(direct, user_id)
-            if present != enabled:
-                await identity_roles._session_ready({user_id})
-                succeeded = False
-                try:
-                    method = ks.roles.grant if enabled else ks.roles.revoke
-                    await identity_roles._write(lease, method, role["id"], user=user_id, project=default["id"])
-                    checked = await _provider_call(_creator_assignments, ks, catalog, default["id"])
-                    if (role["id"] in _direct_ids(checked, user_id)) != enabled:
-                        raise identity_roles._unavailable("Project creator delegation could not be verified")
-                    succeeded = True
-                finally:
-                    await invalidate_project_lists(user_id, domain_id)
-                    await identity_roles._applied(
-                        None,
-                        catalog,
-                        None,
-                        {user_id},
-                        {"user_id": actor_id, "domain_id": domain_id},
-                        "project_creator_grant" if enabled else "project_creator_revoke",
-                        {
-                            "target_domain_id": domain_id,
-                            "target_project_id": default["id"],
-                            "target_user_id": user_id,
-                            "role_id": role["id"],
-                        },
-                        status="success" if succeeded else "failed",
-                    )
-    finally:
-        await asyncio.to_thread(conn.close)
-    return await project_creators(domain_id, actor_id)
-
-
-def _creator_assignments(ks, catalog, project_id):
-    from app.services import domain_projects
-
-    result = []
-    for row in ks.role_assignments.list(project=project_id):
-        meta = domain_projects._assignment(row, catalog)
-        if meta["kind"] != "project" or meta["scope_id"] != project_id:
-            raise identity_roles._unavailable("Project creator scope is unavailable")
-        if not _inherited_assignment(row):
-            result.append(row)
-    return result
 
 
 @identity_roles._complete_mutation

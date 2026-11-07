@@ -22,6 +22,9 @@ export interface IamProvider {
 	client_secret_configured: boolean; revision: number; created_at: string; updated_at: string;
 }
 export type ProviderWrite = Omit<IamProvider, 'id' | 'domain_id' | 'client_secret_configured' | 'created_at' | 'updated_at' | 'revision' | 'verified' | 'verified_revision' | 'verified_at' | 'authorization_url' | 'token_url' | 'api_url'> & Partial<Pick<IamProvider, 'authorization_url' | 'token_url' | 'api_url'>> & { client_secret?: string; revision?: number };
+export interface IamGroup { id: string; name: string; description: string; domain_id: string; member_count: number; protected: boolean; sso_mapped: boolean }
+export interface IamGroupWrite { name: string; description: string }
+export interface IamGroupMember extends IamUser { identity_read_only: boolean }
 const root = '/api/v1/iam';
 const id = encodeURIComponent;
 
@@ -51,6 +54,7 @@ export function domainIam(session: IamSession) {
 		updateUser: (userId: string, body: Partial<IamUserWrite>) => mutate(() => api.patch<IamUser>(`${root}/users/${id(userId)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
 		removeUser: (userId: string) => mutate(() => api.delete(`${root}/users/${id(userId)}`, session.token(), projectId, { replayOnUnauthorized: false })),
 		projects: () => get<{ items: Project[] }>('/projects'),
+		updateProject: (project: string, body: { name: string; description: string }) => mutate(() => api.patch<Project>(`${root}/projects/${id(project)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
 		members: (project: string) => get<{ items: ProjectAccessMember[] }>(`/projects/${id(project)}/members`),
 		roles: (project: string) => get<IamAssignableRoles>(`/projects/${id(project)}/assignable-roles`),
 		assignRoles: (project: string, user: string, roleIds: string[]) => mutate(() => api.put(`${root}/projects/${id(project)}/members/${id(user)}/roles`, { role_ids: roleIds }, session.token(), projectId, { replayOnUnauthorized: false })),
@@ -65,6 +69,13 @@ export function domainIam(session: IamSession) {
 		providers: () => get<{ items: IamProvider[] }>('/providers'),
 		createProvider: (body: ProviderWrite) => mutate(() => api.post<IamProvider>(root + '/providers', body, session.token(), projectId, { replayOnUnauthorized: false })),
 		updateProvider: (provider: string, body: Partial<ProviderWrite>) => mutate(() => api.patch<IamProvider>(`${root}/providers/${id(provider)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
-		deleteProvider: (provider: string) => mutate(() => api.delete(`${root}/providers/${id(provider)}`, session.token(), projectId, { replayOnUnauthorized: false }))
+		deleteProvider: (provider: string) => mutate(() => api.delete(`${root}/providers/${id(provider)}`, session.token(), projectId, { replayOnUnauthorized: false })),
+		groups: () => get<{ items: IamGroup[] }>('/groups'),
+		createGroup: (body: IamGroupWrite) => mutate(() => api.post<IamGroup>(root + '/groups', body, session.token(), projectId, { replayOnUnauthorized: false })),
+		updateGroup: (group: string, body: Partial<IamGroupWrite>) => mutate(() => api.patch<IamGroup>(`${root}/groups/${id(group)}`, body, session.token(), projectId, { replayOnUnauthorized: false })),
+		deleteGroup: (group: string) => mutate(() => api.delete(`${root}/groups/${id(group)}`, session.token(), projectId, { replayOnUnauthorized: false })),
+		groupMembers: (group: string) => get<{ items: IamGroupMember[] }>(`/groups/${id(group)}/members`),
+		addGroupMember: (group: string, user: string) => mutate(() => api.put(`${root}/groups/${id(group)}/members/${id(user)}`, {}, session.token(), projectId, { replayOnUnauthorized: false })),
+		removeGroupMember: (group: string, user: string) => mutate(() => api.delete(`${root}/groups/${id(group)}/members/${id(user)}`, session.token(), projectId, { replayOnUnauthorized: false }))
 	};
 }

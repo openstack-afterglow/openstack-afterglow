@@ -1271,14 +1271,24 @@ async def test_preset_leaves_unrelated_retired_service_authority_for_explicit_re
 async def test_preset_partial_provider_failure_reports_retained_roles_and_retry_is_additive(role_env):
     p, client = role_env.provider, role_env.client
     existing_project_hierarchy(p)
+    del p.rows["project_reader"]
+    p.edges -= {("project_member", "project_reader"), ("project_reader", "reader")}
     p.edges.discard(("project_owner", "project_admin"))
+    # A retired native project_creator identity is left as an unmanaged legacy role.
+    p.rows["project_creator"] = {
+        "id": "legacy-creator",
+        "name": "project_creator",
+        "domain_id": None,
+        "description": "",
+    }
     p.write_status = 500
     failed = await client.post("/api/v1/admin/roles/presets/apply")
     assert failed.status_code == 503
     detail = failed.json()["detail"]
     retained = {row["name"]: row["id"] for row in p.rows.values()}
-    assert detail["created_roles"] == ["project_creator"]
+    assert detail["created_roles"] == ["project_reader"]
     assert retained["project_owner"] == "project_owner"
+    assert retained["project_creator"] == "legacy-creator"
     p.write_status = None
     retried = await client.post("/api/v1/admin/roles/presets/apply")
     assert retried.status_code == 200

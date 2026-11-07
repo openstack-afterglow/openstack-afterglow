@@ -1,4 +1,4 @@
-"""Consumer-visible unique ownership, creator delegation and fail-closed lifecycle."""
+"""Consumer-visible unique ownership, manager-only creation and fail-closed lifecycle."""
 
 import time
 
@@ -49,34 +49,37 @@ def app_for(user_id="owner"):
 
 
 @pytest.mark.asyncio
-async def test_creator_capability_uses_current_native_default_grant_not_domain_or_ordinary_project(directory):
+async def test_only_domain_manager_can_create_and_legacy_creator_grants_are_ignored(directory):
+    directory.add_roles("project_creator")
     directory.default_direct.append(assignment("member", "project_creator", project_id="default-project"))
-    app = app_for("member")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        allowed = await client.get("/api/v1/projects/capabilities?domain_id=domain")
-        assert allowed.status_code == 200
-        assert allowed.json()["domain_id"] == "domain"
-        assert allowed.json()["can_create_project"] is True
-        assert allowed.json()["is_domain_manager"] is False
-        directory.default_direct.clear()
-        revoked = await client.get("/api/v1/projects/capabilities?domain_id=domain")
-        assert revoked.json()["can_create_project"] is False
-        directory.domain_direct.append(
-            {"user": {"id": "member"}, "role": {"id": rid("project_creator")}, "scope": {"domain": {"id": "domain"}}}
-        )
-        directory.direct.append(assignment("member", "project_creator"))
-        wrong_scope = await client.get("/api/v1/projects/capabilities?domain_id=domain")
-        assert wrong_scope.json()["can_create_project"] is False
+    directory.domain_direct.append(
+        {"user": {"id": "member"}, "role": {"id": rid("project_creator")}, "scope": {"domain": {"id": "domain"}}}
+    )
+    directory.direct.append(assignment("member", "project_creator"))
+    async with AsyncClient(transport=ASGITransport(app=app_for("member")), base_url="http://test") as client:
+        legacy = await client.get("/api/v1/projects/capabilities?domain_id=domain")
+        assert legacy.status_code == 200, legacy.text
+        assert legacy.json()["domain_id"] == "domain"
+        assert legacy.json()["can_create_project"] is False
+        assert legacy.json()["is_domain_manager"] is False
+        denied = await client.post("/api/v1/projects", json={"name": "new-project", "domain_id": "domain"})
+        assert denied.status_code == 403
         assert (await client.get("/api/v1/projects/capabilities?domain_id=other")).status_code == 403
+    async with AsyncClient(transport=ASGITransport(app=app_for("domain-manager")), base_url="http://test") as client:
+        manager_caps = await client.get("/api/v1/projects/capabilities?domain_id=domain")
+        assert manager_caps.status_code == 200
+        assert manager_caps.json()["can_create_project"] is True
+        assert manager_caps.json()["is_domain_manager"] is True
     assert not directory.calls
 
 
 @pytest.mark.asyncio
-async def test_creator_inventory_is_owned_or_authorized_not_domain_wide_and_requires_real_switch(directory):
+async def test_legacy_creator_inventory_is_owned_or_authorized_not_domain_wide_and_requires_real_switch(directory):
     from types import SimpleNamespace
 
     from app.api.identity.iam import router as iam_router
 
+    directory.add_roles("project_creator")
     directory.default_direct.append(assignment("member", "project_creator", project_id="default-project"))
     directory.extra_projects["owned"] = SimpleNamespace(
         id="owned", name="Owned project", domain_id="domain", enabled=True, description=""
@@ -112,8 +115,8 @@ async def test_creator_inventory_is_owned_or_authorized_not_domain_wide_and_requ
 
 
 @pytest.mark.asyncio
-async def test_manager_inventory_and_capabilities_do_not_need_creator_preset(directory):
-    directory.catalog = [role for role in directory.catalog if role["name"] != "project_creator"]
+async def test_manager_inventory_and_capabilities_without_creator_role(directory):
+    assert not any(role["name"] == "project_creator" for role in directory.catalog)
     async with AsyncClient(transport=ASGITransport(app=app_for("domain-manager")), base_url="http://test") as client:
         caps = await client.get("/api/v1/projects/capabilities")
         assert caps.status_code == 200
@@ -256,8 +259,7 @@ async def test_manager_precedence_is_not_an_owner_inference_edge(directory):
     from app.services.service_permissions import ROLE_IMPLICATIONS, ROLE_PRESETS
 
     assert not any(prior == "manager" and implied == "project_owner" for prior, implied in ROLE_IMPLICATIONS)
-    creator = next(row for row in ROLE_PRESETS if row["name"] == "project_creator")
-    assert creator["area"] == "domain" and creator["parent"] is None
+    assert all(row["name"] != "project_creator" and row["area"] == "project" for row in ROLE_PRESETS)
     state = await project_service.project_ownership(PROJECT, token("domain-manager"))
     assert state["owner_user_id"] == "owner" and state["can_transfer"] is True
     assert not (await project_service.get_project_access(PROJECT, "domain-manager"))["is_owner"]
@@ -298,22 +300,37 @@ async def test_unavailable_resource_connection_never_calls_project_delete(direct
 
 
 @pytest.mark.asyncio
-async def test_only_domain_manager_can_delegate_native_default_creator(directory, role_logins):
-    async with AsyncClient(transport=ASGITransport(app=app_for()), base_url="http://test") as client:
-        assert (await client.put("/api/v1/projects/creators/member", json={"enabled": True})).status_code == 403
+async def test_retired_creator_delegation_routes_are_absent(directory, role_logins):
     async with AsyncClient(transport=ASGITransport(app=app_for("domain-manager")), base_url="http://test") as client:
-        granted = await client.put("/api/v1/projects/creators/member", json={"domain_id": "domain", "enabled": True})
-        assert granted.status_code == 200
-        assert granted.json()["role"] == {"id": rid("project_creator"), "name": "project_creator"}
-        assert [row["id"] for row in granted.json()["users"]] == ["member"]
-        assert directory.default_direct[0]["scope"] == {"project": {"id": "default-project"}}
-        assert directory.domain_direct == []
-        assert await project_service.can_create_project("member", "domain")
-        await assert_role_logins_preserved(role_logins)
-        revoked = await client.put("/api/v1/projects/creators/member", json={"enabled": False})
-        assert revoked.status_code == 200 and revoked.json()["users"] == []
-        assert not await project_service.can_create_project("member", "domain")
-        await assert_role_logins_preserved(role_logins)
+        listed = await client.get("/api/v1/projects/creators?domain_id=domain")
+        assert listed.status_code == 405  # Only DELETE /{project_id} matches the bare path now.
+        delegated = await client.put("/api/v1/projects/creators/member", json={"domain_id": "domain", "enabled": True})
+        assert delegated.status_code == 404
+    assert directory.default_direct == [] and directory.domain_direct == []
+    assert not await project_service.can_create_project("member", "domain")
+    await assert_role_logins_preserved(role_logins)
+    assert not directory.calls
+
+
+@pytest.mark.asyncio
+async def test_legacy_creator_grant_does_not_break_user_member_or_role_listing(directory):
+    from app.api.identity.iam import router as iam_router
+
+    directory.add_roles("project_creator")
+    directory.default_direct.append(assignment("member", "project_creator", project_id="default-project"))
+    app = app_for("domain-manager")
+    app.include_router(iam_router, prefix="/api/v1/iam")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        users = await client.get("/api/v1/iam/users")
+        assert users.status_code == 200, users.text
+        assert "member" in {row["id"] for row in users.json()["items"]}
+        members = await client.get("/api/v1/projects/default-project/members")
+        assert members.status_code == 200, members.text
+        assert "member" in {row["user_id"] for row in members.json()["items"]}
+        roles = await client.get("/api/v1/projects/default-project/assignable-roles")
+        assert roles.status_code == 200, roles.text
+        assert "project_creator" not in {row["name"] for row in roles.json()["roles"]}
+    assert not directory.calls
 
 
 @pytest.mark.asyncio

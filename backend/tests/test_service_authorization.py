@@ -135,7 +135,6 @@ EXPECTED_CAPABILITIES = {
 def test_capability_registry_is_separate_from_assignable_project_role_hierarchy():
     assert service_permissions.SERVICE_CAPABILITIES == EXPECTED_CAPABILITIES
     expected_roles = {
-        "project_creator",
         "project_owner",
         "project_admin",
         "project_member",
@@ -155,8 +154,8 @@ def test_capability_registry_is_separate_from_assignable_project_role_hierarchy(
     assert service_permissions.RETIRED_SERVICE_ROLE_NAMES == expected_retired
     assert expected_roles.isdisjoint(expected_retired)
     preview = service_permissions.preset_preview()
-    assert {row["name"] for row in preview["roles"]} == {"project_creator"}
-    assert {row["name"] for row in preview["project_roles"]} == expected_roles - {"project_creator"}
+    assert preview["roles"] == []
+    assert {row["name"] for row in preview["project_roles"]} == expected_roles
 
 
 @pytest.mark.parametrize("name", sorted(service_permissions.RETIRED_SERVICE_ROLE_NAMES))

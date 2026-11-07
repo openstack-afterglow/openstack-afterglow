@@ -77,10 +77,4 @@ export interface ProjectOwnership {
 	transfer_operation: ProjectOwnershipTransfer | null;
 }
 
-export interface ProjectCreators {
-	domain_id: string;
-	role: { id: string; name: string } | null;
-	users: Array<EligibleProjectUser & { source: 'direct' | 'inherited'; direct: boolean }>;
-}
-
 

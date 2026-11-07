@@ -92,6 +92,7 @@
 	"items.systemAdmins": "Systemadministratorer",
 	"items.iamUsers": "Brukeradministrasjon",
 	"items.iamProjects": "Prosjektadministrasjon",
+	"items.iamGroups": "Gruppeadministrasjon",
 	"items.projectSettings": "Prosjektinnstillinger",
 	"routes.dashboard": "Dashbord",
 	"routes.admin": "Administrator",

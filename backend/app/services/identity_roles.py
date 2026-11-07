@@ -1186,10 +1186,6 @@ async def change_project_assignment(
             await asyncio.to_thread(
                 domain_projects.assert_manager_assignment, project_id, role_id, catalog=catalog, ks=ks
             )
-        if not remove and kind != "personal":
-            await asyncio.to_thread(
-                domain_projects.assert_creator_assignment, project_id, role_id, catalog=catalog, ks=ks
-            )
         if required_reader:
             project = await asyncio.to_thread(ks.projects.get, project_id)
             default = await asyncio.to_thread(domain_projects.default_project, _field(project, "domain_id"), ks=ks)
@@ -1267,12 +1263,23 @@ def _group_identity_home(ks, group_id, domain_id, user_domain_id):
 
 @_complete_mutation
 async def change_group_membership(
-    conn, token_info, group_id, *, user_id=None, remove=False, delete=False, user_domain_id=None, domain_id=None
+    conn,
+    token_info,
+    group_id,
+    *,
+    user_id=None,
+    remove=False,
+    delete=False,
+    user_domain_id=None,
+    domain_id=None,
+    authorize=None,
 ):
     """Owner-bearing group grants remain read-only in generic group management.
 
     There is no target-project ownership transition on a global group endpoint.
     Reject rather than silently remove the last owner of any inherited project.
+    A scoped caller (domain IAM) passes ``authorize(ks, catalog)`` to prove its
+    own boundary under this lease before any generic check or write.
     """
     async with _graph_lock(conn) as lease:
         if user_domain_id is not None:
@@ -1285,6 +1292,8 @@ async def change_group_membership(
         from app.services import domain_projects, keystone
 
         ks = await asyncio.to_thread(keystone._get_admin_ks_client)
+        if authorize is not None:
+            await authorize(ks, catalog)
         await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
         if not remove and not delete:
             if user_domain_id is not None:

@@ -1014,6 +1014,9 @@ body {
 @keyframes motion-pop {
   from { opacity: 0; transform: scale(0.94); }
 }
+@keyframes motion-slide-left {
+  from { transform: translateX(100%); }
+}
 /* Editorial objects assemble as opaque solids; never fade their individual faces. */
 @keyframes motion-assemble {
   from { transform: translate(var(--motion-assemble-x, 0), var(--motion-assemble-y, 0)) rotate(var(--motion-assemble-angle, 0deg)); }
@@ -1049,6 +1052,9 @@ body {
 .motion-pop {
   animation: motion-pop var(--motion-duration-panel) var(--motion-ease-overshoot) backwards;
   animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+}
+.motion-slide-left {
+  animation: motion-slide-left var(--motion-duration-panel) var(--motion-ease-emphasized) backwards;
 }
 .motion-assemble {
   animation: motion-assemble calc(var(--motion-duration-data) * 3) var(--motion-ease-emphasized) backwards;

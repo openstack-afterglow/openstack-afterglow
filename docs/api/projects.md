@@ -9,7 +9,7 @@ nav_order: 12
 > 태그: `projects`
 > 기본 경로: `/api/v1/projects`
 
-조직/legacy working domain에서는 현재 Default manager와 위임받은 project_creator가 프로젝트를 만들고 manager 또는 현재 프로젝트 owner/admin이 실제 Keystone role-ID/DAG로 권한을 관리합니다. 공유 personal에서는 검증된 자기 primary의 소유자만 추가 개인 프로젝트를 만들며 account는 identity-only라서 workspace·project target이 아닙니다. Immutable identity home과 working domain은 다를 수 있습니다. 이메일 초대는 [조직 IAM](iam.md), 공개 링크 수락·가입은 [인증 onboarding](auth.md#공개-이메일-검증-onboarding)을 사용합니다.
+조직/legacy working domain에서는 현재 Default manager(도메인 manager)만 프로젝트를 만들고 manager 또는 현재 프로젝트 owner/admin이 실제 Keystone role-ID/DAG로 권한을 관리합니다. 공유 personal에서는 검증된 자기 primary의 소유자만 추가 개인 프로젝트를 만들며 account는 identity-only라서 workspace·project target이 아닙니다. Immutable identity home과 working domain은 다를 수 있습니다. 이메일 초대는 [조직 IAM](iam.md), 공개 링크 수락·가입은 [인증 onboarding](auth.md#공개-이메일-검증-onboarding)을 사용합니다.
 
 ---
 
@@ -27,7 +27,7 @@ PUT는 현재 권위 확인 후 bounded configured writer와 graph lease로 `aft
 - **현재 Keystone 권한** — 역할 카탈로그·직접 상속 DAG·유효 프로젝트 할당을 다시 조회합니다. 같은 이름의 도메인 역할, 오래된 JWT 역할 배열, 앱 DB의 기존 `project_roles` 행은 권한 근거가 아닙니다. 조회 실패는 `503`이며 오래된 권한으로 대체하지 않습니다.
 - **기존 프로젝트 계층 유지** — `project_owner → project_admin → project_member → project_reader`, `project_member → member`, `project_reader → reader`. 기존 역할 ID·할당을 재사용하며 서비스 권한은 이 계층에 자동 연결하지 않습니다.
 - **시스템 관리자가 확장한 하위 역할** — 전역 custom 역할(예: `project_reader → audit`)을 명시적으로 연결한 그래프에서도 기존 프로젝트 등급의 관리·멤버 할당을 유지합니다. Custom 역할의 직접 독립 위임은 허용하지 않으며 해당 등급을 통해 현재 ID 그래프대로만 상속합니다. 알려진 core/project/서비스 권한 승격·도메인 혼합·중복 역할 ID 바인딩은 계속 거부합니다.
-- **프로젝트 생성** — 조직/legacy는 현재 enabled canonical Default 프로젝트의 effective `manager` 또는 `project_creator`와 실제 참여를 요구합니다. 다른 프로젝트나 legacy domain scope의 동명 grant, JWT flag는 생성 권위가 아닙니다. Manager는 creator preset 존재와 무관합니다. Personal은 본인 primary의 marker·직접 native member provenance를 검증하고 이름을 정규화 username 최대47자+하이픈+임의 소문자8자+숫자8자리로 생성합니다. Personal 요청은 name을 생략해야 하며 nonempty name은422 personal_project_name_is_generated입니다. Disabled project에 본인 직접 member 하나와 동결된 project quota를 준비·readback한 뒤 활성화하고 owner/admin/reader·domain manager/projection/allocation pool은 자동 부여하지 않습니다. 기존 owner 기반 personal grant는 보존합니다. 조직 생성의 기존 projection·quota defaults와 불명 native effect의 replay 금지는 유지합니다.
+- **프로젝트 생성** — 조직/legacy는 현재 enabled canonical Default 프로젝트의 effective `manager`(도메인 manager)와 실제 참여를 요구합니다. 다른 프로젝트나 legacy domain scope의 동명 grant, JWT flag는 생성 권위가 아닙니다. 과거 `project_creator` 위임은 폐지되었으며, native에 남아 있는 `project_creator` role/grant는 서버가 읽지도 삭제·거부하지도 않는 비활성 데이터입니다. Personal은 본인 primary의 marker·직접 native member provenance를 검증하고 이름을 정규화 username 최대47자+하이픈+임의 소문자8자+숫자8자리로 생성합니다. Personal 요청은 name을 생략해야 하며 nonempty name은422 personal_project_name_is_generated입니다. Disabled project에 본인 직접 member 하나와 동결된 project quota를 준비·readback한 뒤 활성화하고 owner/admin/reader·domain manager/projection/allocation pool은 자동 부여하지 않습니다. 기존 owner 기반 personal grant는 보존합니다. 조직 생성의 기존 projection·quota defaults와 불명 native effect의 replay 금지는 유지합니다.
 - **유일한 명시적 소유권** — 일반 프로젝트는 정확한 `project_owner` 직접 사용자 할당 하나만 정상 소유권입니다. 복수 owner, owner를 함의하는 다른 역할, group/domain/ancestor 상속 owner는 conflict이며 자동으로 한 명을 선택하지 않습니다. `manager > owner`는 도메인 관리 우선순위이지 `manager → project_owner` inference edge가 아닙니다. Default는 별도의 도메인 권위 프로젝트이며 소유권 이전·삭제 대상이 아닙니다.
 - **멤버 관리와 소유권 분리** — owner 또는 도메인 manager는 `project_admin`을 변경할 수 있고 project admin은 그보다 낮은 허용 역할만 관리합니다. 일반 역할 편집·멤버 제거는 owner-bearing grant를 추가/제거할 수 없습니다. 소유권 변경은 전용 transfer 경로만 사용하며 `assignable-roles.can_manage_owners`는 항상 `false`입니다. 직접 역할만 교체하고 편집 불가 기존 직접 할당과 그룹·도메인 상속은 유지합니다.
 - **Native admin은 일반 선택지에서 제외** — literal Keystone `admin`(현재 catalog의 실제 ID, 이름 대소문자 무시)은 사용자·IAM assignable catalog와 관리자 user/group 역할 선택·검색에 표시하지 않습니다. 비활성 checkbox도 없으며 새 API grant는422로 거부합니다. 브라우저는 기존 direct admin을 숨긴 채 다른 역할 저장 시 보존합니다. 명시적 API full replacement에 기존 admin을 그대로 포함하면 보존하고 제외하면 해당 direct grant를 회수하는 계약과 additive 생략=보존은 유지합니다. Group/상속 admin을 direct로 바꾸지 않습니다. `project_admin`·서비스 `*_admin`의 기존 ceiling과 관리자 페이지의 전용 `system:all` grant/revoke 경로는 바꾸지 않습니다.
@@ -40,7 +40,7 @@ PUT는 현재 권위 확인 후 bounded configured writer와 graph lease로 `aft
 
 일반 지정 프로젝트 경로는 native 프로젝트의 `domain_id`가 세션의 **working `domain_id`**와 같고 enabled인지 확인합니다. identity domain으로 작업 대상을 대체하지 않습니다. 멤버·assignable-role·eligible-user·ownership 조회 및 멤버 변경은 일반 owner/admin의 **현재 프로젝트**에서만 가능합니다. 현재 Default manager는 선택 프로젝트가 없어도 같은 working domain의 프로젝트를 관리할 수 있습니다. 시스템 관리자라는 이유만으로 이 관리 경계를 우회하지 않습니다. 경계 위반·비활성 프로젝트는 `403`, native 대상 부재는 `404`, directory/graph 조회 불가는 `503`입니다.
 
-생성·capabilities·creators는 선택적 `domain_id`로 다른 도메인을 명시할 수 있지만 해당 ID에 대한 현재 가입/manager/creator 권한을 다시 검증합니다. 생략하면 working domain을 사용하며 ID 대신 display name을 보내는 계약이 아닙니다. 이 호출은 세션을 전환하지 않습니다. 별도 system-admin settlement 경로만 명시한 target domain의 journal을 처리합니다.
+생성·capabilities는 선택적 `domain_id`로 다른 도메인을 명시할 수 있지만 해당 ID에 대한 현재 가입/manager 권한을 다시 검증합니다. 생략하면 working domain을 사용하며 ID 대신 display name을 보내는 계약이 아닙니다. 이 호출은 세션을 전환하지 않습니다. 별도 system-admin settlement 경로만 명시한 target domain의 journal을 처리합니다.
 
 멤버 대상은 native home-domain 사용자뿐 아니라 현재 해당 도메인에 실제 가입한 외부 identity 사용자도 포함합니다. 외부 identity의 `domain_id`는 원래 home ID 그대로이며 credential/profile 관리 권한을 뜻하지 않습니다. 역할 추가·교체와 ownership transfer는 enabled user 및 현재 도메인 가입을 재확인합니다. remove는 기존 유효 멤버의 관리 가능한 직접 grant만 제거합니다.
 
@@ -67,11 +67,9 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
-| `POST` | `/api/v1/projects` | 조직 manager/creator 또는 본인 personal primary owner | disabled staging·sole owner·quota readback 뒤 활성화; `201` |
+| `POST` | `/api/v1/projects` | 조직 도메인 manager 또는 본인 personal primary owner | disabled staging·sole owner·quota readback 뒤 활성화; `201` |
 | `GET` | `/api/v1/projects` | 조직/legacy 도메인의 현재 가입 사용자 | `?domain_id=...`; `{items:[{id,name,description,domain_id,enabled}]}`. Default manager는 도메인 목록, 그 외는 native owner/admin·membership이 확인된 enabled 프로젝트만 반환 |
 | `GET` | `/api/v1/projects/capabilities` | 대상 domain의 현재 가입 사용자 | `?domain_id=...`; `{domain_id,domain_kind,is_domain_manager,can_create_project}` |
-| `GET` | `/api/v1/projects/creators` | 대상 도메인 manager | `?domain_id=...`; creator 위임 목록 |
-| `PUT` | `/api/v1/projects/creators/{user_id}` | 대상 도메인 manager | `{enabled,domain_id?}`; 직접 creator grant 위임/회수 |
 | `GET` | `/api/v1/projects/current/permissions` | 필요 | 현재 프로젝트 역할 및 실효 권한 |
 | `GET` | `/api/v1/projects/{project_id}/permissions` | 필요 | 같은 working domain 프로젝트 역할 및 실효 권한 |
 | `GET` | `/api/v1/projects/{project_id}/members` | 도메인 manager 또는 현재 프로젝트 owner/admin | 직접·유효·그룹·상속 멤버 |
@@ -82,7 +80,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 | `GET` | `/api/v1/projects/{project_id}/ownership` | 도메인 manager 또는 현재 프로젝트 owner/admin | native 소유권·durable operation·액션 가능 여부 |
 | `POST` | `/api/v1/projects/{project_id}/ownership-transfer` | 도메인 manager 또는 현재 sole owner | `{user_id}`; 명시적 소유권 이전 |
 | `POST` | `/api/v1/projects/{project_id}/ownership-transfer/reconcile` | 현재 verified `system:all` admin | `{operation_id,domain_id?,native_calls_settled:true}`; 수동 settlement |
-| `GET` | `/api/v1/projects/{project_id}/deletion-check` | 도메인 manager 또는 creator이면서 sole owner | 자원·child 프로젝트 삭제 안전성 조회 |
+| `GET` | `/api/v1/projects/{project_id}/deletion-check` | 도메인 manager 또는 `can_create_project`인 sole owner(조직/legacy에서는 manager와 같음) | 자원·child 프로젝트 삭제 안전성 조회 |
 | `DELETE` | `/api/v1/projects/{project_id}` | 동일 | 재검사 후 빈 프로젝트만 삭제; `204` |
 | `POST` | `/api/v1/projects/{project_id}/members/migrate-legacy-managers` | verified system admin 및 프로젝트 관리 경계 충족 | `{owner_user_id}`; 명시적 기존 DB 관리자 이전 |
 
@@ -122,7 +120,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 ## POST /api/v1/projects
 
-대상 도메인의 enabled canonical Default 프로젝트에서 effective `manager` 또는 `project_creator`를 가진 사용자가 프로젝트를 생성합니다. Creator 위임/회수도 그 Default project의 직접 native 사용자 grant를 다루며 domain-scope grant로 대체하지 않습니다. `domain_id` 생략 시 working domain을 사용하고 명시 시 해당 도메인 가입과 생성 권한을 별도로 검증합니다. 시스템 관리자/프로젝트 owner/admin 권한만으로 생성할 수 없습니다. 이름은 앞뒤 공백을 제거하며 대소문자 무관 `Default`는 예약되어 있습니다. 생성은 세션의 working domain/project를 자동 전환하지 않습니다.
+대상 도메인의 enabled canonical Default 프로젝트에서 effective `manager`를 가진 도메인 manager가 프로젝트를 생성합니다. `domain_id` 생략 시 working domain을 사용하고 명시 시 해당 도메인 가입과 생성 권한을 별도로 검증합니다. 시스템 관리자/프로젝트 owner/admin 권한만으로 생성할 수 없으며 과거 `project_creator` grant도 생성 권위가 아닙니다. 이름은 앞뒤 공백을 제거하며 대소문자 무관 `Default`는 예약되어 있습니다. 생성은 세션의 working domain/project를 자동 전환하지 않습니다.
 
 ### 요청 본문
 
@@ -251,55 +249,25 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 ---
 
-## 생성 capability와 creator 위임
+## 생성 capability
 
 ### GET /api/v1/projects/capabilities
 
-선택적 query `domain_id`(길이 1 이상, 생략 시 working domain)를 받습니다. 해당 도메인의 현재 가입과 enabled identity/domain을 검증한 다음 enabled canonical Default project의 effective `manager` 또는 canonical native role-ID DAG의 `project_creator`를 확인합니다. 다른 프로젝트나 legacy domain-scope grant·JWT role 이름은 capability가 아닙니다.
+선택적 query `domain_id`(길이 1 이상, 생략 시 working domain)를 받습니다. 해당 도메인의 현재 가입과 enabled identity/domain을 검증한 다음 enabled canonical Default project의 effective `manager` 여부를 확인합니다. 조직/legacy에서 `can_create_project`는 `is_domain_manager`와 같고, personal에서는 본인 enabled primary 프로젝트가 확인될 때 true입니다. 다른 프로젝트나 legacy domain-scope grant·JWT role 이름·남아 있는 `project_creator` grant는 capability가 아닙니다.
 
 응답 `200`:
 
 ```json
-{"domain_id":"domain-id","domain_kind":"organization","is_domain_manager":false,"can_create_project":true}
+{"domain_id":"domain-id","domain_kind":"organization","is_domain_manager":true,"can_create_project":true}
 ```
 
-조직 IAM 프런트엔드는 capability의 명시적 `domain_kind`·`is_domain_manager`·`can_create_project`를 모두 검증한다. 이전 API의 필드 누락은 권한 없음/조회 불가로 fail-closed이므로 새 frontend/API를 함께 배포해야 한다. SQL migration은 없지만 기존 direct domain-scope creator grant는 새 권위가 아니며 운영자가 별도 승인된 절차로 정확한 Default project에 명시적으로 부여해야 한다. 조회·로그인·업그레이드가 grant를 자동 이동하지 않는다.
+조직 IAM 프런트엔드는 capability의 명시적 `domain_kind`·`is_domain_manager`·`can_create_project`를 모두 검증한다. 이전 API의 필드 누락은 권한 없음/조회 불가로 fail-closed이므로 새 frontend/API를 함께 배포해야 한다. 응답 형태는 creator 위임 폐지 전과 같으며 값의 의미만 manager(또는 personal 규칙)로 좁혀졌다.
 
-가입 사용자에게 creator preset/grant가 없으면 `false`이며 login/startup에서 생성하거나 부여하지 않습니다. 가입 거부·비활성 domain은 `403`, domain 부재는 `404`, query 오류는 `422`, ambiguous role binding/directory/graph 장애는 `503`입니다.
+가입 거부·비활성 domain은 `403`, domain 부재는 `404`, query 오류는 `422`, ambiguous role binding/directory/graph 장애는 `503`입니다.
 
-### GET /api/v1/projects/creators
+### Creator 위임 폐지
 
-같은 선택적 query를 사용하며 **대상 도메인 manager만** 조회합니다. `200` 응답은 다음 형태입니다.
-
-```json
-{
-  "domain_id": "domain-id",
-  "role": {"id":"creator-role-id","name":"project_creator"},
-  "users": [
-    {
-      "id":"joined-user-id",
-      "name":"joined-user",
-      "email":"user@example.com",
-      "domain_id":"identity-home-domain-id",
-      "enabled":true,
-      "source":"direct",
-      "direct":true
-    }
-  ]
-}
-```
-
-`role`은 preset 미설정 시 `null`이고 `users`는 빈 배열입니다. 목록은 manager 전체 목록이 아니라 해당 Default project의 유효 creator grant 사용자 목록입니다. `source`는 정확한 직접 creator grant가 있으면 `direct`, 그 외 현재 Default-effective graph/group 경유이면 `inherited`이며 `direct` boolean으로 직접 회수 가능 여부를 구분합니다. Home-domain ID가 다른 가입 사용자도 표시합니다.
-
-### PUT /api/v1/projects/creators/{user_id}
-
-```json
-{"domain_id":"target-domain-id","enabled":true}
-```
-
-`enabled`는 **필수 strict boolean**입니다. `domain_id`는 선택적 nullable 문자열(길이 1 이상)이며 생략/null이면 working domain입니다. 도메인 manager가 enabled home/joined 사용자에게 해당 canonical Default project의 직접 `project_creator`를 부여하거나 회수합니다. Graph lease 안에서 권한·preset·가입·Default를 확인하고 native 직접 grant readback과 session/cache invalidation을 수행합니다. 성공 `200`은 GET creators와 같은 갱신된 inventory입니다. `false`는 해당 직접 grant만 회수하므로 다른 유효 경로나 manager의 생성 권한까지 없앤다는 보장은 없습니다.
-
-오류: `401` disabled 대상 identity(`assert_membership`의 native active-user 검사 포함) 또는 무효 세션, `403` manager/가입/활성 domain 조건 실패, `404` native domain/user 부재, `409` 명시적 administrator creator preset setup 필요 또는 native 충돌, `422` 잘못된 필드/boolean, `503` graph/directory/mutation/readback 불가. Preset 설치는 별도의 시스템 관리자 작업이며 위임 endpoint가 자동 적용하지 않습니다.
+`project_creator` 위임 경로는 제거되었습니다. `GET /api/v1/projects/creators`는 이제 `DELETE /api/v1/projects/{project_id}` 경로 template에만 일치하므로 `405`, `PUT /api/v1/projects/creators/{user_id}`는 `404`입니다. `project_creator`는 [역할 프리셋](admin.md#역할시스템-역할-관리)에서도 빠져 프리셋은 `project_owner`/`project_admin`/`project_member`/`project_reader`만 다룹니다. SQL migration이나 자동 정리는 없으며 기존 native `project_creator` role·grant는 읽거나 삭제·거부하지 않고 그대로 남는 비활성 데이터입니다. 그 결과 manager가 아닌 sole owner는 personal이 아닌 프로젝트를 스스로 삭제할 수 없습니다([빈 프로젝트 안전 삭제](#빈-프로젝트-안전-삭제)).
 
 ---
 
@@ -307,7 +275,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 도메인 manager 또는 현재 프로젝트 owner/admin이 조회하며 본문은 없습니다. `200` 응답의 정확한 최상위 필드는 `{roles,is_owner,can_manage_owners}`입니다. 각 role은 현재 catalog의 `id`, `name`, `description`, `domain_id`, `system_only`, `implied_role_ids`, `inherited_role_ids`와 관리 분류 `area`, `grade`를 제공합니다. `is_owner`는 호출자의 유효 owner 여부이고 `can_manage_owners`는 **항상 false**입니다.
 
-`project_owner`는 모든 호출자의 assignable 목록에서 제외합니다. `project_admin`은 실제 owner 또는 도메인 manager에게만 포함됩니다. `project_creator`와 native `admin`/`manager`를 이 프로젝트 role editor로 위임하지 않습니다. 안전한 core/project/service ceiling과 custom descendant 정책은 위 권한 모델을 따릅니다. 오류는 `403` scope/관리 권한 거부, `404` native 대상 부재, `503` catalog/graph/assignment 불가입니다.
+`project_owner`는 모든 호출자의 assignable 목록에서 제외합니다. `project_admin`은 실제 owner 또는 도메인 manager에게만 포함됩니다. Native `admin`/`manager`를 이 프로젝트 role editor로 위임하지 않습니다. 안전한 core/project/service ceiling과 custom descendant 정책은 위 권한 모델을 따릅니다. 오류는 `403` scope/관리 권한 거부, `404` native 대상 부재, `503` catalog/graph/assignment 불가입니다.
 
 콘솔의 역할 선택지는 이 서버-filtered `roles` 목록을 그대로 따릅니다. `can_manage_owners=false`는 소유권이 별도 transfer 경로라는 뜻이며 `project_admin` checkbox를 막는 권한 flag가 아닙니다. 실제 `is_owner`로 owner 대상 편집/관리자 멤버 관리 여부를 구분하고, 모든 직접 역할 저장은 서버가 현재 scope·역할 그래프·owner 및 필수 Default reader를 다시 검증합니다.
 
@@ -360,13 +328,13 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 | `owners` | 모든 owner 사용자와 source `direct` 또는 `group_or_inherited`; 임의 owner 선택 없음 |
 | `transfer_operation` | durable journal의 현재 행 또는 `null`; native 소유권의 대체 권위가 아님 |
 | `can_transfer` | Default가 아니며 applying/unknown journal이 없고, unique owner의 본인/manager인 경우. Unresolved operation의 settled missing-owner 복구는 manager에게도 표시 가능 |
-| `can_delete` | Default가 아니며 모든 journal이 completed이고, manager이거나 creator capability를 가진 sole owner인 경우. **자원 비어 있음의 증명이 아님** |
+| `can_delete` | Default가 아니며 모든 journal이 completed이고, 도메인 manager이거나 `can_create_project`인 sole owner인 경우(조직/legacy에서는 결국 manager만). **자원 비어 있음의 증명이 아님** |
 
 도메인 manager는 project owner가 아니어도 관리할 수 있습니다. 기존 missing/conflict를 이 GET이 자동 수정하지 않으며 group owner가 한 명이어도 `unique`로 취급하지 않습니다. 오류는 `403` scope/관리 권한 거부, `404` native 대상 부재, `409` role preset/hierarchy 미설정, `503` ownership provenance 불일치·graph/directory/journal 불가입니다.
 
 ### POST /api/v1/projects/{project_id}/ownership-transfer
 
-요청은 `{ "user_id": "enabled-joined-user-id" }`(필수, 길이 1 이상)입니다. Target은 현재 프로젝트 멤버일 필요는 없지만 enabled 상태이고 working domain에 이미 가입해야 합니다. 일반 새 이전은 **현재 sole owner 또는 도메인 manager**만 허용합니다. Creator capability만으로 다른 프로젝트 소유권을 이전할 수 없습니다.
+요청은 `{ "user_id": "enabled-joined-user-id" }`(필수, 길이 1 이상)입니다. Target은 현재 프로젝트 멤버일 필요는 없지만 enabled 상태이고 working domain에 이미 가입해야 합니다. 일반 새 이전은 **현재 sole owner 또는 도메인 manager**만 허용합니다.
 
 Graph lease 안에서 unique ownership·target eligibility·현재 권한을 재확인하고 durable SQL intent를 commit합니다. 기존 직접 owner를 revoke한 다음 target에게 grant하여 일시적으로 두 owner를 만들지 않습니다. 각 native dispatch 전에 stage를 저장하고 target의 unique ownership readback 후에만 completed로 기록합니다. 이전 owner에게 별도 admin/member 역할을 자동 부여하지 않으며 두 당사자의 세션·관련 cache를 invalidation합니다.
 
@@ -410,7 +378,7 @@ Graph lease 안에서 unique ownership·target eligibility·현재 권한을 재
 
 ### GET /api/v1/projects/{project_id}/deletion-check
 
-삭제 권한은 **현재 도메인 manager** 또는 **현재 creator capability + unique sole ownership을 모두 가진 사용자**에게 있습니다. 단순 owner/admin, creator만인 사용자, system admin만인 사용자는 허용하지 않습니다. Default와 unresolved journal은 삭제할 수 없습니다. 이 endpoint는 자원을 삭제하지 않습니다.
+삭제 권한은 **현재 도메인 manager** 또는 **현재 `can_create_project` + unique sole ownership을 모두 가진 사용자**에게 있습니다. 조직/legacy에서 `can_create_project`는 manager 여부와 같으므로 manager가 아닌 sole owner는 personal이 아닌 프로젝트를 스스로 삭제할 수 없고, personal에서는 기존 own-project 규칙이 적용됩니다. 단순 owner/admin, 남아 있는 `project_creator` grant만 가진 사용자, system admin만인 사용자는 허용하지 않습니다. Default와 unresolved journal은 삭제할 수 없습니다. 이 endpoint는 자원을 삭제하지 않습니다.
 
 성공 `200`의 필드는 다음과 같습니다. 아래 resources는 개별 entry 형태 예시이며 실제 응답에는 전체 검사 종류가 포함됩니다.
 

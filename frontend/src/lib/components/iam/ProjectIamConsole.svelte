@@ -18,7 +18,7 @@
 	let entryVerified = $state(false);
 	let live = true;
 	function acceptCapability(next: ProjectManagementState) {
-		const allowed = entryVerified && next.scope && next.capability && next.capability.domain_kind !== 'personal' && (next.capability.is_domain_manager || next.capability.can_create_project);
+		const allowed = entryVerified && next.scope && next.capability && next.capability.domain_kind !== 'personal' && next.capability.is_domain_manager;
 		const changed = capabilityState.scope !== next.scope || domainManager !== (next.capability?.is_domain_manager === true);
 		capabilityState = next;
 		if (!allowed || changed) { session = null; revision++; }
@@ -57,7 +57,6 @@
 	{:else if capabilityState.error}<Alert tone="danger">{t('loadFailed')}</Alert>
 	{:else if !session}<Alert tone="warning">{t('projectsDenied')}</Alert>{/if}
 	{#if session}
-		<p class="mb-4 break-all text-sm text-ink-2">{t('domain')} · {session.domainId}</p>
-		{#key revision}<IamProjects {session} {domainManager} canCreate={capabilityState.capability?.can_create_project === true} blocked={capabilityState.checking || !!capabilityState.error || denied} onDenied={recheck} />{/key}
+		{#key revision}<IamProjects {session} canCreate={capabilityState.capability?.can_create_project === true} blocked={capabilityState.checking || !!capabilityState.error || denied} onDenied={recheck} />{/key}
 	{/if}
 </PageShell>

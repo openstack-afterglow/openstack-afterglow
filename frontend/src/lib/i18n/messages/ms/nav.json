@@ -92,6 +92,7 @@
 	"items.systemAdmins": "Pentadbir sistem",
 	"items.iamUsers": "Pengurusan pengguna",
 	"items.iamProjects": "Pengurusan projek",
+	"items.iamGroups": "Pengurusan kumpulan",
 	"items.projectSettings": "Tetapan projek",
 	"routes.dashboard": "Papan pemuka",
 	"routes.admin": "Pentadbir",

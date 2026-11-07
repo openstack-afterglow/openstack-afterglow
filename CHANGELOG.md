@@ -7,6 +7,27 @@
 
 ## [Unreleased]
 
+## [1.32.11] - 2026-11-08
+
+- 발행 시각: 2026-11-08 (Asia/Seoul, UTC+09:00). 비교 기준: `1.32.10` → `1.32.11`.
+
+### Added
+- 도메인 IAM에 그룹 관리(`/dashboard/iam/groups`)를 추가하고 도메인 manager용 `GET/POST /api/v1/iam/groups`, `PATCH/DELETE /api/v1/iam/groups/{id}`, `GET /api/v1/iam/groups/{id}/members`, `PUT/DELETE /api/v1/iam/groups/{id}/members/{user_id}`를 제공한다. 시스템·관리·custom 권한을 가진 보호 그룹과 manager 투영 그룹은 읽기 전용이며 `GET /groups`는 투영 그룹을 더 이상 반환하지 않는다.
+- 도메인 manager 프로젝트 수정 `PATCH /api/v1/iam/projects/{project_id}`(이름·설명만, Default 이름 변경 불가·description 변경은 시스템 관리자 경로와 동일하게 허용, 화면은 Default 수정을 노출하지 않음)와 공용 우측 슬라이드인 `SlideOver` 컴포넌트를 추가한다.
+
+### Changed
+- 프로젝트 관리 화면은 프로젝트 선택 드롭다운 대신 도메인 프로젝트 표(수정·멤버·제거)를 기본으로 보여 주고 수정과 멤버 편집을 오른쪽 슬라이드인에서 처리한다. 사용자 관리 화면은 working-domain 카드와 계정 신원 도메인 열을 표시하지 않는다.
+- 프로젝트 생성은 도메인 manager만 할 수 있다. `project_creator` 위임(`GET /api/v1/projects/creators`, `PUT /api/v1/projects/creators/{user_id}`)과 해당 role preset을 폐기하며 남은 native 역할·grant는 비활성 데이터로 보존한다. 따라서 manager가 아닌 단독 owner는 조직 프로젝트를 스스로 삭제할 수 없다.
+- 도메인 manager 투영 그룹이 도메인 상속 native `manager`를 부여한다(기존 v1 `reader` 투영은 lease 안에서 migration). 투영에서 파생된 effective row는 manager·last-manager 계산에서 제외된다.
+
+### Fixed
+- 사용자 페이지의 `/api/v1/{chat,k3s,waygate,palimpsest}/*` 요청은 시스템 관리자라도 system scope로 승격하지 않고 선택 프로젝트의 일반 role(manager/member/reader)로 처리한다. 시스템 관리자 승격은 `/api/v1/{chat,k3s,waygate,palimpsest}/admin/*`와 `/api/v1/admin/*` 관리자 경로에만 남긴다. 이전에는 교차 프로젝트 Waygate 생성이 execution 단계에서 `Waygate execution delegation is not authorized` 403으로 실패했다.
+
+### Known issues
+- 로컬 `npm run test:gate`의 프런트엔드 단위 단계는 82개 파일·1,123개 테스트가 실패한다(jsdom `localStorage` 문제). 1.32.10 직전 커밋에서도 같은 수치로 재현되었고 원인은 규명하지 못했다. 같은 SHA의 CI(Node 22, 2개 shard)를 프런트엔드 정본 증거로 삼는다.
+- 새 도메인 IAM 그룹·프로젝트 화면은 실행 중인 스택의 브라우저에서 확인하지 않았다(합성 client mock 컴포넌트 테스트만 실행).
+- 도메인 manager 투영의 reader→manager 전환(v1 reader 투영 migration)은 실제 Keystone에서 확인하지 않았다.
+
 ## [1.32.10] - 2026-11-07
 
 ### Added

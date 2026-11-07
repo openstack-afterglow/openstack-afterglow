@@ -87,8 +87,11 @@ describe('allNavItems service inheritance', () => {
     const manager = allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: true, projectManagement: true });
     expect(manager.find(item => item.href === '/dashboard/iam/users')).toMatchObject({ labelKey: 'items.iamUsers', capability: 'domainManager' });
     expect(manager.find(item => item.href === '/dashboard/iam/projects')).toMatchObject({ labelKey: 'items.iamProjects', capability: 'projectManagement' });
+    expect(manager.find(item => item.href === '/dashboard/iam/groups')).toMatchObject({ labelKey: 'items.iamGroups', capability: 'domainManager', sectionKey: 'sections.domainIam' });
+    expect(manager.findIndex(item => item.href === '/dashboard/iam/groups')).toBe(manager.findIndex(item => item.href === '/dashboard/iam/projects') + 1);
     const creator = allNavItems(false, DEFAULT_BETA_FEATURES, { domainManager: false, projectManagement: true });
     expect(creator.some(item => item.href === '/dashboard/iam/users')).toBe(false);
+    expect(creator.some(item => item.href === '/dashboard/iam/groups')).toBe(false);
     expect(creator.some(item => item.href === '/dashboard/iam/projects')).toBe(true);
     expect(creator.some(item => item.href.startsWith('/admin'))).toBe(false);
     expect(allNavItems(true, DEFAULT_BETA_FEATURES).find(item => item.href === '/admin/domains')).toMatchObject({ sectionKey: 'sections.identity' });
@@ -104,7 +107,7 @@ describe('allNavItems service inheritance', () => {
 });
 
 describe('project-independent authenticated routes', () => {
-	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects', '/dashboard/account', '/dashboard/account/mcp', '/dashboard/account/keypairs', '/dashboard/account/sessions', '/dashboard/account/beta', '/dashboard/account/activity'])('does not require a selected project for %s', (path) => {
+	it.each(['/select-domain', '/select-project', '/dashboard/iam', '/dashboard/iam/users', '/dashboard/iam/projects', '/dashboard/iam/groups', '/dashboard/account', '/dashboard/account/mcp', '/dashboard/account/keypairs', '/dashboard/account/sessions', '/dashboard/account/beta', '/dashboard/account/activity'])('does not require a selected project for %s', (path) => {
 		expect(isProjectAgnosticPath(path, false, false)).toBe(true);
 	});
 	it.each(['/admin', '/admin/domains'])('keeps the project exemption on %s system-admin-only', (path) => {

@@ -388,7 +388,7 @@ Query `domain_id`는 선택(1–255자)이며 생략하면 현재 작업 도메�
 }
 ```
 
-Manager는 해당 도메인의 enabled 프로젝트 전체를, 일반 사용자는 현재 native 접근과 실제 멤버십을 모두 통과한 enabled 프로젝트만 받습니다. 프로젝트는 이름의 casefold와 ID 순으로 정렬합니다. Canonical Default가 반환 목록에 없으면 `default_project_id=""`입니다. `can_create_project`는 현재 manager 또는 해당 도메인의 `project_creator` capability이며 생성 API가 다시 검증합니다. 마지막 domain authority 재조회가 달라지면403입니다. UUID 기반 pin/order/hidden 같은 표시 설정은 권한을 복원하거나 활성 scope를 바꾸는 근거가 아닙니다.
+Manager는 해당 도메인의 enabled 프로젝트 전체를, 일반 사용자는 현재 native 접근과 실제 멤버십을 모두 통과한 enabled 프로젝트만 받습니다. 프로젝트는 이름의 casefold와 ID 순으로 정렬합니다. Canonical Default가 반환 목록에 없으면 `default_project_id=""`입니다. `can_create_project`는 조직/legacy에서는 현재 도메인 manager 여부와 같고 personal에서는 본인 enabled primary 프로젝트 규칙을 따르며, 생성 API가 다시 검증합니다. 폐지된 `project_creator` grant는 반영하지 않습니다. 마지막 domain authority 재조회가 달라지면403입니다. UUID 기반 pin/order/hidden 같은 표시 설정은 권한을 복원하거나 활성 scope를 바꾸는 근거가 아닙니다.
 
 Directory 조립은 한 요청의 `NativeOperation`에서 서비스 연결·도메인/프로젝트·membership·role graph 관측을 재사용합니다. 응답 직전 별도의 fresh domain authority 확인을 위해 관측을 무효화하며 연결만 유지합니다. 요청 간 권위 cache나 TTL 증가는 없습니다. Refresh·명시적 scope 변경도 동일한 연결 소유권을 사용하되 정책 조회와 native 변경 뒤 publication 경계에서 권위를 다시 검증합니다.
 

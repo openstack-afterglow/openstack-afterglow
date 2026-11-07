@@ -33,7 +33,6 @@ const invitation = { id: 4, domain_id: 'domain-a', email: 'invitee@example.com',
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (cause: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function fixture(path: string) {
 	if (path.endsWith('/context')) return { domain_id: 'domain-a', domain_name: 'Domain A', is_domain_manager: true };
-	if (path.includes('/projects/creators?')) return { domain_id: 'domain-a', role: { id: 'creator-role', name: 'project_creator' }, users: [] };
 	if (path.endsWith('/eligible-users')) return [user];
 	if (path.endsWith('/ownership')) return { project_id: path.split('/').at(-2), owner_user_id: 'actor', status: 'unique', owners: [{ user_id: 'actor', name: 'Owner', source: 'direct' }], can_transfer: false, can_delete: false, transfer_operation: null };
 	if (path.endsWith('/users')) return { items: [user] };
@@ -205,7 +204,7 @@ describe('user and provider secret lifecycles', () => {
 		api.get.mockResolvedValue({ items: [{ ...user, domain_id: home }] });
 		render(IamUsers, { session, onDenied: vi.fn() });
 		await screen.findByText('Alice');
-		expect(screen.getByText(home)).toBeTruthy();
+		expect(screen.queryByText(home)).toBeNull();
 		expect(screen.queryByRole('button', { name: '사용자 생성' })).toBeNull();
 		expect(api.post).not.toHaveBeenCalled();
 		expect((screen.getByRole('button', { name: '사용자 및 비밀번호 편집' }) as HTMLButtonElement).disabled).toBe(true);
@@ -263,12 +262,13 @@ describe('user and provider secret lifecycles', () => {
 describe('project grant and invitation boundaries', () => {
 	it('uses the server owner-management ceiling, not manager status or a role name', async () => {
 		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/members') ? { items: [{ ...member, is_owner: true, is_manager: true }] } : fixture(path)));
-		render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
+		render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Project A');
+		await fireEvent.click(screen.getByRole('button', { name: ti('projectMembers') })); await screen.findByText('Alice');
 		expect((screen.getByRole('button', { name: '역할 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect((screen.getByRole('button', { name: '멤버 제거' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(screen.getByText('마지막 유효 소유자 보호')).toBeTruthy();
 	});
-	it('discards a project response after another project has been selected', async () => {
+	it('discards a member response after another project has been selected', async () => {
 		const pending = deferred<unknown>();
 		api.get.mockImplementation((path: string) => {
 			if (path.endsWith('/projects')) return Promise.resolve({ items: [project, { ...project, id: 'project-b', name: 'Project B' }] });
@@ -277,13 +277,19 @@ describe('project grant and invitation boundaries', () => {
 			return Promise.resolve(fixture(path));
 		});
 		render(IamProjects, { session, onDenied: vi.fn() });
+		await screen.findByText('Project B');
+		const rowOf = (name: string) => screen.getByText(name).closest('tr')!;
+		await fireEvent.click(within(rowOf('Project A')).getByRole('button', { name: ti('projectMembers') }));
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/iam/projects/project-a/members', 'token', undefined, { refresh: true }));
-		await fireEvent.change(screen.getByLabelText('프로젝트'), { target: { value: 'project-b' } }); await screen.findByText('Bob');
+		await fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await fireEvent.click(within(rowOf('Project B')).getByRole('button', { name: ti('projectMembers') })); await screen.findByText('Bob');
 		pending.resolve({ items: [member] }); await Promise.resolve();
 		expect(screen.queryByText('Alice')).toBeNull();
 	});
 	it('assigns actual server role IDs and never a hardcoded role-name grant', async () => {
-		api.put.mockResolvedValue({}); render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Alice');
+		api.put.mockResolvedValue({}); render(IamProjects, { session, onDenied: vi.fn() }); await screen.findByText('Project A');
+		await fireEvent.click(screen.getByRole('button', { name: ti('projectMembers') })); await screen.findByText('Alice');
 		await fireEvent.click(screen.getByRole('button', { name: '역할 편집' }));
 		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 		expect(api.put).toHaveBeenCalledWith('/api/v1/iam/projects/project-a/members/user-a/roles', { role_ids: ['role-a'] }, 'token', undefined, { replayOnUnauthorized: false });
