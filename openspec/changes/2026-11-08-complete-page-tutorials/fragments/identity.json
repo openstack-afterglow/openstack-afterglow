@@ -1,0 +1,173 @@
+{
+ "area": "identity",
+ "tourIds": [
+  "iam-projects"
+ ],
+ "tourRegistrations": [
+  {
+   "id": "iam-projects",
+   "stepsModule": "steps/identity.ts",
+   "stepsFn": "iamProjectSteps",
+   "label_key": "tours.iamProjects.label",
+   "summary_key": "tours.iamProjects.summary"
+  }
+ ],
+ "messages": {
+  "ko": {
+   "tours.iamProjects.label": "프로젝트 생성·삭제",
+   "tours.iamProjects.summary": "도메인 프로젝트를 만들고, 리소스 점검을 거쳐 삭제하는 과정을 따라갑니다.",
+   "tours.iamProjects.step1.title": "프로젝트 만들기 열기",
+   "tours.iamProjects.step1.description": "'프로젝트 만들기' 버튼을 눌러 생성 창을 엽니다.",
+   "tours.iamProjects.step2.title": "이름 입력 후 생성",
+   "tours.iamProjects.step2.description": "프로젝트 이름(필요하면 설명도)을 입력한 뒤 '생성'을 누르세요. 이름을 입력해야 버튼이 활성화됩니다.",
+   "tours.iamProjects.step3.title": "새 프로젝트 확인",
+   "tours.iamProjects.step3.description": "목록에 방금 만든 프로젝트가 추가됐습니다.",
+   "tours.iamProjects.step4.title": "제거 버튼 누르기",
+   "tours.iamProjects.step4.description": "방금 만든 프로젝트의 '제거' 버튼을 누르세요. 삭제 창이 열리고 남은 리소스를 먼저 점검합니다.",
+   "tours.iamProjects.step5.title": "점검 후 삭제",
+   "tours.iamProjects.step5.description": "점검 결과 프로젝트가 비어 있어야 '삭제' 버튼이 활성화됩니다. '삭제'를 눌러 프로젝트를 지우세요.",
+   "tours.iamProjects.step6.title": "삭제 완료",
+   "tours.iamProjects.step6.description": "목록에서 프로젝트가 사라졌는지 확인하세요."
+  },
+  "en": {
+   "tours.iamProjects.label": "Create·delete projects",
+   "tours.iamProjects.summary": "Create a domain project, then delete it after the dependent-resource check, step by step.",
+   "tours.iamProjects.step1.title": "Open project creation",
+   "tours.iamProjects.step1.description": "Click Create project to open the creation dialog.",
+   "tours.iamProjects.step2.title": "Enter a name and create",
+   "tours.iamProjects.step2.description": "Enter a project name (and a description if you like), then click Create. The button is enabled once a name is entered.",
+   "tours.iamProjects.step3.title": "Check the new project",
+   "tours.iamProjects.step3.description": "The project you just created is now in the list.",
+   "tours.iamProjects.step4.title": "Click Remove",
+   "tours.iamProjects.step4.description": "Click Remove on the project you just created. The delete dialog opens and first checks for remaining resources.",
+   "tours.iamProjects.step5.title": "Delete after the check",
+   "tours.iamProjects.step5.description": "Delete is enabled only after the check shows the project is empty. Click Delete to remove the project.",
+   "tours.iamProjects.step6.title": "Deletion complete",
+   "tours.iamProjects.step6.description": "Check that the project is gone from the list."
+  },
+  "ja": {
+   "tours.iamProjects.label": "プロジェクトの作成・削除",
+   "tours.iamProjects.summary": "ドメインのプロジェクトを作成し、依存リソースの確認を経て削除するまでを順に案内します。",
+   "tours.iamProjects.step1.title": "プロジェクト作成を開く",
+   "tours.iamProjects.step1.description": "「プロジェクトを作成」ボタンを押して作成画面を開きます。",
+   "tours.iamProjects.step2.title": "名前を入力して作成",
+   "tours.iamProjects.step2.description": "プロジェクト名(必要なら説明も)を入力し、「作成」を押してください。名前を入力するとボタンが有効になります。",
+   "tours.iamProjects.step3.title": "新しいプロジェクトを確認",
+   "tours.iamProjects.step3.description": "作成したプロジェクトが一覧に追加されました。",
+   "tours.iamProjects.step4.title": "削除ボタンを押す",
+   "tours.iamProjects.step4.description": "作成したプロジェクトの「削除」ボタンを押してください。削除画面が開き、まず残っているリソースを確認します。",
+   "tours.iamProjects.step5.title": "確認後に削除",
+   "tours.iamProjects.step5.description": "プロジェクトが空であると確認されると「削除」ボタンが有効になります。「削除」を押してプロジェクトを削除してください。",
+   "tours.iamProjects.step6.title": "削除完了",
+   "tours.iamProjects.step6.description": "一覧からプロジェクトが消えたことを確認してください。"
+  },
+  "zh-CN": {
+   "tours.iamProjects.label": "创建·删除项目",
+   "tours.iamProjects.summary": "逐步创建一个域项目,并在依赖资源检查通过后将其删除。",
+   "tours.iamProjects.step1.title": "打开创建项目",
+   "tours.iamProjects.step1.description": "点击“创建项目”按钮打开创建窗口。",
+   "tours.iamProjects.step2.title": "输入名称并创建",
+   "tours.iamProjects.step2.description": "输入项目名称(可选填写描述),然后点击“创建”。输入名称后按钮才会启用。",
+   "tours.iamProjects.step3.title": "查看新项目",
+   "tours.iamProjects.step3.description": "刚创建的项目已出现在列表中。",
+   "tours.iamProjects.step4.title": "点击移除",
+   "tours.iamProjects.step4.description": "点击刚创建项目的“移除”按钮。删除窗口会打开,并先检查剩余资源。",
+   "tours.iamProjects.step5.title": "检查后删除",
+   "tours.iamProjects.step5.description": "只有检查确认项目为空时,“删除”按钮才会启用。点击“删除”删除该项目。",
+   "tours.iamProjects.step6.title": "删除完成",
+   "tours.iamProjects.step6.description": "确认该项目已从列表中消失。"
+  },
+  "bn": {
+   "tours.iamProjects.label": "প্রকল্প তৈরি·মুছুন",
+   "tours.iamProjects.summary": "একটি ডোমেইন প্রকল্প তৈরি করুন, তারপর নির্ভরশীল রিসোর্স যাচাইয়ের পরে সেটি ধাপে ধাপে মুছুন।",
+   "tours.iamProjects.step1.title": "প্রকল্প তৈরি খুলুন",
+   "tours.iamProjects.step1.description": "তৈরির উইন্ডো খুলতে \"প্রকল্প তৈরি করুন\" বোতামে ক্লিক করুন।",
+   "tours.iamProjects.step2.title": "নাম লিখে তৈরি করুন",
+   "tours.iamProjects.step2.description": "প্রকল্পের নাম (চাইলে বিবরণও) লিখে \"তৈরি করুন\" এ ক্লিক করুন। নাম লিখলে তবেই বোতামটি সক্রিয় হয়।",
+   "tours.iamProjects.step3.title": "নতুন প্রকল্প দেখুন",
+   "tours.iamProjects.step3.description": "আপনি এইমাত্র যে প্রকল্প তৈরি করেছেন তা তালিকায় যোগ হয়েছে।",
+   "tours.iamProjects.step4.title": "সরান বোতামে ক্লিক করুন",
+   "tours.iamProjects.step4.description": "এইমাত্র তৈরি করা প্রকল্পের \"সরান\" বোতামে ক্লিক করুন। মুছে ফেলার উইন্ডো খুলবে এবং প্রথমে অবশিষ্ট রিসোর্স যাচাই করবে।",
+   "tours.iamProjects.step5.title": "যাচাইয়ের পরে মুছুন",
+   "tours.iamProjects.step5.description": "যাচাইয়ে প্রকল্পটি খালি দেখালে তবেই \"মুছুন\" বোতাম সক্রিয় হয়। প্রকল্পটি মুছতে \"মুছুন\" এ ক্লিক করুন।",
+   "tours.iamProjects.step6.title": "মুছে ফেলা সম্পূর্ণ",
+   "tours.iamProjects.step6.description": "তালিকা থেকে প্রকল্পটি সরে গেছে কিনা যাচাই করুন।"
+  },
+  "ms": {
+   "tours.iamProjects.label": "Cipta·padam projek",
+   "tours.iamProjects.summary": "Cipta projek domain, kemudian padamkannya selepas semakan sumber bergantung, langkah demi langkah.",
+   "tours.iamProjects.step1.title": "Buka penciptaan projek",
+   "tours.iamProjects.step1.description": "Klik Cipta projek untuk membuka tetingkap penciptaan.",
+   "tours.iamProjects.step2.title": "Masukkan nama dan cipta",
+   "tours.iamProjects.step2.description": "Masukkan nama projek (dan penerangan jika perlu), kemudian klik Cipta. Butang diaktifkan selepas nama dimasukkan.",
+   "tours.iamProjects.step3.title": "Semak projek baharu",
+   "tours.iamProjects.step3.description": "Projek yang baru anda cipta kini ada dalam senarai.",
+   "tours.iamProjects.step4.title": "Klik Buang",
+   "tours.iamProjects.step4.description": "Klik Buang pada projek yang baru anda cipta. Tetingkap pemadaman dibuka dan menyemak sumber yang tinggal terlebih dahulu.",
+   "tours.iamProjects.step5.title": "Padam selepas semakan",
+   "tours.iamProjects.step5.description": "Padam hanya diaktifkan selepas semakan menunjukkan projek kosong. Klik Padam untuk membuang projek.",
+   "tours.iamProjects.step6.title": "Pemadaman selesai",
+   "tours.iamProjects.step6.description": "Pastikan projek telah hilang daripada senarai."
+  },
+  "nb": {
+   "tours.iamProjects.label": "Opprett·slett prosjekter",
+   "tours.iamProjects.summary": "Opprett et domeneprosjekt, og slett det etter kontrollen av avhengige ressurser, trinn for trinn.",
+   "tours.iamProjects.step1.title": "Åpne prosjektoppretting",
+   "tours.iamProjects.step1.description": "Klikk Opprett prosjekt for å åpne opprettingsvinduet.",
+   "tours.iamProjects.step2.title": "Skriv inn navn og opprett",
+   "tours.iamProjects.step2.description": "Skriv inn et prosjektnavn (og eventuelt en beskrivelse), og klikk Opprett. Knappen aktiveres når et navn er skrevet inn.",
+   "tours.iamProjects.step3.title": "Se det nye prosjektet",
+   "tours.iamProjects.step3.description": "Prosjektet du nettopp opprettet, vises nå i listen.",
+   "tours.iamProjects.step4.title": "Klikk Fjern",
+   "tours.iamProjects.step4.description": "Klikk Fjern på prosjektet du nettopp opprettet. Slettevinduet åpnes og kontrollerer først gjenværende ressurser.",
+   "tours.iamProjects.step5.title": "Slett etter kontrollen",
+   "tours.iamProjects.step5.description": "Slett aktiveres først når kontrollen viser at prosjektet er tomt. Klikk Slett for å fjerne prosjektet.",
+   "tours.iamProjects.step6.title": "Sletting fullført",
+   "tours.iamProjects.step6.description": "Kontroller at prosjektet er borte fra listen."
+  },
+  "sw": {
+   "tours.iamProjects.label": "Unda·futa miradi",
+   "tours.iamProjects.summary": "Unda mradi wa kikoa, kisha uufute baada ya ukaguzi wa rasilimali tegemezi, hatua kwa hatua.",
+   "tours.iamProjects.step1.title": "Fungua uundaji wa mradi",
+   "tours.iamProjects.step1.description": "Bofya Unda mradi ili kufungua dirisha la kuunda.",
+   "tours.iamProjects.step2.title": "Weka jina na uunde",
+   "tours.iamProjects.step2.description": "Weka jina la mradi (na maelezo ukipenda), kisha bofya Unda. Kitufe huwashwa baada ya kuweka jina.",
+   "tours.iamProjects.step3.title": "Kagua mradi mpya",
+   "tours.iamProjects.step3.description": "Mradi uliouunda sasa hivi umeongezwa kwenye orodha.",
+   "tours.iamProjects.step4.title": "Bofya Ondoa",
+   "tours.iamProjects.step4.description": "Bofya Ondoa kwenye mradi uliouunda sasa hivi. Dirisha la kufuta hufunguka na kwanza hukagua rasilimali zilizobaki.",
+   "tours.iamProjects.step5.title": "Futa baada ya ukaguzi",
+   "tours.iamProjects.step5.description": "Futa huwashwa tu baada ya ukaguzi kuonyesha kuwa mradi hauna kitu. Bofya Futa ili kuondoa mradi.",
+   "tours.iamProjects.step6.title": "Kufuta kumekamilika",
+   "tours.iamProjects.step6.description": "Hakikisha mradi umetoweka kwenye orodha."
+  },
+  "vi": {
+   "tours.iamProjects.label": "Tạo·xóa dự án",
+   "tours.iamProjects.summary": "Từng bước tạo một dự án trong miền, rồi xóa nó sau khi kiểm tra tài nguyên phụ thuộc.",
+   "tours.iamProjects.step1.title": "Mở tạo dự án",
+   "tours.iamProjects.step1.description": "Nhấn nút Tạo dự án để mở cửa sổ tạo.",
+   "tours.iamProjects.step2.title": "Nhập tên và tạo",
+   "tours.iamProjects.step2.description": "Nhập tên dự án (và mô tả nếu muốn), rồi nhấn Tạo. Nút chỉ được bật khi đã nhập tên.",
+   "tours.iamProjects.step3.title": "Xem dự án mới",
+   "tours.iamProjects.step3.description": "Dự án bạn vừa tạo đã có trong danh sách.",
+   "tours.iamProjects.step4.title": "Nhấn Gỡ bỏ",
+   "tours.iamProjects.step4.description": "Nhấn Gỡ bỏ ở dự án bạn vừa tạo. Cửa sổ xóa mở ra và kiểm tra tài nguyên còn lại trước.",
+   "tours.iamProjects.step5.title": "Xóa sau khi kiểm tra",
+   "tours.iamProjects.step5.description": "Nút Xóa chỉ được bật khi kết quả kiểm tra cho thấy dự án trống. Nhấn Xóa để xóa dự án.",
+   "tours.iamProjects.step6.title": "Đã xóa xong",
+   "tours.iamProjects.step6.description": "Kiểm tra rằng dự án đã biến mất khỏi danh sách."
+  }
+ },
+ "stateFields": [],
+ "dispatch": [
+  "const identity = mockIdentity(method, pathname, params, body, profile);",
+  "if (identity !== undefined) return identity;"
+ ],
+ "importLines": [
+  "import { mockIdentity } from '$lib/mockup/identity';"
+ ],
+ "contractsPaths": [],
+ "backendTourIds": [
+  "iam-projects"
+ ]
+}

@@ -5,7 +5,12 @@ import { writable } from 'svelte/store';
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
 vi.mock('$lib/api/client', () => ({ api: { get: mockGet, delete: vi.fn() } }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'token', projectId: 'project' }),
+	authReady: writable(true),
+	isAdmin: writable(true),
+	isMockAuthActive: () => false,
+}));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({
 		active: false,

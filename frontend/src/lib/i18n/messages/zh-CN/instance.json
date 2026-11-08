@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "中止迁移失败",
 	"controller.migration.forceCompleteRequested": "已发送强制完成迁移请求。",
 	"controller.migration.forceCompleteFailed": "强制完成迁移失败",
-	"controller.contextRequired": "必须在 InstanceDetailPanel 内调用 useInstanceDetailController"
+	"controller.contextRequired": "必须在 InstanceDetailPanel 内调用 useInstanceDetailController",
+	"waygate.managedNote": "此资源由 Waygate 管理。请在 Waygate 菜单中进行更改。",
+	"waygate.openLink": "打开 Waygate",
+	"waygate.badge": "Waygate 管理",
+	"list.waygateBulkDeleteBlocked": "所选项目包含由 Waygate 管理的实例，无法批量删除。请在 Waygate 菜单中进行更改。"
 }

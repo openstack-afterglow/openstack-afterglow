@@ -16,6 +16,11 @@ from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.rate_limit import limiter
 from app.services import neutron
 from app.services.cache import cached_call, invalidate, patch_list, ttl_slow
+from app.services.waygate_managed import (
+    ensure_security_group_not_waygate_managed,
+    is_waygate_managed_security_group,
+    waygate_managed_http_error,
+)
 
 router = APIRouter()
 
@@ -107,6 +112,9 @@ async def create_security_group(
     token_info: dict = Depends(get_token_info),
 ):
     pid = conn._afterglow_project_id
+    if is_waygate_managed_security_group(req.name):
+        # Waygate reuses its group by name; a user-made lookalike would be adopted with arbitrary rules.
+        raise waygate_managed_http_error()
     try:
         result = neutron.create_security_group(conn, req.name, req.description)
         # terminal mutation — list 캐시에 신규 SG 직접 추가 (origin 재조회 없음)
@@ -147,7 +155,7 @@ async def delete_security_group(
     token_info: dict = Depends(get_token_info),
 ):
     pid = conn._afterglow_project_id
-    await _get_sg_with_owner_check(conn, sg_id, token_info)
+    ensure_security_group_not_waygate_managed(await _get_sg_with_owner_check(conn, sg_id, token_info))
     try:
         neutron.delete_security_group(conn, sg_id)
         # terminal mutation — list 캐시에서 해당 SG 직접 제거 (origin 재조회 없음)
@@ -176,7 +184,7 @@ async def create_security_group_rule(
     token_info: dict = Depends(get_token_info),
 ):
     pid = conn._afterglow_project_id
-    await _get_sg_with_owner_check(conn, sg_id, token_info)
+    ensure_security_group_not_waygate_managed(await _get_sg_with_owner_check(conn, sg_id, token_info))
     if req.remote_group_id:
         await _get_sg_with_owner_check(conn, req.remote_group_id, token_info)
     try:
@@ -217,7 +225,7 @@ async def delete_security_group_rule(
     token_info: dict = Depends(get_token_info),
 ):
     pid = conn._afterglow_project_id
-    await _get_sg_with_owner_check(conn, sg_id, token_info)
+    ensure_security_group_not_waygate_managed(await _get_sg_with_owner_check(conn, sg_id, token_info))
     try:
         rule = await asyncio.to_thread(conn.network.get_security_group_rule, rule_id)
     except Exception:

@@ -1,0 +1,14 @@
+# Tasks
+- [x] 1 Card-mode table filter: single button + batch apply (TableFilterSheet, 조회하기)
+- [x] 2 AutoRefreshControl mobile icon-only
+- [x] 3 Instance card mobile fields (name, status, flavor, IP, menu on name row)
+- [x] 4 Instance detail mobile header/actions (name top, status beside, Stop/Reboot or Start, overflow menu)
+- [x] 5 Full-screen mobile nav drawer, one search for resources+services, hub/services only
+- [x] 6 Mobile header (hamburger, logo, language, profile) + profile menu; outside tap no longer passes through
+- [x] 6.1 Desktop header unification: profile menu across both mobile and desktop (HeaderAccountControls), retaining Cloud Shell trigger, user/admin mode toggle, and language selector in header bar
+- [x] 7 Unit tests, 9 locales, i18n:check, svelte-check 0 errors
+- [x] Browser walk at 390x844 (agent-browser, demo mode) A-F; 768/1440 regression PASS (build before the last two fixes; fixes verified by unit tests only)
+- [x] Re-walked the two fixes (outside tap, name wrap) in a browser on a fresh build: PASS
+- [ ] Known: demo-mode banner covers drawer footer and filter-sheet buttons on mobile (tutorial mode only); 768 detail name truncation is pre-existing DetailHeader; drawer/filter sheet lack dialog role
+- [x] DESIGN.md mobile contract, ARCHITECTURE note
+- [ ] test:gate, real-session check

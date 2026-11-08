@@ -22,11 +22,14 @@
 
 	let {
 		sg,
+		waygateNote,
 		onDelete,
 		onAddRule,
 		onDeleteRule,
 	}: {
 		sg: SecurityGroup;
+		/** Localized lock note for a Waygate-owned group; its mutations go through Waygate only. */
+		waygateNote?: { text: string; linkLabel: string };
 		onDelete: (id: string, name: string) => Promise<void>;
 		onAddRule: (
 			sgId: string,
@@ -83,16 +86,26 @@
 		</button>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
-			class="min-h-11 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
+			disabled={!!waygateNote}
+			title={waygateNote?.text}
+			class="min-h-11 text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0 disabled:opacity-50"
 		>{t('securityGroup.card.addRule')}</button>
 		<button
 			onclick={() => onDelete(sg.id, sg.name)}
-			class="min-h-11 text-xs text-red-400 hover:text-red-300 px-2 py-1 border border-red-900 hover:border-red-700 rounded transition-colors shrink-0"
+			disabled={!!waygateNote}
+			title={waygateNote?.text}
+			class="min-h-11 text-xs text-red-400 hover:text-red-300 px-2 py-1 border border-red-900 hover:border-red-700 rounded transition-colors shrink-0 disabled:opacity-50"
 		>{t('securityGroup.actions.delete')}</button>
 	</div>
+	{#if waygateNote}
+		<p role="note" class="px-3 pb-3 text-xs text-ink-1 lg:px-4">
+			<span data-testid="waygate-sg-note">{waygateNote.text}</span>
+			<a href="/dashboard/network/waygate" class="ml-1 font-medium underline underline-offset-4">{waygateNote.linkLabel}</a>
+		</p>
+	{/if}
 
 	<!-- 규칙 추가 폼 -->
-	{#if showAddRule}
+	{#if showAddRule && !waygateNote}
 		<SecurityGroupRuleForm
 			{submitting}
 			onSubmit={handleAddRule}
@@ -104,6 +117,7 @@
 	{#if expanded}
 		<SecurityGroupRuleTable
 			rules={sg.rules}
+			deleteDisabledReason={waygateNote?.text}
 			onDelete={(ruleId) => onDeleteRule(sg.id, ruleId)}
 		/>
 	{/if}

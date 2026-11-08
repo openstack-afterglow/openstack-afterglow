@@ -28,6 +28,8 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
   let deleteGroup = $state<Group | null>(null);
   let deleting = $state(false);
   let deleteError = $state('');
+  // The group this page just created; only its row carries the guided-tour delete anchor.
+  let createdGroupId = $state<string | null>(null);
   let expandedGroup = $state<string | null>(null);
   let groupMembers = $state<Record<string, GroupMember[]>>({});
   let membersLoading = $state<Record<string, boolean>>({});
@@ -80,7 +82,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       sourceGeneration += 1; sourceDomainsGeneration += 1;
       userDomainId = ''; sourceDomains = []; sourceDomainsLoading = false;
       sourceDomainsError = ''; sourceDomainsLoaded = false;
-      showCreate = false; editGroup = null; deleteGroup = null; expandedGroup = null;
+      showCreate = false; editGroup = null; deleteGroup = null; expandedGroup = null; createdGroupId = null;
       creating = false; updating = false; deleting = false;
       createError = ''; editError = ''; deleteError = '';
       void load();
@@ -220,8 +222,9 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     experienceState(experience, 'loading');
     creating = true; createError = '';
     try {
-      await request.post(scope.path('/api/v1/admin/groups'), { name, description: description || null, domain_id: scope.domainId }, scope.token, scope.projectId);
+      const created = await request.post<{ id?: unknown } | null>(scope.path('/api/v1/admin/groups'), { name, description: description || null, domain_id: scope.domainId }, scope.token, scope.projectId);
       if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); return false; }
+      createdGroupId = typeof created?.id === 'string' ? created.id : null;
       await loadAttempt(false, experience);
       if (!scope.owns()) experienceDiscarded(experience, 'scope_changed');
       return scope.owns();
@@ -259,6 +262,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       await request.delete(scope.path(`/api/v1/admin/groups/${encodeURIComponent(target)}`), scope.token, scope.projectId);
       if (!scope.owns()) { experienceDiscarded(experience, 'scope_changed'); return; }
       deleteGroup = null;
+      if (createdGroupId === target) createdGroupId = null;
       void experienceApplied(experience, {}, scope.owns);
       await loadAttempt(false, experience);
     } catch (e) { if (scope.owns()) { deleteError = message(e, 'groupController.deleteFailed'); experienceState(experience, 'error'); void experienceApplied(experience, {}, scope.owns); } else experienceDiscarded(experience, 'scope_changed'); }
@@ -364,6 +368,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     get updating() { return updating; }, get editError() { return editError; }, set editError(v: string) { editError = v; },
     get deleteGroup() { return deleteGroup; }, set deleteGroup(v: Group | null) { deleteGroup = v; },
     get deleting() { return deleting; }, get deleteError() { return deleteError; }, set deleteError(v: string) { deleteError = v; },
+    get createdGroupId() { return createdGroupId; },
     get expandedGroup() { return expandedGroup; }, get groupMembers() { return groupMembers; }, get membersLoading() { return membersLoading; },
     get membersError() { return membersError; }, get usersError() { return usersError; }, get usersLoading() { return usersLoading; }, get allUsers() { return allUsers; },
     get addMemberError() { return addMemberError; }, get addMemberSaving() { return addMemberSaving; },

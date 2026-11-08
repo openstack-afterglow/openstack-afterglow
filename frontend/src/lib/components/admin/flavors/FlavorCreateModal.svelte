@@ -4,13 +4,14 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import type { Flavor } from '$lib/types/flavor';
 
 	let {
 		open = $bindable(false),
 		onCreated,
 	}: {
 		open: boolean;
-		onCreated: () => void;
+		onCreated: (flavor: Flavor) => void;
 	} = $props();
 
 	const token = $derived($auth.token ?? undefined);
@@ -24,7 +25,7 @@
 		creating = true;
 		createError = '';
 		try {
-			await api.post('/api/v1/admin/flavors', {
+			const created = await api.post<Flavor>('/api/v1/admin/flavors', {
 				name: form.name,
 				vcpus: form.vcpus,
 				ram: form.ram,
@@ -33,7 +34,7 @@
 			}, token, projectId);
 			open = false;
 			form = { name: '', vcpus: 1, ram: 512, disk: 0, is_public: true };
-			onCreated();
+			onCreated(created);
 		} catch (e: unknown) {
 			createError = e instanceof ApiError ? e.message : t('flavors.create.failed');
 		} finally {
@@ -58,6 +59,7 @@
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+			data-tour="admin-flavors-create-form"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -101,7 +103,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={close} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('flavors.cancel')}</button>
-				<button onclick={createFlavor} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
+				<button onclick={createFlavor} disabled={creating || !form.name} data-tour="admin-flavors-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
 					{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" /><span>{t('flavors.create.pending')}</span></span>{:else}{t('flavors.create.action')}{/if}
 				</button>
 			</div>

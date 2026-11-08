@@ -19,12 +19,55 @@ export interface WaygateServer {
 	last_status_reported_at: string | null;
 	peer_count: number | null;
 	report_interval_seconds?: number | null;
+	/** Requester-declared client count; absent from Waygate versions without sizing tiers. */
+	expected_clients?: number | null;
+	/** Tier actually applied: large only when >50 clients and the large flavor policy exists. */
+	flavor_tier?: WaygateFlavorTier | null;
+}
+
+export type WaygateFlavorTier = 'small' | 'large';
+
+/** Server-observed agent connection verdict (Waygate decides; UI only renders). */
+export type WaygateDiagnosticsVerdict = 'ok' | 'never_connected' | 'not_polling' | 'not_reporting' | 'peer_mismatch';
+
+/** Stable hint codes; the UI localizes them and renders unknown codes neutrally. */
+export type WaygateDiagnosticsHint =
+	| 'agent_not_polling'
+	| 'agent_never_reported'
+	| 'agent_status_stale'
+	| 'peers_mismatch'
+	| 'image_agent_outdated';
+
+/** Agent self-diagnostics carried by its last status report (categories only, no secrets). */
+export interface WaygateAgentSelfDiagnostics {
+	reconcile_ok?: boolean | null;
+	wg_interface_up?: boolean | null;
+	error?: string | null;
+}
+
+export interface WaygateServerDiagnostics {
+	verdict: WaygateDiagnosticsVerdict | (string & {});
+	checked_at: string;
+	agent: {
+		install_mode: string | null;
+		image_id: string | null;
+		source: string | null;
+		report_interval_seconds: number | null;
+	};
+	last_register_at: string | null;
+	last_desired_state_at: string | null;
+	last_status_at: string | null;
+	last_status: { peers: number; reported_at: string; diagnostics?: WaygateAgentSelfDiagnostics | null } | null;
+	expected: { enabled_clients: number; attachments: number };
+	hints: (WaygateDiagnosticsHint | (string & {}))[];
 }
 
 export interface WaygateServerCreateRequest {
 	name?: string;
 	dns?: string | null;
 	persistent_keepalive?: number;
+	/** Sent only when supplied: older Waygate versions reject unknown create fields. */
+	expected_clients?: number;
 }
 
 export interface WaygateServerUpdateRequest {
@@ -99,12 +142,19 @@ export interface WaygateNetworkAttachment {
 	status: string;
 	created_at: string | null;
 	updated_at: string | null;
+	/** Client routing (peer AllowedIPs) only; absent from Waygate versions before per-attachment routing. */
+	allowed_ips?: string[];
 }
 
 export interface WaygateNetworkAttachRequest {
 	network_id: string;
 	subnet_id?: string;
 	nat_mode?: string;
+	allowed_ips?: string[];
+}
+
+export interface WaygateNetworkAttachmentUpdateRequest {
+	allowed_ips: string[];
 }
 
 // 백업 / 마이그레이션 (Phase 3)

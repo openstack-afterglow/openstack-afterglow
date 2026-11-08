@@ -50,7 +50,7 @@
 				{/if}
 				<div class="confirm-actions">
 					<Button onclick={dialogState.reject} variant="secondary">{t('actions.cancel')}</Button>
-					<Button onclick={() => dialogState.accept(requiredValue)} disabled={!canConfirm} variant={dialogState.confirmVariant}>{dialogState.confirmLabel ?? t('actions.confirm')}</Button>
+					<Button onclick={() => dialogState.accept(requiredValue)} disabled={!canConfirm} variant={dialogState.confirmVariant} dataTour="confirm-accept">{dialogState.confirmLabel ?? t('actions.confirm')}</Button>
 				</div>
 			</Card>
 		</div>

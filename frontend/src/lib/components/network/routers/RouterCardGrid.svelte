@@ -11,6 +11,7 @@
   let {
     routers,
     externalNetworkName,
+    highlightId = null,
     selectedIds,
     selectableIds,
     selectionDisabled,
@@ -20,6 +21,8 @@
   }: {
     routers: Router[];
     externalNetworkName: (id: string | null) => string;
+    /** Router created in this view; only its details button carries the tutorial anchor. */
+    highlightId?: string | null;
     selectedIds: ReadonlySet<string>;
     selectableIds: ReadonlySet<string>;
     selectionDisabled: boolean;
@@ -50,7 +53,7 @@
         <div class="flex items-center gap-2 min-w-0"><SelectionCheckbox checked={selectedIds.has(router.id)} disabled={selectionDisabled || !selectableIds.has(router.id)} unavailable={!selectableIds.has(router.id)} title={!selectableIds.has(router.id) ? t('router.cards.unavailable') : undefined} ariaLabel={t('router.cards.select', { name: router.name || router.id.slice(0, 12) })} onclick={() => onToggleSelect(router.id)} /><button class="min-h-11 flex-1 min-w-0 text-left font-medium" onclick={() => onOpen(router.id)}>{router.name || router.id.slice(0, 12)}</button><StatusChip status={router.status} /></div>
         <dl><div><dt>{t('router.cards.external')}</dt><dd>{router.external_gateway_network_id ? externalNetworkName(router.external_gateway_network_id) : t('router.cards.none')}</dd></div><div><dt>{t('router.cards.internal')}</dt><dd>{t('network.routers.subnetCount', { count: router.connected_subnet_ids.length })}</dd></div></dl>
         {#snippet details()}<p class="font-mono">{router.id}</p><p>{router.external_gateway_network_id ? t('router.cards.snatEnabled') : t('router.cards.snatDisabled')}</p>{#each router.connected_subnet_ids as subnetId}<p class="font-mono">{subnetId}</p>{/each}{/snippet}
-        {#snippet actions()}<Button variant="outline" size="xs" onclick={() => onOpen(router.id)}>{t('router.cards.details')}</Button>{/snippet}
+        {#snippet actions()}<Button variant="outline" size="xs" onclick={() => onOpen(router.id)} dataTour={highlightId === router.id ? 'routers-open-created' : undefined}>{t('router.cards.details')}</Button>{/snippet}
       </CompactResourceCard>
     {/each}
   {/snippet}
@@ -83,7 +86,7 @@
         <StatusChip status={router.status} />
       </div>
       <div class="flex justify-end">
-        <Button variant="outline" size="xs" onclick={() => onOpen(router.id)}>{t('router.cards.details')}</Button>
+        <Button variant="outline" size="xs" onclick={() => onOpen(router.id)} dataTour={highlightId === router.id ? 'routers-open-created' : undefined}>{t('router.cards.details')}</Button>
       </div>
 
       <div class="flex flex-col gap-2">

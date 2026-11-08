@@ -4,11 +4,14 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { t } from '$lib/i18n/ns/tutorial';
-	import { startTour } from './engine';
+	import { isTourActive, onTourActivityChange, startTour } from './engine';
 	import { recordTutorialStatus, tutorialStatuses, tutorialStatusesLoaded } from './status';
 	import type { TourId } from './tours';
+	import { tutorialViewport } from './viewport';
 
-	let { tour, compactOnMobile = false }: { tour: TourId; compactOnMobile?: boolean } = $props();
+	// `label` names a specific tour when a page offers more than one; `invite={false}` leaves the invite bubble to
+	// the page's other start button so only one bubble can show.
+	let { tour, compactOnMobile = false, label, invite = true }: { tour: TourId; compactOnMobile?: boolean; label?: string; invite?: boolean } = $props();
 
 	// "나중에" 안내 힌트 자동 사라짐까지의 시간(ms). 하단 프로그레스 바 애니메이션과 동기화한다.
 	const HINT_MS = 7000;
@@ -21,7 +24,10 @@
 	// 이 투어에 대한 기록(completed/dismissed)이 없으면 미체험 → 초대 대상.
 	const pending = $derived($tutorialStatuses[tour] === undefined);
 	// 서버 이력 로드가 끝난 뒤(빈 맵 깜빡임 방지) 미체험이면서 아직 선택 전일 때만 초대를 띄운다.
-	const inviteOpen = $derived($tutorialStatusesLoaded && pending && promptOpen);
+	// A running tour owns the highlight; a pending invite from another page would cover its targets.
+	let tourActive = $state(isTourActive());
+	$effect(() => onTourActivityChange((active) => { tourActive = active; }));
+	const inviteOpen = $derived(invite && $tutorialStatusesLoaded && pending && promptOpen && !tourActive);
 
 	function startNow() {
 		promptOpen = false;
@@ -39,6 +45,15 @@
 		hintTimer = setTimeout(() => (laterHint = false), HINT_MS);
 	}
 
+	// The service sidebar reserves the left edge on tablet and desktop; a bubble under it is unclickable.
+	function sidebarWidthPixels(): number {
+		const root = getComputedStyle(document.documentElement);
+		const value = root.getPropertyValue('--app-sidebar-offset').trim();
+		if (value.endsWith('rem')) return parseFloat(value) * parseFloat(root.fontSize);
+		const parsed = parseFloat(value);
+		return Number.isFinite(parsed) ? parsed : 0;
+	}
+
 	// Header actions can sit at either viewport edge, including at browser zoom.
 	function keepBubbleInView(node: HTMLElement) {
 		const viewport = window.visualViewport;
@@ -46,18 +61,24 @@
 			node.style.setProperty('--ts-shift', '0px');
 			if (getComputedStyle(node).position === 'fixed') return;
 			const rect = node.getBoundingClientRect();
-			const left = (viewport?.offsetLeft ?? 0) + 12;
+			const left = (viewport?.offsetLeft ?? 0) + 12 + sidebarWidthPixels();
 			const right = (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - 12;
 			const shift = Math.max(left - rect.left, Math.min(0, right - rect.right));
 			node.style.setProperty('--ts-shift', `${shift}px`);
 		}
 		const observer = new ResizeObserver(position);
 		observer.observe(node);
+		// The header wraps at tablet width and moves the anchor without resizing the bubble.
+		if (node.parentElement) observer.observe(node.parentElement);
+		if (node.parentElement?.parentElement) observer.observe(node.parentElement.parentElement);
 		window.addEventListener('resize', position);
 		viewport?.addEventListener('resize', position);
 		viewport?.addEventListener('scroll', position);
 		position();
+		// Layout may still be settling on first paint; measure once more on the next frame.
+		const frame = requestAnimationFrame(position);
 		return { destroy() {
+			cancelAnimationFrame(frame);
 			observer.disconnect();
 			window.removeEventListener('resize', position);
 			viewport?.removeEventListener('resize', position);
@@ -68,10 +89,11 @@
 	onDestroy(() => clearTimeout(hintTimer));
 </script>
 
+{#if tutorialViewport.current}
 <span class:tutorial-start--compact={compactOnMobile} class="tutorial-start">
-	<Button variant="outline" size="sm" onclick={startNow} ariaLabel={t('start.action')}>
+	<Button variant="outline" size="sm" onclick={startNow} ariaLabel={label ?? t('start.action')}>
 		<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-		<span class={compactOnMobile ? 'hidden sm:inline' : ''}>{t('start.label')}</span>
+		<span class={compactOnMobile ? 'hidden sm:inline' : ''}>{label ?? t('start.label')}</span>
 	</Button>
 
 	{#if inviteOpen}
@@ -100,6 +122,7 @@
 		</div>
 	{/if}
 </span>
+{/if}
 
 <style>
 	.tutorial-start {

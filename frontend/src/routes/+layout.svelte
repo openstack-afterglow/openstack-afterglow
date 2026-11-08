@@ -16,16 +16,11 @@
 	import { startLogout } from '$lib/utils/logout';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
-	import ProfileImage from '$lib/components/account/ProfileImage.svelte';
-	import { t as tAccount } from '$lib/i18n/ns/account';
-	import AnnouncementBellButton from '$lib/components/notifications/AnnouncementBellButton.svelte';
 	import { createUsageScheduleBell } from '$lib/stores/usageScheduleBell.svelte';
-	import { t as usage } from '$lib/i18n/ns/usage-schedule';
 	import { siteConfig, initSiteConfig, qualifyBackendAssetPaths, replaceSiteConfig } from '$lib/config/site';
 	import { resolveFaviconPath } from '$lib/config/brandAssets';
 	import type { PublicSiteConfig } from '$lib/types/siteConfig';
-	import type { AnnouncementUser, UnreadCountResponse } from '$lib/types/announcements';
-	import { formatIsoDateTime } from '$lib/utils/format';
+	import type { UnreadCountResponse } from '$lib/types/announcements';
 	import { startSessionRefreshLifecycle } from '$lib/utils/sessionRefreshLifecycle';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { sidebarOpen } from '$lib/stores/sidebar';
@@ -52,9 +47,8 @@
 	import { t as tn } from '$lib/i18n/ns/nav';
 	import { getLocale, initLocale, restoreKeyDebugMode, setLocale } from '$lib/i18n/runtime.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
-	import ThemeSelect from '$lib/components/ThemeSelect.svelte';
+	import HeaderAccountControls from '$lib/components/HeaderAccountControls.svelte';
 	import { isDocsPath } from '$lib/docs/paths';
-	import { documentationNavItem } from '$lib/config/nav';
 	import { isProjectAgnosticPath } from '$lib/config/routes';
 	import { lumenSourceLoginPath } from '$lib/utils/lumenSourceNavigation';
 	import { storeLumenSourceContinuation } from '$lib/utils/mcpConsent';
@@ -178,13 +172,6 @@
 		}
 	}
 
-	// 종 아이콘 드롭다운 — 최근 공지를 즉시 보여주고, 전체 목록은 알림함으로 이동
-	let bellOpen = $state(false);
-	let bellItems = $state<AnnouncementUser[] | null>(null);
-	let bellError = $state(false);
-	let bellContainer = $state<HTMLDivElement | null>(null);
-	let bellButton = $state<HTMLButtonElement | null>(null);
-	let bellFetchSerial = 0;
 	const usageBell = createUsageScheduleBell({ enabled: () => !isDocumentationRoute && !mockup.active && !isMockAuthActive() });
 	// Fence same-tick scope/logout ABA before effects can batch it away. Token
 	// rotation keeps display state and already pending display reads.
@@ -195,10 +182,7 @@
 		previousAnnouncementOwner = owner;
 		unreadOwnerRevision++;
 		unreadFetchSerial++;
-		bellFetchSerial++;
 		unreadAnnouncementCount = 0;
-		bellOpen = false;
-		bellItems = null;
 	});
 	onDestroy(unsubscribeAnnouncementOwner);
 	const unsubscribeAnnouncementReady = authReady.subscribe(ready => {
@@ -208,41 +192,6 @@
 		unreadAnnouncementCount = 0;
 	});
 	onDestroy(unsubscribeAnnouncementReady);
-
-	function bellDotColor(severity: AnnouncementUser['severity']): string {
-		if (severity === 'danger') return 'var(--color-state-danger)';
-		if (severity === 'warning') return 'var(--color-state-warning)';
-		return 'var(--color-accent)';
-	}
-
-	async function toggleBellDropdown() {
-		bellOpen = !bellOpen;
-		if (!bellOpen) return;
-		void usageBell.refresh();
-		bellError = false;
-		bellItems = null;
-		const serial = ++bellFetchSerial;
-		const token = $auth.token;
-		if (mockup.active || isMockAuthActive() || !token) {
-			bellItems = [];
-			return;
-		}
-		try {
-			const items = await api.get<AnnouncementUser[]>('/api/v1/announcements', token, $auth.projectId ?? undefined);
-			if (serial !== bellFetchSerial) return;
-			bellItems = items.slice(0, 6);
-			void refreshUnreadAnnouncementCount();
-		} catch {
-			if (serial !== bellFetchSerial) return;
-			bellItems = [];
-			bellError = true;
-		}
-	}
-
-	function closeBellAndGo(id?: number) {
-		bellOpen = false;
-		void goto(id != null ? `/dashboard/notifications?focus=${id}` : '/dashboard/notifications');
-	}
 
 	const unreadDisplayOwner = $derived(JSON.stringify([unreadOwnerRevision, sessionScopeKey($auth), !!$auth.token, $authReady,
 		isDocumentationRoute, mockup.active, isMockAuthActive()]));
@@ -254,24 +203,6 @@
 		storageKey: 'announcement-unread-count', defaultInterval: 60, invokeOnMount: false,
 	});
 
-	$effect(() => {
-		if (!bellOpen || typeof document === 'undefined') return;
-		const onPointerDown = (event: MouseEvent) => {
-			if (bellContainer && !bellContainer.contains(event.target as Node)) bellOpen = false;
-		};
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== 'Escape') return;
-			bellOpen = false;
-			// 드롭다운 내부에 있던 키보드 포커스가 body로 떨어지지 않게 트리거로 복귀
-			bellButton?.focus();
-		};
-		document.addEventListener('mousedown', onPointerDown);
-		document.addEventListener('keydown', onKeyDown);
-		return () => {
-			document.removeEventListener('mousedown', onPointerDown);
-			document.removeEventListener('keydown', onKeyDown);
-		};
-	});
 
 	$effect.pre(() => {
 		const active = mockup.active;
@@ -561,97 +492,14 @@
 			{/if}
 
 			<LocaleSelect id="app-header-locale" />
-			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
-				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={documentationNavItem.icon} /></svg>
-				<span class="hidden text-xs font-medium sm:inline">Docs</span>
-			</a>
-
-			<ThemeSelect id="app-header-theme" />
-
-			<!-- 알림 아이콘 + 드롭다운 -->
-			<div class="relative" bind:this={bellContainer}>
-				<AnnouncementBellButton
-					bind:element={bellButton}
-					count={unreadAnnouncementCount}
-					usageCount={usageBell.count}
-					usageOverdue={usageBell.overdue}
-					usageUnavailable={usageBell.failed}
-					usageLoading={usageBell.loading}
-					open={bellOpen}
-					onclick={toggleBellDropdown}
-				/>
-				{#if bellOpen}
-					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용). 진입: 시트는 아래에서, 드롭다운은 종 아래로. -->
-					<div
-						class="motion-enter fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden [--motion-enter-offset:1rem] sm:[--motion-enter-offset:-0.375rem]"
-						style="background: var(--color-surface-raised); border-color: var(--color-line);"
-					>
-						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{t('bell.title')}</p>
-						<div class="mx-4 mb-3 min-w-0 rounded-md border border-line p-3 text-sm">
-							<p class="font-medium text-ink-0">{usage('reminders')}</p>
-							{#if usageBell.loading}<LoadingState variant="inline" class="mt-1" label={usage('loading')} />{/if}
-							{#if usageBell.failed}<p class="mt-1 text-xs text-state-danger-text" role="alert">{usage('loadFailed')}</p>{/if}
-							{#if usageBell.count !== null}
-								<p class="mt-1 text-xs text-ink-1">{usage('bellCount', { count: usageBell.count })}</p>
-								{#if usageBell.overdue > 0}<p class="mt-1 text-xs text-state-danger-text">{usage('bellOverdue', { count: usageBell.overdue })}</p>{/if}
-							{/if}
-							<button onclick={() => closeBellAndGo()} class="mt-2 min-h-11 text-left text-xs text-accent underline underline-offset-4">{usage('manage')}</button>
-						</div>
-						{#if bellItems === null}
-							<div class="px-4 pb-3"><LoadingState variant="inline" label={t('bell.loading')} /></div>
-						{:else if bellError}
-							<p class="px-4 pb-3 text-xs text-[var(--color-state-danger)]">{t('bell.failed')}</p>
-						{:else if bellItems.length === 0}
-							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">{t('bell.empty')}</p>
-						{:else}
-							<ul class="max-h-80 overflow-y-auto">
-								{#each bellItems as item (item.id)}
-									<li>
-										<button
-											onclick={() => closeBellAndGo(item.id)}
-											class="w-full text-left px-4 py-2.5 flex items-start gap-2.5 hover:bg-[var(--color-surface-sunken)] transition-colors"
-										>
-											<span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0" style="background: {bellDotColor(item.severity)};"></span>
-											<span class="flex-1 min-w-0">
-												<span class="block text-xs text-[var(--color-ink-0)] truncate {item.is_read ? '' : 'font-semibold'}">{item.title}</span>
-												<span class="block text-xs text-[var(--color-ink-3)] mt-0.5 tabular-nums">{formatIsoDateTime(item.created_at)}</span>
-											</span>
-											{#if !item.is_read}
-												<span class="mt-1 text-xs uppercase tracking-wide text-[var(--color-accent)] flex-shrink-0">{t('bell.unread')}</span>
-											{/if}
-										</button>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-						<div class="border-t" style="border-color: var(--color-line);">
-							<button
-								onclick={() => closeBellAndGo()}
-								class="w-full px-4 py-2.5 text-xs text-center text-[var(--color-accent)] hover:bg-[var(--color-surface-sunken)] transition-colors"
-							>{t('bell.viewAll')}</button>
-						</div>
-					</div>
-				{/if}
-			</div>
-
-			<!-- 유저 아바타 -->
-			<a
-				href={mockupAdminActive ? '/admin' : '/dashboard/account'}
-				class="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				title={$auth.domainName ? `${$auth.username ?? ''} @ ${$auth.domainName}` : $auth.username}
-				aria-label={tAccount('profile.image.open')}
-			><ProfileImage name={$auth.username ?? ''} label={tAccount('profile.image.alt')} /></a>
-
-			<!-- 로그아웃 -->
-			<button
-				onclick={() => logout()}
-				disabled={$logoutInProgress}
-				aria-label={t('logout.action')}
-				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-state-danger focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				title={t('logout.action')}
-			>
-				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-			</button>
+			<HeaderAccountControls
+				username={$auth.username ?? ''}
+				title={$auth.domainName ? `${$auth.username ?? ''} @ ${$auth.domainName}` : ($auth.username ?? '')}
+				unread={unreadAnnouncementCount > 0 || (usageBell.count ?? 0) > 0 || usageBell.failed}
+				logoutDisabled={$logoutInProgress}
+				onlogout={() => void logout()}
+				allowPath={mockup.active && mockup.profile ? (href) => isMockupPathAllowed(mockup.profile!, href) : undefined}
+			/>
 		</div>
 	</header>
 	{#if !mockup.active || mockupAdminActive}

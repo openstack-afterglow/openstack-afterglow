@@ -13,16 +13,17 @@
 	import { navIcons, userNavSections } from '$lib/config/nav';
 	import type { NavItem, NavSection } from '$lib/config/nav';
 	import { isMockupPathAllowed } from '$lib/mockup/contracts';
+	import { mobileViewport } from '$lib/utils/mobileViewport';
 
 	const mockupProfile = $derived($page.data.mockup?.active ? $page.data.mockup.profile : null);
 
 	type BetaFeatureKey = keyof BetaFeatures;
 	const overviewItems: NavItem[] = $derived([
 		{ label: tn('items.overview'), labelKey: 'items.overview', href: '/dashboard', icon: navIcons.overview, service: null },
-		{ label: tn('items.usage'), labelKey: 'items.usage', href: '/dashboard/usage', icon: navIcons.chart, service: null },
-		{ label: tn('items.usageReport'), labelKey: 'items.usageReport', href: '/dashboard/usage-report', icon: navIcons.document, service: null },
-		{ label: tn('items.activity'), labelKey: 'items.activity', href: '/dashboard/activity', icon: navIcons.activity, service: null },
-		{ label: tn('items.topology'), labelKey: 'items.topology', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true },
+		{ label: tn('items.usage'), labelKey: 'items.usage', href: '/dashboard/usage', icon: navIcons.chart, service: null, mobileHidden: true },
+		{ label: tn('items.usageReport'), labelKey: 'items.usageReport', href: '/dashboard/usage-report', icon: navIcons.document, service: null, mobileHidden: true },
+		{ label: tn('items.activity'), labelKey: 'items.activity', href: '/dashboard/activity', icon: navIcons.activity, service: null, mobileHidden: true },
+		{ label: tn('items.topology'), labelKey: 'items.topology', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true, mobileHidden: true },
 	]);
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
@@ -71,6 +72,28 @@
 >
 
 	{#snippet footer()}
+		{#if mobileViewport.current}
+			<div class="space-y-2 p-3" data-navigation-footer="mobile">
+				<div>
+					<div class="mb-1 px-1 text-xs text-ink-2">{tw('title')}</div>
+					<ProjectSelector />
+				</div>
+				<div class="flex min-w-0 items-center justify-between gap-2">
+					<span class="min-w-0 truncate px-1 text-xs text-ink-2">{$auth.username}</span>
+					{#if $isAdmin}
+						<a
+							href="/admin"
+							aria-label={t('mode.userCurrent')}
+							title={t('mode.switchToAdmin')}
+							class="flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm text-ink-2 transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] hover:bg-surface-sunken hover:text-ink-0"
+						>
+							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+							{t('mode.user')}
+						</a>
+					{/if}
+				</div>
+			</div>
+		{:else}
 		<div class="p-3 md:hidden">
 			<div class="text-xs text-ink-2 px-1 mb-1.5">{tw('title')}</div>
 			<ProjectSelector />
@@ -98,5 +121,6 @@
 		<div class="p-3 pt-0 md:hidden border-t border-line">
 			<div class="px-3 text-xs text-ink-2">{$auth.username}</div>
 		</div>
+		{/if}
 	{/snippet}
 </ConsoleNavigation>

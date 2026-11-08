@@ -21,6 +21,7 @@
 	import { dbBackupColumns } from '$lib/utils/databaseTableColumns';
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import { authDisplayContext } from '$lib/stores/authDisplayContext';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	let backups = $state<DbBackup[]>([]);
 	let instances = $state<DbInstance[]>([]);
 	let flavors = $state<DbFlavor[]>([]);
@@ -183,7 +184,9 @@
 />
 
 <PageShell class="bulk-selection-page space-y-4">
-	<PageHeader breadcrumb={tr('breadcrumbs.backups')} title={tr('backups.title')} />
+	<PageHeader breadcrumb={tr('breadcrumbs.backups')} title={tr('backups.title')}>
+		{#snippet actions()}<TutorialStartButton tour="database-backups" compactOnMobile />{/snippet}
+	</PageHeader>
 	<ResourceToolbar label={tr('backups.toolbar')}>
 		<RegexSearch id="database-backups-search" bind:value={search} />
 		{#snippet actions()}

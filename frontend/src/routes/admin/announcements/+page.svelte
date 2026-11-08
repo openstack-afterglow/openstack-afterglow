@@ -28,6 +28,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 	const FALLBACK_SEVERITIES: AnnouncementSeverity[] = ['info', 'warning', 'danger'];
 	const FALLBACK_TARGET_TYPES: AnnouncementTargetType[] = ['all', 'project', 'user'];
@@ -37,6 +38,8 @@
 	let sendEmail = $state(false);
 	let emailAttempt = $state('');
 	let emailUnknown = $state(false);
+	// Announcement created in this page session; the tutorial anchors only its delete control.
+	let lastCreatedId = $state<number | null>(null);
 	const unavailable = $derived(!$auth.token || !$authReady || !$auth.isSystemAdmin || $logoutInProgress || $projectSwitching);
 	const ctrl = createAdminAnnouncementsController({
 		token: () => $auth.token ?? undefined,
@@ -58,7 +61,7 @@
 		ends_at: '',
 	});
 	const owner = createEmailOwner(() => {
-		ownerEpoch++; ctrl.invalidateOwner(); resetForm(); mailBusy = false; sendEmail = false; emailAttempt = ''; emailUnknown = false;
+		ownerEpoch++; ctrl.invalidateOwner(); resetForm(); mailBusy = false; sendEmail = false; emailAttempt = ''; emailUnknown = false; lastCreatedId = null;
 		if (owner.capture()) { void ctrl.load(); void ctrl.loadOptions(); void ctrl.loadDomains(); }
 	});
 	onDestroy(ctrl.dispose);
@@ -98,6 +101,8 @@
 		const requestedEmail = sendEmail;
 		const operationId = requestedEmail ? crypto.randomUUID() : '';
 		if (requestedEmail) emailAttempt = operationId;
+		const previousIds = new Set(ctrl.announcements.map((a) => a.id));
+		const submittedTitle = form.title.trim();
 		const result = await ctrl.create({
 			title: form.title,
 			body: form.body,
@@ -113,6 +118,7 @@
 		emailUnknown = result.status === 'indeterminate';
 		if (result.status === 'invalid' || result.status === 'rejected') emailAttempt = '';
 		if (result.status === 'ok') {
+			lastCreatedId = ctrl.announcements.find((a) => !previousIds.has(a.id) && a.title === submittedTitle)?.id ?? null;
 			resetForm();
 			toast.success(t('announcements.toast.sent'));
 		}
@@ -168,7 +174,11 @@
 </script>
 
 <PageShell>
-	<PageHeader breadcrumb={t('announcements.breadcrumb')} title={t('announcements.title')} subtitle={t('announcements.subtitle')} />
+	<PageHeader breadcrumb={t('announcements.breadcrumb')} title={t('announcements.title')} subtitle={t('announcements.subtitle')}>
+		{#snippet actions()}
+			<TutorialStartButton tour="admin-announcements" compactOnMobile />
+		{/snippet}
+	</PageHeader>
 
 	{#if ctrl.error}
 		<Alert tone="danger" class="mb-4">{ctrl.error}</Alert>
@@ -182,7 +192,7 @@
 		{#if emailUnknown}<Alert tone="warning" class="mb-4">{tm('unknown')}</Alert>{/if}
 		{#if emailAttempt && !ctrl.emailOperation}<p class="mb-3 text-sm font-mono [overflow-wrap:anywhere]">{tm('operation', { id: emailAttempt })}</p>{/if}
 		{#if ctrl.emailOperation}<MailOperationResult operation={ctrl.emailOperation} />{/if}
-		<fieldset disabled={mutationBusy || emailUnknown} class="min-w-0">
+		<fieldset disabled={mutationBusy || emailUnknown} class="min-w-0" data-tour="admin-announcements-form">
 		<div class="space-y-4">
 			<div>
 				<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="announcement-title">{t('announcements.form.titleLabel')}</label>
@@ -204,7 +214,7 @@
 					class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] resize-y"
 				></textarea>
 			</div>
-			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-4" data-tour="admin-announcements-audience">
 				<div>
 					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="announcement-severity">{t('announcements.form.severityLabel')}</label>
 					<select
@@ -284,13 +294,14 @@
 			<p class="text-sm text-ink-2">{tm('schedule')}</p>
 		</div>
 		<div class="flex justify-end mt-5">
-			<Button variant="accent" disabled={mutationBusy || emailUnknown} ariaBusy={ctrl.creating} onclick={handleCreate}>
+			<Button variant="accent" disabled={mutationBusy || emailUnknown} ariaBusy={ctrl.creating} onclick={handleCreate} dataTour="admin-announcements-submit">
 				{#if ctrl.creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{ctrl.creating ? t('announcements.actions.sending') : t('announcements.actions.send')}
 			</Button>
 		</div>
 		</fieldset>
 	</Card>
 
+	<div data-tour="admin-announcements-history">
 	<Card padding="lg">
 		<h2 class="text-sm font-semibold text-[var(--color-ink-0)] mb-4">{t('announcements.history.title')}</h2>
 		<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
@@ -321,7 +332,7 @@
 									class="rounded border px-3 py-2 text-xs transition-colors disabled:opacity-40"
 									style={activeStyle(a.is_active)}
 								>{a.is_active ? t('announcements.status.active') : t('announcements.status.inactive')}</button>
-								<Button variant="danger" size="sm" disabled={mutationBusy} onclick={() => handleDelete(a)}>{t('announcements.actions.delete')}</Button>
+								<Button variant="danger" size="sm" disabled={mutationBusy} onclick={() => handleDelete(a)} dataTour={lastCreatedId === a.id ? 'admin-announcements-delete' : undefined}>{t('announcements.actions.delete')}</Button>
 								<AnnouncementEmailAction announcement={a} disabled={mutationBusy} onbusy={(value) => { mailBusy = value; }} />
 							{/snippet}
 						</CompactResourceCard>
@@ -361,6 +372,7 @@
 								<td class="py-2.5">
 									<AnnouncementEmailAction announcement={a} disabled={mutationBusy} onbusy={(value) => { mailBusy = value; }} />
 									<button
+										data-tour={lastCreatedId === a.id ? 'admin-announcements-delete' : undefined}
 										onclick={() => handleDelete(a)}
 										aria-label={t('announcements.actions.delete')}
 										disabled={mutationBusy}
@@ -377,4 +389,5 @@
 			</ResponsiveTable>
 		{/if}
 	</Card>
+	</div>
 </PageShell>

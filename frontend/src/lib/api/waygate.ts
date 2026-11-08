@@ -10,11 +10,15 @@ import type {
 	WaygateClientUpdateRequest,
 	WaygateNetworkAttachment,
 	WaygateNetworkAttachRequest,
+	WaygateNetworkAttachmentUpdateRequest,
 	WaygateImportResult,
 	WaygateExportResult,
+	WaygateServerDiagnostics,
 } from '$lib/types/waygate';
 
 const BASE = '/api/v1/waygate/servers';
+// Provisioning writes (Trust, VM, ports) take 25-33s; the default 30s client deadline reported success as failure.
+const WRITE_OPTIONS = { timeoutMs: 58_000 } as const;
 
 export async function listServers(
 	token: string | undefined,
@@ -30,7 +34,7 @@ export async function createServer(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateServer> {
-	return api.post<WaygateServer>(BASE, body, token, projectId);
+	return api.post<WaygateServer>(BASE, body, token, projectId, WRITE_OPTIONS);
 }
 
 export async function getServer(
@@ -41,13 +45,34 @@ export async function getServer(
 	return api.get<WaygateServer>(`${BASE}/${serverId}`, token, projectId, { refresh: true });
 }
 
+export async function getServerDiagnostics(
+	serverId: string,
+	token: string | undefined,
+	projectId: string | undefined
+): Promise<WaygateServerDiagnostics> {
+	return api.get<WaygateServerDiagnostics>(`${BASE}/${serverId}/diagnostics`, token, projectId, { refresh: true });
+}
+
+/** Gateway VM serial console tail through the existing project-scoped Nova console-log endpoint. */
+export async function getGatewayConsoleLog(
+	serverVmId: string,
+	length: number,
+	token: string | undefined,
+	projectId: string | undefined
+): Promise<string> {
+	const data = await api.get<{ output: string | null }>(
+		`/api/v1/instances/${encodeURIComponent(serverVmId)}/log?length=${length}`, token, projectId, { refresh: true }
+	);
+	return data.output ?? '';
+}
+
 export async function updateServer(
 	serverId: string,
 	body: WaygateServerUpdateRequest,
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateServer> {
-	return api.patch<WaygateServer>(`${BASE}/${serverId}`, body, token, projectId);
+	return api.patch<WaygateServer>(`${BASE}/${serverId}`, body, token, projectId, WRITE_OPTIONS);
 }
 
 export async function deleteServer(
@@ -55,7 +80,7 @@ export async function deleteServer(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<void> {
-	return api.delete<void>(`${BASE}/${serverId}`, token, projectId);
+	return api.delete<void>(`${BASE}/${serverId}`, token, projectId, WRITE_OPTIONS);
 }
 
 export async function listClients(
@@ -133,7 +158,18 @@ export async function attachNetwork(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateNetworkAttachment> {
-	return api.post<WaygateNetworkAttachment>(`${BASE}/${serverId}/networks`, body, token, projectId);
+	return api.post<WaygateNetworkAttachment>(`${BASE}/${serverId}/networks`, body, token, projectId, WRITE_OPTIONS);
+}
+
+/** Replaces one ACTIVE attachment's client routing list; the physical interface is unchanged. */
+export async function updateAttachment(
+	serverId: string,
+	attachmentId: number,
+	body: WaygateNetworkAttachmentUpdateRequest,
+	token: string | undefined,
+	projectId: string | undefined
+): Promise<WaygateNetworkAttachment> {
+	return api.patch<WaygateNetworkAttachment>(`${BASE}/${serverId}/networks/${attachmentId}`, body, token, projectId);
 }
 
 export async function detachNetwork(
@@ -142,7 +178,7 @@ export async function detachNetwork(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<void> {
-	return api.delete<void>(`${BASE}/${serverId}/networks/${attachmentId}`, token, projectId);
+	return api.delete<void>(`${BASE}/${serverId}/networks/${attachmentId}`, token, projectId, WRITE_OPTIONS);
 }
 
 // 백업 / 마이그레이션 (Phase 3) — export/import 은 패스프레이즈를 담으므로 POST

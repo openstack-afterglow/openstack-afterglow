@@ -369,7 +369,8 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 
 - **백엔드 CORS**: `cors_origin_list` allowlist (wildcard 금지)
 - **RGW 버킷 CORS**: `s3.py:_put_bucket_cors` 가 `cors_origin_list` 와 동기화. allowlist 가 비어있으면 CORS rule 자체 삭제 (cross-origin 차단)
-- **프런트엔드 CSP 미디어**: `media-src 'self' blob:`만 허용합니다. Audio Studio는 `fetchWithAuth`로 받은 생성 음성 응답이나 사용자가 고른 로컬 파일로 만든 object URL만 재생하며, 원격 미디어 origin과 API origin의 직접 재생은 허용하지 않습니다.
+ - **프런트엔드 CSP 미디어**: `media-src 'self' blob:`만 허용합니다. Audio Studio는 `fetchWithAuth`로 받은 생성 음성 응답이나 사용자가 고른 로컬 파일로 만든 object URL만 재생하며, 원격 미디어 origin과 API origin의 직접 재생은 허용하지 않습니다.
+- **프런트엔드 CSP 폰트**: `'self'`와 `https://fonts.gstatic.com` 외에, Markdown 수식 렌더러(KaTeX)가 사용하는 인라인 woff2 글꼴 로드를 위해 `font-src`에 `data:` 스킴을 허용합니다.
 
 ---
 

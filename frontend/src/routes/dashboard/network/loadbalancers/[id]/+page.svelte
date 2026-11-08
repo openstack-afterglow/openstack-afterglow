@@ -13,6 +13,7 @@
 	import ListenerSection from '$lib/components/dashboard/loadbalancers/ListenerSection.svelte';
 	import PoolSection from '$lib/components/dashboard/loadbalancers/PoolSection.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import { createdLoadBalancer } from '$lib/tutorial/createdLoadBalancer.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { provideTableViewVisibility } from '$lib/utils/tableView.svelte';
 
@@ -59,7 +60,8 @@
 	{#key `${$auth.projectId ?? ''}:${ctrl.lb.id}`}
 	<div hidden={Boolean(ctrl.error) || ctrl.lb.id !== $page.params.id}>
 		{#if ctrl.loading}<LoadingState variant="inline" label={tl('state.loadingNamed', { name: t('loadBalancers.title') })} />{/if}
-		<LbDetailHeader lb={ctrl.lb} saving={ctrl.saving} onDelete={ctrl.deleteLb} />
+		<!-- Tutorial delete anchor: only the load balancer created in this tab, once Octavia accepts deletes. -->
+		<LbDetailHeader lb={ctrl.lb} saving={ctrl.saving} onDelete={ctrl.deleteLb} highlightDelete={createdLoadBalancer.id === ctrl.lb.id && (ctrl.lb.status === 'ACTIVE' || ctrl.lb.status === 'ERROR')} />
 
 		{#if ctrl.lb.status === 'ERROR' || ctrl.lb.status?.includes('ERROR')}
 			<LbErrorStatusTree lb={ctrl.lb} statusTree={ctrl.statusTree} />

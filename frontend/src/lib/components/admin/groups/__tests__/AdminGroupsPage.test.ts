@@ -5,6 +5,7 @@ import { writable } from 'svelte/store';
 import { ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
 import { t as commonT } from '$lib/i18n/ns/common';
+import type { Group } from '$lib/types/adminGroup';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn(), listDomains: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { constructor(_status: number, message: string) { super(message); } } }));
@@ -448,4 +449,48 @@ it.each(['failed refresh', 'empty refresh', 'parent regex'] as const)('preserves
   expect(screen.getByText(candidate.email)).toBeTruthy();
   const restoredControls = within(screen.getAllByRole('group', { name: commonT('table.controls') }).at(-1)!);
   expect(restoredControls.getByRole('button', { name: commonT('table.sortColumn', { column: '이름', direction: commonT('table.descending') }) })).toBeTruthy();
+});
+
+it('anchors the guided-tour delete only on the group it just created and settles after the delete reload', async () => {
+  const created = { id: 'g-new', name: 'tut-group', description: '', domain_id: 'domain-a', created_at: '2026-07-09T00:00:00Z' };
+  let rows: Group[] = [group];
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/groups?domain_id=domain-a' ? Promise.resolve(rows) : original(path));
+  mocks.post.mockImplementation(() => { rows = [created, group]; return Promise.resolve({ id: created.id, name: created.name, description: '', domain_id: 'domain-a' }); });
+  const reload = Promise.withResolvers<Group[]>();
+  mocks.delete.mockImplementation(() => {
+    rows = [group];
+    mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/groups?domain_id=domain-a' ? reload.promise : original(path));
+    return Promise.resolve(undefined);
+  });
+  const { container } = render(Page, { domainId: 'domain-a', domainName: 'Domain A' });
+  await screen.findByText(group.name);
+  const results = container.querySelector('[data-tour="admin-groups-results"]')!;
+  expect(container.querySelector('[data-tour="admin-groups-delete"]')).toBeNull();
+
+  await fireEvent.click(container.querySelector('[data-tour="admin-groups-create-open"]')!);
+  const fields = container.ownerDocument.querySelector('[data-tour="admin-groups-create-fields"]')!;
+  const submit = container.ownerDocument.querySelector('[data-tour="admin-groups-create-submit"]') as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  await fireEvent.input(within(fields as HTMLElement).getAllByRole('textbox')[0], { target: { value: 'tut-group' } });
+  expect(submit.disabled).toBe(false);
+  await fireEvent.click(submit);
+  await screen.findByText(created.name);
+  expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/groups?domain_id=domain-a', { name: 'tut-group', description: null, domain_id: 'domain-a' }, 'token', 'admin-project');
+  const anchors = container.querySelectorAll('[data-tour="admin-groups-delete"]');
+  expect(anchors).toHaveLength(1);
+  expect(anchors[0].closest('.rounded-xl')!.textContent).toContain(created.name);
+  expect(results.getAttribute('data-tour-settled')).toBe('false');
+
+  await fireEvent.click(anchors[0]);
+  const confirm = await waitFor(() => container.ownerDocument.querySelector('[data-tour="admin-groups-delete-confirm"]') as HTMLButtonElement);
+  await fireEvent.click(confirm);
+  await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith('/api/v1/admin/groups/g-new?domain_id=domain-a', 'token', 'admin-project'));
+  // The delete succeeded but its list reload is still pending: not settled yet.
+  await waitFor(() => expect(container.querySelector('[data-tour="admin-groups-delete"]')).toBeNull());
+  expect(results.getAttribute('data-tour-settled')).toBe('false');
+  reload.resolve([group]);
+  await waitFor(() => expect(results.getAttribute('data-tour-settled')).toBe('true'));
+  expect(screen.queryByText(created.name)).toBeNull();
+  expect(screen.getByText(group.name)).toBeTruthy();
 });

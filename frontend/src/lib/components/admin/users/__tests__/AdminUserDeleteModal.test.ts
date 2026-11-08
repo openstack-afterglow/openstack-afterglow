@@ -78,4 +78,23 @@ describe('AdminUserDeleteModal exact identity confirmation', () => {
     expect(screen.getByText('Bob')).toBeTruthy(); view.unmount();
   });
 
+  it('submits Enter as a click on Delete so a tutorial click guard can hold it', async () => {
+    const onDelete = vi.fn().mockResolvedValue(true); const onClose = vi.fn();
+    // Same shape as the tour engine's capture-phase guard for a later click step.
+    const guard = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-tour="admin-users-delete-confirm"]')) { event.preventDefault(); event.stopPropagation(); }
+    };
+    document.addEventListener('click', guard, { capture: true });
+    try {
+      render(AdminUserDeleteModal, { ...props, onDelete, onClose });
+      await fireEvent.input(field(), { target: { value: user.id } });
+      await fireEvent.submit(field().closest('form')!);
+      expect(onDelete).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('click', guard, { capture: true });
+    }
+    await fireEvent.submit(field().closest('form')!);
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith(user.id, user.id);
+  });
+
 });

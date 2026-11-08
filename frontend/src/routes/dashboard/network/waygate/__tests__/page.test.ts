@@ -209,15 +209,18 @@ beforeEach(() => {
 });
 
 describe('Waygate dashboard', () => {
-	it('opens a server and attaches an explicit tenant subnet', async () => {
+	it('opens a server and attaches an explicit subnet without routing unless requested', async () => {
 		await openServerPanel();
 
 		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-1', 'project-1', { refresh: true }));
+		expect(screen.queryByText(/서브넷 CIDR 이 추가됩니다/)).toBeNull();
+		expect(screen.getByText(/AllowedIPs\(라우팅\)로만 정해지며/)).toBeTruthy();
 
 		const networkSelect = screen.getByRole('button', { name: '연결할 네트워크 선택' });
 		await fireEvent.click(networkSelect);
-		expect(screen.queryByRole('option', { name: /public-net/ })).toBeNull();
+		// Provider/external networks visible to the member are attachable and labelled.
+		expect(screen.getByRole('option', { name: /public-net/ }).textContent).toContain('외부/프로바이더 네트워크');
 		await fireEvent.click(screen.getByRole('option', { name: /empty-net/ }));
 		expect(await screen.findByText('선택한 네트워크에 연결 가능한 서브넷이 없습니다.')).toBeTruthy();
 		expect((screen.getByRole('button', { name: '연결' }) as HTMLButtonElement).disabled).toBe(true);
@@ -225,6 +228,7 @@ describe('Waygate dashboard', () => {
 		await fireEvent.click(networkSelect);
 		await fireEvent.click(screen.getByRole('option', { name: /private-net/ }));
 		expect((await screen.findByRole('button', { name: '연결할 서브넷 선택' })).textContent).toContain('app-subnet');
+		expect((screen.getByRole('textbox', { name: 'AllowedIPs (라우팅)' }) as HTMLTextAreaElement).value).toBe('');
 
 		const attach = screen.getByRole('button', { name: '연결' });
 		expect((attach as HTMLButtonElement).disabled).toBe(false);
@@ -235,9 +239,26 @@ describe('Waygate dashboard', () => {
 				'/api/v1/waygate/servers/server-1/networks',
 				{ network_id: 'net-private', subnet_id: 'subnet-app', nat_mode: 'snat' },
 				'token-1',
-				'project-1'
+				'project-1',
+				{ timeoutMs: 58_000 }
 			);
 		});
+	});
+
+	it('sends the routing list only when the user supplied one', async () => {
+		await openServerPanel();
+		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));
+		await fireEvent.click(screen.getByRole('button', { name: '연결할 네트워크 선택' }));
+		await fireEvent.click(screen.getByRole('option', { name: /private-net/ }));
+		await fireEvent.click(await screen.findByRole('button', { name: '서브넷 CIDR 추가 (10.20.0.0/24)' }));
+		await fireEvent.click(screen.getByRole('button', { name: '연결' }));
+		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+			'/api/v1/waygate/servers/server-1/networks',
+			{ network_id: 'net-private', subnet_id: 'subnet-app', nat_mode: 'snat', allowed_ips: ['10.20.0.0/24'] },
+			'token-1',
+			'project-1',
+			{ timeoutMs: 58_000 }
+		));
 	});
 
 	it('downloads client config and renders a QR code from the same config', async () => {
@@ -272,7 +293,7 @@ describe('Waygate dashboard', () => {
 
 		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/waygate/servers/server-1/clients',
-			{ name: 'phone', dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0, owner_user_id: 'user-1' },
+			{ name: 'phone', dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0, owner_user_id: null },
 			'token-1',
 			'project-1'
 		));

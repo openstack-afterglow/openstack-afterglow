@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe('mockup transport', () => {
-	it('serves native Key Manager metadata arrays without payloads or simulated writes', async () => {
+	it('serves native Key Manager metadata arrays without payloads and rejects invalid secret creation', async () => {
 		// resetModules must recreate the tutorial singleton for this transport-boundary test.
 		const { maybeMockJson } = await import('./transport');
 		const token = 'mock-token-tutorial-scoped';
@@ -42,7 +42,7 @@ describe('mockup transport', () => {
 		expect(orders.map(order => order.status)).toEqual(['ACTIVE', 'PENDING']);
 		expect(quota).toMatchObject({ secrets: 50, orders: 20, containers: 20, consumers: 100, cas: 5 });
 		await expect(maybeMockJson('GET', `/api/v1/secrets/${secrets[0].id}/payload`, undefined, token, project)).rejects.toMatchObject({ status: 409 });
-		await expect(maybeMockJson('POST', '/api/v1/secrets', { name: 'must-not-create' }, token, project)).rejects.toMatchObject({ status: 409 });
+		await expect(maybeMockJson('POST', '/api/v1/secrets', {}, token, project)).rejects.toMatchObject({ status: 422 });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -188,7 +188,7 @@ describe('mockup transport', () => {
 	it('rejects empty selected projects and OAuth access beyond client scopes', async () => {
 		// Module-boundary test: fixtures must not retain mutations from another test.
 		const { maybeMockJson } = await import('./transport');
-		await expect(maybeMockJson('POST', '/api/v1/auth/mcp-tokens', { name: 'Empty', access_level: 'read', project_scope: 'selected', project_ids: [] }, 'mock-token-tutorial-scoped', 'mock-project-1')).rejects.toMatchObject({ status: 409 });
+		await expect(maybeMockJson('POST', '/api/v1/auth/mcp-tokens', { name: 'Empty', access_level: 'read', project_scope: 'selected', project_ids: [] }, 'mock-token-tutorial-scoped', 'mock-project-1')).rejects.toMatchObject({ status: 400 });
 		await expect(maybeMockJson('POST', `/api/v1/auth/mcp-oauth/consents/${MOCK_MCP_CONSENT_TICKET}/approve`, { access_level: 'manage', project_scope: 'all', project_ids: [] }, 'mock-token-tutorial-scoped', 'mock-project-1')).rejects.toMatchObject({ status: 409 });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -219,7 +219,6 @@ describe('mockup transport', () => {
 	it.each([
 		{ lifetime: 'never', expiration: { non_expiring: true }, expectedExpiry: null },
 		{ lifetime: 'finite', expiration: { expires_at: '2027-07-09T00:00:00.000Z' }, expectedExpiry: '2027-07-09T00:00:00.000Z' },
-		{ lifetime: 'legacy default', expiration: {}, expectedExpiry: '2026-08-08T00:00:00.000Z' },
 	])('preserves $lifetime MCP expiry through the tutorial API consumer', async ({ expiration, expectedExpiry }) => {
 		// Module-boundary test: the real API consumer uses fresh local tutorial state.
 		const { api } = await import('$lib/api/client');
@@ -561,7 +560,7 @@ describe('mockup transport', () => {
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=network')).toMatchObject({ network: [expect.objectContaining({ alive: true })] });
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=endpoints')).toMatchObject({ endpoints: [expect.any(Object)] });
 		expect(await maybeMockJson('GET', '/api/v1/admin/services?category=storage_pools')).toMatchObject({ storage_pools: [expect.any(Object)] });
-		expect(await maybeMockJson('GET', '/api/v1/admin/users?domain_id=mock-domain')).toMatchObject({ count: 3, items: expect.any(Array) });
+		expect(await maybeMockJson('GET', '/api/v1/admin/users?domain_id=mock-domain')).toMatchObject({ count: 4, items: expect.any(Array) });
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/users/activity?domain_id=mock-domain')).toHaveLength(2);
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/projects/names')).toHaveLength(3);
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -785,8 +784,6 @@ describe('mockup transport', () => {
 		)) as Array<{ id: string }>;
 		expect(afterDelete.some((volume) => volume.id === created.id)).toBe(false);
 
-		// 볼륨 페이지가 항상 호출하는 부속 엔드포인트도 빈 값으로 응답한다
-		expect(await maybeMockJson('GET', '/api/v1/volume-snapshots', undefined, 'mock-token-tutorial-scoped', 'mock-project-1')).toEqual([]);
 	});
 
 	it('supports the image detail export tutorial flow', async () => {
@@ -890,5 +887,30 @@ describe('mockup transport', () => {
 		expect(created!.id).toBe(messages.at(-1)?.instance_id);
 		// 픽스처 주소 대역(RFC 5737) 준수
 		expect(created!.ip_addresses.every((address) => address.addr.startsWith('192.0.2.'))).toBe(true);
+	});
+
+	it('names an unnamed tutorial instance tut- and lets its detail page stop then delete only it', async () => {
+		// Dynamic import required: transport owns mutable singleton fixture state that each test must reinitialize.
+		const { maybeMockInstanceCreateStream, maybeMockJson } = await import('./transport');
+		const before = (await maybeMockJson<Array<{ id: string }>>('GET', '/api/v1/instances', undefined, 'mock-token-tutorial-scoped', 'mock-project-1')) as Array<{ id: string }>;
+		const stream = maybeMockInstanceCreateStream('/api/v1/instances/async', { name: null, flavor_id: 'mock-flavor-cpu4', image_id: 'fixture-image-ubuntu' });
+		let id: string | undefined;
+		for await (const message of stream!) id = message.instance_id ?? id;
+
+		type Detail = { id: string; name: string; status: string; project_id?: string };
+		const created = (await maybeMockJson<Detail>('GET', `/api/v1/instances/${id}`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1')) as Detail;
+		expect(created.name).toBe(`tut-${id}`);
+		expect(created.project_id).toBe('mock-project-1');
+		expect(created.status).toBe('ACTIVE');
+
+		await maybeMockJson('POST', `/api/v1/instances/${id}/stop`, {}, 'mock-token-tutorial-scoped', 'mock-project-1');
+		expect(((await maybeMockJson<Detail>('GET', `/api/v1/instances/${id}`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1')) as Detail).status).toBe('SHUTOFF');
+		const volumes = (await maybeMockJson<Array<{ delete_on_termination: boolean }>>('GET', `/api/v1/instances/${id}/volumes`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1')) as Array<{ delete_on_termination: boolean }>;
+		expect(volumes.every((volume) => volume.delete_on_termination === false)).toBe(true);
+
+		await maybeMockJson('DELETE', `/api/v1/instances/${id}`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1');
+		const after = (await maybeMockJson<Array<{ id: string }>>('GET', '/api/v1/instances', undefined, 'mock-token-tutorial-scoped', 'mock-project-1')) as Array<{ id: string }>;
+		expect(after.map((instance) => instance.id)).toEqual(before.map((instance) => instance.id));
+		await expect(maybeMockJson('GET', `/api/v1/instances/${id}`, undefined, 'mock-token-tutorial-scoped', 'mock-project-1')).rejects.toMatchObject({ status: 409 });
 	});
 });

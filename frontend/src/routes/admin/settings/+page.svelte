@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { t } from '$lib/i18n/ns/admin-system';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, isAdmin, isMockAuthActive } from '$lib/stores/auth';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import AdminLoginBrandingPanel from '$lib/components/admin/AdminLoginBrandingPanel.svelte';
 	import AdminResourcePoliciesPanel from '$lib/components/admin/AdminResourcePoliciesPanel.svelte';
 	import AdminEnrollmentPolicyPanel from '$lib/components/admin/AdminEnrollmentPolicyPanel.svelte';
@@ -17,6 +18,7 @@
 		? page.url.searchParams.get('tab') as Destination : 'branding');
 	const enrollmentSelected = $derived(selected === 'enrollment' || selected === 'quotas' || selected === 'requests');
 	const tabs = $derived(destinations.map(value => ({ value, label: t(`settings.tab.${value}`),
+		dataTour: `admin-settings-tab-${value}`,
 		panelId: value === 'branding' || value === 'infrastructure' || value === 'email' ? `settings-${value}-panel` : 'settings-enrollment-panel' })));
 	function selectDestination(value: string) {
 		const url = new URL(page.url);
@@ -30,11 +32,19 @@
 		breadcrumb={t('settings.breadcrumb')}
 		title={t('settings.title')}
 		subtitle={t('settings.subtitle')}
-	/>
+	>
+		{#snippet actions()}
+			{#if !isMockAuthActive() && $authReady && $isAdmin}
+				<TutorialStartButton tour="admin-settings" compactOnMobile />
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	<div class="settings-stack">
-		<Tabs id="settings-tabs" value={selected} items={tabs} onchange={selectDestination} ariaLabel={t('settings.destinations')} />
-		<p class="settings-help">{t('settings.draftHelp')}</p>
+		<div data-tour="admin-settings-tabs">
+			<Tabs id="settings-tabs" value={selected} items={tabs} onchange={selectDestination} ariaLabel={t('settings.destinations')} />
+		</div>
+		<p class="settings-help" data-tour="admin-settings-help">{t('settings.draftHelp')}</p>
 		<div id="settings-branding-panel" role="tabpanel" aria-labelledby="settings-tabs-branding" hidden={selected !== 'branding'}>
 			<AdminLoginBrandingPanel {token} {projectId} />
 		</div>

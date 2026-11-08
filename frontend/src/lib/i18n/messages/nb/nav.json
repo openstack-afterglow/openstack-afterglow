@@ -167,5 +167,11 @@
 	"scope.allProjects": "Omfang: alle prosjekter",
 	"scope.currentProject": "Omfang: gjeldende prosjekt · {name}",
 	"actions.refreshDirectory": "Oppdater omfangskatalog",
-	"scope.filtered": "Observasjonsomfang: {id}"
+	"scope.filtered": "Observasjonsomfang: {id}",
+	"actions.searchAll": "Søk i ressurser og tjenester",
+	"search.resources": "Ressurser",
+	"search.loadingResources": "Laster inn ressurser…",
+	"search.noResources": "Ingen samsvarende ressurser.",
+	"search.noServices": "Ingen samsvarende tjenester.",
+	"search.resultCount": "{count} treff"
 }

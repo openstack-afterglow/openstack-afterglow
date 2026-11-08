@@ -581,3 +581,18 @@ async def test_admin_linux_password_github_rate_limit_preserves_retry_contract(a
     assert PASSWORD not in response.text
     boundary.target.close.assert_called_once()
     boundary.target.compute.create_server.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["image", "volume"])
+async def test_admin_password_failure_logs_only_class_and_status(admin_client, boundary, source, caplog):
+    reader = boundary.target.image.get_image if source == "image" else boundary.target.block_storage.get_volume
+    reader.side_effect = RuntimeError(f"provider echoed {PASSWORD}")
+    with caplog.at_level("WARNING"):
+        response = await admin_client.post(PATH, json=payload(source))
+    assert response.status_code == 400
+    records = [r.getMessage() for r in caplog.records if "password metadata lookup failed" in r.getMessage()]
+    assert records, caplog.text
+    assert "class=RuntimeError" in records[0]
+    assert PASSWORD not in caplog.text
+    no_mutation(boundary)

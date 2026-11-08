@@ -10,6 +10,7 @@
 		selectedIds,
 		selectableIds,
 		selectionDisabled,
+		highlightId = null,
 		onToggleSelect,
 		onToggleAll,
 	}: {
@@ -18,6 +19,8 @@
 		selectedIds: ReadonlySet<string>;
 		selectableIds: ReadonlySet<string>;
 		selectionDisabled: boolean;
+		/** Group just created on the page; only its row carries the tutorial anchor. */
+		highlightId?: string | null;
 		onToggleSelect: (id: string) => void;
 		onToggleAll: () => void;
 	} = $props();
@@ -46,14 +49,15 @@
 			<div class="flex items-center gap-2">
 				<SelectionCheckbox
 					checked={selectedIds.has(sg.id)}
-					disabled={selectionDisabled || sg.name === 'default'}
-					unavailable={sg.name === 'default'}
-					title={sg.name === 'default' ? t('securityGroupList.defaultDeleteUnavailable') : undefined}
+					disabled={selectionDisabled || sg.name === 'default' || !!sg.waygate_managed}
+					unavailable={sg.name === 'default' || !!sg.waygate_managed}
+					title={sg.name === 'default' ? t('securityGroupList.defaultDeleteUnavailable') : sg.waygate_managed ? t('securityGroups.waygateManagedNote') : undefined}
 					ariaLabel={t('securityGroupList.select', { name: sg.name })}
 					onclick={() => onToggleSelect(sg.id)}
 				/>
 				<button
 					type="button"
+					data-tour={sg.id === highlightId ? 'security-groups-select' : undefined}
 					onclick={() => selectedSg = sg.id}
 					class="flex min-h-11 items-center gap-2 flex-1 min-w-0 text-left"
 				>
@@ -63,6 +67,7 @@
 					</svg>
 				</div>
 				<div class="text-ink-0 font-medium text-[13px] font-mono truncate">{sg.name}</div>
+				{#if sg.waygate_managed}<span class="shrink-0 rounded border border-line-2 bg-surface-selected px-1.5 py-0.5 text-xs text-ink-1" data-testid="waygate-sg-badge">{t('securityGroups.waygateBadge')}</span>{/if}
 				<span class="ml-auto text-xs text-ink-2 shrink-0">{sg.rules?.length ?? 0}</span>
 				</button>
 			</div>

@@ -68,13 +68,14 @@ async def test_browser_routes_proxy_to_catalog_service(api_client, method, path,
     forwarded = JSONResponse(status_code=207, content={"forwarded": True})
     observed: dict[str, object] = {}
 
-    async def capture_request(service_type: str, request: Request, upstream: str):
+    async def capture_request(service_type: str, request: Request, upstream: str, *, read_timeout=None):
         observed["service_type"] = service_type
         observed["upstream"] = upstream
         observed["authorization"] = request.headers.get("authorization")
         observed["project_header"] = request.headers.get("x-project-id")
         observed["token_info"] = request.state.token_info
         observed["body"] = await request.json() if body is not None else None
+        observed["read_timeout"] = read_timeout
         return forwarded
 
     with patch("app.api.waygate.proxy.proxy", new=AsyncMock(side_effect=capture_request)) as proxy_call:
@@ -100,6 +101,7 @@ async def test_browser_routes_proxy_to_catalog_service(api_client, method, path,
             "roles": ["member"],
         },
         "body": body,
+        "read_timeout": None if method == "get" else 55.0,
     }
 
 

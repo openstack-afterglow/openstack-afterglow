@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "删除失败：{message}",
 	"floatingIps.breadcrumb": "网络",
 	"floatingIps.title": "浮动 IP",
-	"floatingIps.allocationHelp": "可以在<network>网络页面</network>分配浮动 IP。",
+	"floatingIps.allocationHelp": "可以使用本页的“分配”按钮分配浮动 IP。",
 	"floatingIps.selection.selectAll": "选择所有浮动 IP",
 	"floatingIps.columns.fixedIp": "关联的固定 IP",
 	"floatingIps.columns.instance": "实例",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "拓扑网络详情",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name}（{cidr}）"
+	"loadBalancerCreate.form.subnet.option": "{name}（{cidr}）",
+	"securityGroups.waygateManagedNote": "此资源由 Waygate 管理。请在 Waygate 菜单中进行更改。",
+	"securityGroups.openWaygate": "打开 Waygate",
+	"securityGroups.waygateBadge": "Waygate 管理"
 }

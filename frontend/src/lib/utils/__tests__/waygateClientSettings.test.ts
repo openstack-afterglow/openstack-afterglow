@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { WaygateClient, WaygateServer } from '$lib/types/waygate';
 import {
 	emptyWaygateClientDraft,
+	parseWaygateExpectedClients,
 	waygateClientCreateBody,
 	waygateClientDraft,
 	waygateClientUpdateBody,
+	waygateRequestedFlavorTier,
 	waygateServerCreateBody,
 	waygateServerDraft,
 	waygateServerUpdateBody,
@@ -133,5 +135,21 @@ describe('Waygate client settings', () => {
 				body: { name: 'a', persistent_keepalive: Number(keepalive), mtu: Number(mtu) },
 			});
 		}
+	});
+});
+
+describe('Waygate expected client sizing', () => {
+	it.each([['1', 1], [' 50 ', 50], ['1000', 1000]])('accepts %j as %d', (raw, expected) => {
+		expect(parseWaygateExpectedClients(raw)).toBe(expected);
+	});
+
+	it.each(['', '0', '1001', '-3', '2.5', '1e2', 'ten'])('rejects %j', (raw) => {
+		expect(parseWaygateExpectedClients(raw)).toBeNull();
+	});
+
+	it('requests the small tier up to 50 clients and the large tier above', () => {
+		expect(waygateRequestedFlavorTier(1)).toBe('small');
+		expect(waygateRequestedFlavorTier(50)).toBe('small');
+		expect(waygateRequestedFlavorTier(51)).toBe('large');
 	});
 });

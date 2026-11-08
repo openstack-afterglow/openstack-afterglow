@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "マイグレーションの中断に失敗しました",
 	"controller.migration.forceCompleteRequested": "マイグレーション強制完了リクエストを送信しました。",
 	"controller.migration.forceCompleteFailed": "マイグレーションの強制完了に失敗しました",
-	"controller.contextRequired": "useInstanceDetailControllerはInstanceDetailPanel内で呼び出す必要があります"
+	"controller.contextRequired": "useInstanceDetailControllerはInstanceDetailPanel内で呼び出す必要があります",
+	"waygate.managedNote": "このリソースは Waygate で管理されています。Waygate メニューから変更してください。",
+	"waygate.openLink": "Waygate を開く",
+	"waygate.badge": "Waygate 管理",
+	"list.waygateBulkDeleteBlocked": "選択に Waygate で管理されているインスタンスが含まれているため、一括削除できません。Waygate メニューから変更してください。"
 }

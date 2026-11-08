@@ -8,6 +8,7 @@ import type { WizardState } from '$lib/stores/wizard';
 import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { domainsApi } from '$lib/api/domains';
 import { maybeMockInstanceCreateStream } from '$lib/mockup/transport';
+import { createdInstance } from '$lib/tutorial/createdInstance.svelte';
 import { auth, authReady, canWrite, logoutInProgress, projectSwitching } from '$lib/stores/auth';
 import { createFlavorComposer } from '$lib/stores/flavorComposer';
 import { flavorComposerApi } from '$lib/api/flavorComposer';
@@ -1385,6 +1386,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			for await (const data of mockStream) {
 				if (destroyed) return;
 				reportProgress(data);
+				if (data.step === 'completed' && data.instance_id) createdInstance.id = data.instance_id;
 			}
 			stopDeploymentClock();
 			deployContext = undefined;
@@ -1436,6 +1438,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 							await observeProgress(data);
 							if (destroyed) { discardDeployment(); return; }
 							if (data.step === 'completed') {
+								if (data.instance_id) createdInstance.id = data.instance_id;
 								toast.success(t('toast.created'));
 								experienceMessage(observing ? context : undefined, { ...resolveExperienceMessage('vm-wizard', 'toast.created'), tone: 'success' });
 								deployContext = undefined;

@@ -15,8 +15,10 @@
 	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleColumns } from './catalog';
 	import type { ManagedRole } from './types';
 	import { isRetiredRole } from '$lib/utils/roleCatalog';
-	let { role, roles, busy, stale, error, onClose, onEdit, onDelete, onToggle, onSelect }: {
+	let { role, roles, busy, stale, error, tourDelete = false, onClose, onEdit, onDelete, onToggle, onSelect }: {
 		role: ManagedRole; roles: ManagedRole[]; busy: boolean; stale: boolean; error: string;
+		/** True only for the role the page just created; its delete control then carries the tutorial anchor. */
+		tourDelete?: boolean;
 		onClose: () => void; onEdit: () => void; onDelete: () => void;
 		onToggle: (candidate: ManagedRole) => void; onSelect: (role: ManagedRole) => void;
 	} = $props();
@@ -74,7 +76,7 @@
 		{#if busy}<LoadingState variant="inline" label={t('roleDetail.busy')} />{/if}
 		<div class="flex flex-wrap gap-2">
 			<Button variant="secondary" disabled={busy || stale || isRetiredRole(role)} onclick={onEdit}>{t('roleDetail.edit')}</Button>
-			<Button variant="danger-outline" disabled={busy || stale || !!deleteReason} onclick={onDelete}>{t('roleDetail.delete')}</Button>
+			<Button variant="danger-outline" disabled={busy || stale || !!deleteReason} dataTour={tourDelete && !deleteReason ? 'admin-roles-delete' : undefined} onclick={onDelete}>{t('roleDetail.delete')}</Button>
 		</div>
 		<p class="text-xs text-ink-2">{deleteReason ?? t('roleDetail.deleteHelp')}</p>
 

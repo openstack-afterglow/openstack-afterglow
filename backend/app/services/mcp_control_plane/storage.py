@@ -7,6 +7,7 @@ from typing import Any
 
 from app.services.mcp_control_plane.compute import McpComputeError, list_project_server_volume_attachment_ids
 from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
+from app.services.waygate_managed import WaygateManagedResourceError, require_server_not_waygate_managed
 
 
 class McpStorageError(ValueError):
@@ -484,6 +485,8 @@ def _management_server(conn: Any, *, project_id: str, server_id: str) -> Any:
         raise McpStorageError("Nova server ownership cannot be proven") from exc
     if safe["status"] not in {"ACTIVE", "SHUTOFF"}:
         raise McpStorageError("Nova server is not in an eligible state")
+    # Volume attachments of a Waygate gateway are Waygate-only (matches the REST surface).
+    require_server_not_waygate_managed(server)
     return server
 
 
@@ -775,7 +778,7 @@ def _detach_server_volume(conn: Any, *, project_id: str, server_id: str, volume_
 async def _run_volume_management(operation: Any, conn: Any, **kwargs: Any) -> dict[str, Any]:
     try:
         return await run_sdk(operation, conn, **kwargs)
-    except McpStorageError:
+    except (McpStorageError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         raise McpStorageError("Cinder/Nova volume management is unavailable") from exc

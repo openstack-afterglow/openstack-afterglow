@@ -4,7 +4,9 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, isMockAuthActive } from '$lib/stores/auth';
+	import { page } from '$app/state';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { sessionScopeKey } from '$lib/utils/authSession';
 	import { toast } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -81,6 +83,8 @@
 	let newSecretType = $state('passphrase');
 	let newSecretPayload = $state('');
 	let creating = $state(false);
+	// Id of the secret created on this page; the tutorial delete anchor follows only this row.
+	let lastCreatedSecretId = $state<string | null>(null);
 
 	// 컨테이너 생성 모달
 	let showCreateContainer = $state(false);
@@ -112,7 +116,8 @@
 		activeTab = tab;
 	}
 	const SECRET_TYPES = ['passphrase', 'certificate', 'symmetric', 'public', 'private', 'opaque'];
-	const keyManagerEnabled = $derived($betaFeatures.keyManager);
+	// Tutorial mode (synthetic mockup session) shows Key Manager without touching the stored beta flag.
+	const keyManagerEnabled = $derived($betaFeatures.keyManager || (page.data?.mockup?.active === true && isMockAuthActive()));
 
 	function clearKeyManagerState() {
 		secrets = [];
@@ -123,6 +128,7 @@
 		readErrors = { secrets: '', containers: '', orders: '', quota: '' };
 		selection.clear();
 		payloadVisible = {};
+		lastCreatedSecretId = null;
 		secretSearch = ''; containerSearch = ''; orderSearch = '';
 		secretView.reset(); containerView.reset(); orderView.reset();
 	}
@@ -203,11 +209,12 @@
 		if (!keyManagerEnabled) return;
 		creating = true;
 		try {
-			await secretsApi.createSecret({
+			const created = await secretsApi.createSecret({
 				name: newSecretName,
 				secret_type: newSecretType,
 				payload: newSecretPayload || undefined,
 			}, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			lastCreatedSecretId = created.id;
 			toast.success(t('secrets.toast.secretCreated'));
 			showCreateSecret = false;
 			newSecretName = '';
@@ -382,6 +389,8 @@
 	submitting={creating}
 	onSubmit={handleCreateSecret}
 	onClose={() => { showCreateSecret = false; }}
+	dataTour="secrets-create-form"
+	submitDataTour="secrets-create-submit"
 >
 	<div class="space-y-4">
 		<div>
@@ -465,6 +474,7 @@
 <PageShell class="bulk-selection-page">
 	<PageHeader breadcrumb={t('secrets.page.breadcrumb')} title={t('secrets.page.title')}>
 		{#snippet actions()}
+			<TutorialStartButton tour="secrets" compactOnMobile />
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -473,7 +483,7 @@
 				onManualRefresh={forceRefresh}
 			/>
 			{#if activeTab === 'secrets'}
-				<button onclick={() => showCreateSecret = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createSecret')}</button>
+				<button data-tour="secrets-create-open" onclick={() => showCreateSecret = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createSecret')}</button>
 			{:else if activeTab === 'containers'}
 				<button onclick={() => showCreateContainer = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createContainer')}</button>
 			{:else if activeTab === 'orders'}
@@ -549,6 +559,7 @@
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('secrets.page.title') })} />
 	{:else if activeTab === 'secrets'}
+		<div data-tour="secrets-list">
 		{#if loaded.secrets && !readErrors.secrets && secrets.length === 0}
 			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">🔑</div>
@@ -571,7 +582,7 @@
 				<div class="flex items-start gap-2"><SelectionCheckbox checked={selection.has(s.id)} disabled={s.system_managed || selectionBusy} unavailable={s.system_managed} title={s.system_managed ? t('secrets.selection.systemManaged') : undefined} ariaLabel={t('secrets.selection.item', { name: s.name ?? s.id })} onclick={() => selection.toggle(s.id)} /><h3 class="text-sm font-medium break-all">{s.name ?? s.id}</h3><span class="ml-auto text-xs">{s.status ?? '-'}</span></div><p class="text-xs text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}{#if s.system_managed} · {t('secrets.secret.system')}{/if}</p>
 				{#if payloadVisible[s.id] !== undefined}<code class="text-xs break-all">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>{/if}
 				{#snippet details()}<p class="text-xs break-all font-mono">{s.id}</p><p class="text-xs">{t('secrets.table.created')}: {s.created ? new Date(s.created).toLocaleDateString(intlLocale()) : '-'}</p><p class="text-xs">{t('secrets.table.expires')}: {s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</p>{/snippet}
-				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} ariaBusy={payloadLoading === s.id}>{#if payloadLoading === s.id}<LoadingState variant="control" label={t('secrets.actions.loading')} />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</Button>{#if payloadVisible[s.id] !== undefined}<Button variant="secondary" size="sm" onclick={() => copyPayload(payloadVisible[s.id])}>{t('secrets.actions.copy')}</Button>{/if}{#if !s.system_managed}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} ariaBusy={deletingSecretId === s.id}>{t('secrets.actions.delete')}</Button>{/if}{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} ariaBusy={payloadLoading === s.id}>{#if payloadLoading === s.id}<LoadingState variant="control" label={t('secrets.actions.loading')} />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</Button>{#if payloadVisible[s.id] !== undefined}<Button variant="secondary" size="sm" onclick={() => copyPayload(payloadVisible[s.id])}>{t('secrets.actions.copy')}</Button>{/if}{#if !s.system_managed}<Button variant="danger-outline" size="sm" onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} ariaBusy={deletingSecretId === s.id} dataTour={s.id === lastCreatedSecretId ? 'secrets-delete' : undefined}>{t('secrets.actions.delete')}</Button>{/if}{/snippet}
 			</CompactResourceCard>{/each}{/snippet}
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
@@ -613,7 +624,7 @@
 								<td class="py-3">
 									<div class="flex gap-2">
 										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} aria-busy={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{#if payloadLoading === s.id}<LoadingState variant="control" label={t('secrets.actions.loading')}  />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</button>
-										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingSecretId === s.id}<LoadingState variant="control" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`}  />{:else}{t('secrets.actions.delete')}{/if}</button>{/if}
+										{#if !s.system_managed}<button data-tour={s.id === lastCreatedSecretId ? 'secrets-delete' : undefined} onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingSecretId === s.id}<LoadingState variant="control" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`}  />{:else}{t('secrets.actions.delete')}{/if}</button>{/if}
 									</div>
 									{#if payloadVisible[s.id] !== undefined}
 										<div class="motion-fade mt-2 flex items-center gap-2">
@@ -629,6 +640,7 @@
 			</div>
 			</ResponsiveTable>
 		{/if}
+		</div>
 
 	{:else if activeTab === 'containers'}
 		{#if loaded.containers && !readErrors.containers && containers.length === 0}

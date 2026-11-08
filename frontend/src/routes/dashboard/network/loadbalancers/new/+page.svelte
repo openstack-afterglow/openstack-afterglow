@@ -10,6 +10,7 @@
 
 	import type { Network, SubnetDetail } from '$lib/types/networks';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import { createdLoadBalancer } from '$lib/tutorial/createdLoadBalancer.svelte';
 
 	let networks = $state<Network[]>([]);
 	let subnets = $state<SubnetDetail[]>([]);
@@ -62,6 +63,7 @@
 				{ name: form.name, vip_subnet_id: form.vip_subnet_id, description: form.description },
 				$auth.token ?? undefined, $auth.projectId ?? undefined
 			);
+			createdLoadBalancer.id = lb.id;
 			goto(`/dashboard/network/loadbalancers/${lb.id}`);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('loadBalancerCreate.error.createFailed');
@@ -83,7 +85,7 @@
 		<h1 class="text-2xl font-bold text-ink-0">{t('loadBalancerCreate.title')}</h1>
 	</div>
 
-	<div class="bg-surface-base border border-line-2 rounded-xl p-6 space-y-5">
+	<div data-tour="load-balancers-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 space-y-5">
 		{#if error}
 			<Alert tone="danger">{error}</Alert>
 		{/if}
@@ -155,7 +157,7 @@
 			>
 				{t('loadBalancerCreate.actions.cancel')}
 			</button>
-			<Button onclick={createLb} disabled={creating} ariaBusy={creating}>
+			<Button onclick={createLb} disabled={creating} ariaBusy={creating} dataTour="load-balancers-create-submit">
 				{#if creating}<LoadingState variant="control"  label="" aria-hidden="true" />{t('loadBalancerCreate.actions.creating')}{:else}{t('loadBalancerCreate.actions.create')}{/if}
 			</Button>
 		</div>

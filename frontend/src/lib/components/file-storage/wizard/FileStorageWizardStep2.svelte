@@ -99,7 +99,7 @@
 	<button onclick={s.backToStep1} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.previous')}</button>
 	<div class="flex gap-3">
 		<button onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.cancel')}</button>
-		<Button onclick={s.createFileStorage} disabled={s.creating} ariaBusy={s.creating}>
+		<Button onclick={s.createFileStorage} disabled={s.creating} ariaBusy={s.creating} dataTour="file-storage-create-submit">
 			{#if s.creating}<LoadingState variant="control" label="" />{t('wizard.actions.creating')}{:else}{t('wizard.actions.create')}{/if}
 		</Button>
 	</div>

@@ -23,6 +23,7 @@
   import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
   import FileStorageWizard from '$lib/components/file-storage/wizard/FileStorageWizard.svelte';
   import FileStorageCard from '$lib/components/file-storage/FileStorageCard.svelte';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations } from '$lib/utils/bulkActions';
   import { Alert, BulkSelectionOverlay, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectionToolbar } from '$lib/components/ui';
@@ -47,6 +48,8 @@
 
   let selectedId = $state<string | null>(null);
   let showWizard = $state(false);
+  // Only the share created in this page session gets the tutorial delete anchor.
+  let lastCreatedId = $state<string | null>(null);
   const selection = createResourceSelection();
   let search = $state('');
  const columns = $derived<TableColumn<FileStorage>[]>([
@@ -158,6 +161,7 @@
     const pid = $auth.projectId;
     untrack(() => {
       selection.clear();
+      lastCreatedId = null;
       if (!pid) return;
       void refresh.run();
     });
@@ -172,13 +176,14 @@
 
 <FileStorageWizard
   bind:open={showWizard}
-  onCreated={() => refresh.invalidate()}
+  onCreated={(created) => { lastCreatedId = created.id; void refresh.invalidate(); }}
 />
 
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('list.breadcrumb')} title={t('list.title')}>
     {#snippet actions()}
-      <Button onclick={() => (showWizard = true)} onintent={prefetchCreateMetadata} variant="primary">{t('list.createAction')}</Button>
+      <TutorialStartButton tour="file-storage" compactOnMobile />
+      <Button onclick={() => (showWizard = true)} onintent={prefetchCreateMetadata} variant="primary" dataTour="file-storage-create-open">{t('list.createAction')}</Button>
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('list.toolbar')}>
@@ -197,6 +202,7 @@
   {#if !loading && fileStorages.length > 0 && view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
+  <div data-tour="file-storage-list" class="space-y-4">
   {#if loading}
     <LoadingState variant="surface" label={tc('state.loadingNamed', { name: t('list.title') })} />
   {:else if fileStorages.length === 0}
@@ -212,6 +218,7 @@
           quotaLimit={quota?.gigabytes?.limit ?? 0}
           {copiedExport}
           {deleting}
+          tourDelete={fs.id === lastCreatedId && (fs.status === 'available' || fs.status === 'error')}
           selected={selection.has(fs.id)}
           selectionDisabled={bulkBusy}
           onToggleSelect={() => selection.toggle(fs.id)}
@@ -222,6 +229,7 @@
       {/each}
     </div>
   {/if}
+  </div>
   <BulkSelectionOverlay count={selection.count} ariaLabel={t('list.bulkActions')} actions={[{ key: 'delete', label: t('actions.delete'), tone: 'danger', onAction: bulkDelete }]} busy={bulkBusy} onClear={() => selection.clear()} />
 </PageShell>
 

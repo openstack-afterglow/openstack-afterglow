@@ -60,6 +60,7 @@
     tabindex="-1"
   >
     <div
+      data-tour="networks-create-form"
       class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
       onclick={(e) => e.stopPropagation()}
       role="none"
@@ -84,7 +85,7 @@
       {#if error}<Alert tone="danger" class="mt-4">{error}</Alert>{/if}
       <div class="flex justify-end gap-3 mt-6">
         <Button variant="secondary" onclick={close} disabled={creating}>{t('networkCreate.cancel')}</Button>
-        <Button variant="primary" onclick={handleCreate} disabled={creating || !form.name.trim()} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}</Button>
+        <Button variant="primary" onclick={handleCreate} disabled={creating || !form.name.trim()} ariaBusy={creating} dataTour="networks-create-submit">{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}</Button>
       </div>
     </div>
   </div>

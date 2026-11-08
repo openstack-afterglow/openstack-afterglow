@@ -7,6 +7,21 @@
 
 ## [Unreleased]
 
+### Added
+- Mobile (<768px) console UX: one filter button with a staged panel and 조회하기 in card-mode lists, icon-only auto refresh, name/status/flavor/IP-only instance cards, a compact instance detail header (Stop/Reboot or Start, rest in an overflow menu), a full-screen navigation drawer with one resources+services search and Hub/Services only, and a header with only language and a profile menu (account, my resources, notifications, light/dark, logout). Desktop header keeps Cloud Shell, the user/admin mode toggle, and language selection; the profile menu now also appears on desktop, and Docs is reachable from the profile menu on all widths.
+- Step-by-step create and delete tutorials (tutorial mode, `?tutorial=on|admin`) for buckets, containers, keypairs, floating IPs, security groups, secrets, volume backups, volume snapshots, load balancers, routers, container clusters, IAM projects, database instances, database backups, networks, VM create and VM detail delete, and the admin announcements, application credentials, projects, flavors, networks and routers pages (23 tours, plus file storage, account MCP tokens, admin floating IPs, admin ports, admin object storage, admin groups, users, roles and domains; admin domains end with disabling the created domain because Afterglow has no domain delete). Three more tours act on real administrator authority only and never run in tutorial mode: user credentials create and delete, a read-only admin settings guide and a read-only system administrator list guide (no grant or revoke is offered, because the grant API cannot prove who created an assignment; clicks inside its highlighted areas are blocked). A central gate checks a live, verified system-administrator session for the button, `?tour=` links and saved-tour resume. Tutorials are offered only at tablet width and above (768px and up): the launcher and invite bubble do not render on mobile and `startTour` refuses to run there. Each tour follows the real page controls, anchors only the item it just created, and records its state in stateful synthetic stores under `frontend/src/lib/mockup/`. Tutorial mode fails closed in the central `fetchWithAuth`. A running tour hides the invite bubble, the invite bubble stays clear of the service sidebar, and after `driver.highlight` the engine scrolls a target below the fixed header and refreshes the overlay (driver.js re-scrolls inside highlight). IAM groups are not registered.
+- Waygate 에이전트 연결 진단: 서버 상세에 verdict·최근 register/desired-state/status 시각·기대 client 대 보고 peer·localized hint와 gateway VM 콘솔 로그를 보여 주는 패널을 추가한다(Waygate 0.3.8 후보의 `GET /v1/servers/{id}/diagnostics` 필요, 구 Waygate는 중립 안내).
+- 도메인별 VPN 예약 대역(기본 `10.8.0.0/24`): domain manager `GET/PUT /api/v1/iam/vpn-reserved-ranges`, 시스템 관리자 `GET/PUT /api/v1/admin/domains/{id}/vpn-reserved-ranges`(migration 109 `domain_network_policies`). tenant/provider network·subnet 생성과 subnet gateway 변경, MCP subnet 도구가 예약 대역과 겹치면 422 `vpn_reserved_cidr`로 거절한다.
+- Waygate가 관리하는 gateway VM(`waygate_type=gateway`+`waygate_server_id`+`afterglow_managed`)과 `afterglow-waygate-*` 보안그룹은 Afterglow API·MCP에서 삭제·interface·보안그룹·floating IP·볼륨·resize/shelve 등 변경을 409 `waygate_managed_resource`로 거절하고(관리자 `/api/v1/admin/*`와 시작·중지·재부팅은 허용) 목록·상세에 `waygate_managed`를 노출한다.
+- Waygate 서버 생성에 필수 예상 클라이언트 수(`expected_clients`, 50 이하 1 vCPU/1 GiB, 초과 2 vCPU/2 GiB tier)를, 네트워크 연결에 라우팅 `allowed_ips` 입력과 수정을 추가한다(Waygate 0.3.8 필요, 먼저 배포).
+
+### Changed
+- 네트워크 연결 모달은 provider/shared/external 네트워크도 표시한다. 연결은 물리 인터페이스만 의미하고 client `AllowedIPs`는 attachment별 라우팅 목록으로 따로 지정한다(Waygate 0.3.8).
+- 클라이언트 발급의 소유자 사용자 ID는 비워 둔 채 시작하고, 소유자 미지정 client에는 '나를 owner로 등록'이 있으며 .conf·QR 다운로드는 client 편집 권한이 있는 구성원에게 먼저 등록한 뒤 내려받는다.
+
+### Fixed
+- Waygate 서버 생성·네트워크 연결이 실제로는 성공했는데 실패로 표시되던 문제: 프로비저닝 쓰기(25~33초)가 30초 deadline을 넘었다. Waygate 쓰기에 55초 upstream/58초 client deadline을 주고, timeout·502/503/504는 실패 대신 '결과 미확인'으로 안내하며 목록을 새로 읽는다.
+
 ## [1.32.11] - 2026-11-08
 
 - 발행 시각: 2026-11-08 (Asia/Seoul, UTC+09:00). 비교 기준: `1.32.10` → `1.32.11`.

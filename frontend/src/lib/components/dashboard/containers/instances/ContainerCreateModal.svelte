@@ -58,7 +58,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
 		use:dialogFocus={{ enabled: true, onEscape: () => close() }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={close} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()} role="none">
+    <div data-tour="containers-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()} role="none">
       <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('instances.create.title')}</h2>
       <div class="space-y-4">
         <!-- 기본 설정 -->
@@ -137,7 +137,7 @@
       {#if error}<div class="mt-3 text-red-400 text-xs">{error}</div>{/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('instances.actions.cancel')}</button>
-        <button onclick={handleCreate} disabled={creating || !form.name || !form.image} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('instances.create.creating') : t('instances.actions.create')}</button>
+        <button data-tour="containers-create-submit" onclick={handleCreate} disabled={creating || !form.name || !form.image} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('instances.create.creating') : t('instances.actions.create')}</button>
       </div>
     </div>
   </div>

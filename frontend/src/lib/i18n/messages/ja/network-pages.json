@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "削除失敗：{message}",
 	"floatingIps.breadcrumb": "ネットワーク",
 	"floatingIps.title": "Floating IP",
-	"floatingIps.allocationHelp": "Floating IPの割り当ては<network>ネットワークページ</network>で行えます。",
+	"floatingIps.allocationHelp": "Floating IPは、このページの「割り当て」ボタンから割り当てできます。",
 	"floatingIps.selection.selectAll": "Floating IPをすべて選択",
 	"floatingIps.columns.fixedIp": "関連付けられたFixed IP",
 	"floatingIps.columns.instance": "インスタンス",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "トポロジーのネットワーク詳細",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name}（{cidr}）"
+	"loadBalancerCreate.form.subnet.option": "{name}（{cidr}）",
+	"securityGroups.waygateManagedNote": "このリソースは Waygate で管理されています。Waygate メニューから変更してください。",
+	"securityGroups.openWaygate": "Waygate を開く",
+	"securityGroups.waygateBadge": "Waygate 管理"
 }

@@ -167,5 +167,11 @@
 	"scope.allProjects": "范围：所有项目",
 	"scope.currentProject": "范围：当前项目 · {name}",
 	"actions.refreshDirectory": "刷新范围目录",
-	"scope.filtered": "观测范围：{id}"
+	"scope.filtered": "观测范围：{id}",
+	"actions.searchAll": "搜索资源和服务",
+	"search.resources": "资源",
+	"search.loadingResources": "正在加载资源…",
+	"search.noResources": "没有匹配的资源。",
+	"search.noServices": "没有匹配的服务。",
+	"search.resultCount": "{count} 个结果"
 }

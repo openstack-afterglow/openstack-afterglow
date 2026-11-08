@@ -35,6 +35,7 @@
 		onSelectGroup,
 		onRetryInstances,
 		onCloseMobile,
+		highlightDelete = false,
 	}: {
 		group: SecurityGroup;
 		viewState: TableViewState;
@@ -59,6 +60,8 @@
 		onSelectGroup: (id: string) => void;
 		onRetryInstances: () => Promise<void>;
 		onCloseMobile: () => void;
+		/** True when this group was just created on the page; only then the delete control carries the tutorial anchor. */
+		highlightDelete?: boolean;
 	} = $props();
 
 	function targetName(id: string): string {
@@ -78,6 +81,8 @@
 		},
 	];
 	const view = createTableView({ rows: () => group.rules, columns, state: untrack(() => viewState) });
+	const locked = $derived(!!group.waygate_managed);
+	const lockTitle = $derived(locked ? t('securityGroups.waygateManagedNote') : undefined);
 </script>
 
 <!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인. 모바일에서 fixed 레이어이므로 opacity 진입만 쓴다. -->
@@ -91,9 +96,15 @@
 			{#if group.description}<div class="text-xs text-ink-2 mt-0.5">{group.description}</div>{/if}
 		</div>
 		{#if group.name !== 'default'}
-			<button type="button" onclick={onDeleteGroup} disabled={addingRule} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0">{t('securityGroupRules.delete')}</button>
+			<button type="button" data-tour={highlightDelete ? 'security-groups-delete' : undefined} onclick={onDeleteGroup} disabled={addingRule || locked} title={lockTitle} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0 disabled:opacity-50">{t('securityGroupRules.delete')}</button>
 		{/if}
 	</div>
+	{#if locked}
+		<p role="note" class="mb-4 rounded-md border border-line-2 bg-surface-sunken px-3 py-2 text-xs text-ink-1">
+			<span data-testid="waygate-sg-note">{t('securityGroups.waygateManagedNote')}</span>
+			<a href="/dashboard/network/waygate" class="ml-1 font-medium text-accent underline underline-offset-4">{t('securityGroups.openWaygate')}</a>
+		</p>
+	{/if}
 
 	<section class="border border-line rounded-lg p-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
 		<h2 class="text-sm font-medium text-ink-0 mb-2">{instancesError || instancesLoading ? t('securityGroupRules.instancesTitle') : t('securityGroupRules.instancesCount', { count: instances.length })}</h2>
@@ -116,7 +127,7 @@
 		<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
 			<h2 class="text-sm font-medium text-ink-0"><AnimatedNumber value={group.rules.length} format={(value) => t('securityGroupRules.rulesCount', { count: Math.round(value) })} /></h2>
 			{#if !addRuleOpen}
-				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
+				<button type="button" onclick={onStartAdd} aria-expanded={false} disabled={addingRule || locked} title={lockTitle} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0 disabled:opacity-50">{t('securityGroupRules.add')}</button>
 			{/if}
 		</div>
 		<TableViewControls {view} />
@@ -128,7 +139,7 @@
 						<dl><div><dt>{t('securityGroupRules.port')}</dt><dd>{rule.port_range_min != null ? rule.port_range_min + (rule.port_range_max !== rule.port_range_min ? '-' + rule.port_range_max : '') : '—'}</dd></div><div><dt>{t('securityGroupRules.sourceTarget')}</dt><dd>{#if rule.remote_group_id}<button type="button" onclick={() => onSelectGroup(rule.remote_group_id!)} title={rule.remote_group_id} class="min-h-11 text-accent text-left">{t('securityGroupRules.remoteGroup', { name: targetName(rule.remote_group_id) })}</button>{:else}{rule.remote_ip_prefix ?? (rule.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0')}{/if}</dd></div></dl>
 						{#if addRuleOpen && originalRuleId === rule.id}<AddRuleForm bind:ruleForm bind:targetType {groups} {originalRuleId} {requiresRemovalFirst} adding={addingRule} canAdd={canSaveRule} error={addError} onSubmit={onSaveRule} onCancel={onCancelAdd} />{/if}
 						{#snippet details()}<p>{t('securityGroupRules.ipVersion')}: {rule.ethertype}</p>{/snippet}
-						{#snippet actions()}<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule} class="text-accent">{t('securityGroupRules.edit')}</button><button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule} class="text-state-danger-text">{t('securityGroupRules.remove')}</button>{/snippet}
+						{#snippet actions()}<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule || locked} title={lockTitle} class="text-accent disabled:opacity-50">{t('securityGroupRules.edit')}</button><button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule || locked} title={lockTitle} class="text-state-danger-text disabled:opacity-50">{t('securityGroupRules.remove')}</button>{/snippet}
 					</CompactResourceCard>
 				{:else}<p class="p-3 text-xs text-ink-2">{t('securityGroupRules.noRules')}</p>{/each}
 			{/snippet}
@@ -156,8 +167,8 @@
 							{/if}
 						</div>
 						<div class="flex gap-2 justify-end">
-							<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule} class="text-accent hover:underline">{t('securityGroupRules.edit')}</button>
-							<button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule} class="text-state-danger-text hover:underline">{t('securityGroupRules.remove')}</button>
+							<button type="button" onclick={() => onEditRule(rule)} aria-expanded={addRuleOpen && originalRuleId === rule.id} disabled={addingRule || locked} title={lockTitle} class="text-accent hover:underline disabled:opacity-50">{t('securityGroupRules.edit')}</button>
+							<button type="button" onclick={() => onDeleteRule(rule.id)} disabled={addingRule || locked} title={lockTitle} class="text-state-danger-text hover:underline disabled:opacity-50">{t('securityGroupRules.remove')}</button>
 						</div>
 					</div>
 						{#if addRuleOpen && originalRuleId === rule.id}

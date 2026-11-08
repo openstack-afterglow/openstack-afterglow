@@ -229,6 +229,37 @@ describe('Waygate visible detail polling', () => {
 		expect(calls(base)).toBe(0);
 	});
 
+	it('reads agent diagnostics on the metadata cadence, honours Off and stops after closing the panel', async () => {
+		const diagnosticsPath = `${base}/server-a/diagnostics`;
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...rest: unknown[]) => path === diagnosticsPath
+			? Promise.resolve({ verdict: 'ok', checked_at: '2026-09-20T00:00:00Z', agent: { install_mode: 'prebuilt', image_id: null, source: null, report_interval_seconds: 1 },
+				last_register_at: null, last_desired_state_at: null, last_status_at: null, last_status: null, expected: { enabled_clients: 1, attachments: 1 }, hints: [] })
+			: fallback(path, ...rest));
+		render(WaygateWorkspace);
+		await openDetail();
+		expect(calls(diagnosticsPath)).toBe(1);
+		await advance(14_999);
+		expect(calls(diagnosticsPath)).toBe(1);
+		await advance(1);
+		expect(calls(diagnosticsPath)).toBe(2);
+		await fireEvent.change(metadata().getByRole('combobox'), { target: { value: 'off' } });
+		mocks.get.mockClear();
+		await advance(30_000);
+		expect(calls(diagnosticsPath)).toBe(0);
+		await fireEvent.click(metadata().getByRole('button', { name: commonT('autoRefresh.refreshNow') }));
+		await settle();
+		expect(calls(diagnosticsPath)).toBe(1);
+		await fireEvent.change(metadata().getByRole('combobox'), { target: { value: '10' } });
+		await fireEvent.click(document.querySelector<HTMLElement>('[data-slide-panel-close]')!);
+		await settle();
+		expect(screen.queryByRole('dialog', { name: 'Waygate 서버 상세' })).toBeNull();
+		mocks.get.mockClear();
+		await advance(30_000);
+		expect(calls(diagnosticsPath)).toBe(0);
+		expect(mocks.toastError).not.toHaveBeenCalled();
+	});
+
 	it.each([1, 2, 5, 10, 15, 30, 60])('runs peers at the selected %is cadence independently of metadata', async (seconds) => {
 		render(WaygateWorkspace);
 		await openDetail();

@@ -16,6 +16,8 @@ export interface SecurityGroup {
 	name: string;
 	description: string;
 	rules: SecurityGroupRule[];
+	/** Waygate-owned group (name prefix `afterglow-waygate-`); mutations go through Waygate. Missing → false. */
+	waygate_managed?: boolean;
 }
 
 export interface SecurityGroupQuota {

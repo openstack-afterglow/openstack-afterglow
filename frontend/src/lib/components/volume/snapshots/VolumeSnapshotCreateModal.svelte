@@ -46,7 +46,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { open = false; error = ''; }} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
+    <div data-tour="volume-snapshots-create-form" class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
       <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('snapshotCreateModal.title')}</h2>
       <div class="space-y-4">
         <div>
@@ -78,7 +78,7 @@
       {#if creating}<LoadingState variant="inline" label={t('snapshotCreateModal.title')} class="mt-4" />{/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('snapshotCreateModal.cancel')}</button>
-        <Button onclick={submit} disabled={creating} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label="" />{t('snapshotCreateModal.creating')}{:else}{t('snapshotCreateModal.create')}{/if}</Button>
+        <Button onclick={submit} disabled={creating} ariaBusy={creating} dataTour="volume-snapshots-create-submit">{#if creating}<LoadingState variant="control" label="" />{t('snapshotCreateModal.creating')}{:else}{t('snapshotCreateModal.create')}{/if}</Button>
       </div>
     </div>
   </div>

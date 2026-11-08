@@ -39,7 +39,7 @@
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('groupCreate.title')}</h2>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
-			<div class="space-y-4">
+			<div class="space-y-4" data-tour="admin-groups-create-fields">
 				<div>
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-groupcreatemodal-38">{t('form.name')}</label>
 					<input id="field-groupcreatemodal-38" bind:value={form.name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
@@ -51,7 +51,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
+				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.name} data-tour="admin-groups-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

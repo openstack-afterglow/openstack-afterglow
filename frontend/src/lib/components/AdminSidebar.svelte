@@ -9,6 +9,7 @@
 	import { isMockupPathAllowed } from '$lib/mockup/contracts';
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
 	import { adminNavSections, documentationNavItem, navIcons } from '$lib/config/nav';
+	import { mobileViewport } from '$lib/utils/mobileViewport';
 
 	type BetaFeatureKey = keyof BetaFeatures;
 	const mockupAdminActive = $derived($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin');
@@ -35,6 +36,22 @@
 </script>
 
 {#snippet footer()}
+	{#if mobileViewport.current}
+		<div class="flex min-w-0 items-center justify-between gap-2 p-3" data-navigation-footer="mobile">
+			<span class="min-w-0 truncate px-1 text-xs text-ink-2">{$auth.username}</span>
+			{#if !mockupAdminActive}
+				<a
+					href="/dashboard"
+					aria-label={t('mode.adminCurrent')}
+					title={t('mode.switchToUser')}
+					class="nav-item nav-active flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)]"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
+					{t('mode.admin')}
+				</a>
+			{/if}
+		</div>
+	{:else}
 	<div class="lg:hidden">
 		<div class="px-4 py-3 text-[13px] font-medium text-ink-1 truncate">{$auth.username}</div>
 		{#if !mockupAdminActive}
@@ -51,6 +68,7 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 {/snippet}
 
 <ConsoleNavigation

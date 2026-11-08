@@ -139,6 +139,7 @@ from app.api.identity.profile_mail import router as profile_mail_router
 from app.api.identity.profile_password import admin_router as admin_profile_password_router
 from app.api.identity.profile_password import router as profile_password_router
 from app.api.identity.projects import router as projects_router
+from app.api.identity.vpn_reserved_ranges import router as vpn_reserved_ranges_router
 from app.api.mcp import auth_router as mcp_oauth_router
 from app.api.mcp import root_router as mcp_root_router
 from app.api.mcp import router as mcp_router
@@ -388,6 +389,7 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/enrollment-policy", "enrollment_policy"),
     ("/api/v1/admin/signup-requests", "signup_request"),
     ("/api/v1/iam/login-policy", "domain_login_policy"),
+    ("/api/v1/iam/vpn-reserved-ranges", "domain_vpn_reserved_ranges"),
     ("/api/v1/iam/providers", "domain_provider"),
     ("/api/v1/iam/invitations", "invitation"),
     ("/api/v1/iam/users", "user"),
@@ -772,6 +774,7 @@ app.include_router(account_recovery_router, prefix="/api/v1/auth", tags=["auth-r
 app.include_router(domain_policy_router, prefix="/api/v1/iam", tags=["iam-login-policy"])
 app.include_router(iam_router, prefix="/api/v1/iam", tags=["iam"])
 app.include_router(domain_quotas_router, prefix="/api/v1", tags=["domain-quotas"])
+app.include_router(vpn_reserved_ranges_router, prefix="/api/v1", tags=["domain-network-policy"])
 app.include_router(admin_dashboard_router, prefix="/api/v1/admin", tags=["admin-dashboard"])
 # Static /instances/health must precede the instance-ID route; async precedes the legacy admin router.
 app.include_router(admin_instances_router, prefix="/api/v1/admin", tags=["admin-instances"])

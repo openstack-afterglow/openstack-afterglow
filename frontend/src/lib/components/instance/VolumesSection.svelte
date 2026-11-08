@@ -9,6 +9,7 @@
 	import VolumeExtendModal from '$lib/components/volume/VolumeExtendModal.svelte';
 
 	const s = useInstanceDetailController();
+	const lockTitle = $derived(s.waygateLocked ? t('waygate.managedNote') : undefined);
 
 	let showAttachVolume = $state(false);
 	let attachMode = $state<'existing' | 'new'>('existing');
@@ -139,13 +140,15 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('volumes.title')}</h2>
 		<button
 			onclick={() => { showAttachVolume = !showAttachVolume; selectedVolumeId = ''; newVolName = ''; newVolSize = 20; }}
-			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
+			disabled={s.waygateLocked}
+			title={lockTitle}
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
 		>
 			{showAttachVolume ? t('volumes.close') : t('volumes.addAttachment')}
 		</button>
 	</div>
 
-	{#if showAttachVolume}
+	{#if showAttachVolume && !s.waygateLocked}
 		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
 			<div class="flex gap-1 mb-3">
 				<button
@@ -227,9 +230,9 @@
 						<div class="flex min-w-0 flex-wrap items-start justify-between gap-2"><a class="min-h-11 min-w-0 break-all text-sm font-medium text-warm-text hover:text-warm-text-hover" title={vol.name || vol.volume_id} href="/dashboard/volumes/{vol.volume_id}"><span class="line-clamp-2">{vol.name || vol.volume_id.slice(0, 12) + '...'}</span></a>{#if vol.status}<StatusChip status={vol.status} kind="volume" />{/if}</div>
 						<p class="break-all text-xs text-ink-2">{#if vol.size}{vol.size}GB · {/if}{vol.device}</p>
 						{#snippet actions()}
-							<Button variant="secondary" size="sm" onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)} disabled={s.actioning === 'dot-' + vol.volume_id} title={t('volumes.toggleTitle')}>{#if s.actioning === 'dot-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.updating')} />{:else}{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)} disabled={s.actioning === 'dot-' + vol.volume_id || s.waygateLocked} title={lockTitle ?? t('volumes.toggleTitle')}>{#if s.actioning === 'dot-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.updating')} />{:else}{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}{/if}</Button>
 							<Button variant="secondary" size="sm" onclick={() => openExpansion(vol.volume_id)} disabled={!!reason || !!extendLoading || !!s.actioning} ariaBusy={extendLoading === vol.volume_id} title={reason ? t(reason) : t('volumes.extend')}>{#if extendLoading === vol.volume_id}<LoadingState variant="control" label={t('volumes.extendLoading')} />{:else}{t('volumes.extend')}{/if}</Button>
-							<Button variant="secondary" size="sm" onclick={() => s.detachVolume(vol.volume_id)} disabled={s.actioning === 'detach-' + vol.volume_id}>{#if s.actioning === 'detach-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}</Button>
+							<Button variant="secondary" size="sm" onclick={() => s.detachVolume(vol.volume_id)} disabled={s.actioning === 'detach-' + vol.volume_id || s.waygateLocked} title={lockTitle}>{#if s.actioning === 'detach-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}</Button>
 						{/snippet}
 						{#snippet details()}<p class="break-all font-mono text-xs">{vol.volume_id}</p>{/snippet}
 					</CompactResourceCard>
@@ -253,8 +256,8 @@
 						<button
 							type="button"
 							onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)}
-							disabled={s.actioning === 'dot-' + vol.volume_id}
-							title={t('volumes.toggleTitle')}
+							disabled={s.actioning === 'dot-' + vol.volume_id || s.waygateLocked}
+							title={lockTitle ?? t('volumes.toggleTitle')}
 							class="text-xs px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer
 								{vol.delete_on_termination
 									? 'text-red-300 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50'
@@ -284,7 +287,8 @@
 						</Button>
 					<button
 						onclick={() => s.detachVolume(vol.volume_id)}
-						disabled={s.actioning === 'detach-' + vol.volume_id}
+						disabled={s.actioning === 'detach-' + vol.volume_id || s.waygateLocked}
+						title={lockTitle}
 						class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 					>
 						{#if s.actioning === 'detach-' + vol.volume_id}<LoadingState variant="control" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}

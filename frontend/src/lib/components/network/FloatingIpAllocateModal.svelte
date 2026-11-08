@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/network-resources';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import type { Network } from '$lib/types/networks';
+	import type { FloatingIp, Network } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 
@@ -11,7 +11,7 @@
 		networks: Network[];
 		token?: string;
 		projectId?: string;
-		onAllocated?: () => void;
+		onAllocated?: (created: FloatingIp) => void;
 		onClose?: () => void;
 	}
 
@@ -49,14 +49,14 @@
 		allocating = true;
 		allocError = '';
 		try {
-			await api.post(
+			const created = await api.post<FloatingIp>(
 				'/api/v1/networks/floating-ips',
 				{ floating_network_id: selectedNetworkId },
 				token,
 				projectId
 			);
 			close();
-			onAllocated?.();
+			onAllocated?.(created);
 		} catch (e) {
 			allocError = e instanceof ApiError ? e.message : t('network.floatingIp.allocateFailed');
 		} finally {
@@ -77,6 +77,7 @@
 		tabindex="-1"
 	>
 		<div
+			data-tour="floating-ips-allocate-form"
 			class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
@@ -117,6 +118,7 @@
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 				>{t('network.actions.cancel')}</button>
 				<button
+					data-tour="floating-ips-allocate-submit"
 					onclick={allocate}
 					disabled={allocating || externalNetworks.length === 0}
 					aria-busy={allocating}

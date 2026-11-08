@@ -61,6 +61,8 @@ IAM JSON body는 알 수 없는 필드를 거부합니다. Project quota PATCH�
 | `PUT /quotas/defaults` | `{revision,defaults}` | 갱신된 DomainQuotaSnapshot; 미래 프로젝트 기본값 전체 교체 |
 | `GET /projects/{project_id}/quotas` | 없음 | ProjectQuota; 같은 작업 도메인의 정확한 프로젝트 |
 | `PUT /projects/{project_id}/quotas` | flat nonempty QuotaMap | QuotaWrite; HTTP200이어도 partial/unknown 가능 |
+| `GET /vpn-reserved-ranges` | 없음 | VpnReservedRanges; 저장 행이 없으면 기본 `["10.8.0.0/24"]` |
+| `PUT /vpn-reserved-ranges` | `{vpn_reserved_cidrs,revision}` | 갱신된 VpnReservedRanges; 목록 전체 교체 |
 | `GET /compute-pool` | 없음 | 현재 domain 공용 CPU/RAM/승인 GPU 정책·usage·잔여량·policy_ready·control_scope=afterglow |
 | `PUT /compute-pool/projects/{project_id}` | `{revision,limits}` | pool 이하의 optional project cap; cap 합계는 allocation budget이 아님 |
 | `DELETE /compute-pool/projects/{project_id}?revision=N` | 없음 | optional cap 제거; exact native404·directory 부재·Placement0 확인 시 stale cap 명시 복구 |
@@ -276,6 +278,21 @@ QuotaWrite는 `{project_id,domain_id,operation_id,status,updated,errors}`입니�
 `GET /quotas`의 operations는 최대50개이며 applying/unknown을 우선하고 그 안에서 최신 created_at 순입니다. 각 항목은 `{id,project_id,status,requested,sections,created_at}`이고 requested는 원래 flat QuotaMap입니다. Sections는 native key 기반 observed limit와 phase를 보존합니다. Phase는 `pending`, `writing`, `verified`, `partial`, `unknown`이고 error/observed는 가용한 경우만 있습니다. Operation status는 실행 중 `applying`, 완료 `updated/partial/unknown`, 운영자 readback 정리 후 `reconciled`입니다. Reconciliation section은 `observed`, `not_attempted`, `project_deleted`일 수 있습니다.
 
 **Applying/unknown 작업 하나라도 있으면** domain의 후속 allocation/default/policy 변경을409 `quota_native_operation_unresolved`로 막고 snapshot의 allocation_blocked=true 및 blocking_operation_id로 표시합니다. 이 journal은 enrollment의 `GET /operations`와 **다릅니다**. Enrollment DELETE로 quota 작업을 지우거나 원래 quota PUT을 반복하지 않습니다. System operator가 원 native 호출의 종료를 별도로 확인한 뒤 전용 system-admin reconciliation에서 strict `native_calls_settled:true`와 현재 readback을 기록해야 합니다. 이는 요청값 달성/rollback을 보장하지 않고 현재 실제 limit를 수용하는 recovery이며, provider write/replay를 수행하지 않습니다. 새 disabled 프로젝트가 생성 보상으로 삭제됐다면 native GET 부재와 domain directory 부재를 함께 확인해야 fence를 해제합니다. Readback 불가이면503으로 fence를 유지하고, 성공 후에도 남은 drift는 표시·예산 검증됩니다.
+
+## VPN 예약 대역
+
+`GET`/`PUT /vpn-reserved-ranges`는 현재 작업 도메인에서 VPN 터널용으로 예약해 새 서브넷에 쓸 수 없는 CIDR 목록을 관리합니다. 도메인은 세션에서 정하며 system admin의 임의 도메인 관리는 [관리자 API](admin.md#도메인별-vpn-예약-대역)의 같은 계약을 사용합니다. 응답은 다른 IAM route와 같이 `Cache-Control: no-store, private`입니다.
+
+`VpnReservedRanges={domain_id,vpn_reserved_cidrs,default_vpn_reserved_cidrs,revision,configured,max_ranges}`. 저장 행(`domain_network_policies`, migration109)이 없으면 `vpn_reserved_cidrs=["10.8.0.0/24"]`(Waygate 기본 터널 CIDR), `revision=0`, `configured=false`이고 `max_ranges`는16입니다.
+
+PUT body는 `{"vpn_reserved_cidrs":["10.8.0.0/24"],"revision":0}`이며 extra field·비정수 revision은422 `Invalid IAM request`입니다. `revision`은 최신 GET 값과 정확히 같아야 하고 다르거나 동시 생성이 충돌하면409 `{code:"revision_conflict"}`입니다. 목록 규칙은 다음과 같고 위반은422 `{code:"vpn_reserved_ranges_invalid",message}`입니다.
+
+- 최대16개, 각 항목은 `/`를 포함한 CIDR 문자열(최대64자)
+- Host bit를 지운 canonical 형식으로 저장하고 중복은 처음 순서를 유지한 채 제거
+- IPv4는 `/8` 이상, IPv6는 `/32` 이상 좁은 prefix만 허용(`0.0.0.0/0`·`::/0` 불가)
+- 빈 배열 `[]`은 허용되며 이 도메인의 예약 검사를 끄는 opt-out
+
+저장소를 사용할 수 없으면503 `{code:"vpn_reserved_ranges_unavailable"}`입니다. 변경 감사는 resource type `domain_vpn_reserved_ranges`로 기록합니다. 저장된 목록은 이 도메인 프로젝트의 새 서브넷 CIDR·gateway 변경을 native 호출 전에 거부하는 데 사용하며 기존 서브넷은 수정하지 않습니다. 적용 경로와 오류는 [네트워크 API](networks.md#vpn-예약-대역)를 참조하세요.
 
 ## ManagerMonitoring: 프로젝트·사용자·리소스 관측
 

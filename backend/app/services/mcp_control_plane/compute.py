@@ -15,6 +15,7 @@ from app.services import flavor_eligibility
 from app.services.instance_names import ensure_unique_instance_name, normalize_requested_instance_name
 from app.services.instance_usage import creation_metadata, require_resume_schedule
 from app.services.mcp_control_plane.sdk import _drain, check_mutation_dispatch, run_sdk
+from app.services.waygate_managed import WaygateManagedResourceError, require_server_not_waygate_managed
 
 
 class McpComputeError(ValueError):
@@ -105,6 +106,9 @@ def _prepare_server_action(conn: Any, *, project_id: str, server_id: str, action
     if server is None:
         raise McpComputeError("Nova server was not found")
     safe_server = _safe_server(server, project_id=project_id)
+    if action == "shelve":
+        # Power actions stay available to operators; shelving offloads the VPN gateway.
+        require_server_not_waygate_managed(server)
     if action in {"start", "unshelve"}:
         try:
             require_resume_schedule(server)
@@ -134,6 +138,7 @@ def _checked_server_delete(server: Any, *, project_id: str) -> dict[str, str | N
     if server is None:
         raise McpComputeError("Nova server was not found")
     safe_server = _safe_server(server, project_id=project_id)
+    require_server_not_waygate_managed(server)
     if safe_server["status"] == "DELETED":
         raise McpComputeError("Nova server is already deleted")
     return {**safe_server, "requested_action": "delete"}
@@ -271,7 +276,7 @@ async def preview_project_server_action(
             server_id=server_id,
             action=action,
         )
-    except McpComputeError:
+    except (McpComputeError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         raise McpComputeError("Nova server action is unavailable") from exc
@@ -283,7 +288,7 @@ async def request_project_server_action(
     """Request a bounded action only after final exact-project ownership/state validation."""
     try:
         return await run_sdk(_action_server, conn, project_id=project_id, server_id=server_id, action=action)
-    except McpComputeError:
+    except (McpComputeError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         raise McpComputeError("Nova server action is unavailable") from exc
@@ -293,7 +298,7 @@ async def preview_project_server_delete(conn: Any, *, project_id: str, server_id
     """Validate one exact-project server deletion without dispatching it."""
     try:
         return await run_sdk(_prepare_server_delete, conn, project_id=project_id, server_id=server_id)
-    except McpComputeError:
+    except (McpComputeError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         raise McpComputeError("Nova server deletion is unavailable") from exc
@@ -312,7 +317,7 @@ async def request_project_server_delete(conn: Any, *, project_id: str, server_id
             await cleanup_consume(conn, consume_id, authority)
             return safe_server
         return await run_sdk(_delete_server, conn, server, project_id=project_id, server_id=server_id)
-    except McpComputeError:
+    except (McpComputeError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         from fastapi import HTTPException

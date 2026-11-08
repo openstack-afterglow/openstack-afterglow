@@ -46,4 +46,30 @@ describe('admin account creation from a selected directory', () => {
     expect(screen.queryByLabelText(/^Password/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
   });
+
+  it('marks the tutorial submit only for a sendable form and submits Enter as a click on Create', async () => {
+    const create = vi.fn().mockResolvedValue('Synthetic denial');
+    const marked = () => document.querySelector('[data-tour="admin-users-create-submit"]');
+    render(AdminUserCreateModal, { open: true, domainId: 'tenant-a', onCreate: create });
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'tut-user' } });
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Email' }), { target: { value: 'tut-user@example.test' } });
+    await fireEvent.input(screen.getByLabelText(/^Password/), { target: { value: 'too-short' } });
+    expect(marked()).toBeNull();
+    await fireEvent.input(screen.getByLabelText(/^Password/), { target: { value: 'practice-pass-1' } });
+    expect(marked()).not.toBeNull();
+    // Same shape as the tour engine's capture-phase guard for a later click step.
+    const guard = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-tour="admin-users-create-submit"]')) { event.preventDefault(); event.stopPropagation(); }
+    };
+    const form = document.querySelector('[data-tour="admin-users-create-fields"]') as HTMLFormElement;
+    document.addEventListener('click', guard, { capture: true });
+    try {
+      await fireEvent.submit(form);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('click', guard, { capture: true });
+    }
+    await fireEvent.submit(form);
+    expect(create).toHaveBeenCalledOnce();
+  });
 });

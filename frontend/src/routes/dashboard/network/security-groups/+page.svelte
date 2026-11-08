@@ -24,6 +24,7 @@
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as tr } from '$lib/i18n/ns/network-resources';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 	function emptyRule(): SecurityGroupRuleDraft {
 		return { direction: 'ingress', protocol: '', port_range_min: '', port_range_max: '', remote_ip_prefix: '', remote_group_id: '', ethertype: 'IPv4' };
@@ -50,6 +51,7 @@
 	let ruleForm = $state<SecurityGroupRuleDraft>(emptyRule());
 	let sgCreating = $state(false);
 	let sgCreateError = $state('');
+	let lastCreated = $state<string | null>(null);
 	let projectGeneration = 0;
 	let groupRequest = 0;
 	let quotaRequest = 0;
@@ -61,14 +63,23 @@
 		{ key: 'rules', label: t('securityGroupRules.rulesLabel'), value: row => row.rules.length },
 	];
 	const view = createTableView({ rows: () => securityGroups, columns, search: () => search, searchable: row => [row.id, row.name, row.description ?? ''] });
-	const visibleSelectableIds = $derived(new Set(view.rows.filter(row => row.name !== 'default').map(row => row.id)));
+	// The default group and Waygate-owned groups cannot be deleted here.
+	const visibleSelectableIds = $derived(new Set(view.rows.filter(row => row.name !== 'default' && !row.waygate_managed).map(row => row.id)));
 	$effect(() => { const ids = visibleSelectableIds; untrack(() => selection.retain(ids)); });
 
-	let selectableIds = $derived(new Set(securityGroups.filter((group) => group.name !== 'default').map((group) => group.id)));
+	let selectableIds = $derived(new Set(securityGroups.filter((group) => group.name !== 'default' && !group.waygate_managed).map((group) => group.id)));
 	let curSg = $derived(securityGroups.find((group) => group.id === selectedSg) ?? null);
 	let canCreateGroup = $derived(quota !== null && (quota.security_group.limit < 0 || quota.security_group.in_use < quota.security_group.limit));
 	let canCreateRule = $derived(quota !== null && (quota.security_group_rule.limit < 0 || quota.security_group_rule.in_use < quota.security_group_rule.limit));
 	let canSaveRule = $derived(quota !== null && (quota.security_group_rule.limit < 0 || quota.security_group_rule.in_use - (originalRuleId && !originalRuleRemoved ? 1 : 0) < quota.security_group_rule.limit));
+
+	function mutationMessage(e: unknown): string {
+		if (e instanceof ApiError && e.code === 'waygate_managed_resource') return t('securityGroups.waygateManagedNote');
+		return e instanceof ApiError ? e.message : String(e);
+	}
+	function waygateManaged(sgId: string): boolean {
+		return !!securityGroups.find((group) => group.id === sgId)?.waygate_managed;
+	}
 
 	async function fetchSecurityGroups(opts?: { refresh?: boolean }) {
 		const project = $auth.projectId;
@@ -174,12 +185,13 @@
 		sgCreating = true;
 		sgCreateError = '';
 		try {
-			await api.post('/api/v1/security-groups', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			const created = await api.post<SecurityGroup>('/api/v1/security-groups', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			lastCreated = created.id;
 			showSgModal = false;
 			await refreshResources();
 			return true;
 		} catch (e) {
-			sgCreateError = e instanceof ApiError ? e.message : t('securityGroups.createFailed');
+			sgCreateError = e instanceof ApiError ? mutationMessage(e) : t('securityGroups.createFailed');
 			return false;
 		} finally {
 			sgCreating = false;
@@ -187,18 +199,18 @@
 	}
 
 	async function deleteSecurityGroup(sgId: string, name: string) {
-		if (!await confirmDialog(t('securityGroups.deleteConfirm', { name }))) return;
+		if (waygateManaged(sgId) || !await confirmDialog(t('securityGroups.deleteConfirm', { name }))) return;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (selectedSg === sgId) selectedSg = null;
 			await refreshResources();
 		} catch (e) {
-			toast.error(t('securityGroups.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('securityGroups.deleteFailed', { message: mutationMessage(e) }));
 		}
 	}
 
 	function startAddRule() {
-		if (sgCreating) return;
+		if (sgCreating || curSg?.waygate_managed) return;
 		ruleForm = emptyRule();
 		targetType = 'cidr';
 		originalRuleId = null;
@@ -208,7 +220,7 @@
 	}
 
 	function editRule(rule: SecurityGroupRule) {
-		if (sgCreating) return;
+		if (sgCreating || curSg?.waygate_managed) return;
 		ruleForm = {
 			direction: rule.direction,
 			protocol: rule.protocol ?? '',
@@ -255,7 +267,7 @@
 	}
 
 	async function saveSgRule(sgId: string) {
-		if (sgCreating) return;
+		if (sgCreating || waygateManaged(sgId)) return;
 		if (!canSaveRule) { sgCreateError = t('securityGroups.ruleQuotaRequired'); return; }
 		const original = securityGroups.find((group) => group.id === sgId)?.rules.find((rule) => rule.id === originalRuleId);
 		const body: Record<string, unknown> = { direction: ruleForm.direction, ethertype: ruleForm.ethertype };
@@ -332,10 +344,10 @@
 					}
 				} catch { /* Report the lost-rule state below; never present a failed restore as success. */ }
 			}
-			const message = e instanceof ApiError ? e.message : String(e);
+			const message = mutationMessage(e);
 			const failure = editingRuleId
 				? t(created ? 'securityGroups.removeReplacedRuleFailed' : removed ? 'securityGroups.replaceRuleFailed' : 'securityGroups.saveRuleFailed', { message })
-				: e instanceof ApiError ? e.message : t('securityGroups.addRuleFailed');
+				: e instanceof ApiError ? mutationMessage(e) : t('securityGroups.addRuleFailed');
 			if (generation === projectGeneration) {
 				if (created && selectedSg === sgId) cancelAddRule();
 				if (removed || originalBody || created) await refreshResources({ refresh: true });
@@ -348,13 +360,14 @@
 	}
 
 	async function deleteSgRule(sgId: string, ruleId: string): Promise<boolean> {
+		if (waygateManaged(sgId)) return false;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}/rules/${ruleId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (originalRuleId === ruleId) cancelAddRule();
 			await refreshResources();
 			return true;
 		} catch (e) {
-			toast.error(t('securityGroups.deleteRuleFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('securityGroups.deleteRuleFailed', { message: mutationMessage(e) }));
 			return false;
 		}
 	}
@@ -402,7 +415,8 @@
 	<PageHeader breadcrumb={t('securityGroups.breadcrumb')} title={t('securityGroups.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={forceRefresh} />
-			<button type="button" onclick={() => { showSgModal = true; sgCreateError = ''; }} disabled={!canCreateGroup} title={!canCreateGroup ? t('securityGroups.quotaUnavailable') : undefined} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50">{t('securityGroups.create')}</button>
+			<TutorialStartButton tour="security-groups" compactOnMobile />
+			<button type="button" data-tour="security-groups-create-open" onclick={() => { showSgModal = true; sgCreateError = ''; }} disabled={!canCreateGroup} title={!canCreateGroup ? t('securityGroups.quotaUnavailable') : undefined} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50">{t('securityGroups.create')}</button>
 		{/snippet}
 	</PageHeader>
 
@@ -420,6 +434,7 @@
 	<TableViewControls {view} class="" />
 	{#if securityGroups.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
 	{#if sgError}<p role="alert" class="text-sm text-state-danger-text mb-4">{sgError}</p>{/if}
+	<div data-tour="security-groups-list">
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('securityGroups.title') })} />
 	{:else if securityGroups.length === 0}
@@ -427,12 +442,12 @@
 	{:else}
 		<div class="security-group-workspace">
 			<div class="security-group-list">
-				<SecurityGroupList groups={view.rows} bind:selectedSg selectedIds={selection.ids} selectableIds={visibleSelectableIds} selectionDisabled={busy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(visibleSelectableIds)} />
+				<SecurityGroupList groups={view.rows} bind:selectedSg highlightId={lastCreated} selectedIds={selection.ids} selectableIds={visibleSelectableIds} selectionDisabled={busy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(visibleSelectableIds)} />
 			</div>
 			{#if curSg}
 				<SecurityGroupRulesPanel
 					viewState={ruleViewState}
-					group={curSg} groups={securityGroups} {instances} {instancesError} {instancesLoading}
+					group={curSg} groups={securityGroups} {instances} {instancesError} {instancesLoading} highlightDelete={curSg.id === lastCreated}
 					{addRuleOpen} {originalRuleId} addingRule={sgCreating} canSaveRule={canSaveRule} addError={sgCreateError} bind:ruleForm bind:targetType
 					requiresRemovalFirst={originalRuleId !== null && !originalRuleRemoved && quota !== null && !canCreateRule && curSg.rules.some((rule) => rule.id === originalRuleId)}
 					onStartAdd={startAddRule} onEditRule={editRule} onCancelAdd={cancelAddRule}
@@ -447,6 +462,7 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 </PageShell>
 
 <BulkSelectionOverlay count={selection.count} ariaLabel={t('securityGroups.bulkActions')} actions={[{ key: 'delete', label: t('securityGroups.delete'), tone: 'danger', disabled: partitionBulkIds(selection.ids, selectableIds).eligible.length === 0, onAction: bulkDeleteGroups }]} {busy} onClear={() => selection.clear()} />

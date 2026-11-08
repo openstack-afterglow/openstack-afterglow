@@ -24,6 +24,7 @@
 		onDelete,
 		canDelete,
 		arrivals = createArrivals(),
+		tourDeleteKey = null,
 	}: {
 		containers: SwiftContainer[];
 		deletingId: string | null;
@@ -31,6 +32,8 @@
 		onDelete: (container: SwiftContainer) => Promise<void>;
 		canDelete: (container: SwiftContainer) => boolean;
 		arrivals?: ReturnType<typeof createArrivals>;
+		/** `${project_id}/${name}` of the bucket the running tutorial created; only its delete control carries the anchor. */
+		tourDeleteKey?: string | null;
 	} = $props();
 
  let search = $state('');
@@ -42,6 +45,7 @@
   { key: 'bytes', label: t('buckets.table.capacity'), value: row => row.bytes },
  ]);
  const view = createTableView({ locale: intlLocale,rows: () => containers, columns: () => columns, search: () => search, searchable: row => [row.name,row.project_id,row.project_name].map(value => String(value ?? ''))});
+ const deleteTour = (c: SwiftContainer) => (!c.is_deleted && `${c.project_id ?? ''}/${c.name}` === tourDeleteKey ? 'admin-object-storage-delete' : undefined);
  let viewOwner = '';
  $effect(() => authDisplayContext.subscribe(({ key }) => {
   if (viewOwner === key) return;
@@ -60,7 +64,7 @@
     <a href="/admin/object-storage/{encodeURIComponent(c.name)}{c.project_id ? `?project_id=${encodeURIComponent(c.project_id)}` : ''}" class="text-sm font-medium break-all">{c.name}</a>
     <div class="flex flex-wrap gap-2 text-xs">{#if c.is_quarantine}<span class="text-state-warning-text" title={t('buckets.row.quarantineHelp')}>{t('buckets.row.quarantine')}</span>{/if}{#if c.is_trash}<span class="text-ink-2" title={t('buckets.row.trashHelp')}>{t('buckets.row.trash')}</span>{/if}{#if c.is_deleted}<span class="text-state-danger-text" title={t('buckets.row.deletedHelp')}>{t('buckets.row.deleted')}</span>{/if}</div>
     <p class="text-xs text-ink-2 break-all">{t('buckets.table.project')}: {c.project_name || c.project_id?.slice(0, 8) || '—'}</p><p class="text-xs text-ink-2">{t('buckets.table.objectCount')}: {c.count} · {t('buckets.table.capacity')}: {formatStorage(Math.round(c.bytes / 1073741824))}</p>
-    {#snippet actions()}<button onclick={() => { if (canDelete(c)) onDelete(c); }} disabled={!canDelete(c) || deletingId === `${c.project_id ?? ''}/${c.name}`} class="text-xs text-state-danger-text disabled:text-ink-3">{#if deletingId === `${c.project_id ?? ''}/${c.name}`}<LoadingState variant="control" label="" />{/if}{deletingId === `${c.project_id ?? ''}/${c.name}` ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>{/snippet}
+    {#snippet actions()}<button onclick={() => { if (canDelete(c)) onDelete(c); }} disabled={!canDelete(c) || deletingId === `${c.project_id ?? ''}/${c.name}`} data-tour={deleteTour(c)} class="text-xs text-state-danger-text disabled:text-ink-3">{#if deletingId === `${c.project_id ?? ''}/${c.name}`}<LoadingState variant="control" label="" />{/if}{deletingId === `${c.project_id ?? ''}/${c.name}` ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>{/snippet}
    </CompactResourceCard>
   {/each}
  {/snippet}
@@ -78,7 +82,7 @@
 		<tbody>
 			{#each view.rows as c (`${c.project_id ?? ''}/${c.name}`)}
 				{@const entrance = arrivals.next(`${c.project_id ?? ''}/${c.name}`)}
-				<BucketRow container={c} {deletingId} {onDelete} {canDelete} {entrance} />
+				<BucketRow container={c} {deletingId} {onDelete} {canDelete} {entrance} deleteTour={deleteTour(c)} />
 			{/each}
 		</tbody>
 	</table>

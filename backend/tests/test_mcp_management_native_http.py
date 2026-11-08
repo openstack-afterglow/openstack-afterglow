@@ -458,6 +458,7 @@ def native_management():
         status_code_retries=0,
     )
     conn._afterglow_project_id = PROJECT
+    conn._afterglow_domain_id = "domain-a"
     try:
         yield conn, state
     finally:

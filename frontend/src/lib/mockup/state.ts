@@ -1,3 +1,18 @@
+import type { ApplicationCredential } from '$lib/types/adminCredential';
+import type { FileStorage } from '$lib/types/fileStorage';
+import type { VolumeSnapshot } from '$lib/types/volume';
+import type { DbBackup, DbInstance } from '$lib/types/database';
+import type { Cluster } from '$lib/types/cluster';
+import type { Keypair } from '$lib/types/keypair';
+import type { SecurityGroup } from '$lib/types/securityGroup';
+import type { SecretInfo } from '$lib/api/secrets';
+import type { VolumeBackup } from '$lib/types/volume';
+import type { AnnouncementAdmin } from '$lib/types/announcements';
+import type { Flavor } from '$lib/types/flavor';
+import type { PortInfo } from '$lib/types/networks';
+import type { Group } from '$lib/types/adminGroup';
+import type { ZunContainer } from '$lib/types/zunContainer';
+import type { SwiftContainer } from '$lib/types/objectStorage';
 import type { Instance } from '$lib/types/compute';
 import type { AdminVolume, AdminVolumeDetail, Volume, VolumeDeleteDiagnostic } from '$lib/types/volume';
 import type { DashboardQuotas } from '$lib/types/quotas';
@@ -7,15 +22,23 @@ import type { Overview, DomainUsage, VersionInfo } from '$lib/types/adminOvervie
 import type { Project } from '$lib/stores/auth';
 import type { AdminInstance, TsPoint } from '$lib/types/adminInstance';
 import type { EndpointGroup, NetworkAgent, Service, StoragePool } from '$lib/types/adminServices';
-import type { User } from '$lib/types/common';
+import type { SwiftContainer as OwnedSwiftContainer, User } from '$lib/types/common';
 import type { ZunContainerDetail } from '$lib/types/zunContainer';
 import type { MonitoringSummary } from '$lib/components/admin/monitoring/MonitoringSummaryTab.svelte';
 import type { McpClientObservation } from '$lib/components/account/McpAccessSection.svelte';
 import type { ComputePool } from '$lib/api/computePools';
 import type { FlavorAutomationStatus, FlavorAutomationPolicy } from '$lib/api/flavorAutomation';
+import type { AdminDomain } from '$lib/api/domains';
 
 const NOW = '2026-07-09T00:00:00Z';
 const PROJECT_ID = 'mock-project-1';
+
+// Identity group of the mock domain with its member user ids; seed groups are fixtures the tutorial never deletes.
+export type MockAdminGroup = Group & { member_ids: string[]; seed: boolean };
+// Keystone role row as stored by the roles fixture; links and flags are derived per read like the backend catalog.
+export interface MockAdminRole { id: string; name: string; description: string; domain_id: string | null; implied_role_ids: string[]; seed: boolean }
+// Identity domain row; seed domains are fixtures the tutorial never edits.
+export type MockAdminDomain = AdminDomain & { seed: boolean };
 
 interface MockMcpAccessRecord {
 	id: string;
@@ -53,6 +76,30 @@ interface MockupState {
 	};
 	instances: Instance[];
 	volumes: Volume[];
+	objectContainers: SwiftContainer[];
+	objectTrash: SwiftContainer[];
+	// Buckets in the administrator's own project account (admin profile); soft deletes keep the row with is_deleted.
+	adminObjectContainers: OwnedSwiftContainer[];
+	keypairs: Keypair[];
+	securityGroups: SecurityGroup[];
+	containers: ZunContainer[];
+	adminApplicationCredentials: ApplicationCredential[];
+	fileShares: FileStorage[];
+	volumeSnapshots: VolumeSnapshot[];
+	dbInstances: DbInstance[];
+	dbBackups: DbBackup[];
+	magnumClusters: Cluster[];
+	secrets: SecretInfo[];
+	volumeBackups: VolumeBackup[];
+	adminAnnouncements: AnnouncementAdmin[];
+	adminFlavors: Flavor[];
+	// Unbound ports created on the admin ports page; device-owned ports are derived from topology.
+	adminPorts: PortInfo[];
+	// IDs of users created on the admin users page; they live in admin.users and only these are deletable.
+	adminCreatedUserIds: string[];
+	adminGroups: MockAdminGroup[];
+	adminRoles: MockAdminRole[];
+	adminDomains: MockAdminDomain[];
 	k3sClusters: K3sCluster[];
 	topology: TopologyData;
 	traffic: TopologyTraffic;
@@ -303,6 +350,41 @@ function seedState(): MockupState {
 			],
 		},
 		instances,
+		objectContainers: [{ name: 'sample-artifacts', count: 12, bytes: 734003200 }],
+		objectTrash: [],
+		adminObjectContainers: [],
+		keypairs: [{ name: 'demo-keypair', fingerprint: 'd4:1f:3a:9c:52:7e:08:b1:6d:2a:94:c3:5f:e0:17:8b', type: 'ssh' }],
+		securityGroups: [{ id: 'mock-sg-default', name: 'default', description: 'Mock default SG', rules: [{ id: 'mock-rule-ssh', direction: 'ingress', protocol: 'tcp', port_range_min: 22, port_range_max: 22, remote_ip_prefix: '0.0.0.0/0', remote_group_id: null, ethertype: 'IPv4' }, { id: 'mock-rule-v6', direction: 'egress', protocol: null, port_range_min: null, port_range_max: null, remote_ip_prefix: '::/0', remote_group_id: null, ethertype: 'IPv6' }] }],
+		containers: [],
+		adminApplicationCredentials: [{ id: 'mock-app-cred-1', domain_id: 'mock-domain', user_id: 'mock-admin-1', name: 'ci-deploy', description: 'Sample CI deployment credential', project_id: 'mock-admin-project', expires_at: '2027-01-31T00:00:00.000Z', unrestricted: false, roles: [{ id: 'mock-role-member', name: 'member' }] }],
+		fileShares: [{ id: 'mock-share-1', name: 'demo-dataset', status: 'available', size: 200, share_proto: 'CEPHFS', export_locations: ['192.0.2.10:6789:/volumes/demo-dataset'], metadata: {}, project_id: PROJECT_ID, created_at: NOW, is_public: false, library_name: null, library_version: null, built_at: null, progress: '100%', user_id: 'mock-user-1', user_name: 'demo-user', access_rules_status: 'active', host: 'sample-manila-host', availability_zone: 'nova', share_type_name: 'cephfs', share_network_id: null, export_location_details: [{ path: '192.0.2.10:6789:/volumes/demo-dataset', preferred: true, share_instance_id: null }] }],
+		volumeSnapshots: [{ id: 'mock-volume-snapshot-1', name: 'root-disk-before-upgrade', status: 'available', volume_id: 'mock-volume-1', size: 80, description: '', created_at: '2026-07-08T20:00:00Z', project_id: PROJECT_ID }],
+		dbInstances: [{ id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE', datastore: { type: 'mysql', version: '8.0' }, flavor_id: '101', flavor_ram: 2048, flavor_vcpus: 2, size: 20, created_at: NOW, hostname: 'sample-customer-mysql.internal', ip: '192.0.2.41', ips: ['192.0.2.41'], address_map: { private: ['192.0.2.41'] }, volume_used: 4.25 }],
+		dbBackups: [{ id: 'mock-trove-backup-1', name: 'sample-customer-mysql-weekly', description: 'Seeded weekly backup', status: 'COMPLETED', instance_id: 'mock-trove-instance-1', size: 0.42, created_at: '2026-07-08T21:00:00Z', datastore: { type: 'mysql', version: '8.0' } }],
+		magnumClusters: [{ id: 'mock-magnum-cluster-1', name: 'sample-magnum-k8s', status: 'CREATE_COMPLETE', status_reason: null, cluster_template_id: 'mock-magnum-template-k8s', master_count: 1, node_count: 2, api_address: 'https://192.0.2.70:6443', coe_version: 'v1.30.4', keypair: null, create_timeout: null, created_at: NOW, updated_at: NOW, stack_id: 'mock-magnum-cluster-1-stack' }],
+		secrets: [{ id: 'mock-secret-api', name: 'tutorial-api-password', secret_type: 'passphrase', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW, expires: null, content_types: { default: 'text/plain' }, system_managed: false }, { id: 'mock-secret-cert', name: 'tutorial-tls-certificate', secret_type: 'certificate', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW, expires: '2026-12-31T23:59:59Z', content_types: { default: 'application/pkix-cert' }, system_managed: true }],
+		volumeBackups: [{ id: 'mock-backup-1', name: 'scratch-weekly', description: null, volume_id: 'mock-volume-2', status: 'available', size: 200, created_at: '2026-07-08T22:00:00Z', is_incremental: false, has_dependent_backups: false }],
+		adminAnnouncements: [{ id: 1, created_at: '2026-07-08T09:00:00Z', updated_at: '2026-07-08T09:00:00Z', created_by_user_id: 'mock-admin-1', created_by_username: 'demo-admin', title: 'Scheduled storage maintenance', body: 'Ceph storage nodes are patched on Saturday 02:00-04:00 UTC.', severity: 'warning', target_type: 'all', target_id: null, starts_at: null, ends_at: null, is_active: true }],
+		adminFlavors: [
+			{ id: 'mock-managed-cpu-4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 0, is_public: false, description: 'Synthetic managed shape; native publication unverified.', is_gpu: false, gpu_count: 0, gpu_primary_aliases: [], frontend_visible: true, extra_specs: { 'afterglow:managed_by': 'domain-compute-v1', 'afterglow:access_mode': 'domain_quota', 'afterglow:frontend_visible': 'true' } },
+			{ id: 'mock-flavor-small', name: 'sample.2c_4g', vcpus: 2, ram: 4096, disk: 40, is_public: true, description: null, is_gpu: false, gpu_count: 0, gpu_primary_aliases: [], frontend_visible: true, extra_specs: {} },
+		],
+		adminPorts: [],
+		adminCreatedUserIds: [],
+		adminGroups: [
+			{ id: 'mock-group-researchers', name: 'sample-researchers', description: 'Sample research team', domain_id: 'mock-domain', created_at: '2026-06-12T00:00:00Z', member_ids: ['mock-user-2'], seed: true },
+			{ id: 'mock-group-operators', name: 'sample-operators', description: 'Sample platform operators', domain_id: 'mock-domain', created_at: '2026-06-02T00:00:00Z', member_ids: ['mock-user-1'], seed: true },
+		],
+		adminRoles: [
+			{ id: 'mock-role-admin', name: 'admin', description: '', domain_id: null, implied_role_ids: ['mock-role-manager'], seed: true },
+			{ id: 'mock-role-manager', name: 'manager', description: '', domain_id: null, implied_role_ids: ['mock-role-member'], seed: true },
+			{ id: 'mock-role-member', name: 'member', description: '', domain_id: null, implied_role_ids: ['mock-role-reader'], seed: true },
+			{ id: 'mock-role-reader', name: 'reader', description: '', domain_id: null, implied_role_ids: [], seed: true },
+			{ id: 'mock-role-project-member', name: 'project_member', description: 'Sample project member role', domain_id: null, implied_role_ids: ['mock-role-member'], seed: true },
+			{ id: 'mock-role-ops-audit', name: 'ops-audit_reader', description: 'Sample read-only audit role', domain_id: null, implied_role_ids: [], seed: true },
+			{ id: 'mock-role-retired-lumen', name: 'lumen_reader', description: 'Former Lumen service role', domain_id: null, implied_role_ids: [], seed: true },
+		],
+		adminDomains: [{ id: 'mock-domain', name: 'Demo', enabled: true, description: '', seed: true }],
 		volumes: [
 			{ id: 'mock-volume-1', name: 'root-disk', status: 'in-use', size: 80, volume_type: 'ceph-ssd', attachments: [{ server_id: 'mock-instance-1', device: '/dev/vda' }], bootable: true, created_at: '2026-07-02T08:30:00Z' },
 			{ id: 'mock-volume-2', name: 'scratch', status: 'available', size: 200, volume_type: 'ceph-ssd', attachments: [], bootable: false, created_at: '2026-07-08T21:10:00Z' },
@@ -498,6 +580,7 @@ function seedState(): MockupState {
 				{ id: 'mock-user-1', name: 'sample-admin', email: 'sample-admin@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: PROJECT_ID, created_at: '2026-06-01T00:00:00Z', first_seen: '2026-06-01T00:00:00Z', last_seen: NOW },
 				{ id: 'mock-user-2', name: 'sample-researcher', email: 'sample-researcher@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: 'mock-project-2', created_at: '2026-06-10T00:00:00Z', first_seen: '2026-06-11T00:00:00Z', last_seen: '2026-07-08T12:00:00Z' },
 				{ id: 'mock-user-3', name: 'sample-disabled', email: 'sample-disabled@example.test', enabled: false, domain_id: 'mock-domain', default_project_id: 'mock-project-3', created_at: '2026-06-20T00:00:00Z', first_seen: '2026-06-21T00:00:00Z', last_seen: '2026-06-30T00:00:00Z' },
+				{ id: 'mock-admin-1', name: 'demo-admin', email: 'demo-admin@example.test', enabled: true, domain_id: 'mock-domain', default_project_id: 'mock-admin-project', created_at: '2026-06-01T00:00:00Z', first_seen: '2026-06-01T00:00:00Z', last_seen: NOW },
 			],
 			userActivity: [
 				{ id: 1, created_at: '2026-07-08T12:00:00Z', username: 'sample-researcher', action: '사용자 수정', resource_name: 'sample-researcher', status: 'success' },

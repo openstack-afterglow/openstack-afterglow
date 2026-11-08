@@ -3,6 +3,7 @@ import type {
 	WaygateClient,
 	WaygateClientCreateRequest,
 	WaygateClientUpdateRequest,
+	WaygateFlavorTier,
 	WaygateServer,
 	WaygateServerCreateRequest,
 	WaygateServerUpdateRequest,
@@ -12,6 +13,9 @@ export const WAYGATE_MTU_MIN = 576;
 export const WAYGATE_MTU_MAX = 9000;
 export const WAYGATE_KEEPALIVE_DEFAULT = 25;
 export const WAYGATE_KEEPALIVE_MAX = 65535;
+/** Waygate expected_clients bounds and the small-tier ceiling (1 vCPU/1 GiB up to 50, 2 vCPU/2 GiB above). */
+export const WAYGATE_EXPECTED_CLIENTS_MAX = 1000;
+export const WAYGATE_SMALL_TIER_MAX_CLIENTS = 50;
 
 export interface WaygateClientDraft {
 	name: string;
@@ -61,6 +65,16 @@ function integerInRange(raw: string, min: number, max: number): number | null {
 	if (!/^\d+$/.test(raw)) return null;
 	const value = Number(raw);
 	return value >= min && value <= max ? value : null;
+}
+
+/** Null means the input is not an integer in 1..WAYGATE_EXPECTED_CLIENTS_MAX. */
+export function parseWaygateExpectedClients(raw: string): number | null {
+	return integerInRange(raw.trim(), 1, WAYGATE_EXPECTED_CLIENTS_MAX);
+}
+
+/** Tier Waygate requests for a declared count; the applied tier is reported back as flavor_tier. */
+export function waygateRequestedFlavorTier(expectedClients: number): WaygateFlavorTier {
+	return expectedClients <= WAYGATE_SMALL_TIER_MAX_CLIENTS ? 'small' : 'large';
 }
 
 /** Mirrors Waygate request validation; the service remains authoritative. */

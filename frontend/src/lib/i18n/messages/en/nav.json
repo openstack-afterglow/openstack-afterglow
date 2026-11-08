@@ -167,5 +167,11 @@
 	"scope.allProjects": "Scope: all projects",
 	"scope.currentProject": "Scope: current project · {name}",
 	"actions.refreshDirectory": "Refresh scope directory",
-	"scope.filtered": "Observation scope: {id}"
+	"scope.filtered": "Observation scope: {id}",
+	"actions.searchAll": "Search resources and services",
+	"search.resources": "Resources",
+	"search.loadingResources": "Loading resources…",
+	"search.noResources": "No matching resources.",
+	"search.noServices": "No matching services.",
+	"search.resultCount": "{count} results"
 }

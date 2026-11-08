@@ -65,13 +65,13 @@
 </script>
 
 <Modal bind:open dismissible={!creating} labelledBy="keypair-create-title">
-	<div class="w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto">
+	<div data-tour={createdPrivateKey ? 'keypairs-private-key' : 'keypairs-create-form'} class="w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto">
 		<Card surface="modal" padding="lg">
 			{#if createdPrivateKey}
 				<h2 id="keypair-create-title" class="mb-3 text-lg font-semibold text-ink-0">{t('keypairCreate.privateKey.title')}</h2>
 				<Alert tone="warning" class="mb-3">{t('keypairCreate.privateKey.warning')}</Alert>
 				<pre class="mb-4 max-h-48 overflow-auto rounded-md bg-surface-sunken p-3 text-xs text-green-300">{createdPrivateKey}</pre>
-				<Button onclick={() => (open = false)} variant="primary" class="w-full">{t('keypairCreate.actions.confirm')}</Button>
+				<Button onclick={() => (open = false)} variant="primary" class="w-full" dataTour="keypairs-private-key-confirm">{t('keypairCreate.actions.confirm')}</Button>
 			{:else}
 				<h2 id="keypair-create-title" class="mb-5 text-lg font-semibold text-ink-0">{t('keypairCreate.title')}</h2>
 				<div class="space-y-4">
@@ -98,7 +98,7 @@
 				{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 				<div class="mt-6 flex justify-end gap-3">
 					<Button onclick={() => (open = false)} variant="secondary" disabled={creating}>{t('keypairCreate.actions.cancel')}</Button>
-					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{#if creating}<LoadingState variant="control" label={t('keypairCreate.actions.creating')}  />{:else}{t('keypairCreate.actions.create')}{/if}</Button>
+					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary" dataTour="keypairs-create-submit">{#if creating}<LoadingState variant="control" label={t('keypairCreate.actions.creating')}  />{:else}{t('keypairCreate.actions.create')}{/if}</Button>
 				</div>
 			{/if}
 		</Card>

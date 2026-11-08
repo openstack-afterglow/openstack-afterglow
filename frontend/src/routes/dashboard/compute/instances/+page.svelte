@@ -69,12 +69,15 @@
 		return ids.every((id) => {
 			const row = instances.find((instance) => instance.id === id);
 			if (!row) return false;
+			// Waygate gateways are deleted/archived only through Waygate.
+			if ((action === 'delete' || action === 'shelve') && row.waygate_managed) return false;
 			if (action === 'stop') return row.status === 'ACTIVE';
 			if (action === 'unshelve') return row.status === 'SHELVED' || row.status === 'SHELVED_OFFLOADED';
 			return row.status === 'SHUTOFF';
 		});
 	}
 	const canBulkDelete = $derived(targetsAllowed([...selection.ids], 'delete'));
+	const selectionHasWaygate = $derived([...selection.ids].some((id) => instances.find((instance) => instance.id === id)?.waygate_managed));
 
 	const selectableIds = $derived(new Set(visibleInstances.map((instance) => instance.id)));
 	$effect(() => { const visibleIds = selectableIds; untrack(() => selection.retain(visibleIds)); });
@@ -246,7 +249,7 @@
 			&& ids.every((id, index) => {
 				const row = instances.find((instance) => instance.id === id);
 				return !!row && row.project_id === targetProjects[index] && row.status === targetStates[index]
-					&& (action !== 'delete' || row.status === 'SHUTOFF');
+					&& (action !== 'delete' || (row.status === 'SHUTOFF' && !row.waygate_managed));
 			});
 		if (bulkActioning || !owns()) return;
 		if (action === 'delete') {
@@ -458,6 +461,9 @@
 
 	{#if error}
 		<Alert tone="danger">{error}</Alert>
+	{/if}
+	{#if selectionHasWaygate}
+		<Alert tone="info"><span data-testid="waygate-bulk-note">{t('list.waygateBulkDeleteBlocked')}</span> <a href="/dashboard/network/waygate" class="font-medium underline underline-offset-4">{t('waygate.openLink')}</a></Alert>
 	{/if}
 
 	<div class={loading || instancesRevision !== scopeRevision ? "flex min-h-[calc(100dvh-var(--app-header-height)-12rem)] flex-col" : ""} data-tour={!$wizardOpen && !loading && !refreshing && !error && instancesRevision === scopeRevision ? 'instance-list' : undefined}>

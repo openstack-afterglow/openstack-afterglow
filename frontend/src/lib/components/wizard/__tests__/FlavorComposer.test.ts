@@ -60,6 +60,18 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); authReady.set(false); vi.useRealTimers(); });
 
+describe('VM flavor composer GPU selection latency', () => {
+	it('keeps the continuation enabled and does not refetch capacity after choosing a GPU profile', async () => {
+		render(Harness); await ready();
+		const optionCallsBefore = mocks.get.mock.calls.filter(([path]) => String(path).includes('composer-options')).length;
+		await chooseGpu('RTX 6000 rtx-6000');
+		await waitFor(() => expect(quantity('composer.gpuCount').value).toBe('1'));
+		expect((screen.getByRole('button', { name: t('composer.saveContinue') }) as HTMLButtonElement).disabled).toBe(false);
+		const optionCallsAfter = mocks.get.mock.calls.filter(([path]) => String(path).includes('composer-options')).length;
+		expect(optionCallsAfter).toBe(optionCallsBefore);
+	});
+});
+
 describe('VM flavor composer rendered behavior', () => {
 	it('has one footer continuation, previews native use-plus-delta, and advances exactly once after native save without VM creation', async () => {
 		render(Harness); await ready();

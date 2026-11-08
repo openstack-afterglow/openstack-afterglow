@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "Ufutaji umeshindwa: {message}",
 	"floatingIps.breadcrumb": "Mtandao",
 	"floatingIps.title": "Floating IP",
-	"floatingIps.allocationHelp": "Floating IP zinaweza kugawiwa kwenye <network>ukurasa wa mtandao</network>.",
+	"floatingIps.allocationHelp": "Gawa Floating IP kwa kutumia kitufe cha Gawa kwenye ukurasa huu.",
 	"floatingIps.selection.selectAll": "Chagua Floating IP zote",
 	"floatingIps.columns.fixedIp": "IP isiyobadilika iliyohusishwa",
 	"floatingIps.columns.instance": "Instansi",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "Maelezo ya mtandao katika topolojia",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "Rasilimali hii inasimamiwa na Waygate. Ibadilishe kupitia menyu ya Waygate.",
+	"securityGroups.openWaygate": "Fungua Waygate",
+	"securityGroups.waygateBadge": "Inasimamiwa na Waygate"
 }

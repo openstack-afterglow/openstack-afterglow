@@ -32,6 +32,7 @@ from app.models.storage import (
     TopologyRouter,
 )
 from app.services.parallel import run_parallel
+from app.services.waygate_managed import is_waygate_managed_security_group
 
 _ROUTER_IFACE_OWNERS = [
     "network:router_interface",
@@ -1295,6 +1296,7 @@ def _sg_to_dict(sg) -> dict:
         "id": sg.id,
         "name": sg.name,
         "description": sg.description,
+        "waygate_managed": is_waygate_managed_security_group(sg.name),
         "rules": [
             {
                 "id": r["id"],

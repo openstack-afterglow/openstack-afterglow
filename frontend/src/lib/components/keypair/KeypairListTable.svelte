@@ -12,6 +12,7 @@
 		view,
 		deleting,
 		copiedFingerprint,
+		highlightName = null,
 		onCopy,
 		onDelete,
 	}: {
@@ -19,6 +20,8 @@
 		view: TableView<Keypair>;
 		deleting: string | null;
 		copiedFingerprint: string | null;
+		/** Keypair just created on this page; only its delete control carries the tutorial anchor. */
+		highlightName?: string | null;
 		onCopy: (fp: string) => void;
 		onDelete: (name: string) => Promise<void>;
 	} = $props();
@@ -30,7 +33,7 @@
    <CompactResourceCard>
     <strong class="text-sm break-all">{kp.name}</strong><p class="text-xs text-ink-2">{t('keypairTable.columns.type')}: {kp.type}</p>
     {#snippet details()}<p class="text-xs font-mono break-all">{t('keypairTable.columns.fingerprint')}: {kp.fingerprint}</p>{/snippet}
-    {#snippet actions()}<button onclick={() => onCopy(kp.fingerprint)} class="text-xs px-2 py-1 rounded-md bg-surface-sunken text-ink-1 border border-line-2">{copiedFingerprint === kp.fingerprint ? t('keypairTable.actions.copied') : t('keypairTable.actions.copy')}</button><button onclick={() => onDelete(kp.name)} disabled={deleting === kp.name} class="text-xs px-2 py-1 rounded-md text-state-danger-text border border-line-2 disabled:text-ink-3">{#if deleting === kp.name}<LoadingState variant="control" label={t('keypairTable.actions.deleting')}  />{:else}{t('keypairTable.actions.delete')}{/if}</button>{/snippet}
+    {#snippet actions()}<button onclick={() => onCopy(kp.fingerprint)} class="text-xs px-2 py-1 rounded-md bg-surface-sunken text-ink-1 border border-line-2">{copiedFingerprint === kp.fingerprint ? t('keypairTable.actions.copied') : t('keypairTable.actions.copy')}</button><button data-tour={kp.name === highlightName ? 'keypairs-delete' : undefined} onclick={() => onDelete(kp.name)} disabled={deleting === kp.name} class="text-xs px-2 py-1 rounded-md text-state-danger-text border border-line-2 disabled:text-ink-3">{#if deleting === kp.name}<LoadingState variant="control" label={t('keypairTable.actions.deleting')}  />{:else}{t('keypairTable.actions.delete')}{/if}</button>{/snippet}
    </CompactResourceCard>
   {/each}
  {/snippet}
@@ -59,6 +62,7 @@
 					class="text-xs px-2 py-1 rounded-md bg-surface-sunken hover:bg-surface-selected text-ink-1 border border-line-2 transition-colors"
 				>{copiedFingerprint === kp.fingerprint ? t('keypairTable.actions.copied') : t('keypairTable.actions.copy')}</button>
 				<button
+					data-tour={kp.name === highlightName ? 'keypairs-delete' : undefined}
 					onclick={() => onDelete(kp.name)}
 					disabled={deleting === kp.name}
 					class="text-xs px-2 py-1 rounded-md bg-transparent hover:bg-red-950/40 text-red-400 border border-red-900 disabled:text-ink-3 disabled:border-line-2 transition-colors"

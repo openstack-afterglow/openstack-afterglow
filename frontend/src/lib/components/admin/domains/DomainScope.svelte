@@ -14,7 +14,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import { t } from '$lib/i18n/ns/domain-admin';
-  let { children, initialDomainId = '' }: { children: Snippet<[string, string]>; initialDomainId?: string } = $props();
+  let { children, initialDomainId = '', actions }: { children: Snippet<[string, string]>; initialDomainId?: string; actions?: Snippet } = $props();
   const id = $props.id();
   let domains = $state<AdminDomain[]>([]);
   let loading = $state(true);
@@ -72,6 +72,7 @@
     </div>
     <Button variant="secondary" size="sm" disabled={loading} onclick={() => revision += 1}>{t('actions.refresh')}</Button>
     {#if selectedId}<Button variant="ghost" size="sm" onclick={() => select('')}>{t('scope.clear')}</Button>{/if}
+    {#if actions}<div class="ml-auto flex items-center gap-2">{@render actions()}</div>{/if}
   </div>
   {#if error}<Alert class="mt-3">{error}</Alert>
   {:else if !loading && selectedId && !selected}<Alert class="mt-3">{t('scope.invalid')}</Alert>

@@ -405,6 +405,27 @@ def _unmanaged_compute_pool_native(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _vpn_reserved_ranges_store(monkeypatch):
+    """In-memory per-domain VPN reserved ranges; an absent domain keeps the documented default.
+
+    Persistence itself is covered against a real SQLite schema in test_vpn_reserved_ranges.py.
+    """
+    from app.services import vpn_reserved_ranges
+
+    rows: dict[str, dict] = {}
+
+    async def stored_row(domain_id):
+        return {**rows[domain_id]} if domain_id in rows else None
+
+    async def stored_range_lists():
+        return [list(row["vpn_reserved_cidrs"]) for row in rows.values()]
+
+    monkeypatch.setattr(vpn_reserved_ranges, "_stored_row", stored_row)
+    monkeypatch.setattr(vpn_reserved_ranges, "_stored_range_lists", stored_range_lists)
+    return rows
+
+
+@pytest.fixture(autouse=True)
 def _reset_settings_cache():
     from app.config import get_settings
 

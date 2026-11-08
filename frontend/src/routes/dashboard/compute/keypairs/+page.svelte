@@ -18,6 +18,7 @@
   import { toast } from '$lib/stores/toast';
   import { t } from '$lib/i18n/ns/images-keys';
   import { beginExperienceAction, beginExperienceLoad, experienceApplied, experienceState, type ExperienceContext } from '$lib/utils/experience';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   let keypairs = $state<Keypair[]>([]);
   let search = $state('');
@@ -33,6 +34,7 @@
   let deleting = $state<string | null>(null);
   let copiedFingerprint = $state<string | null>(null);
   let showModal = $state(false);
+  let lastCreated = $state<string | null>(null);
   let stateVersion = 0;
   let live = true;
   onDestroy(() => { live = false; });
@@ -83,6 +85,8 @@
         public_key: form.public_key.trim() || null,
       }, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchKeypairs(undefined, experience);
+      // Set right before returning so the tour sees the new row and the private-key view in one flush.
+      lastCreated = result.name;
       return { private_key: result.private_key };
     } catch (e) {
       experienceState(experience, 'error');
@@ -128,7 +132,8 @@
 <PageShell class="space-y-4">
   <PageHeader breadcrumb={t('keypairPage.breadcrumb')} title={t('keypairPage.title')}>
     {#snippet actions()}
-      <Button onclick={() => showModal = true} variant="primary">{t('keypairPage.actions.create')}</Button>
+      <TutorialStartButton tour="keypairs" compactOnMobile />
+      <Button onclick={() => showModal = true} variant="primary" dataTour="keypairs-create-open">{t('keypairPage.actions.create')}</Button>
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('keypairPage.toolbar.label')}>
@@ -149,17 +154,18 @@
 
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('keypairPage.title') })} />
-  {:else if keypairs.length === 0}
-    <KeypairEmptyState onCreate={() => (showModal = true)} />
-  {/if}
-  {#if !loading}
-    <KeypairListTable
-      keypairs={view.rows}
-      {view}
-      {deleting}
-      {copiedFingerprint}
-      onCopy={copyFingerprint}
-      onDelete={deleteKeypair}
-    />
+  {:else}
+    <div data-tour="keypairs-list" class="space-y-4">
+      {#if keypairs.length === 0}<KeypairEmptyState onCreate={() => (showModal = true)} />{/if}
+      <KeypairListTable
+        keypairs={view.rows}
+        {view}
+        {deleting}
+        {copiedFingerprint}
+        highlightName={lastCreated}
+        onCopy={copyFingerprint}
+        onDelete={deleteKeypair}
+      />
+    </div>
   {/if}
 </PageShell>

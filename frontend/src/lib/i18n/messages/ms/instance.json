@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "Gagal menghentikan migrasi",
 	"controller.migration.forceCompleteRequested": "Permintaan memaksa migrasi selesai dihantar.",
 	"controller.migration.forceCompleteFailed": "Gagal memaksa migrasi selesai",
-	"controller.contextRequired": "useInstanceDetailController mesti dipanggil dalam InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController mesti dipanggil dalam InstanceDetailPanel",
+	"waygate.managedNote": "Sumber ini diurus oleh Waygate. Ubah melalui menu Waygate.",
+	"waygate.openLink": "Buka Waygate",
+	"waygate.badge": "Diurus Waygate",
+	"list.waygateBulkDeleteBlocked": "Pilihan ini termasuk instans yang diurus oleh Waygate, jadi ia tidak boleh dipadam secara pukal. Ubah melalui menu Waygate."
 }

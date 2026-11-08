@@ -13,9 +13,11 @@
 		routerId: string;
 		onClose?: () => void;
 		onDeleted?: () => void;
+		/** True only for the router a tutorial just created; anchors its delete button. */
+		highlightDelete?: boolean;
 	}
 
-	let { routerId, onClose, onDeleted }: Props = $props();
+	let { routerId, onClose, onDeleted, highlightDelete = false }: Props = $props();
 
 	const s = createRouterDetailController({
 		routerId: () => routerId,
@@ -51,7 +53,7 @@
 	{:else if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.router}
-		<RouterInfoSection />
+		<RouterInfoSection {highlightDelete} />
 		<RouterGatewaySection />
 		<RouterInterfacesSection />
 	{/if}

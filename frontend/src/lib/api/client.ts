@@ -1,11 +1,12 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, getAuthVerificationEpoch, logoutInProgress, projectSwitching, recordAuthServiceFailure, setAuth } from '$lib/stores/auth';
+import { auth, getAuthVerificationEpoch, isMockAuthActive, logoutInProgress, projectSwitching, recordAuthServiceFailure, setAuth } from '$lib/stores/auth';
 import type { AuthState } from '$lib/stores/auth';
 import { refreshAuthState, sessionScopeKey, type SessionStateUpdate } from '$lib/utils/authSession';
 import { ApiError, decodeProviderCallbackError, type ProviderEntryTicket } from '$lib/api/errors';
 import { isDocsPath } from '$lib/docs/paths';
+import { t as tt } from '$lib/i18n/ns/tutorial';
 import { t } from '$lib/i18n/ns/shared';
 import {
 	getActiveMockupProfile,
@@ -500,6 +501,17 @@ async function withAuthRecovery<T extends { status: number }>(
 	return response;
 }
 
+/** Tutorial-mode dispatch for direct fetch callers: synthetic JSON or a fail-closed 409, never the real API. */
+async function tutorialFetchResponse(path: string, options: RequestInit, projectId?: string): Promise<Response> {
+	let body: unknown = options.body;
+	if (typeof options.body === 'string') {
+		try { body = JSON.parse(options.body); } catch { /* keep the raw body */ }
+	}
+	const mock = await maybeMockJson<unknown>(options.method ?? 'GET', path, body, undefined, projectId);
+	if (mock === symbolNoMatch) throw new ApiError(409, tt('mockup.unsupported'), 'mockup.unsupported');
+	return new Response(JSON.stringify(mock ?? null), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
 /** First-party HTTP handshake recovery; callers retain response/body ownership. */
 export function fetchWithAuth(
 	path: string,
@@ -520,6 +532,8 @@ export function fetchWithAuth(
 			reqOpts?.beforeDispatch?.();
 			const span = experienceRequest(observed, ++attempt);
 			if (span.context) reqOpts?.onExperienceDispatch?.(span.context);
+			// Tutorial sessions never reach the real API: answer from synthetic state or fail closed.
+			if (isMockAuthActive()) return tutorialFetchResponse(path, options, projectId);
 			const response = await fetch(`${baseUrl}${path}`, {
 				...options,
 				headers: { ..._buildHeaders(currentToken, projectId, options.headers, options.method), ...span.headers },

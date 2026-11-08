@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t as tc } from '$lib/i18n/ns/common';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { get } from 'svelte/store';
-import { createAdminCredentialsController } from '../adminCredentialsController.svelte';
+import { createAdminCredentialsController, type AdminCredentialsController } from '../adminCredentialsController.svelte';
 import CredentialManagement from '$lib/components/admin/credentials/CredentialManagement.svelte';
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
@@ -349,5 +349,65 @@ describe('credential operator UI', () => {
     await fireEvent.click(screen.getByRole('button', { name: t('actions.save') })); await vi.waitFor(() => expect(screen.getByText('once-secret')).toBeTruthy());
     await fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.getByText('once-secret')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: t('credentials.close') })); await vi.waitFor(() => expect(screen.queryByText('once-secret')).toBeNull());
+  });
+});
+
+describe('user credential tutorial anchor', () => {
+  async function register(ctrl: AdminCredentialsController) {
+    await ctrl.open('create');
+    ctrl.draft.user_id = 'user-a'; ctrl.draft.type = 'cert'; ctrl.draft.blob = '{}';
+    await ctrl.submit();
+  }
+  it('is set only from the verified result of the create attempt', async () => {
+    const ctrl = await ready('user');
+    expect(ctrl.created).toBeNull();
+    await register(ctrl);
+    expect(ctrl.created?.id).toBe('cred-a');
+    ctrl.dispose();
+  });
+  it('drops a prior creation when the next attempt fails', async () => {
+    const ctrl = await ready('user');
+    await register(ctrl);
+    expect(ctrl.created?.id).toBe('cred-a');
+    request.mockImplementation((path: string, selected: string, scope: CredentialAuthority, method?: string, body?: Record<string, unknown>) =>
+      method === 'POST' ? Promise.reject(new ApiError(403, '', 'credential_native_denied')) : respond(path, selected, scope, method, body));
+    await register(ctrl);
+    expect(ctrl.created).toBeNull(); expect(ctrl.modalError).not.toBe(''); expect(ctrl.mode).toBe('create');
+    ctrl.dispose();
+  });
+  it('drops a prior creation when a new create dialog opens or its result is out of scope', async () => {
+    const ctrl = await ready('user');
+    await register(ctrl);
+    await ctrl.open('create');
+    expect(ctrl.created).toBeNull();
+    request.mockImplementation((path: string, selected: string, scope: CredentialAuthority, method?: string, body?: Record<string, unknown>) =>
+      method === 'POST' ? Promise.resolve({ ...credential, user_id: 'user-b' }) : respond(path, selected, scope, method, body));
+    ctrl.draft.user_id = 'user-a'; ctrl.draft.type = 'cert'; ctrl.draft.blob = '{}';
+    await ctrl.submit();
+    expect(ctrl.created).toBeNull(); expect(ctrl.modalError).not.toBe('');
+    ctrl.dispose();
+  });
+  it.each(['domain', 'project', 'admin'] as const)('is cleared by a %s scope or authority change', async change => {
+    const ctrl = await ready('user');
+    await register(ctrl);
+    expect(ctrl.created?.id).toBe('cred-a');
+    if (change === 'domain') ctrl.setScope('domain-b');
+    else ctrl.setAuthority({ ...authority, ...(change === 'project' ? { projectId: 'project-b' } : { admin: false }) });
+    expect(ctrl.created).toBeNull();
+    ctrl.dispose();
+  });
+  it('is cleared once its own credential is deleted', async () => {
+    const ctrl = await ready('user');
+    await register(ctrl);
+    await ctrl.open('delete', { ...credential });
+    await ctrl.submit();
+    expect(ctrl.created).toBeNull();
+    ctrl.dispose();
+  });
+  it('never exists for application credentials', async () => {
+    const ctrl = await readyApplication();
+    await ctrl.submit();
+    expect(ctrl.issued?.secret).toBe('once-secret'); expect(ctrl.created).toBeNull();
+    ctrl.dispose();
   });
 });

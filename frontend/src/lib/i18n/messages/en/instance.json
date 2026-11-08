@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "Failed to abort migration",
 	"controller.migration.forceCompleteRequested": "Migration force-complete request sent.",
 	"controller.migration.forceCompleteFailed": "Failed to force-complete migration",
-	"controller.contextRequired": "useInstanceDetailController must be called within InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController must be called within InstanceDetailPanel",
+	"waygate.managedNote": "This resource is managed by Waygate. Change it from the Waygate menu.",
+	"waygate.openLink": "Open Waygate",
+	"waygate.badge": "Waygate managed",
+	"list.waygateBulkDeleteBlocked": "The selection includes Waygate-managed instances, so it cannot be deleted in bulk. Change them from the Waygate menu."
 }

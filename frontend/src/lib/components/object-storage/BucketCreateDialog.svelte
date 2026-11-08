@@ -15,6 +15,7 @@
 	let name = $state('');
 	let creating = $state(false);
 	let error = $state('');
+	let submitButton = $state<HTMLButtonElement>();
 
 	$effect(() => {
 		if (!open) {
@@ -56,6 +57,7 @@
 		tabindex="-1"
 	>
 		<div
+			data-tour="object-storage-create-form"
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
@@ -69,7 +71,7 @@
 						bind:value={name}
 						placeholder={t('buckets.createDialog.placeholder')}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
-						onkeydown={(e) => e.key === 'Enter' && submit()}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitButton?.click(); } }}
 					/>
 				</div>
 				{#if error}
@@ -82,6 +84,8 @@
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
 				>{t('buckets.createDialog.cancel')}</button>
 				<button
+					bind:this={submitButton}
+					data-tour="object-storage-create-submit"
 					onclick={submit}
 					disabled={creating || !name.trim()}
 					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"

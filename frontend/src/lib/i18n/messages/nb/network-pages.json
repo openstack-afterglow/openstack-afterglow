@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "Sletting mislyktes: {message}",
 	"floatingIps.breadcrumb": "Nettverk",
 	"floatingIps.title": "Flytende IP",
-	"floatingIps.allocationHelp": "Flytende IP-er kan tildeles på <network>nettverkssiden</network>.",
+	"floatingIps.allocationHelp": "Tildel flytende IP-er med Tildel-knappen på denne siden.",
 	"floatingIps.selection.selectAll": "Velg alle flytende IP-er",
 	"floatingIps.columns.fixedIp": "Tilknyttet fast IP",
 	"floatingIps.columns.instance": "Instans",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "Nettverksdetaljer i topologien",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "Denne ressursen administreres av Waygate. Endre den fra Waygate-menyen.",
+	"securityGroups.openWaygate": "Åpne Waygate",
+	"securityGroups.waygateBadge": "Administrert av Waygate"
 }

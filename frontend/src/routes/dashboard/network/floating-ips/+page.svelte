@@ -6,7 +6,7 @@
   import { auth } from '$lib/stores/auth';
   import { sessionScopeKey } from '$lib/utils/authSession';
   import { api, ApiError } from '$lib/api/client';
-  import type { FloatingIp } from '$lib/types/networks';
+  import type { FloatingIp, Network } from '$lib/types/networks';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -26,12 +26,18 @@
   import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
   import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
   import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import FloatingIpAllocateModal from '$lib/components/network/FloatingIpAllocateModal.svelte';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   let fips = $state<FloatingIp[]>([]);
   let loading = $state(true);
   let refreshing = $state(false);
   let error = $state('');
   let deleting = $state<string | null>(null);
+  let networks = $state<Network[]>([]);
+  let showAllocateModal = $state(false);
+  let lastCreated = $state<string | null>(null);
 
   let selection = createResourceSelection();
   let busy = $state(false);
@@ -112,6 +118,20 @@
     }
   }
 
+  async function openAllocate() {
+    showAllocateModal = true;
+    try {
+      networks = await api.get<Network[]>('/api/v1/networks', $auth.token ?? undefined, $auth.projectId ?? undefined);
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : t('floatingIps.error.loadFailed');
+    }
+  }
+
+  async function onAllocated(created: FloatingIp) {
+    lastCreated = created.id;
+    await load();
+  }
+
   const ar = createAutoRefresh(() => load(), {
     storageKey: 'network-floating-ips',
     defaultActive: false,
@@ -143,6 +163,8 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
+      <TutorialStartButton tour="floating-ips" compactOnMobile />
+      <Button variant="primary" onclick={openAllocate} dataTour="floating-ips-allocate-open">{t('floatingIpCard.allocate')}</Button>
     {/snippet}
   </PageHeader>
 
@@ -163,6 +185,7 @@
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('floatingIps.title') })} />
   {:else}
+    <div data-tour="floating-ips-list">
     <ResponsiveTable>
       {#snippet cards()}
         <div class="responsive-card-toolbar"><SelectionToolbar label={t('floatingIps.title')} ariaLabel={t('floatingIps.selection.selectAll')} checked={allSelected} {indeterminate} {selectedCount} disabled={busy || visibleSelectableIds.size === 0} onToggle={() => selection.toggleAll(visibleSelectableIds)} /></div>
@@ -171,7 +194,7 @@
             <div class="flex items-center gap-2"><SelectionCheckbox checked={selection.has(fip.id)} disabled={busy} ariaLabel={t('floatingIps.selection.select', { address: fip.floating_ip_address })} onclick={() => selection.toggle(fip.id)} /><span class="font-mono font-medium">{fip.floating_ip_address}</span><StatusChip status={fip.status} /></div>
             <dl><div><dt>{t('floatingIps.columns.fixedIp')}</dt><dd>{fip.fixed_ip_address ?? '—'}</dd></div><div><dt>{t('floatingIps.columns.instance')}</dt><dd>{fip.instance_name || (fip.instance_id ? fip.instance_id.slice(0, 8) + '…' : '—')}</dd></div></dl>
             {#snippet details()}<p class="font-mono">{fip.id}</p>{#if fip.instance_id}<p class="font-mono">{fip.instance_id}</p>{/if}{/snippet}
-            {#snippet actions()}<button onclick={() => deleteFip(fip.id, fip.floating_ip_address)} disabled={deleting === fip.id} aria-busy={deleting === fip.id} class="inline-flex items-center gap-1.5 text-state-danger-text">{#if deleting === fip.id}<LoadingState variant="control"  label="" aria-hidden="true" />{/if}{deleting === fip.id ? t('floatingIps.actions.processing') : t('floatingIps.actions.release')}</button>{/snippet}
+            {#snippet actions()}<button data-tour={fip.id === lastCreated ? 'floating-ips-release' : undefined} onclick={() => deleteFip(fip.id, fip.floating_ip_address)} disabled={deleting === fip.id} aria-busy={deleting === fip.id} class="inline-flex items-center gap-1.5 text-state-danger-text">{#if deleting === fip.id}<LoadingState variant="control"  label="" aria-hidden="true" />{/if}{deleting === fip.id ? t('floatingIps.actions.processing') : t('floatingIps.actions.release')}</button>{/snippet}
           </CompactResourceCard>
         {:else}<p class="responsive-card-toolbar text-center text-ink-2 py-8">{t('floatingIps.empty')}</p>{/each}
       {/snippet}
@@ -222,6 +245,7 @@
           <div><StatusChip status={fip.status} /></div>
           <div class="flex justify-end">
             <button
+              data-tour={fip.id === lastCreated ? 'floating-ips-release' : undefined}
               onclick={() => deleteFip(fip.id, fip.floating_ip_address)}
               disabled={deleting === fip.id}
               aria-busy={deleting === fip.id}
@@ -239,8 +263,13 @@
       {/if}
     </div>
     </ResponsiveTable>
+    </div>
   {/if}
 </PageShell>
+<FloatingIpAllocateModal
+  bind:open={showAllocateModal} {networks}
+  token={$auth.token ?? undefined} projectId={$auth.projectId ?? undefined} {onAllocated}
+/>
 <BulkSelectionOverlay
   count={selection.count}
   ariaLabel={t('floatingIps.bulk.ariaLabel')}

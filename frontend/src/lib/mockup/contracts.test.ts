@@ -10,10 +10,14 @@ const ADMIN_TOUR_PATHS = [
 	'/admin/libraries',
 	'/admin/topology',
 	'/admin/containers',
+	'/admin/announcements',
+	'/admin/application-credentials',
 	'/admin/secrets',
 	'/admin/monitoring',
 	'/admin/services',
 	'/admin/users',
+	'/admin/object-storage',
+	'/admin/groups',
 ] as const;
 
 describe('administrator mockup route contract', () => {

@@ -32,7 +32,7 @@
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; }}
 		role="dialog" aria-modal="true" tabindex="-1">
-		<div class="motion-pop bg-surface-sunken border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4" onclick={(e) => e.stopPropagation()} role="none">
+		<div data-tour="security-groups-create-form" class="motion-pop bg-surface-sunken border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4" onclick={(e) => e.stopPropagation()} role="none">
 			<h3 class="text-lg font-semibold text-ink-0 mb-4">{t('securityGroupCreate.title')}</h3>
 			<div class="space-y-3 mb-4">
 				<div>
@@ -52,7 +52,7 @@
 				<p class="text-xs text-red-400 mb-3">{error}</p>
 			{/if}
 			<div class="flex gap-2">
-				<button onclick={handleCreate} disabled={creating || !form.name.trim()} aria-busy={creating}
+				<button data-tour="security-groups-create-submit" onclick={handleCreate} disabled={creating || !form.name.trim()} aria-busy={creating}
 					class="flex-1 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm py-2 rounded transition-colors">
 					{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('securityGroupCreate.creating') : t('securityGroupCreate.create')}
 				</button>

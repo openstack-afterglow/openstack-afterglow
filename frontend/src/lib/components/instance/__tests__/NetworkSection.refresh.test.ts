@@ -14,6 +14,7 @@ vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project', refreshToken: null, accessExpiresAt: null }),
 	canWrite: writable(true),
 	logoutInProgress: writable(false),
+	isMockAuthActive: () => false,
 }));
 vi.mock('$lib/mockup/transport', () => ({
 	getActiveMockupProfile: () => null,

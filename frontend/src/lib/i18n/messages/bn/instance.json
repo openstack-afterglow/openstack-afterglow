@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "স্থানান্তর বন্ধ করতে ব্যর্থ",
 	"controller.migration.forceCompleteRequested": "জোরপূর্বক স্থানান্তর সম্পন্ন করার অনুরোধ পাঠানো হয়েছে।",
 	"controller.migration.forceCompleteFailed": "জোরপূর্বক স্থানান্তর সম্পন্ন করতে ব্যর্থ",
-	"controller.contextRequired": "useInstanceDetailController অবশ্যই InstanceDetailPanel-এর ভেতরে কল করতে হবে"
+	"controller.contextRequired": "useInstanceDetailController অবশ্যই InstanceDetailPanel-এর ভেতরে কল করতে হবে",
+	"waygate.managedNote": "এই রিসোর্সটি Waygate দ্বারা পরিচালিত। Waygate মেনু থেকে এটি পরিবর্তন করুন।",
+	"waygate.openLink": "Waygate খুলুন",
+	"waygate.badge": "Waygate পরিচালিত",
+	"list.waygateBulkDeleteBlocked": "নির্বাচনে Waygate দ্বারা পরিচালিত ইনস্ট্যান্স রয়েছে, তাই একসাথে মুছে ফেলা যাবে না। Waygate মেনু থেকে সেগুলি পরিবর্তন করুন।"
 }

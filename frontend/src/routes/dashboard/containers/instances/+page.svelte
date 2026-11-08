@@ -11,6 +11,7 @@
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
@@ -47,6 +48,7 @@
   let loaded = $state(false);
   let actionTarget = $state<string | null>(null);
   let showModal = $state(false);
+  let lastCreated = $state<string | null>(null);
   let creating = $state(false);
   let createError = $state('');
   const selection = createResourceSelection();
@@ -95,6 +97,7 @@
     createError = '';
     try {
       await api.post('/api/v1/containers', buildContainerCreatePayload(payload), $auth.token ?? undefined, $auth.projectId ?? undefined);
+      lastCreated = payload.name.trim();
       showModal = false;
       await fetchContainers();
       return true;
@@ -237,7 +240,8 @@
         refreshing={refreshing || loading}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('instances.list.create')}</button>
+      <TutorialStartButton tour="containers" compactOnMobile />
+      <button data-tour="containers-create-open" onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('instances.list.create')}</button>
     {/snippet}
   </PageHeader>
 
@@ -253,8 +257,10 @@
   {:else if error && !loaded}
     <Button variant="secondary" onclick={forceRefresh}>{tl('autoRefresh.refreshNow')}</Button>
   {:else}
+    <div data-tour="containers-list">
     <ContainersTable
       {containers}
+      highlightName={lastCreated}
       {view}
       {actionTarget}
       selectedIds={selection.ids}
@@ -267,6 +273,7 @@
       onDelete={deleteContainer}
       onOpen={(id) => goto(`/dashboard/containers/instances/${id}`)}
     />
+    </div>
     <BulkSelectionOverlay
       count={selection.count}
       ariaLabel={t('instances.bulk.aria')}

@@ -7,7 +7,6 @@ import { parseGpuProfiles, type GpuAutomationProfile } from '$lib/api/flavorAuto
 // Explicit synthetic tutorial state. This path is never used for authenticated real cloud requests.
 export function mockComputePolicy(method: string, path: string, query: URLSearchParams, body: unknown, profile: MockupProfileId): unknown | undefined {
 	if (profile === 'admin' && method === 'GET' && path === '/api/v1/admin/gpu-devices') return { devices: [{ vendor_id: '10de', device_id: '2236', vendor_name: 'NVIDIA', name: 'Synthetic A10', is_audio: false, aliases: ['A10'], source: 'builtin' }] };
-	if (profile === 'admin' && method === 'GET' && path === '/api/v1/admin/flavors') return { items: [{ id: 'mock-managed-cpu-4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 0, is_public: false, description: 'Synthetic managed shape; native publication unverified.', is_gpu: false, gpu_count: 0, gpu_primary_aliases: [], frontend_visible: true, extra_specs: { 'afterglow:managed_by': 'domain-compute-v1', 'afterglow:access_mode': 'domain_quota', 'afterglow:frontend_visible': 'true' } }], count: 1, next_marker: null };
 	if (profile === 'admin' && method === 'GET' && path === '/api/v1/admin/flavors/mock-managed-cpu-4/access') return [];
 	const admin = path.match(/^\/api\/v1\/admin\/domains\/([^/]+)\/compute-pool(?:\/projects\/([^/]+))?$/);
 	const iam = path.match(/^\/api\/v1\/iam\/compute-pool(?:\/projects\/([^/]+))?$/);

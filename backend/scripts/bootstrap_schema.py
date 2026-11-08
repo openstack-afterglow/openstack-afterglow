@@ -460,6 +460,7 @@ def model_metadata() -> MetaData:
         db,
         domain_auth,
         domain_iam,
+        domain_network_policy,
         domain_quotas,
         email_delivery,
         enrollment_policy,

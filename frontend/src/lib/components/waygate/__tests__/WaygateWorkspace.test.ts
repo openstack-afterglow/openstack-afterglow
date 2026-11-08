@@ -301,6 +301,7 @@ describe('Waygate workspace project isolation', () => {
 		render(WaygateWorkspace);
 		await screen.findByText('gateway-a');
 		await fireEvent.click(screen.getByRole('button', { name: '+ Waygate 서버 생성' }));
+		await fireEvent.input(screen.getByRole('textbox', { name: t('project.server.expectedClients') }), { target: { value: '30' } });
 		await fireEvent.click(screen.getByRole('button', { name: /^생성$/ }));
 		switchProject('project-b');
 		await screen.findByText('gateway-b');
@@ -436,7 +437,8 @@ describe('Waygate attachment network names', () => {
 describe('Waygate server defaults and dynamic client inheritance', () => {
 	const defaults = { dns: '9.9.9.9', persistent_keepalive: 40 };
 	const updatedDefaults = { dns: '1.1.1.1, 8.8.8.8', persistent_keepalive: 0 };
-	const inheritedRequest = { name: 'new-laptop', mtu: null, owner_user_id: 'user-a' };
+	// The owner field starts empty: issuance sends an explicit unassigned owner.
+	const inheritedRequest = { name: 'new-laptop', mtu: null, owner_user_id: null };
 	const inheritedClient = { ...client, ...defaults, mtu: null, inherit_dns: true, inherit_persistent_keepalive: true };
 	let currentServer = { ...server('a'), ...defaults };
 	let currentClients: Array<typeof client & { dns?: string | null; mtu?: number | null; inherit_dns?: boolean; inherit_persistent_keepalive?: boolean }>;
@@ -466,12 +468,15 @@ describe('Waygate server defaults and dynamic client inheritance', () => {
 		return within(screen.getByRole('group', { name: accessibleName => accessibleName === `${field} 설정 방식` }));
 	}
 
-	async function fillServerSettings(dns: string, keepalive: string) {
+	async function fillServerSettings(dns: string, keepalive: string, expectedClients?: string) {
 		await fireEvent.input(screen.getByLabelText('DNS', { exact: true }), { target: { value: dns } });
 		await fireEvent.input(screen.getByLabelText(/PersistentKeepalive/, { selector: 'input' }), { target: { value: keepalive } });
+		if (expectedClients !== undefined) {
+			await fireEvent.input(screen.getByRole('textbox', { name: t('project.server.expectedClients') }), { target: { value: expectedClients } });
+		}
 	}
 
-	it('creates a named server with DNS and disabled keepalive but no server MTU', async () => {
+	it('creates a named server with DNS, disabled keepalive and the declared client count but no server MTU', async () => {
 		mocks.post.mockImplementation(async (_path: string, body: typeof currentServer) => {
 			currentServer = { ...currentServer, ...body };
 			return currentServer;
@@ -482,12 +487,79 @@ describe('Waygate server defaults and dynamic client inheritance', () => {
 		const modal = within(screen.getByRole('dialog', { name: 'Waygate 서버 생성' }));
 		await fireEvent.input(modal.getByRole('textbox', { name: t('settings.name') }), { target: { value: 'office-gateway' } });
 		expect(modal.queryByLabelText('MTU', { exact: true })).toBeNull();
-		await fillServerSettings('1.1.1.1,8.8.8.8', '0');
+		await fillServerSettings('1.1.1.1,8.8.8.8', '0', '30');
+		expect(modal.getByText(t('project.server.expectedClientsTier', { tier: t('project.server.tier.small') }))).toBeTruthy();
 		await fireEvent.click(modal.getByRole('button', { name: accessibleName => accessibleName === '생성' }));
 		await settle();
-		expect(mocks.post).toHaveBeenCalledExactlyOnceWith(base, { name: 'office-gateway', ...updatedDefaults }, 'token-a', 'project-a');
+		expect(mocks.post).toHaveBeenCalledExactlyOnceWith(base, { name: 'office-gateway', ...updatedDefaults, expected_clients: 30 }, 'token-a', 'project-a', { timeoutMs: 58_000 });
 		expect(screen.getByText('office-gateway')).toBeTruthy();
 		expect(screen.queryByRole('dialog', { name: 'Waygate 서버 생성' })).toBeNull();
+	});
+
+	it.each(['', '0', '1001', '2.5'])('requires a declared client count of 1..1000 before creating (input=%j)', async (value) => {
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		await fireEvent.click(screen.getByRole('button', { name: '+ Waygate 서버 생성' }));
+		const modal = within(screen.getByRole('dialog', { name: 'Waygate 서버 생성' }));
+		await fillServerSettings('1.1.1.1', '25', value);
+		await fireEvent.click(modal.getByRole('button', { name: accessibleName => accessibleName === '생성' }));
+		await settle();
+		const input = modal.getByRole('textbox', { name: t('project.server.expectedClients') });
+		expect(modal.getByText(t('validation.expectedClients', { max: 1000 }))).toBeTruthy();
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(input);
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('announces the large tier above 50 clients and shows the applied tier read-only in details', async () => {
+		currentServer = { ...currentServer, expected_clients: 120, flavor_tier: 'large' } as typeof currentServer;
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		await fireEvent.click(screen.getByRole('button', { name: '+ Waygate 서버 생성' }));
+		const modal = within(screen.getByRole('dialog', { name: 'Waygate 서버 생성' }));
+		await fireEvent.input(modal.getByRole('textbox', { name: t('project.server.expectedClients') }), { target: { value: '51' } });
+		expect(modal.getByText(t('project.server.expectedClientsTier', { tier: t('project.server.tier.large') }))).toBeTruthy();
+		await fireEvent.click(modal.getByRole('button', { name: t('project.actions.cancel') }));
+		await openDetail();
+		const details = screen.getByText(t('project.server.flavorTier')).closest('dl')!;
+		expect(within(details).getByText('120')).toBeTruthy();
+		expect(within(details).getByText(t('project.server.tier.large'))).toBeTruthy();
+	});
+
+	it.each([
+		['client deadline', () => new DOMException('signal timed out', 'TimeoutError')],
+		['proxy 503', () => new ApiError(503, 'waygate 서비스를 사용할 수 없습니다')],
+		['load balancer 504', () => new ApiError(504, 'Gateway Timeout')],
+	])('reports an unconfirmed create and shows the server the backend created after a %s', async (_name, failure) => {
+		mocks.post.mockImplementation(async (_path: string, body: typeof currentServer) => {
+			currentServer = { ...currentServer, ...body };
+			throw failure();
+		});
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		await fireEvent.click(screen.getByRole('button', { name: '+ Waygate 서버 생성' }));
+		const modal = within(screen.getByRole('dialog', { name: 'Waygate 서버 생성' }));
+		await fireEvent.input(modal.getByRole('textbox', { name: t('settings.name') }), { target: { value: 'office-gateway' } });
+		await fillServerSettings('1.1.1.1,8.8.8.8', '0', '10');
+		await fireEvent.click(modal.getByRole('button', { name: accessibleName => accessibleName === '생성' }));
+		await settle();
+		expect(await screen.findByText(t('project.error.unconfirmed'))).toBeTruthy();
+		expect(screen.getByText('office-gateway')).toBeTruthy();
+	});
+
+	it('keeps a definite backend rejection as a hard create failure without refreshing the list', async () => {
+		mocks.post.mockRejectedValue(new ApiError(422, 'DNS 형식이 올바르지 않습니다'));
+		render(WaygateWorkspace);
+		await screen.findByText('gateway-a');
+		await fireEvent.click(screen.getByRole('button', { name: '+ Waygate 서버 생성' }));
+		const modal = within(screen.getByRole('dialog', { name: 'Waygate 서버 생성' }));
+		await fireEvent.input(modal.getByRole('textbox', { name: t('settings.name') }), { target: { value: 'office-gateway' } });
+		await fillServerSettings('1.1.1.1,8.8.8.8', '0', '10');
+		await fireEvent.click(modal.getByRole('button', { name: accessibleName => accessibleName === '생성' }));
+		await settle();
+		expect(await screen.findByText('DNS 형식이 올바르지 않습니다')).toBeTruthy();
+		expect(screen.queryByText(t('project.error.unconfirmed'))).toBeNull();
+		expect(screen.queryByText('office-gateway')).toBeNull();
 	});
 
 	it('refreshes effective inherited client values immediately after a server defaults PATCH', async () => {
@@ -509,7 +581,7 @@ describe('Waygate server defaults and dynamic client inheritance', () => {
 		mocks.get.mockClear();
 		await fireEvent.click(modal.getByRole('button', { name: '저장' }));
 		await settle();
-		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a`, updatedDefaults, 'token-a', 'project-a');
+		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a`, updatedDefaults, 'token-a', 'project-a', { timeoutMs: 58_000 });
 		expect(mocks.get).toHaveBeenCalledWith(`${base}/server-a/clients`, 'token-a', 'project-a', { refresh: true });
 		expect(screen.queryByRole('dialog', { name: '서버 기본값 설정' })).toBeNull();
 		expect(screen.getByText(`${updatedDefaults.dns} · 서버 기본값`)).toBeTruthy();
@@ -638,7 +710,7 @@ describe('Waygate server defaults and dynamic client inheritance', () => {
 		await openDetail();
 		await fireEvent.click(screen.getByRole('button', { name: '서버 기본값 설정' }));
 		await fireEvent.click(within(screen.getByRole('dialog', { name: '서버 기본값 설정' })).getByRole('button', { name: '저장' }));
-		expect(mocks.patch).toHaveBeenCalledWith(`${base}/server-a`, defaults, 'token-a', 'project-a');
+		expect(mocks.patch).toHaveBeenCalledWith(`${base}/server-a`, defaults, 'token-a', 'project-a', { timeoutMs: 58_000 });
 		switchProject('project-b');
 		await screen.findByText('gateway-b');
 		mocks.get.mockClear();
@@ -900,7 +972,7 @@ describe('Waygate effective service capabilities', () => {
 		await openDetail();
 		await fireEvent.click(screen.getByRole('button', { name: '해제' }));
 		await settle();
-		expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/networks/1`, 'token-a', 'project-a');
+		expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/networks/1`, 'token-a', 'project-a', { timeoutMs: 58_000 });
 	});
 
 	it('uses the owned-profile endpoint for QR and clears displayed secrets on permission loss', async () => {
@@ -975,7 +1047,17 @@ describe('Waygate final native profile ownership contract', () => {
 			expect(screen.queryByRole('button', { name: `${name} .conf 다운로드` })).toBeNull();
 			expect(screen.queryByRole('button', { name: `${name} QR` })).toBeNull();
 		}
+		// Only the client editing leaf may register the caller on an unassigned profile; another owner is never claimable.
+		const claimable = leaf === 'waygate-clients_editor';
+		expect(!!screen.queryByRole('button', { name: t('project.client.claimDownload', { name: 'legacy' }) })).toBe(claimable);
+		expect(!!screen.queryByRole('button', { name: t('project.client.claimQr', { name: 'legacy' }) })).toBe(claimable);
+		expect(!!screen.queryByRole('button', { name: t('project.client.claimNamed', { name: 'legacy' }) })).toBe(claimable);
+		for (const name of ['laptop-a', 'disabled']) {
+			expect(screen.queryByRole('button', { name: t('project.client.claimDownload', { name }) })).toBeNull();
+			expect(screen.queryByRole('button', { name: t('project.client.claimNamed', { name }) })).toBeNull();
+		}
 		expect(mocks.downloadBlob).not.toHaveBeenCalled();
+		expect(mocks.patch).not.toHaveBeenCalled();
 	});
 
 	it.each([true, false])('never gives an editor an enabled toggle (enabled=%s)', async (enabled) => {
@@ -1051,5 +1133,211 @@ describe('Waygate final native profile ownership contract', () => {
 			expect(mocks.toastSuccess).toHaveBeenCalledWith(t('project.toast.clientIssuedNoProfile'));
 		}
 		expect(screen.queryByRole('dialog', { name: title })).toBeNull();
+	});
+});
+
+describe('Waygate optional owner and self registration', () => {
+	let currentClients: Array<Omit<typeof client, 'owner_user_id'> & { owner_user_id: string | null }>;
+
+	beforeEach(() => {
+		grant('waygate-clients_editor', 'waygate-connect_user');
+		currentClients = [{ ...client, owner_user_id: null }];
+		const get = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => path.endsWith('/clients')
+			? Promise.resolve(currentClients) : get(path, ...args));
+		mocks.patch.mockImplementation(async (_path: string, body: { owner_user_id: string }) => {
+			currentClients = [{ ...client, owner_user_id: body.owner_user_id }];
+			return currentClients[0];
+		});
+		mocks.downloadBlob.mockResolvedValue({ blob: new Blob(['owned-profile']), filename: 'laptop-a.conf' });
+	});
+
+	it('issues without a prefilled owner while keeping an explicit assign-to-me action', async () => {
+		render(WaygateWorkspace);
+		await openDetail();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.actions.issueClient') }));
+		const modal = within(screen.getByRole('dialog', { name: t('project.client.issueTitle') }));
+		const owner = modal.getByRole('textbox', { name: t('project.client.owner') }) as HTMLInputElement;
+		expect(owner.value).toBe('');
+		expect(modal.getByText(t('project.client.ownerIssueHelp'))).toBeTruthy();
+		await fireEvent.click(modal.getByRole('button', { name: t('project.client.assignSelf') }));
+		expect(owner.value).toBe('user-a');
+	});
+
+	it('shows the unassigned state and registers the caller with the existing owner PATCH', async () => {
+		render(WaygateWorkspace);
+		await openDetail();
+		expect(screen.getByText(t('project.client.ownerUnassigned'), { selector: 'span' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.client.claimNamed', { name: 'laptop-a' }) }));
+		await settle();
+		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/clients/client-a`, { owner_user_id: 'user-a' }, 'token-a', 'project-a');
+		expect(mocks.toastSuccess).toHaveBeenCalledWith(t('project.toast.clientClaimed', { name: 'laptop-a' }));
+		expect(await screen.findByRole('button', { name: 'laptop-a .conf 다운로드' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('project.client.claimNamed', { name: 'laptop-a' }) })).toBeNull();
+		expect(mocks.downloadBlob).not.toHaveBeenCalled();
+	});
+
+	it('claims an unassigned profile before downloading its config', async () => {
+		render(WaygateWorkspace);
+		await openDetail();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.client.claimDownload', { name: 'laptop-a' }) }));
+		await settle();
+		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/clients/client-a`, { owner_user_id: 'user-a' }, 'token-a', 'project-a');
+		expect(mocks.downloadBlob).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/clients/client-a/config`, 'token-a', 'project-a');
+		expect(mocks.patch.mock.invocationCallOrder[0]).toBeLessThan(mocks.downloadBlob.mock.invocationCallOrder[0]);
+		expect(mocks.download).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), 'laptop-a.conf');
+	});
+
+	it('claims an unassigned profile before rendering its QR code', async () => {
+		mocks.qr.mockResolvedValue('data:image/png;base64,claimed');
+		mocks.downloadBlob.mockResolvedValue({ blob: { text: async () => 'owned-profile' }, filename: 'laptop-a.conf' });
+		render(WaygateWorkspace);
+		await openDetail();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.client.claimQr', { name: 'laptop-a' }) }));
+		const image = await screen.findByRole('img', { name: t('project.qr.alt') });
+		expect(image.getAttribute('src')).toBe('data:image/png;base64,claimed');
+		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/clients/client-a`, { owner_user_id: 'user-a' }, 'token-a', 'project-a');
+		expect(mocks.downloadBlob).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/clients/client-a/config`, 'token-a', 'project-a');
+		expect(mocks.qr).toHaveBeenCalledWith('owned-profile', expect.any(Object));
+	});
+
+	it.each([
+		{ status: 409, message: () => t('project.error.claimConflict'), owner: 'user-b' },
+		{ status: 403, message: () => t('project.error.claimForbidden'), owner: null },
+	])('reports a $status claim failure clearly and never downloads', async ({ status, message, owner }) => {
+		mocks.patch.mockImplementation(async () => {
+			currentClients = [{ ...client, owner_user_id: owner }];
+			throw new ApiError(status, 'native refusal');
+		});
+		render(WaygateWorkspace);
+		await openDetail();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.client.claimDownload', { name: 'laptop-a' }) }));
+		await settle();
+		expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(message());
+		expect(mocks.downloadBlob).not.toHaveBeenCalled();
+		expect(mocks.download).not.toHaveBeenCalled();
+		if (status === 409) {
+			// The lost race refreshes to the authoritative owner, so no claim action remains.
+			await vi.waitFor(() => expect(screen.getByText('user-b')).toBeTruthy());
+			expect(screen.queryByRole('button', { name: t('project.client.claimDownload', { name: 'laptop-a' }) })).toBeNull();
+		}
+	});
+
+	it('does not offer self registration to a connect-only user', async () => {
+		grant('waygate-connect_user');
+		render(WaygateWorkspace);
+		await openDetail();
+		expect(screen.getByText(t('project.client.ownerUnassigned'), { selector: 'span' })).toBeTruthy();
+		for (const name of [t('project.client.claimNamed', { name: 'laptop-a' }), t('project.client.claimDownload', { name: 'laptop-a' }), t('project.client.claimQr', { name: 'laptop-a' })]) {
+			expect(screen.queryByRole('button', { name })).toBeNull();
+		}
+	});
+});
+
+describe('Waygate attachment interface and routing', () => {
+	const visible = [
+		{ id: 'net-own', name: 'own-net', is_external: false, is_shared: false, project_id: 'project-a' },
+		{ id: 'net-provider', name: 'provider-net', is_external: true, is_shared: false, project_id: 'admin-project' },
+		{ id: 'net-shared', name: 'shared-net', is_external: false, is_shared: true, project_id: 'admin-project' },
+	];
+	const attachment = {
+		id: 7, server_id: 'server-a', project_id: 'project-a', network_id: 'net-own', subnet_id: 'subnet-own', port_id: 'port-1',
+		cidr: '10.20.0.0/24', nat_mode: 'snat', status: 'ACTIVE', created_at: null, updated_at: null,
+	};
+	let currentAttachments: Array<typeof attachment & { allowed_ips?: string[] }>;
+
+	beforeEach(() => {
+		currentAttachments = [];
+		mocks.get.mockImplementation((path: string) => {
+			if (path === base) return Promise.resolve([server('a')]);
+			if (path === `${base}/server-a`) return Promise.resolve(server('a'));
+			if (path.endsWith('/clients')) return Promise.resolve([client]);
+			if (path === `${base}/server-a/networks`) return Promise.resolve(currentAttachments);
+			if (path === '/api/v1/networks') return Promise.resolve(visible);
+			if (path === '/api/v1/networks/net-provider') {
+				return Promise.resolve({ ...visible[1], subnets: ['subnet-provider'], routers: [], subnet_details: [
+					{ id: 'subnet-provider', name: 'provider-subnet', cidr: '203.0.113.0/24', ip_version: 4, gateway_ip: null, dhcp_enabled: false },
+				] });
+			}
+			throw new Error(`Unexpected GET ${path}`);
+		});
+		mocks.post.mockResolvedValue({ ...attachment, network_id: 'net-provider', allowed_ips: [] });
+	});
+
+	async function openAttach() {
+		render(WaygateWorkspace);
+		await openDetail();
+		await fireEvent.click(screen.getByRole('button', { name: t('project.actions.attachNetwork') }));
+		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-a', 'project-a', { refresh: true }));
+		const modal = within(screen.getByRole('dialog', { name: t('project.network.attachTitle') }));
+		await fireEvent.click(modal.getByRole('button', { name: t('project.network.selectAttach') }));
+		return modal;
+	}
+
+	it('offers provider/external and shared networks with their kind and keeps routing separate', async () => {
+		const modal = await openAttach();
+		expect((await screen.findByRole('option', { name: /own-net/ })).textContent).not.toContain(t('project.network.kindShared'));
+		expect(screen.getByRole('option', { name: /provider-net/ }).textContent).toContain(t('project.network.kindExternal'));
+		expect(screen.getByRole('option', { name: /shared-net/ }).textContent).toContain(t('project.network.kindShared'));
+		await fireEvent.click(screen.getByRole('option', { name: /provider-net/ }));
+		expect(await modal.findByText(new RegExp(t('project.network.providerNotice').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy();
+		const routing = modal.getByRole('textbox', { name: t('project.network.allowedIps') }) as HTMLTextAreaElement;
+		expect(routing.value).toBe('');
+		await fireEvent.click(await modal.findByRole('button', { name: t('project.network.addSubnetCidr', { cidr: '203.0.113.0/24' }) }));
+		expect(routing.value).toBe('203.0.113.0/24');
+		await fireEvent.input(routing, { target: { value: '203.0.113.9/24, 203.0.113.0/24\nfd00::1/64' } });
+		await fireEvent.click(modal.getByRole('button', { name: t('project.actions.attach') }));
+		await settle();
+		expect(mocks.post).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/networks`, {
+			network_id: 'net-provider', subnet_id: 'subnet-provider', nat_mode: 'snat', allowed_ips: ['203.0.113.0/24', 'fd00::/64'],
+		}, 'token-a', 'project-a', { timeoutMs: 58_000 });
+	});
+
+	it.each([
+		['0.0.0.0/0', () => t('validation.allowedIps.defaultRoute', { value: '0.0.0.0/0' })],
+		['10.240.0.0/16', () => t('validation.allowedIps.tunnelOverlap', { value: '10.240.0.0/16', tunnel: '10.240.0.0/24' })],
+		['10.20.0.0/33', () => t('validation.allowedIps.invalid', { value: '10.20.0.0/33' })],
+	])('rejects routing entry %s client-side without attaching', async (value, message) => {
+		const modal = await openAttach();
+		await fireEvent.click(await screen.findByRole('option', { name: /provider-net/ }));
+		await modal.findByRole('button', { name: t('project.network.addSubnetCidr', { cidr: '203.0.113.0/24' }) });
+		await fireEvent.input(modal.getByRole('textbox', { name: t('project.network.allowedIps') }), { target: { value } });
+		await fireEvent.click(modal.getByRole('button', { name: t('project.actions.attach') }));
+		await settle();
+		expect(modal.getByText(message())).toBeTruthy();
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('shows each attachment routing list and edits it through the attachment PATCH', async () => {
+		currentAttachments = [{ ...attachment, allowed_ips: ['10.20.0.0/24'] }];
+		mocks.patch.mockImplementation(async (_path: string, body: { allowed_ips: string[] }) => {
+			currentAttachments = [{ ...attachment, allowed_ips: body.allowed_ips }];
+			return currentAttachments[0];
+		});
+		render(WaygateWorkspace);
+		await openDetail();
+		// The interface CIDR and the separately stored routing entry are both shown.
+		await vi.waitFor(() => expect(screen.getAllByText('10.20.0.0/24')).toHaveLength(2));
+		await fireEvent.click(screen.getByRole('button', { name: t('project.network.editAllowedIps', { name: 'own-net' }) }));
+		const modal = within(screen.getByRole('dialog', { name: t('project.network.editAllowedIpsTitle') }));
+		const routing = modal.getByRole('textbox', { name: t('project.network.allowedIps') }) as HTMLTextAreaElement;
+		expect(routing.value).toBe('10.20.0.0/24');
+		await fireEvent.input(routing, { target: { value: '' } });
+		await fireEvent.click(modal.getByRole('button', { name: t('project.actions.save') }));
+		await settle();
+		expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(`${base}/server-a/networks/7`, { allowed_ips: [] }, 'token-a', 'project-a');
+		expect(mocks.toastSuccess).toHaveBeenCalledWith(t('project.toast.allowedIpsSaved'));
+		expect(await screen.findByText(t('project.network.allowedIpsNone'))).toBeTruthy();
+	});
+
+	it.each([
+		['a legacy attachment without routing', { allowed_ips: undefined, status: 'ACTIVE' }],
+		['a non-ACTIVE attachment', { allowed_ips: ['10.20.0.0/24'], status: 'BUILD' }],
+	])('does not offer routing edits for %s', async (_name, override) => {
+		currentAttachments = [{ ...attachment, ...override }];
+		render(WaygateWorkspace);
+		await openDetail();
+		await screen.findByText(attachment.network_id);
+		expect(screen.queryByRole('button', { name: t('project.network.editAllowedIps', { name: 'own-net' }) })).toBeNull();
 	});
 });

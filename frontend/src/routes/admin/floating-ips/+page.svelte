@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t as scopeT } from '$lib/i18n/ns/domain-admin';
 	let inventoryError = $state('');
@@ -55,6 +56,8 @@
 	let deleteFip = $state<FloatingIpInfo | null>(null);
 	let deleting = $state(false);
 	let deleteError = $state('');
+	// Only the floating IP this page just created carries the tutorial delete anchor.
+	let createdFipId = $state<string | null>(null);
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -91,7 +94,8 @@
 		if (!selectedNetId) return;
 		creating = true; createError = '';
 		try {
-			await api.post('/api/v1/admin/floating-ips', { floating_network_id: selectedNetId }, token, projectId);
+			const created = await api.post<{ id: string }>('/api/v1/admin/floating-ips', { floating_network_id: selectedNetId }, token, projectId);
+			createdFipId = created.id;
 			showCreate = false; await load();
 		} catch (e) { createError = e instanceof ApiError ? e.message : t('floatingIpsPage.error.createFailed'); } finally { creating = false; }
 	}
@@ -119,7 +123,8 @@
 <PageShell>
 	<PageHeader breadcrumb={t('floatingIpsPage.breadcrumb')} title={t('floatingIpsPage.title')}>
 		{#snippet actions()}
-			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.create')}</button>
+			<TutorialStartButton tour="admin-floating-ips" compactOnMobile />
+			<button data-tour="admin-floating-ips-create-open" onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -143,7 +148,7 @@
 					<CompactResourceCard>
 						<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-mono font-medium text-ink-0">{f.floating_ip_address}</h3><span class="text-xs text-ink-2">{f.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned')}</span></div>
 						<div class="space-y-1 break-all text-xs text-ink-2"><p>{t('floatingIpsPage.table.fixedIp')}: {f.fixed_ip_address ?? '-'}</p><p>{t('floatingIpsPage.table.project')}: {f.project_id?.slice(0, 8) ?? '-'}</p></div>
-						{#snippet actions()}{#if !f.port_id}<Button variant="danger" size="sm" onclick={() => { deleteFip = f; deleteError = ''; }}>{t('floatingIpsPage.actions.delete')}</Button>{/if}{/snippet}
+						{#snippet actions()}{#if !f.port_id}<Button variant="danger" size="sm" onclick={() => { deleteFip = f; deleteError = ''; }} dataTour={f.id === createdFipId ? 'admin-floating-ips-delete' : undefined}>{t('floatingIpsPage.actions.delete')}</Button>{/if}{/snippet}
 						{#snippet details()}<div class="space-y-2 break-all font-mono text-xs text-ink-2"><p>{f.id}</p><p>{f.project_id ?? '-'}</p></div>{/snippet}
 					</CompactResourceCard>
 				{/each}
@@ -167,7 +172,7 @@
 							<td class="py-2 pr-4 text-ink-2 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
 							<td class="py-2">
 								{#if !f.port_id}
-									<button onclick={() => { deleteFip = f; deleteError = ''; }}
+									<button onclick={() => { deleteFip = f; deleteError = ''; }} data-tour={f.id === createdFipId ? 'admin-floating-ips-delete' : undefined}
 										class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded">{t('floatingIpsPage.actions.delete')}</button>
 								{/if}
 							</td>
@@ -177,7 +182,7 @@
 			</table>
 		</div>
 		</ResponsiveTable>
-		<div class="mt-3 flex gap-4 text-xs text-ink-2">
+		<div class="mt-3 flex gap-4 text-xs text-ink-2" data-tour="admin-floating-ips-summary">
 			<span>{t('floatingIpsPage.summary.total', { count: fips.length })}</span>
 			<span class="text-green-400">{t('floatingIpsPage.summary.assigned', { count: fips.filter(f => f.port_id).length })}</span>
 			<span>{t('floatingIpsPage.summary.unassigned', { count: fips.filter(f => !f.port_id).length })}</span>
@@ -186,7 +191,7 @@
 
 <!-- 생성 모달 -->
 <Modal bind:open={showCreate} ariaLabel={t('floatingIpsPage.createDialog.title')}>
-	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
+	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" data-tour="admin-floating-ips-create-form">
 		<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('floatingIpsPage.createDialog.title')}</h2>
 		{#if createError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{createError}</div>{/if}
 		<div>
@@ -203,7 +208,7 @@
 		</div>
 		<div class="flex justify-end gap-3 mt-6">
 			<button onclick={() => { showCreate = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.cancel')}</button>
-			<button aria-busy={creating} onclick={createFip} disabled={creating || !selectedNetId} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('floatingIpsPage.actions.creating')}</span>{:else}{t('floatingIpsPage.createDialog.submit')}{/if}</button>
+			<button aria-busy={creating} onclick={createFip} disabled={creating || !selectedNetId} data-tour="admin-floating-ips-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('floatingIpsPage.actions.creating')}</span>{:else}{t('floatingIpsPage.createDialog.submit')}{/if}</button>
 		</div>
 	</div>
 </Modal>
@@ -218,7 +223,7 @@
 			{#if deleteError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{deleteError}</div>{/if}
 			<div class="flex justify-end gap-3">
 				<button onclick={() => { deleteFip = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.cancel')}</button>
-				<button aria-busy={deleting} onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] text-sm font-medium rounded-lg disabled:opacity-30">{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('floatingIpsPage.actions.deleting')}</span>{:else}{t('floatingIpsPage.actions.delete')}{/if}</button>
+				<button aria-busy={deleting} onclick={confirmDelete} disabled={deleting} data-tour="admin-floating-ips-delete-confirm" class="px-4 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] text-sm font-medium rounded-lg disabled:opacity-30">{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('floatingIpsPage.actions.deleting')}</span>{:else}{t('floatingIpsPage.actions.delete')}{/if}</button>
 			</div>
 		</div>
 	</Modal>

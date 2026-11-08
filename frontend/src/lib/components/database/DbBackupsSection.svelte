@@ -11,6 +11,8 @@
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+	import { page } from '$app/state';
+	import { isMockAuthActive } from '$lib/stores/auth';
 
 	const s = useDbInstanceDetailController();
 
@@ -24,6 +26,9 @@
 
 	let showBackupForm = $state(false);
 	let newBackup = $state({ name: '', description: '' });
+	// Tutorial anchors: only the backup this panel created; Trove deletes it only once it settles.
+	const tourCreatedId = $derived(s.backups.find((b) => b.id === s.lastCreatedBackupId)?.id ?? null);
+	const tourDeleteId = $derived(s.backups.find((b) => b.id === tourCreatedId && (b.status === 'COMPLETED' || b.status === 'FAILED' || b.status === 'ERROR'))?.id ?? null);
 
 	// 자동 백업 설정 폼 상태 (frequency + count 단순화)
 	type Frequency = 'daily' | 'weekly' | 'monthly';
@@ -77,13 +82,23 @@
 		showAutoForm = false;
 	}
 
+	// Tutorial (synthetic mockup) sessions name every backup they create with a tut- prefix.
+	const tutorialSession = $derived(page.data?.mockup?.active === true && isMockAuthActive());
 	function autoBackupName(): string {
+		const prefix = tutorialSession ? 'tut-' : '';
 		const base = s.instance?.name ?? 'backup';
 		const now = new Date();
 		const pad = (n: number) => String(n).padStart(2, '0');
 		const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
 		const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-		return `${base}-${date}-${time}`;
+		return `${prefix}${base}-${date}-${time}`;
+	}
+
+	function toggleBackupForm() {
+		showBackupForm = !showBackupForm;
+		s.backupError = '';
+		// Prefill the visible tut- name in tutorial sessions so the created backup is recognisable.
+		if (showBackupForm && !newBackup.name && tutorialSession) newBackup.name = autoBackupName();
 	}
 
 	async function handleCreateBackup() {
@@ -171,19 +186,19 @@
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
 		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.backups')}</h2>
-		<button onclick={() => { showBackupForm = !showBackupForm; s.backupError = ''; }}
+		<button data-tour="database-backups-create-open" onclick={toggleBackupForm}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
 			{showBackupForm ? tr('actions.cancel') : tr('actions.createBackup')}
 		</button>
 	</div>
 	{#if showBackupForm}
-		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
+		<div data-tour="database-backups-create-form" class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newBackup.name} placeholder={tr('backups.namePlaceholder', { name: s.instance?.name ?? 'db' })}
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm" />
 			<input type="text" bind:value={newBackup.description} placeholder={tr('form.description')}
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if s.backupError}<p class="text-red-400 text-xs">{s.backupError}</p>{/if}
-			<button onclick={handleCreateBackup} disabled={s.creatingBackup}
+			<button data-tour="database-backups-create-submit" onclick={handleCreateBackup} disabled={s.creatingBackup}
 				class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
 				{#if s.creatingBackup}<LoadingState variant="control" label="" />{/if}{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
 			</button>
@@ -197,16 +212,17 @@
 	{#if s.backups.length > 0 && s.backupView.rows.length === 0}
 		<p class="text-sm text-ink-2" role="status">{tl('table.noMatches')}</p>
 	{/if}
+	<div data-tour="database-backups-list">
     <ResponsiveTable>
       {#snippet cards()}
         {#each s.backupView.rows as b (b.id)}
           <CompactResourceCard>
-            <div class="flex flex-wrap items-center gap-2"><strong class="min-w-0 break-all">{b.name}</strong><StatusChip status={b.status} />{#if isStuck(b)}<span class="text-xs text-state-danger-text" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}</div>
+            <div data-tour={tourCreatedId === b.id ? 'database-backups-created' : undefined} class="flex flex-wrap items-center gap-2"><strong class="min-w-0 break-all">{b.name}</strong><StatusChip status={b.status} />{#if isStuck(b)}<span class="text-xs text-state-danger-text" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}</div>
             <p class="text-xs text-ink-2">{tr('labels.size')}: {b.size == null ? '-' : `${b.size} GB`}</p>
             {#snippet details()}<p class="text-xs break-all">{b.id}</p><p class="text-xs">{tr('labels.created')}: {b.created_at ? b.created_at.slice(0, 10) : '-'}</p>{/snippet}
             {#snippet actions()}
               <button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id} class="inline-flex items-center gap-1 text-warm-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm">{#if s.restoringBackup === b.id}<LoadingState variant="control" label="" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}</button>
-              <button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingBackup === b.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+              <button data-tour={tourDeleteId === b.id ? 'database-backups-delete' : undefined} onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id} class="inline-flex items-center gap-1 text-state-danger-text disabled:text-ink-3 text-xs px-2 py-1 rounded border border-line-2">{#if s.deletingBackup === b.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             {/snippet}
           </CompactResourceCard>
         {/each}
@@ -223,7 +239,7 @@
 			</thead>
 			<tbody>
 				{#each s.backupView.rows as b}
-					<tr class="border-t border-line/50">
+					<tr data-tour={tourCreatedId === b.id ? 'database-backups-created' : undefined} class="border-t border-line/50">
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2">
 							<div class="flex items-center gap-1">
@@ -241,7 +257,7 @@
 									class="inline-flex items-center gap-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
 									{#if s.restoringBackup === b.id}<LoadingState variant="control" label="" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}
 								</button>
-								<button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}
+								<button data-tour={tourDeleteId === b.id ? 'database-backups-delete' : undefined} onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}
 									class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 									{#if s.deletingBackup === b.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
 								</button>
@@ -252,4 +268,5 @@
 			</tbody>
 		</table>
     </ResponsiveTable>
+	</div>
 </div>

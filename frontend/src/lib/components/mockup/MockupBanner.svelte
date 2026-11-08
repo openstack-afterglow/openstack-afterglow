@@ -2,11 +2,15 @@
 	import { goto } from '$app/navigation';
 	import { MOCKUP_COOKIE, MOCKUP_QUERY_KEY, type MockupProfileId } from '$lib/mockup/contracts';
 	import { t } from '$lib/i18n/ns/shell';
+	import { isTourActive, onTourActivityChange } from '$lib/tutorial/engine';
 
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 
 	let { profile = 'on' }: { profile?: MockupProfileId | null } = $props();
+	// The banner is fixed to the bottom edge and would cover highlighted controls, so it yields while a tour runs.
+	let tourActive = $state(isTourActive());
+	$effect(() => onTourActivityChange((active) => { tourActive = active; }));
 
 	async function exitTutorialMode() {
 		const secure = location.protocol === 'https:' ? '; Secure' : '';
@@ -15,7 +19,7 @@
 	}
 </script>
 
-<div class="mockup-banner" role="status" aria-live="polite">
+<div class="mockup-banner" class:in-tour={tourActive} role="status" aria-live="polite">
 	<div class="mockup-copy">
 		<Pill tone="warning" dot>{profile === 'admin' ? t('mockup.adminPreview') : t('mockup.tutorial')}</Pill>
 		<span class="mockup-message">{profile === 'admin' ? t('mockup.adminMessage') : t('mockup.tutorialMessage')}</span>
@@ -30,7 +34,7 @@
 		position: fixed;
 		left: 50%;
 		bottom: 1rem;
-		z-index: 70;
+		z-index: 40;
 		display: flex;
 		width: min(calc(100vw - 2rem), 44rem);
 		transform: translateX(-50%);
@@ -77,5 +81,9 @@
 		.mockup-message {
 			white-space: normal;
 		}
+	}
+
+	.mockup-banner.in-tour {
+		display: none;
 	}
 </style>

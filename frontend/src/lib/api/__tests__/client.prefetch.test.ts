@@ -299,15 +299,16 @@ describe('explicit scoped prefetch', () => {
 		await api.get('/api/v1/scoped', 'token-b', 'project-a');
 		await api.get('/api/v1/scoped', 'token-a', 'project-b');
 		mockProfile.value = 'admin';
-		await api.get('/api/v1/scoped', 'token-a', 'project-a');
+		await expect(api.get('/api/v1/scoped', 'token-a', 'project-a')).rejects.toMatchObject({ status: 409 });
 		siteConfig.update((config) => ({
 			...config,
 			runtime: { ...config.runtime, api_base: 'https://api.example.test' },
 		}));
+		mockProfile.value = null;
 		await api.get('/api/v1/scoped', 'token-a', 'project-a');
 
-		expect(mockFetch).toHaveBeenCalledTimes(5);
-		expect(mockFetch.mock.calls[4][0]).toBe('https://api.example.test/api/v1/scoped?cache=true');
+		expect(mockFetch).toHaveBeenCalledTimes(4);
+		expect(mockFetch.mock.calls[3][0]).toBe('https://api.example.test/api/v1/scoped?cache=true');
 	});
 
 	it('lets a redirect-enabled visible GET consume a redirect-suppressed warm success', async () => {

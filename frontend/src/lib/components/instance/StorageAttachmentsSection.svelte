@@ -81,6 +81,7 @@
 	const cephIdentity = $derived(targetIsCurrent && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(s.instanceId)
 		? `afterglow-${s.instanceId.replaceAll('-', '').toLowerCase()}` : '');
 	const busy = $derived(granting || revoking !== null || retrieving !== null);
+	const lockTitle = $derived(s.waygateLocked ? t('waygate.managedNote') : undefined);
 	const canGrant = $derived($canWrite && targetIsCurrent && !!s.effectiveProjectId && !loading
 		&& catalogStatus === 'loaded' && !!selectedStorage
 		&& (selectedStorage.share_proto === 'NFS' ? fixedIps.includes(selectedFixedIp) : !!cephIdentity));
@@ -170,7 +171,7 @@
 		return promise;
 	}
 	function toggleForm() {
-		if (!get(canWrite) || !currentScope()) return;
+		if (!get(canWrite) || !currentScope() || s.waygateLocked) return;
 		clearDisclosure();
 		showForm = !showForm;
 		resetForm();
@@ -182,7 +183,7 @@
 		const mutation = mutationGeneration;
 		const storage = availableStorages.find(f => f.id === selectedStorageId);
 		// Re-read the current permission, target and exact IP at the mutation boundary.
-		if (!get(canWrite) || !scope || busy || loading || catalogStatus !== 'loaded' || !storage) return;
+		if (!get(canWrite) || !scope || busy || loading || catalogStatus !== 'loaded' || !storage || s.waygateLocked) return;
 		if (storage.share_proto === 'NFS' ? !fixedIps.includes(selectedFixedIp) : !cephIdentity) return;
 		const body = {
 			file_storage_id: storage.id,
@@ -203,7 +204,7 @@
 			await loadAttachments(scope.instanceId, scope.projectId, generation);
 		} catch (error) {
 			if (isCurrentMutation(scope, generation, mutation) && disclosureGeneration === disclosure) {
-				toast.error(t('storageAttachments.grantFailed', { error: error instanceof ApiError ? error.message : String(error) }));
+				toast.error(t('storageAttachments.grantFailed', { error: error instanceof ApiError && error.code === 'waygate_managed_resource' ? t('waygate.managedNote') : error instanceof ApiError ? error.message : String(error) }));
 			}
 		} finally {
 			if (isCurrentMutation(scope, generation, mutation)) granting = false;
@@ -213,7 +214,7 @@
 		const scope = currentScope();
 		const generation = attachmentScopeGeneration;
 		const mutation = mutationGeneration;
-		if (!get(canWrite) || !scope || busy || loading || !attachments.some(a => a.file_storage_id === fileStorageId && a.managed && a.association_state === 'tracked')) return;
+		if (!get(canWrite) || !scope || busy || loading || s.waygateLocked || !attachments.some(a => a.file_storage_id === fileStorageId && a.managed && a.association_state === 'tracked')) return;
 		revoking = fileStorageId;
 		clearDisclosure();
 		try {
@@ -222,7 +223,7 @@
 			await loadAttachments(scope.instanceId, scope.projectId, generation);
 		} catch (error) {
 			if (isCurrentMutation(scope, generation, mutation)) {
-				toast.error(t('storageAttachments.revokeFailed', { error: error instanceof ApiError ? error.message : String(error) }));
+				toast.error(t('storageAttachments.revokeFailed', { error: error instanceof ApiError && error.code === 'waygate_managed_resource' ? t('waygate.managedNote') : error instanceof ApiError ? error.message : String(error) }));
 				// A rejected/pending revoke may have changed provider state without removing the association.
 				await loadAttachments(scope.instanceId, scope.projectId, generation);
 			}
@@ -342,13 +343,13 @@
 	<div class="flex items-center justify-between mb-4 gap-3">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('storageAttachments.title')}</h2>
 		{#if $canWrite}
-			<Button variant="link" size="xs" onclick={toggleForm} disabled={!targetIsCurrent || !s.effectiveProjectId} ariaExpanded={showForm}>
+			<Button variant="link" size="xs" onclick={toggleForm} disabled={!targetIsCurrent || !s.effectiveProjectId || s.waygateLocked} title={lockTitle} ariaExpanded={showForm}>
 				{showForm ? t('storageAttachments.close') : t('storageAttachments.openGrant')}
 			</Button>
 		{/if}
 	</div>
 	<Alert tone="info" class="mb-4">{t('storageAttachments.manualConnection')}</Alert>
-	{#if showForm && $canWrite}
+	{#if showForm && $canWrite && !s.waygateLocked}
 		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
 			<div class="grid grid-cols-1 gap-3 mb-3">
 				<div>
@@ -405,7 +406,7 @@
 								{#if att.share_proto === 'CEPHFS'}<Button variant="secondary" size="xs" onclick={() => handleConnectionInfo(att.file_storage_id)} disabled={busy || !targetIsCurrent} ariaBusy={retrieving === att.file_storage_id}>
 									{#if retrieving === att.file_storage_id}<LoadingState variant="control" label={t('storageAttachments.connectionLoading')} />{:else}{t('storageAttachments.connectionInfo')}{/if}
 								</Button>{/if}
-								<Button variant="danger-outline" size="xs" onclick={() => handleRevoke(att.file_storage_id)} disabled={busy || !targetIsCurrent} ariaBusy={revoking === att.file_storage_id}>
+								<Button variant="danger-outline" size="xs" onclick={() => handleRevoke(att.file_storage_id)} disabled={busy || !targetIsCurrent || s.waygateLocked} title={lockTitle} ariaBusy={revoking === att.file_storage_id}>
 									{#if revoking === att.file_storage_id}<LoadingState variant="control" label={t('storageAttachments.revoking')} />{:else}{t('storageAttachments.revoke')}{/if}
 								</Button>
 							</div>

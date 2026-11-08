@@ -30,6 +30,14 @@
 	];
 	const view = createTableView({ rows: () => securityGroups, columns, search: () => search, searchable: row => [row.name, row.id, row.description ?? ''] });
 
+	function mutationMessage(e: unknown): string {
+		if (e instanceof ApiError && e.code === 'waygate_managed_resource') return tp('securityGroups.waygateManagedNote');
+		return e instanceof ApiError ? e.message : String(e);
+	}
+	function waygateManaged(sgId: string): boolean {
+		return !!securityGroups.find((group) => group.id === sgId)?.waygate_managed;
+	}
+
 	async function fetchSecurityGroups() {
 		try {
 			securityGroups = await api.get<SecurityGroup[]>('/api/v1/security-groups', $auth.token ?? undefined, $auth.projectId ?? undefined);
@@ -48,17 +56,17 @@
 			await fetchSecurityGroups();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : t('securityGroup.error.create');
+			return e instanceof ApiError ? mutationMessage(e) : t('securityGroup.error.create');
 		}
 	}
 
 	async function deleteSecurityGroup(sgId: string, name: string) {
-		if (!await confirmDialog(t('securityGroup.confirm.delete', { name }))) return;
+		if (waygateManaged(sgId) || !await confirmDialog(t('securityGroup.confirm.delete', { name }))) return;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchSecurityGroups();
 		} catch (e) {
-			toast.error(t('securityGroup.error.delete', { error: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('securityGroup.error.delete', { error: mutationMessage(e) }));
 		}
 	}
 
@@ -66,6 +74,7 @@
 		sgId: string,
 		form: { direction: string; protocol: string; port_range_min: string; port_range_max: string; remote_ip_prefix: string; ethertype: string }
 	): Promise<string | true> {
+		if (waygateManaged(sgId)) return tp('securityGroups.waygateManagedNote');
 		try {
 			const body: Record<string, unknown> = {
 				direction: form.direction,
@@ -79,16 +88,17 @@
 			await fetchSecurityGroups();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : t('securityGroup.error.addRule');
+			return e instanceof ApiError ? mutationMessage(e) : t('securityGroup.error.addRule');
 		}
 	}
 
 	async function deleteSgRule(sgId: string, ruleId: string) {
+		if (waygateManaged(sgId)) return;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}/rules/${ruleId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchSecurityGroups();
 		} catch (e) {
-			toast.error(t('securityGroup.error.deleteRule', { error: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('securityGroup.error.deleteRule', { error: mutationMessage(e) }));
 		}
 	}
 
@@ -138,6 +148,7 @@
 			{#each view.rows as sg (sg.id)}
 				<SecurityGroupCard
 					{sg}
+					waygateNote={sg.waygate_managed ? { text: tp('securityGroups.waygateManagedNote'), linkLabel: tp('securityGroups.openWaygate') } : undefined}
 					onDelete={deleteSecurityGroup}
 					onAddRule={addSgRule}
 					onDeleteRule={deleteSgRule}

@@ -62,6 +62,7 @@
 		tabindex="-1"
 	>
 		<div
+			data-tour="volume-backups-create-form"
 			class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
@@ -106,7 +107,7 @@
 			{#if creating}<LoadingState variant="inline" label={t('backupCreateModal.title')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('backupCreateModal.cancel')}</button>
-				<Button onclick={submit} disabled={creating || !selectedVolume || !form.name.trim() || (forceRequired && !form.force)} ariaBusy={creating}>{#if creating}<LoadingState variant="control" label="" />{t('backupCreateModal.creating')}{:else}{t('backupCreateModal.create')}{/if}</Button>
+				<Button onclick={submit} disabled={creating || !selectedVolume || !form.name.trim() || (forceRequired && !form.force)} ariaBusy={creating} dataTour="volume-backups-create-submit">{#if creating}<LoadingState variant="control" label="" />{t('backupCreateModal.creating')}{:else}{t('backupCreateModal.create')}{/if}</Button>
 			</div>
 		</div>
 	</div>

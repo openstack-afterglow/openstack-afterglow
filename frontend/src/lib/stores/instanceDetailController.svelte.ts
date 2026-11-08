@@ -118,6 +118,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		&& !!instance.project_id && instance.project_id === opts.effectiveProjectId()
 		&& (!opts.adminMode() || identity.current.isSystemAdmin)
 	);
+	// Waygate gateways are controllable only through Waygate on the project surface; admin detail stays unrestricted.
+	const waygateLocked = $derived(!!instance?.waygate_managed && !opts.adminMode());
+	function isWaygateLocked() { return !!instance?.waygate_managed && !opts.adminMode(); }
+	function mutationErrorMessage(e: unknown): string {
+		if (e instanceof ApiError && e.code === 'waygate_managed_resource') return t('waygate.managedNote');
+		return e instanceof ApiError ? e.message : String(e);
+	}
 	const unsubscribeRenameAuth = auth.subscribe(() => {
 		renameAuthEpoch++;
 		if (renameContext) closeRename();
@@ -151,7 +158,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	function openRename() {
 		const caller = get(auth);
 		if (!canRename || !instance?.project_id || instance.project_id !== opts.effectiveProjectId() || !caller.token
-			|| (opts.adminMode() && !caller.isSystemAdmin) || mutationBusy() || renameLoading) return;
+			|| (opts.adminMode() && !caller.isSystemAdmin) || mutationBusy() || renameLoading || isWaygateLocked()) return;
 		++renameGeneration;
 		renameContext = { id: instance.id, projectId: instance.project_id, ownProjectId: ownPid(), adminMode: opts.adminMode(), token: caller.token, userId: caller.userId, epoch: renameAuthEpoch };
 		renameDraft = instance.name;
@@ -166,7 +173,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			&& canRename && instance?.id === context.id && opts.instanceId() === context.id
 			&& opts.effectiveProjectId() === context.projectId && ownPid() === context.ownProjectId
 			&& opts.adminMode() === context.adminMode && get(auth).token === context.token && get(auth).userId === context.userId;
-		if (!context || !owns() || renameLoading || mutationBusy()) return;
+		if (!context || !owns() || renameLoading || mutationBusy() || isWaygateLocked()) return;
 		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		const readContext = captureReadContext();
 		const draft = renameDraft.trim();
@@ -200,7 +207,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			opts.onUpdated?.();
 		} catch (e) {
 			if (owns()) {
-				renameError = e instanceof ApiError ? e.message : t('rename.failed');
+				renameError = e instanceof ApiError ? mutationErrorMessage(e) : t('rename.failed');
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'stale');
@@ -554,7 +561,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			: action === 'unshelve'
 				? context.status === 'SHELVED' || context.status === 'SHELVED_OFFLOADED'
 				: context.status === 'ACTIVE';
-		if (!statusAllowed) return;
+		if (!statusAllowed || (action === 'shelve' && isWaygateLocked())) return;
 		const message = t('controller.action.confirm', { action });
 		if (!(await confirmDialog(action === 'stop' || action === 'shelve' ? `${message}\n${t('panel.stoppedQuotaWarning')}` : message))) return;
 		if (!ownsMutationContext(context) || mutationBusy()) return;
@@ -566,7 +573,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			else experienceDiscarded(experience, 'scope_changed');
 		} catch (e) {
 			if (ownsMutationContext(context, false)) {
-				toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
+				toast.error(t('controller.action.failed', { action, message: mutationErrorMessage(e) }));
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'scope_changed');
@@ -577,7 +584,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function deleteInstance() {
 		const context = captureMutationContext();
-		if (!instance || !context || context.status !== 'SHUTOFF' || mutationBusy()) return;
+		if (!instance || !context || context.status !== 'SHUTOFF' || mutationBusy() || isWaygateLocked()) return;
 		if (!await confirmInstanceDeletion(t('controller.delete.confirm', { name: instance.name }), {
 			targets: [{ id: context.id, name: instance.name, upperVolume: !!instance.union_upper_volume_id }],
 			adminMode: context.adminMode,
@@ -594,7 +601,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			if (ownsMutationContext(context, false)) opts.onDelete();
 		} catch (e) {
 			if (ownsMutationContext(context, false)) {
-				toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
+				toast.error(t('controller.delete.failed', { message: mutationErrorMessage(e) }));
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'scope_changed');
@@ -604,14 +611,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function assignFloatingIp(portId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		actioning = 'fip-assign-' + portId;
 		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
 			await api.withExperience(experience).post(`${instancePath(instance.id)}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.floatingIp.assignFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.floatingIp.assignFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -620,7 +627,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function releaseFloatingIp(fipId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		if (!(await confirmDialog(t('controller.floatingIp.releaseConfirm')))) return;
 		actioning = 'fip-release-' + fipId;
 		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
@@ -633,7 +640,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			}
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.floatingIp.releaseFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.floatingIp.releaseFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -642,14 +649,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function attachVolume(volumeId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		actioning = 'attach-vol';
 		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
 			await api.withExperience(experience).post(`${instancePath(instance.id)}/volumes`, { volume_id: volumeId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.volume.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.volume.attachFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -658,7 +665,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function createAndAttachVolume(name: string, sizeGb: number) {
-		if (!instance || opts.adminMode()) return;
+		if (!instance || opts.adminMode() || isWaygateLocked()) return;
 		actioning = 'create-vol';
 		const experience = beginExperienceAction('compute', 'create', 'resource.detail');
 		try {
@@ -666,7 +673,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.withExperience(experience).post(`${instancePath(instance.id)}/volumes`, { volume_id: vol.id }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.volume.createAttachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.volume.createAttachFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -675,7 +682,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function detachVolume(volumeId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		if (!(await confirmDialog(t('controller.volume.detachConfirm')))) return;
 		actioning = 'detach-' + volumeId;
 		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
@@ -683,7 +690,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.withExperience(experience).delete(`${instancePath(instance.id)}/volumes/${volumeId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.volume.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.volume.detachFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -692,7 +699,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function setDeleteOnTermination(volumeId: string, next: boolean) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		if (!(await confirmDialog(t('controller.volume.autoDeleteConfirm', { state: next ? 'enabled' : 'disabled' })))) return;
 		actioning = 'dot-' + volumeId;
 		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
@@ -700,7 +707,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.withExperience(experience).patch(`${instancePath(instance.id)}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.volume.changeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.volume.changeFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -709,14 +716,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function attachInterface(netId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		actioning = 'attach-iface';
 		const experience = beginExperienceAction('compute', 'attach', 'resource.detail');
 		try {
 			await api.withExperience(experience).post(`${instancePath(instance.id)}/interfaces`, { net_id: netId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.interface.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.interface.attachFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -725,7 +732,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function detachInterface(portId: string) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		if (!(await confirmDialog(t('controller.interface.detachConfirm')))) return;
 		actioning = 'detach-iface-' + portId;
 		const experience = beginExperienceAction('compute', 'detach', 'resource.detail');
@@ -733,7 +740,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.withExperience(experience).delete(`${instancePath(instance.id)}/interfaces/${portId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.interface.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.interface.detachFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -742,7 +749,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function saveSgEdit(portId: string, sgIds: string[]) {
-		if (!instance) return;
+		if (!instance || isWaygateLocked()) return;
 		actioning = 'sg-' + portId;
 		const experience = beginExperienceAction('compute', 'update', 'resource.detail');
 		try {
@@ -754,7 +761,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			);
 			await fetchInstance(instance.id, { silent: true, refreshSecurityGroups: true }, experience);
 		} catch (e) {
-			toast.error(t('controller.securityGroup.updateFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+			toast.error(t('controller.securityGroup.updateFailed', { message: mutationErrorMessage(e) }));
 			experienceState(experience, 'error');
 			if (experience) void experienceApplied(experience);
 		} finally {
@@ -780,7 +787,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function loadResizeFlavors() {
 		const context = captureMutationContext();
-		if (!context || !RESIZABLE_STATUSES.has(context.status) || mutationBusy()) return;
+		if (!context || !RESIZABLE_STATUSES.has(context.status) || mutationBusy() || isWaygateLocked()) return;
 		const generation = ++resizeFlavorGeneration;
 		resizeFlavorContext = null;
 		resizeFlavors = [];
@@ -812,7 +819,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	async function doResize(flavorId: string, composed: FlavorOption | null = null): Promise<boolean> {
 		const context = resizeFlavorContext;
 		if (!context || !RESIZABLE_STATUSES.has(context.status) || !ownsMutationContext(context)
-			|| resizeFlavorsLoading || mutationBusy() || !selectableResizeFlavor(flavorId, composed)) return false;
+			|| resizeFlavorsLoading || mutationBusy() || isWaygateLocked() || !selectableResizeFlavor(flavorId, composed)) return false;
 		const flavor = composed ?? resizeFlavors.find(f => f.id === flavorId)!;
 		const ramLabel = flavor.ram >= 1024 ? `${flavor.ram / 1024} GB` : `${flavor.ram} MB`;
 		const flavorLabel = t('resize.flavorLabel', { name: flavor.display_name ? `${flavor.display_name} (${flavor.name} · ${flavor.id})` : flavor.name, vcpus: flavor.vcpus, ram: ramLabel });
@@ -833,7 +840,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			return true;
 		} catch (e) {
 			if (ownsMutationContext(context, false)) {
-				resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
+				resizeError = e instanceof ApiError ? mutationErrorMessage(e) : t('controller.resize.failed');
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'scope_changed');
@@ -855,7 +862,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true }, experience);
 		} catch (e) {
 			if (ownsMutationContext(context, false)) {
-				toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+				toast.error(t('controller.resize.revertFailed', { message: mutationErrorMessage(e) }));
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'scope_changed');
@@ -876,7 +883,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			if (ownsMutationContext(context, false)) await fetchInstance(context.id, { silent: true }, experience);
 		} catch (e) {
 			if (ownsMutationContext(context, false)) {
-				toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+				toast.error(t('controller.resize.confirmFailed', { message: mutationErrorMessage(e) }));
 				experienceState(experience, 'error');
 				if (experience) void experienceApplied(experience);
 			} else experienceDiscarded(experience, 'scope_changed');
@@ -1041,6 +1048,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	return {
 		get instance() { return instance; },
 		get canRename() { return canRename; },
+		get waygateLocked() { return waygateLocked; },
 		get renameOpen() { return renameOpen; },
 		get renameDraft() { return renameDraft; },
 		set renameDraft(value: string) { renameDraft = value; },
@@ -1134,6 +1142,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 export interface InstanceDetailController {
 	readonly instance: Instance | null;
 	readonly canRename: boolean;
+	/** True for a Waygate gateway outside admin mode: locked mutations must go through Waygate. */
+	readonly waygateLocked: boolean;
 	readonly renameOpen: boolean;
 	renameDraft: string;
 	readonly renameError: string;

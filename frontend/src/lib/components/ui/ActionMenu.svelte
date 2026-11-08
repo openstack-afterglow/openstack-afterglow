@@ -70,6 +70,8 @@
   function handleMenuFocusOut(event: FocusEvent) {
     const next = event.relatedTarget;
     if (next instanceof Node && (menuEl?.contains(next) || triggerEl?.contains(next))) return;
+    // A guided-tour popover focuses itself while highlighting a menu item; keep the menu open for that step.
+    if (next instanceof Element && next.closest('.driver-popover')) return;
     onclose();
   }
 

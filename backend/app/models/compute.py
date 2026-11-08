@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from app.models.instance_usage import UsageScheduleRequest
+from app.services.waygate_managed import is_waygate_managed_server
 
 CPU_CONTROL_SPEC = "afterglow:cpu_control_token"
 
@@ -228,6 +229,12 @@ class InstanceInfo(BaseModel):
     project_id: str | None = None
     fault: dict | None = None  # OpenStack 서버 fault: {"message": "...", "code": 500, "created": "..."}
     host: str | None = None  # 현재 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐)
+
+    @computed_field
+    @property
+    def waygate_managed(self) -> bool:
+        """Waygate gateway VMs are controlled only through Waygate; clients never parse marker keys."""
+        return is_waygate_managed_server(self.metadata)
 
 
 class InstanceNameRequest(BaseModel):

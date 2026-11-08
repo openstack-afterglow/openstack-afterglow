@@ -1056,6 +1056,12 @@ def test_list_networks_visibility_filtering():
     assert res[0].cidrs == ["10.1.0.0/24"]
     assert res[1].cidrs == ["203.0.113.0/24"]
     assert res[2].cidrs == ["10.2.0.0/24"]
+    # The Waygate attach dialog labels provider/shared networks from these flags and owner IDs.
+    assert [(n.is_external, n.is_shared, n.project_id) for n in res] == [
+        (False, False, "proj-a"),
+        (True, False, "proj-b"),
+        (False, True, "proj-c"),
+    ]
 
 
 def test_net_to_info_optional_cidrs_parameter():

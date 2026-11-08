@@ -116,6 +116,16 @@ describe('frontend health', () => {
 		expect(directives).toContain("media-src 'self' blob:");
 	});
 
+	it('lets bundled KaTeX fonts load from data URIs without opening other font origins', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/login');
+
+		const response = await handle({ event: request.event, resolve: request.resolve });
+
+		const directives = (response.headers.get('Content-Security-Policy') ?? '').split(';').map((part) => part.trim());
+		expect(directives).toContain("font-src 'self' data: https://fonts.gstatic.com");
+	});
+
 	it('allows only the fixed Gravatar image origin without expanding API connection authority', async () => {
 		const { handle } = await loadHandle();
 		const request = createRequest('http://frontend.example.com/login');

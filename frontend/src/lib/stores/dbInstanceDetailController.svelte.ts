@@ -50,6 +50,8 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	let backupError = $state('');
 	let deletingBackup = $state<string | null>(null);
 	let restoringBackup = $state<string | null>(null);
+	// The backup this panel just created; only it carries the tutorial delete anchor.
+	let lastCreatedBackupId = $state<string | null>(null);
 
 	// Auto-backup state
 	interface AutoBackupConfig {
@@ -244,6 +246,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		databases = [];
 		users = [];
 		backups = [];
+		lastCreatedBackupId = null;
 		rootInfo = null;
 		loading = true;
 		backupSearch = '';
@@ -399,9 +402,11 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
+		const priorIds = new Set(backups.map(b => b.id));
 		creatingBackup = true; backupError = '';
 		try {
-			await observation.client.post(`/api/v1/database-instances/${id}/backups`, { name, description }, tok, proj);
+			const created = await observation.client.post<DbBackup>(`/api/v1/database-instances/${id}/backups`, { name, description }, tok, proj);
+			lastCreatedBackupId = created?.id || null;
 			backups = await observation.client.get<DbBackup[]>(`/api/v1/database-instances/${id}/backups`, tok, proj);
 			observation.applied(backups.length ? 'ready' : 'empty');
 			return true;
@@ -414,6 +419,9 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 				observation.applied(backups.length ? 'ready' : 'empty');
 				if (refreshed.some(b => b.name === name)) {
 					// 백업이 Trove에 실제로 생성됨 — 오류 표시 없이 성공 반환
+					// Names are not unique: only an unambiguous new row is treated as the created backup.
+					const fresh = refreshed.filter(b => b.name === name && !priorIds.has(b.id));
+					lastCreatedBackupId = fresh.length === 1 ? fresh[0].id : null;
 					return true;
 				}
 			} catch { /* 목록 재조회 실패 시 아래 에러 표시로 진행 */ }
@@ -503,6 +511,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		get backupError() { return backupError; },
 		get deletingBackup() { return deletingBackup; },
 		get restoringBackup() { return restoringBackup; },
+		get lastCreatedBackupId() { return lastCreatedBackupId; },
 		get autoBackupConfig() { return autoBackupConfig; },
 		get loadingAutoBackup() { return loadingAutoBackup; },
 		get savingAutoBackup() { return savingAutoBackup; },

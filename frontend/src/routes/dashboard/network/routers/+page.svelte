@@ -27,6 +27,7 @@
   import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
   import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
   import { t as tr } from '$lib/i18n/ns/network-resources';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   let selectedRouterId = $state<string | null>(null);
 
@@ -45,6 +46,8 @@
   let refreshing = $state(false);
   let error = $state('');
   let showModal = $state(false);
+  // Tutorial delete anchors attach only to the router created in this view.
+  let lastCreated = $state<string | null>(null);
   let selection = createResourceSelection();
   let busy = $state(false);
   let stateVersion = 0;
@@ -135,7 +138,8 @@
     try {
       const body: Record<string, unknown> = { name: form.name };
       if (form.external_network_id) body.external_network_id = form.external_network_id;
-      await api.withExperience(experience).post('/api/v1/routers', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      const created = await api.withExperience(experience).post<Router>('/api/v1/routers', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      lastCreated = created.id;
       await fetchRouters(undefined, experience);
       return true;
     } catch (e) {
@@ -165,6 +169,7 @@
     if (!projectId) return;
     untrack(() => {
       selection.clear();
+      lastCreated = null;
       search = ''; view.reset();
       loading = true;
       void fetchRouters();
@@ -183,7 +188,8 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary">{t('routers.createButton')}</Button>
+      <TutorialStartButton tour="routers" compactOnMobile />
+      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary" dataTour="routers-create-open">{t('routers.createButton')}</Button>
     {/snippet}
   </PageHeader>
 
@@ -192,6 +198,7 @@
   {#if routers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tl('table.noMatches')}</p>{/if}
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
+  <div data-tour="routers-list-section">
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('routers.title') })} />
   {:else if routers.length === 0}
@@ -199,6 +206,7 @@
   {:else}
     <RouterCardGrid
       routers={view.rows} {externalNetworkName}
+      highlightId={lastCreated}
       selectedIds={selection.ids}
       selectableIds={visibleSelectableIds}
       selectionDisabled={busy}
@@ -207,6 +215,7 @@
       onOpen={openRouterPanel}
     />
   {/if}
+  </div>
 </PageShell>
 
 <BulkSelectionOverlay
@@ -221,6 +230,7 @@
   <SlidePanel onClose={closeRouterPanel} ariaLabel={t('routers.detail')} width="w-full md:w-[60vw] max-w-2xl">
     <RouterDetailPanel
       routerId={selectedRouterId}
+      highlightDelete={lastCreated !== null && selectedRouterId === lastCreated}
       onClose={closeRouterPanel}
       onDeleted={() => { fetchRouters(); closeRouterPanel(); }}
     />

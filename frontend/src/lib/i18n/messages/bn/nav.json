@@ -167,5 +167,11 @@
 	"scope.allProjects": "পরিসর: সব প্রকল্প",
 	"scope.currentProject": "পরিসর: বর্তমান প্রকল্প · {name}",
 	"actions.refreshDirectory": "পরিসরের তালিকা রিফ্রেশ",
-	"scope.filtered": "পর্যবেক্ষণের পরিসর: {id}"
+	"scope.filtered": "পর্যবেক্ষণের পরিসর: {id}",
+	"actions.searchAll": "রিসোর্স ও সার্ভিস খুঁজুন",
+	"search.resources": "রিসোর্স",
+	"search.loadingResources": "রিসোর্স লোড হচ্ছে…",
+	"search.noResources": "মিলে যাওয়া কোনো রিসোর্স নেই।",
+	"search.noServices": "মিলে যাওয়া কোনো সার্ভিস নেই।",
+	"search.resultCount": "{count}টি ফলাফল"
 }

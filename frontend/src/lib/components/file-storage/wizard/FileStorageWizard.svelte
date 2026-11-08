@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { createFileStorageWizardStore, provideFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
+	import type { FileStorage } from '$lib/types/fileStorage';
 	import FileStorageWizardStep1 from './FileStorageWizardStep1.svelte';
 	import FileStorageWizardStep2 from './FileStorageWizardStep2.svelte';
 	import FileStorageWizardStep3 from './FileStorageWizardStep3.svelte';
@@ -14,13 +15,13 @@
 		onCreated,
 	}: {
 		open: boolean;
-		onCreated: () => void;
+		onCreated: (created: FileStorage) => void;
 	} = $props();
 
 	const s = createFileStorageWizardStore({
 		open: () => open,
 		setOpen: (v) => { open = v; },
-		onCreated: () => onCreated(),
+		onCreated: (created) => onCreated(created),
 		fileStorageShareNetworksEnabled: () => $betaFeatures.fileStorageShareNetworks,
 	});
 	provideFsWizard(s);
@@ -43,6 +44,7 @@
 		role="dialog" aria-modal="true" tabindex="-1"
 	>
 		<div
+			data-tour={s.step === 3 && s.createdFs ? 'file-storage-created' : 'file-storage-create-form'}
 			class="motion-pop bg-surface-base border border-line-2 rounded-xl w-full max-w-xl mx-4 shadow-[var(--shadow-restraint)] max-h-[90vh] overflow-y-auto"
 			onclick={(e) => e.stopPropagation()}
 			role="none"

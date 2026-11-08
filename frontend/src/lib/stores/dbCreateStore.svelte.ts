@@ -47,7 +47,8 @@ export const DB_TABS: readonly string[] = Object.defineProperties(new Array<stri
 interface DbCreateOpts {
 	open: () => boolean;
 	setOpen: (v: boolean) => void;
-	onCreated: () => void;
+	/** Receives the id from the accepted create response, or null when the response carries none. */
+	onCreated: (createdId: string | null) => void;
 	initialNics?: () => string[];
 }
 
@@ -301,11 +302,11 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 			replica_count: replicaOf && replicaCount > 1 ? replicaCount : null,
 		};
 		try {
-			await observation.client.post('/api/v1/database-instances', body, t, p);
+			const created = await observation.client.post<{ id?: unknown } | undefined>('/api/v1/database-instances', body, t, p);
 			opts.setOpen(false);
 			// The form accepted the request; this does not assert instance availability.
 			observation.applied('ready');
-			opts.onCreated();
+			opts.onCreated(typeof created?.id === 'string' ? created.id : null);
 			if (isPublic) {
 				toast.success(
 					tr('wizard.publicCreated')

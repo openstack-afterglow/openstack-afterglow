@@ -34,6 +34,13 @@
   const modalTitleId = `${componentId}-credential-title`;
   let search = $state(''), userSearch = $state('');
   $effect(() => { const id = domainId; untrack(() => { ctrl.setScope(id); search = ''; userSearch = ''; tableView.reset(); }); });
+  // Tutorial delete anchors target only the credential issued/created in this page instance.
+  let lastIssuedId = $state<string | null>(null);
+  $effect(() => { const issued = ctrl.issued; if (issued) untrack(() => { lastIssuedId = issued.id; }); });
+  // Delete anchor follows only the credential the current attempt's verified create result returned; the controller clears it per attempt, reset and delete.
+  const lastCreatedId = $derived(ctrl.created?.id ?? null);
+  const application = $derived(kind === 'application');
+  const dialogAnchor = $derived(application ? (ctrl.mode === 'create' ? 'admin-app-credentials-form' : ctrl.mode === 'issued' ? 'admin-app-credentials-issued' : undefined) : (ctrl.mode === 'create' ? 'admin-user-credentials-form' : undefined));
   const title = $derived(t(kind === 'application' ? 'credentials.applicationTitle' : 'credentials.userTitle'));
   const expiryFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }));
   function expiryLabel(value: string) {
@@ -64,9 +71,10 @@
 </script>
 
 <PageShell>
+  <div data-tour={application ? 'admin-app-credentials-scope' : 'admin-user-credentials-scope'}>
   <PageHeader title={title} breadcrumb={t('credentials.identity')} subtitle={`${domainName} · ${domainId}`}>
     {#snippet actions()}
-      <Button variant="primary" disabled={!ctrl.canCreate} onclick={() => ctrl.open('create')}>{t('actions.create')}</Button>
+      <Button variant="primary" disabled={!ctrl.canCreate} onclick={() => ctrl.open('create')} dataTour={application ? 'admin-app-credentials-create-open' : 'admin-user-credentials-create-open'}>{t('actions.create')}</Button>
       <Button variant="secondary" disabled={!ctrl.allowed || ctrl.loading} onclick={ctrl.load}>{t('credentials.refresh')}</Button>
     {/snippet}
   </PageHeader>
@@ -81,6 +89,7 @@
       </SelectInput>
     </Field>
   </ResourceToolbar>
+  </div>
   <TableViewControls view={tableView} />
   {#if ctrl.directoryLoading}<LoadingState variant="inline" label={t('credentials.directoryLoading')} />{/if}
   {#if ctrl.directoryError}<Alert class="mb-3">{ctrl.directoryError}<Button variant="ghost" size="sm" onclick={ctrl.loadUsers}>{t('credentials.retryDirectory')}</Button></Alert>{/if}
@@ -88,6 +97,7 @@
   {#if ctrl.loading}<LoadingState variant="surface" label={t('state.loading')} />
   {:else if ctrl.allowed && !ctrl.error && kind === 'application' && !ctrl.selectedUser && !ctrl.directoryLoading && !ctrl.directoryError}<p class="text-sm text-ink-2 py-8 text-center">{dt('credentials.chooseUser')}</p>
   {:else if ctrl.allowed}
+    <div data-tour={application ? 'admin-app-credentials-list' : 'admin-user-credentials-list'}>
     <ResponsiveTable>
       {#snippet cards()}
         {#each filtered as item (item.id)}
@@ -97,7 +107,7 @@
               <div><dt class="text-ink-2">{t('credentials.project')}</dt><dd class="break-all">{item.project_id ?? t('credentials.none')}</dd></div>
               {#if 'expires_at' in item}<div><dt class="text-ink-2">{t('credentials.expiry')}</dt><dd>{#if item.expires_at}<time datetime={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</dd></div>{/if}
             </dl>
-            {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button>{/snippet}
+            {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button>{/snippet}
             {#snippet details()}<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('credentials.id')}</dt><dd class="break-all font-mono">{item.id}</dd></div><div><dt class="text-ink-2">{t('credentials.user')}</dt><dd class="break-all">{item.user_id}</dd></div></dl>{/snippet}
           </CompactResourceCard>
         {:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<p class="text-sm text-ink-2">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>{/if}{/each}
@@ -107,15 +117,17 @@
       <tbody>{#each filtered as item (item.id)}<tr>
         <td>{'name' in item ? item.name : item.type}</td><td class="font-mono">{item.id}</td><td>{item.project_id ?? t('credentials.none')}</td><td>{item.user_id}</td>
         {#if 'expires_at' in item}<td>{#if item.expires_at}<time datetime={item.expires_at} title={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</td>{/if}
-        <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)}>{t('actions.delete')}</Button></div></td>
+        <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button></div></td>
       </tr>{:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<tr><td colspan={kind === 'application' ? 6 : 5}>{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</td></tr>{/if}{/each}</tbody>
     </table></TableShell>
     </ResponsiveTable>
+    </div>
   {/if}
 </PageShell>
 
 <Modal open={modalOpen} labelledBy={modalTitleId} onClose={ctrl.close} dismissible={!ctrl.busy && ctrl.mode !== 'issued'}>
   <Card surface="modal" padding="lg" class="w-[28rem] max-w-full">
+  <div data-tour={dialogAnchor}>
   <h2 id={modalTitleId} class="text-lg font-semibold text-ink-0 mb-5">{modalTitle}</h2>
   <div class="space-y-4">
     {#if ctrl.busy}<LoadingState variant="inline" label={t('state.loading')} />{/if}
@@ -132,14 +144,16 @@
         <Field label={t('form.name')}><TextInput bind:value={ctrl.draft.name} ariaLabel={t('form.name')} disabled={ctrl.busy} /></Field>
         <Field label={t('form.description')}><TextareaInput bind:value={ctrl.draft.description} ariaLabel={t('form.description')} disabled={ctrl.busy} /></Field>
         <Field label={t('credentials.expiry')} help={t('credentials.optionalExpiry')}><input type="datetime-local" bind:value={ctrl.draft.expires_at} aria-label={t('credentials.expiry')} disabled={ctrl.busy} class="w-full rounded-md border border-line-2 bg-surface-sunken px-3 py-2 text-sm text-ink-0" /></Field>
-        <fieldset class="space-y-2"><legend class="text-sm text-ink-1 mb-2">{t('credentials.roles')}</legend>
+        <fieldset class="space-y-2" data-tour={ctrl.context ? 'admin-app-credentials-roles' : undefined}><legend class="text-sm text-ink-1 mb-2">{t('credentials.roles')}</legend>
           {#each ctrl.context?.roles ?? [] as role (role.id)}<label class="flex items-center gap-2 text-sm min-h-11"><input type="checkbox" value={role.id} bind:group={ctrl.draft.role_ids} disabled={ctrl.busy} />{role.name || role.id}</label>{/each}
         </fieldset>
       {:else}
+        <div data-tour="admin-user-credentials-fields" class="space-y-4">
         <Field label={t('credentials.user')}><SelectInput bind:value={ctrl.draft.user_id} ariaLabel={t('credentials.user')} disabled={ctrl.busy}><option value="">{dt('credentials.chooseUser')}</option>{#each ctrl.users as user (user.id)}<option value={user.id}>{user.name} · {user.id}</option>{/each}</SelectInput></Field>
         <Field label={t('credentials.project')} help={t('credentials.projectHelp')}><TextInput bind:value={ctrl.draft.project_id} ariaLabel={t('credentials.project')} disabled={ctrl.busy} /></Field>
         <Field label={t('credentials.type')} help={t('credentials.typeHelp')}><TextInput bind:value={ctrl.draft.type} ariaLabel={t('credentials.type')} disabled={ctrl.busy} /></Field>
         <Field label={t('credentials.blob')} help={t('credentials.blobHelp')}><TextareaInput rows={8} bind:value={ctrl.draft.blob} ariaLabel={t('credentials.blob')} disabled={ctrl.busy} /></Field>
+        </div>
       {/if}
     {:else if ctrl.mode === 'detail' && ctrl.detail}
       <dl class="space-y-3 text-sm break-all">
@@ -160,13 +174,14 @@
     {/if}
   </div>
   <div class="flex flex-wrap justify-end gap-3 mt-6">
-    <Button variant="secondary" onclick={ctrl.close}>{t('credentials.close')}</Button>
+    <Button variant="secondary" onclick={ctrl.close} dataTour={application && ctrl.mode === 'issued' ? 'admin-app-credentials-close' : undefined}>{t('credentials.close')}</Button>
     {#if ctrl.mode === 'create' || ctrl.mode === 'edit' || ctrl.mode === 'delete'}
-      <Button variant={ctrl.mode === 'delete' ? 'danger' : 'primary'} disabled={ctrl.busy || (kind === 'application' && ctrl.mode === 'create' && !ctrl.context)} onclick={ctrl.submit}>{ctrl.mode === 'delete' ? t('actions.delete') : t('actions.save')}</Button>
+      <Button variant={ctrl.mode === 'delete' ? 'danger' : 'primary'} disabled={ctrl.busy || (kind === 'application' && ctrl.mode === 'create' && !ctrl.context)} onclick={ctrl.submit} dataTour={application ? (ctrl.mode === 'delete' ? 'admin-app-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-app-credentials-submit' : undefined) : (ctrl.mode === 'delete' ? 'admin-user-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-user-credentials-submit' : undefined)}>{ctrl.mode === 'delete' ? t('actions.delete') : t('actions.save')}</Button>
     {:else if ctrl.mode === 'detail' && kind === 'user'}
       <Button variant="secondary" disabled={ctrl.busy} onclick={() => ctrl.reveal()}>{t('credentials.reveal')}</Button>
       <Button variant="primary" disabled={ctrl.busy} onclick={() => ctrl.reveal(true)}>{t('credentials.editSensitive')}</Button>
     {/if}
+  </div>
   </div>
   </Card>
 </Modal>

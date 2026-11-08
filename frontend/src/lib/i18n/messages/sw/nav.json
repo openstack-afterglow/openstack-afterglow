@@ -167,5 +167,11 @@
 	"scope.allProjects": "Wigo: miradi yote",
 	"scope.currentProject": "Wigo: mradi wa sasa · {name}",
 	"actions.refreshDirectory": "Onyesha orodha ya wigo upya",
-	"scope.filtered": "Wigo wa uangalizi: {id}"
+	"scope.filtered": "Wigo wa uangalizi: {id}",
+	"actions.searchAll": "Tafuta rasilimali na huduma",
+	"search.resources": "Rasilimali",
+	"search.loadingResources": "Inapakia rasilimali…",
+	"search.noResources": "Hakuna rasilimali zinazolingana.",
+	"search.noServices": "Hakuna huduma zinazolingana.",
+	"search.resultCount": "Matokeo {count}"
 }

@@ -9,6 +9,8 @@
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { ResourceIdentifier } from '$lib/components/ui';
 	import { consumerInstanceFlavorLabel } from '$lib/utils/flavorDisplay';
+	import { createdInstance } from '$lib/tutorial/createdInstance.svelte';
+	import { mobileViewport } from '$lib/utils/mobileViewport';
 
 	const strategyKeys: Record<string, 'row.strategy.prebuilt' | 'row.strategy.dynamic'> = {
 		prebuilt: 'row.strategy.prebuilt',
@@ -38,29 +40,44 @@
 		onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete' | 'start' | 'stop', instance: Instance) => Promise<void>;
 		onToggleSelect: () => void;
 	} = $props();
+	// Tutorial anchor only on the tut- instance the instance-detail-delete tour just created.
+	const tourCreated = $derived(createdInstance.id === instance.id && instance.name.startsWith('tut-') ? 'instance-created-row' : undefined);
 </script>
 
+{#snippet waygateBadge()}
+	{#if instance.waygate_managed}
+		<span class="inline-flex shrink-0 rounded border border-line-2 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-ink-1" title={t('waygate.managedNote')} data-testid="waygate-managed-badge">{t('waygate.badge')}</span>
+	{/if}
+{/snippet}
+
+{#snippet cardActions()}<InstanceRowActions {instance} {onAction} bind:acting />{/snippet}
+{#snippet cardDetails()}
+	<dl class="space-y-2 text-xs">
+		<div><dt class="text-ink-2">ID</dt><dd><ResourceIdentifier id={instance.id} compact={false} /></dd></div>
+		<div><dt class="text-ink-2">IP</dt><dd class="space-y-1 break-all font-mono">{#each instance.ip_addresses as ip}<p>{ip.addr} · {ip.network_name} · {ip.type}</p>{:else}—{/each}</dd></div>
+		<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-all">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
+		<div><dt class="text-ink-2">{t('table.strategy')}</dt><dd>{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</dd></div>
+	</dl>
+{/snippet}
+
 {#if compact}
-	<CompactResourceCard {selected}>
-		<div class="flex min-w-0 items-start gap-2">
+	<!-- Mobile (<768px) cards keep only name, status, flavor, IP and actions, with the menu in the name row;
+	     image, ID, the details disclosure and the footer action row stay on tablet. -->
+	<CompactResourceCard {selected} actions={mobileViewport.current ? undefined : cardActions} details={mobileViewport.current ? undefined : cardDetails}>
+		<div class="flex min-w-0 gap-2 {mobileViewport.current ? 'items-center' : 'items-start'}">
 			<SelectionCheckbox checked={selected} disabled={!selectable || selectionDisabled} unavailable={!selectable} title={!selectable ? t('row.selectionUnavailable') : undefined} onclick={onToggleSelect} ariaLabel={t('row.select', { name: instance.name || instance.id })} />
-			<button type="button" onclick={() => onSelect(instance.id)} title={instance.name || instance.id} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 underline-offset-4 hover:text-warm-text-hover hover:underline"><span class="line-clamp-2 break-words">{instance.name || instance.id.slice(0, 8)}</span></button>
+			<button type="button" data-tour={tourCreated} onclick={() => onSelect(instance.id)} title={instance.name || instance.id} class="min-h-11 min-w-0 flex-1 text-left font-medium text-ink-0 underline-offset-4 hover:text-warm-text-hover hover:underline"><span class="line-clamp-2 break-words">{instance.name || instance.id.slice(0, 8)}</span></button>
 			<StatusChip status={instance.status} kind="server" />
+			{#if mobileViewport.current}<div class="shrink-0">{@render cardActions()}</div>{/if}
 		</div>
-		<ResourceIdentifier id={instance.id} />
+		{#if !mobileViewport.current}<ResourceIdentifier id={instance.id} />{/if}
+		{@render waygateBadge()}
 		{#if acting}<LoadingState variant="control" label={t('rowActions.processing')} />{/if}
-		<div class="line-clamp-2 text-xs text-ink-2 break-words" title={instance.image_name ?? t('row.bootFromVolume')}>{instance.image_name ?? t('row.bootFromVolume')}</div>
+		{#if !mobileViewport.current}
+			<div class="line-clamp-2 text-xs text-ink-2 break-words" title={instance.image_name ?? t('row.bootFromVolume')}>{instance.image_name ?? t('row.bootFromVolume')}</div>
+		{/if}
 		<div class="text-xs text-ink-2 break-words"><span class="line-clamp-2">{consumerInstanceFlavorLabel(instance)}</span>{#if isUnderutilized}<span class="text-warm-text">{t('row.resizeRecommended')}</span>{/if}</div>
 		<p class="break-all font-mono text-xs text-ink-2">{instance.ip_addresses.find((ip) => ip.type === 'floating')?.addr ?? instance.ip_addresses[0]?.addr ?? '—'}</p>
-		{#snippet actions()}<InstanceRowActions {instance} {onAction} bind:acting />{/snippet}
-		{#snippet details()}
-			<dl class="space-y-2 text-xs">
-				<div><dt class="text-ink-2">ID</dt><dd><ResourceIdentifier id={instance.id} compact={false} /></dd></div>
-				<div><dt class="text-ink-2">IP</dt><dd class="space-y-1 break-all font-mono">{#each instance.ip_addresses as ip}<p>{ip.addr} · {ip.network_name} · {ip.type}</p>{:else}—{/each}</dd></div>
-				<div><dt class="text-ink-2">{t('table.library')}</dt><dd class="break-all">{instance.union_libraries.filter(Boolean).join(', ') || '—'}</dd></div>
-				<div><dt class="text-ink-2">{t('table.strategy')}</dt><dd>{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</dd></div>
-			</dl>
-		{/snippet}
 	</CompactResourceCard>
 {:else}
 <tr class="motion-fade instance-row resource-selection-surface" data-selected={selected}>
@@ -77,12 +94,14 @@
 	<td>
 		<button
 			type="button"
+			data-tour={tourCreated}
 			onclick={() => onSelect(instance.id)}
 			class="flex min-w-0 max-w-full items-center gap-2.5 text-left text-ink-0 underline-offset-4 transition-colors hover:text-warm-text-hover hover:underline"
 		>
 			<span class="max-w-56 truncate font-medium" title={instance.name || instance.id}>{instance.name || instance.id.slice(0, 8)}</span>
 		</button>
 		<ResourceIdentifier id={instance.id} />
+		{@render waygateBadge()}
 	</td>
 	<td>
 		<StatusChip status={instance.status} kind="server" class="max-w-full truncate" />

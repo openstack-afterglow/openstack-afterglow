@@ -38,13 +38,23 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/admin/libraries',
 	'/admin/topology',
 	'/admin/containers',
+	'/admin/announcements',
+	'/admin/application-credentials',
 	'/admin/secrets',
 	'/admin/monitoring',
 	'/admin/services',
 	'/admin/users',
 	'/admin/quotas',
 	'/admin/domains',
+	'/admin/roles',
 	'/admin/flavors',
+	'/admin/projects',
+	'/admin/networks',
+	'/admin/routers',
+	'/admin/floating-ips',
+	'/admin/ports',
+	'/admin/object-storage',
+	'/admin/groups',
 ] as const;
 
 const PROFILE_ALLOWED_PATHS: Record<MockupProfileId, readonly string[]> = {

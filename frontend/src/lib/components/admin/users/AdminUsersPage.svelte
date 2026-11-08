@@ -19,6 +19,7 @@
 	import AdminUserEditModal from '$lib/components/admin/users/AdminUserEditModal.svelte';
 	import AdminUserDeleteModal from '$lib/components/admin/users/AdminUserDeleteModal.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import { isTourActive } from '$lib/tutorial/engine';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -53,10 +54,12 @@
 	let preparingDelete = $state(false);
 	let deleting = $state(false);
 	let deletePreparation = 0;
+	// Only the user this page just created during a running tour carries the tutorial delete anchor.
+	let tourCreatedId = $state<string | null>(null);
 	$effect.pre(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		domainId;
-		untrack(() => { creationRevision++; deleteSelection = null; deletePreparation++; preparingDelete = false; });
+		untrack(() => { creationRevision++; deleteSelection = null; deletePreparation++; preparingDelete = false; tourCreatedId = null; });
 	});
 
 	// 검색·정렬·필터 (auto-refresh 갱신 시에도 유지됨)
@@ -96,7 +99,12 @@
 		{ key: 'id', label: t('userTable.id'), value: row => row.id },
 		{ key: 'firstActivity', label: t('userTable.firstActivity'), value: row => row.first_seen ?? row.created_at }
 	] });
-	const filteredUsers = $derived(tableView.rows);
+	// While a tour runs, keep the user it just created on page 1 so the delete step can anchor on it.
+	const filteredUsers = $derived.by(() => {
+		const rows = tableView.rows;
+		const created = tourCreatedId ? rows.find((row) => row.id === tourCreatedId) : undefined;
+		return created && isTourActive() ? [created, ...rows.filter((row) => row !== created)] : rows;
+	});
 	let activitySearch = $state('');
 	const activityView = createTableView<ActivityEvent>({ rows: () => activityLog, locale: () => intlLocale(), search: () => activitySearch, columns: () => [
 		{ key: 'created', label: tc('table.issued'), value: row => row.created_at },
@@ -204,6 +212,7 @@
 				{ replayOnUnauthorized: false }
 			);
 			if (!owns()) return td('scope.invalid');
+			if (isTourActive()) tourCreatedId = result.user_id;
 			await loadAll();
 			return owns() ? result : td('scope.invalid');
 		} catch (e) {
@@ -260,6 +269,7 @@
 		try {
 			await api.delete<void>(domainPath(`/api/v1/admin/users/${encodeURIComponent(id)}`, selected.domain), creationToken, creationProject, { replayOnUnauthorized: false });
 			if (!owns()) return { error: td('scope.invalid'), rereadRequired: true };
+			if (tourCreatedId === id) tourCreatedId = null;
 			if (editUser?.id === id && editUser.domain_id === selected.domain) editUser = null;
 			await Promise.all([loadAll(true), loadActivity(true)]);
 			return owns() ? true : { error: td('scope.invalid'), rereadRequired: true };
@@ -308,8 +318,10 @@
 	<div data-tour="admin-identity-header">
 		<PageHeader breadcrumb={t('userPage.breadcrumb')} title={t('userPage.title')}>
 		{#snippet actions()}
-			<TutorialStartButton tour="admin-identity" compactOnMobile />
+			<!-- The route's create/delete tour button owns the invite bubble; this view tour starts on demand only. -->
+			<TutorialStartButton tour="admin-identity" compactOnMobile invite={false} />
 			<button
+				data-tour="admin-users-create-open"
 				onclick={() => {
 					showCreate = true;
 				}}
@@ -340,7 +352,7 @@
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5" data-tour="admin-identity-overview">
 			<span class="sr-only" data-tour="admin-identity-overview-ready">{t('userPage.overviewReady')}</span>
 			<!-- 집계 통계 -->
-			<div class="md:col-span-2 bg-surface-base border border-line rounded-lg p-4">
+			<div class="md:col-span-2 bg-surface-base border border-line rounded-lg p-4" data-tour="admin-users-summary">
 				<p class="text-xs font-semibold text-ink-2 mb-3">{t('userPage.overviewTitle')}</p>
 				<div class="flex gap-8">
 					<div class="text-center">
@@ -402,6 +414,7 @@
 					hasNext={currentPage < totalPages}
 					actorId={$auth.userId}
 					deleteDisabled={!creationAllowed || deleting || preparingDelete}
+					tourDeleteId={tourCreatedId}
 					onDelete={openDelete}
 					onEdit={(u) => {
 						editUser = u;

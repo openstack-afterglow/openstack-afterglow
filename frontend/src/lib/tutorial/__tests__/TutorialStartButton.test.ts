@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startTour = vi.hoisted(() => vi.fn());
-vi.mock('../engine', () => ({ startTour }));
+vi.mock('../engine', () => ({ startTour, isTourActive: () => false, onTourActivityChange: () => () => {} }));
 
 import TutorialStartButton from '../TutorialStartButton.svelte';
 import { tutorialStatuses, tutorialStatusesLoaded } from '../status';
@@ -48,5 +48,17 @@ describe('TutorialStartButton', () => {
 
 		expect(container.querySelector('.tutorial-start--compact')).not.toBeNull();
 		expect(screen.getByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
+	});
+
+	it('keeps a second pending tour on the same page from opening another invite', async () => {
+		tutorialStatusesLoaded.set(true);
+		render(TutorialStartButton, { tour: 'admin-identity', invite: false });
+		render(TutorialStartButton, { tour: 'admin-users', label: '사용자 만들고 삭제하기' });
+
+		expect(await screen.findAllByRole('dialog')).toHaveLength(1);
+		expect(document.getElementById('ts-invite-title-admin-users')).not.toBeNull();
+		expect(document.getElementById('ts-invite-title-admin-identity')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '사용자 만들고 삭제하기' }));
+		expect(startTour).toHaveBeenCalledWith('admin-users');
 	});
 });

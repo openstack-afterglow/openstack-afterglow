@@ -22,6 +22,8 @@ interface UsageRequestOwner {
 export function createInstanceUsageController(options: {
 	instanceId: () => string; projectId: () => string | undefined; adminMode: () => boolean;
 	canWrite: () => boolean; onUpdated?: () => void;
+	/** Waygate gateways: the schedule edit (PUT) is locked, but a later expiry may still be requested. */
+	extensionOnly?: () => boolean;
 }) {
 	let schedule = $state<UsageScheduleInfo | null>(null);
 	let pendingRequest = $state<UsageExtensionRequest | null>(null);
@@ -99,13 +101,16 @@ export function createInstanceUsageController(options: {
 		const previous = schedule;
 		if (!owner.token || !owner.project || !options.canWrite() || !confirmed || loading || saving
 			|| !previous || !['active', 'blocked', 'complete'].includes(previous.state) || usageDraftError(draft, previous.expires_at, Date.now(), previous.starts_at)) return;
-		const payload = { ...usagePayload(draft, previous.expires_at), revision: previous.revision };
+		const extensionOnly = options.extensionOnly?.() ?? false;
+		const payload = extensionOnly
+			? { expires_at: usagePayload(draft, previous.expires_at).expires_at, reason: draft.reason.trim(), revision: previous.revision }
+			: { ...usagePayload(draft, previous.expires_at), revision: previous.revision };
 		const effectiveExpiry = payload.expires_at ?? previous.expires_at;
 		if (['blocked', 'complete'].includes(previous.state) && Date.parse(effectiveExpiry) <= Date.now()) {
 			error = t('pastDate');
 			return;
 		}
-		if (['blocked', 'complete'].includes(previous.state) && Date.parse(effectiveExpiry) <= Date.parse(previous.expires_at)) {
+		if ((extensionOnly || ['blocked', 'complete'].includes(previous.state)) && Date.parse(effectiveExpiry) <= Date.parse(previous.expires_at)) {
 			error = t('shorterDate');
 			return;
 		}
@@ -116,8 +121,12 @@ export function createInstanceUsageController(options: {
 		saved = false;
 		controller = new AbortController();
 		try {
-			const result = await api.withExperience(experience).put<UsageScheduleInfo | UsageExtensionPending>(path(owner), payload, owner.token,
-				owner.admin ? owner.headerProject : owner.project, { signal: controller.signal, replayOnUnauthorized: false });
+			const request = api.withExperience(experience);
+			const requestOptions = { signal: controller.signal, replayOnUnauthorized: false };
+			const scope = owner.admin ? owner.headerProject : owner.project;
+			const result = extensionOnly
+				? await request.post<UsageScheduleInfo | UsageExtensionPending>(`${path(owner)}/extend`, payload, owner.token, scope, requestOptions)
+				: await request.put<UsageScheduleInfo | UsageExtensionPending>(path(owner), payload, owner.token, scope, requestOptions);
 			if (!current(owner) || !options.canWrite()) { experienceDiscarded(experience, disposed ? 'unmounted' : 'scope_changed'); return; }
 			const pending = 'status' in result && result.status === 'pending' ? result : null;
 			const effective = pending ? pending.schedule : result as UsageScheduleInfo;
@@ -143,7 +152,7 @@ export function createInstanceUsageController(options: {
 		}
 	}
 	$effect(() => {
-		void options.instanceId(); void options.projectId(); void options.adminMode(); void options.canWrite(); void authEpoch;
+		void options.instanceId(); void options.projectId(); void options.adminMode(); void options.canWrite(); void options.extensionOnly?.(); void authEpoch;
 		untrack(() => {
 			generation += 1;
 			controller?.abort();

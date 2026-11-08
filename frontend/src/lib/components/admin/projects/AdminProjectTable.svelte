@@ -26,6 +26,7 @@
 		onEdit,
 		onAccess,
 		onDelete,
+		tourDeleteId = null,
 	}: {
 		projects: Project[];
 		view: TableView<Project>;
@@ -35,6 +36,7 @@
 		onEdit: (p: Project) => void;
 		onAccess: (p: Project) => void;
 		onDelete: (p: Project) => void;
+		tourDeleteId?: string | null;
 	} = $props();
 </script>
 
@@ -51,7 +53,7 @@
         {#snippet actions()}
           <Button variant="secondary" size="sm" onclick={() => onEdit(p)}>{t('actions.edit')}</Button>
           <Button variant="secondary" size="sm" onclick={() => onAccess(p)}>{t('projectTable.permissions')}</Button>
-          <Button variant="danger" size="sm" onclick={() => onDelete(p)}>{t('actions.delete')}</Button>
+          <Button variant="danger" size="sm" onclick={() => onDelete(p)} dataTour={p.id === tourDeleteId ? 'admin-projects-delete' : undefined}>{t('actions.delete')}</Button>
         {/snippet}
         {#snippet details()}
           <dl class="space-y-2 text-xs">
@@ -109,6 +111,7 @@
 							>{t('projectTable.permissions')}</button>
 							<button
 								onclick={() => onDelete(p)}
+								data-tour={p.id === tourDeleteId ? 'admin-projects-delete' : undefined}
 								class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded"
 							>{t('actions.delete')}</button>
 						</div>

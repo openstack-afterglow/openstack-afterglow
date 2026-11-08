@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "마이그레이션 중단 실패",
 	"controller.migration.forceCompleteRequested": "마이그레이션 강제 완료 요청을 전송했습니다.",
 	"controller.migration.forceCompleteFailed": "마이그레이션 강제 완료 실패",
-	"controller.contextRequired": "useInstanceDetailController must be called within InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController must be called within InstanceDetailPanel",
+	"waygate.managedNote": "Waygate에서 관리되는 리소스입니다. Waygate 메뉴에서 변경하세요",
+	"waygate.openLink": "Waygate 열기",
+	"waygate.badge": "Waygate 관리",
+	"list.waygateBulkDeleteBlocked": "선택 항목에 Waygate에서 관리되는 인스턴스가 있어 일괄 삭제할 수 없습니다. Waygate 메뉴에서 변경하세요."
 }

@@ -16,6 +16,7 @@
   import TableShell from '$lib/components/ui/TableShell.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
+  import { coalesceReload } from '$lib/utils/coalesceReload';
   import type { HubLayer } from '$lib/api/palimpsestHub';
   import type { HubBuild, HubExport } from '$lib/api/palimpsestHub';
   import type { HubFilters } from '$lib/api/palimpsestHub';
@@ -28,13 +29,15 @@
   const hub = createPalimpsestHubController(() => identity);
   let localSearch = $state('');
   let nativeFilters = $state<HubFilters>({});
+  // Several column conditions applied together query the Hub once with the final filters.
+  const queryNativeFilters = coalesceReload(() => void hub.setFilters(nativeFilters));
   function setNativeFilter<Key extends keyof HubFilters>(key: Key, value: HubFilters[Key] | undefined) {
     if (nativeFilters[key] === value) return;
     const next = { ...nativeFilters };
     if (value === undefined) delete next[key];
     else next[key] = value;
     nativeFilters = next;
-    void hub.setFilters(next);
+    queryNativeFilters();
   }
   const columns = $derived<TableColumn<HubLayer>[]>([
     { key: 'name', label: t('name'), value: row => row.name,

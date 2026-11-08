@@ -8,6 +8,7 @@ from typing import Any
 
 from app.services.mcp_control_plane.compute import McpComputeError, _safe_server
 from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
+from app.services.waygate_managed import WaygateManagedResourceError, require_server_not_waygate_managed
 
 _MAX_TEXT = 255
 
@@ -208,6 +209,7 @@ def _prepare_server_network_attach(conn: Any, *, project_id: str, server_id: str
         raise McpNetworkError("Nova server ownership or data cannot be proven") from None
     if safe_server["id"] != server_id:
         raise McpNetworkError("Nova server identity cannot be proven")
+    require_server_not_waygate_managed(server)
     if safe_server["status"] not in {"ACTIVE", "SHUTOFF"}:
         raise McpNetworkError("Nova server is not in a state that permits network attachment")
     network = validate_project_attachment_network(conn, project_id=project_id, network_id=network_id)
@@ -353,7 +355,7 @@ async def preview_project_server_network_attach(
             server_id=server_id,
             network_id=network_id,
         )
-    except McpNetworkError:
+    except (McpNetworkError, WaygateManagedResourceError):
         raise
     except Exception:
         raise McpNetworkError("Nova server network attachment is unavailable") from None
@@ -371,7 +373,7 @@ async def request_project_server_network_attach(
             server_id=server_id,
             network_id=network_id,
         )
-    except McpNetworkError:
+    except (McpNetworkError, WaygateManagedResourceError):
         raise
     except Exception:
         raise McpNetworkError("Nova server network attachment is unavailable") from None

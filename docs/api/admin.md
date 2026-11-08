@@ -688,7 +688,7 @@ Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 �
 | `PUT` | `/api/v1/admin/ports/{port_id}` | 포트 이름 수정 | `name` (선택) |
 | `DELETE` | `/api/v1/admin/ports/{port_id}` | 포트 삭제 (`204`) | - |
 
-`cidr`을 지정하면 네트워크와 함께 서브넷도 생성됩니다.
+`cidr`을 지정하면 네트워크와 함께 서브넷도 생성됩니다. 이 `cidr`은 provider/공유 네트워크가 모든 도메인에 보일 수 있으므로 **모든 도메인의 저장된 VPN 예약 대역과 기본 `10.8.0.0/24`의 합집합**과 비교하며, 겹치면 native 호출 전에 `422 vpn_reserved_cidr`(`requested`, `reserved_cidr` 포함), 정책 조회 불가는 `503 vpn_reserved_ranges_unavailable`입니다([도메인별 VPN 예약 대역](#도메인별-vpn-예약-대역)). `PUT /admin/networks/{network_id}`의 `is_shared` 전환은 이 검사를 하지 않습니다.
 
 ### 서브넷 IP 사용량과 연결 대상
 
@@ -817,6 +817,8 @@ Email 승인은 공개 가입 enabled이면 **새 검증 메일**, invitation-on
 | `GET /api/v1/admin/domains/{domain_id}/enrollment-operations` | 없음 | 200 `{items:[EnrollmentOperation]}`; interrupted/failed 등록·초대·관리자 사용자 생성 작업 |
 | `POST /api/v1/admin/domains/{domain_id}/enrollment-operations/{operation_id}/reconcile` | `{native_writes_settled:true}` (strict boolean) | 200 operation DTO; 원 native 요청 종료 확인 후 provenance/readback 기록 |
 | `DELETE /api/v1/admin/domains/{domain_id}/enrollment-operations/{operation_id}` | 없음 | 204; 검증된 해당 작업의 추가 효과만 보상하고 취소 |
+| `GET /api/v1/admin/domains/{domain_id}/vpn-reserved-ranges` | 없음 | 200 VpnReservedRanges |
+| `PUT /api/v1/admin/domains/{domain_id}/vpn-reserved-ranges` | `{vpn_reserved_cidrs,revision}` | 200 갱신된 VpnReservedRanges |
 
 `GET /domains/{domain_id}/members`는 verified system admin용 membership 후보 directory이며 `Cache-Control: no-store, private`입니다. 공통 `domain_iam.directory_users`의 fresh native home/joined 목록에서 enabled 사용자만 반환하고 pagination/query 필터는 없습니다. 최상위 `domain_id`는 선택한 working domain, 각 item의 `domain_id`는 계정의 immutable native home입니다. `protected` 필드·credential metadata·blob·secret은 반환하지 않습니다. 이 목록은 project/group 역할·membership 후보를 위한 것이며 `/admin/users?domain_id=...`의 home-only profile 관리나 credential owner/project 검증을 확장하지 않습니다. 단순 후보 응답은 실제 mutation 인가를 대신하지 않습니다.
 
@@ -831,6 +833,17 @@ Managers의 `roles`는 canonical global `manager` 하나의 `{id,name,grantable}
 Default가 없는 기존 도메인의 manager 추가는409 `domain_default_bootstrap_required`이며 system admin이 provenance를 확인한 `creator_id`로 `/default`를 호출해야 합니다. 기존 native membership으로 로그인하는 경로는 보존하지만 로그인이나 조회가 임의의 첫 사용자에게 manager를 부여하지 않습니다. 모호한 Default/역할과 native/lease 확인 실패는 fail-closed입니다. Bootstrap은 활성 도메인에서 수행하며 기존 Default를 다른 ID로 바꾸거나 실패 시 기존 프로젝트를 삭제하지 않습니다. Grant/revoke는 authority·기존 세션 검증 cache와 native 읽기 projection을 함께 정리하되 Afterglow 로그인 family를 일괄 삭제하지 않습니다. Native가 group membership 변경으로 로그인 증명까지 회수하면 재로그인이 필요합니다. 관리자용 generic project/group/role 변경에서도 Default anchor, reserved projection과 마지막 manager 불변식을 우회할 수 없습니다.
 
 Enrollment operation은 원래 admission target domain_id와 실제 identity_domain_id, personal_domain_id/personal_project_id/personal_project_name, kind/status/user/project/role·native_writes_settled/recovery_required·시각 metadata를 가집니다. Historical personal_domain_name은 새 생성 입력이 아닙니다. Interrupted/failed 상태만 목록에 포함하며 token/password/native marker는 공개하지 않습니다. 기존 reconcile body는 native_writes_settled:true이고 운영자가 원 native 요청 종료를 확인한 뒤 exact readback합니다. 이후 DELETE도 이번 작업의 exact owned-empty project/account·추가 grant만 정리하며 shared account/personal domain과 기존 user는 삭제하지 않습니다. 안전하게 확정할 수 없으면503 recovery를 유지하고 accepted/revoked 취소는409입니다.
+
+### 도메인별 VPN 예약 대역
+
+System admin은 임의 도메인의 VPN 예약 대역을 domain manager의 [`/api/v1/iam/vpn-reserved-ranges`](iam.md#vpn-예약-대역)와 같은 DTO·body·검증으로 조회·교체합니다. Native domain GET으로 대상 존재를 먼저 확인하며 부재는404 `domain_not_found`, directory 장애·ID 불일치는503입니다. 응답은 `Cache-Control: no-store, private`이고 extra field는422 `Invalid IAM request`입니다.
+
+- 저장 행이 없으면 `vpn_reserved_cidrs=["10.8.0.0/24"]`, `revision=0`, `configured=false`(`domain_network_policies`, migration109).
+- PUT은 `{vpn_reserved_cidrs:[...], revision}`로 목록 전체를 교체하며 `revision`이 현재 값과 다르면409 `revision_conflict`입니다.
+- 최대16개, `/` 포함 CIDR, host bit 제거·순서 유지 중복 제거, IPv4 `/8` 이상·IPv6 `/32` 이상만 허용하고 위반은422 `vpn_reserved_ranges_invalid`입니다. 빈 배열은 해당 도메인의 opt-out입니다.
+- 저장소 장애는503 `vpn_reserved_ranges_unavailable`이며 허용으로 대체하지 않습니다.
+
+저장된 목록은 그 도메인 프로젝트의 새 서브넷·gateway 변경([네트워크 API](networks.md#vpn-예약-대역))과 MCP 서브넷 도구에 적용되고, 관리자 네트워크 생성의 `cidr`은 모든 도메인 목록과 기본값의 합집합으로 검사합니다. 기존 서브넷과 자동 Default 네트워크(`ensure-default`)는 바꾸거나 검사하지 않습니다.
 
 ### Shared topology·OIDC organization settlement
 

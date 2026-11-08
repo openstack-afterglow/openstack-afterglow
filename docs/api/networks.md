@@ -110,13 +110,15 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 
 ```json
 {
-  "name": "string (필수)"
+  "name": "string (필수)",
+  "subnet": {"name": "string (선택)", "cidr": "192.168.1.0/24", "gateway_ip": "string (선택)", "enable_dhcp": true}
 }
 ```
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
-| `name` | string | 예 | 네트워크 이름 |
+| `name` | string | 예 | 네트워크 이름(1–255자) |
+| `subnet` | object | 아니오 | 함께 만들 서브넷 `{name?, cidr, gateway_ip?, enable_dhcp}`. `cidr`·`gateway_ip`는 [VPN 예약 대역](#vpn-예약-대역) 검사를 통과해야 함 |
 
 **응답 (201 Created)** — `NetworkInfo` 객체
 
@@ -124,6 +126,8 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 
 | 코드 | 설명 |
 |------|------|
+| `422` | `subnet`의 CIDR/gateway가 VPN 예약 대역과 겹침(`vpn_reserved_cidr`) 또는 형식 오류(`subnet_cidr_invalid`/`subnet_gateway_invalid`) |
+| `503` | VPN 예약 대역 정책을 읽을 수 없음(`vpn_reserved_ranges_unavailable`) |
 | `500` | 네트워크 생성 실패 |
 
 ### GET /api/v1/networks/{network_id}
@@ -299,6 +303,22 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 > **경로 우선순위**: 고정 경로(`/subnets/{subnet_id}`)는 동적 경로(`/{network_id}`)보다 먼저 등록되어야 하므로,
 > 서브넷 편집/삭제는 `/networks/subnets/...` 형태이고 서브넷 생성만 `/networks/{network_id}/subnets`입니다.
 
+### VPN 예약 대역
+
+VPN 클라이언트는 터널 서브넷(Waygate 기본 `10.8.0.0/24`)을 게이트웨이로 라우팅하므로 같은 대역의 테넌트 서브넷은 클라이언트 경로를 모호하게 만듭니다. 프로젝트 도메인의 예약 대역은 [도메인 IAM API](iam.md#vpn-예약-대역)(manager) 또는 [관리자 API](admin.md#도메인별-vpn-예약-대역)(system admin)에서 관리하며, 저장 행이 없는 도메인은 `["10.8.0.0/24"]`를 사용합니다. 다음 요청은 native 호출 전에 프로젝트 도메인의 예약 대역과 비교합니다.
+
+- `POST /api/v1/networks`의 `subnet.cidr`·`subnet.gateway_ip`
+- `POST /api/v1/networks/{network_id}/subnets`의 `cidr`·`gateway_ip`
+- `PUT /api/v1/networks/subnets/{subnet_id}`의 `gateway_ip`가 현재 값과 다를 때만(이름·DHCP만 바꾸거나 같은 gateway를 보내면 검사하지 않음)
+
+같은 IP version에서 CIDR이 예약 대역과 겹치거나 gateway가 예약 대역 안에 있으면 `422`입니다.
+
+```json
+{"detail":{"code":"vpn_reserved_cidr","message":"The requested address range overlaps a range reserved for VPN tunnels in this domain","requested":"10.8.0.0/25","reserved_cidr":"10.8.0.0/24"}}
+```
+
+`/`가 없거나 해석할 수 없는 CIDR은 `422 subnet_cidr_invalid`, 잘못된 gateway 주소는 `422 subnet_gateway_invalid`, 정책 저장소를 읽을 수 없으면 허용으로 대체하지 않고 `503 vpn_reserved_ranges_unavailable`입니다. 이미 존재하는 겹치는 서브넷은 수정·삭제하지 않습니다. `POST /ensure-default`의 자동 Default 네트워크(`default_network_cidr`)는 검사하지 않습니다. 관리자 네트워크 생성 검사와 MCP 서브넷 도구는 각각 [관리자 API](admin.md#도메인별-vpn-예약-대역)와 [인증 API의 MCP 관리 도구](auth.md#mcp-네트워크인터페이스데이터-볼륨-관리)를 참조하세요.
+
 ### POST /api/v1/networks/{network_id}/subnets
 
 지정한 **현재 프로젝트 소유** 네트워크에 서브넷을 생성합니다. 공유 네트워크를 조회할 수 있어도 타 프로젝트 소유이거나 owner metadata가 없으면 `404`로 거부합니다.
@@ -321,7 +341,7 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `name` | string | 예 | 서브넷 이름 |
-| `cidr` | string | 예 | CIDR 표기법 (예: `192.168.1.0/24`). 네트워크 내에서 다른 서브넷과 겹치지 않아야 함 |
+| `cidr` | string | 예 | CIDR 표기법 (예: `192.168.1.0/24`). 네트워크 내에서 다른 서브넷과 겹치지 않아야 하고 [VPN 예약 대역](#vpn-예약-대역)과 겹칠 수 없음 |
 | `gateway_ip` | string | 아니오 | 게이트웨이 IP. 생략 시 CIDR의 첫 번째 IP 사용 |
 | `enable_dhcp` | boolean | 아니오 | DHCP 활성화 여부 (기본값: `true`) |
 
@@ -332,6 +352,8 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 | 코드 | 설명 |
 |------|------|
 | `404` | 네트워크를 찾을 수 없음 / 소유권 불일치 / owner metadata 누락 |
+| `422` | VPN 예약 대역과 겹침(`vpn_reserved_cidr`) 또는 CIDR/gateway 형식 오류(`subnet_cidr_invalid`/`subnet_gateway_invalid`) |
+| `503` | VPN 예약 대역 정책 조회 불가(`vpn_reserved_ranges_unavailable`) |
 | `500` | 서브넷 생성 실패 (CIDR 충돌 등) |
 
 ### PUT /api/v1/networks/subnets/{subnet_id}
@@ -355,7 +377,7 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `name` | string | 아니오 | 서브넷 이름 |
-| `gateway_ip` | string | 아니오 | 게이트웨이 IP 주소 |
+| `gateway_ip` | string | 아니오 | 게이트웨이 IP 주소. 현재 값과 다르면 [VPN 예약 대역](#vpn-예약-대역) 안의 주소는 거부 |
 | `enable_dhcp` | boolean | 아니오 | DHCP 활성화 여부 |
 
 **응답 (200 OK)** — `SubnetDetail`
@@ -365,6 +387,8 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 | 코드 | 설명 |
 |------|------|
 | `404` | 서브넷을 찾을 수 없음 / 소유권 불일치 |
+| `422` | 변경한 gateway가 VPN 예약 대역 안에 있음(`vpn_reserved_cidr`) 또는 형식 오류(`subnet_gateway_invalid`) |
+| `503` | VPN 예약 대역 정책 조회 불가(`vpn_reserved_ranges_unavailable`) |
 | `500` | 서브넷 업데이트 실패 |
 
 ### DELETE /api/v1/networks/subnets/{subnet_id}
@@ -397,6 +421,8 @@ Wizard는 성공 응답의 `network_id: null`을 선택적 기본값 부재로 �
 | `POST` | `/api/v1/networks/floating-ips/{fip_id}/associate` | Floating IP 인스턴스 연결 |
 | `POST` | `/api/v1/networks/floating-ips/{fip_id}/disassociate` | Floating IP 해제 |
 | `DELETE` | `/api/v1/networks/floating-ips/{fip_id}` | Floating IP 삭제 |
+
+Waygate 게이트웨이 VM의 endpoint일 수 있는 Floating IP는 Waygate만 이동·반환할 수 있습니다. 연결(`associate`)·해제(`disassociate`)·삭제는 Floating IP가 Waygate 게이트웨이 VM에 바인딩된 포트에 연결돼 있거나 `associate`의 대상 `instance_id`가 게이트웨이 VM이면 `409 {"detail":{"code":"waygate_managed_resource","message":"This resource is managed by Waygate; change it through Waygate"}}`로 거부합니다. 판정에 필요한 포트·서버 조회가 실패하면 404(부재) 또는 503(확인 불가)이며 native 변경을 보내지 않습니다. 게이트웨이 판정 기준은 [인스턴스 API](instances.md#14-waygate-게이트웨이-vm-잠금)와 같고 시스템 관리자 `/api/v1/admin/*` 경로는 잠그지 않습니다.
 
 ### GET /api/v1/networks/floating-ips
 
@@ -478,6 +504,7 @@ Floating IP를 인스턴스에 연결합니다. 대상 Floating IP는 소유권 
 | 코드 | 설명 |
 |------|------|
 | `404` | Floating IP를 찾을 수 없음 / 소유권 불일치 |
+| `409` | Floating IP 또는 대상 인스턴스가 Waygate 게이트웨이(`waygate_managed_resource`) |
 | `500` | Floating IP 연결 실패 |
 
 ### POST /api/v1/networks/floating-ips/{fip_id}/disassociate
@@ -495,6 +522,7 @@ Floating IP를 인스턴스에서 해제합니다. Floating IP 자체는 유지�
 | 코드 | 설명 |
 |------|------|
 | `404` | Floating IP를 찾을 수 없음 / 소유권 불일치 |
+| `409` | Waygate 게이트웨이의 Floating IP(`waygate_managed_resource`) |
 | `500` | Floating IP 해제 실패 |
 
 ### DELETE /api/v1/networks/floating-ips/{fip_id}
@@ -512,6 +540,7 @@ Floating IP를 삭제(반환)합니다. 삭제 후 목록 캐시를 무효화합
 | 코드 | 설명 |
 |------|------|
 | `404` | Floating IP를 찾을 수 없음 / 소유권 불일치 |
+| `409` | Waygate 게이트웨이의 Floating IP(`waygate_managed_resource`) |
 | `500` | Floating IP 삭제 실패 |
 
 ---

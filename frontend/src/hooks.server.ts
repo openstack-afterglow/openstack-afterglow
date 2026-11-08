@@ -161,7 +161,8 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 			// Audio Studio plays only browser-created object URLs (authenticated downloads, local files); no remote media.
 			`media-src 'self' blob:; ` +
 			`connect-src ${buildConnectSrc(siteConfig)}${impeccableLiveDev}; ` +
-			`font-src 'self' https://fonts.gstatic.com; ` +
+			// KaTeX's CSS inlines its small woff2 files as data: URIs; fonts cannot execute code.
+			`font-src 'self' data: https://fonts.gstatic.com; ` +
 			`frame-src ${buildFrameSrc(siteConfig)}; ` +
 			`frame-ancestors 'none'`,
 	};

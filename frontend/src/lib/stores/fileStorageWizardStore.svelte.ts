@@ -27,7 +27,7 @@ export interface ShareTypeMeta {
 export interface FsWizardOptions {
 	open: () => boolean;
 	setOpen: (v: boolean) => void;
-	onCreated: () => void;
+	onCreated: (created: FileStorage) => void;
 	fileStorageShareNetworksEnabled?: () => boolean;
 }
 
@@ -165,7 +165,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 		opts.setOpen(false);
 		experienceState(observation.ctx, 'disabled', step);
 		void experienceApplied(observation.ctx, {}, () => !disposed && !opts.open());
-		if (createdFs) opts.onCreated();
+		if (createdFs) opts.onCreated(createdFs);
 	}
 
 	function invalidateMetadata() { metadataGeneration += 1; }

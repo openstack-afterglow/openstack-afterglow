@@ -13,7 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_project_resource_owner, assert_resource_owner
+from app.api.common.owner_check import (
+    assert_project_resource_owner,
+    assert_resource_owner,
+    native_resource_read_failure,
+)
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.models.storage import (
@@ -30,7 +34,7 @@ from app.models.storage import (
     UpdateSubnetRequest,
 )
 from app.rate_limit import limiter
-from app.services import neutron, nova, trove
+from app.services import neutron, nova, trove, vpn_reserved_ranges
 from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_static
 from app.services.octavia import (
     TopologyLoadBalancersUnavailable,
@@ -47,6 +51,11 @@ from app.services.prom_query import (
     is_safe_label_value,
     query_instant_multi,
     query_range_multi,
+)
+from app.services.waygate_managed import (
+    port_device_is_waygate_managed,
+    server_is_waygate_managed,
+    waygate_managed_http_error,
 )
 
 _logger = logging.getLogger(__name__)
@@ -93,6 +102,10 @@ async def create_network(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
+    if req.subnet:
+        await vpn_reserved_ranges.require_domain_subnet_allowed(
+            conn._afterglow_domain_id, cidr=req.subnet.cidr, gateway_ip=req.subnet.gateway_ip or None
+        )
     try:
         result = await asyncio.to_thread(neutron.create_network, conn, req.name)
         if req.subnet:
@@ -253,6 +266,27 @@ async def list_floating_ips(
         raise HTTPException(status_code=500, detail="Floating IP 목록 조회 실패")
 
 
+def _floating_ip_waygate_locked(conn, fip, target_instance_id: str | None) -> bool:
+    port_id = getattr(fip, "port_id", None)
+    if port_id and port_device_is_waygate_managed(conn, conn.network.get_port(port_id)):
+        return True
+    return bool(target_instance_id) and server_is_waygate_managed(conn.compute.get_server(target_instance_id))
+
+
+async def _require_floating_ip_unlocked(conn, fip, target_instance_id: str | None = None) -> None:
+    """A Waygate gateway endpoint may be this floating IP; only Waygate may move or release it."""
+    try:
+        locked = await asyncio.to_thread(_floating_ip_waygate_locked, conn, fip, target_instance_id)
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="Floating IP를 찾을 수 없습니다",
+            unavailable_detail="Floating IP 연결 대상을 확인할 수 없습니다",
+        ) from None
+    if locked:
+        raise waygate_managed_http_error()
+
+
 @router.post("/floating-ips", response_model=FloatingIpInfo, status_code=201)
 @limiter.limit("10/minute")
 async def create_floating_ip(
@@ -292,6 +326,7 @@ async def associate_floating_ip(
     except Exception:
         raise HTTPException(status_code=404, detail="Floating IP를 찾을 수 없습니다")
     assert_resource_owner(fip, conn, token_info, not_found_detail="Floating IP를 찾을 수 없습니다")
+    await _require_floating_ip_unlocked(conn, fip, req.instance_id)
     try:
         result = await asyncio.to_thread(neutron.associate_floating_ip, conn, fip_id, req.instance_id)
         await rec(token_info, conn, resource_type="floating_ip", action="associate", resource_id=fip_id)
@@ -323,6 +358,7 @@ async def disassociate_floating_ip(
     except Exception:
         raise HTTPException(status_code=404, detail="Floating IP를 찾을 수 없습니다")
     assert_resource_owner(fip, conn, token_info, not_found_detail="Floating IP를 찾을 수 없습니다")
+    await _require_floating_ip_unlocked(conn, fip)
     try:
         result = await asyncio.to_thread(neutron.disassociate_floating_ip, conn, fip_id)
         await invalidate(f"afterglow:neutron:{pid}:floating_ips")
@@ -355,6 +391,7 @@ async def delete_floating_ip(
     except Exception:
         raise HTTPException(status_code=404, detail="Floating IP를 찾을 수 없습니다")
     assert_resource_owner(fip, conn, token_info, not_found_detail="Floating IP를 찾을 수 없습니다")
+    await _require_floating_ip_unlocked(conn, fip)
     try:
         await asyncio.to_thread(neutron.delete_floating_ip, conn, fip_id)
         await invalidate(f"afterglow:neutron:{pid}:floating_ips")
@@ -389,6 +426,9 @@ async def update_subnet(
     except Exception:
         raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
     assert_project_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    if req.gateway_ip is not None and req.gateway_ip != getattr(sub, "gateway_ip", None):
+        # Name/DHCP-only edits of an existing (even overlapping) subnet stay allowed.
+        await vpn_reserved_ranges.require_domain_subnet_allowed(conn._afterglow_domain_id, gateway_ip=req.gateway_ip)
     try:
         result = await asyncio.to_thread(
             neutron.update_subnet, conn, subnet_id, req.name, req.gateway_ip, req.enable_dhcp
@@ -988,6 +1028,9 @@ async def create_subnet(
     except Exception:
         raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
     assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
+    await vpn_reserved_ranges.require_domain_subnet_allowed(
+        conn._afterglow_domain_id, cidr=req.cidr, gateway_ip=req.gateway_ip or None
+    )
     try:
         result = await asyncio.to_thread(
             neutron.create_subnet,

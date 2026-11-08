@@ -4,6 +4,7 @@
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onDestroy, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { sessionScopeKey } from '$lib/utils/authSession';
   import { api, ApiError } from '$lib/api/client';
   import { createSwr } from '$lib/utils/swr.svelte';
@@ -42,6 +43,7 @@
   let showModal = $state(false);
   let creating = $state(false);
   let createError = $state('');
+  let lastCreated = $state<string | null>(null);
   let activeDomain = $state<'networks' | 'floating-ips' | null>(null);
   let selection = createResourceSelection();
   let busy = $state(false);
@@ -231,8 +233,12 @@
     creating = true; createError = '';
     const experience = beginExperienceAction('network', 'create', 'resource.list');
     try {
-      await apiMut(t('networks.create'), () => api.withExperience(experience).post('/api/v1/networks', body, tok(), pid()));
+      const created = await apiMut(t('networks.create'), () => api.withExperience(experience).post<Network>('/api/v1/networks', body, tok(), pid()));
+      lastCreated = created.id;
       await fetchNetworks(undefined, experience);
+      // Show the page holding the new network so its row (and the tutorial anchor) is visible.
+      const index = filteredNetworks.findIndex((network) => network.id === created.id);
+      if (index >= 0) displayPage = Math.floor(index / pageSize) + 1;
       return true;
     } catch (e) {
       createError = e instanceof ApiError ? e.message : t('networks.createFailed');
@@ -299,7 +305,8 @@
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('networks.breadcrumb')} title={hasInventory ? `${t('networks.title')} (${networks.length})` : t('networks.title')}>
     {#snippet actions()}
-      <Button onclick={() => showModal = true} variant="primary">{t('networks.createButton')}</Button>
+      <TutorialStartButton tour="networks" compactOnMobile />
+      <Button onclick={() => showModal = true} variant="primary" dataTour="networks-create-open">{t('networks.createButton')}</Button>
     {/snippet}
   </PageHeader>
   <p class="text-[13px] text-ink-2" aria-live="polite">{$auth.domainName ? `${$auth.domainName} / ` : ''}{$auth.projectName || $auth.projectId || '—'} · {#if hasInventory}{t('list.results', { shown: filteredNetworks.length, total: networks.length })}{:else if loading}<LoadingState variant="inline" label={t('list.loading')} />{:else}{t('list.unavailable')}{/if}</p>
@@ -320,6 +327,7 @@
 
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
+  <div data-tour="networks-list">
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('networks.title') })} />
   {:else if networks.length === 0 && floatingIps.length === 0 && !error}
@@ -336,6 +344,7 @@
         onToggleSelect={(id) => toggleSelect('networks', id)}
         onToggleAll={() => toggleAll('networks')}
         onOpenPanel={openNetworkPanel} onSetDefault={setAsDefault} onDelete={deleteNetwork}
+        highlightId={lastCreated}
       />
       <div class="flex flex-wrap items-end justify-between gap-3">
         <Field label={t('list.pageSize')} for="user-networks-page-size"><SelectInput id="user-networks-page-size" bind:value={() => String(pageSize), (value) => pageSize = Number(value)}>{#each [20, 50, 100] as size}<option value={size}>{size}</option>{/each}</SelectInput></Field>
@@ -343,6 +352,7 @@
       </div>
     </div>
   {/if}
+  </div>
   <section class="space-y-3">
     <RegexSearch id="network-floating-search" bind:value={floatingSearch} label={t('floatingIpCard.title')} />
     <TableViewControls view={floatingView} class="" />
@@ -372,7 +382,7 @@
 
 <FloatingIpAllocateModal
   bind:open={showAllocateModal} {networks}
-  token={tok()} projectId={pid()} onAllocated={fetchFloatingIps}
+  token={tok()} projectId={pid()} onAllocated={() => fetchFloatingIps()}
 />
 
 {#if selectedNetworkId}

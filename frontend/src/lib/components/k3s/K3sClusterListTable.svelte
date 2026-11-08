@@ -20,6 +20,7 @@
 		onToggleAll = () => {},
 		onDelete = async () => {},
 		onNavigate,
+		highlightId = null,
 	}: {
 		clusters: Cluster[];
 		view: TableView<Cluster>;
@@ -31,6 +32,8 @@
 		onToggleAll?: () => void;
 		onDelete?: (id: string, name: string) => Promise<void>;
 		onNavigate: (id: string) => void;
+		/** The just-created cluster; only its delete control carries the tutorial anchor. */
+		highlightId?: string | null;
 	} = $props();
 	const selectableCount = $derived(selectableIds.size);
 	const selectedSelectableCount = $derived([...selectableIds].filter((id) => selectedIds.has(id)).length);
@@ -47,7 +50,7 @@
     <p class="text-xs text-ink-2">{t('overview.table.master')}: {c.master_count} · {t('overview.table.worker')}: {c.node_count}</p>
     <p class="text-xs font-mono break-all">{c.api_address ?? t('overview.notAvailable')}</p>
     {#snippet details()}<p class="text-xs break-all">{c.id}</p><p class="text-xs">{t('overview.table.createdAt')}: {c.created_at?.slice(0, 10) ?? t('overview.notAvailable')}</p>{/snippet}
-    {#snippet actions()}<button onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40">{#if deleting === c.id}<LoadingState variant="control" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button>{/snippet}
+    {#snippet actions()}<button data-tour={highlightId === c.id ? 'containers-clusters-delete' : undefined} onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40">{#if deleting === c.id}<LoadingState variant="control" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button>{/snippet}
    </CompactResourceCard>
   {/each}
  {/snippet}
@@ -75,7 +78,7 @@
 					<td class="k3s-table__meta py-3 pr-6 text-xs">{c.node_count}</td>
 					<td class="k3s-table__meta py-3 pr-6 text-xs font-mono">{c.api_address ?? t('overview.notAvailable')}</td>
 					<td class="k3s-table__meta py-3 pr-6 text-xs">{c.created_at?.slice(0, 10) ?? t('overview.notAvailable')}</td>
-					<td class="py-3"><button onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40 transition-colors">{#if deleting === c.id}<LoadingState variant="control" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button></td>
+					<td class="py-3"><button data-tour={highlightId === c.id ? 'containers-clusters-delete' : undefined} onclick={() => onDelete(c.id, c.name)} disabled={deleting === c.id || selectionDisabled} class="k3s-table__delete text-xs disabled:opacity-40 transition-colors">{#if deleting === c.id}<LoadingState variant="control" label={t('overview.table.deleting')} />{:else}{t('overview.table.delete')}{/if}</button></td>
 				</tr>
 			{/each}
 		</tbody>

@@ -43,6 +43,7 @@
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
 	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { coalesceReload } from '$lib/utils/coalesceReload';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import type { ResourceSort } from '$lib/utils/resourceSort';
@@ -224,11 +225,12 @@
 		onFilterChange();
 	}
 
-	function onFilterChange() {
+	// Several native column conditions applied together (filter sheet, reset) issue one provider query.
+	const onFilterChange = coalesceReload(() => {
 		invalidateSearch();
 		void load(undefined, { clearSelection: true });
 		void loadStatusSummary();
-	}
+	});
 
 	function drillIntoDomain(domainId: string) {
 		const url = new URL(page.url);

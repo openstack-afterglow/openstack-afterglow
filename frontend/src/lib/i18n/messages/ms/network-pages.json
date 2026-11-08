@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "Pemadaman gagal: {message}",
 	"floatingIps.breadcrumb": "Rangkaian",
 	"floatingIps.title": "IP terapung",
-	"floatingIps.allocationHelp": "IP terapung boleh diperuntukkan pada <network>halaman rangkaian</network>.",
+	"floatingIps.allocationHelp": "Peruntukkan IP terapung menggunakan butang Peruntuk pada halaman ini.",
 	"floatingIps.selection.selectAll": "Pilih semua IP terapung",
 	"floatingIps.columns.fixedIp": "IP tetap berkaitan",
 	"floatingIps.columns.instance": "Tika",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "Butiran rangkaian topologi",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "Sumber ini diurus oleh Waygate. Ubah melalui menu Waygate.",
+	"securityGroups.openWaygate": "Buka Waygate",
+	"securityGroups.waygateBadge": "Diurus Waygate"
 }

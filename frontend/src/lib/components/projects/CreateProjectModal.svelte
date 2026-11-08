@@ -86,7 +86,7 @@
 
 <div use:portal>
 <FormModal bind:open title={t('newProject')} {onClose} {submitting}>
-	<form class="space-y-4" onsubmit={submit}>
+	<form class="space-y-4" onsubmit={submit} data-tour="project-create-form">
 		<p class="break-all text-sm text-ink-2">{domainName} · {domainId}</p>
 		{#if error}<Alert tone="warning">{t(error)}</Alert>{/if}
 		{#if !checking && !allowed && !error}<Alert tone="neutral">{t('createDenied')}</Alert>{/if}
@@ -95,7 +95,7 @@
 		<Field label={t('description')} for={`${componentId}-description`}><TextInput id={`${componentId}-description`} bind:value={description} maxlength={255} disabled={submitting || uncertain || !allowed} /></Field>
 		<div class="flex flex-wrap justify-end gap-2">
 			<Button variant="secondary" onclick={onClose} disabled={submitting}>{t('cancel')}</Button>
-			<Button type="submit" disabled={!canSubmit} ariaBusy={submitting}>{t('create')}</Button>
+			<Button type="submit" disabled={!canSubmit} ariaBusy={submitting} dataTour="project-create-submit">{t('create')}</Button>
 		</div>
 	</form>
 	{#snippet actions()}{/snippet}

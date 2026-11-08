@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import { palette } from '$lib/stores/palette';
   import { auth } from '$lib/stores/auth';
-  import { api } from '$lib/api/client';
+  import { fuzzyMatch, loadResourceSearchEntries, resourceSearchIcons as ICONS } from '$lib/utils/resourceSearch';
   import { allNavItems } from '$lib/config/nav';
   import { canManageDomain, isAdmin } from '$lib/stores/auth';
   import { canManageOrganizationProjects } from '$lib/stores/projectManagement';
@@ -40,15 +40,6 @@
   const administratorSurface = $derived($page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/'));
   const paletteBetaFeatures = $derived(mockupAdminActive ? MOCKUP_BETA_FEATURES : $betaFeatures);
 
-  const ICONS: Record<PaletteItem['type'], string> = {
-    route: 'M4 6h16M4 12h16M4 18h7',
-    instance: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2',
-    volume: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7',
-    image: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14',
-    network: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3',
-    router: 'M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-  };
-
   // 비활성 서비스 route는 sidebar와 동일하게 command palette에서도 숨긴다.
   const navItems = $derived(allNavItems($isAdmin && administratorSurface, paletteBetaFeatures, { domainManager: $canManageDomain, projectManagement: $canManageOrganizationProjects })
     .filter((item) => !item.service || (($siteConfig.services as Record<string, boolean>)[item.service] ?? false))
@@ -74,58 +65,13 @@
     const project = $auth.projectId ?? undefined;
 
     try {
-      const results = await Promise.allSettled([
-        api.get<Array<{ id: string; name?: string }>>('/api/v1/instances', token, project),
-        api.get<Array<{ id: string; name?: string }>>('/api/v1/volumes', token, project),
-        api.get<Array<{ id: string; name?: string }>>('/api/v1/images', token, project),
-        api.get<Array<{ id: string; name?: string }>>('/api/v1/networks', token, project),
-        api.get<Array<{ id: string; name?: string }>>('/api/v1/routers', token, project),
-      ]);
-
-      const [instances, volumes, images, networks, routers] = results;
-      const items: PaletteItem[] = [];
-
-      if (instances.status === 'fulfilled') {
-        for (const r of instances.value ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.instance'), type: 'instance', href: `/dashboard/compute/instances/${r.id}`, icon: ICONS.instance });
-        }
-      }
-      if (volumes.status === 'fulfilled') {
-        for (const r of (volumes.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.volume'), type: 'volume', href: `/dashboard/volumes/${r.id}`, icon: ICONS.volume });
-        }
-      }
-      if (images.status === 'fulfilled') {
-        for (const r of (images.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.image'), type: 'image', href: `/dashboard/compute/images`, icon: ICONS.image });
-        }
-      }
-      if (networks.status === 'fulfilled') {
-        for (const r of (networks.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.network'), type: 'network', href: `/dashboard/network/networks`, icon: ICONS.network });
-        }
-      }
-      if (routers.status === 'fulfilled') {
-        for (const r of (routers.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.router'), type: 'router', href: `/dashboard/network/routers`, icon: ICONS.router });
-        }
-      }
-      resourceItems = items;
+      const entries = await loadResourceSearchEntries(token, project);
+      resourceItems = entries.map((entry) => ({ id: entry.id, label: entry.name, sublabel: t(`palette.kind.${entry.kind}`), type: entry.kind, href: entry.href, icon: ICONS[entry.kind] }));
     } catch {
       // index load failure is non-fatal
     }
   }
 
-  function fuzzyMatch(needle: string, haystack: string): boolean {
-    if (!needle) return true;
-    const n = needle.toLowerCase();
-    const h = haystack.toLowerCase();
-    let ni = 0;
-    for (let i = 0; i < h.length && ni < n.length; i++) {
-      if (h[i] === n[ni]) ni++;
-    }
-    return ni === n.length;
-  }
   function resultId(item: PaletteItem): string {
     return `command-palette-result-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   }

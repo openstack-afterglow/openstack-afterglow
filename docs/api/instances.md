@@ -39,6 +39,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 11. [GitHub SSH 사용자 확인](#11-github-ssh-사용자-확인)
 12. [cloud-init 스니펫 라이브러리](#12-cloud-init-스니펫-라이브러리)
 13. [사용 일정](#13-사용-일정-usage-schedule)
+14. [Waygate 게이트웨이 VM 잠금](#14-waygate-게이트웨이-vm-잠금)
 
 ---
 
@@ -85,6 +86,7 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `user_id` / `project_id` | string \| null | 소유 사용자/프로젝트 |
 | `fault` | object \| null | ERROR 상태의 fault 정보 `{message, code, created}` |
 | `host` | string \| null | 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐) |
+| `waygate_managed` | boolean | Waygate가 관리하는 VPN 게이트웨이 VM이면 true. 서버가 metadata marker로 계산하며 클라이언트가 marker key를 해석할 필요가 없음([14. Waygate 게이트웨이 VM 잠금](#14-waygate-게이트웨이-vm-잠금)) |
 
 `union_*` 응답 필드는 기존 VM의 historical metadata를 읽기 위해 유지합니다. 일반 VM 생성은 라이브러리·SquashFS 소비와 HA 배포 옵션을 제공하지 않으며, 새 plain/GPU/data-mount VM은 `union_*` metadata를 생성하지 않습니다.
 
@@ -279,6 +281,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 ```json
 { "results": [ { "id": "uuid-1", "ok": true }, { "id": "uuid-2", "ok": false, "error": "처리 실패" } ] }
 ```
+
+`delete` 대상이 Waygate 게이트웨이 VM이면 그 항목만 `{ "id": "gw-1", "ok": false, "error": "This resource is managed by Waygate; change it through Waygate", "code": "waygate_managed_resource" }`로 거부하고 나머지 대상은 계속 처리합니다. `start`/`stop`/`reboot` 일괄 액션은 게이트웨이에도 그대로 적용됩니다.
 
 ### DELETE /api/v1/instances/{instance_id}
 
@@ -848,3 +852,37 @@ Scheduler는 운영자가 명시적으로 활성화한 환경에서 약60초 간
 관리형 Palimpsest/Union 자원의 정확한 소유권 receipt를 사용해 health credential·전용 접근 규칙·port/Floating IP를 정리하고, 보존 디스크는 기존 resource ledger에 retained tombstone으로 남겨 다른 reclaimer의 삭제를 막습니다. 보존 lower/upper disk가 남으면 immutable source artifact 참조도 유지하고, kept managed disk가 모두 native 부재로 확인되기 전에는 VM 삭제만으로 source 참조를 해제하지 않습니다. 이것은 SQL 일정이나 새 schedule schema가 아닙니다. Legacy name-only CephX receipt·정확한 server binding 없는 health alias 등은 이름으로 추정하지 않고 stop 전 실제 오류로 차단합니다. Metadata-only 전용 grant/health는 quiescent `delete_requested` 확인 후 DELETE 전에 회수하고, 기존 ledger의 grant/port/Floating IP 정리는 native server404 뒤에 조정합니다. Native403/409·응답 유실·`*_requested`/`unknown`은 성공도 안전한 재시도 허가도 아니므로 native 상태와 resource receipt를 운영자가 대조해야 합니다.
 
 Native metadata key는 prefix `afterglow_usage_` 아래 `version`(`1`), `starts_at`, `expires_at`, `action`, `delete_volumes`(`true`/`false`), `reason`, `revision`, `state`, `source` 및 선택적 `last_error`, `extended_at`, `extended_by`입니다. State는 `active`, `blocked`, `shelve_requested`, `offload_requested`, `stop_requested`, `volume_flags_requested`, `volumes_ready`, `delete_requested`, `complete`, `unknown`입니다. 다른 metadata는 보존합니다. Native metadata를 직접 수정할 권한이 있는 사용자의 CLI 우회까지 막는 Nova 정책은 아니며, 운영상 coordination 제약은 [배포 가이드](../deployment.md#인스턴스-사용-일정-운영-source-only)를 참조하세요.
+
+---
+
+## 14. Waygate 게이트웨이 VM 잠금
+
+Waygate는 요청 프로젝트 안에 VPN 게이트웨이 VM을 만들고 자체 trust token으로 제어합니다. Afterglow 프로젝트 API에서 이 VM을 삭제·재구성·분리하면 VPN이 조용히 끊기므로 다음 metadata marker를 **모두** 가진 서버는 Waygate 관리 게이트웨이로 판정하고 변경을 거부합니다.
+
+- `waygate_type`이 `gateway`
+- `waygate_server_id`가 비어 있지 않은 문자열
+- `afterglow_managed`가 true(boolean `true` 또는 대소문자 무시 문자열 `true`/`1`/`yes`)
+
+`afterglow_managed`만 있는 VM(예: builder)은 잠그지 않습니다. `InstanceInfo` 응답(목록·상세)은 같은 판정을 계산 필드 `waygate_managed`로 제공합니다. 거부 응답은 다음과 같습니다.
+
+```json
+{"detail":{"code":"waygate_managed_resource","message":"This resource is managed by Waygate; change it through Waygate"}}
+```
+
+| 메서드 | 게이트웨이 VM에서 `409`로 거부하는 경로 |
+|---|---|
+| `DELETE` | `/api/v1/instances/{instance_id}` |
+| `PUT` | `/api/v1/instances/{instance_id}/name` |
+| `POST` | `/api/v1/instances/{instance_id}/resize`, `/shelve` |
+| `POST`·`DELETE` | `/api/v1/instances/{instance_id}/interfaces`, `/interfaces/{port_id}` |
+| `POST` | `/api/v1/instances/{instance_id}/ports/{port_id}/security-groups` |
+| `POST`·`DELETE` | `/api/v1/instances/{instance_id}/floating-ip` |
+| `POST`·`DELETE`·`PATCH` | `/api/v1/instances/{instance_id}/volumes`, `/volumes/{volume_id}` |
+| `POST`·`DELETE` | `/api/v1/instances/{instance_id}/storage-attachments`, `/storage-attachments/{file_storage_id}` |
+| `PUT` | `/api/v1/instances/{instance_id}/usage-schedule`(일정은 만료 시 VM을 stop/삭제할 수 있음) |
+
+포트 보안그룹 교체는 다른 인스턴스 경로로 게이트웨이에 바인딩된 포트를 지정하거나, Waygate 보안그룹(`afterglow-waygate-*`)이 붙은 unbound 포트에서 그 그룹을 제거하는 요청도 거부합니다. 일괄 `delete`는 위 [bulk-action](#post-apiv1instancesbulk-action)처럼 항목별 `code`로 보고합니다. Floating IP의 연결·해제·삭제는 [네트워크 API](networks.md#4-floating-ip), Waygate 보안그룹은 [보안 그룹 API](security-groups.md#waygate-보안그룹-잠금)의 같은 409를 사용합니다.
+
+게이트웨이에서도 start/stop/reboot/unshelve, `confirm-resize`/`revert-resize`, console·log, `admin-password`(precheck 포함), `usage-schedule/extend`와 모든 조회는 허용합니다. 인터페이스·포트 보안그룹·Floating IP 경로는 변경 전에 서버·포트를 다시 읽으며, 판정에 필요한 조회가 부재면404, 확인할 수 없으면503으로 거부하고 native 변경을 보내지 않습니다.
+
+잠금은 프로젝트 REST·MCP 표면에만 적용합니다. 시스템 관리자 `/api/v1/admin/*` 경로는 운영 복구를 위해 잠그지 않습니다. 단, 관리자 사용 일정 수정 `PUT /api/v1/admin/instances/{instance_id}/usage-schedule`은 같은 변경 경로를 공유하므로 게이트웨이에서 409이며 관리자 연장은 허용됩니다. Afterglow 밖에서 native OpenStack API를 직접 호출하는 변경은 이 잠금의 범위가 아닙니다. MCP 도구의 거부는 [인증 API의 MCP 관리 도구](auth.md#mcp-네트워크인터페이스데이터-볼륨-관리)를 참조하세요.

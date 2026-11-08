@@ -8,6 +8,7 @@
 	import { StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
+	const lockTitle = $derived(s.waygateLocked ? t('waygate.managedNote') : undefined);
 
 	let showAddInterface = $state(false);
 	let selectedNetId = $state('');
@@ -22,6 +23,7 @@
 	}
 
 	function toggleSg(sgId: string) {
+		if (s.waygateLocked) return;
 		if (sgEditSelected.includes(sgId)) {
 			sgEditSelected = sgEditSelected.filter(id => id !== sgId);
 		} else {
@@ -30,6 +32,7 @@
 	}
 
 	function openSgEdit(port: PortInfo) {
+		if (s.waygateLocked) return;
 		sgEditPortId = port.id;
 		sgEditSelected = [...s.securityGroupIdsForPort(port)];
 	}
@@ -52,13 +55,15 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('network.title')}</h2>
 		<button
 			onclick={() => { showAddInterface = !showAddInterface; selectedNetId = ''; }}
-			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
+			disabled={s.waygateLocked}
+			title={lockTitle}
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
 		>
 			{showAddInterface ? t('network.close') : t('network.addInterface')}
 		</button>
 	</div>
 
-	{#if showAddInterface}
+	{#if showAddInterface && !s.waygateLocked}
 		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
 			<p class="text-xs text-ink-2 mb-2">{t('network.selectNetworkLabel')}</p>
 			<div class="flex gap-2">
@@ -124,7 +129,8 @@
 							{#if ifaceFip}
 								<button
 									onclick={() => s.releaseFloatingIp(ifaceFip.id)}
-									disabled={!!s.actioning}
+									disabled={!!s.actioning || s.waygateLocked}
+									title={lockTitle}
 									class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 								>
 									{#if s.actioning === 'fip-release-' + ifaceFip.id}<LoadingState variant="control" label={t('network.releasing')} />{:else}{t('network.releaseFloatingIp')}{/if}
@@ -132,7 +138,8 @@
 							{:else}
 								<button
 									onclick={() => s.assignFloatingIp(iface.id)}
-									disabled={!!s.actioning}
+									disabled={!!s.actioning || s.waygateLocked}
+									title={lockTitle}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 								>
 									{#if s.actioning === 'fip-assign-' + iface.id}<LoadingState variant="control" label={t('network.assigning')} />{:else}{t('network.addFloatingIp')}{/if}
@@ -140,7 +147,8 @@
 							{/if}
 							<button
 								onclick={() => s.detachInterface(iface.id)}
-								disabled={!!s.actioning}
+								disabled={!!s.actioning || s.waygateLocked}
+								title={lockTitle}
 								class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 							>
 								{#if s.actioning === 'detach-iface-' + iface.id}<LoadingState variant="control" label={t('network.removing')} />{:else}{t('network.remove')}{/if}
@@ -153,13 +161,14 @@
 							<dt class="text-xs text-ink-2">{t('network.securityGroups')}</dt>
 							<button
 								onclick={() => openSgEdit(iface)}
-								disabled={s.securityGroupsLoading || !!s.securityGroupsError}
+								disabled={s.securityGroupsLoading || !!s.securityGroupsError || s.waygateLocked}
+								title={lockTitle}
 								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
 							>
 								{t('network.edit')}
 							</button>
 						</div>
-						{#if sgEditPortId === iface.id}
+						{#if sgEditPortId === iface.id && !s.waygateLocked}
 							<div class="motion-enter bg-surface-selected rounded p-3 mt-2">
 								<p class="text-xs text-ink-2 mb-2">{t('network.projectSecurityGroups')}</p>
 								<div class="space-y-1.5 mb-3 max-h-56 overflow-y-auto">

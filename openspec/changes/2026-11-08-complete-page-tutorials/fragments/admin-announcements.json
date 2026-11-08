@@ -1,0 +1,182 @@
+{
+ "area": "admin-announcements",
+ "tourIds": [
+  "admin-announcements"
+ ],
+ "tourRegistrations": [
+  {
+   "id": "admin-announcements",
+   "stepsModule": "steps/admin-announcements.ts",
+   "stepsFn": "adminAnnouncementSteps",
+   "label_key": "tours.adminAnnouncements.label",
+   "summary_key": "tours.adminAnnouncements.summary"
+  }
+ ],
+ "messages": {
+  "ko": {
+   "tours.adminAnnouncements.label": "공지 작성과 삭제",
+   "tours.adminAnnouncements.summary": "공지 양식으로 전체 유저 공지를 발송하고 발송 이력에서 삭제합니다.",
+   "tours.adminAnnouncements.step1.title": "제목과 본문 작성",
+   "tours.adminAnnouncements.step1.description": "공지 제목과 본문을 입력하세요(예: 제목 \"네트워크 점검\", 본문 \"오늘 밤 라우터를 재시작합니다\"). 입력한 뒤 다음을 누르세요.",
+   "tours.adminAnnouncements.step2.title": "심각도와 대상 선택",
+   "tours.adminAnnouncements.step2.description": "심각도를 고르고 대상은 \"전체 유저\"로 둡니다. 아래 \"이 공지를 이메일로도 보내기\"는 선택하지 않은 채로 두세요.",
+   "tours.adminAnnouncements.step3.title": "공지 발송",
+   "tours.adminAnnouncements.step3.description": "\"공지 발송\"을 눌러 공지를 만듭니다.",
+   "tours.adminAnnouncements.step4.title": "발송 이력 확인 후 삭제",
+   "tours.adminAnnouncements.step4.description": "방금 만든 공지가 발송 이력에 나타났습니다. 이 공지의 삭제 버튼을 누르세요.",
+   "tours.adminAnnouncements.step5.title": "삭제 확인",
+   "tours.adminAnnouncements.step5.description": "확인 창에서 삭제를 확정하세요.",
+   "tours.adminAnnouncements.step6.title": "삭제 결과 확인",
+   "tours.adminAnnouncements.step6.description": "발송 이력에서 방금 만든 공지가 사라졌는지 확인하세요. 기존 공지는 그대로 남습니다."
+  },
+  "en": {
+   "tours.adminAnnouncements.label": "Create and delete an announcement",
+   "tours.adminAnnouncements.summary": "Send an announcement to all users from the inline form, then delete it from the send history.",
+   "tours.adminAnnouncements.step1.title": "Write the title and body",
+   "tours.adminAnnouncements.step1.description": "Enter an announcement title and body (for example, title \"Network maintenance\" and body \"Routers restart tonight\"). Then press Next.",
+   "tours.adminAnnouncements.step2.title": "Choose severity and target",
+   "tours.adminAnnouncements.step2.description": "Pick a severity and keep the target as \"All users\". Leave \"Also email this announcement\" unchecked.",
+   "tours.adminAnnouncements.step3.title": "Send the announcement",
+   "tours.adminAnnouncements.step3.description": "Press \"Send announcement\" to create it.",
+   "tours.adminAnnouncements.step4.title": "Find it in the history and delete",
+   "tours.adminAnnouncements.step4.description": "Your new announcement now appears in the send history. Press its delete button.",
+   "tours.adminAnnouncements.step5.title": "Confirm deletion",
+   "tours.adminAnnouncements.step5.description": "Confirm the deletion in the dialog.",
+   "tours.adminAnnouncements.step6.title": "Check the result",
+   "tours.adminAnnouncements.step6.description": "Check that the announcement you created is gone from the send history. Existing announcements stay as they were."
+  },
+  "ja": {
+   "tours.adminAnnouncements.label": "お知らせの作成と削除",
+   "tours.adminAnnouncements.summary": "入力フォームから全ユーザー向けのお知らせを送信し、送信履歴から削除します。",
+   "tours.adminAnnouncements.step1.title": "タイトルと本文を入力",
+   "tours.adminAnnouncements.step1.description": "お知らせのタイトルと本文を入力してください（例：タイトル「ネットワーク保守」、本文「今夜ルーターを再起動します」）。入力したら「次へ」を押します。",
+   "tours.adminAnnouncements.step2.title": "重大度と対象を選択",
+   "tours.adminAnnouncements.step2.description": "重大度を選び、対象は「すべてのユーザー」のままにします。「このお知らせをメールでも送信」はチェックしないでください。",
+   "tours.adminAnnouncements.step3.title": "お知らせを送信",
+   "tours.adminAnnouncements.step3.description": "「お知らせを送信」を押して作成します。",
+   "tours.adminAnnouncements.step4.title": "送信履歴で確認して削除",
+   "tours.adminAnnouncements.step4.description": "作成したお知らせが送信履歴に表示されました。そのお知らせの削除ボタンを押してください。",
+   "tours.adminAnnouncements.step5.title": "削除を確定",
+   "tours.adminAnnouncements.step5.description": "確認ダイアログで削除を確定してください。",
+   "tours.adminAnnouncements.step6.title": "結果を確認",
+   "tours.adminAnnouncements.step6.description": "作成したお知らせが送信履歴から消えたことを確認してください。既存のお知らせはそのまま残ります。"
+  },
+  "zh-CN": {
+   "tours.adminAnnouncements.label": "创建和删除公告",
+   "tours.adminAnnouncements.summary": "通过表单向所有用户发送公告，然后从发送历史中删除它。",
+   "tours.adminAnnouncements.step1.title": "填写标题和正文",
+   "tours.adminAnnouncements.step1.description": "输入公告标题和正文（例如标题“网络维护”，正文“今晚重启路由器”）。填写后点击“下一步”。",
+   "tours.adminAnnouncements.step2.title": "选择严重程度和目标",
+   "tours.adminAnnouncements.step2.description": "选择严重程度，目标保持为“所有用户”。不要勾选“同时通过邮件发送此公告”。",
+   "tours.adminAnnouncements.step3.title": "发送公告",
+   "tours.adminAnnouncements.step3.description": "点击“发送公告”创建公告。",
+   "tours.adminAnnouncements.step4.title": "在发送历史中确认并删除",
+   "tours.adminAnnouncements.step4.description": "刚创建的公告已出现在发送历史中。点击该公告的删除按钮。",
+   "tours.adminAnnouncements.step5.title": "确认删除",
+   "tours.adminAnnouncements.step5.description": "在确认对话框中确认删除。",
+   "tours.adminAnnouncements.step6.title": "查看结果",
+   "tours.adminAnnouncements.step6.description": "确认刚创建的公告已从发送历史中消失。已有的公告保持不变。"
+  },
+  "bn": {
+   "tours.adminAnnouncements.label": "ঘোষণা তৈরি ও মুছে ফেলা",
+   "tours.adminAnnouncements.summary": "ফর্ম থেকে সব ব্যবহারকারীকে একটি ঘোষণা পাঠান, তারপর পাঠানোর ইতিহাস থেকে সেটি মুছে ফেলুন।",
+   "tours.adminAnnouncements.step1.title": "শিরোনাম ও বিষয়বস্তু লিখুন",
+   "tours.adminAnnouncements.step1.description": "ঘোষণার শিরোনাম ও বিষয়বস্তু লিখুন (যেমন শিরোনাম \"নেটওয়ার্ক রক্ষণাবেক্ষণ\", বিষয়বস্তু \"আজ রাতে রাউটার পুনরায় চালু হবে\")। তারপর পরবর্তী চাপুন।",
+   "tours.adminAnnouncements.step2.title": "গুরুত্ব ও প্রাপক বেছে নিন",
+   "tours.adminAnnouncements.step2.description": "গুরুত্বের মাত্রা বেছে নিন এবং প্রাপক \"সব ব্যবহারকারী\" রাখুন। \"এই ঘোষণাটি ইমেইলেও পাঠান\" টিক না দিয়ে রাখুন।",
+   "tours.adminAnnouncements.step3.title": "ঘোষণা পাঠান",
+   "tours.adminAnnouncements.step3.description": "ঘোষণা তৈরি করতে \"ঘোষণা পাঠান\" চাপুন।",
+   "tours.adminAnnouncements.step4.title": "ইতিহাসে দেখে মুছে ফেলুন",
+   "tours.adminAnnouncements.step4.description": "আপনার নতুন ঘোষণা এখন পাঠানোর ইতিহাসে দেখা যাচ্ছে। এর মুছে ফেলার বোতাম চাপুন।",
+   "tours.adminAnnouncements.step5.title": "মুছে ফেলা নিশ্চিত করুন",
+   "tours.adminAnnouncements.step5.description": "ডায়ালগে মুছে ফেলা নিশ্চিত করুন।",
+   "tours.adminAnnouncements.step6.title": "ফলাফল দেখুন",
+   "tours.adminAnnouncements.step6.description": "আপনার তৈরি ঘোষণাটি পাঠানোর ইতিহাস থেকে সরে গেছে কিনা দেখুন। আগের ঘোষণাগুলো যেমন ছিল তেমনই থাকবে।"
+  },
+  "ms": {
+   "tours.adminAnnouncements.label": "Cipta dan padam pengumuman",
+   "tours.adminAnnouncements.summary": "Hantar pengumuman kepada semua pengguna melalui borang, kemudian padamnya daripada sejarah penghantaran.",
+   "tours.adminAnnouncements.step1.title": "Tulis tajuk dan kandungan",
+   "tours.adminAnnouncements.step1.description": "Masukkan tajuk dan kandungan pengumuman (contohnya tajuk \"Penyelenggaraan rangkaian\" dan kandungan \"Penghala dimulakan semula malam ini\"). Kemudian tekan Seterusnya.",
+   "tours.adminAnnouncements.step2.title": "Pilih tahap keterukan dan sasaran",
+   "tours.adminAnnouncements.step2.description": "Pilih tahap keterukan dan kekalkan sasaran sebagai \"Semua pengguna\". Biarkan \"Hantar pengumuman ini melalui e-mel juga\" tidak ditanda.",
+   "tours.adminAnnouncements.step3.title": "Hantar pengumuman",
+   "tours.adminAnnouncements.step3.description": "Tekan \"Hantar pengumuman\" untuk menciptanya.",
+   "tours.adminAnnouncements.step4.title": "Semak sejarah dan padam",
+   "tours.adminAnnouncements.step4.description": "Pengumuman baharu anda kini muncul dalam sejarah penghantaran. Tekan butang padamnya.",
+   "tours.adminAnnouncements.step5.title": "Sahkan pemadaman",
+   "tours.adminAnnouncements.step5.description": "Sahkan pemadaman dalam dialog.",
+   "tours.adminAnnouncements.step6.title": "Semak hasilnya",
+   "tours.adminAnnouncements.step6.description": "Pastikan pengumuman yang anda cipta telah hilang daripada sejarah penghantaran. Pengumuman sedia ada kekal seperti biasa."
+  },
+  "nb": {
+   "tours.adminAnnouncements.label": "Opprett og slett en kunngjøring",
+   "tours.adminAnnouncements.summary": "Send en kunngjøring til alle brukere fra skjemaet, og slett den deretter fra sendingshistorikken.",
+   "tours.adminAnnouncements.step1.title": "Skriv tittel og tekst",
+   "tours.adminAnnouncements.step1.description": "Skriv inn tittel og tekst for kunngjøringen (for eksempel tittelen «Nettverksvedlikehold» og teksten «Rutere startes på nytt i kveld»). Trykk deretter Neste.",
+   "tours.adminAnnouncements.step2.title": "Velg alvorlighetsgrad og mottaker",
+   "tours.adminAnnouncements.step2.description": "Velg alvorlighetsgrad og behold mottakeren som «Alle brukere». La «Send også denne kunngjøringen på e-post» være uavkrysset.",
+   "tours.adminAnnouncements.step3.title": "Send kunngjøringen",
+   "tours.adminAnnouncements.step3.description": "Trykk «Send kunngjøring» for å opprette den.",
+   "tours.adminAnnouncements.step4.title": "Finn den i historikken og slett",
+   "tours.adminAnnouncements.step4.description": "Den nye kunngjøringen vises nå i sendingshistorikken. Trykk på sletteknappen for den.",
+   "tours.adminAnnouncements.step5.title": "Bekreft slettingen",
+   "tours.adminAnnouncements.step5.description": "Bekreft slettingen i dialogen.",
+   "tours.adminAnnouncements.step6.title": "Kontroller resultatet",
+   "tours.adminAnnouncements.step6.description": "Kontroller at kunngjøringen du opprettet er borte fra sendingshistorikken. Eksisterende kunngjøringer blir værende."
+  },
+  "sw": {
+   "tours.adminAnnouncements.label": "Unda na ufute tangazo",
+   "tours.adminAnnouncements.summary": "Tuma tangazo kwa watumiaji wote kupitia fomu, kisha ulifute kutoka kwenye historia ya utumaji.",
+   "tours.adminAnnouncements.step1.title": "Andika kichwa na maudhui",
+   "tours.adminAnnouncements.step1.description": "Weka kichwa na maudhui ya tangazo (kwa mfano kichwa \"Matengenezo ya mtandao\" na maudhui \"Ruta zitawashwa upya usiku huu\"). Kisha bonyeza Inayofuata.",
+   "tours.adminAnnouncements.step2.title": "Chagua kiwango cha uzito na walengwa",
+   "tours.adminAnnouncements.step2.description": "Chagua kiwango cha uzito na uache walengwa kuwa \"Watumiaji wote\". Usiweke alama kwenye \"Tuma tangazo hili pia kwa barua pepe\".",
+   "tours.adminAnnouncements.step3.title": "Tuma tangazo",
+   "tours.adminAnnouncements.step3.description": "Bonyeza \"Tuma tangazo\" ili kuliunda.",
+   "tours.adminAnnouncements.step4.title": "Liangalie kwenye historia na ulifute",
+   "tours.adminAnnouncements.step4.description": "Tangazo lako jipya sasa linaonekana kwenye historia ya utumaji. Bonyeza kitufe chake cha kufuta.",
+   "tours.adminAnnouncements.step5.title": "Thibitisha kufuta",
+   "tours.adminAnnouncements.step5.description": "Thibitisha kufuta kwenye kidirisha.",
+   "tours.adminAnnouncements.step6.title": "Angalia matokeo",
+   "tours.adminAnnouncements.step6.description": "Hakikisha tangazo ulilounda limeondoka kwenye historia ya utumaji. Matangazo yaliyokuwepo yanabaki kama yalivyo."
+  },
+  "vi": {
+   "tours.adminAnnouncements.label": "Tạo và xóa thông báo chung",
+   "tours.adminAnnouncements.summary": "Gửi thông báo chung đến tất cả người dùng từ biểu mẫu, sau đó xóa nó khỏi lịch sử gửi.",
+   "tours.adminAnnouncements.step1.title": "Nhập tiêu đề và nội dung",
+   "tours.adminAnnouncements.step1.description": "Nhập tiêu đề và nội dung thông báo (ví dụ tiêu đề \"Bảo trì mạng\", nội dung \"Bộ định tuyến sẽ khởi động lại tối nay\"). Sau đó nhấn Tiếp theo.",
+   "tours.adminAnnouncements.step2.title": "Chọn mức độ và đích",
+   "tours.adminAnnouncements.step2.description": "Chọn mức độ nghiêm trọng và giữ đích là \"Tất cả người dùng\". Để trống ô \"Đồng thời gửi thông báo này qua email\".",
+   "tours.adminAnnouncements.step3.title": "Gửi thông báo",
+   "tours.adminAnnouncements.step3.description": "Nhấn \"Gửi thông báo chung\" để tạo thông báo.",
+   "tours.adminAnnouncements.step4.title": "Kiểm tra lịch sử và xóa",
+   "tours.adminAnnouncements.step4.description": "Thông báo mới của bạn đã xuất hiện trong lịch sử gửi. Nhấn nút xóa của thông báo đó.",
+   "tours.adminAnnouncements.step5.title": "Xác nhận xóa",
+   "tours.adminAnnouncements.step5.description": "Xác nhận xóa trong hộp thoại.",
+   "tours.adminAnnouncements.step6.title": "Kiểm tra kết quả",
+   "tours.adminAnnouncements.step6.description": "Kiểm tra rằng thông báo bạn vừa tạo đã biến mất khỏi lịch sử gửi. Các thông báo hiện có vẫn giữ nguyên."
+  }
+ },
+ "stateFields": [
+  {
+   "name": "adminAnnouncements",
+   "type": "AnnouncementAdmin[]",
+   "import": "import type { AnnouncementAdmin } from '$lib/types/announcements';",
+   "seed": "[{ id: 1, created_at: '2026-07-08T09:00:00Z', updated_at: '2026-07-08T09:00:00Z', created_by_user_id: 'mock-admin-1', created_by_username: 'demo-admin', title: 'Scheduled storage maintenance', body: 'Ceph storage nodes are patched on Saturday 02:00-04:00 UTC.', severity: 'warning', target_type: 'all', target_id: null, starts_at: null, ends_at: null, is_active: true }]"
+  }
+ ],
+ "dispatch": [
+  "const adminAnnouncements = profile === 'admin' ? mockAdminAnnouncements(method, pathname, body) : undefined;",
+  "if (adminAnnouncements !== undefined) return adminAnnouncements;"
+ ],
+ "importLines": [
+  "import { mockAdminAnnouncements } from '$lib/mockup/adminAnnouncements';"
+ ],
+ "contractsPaths": [
+  "/admin/announcements"
+ ],
+ "backendTourIds": [
+  "admin-announcements"
+ ]
+}

@@ -23,6 +23,7 @@
 	import GroupDeleteConfirmModal from '$lib/components/admin/groups/GroupDeleteConfirmModal.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { isTourActive } from '$lib/tutorial/engine';
 
 	let { domainId }: { domainId: string; domainName: string } = $props();
 	const privateScope = createPrivateViewScope();
@@ -58,7 +59,13 @@
 		],
 	});
 	const hasFilters = $derived(Boolean(search) || Object.keys(groupView.filters).length > 0);
-	const filteredGroups = $derived(groupView.rows);
+	// While a guided tour runs, the group it just created is pinned first so its delete anchor stays in view.
+	const filteredGroups = $derived.by(() => {
+		const rows = groupView.rows;
+		const created = ctrl.createdGroupId;
+		const index = created && isTourActive() ? rows.findIndex((group) => group.id === created) : -1;
+		return index > 0 ? [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)] : rows;
+	});
 	$effect(() => {
 		void viewOwner;
 		untrack(() => { search = ''; groupView.reset(); cardViews.clear(); });
@@ -77,7 +84,7 @@
 <PageShell>
 	<PageHeader breadcrumb={t('groupPage.breadcrumb')} title={t('groupPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
+			<button data-tour="admin-groups-create-open" onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -93,7 +100,8 @@
 		<Button variant="ghost" size="sm" disabled={!hasFilters && !groupView.sort} onclick={() => { search = ''; groupView.reset(); }}>{t('groupPage.reset')}</Button>
 	</ResourceToolbar>
 	<TableViewControls view={groupView} class="" />
-	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
+	<!-- Settled once the tour's group is deleted and the list reload finished. -->
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3" data-tour="admin-groups-results" data-tour-settled={!ctrl.createdGroupId && !ctrl.deleting && !ctrl.loading && !ctrl.refreshing ? 'true' : 'false'}>
 		{#if !ctrl.loading}<span aria-live="polite">{ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>{/if}
 		<span>{tc('table.loadedScope')}</span>
 	</div>
@@ -135,6 +143,7 @@
 						onAddMember={(userId) => ctrl.addMember(g.id, userId)}
 						onRemoveMember={(userId) => ctrl.removeMember(g.id, userId)}
 						onRetryUsers={ctrl.loadUsers}
+						tourDelete={g.id === ctrl.createdGroupId}
 					/>
 				{/each}
 			</div>

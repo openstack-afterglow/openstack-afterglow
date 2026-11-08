@@ -6,6 +6,7 @@
 	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
+	let { highlightDelete = false }: { highlightDelete?: boolean } = $props();
 	const s = useRouterDetailController();
 	const pending = createPendingAction();
 	const deletingRouter = $derived(pending.isActive('delete', s.saving));
@@ -18,7 +19,7 @@
 >
 	{#snippet actions()}
 		{#if s.canManageRouter}
-			<Button variant="danger-outline" size="sm" disabled={s.saving} ariaBusy={deletingRouter} onclick={() => pending.run('delete', () => s.deleteRouter())}>{#if deletingRouter}<LoadingState variant="control" label="" />{/if}{deletingRouter ? t('network.actions.deleting') : t('router.actions.delete')}</Button>
+			<Button variant="danger-outline" size="sm" disabled={s.saving} ariaBusy={deletingRouter} dataTour={highlightDelete ? 'routers-delete' : undefined} onclick={() => pending.run('delete', () => s.deleteRouter())}>{#if deletingRouter}<LoadingState variant="control" label="" />{/if}{deletingRouter ? t('network.actions.deleting') : t('router.actions.delete')}</Button>
 		{/if}
 	{/snippet}
 </DetailHeader>

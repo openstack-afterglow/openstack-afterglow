@@ -28,6 +28,7 @@
 	import RoleTree from '$lib/components/admin/roles/RoleTree.svelte';
 	import RoleDetailPanel from '$lib/components/admin/roles/RoleDetailPanel.svelte';
 	import RoleMetadataModal from '$lib/components/admin/roles/RoleMetadataModal.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, roleColumns } from '$lib/components/admin/roles/catalog';
 	import type { ManagedRole, RoleMetadata } from '$lib/components/admin/roles/types';
 	import { t } from '$lib/i18n/ns/admin-identity';
@@ -91,6 +92,9 @@
 	let editId = $state<string | null>(null);
 	let deleteId = $state<string | null>(null);
 	let confirmation = $state('');
+	// The role this page just created. Only its row, detail delete control and delete dialog carry the
+	// tutorial anchors, so a tour never targets native, retired or pre-existing roles.
+	let createdRoleId = $state<string | null>(null);
 	let mounted = false;
 	let requestVersion = 0;
 	let operationVersion = 0;
@@ -153,7 +157,7 @@
 			loadedScope = key;
 			query = ''; roleView.reset();
 			roles = []; fresh = false; loading = false; refreshing = false; busy = false;
-			selectedId = null; editor = null; editId = null; deleteId = null; confirmation = '';
+			selectedId = null; editor = null; editId = null; deleteId = null; confirmation = ''; createdRoleId = null;
 			preset = null; presetLoading = false; ++presetVersion;
 			loadError = ''; actionError = ''; notice = '';
 			presetQuery = ''; presetRoleView.reset(); presetEdgeView.reset(); retiredEdgeView.reset();
@@ -168,7 +172,7 @@
 		editId = role?.id ?? null; editor = role ? 'edit' : 'create'; actionError = '';
 	}
 
-	async function mutate(request: (token: string, projectId?: string) => Promise<unknown>, success: string, after: () => void) {
+	async function mutate<T>(request: (token: string, projectId?: string) => Promise<T>, success: string, after: (result: T) => void) {
 		const key = loadedScope;
 		if (!canMutate || !isCurrent(key)) return;
 		const state = get(auth);
@@ -176,10 +180,10 @@
 		++requestVersion; controller?.abort(); controller = null;
 		busy = true; actionError = ''; notice = '';
 		try {
-			await request(state.token!, state.projectId ?? undefined);
+			const result = await request(state.token!, state.projectId ?? undefined);
 			if (!isCurrent(key) || operation !== operationVersion) return;
 			fresh = false;
-			after();
+			after(result);
 			notice = success;
 			await load(true);
 		} catch (error) {
@@ -197,7 +201,7 @@
 			const body = { description: metadata.description, ...(!role.protected && !isNativeRole(role.name) && metadata.name !== undefined ? { name: metadata.name } : {}) };
 			await mutate((token, project) => api.patch<ManagedRole>(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, body, token, project), t('rolePage.saved'), () => { editor = null; editId = null; });
 		} else if (editor === 'create' && metadata.name) {
-			await mutate((token, project) => api.post<ManagedRole>('/api/v1/admin/roles', metadata, token, project), t('rolePage.created'), () => { editor = null; });
+			await mutate((token, project) => api.post<ManagedRole>('/api/v1/admin/roles', metadata, token, project), t('rolePage.created'), (role) => { editor = null; createdRoleId = role.id; });
 		}
 	}
 	async function toggleEdge(candidate: ManagedRole) {
@@ -211,7 +215,7 @@
 	function confirmDelete() {
 		if (!deleteRole || deleteDisabledReason(deleteRole) || confirmation !== deleteRole.name) return;
 		const role = deleteRole;
-		void mutate((token, project) => api.delete(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, token, project), t('rolePage.deleted'), () => { deleteId = null; selectedId = null; confirmation = ''; });
+		void mutate((token, project) => api.delete(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, token, project), t('rolePage.deleted'), () => { deleteId = null; selectedId = null; confirmation = ''; if (createdRoleId === role.id) createdRoleId = null; });
 	}
 	async function previewPresets() {
 		const key = loadedScope;
@@ -243,8 +247,9 @@
 	<PageShell class="min-w-0">
 		<PageHeader breadcrumb={t('rolePage.breadcrumb')} title={t('rolePage.title')}>
 			{#snippet actions()}
+				<TutorialStartButton tour="admin-roles" compactOnMobile />
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing || busy} onManualRefresh={() => { void load(); }} />
-				<Button disabled={!canMutate} onclick={() => openEditor(null)}>{t('rolePage.create')}</Button>
+				<Button disabled={!canMutate} dataTour="admin-roles-create-open" onclick={() => openEditor(null)}>{t('rolePage.create')}</Button>
 				<Button variant="secondary" disabled={!canMutate || presetLoading} onclick={previewPresets}>{t('rolePresets.preview')}</Button>
 			{/snippet}
 		</PageHeader>
@@ -254,7 +259,7 @@
 					<div class="min-w-0 flex-1"><RegexSearch id="admin-role-search" bind:value={query} label={t('rolePage.searchLabel')} /></div>
 					<ToggleGroup value={view} options={[{ value: 'list', label: t('rolePage.viewList') }, { value: 'tree', label: t('rolePage.viewTree') }]} onchange={(value) => { view = value; }} ariaLabel={t('rolePage.viewLabel')} />
 				</div>
-				<div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-2">
+				<div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-2" data-tour="admin-roles-summary">
 					<span aria-live="polite">{t('rolePage.count', { shown: filtered.length, total: roles.length })}</span>
 				</div>
 			</Card>
@@ -268,7 +273,7 @@
 			{:else if roles.length === 0 && !loadError}<EmptyState headline={t('rolePage.empty')} description={t('rolePage.emptyDescription')} />
 			{:else if view === 'tree'}
 				{#if filtered.length === 0 && roles.length > 0}<EmptyState headline={t('rolePage.noResults')} description={t('rolePage.noResultsDescription')}>{#snippet cta()}<Button variant="secondary" onclick={() => { query = ''; roleView.reset(); }}>{t('rolePage.clearSearch')}</Button>{/snippet}</EmptyState>{/if}
-				<RoleTree {roles} view={roleView} onSelect={selectRole} />
+				<RoleTree {roles} view={roleView} onSelect={selectRole} tourRoleId={createdRoleId} />
 			{:else if roles.length > 0}
 				<ResponsiveTable>
 					{#snippet cards()}
@@ -276,7 +281,7 @@
 						{#each filtered as role (role.id)}
 							<CompactResourceCard selected={selectedId === role.id}>
 								<div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
-									<Button variant="link" class="min-h-11 max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: role.name })} onclick={() => selectRole(role)}>{role.name}</Button>
+									<Button variant="link" class="min-h-11 max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: role.name })} dataTour={role.id === createdRoleId ? 'admin-roles-created' : undefined} onclick={() => selectRole(role)}>{role.name}</Button>
 									<RoleBadges {role} />
 								</div>
 								<dl>
@@ -297,7 +302,7 @@
 							{#each roleView.columns as column (column.key)}<TableColumnHeader view={roleView} columnKey={column.key} />{/each}
 						</tr></thead>
 						<tbody>{#each filtered as role (role.id)}<tr data-selected={selectedId === role.id}>
-							<td><Button variant="link" class="max-w-64 truncate" ariaLabel={t('rolePage.detailLabel', { name: role.name })} title={role.name} onclick={() => selectRole(role)}>{role.name}</Button></td>
+							<td><Button variant="link" class="max-w-64 truncate" ariaLabel={t('rolePage.detailLabel', { name: role.name })} title={role.name} dataTour={role.id === createdRoleId ? 'admin-roles-created' : undefined} onclick={() => selectRole(role)}>{role.name}</Button></td>
 							<td class="font-mono text-ink-2" title={role.id}>{role.id.slice(0, 12)}</td><td><RoleBadges {role} /></td>
 							<td>{role.implied_role_ids.length}</td><td>{role.inherited_role_ids.length}</td><td>{role.parent_role_ids.length}</td>
 							<td class="max-w-64 whitespace-pre-wrap break-words">{role.description || t('rolePage.noDescription')}</td>
@@ -311,7 +316,7 @@
 	</PageShell>
 	{#if selected}
 		{@const currentRole = selected}
-		<RoleDetailPanel role={currentRole} {roles} busy={busy || refreshing || loading} stale={!fresh} error={actionError} onClose={() => { selectedId = null; actionError = ''; }} onEdit={() => openEditor(currentRole)} onDelete={() => { if (canMutate) { deleteId = currentRole.id; confirmation = ''; actionError = ''; } }} onToggle={toggleEdge} onSelect={selectRole} />
+		<RoleDetailPanel role={currentRole} {roles} busy={busy || refreshing || loading} stale={!fresh} error={actionError} tourDelete={currentRole.id === createdRoleId} onClose={() => { selectedId = null; actionError = ''; }} onEdit={() => openEditor(currentRole)} onDelete={() => { if (canMutate) { deleteId = currentRole.id; confirmation = ''; actionError = ''; } }} onToggle={toggleEdge} onSelect={selectRole} />
 	{/if}
 	{#if editor}
 		{#key `${editor}:${editId}`}<RoleMetadataModal role={editor === 'edit' ? editRole : null} {busy} disabled={!canMutate} error={actionError || loadError} onClose={() => { if (!busy) { editor = null; actionError = ''; } }} onSave={saveMetadata} />{/key}
@@ -345,11 +350,11 @@
 				<Alert tone="warning">{t('rolePage.delete.warning')}</Alert>
 				{#if actionError || loadError}<Alert tone="danger">{actionError || loadError}</Alert>{/if}
 				{#if deleteDisabledReason(deleteRole)}<Alert tone="warning">{deleteDisabledReason(deleteRole)}</Alert>{/if}
-				<Field label={t('rolePage.delete.confirmLabel')} for="role-delete-name" help={t('rolePage.delete.confirmHelp')}><TextInput id="role-delete-name" bind:value={confirmation} disabled={!canMutate} /></Field>
+				<div data-tour={deleteRole.id === createdRoleId ? 'admin-roles-delete-name' : undefined}><Field label={t('rolePage.delete.confirmLabel')} for="role-delete-name" help={t('rolePage.delete.confirmHelp')}><TextInput id="role-delete-name" bind:value={confirmation} disabled={!canMutate} /></Field></div>
 			</div>
 			{#snippet actions()}
 				<Button variant="secondary" disabled={busy} onclick={() => { deleteId = null; confirmation = ''; actionError = ''; }}>{t('rolePage.delete.cancel')}</Button>
-				<Button variant="danger" ariaBusy={busy} disabled={!canMutate || confirmation !== deleteRole.name || !!deleteDisabledReason(deleteRole)} onclick={confirmDelete}>{t('rolePage.delete.submit')}</Button>
+				<Button variant="danger" ariaBusy={busy} disabled={!canMutate || confirmation !== deleteRole.name || !!deleteDisabledReason(deleteRole)} dataTour={deleteRole.id === createdRoleId ? 'admin-roles-delete-confirm' : undefined} onclick={confirmDelete}>{t('rolePage.delete.submit')}</Button>
 			{/snippet}
 		</FormModal>
 	{/if}

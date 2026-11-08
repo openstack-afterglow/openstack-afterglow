@@ -29,7 +29,11 @@
 	import IamProjectEdit from './IamProjectEdit.svelte';
 	import IamProjectMembers from './IamProjectMembers.svelte';
 
-	let { session, canCreate = true, blocked = false, onDenied }: { session: IamSession; canCreate?: boolean; blocked?: boolean; onDenied: () => void } = $props();
+	let { session, canCreate = true, blocked = false, onDenied, highlightId = null, onCreated }: {
+		session: IamSession; canCreate?: boolean; blocked?: boolean; onDenied: () => void;
+		// The tutorial delete anchor targets only the project the page just created.
+		highlightId?: string | null; onCreated?: (projectId: string) => void;
+	} = $props();
 	const client = untrack(() => domainIam(session));
 	const authority = untrack(() => projectAuthority(session));
 	const uid = $props.id();
@@ -67,9 +71,10 @@
 		} catch (cause) { if (pending === revision) fail(cause); }
 		finally { if (live && pending === revision) loading = false; }
 	}
-	function created() {
+	function created(project: { id: string; name: string }) {
 		if (!live || !session.isCurrent()) return;
 		invalidateWorkspaceDisplaySnapshots();
+		onCreated?.(project.id);
 		showCreate = false;
 		void load();
 	}
@@ -102,12 +107,13 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap justify-end gap-2">
 		<Button variant="secondary" disabled={loading} onclick={load}>{t('refresh')}</Button>
-		{#if canCreate}<Button variant="accent" disabled={actionsDisabled || creating} onclick={() => { showCreate = true; }}>{workspaceT('newProject')}</Button>{/if}
+		{#if canCreate}<Button variant="accent" disabled={actionsDisabled || creating} onclick={() => { showCreate = true; }} dataTour="iam-projects-create-open">{workspaceT('newProject')}</Button>{/if}
 	</div>
 	{#if loading}<LoadingState variant={projects.length ? 'inline' : 'surface'} label={t('loading')} />{/if}
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if !loading && !error && !projects.length}<Alert tone="info">{t('emptyProjects')}</Alert>{/if}
 	<RegexSearch id={tableSearchId} bind:value={tableSearch} /><TableViewControls view={tableView} />
+	<div data-tour="iam-projects-list">
 	<ResponsiveTable>
 		{#snippet cards()}
 			{#each tableView.rows as project (project.id)}<CompactResourceCard>
@@ -117,7 +123,7 @@
 				{#snippet actions()}
 					<Button variant="secondary" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { panel = { mode: 'edit', project }; }}>{t('projectEdit')}</Button>
 					<Button variant="secondary" size="sm" disabled={actionsDisabled} onclick={() => { panel = { mode: 'members', project }; }}>{t('projectMembers')}</Button>
-					<Button variant="danger-outline" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { deleting = project; }}>{t('projectRemove')}</Button>
+					<Button variant="danger-outline" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { deleting = project; }} dataTour={project.id === highlightId ? 'iam-projects-delete' : undefined}>{t('projectRemove')}</Button>
 				{/snippet}
 			</CompactResourceCard>{/each}
 		{/snippet}
@@ -132,13 +138,14 @@
 					<td><div class="flex flex-wrap gap-2">
 						<Button variant="secondary" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { panel = { mode: 'edit', project }; }}>{t('projectEdit')}</Button>
 						<Button variant="secondary" size="sm" disabled={actionsDisabled} onclick={() => { panel = { mode: 'members', project }; }}>{t('projectMembers')}</Button>
-						<Button variant="danger-outline" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { deleting = project; }}>{t('projectRemove')}</Button>
+						<Button variant="danger-outline" size="sm" disabled={actionsDisabled || isDefault(project)} onclick={() => { deleting = project; }} dataTour={project.id === highlightId ? 'iam-projects-delete' : undefined}>{t('projectRemove')}</Button>
 					</div></td>
 				</tr>{/each}
 				{#if !loading && !error && !projects.length}<tr><td colspan="5">{t('emptyProjects')}</td></tr>{/if}
 			</tbody>
 		</table></TableShell>
 	</ResponsiveTable>
+	</div>
 </div>
 
 {#if panel}

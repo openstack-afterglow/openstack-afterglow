@@ -8,6 +8,7 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { Alert, Button } from '$lib/components/ui';
 	import { createInstanceDetailController, provideInstanceDetailController, type InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
+	import { mobileViewport } from '$lib/utils/mobileViewport';
 	import { RESIZABLE_STATUSES } from '$lib/utils/instanceStatus';
 	import InstanceHeader from '$lib/components/instance/InstanceHeader.svelte';
 	import InfoSection from '$lib/components/instance/InfoSection.svelte';
@@ -81,7 +82,7 @@
 	const canShowResize = $derived(
 		$canWrite && !!$auth.token && !!s.instance && s.instance.id === instanceId
 		&& !!s.instance.project_id && s.instance.project_id === effectiveProjectId
-		&& RESIZABLE_STATUSES.has(s.instance.status) && !s.loading && !s.actioning && !s.deleting
+		&& RESIZABLE_STATUSES.has(s.instance.status) && !s.loading && !s.actioning && !s.deleting && !s.waygateLocked
 	);
 	const canOpenResize = $derived(canShowResize && !s.resizeLoading);
 	$effect(() => {
@@ -174,10 +175,25 @@
 	function openEvacuateModal() {
 		showEvacuateModal = true;
 	}
+
+	// Mobile (<768px): once the header renders, its name row owns the refresh control so the
+	// instance name stays at the top of the slide-over and page.
+	const headerOwnsRefresh = $derived(mobileViewport.current && !s.error && !!s.instance);
 </script>
+
+{#snippet refreshControl()}
+	<AutoRefreshControl
+		bind:active={s.detailPollAr.active}
+		bind:intervalSeconds={s.detailPollAr.intervalSeconds}
+		intervalOptions={s.detailPollAr.intervalOptions}
+		refreshing={s.refreshing}
+		onManualRefresh={s.manualRefresh}
+	/>
+{/snippet}
 
 <!-- 최초 로딩은 패널 남은 높이 전체를 잔광 장면으로 채운다. SlidePanel 안에서는 흐름 배치된 닫기 버튼(mt-3 + size-9 = 3rem)을 뺀다. -->
 <div class="{onClose && !(s.loading && !s.instance) ? 'p-8' : ''} {s.loading && !s.instance ? `flex flex-col ${onClose ? 'min-h-[calc(100%-3rem)]' : 'min-h-full'}` : 'min-h-full'} motion-fade" aria-busy={s.loading && !s.instance}>
+	{#if !(headerOwnsRefresh && onClose)}
 	<div class="mb-6 flex items-center justify-between {onClose && s.loading && !s.instance ? 'px-8' : ''}">
 		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
 		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
@@ -186,14 +202,9 @@
 				{t('panel.backToInstances')}
 			</a>
 		{/if}
-		<AutoRefreshControl
-			bind:active={s.detailPollAr.active}
-			bind:intervalSeconds={s.detailPollAr.intervalSeconds}
-			intervalOptions={s.detailPollAr.intervalOptions}
-			refreshing={s.refreshing}
-			onManualRefresh={s.manualRefresh}
-		/>
+		{#if !headerOwnsRefresh}{@render refreshControl()}{/if}
 	</div>
+	{/if}
 
 	{#if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
@@ -212,6 +223,7 @@
 			onOpenPasswordModal={openPasswordModal}
 			onOpenResizeModal={openResizeModal}
 			onOpenEvacuateModal={openEvacuateModal}
+			refresh={headerOwnsRefresh ? refreshControl : undefined}
 		/>
 
 		{#if s.instance.status === 'SHUTOFF'}
@@ -234,7 +246,7 @@
 						{t('panel.smallerResize')}
 					{/if}
 				</span>
-				<Button onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)} disabled={!canOpenResize} variant="outline" size="sm" class="shrink-0">
+				<Button onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)} disabled={!canOpenResize} title={s.waygateLocked ? t('waygate.managedNote') : undefined} variant="outline" size="sm" class="shrink-0">
 					{t('panel.resize')}
 				</Button>
 			</div>
@@ -242,7 +254,7 @@
 
 		<InfoSection {showHost} {adminMode} />
 		{#if effectiveProjectId && s.instance.id === instanceId && s.instance.project_id === effectiveProjectId && $auth.token}
-		<UsageScheduleSection {instanceId} projectId={effectiveProjectId} {adminMode} canWrite={$canWrite} {onUpdated} />
+		<UsageScheduleSection {instanceId} projectId={effectiveProjectId} {adminMode} canWrite={$canWrite} waygateLocked={s.waygateLocked} {onUpdated} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
 			<MetricsPanel

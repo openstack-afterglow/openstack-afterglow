@@ -1983,4 +1983,58 @@ describe('McpAccessSection', () => {
 		await renderApi();
 		await screen.findByText(t('mcp.recordDetails', { prefix: activeToken.visible_prefix, access: t('mcp.read'), lastUsed: '—', expires: t('mcp.expiryNever') }));
 	});
+
+	it('marks the token list settled for tutorials only after the post-issue reload, preview and revoke finish', async () => {
+		const issued = { ...activeToken, id: 'token-2', grant_id: 'grant-2', name: 'tutorial-agent', is_lumen_default: false };
+		let tokens = [activeToken];
+		let preview: PromiseWithResolvers<McpConsentProject[]> | null = null;
+		api.get.mockImplementation((path: string) => path === '/api/v1/auth/mcp-projects?preview=true' && preview
+			? preview.promise : Promise.resolve(accountResponse(path, tokens)));
+		api.post.mockImplementation(async () => { tokens = [issued, activeToken]; return { ...issued, token: 'mcp-afgl-secret-value' }; });
+		const deletion = deferred<void>();
+		api.delete.mockImplementation(() => deletion.promise.then(() => { tokens = [activeToken]; }));
+		const section = () => document.querySelector('[data-tour="mcp-personal-tokens"]') as HTMLElement;
+		await renderApi();
+		await waitFor(() => expect(section().getAttribute('data-tour-settled')).toBe('true'));
+		expect(document.querySelector('[data-tour="mcp-token-revoke"]')).toBeNull();
+
+		preview = deferred();
+		await fireEvent.click(await createButton());
+		const revoke = await waitFor(() => {
+			const element = document.querySelector('[data-tour="mcp-token-revoke"]');
+			expect(element).not.toBeNull();
+			return element as HTMLElement;
+		});
+		// The anchor exists only on the issued row, but the regrowing preview above it keeps the list unsettled.
+		expect(revoke.closest('.record')?.textContent).toContain('tutorial-agent');
+		expect(document.querySelectorAll('[data-tour="mcp-token-revoke"]')).toHaveLength(1);
+		await waitFor(() => expect(api.get.mock.calls.filter(([path]) => path === '/api/v1/auth/mcp-projects?preview=true')).toHaveLength(2));
+		expect(section().hasAttribute('data-tour-settled')).toBe(false);
+		preview.resolve(previewProjects);
+		await waitFor(() => expect(section().getAttribute('data-tour-settled')).toBe('true'));
+
+		preview = null;
+		await fireEvent.click(revoke);
+		await waitFor(() => expect(api.delete).toHaveBeenCalledExactlyOnceWith('/api/v1/auth/mcp-tokens/token-2', 'token'));
+		expect(section().hasAttribute('data-tour-settled')).toBe(false);
+		deletion.resolve();
+		await waitFor(() => expect(section().getAttribute('data-tour-settled')).toBe('true'));
+		expect(document.querySelector('[data-tour="mcp-token-revoke"]')).toBeNull();
+		expect(section().textContent).not.toContain('tutorial-agent');
+		expect(section().textContent).toContain(activeToken.name);
+	});
+
+	it('keeps the tutorial submit row unsettled while a read token is issuable but the preview still loads', async () => {
+		const preview = deferred<McpConsentProject[]>();
+		api.get.mockImplementation((path: string) => path === '/api/v1/auth/mcp-projects?preview=true'
+			? preview.promise : Promise.resolve(accountResponse(path)));
+		await renderApi();
+		const row = document.querySelector('[data-tour="mcp-token-submit-row"]') as HTMLElement;
+		await createButton();
+		expect(row.hasAttribute('data-tour-settled')).toBe(false);
+		preview.resolve(previewProjects);
+		await waitFor(() => expect(row.getAttribute('data-tour-settled')).toBe('true'));
+		await fireEvent.input(screen.getByRole('textbox', { name: t('mcp.name') }), { target: { value: '  ' } });
+		expect(row.hasAttribute('data-tour-settled')).toBe(false);
+	});
 });

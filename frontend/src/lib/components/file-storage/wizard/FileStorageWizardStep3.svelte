@@ -139,6 +139,6 @@
 {/if}
 
 <div class="flex justify-end gap-3 mt-2">
-	<button onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.skip')}</button>
-	<button onclick={s.closeWizard} class="px-5 py-2 bg-green-700 hover:bg-green-600 text-ink-0 text-sm font-medium rounded-lg transition-colors">{t('wizard.actions.finish')}</button>
+	<button data-tour="file-storage-create-done" onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.skip')}</button>
+	<button data-tour="file-storage-create-done" onclick={s.closeWizard} class="px-5 py-2 bg-green-700 hover:bg-green-600 text-ink-0 text-sm font-medium rounded-lg transition-colors">{t('wizard.actions.finish')}</button>
 </div>

@@ -13,7 +13,7 @@ vi.mock('$lib/stores/auth', () => ({
 }));
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delete: vi.fn(), patch: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError }));
-vi.mock('$lib/tutorial/engine', () => ({ startTour: vi.fn() }));
+vi.mock('$lib/tutorial/engine', () => ({ startTour: vi.fn(), isTourActive: () => false, onTourActivityChange: () => () => {} }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 60, intervalOptions: [30, 60] }) }));
 import { auth, authReady, projectSwitching, logoutInProgress } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';

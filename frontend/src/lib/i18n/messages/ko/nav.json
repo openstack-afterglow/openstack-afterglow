@@ -167,5 +167,11 @@
 	"scope.allProjects": "작업 범위: 전체 프로젝트",
 	"scope.currentProject": "작업 범위: 현재 프로젝트 · {name}",
 	"actions.refreshDirectory": "범위 목록 새로고침",
-	"scope.filtered": "관측 범위: {id}"
+	"scope.filtered": "관측 범위: {id}",
+	"actions.searchAll": "리소스·서비스 검색",
+	"search.resources": "리소스",
+	"search.loadingResources": "리소스를 불러오는 중…",
+	"search.noResources": "일치하는 리소스가 없습니다.",
+	"search.noServices": "일치하는 서비스가 없습니다.",
+	"search.resultCount": "{count}개 결과"
 }

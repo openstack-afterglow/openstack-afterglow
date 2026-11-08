@@ -3,9 +3,11 @@
 	import { t } from '$lib/i18n/ns/usage-schedule';
 	import type { UsageScheduleDraft } from '$lib/types/instanceUsage';
 	import { calendarMonthAfter, usageDraftError, toLocalDateTime } from '$lib/utils/instanceUsage';
-	let { value, onchange, disabled = false, currentExpiry, startsAt, idPrefix = 'usage-schedule' }: {
+	let { value, onchange, disabled = false, currentExpiry, startsAt, idPrefix = 'usage-schedule', extensionOnly = false }: {
 		value: UsageScheduleDraft; onchange: (value: UsageScheduleDraft) => void;
 		disabled?: boolean; currentExpiry?: string; startsAt?: string; idPrefix?: string;
+		/** Only a later expiry and its reason can change (Waygate gateways); the expiry action stays as is. */
+		extensionOnly?: boolean;
 	} = $props();
 	const error = $derived(usageDraftError(value, currentExpiry, Date.now(), startsAt));
 	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -25,6 +27,7 @@
 		<p class="text-xs leading-relaxed text-ink-2">{t('defaultDate')}</p>
 	{/if}
 	{#if currentExpiry}<p class="text-xs leading-relaxed text-ink-2">{t('extensionLimitHelp')}</p>{/if}
+	{#if !extensionOnly}
 	<Field label={t('action')} for="{idPrefix}-action">
 		<select id="{idPrefix}-action" value={value.expiryAction} {disabled}
 			onchange={(event) => onchange({ ...value, expiryAction: event.currentTarget.value as 'shelve' | 'delete', deleteVolumes: false })}
@@ -44,6 +47,7 @@
 		<p class="text-xs leading-relaxed text-ink-2">{t('storageScope')}</p>
 	{:else}
 		<p class="text-sm text-ink-2">{t('retain')}</p>
+	{/if}
 	{/if}
 	<Field label={t('reason')} for="{idPrefix}-reason" required={extended} help={t('reasonHelp')}>
 		<TextInput id="{idPrefix}-reason" value={value.reason} {disabled} required={extended} ariaInvalid={error === 'reasonInvalid' || error === 'reasonRequired'}

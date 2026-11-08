@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "Deletion failed: {message}",
 	"floatingIps.breadcrumb": "Network",
 	"floatingIps.title": "Floating IP",
-	"floatingIps.allocationHelp": "Floating IPs can be allocated on the <network>network page</network>.",
+	"floatingIps.allocationHelp": "Allocate floating IPs with the Allocate button on this page.",
 	"floatingIps.selection.selectAll": "Select all Floating IPs",
 	"floatingIps.columns.fixedIp": "Associated fixed IP",
 	"floatingIps.columns.instance": "Instance",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "Topology network details",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "This resource is managed by Waygate. Change it from the Waygate menu.",
+	"securityGroups.openWaygate": "Open Waygate",
+	"securityGroups.waygateBadge": "Waygate managed"
 }

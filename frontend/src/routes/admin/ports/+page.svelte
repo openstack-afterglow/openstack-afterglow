@@ -6,6 +6,8 @@
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { isTourActive } from '$lib/tutorial/engine';
+	import { pinCreatedPort } from '$lib/components/admin/ports/pinCreatedPort';
 	import { api as baseApi, ApiError } from '$lib/api/client';
 	import { createAdminInventoryApi } from '$lib/api/adminInventoryScope';
 	const api = createAdminInventoryApi(baseApi);
@@ -19,6 +21,7 @@
 	import PortCreateModal from '$lib/components/admin/ports/PortCreateModal.svelte';
 	import PortEditModal from '$lib/components/admin/ports/PortEditModal.svelte';
 	import PortDeleteModal from '$lib/components/admin/ports/PortDeleteModal.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import type { PortInfo, NetworkInfo } from '$lib/types/networks';
 	import type { PagedResponse } from '$lib/types/adminPort';
 	import { t } from '$lib/i18n/ns/admin-network';
@@ -35,6 +38,9 @@
 	let updating = $state(false);
 	let editError = $state('');
 	let deletePort = $state<PortInfo | null>(null);
+	// The port this page just created. Only its row carries the tutorial delete anchor, and it stays
+	// on the first page even when Neutron's id ordering would place it on a later page.
+	let createdPort = $state<PortInfo | null>(null);
 	let showCreate = $state(false);
 	let creating = $state(false);
 	let createError = $state('');
@@ -73,7 +79,9 @@
 		try {
 			const res = await api.get<PagedResponse<PortInfo>>(requestPath, requestToken, requestProjectId, force ? { refresh: true } : undefined);
 			if (!owns()) return;
-			ports = res.items || [];
+			const items = res.items || [];
+			const created = createdPort;
+			ports = pinCreatedPort(items, created, { tourActive: isTourActive(), firstPage: !marker, scoped: api.scoped });
 			hasInventory = true;
 			nextMarker = res.next_marker;
 			const path = nextMarker ? listPath(nextMarker) : null;
@@ -108,6 +116,7 @@
 	async function doDelete(id: string): Promise<string | true> {
 		try {
 			await api.delete(`/api/v1/admin/ports/${id}`, token, projectId);
+			if (createdPort?.id === id) createdPort = null;
 			await load(markerStack[markerStack.length - 1]);
 			return true;
 		} catch (e) { return e instanceof ApiError ? e.message : t('portsPage.error.deleteFailed'); }
@@ -116,7 +125,7 @@
 	async function createPort(form: { network_id: string; name: string; project_id: string; fixed_ip: string }): Promise<boolean> {
 		creating = true; createError = '';
 		try {
-			await api.post('/api/v1/admin/ports', {
+			createdPort = await api.post<PortInfo>('/api/v1/admin/ports', {
 				network_id: form.network_id,
 				name: form.name || undefined,
 				project_id: form.project_id || undefined,
@@ -162,7 +171,8 @@
 <PageShell>
 	<PageHeader breadcrumb={t('portsPage.breadcrumb')} title={t('portsPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
+			<TutorialStartButton tour="admin-ports" compactOnMobile />
+			<button data-tour="admin-ports-create-open" onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -194,6 +204,7 @@
 			{ports}
 			{markerStack}
 			{nextMarker}
+			tourDeleteId={createdPort?.id ?? null}
 			{loading}
 			onEdit={(p) => { editPort = p; editError = ''; }}
 			onDelete={(p) => { deletePort = p; }}

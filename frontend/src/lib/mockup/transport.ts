@@ -12,16 +12,30 @@ import { isTourId } from '$lib/tutorial/tours';
 import { t } from '$lib/i18n/ns/tutorial';
 import { sortResources, type ResourceSort } from '$lib/utils/resourceSort';
 import { mockComputePolicy } from '$lib/mockup/computePools';
-import { parseContainerListResponse, type ContainerListResponse } from '$lib/types/zunContainer';
-import type { SecretInfo, ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
+import { mockContainers } from '$lib/mockup/containers';
+import { mockObjectStorage } from '$lib/mockup/objectStorage';
+import { parseContainerListResponse } from '$lib/types/zunContainer';
+import { mockComputeNetwork } from '$lib/mockup/computeNetwork';
+import { mockStorageSecrets } from '$lib/mockup/storageSecrets';
+import { mockIdentity } from '$lib/mockup/identity';
+import { mockAdminAnnouncements } from '$lib/mockup/adminAnnouncements';
+import { mockIdentityAdmin } from '$lib/mockup/identityAdmin';
+import { mockAdminResources } from '$lib/mockup/adminResources';
+import { mockAdminFloatingIps } from '$lib/mockup/adminFloatingIps';
+import { mockAdminPorts } from '$lib/mockup/adminPorts';
+import { mockAdminUsers } from '$lib/mockup/adminUsers';
+import { mockAdminGroups } from '$lib/mockup/adminGroups';
+import { mockAdminRolesDomains } from '$lib/mockup/adminRolesDomains';
+import { mockAdminObjectStorage } from '$lib/mockup/adminObjectStorage';
+import { mockStorageFiles } from '$lib/mockup/storageFiles';
+import { mockNetworkLbRouter } from '$lib/mockup/networkLbRouter';
+import { mockDatabaseContainers } from '$lib/mockup/databaseContainers';
+import { mockDatabaseBackups } from '$lib/mockup/databaseBackups';
+import type { ContainerInfo, OrderInfo, QuotaInfo } from '$lib/api/secrets';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
 const NOW_ISO = '2026-07-09T00:00:00Z';
-const MOCK_SECRET_ITEMS: SecretInfo[] = [
-	{ id: 'mock-secret-api', name: 'tutorial-api-password', secret_type: 'passphrase', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW_ISO, expires: null, content_types: { default: 'text/plain' }, system_managed: false },
-	{ id: 'mock-secret-cert', name: 'tutorial-tls-certificate', secret_type: 'certificate', status: 'ACTIVE', algorithm: null, bit_length: null, mode: null, created: NOW_ISO, expires: MOCK_EXPIRES_AT_ISO, content_types: { default: 'application/pkix-cert' }, system_managed: true },
-];
 const MOCK_SECRET_CONTAINER_ITEMS: ContainerInfo[] = [
 	{ id: 'mock-secret-container', name: 'tutorial-application-secrets', type: 'generic', status: 'ACTIVE', created: NOW_ISO, secret_refs: [{ name: 'api-password', secret_ref: 'https://barbican.mock.invalid/v1/secrets/mock-secret-api' }] },
 ];
@@ -344,6 +358,22 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const params = new URLSearchParams(query);
 	const computePolicy = mockComputePolicy(method, pathname, params, body, profile);
 	if (computePolicy !== undefined) return computePolicy;
+	const identityAdmin = mockIdentityAdmin(method, pathname, params, body, profile, requestProjectId);
+	if (identityAdmin !== undefined) return identityAdmin;
+	const adminResources = mockAdminResources(method, pathname, params, body, profile);
+	if (adminResources !== undefined) return adminResources;
+	const adminFloatingIps = mockAdminFloatingIps(method, pathname, params, body, profile);
+	if (adminFloatingIps !== undefined) return adminFloatingIps;
+	const adminPorts = mockAdminPorts(method, pathname, params, body, profile);
+	if (adminPorts !== undefined) return adminPorts;
+	const adminUsers = mockAdminUsers(method, pathname, params, body, profile);
+	if (adminUsers !== undefined) return adminUsers;
+	const adminGroups = mockAdminGroups(method, pathname, params, body, profile);
+	if (adminGroups !== undefined) return adminGroups;
+	const adminRolesDomains = mockAdminRolesDomains(method, pathname, body, profile);
+	if (adminRolesDomains !== undefined) return adminRolesDomains;
+	const adminObjectStorage = mockAdminObjectStorage(method, pathname, params, body, profile, requestProjectId);
+	if (adminObjectStorage !== undefined) return adminObjectStorage;
 
 	if (method === 'GET' && pathname === '/api/v1/site-config') {
 		return { ...get(siteConfig), services: { ...get(siteConfig).services, ...MOCKUP_SERVICE_OVERRIDES } };
@@ -411,39 +441,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		};
 	}
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-oauth/grants') return state.mcpAccess.oauthGrants.filter((record) => record.status !== 'revoked');
-	if (method === 'POST' && pathname === '/api/v1/auth/mcp-tokens') {
-		const payload = body as { name?: unknown; access_level?: unknown; expires_at?: unknown; non_expiring?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
-		const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
-		const accessLevel = payload?.access_level;
-		if (!name || (accessLevel !== 'read' && accessLevel !== 'manage')) mockUnsupported();
-		const projectScope = payload?.project_scope;
-		const projectIds = payload?.project_ids;
-		if ((projectScope !== 'all' && projectScope !== 'selected') || !Array.isArray(projectIds) || projectIds.some((id) => typeof id !== 'string' || !state.projects.some((project) => project.id === id)) || (projectScope === 'selected' && projectIds.length === 0) || (projectScope === 'all' && projectIds.length !== 0)) mockUnsupported();
-		const approvedProjects = state.projects.filter((project) => projectScope === 'all' || (projectIds as string[]).includes(project.id)).map(({ id, name }) => ({ id, name }));
-		const id = nextMockId(state.mcpAccess.personalTokens.map((record) => record.id), 'mock-mcp-token');
-		const record = {
-			id,
-			grant_id: `mock-mcp-grant-${id}`,
-			name,
-			owner_project_id: requestProjectId ?? state.selectedProjectId,
-			owner_project_name: state.projects.find((project) => project.id === (requestProjectId ?? state.selectedProjectId))?.name ?? (requestProjectId ?? state.selectedProjectId),
-			source: 'personal_token' as const,
-			access_level: accessLevel,
-			project_scope: projectScope as 'selected' | 'all',
-			project_ids: approvedProjects.map((project) => project.id),
-			projects: approvedProjects,
-			status: 'active' as const,
-			visible_prefix: `mcp_mock_${id.slice(-4)}_`,
-			issued_at: NOW_ISO,
-			expires_at: payload?.non_expiring === true ? null : typeof payload?.expires_at === 'string' && !Number.isNaN(Date.parse(payload.expires_at)) ? payload.expires_at : new Date(Date.parse(NOW_ISO) + 30 * 24 * 60 * 60 * 1000).toISOString(),
-			last_used_at: null,
-			revoked_at: null,
-			is_lumen_default: false,
-			client_observations: [],
-		} satisfies (typeof state.mcpAccess.personalTokens)[number];
-		state.mcpAccess.personalTokens.unshift(record);
-		return { ...record, token: `sk-afgl-mock-${id}` };
-	}
 	if (method === 'DELETE' && pathname === '/api/v1/auth/mcp-tokens/lumen-default') {
 		delete state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId];
 		return { lumen_selection_generation: 2 };
@@ -454,15 +451,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		if (!selected) mockUnsupported();
 		state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] = selected.id;
 		return { lumen_selection_generation: 2 };
-	}
-	const personalTokenId = pathname.match(/^\/api\/v1\/auth\/mcp-tokens\/([^/]+)$/)?.[1];
-	if (method === 'DELETE' && personalTokenId) {
-		const record = state.mcpAccess.personalTokens.find((item) => item.id === personalTokenId);
-		if (!record) mockUnsupported();
-		record.status = 'revoked';
-		record.revoked_at = NOW_ISO;
-		record.is_lumen_default = false;
-		return ok204();
 	}
 	const oauthGrantId = pathname.match(/^\/api\/v1\/auth\/mcp-oauth\/grants\/([^/]+)$/)?.[1];
 	if (method === 'DELETE' && oauthGrantId) {
@@ -512,6 +500,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			layers: { new: 3, inherited: 0, total: 3, limit: 25, by_instruction: { RUN: 1, ENV: 1, WORKDIR: 1 } },
 		};
 	}
+	const adminAnnouncements = profile === 'admin' ? mockAdminAnnouncements(method, pathname, body) : undefined;
+	if (adminAnnouncements !== undefined) return adminAnnouncements;
 	if (profile === 'admin' && method !== 'GET') {
 		const dockerfileFixture = method === 'POST' && [
 			'/api/v1/palimpsest/builds/dockerfile/fetch-url',
@@ -686,13 +676,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/topology') return state.topology;
 	if (profile === 'admin' && pathname === '/api/v1/admin/all-containers') return state.admin.containers;
-	if (method === 'GET' && profile === 'admin' && pathname === '/api/v1/admin/object-storage') {
-		const domain = params.get('domain_id');
-		if (domain && domain !== 'mock-domain') throw new ApiError(404, 'inventory_domain_not_found');
-		const project = params.get('project_id');
-		const items = project && project !== state.selectedProjectId ? [] : [{ name: 'sample-artifacts', count: 12, bytes: 734003200, project_id: state.selectedProjectId, project_name: state.projects.find(item => item.id === state.selectedProjectId)?.name ?? '' }];
-		return { items, project_count: items.length ? 1 : 0, partial: false, unavailable_projects: [] };
-	}
 	const adminContainerLogsId = pathname.match(/^\/api\/v1\/admin\/containers\/([^/]+)\/logs$/)?.[1];
 	if (profile === 'admin' && adminContainerLogsId) {
 		return { logs: state.admin.containerLogs[adminContainerLogsId] ?? '' };
@@ -719,9 +702,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const category = params.get('category');
 		if (!category || !(category in state.admin.services)) mockUnsupported();
 		return { [category]: state.admin.services[category as keyof typeof state.admin.services] };
-	}
-	if (profile === 'admin' && pathname === '/api/v1/admin/domains') {
-		return { items: [{ id: 'mock-domain', name: 'Demo', enabled: true, description: '' }] };
 	}
 	if (profile === 'admin' && ['/api/v1/admin/users', '/api/v1/admin/users/activity', '/api/v1/admin/users/stats'].includes(pathname)) {
 		if (!params.get('domain_id')) throw new ApiError(422, 'Select a domain');
@@ -804,6 +784,8 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/owner$/.test(pathname)) return { display: 'Sample Cloud Demo / demo-user' };
 	if (method === 'GET' && /^\/api\/v1\/instances\/[^/]+\/storage-attachments$/.test(pathname)) return [{ file_storage_id: 'mock-share-1', name: 'demo-dataset', share_proto: 'CEPHFS', status: 'available' }];
 
+	const storageSecrets = mockStorageSecrets(method, pathname, body); if (storageSecrets !== undefined) return storageSecrets;
+	const storageFiles = mockStorageFiles(method, pathname, body); if (storageFiles !== undefined) return storageFiles;
 	if (method === 'GET' && pathname === '/api/v1/volumes') return state.volumes;
 	if (method === 'POST' && pathname === '/api/v1/volumes') {
 		const payload = body as { name?: string; size_gb?: number } | null;
@@ -824,7 +806,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		state.volumes = state.volumes.filter((item) => item.id !== volumeId);
 		return ok204();
 	}
-	if (method === 'GET' && pathname === '/api/v1/volume-snapshots') return [];
 
 	const imageId = pathname.match(/^\/api\/v1\/images\/([^/]+)$/)?.[1];
 	if (method === 'GET' && imageId) {
@@ -866,54 +847,24 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 
 	if (method === 'GET' && pathname === '/api/v1/images') return MOCK_IMAGES;
 	if (method === 'GET' && pathname === '/api/v1/libraries') return [];
-	if (method === 'GET' && pathname === '/api/v1/security-groups') return [{
-		id: 'mock-sg-default', name: 'default', description: 'Mock default SG', rules: [
-			{ id: 'mock-rule-ssh', direction: 'ingress', protocol: 'tcp', port_range_min: 22, port_range_max: 22, remote_ip_prefix: '0.0.0.0/0', remote_group_id: null, ethertype: 'IPv4' },
-			{ id: 'mock-rule-v6', direction: 'egress', protocol: null, port_range_min: null, port_range_max: null, remote_ip_prefix: '::/0', remote_group_id: null, ethertype: 'IPv6' },
-		],
-	}];
-	if (method === 'GET' && pathname === '/api/v1/security-groups/quota') {
-		return { security_group: { limit: 10, in_use: 1 }, security_group_rule: { limit: 100, in_use: 2 } };
-	}
-	if (method === 'GET' && /^\/api\/v1\/security-groups\/[^/]+\/instances$/.test(pathname)) {
-		return state.instances.slice(0, 1).map(({ id, name, status }) => ({ id, name, status }));
-	}
+	const computeNetwork = mockComputeNetwork(method, pathname, body);
+	if (computeNetwork !== undefined) return computeNetwork;
+	const networkLbRouter = mockNetworkLbRouter(method, pathname, body);
+	if (networkLbRouter !== undefined) return networkLbRouter;
 	if (method === 'GET' && pathname === '/api/v1/networks/default') return { network_id: 'mock-net-private' };
 	if (method === 'GET' && pathname === '/api/v1/dashboard/gpu-available') return { gpu_types: [] };
 
 	// 튜토리얼에서 실제 콘솔과 동일한 내비게이션을 제공하기 위한 페이지 픽스처들 (빈/샘플 상태)
-	if (method === 'GET' && pathname === '/api/v1/loadbalancers') return state.topology.load_balancers;
-	if (method === 'GET' && pathname === '/api/v1/clusters') return [];
-	if (method === 'GET' && pathname === '/api/v1/clusters/templates') return [];
-	if (method === 'GET' && pathname === '/api/v1/containers') {
-		const response: ContainerListResponse = { items: [], service_available: true, message: '' };
-		return response;
-	}
-	if (method === 'GET' && ['/api/v1/database-instances', '/api/v1/admin/database-instances'].includes(pathname)) {
-		return [{
-			id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE',
-			datastore: { type: 'mysql', version: '8.0' }, flavor_id: 'db.small',
-			flavor_ram: 2048, flavor_vcpus: 2, size: 20, created_at: NOW_ISO,
-			hostname: 'sample-customer-mysql.internal', ip: '192.0.2.41', ips: ['192.0.2.41'],
-			address_map: { private: ['192.0.2.41'] }, volume_used: 4.25,
-			...(pathname === '/api/v1/admin/database-instances' ? { project_id: state.selectedProjectId } : {}),
-		}];
-	}
-	if (method === 'GET' && pathname === '/api/v1/database-instances/backups') return [];
-	if (method === 'GET' && pathname === '/api/v1/database-instances/flavors') return [];
-	if (method === 'GET' && pathname === '/api/v1/object-storage') return [{ name: 'sample-artifacts', count: 12, bytes: 734003200 }];
-	if (method === 'GET' && pathname === '/api/v1/object-storage/account') return { container_count: 1, object_count: 12, bytes_used: 734003200 };
-	if (method === 'GET' && pathname === '/api/v1/object-storage/trash/containers') return [];
-	if (method === 'GET' && pathname === '/api/v1/file-storage') {
-		return [{
-			id: 'mock-share-1', name: 'demo-dataset', status: 'available', size: 200, share_proto: 'CEPHFS',
-			export_locations: ['192.0.2.10:6789:/volumes/demo-dataset'], metadata: {}, project_id: state.selectedProjectId,
-			created_at: NOW_ISO, is_public: false, library_name: null, library_version: null, built_at: null,
-			progress: '100%', user_id: 'mock-user-1', user_name: 'demo-user', access_rules_status: 'active',
-			host: 'sample-manila-host', availability_zone: 'nova', share_type_name: 'cephfs', share_network_id: null,
-			export_location_details: [{ path: '192.0.2.10:6789:/volumes/demo-dataset', preferred: true, share_instance_id: null }],
-		}];
-	}
+	const databaseContainers = mockDatabaseContainers(method, pathname, body);
+	if (databaseContainers !== undefined) return databaseContainers;
+	const databaseBackups = mockDatabaseBackups(method, pathname, body);
+	if (databaseBackups !== undefined) return databaseBackups;
+	const containers = mockContainers(method, pathname, body);
+	if (containers !== undefined) return containers;
+	const identity = mockIdentity(method, pathname, params, body, profile);
+	if (identity !== undefined) return identity;
+	const objectStorage = mockObjectStorage(method, pathname, body);
+	if (objectStorage !== undefined) return objectStorage;
 	if (method === 'GET' && pathname === '/api/v1/share-networks') return [];
 	if (method === 'GET' && pathname === '/api/v1/share-snapshots') return [];
 	if (method === 'GET' && pathname === '/api/v1/security-services') return [];
@@ -1076,15 +1027,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			_meta: { source: 'network_nic_sum', router_traffic: 'exporter_required' },
 		};
 	}
-	if (method === 'POST' && pathname === '/api/v1/networks') {
-		const payload = body as { name?: string; subnet?: { name?: string; cidr?: string; gateway_ip?: string | null; enable_dhcp?: boolean } } | null;
-		const id = `mock-net-${state.topology.networks.length + 1}`;
-		const subnet = payload?.subnet?.cidr
-			? [{ id: `${id}-subnet`, name: payload.subnet.name || `${payload.name || 'network'}-subnet`, cidr: payload.subnet.cidr, ip_version: payload.subnet.cidr.includes(':') ? 6 : 4, gateway_ip: payload.subnet.gateway_ip ?? null, dhcp_enabled: payload.subnet.enable_dhcp ?? true }]
-			: [];
-		state.topology.networks.push({ id, name: payload?.name || id, status: 'ACTIVE', is_external: false, is_shared: false, project_id: state.selectedProjectId, subnet_details: subnet });
-		return { id, name: payload?.name || id, status: 'ACTIVE', subnets: subnet.map((item) => item.id), cidrs: subnet.map((item) => item.cidr) };
-	}
 	const networkSubnet = pathname.match(/^\/api\/v1\/networks\/([^/]+)\/subnets$/)?.[1];
 	if (method === 'POST' && networkSubnet) {
 		const network = state.topology.networks.find((item) => item.id === networkSubnet);
@@ -1093,12 +1035,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const subnet = { id: `${network.id}-subnet-${network.subnet_details.length + 1}`, name: payload.name || `${network.name}-subnet`, cidr: payload.cidr, ip_version: payload.cidr.includes(':') ? 6 : 4, gateway_ip: payload.gateway_ip ?? null, dhcp_enabled: payload.enable_dhcp ?? true };
 		network.subnet_details.push(subnet);
 		return subnet;
-	}
-	if (method === 'POST' && pathname === '/api/v1/routers') {
-		const payload = body as { name?: string; external_network_id?: string } | null;
-		const id = `mock-router-${state.topology.routers.length + 1}`;
-		state.topology.routers.push({ id, name: payload?.name || id, status: 'ACTIVE', external_gateway_network_id: payload?.external_network_id ?? null, external_gateway_ips: payload?.external_network_id ? ['203.0.113.199'] : [], interface_ips: [], is_distributed: false, is_ha: false, connected_subnet_ids: [], dvr_subnet_ids: [], project_id: state.selectedProjectId });
-		return { id, name: payload?.name || id, status: 'ACTIVE', external_gateway_network_id: payload?.external_network_id ?? null, connected_subnet_ids: [] };
 	}
 	const instanceInterface = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/interfaces$/)?.[1];
 	if (method === 'POST' && instanceInterface) {
@@ -1177,11 +1113,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { success: true };
 	}
 	const routerId = pathname.match(/^\/api\/v1\/routers\/([^/]+)$/)?.[1];
-	if (method === 'DELETE' && routerId) {
-		state.topology.routers = state.topology.routers.filter((item) => item.id !== routerId);
-		return { success: true };
-	}
-	if (method === 'GET' && pathname === '/api/v1/routers') return state.topology.routers.map((router) => ({ id: router.id, name: router.name, status: router.status, project_id: router.project_id, external_gateway_network_id: router.external_gateway_network_id, connected_subnet_ids: router.connected_subnet_ids }));
 	if (method === 'GET' && routerId) return routerDetail(routerId) ?? mockUnsupported();
 	const networkId = pathname.match(/^\/api\/v1\/networks\/([^/]+)$/)?.[1];
 	if (method === 'DELETE' && networkId) {
@@ -1219,6 +1150,21 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const adminK3sClusterId = pathname.match(/^\/api\/v1\/admin\/k3s-clusters\/([^/]+)$/)?.[1];
 	if (method === 'GET' && adminK3sClusterId) return state.k3sClusters.find((cluster) => cluster.id === adminK3sClusterId) ?? mockUnsupported();
 	if (method === 'GET' && pathname === '/api/v1/k3s/cluster-templates') return [{ id: 'mock-template-1', name: 'GPU training baseline', description: '1 master + 2 workers', default_node_count: 2, default_agent_flavor_id: 'mock-flavor-cpu4', os_type: 'ubuntu' }];
+	if (method === 'GET' && pathname === '/api/v1/flavors/composer-options') {
+		return {
+			checked_at: NOW_ISO,
+			status: 'available',
+			gpu_profiles: [{ id: 'mock-gpu-a10', name: 'A10' }],
+			variants: [
+				{
+					gpu_profile_id: null, gpu_count: 0, status: 'available',
+					regions: [{ vcpus: { min: 1, max: 8, step: 1 }, ram_mb: { min: 1024, max: 65536, step: 1024 } }],
+					preview: null,
+				},
+			],
+		};
+	}
+	if (method === 'GET' && pathname === '/api/v1/flavors/compositions') return { items: [] };
 	if (method === 'GET' && (pathname === '/api/v1/flavors' || pathname === '/api/v1/admin/instances/flavors-for-project')) {
 		return [
 			{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80, is_public: true, extra_specs: {} },
@@ -1237,7 +1183,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			},
 		}));
 	}
-	if (method === 'GET' && pathname === '/api/v1/keypairs') return [{ name: 'demo-keypair' }];
 	const healthClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)\/health(?:\/check)?$/)?.[1];
 	if ((method === 'GET' || (method === 'POST' && pathname.endsWith('/health/check'))) && healthClusterId) {
 		const cluster = state.k3sClusters.find((item) => item.id === healthClusterId);
@@ -1258,7 +1203,6 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		};
 	}
 	// Match the native consumer Key Manager array contracts; never expose payloads or simulate writes.
-	if (method === 'GET' && pathname === '/api/v1/secrets') return MOCK_SECRET_ITEMS;
 	if (method === 'GET' && pathname === '/api/v1/secret-containers') return MOCK_SECRET_CONTAINER_ITEMS;
 	if (method === 'GET' && pathname === '/api/v1/secret-orders') return MOCK_SECRET_ORDER_ITEMS;
 	if (method === 'GET' && pathname === '/api/v1/secrets/quota/effective') return MOCK_SECRET_QUOTA;
@@ -1337,8 +1281,10 @@ export function maybeMockInstanceCreateStream(path: string, body: unknown): Asyn
 	const octet = 100 + state.instances.length;
 	state.instances.unshift({
 		id,
-		name: payload?.name || `tutorial-vm-${state.instances.length + 1}`,
+		// Tutorial-created instances carry a unique tut- name and the selected project's ownership.
+		name: payload?.name || `tut-${id}`,
 		status: 'ACTIVE',
+		project_id: state.selectedProjectId,
 		image_name: payload?.image_id === 'fixture-image-rocky' ? 'Rocky Linux 9' : 'Ubuntu 24.04 LTS',
 		flavor_name: flavorName,
 		ip_addresses: [{ addr: `192.0.2.${octet}`, type: 'fixed', network_name: 'sample-private' }],

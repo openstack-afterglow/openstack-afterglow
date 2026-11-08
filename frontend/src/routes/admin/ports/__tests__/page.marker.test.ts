@@ -8,6 +8,10 @@ vi.mock('$lib/api/client', () => ({
 	api: { get: mockGet, prefetch: mockPrefetch, put: vi.fn(), post: vi.fn(), delete: vi.fn() },
 	ApiError: class ApiError extends Error { status = 500; },
 }));
+vi.mock('$lib/tutorial/engine', async () => {
+	const actual = await vi.importActual<Record<string, unknown>>('$lib/tutorial/engine');
+	return { ...actual, isTourActive: () => false };
+});
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
 vi.mock('$lib/stores/projectNames', async () => {
 	const names = writable(new Map<string, string>());

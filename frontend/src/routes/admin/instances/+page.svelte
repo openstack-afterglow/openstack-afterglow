@@ -34,6 +34,7 @@
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
+	import { coalesceReload } from '$lib/utils/coalesceReload';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import { t as commonT } from '$lib/i18n/ns/common';
 	import type { ResourceSort } from '$lib/utils/resourceSort';
@@ -205,11 +206,12 @@
 	function closeDetail() { invalidateInstanceDetailSelection(); selectedInstanceId = null; selectedProjectId = null; }
 	function openRecovery(inst: AdminInstance) { recoveryInst = inst; }
 	function closeRecovery() { recoveryInst = null; }
-	function onFilterChange() {
+	// Several native column conditions applied together (filter sheet, reset) issue one provider query.
+	const onFilterChange = coalesceReload(() => {
 		markerStack = [];
 		nextMarker = null;
 		void load(undefined, { clearSelection: true });
-	}
+	});
 	function onPrev() {
 		const prev = markerStack.slice(0, -1);
 		markerStack = prev;

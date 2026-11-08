@@ -6,11 +6,14 @@ representations, instance metadata, history, progress messages and logs.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 from pydantic import SecretStr
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import openstack
@@ -74,8 +77,10 @@ def preflight_password(
                     value = getattr(image, key, None)
                     if value is not None:
                         metadata[key] = value
-    except Exception:
+    except Exception as exc:
         # Provider exceptions can echo request credentials; do not chain them.
+        # Log only the exception class: the message may contain adminPass.
+        logger.warning("password metadata lookup failed class=%s", type(exc).__name__)
         raise HTTPException(status_code=400, detail=PASSWORD_METADATA_ERROR) from None
 
     if not isinstance(metadata, dict):

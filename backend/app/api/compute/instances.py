@@ -31,7 +31,11 @@ from openstack.exceptions import ConflictException, HttpException
 from pydantic import BaseModel, field_validator
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_instance_owner, assert_project_resource_owner
+from app.api.common.owner_check import (
+    assert_instance_owner,
+    assert_project_resource_owner,
+    native_resource_read_failure,
+)
 from app.api.compute.usage_schedules import read_server as read_usage_server
 from app.api.compute.usage_schedules import router as usage_schedules_router
 from app.api.deps import (
@@ -91,6 +95,15 @@ from app.services.resource_policies import ResourcePolicyValidationError
 from app.services.resource_policy_store import ResourcePolicyStorageUnavailable
 from app.services.ssh_access import github_ssh_metadata
 from app.services.volume_protection import register_volume_protection, rollback_volume_protection
+from app.services.waygate_managed import (
+    WAYGATE_MANAGED_DETAIL,
+    WAYGATE_MANAGED_RESOURCE,
+    ensure_server_not_waygate_managed,
+    is_waygate_managed_security_group,
+    port_device_is_waygate_managed,
+    server_is_waygate_managed,
+    waygate_managed_http_error,
+)
 from app.services.work_dispatcher import drain_task, run_native
 
 logger = logging.getLogger(__name__)
@@ -396,6 +409,7 @@ async def rename_owned_instance(
     # Even system administrators use the explicit admin route for foreign-project writes.
     if not server.project_id or server.project_id != conn._afterglow_project_id:
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
+    ensure_server_not_waygate_managed(server)
     return await _rename_instance(conn, server, req.name)
 
 
@@ -470,6 +484,7 @@ async def resize_owned_instance(
     )
 
     server, flavors, resize = await owned_resize_target(conn, token_info, instance_id)
+    ensure_server_not_waygate_managed(server)
     current = resize.current
     target = next(
         (flavor for flavor in flavors if flavor.id == req.flavor_id and is_flavor_frontend_visible(flavor)), None
@@ -1190,6 +1205,11 @@ async def bulk_instance_action(
         except Exception:
             results.append({"id": instance_id, "ok": False, "error": "처리 실패"})
             continue
+        if body.action == "delete" and server_is_waygate_managed(server):
+            results.append(
+                {"id": instance_id, "ok": False, "error": WAYGATE_MANAGED_DETAIL, "code": WAYGATE_MANAGED_RESOURCE}
+            )
+            continue
 
         try:
             if body.action == "delete":
@@ -1236,6 +1256,7 @@ async def delete_instance(
             return
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
+    ensure_server_not_waygate_managed(server)
     from app.services.layer_consume_resources import cleanup, lookup_for_server
 
     block_ids = await lookup_for_server(
@@ -1484,6 +1505,7 @@ async def attach_volume_to_instance(
     pid = conn._afterglow_project_id
     try:
         server = await read_usage_server(conn, instance_id)
+        ensure_server_not_waygate_managed(server)
         async with instance_usage.volume_mutation_lease(conn, server) as lease:
             if not await lease.current():
                 raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
@@ -1525,6 +1547,7 @@ async def detach_volume_from_instance(
     pid = conn._afterglow_project_id
     try:
         server = await read_usage_server(conn, instance_id)
+        ensure_server_not_waygate_managed(server)
         async with instance_usage.volume_mutation_lease(conn, server) as lease:
             if not await lease.current():
                 raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
@@ -1577,6 +1600,7 @@ async def update_volume_attachment(
     pid = conn._afterglow_project_id
     try:
         server = await read_usage_server(conn, instance_id)
+        ensure_server_not_waygate_managed(server)
         async with instance_usage.volume_mutation_lease(conn, server) as lease:
             if not await lease.current():
                 raise HTTPException(409, "인스턴스 볼륨 변경 잠금을 잃었습니다")
@@ -1650,6 +1674,7 @@ async def attach_interface(
 ):
     net_id = body.net_id
     pid = conn._afterglow_project_id
+    await _require_not_waygate_managed(conn, instance_id)
     try:
         result = await asyncio.to_thread(nova.attach_interface, conn, instance_id, net_id)
         await invalidate(f"afterglow:neutron:{pid}:ports:{instance_id}")
@@ -1686,6 +1711,7 @@ async def detach_interface(
     token_info: dict = Depends(get_token_info),
 ):
     pid = conn._afterglow_project_id
+    await _require_not_waygate_managed(conn, instance_id)
     try:
         await asyncio.to_thread(nova.detach_interface, conn, instance_id, port_id)
         await invalidate(f"afterglow:neutron:{pid}:ports:{instance_id}")
@@ -1723,6 +1749,7 @@ async def update_port_security_groups(
 ):
     sg_ids = body.security_group_ids
     pid = conn._afterglow_project_id
+    await _require_port_security_groups_unlocked(conn, instance_id, port_id, sg_ids)
     try:
         result = await asyncio.to_thread(neutron.update_port_security_groups, conn, port_id, sg_ids)
         await invalidate(f"afterglow:neutron:{pid}:sgs:{instance_id}")
@@ -1751,6 +1778,52 @@ async def update_port_security_groups(
 # ---------------------------------------------------------------------------
 # 내부 헬퍼
 # ---------------------------------------------------------------------------
+
+
+async def _require_not_waygate_managed(conn, instance_id: str) -> None:
+    """Fail closed: a project-surface mutation must prove its target is not a Waygate gateway."""
+    try:
+        server = await asyncio.to_thread(conn.compute.get_server, instance_id)
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc, not_found_detail="인스턴스를 찾을 수 없습니다", unavailable_detail="인스턴스를 확인할 수 없습니다"
+        ) from None
+    if server is None:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
+    ensure_server_not_waygate_managed(server)
+
+
+def _port_security_groups_locked(conn, instance_id: str, port_id: str, requested: list[str]) -> bool:
+    port = conn.network.get_port(port_id)
+    if port is None:
+        raise LookupError("port not found")
+    device_id = getattr(port, "device_id", None)
+    if device_id and device_id != instance_id:
+        return port_device_is_waygate_managed(conn, port)
+    if device_id:
+        return False  # Bound to the already-proven non-gateway route instance.
+    # An unbound port that carries a Waygate group is a gateway provider port awaiting (re)attachment.
+    dropped = set(getattr(port, "security_group_ids", None) or []) - set(requested)
+    return any(
+        is_waygate_managed_security_group(getattr(conn.network.get_security_group(group_id), "name", None))
+        for group_id in dropped
+    )
+
+
+async def _require_port_security_groups_unlocked(conn, instance_id: str, port_id: str, requested: list[str]) -> None:
+    await _require_not_waygate_managed(conn, instance_id)
+    try:
+        locked = await asyncio.to_thread(_port_security_groups_locked, conn, instance_id, port_id, requested)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="해당 인터페이스를 찾을 수 없습니다") from None
+    except Exception as exc:
+        raise native_resource_read_failure(
+            exc,
+            not_found_detail="해당 인터페이스를 찾을 수 없습니다",
+            unavailable_detail="인터페이스를 확인할 수 없습니다",
+        ) from None
+    if locked:
+        raise waygate_managed_http_error()
 
 
 async def _bulk_delete_one(
@@ -1874,6 +1947,8 @@ async def _simple_action(
     assert_instance_owner(server, conn, token_info)
     if action_name in {"instance.start", "instance.unshelve"}:
         instance_usage.require_resume_schedule(server)
+    if action_name == "instance.shelve":
+        ensure_server_not_waygate_managed(server)
     try:
         await asyncio.to_thread(nova_fn, conn, instance_id)
         await invalidate(f"afterglow:nova:{pid}:instance:{instance_id}")
@@ -2033,6 +2108,7 @@ async def assign_floating_ip(
 ):
     """인스턴스에 새 Floating IP를 자동 생성하고 연결한다."""
     pid = conn._afterglow_project_id
+    await _require_not_waygate_managed(conn, instance_id)
     try:
         # 1) 인스턴스 포트 조회 + 점유 체크
         ports = await asyncio.to_thread(lambda: list(conn.network.ports(device_id=instance_id)))
@@ -2149,6 +2225,7 @@ async def release_floating_ip(
 ):
     """인스턴스에 연결된 Floating IP를 해제하고 삭제한다."""
     pid = conn._afterglow_project_id
+    await _require_not_waygate_managed(conn, instance_id)
     try:
         await asyncio.to_thread(neutron.cleanup_instance_fips, conn, instance_id)
         await invalidate(f"afterglow:neutron:{pid}:floating_ips")
@@ -2449,6 +2526,7 @@ async def attach_storage(
     require_project_write(token_info)
     response.headers["Cache-Control"] = "no-store"
     server = await _storage_server(conn, instance_id, token_info)
+    ensure_server_not_waygate_managed(server)
     share = await _storage_share(conn, req.file_storage_id, token_info)
     if share.status != "available":
         raise HTTPException(status_code=409, detail="파일 스토리지가 available 상태가 아닙니다")
@@ -2662,6 +2740,7 @@ async def detach_storage(
     """Revoke only the exact tracked managed rule, never infer ownership from names/IPs."""
     require_project_write(token_info)
     server = await _storage_server(conn, instance_id, token_info)
+    ensure_server_not_waygate_managed(server)
     grant = _storage_grants(server).get(file_storage_id)
     if not grant:
         raise HTTPException(status_code=409, detail="이 인스턴스에서 추적하는 접근 규칙이 없습니다")

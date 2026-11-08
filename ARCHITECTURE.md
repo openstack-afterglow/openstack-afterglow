@@ -474,6 +474,8 @@ graph LR
 
 튜토리얼은 태블릿(`md`, 768px) 이상에서만 제공한다. `frontend/src/lib/tutorial/viewport.ts`의 `tutorialViewport`(MediaQuery)가 `TutorialStartButton` 렌더와 `startTour` 시작을 막으므로 모바일에서는 시작 버튼·초대 말풍선이 없고 저장된 투어 재개와 `?tour=` 링크도 시작되지 않는다. 초대 말풍선의 왼쪽 경계는 `--app-sidebar-offset`만큼 이동해 사이드바 아래로 클리핑되지 않으며, 앵커와 그 부모의 크기 변화에도 다시 측정한다. 엔진은 강조 대상을 `scrollIntoView` 가운데로 맞춘 뒤 `driver.highlight()` 다음 프레임에 `revealBelowHeader`를 적용한다. driver.js가 대상이 창 안에 완전히 들어오지 않으면 `highlight()` 안에서 다시 스크롤하기 때문에 사전 보정은 덮어쓰이며, 대상 상단이 고정 헤더(48px) 아래 8px보다 위로 가려지면 `#main-content`를 위로 스크롤하고 `driver.refresh()`로 컷아웃과 팝오버를 다시 맞춘다.
 
+실제 관리자 권한 투어(`admin-user-credentials`, `admin-settings`, `admin-system-admins`)는 튜토리얼 목업을 쓰지 않는다. 합성 튜토리얼 관리자가 `isSystemAdmin: true`이므로 `frontend/src/lib/tutorial/access.ts`의 `canStartTour`가 `startTour`에서 시작 버튼·`?tour=`·저장 투어 재개를 함께 거른다: 목업 세션이면 거부하고 로그인 토큰·`isSystemAdmin`·`authReady`가 있으며 프로젝트 전환·로그아웃 중이 아닐 때만 시작한다. 이 게이트는 표시 보조이며 백엔드 `require_admin`과 native 정책이 권위다. 시스템 관리자 투어는 읽기 전용이다: 권한 부여 API는 멱등이라 새 할당을 만들었는지 보고하지 않으므로 투어가 만든 부여만 회수하는 안내를 증명할 수 없어 클릭으로 진행하지 않는다. 강조한 영역에 실제 추가·회수 버튼이 있으므로 `TourStep.readOnly` 단계는 엔진이 강조 영역 안의 클릭·키보드 활성화를 캡처 단계에서 막는다. API·DB·배포 구조 변경은 없다.
+
 모바일(<768px) 및 데스크톱 콘솔 UX는 프론트엔드만 변경한다. `utils/mobileViewport.ts`가 모바일 판정의 단일 소유자이고, `utils/resourceSearch.ts`는 `CmdPalette`에서 분리한 리소스 로드·퍼지 매칭으로 명령 팔레트와 모바일 드로어의 통합 검색이 함께 쓴다. `HeaderAccountControls.svelte`는 프로필 메뉴(계정·내 리소스·알림·라이트/다크·로그아웃)를 모바일과 데스크톱 전 폭에서 공통 렌더하며, 데스크톱 헤더는 Cloud Shell 트리거와 관리자 모드 토글, 언어 선택을 헤더 바에 유지한다. `ui/TableFilterSheet.svelte`는 카드 모드 모바일 필터(임시 draft, `조회하기`로 일괄 적용)를 담당한다. API·인증·SQL·배포 topology 변경은 없다.
 
 언어 선택은 1년·path `/`·SameSite=Lax 쿠키(HTTPS에서는 Secure)와 document lang을 갱신한다. 앱 선택 뒤 `afterglow:locale` load dependency를 invalidate하고 루트 layout이 현재 locale 쿠키를 동기화하여 오래된 preload data가 새 선호를 되돌리지 않게 한다. dashboard/admin/palimpsest layout의 main 내부 일반 페이지 children만 locale key로 remount하므로 저장 전 페이지 폼은 초기화될 수 있다. 컨테이너 상세(`/dashboard/containers/instances/[id]`)와 k3s 셸 host(`/dashboard/drover`, `/dashboard/drover/[id]`, `/admin/drover`)는 route ID로 key를 유지해 live WebSocket·xterm scrollback을 보존하고 표시·접근성 이름만 반응형으로 갱신한다. Palimpsest 패키지 페이지는 dispose 시 요청과 일회성 발급 secret도 폐기한다. 헤더·사이드바 펼침 상태·VM 생성 패널·전역 Cloud Shell·업로드 state는 유지한다. 유지되는 헤더 언어 선택기는 tick 뒤 미소비 focus 복원 표시를 지워 재로드에서 의도하지 않은 focus 이동을 막는다. 공개 화면의 remount 경계는 루트 layout에 있다. namespace를 import한 코드에 아홉 언어 카탈로그가 동기 포함되며 fallback은 `ja/zh-CN/sw/nb/ms/vi/bn → en → ko`, `en → ko`다. rich 변수는 텍스트로 보호하고 임의 HTML을 주입하지 않는다.
@@ -2131,9 +2133,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a621f3670550c5ee56a1cc1e33e9397c203ce62c747457a892d78acaaef75706",
-  "reviewed_at": "2026-11-08T14:08:02Z",
-  "summary": "2026-11-08 Cloud Shell tagged-egress fix: validator admits typed native rule tags (list of str) only; direction, ownership, remote/address-group and unknown-field checks unchanged; OpenSpec fix-cloud-shell-tagged-egress-rules archived. Scoped commit."
+  "source_sha256": "7f7bfd2bac2b914a9a4f5ea377aaba4fc57eec8f16912d1b7d303822979d93e9",
+  "reviewed_at": "2026-11-08T16:26:01Z",
+  "summary": "2026-11-09 commit prep: docs/testing.md 1.32.12 gate section updated to green Node 22 result; no source change since gate run."
 }
 ```
 <!-- architecture-review:end -->

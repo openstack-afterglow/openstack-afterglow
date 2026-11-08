@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "Imeshindwa kusitisha uhamishaji",
 	"controller.migration.forceCompleteRequested": "Ombi la kulazimisha kukamilika kwa uhamishaji limetumwa.",
 	"controller.migration.forceCompleteFailed": "Imeshindwa kulazimisha kukamilika kwa uhamishaji",
-	"controller.contextRequired": "useInstanceDetailController lazima iitwe ndani ya InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController lazima iitwe ndani ya InstanceDetailPanel",
+	"waygate.managedNote": "Rasilimali hii inasimamiwa na Waygate. Ibadilishe kupitia menyu ya Waygate.",
+	"waygate.openLink": "Fungua Waygate",
+	"waygate.badge": "Inasimamiwa na Waygate",
+	"list.waygateBulkDeleteBlocked": "Uteuzi una instansi zinazosimamiwa na Waygate, kwa hivyo hauwezi kufutwa kwa pamoja. Zibadilishe kupitia menyu ya Waygate."
 }

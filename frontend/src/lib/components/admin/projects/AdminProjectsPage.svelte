@@ -26,6 +26,7 @@
 	import type { PagedResponse } from '$lib/types/common';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { coalesceReload } from '$lib/utils/coalesceReload';
 
 	let { domainId }: { domainId: string; domainName: string } = $props();
 
@@ -48,6 +49,13 @@
 	let editProject = $state<Project | null>(null);
 	let deleteProject = $state<Project | null>(null);
 	let accessProject = $state<Project | null>(null);
+	// Only the project this page just created carries the tutorial delete anchor.
+	let createdProject = $state<{ id: string | null; name: string } | null>(null);
+	const createdProjectId = $derived.by(() => {
+		const created = createdProject;
+		if (!created) return null;
+		return projects.find((p) => (created.id ? p.id === created.id : p.name === created.name))?.id ?? null;
+	});
 
 	let copiedId = $state<string | null>(null);
 	let loadGeneration = 0;
@@ -71,7 +79,7 @@
 		projects = []; markerStack = []; nextMarker = null; total = 0;
 		search = ''; nativeSearch = ''; filterStatus = 'all'; tableView.reset();
 		loading = false; refreshing = false; error = '';
-		editProject = null; deleteProject = null; accessProject = null; showCreate = false;
+		editProject = null; deleteProject = null; accessProject = null; showCreate = false; createdProject = null;
 	});
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize), domain_id: domainId });
@@ -96,6 +104,8 @@
 		nextMarker = null;
 		void load();
 	}
+	// Name and status conditions applied together restart the provider list once.
+	const requestResetList = coalesceReload(resetList);
 
 	function clearFilters() {
 		const reload = Boolean(nativeSearch || filterStatus !== 'all');
@@ -177,13 +187,13 @@
 			filterMode: 'single', filterFreeValue: true,
 			filterOptions: () => projects.map(row => ({ value: row.name, label: row.name, count: null })),
 			filterSelection: () => nativeSearch ? [nativeSearch] : null,
-			onFilterChange: values => { const next = values?.[0] ?? ''; if (next !== nativeSearch) { nativeSearch = next; resetList(); } } },
+			onFilterChange: values => { const next = values?.[0] ?? ''; if (next !== nativeSearch) { nativeSearch = next; requestResetList(); } } },
 		{ key: 'description', label: t('form.description'), value: row => row.description },
 		{ key: 'status', label: t('projectTable.status'), value: row => row.enabled, format: (_, row) => t(row.enabled ? 'state.enabled' : 'state.disabled'),
 			filterMode: 'single',
 			filterOptions: () => [{ value: 'enabled', label: t('state.enabled'), count: null }, { value: 'disabled', label: t('state.disabled'), count: null }],
 			filterSelection: () => filterStatus === 'all' ? null : [filterStatus],
-			onFilterChange: values => { const next = values?.[0] === 'enabled' ? 'enabled' : values?.[0] === 'disabled' ? 'disabled' : 'all'; if (next !== filterStatus) { filterStatus = next; resetList(); } } },
+			onFilterChange: values => { const next = values?.[0] === 'enabled' ? 'enabled' : values?.[0] === 'disabled' ? 'disabled' : 'all'; if (next !== filterStatus) { filterStatus = next; requestResetList(); } } },
 		{ key: 'id', label: t('projectDetail.projectId'), value: row => row.id },
 		{ key: 'created', label: t('projectTable.createdAt'), value: row => row.created_at }
 	] });
@@ -193,6 +203,7 @@
 	<PageHeader breadcrumb={t('projectPage.breadcrumb')} title={t('projectPage.title')}>
 		{#snippet actions()}
 			<button
+				data-tour="admin-projects-create-open"
 				onclick={() => { showCreate = true; }}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>{t('projectPage.create')}</button>
@@ -219,7 +230,7 @@
 		<RegexSearch id="admin-project-search" bind:value={search} />
 		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={clearFilters}>{t('projectPage.reset')}</Button>
 	</ResourceToolbar>
-	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3" data-tour="admin-projects-results">
 		{#if !loading}<span aria-live="polite">{error ? t('projectPage.resultsUnavailable') : t('projectPage.results', { total: total.toLocaleString(intlLocale()) })}</span>{/if}
 		<span>{tc('table.loadedScope')}</span>
 	</div>
@@ -238,6 +249,7 @@
 				onEdit={(p) => (editProject = p)}
 				onAccess={(p) => (accessProject = p)}
 				onDelete={(p) => (deleteProject = p)}
+				tourDeleteId={createdProjectId}
 			/>
 
 		</div>
@@ -252,7 +264,7 @@
 	{/if}
 </PageShell>
 
-<AdminProjectCreateModal {domainId} bind:open={showCreate} onCreated={() => resetList()} />
+<AdminProjectCreateModal {domainId} bind:open={showCreate} onCreated={(project) => { createdProject = project; resetList(); }} />
 <AdminProjectEditModal {domainId} project={editProject} onClose={() => (editProject = null)} onSuccess={() => resetList()} />
 <AdminProjectDeleteModal {domainId} project={deleteProject} onClose={() => (deleteProject = null)} onSuccess={() => resetList()} />
 <AdminProjectAccessModal {domainId} project={accessProject} onClose={() => (accessProject = null)} />

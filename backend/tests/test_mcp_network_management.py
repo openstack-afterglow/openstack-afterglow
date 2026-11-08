@@ -162,7 +162,8 @@ class Neutron:
 
 @pytest.fixture
 def conn():
-    return SimpleNamespace(network=Neutron())
+    # The real consumer connection always carries the project's domain (VPN reserved ranges).
+    return SimpleNamespace(network=Neutron(), _afterglow_domain_id="domain-a")
 
 
 @pytest.mark.asyncio

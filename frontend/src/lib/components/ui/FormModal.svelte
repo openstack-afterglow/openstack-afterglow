@@ -20,6 +20,9 @@
 		submitting?: boolean;
 		children: Snippet;
 		actions?: Snippet;
+		/** Tutorial anchors: `data-tour` on the dialog frame and on the default submit button. */
+		dataTour?: string;
+		submitDataTour?: string;
 	}
 
 	let {
@@ -34,6 +37,8 @@
 		submitting = false,
 		children,
 		actions,
+		dataTour,
+		submitDataTour,
 	}: Props = $props();
 	const componentId = $props.id();
 	const titleId = `${componentId}-title`;
@@ -45,7 +50,7 @@
 </script>
 
 <Modal bind:open {onClose} dismissible={!submitting} labelledBy={titleId} {experience} {experienceMessage}>
-	<div class="form-modal-frame">
+	<div class="form-modal-frame" data-tour={dataTour}>
 		<Card surface="modal" padding="lg">
 			<h2 id={titleId} class="form-modal-title">{title}</h2>
 			{@render children()}
@@ -56,7 +61,7 @@
 				{:else}
 					<Button onclick={close} variant="secondary" disabled={submitting}>{cancelLabel ?? t('actions.cancel')}</Button>
 					{#if onSubmit}
-						<Button onclick={onSubmit} disabled={submitting} ariaBusy={submitting} variant="primary">{submitLabel ?? t('actions.confirm')}</Button>
+						<Button onclick={onSubmit} disabled={submitting} ariaBusy={submitting} variant="primary" dataTour={submitDataTour}>{submitLabel ?? t('actions.confirm')}</Button>
 					{/if}
 				{/if}
 			</div>

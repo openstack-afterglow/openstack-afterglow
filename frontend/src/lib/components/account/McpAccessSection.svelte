@@ -68,6 +68,7 @@
 	import { createTableView, type TableColumn, type TableViewState } from '$lib/utils/tableView.svelte';
 	import McpClientList from './McpClientList.svelte';
 	import { sessionScopeKey } from '$lib/utils/authSession';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 
 
@@ -188,6 +189,15 @@
 	const canCreate = $derived(validProjectSelection && !unknownWrite && !selectedReadOnly);
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
+	// Tutorial revoke anchor targets only the key issued in this owner scope.
+	let lastIssuedId = $state<string | null>(null);
+	// Tutorial steps wait for this before measuring the token list: a reload collapses and regrows the
+	// project selection and permission preview above it, which would move an already highlighted target.
+	const tokensSettled = $derived(isAccountScope(scope) && tokensScope === scope && !loading && !tokensLoading
+		&& mutatingId === null && (projectsScope !== scope || (previewScope === scope && !previewLoading)));
+	// Read-level issuance does not wait for the permission preview, but the preview still grows above the
+	// submit button when it loads; the tutorial highlights the button only after that layout is final.
+	const submitSettled = $derived(!creating && tokenName.trim() !== '' && canCreate && previewScope === scope && !previewLoading);
 	function clearCopies() {
 		for (const target of ['oauth', 'setup', 'token', 'config'] as const) copySequences[target] += 1;
 		copyStates = {};
@@ -354,6 +364,7 @@
 		expiresAt = '';
 		issuedToken = null;
 		showIssuedToken = false;
+		lastIssuedId = null;
 		clearCopies();
 		clearVerification();
 	}
@@ -532,6 +543,7 @@
 			issuanceController = null;
 			issuedToken = issued.token;
 			showIssuedToken = true;
+			lastIssuedId = issued.id;
 			clearCopies();
 			clearVerification();
 			tokenName = 'Lumen';
@@ -773,9 +785,12 @@
 				<h2>{t('mcp.title')}</h2>
 				<p>{t('mcp.scopeHelp')}</p>
 			</div>
-			<Button variant="ghost" size="sm" onclick={loadAccess} disabled={loading}>
-				{#if loading}<LoadingState variant="control" label={t('mcp.loading')}  />{:else}{t('mcp.refresh')}{/if}
-			</Button>
+			<div class="heading-actions">
+				<TutorialStartButton tour="account-mcp" compactOnMobile />
+				<Button variant="ghost" size="sm" onclick={loadAccess} disabled={loading}>
+					{#if loading}<LoadingState variant="control" label={t('mcp.loading')}  />{:else}{t('mcp.refresh')}{/if}
+				</Button>
+			</div>
 		</div>
 
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
@@ -786,7 +801,7 @@
 		{/if}
 		<div class="method-selection" role="group" aria-label={t('mcp.method')}>
 			<Button class="method-card" variant={method === 'oauth' ? 'secondary' : 'outline'} ariaPressed={method === 'oauth'} onclick={() => selectMethod('oauth')}>{t('mcp.methodOAuth')}</Button>
-			<Button class="method-card" variant={method === 'api' ? 'secondary' : 'outline'} ariaPressed={method === 'api'} onclick={() => selectMethod('api')}>{t('mcp.methodApiKey')}</Button>
+			<Button class="method-card" variant={method === 'api' ? 'secondary' : 'outline'} ariaPressed={method === 'api'} onclick={() => selectMethod('api')} dataTour="mcp-method-api">{t('mcp.methodApiKey')}</Button>
 		</div>
 
 		{#if method === 'oauth'}
@@ -816,11 +831,13 @@
 		{#if method === 'api'}
 		{#if isCurrentScope(owner)}
 		<form class="token-form" onsubmit={submitToken.bind(null, owner)}>
-			<Field label={t('mcp.name')} for="mcp-token-name" required>
-				{#snippet children()}
-					<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" disabled={creating} />
-				{/snippet}
-			</Field>
+			<div class="token-name" data-tour="mcp-token-name">
+				<Field label={t('mcp.name')} for="mcp-token-name" required>
+					{#snippet children()}
+						<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" disabled={creating} />
+					{/snippet}
+				</Field>
+			</div>
 			<Field label={t('mcp.permission')} for="mcp-token-access">
 				{#snippet children()}
 					<select id="mcp-token-access" class="control" bind:value={accessLevel} disabled={creating} aria-describedby="mcp-permission-help">
@@ -897,7 +914,7 @@
 					{/if}
 				</div>
 			{/if}
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !canCreate}>{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
+			<div class="token-submit" data-tour="mcp-token-submit-row" data-tour-settled={submitSettled ? 'true' : undefined}><Button type="submit" disabled={creating || !tokenName.trim() || !canCreate} dataTour="mcp-token-submit">{#if creating}<LoadingState variant="control" label={t('mcp.creating')}  />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
 		{/if}
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
@@ -924,8 +941,8 @@
 		{/if}
 
 
-		<section aria-labelledby="mcp-personal-tokens-heading">
-			<div class="subheading">
+		<section aria-labelledby="mcp-personal-tokens-heading" data-tour="mcp-personal-tokens" data-tour-settled={tokensSettled ? 'true' : undefined}>
+			<div class="subheading" data-tour="mcp-personal-tokens-head">
 				<h3 id="mcp-personal-tokens-heading">{t('mcp.personal')}</h3>
 				{#if tokensScope === owner && !tokensError}<span><AnimatedNumber value={tokens.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>{/if}
 			</div>
@@ -960,7 +977,7 @@
 									<Button variant="outline" size="xs" onclick={selectLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record) || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
 								{/if}
 								{/if}
-								<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeToken.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record)}>{t('mcp.revoke')}</Button>
+								<Button class="min-h-11 md:min-h-0" variant="danger-outline" size="xs" onclick={revokeToken.bind(null, owner, record)} disabled={mutatingId !== null || !ownsToken(owner, record)} dataTour={record.id === lastIssuedId ? 'mcp-token-revoke' : undefined}>{t('mcp.revoke')}</Button>
 							</div>
 						</div>
 					{/each}
@@ -1006,6 +1023,7 @@
 
 	<Modal open={showIssuedToken} onClose={dismissIssuedToken.bind(null, owner, issuedToken)} ariaLabel={t('mcp.newToken')}>
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
+			<div class="issued-token-content" data-tour="mcp-issued-token">
 			<h2>{t('mcp.newToken')}</h2>
 			<p>{t('mcp.newTokenHelp')}</p>
 			{#if issuedToken}
@@ -1021,7 +1039,8 @@
 				<Button variant="outline" onclick={verifyConnection.bind(null, owner, issuedToken, 'issued')} disabled={verifying}>
 					{#if verifying}<LoadingState variant="control" label={t('mcp.verifying')}  />{:else}{t('mcp.verify')}{/if}
 				</Button>
-				<Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)}>{t('mcp.done')}</Button>
+				<Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)} dataTour="mcp-issued-done">{t('mcp.done')}</Button>
+			</div>
 			</div>
 		</Card>
 	</Modal>
@@ -1029,7 +1048,8 @@
 
 <style>
 	:global(.mcp-access) { display: grid; gap: 1rem; min-width: 0; }
-	.section-heading, .subheading, .record, .record-title, .record-actions, .dialog-actions { display: flex; align-items: center; }
+	.section-heading, .subheading, .record, .record-title, .record-actions, .dialog-actions, .heading-actions { display: flex; align-items: center; }
+	.heading-actions { flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
 	.section-heading, .subheading, .record { justify-content: space-between; gap: 1rem; }
 	.section-heading h2, .subheading h3, :global(.issued-token-dialog h2) { margin: 0; color: var(--color-ink-0); }
 	.section-heading h2 { font-size: 1rem; }
@@ -1050,6 +1070,7 @@
 	.control:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.token-submit { padding-bottom: 0.0625rem; }
 	.project-selection, .token-permission-preview, .token-submit { grid-column: 1 / -1; min-width: 0; }
+	.token-name { min-width: 0; }
 	.token-permission-preview { display: grid; gap: 0.75rem; }
 	.project-selection { display: grid; gap: 0.75rem; }
 	.project-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.5rem; }
@@ -1070,6 +1091,7 @@
 	.record-title strong { color: var(--color-ink-0); font-size: 0.875rem; }
 	.record-actions { flex-wrap: wrap; justify-content: flex-end; }
 	:global(.issued-token-dialog) { box-sizing: border-box; width: min(44rem, calc(100vw - 2rem)); max-width: 100%; min-width: 0; display: grid; gap: 0.875rem; }
+	.issued-token-content { display: grid; gap: 0.875rem; min-width: 0; }
 	:global(.issued-token-dialog h3), .connection-section h3 { margin: 0; color: var(--color-ink-0); font-size: 0.875rem; }
 	.connection-section { min-width: 0; display: grid; gap: 0.75rem; }
 	.connection-section p { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }

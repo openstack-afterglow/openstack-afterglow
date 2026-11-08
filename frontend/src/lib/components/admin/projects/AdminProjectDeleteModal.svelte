@@ -326,7 +326,7 @@
 		</div>
 		{#snippet actions()}
 			<Button onclick={close} variant="secondary" disabled={deleting}>{tc('actions.cancel')}</Button>
-			<Button onclick={confirmDelete} variant="danger" disabled={!canDelete} ariaBusy={deleting}>
+			<Button onclick={confirmDelete} variant="danger" disabled={!canDelete} ariaBusy={deleting} dataTour="project-delete-confirm">
 				{#if deleting}{t('state.deleting')}{:else}{t('actions.delete')}{/if}
 			</Button>
 		{/snippet}

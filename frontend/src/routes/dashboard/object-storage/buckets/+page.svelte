@@ -17,6 +17,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import BucketCreateDialog from '$lib/components/object-storage/BucketCreateDialog.svelte';
 	import BucketCardGrid from '$lib/components/object-storage/BucketCardGrid.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
@@ -53,6 +54,7 @@
 	let showModal = $state(false);
 	let busy = $state(false);
 	let selectionDomain = $state<'active' | 'trash'>('active');
+	let lastCreated = $state<string | null>(null);
 	const selection = createResourceSelection();
 	// Trash rows fade in on first arrival only; auto-refresh keeps the keyed list mounted.
 	const trashArrivals = createArrivals();
@@ -140,6 +142,7 @@
 	async function createContainer(name: string): Promise<string | true> {
 		try {
 			await api.post('/api/v1/object-storage', { name }, token, projectId);
+			lastCreated = name;
 			await load(true);
 			return true;
 		} catch (e) {
@@ -251,7 +254,8 @@
 <PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb={t('buckets.dashboardPage.breadcrumb')} title={t('buckets.dashboardPage.title')}>
 		{#snippet actions()}
-			<Button onclick={() => (showModal = true)} variant="primary">{t('buckets.dashboardPage.create')}</Button>
+			<TutorialStartButton tour="buckets" compactOnMobile />
+			<Button onclick={() => (showModal = true)} variant="primary" dataTour="object-storage-create-open">{t('buckets.dashboardPage.create')}</Button>
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('buckets.dashboardPage.toolbar')}>
@@ -305,6 +309,7 @@
 					onToggle={() => { setSelectionDomain('active'); selection.toggleAll(view.rows.map((c) => c.name)); }}
 				/>
 			</div>
+			<div data-tour="object-storage-list">
 			<BucketCardGrid
 				containers={view.rows}
 				{deleting}
@@ -313,8 +318,10 @@
 				selectedIds={selectionDomain === 'active' ? selection.ids : new Set()}
 				selectionDisabled={busy}
 				onToggleSelect={(id) => { setSelectionDomain('active'); selection.toggle(id); }}
+				highlightName={lastCreated}
 				onDelete={deleteContainer}
 			/>
+			</div>
 		{/if}
 	{/if}
 
@@ -325,7 +332,7 @@
 		{/if}
 
 		{#if deletedContainers.length > 0 || trashSearch || Object.keys(trashView.filters).length > 0 || trashView.sort}
-			<div class="mt-8">
+			<div data-tour="object-storage-trash" class="mt-8">
 				<h2 class="text-sm font-medium text-ink-2 mb-3 flex items-center gap-2">
 					<span class="text-red-400">🗑</span> {t('buckets.dashboardPage.trashTitle')}
 				</h2>

@@ -24,6 +24,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   let mode = $state<'create' | 'detail' | 'edit' | 'delete' | 'issued' | null>(null);
   let detail = $state<ApplicationCredential | UserCredentialDetail | null>(null);
   let issued = $state<ApplicationCredentialIssued | null>(null);
+  let created = $state<UserCredential | null>(null);
   let context = $state<CredentialCreationContext | null>(null);
   let draft = $state({ name: '', description: '', role_ids: [] as string[], expires_at: '', user_id: '', project_id: '', type: '', blob: '' });
   const base = `/api/v1/admin/${kind === 'application' ? 'application' : 'user'}-credentials`;
@@ -57,7 +58,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   }
   function reset() {
     ++epoch; ++listTicket; ++directoryTicket; close();
-    items = []; users = []; selectedUser = ''; error = ''; directoryError = ''; loading = false; directoryLoading = false;
+    items = []; users = []; selectedUser = ''; error = ''; directoryError = ''; loading = false; directoryLoading = false; created = null;
     if (allowed()) { void loadAttempt(); void loadUsers(); }
   }
   function setScope(next: string) {
@@ -152,6 +153,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     if (!allowed() || (next === 'create' && !canCreate()) || (next !== 'create' && !item)) return;
     if (item && item.domain_id !== domainId) { error = t('credentials.scopeDenied'); return; }
     close(); mode = next; detail = item ?? null;
+    if (kind === 'user' && next === 'create') created = null;
     draft.user_id = selectedUser;
     if (next === 'delete') return;
     const { a, d, owns } = capture(), ticket = modalTicket;
@@ -208,6 +210,8 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }
   async function submit() {
+    // Any create attempt invalidates the previous tutorial anchor; it is set again only from this attempt's verified result.
+    if (kind === 'user' && mode === 'create') created = null;
     if (!allowed() || busy || (mode !== 'create' && mode !== 'edit' && mode !== 'delete')) return;
     if (kind === 'application' && mode === 'edit') return;
     if ((mode === 'edit' || mode === 'delete') && !detail) return;
@@ -235,6 +239,8 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
       }
       close();
       if (kind === 'application' && action === 'create') { issued = result as ApplicationCredentialIssued; mode = 'issued'; }
+      if (kind === 'user' && action === 'create') { created = (result as UserCredential) ?? null; }
+      else if (kind === 'user' && action === 'delete' && created?.id === id) created = null;
       const settledTicket = modalTicket;
       experienceState(experience, 'ready');
       void experienceApplied(experience, {}, () => owns() && settledTicket === modalTicket);
@@ -249,12 +255,15 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     }
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }
-  function dispose() { disposed = true; ++epoch; ++directoryTicket; close(); items = []; users = []; }
+  function dispose() { disposed = true; ++epoch; ++directoryTicket; close(); items = []; users = []; created = null; }
   return {
     get items() { return items; }, get users() { return users; }, get selectedUser() { return selectedUser; },
     get loading() { return loading; }, get error() { return error; }, get directoryLoading() { return directoryLoading; }, get directoryError() { return directoryError; },
     get busy() { return busy; }, get modalError() { return modalError; }, get mode() { return mode; }, get detail() { return detail; },
-    get issued() { return issued; }, get context() { return context; }, get draft() { return draft; }, get allowed() { return allowed(); }, get canCreate() { return canCreate(); },
+    get issued() { return issued; }, get created() { return created; }, get context() { return context; }, get draft() { return draft; }, get allowed() { return allowed(); }, get canCreate() { return canCreate(); },
     close, setScope, setAuthority, load, loadUsers, selectUser, open, reveal, submit, dispose,
   };
 }
+
+/** Public surface of the admin credential controller; consumers import this name instead of inferring it. */
+export type AdminCredentialsController = ReturnType<typeof createAdminCredentialsController>;

@@ -18,12 +18,14 @@
 	import IamQuotas from './IamQuotas.svelte';
 	import IamResources from './IamResources.svelte';
 	import IamForecast from './IamForecast.svelte';
+	import VpnReservedRangesPanel from './VpnReservedRangesPanel.svelte';
+	import { t as networkT } from '$lib/i18n/ns/vpn-reserved-ranges';
 	let session = $state.raw<IamSession | null>(null);
 	let verifiedSession = $state.raw<IamSession | null>(null);
 	let context = $state<IamContext | null>(null);
 	let checking = $state(false);
 	let error = $state('');
-	let tab = $state<'users' | 'invitations' | 'login' | 'recovery' | 'monitoring'>('users');
+	let tab = $state<'users' | 'invitations' | 'login' | 'recovery' | 'network' | 'monitoring'>('users');
 	let revision = $state(0);
 	let request = 0;
 	let verification = 0;
@@ -83,12 +85,14 @@
 			{#each ['users', 'invitations', 'login', 'recovery'] as section}
 				<Button variant={tab === section ? 'secondary' : 'ghost'} ariaPressed={tab === section} onclick={() => tab = section as typeof tab}>{t(section as 'users' | 'invitations' | 'login' | 'recovery')}</Button>
 			{/each}
+			<Button variant={tab === 'network' ? 'secondary' : 'ghost'} ariaPressed={tab === 'network'} onclick={() => tab = 'network'}>{networkT('tab')}</Button>
 			<Button variant={tab === 'monitoring' ? 'secondary' : 'ghost'} ariaPressed={tab === 'monitoring'} onclick={() => tab = 'monitoring'}>{workspaceT('monitoringTitle')}</Button>
 		</nav>
 		{#key revision}
 			{#if tab === 'users'}<IamUsers session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
 			{:else if tab === 'invitations'}<IamInvitations session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
 			{:else if tab === 'login'}<IamLogin session={verifiedSession} blocked={checking || !!error} onDenied={() => revoked()} />
+			{:else if tab === 'network'}<VpnReservedRangesPanel domainId={verifiedSession.domainId} session={verifiedSession} blocked={checking || !!error} />
 			{:else if tab === 'monitoring'}
 				<div class="space-y-8">
 					<p class="text-sm text-ink-2">{workspaceT('monitoringHelp')}</p>

@@ -9,9 +9,11 @@
 	import RoleBadges from './RoleBadges.svelte';
 	import { roleTreeRows } from './catalog';
 	import type { ManagedRole } from './types';
-	let { roles, view, onSelect }: {
+	let { roles, view, onSelect, tourRoleId = null }: {
 		roles: ManagedRole[]; view: TableView<ManagedRole>;
 		onSelect: (role: ManagedRole) => void;
+		/** Role the page just created; only its node carries the tutorial anchor. */
+		tourRoleId?: string | null;
 	} = $props();
 	// Order the complete graph with the same typed columns, then retain matching
 	// nodes and their ancestors. Filtering the graph itself would sever edges.
@@ -40,7 +42,7 @@
 			<li class="min-w-0 py-3" style:padding-left={`${Math.min(row.depth, 4) * 0.75}rem`}>
 				<div class="flex min-w-0 flex-wrap items-center gap-2">
 					<span aria-hidden="true" class="text-ink-2">{row.parent ? '↳' : '•'}</span>
-					<Button variant="link" class="min-w-0 max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: row.role.name })} onclick={() => onSelect(row.role)}>{row.role.name}</Button>
+					<Button variant="link" class="min-w-0 max-w-full !whitespace-normal [overflow-wrap:anywhere] !text-left" ariaLabel={t('rolePage.detailLabel', { name: row.role.name })} dataTour={row.role.id === tourRoleId ? 'admin-roles-created' : undefined} onclick={() => onSelect(row.role)}>{row.role.name}</Button>
 					<RoleBadges role={row.role} />
 				</div>
 				<div class="mt-1 space-y-1 text-xs text-ink-2 [overflow-wrap:anywhere]">

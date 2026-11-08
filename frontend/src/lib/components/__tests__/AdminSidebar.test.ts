@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get, type Writable } from 'svelte/store';
+import type * as ResourceSearchModule from '$lib/utils/resourceSearch';
 
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/stores', async () => {
@@ -9,6 +10,10 @@ vi.mock('$app/stores', async () => {
 	const { writable } = await import('svelte/store');
 	return { page: writable({ url: new URL('http://localhost/admin/chat/quotas'), data: {} }) };
 });
+
+const viewport = vi.hoisted(() => ({ mobile: false }));
+vi.mock('$lib/utils/mobileViewport', () => ({ mobileViewport: { get current() { return viewport.mobile; } } }));
+vi.mock('$lib/utils/resourceSearch', async importOriginal => ({ ...(await importOriginal<typeof ResourceSearchModule>()), loadResourceSearchEntries: vi.fn().mockResolvedValue([]) }));
 
 import { page } from '$app/stores';
 import { auth } from '$lib/stores/auth';
@@ -148,7 +153,9 @@ describe('administrator global navigation', () => {
 	});
 	it.each([375, 1280])('keeps administrator Hub and favorites above visible service categories at %ipx', async width => {
 		const previousWidth = window.innerWidth;
+		const mobile = width < 768;
 		Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+		viewport.mobile = mobile;
 		try {
 			localStorage.setItem(preferenceKeys[0], JSON.stringify({ pinned: ['/admin', '/docs', '/admin/volumes'], recent: ['/admin/users'] }));
 			await navigate('/admin/instances/instance-1');
@@ -157,26 +164,38 @@ describe('administrator global navigation', () => {
 			await tick();
 			let menu = within(screen.getByRole('dialog'));
 			const hub = menu.getByRole('navigation', { name: t('sections.hub') });
-			const shortcuts = menu.getByRole('region', { name: t('sections.favorites') });
-			expect(within(hub).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin', '/docs']);
-			expect(within(hub).queryAllByRole('button')).toEqual([]);
-			expect(hub.compareDocumentPosition(shortcuts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-			expect(within(shortcuts).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin/volumes']);
+			const catalogNavigation = menu.getByRole('navigation', { name: t('accessibility.allServices') });
+			expect(hub.compareDocumentPosition(catalogNavigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			if (mobile) {
+				// Mobile keeps favorites inside the Hub group and lists categories without the all-services disclosure.
+				expect(within(hub).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin', '/docs', '/admin/volumes']);
+				within(hub).getByRole('button', { name: t('actions.unpin', { name: t('items.allVolumes') }) });
+				expect(menu.queryByRole('region', { name: t('sections.favorites') })).toBeNull();
+				expect(menu.queryByRole('button', { name: t('accessibility.allServices') })).toBeNull();
+			} else {
+				const shortcuts = menu.getByRole('region', { name: t('sections.favorites') });
+				expect(within(hub).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin', '/docs']);
+				expect(within(hub).queryAllByRole('button')).toEqual([]);
+				expect(hub.compareDocumentPosition(shortcuts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+				expect(within(shortcuts).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin/volumes']);
+			}
 			expect(queryDestination(menu, '/admin/instances')).toBeNull();
 			expect(queryDestination(menu, '/admin/users')).toBeNull();
-			const catalog = within(menu.getByRole('navigation', { name: t('accessibility.allServices') }));
+			const catalog = within(catalogNavigation);
 			expect(catalog.getByRole('button', { name: t('sections.compute') }).getAttribute('aria-expanded')).toBe('false');
 			expect(queryDestination(catalog, '/admin/instances')).toBeNull();
-			await fireEvent.click(menu.getByRole('button', { name: t('accessibility.allServices') }));
+			if (!mobile) await fireEvent.click(menu.getByRole('button', { name: t('accessibility.allServices') }));
 			await navigate('/admin/users');
 			expect(screen.queryByRole('dialog')).toBeNull();
 			sidebarOpen.open();
 			await tick();
 			menu = within(screen.getByRole('dialog'));
-			expect(menu.getByRole('button', { name: t('accessibility.allServices') }).getAttribute('aria-expanded')).toBe('true');
+			if (mobile) expect(menu.getByRole('navigation', { name: t('accessibility.allServices') })).toBeTruthy();
+			else expect(menu.getByRole('button', { name: t('accessibility.allServices') }).getAttribute('aria-expanded')).toBe('true');
 			expect(queryDestination(menu, '/admin/users')).toBeNull();
 		} finally {
 			Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+			viewport.mobile = false;
 		}
 	});
 	it('isolates pinned shortcuts by user and administrator surface and immutable home', async () => {
@@ -367,7 +386,8 @@ describe('administrator navigation visibility gates', () => {
 		const menu = await openCatalog();
 		destination(menu, '/admin/containers');
 		destination(menu, '/admin/secrets');
-		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/chat', '/admin/chat/models', '/admin/waygate', '/admin/monitoring/proxysql', '/admin/projects', '/dashboard']) expect(queryDestination(menu, href)).toBeNull();
+		destination(menu, '/admin/projects');
+		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/chat', '/admin/chat/models', '/admin/waygate', '/admin/monitoring/proxysql', '/dashboard']) expect(queryDestination(menu, href)).toBeNull();
 		expect(menu.queryByRole('button', { name: t('sections.lumen') })).toBeNull();
 	});
 });
@@ -382,5 +402,26 @@ describe('responsive sidebar current-mode controls', () => {
 		await navigate('/admin');
 		render(AdminSidebar);
 		destination(await openCatalog(), '/dashboard');
+	});
+});
+
+describe('administrator mobile drawer', () => {
+	beforeEach(() => { viewport.mobile = true; });
+	afterEach(() => { viewport.mobile = false; });
+
+	it('keeps Hub, combined search and a compact mode switch in the full-screen drawer', async () => {
+		await navigate('/admin');
+		render(AdminSidebar);
+		sidebarOpen.open();
+		await tick();
+		const menu = within(screen.getByRole('dialog'));
+		expect(document.getElementById('app-navigation-menu')!.dataset.navigationLayout).toBe('mobile');
+		expect(within(menu.getByRole('navigation', { name: t('sections.hub') })).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/admin', '/docs']);
+		expect(menu.queryByRole('searchbox', { name: t('actions.searchServices') })).toBeNull();
+		await fireEvent.input(menu.getByRole('searchbox', { name: t('actions.searchAll') }), { target: { value: t('items.topology') } });
+		destination(within(menu.getByRole('navigation', { name: t('sections.services') })), '/admin/topology');
+		const footer = document.querySelector('#app-navigation-menu [data-navigation-footer="mobile"]') as HTMLElement;
+		expect(within(footer).getByText('admin')).toBeTruthy();
+		destination(within(footer), '/dashboard');
 	});
 });

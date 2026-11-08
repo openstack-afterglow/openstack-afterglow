@@ -18,6 +18,12 @@ Waygate는 프로젝트별 WireGuard 게이트웨이 VM을 프로비저닝하고
 
 Afterglow BFF는 `/api/v1/waygate/servers/...`의 method, body, 인증 헤더와 프로젝트 컨텍스트를 catalog에서 발견한 Waygate `/v1/servers/...`로 전달합니다. 사용자 API는 서버와 하위 리소스의 `project_id` 소유권을 검사합니다. 존재하지 않는 리소스와 다른 프로젝트의 리소스는 모두 `404`로 처리하여 정보 노출을 막습니다.
 
+BFF는 `/api/v1/waygate/{path}`를 그대로 Waygate `/v1/{path}`로 전달하는 generic proxy이므로 Waygate가 추가한 하위 경로도 Afterglow 코드 변경 없이 도달합니다. Upstream read timeout은 `GET`/`HEAD`/`OPTIONS`가 기본 30초이고, 그 밖의 쓰기 method는 Trust·VM·port를 만드는 프로비저닝(관측 25–33초)을 위해 55초입니다(connect 5초). Afterglow 브라우저의 Waygate 쓰기 요청 deadline은 58초입니다.
+
+### Waygate 버전 의존성
+
+서버 `expected_clients`/`flavor_tier`, `GET .../diagnostics`, 네트워크 연결의 `allowed_ips`와 `PATCH .../networks/{attachment_id}`, shared/`router:external` 네트워크 연결은 **Waygate 0.3.8** 기능입니다(branch `feat/agent-diagnostics-0.3.8`, commit `ff3eaee`). 아직 배포되지 않았으며 운영 Waygate는 0.3.7입니다. 0.3.7의 서버 생성 요청은 알 수 없는 필드를 `422`로 거부하는데 Afterglow UI는 생성 시 항상 `expected_clients`를 보내므로, **Waygate 0.3.8을 먼저 배포한 뒤 Afterglow를 롤아웃**해야 합니다. 아래 클라이언트 소유자 규칙은 0.3.7에 이미 있는 계약입니다.
+
 관리자 UI는 `/admin/waygate`의 `서비스 → Waygate`에서, 사용자 UI는 `/dashboard/network/waygate`의 `네트워크 → Waygate`에서 접근합니다. 두 화면은 같은 프로젝트별 서버·클라이언트·네트워크 관리 기능과 BFF를 사용합니다. 관리자 화면이라고 모든 프로젝트를 조회하지 않습니다. 현재 프로젝트나 인증 토큰이 없으면 요청을 시작하지 않으며, 프로젝트 전환 시 선택·상세·클라이언트 트래픽을 지우고 이전 프로젝트의 비동기 응답, 대기 중인 확인과 다운로드 후속 동작을 버립니다.
 
 에이전트용 Afterglow passthrough 경로는 기존 게이트웨이 VM 호환을 위해 유지되지만, 새 cloud-init에 생성하는 콜백 URL은 항상 직접 Waygate origin과 `/v1/servers/.../agent` 경로를 사용합니다. 경로 문자열을 검사하여 BFF/direct 경로를 추론하지 않습니다.
@@ -32,7 +38,7 @@ WAYGATE_PUBLIC_BASE_URL=https://waygate.example.com
 
 Compose는 이 값을 Waygate 컨테이너의 `WAYGATE_CALLBACK_BASE_URL`로 전달합니다. URL은 게이트웨이 VM에서 도달할 수 있는 `http://` 또는 `https://` origin이어야 하며 사용자 정보, query, fragment, `localhost`, loopback 또는 unspecified 주소를 사용할 수 없습니다. API와 worker는 값이 없거나 안전하지 않으면 시작 단계에서 실패합니다.
 
-Waygate 서버 생성에는 관리자가 구성한 provider network, image, flavor 리소스 정책과 DB/cache가 필요합니다. 정책 또는 DB가 없으면 요청을 성공으로 가장하지 않고 `503`을 반환합니다.
+Waygate 서버 생성에는 관리자가 구성한 provider network, image, flavor 리소스 정책과 DB/cache가 필요합니다. 정책 또는 DB가 없으면 요청을 성공으로 가장하지 않고 `503`을 반환합니다. 0.3.8의 선택 정책 `waygate.flavor_large`는 클라이언트가 많은 게이트웨이용 flavor입니다.
 
 ## 1. 서버
 
@@ -40,6 +46,7 @@ Waygate 서버 생성에는 관리자가 구성한 provider network, image, flav
 |---|---|---|
 | `POST` | `/api/v1/waygate/servers` | 서버 생성 작업 제출, `201` |
 | `GET` | `/api/v1/waygate/servers` | 프로젝트 서버 목록 |
+| `GET` | `/api/v1/waygate/servers/{server_id}/diagnostics` | 에이전트 연결 진단(0.3.8) |
 | `GET` | `/api/v1/waygate/servers/{server_id}` | 서버 상세 |
 | `PATCH` | `/api/v1/waygate/servers/{server_id}` | DNS와 PersistentKeepalive 기본값 수정(`ACTIVE`만 허용) |
 | `DELETE` | `/api/v1/waygate/servers/{server_id}` | 삭제 작업 제출, `202` |
@@ -50,14 +57,34 @@ Waygate 서버 생성에는 관리자가 구성한 provider network, image, flav
 POST /api/v1/waygate/servers
 Content-Type: application/json
 
-{"name":"tenant-gateway"}
+{"name":"tenant-gateway","expected_clients":30}
 ```
 
 응답은 `CREATING` 상태의 서버입니다. worker가 정책 snapshot을 사용해 provider port, security group, floating IP와 VM을 생성하고 상태를 `PROVISIONING`으로 전이합니다. VM 에이전트가 공개키를 등록하면 서버가 `ACTIVE`가 됩니다. 생성 실패 시 이미 만든 OpenStack 리소스를 역순으로 정리하고 서버를 `ERROR`로 기록합니다.
 
+`expected_clients`(0.3.8, 선택)는 엄격한 정수 `1–1000`입니다. 50 이하는 기본 `waygate.flavor`(`flavor_tier: "small"`), 50 초과는 선택 정책 `waygate.flavor_large`를 사용하고(`"large"`), large 정책이 없으면 기본 flavor로 생성하며 `flavor_tier`를 `"small"`로 기록합니다. 생략하면 기본 flavor를 사용하고 두 값은 `null`입니다. 서버 응답은 `expected_clients`와 `flavor_tier`를 포함하며 생성 후 tier를 바꾸는 API는 없습니다.
+
 서버 조회 응답은 DB 상태에 최근 에이전트 상태 캐시의 `last_status_reported_at`과 `peer_count`를 병합합니다. 삭제는 `{ "ok": true, "status": "DELETING" }`을 즉시 반환하고 worker가 리소스를 정리합니다.
 
 서버 기본값은 `dns`(최대 두 주소, `null`이면 DNS 행 생략)와 `persistent_keepalive`(엄격한 정수 `0–65535`, `0`이면 비활성)뿐입니다. `PATCH .../{server_id}`에서 생략한 값은 유지하고, 현재 서버 설정을 상속하는 클라이언트의 목록·새 다운로드·QR에는 변경 값이 즉시 적용됩니다. MTU는 서버 기본값이 아닌 클라이언트별 설정입니다. 다른 프로젝트 서버는 `404`, 이미 `DELETING`인 서버는 `409`이고, 삭제와 수정은 같은 서버 행 잠금으로 직렬화됩니다. 설치된 클라이언트 기기는 자동 갱신되지 않으므로 설정을 다시 가져와야 합니다.
+
+### 에이전트 진단 (0.3.8)
+
+`GET /api/v1/waygate/servers/{server_id}/diagnostics`는 서버 조회와 같은 `waygate:server:get` 정책을 사용하며 다른 프로젝트 서버는 `404`입니다. Waygate가 에이전트 register·desired-state·status 호출을 **받은 시각**만 사용하고 에이전트 시계는 사용하지 않습니다. 관측은 Valkey/Redis에 최대 14일 보존하는 best-effort 기록이며 읽을 수 없으면 `503`입니다.
+
+```json
+{
+  "verdict": "peer_mismatch",
+  "checked_at": "2026-11-08T00:00:00+00:00",
+  "agent": {"install_mode": "prebuilt", "image_id": "image-id", "source": "prebuilt", "report_interval_seconds": 1},
+  "last_register_at": "…", "last_desired_state_at": "…", "last_status_at": "…",
+  "last_status": {"peers": 2, "reported_at": "…", "diagnostics": {"reconcile_ok": true, "wg_interface_up": true, "error": null}},
+  "expected": {"enabled_clients": 3, "attachments": 1},
+  "hints": ["peers_mismatch"]
+}
+```
+
+`verdict`는 순서대로 판정합니다. 등록 기록과 저장된 서버 공개키가 모두 없으면 `never_connected`, desired-state 수신이 90초 넘게 없으면 `not_polling`, status 수신이 90초 넘게 없으면 `not_reporting`, 마지막 보고 peer 수가 활성 클라이언트 수와 다르면 `peer_mismatch`, 그 외 `ok`입니다. `hints`는 `agent_not_polling`, `agent_never_reported`, `agent_status_stale`, `peers_mismatch`, `image_agent_outdated`(prebuilt 이미지의 구형 oneshot 에이전트 징후) 중 해당 값입니다. `last_status`는 status 수신 기록이 없으면 `null`이고 `diagnostics`는 에이전트가 보낸 자체 점검 범주(본문·secret 없음)입니다. 진단은 관측 요약이며 단말 연결이나 data plane을 보증하지 않습니다.
 
 ## 2. 클라이언트(peer)
 
@@ -101,7 +128,13 @@ Content-Type: application/json
 
 서버·클라이언트·첨부 네트워크·프로젝트 네트워크 목록은 최초 조회에만 로딩 화면을 표시합니다. 이후 자동·수동 갱신에서는 기존 행(빈 목록 포함)을 유지하고 ID와 값이 바뀐 행만 갱신합니다. 실패한 갱신은 기존 목록과 함께 오류를 표시하고 다시 조회하며, 프로젝트/서버가 바뀌면 이전 결과와 트래픽 이력을 폐기합니다. 보고가 멈추면 목록은 유지해도 지연 상태는 실제 시간에 따라 전환됩니다.
 
-서버가 `ACTIVE`이고 서버 공개키가 등록된 경우에만 발급합니다. Waygate가 X25519 키쌍과 다음 터널 IP를 생성하고 private key를 AES-256-GCM으로 암호화해 저장합니다. 생성 응답에는 `tunnel_conf`가 포함됩니다. 설정 다운로드는 저장된 키를 복호화해 최신 활성 네트워크 CIDR까지 `AllowedIPs`에 병합하여 다시 렌더합니다.
+서버가 `ACTIVE`이고 서버 공개키가 등록된 경우에만 발급합니다. Waygate가 X25519 키쌍과 다음 터널 IP를 생성하고 private key를 AES-256-GCM으로 암호화해 저장합니다. 생성 응답의 `tunnel_conf`는 호출자가 다운로드 권한을 가지고 프로필 owner가 호출자 본인이며 활성 상태일 때만 채워지고 그 외에는 `null`입니다. 설정 다운로드는 저장된 키를 복호화해 다시 렌더합니다. `AllowedIPs`는 클라이언트의 `allowed_ips`(기본 터널 서브넷)에 0.3.7은 활성 연결의 CIDR을, 0.3.8은 `ACTIVE` 연결들의 `allowed_ips`를 병합합니다(0.3.8에서는 연결 CIDR을 자동 광고하지 않음).
+
+### 클라이언트 소유자
+
+0.3.7부터 `owner_user_id`가 private 프로필의 소유자입니다. 발급 body에서 `owner_user_id`를 생략하면 호출자가 owner가 되고, 명시적 `null`이면 **미할당** 프로필입니다. 미할당 프로필은 `PATCH .../clients/{client_id}`의 `{"owner_user_id":"..."}`로 **한 번만** 할당할 수 있으며 이미 owner가 있으면 `409`, owner를 `null`로 지우는 요청은 `422`입니다(소유자를 바꾸려면 프로필을 삭제하고 다시 발급). `.conf` 다운로드는 owner가 호출자 본인이고 활성 프로필일 때만 허용하며 서비스·시스템 관리자도 예외가 아닙니다(`403`).
+
+Afterglow 발급 UI의 소유자 입력 기본값은 비어 있어 명시적 `owner_user_id: null`(미지정)을 보내며 `나에게 지정`으로 자신을 owner로 넣을 수 있습니다. 클라이언트 편집 권한이 있는 멤버는 미지정 프로필 행의 `나를 소유자로 등록`으로 자신을 할당하거나, 연결 권한도 있으면 다운로드·QR을 선택해 먼저 자신을 owner로 할당(PATCH)한 뒤 내려받습니다. 할당 경쟁에서 다른 owner가 먼저 정해지면 `409`를 표시하고 목록을 다시 읽습니다.
 
 브라우저는 `.conf` 파일을 그대로 다운로드하거나 같은 텍스트로 QR 코드를 로컬 생성합니다. QR 이미지나 평문 private key를 별도 API나 DB에 저장하지 않습니다.
 
@@ -115,9 +148,10 @@ Content-Type: application/json
 |---|---|---|
 | `POST` | `.../{server_id}/networks` | 네트워크와 IPv4 서브넷 연결, `201` |
 | `GET` | `.../{server_id}/networks` | 연결 목록 |
+| `PATCH` | `.../{server_id}/networks/{attachment_id}` | 연결의 클라이언트 경로 `allowed_ips` 교체(0.3.8) |
 | `DELETE` | `.../{server_id}/networks/{attachment_id}` | 연결 해제, `204` |
 
-Afterglow UI는 프로젝트에서 볼 수 있는 non-external 네트워크만 표시하고, 네트워크 상세의 서브넷을 별도 검색 선택기로 제공합니다. 서브넷이 하나면 자동 선택하고, 서브넷이 없으면 연결 동작을 비활성화합니다.
+Afterglow UI는 프로젝트 네트워크 API가 보여 주는 소유·공유·외부(provider) 네트워크를 종류 표시와 함께 나열하고, 네트워크 상세의 서브넷을 별도 검색 선택기로 제공합니다. 서브넷이 하나면 자동 선택하고, 서브넷이 없으면 연결 동작을 비활성화합니다.
 
 ```http
 POST /api/v1/waygate/servers/{server_id}/networks
@@ -126,23 +160,37 @@ Content-Type: application/json
 {
   "network_id": "11111111-1111-4111-8111-111111111111",
   "subnet_id": "22222222-2222-4222-8222-222222222222",
-  "nat_mode": "snat"
+  "nat_mode": "snat",
+  "allowed_ips": ["10.20.0.0/16"]
 }
 ```
 
-브라우저 경로는 `network_id`, `subnet_id`, `nat_mode: "snat"`를 모두 명시합니다. 직접 Waygate API에서 `subnet_id`를 생략하면 서비스가 해당 네트워크의 첫 IPv4 서브넷을 선택하지만, 운영 UI는 모호성을 피하기 위해 항상 명시합니다.
+브라우저 경로는 `network_id`, `subnet_id`, `nat_mode: "snat"`를 모두 명시하고, 라우팅을 입력한 경우에만 `allowed_ips`(0.3.8)를 보냅니다. 직접 Waygate API에서 `subnet_id`를 생략하면 서비스가 해당 네트워크의 첫 IPv4 서브넷을 선택하지만, 운영 UI는 모호성을 피하기 위해 항상 명시합니다.
 
 Waygate는 다음 불변성을 검증합니다.
 
 - 서버가 요청 프로젝트 소유이고 `ACTIVE` 상태입니다.
-- 네트워크가 요청 프로젝트 소유이거나 프로젝트에서 사용할 수 있는 shared/external 네트워크입니다.
+- 네트워크가 요청 프로젝트 소유이거나, 0.3.8에서는 프로젝트에서 조회할 수 있는 shared 또는 `router:external` 네트워크입니다. 0.3.7은 다른 프로젝트 소유(`project_id`가 있는) 네트워크를 거부합니다. 그 외는 모두 `404`입니다.
 - 선택한 서브넷이 그 네트워크에 속한 IPv4 서브넷입니다.
 - 동일 서버와 네트워크의 활성 연결이 중복되지 않습니다.
 - 현재 NAT 모드는 `snat`만 허용합니다.
 
 연결은 선택한 `subnet_id`를 `fixed_ips`에 넣은 Neutron port를 먼저 생성하고, Nova에는 해당 `port_id`를 attach합니다. 성공한 port ID와 CIDR을 attachment에 보존합니다. Nova attach가 실패하면 생성한 port와 attachment 레코드를 롤백합니다. port 정리까지 실패하면 attachment를 `ERROR`로 남겨 운영자가 유실된 리소스를 확인할 수 있게 합니다.
 
-해제는 Nova interface detach 뒤 Neutron port를 삭제합니다. 이미 사라진 Nova interface는 정리 가능한 상태로 취급하지만, Neutron port 삭제가 실패하면 DB 레코드를 지우지 않고 `ERROR`로 남깁니다. 활성 연결의 CIDR은 에이전트 desired-state의 `nat_networks`와 새로 다운로드하는 클라이언트 `.conf`의 `AllowedIPs`에 반영됩니다.
+해제는 Nova interface detach 뒤 Neutron port를 삭제합니다. 이미 사라진 Nova interface는 정리 가능한 상태로 취급하지만, Neutron port 삭제가 실패하면 DB 레코드를 지우지 않고 `ERROR`로 남깁니다. 활성 연결의 CIDR은 에이전트 desired-state의 `nat_networks`(SNAT 대상)에 반영됩니다. 새로 다운로드하는 클라이언트 `.conf`의 `AllowedIPs`에는 0.3.7은 연결 CIDR을, 0.3.8은 연결의 `allowed_ips`를 반영합니다.
+
+### 연결별 클라이언트 경로 (0.3.8)
+
+0.3.8 연결 객체는 `allowed_ips`(목록)를 포함합니다. 이 값은 클라이언트가 터널로 보낼 경로이며 물리 인터페이스·NAT 대상인 `cidr`과 독립적입니다. 클라이언트 `AllowedIPs`는 클라이언트 `allowed_ips` + `ACTIVE` 연결들의 `allowed_ips` 합집합(순서 유지·중복 제거)이고 연결 `cidr`은 더 이상 자동 광고하지 않습니다. NAT는 계속 `cidr`을 사용합니다. 연결 생성 body의 `allowed_ips`는 선택이며 기본 `[]`(광고 없음)이고 PATCH와 같은 검증을 적용합니다.
+
+```http
+PATCH /api/v1/waygate/servers/{server_id}/networks/{attachment_id}
+Content-Type: application/json
+
+{"allowed_ips":["10.20.0.0/16","10.30.1.0/24"]}
+```
+
+PATCH는 `waygate:network:update` 정책이 필요하고 `allowed_ips` 목록 전체를 교체합니다(extra field 금지). 항목은 최대64개 CIDR이며 host bit를 지워 정규화하고 순서를 유지해 중복을 제거합니다. 기본 경로(`0.0.0.0/0`, `::/0`), 해석 불가 CIDR, Waygate 터널 서브넷과 겹치는 경로는 `422`입니다. 서버와 연결이 모두 `ACTIVE`가 아니면 `409`, 다른 프로젝트나 없는 연결은 `404`입니다. OpenStack 호출 없이 DB만 바꾸므로 인터페이스와 NAT는 그대로이고, 설치된 클라이언트는 `.conf`를 다시 받아야 새 경로가 적용됩니다.
 
 ## 4. 백업과 마이그레이션
 

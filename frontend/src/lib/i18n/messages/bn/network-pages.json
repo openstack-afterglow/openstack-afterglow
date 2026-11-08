@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "মুছে ফেলা যায়নি: {message}",
 	"floatingIps.breadcrumb": "নেটওয়ার্ক",
 	"floatingIps.title": "ফ্লোটিং IP",
-	"floatingIps.allocationHelp": "<network>নেটওয়ার্ক পৃষ্ঠা</network> থেকে ফ্লোটিং IP বরাদ্দ করা যায়।",
+	"floatingIps.allocationHelp": "এই পৃষ্ঠার “বরাদ্দ” বোতাম দিয়ে ফ্লোটিং IP বরাদ্দ করুন।",
 	"floatingIps.selection.selectAll": "সব ফ্লোটিং IP নির্বাচন করুন",
 	"floatingIps.columns.fixedIp": "সংযুক্ত স্থির IP",
 	"floatingIps.columns.instance": "ইনস্ট্যান্স",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "টপোলজির নেটওয়ার্কের বিবরণ",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "এই রিসোর্সটি Waygate দ্বারা পরিচালিত। Waygate মেনু থেকে এটি পরিবর্তন করুন।",
+	"securityGroups.openWaygate": "Waygate খুলুন",
+	"securityGroups.waygateBadge": "Waygate পরিচালিত"
 }

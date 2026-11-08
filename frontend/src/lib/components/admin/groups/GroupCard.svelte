@@ -58,6 +58,8 @@
 		onAddMember: (userId: string) => Promise<boolean>;
 		onRemoveMember: (userId: string) => Promise<void>;
 		onRetryUsers: () => Promise<void>;
+		/** Marks the group this page just created; only it carries the guided-tour delete anchor. */
+		tourDelete?: boolean;
 	}
 	const fallbackViewState = $state(createGroupCardViewState());
 
@@ -85,7 +87,8 @@
 		onDelete,
 		onAddMember,
 		onRemoveMember,
-		onRetryUsers
+		onRetryUsers,
+		tourDelete = false
 	}: Props = $props();
 
 	function identityColumns<Row extends User | GroupMember>(): TableColumn<Row>[] {
@@ -213,7 +216,7 @@
     <div class="flex flex-wrap items-center gap-1 [&_button]:min-h-11 lg:[&_button]:min-h-0">
 			<Button variant={expanded ? 'primary' : 'ghost'} size="xs" onclick={onToggleMembers}>{t('groupCard.members')}</Button>
 			<Button variant="subtle" size="xs" onclick={onEdit}>{t('actions.edit')}</Button>
-			<Button variant="danger-outline" size="xs" onclick={onDelete}>{t('actions.delete')}</Button>
+			<Button variant="danger-outline" size="xs" onclick={onDelete} dataTour={tourDelete ? 'admin-groups-delete' : undefined}>{t('actions.delete')}</Button>
 		</div>
 	</div>
 

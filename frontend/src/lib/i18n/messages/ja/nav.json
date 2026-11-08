@@ -167,5 +167,11 @@
 	"scope.allProjects": "対象: すべてのプロジェクト",
 	"scope.currentProject": "対象: 現在のプロジェクト · {name}",
 	"actions.refreshDirectory": "対象一覧を更新",
-	"scope.filtered": "表示対象: {id}"
+	"scope.filtered": "表示対象: {id}",
+	"actions.searchAll": "リソース・サービスを検索",
+	"search.resources": "リソース",
+	"search.loadingResources": "リソースを読み込み中…",
+	"search.noResources": "一致するリソースはありません。",
+	"search.noServices": "一致するサービスはありません。",
+	"search.resultCount": "{count}件の結果"
 }

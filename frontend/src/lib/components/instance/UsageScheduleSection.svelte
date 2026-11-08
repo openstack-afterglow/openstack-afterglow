@@ -7,12 +7,15 @@
 	import { createInstanceUsageController } from '$lib/stores/instanceUsageController.svelte';
 	import { calendarMonthAfter, fromLocalDateTime, toLocalDateTime, usageDraftError } from '$lib/utils/instanceUsage';
 	import UsageScheduleFields from './UsageScheduleFields.svelte';
+	import WaygateManagedNote from './WaygateManagedNote.svelte';
 
-	let { instanceId, projectId, adminMode = false, canWrite = false, onUpdated }: {
+	let { instanceId, projectId, adminMode = false, canWrite = false, waygateLocked = false, onUpdated }: {
 		instanceId: string;
 		projectId: string | undefined;
 		adminMode?: boolean;
 		canWrite?: boolean;
+		/** Waygate gateway on the project surface: the schedule edit (PUT) is locked; only extension (POST …/extend) remains. */
+		waygateLocked?: boolean;
 		onUpdated?: () => void;
 	} = $props();
 	let section: HTMLElement;
@@ -23,7 +26,7 @@
 
 	const controller = createInstanceUsageController({
 		instanceId: () => instanceId, projectId: () => projectId,
-		adminMode: () => adminMode, canWrite: () => canWrite, onUpdated: () => onUpdated?.(),
+		adminMode: () => adminMode, canWrite: () => canWrite, extensionOnly: () => waygateLocked, onUpdated: () => onUpdated?.(),
 	});
 	const locked = $derived(!!controller.schedule && !['active', 'blocked', 'complete'].includes(controller.schedule.state));
 	const draftError = $derived(usageDraftError(controller.draft, controller.schedule?.expires_at, Date.now(), controller.schedule?.starts_at));
@@ -92,10 +95,12 @@
 			{#if !canWrite}
 				<p class="text-sm text-ink-2">{t('readonly')}</p>
 			{:else}
+				{#if waygateLocked}<WaygateManagedNote />{/if}
 				<form class="min-w-0 space-y-4 border-t border-line pt-4" aria-label={t('edit')}
 					onsubmit={(event) => { event.preventDefault(); void controller.save(); }}>
 					<UsageScheduleFields value={controller.draft} onchange={(value) => { controller.draft = value; }}
-						disabled={!controller.editable} currentExpiry={schedule.expires_at} startsAt={schedule.starts_at} idPrefix="usage-schedule-edit" />
+						disabled={!controller.editable} currentExpiry={schedule.expires_at} startsAt={schedule.starts_at} idPrefix="usage-schedule-edit"
+						extensionOnly={waygateLocked} />
 					{#if resumeError && !draftError}<Alert tone="danger">{t(resumeError)}</Alert>{/if}
 					<div class="flex min-w-0 flex-wrap gap-2">
 						<Button variant="secondary" class="min-h-11 max-w-full whitespace-normal" disabled={!controller.editable}

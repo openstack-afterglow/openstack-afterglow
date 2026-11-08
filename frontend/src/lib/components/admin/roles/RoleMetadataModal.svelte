@@ -43,14 +43,16 @@
 		{#if protectedName}
 			<p class="text-sm text-ink-2">{t('roleMetadata.protectedNameHelp')}</p>
 		{:else}
-			<Field label={t('roleMetadata.area')} for={`${id}-area`} required={!role}>
-				<TextInput id={`${id}-area`} bind:value={area} disabled={busy || readOnly} />
-			</Field>
-			<Field label={t('roleMetadata.grade')} for={`${id}-grade`} required={!role} help={t('roleMetadata.gradeHelp')}>
-				<TextInput id={`${id}-grade`} bind:value={grade} disabled={busy || readOnly} />
-			</Field>
-			<p class="text-sm text-ink-2" aria-live="polite"><RichText segments={t.rich('roleMetadata.namePreview', { name: renaming ? preview : role?.name ?? '' })} tags={{ name: roleName }} /></p>
-			{#if !valid}<Alert tone="warning">{retired ? t('roleValidation.retired') : t('roleMetadata.invalidName')}</Alert>{/if}
+			<div class="space-y-4" data-tour={role ? undefined : 'admin-roles-create-name'}>
+				<Field label={t('roleMetadata.area')} for={`${id}-area`} required={!role}>
+					<TextInput id={`${id}-area`} bind:value={area} disabled={busy || readOnly} />
+				</Field>
+				<Field label={t('roleMetadata.grade')} for={`${id}-grade`} required={!role} help={t('roleMetadata.gradeHelp')}>
+					<TextInput id={`${id}-grade`} bind:value={grade} disabled={busy || readOnly} />
+				</Field>
+				<p class="text-sm text-ink-2" aria-live="polite"><RichText segments={t.rich('roleMetadata.namePreview', { name: renaming ? preview : role?.name ?? '' })} tags={{ name: roleName }} /></p>
+				{#if !valid}<Alert tone="warning">{retired ? t('roleValidation.retired') : t('roleMetadata.invalidName')}</Alert>{/if}
+			</div>
 		{/if}
 		<Field label={t('form.description')} for={`${id}-description`}>
 			<TextareaInput id={`${id}-description`} bind:value={description} disabled={busy || readOnly} />
@@ -63,6 +65,6 @@
 	</form>
 	{#snippet actions()}
 		<Button variant="secondary" disabled={busy} onclick={onClose}>{tc('actions.cancel')}</Button>
-		<Button variant="primary" disabled={busy || disabled || !valid} ariaBusy={busy} onclick={submit}>{role ? t('actions.save') : t('roleMetadata.create')}</Button>
+		<Button variant="primary" disabled={busy || disabled || !valid} ariaBusy={busy} dataTour={role ? undefined : 'admin-roles-create-submit'} onclick={submit}>{role ? t('actions.save') : t('roleMetadata.create')}</Button>
 	{/snippet}
 </FormModal>

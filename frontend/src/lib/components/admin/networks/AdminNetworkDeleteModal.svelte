@@ -56,7 +56,7 @@
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			<div class="flex justify-end gap-3">
 				<Button variant="secondary" disabled={deleting} onclick={onClose}>{t('adminNetworkDeleteModal.cancel')}</Button>
-				<Button variant="danger" ariaBusy={deleting} onclick={confirm} disabled={deleting}>{#if deleting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deleting ? t('adminNetworkDeleteModal.deleting') : t('adminNetworkDeleteModal.delete')}</Button>
+				<Button variant="danger" ariaBusy={deleting} onclick={confirm} disabled={deleting} dataTour="admin-networks-delete-confirm">{#if deleting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deleting ? t('adminNetworkDeleteModal.deleting') : t('adminNetworkDeleteModal.delete')}</Button>
 			</div>
 		</div>
 	</div>

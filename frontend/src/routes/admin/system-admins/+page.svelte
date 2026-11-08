@@ -2,7 +2,8 @@
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { onMount } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, isAdmin, isMockAuthActive } from '$lib/stores/auth';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import { api } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -89,7 +90,11 @@
 <PageShell>
 	<PageHeader breadcrumb={t('systemPage.breadcrumb')} title={t('systemPage.title')}>
 		{#snippet actions()}
+			{#if !isMockAuthActive() && $authReady && $isAdmin}
+				<TutorialStartButton tour="admin-system-admins" compactOnMobile />
+			{/if}
 			<button
+				data-tour="admin-system-admins-add"
 				onclick={() => (showGrant = true)}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>
@@ -113,14 +118,16 @@
 			{:else if policyError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
 			{:else if policy}
-				<SecurityPolicyBanner {policy} />
+				<div data-tour="admin-system-admins-policy"><SecurityPolicyBanner {policy} /></div>
 			{/if}
 
 			{#if adminsError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.adminsFailed')}>{adminsError}</Alert>
 			{/if}
 	{/if}
-	<SystemAdminTable {admins} onRevoked={load} />
+	<div data-tour="admin-system-admins-list">
+		<SystemAdminTable {admins} onRevoked={load} />
+	</div>
 </PageShell>
 
 {#if showGrant}

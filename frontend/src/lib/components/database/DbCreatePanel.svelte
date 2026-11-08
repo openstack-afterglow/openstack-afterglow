@@ -13,17 +13,23 @@
 	let {
 		open = $bindable(false),
 		onCreated,
+		onCreatedId,
 		initialNetworkId = null,
 	}: {
 		open: boolean;
 		onCreated: () => void;
+		/** Optional: receives the accepted instance id before onCreated (the tutorial anchors that row). */
+		onCreatedId?: (id: string) => void;
 		initialNetworkId?: string | null;
 	} = $props();
 
 	const s = createDbCreateStore({
 		open: () => open,
 		setOpen: (v) => { open = v; },
-		onCreated: () => onCreated(),
+		onCreated: (createdId) => {
+			if (createdId) onCreatedId?.(createdId);
+			onCreated();
+		},
 		initialNics: () => (initialNetworkId ? [initialNetworkId] : []),
 	});
 	provideDbCreate(s);
@@ -45,6 +51,7 @@
 		aria-label={tr('wizard.title')}
 	>
 		<div
+			data-tour="database-instances-create-form"
 			class="motion-pop bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] flex flex-col max-h-[90vh]"
 		>
 			<!-- 헤더 -->
@@ -133,6 +140,7 @@
 							disabled={s.creating || !s.canCreate}
 							ariaBusy={s.creating}
 							title={s.step1Error || ''}
+							dataTour="database-instances-create-submit"
 						>
 							{#if s.creating}<LoadingState variant="control" label="" />{tr('state.creating')}{:else}{tr('actions.create')}{/if}
 						</Button>

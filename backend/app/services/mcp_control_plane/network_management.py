@@ -13,6 +13,17 @@ from openstack.resource import Body, Resource
 
 from app.services.mcp_control_plane.network import McpNetworkError
 from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
+from app.services.vpn_reserved_ranges import (
+    VpnReservedCidrError,
+    VpnReservedRangesUnavailable,
+    assert_outside,
+    domain_reserved_networks,
+)
+from app.services.waygate_managed import (
+    WaygateManagedResourceError,
+    is_waygate_managed_security_group,
+    port_device_is_waygate_managed,
+)
 
 _MAX_FIXED_IPS = 32
 _MAX_GROUPS = 32
@@ -246,7 +257,7 @@ def _subnet(
     }
 
 
-def _groups(conn: Any, project_id: str, values: Any) -> list[str]:
+def _groups(conn: Any, project_id: str, values: Any, *, refuse_waygate: bool = False) -> list[str]:
     if not isinstance(values, list) or len(values) > _MAX_GROUPS:
         raise McpNetworkError("Neutron security group IDs are malformed")
     result: list[str] = []
@@ -257,6 +268,9 @@ def _groups(conn: Any, project_id: str, values: Any) -> list[str]:
         group = _raw_resource(conn, "security-groups", group_id)
         _identity(group, group_id)
         _owned(group, project_id)
+        if refuse_waygate and is_waygate_managed_security_group(_field(group, "name")):
+            # An unbound port in a Waygate group is a gateway provider port awaiting (re)attachment.
+            raise WaygateManagedResourceError()
         result.append(group_id)
     return result
 
@@ -288,7 +302,9 @@ def _port_parent(conn: Any, project_id: str, network_id: str, *, attachment: boo
     return {**safe, "owner_id": _owner(resource)}
 
 
-def _safe_port(conn: Any, project_id: str, port: Any, *, port_id: str | None = None) -> dict[str, Any]:
+def _safe_port(
+    conn: Any, project_id: str, port: Any, *, port_id: str | None = None, refuse_waygate: bool = False
+) -> dict[str, Any]:
     resource_id = _id(_field(port, "id"), "port")
     if port_id is not None:
         _identity(port, port_id)
@@ -312,7 +328,9 @@ def _safe_port(conn: Any, project_id: str, port: Any, *, port_id: str | None = N
         "device_id": _text(_field(port, "device_id"), "device ID", nullable=True),
         "device_owner": _text(_field(port, "device_owner"), "device owner", nullable=True),
         "fixed_ips": _fixed_ips(conn, project_id, parent, _field(port, "fixed_ips"), output=True),
-        "security_group_ids": _groups(conn, project_id, _alias(port, "security_group_ids", "security_groups")),
+        "security_group_ids": _groups(
+            conn, project_id, _alias(port, "security_group_ids", "security_groups"), refuse_waygate=refuse_waygate
+        ),
     }
 
 
@@ -336,6 +354,20 @@ def _unbound(port: Any) -> None:
             raise McpNetworkError("Neutron port binding or trunk evidence prevents mutation")
     if _alias(port, "binding_vnic_type", "binding:vnic_type") not in (None, "", "normal"):
         raise McpNetworkError("Neutron nonordinary port cannot be mutated")
+
+
+def _unbound_or_waygate_refusal(conn: Any, port: Any) -> None:
+    """Bound ports are already immutable here; report a Waygate gateway port with its stable code."""
+    try:
+        _unbound(port)
+    except McpNetworkError:
+        try:
+            gateway = port_device_is_waygate_managed(conn, port)
+        except Exception:
+            gateway = False  # The original refusal still blocks the mutation.
+        if gateway:
+            raise WaygateManagedResourceError() from None
+        raise
 
 
 def _prepare_network(
@@ -378,7 +410,7 @@ def _update_network(conn: Any, *, project_id: str, network_id: str, attributes: 
 
 
 def _prepare_subnet(
-    conn: Any, project_id: str, attributes: Any, *, subnet_id: str | None = None
+    conn: Any, project_id: str, attributes: Any, *, subnet_id: str | None = None, reserved: list[Any]
 ) -> tuple[dict[str, Any], dict[str, Any], int | None]:
     if subnet_id is None:
         attrs = _attributes(
@@ -391,6 +423,7 @@ def _prepare_subnet(
             raise McpNetworkError("Neutron subnet name is missing")
         network = _cidr(attrs["cidr"])
         _subnet_addresses(attrs, network)
+        assert_outside(reserved, cidr=attrs["cidr"], gateway_ip=attrs.get("gateway_ip"))
         return (
             attrs,
             {
@@ -405,12 +438,17 @@ def _prepare_subnet(
     attrs = _attributes(attributes, {"name", "description", "gateway_ip", "enable_dhcp", "dns_nameservers"})
     resource, safe = _subnet(conn, project_id, subnet_id)
     _subnet_addresses(attrs, _cidr(safe["cidr"]))
+    if attrs.get("gateway_ip") is not None and attrs["gateway_ip"] != safe["gateway_ip"]:
+        # Name/DHCP/DNS-only edits of an existing (even overlapping) subnet stay allowed.
+        assert_outside(reserved, gateway_ip=attrs["gateway_ip"])
     revision = _revision(conn, resource)
     return attrs, {**safe, "attributes": attrs, "requested_action": "update"}, revision
 
 
-def _create_subnet(conn: Any, *, project_id: str, attributes: Any, preview: bool) -> dict[str, Any]:
-    attrs, safe, _ = _prepare_subnet(conn, project_id, attributes)
+def _create_subnet(
+    conn: Any, *, project_id: str, attributes: Any, preview: bool, reserved: list[Any]
+) -> dict[str, Any]:
+    attrs, safe, _ = _prepare_subnet(conn, project_id, attributes, reserved=reserved)
     if preview:
         return safe
     ip_version = _cidr(attrs["cidr"]).version
@@ -423,8 +461,10 @@ def _create_subnet(conn: Any, *, project_id: str, attributes: Any, preview: bool
     return {**result, "requested_action": "create"}
 
 
-def _update_subnet(conn: Any, *, project_id: str, subnet_id: str, attributes: Any, preview: bool) -> dict[str, Any]:
-    attrs, safe, revision = _prepare_subnet(conn, project_id, attributes, subnet_id=subnet_id)
+def _update_subnet(
+    conn: Any, *, project_id: str, subnet_id: str, attributes: Any, preview: bool, reserved: list[Any]
+) -> dict[str, Any]:
+    attrs, safe, revision = _prepare_subnet(conn, project_id, attributes, subnet_id=subnet_id, reserved=reserved)
     if preview:
         return safe
     check_mutation_dispatch()
@@ -449,8 +489,8 @@ def _prepare_port(
         _id(port_id, "port")
         resource = _raw_resource(conn, "ports", port_id)
         _identity(resource, port_id)
-        _unbound(resource)
-        safe = _safe_port(conn, project_id, resource, port_id=port_id)
+        _unbound_or_waygate_refusal(conn, resource)
+        safe = _safe_port(conn, project_id, resource, port_id=port_id, refuse_waygate=True)
         revision = _revision(conn, resource)
         if delete:
             return {}, {**safe, "requested_action": "delete"}, revision
@@ -526,7 +566,7 @@ def _list_ports(conn: Any, *, project_id: str, limit: int, network_id: str | Non
 async def _run(function: Any, conn: Any, **kwargs: Any) -> Any:
     try:
         return await run_sdk(function, conn, **kwargs)
-    except McpNetworkError:
+    except (McpNetworkError, WaygateManagedResourceError, VpnReservedCidrError):
         raise
     except Exception as exc:
         raise McpNetworkError("Neutron management operation is unavailable") from exc
@@ -556,27 +596,55 @@ async def request_project_network_update(
     )
 
 
+async def _reserved(conn: Any) -> list[Any]:
+    """The project's domain reserved VPN ranges, read before any native call (fail closed)."""
+    try:
+        return await domain_reserved_networks(getattr(conn, "_afterglow_domain_id", None))
+    except VpnReservedRangesUnavailable:
+        raise McpNetworkError("VPN reserved range policy is unavailable") from None
+
+
 async def preview_project_subnet_create(conn: Any, *, project_id: str, attributes: dict[str, Any]) -> dict[str, Any]:
-    return await _run(_create_subnet, conn, project_id=project_id, attributes=attributes, preview=True)
+    reserved = await _reserved(conn)
+    return await _run(
+        _create_subnet, conn, project_id=project_id, attributes=attributes, preview=True, reserved=reserved
+    )
 
 
 async def request_project_subnet_create(conn: Any, *, project_id: str, attributes: dict[str, Any]) -> dict[str, Any]:
-    return await _run(_create_subnet, conn, project_id=project_id, attributes=attributes, preview=False)
+    reserved = await _reserved(conn)
+    return await _run(
+        _create_subnet, conn, project_id=project_id, attributes=attributes, preview=False, reserved=reserved
+    )
 
 
 async def preview_project_subnet_update(
     conn: Any, *, project_id: str, subnet_id: str, attributes: dict[str, Any]
 ) -> dict[str, Any]:
+    reserved = await _reserved(conn)
     return await _run(
-        _update_subnet, conn, project_id=project_id, subnet_id=subnet_id, attributes=attributes, preview=True
+        _update_subnet,
+        conn,
+        project_id=project_id,
+        subnet_id=subnet_id,
+        attributes=attributes,
+        preview=True,
+        reserved=reserved,
     )
 
 
 async def request_project_subnet_update(
     conn: Any, *, project_id: str, subnet_id: str, attributes: dict[str, Any]
 ) -> dict[str, Any]:
+    reserved = await _reserved(conn)
     return await _run(
-        _update_subnet, conn, project_id=project_id, subnet_id=subnet_id, attributes=attributes, preview=False
+        _update_subnet,
+        conn,
+        project_id=project_id,
+        subnet_id=subnet_id,
+        attributes=attributes,
+        preview=False,
+        reserved=reserved,
     )
 
 

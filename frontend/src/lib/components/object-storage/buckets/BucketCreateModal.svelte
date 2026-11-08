@@ -56,10 +56,13 @@
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+			data-tour="admin-object-storage-create-form"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('buckets.createModal.title')}</h2>
+			<!-- Enter submits implicitly through a click on the default submit button, which the tutorial step observes. -->
+			<form onsubmit={(e) => { e.preventDefault(); submit(); }}>
 			<div class="space-y-3">
 				<div>
 					<label class="block text-xs text-ink-2 mb-1" for="field-bucketcreatemodal-61">{t('buckets.createModal.name')}</label>
@@ -68,7 +71,6 @@
 						bind:value={name}
 						placeholder={t('buckets.createModal.placeholder')}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
-						onkeydown={(e) => e.key === 'Enter' && submit()}
 					/>
 				</div>
 				{#if error}
@@ -77,15 +79,18 @@
 			</div>
 			<div class="flex justify-end gap-2 mt-5">
 				<button
+					type="button"
 					onclick={() => { open = false; }}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
 				>{t('buckets.createModal.cancel')}</button>
 				<button
-					onclick={submit}
+					type="submit"
 					disabled={creating || !name.trim()}
+					data-tour="admin-object-storage-create-submit"
 					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
 				>{#if creating}<LoadingState variant="control" label="" />{/if}{creating ? t('buckets.createModal.creating') : t('buckets.createModal.create')}</button>
 			</div>
+			</form>
 		</div>
 	</div>
 {/if}

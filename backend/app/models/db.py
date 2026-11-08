@@ -544,6 +544,7 @@ from app.models.activity import ActivityLog  # noqa: E402,F401
 from app.models.announcement import Announcement, AnnouncementRead  # noqa: E402,F401
 from app.models.domain_auth import DomainIdentityProvider, DomainLoginPolicy  # noqa: E402,F401
 from app.models.domain_iam import DomainEnrollment  # noqa: E402,F401
+from app.models.domain_network_policy import DomainNetworkPolicy  # noqa: E402,F401
 from app.models.domain_quotas import DomainQuotaOperation, DomainQuotaPolicy  # noqa: E402,F401
 from app.models.enrollment_policy import EnrollmentPolicy, SignupRequest  # noqa: E402,F401
 

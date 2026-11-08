@@ -20,6 +20,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import AdminNetworkTimeseries from '$lib/components/admin/networks/AdminNetworkTimeseries.svelte';
 	import AdminNetworkTable from '$lib/components/admin/networks/AdminNetworkTable.svelte';
 	import AdminNetworkCreateModal from '$lib/components/admin/networks/AdminNetworkCreateModal.svelte';
@@ -92,6 +93,7 @@
 			ownerWarning = false;
 			showCreate = false;
 			editNet = deleteNet = null;
+			createdNetworkId = null;
 			loading = tsLoading = false;
 			if (tok && pathname === '/admin/networks') {
 				void loadNetworks();
@@ -113,6 +115,8 @@
 	let showCreate = $state(false);
 	let editNet = $state<AdminNetwork | null>(null);
 	let deleteNet = $state<AdminNetwork | null>(null);
+	// Only the network this page just created carries the tutorial delete anchor.
+	let createdNetworkId = $state<string | null>(null);
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -161,7 +165,7 @@
 		const scope = scopeKey();
 		const generation = scopeGeneration;
 		try {
-			await api.post('/api/v1/admin/networks', {
+			const created = await api.post<{ id: string }>('/api/v1/admin/networks', {
 				name: form.name,
 				cidr: form.cidr || null,
 				is_external: form.is_external,
@@ -169,6 +173,7 @@
 				enable_dhcp: form.enable_dhcp,
 			}, token, projectId);
 			if (scope !== scopeKey() || generation !== scopeGeneration) return t('networksPage.error.scopeChanged');
+			createdNetworkId = created.id;
 			await loadNetworks();
 			if (scope !== scopeKey() || generation !== scopeGeneration) return t('networksPage.error.scopeChanged');
 			return true;
@@ -225,10 +230,11 @@
 <PageShell>
 	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={hasInventory ? `${t('networksPage.title')} (${networks.length})` : t('networksPage.title')}>
 		{#snippet actions()}
-			<Button variant="primary" onclick={() => { showCreate = true; }}>{t('networksPage.actions.create')}</Button>
+			<TutorialStartButton tour="admin-networks" compactOnMobile />
+			<Button variant="primary" dataTour="admin-networks-create-open" onclick={() => { showCreate = true; }}>{t('networksPage.actions.create')}</Button>
 		{/snippet}
 	</PageHeader>
-	<div class="flex flex-wrap items-center gap-3 text-[13px] text-ink-2 mb-3" aria-live="polite">
+	<div class="flex flex-wrap items-center gap-3 text-[13px] text-ink-2 mb-3" aria-live="polite" data-tour="admin-networks-results">
 		{#if loading && hasInventory}<LoadingState variant="inline" label={t('networksPage.loading')} />{/if}
 		<span>{api.scoped ? [api.filter.domainId, api.filter.projectId ? ownerNames.get(api.filter.projectId) || api.filter.projectId : ''].filter(Boolean).join(' / ') : t('portsFilterBar.allProjects')}</span>
 		<span>{hasInventory ? t('networksPage.results', { shown: filteredNetworks.length, total: networks.length }) : loading ? t('networksPage.loading') : t('networksPage.resultsUnavailable')}</span>
@@ -262,6 +268,7 @@
 		onRowClick={(id) => goto(`/admin/networks/${id}`)}
 		onEdit={(n) => { editNet = n; }}
 		onDelete={(n) => { deleteNet = n; }}
+		tourDeleteId={createdNetworkId}
 	/>
 	<div class="flex flex-wrap items-end justify-between gap-3">
 		<Field label={t('list.pageSize')} for="admin-networks-page-size">

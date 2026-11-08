@@ -10,6 +10,7 @@ import { t } from '$lib/i18n/ns/instance';
 import { t as tw } from '$lib/i18n/ns/vm-wizard';
 import { flavorCreateBlock, type FlavorComposerSnapshot, type FlavorOption } from '$lib/types/flavor';
 import { consumerFlavorLabel } from '$lib/utils/flavorDisplay';
+import { t as tc } from '$lib/i18n/ns/common';
 
 const mocks = vi.hoisted(() => ({
 	controller: undefined as unknown,
@@ -18,6 +19,10 @@ const mocks = vi.hoisted(() => ({
 	fetchInstance: vi.fn(),
 	loadResizeFlavors: vi.fn(),
 	doResize: vi.fn(),
+	mobile: false,
+}));
+vi.mock('$lib/utils/mobileViewport', () => ({
+	mobileViewport: { get current() { return mocks.mobile; } },
 }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token-a', sessionId: 'login', projectId: 'project-a', userId: 'user-a', identityDomainId: 'home', domainId: 'domain', roles: ['member'], isSystemAdmin: false }),
@@ -119,6 +124,7 @@ async function selectCatalogFlavor() {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.mobile = false;
 	mocks.get.mockImplementation(async (path: string) => composerResponse(path) ?? (path.endsWith('/usage-schedule') ? null : summary));
 	mocks.loadResizeFlavors.mockResolvedValue(undefined);
 	identity.set({ token: 'token-a', sessionId: 'login', projectId: 'project-a', userId: 'user-a', identityDomainId: 'home', domainId: 'domain', roles: ['member'], isSystemAdmin: false });
@@ -329,5 +335,31 @@ describe('Instance detail stopped lifecycle presentation', () => {
 			expect.objectContaining({ cache: 'no-store' }),
 		));
 		expect(document.querySelector('#usage-schedule')).toBeTruthy();
+	});
+});
+
+describe('Instance detail mobile layout', () => {
+	it.each([true, false])('puts the refresh control in the name row and resize in the overflow menu (slide-over=%s)', async slideOver => {
+		mocks.mobile = true;
+		render(InstanceDetailPanel, slideOver ? { instanceId: instance.id, onClose: vi.fn() } : { instanceId: instance.id });
+		const header = await screen.findByTestId('instance-mobile-header');
+		const refresh = screen.getByRole('button', { name: tc('autoRefresh.refreshNow') });
+		expect(header.contains(refresh)).toBe(true);
+		expect(screen.queryByRole('link', { name: t('panel.backToInstances') }) === null).toBe(slideOver);
+		await fireEvent.click(refresh);
+		expect((mocks.controller as InstanceDetailController).manualRefresh).toHaveBeenCalledTimes(1);
+		expect(within(header).queryByRole('button', { name: t('header.resize') })).toBeNull();
+		await fireEvent.click(within(header).getByRole('button', { name: t('rowActions.instanceActions', { name: instance.name }) }));
+		await fireEvent.click(within(header).getByRole('button', { name: t('header.resize') }));
+		const dialog = await screen.findByRole('dialog', { name: t('resize.title') });
+		// The menu item unmounts on activation; the modal, not the menu trigger, must end up with focus.
+		await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+	});
+
+	it('keeps the refresh control in the top row outside the mobile viewport', async () => {
+		render(InstanceDetailPanel, { instanceId: instance.id, onClose: vi.fn() });
+		await waitFor(() => expect(mocks.get).toHaveBeenCalled());
+		expect(screen.queryByTestId('instance-mobile-header')).toBeNull();
+		expect(screen.getByRole('button', { name: tc('autoRefresh.refreshNow') }).closest('h2')).toBeNull();
 	});
 });

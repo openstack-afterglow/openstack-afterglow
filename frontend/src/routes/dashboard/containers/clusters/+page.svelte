@@ -20,6 +20,7 @@
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import K3sClusterListTable from '$lib/components/k3s/K3sClusterListTable.svelte';
   import K3sClusterCreateModal from '$lib/components/k3s/K3sClusterCreateModal.svelte';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   import { t as td } from '$lib/i18n/ns/drover';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -44,6 +45,8 @@
   let serviceUnavailable = $state(false);
   let deleting = $state<string | null>(null);
   let showModal = $state(false);
+  // The cluster this page just created; only its row carries the tutorial delete anchor.
+  let lastCreatedId = $state<string | null>(null);
   const selection = createResourceSelection();
   let bulkBusy = $state(false);
   const selectableIds = $derived(new Set(view.rows.map((cluster) => cluster.id)));
@@ -95,7 +98,8 @@
         master_count: form.master_count,
       };
       if (form.keypair.trim()) body.keypair = form.keypair;
-      await api.post('/api/v1/clusters', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      const created = await api.post<Partial<Cluster> | undefined>('/api/v1/clusters', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      lastCreatedId = typeof created?.id === 'string' ? created.id : null;
       await fetchClusters();
       return true;
     } catch (e) {
@@ -177,7 +181,8 @@
         refreshing={loading}
         onManualRefresh={ar.refresh}
       />
-      <button disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
+      <TutorialStartButton tour="containers-clusters" compactOnMobile />
+      <button data-tour="containers-clusters-create-open" disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
     {/snippet}
   </PageHeader>
 
@@ -202,18 +207,21 @@
     {:else if view.rows.length === 0}
       <p role="status" class="text-sm text-ink-2 py-6">{tl('table.noMatches')}</p>
     {/if}
-    <K3sClusterListTable
-      clusters={view.rows}
-      {view}
-      {deleting}
-      selectedIds={selection.ids}
-      selectableIds={selectableIds}
-      selectionDisabled={bulkBusy || !$canWrite}
-      onToggleSelect={(id) => selection.toggle(id)}
-      onToggleAll={() => selection.toggleAll(selectableIds)}
-      onDelete={deleteCluster}
-      onNavigate={(id) => goto(`/dashboard/containers/clusters/${id}`)}
-    />
+    <div data-tour="containers-clusters-list">
+      <K3sClusterListTable
+        clusters={view.rows}
+        {view}
+        {deleting}
+        highlightId={lastCreatedId}
+        selectedIds={selection.ids}
+        selectableIds={selectableIds}
+        selectionDisabled={bulkBusy || !$canWrite}
+        onToggleSelect={(id) => selection.toggle(id)}
+        onToggleAll={() => selection.toggleAll(selectableIds)}
+        onDelete={deleteCluster}
+        onNavigate={(id) => goto(`/dashboard/containers/clusters/${id}`)}
+      />
+    </div>
     <BulkSelectionOverlay count={selection.count} ariaLabel={t('clusters.bulk.ariaLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
 </PageShell>

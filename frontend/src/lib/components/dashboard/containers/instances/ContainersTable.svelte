@@ -24,6 +24,7 @@
     onStop?: (id: string) => Promise<void>;
     onDelete?: (id: string, name: string) => Promise<void>;
     onOpen?: (id: string) => void;
+    highlightName?: string | null;
   }
   let {
     containers,
@@ -32,6 +33,7 @@
     selectedIds = new Set<string>(),
     selectableIds = new Set<string>(),
     selectionDisabled = false,
+    highlightName = null,
     onToggleSelect = () => {},
     onToggleAll = () => {},
     onStart = async () => {},
@@ -68,7 +70,7 @@
      {#snippet actions()}
       {#if actionTarget === c.uuid}<LoadingState variant="control" label={tc('state.processing')} class="text-xs" />{/if}
       {#if c.status === 'Running'}<button onclick={() => onStop(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__stop text-xs disabled:opacity-40">{t('instances.actions.stop')}</button>{:else if c.status === 'Stopped' || c.status === 'Created'}<button onclick={() => onStart(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__start text-xs disabled:opacity-40">{t('instances.actions.start')}</button>{/if}
-      <button onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__delete text-xs disabled:opacity-40">{t('instances.actions.delete')}</button>
+      <button data-tour={highlightName === c.name ? 'containers-delete' : undefined} onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__delete text-xs disabled:opacity-40">{t('instances.actions.delete')}</button>
      {/snippet}
     </CompactResourceCard>
    {/each}
@@ -109,7 +111,7 @@
                 {:else if c.status === 'Stopped' || c.status === 'Created'}
                   <button onclick={() => onStart(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__start text-xs disabled:opacity-40 transition-colors">{t('instances.actions.start')}</button>
                 {/if}
-                <button onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__delete text-xs disabled:opacity-40 transition-colors">{t('instances.actions.delete')}</button>
+                <button data-tour={highlightName === c.name ? 'containers-delete' : undefined} onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__delete text-xs disabled:opacity-40 transition-colors">{t('instances.actions.delete')}</button>
               </div>
             </td>
           </tr>

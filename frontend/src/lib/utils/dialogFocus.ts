@@ -90,7 +90,7 @@ function disable(record: DialogRecord, restoreFocus = true): void {
 	if (restoreFocus) {
 		const opener = record.opener;
 		queueMicrotask(() => {
-			if (opener?.isConnected && !opener.inert) opener.focus();
+			if (opener?.isConnected && !opener.inert) opener.focus({ preventScroll: true });
 		});
 	}
 }

@@ -47,7 +47,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { open = false; }} role="dialog" aria-modal="true" tabindex="-1">
-		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" data-tour="admin-routers-create-form" onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('adminRouterCreateModal.title')}</h2>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 			<div class="space-y-4">
@@ -67,7 +67,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminRouterCreateModal.cancel')}</button>
-				<button aria-busy={creating} onclick={submit} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('adminRouterCreateModal.creating')}</span>{:else}{t('adminRouterCreateModal.create')}{/if}</button>
+				<button aria-busy={creating} onclick={submit} disabled={creating || !form.name} data-tour="admin-routers-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('adminRouterCreateModal.creating')}</span>{:else}{t('adminRouterCreateModal.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

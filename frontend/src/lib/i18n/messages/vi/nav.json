@@ -167,5 +167,11 @@
 	"scope.allProjects": "Phạm vi: tất cả dự án",
 	"scope.currentProject": "Phạm vi: dự án hiện tại · {name}",
 	"actions.refreshDirectory": "Làm mới danh mục phạm vi",
-	"scope.filtered": "Phạm vi quan sát: {id}"
+	"scope.filtered": "Phạm vi quan sát: {id}",
+	"actions.searchAll": "Tìm tài nguyên và dịch vụ",
+	"search.resources": "Tài nguyên",
+	"search.loadingResources": "Đang tải tài nguyên…",
+	"search.noResources": "Không có tài nguyên phù hợp.",
+	"search.noServices": "Không có dịch vụ phù hợp.",
+	"search.resultCount": "{count} kết quả"
 }

@@ -7,7 +7,7 @@
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import type { createTableView } from '$lib/utils/tableView.svelte';
 
-	let { networks, view, ownerNames, ownerDomains = new Map<string, string>(), emptyMessage, onRowClick, onEdit, onDelete }: {
+	let { networks, view, ownerNames, ownerDomains = new Map<string, string>(), emptyMessage, onRowClick, onEdit, onDelete, tourDeleteId = null }: {
 		networks: AdminNetwork[];
 		view: ReturnType<typeof createTableView<AdminNetwork>>;
 		ownerNames: ReadonlyMap<string, string>;
@@ -16,16 +16,19 @@
 		onRowClick: (id: string) => void;
 		onEdit: (network: AdminNetwork) => void;
 		onDelete: (network: AdminNetwork) => void;
+		tourDeleteId?: string | null;
 	} = $props();
 	let openMenu = $state<string | null>(null);
 </script>
 
 {#snippet networkActions(network: AdminNetwork, surface: string)}
+	<span class="inline-flex" data-tour={network.id === tourDeleteId ? 'admin-networks-actions' : undefined}>
 	<ActionMenu open={openMenu === `${surface}:${network.id}`} ariaLabel={t('list.actionsFor', { name: network.name || network.id })} onopen={() => openMenu = `${surface}:${network.id}`} onclose={() => openMenu = null}>
 		<Button variant="ghost" class="w-full justify-start" onclick={() => { openMenu = null; onRowClick(network.id); }}>{t('list.details')}</Button>
 		<Button variant="ghost" class="w-full justify-start" onclick={() => { openMenu = null; onEdit(network); }}>{t('adminNetworkTable.edit')}</Button>
-		<Button variant="danger" class="w-full justify-start" onclick={() => { openMenu = null; onDelete(network); }}>{t('adminNetworkTable.delete')}</Button>
+		<Button variant="danger" class="w-full justify-start" dataTour={network.id === tourDeleteId ? 'admin-networks-delete' : undefined} onclick={() => { openMenu = null; onDelete(network); }}>{t('adminNetworkTable.delete')}</Button>
 	</ActionMenu>
+	</span>
 {/snippet}
 
 {#snippet owner(network: AdminNetwork)}

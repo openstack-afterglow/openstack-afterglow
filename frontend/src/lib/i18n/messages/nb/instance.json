@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "Kunne ikke avbryte migreringen",
 	"controller.migration.forceCompleteRequested": "Forespørsel om tvungen fullføring av migreringen sendt.",
 	"controller.migration.forceCompleteFailed": "Kunne ikke tvinge fullføring av migreringen",
-	"controller.contextRequired": "useInstanceDetailController må kalles inne i InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController må kalles inne i InstanceDetailPanel",
+	"waygate.managedNote": "Denne ressursen administreres av Waygate. Endre den fra Waygate-menyen.",
+	"waygate.openLink": "Åpne Waygate",
+	"waygate.badge": "Administrert av Waygate",
+	"list.waygateBulkDeleteBlocked": "Utvalget inneholder instanser som administreres av Waygate, så det kan ikke slettes samlet. Endre dem fra Waygate-menyen."
 }

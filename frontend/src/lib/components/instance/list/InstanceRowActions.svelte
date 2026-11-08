@@ -41,8 +41,12 @@
 			{/if}
 		{:else if instance.status === 'SHUTOFF' && $canWrite}
 			<Button onclick={() => act('start')} disabled={acting} variant="ghost" size="sm" class="w-full justify-start">{t('list.start')}</Button>
-			<Button onclick={() => act('shelve')} disabled={acting} variant="ghost" size="sm" class="w-full justify-start">{t('rowActions.shelve')}</Button>
-			<Button onclick={() => act('delete')} disabled={acting} variant="danger-outline" size="sm" class="w-full justify-start">{t('rowActions.delete')}</Button>
+			{#if instance.waygate_managed}
+				<p class="max-w-56 px-2 py-1 text-xs text-ink-2" data-testid="waygate-row-note">{t('waygate.managedNote')}</p>
+			{:else}
+				<Button onclick={() => act('shelve')} disabled={acting} variant="ghost" size="sm" class="w-full justify-start">{t('rowActions.shelve')}</Button>
+				<Button onclick={() => act('delete')} disabled={acting} variant="danger-outline" size="sm" class="w-full justify-start">{t('rowActions.delete')}</Button>
+			{/if}
 		{:else if (instance.status === 'SHELVED_OFFLOADED' || instance.status === 'SHELVED') && $canWrite}
 			<Button onclick={() => act('unshelve')} disabled={acting} variant="ghost" size="sm" class="w-full justify-start">{t('rowActions.unshelve')}</Button>
 		{/if}

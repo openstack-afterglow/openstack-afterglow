@@ -23,6 +23,7 @@
 	import TrashNotice from '$lib/components/object-storage/buckets/TrashNotice.svelte';
 	import { toast } from '$lib/stores/toast';
 	import { createArrivals } from '$lib/components/object-storage/arrivals';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 	interface AccountMeta {
 		container_count: number;
@@ -42,6 +43,9 @@
 	let deleting = $state<string | null>(null);
 	let showModal = $state(false);
 	const bucketArrivals = createArrivals();
+	// Only the bucket this page just created carries the tutorial delete and result anchors.
+	let createdBucketKey = $state<string | null>(null);
+	const createdBucketDeleted = $derived(containers.some((c) => c.is_deleted && `${c.project_id ?? ''}/${c.name}` === createdBucketKey));
 
 	const account = $derived<AccountMeta>({
 		container_count: containers.length,
@@ -78,6 +82,7 @@
 		try {
 			if (!projectId) return t('buckets.adminPage.projectActionsOnly');
 			await api.post('/api/v1/object-storage', { name }, token, projectId);
+			createdBucketKey = `${projectId}/${name}`;
 			await load();
 			return true;
 		} catch (e) {
@@ -123,7 +128,9 @@
 <PageShell>
 	<PageHeader breadcrumb={t('buckets.adminPage.breadcrumb')} title={t('buckets.adminPage.title')}>
 		{#snippet actions()}
+			<TutorialStartButton tour="admin-object-storage" compactOnMobile />
 			<button
+				data-tour="admin-object-storage-create-open"
 				onclick={() => { showModal = true; }}
 				disabled={!projectId}
 				class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
@@ -174,11 +181,11 @@
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm">{partial ? t('buckets.adminPage.partialEmpty') : t('buckets.adminPage.empty')}</div>
 	{/if}
-	<BucketTable {containers} arrivals={bucketArrivals} deletingId={deleting} {refreshing} {canDelete} onDelete={deleteContainer} />
+	<BucketTable {containers} arrivals={bucketArrivals} deletingId={deleting} {refreshing} {canDelete} onDelete={deleteContainer} tourDeleteKey={createdBucketKey} />
 		{#if containers.some((c) => c.is_quarantine)}
 			<QuarantineNotice />
 		{/if}
 		{#if containers.some((c) => c.is_trash || c.is_deleted)}
-			<TrashNotice />
+			<div data-tour={createdBucketDeleted ? 'admin-object-storage-deleted' : undefined}><TrashNotice /></div>
 		{/if}
 </PageShell>

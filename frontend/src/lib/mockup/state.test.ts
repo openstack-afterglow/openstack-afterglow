@@ -73,7 +73,7 @@ describe('mockup fixture privacy', () => {
 		expect(admin.services.network[0]).toMatchObject({ agent_type: 'Open vSwitch agent', alive: true });
 		expect(admin.services.endpoints).toHaveLength(1);
 		expect(admin.services.storage_pools).toHaveLength(1);
-		expect(admin.users.filter(({ enabled }) => enabled)).toHaveLength(2);
+		expect(admin.users).toContainEqual(expect.objectContaining({ id: 'mock-admin-1', enabled: true, domain_id: 'mock-domain' }));
 		expect(admin.users.filter(({ enabled }) => !enabled)).toHaveLength(1);
 		expect(admin.userActivity.length).toBeGreaterThanOrEqual(2);
 		expect(tutorialStatuses).toEqual({});

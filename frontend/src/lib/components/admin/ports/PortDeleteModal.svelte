@@ -55,7 +55,7 @@
       {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
       <div class="flex justify-end gap-3">
         <button onclick={() => { port = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('portDeleteModal.cancel')}</button>
-        <button aria-busy={deleting} onclick={submit} disabled={deleting} class="px-4 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] text-sm font-medium rounded-lg disabled:opacity-30">{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('portDeleteModal.deleting')}</span>{:else}{t('portDeleteModal.delete')}{/if}</button>
+        <button aria-busy={deleting} onclick={submit} disabled={deleting} data-tour="admin-ports-delete-confirm" class="px-4 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] text-sm font-medium rounded-lg disabled:opacity-30">{#if deleting}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('portDeleteModal.deleting')}</span>{:else}{t('portDeleteModal.delete')}{/if}</button>
       </div>
     </div>
   </div>

@@ -26,6 +26,7 @@
   import { createTableView, type TableColumn } from '$lib/utils/tableView.svelte';
   import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
   import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { t as tr } from '$lib/i18n/ns/network-resources';
   import { t as tc } from '$lib/i18n/ns/common';
 
@@ -144,7 +145,8 @@
         refreshing={loading}
         onManualRefresh={() => fetchLoadbalancers({ refresh: true }, beginExperienceAction('network', 'refresh', 'resource.list'))}
       />
-      <a href="/dashboard/network/loadbalancers/new" class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('loadBalancers.actions.create')}</a>
+      <TutorialStartButton tour="load-balancers" compactOnMobile />
+      <a href="/dashboard/network/loadbalancers/new" data-tour="load-balancers-create-open" class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('loadBalancers.actions.create')}</a>
     {/snippet}
   </PageHeader>
 
@@ -153,6 +155,7 @@
   {#if loadbalancers.length > 0 && view.rows.length === 0}<p class="text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
+  <div data-tour="load-balancers-list-section">
   {#if loading}
     <LoadingState variant="surface" label={t('loadBalancers.loading')} />
   {:else if loadbalancers.length === 0}
@@ -187,6 +190,7 @@
       {/each}
     </div>
   {/if}
+  </div>
 </PageShell>
 <BulkSelectionOverlay
   count={selectedCount}

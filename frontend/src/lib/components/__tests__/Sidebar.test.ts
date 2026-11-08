@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { tick } from 'svelte';
 import { get, type Writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ResourceSearchModule from '$lib/utils/resourceSearch';
+import type { ResourceSearchEntry } from '$lib/utils/resourceSearch';
 
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/stores', async () => {
@@ -14,6 +16,9 @@ vi.mock('$lib/stores/projectManagement', async () => {
 	const { writable } = await import('svelte/store');
 	return { canManageOrganizationProjects: writable(false) };
 });
+const viewport = vi.hoisted(() => ({ mobile: false, loadResources: vi.fn() }));
+vi.mock('$lib/utils/mobileViewport', () => ({ mobileViewport: { get current() { return viewport.mobile; } } }));
+vi.mock('$lib/utils/resourceSearch', async importOriginal => ({ ...(await importOriginal<typeof ResourceSearchModule>()), loadResourceSearchEntries: viewport.loadResources }));
 
 import { page } from '$app/stores';
 import { initSiteConfig, siteConfig } from '$lib/config/site';
@@ -60,8 +65,13 @@ async function navigate(pathname: string) {
 	return tick();
 }
 async function expandGlobalSections() {
-	const disclosure = drawer().getByRole('button', { name: t('accessibility.allServices') });
-	if (disclosure.getAttribute('aria-expanded') === 'false') await fireEvent.click(disclosure);
+	if (viewport.mobile) {
+		// The mobile drawer lists service categories directly under its Services group.
+		expect(drawer().queryByRole('button', { name: t('accessibility.allServices') })).toBeNull();
+	} else {
+		const disclosure = drawer().getByRole('button', { name: t('accessibility.allServices') });
+		if (disclosure.getAttribute('aria-expanded') === 'false') await fireEvent.click(disclosure);
+	}
 	for (const button of globalServices().queryAllByRole('button')) {
 		if (button.getAttribute('aria-expanded') === 'false') await fireEvent.click(button);
 	}
@@ -80,6 +90,9 @@ async function openDrawer() {
 
 beforeEach(async () => {
 	initLocale('ko');
+	viewport.mobile = false;
+	viewport.loadResources.mockReset();
+	viewport.loadResources.mockResolvedValue([]);
 	localStorage.removeItem(preferenceKey);
 	sidebarOpen.close();
 	sidebarExpanded.open();
@@ -310,12 +323,14 @@ describe('Sidebar account navigation', () => {
 	it.each([375, 1280])('shows account category while its destinations wait for explicit expansion at %ipx', async width => {
 		const previousWidth = window.innerWidth;
 		Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+		viewport.mobile = width < 768;
 		try {
 			await navigate('/dashboard/account/mcp');
 			render(Sidebar);
 			sidebarOpen.open();
 			await tick();
 			const menu = drawer();
+			expect(document.getElementById('app-navigation-menu')!.dataset.navigationLayout).toBe(width < 768 ? 'mobile' : undefined);
 			expect(menu.getByRole('navigation', { name: t('accessibility.allServices') })).toBeTruthy();
 			for (const href of accountDestinations) expect(queryDestination(menu, href)).toBeNull();
 			await expandGlobalSections();
@@ -327,6 +342,7 @@ describe('Sidebar account navigation', () => {
 			expect(destination(screen, '/dashboard/compute/instances').getAttribute('aria-current')).toBe('page');
 		} finally {
 			Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+			viewport.mobile = false;
 		}
 	});
 });
@@ -560,5 +576,113 @@ describe('Sidebar service and beta visibility', () => {
 		await tick();
 		for (const href of betaDestinations) expect(queryDestination(menu, href)).toBeNull();
 		for (const href of ['/dashboard/volumes', '/dashboard/volumes/backups']) destination(menu, href);
+	});
+});
+
+describe('Sidebar mobile drawer', () => {
+	beforeEach(() => { viewport.mobile = true; });
+	afterEach(() => { viewport.mobile = false; });
+
+	it('opens full screen with a close button, one combined search and only Hub and Services groups', async () => {
+		localStorage.setItem(preferenceKey, JSON.stringify({ pinned: ['/dashboard/usage', '/dashboard/compute/images'], recent: [] }));
+		render(Sidebar);
+		const menu = await openDrawer();
+		const panel = document.getElementById('app-navigation-menu')!;
+		expect(panel.dataset.navigationLayout).toBe('mobile');
+		expect(panel.classList.contains('w-full')).toBe(true);
+		expect(panel.classList.contains('h-[100dvh]')).toBe(true);
+		await fireEvent.click(menu.getByRole('button', { name: t('accessibility.closeAllMenu') }));
+		expect(get(sidebarOpen)).toBe(false);
+		const reopened = await openDrawer();
+		expect(reopened.getAllByRole('searchbox').map(input => input.id)).toEqual(['console-navigation-search']);
+		reopened.getByRole('searchbox', { name: t('actions.searchAll') });
+		expect(reopened.queryByRole('button', { name: t('accessibility.search') })).toBeNull();
+		expect(reopened.queryByText(t('actions.searchResources'))).toBeNull();
+		expect(reopened.queryByRole('searchbox', { name: t('actions.searchServices') })).toBeNull();
+		expect(reopened.queryByRole('region', { name: t('sections.favorites') })).toBeNull();
+		expect(reopened.queryByRole('button', { name: t('accessibility.allServices') })).toBeNull();
+		const hub = within(reopened.getByRole('navigation', { name: t('sections.hub') }));
+		expect(hub.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/dashboard', '/dashboard/compute/images']);
+		for (const href of ['/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity', '/dashboard/network/topology']) expect(queryDestination(reopened, href)).toBeNull();
+		expect(reopened.getByRole('heading', { name: t('sections.services') })).toBeTruthy();
+		expect(globalServices().getByRole('button', { name: t('sections.compute') }).getAttribute('aria-expanded')).toBe('false');
+		await fireEvent.click(globalServices().getByRole('button', { name: t('sections.compute') }));
+		await fireEvent.click(destination(globalServices(), '/dashboard/compute/instances'));
+		expect(get(sidebarOpen)).toBe(false);
+		expect(viewport.loadResources).not.toHaveBeenCalled();
+	});
+	it('searches resources and menu destinations together, including hub pages hidden from the body', async () => {
+		auth.update(current => ({ ...current, token: 'mobile-token', projectId: 'project-1' }));
+		viewport.loadResources.mockResolvedValue([
+			{ id: 'vm-1', name: 'web-topology', kind: 'instance', href: '/dashboard/compute/instances/vm-1' },
+			{ id: 'vol-1', name: 'archive', kind: 'volume', href: '/dashboard/volumes/vol-1' },
+		]);
+		render(Sidebar);
+		const menu = await openDrawer();
+		const search = menu.getByRole('searchbox', { name: t('actions.searchAll') });
+		await fireEvent.input(search, { target: { value: t('items.topology') } });
+		const services = within(menu.getByRole('navigation', { name: t('sections.services') }));
+		destination(services, '/dashboard/network/topology');
+		expect(services.queryByRole('button', { name: t('actions.pin', { name: t('items.topology') }) })).toBeNull();
+		expect(menu.queryByRole('navigation', { name: t('sections.hub') })).toBeNull();
+		expect(viewport.loadResources).toHaveBeenCalledWith('mobile-token', 'project-1');
+		await fireEvent.input(search, { target: { value: 'web-top' } });
+		await tick();
+		const resources = within(menu.getByRole('region', { name: t('search.resources') }));
+		expect(resources.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/dashboard/compute/instances/vm-1']);
+		expect(within(menu.getByRole('navigation', { name: t('sections.services') })).getByText(t('search.noServices'))).toBeTruthy();
+		expect(viewport.loadResources).toHaveBeenCalledTimes(1);
+		await fireEvent.input(search, { target: { value: t('items.images') } });
+		await fireEvent.click(within(menu.getByRole('navigation', { name: t('sections.services') })).getByRole('button', { name: t('actions.pin', { name: t('items.images') }) }));
+		expect(JSON.parse(localStorage.getItem(preferenceKey)!).pinned).toEqual(['/dashboard/compute/images']);
+		await fireEvent.input(search, { target: { value: 'archive' } });
+		await tick();
+		await fireEvent.keyDown(search, { key: 'Enter' });
+		expect(get(sidebarOpen)).toBe(false);
+		const reopened = await openDrawer();
+		expect((reopened.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+		expect(within(reopened.getByRole('navigation', { name: t('sections.hub') })).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/dashboard', '/dashboard/compute/images']);
+	});
+	it('reports resource loading and empty results without hiding menu matches', async () => {
+		const pending = Promise.withResolvers<ResourceSearchEntry[]>();
+		viewport.loadResources.mockReturnValue(pending.promise);
+		render(Sidebar);
+		const menu = await openDrawer();
+		await fireEvent.input(menu.getByRole('searchbox'), { target: { value: t('items.volumeList') } });
+		const resources = within(menu.getByRole('region', { name: t('search.resources') }));
+		expect(resources.getByText(t('search.loadingResources'))).toBeTruthy();
+		destination(within(menu.getByRole('navigation', { name: t('sections.services') })), '/dashboard/volumes');
+		pending.resolve([]);
+		await tick();
+		await tick();
+		expect(resources.getByText(t('search.noResources'))).toBeTruthy();
+	});
+	it('keeps project scope, mode switch and user identity compact at the bottom', async () => {
+		auth.update(current => ({ ...current, username: 'alice', projectName: 'Team project', isSystemAdmin: true }));
+		render(Sidebar);
+		const menu = await openDrawer();
+		const footer = document.querySelector('#app-navigation-menu [data-navigation-footer="mobile"]') as HTMLElement;
+		expect(footer).not.toBeNull();
+		// The bottom block scrolls with the body so an on-screen keyboard cannot squeeze the results area.
+		const scrollBody = footer.closest('[data-navigation-bottom]')!.parentElement!;
+		expect(scrollBody.classList.contains('overflow-y-auto')).toBe(true);
+		expect(scrollBody.classList.contains('flex-1')).toBe(true);
+		expect(within(footer).getByRole('button', { name: /Team project/ }).getAttribute('aria-haspopup')).toBe('dialog');
+		expect(within(footer).getByText('alice')).toBeTruthy();
+		expect(destination(within(footer), '/admin').getAttribute('aria-label')).toBeTruthy();
+		expect(menu.getByText(t('scope.currentProject', { name: 'Team project' }))).toBeTruthy();
+		auth.update(current => ({ ...current, isSystemAdmin: false }));
+		await tick();
+		expect(queryDestination(within(footer), '/admin')).toBeNull();
+	});
+	it('leaves the tablet and desktop drawer markup unchanged', async () => {
+		viewport.mobile = false;
+		render(Sidebar);
+		const menu = await openDrawer();
+		expect(document.getElementById('app-navigation-menu')!.dataset.navigationLayout).toBeUndefined();
+		expect(menu.getByRole('button', { name: t('accessibility.search') })).toBeTruthy();
+		expect(menu.getByRole('searchbox', { name: t('actions.searchServices') })).toBeTruthy();
+		expect(within(menu.getByRole('navigation', { name: t('sections.hub') })).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/dashboard', '/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity', '/dashboard/network/topology']);
+		expect(document.querySelector('[data-navigation-footer="mobile"]')).toBeNull();
 	});
 });

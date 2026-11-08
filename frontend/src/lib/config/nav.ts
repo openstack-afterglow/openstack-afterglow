@@ -62,6 +62,8 @@ export interface NavItem {
   beta?: keyof BetaFeatures;
   topLevel?: boolean;
   capability?: keyof NavCapabilities;
+  /** Hub destination omitted from the mobile (<768px) drawer body; it stays reachable through drawer search. */
+  mobileHidden?: boolean;
 }
 
 export interface NavSection {

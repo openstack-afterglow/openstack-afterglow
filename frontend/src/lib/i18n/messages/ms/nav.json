@@ -167,5 +167,11 @@
 	"scope.allProjects": "Skop: semua projek",
 	"scope.currentProject": "Skop: projek semasa · {name}",
 	"actions.refreshDirectory": "Muat semula direktori skop",
-	"scope.filtered": "Skop pemerhatian: {id}"
+	"scope.filtered": "Skop pemerhatian: {id}",
+	"actions.searchAll": "Cari sumber dan perkhidmatan",
+	"search.resources": "Sumber",
+	"search.loadingResources": "Memuatkan sumber…",
+	"search.noResources": "Tiada sumber yang sepadan.",
+	"search.noServices": "Tiada perkhidmatan yang sepadan.",
+	"search.resultCount": "{count} hasil"
 }

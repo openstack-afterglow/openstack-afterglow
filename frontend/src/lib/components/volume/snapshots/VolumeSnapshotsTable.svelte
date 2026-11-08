@@ -13,13 +13,15 @@
   import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
-  let { view, snapshots, deleting, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
-    view: TableView<VolumeSnapshot>; snapshots: VolumeSnapshot[]; deleting: string | null; selectedIds: ReadonlySet<string>;
+  let { view, snapshots, deleting, highlightId = null, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onDelete }: {
+    view: TableView<VolumeSnapshot>; snapshots: VolumeSnapshot[]; deleting: string | null; highlightId?: string | null; selectedIds: ReadonlySet<string>;
     selectableIds: ReadonlySet<string>; selectionDisabled: boolean;
     onToggleSelect: (id: string) => void; onToggleAll: () => void;
     onDelete: (id: string, name: string) => Promise<void>;
   } = $props();
   const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
+  // Tutorial delete anchor: only the snapshot the tour created, once Cinder allows deleting it.
+  const tourDeleteId = $derived(snapshots.find((snap) => snap.id === highlightId && (snap.status === 'available' || snap.status === 'error'))?.id ?? null);
 </script>
 
 {#if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{storageCommonT('table.noMatches')}</p>{/if}
@@ -49,7 +51,7 @@
           </dl>
         {/snippet}
         {#snippet actions()}
-          <Button variant="danger-outline" size="sm" onclick={() => onDelete(snap.id, snap.name)} disabled={deleting === snap.id}>
+          <Button variant="danger-outline" size="sm" onclick={() => onDelete(snap.id, snap.name)} disabled={deleting === snap.id} dataTour={tourDeleteId === snap.id ? 'volume-snapshots-delete' : undefined}>
             {#if deleting === snap.id}<LoadingState variant="control" label="" />{/if}{deleting === snap.id ? t('snapshotsTable.deleting') : t('snapshotsTable.delete')}
           </Button>
         {/snippet}
@@ -82,6 +84,7 @@
           <td class="py-3 pr-6 text-ink-2 text-xs">{snap.created_at ? new Date(snap.created_at).toLocaleDateString(intlLocale()) : t('snapshotsTable.missingValue')}</td>
           <td class="py-3 text-right">
             <button
+              data-tour={tourDeleteId === snap.id ? 'volume-snapshots-delete' : undefined}
               onclick={() => onDelete(snap.id, snap.name)}
               disabled={deleting === snap.id}
               class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"

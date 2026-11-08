@@ -393,5 +393,9 @@
 	"controller.migration.abortFailed": "Không thể hủy bỏ di chuyển",
 	"controller.migration.forceCompleteRequested": "Đã gửi yêu cầu buộc hoàn tất di chuyển.",
 	"controller.migration.forceCompleteFailed": "Không thể buộc hoàn tất di chuyển",
-	"controller.contextRequired": "useInstanceDetailController phải được gọi bên trong InstanceDetailPanel"
+	"controller.contextRequired": "useInstanceDetailController phải được gọi bên trong InstanceDetailPanel",
+	"waygate.managedNote": "Tài nguyên này do Waygate quản lý. Hãy thay đổi từ menu Waygate.",
+	"waygate.openLink": "Mở Waygate",
+	"waygate.badge": "Do Waygate quản lý",
+	"list.waygateBulkDeleteBlocked": "Lựa chọn có phiên bản máy do Waygate quản lý nên không thể xóa hàng loạt. Hãy thay đổi chúng từ menu Waygate."
 }

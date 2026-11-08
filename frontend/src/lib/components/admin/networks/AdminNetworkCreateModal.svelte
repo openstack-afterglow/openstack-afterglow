@@ -48,7 +48,7 @@
 		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
-		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" data-tour="admin-networks-create-form">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('adminNetworkCreateModal.title')}</h2>
 			{#if error}<Alert tone="danger">{error}</Alert>{/if}
 			<div class="space-y-4">
@@ -69,7 +69,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<Button variant="secondary" disabled={creating} onclick={() => { open = false; }}>{t('adminNetworkCreateModal.cancel')}</Button>
-				<Button variant="primary" ariaBusy={creating} onclick={submit} disabled={creating || !form.name}>{#if creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{creating ? t('adminNetworkCreateModal.creating') : t('adminNetworkCreateModal.create')}</Button>
+				<Button variant="primary" ariaBusy={creating} onclick={submit} disabled={creating || !form.name} dataTour="admin-networks-create-submit">{#if creating}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{creating ? t('adminNetworkCreateModal.creating') : t('adminNetworkCreateModal.create')}</Button>
 			</div>
 		</div>
 	</div>

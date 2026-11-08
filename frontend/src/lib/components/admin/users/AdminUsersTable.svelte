@@ -23,6 +23,7 @@
     deleteDisabled,
     onPrev,
     onNext,
+    tourDeleteId = null,
   }: {
     users: User[];
     view: TableView<User>;
@@ -36,6 +37,7 @@
     deleteDisabled: boolean;
     onPrev: () => void;
     onNext: () => void;
+    tourDeleteId?: string | null;
   } = $props();
 </script>
 
@@ -49,7 +51,7 @@
             <Pill tone={u.enabled ? 'success' : 'danger'}>{u.enabled ? t('userTable.enabled') : t('userTable.disabled')}</Pill>
           </div>
           <p class="break-all text-sm text-ink-2">{u.email || '-'}</p>
-          <Button variant="danger-outline" size="sm" class="min-h-11 justify-self-start" disabled={deleteDisabled || u.id === actorId} ariaLabel={u.id === actorId ? t('userDelete.selfProtected') : t('userDelete.actionLabel', { name: u.name })} onclick={() => onDelete(u)}>{t('actions.delete')}</Button>
+          <Button variant="danger-outline" size="sm" class="min-h-11 justify-self-start" disabled={deleteDisabled || u.id === actorId} ariaLabel={u.id === actorId ? t('userDelete.selfProtected') : t('userDelete.actionLabel', { name: u.name })} dataTour={u.id === tourDeleteId ? 'admin-users-delete' : undefined} onclick={() => onDelete(u)}>{t('actions.delete')}</Button>
           {#snippet details()}
             <dl class="space-y-2 text-xs">
               <div><dt class="text-ink-2">{t('userTable.id')}</dt><dd class="break-all font-mono">{u.id}</dd></div>
@@ -84,7 +86,7 @@
             </td>
             <td class="py-2 pr-4 text-ink-2 font-mono text-xs">{u.id.slice(0, 8)}</td>
             <td class="py-2 text-ink-2">{(u.first_seen ?? u.created_at)?.slice(0, 10) ?? '-'}</td>
-            <td class="py-2 text-right"><Button variant="danger-outline" size="sm" disabled={deleteDisabled || u.id === actorId} ariaLabel={u.id === actorId ? t('userDelete.selfProtected') : t('userDelete.actionLabel', { name: u.name })} onclick={() => onDelete(u)}>{t('actions.delete')}</Button></td>
+            <td class="py-2 text-right"><Button variant="danger-outline" size="sm" disabled={deleteDisabled || u.id === actorId} ariaLabel={u.id === actorId ? t('userDelete.selfProtected') : t('userDelete.actionLabel', { name: u.name })} dataTour={u.id === tourDeleteId ? 'admin-users-delete' : undefined} onclick={() => onDelete(u)}>{t('actions.delete')}</Button></td>
           </tr>
         {/each}
       </tbody>

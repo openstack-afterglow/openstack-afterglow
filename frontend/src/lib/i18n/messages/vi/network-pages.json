@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "Xóa thất bại: {message}",
 	"floatingIps.breadcrumb": "Mạng",
 	"floatingIps.title": "IP nổi",
-	"floatingIps.allocationHelp": "Có thể cấp phát IP nổi trên <network>trang mạng</network>.",
+	"floatingIps.allocationHelp": "Cấp phát IP nổi bằng nút Cấp phát trên trang này.",
 	"floatingIps.selection.selectAll": "Chọn tất cả IP nổi",
 	"floatingIps.columns.fixedIp": "IP cố định được liên kết",
 	"floatingIps.columns.instance": "Phiên bản máy",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "Chi tiết mạng trong cấu trúc liên kết",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "Tài nguyên này do Waygate quản lý. Hãy thay đổi từ menu Waygate.",
+	"securityGroups.openWaygate": "Mở Waygate",
+	"securityGroups.waygateBadge": "Do Waygate quản lý"
 }

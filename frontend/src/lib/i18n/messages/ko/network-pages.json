@@ -223,7 +223,7 @@
 	"floatingIps.error.deleteFailed": "삭제 실패: {message}",
 	"floatingIps.breadcrumb": "네트워크",
 	"floatingIps.title": "Floating IP",
-	"floatingIps.allocationHelp": "Floating IP 할당은 <network>네트워크 페이지</network>에서 수행할 수 있습니다.",
+	"floatingIps.allocationHelp": "Floating IP는 이 페이지의 '할당' 버튼으로 할당할 수 있습니다.",
 	"floatingIps.selection.selectAll": "Floating IP 전체 선택",
 	"floatingIps.columns.fixedIp": "연결된 Fixed IP",
 	"floatingIps.columns.instance": "인스턴스",
@@ -349,5 +349,8 @@
 	"topology.networkDetailLabel": "토폴로지 네트워크 상세",
 	"networkCreate.namePlaceholder": "my-network",
 	"networkCreate.subnetNamePlaceholder": "my-network-subnet",
-	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})"
+	"loadBalancerCreate.form.subnet.option": "{name} ({cidr})",
+	"securityGroups.waygateManagedNote": "Waygate에서 관리되는 리소스입니다. Waygate 메뉴에서 변경하세요",
+	"securityGroups.openWaygate": "Waygate 열기",
+	"securityGroups.waygateBadge": "Waygate 관리"
 }

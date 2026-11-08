@@ -28,6 +28,8 @@ export interface Instance {
   user_id?: string | null;
   project_id?: string | null;
   host?: string | null;  // 현재 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐)
+  /** Full Waygate gateway marker; such VMs are controllable only through Waygate. Missing → false. */
+  waygate_managed?: boolean;
 }
 
 export interface DashboardSummary {

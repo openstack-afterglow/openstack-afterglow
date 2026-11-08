@@ -15,7 +15,7 @@
 	}: {
 		open: boolean;
 		domainId: string;
-		onCreated: () => void;
+		onCreated: (project: { id: string | null; name: string }) => void;
 	} = $props();
 
 	const token = $derived($auth.token ?? undefined);
@@ -43,22 +43,23 @@
 		const requestDomain = domainId;
 		const requestToken = token;
 		const requestProject = projectId;
+		const requestName = form.name;
 		const owns = () => request === generation && open && domainId === requestDomain && token === requestToken && projectId === requestProject;
 		creating = true;
 		createError = '';
 		const namesScope = projectNames.scope(token, projectId);
 		projectNames.invalidate(namesScope);
 		try {
-			await api.post(
+			const created = await api.post<{ id?: unknown } | null>(
 				`/api/v1/admin/projects?domain_id=${encodeURIComponent(requestDomain)}`,
-				{ name: form.name, description: form.description || null, enabled: form.enabled, domain_id: requestDomain },
+				{ name: requestName, description: form.description || null, enabled: form.enabled, domain_id: requestDomain },
 				requestToken,
 				requestProject,
 			);
 			projectNames.invalidate(namesScope);
 			if (!owns()) return;
 			open = false;
-			onCreated();
+			onCreated({ id: typeof created?.id === 'string' ? created.id : null, name: requestName });
 		} catch (e) {
 			if (owns()) createError = e instanceof ApiError ? e.message : t('projectCreate.failed');
 		} finally {
@@ -78,6 +79,7 @@
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+			data-tour="admin-projects-create-form"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -108,7 +110,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; createError = ''; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button aria-busy={creating} onclick={createProject} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
+				<button aria-busy={creating} onclick={createProject} disabled={creating || !form.name} data-tour="admin-projects-create-submit" class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

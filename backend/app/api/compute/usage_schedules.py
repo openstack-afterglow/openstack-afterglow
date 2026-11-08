@@ -23,6 +23,7 @@ from app.models.instance_usage_governance import UsageExtensionReview, UsagePoli
 from app.services import instance_usage as usage
 from app.services import instance_usage_governance as governance
 from app.services.cache import invalidate
+from app.services.waygate_managed import ensure_server_not_waygate_managed
 
 
 def _private(response: Response):
@@ -165,6 +166,9 @@ async def get_usage_schedule(instance_id: str, conn=Depends(get_os_conn)):
 
 async def _change(conn, instance_id, req, token_info, *, extend: bool):
     server = await read_server(conn, instance_id)
+    if not extend:
+        # A schedule can stop or delete the VM at expiry; extension only prolongs it.
+        ensure_server_not_waygate_managed(server)
     schedule = await governance.change_schedule(conn, server, req, token_info, extension_only=extend)
     if isinstance(schedule, dict) and schedule.get("status") == "pending":
         await rec(

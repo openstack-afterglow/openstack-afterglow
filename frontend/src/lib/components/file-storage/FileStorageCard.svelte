@@ -10,11 +10,13 @@
 	import { ResponsiveTable, CompactResourceCard, Button } from '$lib/components/ui';
 
 	let {
-		fs, quotaLimit, copiedExport, deleting, selected = false, selectable = true, selectionDisabled = false,
+		fs, quotaLimit, copiedExport, deleting, selected = false, selectable = true, selectionDisabled = false, tourDelete = false,
 		onOpenDetail, onCopyExport, onDelete, onToggleSelect,
 	}: {
 		fs: FileStorage; quotaLimit: number; copiedExport: string | null; deleting: string | null;
 		selected?: boolean; selectable?: boolean; selectionDisabled?: boolean;
+		/** Tutorial anchor: true only for the share the running tour just created. */
+		tourDelete?: boolean;
 		onOpenDetail: (id: string) => void; onCopyExport: (path: string, id: string) => void;
 		onDelete: (id: string, name: string) => void; onToggleSelect: () => void;
 	} = $props();
@@ -40,7 +42,7 @@
 			{/snippet}
 			{#snippet actions()}
 				<Button variant="secondary" size="sm" onclick={() => onOpenDetail(fs.id)}>{t('storageCard.details')}</Button>
-				<Button variant="danger-outline" size="sm" onclick={() => onDelete(fs.id, fs.name)} disabled={deleting === fs.id}>{#if deleting === fs.id}<LoadingState variant="control" label="" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</Button>
+				<Button variant="danger-outline" size="sm" onclick={() => onDelete(fs.id, fs.name)} disabled={deleting === fs.id} dataTour={tourDelete ? 'file-storage-delete' : undefined}>{#if deleting === fs.id}<LoadingState variant="control" label="" />{/if}{deleting === fs.id ? t('storageCard.deleting') : t('storageCard.delete')}</Button>
 			{/snippet}
 		</CompactResourceCard>
 	{/snippet}
@@ -96,6 +98,7 @@
 		>{t('storageCard.details')}</button>
 		<div class="flex-1"></div>
 		<button
+			data-tour={tourDelete ? 'file-storage-delete' : undefined}
 			onclick={(e) => { e.stopPropagation(); onDelete(fs.id, fs.name); }}
 			disabled={deleting === fs.id}
 			class="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 text-red-400 hover:text-red-300 disabled:text-ink-3 disabled:border-line-2 transition-colors"

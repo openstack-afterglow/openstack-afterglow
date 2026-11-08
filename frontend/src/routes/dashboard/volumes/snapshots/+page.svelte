@@ -9,7 +9,9 @@
   import { t } from '$lib/i18n/ns/volume';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
-  import { auth } from '$lib/stores/auth';
+  import { auth, isMockAuthActive } from '$lib/stores/auth';
+  import { page } from '$app/state';
+  import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import { api, ApiError } from '$lib/api/client';
   import type { Volume, VolumeSnapshot } from '$lib/types/volume';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
@@ -33,9 +35,12 @@
   let error = $state('');
   let deleting = $state<string | null>(null);
   let showModal = $state(false);
+  // Only the snapshot created in this page session gets the tutorial delete anchor.
+  let lastCreatedId = $state<string | null>(null);
   let bulkBusy = $state(false);
   const selection = createResourceSelection();
-  const volumeSnapshotsEnabled = $derived($betaFeatures.volumeSnapshots);
+  // Tutorial mode (synthetic mockup session) shows volume snapshots without touching the stored beta flag.
+  const volumeSnapshotsEnabled = $derived($betaFeatures.volumeSnapshots || (page.data?.mockup?.active === true && isMockAuthActive()));
   let search = $state('');
  const columns = $derived<TableColumn<VolumeSnapshot>[]>([
   { key: 'name', label: t('snapshotsTable.name'), value: row => row.name },
@@ -78,6 +83,7 @@
 
   function clearSnapshotsState() {
     snapshots = [];
+    lastCreatedId = null;
     volumes = [];
     error = '';
   }
@@ -122,7 +128,8 @@
   async function createSnapshot(form: { volume_id: string; name: string; description: string; force: boolean }): Promise<string | true> {
     if (!volumeSnapshotsEnabled) return t('snapshotsPage.betaDisabled');
     try {
-      await api.post('/api/v1/volume-snapshots', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      const created = await api.post<VolumeSnapshot>('/api/v1/volume-snapshots', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
+      lastCreatedId = created.id;
       await fetchSnapshots();
       return true;
     } catch (e) {
@@ -167,7 +174,7 @@
       return;
     }
     if (!pid) return;
-    untrack(() => { selection.clear(); fetchSnapshots(); });
+    untrack(() => { selection.clear(); lastCreatedId = null; fetchSnapshots(); });
   });
   $effect(() => {
     const ids = selectableIds;
@@ -191,7 +198,8 @@
 <PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb={t('snapshotsPage.breadcrumb')} title={t('snapshotsPage.title')}>
     {#snippet actions()}
-      <Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">{t('snapshotsPage.create')}</Button>
+      <TutorialStartButton tour="volume-snapshots" compactOnMobile />
+      <Button onclick={openCreate} onintent={prefetchVolumes} variant="primary" dataTour="volume-snapshots-create-open">{t('snapshotsPage.create')}</Button>
     {/snippet}
   </PageHeader>
   <ResourceToolbar label={t('snapshotsPage.toolbar')}>
@@ -202,13 +210,15 @@
   </ResourceToolbar>
 
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
+  <div data-tour="volume-snapshots-list" class="space-y-4">
   {#if loading}
     <LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('snapshotsPage.title') })} />
   {:else if snapshots.length === 0}
     <VolumeSnapshotsEmptyState onCreate={openCreate} onintent={prefetchVolumes} />
   {:else}
-    <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
+    <VolumeSnapshotsTable snapshots={view.rows} {view} {deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
     <BulkSelectionOverlay count={selection.count} ariaLabel={t('snapshotsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
+  </div>
 </PageShell>
 {/if}

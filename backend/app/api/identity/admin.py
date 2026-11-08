@@ -56,6 +56,7 @@ from app.services import (
     trove,
     volume_delete_recovery,
     volume_transfers,
+    vpn_reserved_ranges,
 )
 from app.services import libraries as lib_svc
 from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, ttl_normal
@@ -2901,6 +2902,9 @@ async def create_network(
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
 ):
     """네트워크 생성 (선택적으로 서브넷 포함)."""
+    if req.cidr:
+        # Admin networks are provider/platform networks that may be (or later become) shared.
+        await vpn_reserved_ranges.require_platform_subnet_allowed(cidr=req.cidr)
 
     def _create():
         try:

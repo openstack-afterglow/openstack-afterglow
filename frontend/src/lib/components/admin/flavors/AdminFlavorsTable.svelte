@@ -23,6 +23,7 @@
 		deletingId = null,
 		onManage,
 		onDelete,
+		tourDeleteId = null,
 	}: {
 		flavors: Flavor[];
 		view: ReturnType<typeof createTableView<Flavor>>;
@@ -33,6 +34,7 @@
 		deletingId?: string | null;
 		onManage: (f: Flavor) => void;
 		onDelete: (id: string) => Promise<void>;
+		tourDeleteId?: string | null;
 	} = $props();
 
 	let currentPage = $state(0);
@@ -68,7 +70,7 @@
 				<div class="flex flex-wrap items-start justify-between gap-2"><h3 class="break-all font-medium text-ink-0">{f.display_name ?? f.name}</h3><Pill tone="neutral" size="xs">{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</Pill>{#if f.gpu_count === null || f.is_gpu === null}<Pill tone="neutral" size="xs">GPU · {poolText('unknown')}</Pill>{:else if f.is_gpu}<Pill tone="accent" size="xs">GPU ×{f.gpu_count}</Pill>{/if}</div>
 				{#if f.display_name}<p class="break-all text-xs text-ink-2">{f.name} · <span class="font-mono">{f.id}</span></p>{/if}
 				<p class="text-xs text-ink-2">{f.vcpus} vCPU · {formatRam(f.ram)} · {f.disk} GB</p>
-				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id || isManagedFlavor(f)} onclick={() => onDelete(f.id)}>{#if deletingId === f.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" onclick={() => onManage(f)}>{t('flavors.manage.action')}</Button><Button variant="danger" size="sm" disabled={deletingId === f.id || isManagedFlavor(f)} onclick={() => onDelete(f.id)} dataTour={f.id === tourDeleteId ? 'admin-flavors-delete' : undefined}>{#if deletingId === f.id}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{deletingId === f.id ? t('flavors.delete.pending') : t('flavors.delete.action')}</Button>{/snippet}
 				{#snippet details()}<div class="space-y-2 break-all text-xs text-ink-2"><p class="font-mono">{f.id}</p>{#if f.description}<p>{f.description}</p>{/if}</div>{/snippet}
 			</CompactResourceCard>
 		{/each}
@@ -124,6 +126,7 @@
 								>{t('flavors.manage.action')}</button>
 								<button
 									onclick={() => onDelete(f.id)}
+									data-tour={f.id === tourDeleteId ? 'admin-flavors-delete' : undefined}
 									disabled={deletingId === f.id || isManagedFlavor(f)}
 									class="text-state-danger-text hover:text-state-danger-text/90 text-xs"
 								>

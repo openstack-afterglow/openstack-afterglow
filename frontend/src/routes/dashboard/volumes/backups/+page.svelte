@@ -27,6 +27,7 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
 	let backups = $state<VolumeBackup[]>([]);
 	let volumes = $state<Volume[]>([]);
@@ -37,6 +38,8 @@
 	let showModal = $state(false);
 	let showRestoreModal = $state(false);
 	let selectedBackup = $state<VolumeBackup | null>(null);
+	// Id of the backup created on this page; the tutorial delete anchor follows only this row.
+	let lastCreatedId = $state<string | null>(null);
 	let bulkBusy = $state(false);
 	const policies = createVolumeBackupPoliciesController();
 	let generation = 0;
@@ -93,7 +96,7 @@
 	}
 
 	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean; force: boolean }): Promise<string | true> {
-		try { await api.post('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); await fetchBackups(); return true; }
+		try { const created = await api.post<VolumeBackup>('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); lastCreatedId = created.id; await fetchBackups(); return true; }
 		catch (e) { return e instanceof ApiError ? e.message : t('backupsPage.createFailed'); }
 	}
 
@@ -137,7 +140,7 @@
 			previous = key;
 			untrack(() => {
 				generation++;
-				selection.clear(); backups = []; volumes = []; error = ''; selectedBackup = null;
+				selection.clear(); backups = []; volumes = []; error = ''; selectedBackup = null; lastCreatedId = null;
 				showModal = false; showRestoreModal = false;
 				loading = Boolean(value.projectId && value.token);
 				if (value.projectId && value.token && !switching) void fetchBackups();
@@ -166,7 +169,8 @@
 <PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb={t('backupsPage.breadcrumb')} title={t('backupsPage.title')}>
 		{#snippet actions()}
-			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">{t('backupsPage.create')}</Button>
+			<TutorialStartButton tour="volume-backups" compactOnMobile />
+			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary" dataTour="volume-backups-create-open">{t('backupsPage.create')}</Button>
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={t('backupsPage.toolbar')}>
@@ -177,12 +181,14 @@
 	</ResourceToolbar>
 	<VolumeBackupPolicies controller={policies} />
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
+	<div data-tour="volume-backups-list">
 	{#if loading}
 		<LoadingState variant="surface" label={tl('state.loadingNamed', { name: t('backupsPage.title') })} />
 	{:else if backups.length === 0 && !error}
 		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
 	{:else if backups.length > 0}
-		<VolumeBackupListTable backups={view.rows} {view} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
+		<VolumeBackupListTable backups={view.rows} {view} deletingId={deleting} highlightId={lastCreatedId} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
+	</div>
 </PageShell>

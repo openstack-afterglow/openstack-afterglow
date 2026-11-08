@@ -122,7 +122,8 @@
 {#if s.creating}<LoadingState variant="inline" label={t('wizard.mutation.createFileStorage')} class="mt-4" />{/if}
 <div class="flex justify-end gap-3 mt-6">
 	<button onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.cancel')}</button>
-	<Button onclick={s.goStep2} disabled={s.creating} ariaBusy={s.creating}>
+	<!-- Tutorial advance anchor only when this button creates; DHSS NFS continues to the network step. -->
+	<Button onclick={s.goStep2} disabled={s.creating} ariaBusy={s.creating} dataTour={(!s.dhssEnabled || s.fsForm.share_proto === 'CEPHFS') ? 'file-storage-create-submit' : undefined}>
 		{#if s.creating}<LoadingState variant="control" label="" />{t('wizard.actions.creating')}{:else}{(!s.dhssEnabled || s.fsForm.share_proto === 'CEPHFS') ? t('wizard.actions.create') : t('wizard.actions.next')}{/if}
 	</Button>
 </div>

@@ -11,6 +11,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import FlavorCreateModal from '$lib/components/admin/flavors/FlavorCreateModal.svelte';
 	import GpuDeviceCatalogModal from '$lib/components/admin/flavors/GpuDeviceCatalogModal.svelte';
 	import FlavorManagePanel from '$lib/components/admin/flavors/FlavorManagePanel.svelte';
@@ -48,6 +49,8 @@
 	let showCreate = $state(false);
 	let showGpuCatalog = $state(false);
 	let selectedFlavor = $state<Flavor | null>(null);
+	// Only the flavor this page just created carries the tutorial delete anchor.
+	let createdFlavorId = $state<string | null>(null);
 
 	let mounted = $state(false), scopeEpoch = $state(0);
 	let live = true, ownerKey = '', scopeGeneration = 0, requestGeneration = 0;
@@ -66,7 +69,7 @@
 		if (next === ownerKey) return;
 		ownerKey = next; ++scopeGeneration; ++requestGeneration; ++scopeEpoch;
 		flavors = []; error = ''; loading = true; refreshing = false; deletingId = null;
-		selectedFlavor = null; showCreate = false; showGpuCatalog = false;
+		selectedFlavor = null; showCreate = false; showGpuCatalog = false; createdFlavorId = null;
 	}
 	const subscriptions = [auth.subscribe(syncScope), authReady.subscribe(syncScope), projectSwitching.subscribe(syncScope), logoutInProgress.subscribe(syncScope)];
 	onDestroy(() => { live = false; ++scopeGeneration; ++requestGeneration; subscriptions.forEach(stop => stop()); });
@@ -139,7 +142,9 @@
 <PageShell>
 	<PageHeader breadcrumb={t('flavors.breadcrumb')} title={t('flavors.title')}>
 		{#snippet actions()}
+			<TutorialStartButton tour="admin-flavors" compactOnMobile />
 			<button
+				data-tour="admin-flavors-create-open"
 				disabled={!allowed()}
 				onclick={() => (showCreate = true)}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
@@ -171,7 +176,7 @@
 	</PageHeader>
 
 	<FlavorAutomationPanel onChanged={() => load(true)} />
-	<AdminFlavorsFilters bind:nameFilter />
+	<div data-tour="admin-flavors-search"><AdminFlavorsFilters bind:nameFilter /></div>
 
 	{#if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
@@ -190,11 +195,12 @@
 			{deletingId}
 			onManage={(f) => (selectedFlavor = f)}
 			onDelete={deleteFlavor}
+			tourDeleteId={createdFlavorId}
 		/>
 	{/if}
 </PageShell>
 
-<FlavorCreateModal bind:open={showCreate} onCreated={load} />
+<FlavorCreateModal bind:open={showCreate} onCreated={(flavor) => { createdFlavorId = flavor.id; void load(); }} />
 
 <GpuDeviceCatalogModal bind:open={showGpuCatalog} />
 

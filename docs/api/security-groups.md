@@ -53,6 +53,7 @@ Neutron 보안 그룹과 규칙을 관리합니다. 인스턴스의 네트워크
     "id": "uuid-string",
     "name": "default",
     "description": "Default security group",
+    "waygate_managed": false,
     "rules": [
       {
         "id": "uuid-string",
@@ -69,7 +70,7 @@ Neutron 보안 그룹과 규칙을 관리합니다. 인스턴스의 네트워크
 ]
 ```
 
-규칙에는 `remote_group_id`가 포함됩니다. CIDR 규칙이면 `null`, 보안 그룹 대상 규칙이면 현재 지정된 그룹의 UUID입니다. 화면에는 해당 프로젝트 그룹의 이름과 UUID를 함께 표시합니다.
+규칙에는 `remote_group_id`가 포함됩니다. CIDR 규칙이면 `null`, 보안 그룹 대상 규칙이면 현재 지정된 그룹의 UUID입니다. 화면에는 해당 프로젝트 그룹의 이름과 UUID를 함께 표시합니다. `waygate_managed`는 이름이 `afterglow-waygate-`로 시작하는 Waygate 관리 그룹이면 true이며 생성 응답에도 포함됩니다([Waygate 보안그룹 잠금](#waygate-보안그룹-잠금)).
 
 ### GET /api/v1/security-groups/quota
 
@@ -119,6 +120,20 @@ Neutron 보안 그룹과 규칙을 관리합니다. 인스턴스의 네트워크
 | `sg_id` | path | string | 예 | 보안 그룹 UUID |
 
 **응답**: `204 No Content`
+
+### Waygate 보안그룹 잠금
+
+이름이 `afterglow-waygate-`로 시작하는 그룹은 Waygate 게이트웨이 VM용으로 예약되어 있습니다. Waygate가 이름으로 그룹을 재사용하므로 다음 프로젝트 경로는 Neutron 호출 전에 `409`로 거부합니다.
+
+- `POST /api/v1/security-groups`에서 이 prefix 이름으로 생성(사용자가 만든 유사 그룹이 임의 규칙과 함께 채택되는 것을 방지)
+- `DELETE /api/v1/security-groups/{sg_id}`
+- `POST /api/v1/security-groups/{sg_id}/rules`, `DELETE /api/v1/security-groups/{sg_id}/rules/{rule_id}`
+
+```json
+{"detail":{"code":"waygate_managed_resource","message":"This resource is managed by Waygate; change it through Waygate"}}
+```
+
+조회 경로와 일반 그룹의 변경은 영향을 받지 않습니다. 시스템 관리자 `/api/v1/admin/*` 경로는 잠그지 않으며 Afterglow 밖의 native OpenStack API 직접 호출도 범위 밖입니다. 게이트웨이 VM 자체의 잠금은 [인스턴스 API](instances.md#14-waygate-게이트웨이-vm-잠금)를 참조하세요.
 
 ---
 

@@ -4,7 +4,7 @@
 	const s = useDbCreate();
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-tour="database-instances-create-details">
 	<div>
 		<label class={s.labelCls} for="field-dbcreatestep1details-8">{tr('wizard.instanceName')} <span class="text-red-400">*</span></label>
 		<input id="field-dbcreatestep1details-8" type="text" bind:value={s.name} placeholder="my-database" class={s.inputCls} />

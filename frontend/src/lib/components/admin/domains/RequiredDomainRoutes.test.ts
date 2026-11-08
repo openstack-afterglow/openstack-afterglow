@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), list: vi.fn() }));
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'caller-project', userId: 'admin', isSystemAdmin: true, domainId: 'working', sessionId: 'session' }),
 	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false),
+	isAdmin: writable(true), isMockAuthActive: () => false,
 }));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, prefetch: vi.fn() }, fetchWithAuth: vi.fn(), ApiError: class extends Error {} }));
 vi.mock('$lib/api/domains', async importOriginal => ({ ...(await importOriginal<typeof DomainsModule>()), domainsApi: { list: mocks.list } }));

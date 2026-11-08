@@ -66,7 +66,7 @@
 		aria-modal="true"
 		tabindex="-1"
 	>
-		<div class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
+		<div data-tour="containers-clusters-create-form" class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('clusterCreate.title')}</h2>
 			<div class="space-y-4">
 				<div>
@@ -76,7 +76,7 @@
 				</div>
 				<div>
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('clusterCreate.template')}
-						<select bind:value={form.cluster_template_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
+						<select data-tour={templates.length > 0 ? 'containers-clusters-create-template' : undefined} bind:value={form.cluster_template_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
 							{#each templates as template}
 								<option value={template.id}>{t('clusterCreate.templateOption', { name: template.name, coe: template.coe })}</option>
 							{/each}
@@ -105,7 +105,7 @@
 			{#if creating}<LoadingState variant="inline" label={t('clusterCreate.creating')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('clusterCreate.cancel')}</button>
-				<Button onclick={submit} disabled={!$canWrite || creating || !form.name || !form.cluster_template_id} ariaBusy={creating}>
+				<Button onclick={submit} disabled={!$canWrite || creating || !form.name || !form.cluster_template_id} ariaBusy={creating} dataTour="containers-clusters-create-submit">
 					{#if creating}<LoadingState variant="control" label="" />{t('clusterCreate.creating')}{:else}{t('clusterCreate.create')}{/if}
 				</Button>
 			</div>

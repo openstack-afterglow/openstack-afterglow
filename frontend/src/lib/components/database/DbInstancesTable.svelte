@@ -25,6 +25,7 @@
     onOpen,
     onRestart,
     onDelete,
+    highlightId = null,
   }: {
     instances: DbInstance[];
 		view: TableView<DbInstance>;
@@ -39,11 +40,15 @@
     onOpen: (id: string) => void;
     onRestart: (id: string, name: string) => Promise<void>;
     onDelete: (id: string, name: string) => Promise<void>;
+    /** The just-created instance; only its delete control carries the tutorial anchor. */
+    highlightId?: string | null;
   } = $props();
   const selectableCount = $derived(selectableIds.size);
   const selectedSelectableCount = $derived([...selectableIds].filter((id) => selectedIds.has(id)).length);
   const allSelected = $derived(selectableCount > 0 && selectedSelectableCount === selectableCount);
   const indeterminate = $derived(selectedSelectableCount > 0 && !allSelected);
+  // Database backups tutorial: Trove backs up only ACTIVE instances, so the first visible one is the entry point.
+  const backupTourOpenId = $derived(view.rows.find((inst) => inst.status === 'ACTIVE')?.id ?? null);
 </script>
 
 <TableViewControls {view} />
@@ -56,12 +61,12 @@
     </div>
     {#each view.rows as inst (inst.id)}
       <CompactResourceCard selected={selectedIds.has(inst.id)}>
-        <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /><button onclick={() => onOpen(inst.id)} class="min-w-0 break-all text-left font-medium">{inst.name}</button><StatusChip status={inst.status} /></div>
+        <div class="flex items-start gap-2"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /><button data-tour={backupTourOpenId === inst.id ? 'database-backups-instance-open' : undefined} onclick={() => onOpen(inst.id)} class="min-w-0 break-all text-left font-medium">{inst.name}</button><StatusChip status={inst.status} /></div>
         <p class="text-xs text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''} · {tr('labels.sizeGb')}: {inst.size ?? '-'}</p>
         {#snippet details()}<p class="text-xs break-all">{inst.id}</p><p class="text-xs">{tr('labels.created')}: {inst.created_at ? inst.created_at.slice(0, 10) : '-'}</p>{/snippet}
         {#snippet actions()}
           <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<LoadingState variant="control" label="" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
-          <button onclick={() => onDelete(inst.id, inst.name)} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+          <button data-tour={highlightId === inst.id ? 'database-instances-delete' : undefined} onclick={() => onDelete(inst.id, inst.name)} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
         {/snippet}
       </CompactResourceCard>
     {/each}
@@ -83,7 +88,7 @@
       {#each view.rows as inst (inst.id)}
         <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)}>
           <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /></td>
-          <td class="py-3 px-4"><button onclick={() => onOpen(inst.id)} class="db-instances-table__name font-medium text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</button></td>
+          <td class="py-3 px-4"><button data-tour={backupTourOpenId === inst.id ? 'database-backups-instance-open' : undefined} onclick={() => onOpen(inst.id)} class="db-instances-table__name font-medium text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</button></td>
           <td class="py-3 px-4"><StatusChip status={inst.status} /></td>
           <td class="db-instances-table__detail py-3 px-4">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
           <td class="db-instances-table__detail py-3 px-4">{inst.size ?? '-'}</td>
@@ -91,7 +96,7 @@
           <td class="py-3 px-4 text-right">
             <div class="flex justify-end gap-1">
               <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if restarting === inst.id}<LoadingState variant="control" label="" />{tr('state.restarting')}{:else}{tr('actions.restart')}{/if}</button>
-              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
+              <button data-tour={highlightId === inst.id ? 'database-instances-delete' : undefined} onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete inline-flex items-center gap-1 text-xs px-2 py-1 rounded">{#if deleting === inst.id}<LoadingState variant="control" label="" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             </div>
           </td>
         </tr>

@@ -10,6 +10,7 @@ from uuid import UUID
 from app.services.mcp_control_plane.compute import McpComputeError, _safe_server
 from app.services.mcp_control_plane.network import McpNetworkError, _field, _required_text
 from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
+from app.services.waygate_managed import WaygateManagedResourceError, require_server_not_waygate_managed
 
 
 def _owner(resource: Any, *, project_id: str) -> None:
@@ -85,6 +86,8 @@ def _server(conn: Any, *, project_id: str, server_id: str) -> str:
         safe = _safe_server(resource, project_id=project_id)
     except McpComputeError:
         raise McpNetworkError("Nova server data cannot be proven") from None
+    # Interfaces and port security groups of a Waygate gateway are Waygate-only.
+    require_server_not_waygate_managed(resource)
     if safe["status"] not in {"ACTIVE", "SHUTOFF"}:
         raise McpNetworkError("Nova server state does not permit interface management")
     # A stable status alone does not prove that a concurrent Nova task is absent.
@@ -335,7 +338,7 @@ def _request_groups(
 async def _invoke(function: Any, conn: Any, **kwargs: Any) -> Any:
     try:
         return await run_sdk(function, conn, **kwargs)
-    except McpNetworkError:
+    except (McpNetworkError, WaygateManagedResourceError):
         raise
     except Exception as exc:
         raise McpNetworkError("Instance network management is unavailable") from exc

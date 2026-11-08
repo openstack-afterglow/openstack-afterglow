@@ -11,10 +11,12 @@
   import TableColumnControl from '$lib/components/ui/TableColumnControl.svelte';
   import { createTableView } from '$lib/utils/tableView.svelte';
 
-  let { networks, view, defaultNetworkId, deleting, settingDefault, selectedIds, selectableIds, selectionDisabled, onToggleSelect, onToggleAll, onOpenPanel, onSetDefault, onDelete }: {
+  let { networks, view, defaultNetworkId, deleting, settingDefault, selectedIds, selectableIds, selectionDisabled, highlightId = null, onToggleSelect, onToggleAll, onOpenPanel, onSetDefault, onDelete }: {
     view: ReturnType<typeof createTableView<Network>>;
     networks: Network[]; defaultNetworkId: string | null; deleting: string | null; settingDefault: string | null;
     selectedIds: ReadonlySet<string>; selectableIds: ReadonlySet<string>; selectionDisabled: boolean;
+    /** Network just created on this page; only its action menu and delete control carry tutorial anchors. */
+    highlightId?: string | null;
     onToggleSelect: (id: string) => void; onToggleAll: () => void; onOpenPanel: (id: string) => void;
     onSetDefault: (id: string) => void; onDelete: (id: string, name: string, isExternal: boolean) => void;
   } = $props();
@@ -28,13 +30,15 @@
   <SelectionCheckbox checked={selectedIds.has(net.id)} disabled={selectionDisabled || !selectableIds.has(net.id)} unavailable={!selectableIds.has(net.id)} title={!selectableIds.has(net.id) ? t('networksTable.onlyOwned') : undefined} ariaLabel={t('networksTable.select', { name: net.name || net.id })} onclick={() => onToggleSelect(net.id)} />
 {/snippet}
 {#snippet networkActions(net: Network, surface: string)}
+  <span class="inline-flex" data-tour={net.id === highlightId ? 'networks-actions' : undefined}>
   <ActionMenu open={openMenu === `${surface}:${net.id}`} ariaLabel={t('networksTable.actions', { name: net.name || net.id })} onopen={() => openMenu = `${surface}:${net.id}`} onclose={() => openMenu = null}>
     <Button variant="ghost" class="w-full justify-start" onclick={() => { openMenu = null; onOpenPanel(net.id); }}>{t('list.details')}</Button>
     {#if selectableIds.has(net.id)}
       {#if net.id !== defaultNetworkId}<Button variant="ghost" class="w-full justify-start" disabled={selectionDisabled || settingDefault === net.id || deleting === net.id} onclick={() => { openMenu = null; onSetDefault(net.id); }}>{#if settingDefault === net.id}<LoadingState variant="control" label="" />{/if}{settingDefault === net.id ? t('networksTable.setting') : t('networksTable.setDefault')}</Button>{/if}
-      <Button variant="danger" class="w-full justify-start" disabled={selectionDisabled || deleting === net.id || settingDefault === net.id} onclick={() => { openMenu = null; onDelete(net.id, net.name, net.is_external); }}>{#if deleting === net.id}<LoadingState variant="control" label="" />{/if}{deleting === net.id ? t('networksTable.deleting') : t('networksTable.delete')}</Button>
+      <Button variant="danger" class="w-full justify-start" dataTour={net.id === highlightId ? 'networks-delete' : undefined} disabled={selectionDisabled || deleting === net.id || settingDefault === net.id} onclick={() => { openMenu = null; onDelete(net.id, net.name, net.is_external); }}>{#if deleting === net.id}<LoadingState variant="control" label="" />{/if}{deleting === net.id ? t('networksTable.deleting') : t('networksTable.delete')}</Button>
     {/if}
   </ActionMenu>
+  </span>
 {/snippet}
 {#snippet networkType(net: Network)}
   <span class="text-ink-2">{net.is_external ? t('networksTable.external') : net.is_shared ? t('networksTable.shared') : t('networksTable.internal')}</span>

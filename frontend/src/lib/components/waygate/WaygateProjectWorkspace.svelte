@@ -22,6 +22,7 @@
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import TextareaInput from '$lib/components/ui/TextareaInput.svelte';
 	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
@@ -35,20 +36,26 @@
 	import * as waygateApi from '$lib/api/waygate';
 	import ClientSettingsFields from '$lib/components/waygate/ClientSettingsFields.svelte';
 	import ClientTraffic from '$lib/components/waygate/ClientTraffic.svelte';
+	import WaygateAgentDiagnostics from '$lib/components/waygate/WaygateAgentDiagnostics.svelte';
 	import { appendClientTraffic, waygateTrafficFreshnessMs, type ClientTrafficHistory } from '$lib/utils/waygateTraffic';
 	import { reconcileById, sameJsonValue } from '$lib/utils/reconcileById';
 	import {
 		emptyWaygateClientDraft,
+		parseWaygateExpectedClients,
+		WAYGATE_EXPECTED_CLIENTS_MAX,
 		WAYGATE_KEEPALIVE_DEFAULT,
+		WAYGATE_SMALL_TIER_MAX_CLIENTS,
 		waygateClientCreateBody,
 		waygateClientDraft,
 		waygateClientUpdateBody,
+		waygateRequestedFlavorTier,
 		waygateServerDraft,
 		waygateServerCreateBody,
 		waygateServerUpdateBody,
 		type WaygateClientDraft,
 		type WaygateClientDraftErrors,
 	} from '$lib/utils/waygateClientSettings';
+	import { parseWaygateAllowedIps, WAYGATE_ALLOWED_IPS_MAX } from '$lib/utils/waygateAllowedIps';
 	import type { WaygateServer, WaygateClient, WaygateNetworkAttachment } from '$lib/types/waygate';
 	import type { Network, NetworkDetail, SubnetDetail } from '$lib/types/networks';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
@@ -85,6 +92,14 @@
 	/** Download/QR always require connect permission and the caller's enabled profile. */
 	function canAccessConfig(client: WaygateClient): boolean {
 		return can.connect && client.enabled && userId !== null && client.owner_user_id === userId;
+	}
+	/** Unassigned profiles accept a one-time self registration through the owner PATCH (client editing leaf). */
+	function canClaim(client: WaygateClient): boolean {
+		return can.editClients && userId !== null && !client.owner_user_id;
+	}
+	/** Download/QR on an unassigned enabled profile first registers the caller as owner. */
+	function canClaimConfig(client: WaygateClient): boolean {
+		return can.connect && client.enabled && canClaim(client);
 	}
 	function ownerLabel(client: WaygateClient): string {
 		if (!client.owner_user_id) return t('project.client.ownerUnassigned');
@@ -149,6 +164,14 @@
 	let newServerDraft = $state<WaygateClientDraft>(waygateServerDraft());
 	let newServerErrors = $state<WaygateClientDraftErrors>({});
 	let newServerFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
+	// Required declared client count; selects the gateway size tier on Waygate.
+	let newServerExpectedClients = $state('');
+	let newServerExpectedError = $state('');
+	let newServerExpectedInput = $state<HTMLInputElement | null>(null);
+	const newServerRequestedTier = $derived.by(() => {
+		const count = parseWaygateExpectedClients(newServerExpectedClients);
+		return count === null ? null : waygateRequestedFlavorTier(count);
+	});
 	let creating = $state(false);
 	let createError = $state('');
 	let showDefaultsModal = $state(false);
@@ -162,6 +185,8 @@
 		if (!isCurrent() || !can.createGateway) return;
 		newServerDraft = waygateServerDraft();
 		newServerErrors = {};
+		newServerExpectedClients = '';
+		newServerExpectedError = '';
 		createError = '';
 		showCreateModal = true;
 	}
@@ -272,6 +297,11 @@
 		untrack(() => { void fetchServers(); });
 	});
 
+	// A write that outran a hop deadline surfaces as a transport error or as the proxy/LB 502/503/504; the backend may still have finished.
+	function isUnconfirmedWrite(e: unknown): boolean {
+		return !(e instanceof ApiError) || e.status === 502 || e.status === 503 || e.status === 504;
+	}
+
 	async function createServer() {
 		if (!isCurrent() || creating) return;
 		if (!can.createGateway) {
@@ -279,25 +309,35 @@
 			return;
 		}
 		const parsed = waygateServerCreateBody(newServerDraft);
-		if (!parsed.ok) {
-			newServerErrors = parsed.errors;
+		const expectedClients = parseWaygateExpectedClients(newServerExpectedClients);
+		newServerExpectedError = expectedClients === null ? t('validation.expectedClients', { max: WAYGATE_EXPECTED_CLIENTS_MAX }) : '';
+		if (!parsed.ok || expectedClients === null) {
+			newServerErrors = parsed.ok ? {} : parsed.errors;
 			await tick();
-			if (isCurrent()) newServerFields?.focusFirstError();
+			if (!isCurrent()) return;
+			if (!parsed.ok) newServerFields?.focusFirstError();
+			else newServerExpectedInput?.focus();
 			return;
 		}
 		newServerErrors = {};
 		creating = true;
 		createError = '';
 		try {
-			await waygateApi.createServer(parsed.body, token, projectId);
+			await waygateApi.createServer({ ...parsed.body, expected_clients: expectedClients }, token, projectId);
 			if (!isCurrent()) return;
 			showCreateModal = false;
 			newServerDraft = waygateServerDraft();
+			newServerExpectedClients = '';
 			toast.success(t('project.toast.serverCreateStarted'));
 			await fetchServers(true);
 		} catch (e) {
 			if (!isCurrent()) return;
-			createError = e instanceof ApiError ? e.message : t('project.error.create');
+			if (!isUnconfirmedWrite(e)) createError = (e as ApiError).message;
+			else {
+				// Deadline/transport loss: the server may still have been created. Show the real list, never a false failure.
+				createError = t('project.error.unconfirmed');
+				await fetchServers(true);
+			}
 		} finally {
 			if (isCurrent()) creating = false;
 		}
@@ -387,13 +427,16 @@
 		editClientOwner = '';
 		clientSaving = false;
 		downloadingClientId = null;
+		claimingClientId = null;
 		closeQr();
 		closeAttachModal();
 		availableSubnets = [];
 		attachNetworkId = '';
 		attachSubnetId = '';
+		attachAllowedIps = '';
 		subnetsLoading = false;
 		attaching = false;
+		closeRoutingModal();
 		showExportModal = false;
 		exportPassphrase = '';
 		exporting = false;
@@ -508,11 +551,12 @@
 		return () => clearInterval(timer);
 	});
 
-	// Server/attachment metadata is independent of peers; Neutron names are
+	// Server/attachment metadata and agent diagnostics are independent of peers; Neutron names are
 	// loaded on panel open, explicit refresh and attachment changes, not each tick.
+	let agentDiagnostics = $state<ReturnType<typeof WaygateAgentDiagnostics> | null>(null);
 	const panelAr = createAutoRefresh(
 		() => isCurrent() && selectedServerId
-			? Promise.all([fetchSelectedServer(selectedServerId), fetchAttachments(selectedServerId)]).then(() => undefined)
+			? Promise.all([fetchSelectedServer(selectedServerId), fetchAttachments(selectedServerId), agentDiagnostics?.refresh()]).then(() => undefined)
 			: undefined,
 		{
 			storageKey: workspaceContext ? 'admin-waygate-detail' : 'dashboard-network-waygate-detail',
@@ -572,7 +616,7 @@
 	let newClientFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
 	let clientCreating = $state(false);
 	let clientCreateError = $state('');
-	// Owner user ID controls which connect-only user may download the profile; blank = unassigned.
+	// Owner user ID controls which connect-only user may download the profile; blank = unassigned (explicit null).
 	let newClientOwner = $state('');
 
 	function openClientModal() {
@@ -582,7 +626,7 @@
 			dns: selectedServer?.dns ?? '',
 			persistentKeepalive: String(selectedServer?.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT),
 		};
-		newClientOwner = userId ?? '';
+		newClientOwner = '';
 		newClientErrors = {};
 		clientCreateError = '';
 		showClientModal = true;
@@ -716,24 +760,65 @@
 	}
 
 	let downloadingClientId = $state<string | null>(null);
+	let claimingClientId = $state<string | null>(null);
 
 	function canAccessCurrentConfig(id: string): boolean {
 		const client = clients.find((item) => item.id === id);
 		return !!client && canAccessConfig(client);
 	}
 
+	function claimErrorMessage(e: unknown): string {
+		if (e instanceof ApiError && e.status === 409) return t('project.error.claimConflict');
+		if (e instanceof ApiError && e.status === 403) return t('project.error.claimForbidden');
+		return t('project.error.claim', { error: e instanceof ApiError ? e.message : String(e) });
+	}
+
+	/** One-time self registration as owner of an unassigned profile; resolves to the owned profile or null. */
+	async function claimClient(client: WaygateClient): Promise<WaygateClient | null> {
+		const detail = captureDetail();
+		const owner = userId;
+		if (!detail || !owner || !canClaim(client) || claimingClientId) return null;
+		claimingClientId = client.id;
+		try {
+			const updated = await waygateApi.updateClient(detail.id, client.id, { owner_user_id: owner }, token, projectId);
+			if (!detail.current()) return null;
+			clients = clients.map((item) => item.id === updated.id ? updated : item);
+			toast.success(t('project.toast.clientClaimed', { name: client.name }));
+			void fetchClients(detail.id, true);
+			return updated;
+		} catch (e) {
+			if (!detail.current()) return null;
+			toast.error(claimErrorMessage(e));
+			// A lost race (409) means another owner exists now; show the authoritative list.
+			if (e instanceof ApiError && e.status === 409) void fetchClients(detail.id, true);
+			return null;
+		} finally {
+			if (detail.current()) claimingClientId = null;
+		}
+	}
+
+	/** Profile whose secrets the caller may read, registering the caller first when it is unassigned. */
+	async function ownedProfile(client: WaygateClient): Promise<WaygateClient | null> {
+		if (canAccessConfig(client)) return client;
+		if (!canClaimConfig(client)) return null;
+		const owned = await claimClient(client);
+		return owned && canAccessConfig(owned) ? owned : null;
+	}
+
 	async function downloadConfig(client: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail || !canAccessConfig(client)) return;
+		if (!detail || downloadingClientId === client.id || (!canAccessConfig(client) && !canClaimConfig(client))) return;
 		downloadingClientId = client.id;
 		try {
+			const owned = await ownedProfile(client);
+			if (!owned || !detail.current()) return;
 			const { blob, filename } = await waygateApi.downloadClientConfig(
 				detail.id,
-				client.id,
+				owned.id,
 				token,
 				projectId
 			);
-			if (!detail.current() || !canAccessCurrentConfig(client.id)) return;
+			if (!detail.current() || !canAccessCurrentConfig(owned.id)) return;
 			downloadBlobAs(blob, filename);
 		} catch (e) {
 			if (!detail.current()) return;
@@ -750,9 +835,12 @@
 	let qrError = $state('');
 	let qrRequest = 0;
 
-	async function openQr(client: WaygateClient) {
+	async function openQr(target: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail || !canAccessConfig(client)) return;
+		if (!detail || (!canAccessConfig(target) && !canClaimConfig(target))) return;
+		// Claim before opening: the dialog closes itself for any profile the caller cannot read.
+		const client = await ownedProfile(target);
+		if (!client || !detail.current()) return;
 		const request = ++qrRequest;
 		const current = () => detail.current() && request === qrRequest && canAccessCurrentConfig(client.id);
 		qrClient = client;
@@ -794,11 +882,18 @@
 		{ key: 'network', label: t('project.network.label'), value: row => attachmentNetworkName(row.network_id),
 			filterValues: row => [row.network_id], format: (_value, row) => attachmentNetworkName(row.network_id) },
 		{ key: 'cidr', label: t('project.network.cidrLabel'), value: row => row.cidr },
+		{ key: 'allowedIps', label: t('project.network.allowedIps'), value: row => row.allowed_ips?.join(', ') ?? null,
+			format: (_value, row) => allowedIpsLabel(row) },
 		{ key: 'nat', label: t('project.network.natLabel'), value: row => row.nat_mode },
 		{ key: 'status', label: t('project.table.status'), value: row => row.status },
 	]);
 	const attachmentView = createTableView({ rows: () => attachments, columns: () => attachmentColumns, search: () => display.attachments.search, state: display.attachments,
-		searchable: row => [attachmentNetworkName(row.network_id), row.network_id, row.cidr ?? '', row.nat_mode, row.status], locale: intlLocale });
+		searchable: row => [attachmentNetworkName(row.network_id), row.network_id, row.cidr ?? '', ...(row.allowed_ips ?? []), row.nat_mode, row.status], locale: intlLocale });
+	/** Older Waygate attachments have no routing field; never present the interface CIDR as a route. */
+	function allowedIpsLabel(attachment: WaygateNetworkAttachment): string {
+		if (!attachment.allowed_ips) return '-';
+		return attachment.allowed_ips.length ? attachment.allowed_ips.join(', ') : t('project.network.allowedIpsNone');
+	}
 	let attachmentsLoading = $state(false);
 	let attachmentsLoaded = $state(false);
 	let attachmentsError = $state('');
@@ -806,11 +901,17 @@
 	const attachmentInFlight = new Map<string, Promise<WaygateNetworkAttachment[]>>();
 	let showAttachModal = $state(false);
 	let visibleNetworks = $state<Network[]>([]);
-	const availableNetworks = $derived(visibleNetworks.filter((network) => !network.is_external));
 	const networkNames = $derived(new Map(visibleNetworks.map((network) => [network.id, network.name?.trim()])));
 	function attachmentNetworkName(networkId: string): string {
 		if (!networkNames.has(networkId)) return t('project.network.nameUnavailable');
 		return networkNames.get(networkId) || t('project.network.unnamed');
+	}
+	/** Label for networks the project sees but does not own; Neutron policy still decides the port. */
+	function networkKindLabel(network: Network | undefined): string | null {
+		if (!network) return null;
+		if (network.is_external) return t('project.network.kindExternal');
+		if (network.is_shared && network.project_id !== projectId) return t('project.network.kindShared');
+		return null;
 	}
 	let networksError = $state('');
 	let networksInFlight: Promise<Network[]> | null = null;
@@ -823,13 +924,26 @@
 	let networkRequest = 0;
 	let attaching = $state(false);
 	let attachError = $state('');
+	let attachAllowedIps = $state('');
+	let attachAllowedIpsError = $state('');
+	const attachNetworkKind = $derived(networkKindLabel(visibleNetworks.find((network) => network.id === attachNetworkId)));
+	const attachSubnetCidr = $derived(availableSubnets.find((subnet) => subnet.id === attachSubnetId)?.cidr ?? '');
 	const networkOptions = $derived(
-		availableNetworks.map((network) => ({
-			value: network.id,
-			label: network.name || network.id,
-			description: network.name ? network.id : undefined,
-		}))
+		// The project network API already applies Neutron visibility (owned, shared, external/provider).
+		visibleNetworks.map((network) => {
+			const kind = networkKindLabel(network);
+			return {
+				value: network.id,
+				label: network.name || network.id,
+				description: [network.name ? network.id : '', kind ?? ''].filter(Boolean).join(' · ') || undefined,
+			};
+		})
 	);
+
+	function appendAllowedIp(current: string, cidr: string): string {
+		const entries = current.split(/[\s,]+/).filter(Boolean);
+		return entries.includes(cidr) ? current : [...entries, cidr].join('\n');
+	}
 	const subnetOptions = $derived(
 		availableSubnets.map((subnet) => ({
 			value: subnet.id,
@@ -901,6 +1015,8 @@
 		attachError = '';
 		attachNetworkId = '';
 		attachSubnetId = '';
+		attachAllowedIps = '';
+		attachAllowedIpsError = '';
 		subnetsLoading = false;
 		availableSubnets = [];
 		attachSubnetRequest += 1;
@@ -910,6 +1026,7 @@
 	function closeAttachModal() {
 		showAttachModal = false;
 		attachError = '';
+		attachAllowedIpsError = '';
 		attachSubnetRequest += 1;
 	}
 
@@ -945,12 +1062,21 @@
 			attachError = t('project.permission.denied');
 			return;
 		}
+		const routing = parseWaygateAllowedIps(attachAllowedIps, selectedServer?.tunnel_cidr);
+		attachAllowedIpsError = routing.ok ? '' : routing.error;
+		if (!routing.ok) return;
 		attaching = true;
 		attachError = '';
 		try {
+			// Routing is optional and separate from the interface; omit it when empty.
 			await waygateApi.attachNetwork(
 				detail.id,
-				{ network_id: attachNetworkId, subnet_id: attachSubnetId, nat_mode: 'snat' },
+				{
+					network_id: attachNetworkId,
+					subnet_id: attachSubnetId,
+					nat_mode: 'snat',
+					...(routing.value.length ? { allowed_ips: routing.value } : {}),
+				},
 				token,
 				projectId
 			);
@@ -961,9 +1087,66 @@
 			if (detail.current()) await fetchNetworks();
 		} catch (e) {
 			if (!detail.current()) return;
-			attachError = e instanceof ApiError ? e.message : t('project.error.attach');
+			if (!isUnconfirmedWrite(e)) attachError = (e as ApiError).message;
+			else {
+				attachError = t('project.error.unconfirmed');
+				await fetchAttachments(detail.id, true);
+			}
 		} finally {
 			if (detail.current()) attaching = false;
+		}
+	}
+
+	// ---- 연결별 AllowedIPs(라우팅) 편집 — 물리 인터페이스와 별개 ----
+	let routingAttachment = $state<WaygateNetworkAttachment | null>(null);
+	let routingDraft = $state('');
+	let routingError = $state('');
+	let routingSaving = $state(false);
+
+	function canEditRouting(att: WaygateNetworkAttachment): boolean {
+		return can.route && att.status === 'ACTIVE' && Array.isArray(att.allowed_ips);
+	}
+
+	function openRoutingModal(att: WaygateNetworkAttachment) {
+		if (!captureDetail() || !canEditRouting(att)) return;
+		routingAttachment = att;
+		routingDraft = (att.allowed_ips ?? []).join('\n');
+		routingError = '';
+	}
+
+	function closeRoutingModal() {
+		routingAttachment = null;
+		routingError = '';
+		routingSaving = false;
+	}
+
+	async function saveRouting() {
+		const detail = captureDetail();
+		const att = routingAttachment;
+		if (!detail || !att || routingSaving) return;
+		if (!can.route) {
+			routingError = t('project.permission.denied');
+			return;
+		}
+		const routing = parseWaygateAllowedIps(routingDraft, selectedServer?.tunnel_cidr);
+		if (!routing.ok) {
+			routingError = routing.error;
+			return;
+		}
+		routingError = '';
+		routingSaving = true;
+		try {
+			const updated = await waygateApi.updateAttachment(detail.id, att.id, { allowed_ips: routing.value }, token, projectId);
+			if (!detail.current()) return;
+			attachments = attachments.map((item) => item.id === updated.id ? updated : item);
+			closeRoutingModal();
+			toast.success(t('project.toast.allowedIpsSaved'));
+			await fetchAttachments(detail.id, true);
+		} catch (e) {
+			if (!detail.current()) return;
+			routingError = e instanceof ApiError ? e.message : t('project.error.allowedIpsSave');
+		} finally {
+			if (detail.current()) routingSaving = false;
 		}
 	}
 
@@ -1110,6 +1293,12 @@
 >
 	<div class="space-y-4">
 		<ClientSettingsFields bind:this={newServerFields} bind:draft={newServerDraft} errors={newServerErrors} disabled={creating} mode="server-create" />
+		<Field label={t('project.server.expectedClients')} for="waygate-expected-clients" error={newServerExpectedError} help={t('project.server.expectedClientsHelp', { small: WAYGATE_SMALL_TIER_MAX_CLIENTS, max: WAYGATE_EXPECTED_CLIENTS_MAX })} required>
+			<TextInput id="waygate-expected-clients" bind:element={newServerExpectedInput} bind:value={newServerExpectedClients} inputmode="numeric" placeholder="10" disabled={creating} required ariaInvalid={!!newServerExpectedError} />
+		</Field>
+		{#if newServerRequestedTier}
+			<p class="text-xs text-ink-2" aria-live="polite">{t('project.server.expectedClientsTier', { tier: t(`project.server.tier.${newServerRequestedTier}`) })}</p>
+		{/if}
 		{#if createError}
 			<p class="text-sm text-[var(--color-state-danger)]">{createError}</p>
 		{/if}
@@ -1304,7 +1493,19 @@
 					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.peerCount')}</dt>
 					<dd class="text-[var(--color-ink-1)]">{selectedServer.peer_count ?? '-'}</dd>
 				</div>
+				<div>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.expectedClients')}</dt>
+					<dd class="text-[var(--color-ink-1)]">{selectedServer.expected_clients ?? '-'}</dd>
+				</div>
+				<div>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.flavorTier')}</dt>
+					<dd class="text-[var(--color-ink-1)]">{selectedServer.flavor_tier ? t(`project.server.tier.${selectedServer.flavor_tier}`) : '-'}</dd>
+				</div>
 			</dl>
+
+			{#key selectedServer.id}
+				<WaygateAgentDiagnostics bind:this={agentDiagnostics} serverId={selectedServer.id} serverVmId={selectedServer.server_vm_id} {token} {projectId} {isCurrent} />
+			{/key}
 
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.client.heading')}</h3>
@@ -1380,20 +1581,35 @@
 										</div>
 										<div>
 											<dt class="text-ink-2">{t('project.client.owner')}</dt>
-											<dd class="mt-0.5 break-all text-ink-1">{ownerLabel(client)}</dd>
+											{#if client.owner_user_id}
+												<dd class="mt-0.5 break-all text-ink-1">{ownerLabel(client)}</dd>
+											{:else}
+												<dd class="mt-0.5 flex flex-wrap items-center gap-2">
+													<span class="rounded-full border border-[var(--color-line-2)] px-2 py-0.5 text-ink-2">{t('project.client.ownerUnassigned')}</span>
+													{#if canClaim(client)}
+														<Button onclick={() => claimClient(client)} disabled={claimingClientId !== null || downloadingClientId === client.id} ariaBusy={claimingClientId === client.id} variant="ghost" size="xs" class="min-h-11 md:min-h-8" ariaLabel={t('project.client.claimNamed', { name: client.name })} title={t('project.client.claimNamed', { name: client.name })}>
+															{#if claimingClientId === client.id}<LoadingState variant="control" label={t('project.client.claiming')} />{:else}{t('project.client.claim')}{/if}
+														</Button>
+													{/if}
+												</dd>
+											{/if}
 										</div>
 									</dl>
 								</div>
 								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={t('project.client.actions', { name: client.name })}>
-									{#if canAccessConfig(client)}
-									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} ariaBusy={downloadingClientId === client.id} variant="ghost" size={downloadingClientId === client.id ? 'sm' : 'icon'} class={downloadingClientId === client.id ? 'min-h-11 md:min-h-8' : '!size-11 md:!size-8'} ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
+									{#if canAccessConfig(client) || canClaimConfig(client)}
+									{@const claimFirst = !canAccessConfig(client)}
+									{@const configBusy = downloadingClientId === client.id || claimingClientId === client.id}
+									{@const downloadLabel = claimFirst ? t('project.client.claimDownload', { name: client.name }) : t('project.client.downloadConfig', { name: client.name })}
+									{@const qrLabel = claimFirst ? t('project.client.claimQr', { name: client.name }) : t('project.client.qr', { name: client.name })}
+									<Button onclick={() => downloadConfig(client)} disabled={configBusy} ariaBusy={downloadingClientId === client.id} variant="ghost" size={downloadingClientId === client.id ? 'sm' : 'icon'} class={downloadingClientId === client.id ? 'min-h-11 md:min-h-8' : '!size-11 md:!size-8'} ariaLabel={downloadLabel} title={downloadingClientId === client.id ? t('project.client.downloading') : downloadLabel}>
 										{#if downloadingClientId === client.id}
 											<LoadingState variant="control"  label={t('project.client.downloading')} />
 										{:else}
 											<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg>
 										{/if}
 									</Button>
-									<Button onclick={() => openQr(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.qr', { name: client.name })} title={t('project.client.qr', { name: client.name })}>
+									<Button onclick={() => openQr(client)} disabled={configBusy} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={qrLabel} title={qrLabel}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 0h2v2h-2zm6 0v6h-6m-3-9h3m6 0h-3M12 3v3m0 12v3" /></svg>
 									</Button>
 									{/if}
@@ -1468,9 +1684,16 @@
 										<dt class="text-[var(--color-ink-3)]">{t('project.network.natLabel')}</dt>
 										<dd class="mt-0.5 text-[var(--color-ink-1)]">{att.nat_mode}</dd>
 									</div>
+									<div class="lg:col-span-3">
+										<dt class="text-[var(--color-ink-3)]">{t('project.network.allowedIps')}</dt>
+										<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{allowedIpsLabel(att)}</dd>
+									</div>
 								</dl>
 								<div class="flex shrink-0 items-center gap-3">
 									<StatusChip status={att.status} />
+									{#if canEditRouting(att)}
+									<button onclick={() => openRoutingModal(att)} class="text-xs text-[var(--color-ink-1)] hover:opacity-80" aria-label={t('project.network.editAllowedIps', { name: attachmentNetworkName(att.network_id) })}>{t('project.network.editRouting')}</button>
+									{/if}
 									{#if can.route}
 									<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">{t('project.actions.detach')}</button>
 									{/if}
@@ -1526,8 +1749,8 @@
 >
 	<ClientSettingsFields bind:this={newClientFields} bind:draft={newClientDraft} defaults={selectedServer ?? undefined} errors={newClientErrors} disabled={clientCreating} mode="issue" />
 	<div class="mt-4 space-y-2">
-		<Field label={t('project.client.owner')} for="waygate-new-owner" help={t('project.client.ownerHelp')}>
-			<TextInput id="waygate-new-owner" bind:value={newClientOwner} disabled={clientCreating || !can.editClients} />
+		<Field label={t('project.client.owner')} for="waygate-new-owner" help={t('project.client.ownerIssueHelp')}>
+			<TextInput id="waygate-new-owner" bind:value={newClientOwner} placeholder={t('project.client.ownerUnassigned')} disabled={clientCreating || !can.editClients} />
 		</Field>
 		<Button variant="ghost" size="sm" disabled={!userId || clientCreating || !can.editClients} onclick={() => { if (can.editClients) newClientOwner = userId ?? ''; }}>{t('project.client.assignSelf')}</Button>
 	</div>
@@ -1597,7 +1820,7 @@
 	onClose={closeAttachModal}
 >
 	<div class="space-y-4">
-		<Field label={t('project.network.tenant')} required>
+		<Field label={t('project.network.label')} required>
 			<SearchSelect
 				id="waygate-attach-network"
 				value={attachNetworkId}
@@ -1610,8 +1833,11 @@
 				onchange={selectAttachNetwork}
 			/>
 		</Field>
-		{#if !networksLoading && availableNetworks.length === 0 && !attachError && !networksError}
-			<Alert tone="warning">{t('project.network.noInternal')}</Alert>
+		{#if !networksLoading && visibleNetworks.length === 0 && !attachError && !networksError}
+			<Alert tone="warning">{t('project.network.noneVisible')}</Alert>
+		{/if}
+		{#if attachNetworkKind}
+			<Alert tone="info">{attachNetworkKind}: {t('project.network.providerNotice')}</Alert>
 		{/if}
 		<Field label={t('project.subnet.label')} required>
 			<SearchSelect
@@ -1630,6 +1856,12 @@
 		{#if attachNetworkId && !subnetsLoading && availableSubnets.length === 0 && !attachError}
 			<Alert tone="warning">{t('project.subnet.noAttachable')}</Alert>
 		{/if}
+		<Field label={t('project.network.allowedIps')} for="waygate-attach-allowed-ips" error={attachAllowedIpsError} help={t('project.network.allowedIpsHelp', { max: WAYGATE_ALLOWED_IPS_MAX })}>
+			<TextareaInput id="waygate-attach-allowed-ips" bind:value={attachAllowedIps} rows={3} placeholder="10.20.0.0/24" disabled={attaching} ariaInvalid={!!attachAllowedIpsError} />
+		</Field>
+		{#if attachSubnetCidr}
+			<Button variant="ghost" size="sm" disabled={attaching} onclick={() => { attachAllowedIps = appendAllowedIp(attachAllowedIps, attachSubnetCidr); }}>{t('project.network.addSubnetCidr', { cidr: attachSubnetCidr })}</Button>
+		{/if}
 		<p class="break-keep text-xs text-[var(--color-ink-3)]">
 			<RichText segments={t.rich('project.network.attachHelp')} />
 		</p>
@@ -1647,6 +1879,28 @@
 			ariaBusy={attaching}
 		>{#if attaching}<LoadingState variant="control" label={t('project.actions.processing')} />{:else}{t('project.actions.attach')}{/if}</Button>
 	{/snippet}
+</FormModal>
+
+<FormModal
+	open={routingAttachment !== null}
+	title={t('project.network.editAllowedIpsTitle')}
+	submitLabel={t('project.actions.save')}
+	submitting={routingSaving}
+	onSubmit={can.route ? saveRouting : undefined}
+	onClose={closeRoutingModal}
+>
+	{#if routingAttachment}
+		<div class="space-y-4">
+			<p class="text-sm text-ink-1">{attachmentNetworkName(routingAttachment.network_id)} <span class="font-mono text-xs text-ink-2">{routingAttachment.cidr ?? ''}</span></p>
+			<Field label={t('project.network.allowedIps')} for="waygate-routing-allowed-ips" error={routingError} help={t('project.network.allowedIpsHelp', { max: WAYGATE_ALLOWED_IPS_MAX })}>
+				<TextareaInput id="waygate-routing-allowed-ips" bind:value={routingDraft} rows={4} placeholder="10.20.0.0/24" disabled={routingSaving} ariaInvalid={!!routingError} />
+			</Field>
+			{#if routingAttachment.cidr}
+				{@const cidr = routingAttachment.cidr}
+				<Button variant="ghost" size="sm" disabled={routingSaving} onclick={() => { routingDraft = appendAllowedIp(routingDraft, cidr); }}>{t('project.network.addSubnetCidr', { cidr })}</Button>
+			{/if}
+		</div>
+	{/if}
 </FormModal>
 
 <FormModal

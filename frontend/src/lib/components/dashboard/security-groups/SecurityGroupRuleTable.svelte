@@ -18,9 +18,12 @@
 
 	let {
 		rules,
+		deleteDisabledReason,
 		onDelete,
 	}: {
 		rules: SecurityGroupRule[];
+		/** When set, rule deletion is unavailable here and this localized reason is shown as the tooltip. */
+		deleteDisabledReason?: string;
 		onDelete: (ruleId: string) => Promise<void>;
 	} = $props();
 	const columns = (): TableColumn<SecurityGroupRule>[] => [
@@ -44,7 +47,7 @@
 					<CompactResourceCard>
 						<p class="font-medium">{rule.direction === 'ingress' ? t('securityGroup.rules.inbound') : t('securityGroup.rules.outbound')} · {rule.protocol?.toUpperCase() ?? t('securityGroup.rules.anyProtocol')}</p>
 						<dl><div><dt>{t('securityGroup.rules.port')}</dt><dd>{rule.port_range_min != null && rule.port_range_max != null ? rule.port_range_min === rule.port_range_max ? rule.port_range_min : `${rule.port_range_min}-${rule.port_range_max}` : '-'}</dd></div><div><dt>{t('securityGroup.rules.remoteIp')}</dt><dd>{rule.remote_ip_prefix ?? '-'}</dd></div></dl>
-						{#snippet actions()}<button class="text-state-danger-text" onclick={() => onDelete(rule.id)}>{t('network.actions.delete')}</button>{/snippet}
+						{#snippet actions()}<button class="text-state-danger-text disabled:opacity-50" onclick={() => onDelete(rule.id)} disabled={!!deleteDisabledReason} title={deleteDisabledReason}>{t('network.actions.delete')}</button>{/snippet}
 					</CompactResourceCard>
 				{/each}
 			{/snippet}
@@ -72,7 +75,9 @@
 						<td class="px-4 py-2 text-right">
 							<button
 								onclick={() => onDelete(rule.id)}
-								class="text-red-400 hover:text-red-300 transition-colors"
+								disabled={!!deleteDisabledReason}
+								title={deleteDisabledReason}
+								class="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
 							>✕</button>
 						</td>
 					</tr>

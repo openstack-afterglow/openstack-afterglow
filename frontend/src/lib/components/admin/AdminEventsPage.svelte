@@ -6,6 +6,7 @@
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
 	import type { TableOption } from '$lib/utils/tableView.svelte';
+	import { coalesceReload } from '$lib/utils/coalesceReload';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { get } from 'svelte/store';
@@ -303,6 +304,8 @@
 	});
 	onDestroy(() => { ++generation; ++detailGeneration; for (const unsubscribe of subscriptions) unsubscribe(); });
 
+	// Several header conditions applied together reload the feed once with the final parameters.
+	const reloadApplied = coalesceReload(() => reload(applied));
 	function eventFilter(param: string, selection: () => string, update: (value: string) => void, options: () => TableOption[], free = true) {
 		return nativeObservationFilter(selection, value => {
 			update(value);
@@ -311,7 +314,7 @@
 			if (value.trim()) params.set(param, value.trim());
 			else params.delete(param);
 			applied = params.toString();
-			reload(applied);
+			reloadApplied();
 		}, options, free);
 	}
 	const observationView0 = createObservationView(() => events, () => [

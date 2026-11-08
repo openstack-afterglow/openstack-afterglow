@@ -6,6 +6,7 @@
 	import { pushState } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
@@ -31,6 +32,8 @@
 	let deleting = $state<string | null>(null);
 	let restarting = $state<string | null>(null);
 	let showCreatePanel = $state(false);
+	// The instance this page just created; only its row carries the tutorial delete anchor.
+	let lastCreatedId = $state<string | null>(null);
 	let selectedInstanceId = $state<string | null>(null);
 	const selection = createResourceSelection();
 	let bulkBusy = $state(false);
@@ -187,7 +190,7 @@
 	});
 </script>
 
-<DbCreatePanel bind:open={showCreatePanel} onCreated={load} />
+<DbCreatePanel bind:open={showCreatePanel} onCreatedId={(id) => (lastCreatedId = id)} onCreated={load} />
 
 {#if selectedInstanceId}
 	<SlidePanel onClose={closePanel} ariaLabel={tr('instances.detail')} width="w-full md:w-[70vw] max-w-4xl">
@@ -204,7 +207,8 @@
 <PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb={tr('breadcrumbs.instances')} title={tr('instances.title')}>
 		{#snippet actions()}
-			<Button onclick={() => (showCreatePanel = true)} onintent={prefetchCreateMetadata} variant="primary">{tr('actions.createInstance')}</Button>
+			<TutorialStartButton tour="database-instances" compactOnMobile />
+			<Button onclick={() => (showCreatePanel = true)} onintent={prefetchCreateMetadata} variant="primary" dataTour="database-instances-create-open">{tr('actions.createInstance')}</Button>
 		{/snippet}
 	</PageHeader>
 	<ResourceToolbar label={tr('instances.toolbar')}>
@@ -226,21 +230,24 @@
 		{#if instances.length === 0}
 			<EmptyState headline={tr('instances.empty')} description={tr('instances.emptyHelp')} />
 		{/if}
-		<DbInstancesTable
-			{instances}
-			{view}
-			{refreshing}
-			{restarting}
-			{deleting}
-			selectedIds={selection.ids}
-			selectableIds={selectableIds}
-			selectionDisabled={bulkBusy}
-			onToggleSelect={(id) => selection.toggle(id)}
-			onToggleAll={() => selection.toggleAll(selectableIds)}
-			onOpen={openPanel}
-			onRestart={restartInstance}
-			onDelete={deleteInstance}
-		/>
+		<div data-tour="database-instances-list">
+			<DbInstancesTable
+				{instances}
+				{view}
+				{refreshing}
+				{restarting}
+				{deleting}
+				highlightId={lastCreatedId}
+				selectedIds={selection.ids}
+				selectableIds={selectableIds}
+				selectionDisabled={bulkBusy}
+				onToggleSelect={(id) => selection.toggle(id)}
+				onToggleAll={() => selection.toggleAll(selectableIds)}
+				onOpen={openPanel}
+				onRestart={restartInstance}
+				onDelete={deleteInstance}
+			/>
+		</div>
 		<BulkSelectionOverlay count={selection.count} ariaLabel={tr('instances.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>
