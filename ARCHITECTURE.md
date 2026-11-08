@@ -2133,9 +2133,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7f7bfd2bac2b914a9a4f5ea377aaba4fc57eec8f16912d1b7d303822979d93e9",
-  "reviewed_at": "2026-11-08T16:26:01Z",
-  "summary": "2026-11-09 commit prep: docs/testing.md 1.32.12 gate section updated to green Node 22 result; no source change since gate run."
+  "source_sha256": "4bbe7098dcdf28f2036c6c31fe3d9532fabbfda59c2be02929d335660d255f24",
+  "reviewed_at": "2026-11-08T17:17:43Z",
+  "summary": "Promote waygate tag v0.3.8 (commit 8238a321, Kolla role 0.3.8) in operator manifest and lock; drover and lumen unchanged; no architecture topology change"
 }
 ```
 <!-- architecture-review:end -->

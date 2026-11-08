@@ -22,7 +22,7 @@ requires-dist = [
     { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1" },
     { name = "palimpsest-client", specifier = "==0.3.3" },
     { name = "urllib3", specifier = ">=2.8.0" },
-    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0" },
+    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.3.8" },
 ]
 
 [[package]]
@@ -949,8 +949,8 @@ wheels = [
 
 [[package]]
 name = "waygate"
-version = "0.2.0"
-source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0#572393905d50ef4cd7c90232bba43bb0cf40efbd" }
+version = "0.3.8"
+source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.3.8#8238a321a70665fea2b715e6c68fd42a06c1defa" }
 
 [[package]]
 name = "wcwidth"
