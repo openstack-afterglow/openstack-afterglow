@@ -159,6 +159,31 @@ def test_empty_or_explicit_egress_group_is_allowed_only_for_native_isolated_sess
     validate_security_group(group(SecurityGroupRule(**egress(protocol="tcp", port_range_min=443, port_range_max=443))))
 
 
+@pytest.mark.parametrize("tags", [[], ["managed"], ["a", "b"]])
+def test_native_rule_tags_are_metadata_for_egress_only_groups(tags):
+    validate_security_group(group(egress(tags=tags), egress(id="egress-v6", ethertype="IPv6", tags=tags)))
+    validate_security_group(SecurityGroup(**group(egress(tags=tags))))
+    validate_security_group(group(SecurityGroupRule(**egress(tags=tags))))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"tags": "managed"},
+        {"tags": {"name": "managed"}},
+        {"tags": None},
+        {"tags": [1]},
+        {"tags": ["ok", None]},
+        {"tags": ["ok"], "direction": "ingress"},
+        {"tags": ["ok"], "remote_group_id": "owned-group"},
+        {"tags": ["ok"], "unknown_remote_policy": "allow"},
+    ],
+)
+def test_tagged_rules_still_require_malformed_tags_and_known_isolated_fields(changes):
+    with pytest.raises(CloudShellSecurityError):
+        validate_security_group(group(egress(**changes)))
+
+
 @pytest.mark.parametrize(
     "changes",
     [

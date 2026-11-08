@@ -41,6 +41,7 @@ Cloud Shell 안의 CLI는 사용자의 현재 프로젝트 token으로 실행합
 - 선택한 네트워크에는 사용 가능한 subnet과 external network 또는 router external gateway 연결이 있어야 한다. 명시적 `network_id`는 전용 프로젝트 소유여야 하며, 다른 프로젝트의 private network를 사용하지 않는다. 기본 정책으로 선택된 접근 가능한 shared/external network는 기존 정책 계약을 따른다.
 - `security_group`의 기본값은 `default`이며 빈 값도 같은 의미다. 전용 프로젝트 안에서 ID를 먼저, 이름을 다음으로 정확히 대조해 하나의 그룹 ID를 확정한다. 다른 프로젝트의 같은 이름이나 모호한 그룹을 채택하지 않는다.
 - 그룹의 기존 규칙을 수정하지 않는다. 실제 응답의 규칙이 모두 확인된 egress 규칙이고 ingress·remote-group/address-group 규칙이 없어야 한다. 기본 `default`에 self-ingress가 있으면 거부하므로 운영자가 별도 egress-only 그룹을 준비한다. 그룹 소유권 precheck만으로 이 검사가 완료된 것은 아니다.
+- 규칙의 `tags`는 Neutron 메타데이터로 허용한다. 빈 목록이나 문자열 목록만 허용하며, 문자열·객체·null·비문자열 원소는 거부한다. 태그는 정책 판정에 쓰지 않으므로 ingress·remote-group·알 수 없는 필드 검사는 그대로 적용된다.
 
 네트워크·그룹 선택 실패는 홈 볼륨/컨테이너 생성 전에 안전한 오류로 종료한다. 프로젝트·그룹을 임의로 만들거나 floating IP를 생성하지 않는다. Default-network 자동 생성은 기존 정책과 명시적 세션 승인 흐름을 따른다.
 

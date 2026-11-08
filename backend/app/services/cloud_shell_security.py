@@ -171,6 +171,7 @@ def validate_security_group(group: object) -> None:
         "standard_attr_id",
         "belongs_to_default_sg",
         "normalized_cidr",
+        "tags",
     }
     required_fields = {
         "id",
@@ -200,6 +201,8 @@ def validate_security_group(group: object) -> None:
         ):
             raise CloudShellSecurityError("Cloud Shell security group rule is malformed or lateral")
         seen.add(identifier)
+        if "tags" in rule and (type(rule["tags"]) is not list or any(type(tag) is not str for tag in rule["tags"])):
+            raise CloudShellSecurityError("Cloud Shell security group rule tags are malformed")
         protocol = rule.get("protocol")
         if protocol is not None and (
             type(protocol) is not str or protocol not in {"tcp", "udp", "icmp", "ipv6-icmp", "icmpv6"}
