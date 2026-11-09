@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.32.12] - 2026-11-09
+
 ### Added
 - Mobile (<768px) console UX: one filter button with a staged panel and 조회하기 in card-mode lists, icon-only auto refresh, name/status/flavor/IP-only instance cards, a compact instance detail header (Stop/Reboot or Start, rest in an overflow menu), a full-screen navigation drawer with one resources+services search and Hub/Services only, and a header with only language and a profile menu (account, my resources, notifications, light/dark, logout). Desktop header keeps Cloud Shell, the user/admin mode toggle, and language selection; the profile menu now also appears on desktop, and Docs is reachable from the profile menu on all widths.
 - Step-by-step create and delete tutorials (tutorial mode, `?tutorial=on|admin`) for buckets, containers, keypairs, floating IPs, security groups, secrets, volume backups, volume snapshots, load balancers, routers, container clusters, IAM projects, database instances, database backups, networks, VM create and VM detail delete, and the admin announcements, application credentials, projects, flavors, networks and routers pages (23 tours, plus file storage, account MCP tokens, admin floating IPs, admin ports, admin object storage, admin groups, users, roles and domains; admin domains end with disabling the created domain because Afterglow has no domain delete). Three more tours act on real administrator authority only and never run in tutorial mode: user credentials create and delete, a read-only admin settings guide and a read-only system administrator list guide (no grant or revoke is offered, because the grant API cannot prove who created an assignment; clicks inside its highlighted areas are blocked). A central gate checks a live, verified system-administrator session for the button, `?tour=` links and saved-tour resume. Tutorials are offered only at tablet width and above (768px and up): the launcher and invite bubble do not render on mobile and `startTour` refuses to run there. Each tour follows the real page controls, anchors only the item it just created, and records its state in stateful synthetic stores under `frontend/src/lib/mockup/`. Tutorial mode fails closed in the central `fetchWithAuth`. A running tour hides the invite bubble, the invite bubble stays clear of the service sidebar, and after `driver.highlight` the engine scrolls a target below the fixed header and refreshes the overlay (driver.js re-scrolls inside highlight). IAM groups are not registered.
@@ -20,6 +22,7 @@
 - 클라이언트 발급의 소유자 사용자 ID는 비워 둔 채 시작하고, 소유자 미지정 client에는 '나를 owner로 등록'이 있으며 .conf·QR 다운로드는 client 편집 권한이 있는 구성원에게 먼저 등록한 뒤 내려받는다.
 
 ### Fixed
+- Cloud Shell 사전 검사가 태그가 있는 native 보안 그룹 규칙을 거절하던 문제를 고쳤습니다. egress 전용 그룹의 `tags`를 메타데이터로 허용하며 방향·소유권·remote group 검사는 그대로 유지합니다.
 - Waygate 서버 생성·네트워크 연결이 실제로는 성공했는데 실패로 표시되던 문제: 프로비저닝 쓰기(25~33초)가 30초 deadline을 넘었다. Waygate 쓰기에 55초 upstream/58초 client deadline을 주고, timeout·502/503/504는 실패 대신 '결과 미확인'으로 안내하며 목록을 새로 읽는다.
 
 ## [1.32.11] - 2026-11-08

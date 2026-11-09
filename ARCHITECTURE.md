@@ -2133,9 +2133,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7f7bfd2bac2b914a9a4f5ea377aaba4fc57eec8f16912d1b7d303822979d93e9",
-  "reviewed_at": "2026-11-08T16:26:01Z",
-  "summary": "2026-11-09 commit prep: docs/testing.md 1.32.12 gate section updated to green Node 22 result; no source change since gate run."
+  "source_sha256": "ed02be9e3c94240f20810196315e47cd13967829da6f277e1b8b3cd0d0edbec1",
+  "reviewed_at": "2026-11-09T06:23:42Z",
+  "summary": "2026-11-09 1.32.12 release prep: CHANGELOG Cloud Shell tagged-egress fix line added (docs-only after gate run); gate green on source ed02be9e (second run, first run 5 flaky backend failures not reproduced)."
 }
 ```
 <!-- architecture-review:end -->
