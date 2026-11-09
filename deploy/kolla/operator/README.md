@@ -10,7 +10,7 @@ application.
 | --- | --- | --- |
 | `drover` | `drover` | `0.2.25` |
 | `lumen` | `lumen` | `0.3.1` |
-| `waygate` | `waygate` | `0.2.0` |
+| `waygate` | `waygate` | `0.3.8` |
 | `palimpsest-client` | `palimpsest` | `0.2.3` |
 
 Each root wheel owns its role files. No separate `*-kolla` distribution is
