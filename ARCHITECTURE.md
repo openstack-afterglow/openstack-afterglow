@@ -2136,9 +2136,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f532fe6d30efb72e82ca3643f2e5f5878f461d21eaa3bd65767b57be6fc222be",
-  "reviewed_at": "2026-11-10T09:37:04Z",
-  "summary": "2026-11-10 MCP 동의 보정 검토. 내 변경: DCR localhost loopback·grant_types 400, 동의 도메인 표시와 도메인 변경(/select-domain), 같은 사용자 pending 티켓 재바인딩과 정확한 소유자 승인, NativePolicyError raise 지점 사유 분류와 9개 로케일 문구, docs/security·api/auth·testing·OpenSpec fix-mcp-consent-domain-and-dcr 갱신. 다른 작업자 검토: AuthStudioShell·LoadingState·VmResourcePreparation의 AfterglowOrbit interactive, UsageScheduleFields 사유 조건부 표시와 테스트, WizardStep5Config GitHub 최근 사용자 focus 재조회(비시맨틱 contents div 래퍼 포함), orbit 테스트와 probe, CHANGELOG·DESIGN·ARCHITECTURE 문단. 발견: add-waiting-art-pointer-light 2.3 auth shell wiring 테스트 미작성(미체크 유지). 브라우저 확인 없음. 검증: test:unit:backend 14764 passed, test:unit:frontend·test:contract·test:orchestration 통과, i18n 0 errors, svelte-check 0 errors, catalog 통과. 커밋·스테이징 없음."
+  "source_sha256": "41954d5809345202e3af0e6a426787df5c92d5838d048a6f346333c882f58a43",
+  "reviewed_at": "2026-11-10T11:56:27Z",
+  "summary": "테스트 전용 변경 검토: 동의 페이지 vitest 3개(도메인 표시, 단일 도메인 시 도메인 변경 숨김, 복수 도메인 시 /select-domain 이동)와 OpenSpec 5.6 정정. 제품 소스 동작 변경 없음. 검증: vitest page.test.ts 94 passed, 이전 test:gate exit 0 기록 유지."
 }
 ```
 <!-- architecture-review:end -->
