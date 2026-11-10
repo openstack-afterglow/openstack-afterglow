@@ -1014,7 +1014,7 @@ MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 
 
 ### MCP OAuth 동의·갱신과 cold schema cache
 
-개인 Bearer 키와 OAuth는 별도 인증 방식입니다. OAuth 클라이언트 설정 JSON은 HTTP MCP resource URL만 포함하고 개인 키·`Authorization` header·`client_secret`을 넣지 않습니다. 예시 `https://cloud.dmslab.re.kr/mcp`의 discovery는 `/mcp/oauth/{register,authorize,token,revoke}`를 광고합니다. Authorization endpoint를 매개변수 없이 직접 여는 것은 유효한 요청이 아닙니다. 등록한 `client_id`, 정확한 callback/resource, `response_type=code`, 허용 scope, PKCE S256과 state를 포함한 클라이언트 요청을 사용합니다. Public client 등록은 `token_endpoint_auth_method=none`과 authorization-code·refresh grant 모두를 요구하며 HTTP loopback callback은 `127.0.0.1`·`[::1]` IP literal만 허용합니다.
+개인 Bearer 키와 OAuth는 별도 인증 방식입니다. OAuth 클라이언트 설정 JSON은 HTTP MCP resource URL만 포함하고 개인 키·`Authorization` header·`client_secret`을 넣지 않습니다. 예시 `https://cloud.dmslab.re.kr/mcp`의 discovery는 `/mcp/oauth/{register,authorize,token,revoke}`를 광고합니다. Authorization endpoint를 매개변수 없이 직접 여는 것은 유효한 요청이 아닙니다. 등록한 `client_id`, 정확한 callback/resource, `response_type=code`, 허용 scope, PKCE S256과 state를 포함한 클라이언트 요청을 사용합니다. Public client 등록은 `token_endpoint_auth_method=none`과 authorization-code·refresh grant 모두를 요구하며 HTTP loopback callback은 `localhost`·`127.0.0.1`·`[::1]` host만 허용합니다.
 
 정확한 `/oauth/mcp/authorize`는 공개 브라우저 동의 shell이며 protected console 전체를 공개하지 않습니다. 불투명 ticket은 URL에서 제거해 `sessionStorage`에만 보존하고 password/provider login·프로젝트 선택 뒤 같은 동의 화면으로 돌아옵니다. Ticket은 권한이나 access token이 아닙니다. 동의 조회·approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행합니다. 승인은 해당 user/project의 restricted application credential과 grant를 만들며 클라이언트에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않습니다.
 

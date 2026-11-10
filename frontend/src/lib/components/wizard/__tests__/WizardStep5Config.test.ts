@@ -267,6 +267,26 @@ describe('WizardStep5Config GitHub SSH verification', () => {
 		expect(screen.getByText(/1~39자의 영문자, 숫자, 하이픈/)).toBeTruthy();
 	});
 
+	it('retries the recent GitHub users after a failed first load instead of hiding them for the session', async () => {
+		let historyRequests = 0;
+		mocks.apiGet.mockImplementation((path: string) => {
+			if (path !== '/api/v1/instances/github-users/history') return Promise.resolve({ history: [], presets: [] });
+			historyRequests += 1;
+			return historyRequests === 1
+				? Promise.reject(new Error('history unavailable'))
+				: Promise.resolve([{ id: 583231, login: 'OctoCat', verified_at: '2026-09-20T00:00:00+00:00' }]);
+		});
+		wizard.update(w => ({ ...w, sshAccessMode: 'github' }));
+		await renderConfig();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(historyRequests).toBe(1);
+		expect(screen.queryByRole('button', { name: /OctoCat/ })).toBeNull();
+		await fireEvent.focusIn(screen.getByLabelText(/GitHub 사용자 ID/));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(historyRequests).toBe(2);
+		expect(screen.getByRole('button', { name: /OctoCat/ })).toBeTruthy();
+	});
+
 	it('keeps readiness and the verified profile after repeated recent-user clicks', async () => {
 		await renderConfig();
 		await vi.advanceTimersByTimeAsync(0);

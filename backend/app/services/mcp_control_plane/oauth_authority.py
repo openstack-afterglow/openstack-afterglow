@@ -232,9 +232,17 @@ def _validate_public_client_metadata(metadata: object, *, expected_client_id: st
         raise McpOAuthAuthorityError("OAuth client_id is invalid")
     if metadata.get("token_endpoint_auth_method") != "none":
         raise McpOAuthAuthorityError("MCP OAuth clients must be public")
-    if set(metadata.get("grant_types", [])) != {"authorization_code", "refresh_token"}:
+    grant_types = metadata.get("grant_types")
+    if (
+        not isinstance(grant_types, list)
+        or not all(isinstance(item, str) for item in grant_types)
+        or set(grant_types) != {"authorization_code", "refresh_token"}
+    ):
         raise McpOAuthAuthorityError("OAuth client must use authorization_code and refresh_token only")
-    redirects = list(validate_redirect_uris(metadata.get("redirect_uris")))
+    try:
+        redirects = list(validate_redirect_uris(metadata.get("redirect_uris")))
+    except McpOAuthError as exc:
+        raise McpOAuthAuthorityError(str(exc)) from exc
     name = metadata.get("client_name")
     if name is not None and (not isinstance(name, str) or len(name.strip()) > 100):
         raise McpOAuthAuthorityError("OAuth client_name is invalid")
@@ -370,6 +378,7 @@ async def load_consent_ticket(
     ticket: str,
     owner_user_id: str,
     owner_project_id: str,
+    rebind_project: bool = False,
 ) -> ConsentTicket:
     ticket_hash = hash_oauth_value(ticket)
     async with session_factory() as session:
@@ -395,8 +404,13 @@ async def load_consent_ticket(
             request.owner_user_id = owner_user_id
             request.owner_project_id = owner_project_id
             request.grant_deadline = now + default_grant_lifetime()
-        if request.owner_user_id != owner_user_id or request.owner_project_id != owner_project_id:
-            raise McpOAuthAuthorityError("authorization ticket belongs to a different project")
+        if request.owner_user_id != owner_user_id:
+            raise McpOAuthAuthorityError("authorization ticket belongs to a different user")
+        if request.owner_project_id != owner_project_id:
+            if not rebind_project:
+                raise McpOAuthAuthorityError("authorization ticket belongs to a different project")
+            # Same user, still pending: the view moves to the project the user switched into.
+            request.owner_project_id = owner_project_id
         client = await session.scalar(
             select(McpOAuthClient).where(McpOAuthClient.client_id == request.client_id).with_for_update()
         )

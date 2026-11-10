@@ -33,6 +33,8 @@
 		scopes: string[];
 		grant_deadline: string;
 		ongoing_supported?: boolean;
+		domain_id?: string | null;
+		domain_name?: string | null;
 	}
 
 	interface Owner {
@@ -335,6 +337,7 @@
 			{#if reviewStep === 'client'}
 				<dl aria-label={t('mcpConsent.details.client')} class="consent-details">
 					<div><dt>{t('mcpConsent.details.client')}</dt><dd><strong>{consent.client_name}</strong></dd></div>
+					<div><dt>{t('mcpConsent.details.domain')}</dt><dd><strong>{consent.domain_name ?? ''}</strong> <code>{consent.domain_id ?? ''}</code></dd></div>
 					<div><dt>{t('mcpConsent.details.clientId')}</dt><dd><code>{consent.client_id}</code></dd></div>
 					<div><dt>{t('mcpConsent.details.redirectUri')}</dt><dd><code>{consent.redirect_uri}</code></dd></div>
 					<div><dt>{t('mcpConsent.details.permissions')}</dt><dd class="scopes">{#each consent.scopes as scope}<StatusChip status={scope === 'mcp:write' ? 'manage' : 'read'} label={scope} />{/each}</dd></div>
@@ -352,6 +355,11 @@
 			<div class="consent-client-summary">
 				<strong>{consent.client_name}</strong>
 				<code>{consent.client_id}</code>
+				<p class="consent-domain"><span>{t('mcpConsent.details.domain')}</span> <strong>{consent.domain_name ?? ''}</strong> <code>{consent.domain_id ?? ''}</code></p>
+				<p class="consent-domain-help">{t('mcpConsent.domain.help')}</p>
+				{#if ($auth.availableDomains?.length ?? 0) > 1}
+					<Button variant="secondary" onclick={() => void goto('/select-domain')} disabled={deciding}>{t('mcpConsent.domain.change')}</Button>
+				{/if}
 			</div>
 			<div class="choices auth-flow-fields">
 				<Field label={t('mcpConsent.access.label')} for="mcp-consent-access" help={requestsManage ? t('mcpConsent.access.help') : t('mcpConsent.access.manageUnavailable')}>

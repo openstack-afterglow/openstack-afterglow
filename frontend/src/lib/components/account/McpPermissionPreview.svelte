@@ -2,7 +2,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import {
-		consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey,
+		consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey, consentServiceReasonKey,
 		MCP_CONSENT_SERVICES, type McpConsentProject,
 	} from '$lib/utils/mcpConsentPermissions';
 
@@ -53,7 +53,7 @@
 										{/each}
 									</ul>
 								{:else}
-									<span class:permission-unavailable={native.state === 'unavailable'}>{t(`mcpConsent.preview.service.${native.state}`)}</span>
+									<span class:permission-unavailable={native.state === 'unavailable'}>{native.state === 'unavailable' ? t(consentServiceReasonKey(native.reason)) : t(`mcpConsent.preview.service.${native.state}`)}</span>
 								{/if}
 							</dd>
 						</div>

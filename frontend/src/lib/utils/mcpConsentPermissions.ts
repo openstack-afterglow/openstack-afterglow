@@ -6,6 +6,8 @@ export interface McpConsentProject {
 	scope_error?: 'scope_validation_unavailable' | null;
 	service_permissions?: Record<string, string[]>;
 	service_errors?: Record<string, string>;
+	domain_id?: string | null;
+	domain_name?: string | null;
 }
 
 export const MCP_CONSENT_SERVICES = [
@@ -35,19 +37,47 @@ export function consentCloudAccess(project: McpConsentProject, access: 'read' | 
 	return access === 'manage' ? native : 'read';
 }
 
-export function consentServiceAccess(project: McpConsentProject, service: string, access: 'read' | 'manage') {
-	if (project.scope_error) return { state: 'unavailable' as const, leaves: [] };
-	if (service === 'lumen') return { state: 'unavailable' as const, leaves: [] };
+export interface ConsentServiceAccess {
+	state: 'unavailable' | 'denied' | 'attenuated' | 'allowed';
+	leaves: string[];
+	// Closed native policy failure reason; present only when state is unavailable.
+	reason?: string;
+}
+
+export function consentServiceAccess(project: McpConsentProject, service: string, access: 'read' | 'manage'): ConsentServiceAccess {
+	if (project.scope_error) return { state: 'unavailable', leaves: [] };
+	if (service === 'lumen') return { state: 'unavailable', leaves: [] };
+	if (Object.hasOwn(project.service_errors ?? {}, service)) {
+		return { state: 'unavailable', leaves: [], reason: project.service_errors?.[service] || 'permission_check_unavailable' };
+	}
 	const leaves = project.service_permissions?.[service];
-	if (Object.hasOwn(project.service_errors ?? {}, service) || !Array.isArray(leaves)
-		|| leaves.some((leaf) => typeof leaf !== 'string' || !leaf.startsWith(`${service}-`))) {
-		return { state: 'unavailable' as const, leaves: [] };
+	if (!Array.isArray(leaves) || leaves.some((leaf) => typeof leaf !== 'string' || !leaf.startsWith(`${service}-`))) {
+		return { state: 'unavailable', leaves: [] };
 	}
 	const allowed = access === 'read' ? leaves.filter((leaf) => READ_SERVICE_LEAVES[leaf] === true) : leaves;
 	return {
-		state: leaves.length === 0 ? 'denied' as const : allowed.length === 0 ? 'attenuated' as const : 'allowed' as const,
+		state: leaves.length === 0 ? 'denied' : allowed.length === 0 ? 'attenuated' : 'allowed',
 		leaves: allowed,
 	};
+}
+
+const POLICY_REASON_LABEL_KEYS = {
+	policy_unauthorized: 'mcpConsent.preview.reason.unauthorized',
+	policy_forbidden: 'mcpConsent.preview.reason.forbidden',
+	policy_not_found: 'mcpConsent.preview.reason.notFound',
+	policy_upstream_error: 'mcpConsent.preview.reason.upstreamError',
+	policy_unreachable: 'mcpConsent.preview.reason.unreachable',
+	policy_timeout: 'mcpConsent.preview.reason.timeout',
+	policy_invalid_response: 'mcpConsent.preview.reason.invalid',
+	permission_check_unavailable: 'mcpConsent.preview.service.unavailable',
+} as const;
+
+type ConsentReasonKey = (typeof POLICY_REASON_LABEL_KEYS)[keyof typeof POLICY_REASON_LABEL_KEYS];
+
+/** Maps a closed native failure reason to its explanation; unknown codes fall back to the generic message. */
+export function consentServiceReasonKey(reason: string | undefined): ConsentReasonKey {
+	return reason !== undefined && Object.hasOwn(POLICY_REASON_LABEL_KEYS, reason)
+		? POLICY_REASON_LABEL_KEYS[reason as keyof typeof POLICY_REASON_LABEL_KEYS] : 'mcpConsent.preview.service.unavailable';
 }
 
 const SERVICE_PERMISSION_LABEL_KEYS = {

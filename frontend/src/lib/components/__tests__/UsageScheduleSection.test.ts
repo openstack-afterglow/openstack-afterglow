@@ -37,6 +37,10 @@ async function ready() {
 async function reason(value: string) {
 	await fireEvent.input(screen.getByRole('textbox', { name: t('reason') }), { target: { value } });
 }
+async function extendThenReason(value: string) {
+	await fireEvent.click(screen.getByRole('button', { name: t('extend') }));
+	await reason(value);
+}
 function saveButton() { return screen.getByRole<HTMLButtonElement>('button', { name: t('save') }); }
 
 beforeEach(() => {
@@ -254,7 +258,7 @@ describe('usage schedule detail with its real controller and fields', () => {
 		transport.put.mockRejectedValueOnce(new ApiError(502, 'Native result is uncertain.'));
 		render(UsageScheduleSection, props);
 		await ready();
-		await reason('Keep this explanation');
+		await extendThenReason('Keep this explanation');
 		await fireEvent.click(saveButton());
 		await screen.findByText('Native result is uncertain.');
 		expect(screen.getByRole<HTMLInputElement>('textbox', { name: t('reason') }).value).toBe('Keep this explanation');
@@ -313,7 +317,7 @@ describe('usage schedule detail with its real controller and fields', () => {
 		const onUpdated = vi.fn();
 		render(UsageScheduleSection, { ...props, onUpdated });
 		await ready();
-		await reason('Keep my draft during refresh');
+		await extendThenReason('Keep my draft during refresh');
 		identity.update(value => ({ ...value, token: 'refreshed-token' }));
 		await tick();
 		expect(screen.getByRole<HTMLInputElement>('textbox', { name: t('reason') }).value).toBe('Keep my draft during refresh');
@@ -338,7 +342,7 @@ describe('usage schedule detail with its real controller and fields', () => {
 			transport.put.mockReturnValueOnce(pending.promise);
 			const view = render(UsageScheduleSection, { ...props, onUpdated });
 			await ready();
-			await reason('Private old draft');
+			await extendThenReason('Private old draft');
 			await fireEvent.click(saveButton());
 			await waitFor(() => expect(transport.put).toHaveBeenCalledTimes(1));
 			if (scope === 'session') identity.update(value => ({ ...value, sessionId: 'another-session' }));
@@ -351,6 +355,7 @@ describe('usage schedule detail with its real controller and fields', () => {
 			identity.set({ token: 'token-a', projectId: 'project-a', userId: 'actor-a' });
 			await view.rerender({ ...props, adminMode: false, onUpdated });
 			await ready();
+			await fireEvent.click(screen.getByRole('button', { name: t('extend') }));
 			expect(screen.getByRole<HTMLInputElement>('textbox', { name: t('reason') }).value).toBe('');
 			pending.resolve(schedule({ reason: 'Stale mutation receipt', revision: 'old-write' }));
 			await tick();

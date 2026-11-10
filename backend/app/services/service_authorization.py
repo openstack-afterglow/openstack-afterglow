@@ -90,6 +90,17 @@ def service_policy_availability() -> dict[str, bool]:
     }
 
 
+def policy_error_code(exc: BaseException) -> str:
+    """Closed reason for a failed native policy read; the reason is set where the failure is raised."""
+    from app.services.service_proxy import NativePolicyError
+
+    if isinstance(exc, TimeoutError):
+        return "policy_timeout"
+    if isinstance(exc, NativePolicyError):
+        return exc.reason
+    return "permission_check_unavailable"
+
+
 async def service_permission_snapshot(
     token_info: dict, *, timeout: float | None = None, services: Collection[str] | None = None
 ) -> tuple[dict[str, list[str]], dict[str, str]]:
@@ -114,7 +125,7 @@ async def service_permission_snapshot(
         except Exception as exc:
             if timeout is None and not isinstance(exc, HTTPException):
                 raise
-            return service, [], "permission_check_unavailable"
+            return service, [], policy_error_code(exc)
 
     calls = (evaluate(service) for service in enabled)
     if timeout is None:

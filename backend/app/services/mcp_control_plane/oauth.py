@@ -102,7 +102,9 @@ def validate_scopes(raw_scope: str | list[str] | tuple[str, ...]) -> tuple[str, 
 
 
 def _is_loopback_http(parsed) -> bool:
-    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1"}
+    # MCP clients (Claude Code, Hermes) register http://localhost:<port>/callback; RFC 8252
+    # prefers IP literals but the MCP authorization spec explicitly allows localhost.
+    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1", "localhost"}
 
 
 def validate_redirect_uri(value: str) -> str:
@@ -116,7 +118,7 @@ def validate_redirect_uri(value: str) -> str:
         return value
     if _is_loopback_http(parsed):
         return value
-    raise McpOAuthError("redirect URI must use HTTPS or an IP-literal loopback HTTP address")
+    raise McpOAuthError("redirect URI must use HTTPS or a loopback HTTP address (localhost, 127.0.0.1 or ::1)")
 
 
 def redirect_uri_matches(registered: str, requested: str) -> bool:

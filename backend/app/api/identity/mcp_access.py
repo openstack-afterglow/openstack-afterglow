@@ -178,6 +178,11 @@ async def get_mcp_projects(
         _raise_authority_error(exc)
     except TimeoutError as exc:
         raise HTTPException(status_code=503, detail="MCP project permissions are unavailable") from exc
+    # Every candidate comes from the session's single working domain; label it so the consent UI names it.
+    projects = [
+        {**project, "domain_id": token_info.get("domain_id"), "domain_name": token_info.get("domain_name")}
+        for project in projects
+    ]
     return JSONResponse(projects, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 

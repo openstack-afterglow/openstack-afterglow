@@ -14,7 +14,7 @@
 
 <section data-testid="vm-resource-preparation" aria-labelledby="vm-preparation-title" aria-describedby="vm-preparation-help" class="preparation">
 	<h2 id="vm-preparation-title" class="sr-only">{t('preparation.title')}</h2>
-	<AfterglowOrbit active={pending.length > 0} ongeometry={value => { geometry = value; }} />
+	<AfterglowOrbit active={pending.length > 0} interactive ongeometry={value => { geometry = value; }} />
 	<div
 		class="preparation-task" role="status" aria-live="polite" aria-atomic="true"
 		style:--orbit-center-x={geometry ? `${geometry.centerX}px` : undefined}

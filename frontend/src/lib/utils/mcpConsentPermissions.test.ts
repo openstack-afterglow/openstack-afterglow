@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MCP_CONSENT_SERVICES, consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey, type McpConsentProject } from './mcpConsentPermissions';
+import { MCP_CONSENT_SERVICES, consentCloudAccess, nativeCloudAccess, consentServiceAccess, consentServiceLabelKey, consentServiceReasonKey, type McpConsentProject } from './mcpConsentPermissions';
 
 const nativeLeaves = {
 	drover: ['drover-inventory_reader', 'drover-access_user', 'drover-clusters_editor', 'drover-workloads_editor', 'drover-clusters_admin', 'drover-access_admin'],
@@ -59,9 +59,17 @@ describe('MCP consent permission attenuation', () => {
 		expect(consentServiceAccess({ ...project, service_permissions: { drover: [] } }, 'drover', 'read').state).toBe('denied');
 		expect(consentServiceAccess({ ...project, service_permissions: { drover: ['drover-clusters_editor'] } }, 'drover', 'read').state).toBe('attenuated');
 		expect(consentServiceAccess({ ...project, service_permissions: undefined }, 'drover', 'manage')).toEqual({ state: 'unavailable', leaves: [] });
-		expect(consentServiceAccess({ ...project, service_errors: { drover: 'permission_check_unavailable' } }, 'drover', 'manage')).toEqual({ state: 'unavailable', leaves: [] });
+		expect(consentServiceAccess({ ...project, service_errors: { drover: 'policy_forbidden' } }, 'drover', 'manage')).toEqual({ state: 'unavailable', leaves: [], reason: 'policy_forbidden' });
 		expect(consentServiceAccess({ ...project, service_errors: { drover: '' } }, 'drover', 'manage').state).toBe('unavailable');
 		expect(consentServiceAccess({ ...project, service_permissions: { drover: ['waygate-inventory_reader'] } }, 'drover', 'manage').state).toBe('unavailable');
+	});
+
+	it('maps each closed native failure reason to its own explanation key', () => {
+		expect(consentServiceReasonKey('policy_forbidden')).toBe('mcpConsent.preview.reason.forbidden');
+		expect(consentServiceReasonKey('policy_timeout')).toBe('mcpConsent.preview.reason.timeout');
+		expect(consentServiceReasonKey('policy_unauthorized')).toBe('mcpConsent.preview.reason.unauthorized');
+		expect(consentServiceReasonKey('unknown_code')).toBe('mcpConsent.preview.service.unavailable');
+		expect(consentServiceReasonKey(undefined)).toBe('mcpConsent.preview.service.unavailable');
 	});
 
 	it('never turns absent project write metadata into write authority', () => {

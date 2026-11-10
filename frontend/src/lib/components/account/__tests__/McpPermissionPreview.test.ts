@@ -92,3 +92,9 @@ describe('MCP permission preview authority separation', () => {
 		expect(within(row(member)).getByText('drover-clusters_editor')).toBeTruthy();
 	});
 });
+
+it('shows the specific native failure reason instead of the generic unavailable text', () => {
+	render(McpPermissionPreview, { projects: [{ ...member, service_errors: { drover: 'policy_not_found' } }], accessLevel: 'read' });
+	expect(within(row(member)).getByText(t('mcpConsent.preview.reason.notFound'))).toBeTruthy();
+	expect(within(row(member)).queryByText(t('mcpConsent.preview.service.unavailable'))).toBeNull();
+});

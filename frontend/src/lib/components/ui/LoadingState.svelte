@@ -40,7 +40,7 @@
 
 <svelte:element this={tag} class="loading-state loading-state--{variant} {className}" role={copy || children ? 'status' : undefined} aria-live={copy || children ? 'polite' : undefined} aria-atomic={copy || children ? 'true' : undefined} {...rest}>
 	{#if variant === 'surface'}
-		<span class="loading-state__art" aria-hidden="true"><AfterglowOrbit ongeometry={value => { geometry = value; }} /></span>
+		<span class="loading-state__art" aria-hidden="true"><AfterglowOrbit interactive ongeometry={value => { geometry = value; }} /></span>
 	{:else if variant === 'section'}
 		<span class="loading-state__bar" data-art={flowBar($characterStep)} aria-hidden="true"></span>
 	{:else if variant === 'table'}

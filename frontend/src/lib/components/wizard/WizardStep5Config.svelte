@@ -55,6 +55,7 @@
 	let githubLookupFor = '';
 	let githubLookupGeneration = 0;
 	let githubHistoryRequested = false;
+	let githubHistoryLoading = false;
 	let githubPendingFor = '';
 
 	function githubKey(value: string): string {
@@ -63,8 +64,9 @@
 
 	async function loadGithubHistory() {
 		const { token, projectId } = get(auth);
-		if (!token) return;
+		if (!token || githubHistoryLoading) return;
 		githubHistoryRequested = true;
+		githubHistoryLoading = true;
 		try {
 			githubHistory = await api.get<GithubSshHistoryEntry[]>(
 				'/api/v1/instances/github-users/history',
@@ -73,7 +75,14 @@
 			);
 		} catch {
 			githubHistory = [];
+			githubHistoryRequested = false;
+		} finally {
+			githubHistoryLoading = false;
 		}
+	}
+
+	function retryGithubHistory() {
+		if (!githubHistoryRequested && $wizard.sshAccessMode === 'github' && s.githubSshEligible) void loadGithubHistory();
 	}
 
 	function isCurrentGithubLookup(username: string, generation: number): boolean {
@@ -380,6 +389,7 @@ function applyCloudInitPreset(event: Event) {
 			</div>
 		{/if}
 		{#if $wizard.sshAccessMode === 'github' && s.githubSshEligible}
+			<div class="contents" onfocusin={retryGithubHistory}>
 			<Field
 				label={t('config.github.usernameLabel')}
 				for="github-username"
@@ -403,6 +413,7 @@ function applyCloudInitPreset(event: Event) {
 					{/each}
 				</div>
 			{/if}
+			</div>
 			<div class="mt-2 text-xs" aria-live="polite">
 				{#if githubLookupStatus === 'loading'}<LoadingState variant="inline" label={t('config.github.loading')} />
 				{:else if githubLookupStatus === 'valid' && $wizard.githubProfile}

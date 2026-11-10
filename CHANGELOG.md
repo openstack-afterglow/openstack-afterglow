@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### Changed
+- 로그인·회원가입·계정 찾기 등 인증 화면, 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 좌측·대기 아트가 마우스 위치에 반응한다. 랜딩 히어로와 같은 `AfterglowOrbit interactive`를 쓴다.
+- 인스턴스 생성 사용 기간의 사유 입력란은 기간을 연장했을 때(또는 기존 사유가 있을 때)만 보인다. 백엔드가 사유를 요구하는 조건과 같다.
+
+### Fixed
+- GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
+
 ## [1.32.12] - 2026-11-09
 
 ### Added

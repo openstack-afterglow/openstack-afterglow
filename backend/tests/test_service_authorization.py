@@ -223,12 +223,12 @@ async def test_native_policy_outage_never_fabricates_capabilities_from_roles(mon
     async def unavailable(service, actual):
         assert actual is principal
         observed.append(service)
-        raise HTTPException(status_code=503, detail="Native service policy is unavailable")
+        raise service_proxy.NativePolicyError(503, "policy_unreachable")
 
     monkeypatch.setattr(service_proxy, "get_policy_capabilities", unavailable)
     permissions, errors = await service_authorization.service_permission_snapshot(principal)
     assert permissions == {service: [] for service in EXPECTED_CAPABILITIES}
-    assert errors == {service: "permission_check_unavailable" for service in EXPECTED_CAPABILITIES}
+    assert errors == {service: "policy_unreachable" for service in EXPECTED_CAPABILITIES}
     assert set(observed) == set(EXPECTED_CAPABILITIES)
 
 
@@ -284,7 +284,7 @@ async def test_native_policy_snapshot_timeout_is_opt_in_and_preserves_other_serv
         {"token": "exact-subject"}, timeout=0.01
     )
     assert permissions == {"lumen": [], "drover": ["drover-inventory_reader"], "waygate": []}
-    assert errors == {"lumen": "permission_check_unavailable"} and canceled.is_set()
+    assert errors == {"lumen": "policy_timeout"} and canceled.is_set()
     assert "waygate" not in observed
 
     started.clear()
@@ -363,5 +363,5 @@ async def test_preview_policy_catalog_thread_is_transport_bounded_and_drained(mo
         with pytest.raises(asyncio.CancelledError):
             await task
     else:
-        assert await task == ({"drover": []}, {"drover": "permission_check_unavailable"})
+        assert await task == ({"drover": []}, {"drover": "policy_timeout"})
     assert finished.is_set() and closed.is_set()

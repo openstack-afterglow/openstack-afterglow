@@ -100,11 +100,13 @@ def test_redirect_registration_allows_ip_loopback_dynamic_port_and_exact_path_qu
     assert redirect_uri_matches("http://[::1]/callback", "http://[::1]:41337/callback")
     assert not redirect_uri_matches("http://127.0.0.1/callback", "http://127.0.0.1/other")
     assert not redirect_uri_matches("http://127.0.0.1/callback?a=1", "http://127.0.0.1/callback?a=2")
-    with pytest.raises(McpOAuthError, match="IP-literal"):
-        validate_redirect_uris(["http://localhost/callback"])
+    assert validate_redirect_uris(["http://localhost/callback"]) == ("http://localhost/callback",)
+    assert redirect_uri_matches("http://localhost/callback", "http://localhost:53796/callback")
+    with pytest.raises(McpOAuthError, match="loopback"):
+        validate_redirect_uris(["http://example.test/callback"])
     with pytest.raises(McpOAuthError, match="credentials"):
         validate_redirect_uris(["http://127.0.0.1/callback#fragment"])
-    with pytest.raises(McpOAuthError, match="IP-literal"):
+    with pytest.raises(McpOAuthError, match="loopback"):
         validate_redirect_uris(["https://*.example.test/callback"])
     with pytest.raises(McpOAuthError, match="credentials"):
         validate_redirect_uris(["https://user:pass@client.example.test/callback"])
@@ -223,6 +225,50 @@ async def test_dynamic_registration_uses_public_transport_and_never_stores_secre
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "invalid_request"
     assert "client_id" in rejected.json()["error_description"]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_registration_accepts_localhost_callback_and_rejects_bad_redirect_as_400(monkeypatch):
+    from app.main import app
+
+    added_clients = []
+
+    class CapturingSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def begin(self):
+            return self
+
+        def add(self, client):
+            added_clients.append(client)
+
+    monkeypatch.setattr(mcp_api, "_require_enabled", lambda: None)
+    monkeypatch.setattr(mcp_api, "_session_factory", lambda: CapturingSession)
+    claude_code_registration = {
+        "client_name": "Claude Code",
+        "redirect_uris": ["http://localhost:53796/callback"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+        "scope": "mcp:read mcp:write",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        accepted = await client.post("/api/v1/mcp/oauth/register", json=claude_code_registration)
+        rejected = await client.post(
+            "/api/v1/mcp/oauth/register",
+            json={**claude_code_registration, "redirect_uris": ["http://example.test/callback"]},
+        )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["redirect_uris"] == ["http://localhost:53796/callback"]
+    assert len(added_clients) == 1
+    assert rejected.status_code == 400
+    assert rejected.json()["error"] == "invalid_request"
+    assert "loopback" in rejected.json()["error_description"]
 
 
 @pytest.mark.asyncio
@@ -442,3 +488,49 @@ async def test_token_malformed_form_has_bounded_reason_and_no_payload_logging(mo
     assert "private-payload" not in caplog.text
     assert "duplicate-secret" not in caplog.text
     refresh.assert_not_awaited()
+
+
+@pytest.mark.parametrize("grant_types", [None, "authorization_code", [{}], ["authorization_code", None]])
+def test_public_client_grant_types_must_be_a_string_list(grant_types):
+    from app.services.mcp_control_plane.oauth_authority import (
+        McpOAuthAuthorityError,
+        _validate_public_client_metadata,
+    )
+
+    metadata = {
+        "redirect_uris": ["https://client.example.test/callback"],
+        "grant_types": grant_types,
+        "token_endpoint_auth_method": "none",
+    }
+    with pytest.raises(McpOAuthAuthorityError, match="authorization_code and refresh_token"):
+        _validate_public_client_metadata(metadata)
+
+
+@pytest.mark.asyncio
+async def test_consent_details_name_the_authorization_domain(monkeypatch):
+    import json
+
+    monkeypatch.setattr(mcp_api, "_require_enabled", lambda: None)
+    monkeypatch.setattr(mcp_api, "_session_factory", lambda: object())
+    monkeypatch.setattr(
+        mcp_api,
+        "load_consent_ticket",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                client_id="client-id",
+                client_name="Codex",
+                redirect_uri="http://localhost:53796/callback",
+                scopes=("mcp:read",),
+                grant_deadline=datetime(2026, 8, 1, tzinfo=UTC),
+            )
+        ),
+    )
+
+    response = await mcp_api.get_oauth_consent(
+        "ticket",
+        token_info={"user_id": "user-a", "project_id": "project-a", "domain_id": "domain-a", "domain_name": "DMS Lab"},
+    )
+
+    payload = json.loads(response.body)
+    assert payload["domain_id"] == "domain-a"
+    assert payload["domain_name"] == "DMS Lab"

@@ -322,6 +322,14 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
         raise HTTPException(status_code=502, detail=f"{service_type} 응답 형식이 잘못되었습니다") from exc
 
 
+class NativePolicyError(HTTPException):
+    """Failed native policy read. The HTTP status keeps its existing consumer meaning; the reason names the raise site."""
+
+    def __init__(self, status_code: int, reason: str, detail: str = "Native service policy is unavailable") -> None:
+        super().__init__(status_code=status_code, detail=detail)
+        self.reason = reason
+
+
 async def get_policy_capabilities(service_type: str, token_info: dict, *, timeout: float | None = None) -> dict:
     """Read current operator-policy decisions using the original native subject.
 
@@ -331,14 +339,14 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
     from app.services.service_permissions import SERVICE_CAPABILITIES
 
     if service_type not in SERVICE_CAPABILITIES:
-        raise HTTPException(status_code=403, detail="Unknown service policy")
+        raise NativePolicyError(403, "policy_local_guard", "Unknown service policy")
     token = token_info.get("token")
     project_id = token_info.get("project_id")
     connection_project = token_info.get("connection_project_id", project_id)
     if not token or not project_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise NativePolicyError(401, "policy_local_guard", "Authentication required")
     if connection_project != project_id and token_info.get("_live_system_admin") is not True:
-        raise HTTPException(status_code=403, detail="Original subject and target project disagree")
+        raise NativePolicyError(403, "policy_local_guard", "Original subject and target project disagree")
     settings = get_settings()
     if service_type == "palimpsest":
         endpoint = _package_endpoint(_configured_internal_endpoint(service_type))
@@ -359,11 +367,11 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
             )
         verify = settings.ssl_verify
     if not endpoint:
-        raise HTTPException(status_code=503, detail="Native service policy is unavailable")
+        raise NativePolicyError(503, "policy_unreachable")
     try:
         url = join_version_aware_url(endpoint, "/v1/policy/capabilities")
     except ValueError as exc:
-        raise HTTPException(status_code=503, detail="Native service policy is unavailable") from exc
+        raise NativePolicyError(503, "policy_unreachable") from exc
     headers = {"x-auth-token": token, "x-project-id": connection_project, "accept": "application/json"}
     if connection_project != project_id:
         headers["x-target-project-id"] = project_id
@@ -375,14 +383,18 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
         ) as client:
             response = await client.get(url, headers=headers)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail="Native service policy is unavailable") from exc
+        raise NativePolicyError(503, "policy_unreachable") from exc
     if response.status_code != 200:
-        status = response.status_code if response.status_code in {401, 403} else 503
-        raise HTTPException(status_code=status, detail="Native service policy is unavailable")
+        code = response.status_code
+        if code == 401:
+            raise NativePolicyError(401, "policy_unauthorized")
+        if code == 403:
+            raise NativePolicyError(403, "policy_forbidden")
+        raise NativePolicyError(503, "policy_not_found" if code == 404 else "policy_upstream_error")
     try:
         payload = response.json()
     except ValueError as exc:
-        raise HTTPException(status_code=502, detail="Invalid native policy response") from exc
+        raise NativePolicyError(502, "policy_invalid_response", "Invalid native policy response") from exc
     known = frozenset(SERVICE_CAPABILITIES[service_type])
     if (
         not isinstance(payload, dict)
@@ -392,7 +404,7 @@ async def get_policy_capabilities(service_type: str, token_info: dict, *, timeou
         or not isinstance(payload.get("actions"), list)
         or any(not isinstance(action, str) or not action for action in payload["actions"])
     ):
-        raise HTTPException(status_code=502, detail="Invalid native policy response")
+        raise NativePolicyError(502, "policy_invalid_response", "Invalid native policy response")
     return payload
 
 

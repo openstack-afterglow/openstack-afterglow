@@ -6,6 +6,34 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 대기 화면 마우스 반응·생성 화면 사용 기간 수정과 운영 관측 (2026-11-09, source/local, 원인 미확정)
+
+- 범위: 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 아트를 랜딩 히어로·인증 화면과 같은 `AfterglowOrbit interactive`로 바꿨다. OpenSpec change `add-waiting-art-pointer-light`에 기록했다.
+- 호출부 검증: `LoadingState.orbit.test.ts`(surface는 `interactive`, section은 orbit 없음)와 `VmResourcePreparation.orbit.test.ts`(`interactive` 전달)를 추가했다. 두 파일 모두 `AfterglowOrbit`을 `data-interactive`를 내보내는 probe로 바꿔 검증한다. `LoadingState`에서 `interactive`를 제거하면 surface 테스트가 실패하는 것을 확인했다.
+- 사용 기간 사유: 연장하지 않으면 사유 입력란을 숨긴다(`extended || value.reason`). 백엔드는 초기 기본 기간을 넘는 일정과 연장에만 사유를 요구한다. 관련 테스트 4개 파일 147건이 통과했다.
+- GitHub 최근 사용자(내성 개선, 보고된 화면 원인은 미확정): 첫 조회 실패 뒤에도 사용자 ID 입력란에 포커스하면 다시 조회한다. 실패 시 숨김 상태를 유지하던 회귀는 `retries the recent GitHub users...` 테스트로 고정했다. 보고된 화면의 원인은 확정하지 못했다.
+- 프런트엔드 단위 전체: 588 파일 / 7917 tests 통과(Node 22, 호출부 wiring 테스트 추가 전 실행).
+- 한계: 대기 화면의 마우스 반응은 브라우저에서 확인하지 않았다. 단위 테스트만 근거다. 전체 `test:gate`는 이 기록 시점에 실행하지 않았다.
+
+### Nova 인스턴스 생성 MessagingTimeout 운영 관측 (읽기 전용, 수정 없음)
+
+- 대상: 2026-11-09 `aurora-zenith-872f26`(`58fbb49b-79bf-45af-b7dc-f1c91ba40773`)과 첫 시도 `6e139533-d644-41e0-a0b0-9350e2cba279`. 두 요청 모두 Conductor `MessagingTimeout`으로 실패했다.
+- 확정된 사실: Nova API는 10:18:52.421 UTC에 `POST /servers`를 HTTP 202로 접수했다. 202는 비동기 접수일 뿐이며 호스트 배정이나 VM 생성 완료를 뜻하지 않는다. scheduler는 약 0.1초 만에 Placement 후보 조회(200)와 claim(`PUT /allocations` 204)을 끝냈다. 그 뒤 약 84초 동안 scheduler 로그가 없었다. Conductor는 10:19:52.539 UTC에 `select_destinations` RPC 응답을 받지 못해 `MessagingTimeout`을 기록했다. 10:19:53.559 UTC에 Nova API가 `instance's host None is down, deleting from database`를 기록하고 삭제를 접수했다. 10:19:53.889 UTC에 Placement allocation이 삭제됐다(204). 10:24:58.672 UTC 조회는 404였다.
+- 설치된 Nova 코드 확인: Conductor는 `schedule_and_build_instances`에서 scheduler 결과를 받은 뒤에만 `compute_rpcapi.build_and_run_instance`를 보낸다. scheduler 응답이 없으면 compute 호스트는 이 요청에 관여하지 않았다.
+- 연결 상태: RabbitMQ는 10:20:16 UTC에 해당 scheduler 연결을 `missed heartbeats from client`로 닫았다. 11월 9일 Conductor에서 `MessagingTimeout` 4건(00:55, 01:46, 10:16, 10:19 UTC)을 확인했다. `missed heartbeats` 뒤 재접속이 기록된 연결은 controller1 scheduler 1·conductor 3, controller2 scheduler 2, controller3 scheduler 3으로 합계 9개이며 약 91초 주기였다. 11:34 UTC에도 controller1 scheduler의 끊김·재접속이 로그에 남아 있었다. 이 수치는 기록된 시점까지의 집계이며 현재 상태가 아니다.
+- 재발 감시: 11:35–11:44 UTC 10분 감시에서 세 controller의 `Failed to schedule`/`MessagingTimeout` 누적 카운트가 변하지 않았다. 감시 기간 중 재발은 없었다. GMR(SIGUSR2)은 보내지 않았다.
+- 잔여물: 두 서버는 Nova에서 삭제됐고 Placement 할당도 해제됐다. 두 부트 볼륨 `abeac89a-d701-491f-9a99-9082bb1eb822`, `c6f2700c-6e17-4b35-9701-218e58e6cc5c`는 현재 존재하지 않는다. 볼륨 삭제 요청 시각(10:16:54, 10:19:54 UTC)은 두 시도와 맞지만 요청 ID로 직접 연결하지는 못했다.
+- 원인 경계: 확정된 실패 지점은 scheduler의 claim 이후 응답 반환 누락과 Conductor 60초 timeout이다. scheduler를 멈춘 최초 원인은 확정하지 못했다. RabbitMQ heartbeat 손실은 시간상 연관되지만 직접 원인인지 입증되지 않았다.
+- 필요한 다음 증거: 다음 정체 중 scheduler worker의 stack(GMR SIGUSR2 덤프는 `docker logs nova_scheduler` stderr에 출력됨)을 요청 ID와 함께 수집한다. 운영 프로세스 신호는 별도 승인 범위에서만 보낸다.
+- 재시도 위험: scheduler 연결 순환이 해소됐다는 증거가 없으므로 같은 GPU 인스턴스를 바로 다시 만들지 않는다.
+
+### Flavor 선택 지연 운영 관측 (읽기 전용, 수정 없음)
+
+- 운영 관측(최근 6시간 Afterglow backend 로그, 3개 controller 합산 표본 6~15건, 엔드포인트별 정확한 표본 수는 재집계하지 않음): `GET /api/v1/flavors/compositions` p50 약 10초대, `composer-options` 약 8초, `GET /api/v1/flavors` 약 7.5초, 저장 `POST /flavors/compositions` 약 22초. Placement 개별 쿼리 p50은 약 95ms다.
+- 호출 발생원(코드): `nova._project_visible_flavors`(비공개 flavor마다 access 조회), `nova.flavor_extra_specs`(목록에 `extra_specs`가 없을 때 flavor마다 조회), `flavor_composition.py`의 단건·ACL 조회. `nova.py`는 인가 판정 캐시를 금지한다(92–93행). 요청당 호출 수는 직접 세지 못했으므로 "직렬 반복이 원인"이라는 것은 추론이다.
+- 수정하지 않았다. 해결에는 인가 판정을 유지한 병렬화, 인가와 무관한 사실의 짧은 캐시, 또는 백엔드 총 쿼터 결정 중 설계 선택이 필요하다.
+
+
 ## 1.32.12 후보 전체 게이트 재실행 (2026-11-09, source/local, 통과)
 
 - 실행: Node 22와 Python 3.12.13(`backend/.venv`)을 PATH 앞에 두고 `npm run test:gate`를 실행했다. 게이트 종료 코드는 0이다. `docs:check`는 소스 `7f7bfd2bac2b914a9a4f5ea377aaba4fc57eec8f16912d1b7d303822979d93e9`(4318 files)에 대해 통과했다.
@@ -4516,3 +4544,17 @@ Effective settings를 기존 production/isolated candidate에서 비밀 출력 �
 - 마지막 빌드에서 확인한 범위(두 너비, Escape 없이 끝까지): `admin-announcements`, `volume-snapshots`(실패 후 재시도 포함), 스크롤 동기화 4개(security-groups, volume, volume-backups, networks), `account-mcp`, `admin-ports`, `admin-groups`, `admin-users`, `admin-roles`, `admin-domains`, `admin-projects`, `admin-flavors`, `vm-create`, `instance-detail-delete`, `database-backups`. 폼 필드 정보 단계 포커스 규칙·스크롤 동기화·`rewindOnNew`가 들어가기 직전 빌드에서 전체 걷기를 통과한 투어는 secrets, iam-projects, keypairs, buckets, containers, volume, volume-backups, security-groups, networks, floating-ips, file-storage, load-balancers, routers, containers-clusters, database-instances, admin-networks, admin-routers, admin-floating-ips, admin-application-credentials, admin-object-storage이며 이들을 가장 마지막 빌드에서 다시 걷지는 않았다(위 변경이 이들의 동작을 바꾸는지는 단위 테스트로만 확인).
 - 알려진 한계(미수정): 정보 단계(다음 버튼)는 자동 포커스를 바꾸지 않아 마지막 단계 등에서 포커스가 팝오버 ×에 있고 Space·Enter가 투어를 닫는다. `admin-domains` 5단계의 체크박스 단계, `admin-application-credentials`의 대화상자는 로딩 중 이름 입력이 disabled라 대화상자 자체의 닫기 버튼으로 포커스가 갈 수 있다(`dialogFocus`). `iam-groups`(사용자 IAM 그룹)는 튜토리얼 인증에 `isDomainManager`가 없어 투어를 등록하지 않았다. 관리자 서브넷·볼륨·컨테이너·파일 스토리지·설정·서비스·시스템 관리자·사용자 자격증명 페이지와 채팅은 투어가 없다.
 - 미완: 실제 세션 스모크(승인 대기), `test:gate`, 위 "마지막 빌드에서 다시 걷지 않은" 투어의 재확인.
+
+## MCP 동의 도메인·DCR·정책 사유 검증 기록 (2026-11-10, local)
+
+- Backend: `cd backend && uv run --extra dev pytest tests/test_mcp_oauth.py tests/test_service_policy_error_reasons.py` → 60 passed. 새 회귀는 localhost loopback 등록 201, 비loopback HTTP 400, 문자열이 아닌 `grant_types` 400, 동의 응답의 `domain_id`/`domain_name`, 정책 실패 사유 코드 매핑과 snapshot 분류를 포함한다.
+- Frontend: `npx vitest run src/lib/utils/mcpConsentPermissions.test.ts src/lib/components/account src/routes/oauth` → 398 passed; 같은 범위 `routes/oauth`·`components/account` 실행 496 passed. `npm run i18n:check` → 0 errors (9개 로케일 `mcpConsent.details.domain`, `mcpConsent.domain.help`, `mcpConsent.preview.reason.*` 추가). `npx svelte-check --threshold error` → 0 errors.
+- `npm run test:gate`: 실패. 첫 단계 `docs:check`(`scripts/check_architecture.py`)가 작업 트리 스냅샷 stale로 종료 1. 스냅샷에는 이번 변경과 함께 다른 작업자의 미커밋 frontend·openspec 변경이 포함되어 있어 `--stamp`로 검토되지 않은 코드를 승인하지 않았다. 나머지 단계(experience catalog, lint:backend, test:all)는 별도 실행 결과를 아래에 기록한다.
+- 미검증: 실제 Claude Code·Hermes의 DCR 재시도, member 미리보기의 실제 사유 코드, 운영 배포 빌드의 버전(eabb439a는 1.32.10 이후 태그에 포함).
+
+## MCP 동의 도메인 전환·사유 분류 후속 검증 (2026-11-10, local)
+
+- 재바인딩 음성 테스트(`backend/tests/test_mcp_consent_domain_switch.py`): 같은 사용자의 pending 티켓 재바인딩 성공, rebind 없는 프로젝트 변경 거부, 다른 사용자 재바인딩 거부, 처리된 티켓 재바인딩 거부, 오래된 프로젝트에서 승인 거부, `/mcp-projects`의 도메인 라벨을 포함한다. 실제 DB 대신 `SQLAlchemy` 열 엔티티로 키를 고르는 fake session을 쓴다.
+- 정책 사유 분류(`backend/tests/test_service_policy_error_reasons.py`): `get_policy_capabilities`의 raise 지점에서 붙인 `NativePolicyError.reason`을 HTTP 상태와 독립적으로 검증한다. native 401/403/404/500, 전송 실패, 로컬 가드(토큰 없음·대상 불일치)가 서로 다른 사유가 되는지 확인한다.
+- 실행 결과: 백엔드 `test:unit:backend` 14764 passed·106 skipped; 프런트 `test:unit:frontend` 통과; `test:contract` 통과; `test:orchestration`(venv python3 PATH) 통과; `npm run i18n:check` 0 errors; `svelte-check --threshold error` 0 errors; `experience:catalog:check` 통과.
+- 한계: 실제 브라우저에서 도메인 변경 후 재승인 흐름은 실행하지 않았다. 운영 사용자 미리보기의 실제 사유 코드는 확인하지 않았다. `npm run test:gate`의 `docs:check`는 스냅샷 stamp 이후에만 통과할 수 있다.

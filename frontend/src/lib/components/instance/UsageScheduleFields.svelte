@@ -49,11 +49,13 @@
 		<p class="text-sm text-ink-2">{t('retain')}</p>
 	{/if}
 	{/if}
+	{#if extended || value.reason}
 	<Field label={t('reason')} for="{idPrefix}-reason" required={extended} help={t('reasonHelp')}>
 		<TextInput id="{idPrefix}-reason" value={value.reason} {disabled} required={extended} ariaInvalid={error === 'reasonInvalid' || error === 'reasonRequired'}
 			oninput={(event) => onchange({ ...value, reason: (event.target as HTMLInputElement).value })} />
 		<span class="text-xs tabular-nums text-ink-2">{reasonBytes} / 255 UTF-8</span>
 		{#if extended}<p class="text-sm leading-relaxed text-ink-2">{t('reasonFollowup')}</p>{/if}
 	</Field>
+	{/if}
 	{#if error}<Alert tone="danger">{t(error)}</Alert>{/if}
 </div>

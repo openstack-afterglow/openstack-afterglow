@@ -40,7 +40,7 @@
 
 	<main id="main-content" tabindex="-1" class="auth-layout">
 		<section class="auth-identity" aria-label={t('authStudio.artLabel')}>
-			<AfterglowOrbit active={motion} />
+			<AfterglowOrbit active={motion} interactive />
 			<button type="button" class="auth-motion" onclick={() => { motion = !motion; }}>
 				{motion ? t('landing.story.hero.pauseMotion') : t('landing.story.hero.playMotion')}
 			</button>

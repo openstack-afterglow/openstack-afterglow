@@ -499,7 +499,7 @@ async def test_project_preview_isolates_unknown_projects_and_independent_service
     assert b["service_permissions"] == {service: [] for service in mcp_services}
     assert b["service_errors"] == {service: "permission_check_unavailable" for service in mcp_services}
     assert c["service_permissions"]["drover"] == ["drover-inventory_reader"]
-    assert c["service_errors"] == {"palimpsest": "permission_check_unavailable"}
+    assert c["service_errors"] == {"palimpsest": "policy_timeout"}
     assert "lumen" not in c["service_permissions"]
     assert canceled_policy.is_set()
     if failure == "timeout":
@@ -758,7 +758,11 @@ async def test_project_preview_endpoint_excludes_lumen_without_changing_native_p
     try:
         cheap = await client.get("/api/v1/auth/mcp-projects")
         assert cheap.status_code == 200
-        assert cheap.json() == [{"id": provider.a, "name": "A"}, {"id": provider.b, "name": "B"}]
+        assert [{"id": p["id"], "name": p["name"]} for p in cheap.json()] == [
+            {"id": provider.a, "name": "A"},
+            {"id": provider.b, "name": "B"},
+        ]
+        assert all({"domain_id", "domain_name"} <= p.keys() for p in cheap.json())
         assert cheap.headers["cache-control"] == "no-store"
         assert not observed and not provider.rescopes
         response = await client.get("/api/v1/auth/mcp-projects?preview=true")
@@ -772,7 +776,18 @@ async def test_project_preview_endpoint_excludes_lumen_without_changing_native_p
     assert len(rows) == 2 and set(by_project) == {provider.a, provider.b}
     # The public preview must not leak request-local credentials or scope proof metadata.
     assert all(
-        set(row) == {"id", "name", "can_write", "service_permissions", "service_errors", "scope_error"} for row in rows
+        set(row)
+        == {
+            "id",
+            "name",
+            "can_write",
+            "service_permissions",
+            "service_errors",
+            "scope_error",
+            "domain_id",
+            "domain_name",
+        }
+        for row in rows
     )
     assert by_project[provider.a]["can_write"] is True
     assert by_project[provider.b]["can_write"] is False
@@ -1444,7 +1459,11 @@ async def test_mcp_http_hides_and_refuses_a_domain_default_project(client, proje
         app.dependency_overrides.update(previous)
 
     assert listed.status_code == 200
-    assert listed.json() == [{"id": provider.a, "name": "A"}, {"id": provider.b, "name": "B"}]
+    assert [{"id": p["id"], "name": p["name"]} for p in listed.json()] == [
+        {"id": provider.a, "name": "A"},
+        {"id": provider.b, "name": "B"},
+    ]
+    assert all({"domain_id", "domain_name"} <= p.keys() for p in listed.json())
     assert previewed.status_code == 200
     assert {row["id"] for row in previewed.json()} == {provider.a, provider.b}
     assert selected.status_code == 400 and "Default project" in selected.json()["detail"]

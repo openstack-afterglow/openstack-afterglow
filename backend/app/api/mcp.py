@@ -392,6 +392,7 @@ async def get_oauth_consent(ticket: str, token_info: dict = Depends(get_token_in
             ticket=ticket,
             owner_user_id=token_info["user_id"],
             owner_project_id=token_info["project_id"],
+            rebind_project=True,
         )
     except McpOAuthAuthorityError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -403,6 +404,8 @@ async def get_oauth_consent(ticket: str, token_info: dict = Depends(get_token_in
             "scopes": consent.scopes,
             "grant_deadline": consent.grant_deadline.isoformat(),
             "ongoing_supported": True,
+            "domain_id": token_info.get("domain_id"),
+            "domain_name": token_info.get("domain_name"),
         },
         headers=_OAUTH_NO_STORE,
     )

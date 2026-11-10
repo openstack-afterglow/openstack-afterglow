@@ -261,7 +261,9 @@ async def test_member_preview_and_mixed_manage_reuse_native_catalog_without_toke
                 assert "waygate" not in row["service_errors"]
             else:
                 assert row["service_permissions"]["waygate"] == []
-                assert row["service_errors"]["waygate"] == "permission_check_unavailable"
+                assert row["service_errors"]["waygate"] == {403: "policy_forbidden", 404: "policy_not_found"}.get(
+                    waygate_status, "policy_upstream_error"
+                )
         # Current scope uses its validated catalog without issuing another
         # token. Only the proven unscoped browser login derives other scopes.
         rescope_subject = "browser-token" if root_case == "absent" else "login-root"
