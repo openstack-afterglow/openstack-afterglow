@@ -2140,9 +2140,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "c2c2b690daebab99d93131733dfc7e7c82c5775c5a5afebf113d625bccdee935",
-  "reviewed_at": "2026-11-10T22:39:41Z",
-  "summary": "SSO 최종 트리: identity-only 제거(schema 2.0, 템플릿 필수), type:local 기존 계정 연결 분기와 federate 수준 테스트(성공·거부 4), lint/format 통과, 집중 테스트 365 passed. 문서·OpenSpec 갱신."
+  "source_sha256": "4c644ede9bb492d52271f733cbb63518af820dfeb1bca84e165b01e301ee5df0",
+  "reviewed_at": "2026-11-10T22:52:00Z",
+  "summary": "1.32.13 버전 메타데이터 bump 이후 snapshot 재스탬프(root/frontend/backend/uv.lock/Helm 버전 값만 변경)."
 }
 ```
 <!-- architecture-review:end -->
