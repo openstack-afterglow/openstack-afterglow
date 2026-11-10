@@ -2136,9 +2136,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "41954d5809345202e3af0e6a426787df5c92d5838d048a6f346333c882f58a43",
-  "reviewed_at": "2026-11-10T11:56:50Z",
-  "summary": "docs/testing.md 검토: MCP 동의 검증 기록의 오래된 gate 실패 문구를 최종 test:gate exit 0 기록으로 교체하고 한계 문구 정정. 제품 소스 변경 없음. OpenSpec tasks 5.2 수치도 정정(아키텍처 스냅샷 밖)."
+  "source_sha256": "d5d2c3a11c325be29ebecb6a9ca4dd2d5b13e081dc1a20bf34764c6d50e132d5",
+  "reviewed_at": "2026-11-10T11:59:17Z",
+  "summary": "테스트 타입 정정 검토: consent page.test.ts 호이스트 auth 목 타입에 availableDomains 선택 필드 추가(svelte-check TS2353 3건 해소). 제품 소스 변경 없음. 검증: svelte-check --threshold error 0 errors, page.test.ts vitest 94 passed."
 }
 ```
 <!-- architecture-review:end -->

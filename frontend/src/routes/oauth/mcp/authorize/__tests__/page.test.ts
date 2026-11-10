@@ -29,7 +29,7 @@ const { api, auth, projectSwitching, goto, page } = vi.hoisted(() => {
 	}
 	return {
 		api: { get: vi.fn(), post: vi.fn() },
-		auth: store<{ token: string | null; userId: string | null; projectId: string | null }>({ token: null, userId: null, projectId: null }),
+		auth: store<{ token: string | null; userId: string | null; projectId: string | null; availableDomains?: { id: string; name: string }[] }>({ token: null, userId: null, projectId: null }),
 		projectSwitching: store(false),
 		goto: vi.fn(),
 		page: store({ url: new URL('http://localhost/oauth/mcp/authorize'), data: {} }),
