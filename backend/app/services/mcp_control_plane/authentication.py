@@ -77,7 +77,7 @@ async def lock_principal_grant(session, principal: McpPrincipal, *, write: bool 
             owner_lock = await lock_owner(session, owner_user_id=principal.user_id, owner_project_id=selection_project)
         selection = await session.get(
             McpLumenSelection,
-            {"owner_user_id": principal.user_id, "owner_project_id": selection_project},
+            {"owner_user_id": principal.user_id, "owner_project_id": selection_project, "grant_id": principal.grant_id},
             with_for_update=True,
         )
         if (

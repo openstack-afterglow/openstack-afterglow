@@ -130,14 +130,14 @@ class McpPersonalToken(Base):
 
 
 class McpLumenSelection(Base):
-    """Exactly one selected active personal-token or internal Lumen grant per user/project."""
+    """Active personal-token or internal Lumen grants enabled for Lumen, several per user/project."""
 
     __tablename__ = "mcp_lumen_selections"
 
     owner_user_id: Mapped[str] = mapped_column(VARCHAR(64), primary_key=True)
     owner_project_id: Mapped[str] = mapped_column(VARCHAR(64), primary_key=True)
     grant_id: Mapped[str] = mapped_column(
-        CHAR(36), ForeignKey("mcp_delegated_grants.id", ondelete="RESTRICT"), nullable=False
+        CHAR(36), ForeignKey("mcp_delegated_grants.id", ondelete="RESTRICT"), primary_key=True, nullable=False
     )
     selected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)

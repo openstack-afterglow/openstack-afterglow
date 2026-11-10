@@ -748,3 +748,39 @@ async def test_later_selection_action_during_role_preparation_cancels_approval(o
     else:
         assert current.grant_id == manual_id
         assert (await lumen.resolve_lumen_principal(current)).can_write
+
+
+async def test_several_personal_grants_are_enabled_together(owner):
+    first = await personal_selection(owner)
+    second = await personal_selection(owner)
+    snapshots = await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"])
+    assert {snapshot.grant_id for snapshot in snapshots} == {first, second}
+    assert len(snapshots) == 2
+
+
+async def test_disabling_one_grant_leaves_the_other_enabled(owner):
+    first = await personal_selection(owner)
+    second = await personal_selection(owner)
+    generation = await authority.unset_lumen_grant(
+        owner.factory,
+        owner_user_id=owner.info["user_id"],
+        owner_project_id=owner.info["project_id"],
+        username="manual-owner",
+        grant_id=first,
+    )
+    snapshots = await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"])
+    assert [snapshot.grant_id for snapshot in snapshots] == [second]
+    assert generation >= 1
+
+
+async def test_clearing_all_removes_every_enabled_grant(owner):
+    await personal_selection(owner)
+    await personal_selection(owner)
+    await authority.set_lumen_selection(
+        owner.factory,
+        owner_user_id=owner.info["user_id"],
+        owner_project_id=owner.info["project_id"],
+        username="manual-owner",
+        grant_id=None,
+    )
+    assert await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"]) == []

@@ -27,12 +27,21 @@ def _factory():
     return factory
 
 
+async def _first_selection(session, *, user_id: str, project_id: str):
+    """The owner's oldest enabled selection. Default flows act on this one row only."""
+    return (
+        await session.scalars(
+            select(McpLumenSelection)
+            .where(McpLumenSelection.owner_user_id == user_id, McpLumenSelection.owner_project_id == project_id)
+            .order_by(McpLumenSelection.selected_at, McpLumenSelection.grant_id)
+            .limit(1)
+            .with_for_update()
+        )
+    ).first()
+
+
 async def _selected(session, *, owner_lock, user_id: str, project_id: str):
-    selection = await session.get(
-        McpLumenSelection,
-        {"owner_user_id": user_id, "owner_project_id": project_id},
-        with_for_update=True,
-    )
+    selection = await _first_selection(session, user_id=user_id, project_id=project_id)
     if selection is None:
         return None, None
     grant = await authority._lock_grant(
@@ -57,12 +66,17 @@ async def _selected(session, *, owner_lock, user_id: str, project_id: str):
     return selection, snapshot
 
 
-def _select(session, *, selection, owner_lock, grant, user_id: str, project_id: str) -> None:
-    if selection is None:
-        session.add(McpLumenSelection(owner_user_id=user_id, owner_project_id=project_id, grant_id=grant.id))
-    else:
-        selection.grant_id = grant.id
-        selection.updated_at = authority._now()
+async def _select(session, *, selection, owner_lock, grant, user_id: str, project_id: str) -> None:
+    """Replace only the stale selection; other grants the owner enabled stay enabled."""
+    if selection is not None and selection.grant_id != grant.id:
+        await session.delete(selection)
+    if selection is None or selection.grant_id != grant.id:
+        existing = await session.get(
+            McpLumenSelection,
+            {"owner_user_id": user_id, "owner_project_id": project_id, "grant_id": grant.id},
+        )
+        if existing is None:
+            session.add(McpLumenSelection(owner_user_id=user_id, owner_project_id=project_id, grant_id=grant.id))
     owner_lock.lumen_selection_generation += 1
 
 
@@ -270,12 +284,8 @@ async def approve_lumen_grant(*, token_info: dict, access_level: str) -> None:
             grant.issued_at = authority._now()
             grant.cleanup_pending = False
             grant.orphan_recovery_after = None
-            selection = await session.get(
-                McpLumenSelection,
-                {"owner_user_id": user_id, "owner_project_id": project_id},
-                with_for_update=True,
-            )
-            _select(
+            selection = await _first_selection(session, user_id=user_id, project_id=project_id)
+            await _select(
                 session, selection=selection, owner_lock=owner_lock, grant=grant, user_id=user_id, project_id=project_id
             )
             authority._audit(
@@ -315,11 +325,7 @@ async def disable_lumen_grant(*, token_info: dict) -> None:
     cleanup_ids = []
     async with factory() as session, session.begin():
         owner_lock = await authority.lock_owner(session, owner_user_id=user_id, owner_project_id=project_id)
-        selection = await session.get(
-            McpLumenSelection,
-            {"owner_user_id": user_id, "owner_project_id": project_id},
-            with_for_update=True,
-        )
+        selection = await _first_selection(session, user_id=user_id, project_id=project_id)
         if selection is not None:
             await session.delete(selection)
         owner_lock.lumen_selection_generation += 1

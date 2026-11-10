@@ -32,6 +32,7 @@ from app.services.mcp_control_plane.authority import (
     personal_token_grant_id,
     revoke_grant,
     set_lumen_selection,
+    unset_lumen_grant,
 )
 from app.services.mcp_control_plane.projects import caller_membership_projects, project_permission_preview
 from app.services.mcp_control_plane.verification import (
@@ -398,6 +399,36 @@ async def delete_mcp_token(
         _raise_authority_error(exc)
     _mark_transactional_audit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/mcp-tokens/{token_id}/lumen-default", response_model=McpLumenSelectionResponse)
+async def unset_mcp_lumen_default(
+    token_id: str,
+    request: Request,
+    token_info: dict = Depends(get_token_info),
+):
+    """Disable one enabled grant for Lumen; the owner's other enabled grants are unchanged."""
+    _require_browser_mutation(request)
+    factory = _session_factory()
+    try:
+        async with factory() as session:
+            grant_id = await personal_token_grant_id(
+                session,
+                token_id=token_id,
+                owner_user_id=token_info["user_id"],
+                owner_project_id=token_info["project_id"],
+            )
+        generation = await unset_lumen_grant(
+            factory,
+            owner_user_id=token_info["user_id"],
+            owner_project_id=token_info["project_id"],
+            username=token_info.get("username", token_info["user_id"]),
+            grant_id=grant_id,
+        )
+    except McpAuthorityError as exc:
+        _raise_authority_error(exc)
+    _mark_transactional_audit()
+    return McpLumenSelectionResponse(lumen_selection_generation=generation)
 
 
 @router.put("/mcp-tokens/{token_id}/lumen-default", response_model=McpLumenSelectionResponse)

@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from keystoneclient.utils import isotime
 from openstack import exceptions as sdk_exc
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -1018,10 +1018,10 @@ async def revoke_grant(
             token.revoked_at = token.revoked_at or now
         selection = await session.get(
             McpLumenSelection,
-            {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},
+            {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id, "grant_id": grant.id},
             with_for_update=True,
         )
-        selection_cleared = selection is not None and selection.grant_id == grant.id
+        selection_cleared = selection is not None
         if selection_cleared:
             await session.delete(selection)
             owner_lock.lumen_selection_generation += 1
@@ -1065,21 +1065,25 @@ async def set_lumen_selection(
                 raise McpGrantStateError("Lumen selection requires active delegated authority")
             validate_lumen_grant(grant, owner_project_id)
             await grant_credential_for_project(session, grant, default_grant_project(grant))
-        selection = await session.get(
-            McpLumenSelection,
-            {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},
-            with_for_update=True,
-        )
         if grant_id is None:
-            if selection is not None:
-                await session.delete(selection)
-        elif selection is None:
-            session.add(
-                McpLumenSelection(owner_user_id=owner_user_id, owner_project_id=owner_project_id, grant_id=grant_id)
+            await session.execute(
+                delete(McpLumenSelection).where(
+                    McpLumenSelection.owner_user_id == owner_user_id,
+                    McpLumenSelection.owner_project_id == owner_project_id,
+                )
             )
         else:
-            selection.grant_id = grant_id
-            selection.updated_at = now
+            selection = await session.get(
+                McpLumenSelection,
+                {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id, "grant_id": grant_id},
+                with_for_update=True,
+            )
+            if selection is None:
+                session.add(
+                    McpLumenSelection(owner_user_id=owner_user_id, owner_project_id=owner_project_id, grant_id=grant_id)
+                )
+            else:
+                selection.updated_at = now
         owner_lock.lumen_selection_generation += 1
         session.add(
             ActivityLog(
@@ -1090,6 +1094,41 @@ async def set_lumen_selection(
                 resource_id=grant_id,
                 resource_name=None,
                 action="mcp_lumen_selection.set" if grant_id else "mcp_lumen_selection.clear",
+                status="success",
+                extra={"generation": owner_lock.lumen_selection_generation, "grant_id": grant_id},
+            )
+        )
+        return owner_lock.lumen_selection_generation
+
+
+async def unset_lumen_grant(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    owner_user_id: str,
+    owner_project_id: str,
+    username: str,
+    grant_id: str,
+) -> int:
+    """Stop enabling one grant for Lumen. Other grants the owner enabled stay enabled."""
+    async with session_factory() as session, session.begin():
+        owner_lock = await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+        selection = await session.get(
+            McpLumenSelection,
+            {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id, "grant_id": grant_id},
+            with_for_update=True,
+        )
+        if selection is not None:
+            await session.delete(selection)
+        owner_lock.lumen_selection_generation += 1
+        session.add(
+            ActivityLog(
+                project_id=owner_project_id,
+                user_id=owner_user_id,
+                username=username,
+                resource_type="mcp_lumen_selection",
+                resource_id=grant_id,
+                resource_name=None,
+                action="mcp_lumen_selection.clear",
                 status="success",
                 extra={"generation": owner_lock.lumen_selection_generation, "grant_id": grant_id},
             )
@@ -1540,10 +1579,10 @@ async def mark_expired_grants_for_cleanup(
             schedule_grant_cleanup(grant, now=now)
             selection = await session.get(
                 McpLumenSelection,
-                {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},
+                {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id, "grant_id": grant.id},
                 with_for_update=True,
             )
-            if selection is not None and selection.grant_id == grant.id:
+            if selection is not None:
                 await session.delete(selection)
                 owner_lock.lumen_selection_generation += 1
             _audit(

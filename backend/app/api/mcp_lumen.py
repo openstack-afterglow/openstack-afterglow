@@ -70,18 +70,30 @@ def _entry_payload(entry: registry.RegistryEntry) -> dict[str, Any]:
 
 @router.post("/snapshot")
 async def snapshot(body: _SnapshotRequest, _: None = Depends(_require_lumen_service_token)) -> dict[str, Any]:
-    """Resolve the active selected grant and its closed registry view."""
-    selected = await lumen.selected_lumen_snapshot(user_id=body.user_id, project_id=body.project_id)
-    if selected is None:
-        return {"snapshot": None, "entries": [], "service_fingerprint": registry.enabled_service_fingerprint()}
-    try:
-        principal = await lumen.resolve_lumen_principal(selected)
-    except lumen.McpLumenAuthorityError:
-        return {"snapshot": None, "entries": [], "service_fingerprint": registry.enabled_service_fingerprint()}
+    """Resolve every dispatchable enabled grant, each with its own closed registry view.
+
+    ``snapshots`` has one entry per grant. The top-level ``snapshot``, ``entries`` and ``service_fingerprint``
+    repeat the first entry (or are empty), so consumers that predate several grants keep working.
+    """
+    views: list[dict[str, Any]] = []
+    for selected in await lumen.selected_lumen_snapshots(user_id=body.user_id, project_id=body.project_id):
+        try:
+            principal = await lumen.resolve_lumen_principal(selected)
+        except lumen.McpLumenAuthorityError:
+            continue
+        views.append(
+            {
+                "snapshot": lumen.snapshot_payload(selected),
+                "entries": [_entry_payload(entry) for entry in registry.enabled_entries(principal)],
+                "service_fingerprint": registry.enabled_service_fingerprint(),
+            }
+        )
+    first = views[0] if views else None
     return {
-        "snapshot": lumen.snapshot_payload(selected),
-        "entries": [_entry_payload(entry) for entry in registry.enabled_entries(principal)],
-        "service_fingerprint": registry.enabled_service_fingerprint(),
+        "snapshots": views,
+        "snapshot": first["snapshot"] if first else None,
+        "entries": first["entries"] if first else [],
+        "service_fingerprint": first["service_fingerprint"] if first else registry.enabled_service_fingerprint(),
     }
 
 
