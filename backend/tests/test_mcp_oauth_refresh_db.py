@@ -686,7 +686,14 @@ async def test_browser_revocation_removes_access_but_preserves_tombstone(
         )
         if source == "personal_token":
             assert (await session.get(McpPersonalToken, record_id)).revoked_at is not None
-            assert await session.get(McpLumenSelection, {"owner_user_id": owner, "owner_project_id": "project"}) is None
+            remaining = await session.scalars(
+                select(McpLumenSelection).where(
+                    McpLumenSelection.owner_user_id == owner,
+                    McpLumenSelection.owner_project_id == "project",
+                    McpLumenSelection.grant_id == grant_id,
+                )
+            )
+            assert remaining.first() is None
             assert (
                 await session.get(McpOwnerLock, {"owner_user_id": owner, "owner_project_id": "project"})
             ).lumen_selection_generation == 1

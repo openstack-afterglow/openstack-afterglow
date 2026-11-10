@@ -129,13 +129,17 @@ def _validate_selected_row(
     )
 
 
-async def selected_lumen_snapshot(*, user_id: str, project_id: str) -> LumenGrantSnapshot | None:
-    """Return the current selected grant snapshot, or no Lumen cloud bindings."""
+async def selected_lumen_snapshots(*, user_id: str, project_id: str) -> list[LumenGrantSnapshot]:
+    """Every enabled grant for this owner/project that is dispatchable now, ordered by grant id.
+
+    A grant that fails validation (expired, revoked, or stale) is omitted rather than exposed; the owner's
+    other enabled grants stay usable.
+    """
     if not user_id or not project_id:
-        return None
+        return []
     try:
         async with _factory()() as session:
-            row = (
+            rows = (
                 await session.execute(
                     select(McpLumenSelection, McpDelegatedGrant, McpPersonalToken, McpOwnerLock)
                     .join(McpDelegatedGrant, McpDelegatedGrant.id == McpLumenSelection.grant_id)
@@ -150,25 +154,37 @@ async def selected_lumen_snapshot(*, user_id: str, project_id: str) -> LumenGran
                         McpLumenSelection.owner_project_id == project_id,
                     )
                 )
-            ).one_or_none()
+            ).all()
     except McpLumenAuthorityError:
         raise
     except Exception as exc:
         raise McpLumenAuthorityError("Lumen MCP authority storage is unavailable") from exc
-    if row is None:
-        return None
-    selection, grant, token, owner_lock = row
-    try:
-        return _validate_selected_row(
-            selection=selection,
-            grant=grant,
-            token=token,
-            owner_lock=owner_lock,
-            user_id=user_id,
-            project_id=project_id,
-        )
-    except McpLumenAuthorityError:
-        return None
+    snapshots: list[LumenGrantSnapshot] = []
+    for selection, grant, token, owner_lock in sorted(rows, key=lambda row: row[0].grant_id):
+        try:
+            snapshots.append(
+                _validate_selected_row(
+                    selection=selection,
+                    grant=grant,
+                    token=token,
+                    owner_lock=owner_lock,
+                    user_id=user_id,
+                    project_id=project_id,
+                )
+            )
+        except McpLumenAuthorityError:
+            continue
+    return snapshots
+
+
+async def selected_lumen_snapshot(*, user_id: str, project_id: str) -> LumenGrantSnapshot | None:
+    """The single dispatchable grant, for callers that predate several enabled grants.
+
+    With several enabled grants this returns the first by grant id; multi-grant callers use
+    :func:`selected_lumen_snapshots`.
+    """
+    snapshots = await selected_lumen_snapshots(user_id=user_id, project_id=project_id)
+    return snapshots[0] if snapshots else None
 
 
 async def _resolve_snapshot_grant(snapshot: LumenGrantSnapshot) -> tuple[McpDelegatedGrant, LumenGrantSnapshot]:

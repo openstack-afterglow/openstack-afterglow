@@ -54,7 +54,7 @@ async def test_lumen_bridge_returns_only_opaque_snapshot_and_closed_registry(bri
         "get_settings",
         lambda: SimpleNamespace(lumen_mcp_service_token="bridge-secret", service_mcp_enabled=True),
     )
-    monkeypatch.setattr(mcp_lumen.lumen, "selected_lumen_snapshot", lambda **_: _return(snapshot))
+    monkeypatch.setattr(mcp_lumen.lumen, "selected_lumen_snapshots", lambda **_: _return([snapshot]))
     monkeypatch.setattr(mcp_lumen.lumen, "resolve_lumen_principal", lambda _: _return(principal))
     monkeypatch.setattr(mcp_lumen.registry, "enabled_entries", lambda _: (entry,))
     monkeypatch.setattr(mcp_lumen.registry, "enabled_service_fingerprint", lambda: "a" * 64)
@@ -67,7 +67,7 @@ async def test_lumen_bridge_returns_only_opaque_snapshot_and_closed_registry(bri
         )
 
     assert response.status_code == 200
-    assert response.json() == {
+    view = {
         "snapshot": {
             "grant_id": "grant",
             "user_id": "u",
@@ -83,6 +83,13 @@ async def test_lumen_bridge_returns_only_opaque_snapshot_and_closed_registry(bri
                 "effect": "read",
             }
         ],
+        "service_fingerprint": "a" * 64,
+    }
+    # One view per enabled grant; the top-level legacy fields repeat the first one.
+    assert response.json() == {
+        "snapshots": [view],
+        "snapshot": view["snapshot"],
+        "entries": view["entries"],
         "service_fingerprint": "a" * 64,
     }
 
@@ -120,7 +127,7 @@ async def test_lumen_bridge_refuses_implicit_grants_and_pre_cutover_frozen_snaps
             return False
 
         async def execute(self, statement):
-            return SimpleNamespace(one_or_none=lambda: row)
+            return SimpleNamespace(one_or_none=lambda: row, all=lambda: [row])
 
     monkeypatch.setattr(mcp_lumen.lumen, "get_session_factory", lambda: Session)
     monkeypatch.setattr(
@@ -149,7 +156,12 @@ async def test_lumen_bridge_refuses_implicit_grants_and_pre_cutover_frozen_snaps
             "/api/v1/mcp/lumen/snapshot", json={"user_id": "u", "project_id": "p"}, headers=headers
         )
         assert implicit.status_code == 200
-        assert implicit.json() == {"snapshot": None, "entries": [], "service_fingerprint": "a" * 64}
+        assert implicit.json() == {
+            "snapshots": [],
+            "snapshot": None,
+            "entries": [],
+            "service_fingerprint": "a" * 64,
+        }
         for endpoint in ("preview", "execute"):
             rejected = await client.post(
                 f"/api/v1/mcp/lumen/{endpoint}",
