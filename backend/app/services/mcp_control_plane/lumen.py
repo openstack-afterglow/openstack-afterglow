@@ -204,6 +204,7 @@ async def _resolve_snapshot_grant(snapshot: LumenGrantSnapshot) -> tuple[McpDele
                     .where(
                         McpLumenSelection.owner_user_id == snapshot.user_id,
                         McpLumenSelection.owner_project_id == snapshot.project_id,
+                        McpLumenSelection.grant_id == snapshot.grant_id,
                     )
                 )
             ).one_or_none()

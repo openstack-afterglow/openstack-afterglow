@@ -2406,6 +2406,7 @@ async def test_account_mcp_management_preserves_native_identity_proof(domain_cli
         ("POST", "/api/v1/auth/mcp-tokens"),
         ("POST", "/api/v1/auth/mcp-tokens/verify"),
         ("PUT", "/api/v1/auth/mcp-tokens/owned-token/lumen-default"),
+        ("DELETE", "/api/v1/auth/mcp-tokens/owned-token/lumen-default"),
         ("DELETE", "/api/v1/auth/mcp-tokens/lumen-default"),
         ("GET", "/api/v1/auth/mcp-projects"),
         ("GET", "/api/v1/auth/mcp-tokens/owned-token"),

@@ -7,13 +7,13 @@
  * .env for containers, while this process only checks that the file exists and
  * never prints its contents.
  */
-import { chmodSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import http from 'node:http';
 
 const PROJECT = 'afterglow-local-services';
-const LOCAL_DIR = '.local-services';
+let localSources = new Map();
 const LOCAL_PORTS = { frontend: 3080, backend: 8000, redis: 6379, 'waygate-api': 8010, 'drover-api': 8011, 'lumen-api': 8012, 'palimpsest-api': 8020 };
 let composeEnvironment;
 let composeInputs;
@@ -122,36 +122,29 @@ function assertSiblingSources() {
 	fail(`current sibling source is unavailable: ${names}. Nothing was started. Restore the source checkouts; published-image deployment belongs to docker-compose.prod.yml.`);
 }
 
+// Parses .env names and values for precedence decisions only; callers must never print the values.
+function readDotEnv() {
+	const values = new Map();
+	if (!existsSync('.env')) return values;
+	for (const line of readFileSync('.env', 'utf8').split(/\r?\n/)) {
+		const match = line.match(/^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/);
+		if (!match) continue;
+		const raw = match[2].trim();
+		values.set(match[1], /^(['"]).*\1$/.test(raw) ? raw.slice(1, -1) : raw);
+	}
+	return values;
+}
+
 function prepareLocalConfiguration() {
-	mkdirSync(LOCAL_DIR, { recursive: true, mode: 0o700 });
-	chmodSync(LOCAL_DIR, 0o700);
-	for (const service of ['lumen', 'drover', 'waygate', 'palimpsest']) {
-		const directory = `${LOCAL_DIR}/policy/${service}`;
-		mkdirSync(directory, { recursive: true, mode: 0o755 });
-		const policy = `${directory}/policy.yaml`;
-		if (!existsSync(policy)) writeFileSync(policy, '{}\n', { flag: 'wx', mode: 0o644 });
-	}
-	const configPath = `${LOCAL_DIR}/afterglow.conf`;
-	if (!existsSync(configPath)) copyFileSync('afterglow.conf', configPath, constants.COPYFILE_EXCL);
-	chmodSync(configPath, 0o640);
-	const secretPath = `${LOCAL_DIR}/secrets.json`;
-	const secretNames = ['AFTERGLOW_LOCAL_SECRET_KEY', 'AFTERGLOW_LOCAL_ENCRYPTION_KEY', 'AFTERGLOW_LOCAL_SERVICE_TOKEN'];
-	if (!existsSync(secretPath)) {
-		writeFileSync(secretPath, JSON.stringify(Object.fromEntries(secretNames.map((key) => [key, randomBytes(32).toString('hex')]))), { flag: 'wx', mode: 0o600 });
-	}
-	let secrets;
-	try { secrets = JSON.parse(readFileSync(secretPath, 'utf8')); } catch { fail('Local secrets.json is unreadable; its contents were not printed.'); }
-	if (secretNames.some((key) => !/^[a-f0-9]{64}$/.test(secrets[key] ?? ''))) fail('Local secrets.json must contain the three generated 32-byte keys.');
-	const lumenEnvironmentPath = `${LOCAL_DIR}/lumen.env`;
-	if (!existsSync(lumenEnvironmentPath)) {
-		writeFileSync(lumenEnvironmentPath, `LUMEN_ENCRYPTION_KEY=${JSON.stringify(secrets.AFTERGLOW_LOCAL_ENCRYPTION_KEY)}\n`, { flag: 'wx', mode: 0o600 });
-	}
-	chmodSync(lumenEnvironmentPath, 0o600);
+	const configPath = 'afterglow.conf';
+	if ((statSync(configPath).mode & 0o044) === 0) fail('afterglow.conf must be readable by the non-root containers; run: chmod 0644 afterglow.conf');
+	mkdirSync('logs', { recursive: true });
+	mkdirSync('nova-pci-aliases', { recursive: true });
 	const python = existsSync('backend/.venv/bin/python') ? 'backend/.venv/bin/python' : 'python3';
 	const credentials = JSON.parse(run(python, ['-c', `
 import json, tomllib
 from pathlib import Path
-with Path('.local-services/afterglow.conf').open('rb') as handle:
+with Path('afterglow.conf').open('rb') as handle:
     config = tomllib.load(handle)
 openstack = config.get('openstack', {})
 services = config.get('services', {})
@@ -162,18 +155,47 @@ private_endpoints = {
     for key, field in {'WAYGATE_INTERNAL_URL': 'waygate_internal_url', 'DROVER_INTERNAL_URL': 'drover_internal_url', 'LUMEN_INTERNAL_URL': 'lumen_internal_url', 'PALIMPSEST_INTERNAL_URL': 'palimpsest_internal_url'}.items()
     if isinstance(value := services.get(field), str) and value.strip()
 }
-print(json.dumps({'AFTERGLOW_LOCAL_OS_' + key: str(openstack.get(field, default)) for key, (field, default) in fields.items()} | private_endpoints, allow_nan=False))
+local = config.get('local', {})
+LOCAL_KEYS = {'drover_callback_base_url': 'DROVER_CALLBACK_BASE_URL', 'waygate_public_base_url': 'WAYGATE_PUBLIC_BASE_URL', 'waygate_key_name': 'WAYGATE_KEY_NAME', 'lumen_mcp_control_plane_url': 'LUMEN_MCP_CONTROL_PLANE_URL', 'lumen_build_context': 'LUMEN_BUILD_CONTEXT', 'traffic_analytics_ingest_url': 'TRAFFIC_ANALYTICS_INGEST_URL', 'traffic_analytics_geoip_mmdb_file': 'TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE', 'palimpsest_ssl_verify': 'PALIMPSEST_SSL_VERIFY', 'forwarded_allow_ips': 'FORWARDED_ALLOW_IPS'}
+unknown = sorted(set(local) - set(LOCAL_KEYS))
+if unknown: raise SystemExit('afterglow.conf [local] has unsupported keys (secrets belong in .env or the environment): ' + ', '.join(unknown))
+local_settings = {}
+for key, name in LOCAL_KEYS.items():
+    value = local.get(key)
+    if value is None or value == '': continue
+    if isinstance(value, bool): value = 'true' if value else 'false'
+    local_settings[name] = str(value).strip()
+print(json.dumps({'AFTERGLOW_LOCAL_OS_' + key: str(openstack.get(field, default)) for key, (field, default) in fields.items()} | private_endpoints | {'__local': local_settings, '__local_names': sorted(LOCAL_KEYS.values())}, allow_nan=False))
 `], { capture: true }));
-	if (selectedServices.some((name) => ['backend', 'waygate-api', 'drover-api', 'palimpsest-api'].includes(name)) && ['AUTH_URL', 'USERNAME', 'PASSWORD'].some((key) => !credentials[`AFTERGLOW_LOCAL_OS_${key}`])) fail('The selected local services need OpenStack auth_url, username and password in the private afterglow.conf.');
-	composeInputs = { ...credentials, ...secrets, AFTERGLOW_LOCAL_CONFIG_GID: String(statSync(configPath).gid) };
-	const cephConfPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.conf`;
-	const cephKeyringPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.client.afterglow-rbd.keyring`;
-	if (existsSync(cephConfPath) && existsSync(cephKeyringPath)) {
-		chmodSync(cephConfPath, 0o640);
-		chmodSync(cephKeyringPath, 0o640);
-		composeInputs.AFTERGLOW_LOCAL_CEPH_CONF = cephConfPath;
-		composeInputs.AFTERGLOW_LOCAL_CEPH_KEYRING = cephKeyringPath;
+	const localSettings = credentials.__local ?? {};
+	const localNames = credentials.__local_names ?? [];
+	delete credentials.__local;
+	delete credentials.__local_names;
+	const dotEnvValues = readDotEnv();
+	// Precedence: shell environment > .env > afterglow.conf. Compose reads .env itself, so only afterglow.conf values enter the process environment. Values are never printed.
+	const suppliedValue = (name) => (process.env[name] !== undefined ? process.env[name] : dotEnvValues.get(name));
+	const supplySource = (name) => (process.env[name] !== undefined ? 'shell environment' : '.env');
+	localSources = new Map();
+	composeInputs = { AFTERGLOW_LOCAL_CONFIG_GID: String(statSync(configPath).gid) };
+	for (const name of new Set([...Object.keys(credentials), ...localNames])) {
+		if (suppliedValue(name) !== undefined) {
+			localSources.set(name, supplySource(name));
+			continue;
+		}
+		if (name in localSettings) {
+			composeInputs[name] = localSettings[name];
+			localSources.set(name, 'afterglow.conf [local]');
+		} else if (credentials[name]) {
+			composeInputs[name] = credentials[name];
+			localSources.set(name, name.startsWith('AFTERGLOW_LOCAL_OS_') ? 'afterglow.conf [openstack]' : 'afterglow.conf [services]');
+		}
 	}
+	for (const name of ['AFTERGLOW_LOCAL_SECRET_KEY', 'AFTERGLOW_LOCAL_ENCRYPTION_KEY', 'AFTERGLOW_LOCAL_SERVICE_TOKEN']) {
+		if (!/^[a-f0-9]{64}$/.test(suppliedValue(name) ?? '')) fail(`${name} must be 64 lowercase hex characters in .env or the environment (generate with: openssl rand -hex 32). Values were not printed.`);
+		localSources.set(name, supplySource(name));
+	}
+	const effective = (name) => suppliedValue(name) ?? composeInputs[name];
+	if (selectedServices.some((name) => ['backend', 'waygate-api', 'drover-api', 'palimpsest-api'].includes(name)) && ['AUTH_URL', 'USERNAME', 'PASSWORD'].some((key) => !effective(`AFTERGLOW_LOCAL_OS_${key}`))) fail('The selected local services need OpenStack auth_url, username and password in .env, the shell environment, or afterglow.conf [openstack]. Values were not printed.');
 	composeEnvironment = { ...process.env, ...composeInputs };
 }
 
@@ -187,17 +209,20 @@ function assertDevelopmentConfiguration() {
 		}
 	}
 	if (config.name !== PROJECT) fail('Compose project isolation was lost.');
-	const configSnapshotSource = `${process.cwd()}/${LOCAL_DIR}/afterglow.conf`;
-	const snapshotReaderGid = composeInputs.AFTERGLOW_LOCAL_CONFIG_GID;
+	const configFile = `${process.cwd()}/afterglow.conf`;
+	const configReaderGid = composeInputs.AFTERGLOW_LOCAL_CONFIG_GID;
+	const allowedMounts = new Set([configFile, `${process.cwd()}/logs`, `${process.cwd()}/nova-pci-aliases`]);
+	const dotEnv = readDotEnv();
+	for (const name of ['AFTERGLOW_LOCAL_CEPH_CONF', 'AFTERGLOW_LOCAL_CEPH_KEYRING', 'TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE']) {
+		// Same winner Compose uses: shell environment > .env > afterglow.conf (no value is printed).
+		const value = process.env[name] ?? dotEnv.get(name) ?? composeInputs[name];
+		if (value) allowedMounts.add(path.resolve(value));
+	}
 	for (const name of [...selectedServices, ...selectedOneOffServices]) {
 		const service = config.services[name];
 		if (!service || service.container_name) fail(`${name} must use project-scoped containers.`);
 		const environment = service.environment ?? {};
-		if (environment.DATABASE_URL) {
-			new URL(environment.DATABASE_URL);
-			const owner = name === 'backend' || name === 'notion-worker' ? 'afterglow' : name.split('-')[0];
-			composeInputs[`${owner.toUpperCase()}_DATABASE_URL`] = environment.DATABASE_URL;
-		}
+		if (environment.DATABASE_URL) new URL(environment.DATABASE_URL);
 		if (environment.REDIS_URL && new URL(environment.REDIS_URL).hostname !== 'redis') fail(`${name} is not isolated to the local Redis.`);
 		const ports = service.ports ?? [];
 		const expectedPort = LOCAL_PORTS[name];
@@ -208,8 +233,8 @@ function assertDevelopmentConfiguration() {
 				if (volume.external || !volume.name.startsWith(`${PROJECT}_`)) fail(`${name} would reuse a non-local volume.`);
 			} else {
 				const isDisabledCephPlaceholder = name === 'backend' && mount.source === '/dev/null';
-				if (!isDisabledCephPlaceholder && !mount.source.startsWith(`${process.cwd()}/${LOCAL_DIR}/`) && name !== 'service-mariadb') {
-					fail(`${name} would mount files outside the isolated configuration directory.`);
+				if (!isDisabledCephPlaceholder && !allowedMounts.has(mount.source) && name !== 'service-mariadb') {
+					fail(`${name} would mount a host path that is not afterglow.conf, logs, nova-pci-aliases or an explicitly configured file.`);
 				}
 			}
 		}
@@ -220,13 +245,13 @@ function assertDevelopmentConfiguration() {
 	}
 	for (const [name, service] of Object.entries(config.services)) {
 		if (![...selectedServices, ...selectedOneOffServices].includes(name)) continue;
-		const readsSnapshot = (service.volumes ?? []).some((mount) => mount.type === 'bind' && mount.source === configSnapshotSource);
+		const readsConfig = (service.volumes ?? []).some((mount) => mount.type === 'bind' && mount.source === configFile);
 		const groupAdds = (service.group_add ?? []).map(String);
-		if (readsSnapshot && !groupAdds.includes(snapshotReaderGid)) fail(`${name} must receive the local configuration snapshot reader group.`);
-		if (!readsSnapshot && groupAdds.includes(snapshotReaderGid)) fail(`${name} must not receive the local configuration snapshot reader group.`);
+		if (readsConfig && !groupAdds.includes(configReaderGid)) fail(`${name} must receive the afterglow.conf reader group.`);
+		if (!readsConfig && groupAdds.includes(configReaderGid)) fail(`${name} must not receive the afterglow.conf reader group.`);
 	}
 	if (selectedServices.includes('backend') && String(config.services.backend.environment.SENTINEL_ENABLED) !== 'false') fail('The backend must not discover a remote Sentinel master.');
-	if (selectedServices.includes('drover-api') && !config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID) fail('Drover readiness requires [openstack] service_project_id in .local-services/afterglow.conf or OS_SERVICE_PROJECT_ID in .env. Select the dedicated service project; no admin-project fallback is allowed.');
+	if (selectedServices.includes('drover-api') && !config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID) fail('Drover readiness requires [openstack] service_project_id in afterglow.conf or OS_SERVICE_PROJECT_ID in .env. Select the dedicated service project; no admin-project fallback is allowed.');
 	for (const name of ['drover-api', 'drover-worker', 'drover-migrate'].filter((name) => [...selectedServices, ...selectedOneOffServices].includes(name))) {
 		const environment = config.services[name].environment ?? {};
 		if (String(environment.SENTINEL_ENABLED) !== 'false' || String(environment.SENTINEL_HOSTS) !== '') fail(`${name} must not discover a remote Sentinel master.`);
@@ -245,12 +270,6 @@ function assertDevelopmentConfiguration() {
 	composeInputs.LUMEN_MCP_CONTROL_PLANE_URL = config.services['lumen-api'].environment.MCP_CONTROL_PLANE_URL ?? '';
 	composeInputs.LUMEN_BUILD_CONTEXT = config.services['lumen-api'].build.context;
 	composeEnvironment = { ...process.env, ...composeInputs };
-	const envPath = `${LOCAL_DIR}/compose.env`;
-	const contents = Object.entries(composeInputs)
-		.map(([name, value]) => `${name}=${JSON.stringify(String(value).replaceAll('$', () => '$$'))}`)
-		.join('\n') + '\n';
-	writeFileSync(envPath, contents, { mode: 0o600 });
-	chmodSync(envPath, 0o600);
 }
 
 function assertNoLegacyStack() {
@@ -447,12 +466,12 @@ async function runDashboardSmoke() {
 
 function printHelp() {
 	console.log(`Usage:
-  npm run services:config      Prepare private inputs for docker-compose.dev.yml
+  npm run services:config      Check .env and afterglow.conf inputs; print value sources only
   npm run services:up          Build current source and start docker-compose.dev.yml
   npm run services:up -- --only lumen,palimpsest
                               Start selected API/workers and their local datastores only
   npm run services:config -- --only lumen,palimpsest
-                              Prepare private inputs without unrelated callback preflight
+                              Check inputs without unrelated callback preflight
   npm run services:verify -- lumen --exercise
                               Exercise real service logic using manual URL/credentials
   npm run services:smoke       Check migrations, API contracts, BFFs and live dashboard data
@@ -484,7 +503,9 @@ async function main() {
 	if (command === 'config') {
 		assertLocalPrerequisites();
 		assertDevelopmentConfiguration();
-		console.log(`Prepared ${LOCAL_DIR}/compose.env (0600). Use docker compose --env-file ${LOCAL_DIR}/compose.env -f ${COMPOSE_FILE}.`);
+		console.log('Configuration checked. Value sources (values are never printed):');
+		for (const [name, source] of localSources) console.log(`  ${name}: ${source}`);
+		console.log(`Start with npm run services:up. afterglow.conf values reach containers only through services:up; direct docker compose -f ${COMPOSE_FILE} reads .env alone.`);
 		return;
 	}
 	if (command === 'smoke') {
@@ -497,7 +518,7 @@ async function main() {
 		return;
 	}
 	if (command === 'down') {
-		assertLocalPrerequisites();
+		assertDockerCompose();
 		compose(['down', '--timeout', '10']);
 		console.log(`\nStopped ${PROJECT}. Named volumes were preserved; no other Compose project was touched.`);
 		return;

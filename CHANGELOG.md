@@ -9,6 +9,7 @@
 
 ### Changed
 - 로그인·회원가입·계정 찾기 등 인증 화면, 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 좌측·대기 아트가 마우스 위치에 반응한다. 랜딩 히어로와 같은 `AfterglowOrbit interactive`를 쓴다.
+- 로컬 Compose 설정은 루트 `.env`(비밀)와 `afterglow.conf`(비밀이 아닌 설정, `[local]` 허용 키)를 직접 사용한다. `.local-services/` 복사본, 생성 키 파일(`secrets.json`), `lumen.env`, `compose.env`, 정책 디렉터리 mount를 제거했다. `services:config`는 값 대신 출처만 출력하며, 기존 생성 키는 `.env`의 `AFTERGLOW_LOCAL_*`로 옮겼다.
 - 인스턴스 생성 사용 기간의 사유 입력란은 기간을 연장했을 때(또는 기존 사유가 있을 때)만 보인다. 백엔드가 사유를 요구하는 조건과 같다.
 
 ### Fixed

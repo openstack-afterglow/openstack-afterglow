@@ -9,12 +9,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from string import Formatter
 from types import SimpleNamespace
 from urllib.parse import quote
 
+logger = logging.getLogger(__name__)
+
 MODE = "ephemeral"
+SUPPORTED_SCHEMAS = ("2.0",)
 
 
 def _field(value, name, default=None):
@@ -106,7 +110,7 @@ def mapping_matches(mapping, descriptor):
         return False
     return (
         _field(mapping, "id") == descriptor.mapping_id
-        and document["schema_version"] == "2.0"
+        and document["schema_version"] in SUPPORTED_SCHEMAS
         and digest == descriptor.sha256
     )
 
@@ -176,6 +180,17 @@ def _protocol_rows(ks, descriptor):
     return list(protocols)
 
 
+def _has_projects(mapping):
+    """Any `projects` clause means the Personal template path owns the mapping."""
+    rules = _field(mapping, "rules", [])
+    return isinstance(rules, list) and any(
+        isinstance(rule, dict)
+        and isinstance(rule.get("local"), list)
+        and any(isinstance(clause, dict) and "projects" in clause for clause in rule["local"])
+        for rule in rules
+    )
+
+
 def accepts(ks, row, idp, protocol, mapping):
     descriptor = configured(row)
     if descriptor is None:
@@ -209,7 +224,9 @@ def accepts(ks, row, idp, protocol, mapping):
     )
     from dataclasses import replace
 
-    return replace(descriptor, project_template=_project_template(mapping, descriptor))
+    _require(_has_projects(mapping), "Native Personal mapping is required")
+    template = _project_template(mapping, descriptor)
+    return replace(descriptor, project_template=template)
 
 
 def _read_mapping(ks, descriptor):
@@ -409,6 +426,53 @@ def adopt_personal_project(user_id, project, *, ks, descriptor):
     account_spaces._verify_personal_member(ks, catalog, checked, user_id)
 
 
+def _local_identity_reason(native, identity, descriptor, ks):
+    """Return why a local-account token is not the pinned mapping's local-rule result, or None when it is."""
+    from app.services.identity_roles import _field
+
+    domain = native.get("domain")
+    if not isinstance(domain, dict) or domain.get("id") != descriptor.account_domain_id:
+        return "user_domain_not_accounts"
+    if not (isinstance(native.get("name"), str) and isinstance(native.get("id"), str) and native["id"]):
+        return "identity_fields_missing"
+    email = (identity.email or "").casefold()
+    for rule in _field(ks.federation.mappings.get(descriptor.mapping_id), "rules", []):
+        emails = {
+            value.casefold()
+            for remote in rule.get("remote", [])
+            if remote.get("type") == "OIDC-email"
+            for value in (remote.get("any_one_of") or [])
+        }
+        if email not in emails:
+            continue
+        for local in rule.get("local", []):
+            user = local.get("user")
+            if isinstance(user, dict) and user.get("type") == "local" and user.get("name") == native["name"]:
+                return None
+    return "local_rule_not_matched"
+
+
+def _federation_identity_reason(native, descriptor):
+    """Return the first failed Keystone identity condition for server logs, or None when it matches."""
+    federation = native.get("OS-FEDERATION", {})
+    if not isinstance(federation, dict):
+        return "federation_block_missing"
+    identity_provider = federation.get("identity_provider")
+    if not isinstance(identity_provider, dict) or identity_provider.get("id") != descriptor.idp_id:
+        return "identity_provider_mismatch"
+    protocol = federation.get("protocol")
+    if not isinstance(protocol, dict) or protocol.get("id") != descriptor.protocol_id:
+        return "protocol_mismatch"
+    domain = native.get("domain")
+    if not isinstance(domain, dict):
+        return "user_domain_missing"
+    if domain.get("id") != descriptor.account_domain_id:
+        return "user_domain_not_accounts"
+    if not (isinstance(native.get("name"), str) and isinstance(native.get("id"), str) and native["id"]):
+        return "identity_fields_missing"
+    return None
+
+
 async def federate(row, identity, domain, *, ks, lease, catalog, descriptor):
     from app.services import account_spaces, organization_provisioning
     from app.services import domain_auth as svc
@@ -424,21 +488,21 @@ async def federate(row, identity, domain, *, ks, lease, catalog, descriptor):
     await lease.assert_owned()
     await svc.require_provider(domain["id"], row.id, int(row.revision), identity.email)
     token, native = await svc.keystone_federate(row, identity.bearer)
+    # Keystone returns a local account (no OS-FEDERATION block) when the pinned mapping's local rule matched.
+    local_identity = "OS-FEDERATION" not in native
     try:
-        federation = native.get("OS-FEDERATION", {})
-        _require(
-            isinstance(federation, dict)
-            and isinstance(federation.get("identity_provider"), dict)
-            and federation["identity_provider"].get("id") == descriptor.idp_id
-            and isinstance(federation.get("protocol"), dict)
-            and federation["protocol"].get("id") == descriptor.protocol_id
-            and isinstance(native.get("domain"), dict)
-            and native["domain"].get("id") == descriptor.account_domain_id
-            and isinstance(native.get("name"), str)
-            and isinstance(native.get("id"), str)
-            and bool(native["id"]),
-            "Native federation returned an unexpected identity",
-        )
+        from app.services.domain_auth import DomainAuthUnavailable
+
+        if local_identity:
+            reason = await asyncio.to_thread(_local_identity_reason, native, identity, descriptor, ks)
+        else:
+            reason = _federation_identity_reason(native, descriptor)
+        if reason is not None:
+            # Server-side diagnosis only: the public detail stays one generic message.
+            logger.warning("native federation identity rejected: reason=%s", reason)
+            raise DomainAuthUnavailable(
+                "Native federation returned an unexpected identity", code="native_mapping_unsafe"
+            )
         user = await asyncio.to_thread(ks.users.get, native["id"])
         _require(
             _field(user, "id") == native["id"]
@@ -450,24 +514,28 @@ async def federate(row, identity, domain, *, ks, lease, catalog, descriptor):
             await asyncio.to_thread(svc._require_native_mapping, ks, row) == descriptor,
             "Native mapping changed during login",
         )
-        project = await asyncio.to_thread(
-            account_spaces.personal_project,
-            native["id"],
-            ks=ks,
-            native_mapping=descriptor,
-            mapped_username=username,
-        )
-        _require(project is not None, "Native personal project is unavailable")
-        await lease.assert_owned()
-        current = await asyncio.to_thread(ks.projects.get, project["id"])
-        if _field(current, "afterglow_personal_user_id") is None:
-            await asyncio.to_thread(adopt_personal_project, native["id"], project, ks=ks, descriptor=descriptor)
-        else:
-            _require(
-                _field(current, "afterglow_personal_user_id") == native["id"]
-                and _field(current, "afterglow_personal_primary") is True,
-                "Personal project already has different provenance",
+        if not local_identity:
+            project = await asyncio.to_thread(
+                account_spaces.personal_project,
+                native["id"],
+                ks=ks,
+                native_mapping=descriptor,
+                mapped_username=username,
             )
+            _require(project is not None, "Native personal project is unavailable")
+            await lease.assert_owned()
+            current = await asyncio.to_thread(ks.projects.get, project["id"])
+            if _field(current, "afterglow_personal_user_id") is None:
+                await asyncio.to_thread(adopt_personal_project, native["id"], project, ks=ks, descriptor=descriptor)
+            else:
+                _require(
+                    _field(current, "afterglow_personal_user_id") == native["id"]
+                    and _field(current, "afterglow_personal_primary") is True,
+                    "Personal project already has different provenance",
+                )
+        else:
+            # Local-linked account: the same human session preparation as password login creates or verifies its Personal primary.
+            await lease.assert_owned()
         await svc.require_provider(domain["id"], row.id, int(row.revision), identity.email)
         await organization_provisioning.require_current(row, ks=ks, user_id=native["id"], subject=identity.subject)
         return svc.FederatedLogin(

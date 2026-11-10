@@ -29,7 +29,7 @@ def test_reconcile_preserves_terminal_and_read_invocations(status, key):
 @pytest.mark.parametrize("invalidated", ["project_removed", "revoked", "expired", "pat_revoked", "selection"])
 @pytest.mark.parametrize("non_expiring", [False, True])
 async def test_operation_poll_locks_home_and_rechecks_saved_target(monkeypatch, invalidated, non_expiring):
-    from app.models.mcp_authority import McpDelegatedGrant, McpPersonalToken, McpToolInvocation
+    from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection, McpPersonalToken, McpToolInvocation
     from app.services.mcp_control_plane import authentication, operations
 
     now = datetime.now(UTC)
@@ -79,6 +79,10 @@ async def test_operation_poll_locks_home_and_rechecks_saved_target(monkeypatch, 
                 params = statement.compile().params
                 assert params["owner_project_id_1"] == "A"
                 return grant
+            if model is McpLumenSelection:
+                params = statement.compile().params
+                assert params["owner_project_id_1"] == "A" and params["grant_id_1"] == "grant"
+                return selection
             if model is McpPersonalToken:
                 return token
             assert model is McpToolInvocation

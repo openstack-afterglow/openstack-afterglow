@@ -159,9 +159,9 @@ Generation and deployment paths:
   private backend operator TOML. The sanitizer preserves it; the final Kolla
   overlay does not override it. The public frontend projection omits it.
 - Compose manifests and `scripts/local-services.mjs` are unchanged: they mount
-  or copy TOML without reserializing it. An existing dev
-  `.local-services/afterglow.conf` snapshot is not overwritten when the original
-  changes; edit the actual snapshot. Environment profiles do not force debug.
+  or copy TOML without reserializing it. Dev reads the root
+  `afterglow.conf` directly; after editing it, run `npm run services:up` to re-deliver inputs.
+  Environment profiles do not force debug.
   The static `deploy/k8s-template/configmap.yaml` also provides `false`.
 
 Restart/recreate the consuming processes after changing settings. Environment
@@ -176,16 +176,16 @@ Backend source builds select the OpenTofu archive matching BuildKit `TARGETARCH`
 ```bash
 npm run services:up
 
-# Prepare private inputs for explicit Compose commands:
+# Check the inputs first:
 npm run services:config
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --build --wait
+npm run services:up
 
-# Keep running dependencies; rebuild and recreate only Afterglow frontend/backend:
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml \
+# Compose-level control reads only .env; afterglow.conf values reach containers only via services:up:
+docker compose --env-file .env -f docker-compose.dev.yml \
   up -d --no-deps --force-recreate --build backend frontend
 
 # Development-only monitoring:
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
+docker compose --env-file .env -f docker-compose.dev.yml --profile monitoring up -d
 
 # Minimal baseline instead, with separately configured external DB/cache:
 docker compose -f docker-compose.yml up -d
@@ -196,9 +196,8 @@ destinations with `SERVICE_WAYGATE_INTERNAL_URL`, `SERVICE_DROVER_INTERNAL_URL`,
 `SERVICE_LUMEN_INTERNAL_URL`, `SERVICE_PALIMPSEST_INTERNAL_URL`, or `[services]`
 `*_internal_url` values. Both BFF requests and Drover/Waygate SDK consumers use this choice.
 The dev runner resolves shell/`.env` first (explicit empty = catalog for generic routes), then
-nonempty values from `.local-services/afterglow.conf`, then local Compose DNS. It preserves
-the resolved choice in private `compose.env`. An existing private snapshot is not overwritten
-when the original config changes. Run `services:config/up` after changing inputs; restart
+nonempty values from the root `afterglow.conf`, then local Compose DNS. `services:up` passes
+the resolved choice to Compose. Run `services:up` after changing inputs; restart
 other directly launched consumers after changing their config.
 
 For example, `SERVICE_LUMEN_INTERNAL_URL=http://lumen-api:8012` selects the local container;
@@ -228,13 +227,13 @@ origin. An unset public origin yields `null` authority, not a guessed host.
 The reverse Lumen → Afterglow connection uses `LUMEN_MCP_CONTROL_PLANE_URL` (dev default
 `http://backend:8000`). Browser `PUBLIC_API_BASE` and the remote-VM Waygate callback are
 separate. Full-stack preparation or Waygate startup requires `WAYGATE_PUBLIC_BASE_URL` to be
-an HTTP(S) origin reachable from gateway VMs; `services:config` preserves the validated value
-in private `compose.env`, and Compose passes it as `WAYGATE_CALLBACK_BASE_URL`. Never use
+an HTTP(S) origin reachable from gateway VMs; `services:up` passes the validated value to
+Compose, which passes it as `WAYGATE_CALLBACK_BASE_URL`. Never use
 container DNS, localhost, loopback, or an Afterglow BFF path. A targeted `--no-deps`
 frontend/backend recreation can parse the manifest without this value when Waygate is already
 running, but starting Waygate with an empty value fails closed in its API/worker startup validation.
 
-Development keeps the existing `afterglow-local-services` project, volume identities and encryption keys. `.local-services/` is private (0700); the config snapshot is 0640 and only its mounting services receive the file's GID through `group_add`, preserving non-root image users on Linux. Keys and generated `compose.env` remain 0600; none of these files may be printed or committed. Local Drover API/worker/migration explicitly disable Sentinel and clear its host list so copied production settings cannot redirect the cache. Sibling service traffic defaults to Compose DNS and accepts explicit endpoint selection. OpenStack itself remains real and external. Missing sibling source fails before startup; there is no installed-image development fallback.
+Development keeps the existing `afterglow-local-services` project and volume identities. Local settings come from the root `.env` (secrets) and `afterglow.conf` (non-secret); no private copy or generated key file is created. `afterglow.conf` must be readable by the non-root containers (for example 0644). None of these files may be printed or committed. Local Drover API/worker/migration explicitly disable Sentinel and clear its host list so copied production settings cannot redirect the cache. Sibling service traffic defaults to Compose DNS and accepts explicit endpoint selection. OpenStack itself remains real and external. Missing sibling source fails before startup; there is no installed-image development fallback.
 
 **The five service database URL inputs** follow shell > selected Compose env-file
 precedence. `services:config/up` selects `.env`; direct Compose uses the explicit
@@ -256,10 +255,9 @@ these inputs become the container's `DATABASE_URL`. Generic `DATABASE_URL` is
 not a selector for the five Compose destinations; existing Kubernetes/Kolla
 runtime secret names are a separate contract.
 
-`services:config/up` accepts external targets and preserves resolved URLs in
-private `.local-services/compose.env` (0600), without logging their values.
-Never print/commit URLs, passwords or the full resolved config. Shell overrides
-still outrank that file when reusing it; confirm target selection through the
+`services:config/up` accepts external targets. Compose reads the URLs from the shell or `.env` directly;
+nothing is copied to a private file, and values are never logged. Never print/commit URLs, passwords or
+the full resolved config. Shell values outrank `.env`; confirm target selection through the
 approved secret-management path before execution. `services:config` prepares
 inputs, not schema qualification. `services:up` runs migrations/bootstrap and
 real APIs/workers against the selected DB: a URL setting is not live-write approval.
@@ -268,9 +266,9 @@ remain separate local targets. Cache, volume/network, mount and loopback boundar
 are checked, and implicit `docker-compose.override.yml` is not read. Health and
 migration completion do not establish dashboard/OpenStack or production compatibility.
 
-To reuse already-built images, run `npm run services:config` followed by
-`docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --no-build --wait`.
-This preserves volumes, config snapshots and keys. Do not fix accidentally remote
+To reuse already-built images, run `npm run services:config`, then `npm run services:up`.
+The root `.env` and `afterglow.conf` are re-read, and volumes and keys are preserved.
+Do not fix accidentally remote
 ProxySQL authentication failures by rotating production credentials or deleting local data.
 A previously remote-routed Palimpsest bootstrap exiting successfully does not prove
 production was unchanged: its `create_all` can create missing tables, indexes and constraints.
@@ -793,7 +791,7 @@ external target, this command changes local MariaDB, not that selected DB; it is
 an external-target migration procedure.
 
 ```bash
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \
+docker compose --env-file .env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \
   'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' \
   < backend/migrations/070_chat_message_local_timestamps.sql
 ```
@@ -826,7 +824,7 @@ When using ArgoCD, pushing to the `dev` branch triggers an automatic sync.
 
 ```bash
 # Check logs
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml logs backend
+docker compose --env-file .env -f docker-compose.dev.yml logs backend
 kubectl logs -f deployment/backend -n afterglow
 
 # Test Keystone connectivity
@@ -836,7 +834,7 @@ curl -s https://keystone.example.com:5000/v3 | python3 -m json.tool
 ### Redis Connection Errors
 
 ```bash
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec redis redis-cli ping
+docker compose --env-file .env -f docker-compose.dev.yml exec redis redis-cli ping
 # or
 kubectl exec -n afterglow deployment/backend -- redis-cli -u redis://redis:6379 ping
 ```

@@ -182,3 +182,49 @@ async def test_lumen_bridge_refuses_implicit_grants_and_pre_cutover_frozen_snaps
 
 async def _return(value):
     return value
+
+
+@pytest.mark.asyncio
+async def test_lumen_bridge_lists_each_valid_selected_grant_and_skips_only_the_invalid(bridge_app, monkeypatch):
+    from app.api import mcp_lumen
+
+    good = mcp_lumen.lumen.LumenGrantSnapshot(
+        grant_id="good", user_id="u", project_id="p", credential_epoch=1, selection_generation=5
+    )
+    broken = mcp_lumen.lumen.LumenGrantSnapshot(
+        grant_id="broken", user_id="u", project_id="p", credential_epoch=1, selection_generation=5
+    )
+    entry = SimpleNamespace(
+        name="compute_list_servers",
+        description="List servers",
+        effect="read",
+        input_schema=lambda: {"type": "object", "properties": {}},
+    )
+    monkeypatch.setattr(
+        mcp_lumen,
+        "get_settings",
+        lambda: SimpleNamespace(lumen_mcp_service_token="bridge-secret", service_mcp_enabled=True),
+    )
+    monkeypatch.setattr(mcp_lumen.lumen, "selected_lumen_snapshots", lambda **_: _return([good, broken]))
+
+    async def resolve(snapshot):
+        if snapshot is broken:
+            raise mcp_lumen.lumen.McpLumenAuthorityError("revoked")
+        return SimpleNamespace()
+
+    monkeypatch.setattr(mcp_lumen.lumen, "resolve_lumen_principal", resolve)
+    monkeypatch.setattr(mcp_lumen.registry, "enabled_entries", lambda _: (entry,))
+    monkeypatch.setattr(mcp_lumen.registry, "enabled_service_fingerprint", lambda: "a" * 64)
+
+    async with AsyncClient(transport=ASGITransport(bridge_app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/mcp/lumen/snapshot",
+            json={"user_id": "u", "project_id": "p"},
+            headers={"Authorization": "Bearer bridge-secret"},
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert [item["snapshot"]["grant_id"] for item in body["snapshots"]] == ["good"]
+    assert body["snapshot"] == body["snapshots"][0]["snapshot"]
+    assert body["entries"] == body["snapshots"][0]["entries"]

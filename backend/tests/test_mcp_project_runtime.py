@@ -13,7 +13,13 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import mcp_lumen
-from app.models.mcp_authority import McpDelegatedGrant, McpPersonalToken, McpProjectCredential, McpToolInvocation
+from app.models.mcp_authority import (
+    McpDelegatedGrant,
+    McpLumenSelection,
+    McpPersonalToken,
+    McpProjectCredential,
+    McpToolInvocation,
+)
 from app.services.mcp_control_plane import (
     authentication,
     authority,
@@ -49,6 +55,15 @@ class MemorySession:
     async def scalar(self, statement):
         entity = statement.column_descriptions[0]["entity"]
         params = statement.compile().params
+        if entity is McpLumenSelection:
+            key = {
+                "owner_user_id": params["owner_user_id_1"],
+                "owner_project_id": params["owner_project_id_1"],
+                "grant_id": params["grant_id_1"],
+            }
+            self.state.selection_keys.append(key)
+            selection = self.state.selection
+            return selection if selection is not None and selection.grant_id == key["grant_id"] else None
         if entity is McpDelegatedGrant:
             assert params["owner_project_id_1"] == self.state.grant.owner_project_id
             return self.state.grant
@@ -75,9 +90,8 @@ class MemorySession:
         raise AssertionError(entity)
 
     async def execute(self, statement):
-        return SimpleNamespace(
-            one_or_none=lambda: (self.state.selection, self.state.grant, self.state.token, self.state.owner_lock)
-        )
+        row = (self.state.selection, self.state.grant, self.state.token, self.state.owner_lock)
+        return SimpleNamespace(one_or_none=lambda: row, all=lambda: [row] if self.state.selection is not None else [])
 
     def add(self, row):
         self.state.invocations.append(row)

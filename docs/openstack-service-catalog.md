@@ -312,7 +312,7 @@ palimpsest_internal_url = "http://palimpsest-api:8020"
 - **Compose 실행 모드별 override 계약**:
   - 기본·운영 manifest는 unset 변수를 컨테이너에 주입하지 않아 TOML 또는 일반 경로의 기본 카탈로그를 유지합니다. `.env`/`--env-file`/shell에서 지정한 값과 명시적 빈 값은 그대로 전달합니다. 패키지 경로는 위 예외를 따릅니다.
   - 명시적으로 선택하는 dev 모드는 같은 network의 local service DNS가 기본값입니다. `services:config/up`은 shell/`.env` → nonempty private `[services]` → local DNS 순서로 선택합니다. 명시적 빈 환경 변수는 local DNS보다 우선하며 일반 경로는 카탈로그, Palimpsest 패키지는 503을 선택합니다.
-  - dev 활성 파일은 최초 한 번 복사하고 보존하는 `.local-services/afterglow.conf`입니다. 이미 snapshot이 있으면 원본 `afterglow.conf` 수정은 자동 복사되지 않습니다. `npm run services:config`는 실제 선택값을 mode 0600 `.local-services/compose.env`에 저장하며 직접 Compose 실행도 `--env-file .local-services/compose.env -f docker-compose.dev.yml`을 사용합니다.
+  - dev 활성 파일은 루트 `afterglow.conf`입니다(복사본을 만들지 않습니다). 수정 뒤에는 `npm run services:up`을 실행해 입력을 다시 전달합니다. `npm run services:config`는 선택값을 출력 없이 출처만 보고하며, 직접 Compose 실행은 `.env`만 읽습니다.
 
 - **프로덕션 HTTPS 규칙**: `AFTERGLOW_ENV=production` 설정 시 명시적인 서비스 URL은 반드시 `https://` 보안 프로토콜을 사용해야 합니다. HTTP URL 지정 시 부팅 검증에서 `ValueError`가 발생합니다. 빈 값(`""`)은 일반 경로에만 카탈로그 조회를 적용하며, Palimpsest 패키지 경로는 503입니다.
 

@@ -411,21 +411,20 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		const { drover, palimpsest, waygate } = permissions.service_permissions;
 		return { id, name, can_write: permissions.can_write, service_permissions: { drover, palimpsest, waygate }, service_errors: {} };
 	});
-	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.filter((record) => record.status !== 'revoked' && !record.revoked_at).map((record) => ({ ...record, is_lumen_default: record.status === 'active' && (state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] ?? []).includes(record.id) }));
 	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
 	if (pathname === '/api/v1/chat/cloud-tools' && ['GET', 'POST', 'DELETE'].includes(method)) {
 		const project = state.projects.find((item) => item.id === (requestProjectId ?? state.selectedProjectId));
 		if (!project) mockUnsupported();
 		if (method === 'DELETE') {
 			delete state.mcpAccess.cloudApprovals[project.id];
-			delete state.mcpAccess.lumenDefaults[project.id];
 		} else if (method === 'POST') {
 			const access = (body as { access_level?: unknown } | null)?.access_level;
 			if (access !== 'read' && access !== 'manage') mockUnsupported();
 			state.mcpAccess.cloudApprovals[project.id] = { access_level: access, expires_at: new Date(Date.parse(NOW_ISO) + 30 * 86400000).toISOString() };
-			delete state.mcpAccess.lumenDefaults[project.id];
 		}
-		const selected = state.mcpAccess.personalTokens.find((record) => record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[project.id]);
+		const selectedIds = state.mcpAccess.lumenDefaults[project.id] ?? [];
+		const selected = state.mcpAccess.personalTokens.find((record) => record.status === 'active' && selectedIds.includes(record.id));
 		const approved = state.mcpAccess.cloudApprovals[project.id];
 		return {
 			available: true,
@@ -449,7 +448,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'PUT' && lumenDefaultTokenId) {
 		const selected = state.mcpAccess.personalTokens.find((record) => record.id === lumenDefaultTokenId && record.status === 'active');
 		if (!selected) mockUnsupported();
-		state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] = selected.id;
+		const key = requestProjectId ?? state.selectedProjectId;
+		const current = state.mcpAccess.lumenDefaults[key] ?? [];
+		state.mcpAccess.lumenDefaults[key] = current.includes(selected.id) ? current : [...current, selected.id];
+		return { lumen_selection_generation: 2 };
+	}
+	if (method === 'DELETE' && lumenDefaultTokenId) {
+		const key = requestProjectId ?? state.selectedProjectId;
+		state.mcpAccess.lumenDefaults[key] = (state.mcpAccess.lumenDefaults[key] ?? []).filter((id) => id !== lumenDefaultTokenId);
 		return { lumen_selection_generation: 2 };
 	}
 	const oauthGrantId = pathname.match(/^\/api\/v1\/auth\/mcp-oauth\/grants\/([^/]+)$/)?.[1];

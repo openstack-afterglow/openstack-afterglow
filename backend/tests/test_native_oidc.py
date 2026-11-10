@@ -599,3 +599,176 @@ async def test_deleted_primary_receipt_retirement_is_narrow(native_env, monkeypa
     else:
         session.commit.assert_not_awaited()
     assert vars(intent) == snapshot
+
+
+# Keystone returns a local account (no OS-FEDERATION block) when a `local` rule matched. Only the pinned
+# mapping's own local rule for this exact email and literal name, in the Accounts domain, may pass.
+LOCAL_RULE_MAPPING = {
+    "schema_version": "2.0",
+    "rules": [
+        {
+            "local": [{"user": {"type": "local", "name": "linked-user", "domain": {"id": "dom-accounts"}}}],
+            "remote": [
+                {"type": "OIDC-email", "any_one_of": ["linked@example.test"]},
+                {"type": "OIDC-email_verified", "any_one_of": ["true"]},
+            ],
+        },
+        {
+            "local": [{"user": {"type": "ephemeral", "name": "{0}", "email": "{1}", "domain": {"id": "dom-accounts"}}}],
+            "remote": [{"type": "OIDC-preferred_username"}, {"type": "OIDC-email"}],
+        },
+    ],
+}
+LOCAL_DESCRIPTOR = SimpleNamespace(
+    account_domain_id="dom-accounts", idp_id="gitlab", protocol_id="openid", mapping_id="sso_oidc_mapping"
+)
+
+
+def _local_ks(mapping=LOCAL_RULE_MAPPING):
+    return SimpleNamespace(
+        federation=SimpleNamespace(mappings=SimpleNamespace(get=lambda _: SimpleNamespace(**mapping)))
+    )
+
+
+def _local_native(**overrides):
+    native = {"id": "local-user-id", "name": "linked-user", "domain": {"id": "dom-accounts"}}
+    native.update(overrides)
+    return native
+
+
+def test_local_identity_accepts_only_the_pinned_local_rule_for_this_email_and_name():
+    identity = SimpleNamespace(email="linked@example.test")
+    assert native_oidc._local_identity_reason(_local_native(), identity, LOCAL_DESCRIPTOR, _local_ks()) is None
+
+
+@pytest.mark.parametrize(
+    "native_overrides, email, reason",
+    [
+        ({"name": "someone-else"}, "linked@example.test", "local_rule_not_matched"),
+        ({"domain": {"id": "dom-personal"}}, "linked@example.test", "user_domain_not_accounts"),
+        ({}, "other@example.test", "local_rule_not_matched"),
+        ({}, "linked@example.test", None),
+    ],
+    ids=["wrong-name", "foreign-domain", "email-not-in-rule", "control-match"],
+)
+def test_local_identity_rejects_mismatches_with_a_server_side_reason(native_overrides, email, reason):
+    identity = SimpleNamespace(email=email)
+    native = _local_native(**native_overrides)
+    assert native_oidc._local_identity_reason(native, identity, LOCAL_DESCRIPTOR, _local_ks()) == reason
+
+
+def test_ephemeral_rule_never_authorizes_a_local_account_result():
+    # Only a `local`-typed user clause can explain a local token; an ephemeral clause with the same name cannot.
+    mapping = {
+        "schema_version": "2.0",
+        "rules": [
+            {
+                "local": [{"user": {"type": "ephemeral", "name": "linked-user", "domain": {"id": "dom-accounts"}}}],
+                "remote": [{"type": "OIDC-email", "any_one_of": ["linked@example.test"]}],
+            }
+        ],
+    }
+    identity = SimpleNamespace(email="linked@example.test")
+    reason = native_oidc._local_identity_reason(_local_native(), identity, LOCAL_DESCRIPTOR, _local_ks(mapping))
+    assert reason == "local_rule_not_matched"
+
+
+@pytest.fixture
+def local_federate(monkeypatch):
+    """federate() doubles: Keystone returns a local-account token (no OS-FEDERATION block) for the local rule."""
+    from app.services import account_spaces, organization_provisioning
+    from app.services import domain_auth as svc
+
+    descriptor = SimpleNamespace(
+        issuer=ISSUER,
+        idp_id="gitlab",
+        protocol_id="openid",
+        mapping_id="sso_oidc_mapping",
+        account_domain_id="dom-accounts",
+        personal_domain_id="dom-personal",
+        project_template="{0}-project",
+    )
+    user = SimpleNamespace(
+        id="local-user-id",
+        name="linked-user",
+        domain_id="dom-accounts",
+        enabled=True,
+        email="linked@example.test",
+        afterglow_external_identities=[{"issuer": ISSUER, "subject": "subject-1"}],
+        afterglow_service_identity=None,
+        afterglow_identity_kind="human",
+    )
+    monkeypatch.setattr(svc, "require_provider", AsyncMock())
+    monkeypatch.setattr(svc, "_require_native_mapping", lambda ks, row: descriptor)
+    monkeypatch.setattr(svc, "_revoke_quietly", AsyncMock())
+    monkeypatch.setattr(organization_provisioning, "require_current", AsyncMock())
+
+    def no_template_lookup(*_args, **_kwargs):
+        raise AssertionError("a local-linked login must not look up the mapped <username>-project template")
+
+    monkeypatch.setattr(account_spaces, "personal_project", no_template_lookup)
+    ks = SimpleNamespace(
+        federation=SimpleNamespace(mappings=SimpleNamespace(get=lambda _: SimpleNamespace(**LOCAL_RULE_MAPPING))),
+        users=SimpleNamespace(get=lambda _uid: user),
+    )
+    return SimpleNamespace(descriptor=descriptor, ks=ks, user=user, svc=svc)
+
+
+def _local_identity():
+    return SimpleNamespace(
+        issuer=ISSUER,
+        username="gitlab-user",
+        email="linked@example.test",
+        subject="subject-1",
+        bearer="id-token",
+    )
+
+
+async def test_federate_links_a_local_rule_account_without_template_lookup(local_federate, monkeypatch):
+    svc = local_federate.svc
+    native = {"id": "local-user-id", "name": "linked-user", "domain": {"id": "dom-accounts"}}
+    monkeypatch.setattr(svc, "keystone_federate", AsyncMock(return_value=("tok", native)))
+    lease = SimpleNamespace(assert_owned=AsyncMock())
+    login = await native_oidc.federate(
+        SimpleNamespace(id="cfg:native", revision=1, kind="oidc"),
+        _local_identity(),
+        {"id": "dom-login", "name": "dmslab"},
+        ks=local_federate.ks,
+        lease=lease,
+        catalog=None,
+        descriptor=local_federate.descriptor,
+    )
+    assert login.user_id == "local-user-id" and login.unscoped_token == "tok"
+    assert lease.assert_owned.await_count >= 1
+    svc._revoke_quietly.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "native, email",
+    [
+        ({"id": "local-user-id", "name": "someone-else", "domain": {"id": "dom-accounts"}}, "linked@example.test"),
+        ({"id": "local-user-id", "name": "linked-user", "domain": {"id": "dom-personal"}}, "linked@example.test"),
+        ({"id": "local-user-id", "name": "linked-user", "domain": {"id": "dom-accounts"}}, "unlisted@example.test"),
+    ],
+    ids=["wrong-name", "foreign-domain", "email-not-in-rule"],
+)
+async def test_federate_rejects_a_local_result_the_pinned_rule_does_not_authorize(
+    local_federate, monkeypatch, native, email
+):
+    svc = local_federate.svc
+    monkeypatch.setattr(svc, "keystone_federate", AsyncMock(return_value=("tok", native)))
+    lease = SimpleNamespace(assert_owned=AsyncMock())
+    identity = _local_identity()
+    identity.email = email
+    with pytest.raises(svc.DomainAuthUnavailable) as denied:
+        await native_oidc.federate(
+            SimpleNamespace(id="cfg:native", revision=1, kind="oidc"),
+            identity,
+            {"id": "dom-login", "name": "dmslab"},
+            ks=local_federate.ks,
+            lease=lease,
+            catalog=None,
+            descriptor=local_federate.descriptor,
+        )
+    assert denied.value.status_code == 503 and denied.value.code == "native_mapping_unsafe"
+    svc._revoke_quietly.assert_awaited_once_with("tok")

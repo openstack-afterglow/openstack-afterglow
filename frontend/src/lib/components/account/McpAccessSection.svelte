@@ -641,7 +641,7 @@
 		mutatingId = 'lumen-default';
 		actionError = '';
 		try {
-			await api.delete('/api/v1/auth/mcp-tokens/lumen-default', owner.token, owner.projectId);
+			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}/lumen-default`, owner.token, owner.projectId);
 			if (isCurrentScope(owner) && tokensScope === owner) await loadAccessFor(owner);
 		} catch (error) {
 			if (ownsToken(owner, record) && selected === methodSequence) actionError = errorMessage(error, t('mcp.clearFailed'));

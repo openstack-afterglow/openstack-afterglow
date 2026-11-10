@@ -438,7 +438,7 @@ mcp = false         # Consumer MCP control plane (Stage 2 publish gate 전까지
 # Environment SERVICE_<SERVICE>_INTERNAL_URL wins; empty = catalog only for generic routes.
 # Host backend examples: http://127.0.0.1:8010 (Waygate), :8011 (Drover),
 # :8012 (Lumen), :8020 (Palimpsest). Inside Compose use service DNS, not localhost.
-# Dev runner uses nonempty values in .local-services/afterglow.conf, otherwise
+# Dev runner uses nonempty values in this file, otherwise
 # defaults to its local service DNS. Base/prod have no local default; prod requires HTTPS.
 # Native package keys and browser package BFF require a trusted nonempty
 # SERVICE_PALIMPSEST_INTERNAL_URL or [services] palimpsest_internal_url; absent/empty
@@ -826,6 +826,19 @@ timeout_seconds = 10
 # 프로덕션 도메인을 첫 번째로, 개발 도메인을 이후에 나열.
 # 예: origins = "https://cloud.dmslab.re.kr,http://localhost:3080,http://127.0.0.1:3080"
 origins = "https://afterglow.example.com,http://localhost:3080,http://127.0.0.1:3080"
+
+# [local]: 로컬 Compose 테스트 전용 비밀이 아닌 설정. 셸 환경변수와 .env의 같은 이름 값이 우선합니다.
+# 허용 키 외에는 거부되며, 비밀번호·키·토큰은 .env나 환경변수에만 둡니다.
+# [local]
+# drover_callback_base_url = "http://localhost:8011"
+# waygate_public_base_url = "https://callback.example.invalid"
+# waygate_key_name = "local-waygate"
+# lumen_mcp_control_plane_url = "http://backend:8000/api/v1/mcp/lumen"
+# lumen_build_context = ""
+# traffic_analytics_ingest_url = ""
+# traffic_analytics_geoip_mmdb_file = ""
+# palimpsest_ssl_verify = true
+# forwarded_allow_ips = "127.0.0.1"
 
 # 파일 공급자: 위 [auth] 예제. SQL 공급자·이메일 제한·회원가입 정책은 도메인 IAM에서 관리합니다.
 # SQL 공급자 secret 암호화와 파일 공급자 revision/pin에 쓰이는 k3s.kubeconfig_encryption_key를 보존·복구해야 합니다.

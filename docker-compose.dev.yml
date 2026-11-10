@@ -53,6 +53,7 @@ x-lumen-environment: &lumen-environment
   KEYSTONE_INTERFACE: ${AFTERGLOW_LOCAL_OS_INTERFACE:-}
   LUMEN_MCP_SERVICE_TOKEN: ${AFTERGLOW_LOCAL_SERVICE_TOKEN:-}
   MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL-http://backend:8000}
+  LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}}
 
 x-palimpsest-environment: &palimpsest-environment
   <<: *local-os
@@ -154,7 +155,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     command: python -m waygate.scripts.migrate --apply
     depends_on:
       redis:
@@ -177,8 +178,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
-      - ${WAYGATE_POLICY_DIR:-./.local-services/policy/waygate}:/etc/waygate:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     depends_on:
       waygate-migrate:
         condition: service_completed_successfully
@@ -202,8 +202,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
-      - ${WAYGATE_POLICY_DIR:-./.local-services/policy/waygate}:/etc/waygate:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     depends_on:
       waygate-migrate:
         condition: service_completed_successfully
@@ -221,7 +220,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     command: python -m drover.scripts.migrate --apply
     depends_on:
       redis:
@@ -244,8 +243,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
-      - ${DROVER_POLICY_DIR:-./.local-services/policy/drover}:/etc/drover:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     depends_on:
       redis:
         condition: service_started
@@ -271,8 +269,7 @@ services:
       - path: .env
         required: false
     volumes:
-      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
-      - ${DROVER_POLICY_DIR:-./.local-services/policy/drover}:/etc/drover:ro
+      - ./afterglow.conf:/etc/afterglow/afterglow.conf:ro
     depends_on:
       redis:
         condition: service_started
@@ -289,8 +286,6 @@ services:
     environment: *lumen-environment
     env_file:
       - path: .env
-        required: false
-      - path: .local-services/lumen.env
         required: false
     command: python -m lumen.scripts.migrate --apply
     depends_on:
@@ -314,10 +309,6 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .local-services/lumen.env
-        required: false
-    volumes:
-      - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro
     depends_on:
       lumen-migrate:
         condition: service_completed_successfully
@@ -339,10 +330,6 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .local-services/lumen.env
-        required: false
-    volumes:
-      - ${LUMEN_POLICY_DIR:-./.local-services/policy/lumen}:/etc/lumen:ro
     depends_on:
       lumen-migrate:
         condition: service_completed_successfully
@@ -382,7 +369,6 @@ services:
         required: false
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
-      - ${PALIMPSEST_POLICY_DIR:-./.local-services/policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started
@@ -408,7 +394,6 @@ services:
         required: false
     volumes:
       - palimpsest-hub:/var/lib/palimpsest/hub
-      - ${PALIMPSEST_POLICY_DIR:-./.local-services/policy/palimpsest}:/etc/palimpsest:ro
     depends_on:
       redis:
         condition: service_started
@@ -426,9 +411,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
-      - ./.local-services/logs:/app/logs
-      - ./.local-services/nova-pci-aliases:/app/nova-pci-aliases:ro
+      - ./afterglow.conf:/app/afterglow.conf:ro
+      - ./logs:/app/logs
+      - ./nova-pci-aliases:/app/nova-pci-aliases:ro
       - ${AFTERGLOW_LOCAL_CEPH_CONF:-/dev/null}:/etc/ceph/ceph.conf:ro
       - ${AFTERGLOW_LOCAL_CEPH_KEYRING:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
       - ${TRAFFIC_ANALYTICS_GEOIP_MMDB_FILE:-/dev/null}:/etc/afterglow/geoip/country.mmdb:ro
@@ -485,8 +470,8 @@ services:
     ports:
       - "127.0.0.1:3080:3080"
     volumes:
-      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
-      - ./.local-services/logs:/app/logs
+      - ./afterglow.conf:/app/afterglow.conf:ro
+      - ./logs:/app/logs
     environment:
       ORIGIN: http://localhost:3080
       PUBLIC_API_BASE: http://localhost:8000
@@ -519,8 +504,8 @@ services:
     <<: *afterglow-local-config-reader
     command: python -m app.notion_worker
     volumes:
-      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
-      - ./.local-services/logs:/app/logs
+      - ./afterglow.conf:/app/afterglow.conf:ro
+      - ./logs:/app/logs
     environment: *afterglow-local-environment
     env_file:
       - path: .env

@@ -158,6 +158,10 @@ async def selected(owner):
     return await lumen.selected_lumen_snapshot(user_id=owner.info["user_id"], project_id=owner.info["project_id"])
 
 
+async def selected_all(owner):
+    return await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"])
+
+
 async def approve(owner, access_level="read"):
     await defaults.approve_lumen_grant(token_info=owner.info, access_level=access_level)
     snapshot = await selected(owner)
@@ -329,19 +333,20 @@ async def test_explicit_approval_is_isolated_by_user_and_project(owner):
     assert len(owner.remote) == 2
 
 
-async def test_pat_is_preserved_without_action_and_replaced_only_by_explicit_approval(owner):
+async def test_pat_and_internal_approval_are_independent_selections(owner):
     manual_id = await personal_selection(owner)
     manual = await selected(owner)
     assert await selected(owner) == manual
     assert (await lumen.resolve_lumen_principal(manual)).can_write
     assert owner.created == []
     assert await internal_grants(owner) == []
-    current = await approve(owner, "read")
-    assert current.grant_id != manual_id
+    await defaults.approve_lumen_grant(token_info=owner.info, access_level="read")
+    current = next(snapshot for snapshot in await selected_all(owner) if snapshot.grant_id != manual_id)
     assert not (await lumen.resolve_lumen_principal(current)).can_write
     assert len(owner.created) == 1
-    with pytest.raises(lumen.McpLumenAuthorityError):
-        await lumen.resolve_lumen_principal(manual)
+    assert {snapshot.grant_id for snapshot in await selected_all(owner)} == {manual_id, current.grant_id}
+    fresh_manual = next(snapshot for snapshot in await selected_all(owner) if snapshot.grant_id == manual_id)
+    assert (await lumen.resolve_lumen_principal(fresh_manual)).can_write
     async with owner.factory() as session:
         grant = await session.get(McpDelegatedGrant, manual_id)
         token = await session.scalar(select(McpPersonalToken).where(McpPersonalToken.grant_id == manual_id))
@@ -442,18 +447,50 @@ async def test_disable_stays_off_until_explicit_reapproval(owner, access_level):
         await lumen.resolve_lumen_principal(old)
 
 
-async def test_disable_clears_pat_selection_without_revoking_pat(owner):
+async def test_disable_keeps_personal_selection_and_revokes_nothing(owner):
     manual_id = await personal_selection(owner)
     old = await selected(owner)
     await defaults.disable_lumen_grant(token_info=owner.info)
-    assert await selected(owner) is None
+    fresh = await selected(owner)
+    assert fresh.grant_id == old.grant_id and fresh.selection_generation == old.selection_generation + 1
     with pytest.raises(lumen.McpLumenAuthorityError):
         await lumen.resolve_lumen_principal(old)
+    assert (await lumen.resolve_lumen_principal(fresh)).can_write
     async with owner.factory() as session:
         grant = await session.get(McpDelegatedGrant, manual_id)
         token = await session.scalar(select(McpPersonalToken).where(McpPersonalToken.grant_id == manual_id))
         assert grant.status == "active" and token.revoked_at is None
     assert owner.created == owner.deleted == []
+
+
+async def test_each_selected_grant_is_listed_and_deselected_alone(owner):
+    first = await personal_selection(owner)
+    second = await personal_selection(owner)
+    assert {snapshot.grant_id for snapshot in await selected_all(owner)} == {first, second}
+    removed = next(snapshot for snapshot in await selected_all(owner) if snapshot.grant_id == first)
+    before = await generation(owner)
+    await authority.unset_lumen_grant(
+        owner.factory,
+        owner_user_id=owner.info["user_id"],
+        owner_project_id=owner.info["project_id"],
+        username=owner.info["username"],
+        grant_id=first,
+    )
+    assert await generation(owner) > before
+    remaining = await selected_all(owner)
+    assert [snapshot.grant_id for snapshot in remaining] == [second]
+    with pytest.raises(lumen.McpLumenAuthorityError):
+        await lumen.resolve_lumen_principal(removed)
+    assert (await lumen.resolve_lumen_principal(remaining[0])).can_write
+
+
+async def test_revoked_selected_grant_is_skipped_without_hiding_others(owner):
+    first = await personal_selection(owner)
+    second = await personal_selection(owner)
+    async with owner.factory() as session, session.begin():
+        token = await session.scalar(select(McpPersonalToken).where(McpPersonalToken.grant_id == first))
+        token.revoked_at = datetime.now(UTC)
+    assert [snapshot.grant_id for snapshot in await selected_all(owner)] == [second]
 
 
 async def test_expiry_stays_off_until_explicit_reapproval_and_fences_old_run(owner):
@@ -783,4 +820,6 @@ async def test_clearing_all_removes_every_enabled_grant(owner):
         username="manual-owner",
         grant_id=None,
     )
-    assert await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"]) == []
+    assert (
+        await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"]) == []
+    )

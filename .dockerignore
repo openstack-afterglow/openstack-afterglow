@@ -18,7 +18,6 @@ afterglow.conf
 afterglow.*.conf
 config.toml
 config.*.toml
-.local-services/
 admin-openrc
 .omp/
 .omc/

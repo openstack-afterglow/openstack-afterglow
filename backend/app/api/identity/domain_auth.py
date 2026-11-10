@@ -271,6 +271,12 @@ async def provider_callback(
         svc.require_same_site_browser(request)
         login = await svc.complete_authorization(req.code, req.state, binding)
     except svc.DomainAuthError as exc:
+        logger.warning(
+            "provider callback failed: status=%s code=%s detail=%s",
+            exc.status_code,
+            exc.code,
+            exc.detail,
+        )
         failure = svc.domain_auth_error_response(exc)
         if not isinstance(exc, (svc.AccountLinkRequired, svc.AccountEntryRequired)):
             _clear_state_cookie(failure)

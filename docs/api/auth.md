@@ -953,7 +953,7 @@ Preview는 독립 SDK 연결의 project worker를 최대3개로 제한하고 각
 
 두 목록은 명시적으로 폐기된 항목을 제외하고 아직 폐기하지 않은 만료 항목은 유지합니다. 두 exact-resource `DELETE`는 선택 project/domain·`X-Project-Id`와 무관하게 본인 소유를 확인한 뒤 DB에 저장된 원래 발급 프로젝트의 lock·감사·cleanup으로 `204` 폐기합니다. 같은 도메인의 다른 사용자 연결도 `404`이며 caller가 발급 origin을 지정하지 않습니다. 반복 폐기는 같은 결과를 유지하고 화면은 성공 뒤 두 목록을 다시 읽습니다. 목록·폐기에만 적용되는 identity-only 경계이며 발급·preview·verify·Lumen 선택·실제 MCP 실행의 프로젝트/도메인 권한은 완화하지 않습니다.
 
-폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 선택된 Lumen 기본 토큰은 해제합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.
+폐기는 물리적 행 삭제가 아닙니다. Grant/token tombstone·감사 기록과 upstream credential 정리 재시도를 보존하고, 해당 토큰의 Lumen 선택 행만 제거합니다. 같은 사용자의 다른 선택은 유지합니다. Upstream 정리가 실패해도 로컬 폐기는 유지되어 접근·OAuth refresh가 거부되고 해당 항목은 사용자 목록에 다시 나타나지 않습니다.
 
 ### 관측된 클라이언트와 연결 제거
 
@@ -1039,6 +1039,12 @@ Trusted operator OIDC providers can use a native mapping with `type: local`, `na
 Conditional `OIDC-groups_direct`/`OIDC-groups` clauses may select existing named groups only in the login organization for operator-managed providers. Project creation, role grants, cross-domain and unconditional groups are rejected. Keystone ignores mapping groups for standard local users; a deployment needing persistent group membership must synchronize module-verified claims in its native authentication driver. The native token must still return the exact canonical ID/home/email. Local password login then shares the same memberships.
 
 명시적 `native_mapping` opt-in은 위 legacy 제한과 구분합니다. 검토된 전체 mapping digest로 native ephemeral identity·project/role/group 정책을 고정하고, Keystone가 그 정책을 실행하도록 한 뒤 native user·Personal authority를 검증합니다. 설정된 mapping의 정책을 앱에서 다른 규칙으로 바꾸거나 임의 claim으로 확장하지 않습니다.
+
+mapping은 `projects` 절로 정의한 Personal 템플릿을 반드시 가져야 하며, identity-only 형태는 수락하지 않습니다. 허용 schema는 `2.0`뿐이고(Keystone이 `user.domain`을 적용하는 버전), 전체 `{schema_version, rules}` canonical SHA-256 pin 일치가 필수입니다. 템플릿 규칙은 도메인을 **ID**로 참조하고, Personal 프로젝트 절과 사용자 절은 같은 local 절에 있어야 하며, 사용자는 `ephemeral`이고 `name: {n}`은 서명 `preferred_username` 위치와 일치해야 합니다. 이 경로에서 Keystone의 mapping이 프로젝트를 만들거나 채택하지 않으며, 로그인 후 세션 준비가 Personal workspace를 확인하거나 생성합니다. 배포마다 `native_mapping.sha256`은 Keystone의 실제 canonical digest와 일치해야 하며, mapping을 바꾸면 pin도 함께 갱신합니다.
+
+`type: local` 규칙에 따른 기존 계정 연결(2026-11-11): Keystone이 로컬 계정 토큰을 주고 `OS-FEDERATION` 블록을 생략하면, 서버는 ① 사용자 도메인이 `account_domain_id`인지, ② 고정된 mapping에 같은 이메일 조건과 같은 리터럴 이름을 가진 `local` 사용자 규칙이 있는지, ③ 기존 이메일·외부 subject 바인딩 readback을 확인합니다. 셋 다 맞을 때만 연결하며, 이 계정은 `<username>-project` 템플릿을 조회하지 않고 비밀번호 로그인과 같은 세션 준비 경로를 탑니다. 실패는 공개 응답 `native_mapping_unsafe` 한 문구이며 구체 사유는 서버 WARNING 로그에만 남깁니다.
+
+보안 참고: 템플릿 규칙과 `local` 연결 규칙은 Keystone에 정의된 권한을 해당 사용자에게 연결합니다. 이 형태를 쓰는 배포는 대상 계정과 그룹의 role 할당을 운영자가 검토해야 합니다.
 
 ### OIDC 그룹 전달 진단
 

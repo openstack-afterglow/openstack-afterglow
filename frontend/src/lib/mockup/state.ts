@@ -71,7 +71,7 @@ interface MockupState {
 	mcpAccess: {
 		personalTokens: MockMcpAccessRecord[];
 		oauthGrants: MockMcpAccessRecord[];
-		lumenDefaults: Record<string, string>;
+		lumenDefaults: Record<string, string[]>;
 		cloudApprovals: Record<string, { access_level: 'read' | 'manage'; expires_at: string }>;
 	};
 	instances: Instance[];
@@ -295,7 +295,7 @@ function seedState(): MockupState {
 		selectedProjectId: PROJECT_ID,
 		tutorialStatuses: {},
 		mcpAccess: {
-			lumenDefaults: { [PROJECT_ID]: 'mock-mcp-token-lumen' },
+			lumenDefaults: { [PROJECT_ID]: ['mock-mcp-token-lumen'] },
 			cloudApprovals: {},
 			personalTokens: [
 				{

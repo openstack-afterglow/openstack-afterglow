@@ -4558,3 +4558,13 @@ Effective settings를 기존 production/isolated candidate에서 비밀 출력 �
 - 정책 사유 분류(`backend/tests/test_service_policy_error_reasons.py`): `get_policy_capabilities`의 raise 지점에서 붙인 `NativePolicyError.reason`을 HTTP 상태와 독립적으로 검증한다. native 401/403/404/500, 전송 실패, 로컬 가드(토큰 없음·대상 불일치)가 서로 다른 사유가 되는지 확인한다.
 - 실행 결과: 백엔드 `test:unit:backend` 14764 passed·106 skipped; 프런트 `test:unit:frontend` 통과; `test:contract` 통과; `test:orchestration`(venv python3 PATH) 통과; `npm run i18n:check` 0 errors; `svelte-check --threshold error` 0 errors; `experience:catalog:check` 통과.
 - 한계: 실제 브라우저에서 도메인 변경 후 재승인 흐름은 실행하지 않았다. 운영 사용자 미리보기의 실제 사유 코드는 확인하지 않았다. 스냅샷은 이 문서 편집 뒤 다시 스탬프해야 `--staged`가 통과한다.
+
+## Lumen 다중 권한 선택 (브리지 계약 1절, 2026-11-10, local)
+
+- 변경: 마이그레이션 110(`mcp_lumen_selections` 기본키 `(owner_user_id, owner_project_id, grant_id)`), `unset_lumen_grant`의 권한별 해제와 `set_lumen_selection`의 권한별 추가, `selected_lumen_snapshots`와 grant 단위 실행 검사, `/api/v1/mcp/lumen/snapshot`의 `snapshots` 목록, `DELETE /api/v1/auth/mcp-tokens/{id}/lumen-default`, 목업·계정 화면의 권한별 해제.
+- 실행 결과(venv PATH 설정 후 `npm run test:gate`, exit 0): 백엔드 단위 14765 passed·106 skipped, 프런트 단위 590 files·7925 tests passed, 계약 262 passed, 기능 DB 레인 286 passed·46 skipped·131 deselected, `lint:backend` 통과(F401 한 건 정정 후 재실행).
+- 신규/갱신 검증: 독립 선택·권한별 해제·폐기 grant 제외(`test_mcp_lumen_defaults_db.py`), 계약의 다중 grant 목록과 부분 제외(`tests/contracts/test_mcp_lumen_bridge.py`), 외부 workspace DELETE 경계(`test_auth_domain_boundaries.py`), 계정 화면 해제 경로(`McpAccessSection.test.ts`), 목업 목록(`src/lib/mockup`).
+- 기준선 확인: 깨끗한 `HEAD` 워크트리에서도 `tests/contracts/test_realtime_voice.py::test_realtime_admission_returns_only_project_bound_browser_ticket`이 503으로 실패했다(본 변경과 무관한 기존 상태). `npm run test:contract` 레인에서는 262 passed로 통과한다.
+- 한계: `GET /api/v1/chat/cloud-tools`는 첫 번째 유효 선택 하나만 요약한다. 실제 Lumen이 여러 권한의 도구를 합쳐 쓰는지는 Lumen 저장소 bridge 문서와 실행 증거로 따로 확인해야 한다. 운영 DB 적용과 실제 브라우저 확인은 수행하지 않았다.
+- 브랜치 병합: `feat/mcp-multi-grant`(`f6aaf971`)를 `dev`에 병합했다(merge `ddcc42ae`). 110 SQL은 브랜치 파일과 바이트 단위로 같다(sha256 `7f2d0e78…`, manifest 등록 일치). 병합 후 발견된 결함 세 가지를 바로잡았다: 내부 기본 선택 흐름과 해제가 첫 번째 선택(개인 키일 수 있음)을 지우던 문제, 실행 검사(`_resolve_snapshot_grant`)가 grant ID 없이 조회해 다중 grant에서 `MultipleResultsFound`가 나던 문제.
+- 마이그레이션 실행 검증(063→110, MariaDB 11.4.13 일회용 컨테이너): `063_mcp_control_plane.sql` 적용 후 레거시 grant와 단일 선택 행을 넣고 `110_mcp_lumen_multigrant.sql` 적용. 결과: 기본키가 `(owner_user_id, owner_project_id, grant_id)`로 바뀌었고, 레거시 행은 그대로 남았으며, 같은 사용자·프로젝트에 두 번째 grant 선택이 허용되고, 같은 세 값의 중복은 `ERROR 1062`로 거부됐다. 컨테이너는 정리했다. 이 SQL은 비멱등(`DROP PRIMARY KEY`)이므로 ledger 기록 뒤에만 재실행하지 않는다.

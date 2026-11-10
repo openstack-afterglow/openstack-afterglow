@@ -1076,7 +1076,14 @@ async def test_expiry_marks_additional_credentials_and_clears_lumen_selection(pr
         grant = await session.get(McpDelegatedGrant, issued.grant_id)
         secondary = await session.get(McpProjectCredential, {"grant_id": grant.id, "project_id": owner.b})
         assert grant.status == "expired" and grant.cleanup_pending and secondary.cleanup_pending
-        assert await session.get(McpLumenSelection, {"owner_user_id": owner.user, "owner_project_id": owner.a}) is None
+        remaining = await session.scalars(
+            select(McpLumenSelection).where(
+                McpLumenSelection.owner_user_id == owner.user,
+                McpLumenSelection.owner_project_id == owner.a,
+                McpLumenSelection.grant_id == issued.grant_id,
+            )
+        )
+        assert remaining.all() == []
     assert await cleanup(owner, grant)
     assert not owner.remote
 
@@ -1100,8 +1107,14 @@ async def test_non_expiring_personal_key_survives_cleanup_but_not_revocation(pro
         grant = await authority.resolve_personal_token(session, issued.token, now=future)
         assert grant.status == "active" and grant.expires_at is None
         assert authority.grant_public_view(grant)["expires_at"] is None
-        selection = await session.get(McpLumenSelection, {"owner_user_id": owner.user, "owner_project_id": owner.a})
-        assert selection.grant_id == grant.id
+        selection = await session.scalar(
+            select(McpLumenSelection).where(
+                McpLumenSelection.owner_user_id == owner.user,
+                McpLumenSelection.owner_project_id == owner.a,
+                McpLumenSelection.grant_id == grant.id,
+            )
+        )
+        assert selection is not None
         assert authority.decrypt_grant_secret(grant) == "secret-" + owner.a
     await authority.revoke_grant(
         owner.factory,
@@ -1113,7 +1126,14 @@ async def test_non_expiring_personal_key_survives_cleanup_but_not_revocation(pro
     async with owner.factory() as session, session.begin():
         with pytest.raises(authority.McpGrantNotFoundError):
             await authority.resolve_personal_token(session, issued.token, now=future)
-        assert await session.get(McpLumenSelection, {"owner_user_id": owner.user, "owner_project_id": owner.a}) is None
+        remaining = await session.scalars(
+            select(McpLumenSelection).where(
+                McpLumenSelection.owner_user_id == owner.user,
+                McpLumenSelection.owner_project_id == owner.a,
+                McpLumenSelection.grant_id == issued.grant_id,
+            )
+        )
+        assert remaining.all() == []
         grant = await session.get(McpDelegatedGrant, issued.grant_id)
         assert grant.status == "revoked" and grant.credential_epoch == 2 and grant.cleanup_pending
     assert await cleanup(owner, grant)

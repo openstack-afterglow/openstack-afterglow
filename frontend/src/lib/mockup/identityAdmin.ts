@@ -47,7 +47,7 @@ function mockPersonalTokens(method: string, path: string, body: unknown, request
 		record.revoked_at = new Date().toISOString();
 		record.is_lumen_default = false;
 		for (const [project, selected] of Object.entries(state.mcpAccess.lumenDefaults)) {
-			if (selected === id) delete state.mcpAccess.lumenDefaults[project];
+			state.mcpAccess.lumenDefaults[project] = selected.filter((item) => item !== id);
 		}
 		return {};
 	}

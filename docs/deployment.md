@@ -101,7 +101,7 @@ GPU 추가 요청 기능은 별도의 additive `104_gpu_quota_requests.sql`과 m
 Rollback은 먼저 automation을 비활성화하고 진행 중 작업·exact flavor/spec/ACL과 두 RuntimeSetting key를 보존·대조해야 합니다. 새 정책을 이해하지 못하는 old writer를 enabled automation과 혼용하지 마세요. 실제 GPU passthrough·운영 cloud 수용은 격리 HTTP/브라우저 증거와 별도입니다.
 ### 로컬 Compose PCI snapshot 연결
 
-개발 backend는 `.local-services/nova-pci-aliases/`를 `/app/nova-pci-aliases/`에 read-only로 mount합니다. 원본 Nova 설정을 복사하지 말고 `deploy/kolla/ansible/roles/afterglow/files/snapshot_nova_pci_aliases.py`의 collect/aggregate 절차로 모든 authoritative controller의 공개 alias만 정제하여 `aliases.json`으로 저장하세요. Controller 전체의 동일한 관측이어야 ready이며, 빈 디렉터리·불완전 snapshot은 그대로 unavailable입니다. Directory mount이므로 이후 snapshot의 원자적 교체는 backend 재기동 없이 읽힙니다.
+개발 backend는 루트 `nova-pci-aliases/`를 `/app/nova-pci-aliases/`에 read-only로 mount합니다. 원본 Nova 설정을 복사하지 말고 `deploy/kolla/ansible/roles/afterglow/files/snapshot_nova_pci_aliases.py`의 collect/aggregate 절차로 모든 authoritative controller의 공개 alias만 정제하여 `aliases.json`으로 저장하세요. Controller 전체의 동일한 관측이어야 ready이며, 빈 디렉터리·불완전 snapshot은 그대로 unavailable입니다. Directory mount이므로 이후 snapshot의 원자적 교체는 backend 재기동 없이 읽힙니다.
 
 Snapshot의 `observed_at`은 수집 시각이 아니라 controller `nova.conf`의 수정 시각입니다. 설정이 바뀌지 않으면 새로 수집해도 같은 값이므로 최신 수집 여부와 혼동하지 마세요. 로컬 backend의 enabled 60초 자동화 loop는 공유 Nova에 flavor를 계속 기록하며, 이후 도메인 GPU 한도를 설정하면 해당 도메인 프로젝트에 private ACL이 부여됩니다.
 
@@ -188,7 +188,7 @@ Rollback closes admission/drains again and uses a qualified image/schema pair or
 
 The local development stack and the Kolla-deployed Lumen share one MariaDB (`lumen_kolla`). A local `docker compose up --build` from the development checkout applied `027` while Kolla still ran `0.6.9` (`6ca10eed`), which is the unsupported old/new writer mix described above. 027 had cleared the provider-row credential columns that `0.6.9` reads and replaced the `llm_provider_auth_attempts` primary key. The recovery was a bounded compatibility restore, not a rollback: all eight Lumen writers were stopped, a post-drain backup was proven by restoring it to a matching MariaDB `10.11.19`, and three guarded statements ran with an exact all-table stage check before and after each. Provider-row credential ciphertext was copied back from the account credential rows (no decryption), the auth-attempt key was restored to `provider_id` with `credential_id` nullable and uniquely indexed, and the account/credential tables and all 28 migration-ledger rows were preserved. The six Kolla containers were restarted with identical IDs and images.
 
-While Kolla runs `0.6.9`, keep the local Lumen on the same source revision: set `LUMEN_BUILD_CONTEXT` to an extracted copy of that exact revision. `docker compose` otherwise builds `../lumen`, whose current tree includes the account runtime and 027; an unset or wrong context can therefore start incompatible new writers or pending migrations against the shared database. An existing 027 ledger row is not permission to replay that migration or proof that the repaired legacy schema supports the new runtime. The runner rejects a missing pinned source, but it cannot detect a context that points at the wrong revision, so verify the revision before any `up`. The pinned `0.6.9` migration behavior is bounded to the measured repaired restore below. The Lumen encryption key is scoped to the three Lumen services through `.local-services/lumen.env` (0600), so it must equal the key Kolla uses and must not be rotated or copied to other services.
+While Kolla runs `0.6.9`, keep the local Lumen on the same source revision: set `LUMEN_BUILD_CONTEXT` to an extracted copy of that exact revision. `docker compose` otherwise builds `../lumen`, whose current tree includes the account runtime and 027; an unset or wrong context can therefore start incompatible new writers or pending migrations against the shared database. An existing 027 ledger row is not permission to replay that migration or proof that the repaired legacy schema supports the new runtime. The runner rejects a missing pinned source, but it cannot detect a context that points at the wrong revision, so verify the revision before any `up`. The pinned `0.6.9` migration behavior is bounded to the measured repaired restore below. The Lumen encryption key is `LUMEN_ENCRYPTION_KEY` in the local `.env` (falling back to `AFTERGLOW_LOCAL_ENCRYPTION_KEY` when unset) and is passed to the three Lumen services, so it must equal the key Kolla uses and must not be rotated or copied to other services. Open gap: the dev Compose services all load `.env` through `env_file`, so `.env` names also appear in non-Lumen containers until that isolation decision is made.
 
 Measured behavior of the pinned `0.6.9` migrate CLI: against a restore of the drained recovery point with the compatibility repair applied (ledger of 28 rows including the `027-provider-account-credentials` entry that `0.6.9` does not know), both the dry run and `--apply` exited 0 and left the ledger, provider and credential fingerprints and the repaired `PRIMARY KEY(provider_id)`/nullable `credential_id` unchanged. It neither failed on the unknown ledger entry nor re-applied anything, so `docker compose up -d --build` with the pinned context does not undo the repair. This was observed on a network-isolated restore, not on the shared database.
 
@@ -393,8 +393,8 @@ Pytest는 configured log directory 아래 PID별 test sink로 분리합니다. �
   `[DEFAULT]\ndebug = true`를 지정할 수 있습니다. sanitizer는 값을 보존하며 final
   Kolla overlay는 debug를 덮어쓰지 않습니다. public frontend projection에는 포함하지 않습니다.
 - Compose manifest와 `scripts/local-services.mjs`는 TOML을 재직렬화하지 않고 mount/복사하므로
-  변경하지 않습니다. Dev의 기존 `.local-services/afterglow.conf` snapshot은 원본 수정으로
-  덮어쓰지 않으므로 실제 snapshot을 수정해야 합니다. 환경별 override에는 강제 debug 값을
+  변경하지 않습니다. Dev는 루트 `afterglow.conf`를 직접 mount하므로 수정 뒤 `npm run services:up`으로
+  입력을 다시 전달합니다. 환경별 override에는 강제 debug 값을
   넣지 않습니다. 정적 `deploy/k8s-template/configmap.yaml`에도 기본 `false`를 제공합니다.
 
 변경 후 해당 설정을 사용하는 프로세스를 재시작/재생성해야 합니다. 환경변수로 TOML 오류를
@@ -407,10 +407,9 @@ DEBUG, 실패는 debug를 꺼도 WARNING으로 남습니다. 인증 route가 401
 응답하는 경우도 예외 구조를 기록하며 클라이언트 오류 응답과 no-store 정책은 바꾸지 않습니다.
 실제 Keystone SDK의 `keystoneauth` namespace도 wire DEBUG 차단 대상입니다.
 
-Dev 로그인 문제는 루트 파일만 보지 말고 실제 mount인 `.local-services/afterglow.conf`의
-`[DEFAULT] debug = true`와 컨테이너에 주입한 `DEBUG` override를 확인합니다. 파일 변경은
-프로세스 재생성이 필요합니다. 기존 prepared env/볼륨을 유지한 backend-only 재적용은
-`docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --no-deps --build --force-recreate --wait backend`입니다.
+Dev 로그인 문제는 실제 mount인 루트 `afterglow.conf`의
+`[DEFAULT] debug = true`와 컨테이너에 주입한 `DEBUG` override를 확인합니다. 파일 변경 뒤에는
+프로세스 재생성이 필요하며 `npm run services:up`으로 입력을 다시 전달해 재생성합니다.
 Keystone HTTP 성공과 별개로 권한 조회 단계에서 지연/실패할 수 있으므로 각 stage의 duration과
 원인 구조를 확인합니다. Native Keystone client도 설정된 `openstack.interface`와 `region_name`을
 사용하며 public endpoint로 조용히 바꾸지 않습니다. 권한 읽기 재사용은 한 번의 조회 안으로
@@ -731,9 +730,10 @@ Afterglow는 image data/header/trash를 삭제하지 않습니다. 쓰기는 누
 
 배포별 파일 연결:
 
-- Dev runner: `.local-services/ceph/ceph.conf`와 `.local-services/ceph/ceph.client.afterglow-rbd.keyring`을 만들면 `services:config/up`이 source를 0640으로 고정하고, 실제 파일 GID를 받은 non-root backend에만 `/etc/ceph/` read-only mount합니다. private `.local-services/afterglow.conf`의 `[ceph]` 경로·FSID·pool map도 위 값으로 설정해야 합니다.
+- Dev runner: `.env`(또는 셸)의 `AFTERGLOW_LOCAL_CEPH_CONF`, `AFTERGLOW_LOCAL_CEPH_KEYRING`에 host 파일 경로를 지정하면 backend에 `/etc/ceph/`로 read-only mount합니다. 루트 `afterglow.conf`의 `[ceph]` 경로·FSID·pool map도 같은 파일을 가리키도록 설정합니다. 미지정이면 `/dev/null` 자리표시자가 마운트되어 기능이 비활성입니다.
 - 직접 dev Compose: `AFTERGLOW_LOCAL_CEPH_CONF`, `AFTERGLOW_LOCAL_CEPH_KEYRING`에 host 파일 경로를 넣습니다.
 - Prod Compose: `CEPH_RBD_CONF_FILE`, `CEPH_RBD_KEYRING_FILE`에 host 파일 경로를 넣고 container config는 `/etc/ceph/` 경로를 가리킵니다.
+- 로컬 Compose 설정 입력: 루트 `afterglow.conf`와 `.env`를 직접 사용하며 private 복사본을 만들지 않습니다. `[local]` 허용 키는 `drover_callback_base_url`, `waygate_public_base_url`, `waygate_key_name`, `lumen_mcp_control_plane_url`, `lumen_build_context`, `traffic_analytics_ingest_url`, `traffic_analytics_geoip_mmdb_file`, `palimpsest_ssl_verify`, `forwarded_allow_ips`뿐입니다(예제는 `afterglow.conf.example` 주석). 우선순위는 셸 환경변수 > `.env` > `afterglow.conf`입니다. 허용 목록 밖의 키(비밀번호·키·토큰·DB URL 등)는 값을 출력하지 않고 거부합니다. `.env`와 셸 값은 Compose가 직접 읽고, `afterglow.conf`의 값은 `services:up`이 전달합니다.
 - Kolla: `afterglow_rbd_conf_source`, `afterglow_rbd_keyring_source`, `afterglow_rbd_cluster_fsid`, `afterglow_rbd_volume_pools`를 설정합니다. 두 source가 모두 있을 때만 mount됩니다.
 - Kubernetes: private generation config의 `[ceph]`에 `rbd_conf_content`와 secret `rbd_keyring`을 추가한 뒤 `generate_k8s.py`를 실행합니다. ConfigMap의 `ceph.conf`와 Secret의 `ceph.client.afterglow-rbd.keyring`이 backend에 0400 read-only로 mount됩니다. repository의 빈 placeholder를 운영 key로 착각하지 않습니다.
 
@@ -991,19 +991,17 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
 
 - Docker Compose **2.24 이상** (optional env file 지원).
 - Python **3.12 이상**과 이 checkout의 `afterglow.conf`, `.env`. Python은 `backend/.venv/bin/python`을 우선 사용하고, 없으면 `python3`를 사용합니다.
-  root 원본은 변경하지 않습니다. 첫 실행은 `afterglow.conf`를 private
-  `.local-services/afterglow.conf`로 복사하고, 별도 JWT/암호화/service key를
-  `.local-services/secrets.json`에 생성합니다. 디렉터리는 0700, config snapshot은 0640이며
-  snapshot을 mount하는 서비스에만 파일의 실제 GID를 `group_add`로 전달합니다. Linux에서도
-  image의 non-root UID를 바꾸지 않고 읽을 수 있습니다. 키와 `compose.env`는 0600으로 유지하고,
-  모든 private 파일은 Git과 Docker build context에서 제외합니다. 이후 실행은 snapshot과 키를 보존합니다.
-  `services:config`/`services:up`은 이 입력을 `.local-services/compose.env`(0600)에도 저장하여
-  명시적인 dev Compose 명령에서 재사용합니다. 이 파일에도 비밀이 있으므로 출력·커밋하지 않습니다.
-  OpenStack 인증은 local snapshot의 실제 자격 증명을 사용합니다. 로컬 DB가 격리되어도
-  OpenStack 자체는 실제 환경이므로 smoke는 resource mutation이나 provider completion을 하지 않습니다.
-- Drover readiness에는 dedicated service project UUID가 필요합니다. `.local-services/afterglow.conf`의 `[openstack] service_project_id` 또는 `.env`의 `OS_SERVICE_PROJECT_ID`로 명시합니다. 시작 전에 누락을 거부하고, admin 프로젝트로 fallback하지 않습니다.
+  루트 `afterglow.conf`와 `.env`를 직접 읽습니다. private 복사본과 생성 키 파일은 없습니다. 비밀이 아닌 OpenStack·`[local]` 값은 셸 환경변수 > `.env` > `afterglow.conf` 순서로 적용됩니다.
+  비밀은 `.env` 또는 셸 환경변수에만 둡니다. 필수 값은 `AFTERGLOW_LOCAL_SECRET_KEY`, `AFTERGLOW_LOCAL_ENCRYPTION_KEY`, `AFTERGLOW_LOCAL_SERVICE_TOKEN`이며 각 64자리 hex(`openssl rand -hex 32`)입니다. 없거나 형식이 틀리면 `services:config`가 이름만 알려주고 중단합니다.
+  `AFTERGLOW_LOCAL_OS_PASSWORD`도 `.env`에 둘 수 있습니다. `afterglow.conf`는 컨테이너가 읽을 수 있도록 0644 등 읽기 권한이어야 하며, `[local]` 허용 키 밖의 값은 거부합니다.
+  `services:config`는 값 대신 출처만 출력합니다. 기존 로컬 키를 옮길 때는 값을 출력하지 말고 `.env`에 복사하세요. 암호화 키를 바꾸면 기존 로컬 암호화 데이터가 복호화되지 않습니다.
+  `afterglow.conf`를 바꾼 뒤에는 `npm run services:up`을 실행해 입력을 다시 전달합니다. Compose는 `.env`만 직접 읽으므로 `afterglow.conf`의 값은 `services:up`을 통해서만 전달됩니다.
+  로그는 루트 `logs/`에, nova PCI 별칭은 루트 `nova-pci-aliases/`에 생기며 Git에서 제외됩니다. 개발 Compose는 정책 파일을 mount하지 않습니다.
+  Lumen 암호화 키는 `.env`의 `LUMEN_ENCRYPTION_KEY`(미설정 시 `AFTERGLOW_LOCAL_ENCRYPTION_KEY`)로 Lumen 서비스 3개에 전달됩니다. 단, 개발 Compose의 모든 서비스가 `env_file: .env`를 읽으므로 `.env`의 이름은 Lumen이 아닌 컨테이너에도 보입니다. 이 격리는 아직 열린 결정입니다.
+  OpenStack 인증은 `afterglow.conf`/`.env`의 실제 자격 증명을 사용합니다. 로컬 DB가 격리되어도 OpenStack 자체는 실제 환경이므로 smoke는 resource mutation이나 provider completion을 하지 않습니다.
+- Drover readiness에는 dedicated service project UUID가 필요합니다. `afterglow.conf`의 `[openstack] service_project_id` 또는 `.env`의 `OS_SERVICE_PROJECT_ID`로 명시합니다. 시작 전에 누락을 거부하고, admin 프로젝트로 fallback하지 않습니다.
 - 로컬 Drover API/worker/migration은 `SENTINEL_ENABLED=false`, `SENTINEL_HOSTS` 빈 값으로 고정하여 private TOML의 운영 Sentinel 설정을 상속하지 않습니다. 실제 cache client도 local Redis를 사용하며 runner가 이 격리를 검사합니다.
-- Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 snapshot의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 snapshot 변경 전 `.local-services/backups/`에 mode 0600 백업을 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
+- Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 루트 `afterglow.conf`의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 파일을 바꾸기 전 `afterglow.conf` 백업을 mode 0600으로 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
 - 현재 소스 build 모드에는 sibling checkout `../lumen`, `../drover`, `../waygate`,
   `../palimpsest`가 필요합니다. 앞의 세 checkout에는 `docker/Dockerfile`, Palimpsest에는
   `docker/hub/Dockerfile`이 있어야 합니다. 이 Dockerfile은 `hub/src`와 Hub package metadata를
@@ -1032,10 +1030,10 @@ env-file 값을 덮어쓰며, dev에서는 unset/empty일 때 아래 local fallb
 컨테이너의 `DATABASE_URL`로 전달됩니다. 일반 `DATABASE_URL`은 이 다섯 Compose 목적지를
 선택하는 입력이 아닙니다. Kubernetes/Kolla의 기존 runtime secret 이름과는 구분합니다.
 
-`services:config/up`은 외부 DB 목적지를 허용하고 resolved URL을 private
-`.local-services/compose.env`(0600)에 보존합니다. URL·비밀번호나 전체 resolved config를
-출력·커밋하지 않습니다. 재사용 시에도 shell 값이 이 파일보다 우선하므로 대상 선택을
-승인된 비밀 관리 경로에서 확인한 뒤 실행합니다. `services:config`는 입력 준비이며
+`services:config/up`은 외부 DB 목적지를 허용하고, 셸·`.env`의 URL을 Compose가 직접 읽습니다(복사본을 만들지 않습니다). URL·비밀번호나 전체
+resolved config를 출력·커밋하지 않습니다. 셸 값이 `.env`보다 우선하므로 대상 선택을 승인된 비밀 관리 경로에서
+확인한 뒤 실행합니다. 같은 명령을 다른 셸에서 실행하면 목적지가 달라질 수 있습니다.
+`services:config`는 입력 준비이며
 DB 호환성 검증이 아닙니다. `services:up`은 선택한 DB에서 migration/bootstrap과 실제
 API·worker를 실행하므로 외부 URL 설정만으로 live write 승인이 생기지 않습니다.
 
@@ -1044,13 +1042,13 @@ checkpointer는 별도 local 대상이며, 시작 전 cache·volume/network·mou
 검사하고 implicit `docker-compose.override.yml`은 읽지 않습니다. API health와
 migration 완료는 대시보드·OpenStack 통신이나 운영 schema 호환성의 증거가 아닙니다.
 
-이미 빌드한 이미지로 복구할 때도 먼저 private 입력을 준비하고 명시적으로 사용합니다.
+이미 빌드한 이미지로 복구할 때도 먼저 `services:config`로 입력을 확인하고 `services:up`을 사용합니다.
 키와 볼륨은 보존하지만 선택 DB에서 migration/bootstrap을 실행할 수 있으므로,
 외부 대상은 아래 평가와 기존 실행 승인이 선행되어야 합니다.
 
 ```bash
 npm run services:config
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --no-build --wait
+npm run services:up
 ```
 
 외부 DB를 가리킨 Palimpsest bootstrap의 exit 0은 운영 무변경 증거가 아닙니다.
@@ -1083,7 +1081,7 @@ snapshot·키·양방향 호환성과 기존 운영 실행 승인을 먼저 충�
 
 이미지 빌드가 성공해도 선택된 외부 DB가 `WSREP has not yet prepared node for application use`(1047)를 반환하면 migration/bootstrap과 그 뒤 API·worker 시작은 실패합니다. 로컬 `service-mariadb`의 healthy는 **명시한 외부 DB**의 readiness가 아닙니다. 실제 실패 container의 DB 목적지와 현재 render를 비밀 출력 없이 비교하고 기존 로그를 먼저 보존합니다. SQLAlchemy dialect 초기화 자체가1047에 막힐 수 있으므로 승인된 read-only DB 관리 연결에서 `SHOW GLOBAL STATUS`의 `wsrep_ready`, `wsrep_connected`, `wsrep_cluster_status`, `wsrep_local_state_comment`를 확인합니다.
 
-`OFF / OFF / Disconnected / Initialized`이면 DB 소유자가 quorum·primary component와 노드 연결을 복구해야 합니다. 임의 cluster bootstrap/restart, `wsrep_on=OFF`, 오류 우회나 local fallback으로 바꾸지 않습니다. `.local-services/compose.env`와 직접 Compose의 실제 목적지가 다를 수 있으므로 env-file을 추가하는 것만으로 복구하지 마세요. DB의 `ON / ON / Primary / Synced` 및 기존 migration/backup·호환성 승인이 확인된 뒤 원래 목적지를 보존한 정본 startup을 재개합니다. Frontend 단독 health 성공은 전체 스택·실제 채팅 복구와 구분합니다.
+`OFF / OFF / Disconnected / Initialized`이면 DB 소유자가 quorum·primary component와 노드 연결을 복구해야 합니다. 임의 cluster bootstrap/restart, `wsrep_on=OFF`, 오류 우회나 local fallback으로 바꾸지 않습니다. `services:up`의 셸·`.env`·`afterglow.conf` 선택과 직접 Compose의 `.env` 읽기는 다를 수 있으므로 env-file이나 셸 값을 추가하는 것만으로 복구하지 마세요. DB의 `ON / ON / Primary / Synced` 및 기존 migration/backup·호환성 승인이 확인된 뒤 원래 목적지를 보존한 정본 startup을 재개합니다. Frontend 단독 health 성공은 전체 스택·실제 채팅 복구와 구분합니다.
 
 먼저 **모든 member**를 읽어 Primary 유무를 구분합니다. 다른 두 member가 같은 UUID의 `Primary/Synced`라면 뒤처진 노드에서 새 cluster bootstrap·`pc.bootstrap`·`safe_to_bootstrap` 강제를 실행하지 않습니다. 명시 승인과 현재 정상 donor/cold recovery 자료를 확보한 뒤 분리된 노드만 기존 Primary로 정상 재합류시킵니다. 이 환경의 MariaDB는 Kolla container가 아니라 native `mariadb.service`일 수 있으므로 실제 process owner를 먼저 확인합니다. `SELECT 1`은 WSREP 미준비에서도 성공할 수 있어 **실제 application table SELECT**와3-member readiness를 함께 검증합니다. 2026-10-30의 승인된 controller1 재합류·원래5DB read 성공은 [검증 기록](testing.md#2026-10-30-원래-db-목적지-복구와-앱-기동-차단)을 따릅니다.
 
@@ -1184,16 +1182,12 @@ conversation을 먼저 정상 **로컬** 관리 UI/API로 준비해야 하며, r
 fallback하는 개발 모드는 없습니다. Published image 실행은 prod manifest를 사용합니다.
 
 ```bash
-# private 입력 준비 후 직접 dev Compose 사용
+# .env와 afterglow.conf 입력을 확인한 뒤 dev stack을 시작·갱신
 npm run services:config
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --build --wait
-
-# 이미 실행 중인 dependency는 유지하고 Afterglow frontend/backend만 재빌드·재생성
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml \
-  up -d --no-deps --force-recreate --build backend frontend
+npm run services:up
 
 # 기존 선택적 개발 모니터링 profile
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
+docker compose --env-file .env -f docker-compose.dev.yml --profile monitoring up -d
 ```
 
 Lumen migration이 `ModuleNotFoundError: lumen_plugin_api`로 SQL 실행 전에 종료되면 sibling Lumen의 workspace dependency/lock/runtime source가 일치하는 이미지인지 확인합니다. 현재 Lumen Docker build는 `uv sync --locked`와 최종 non-root runtime의 migration CLI import 검사를 수행합니다. 컨테이너에 임시 package를 설치하거나 migration ledger/volume을 삭제하지 말고, `lumen-api`/`lumen-worker`를 중지하고 local schema를 백업한 뒤 source build → migration → API/worker 시작 순서로 복구합니다. `npm run services:up`은 같은 dev manifest와 project를 사용해 전체 local readiness를 확인합니다.
@@ -1225,10 +1219,9 @@ Keystone·Nova·Neutron 등 실제 OpenStack은 원격 클라우드를 그대로
 `SERVICE_LUMEN_INTERNAL_URL`, `SERVICE_PALIMPSEST_INTERNAL_URL` 또는 `[services]`의
 동명 `*_internal_url`을 설정합니다. BFF와 Drover/Waygate SDK에 함께 적용됩니다.
 
-Dev runner는 shell/`.env` → nonempty `.local-services/afterglow.conf` → Compose DNS를
-선택합니다. 일반 경로는 명시적 빈 환경 변수로 해당 서비스만 카탈로그로 돌립니다. 기존 private
-snapshot은 원본 설정 변경으로 덮어쓰지 않습니다. `services:config`는 선택값을 private
-`compose.env`에 보존하고 `services:up`은 새 환경을 반영합니다. 기본·운영 실행의 일반 경로는
+Dev runner는 shell/`.env` → 루트 `afterglow.conf`의 nonempty `[services]` → Compose DNS를
+선택합니다. 일반 경로는 명시적 빈 환경 변수로 해당 서비스만 카탈로그로 돌립니다. `services:up`은
+셸·`.env`·`afterglow.conf`에서 고른 값을 Compose에 전달합니다. 설정을 바꾼 뒤에는 `services:up`을 다시 실행합니다. 기본·운영 실행의 일반 경로는
 override가 없으면 카탈로그를 사용합니다. 아래 패키지 예외와
 [주소 예시와 우선순위](openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides)를 따르세요.
 
@@ -1249,8 +1242,8 @@ origin에서 추론하지 않습니다. Public origin이 없으면 authority는 
 `LUMEN_MCP_CONTROL_PLANE_URL`은 Lumen이 Afterglow를 호출할 주소입니다. 브라우저의
 `PUBLIC_API_BASE`와 Waygate callback origin은 별도입니다. 전체 local stack을 준비하거나
 Waygate API/worker를 시작할 때는 `WAYGATE_PUBLIC_BASE_URL=https://waygate.example.com`처럼
-gateway VM에서 도달 가능한 HTTP(S) origin을 명시해야 합니다. `services:config`는 검증된 값을
-private `compose.env`에 보존하고 Compose가 이를 `WAYGATE_CALLBACK_BASE_URL`로 전달합니다.
+gateway VM에서 도달 가능한 HTTP(S) origin을 명시해야 합니다. `services:up`은 검증된 값을
+Compose에 전달하고, Compose가 이를 `WAYGATE_CALLBACK_BASE_URL`로 사용합니다.
 새 VM callback은 이 origin의 direct Waygate `/v1/servers/.../agent` 경로를 사용합니다.
 개발 컨테이너 DNS, `localhost`, loopback 주소와 Afterglow BFF 경로를 사용하지 않습니다.
 Waygate가 이미 실행 중일 때 `--no-deps`로 frontend/backend만 재생성하는 명령은 이 값 없이도
@@ -1351,7 +1344,7 @@ system_admin_executor_user_id = ""
 system_admin_executor_password = ""
 ```
 
-Waygate executor는 native `member`와 그 `reader` 범위만 허용한다. Drover는 기존 `delegated_required_roles`·`delegated_optional_roles`의 provider-only ceiling을 사용한다. Admin/service 역할·현재 user/home-domain/target-domain 비활성화·권한 회수는 새 I/O를 차단하며 서비스 운영자 자격이나 요청자 impersonation으로 대체하지 않는다. Kolla는 각 native 저장소의 defaults/precheck/private template을 사용한다. 로컬 Compose는 보호된 `.local-services/afterglow.conf`를 native API/worker가 함께 읽는다. Afterglow의 K8s/Helm 생성기는 별도 native 서비스를 배포하지 않으므로 이 비밀을 Afterglow ConfigMap에 복제하거나 자동 role-grant 경로를 추가하지 않는다.
+Waygate executor는 native `member`와 그 `reader` 범위만 허용한다. Drover는 기존 `delegated_required_roles`·`delegated_optional_roles`의 provider-only ceiling을 사용한다. Admin/service 역할·현재 user/home-domain/target-domain 비활성화·권한 회수는 새 I/O를 차단하며 서비스 운영자 자격이나 요청자 impersonation으로 대체하지 않는다. Kolla는 각 native 저장소의 defaults/precheck/private template을 사용한다. 로컬 Compose는 루트 `afterglow.conf`를 native API/worker가 함께 읽는다. Afterglow의 K8s/Helm 생성기는 별도 native 서비스를 배포하지 않으므로 이 비밀을 Afterglow ConfigMap에 복제하거나 자동 role-grant 경로를 추가하지 않는다.
 
 새 writer 전에 native API/worker를 drain·중지하고 **Drover005 / Waygate007**을 각 서비스 정본 migrate 경로로 적용해야 한다. Palimpsest Hub offline bootstrap은 기존 key table에 nullable `admin_issuer_context`를 추가하고 upload/publication의 key audit ID를 nullable로 확장한다. 기존 key의 issuer를 human admin으로 backfill하지 않는다. Lumen은 기존 capability JSON에 원본 reduced-credential의 nonsecret source/issued-role-ID ceiling을 보존하며 새 schema는 추가하지 않는다. 과거 run에 없는 원본 provenance를 복원했다고 간주하지 말고 기존 실행·복구/settlement와 새 I/O 경계를 native 운영 지침대로 drain·분리한다.
 
@@ -1372,7 +1365,7 @@ Lumen·Drover·Waygate·Palimpsest는 실제 OpenStack `oslo.policy`의 등록 �
 
 표준 `role:`, `rule:`, `and`·`or`·`not`·괄호·target 비교를 사용할 수 있다. YAML은 비어 있지 않은 rule 이름에서 문자열 check expression으로 가는 mapping이어야 한다. `!`는 거부, `@`와 따옴표로 명시한 빈 문자열은 허용이다. `null`·boolean·list·object 값을 빈 허용 규칙으로 취급하지 않으며 잘못된 문서·파싱 오류는 `503`으로 닫고 수정한 파일은 다시 평가한다. `policy.d`를 사용하려면 main `policy.yaml`이 있어야 하며 override가 없으면 `{}`를 쓴다. 파일 변경은 native Enforcer가 다음 평가에서 읽으며 API와 worker에 같은 파일 집합을 mount한다. Unknown action·잘못된 정책·읽기 실패를 전권 fallback으로 처리하지 않는다. YAML 허용은 인증·project/resource/user ownership·원래 credential/key ceiling·verified human system-only 경계를 해제하지 않는다.
 
-개발 Compose는 `.local-services/policy/<service>`, 운영 Compose는 `./policy/<service>`를 기본 host directory로 mount한다. 서비스별 `LUMEN_POLICY_DIR`·`DROVER_POLICY_DIR`·`WAYGATE_POLICY_DIR`·`PALIMPSEST_POLICY_DIR`로 외부 운영자 디렉터리를 선택할 수 있다. Directory bind는 read-only이고 atomic file replacement도 반영한다. 개발 준비는 없는 디렉터리와 빈 `{}` 파일만 생성하며 기존 operator override를 덮어쓰지 않는다. 운영 파일·API/worker UID의 읽기 권한은 운영자가 준비한다. Kolla는 각 native role의 config directory와 동일 정책 파일을 사용한다.
+개발 Compose는 정책 파일을 mount하지 않고 서비스 코드의 기본값을 사용합니다. 운영 Compose는 `./policy/<service>`를 기본 host directory로 mount하며, 서비스별 `LUMEN_POLICY_DIR`·`DROVER_POLICY_DIR`·`WAYGATE_POLICY_DIR`·`PALIMPSEST_POLICY_DIR`로 외부 운영자 디렉터리를 선택할 수 있다. Directory bind는 read-only이고 atomic file replacement도 반영한다. 운영 파일·API/worker UID의 읽기 권한은 운영자가 준비한다. Kolla는 각 native role의 config directory와 동일 정책 파일을 사용한다.
 
 Palimpsest Kolla는 비밀 `/app/palimpsest.conf`의 root:root `0640`을 그대로 유지한다. Nonroot Hub는 읽을 수 있는 정책 전용 `/etc/palimpsest/palimpsest.conf`를 `PALIMPSEST_CONFIG`로 선택한다. 해당 TOML은 `[oslo_policy]`의 `policy_file = "/etc/palimpsest/policy.yaml"`·`policy_dirs`만 포함하며 read-only 정책 directory 안에 root:root `0644`로 둔다. 비밀 TOML을 공개하거나 runtime user/group을 높여 정책 파일 읽기를 해결하지 않는다.
 
@@ -2064,7 +2057,7 @@ Rollback은 writer stop과 실제 native 상태의 disposition을 포함합니�
 명령은 선택 DB가 아니라 local MariaDB를 변경하므로 외부 대상 절차로 사용하지 않습니다.
 
 ```bash
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \
+docker compose --env-file .env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \
   'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' \
   < backend/migrations/070_chat_message_local_timestamps.sql
 ```
@@ -2126,7 +2119,7 @@ ArgoCD를 사용하는 경우 `dev` 브랜치 푸시 시 자동 동기화됩니�
 
 ```bash
 # 로그 확인
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml logs backend
+docker compose --env-file .env -f docker-compose.dev.yml logs backend
 kubectl logs -f deployment/backend -n afterglow
 
 # Keystone 연결 테스트
@@ -2136,7 +2129,7 @@ curl -s https://keystone.example.com:5000/v3 | python3 -m json.tool
 ### Redis 연결 오류
 
 ```bash
-docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec redis redis-cli ping
+docker compose --env-file .env -f docker-compose.dev.yml exec redis redis-cli ping
 # 또는
 kubectl exec -n afterglow deployment/backend -- redis-cli -u redis://redis:6379 ping
 ```

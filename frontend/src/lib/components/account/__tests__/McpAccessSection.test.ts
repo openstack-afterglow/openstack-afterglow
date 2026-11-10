@@ -1798,9 +1798,9 @@ describe('McpAccessSection', () => {
 		const record = { ...activeToken, id: 'token/one', grant_id: 'grant/one', name: 'Action client', is_lumen_default: action === 'clear-default' };
 		const label = { 'set-default': 'mcp.setLumen', 'clear-default': 'mcp.clearLumen', 'revoke-token': 'mcp.revoke', 'revoke-oauth': 'mcp.revokeAccess' } as const;
 		const errorKey = { 'set-default': 'mcp.selectFailed', 'clear-default': 'mcp.clearFailed', 'revoke-token': 'mcp.revokeFailed', 'revoke-oauth': 'mcp.revokeOAuthFailed' } as const;
-		const path = action === 'set-default' ? '/api/v1/auth/mcp-tokens/token%2Fone/lumen-default'
-			: action === 'clear-default' ? '/api/v1/auth/mcp-tokens/lumen-default'
-				: action === 'revoke-token' ? '/api/v1/auth/mcp-tokens/token%2Fone' : '/api/v1/auth/mcp-oauth/grants/grant%2Fone';
+		const path = action === 'revoke-token' ? '/api/v1/auth/mcp-tokens/token%2Fone'
+			: action === 'revoke-oauth' ? '/api/v1/auth/mcp-oauth/grants/grant%2Fone' : '/api/v1/auth/mcp-tokens/token%2Fone/lumen-default';
+
 
 		async function openAction() {
 			if (action === 'revoke-oauth') render(McpAccessSection);
