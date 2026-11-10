@@ -696,3 +696,52 @@ it('emits one applied error for an unconfirmed consent decision, never a ready t
 	expect(api.post).toHaveBeenCalledOnce();
 });
 });
+
+describe('MCP consent authorization domain', () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		experience.applied.mockResolvedValue(undefined);
+		initLocale('ko');
+		sessionStorage.clear();
+		projectSwitching.set(false);
+		setTicket(ticket);
+		api.post.mockResolvedValue({ redirect_uri: 'https://client.example.test/approved' });
+	});
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+		sessionStorage.clear();
+		initLocale('ko');
+	});
+	function withDomain() {
+		api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/auth/mcp-projects?preview=true'
+			? projects
+			: { ...details, domain_id: 'domain-dms', domain_name: 'DMS Lab', scopes: ['mcp:read'], ongoing_supported: true }));
+	}
+
+	it('names the authorization domain on the project step', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }] });
+		withDomain();
+		render(Page);
+		await loaded();
+		expect(screen.getByText('DMS Lab')).toBeTruthy();
+		expect(screen.getByText('domain-dms')).toBeTruthy();
+	});
+
+	it('hides the change-domain action when only one domain is available', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }] });
+		withDomain();
+		render(Page);
+		await loaded();
+		expect(screen.queryByRole('button', { name: t('mcpConsent.domain.change') })).toBeNull();
+	});
+
+	it('routes to domain selection when several domains are available', async () => {
+		auth.set({ ...actor, availableDomains: [{ id: 'domain-dms', name: 'DMS Lab' }, { id: 'domain-b', name: 'Other' }] });
+		withDomain();
+		render(Page);
+		await loaded();
+		await fireEvent.click(screen.getByRole('button', { name: t('mcpConsent.domain.change') }));
+		expect(goto).toHaveBeenCalledWith('/select-domain');
+	});
+});

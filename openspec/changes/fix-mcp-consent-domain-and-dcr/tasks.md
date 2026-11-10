@@ -33,4 +33,5 @@
 - [x] 5.3 `npm run test:unit:frontend`: passed. `npm run test:contract`: 261 passed. `npm run test:orchestration` with the backend venv on PATH: passed.
 - [x] 5.4 `npm run i18n:check`: 0 errors; `svelte-check --threshold error`: 0 errors; `npm run lint:backend`: passed; `npm run experience:catalog:check`: passed after regeneration.
 - [x] 5.5 `docs/security.md`, `docs/api/auth.md`, `ARCHITECTURE.md`, `docs/testing.md` updated.
-- [ ] 5.6 `npm run test:gate` passes: NOT passing. `docs:check` (`scripts/check_architecture.py`) reports the working-tree snapshot stale. Stamping is held because the snapshot includes unreviewed uncommitted changes from other work. `test:orchestration` also needs the venv `python3` (system python3 3.9 lacks `tomllib`).
+- [x] 5.6 `npm run test:gate` passes (exit 0) after the other work was reviewed and the architecture snapshot restamped. Covers docs:check, experience catalog, unit backend 14764 passed, unit frontend, contract 261, functional 284 passed, lint:backend. `test:orchestration` needs the backend venv on PATH (system python3 3.9 lacks `tomllib`). Remaining: 5.7 consent page vitest (3 tests added) passes 94/94 in `page.test.ts`.
+- [ ] 5.7 Live verification of Claude Code DCR retry, Hermes OAuth, and member preview reason on production not performed.
