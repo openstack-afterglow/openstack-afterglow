@@ -2137,8 +2137,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "41954d5809345202e3af0e6a426787df5c92d5838d048a6f346333c882f58a43",
-  "reviewed_at": "2026-11-10T11:56:27Z",
-  "summary": "테스트 전용 변경 검토: 동의 페이지 vitest 3개(도메인 표시, 단일 도메인 시 도메인 변경 숨김, 복수 도메인 시 /select-domain 이동)와 OpenSpec 5.6 정정. 제품 소스 동작 변경 없음. 검증: vitest page.test.ts 94 passed, 이전 test:gate exit 0 기록 유지."
+  "reviewed_at": "2026-11-10T11:56:50Z",
+  "summary": "docs/testing.md 검토: MCP 동의 검증 기록의 오래된 gate 실패 문구를 최종 test:gate exit 0 기록으로 교체하고 한계 문구 정정. 제품 소스 변경 없음. OpenSpec tasks 5.2 수치도 정정(아키텍처 스냅샷 밖)."
 }
 ```
 <!-- architecture-review:end -->

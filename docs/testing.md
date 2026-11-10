@@ -4549,7 +4549,7 @@ Effective settings를 기존 production/isolated candidate에서 비밀 출력 �
 
 - Backend: `cd backend && uv run --extra dev pytest tests/test_mcp_oauth.py tests/test_service_policy_error_reasons.py` → 60 passed. 새 회귀는 localhost loopback 등록 201, 비loopback HTTP 400, 문자열이 아닌 `grant_types` 400, 동의 응답의 `domain_id`/`domain_name`, 정책 실패 사유 코드 매핑과 snapshot 분류를 포함한다.
 - Frontend: `npx vitest run src/lib/utils/mcpConsentPermissions.test.ts src/lib/components/account src/routes/oauth` → 398 passed; 같은 범위 `routes/oauth`·`components/account` 실행 496 passed. `npm run i18n:check` → 0 errors (9개 로케일 `mcpConsent.details.domain`, `mcpConsent.domain.help`, `mcpConsent.preview.reason.*` 추가). `npx svelte-check --threshold error` → 0 errors.
-- `npm run test:gate`: 실패. 첫 단계 `docs:check`(`scripts/check_architecture.py`)가 작업 트리 스냅샷 stale로 종료 1. 스냅샷에는 이번 변경과 함께 다른 작업자의 미커밋 frontend·openspec 변경이 포함되어 있어 `--stamp`로 검토되지 않은 코드를 승인하지 않았다. 나머지 단계(experience catalog, lint:backend, test:all)는 별도 실행 결과를 아래에 기록한다.
+- `npm run test:gate`: 종료 코드 0. 다른 작업자 변경을 검토한 뒤 아키텍처 스냅샷을 재스탬프했고(`check_architecture.py --stamp`, source_sha256 f532fe6d…), docs:check, experience catalog, test:all(백엔드 단위 14764 passed·106 skipped, 프런트 단위, 계약 261, 기능 284 passed·46 skipped·131 deselected), lint:backend가 모두 통과했다. `test:orchestration`은 backend venv를 PATH에 올린 상태에서만 통과한다(시스템 python3 3.9는 `tomllib` 없음).
 - 미검증: 실제 Claude Code·Hermes의 DCR 재시도, member 미리보기의 실제 사유 코드, 운영 배포 빌드의 버전(eabb439a는 1.32.10 이후 태그에 포함).
 
 ## MCP 동의 도메인 전환·사유 분류 후속 검증 (2026-11-10, local)
@@ -4557,4 +4557,4 @@ Effective settings를 기존 production/isolated candidate에서 비밀 출력 �
 - 재바인딩 음성 테스트(`backend/tests/test_mcp_consent_domain_switch.py`): 같은 사용자의 pending 티켓 재바인딩 성공, rebind 없는 프로젝트 변경 거부, 다른 사용자 재바인딩 거부, 처리된 티켓 재바인딩 거부, 오래된 프로젝트에서 승인 거부, `/mcp-projects`의 도메인 라벨을 포함한다. 실제 DB 대신 `SQLAlchemy` 열 엔티티로 키를 고르는 fake session을 쓴다.
 - 정책 사유 분류(`backend/tests/test_service_policy_error_reasons.py`): `get_policy_capabilities`의 raise 지점에서 붙인 `NativePolicyError.reason`을 HTTP 상태와 독립적으로 검증한다. native 401/403/404/500, 전송 실패, 로컬 가드(토큰 없음·대상 불일치)가 서로 다른 사유가 되는지 확인한다.
 - 실행 결과: 백엔드 `test:unit:backend` 14764 passed·106 skipped; 프런트 `test:unit:frontend` 통과; `test:contract` 통과; `test:orchestration`(venv python3 PATH) 통과; `npm run i18n:check` 0 errors; `svelte-check --threshold error` 0 errors; `experience:catalog:check` 통과.
-- 한계: 실제 브라우저에서 도메인 변경 후 재승인 흐름은 실행하지 않았다. 운영 사용자 미리보기의 실제 사유 코드는 확인하지 않았다. `npm run test:gate`의 `docs:check`는 스냅샷 stamp 이후에만 통과할 수 있다.
+- 한계: 실제 브라우저에서 도메인 변경 후 재승인 흐름은 실행하지 않았다. 운영 사용자 미리보기의 실제 사유 코드는 확인하지 않았다. 스냅샷은 이 문서 편집 뒤 다시 스탬프해야 `--staged`가 통과한다.

@@ -29,7 +29,7 @@
 ## 5. Verification and docs
 
 - [x] 5.1 `uv run --extra dev pytest tests/test_mcp_oauth.py tests/test_service_policy_error_reasons.py tests/test_service_authorization.py tests/test_mcp_preview_native_http.py tests/test_mcp_project_authority.py tests/test_mcp_credentials.py`: 229 passed.
-- [x] 5.2 `npm run test:unit:backend`: 14749 passed, 106 skipped.
+- [x] 5.2 `npm run test:unit:backend`: 14764 passed, 106 skipped (final run after the consent domain tests).
 - [x] 5.3 `npm run test:unit:frontend`: passed. `npm run test:contract`: 261 passed. `npm run test:orchestration` with the backend venv on PATH: passed.
 - [x] 5.4 `npm run i18n:check`: 0 errors; `svelte-check --threshold error`: 0 errors; `npm run lint:backend`: passed; `npm run experience:catalog:check`: passed after regeneration.
 - [x] 5.5 `docs/security.md`, `docs/api/auth.md`, `ARCHITECTURE.md`, `docs/testing.md` updated.
