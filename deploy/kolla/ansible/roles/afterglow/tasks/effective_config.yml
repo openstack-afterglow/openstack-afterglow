@@ -60,7 +60,8 @@
       - "{{ lookup('ansible.builtin.file', role_path ~ '/files/render_effective_config.py') }}"
     stdin: >-
       {{ {'base': lookup('ansible.builtin.template', 'afterglow.conf.j2'),
-          'operator': (afterglow_operator_source_contents.results[0].content | default('') | b64decode)} | to_json }}
+          'operator': (afterglow_operator_source_contents.results[0].content | default('') | b64decode),
+          'keystone_identity_mappings': (keystone_identity_mappings | default([]))} | to_json }}
   register: afterglow_effective_config_merge
   delegate_to: "{{ groups['deployment'][0] }}"
   changed_when: false

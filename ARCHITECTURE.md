@@ -1776,6 +1776,8 @@ Instance TOP의 lane 순번·개수는 동일 `edge.netId` 안에서만 계산�
 
 Kolla의 `effective_config.yml`은 현재 globals/passwords로 `afterglow.conf.j2`를 다시 렌더링한 뒤 별도 operator TOML의 명시 key만 재귀 병합한다. False·0·빈 문자열/배열을 생략과 구분하며 operator 원본은 보존한다. Backend/API·Notion worker·DB bootstrap·policy seed는 같은 private `afterglow.generated.conf`만 `/app/afterglow.conf`로 읽고 config-owned environment나 final-wins 파일을 추가하지 않는다. Backend/frontend source를 모두 검증한 뒤 runtime 파일을 atomic replace하고 오래된 generated override를 제거한다. Frontend는 effective backend와 독립 source를 기존 closed public allowlist로 투영하며 private credential은 전달하지 않는다.
 
+1.32.15부터 `native_mapping.sha256`은 operator TOML의 고정 값이 아니라 Kolla `keystone_identity_mappings`에서 `mapping_id`로 찾은 원본 파일의 `{schema_version: "2.0", rules}` canonical digest로 유도된다(`render_effective_config.py`의 `pin_native_mappings`, 백엔드 `native_oidc.mapping_matches`와 같은 직렬화). 운영 TOML에 `sha256`을 남기면 유도값과 같을 때만 허용하고 다르면 실패한다. 배포 precheck(`precheck_native_mapping.yml`)는 재기동 전에 live Keystone `mapping show` digest를 같은 유도값과 대조한다.
+
 2026-10-19 backend 잔여 delta source review: frontend writer URL·socket-peer attestation도 generated 기본값 뒤 protected effective TOML의 명시 값을 사용하며 빈 URL·false를 보존한다. Backend loader는 이 두 frontend-only key만 제외하고 analytics의 strict validation을 유지한다. Helm public fabric values는 지원하는 poll/budget/retention 설정의 closed allowlist만 투영하며 target 자격은 기존 Secret 경계를 유지한다. 기존 socket-peer factory·`FORWARDED_ALLOW_IPS` launcher·독립 analytics CIDR/MMDB, domain/native authority와 non-replay 구조는 변경하지 않았다. 기존 설정·관측 경계 안의 누락 수정으로 서비스·API·DB/schema 구조 영향은 없다. 이 후속 수정은 테스트·build·lint·formatter·architecture guard를 실행하지 않은 source review이며 이전 통합 검증을 새 변경의 통과 증거로 재사용하지 않는다.
 
 `generation_config.py`는 K8s/Helm/setup의 초기화·merge·private staged writes를 공유한다. `setup.py`는 별도 renderer 없이 `generate_k8s.render_artifacts`와 `config2helm.render_values/chart_sources`를 호출한다. Base → 정렬된 nonempty siblings/GPU → 반복 explicit override 순서를 사용하고 frontend projection은 backend override에서 제외한다. Namespace는 domain profile을 선택하지 않는다. 새 base의 signing key만 한 번 만들며 기존 key·미선택 text·unknown 설정과 read-only override는 보존한다. Artifact/backup은 0600이고 일반 실패 rollback과 개별 파일 atomic replacement만 보장한다.
@@ -2140,9 +2142,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d1ad57a3950243a617bea4244bd5920add7d5e62200d85dc9a57e147cae6103a",
-  "reviewed_at": "2026-11-11T07:05:46Z",
-  "summary": "Kolla 2026.1 auth profile integration, per-controller toolbox setup, 1.32.14 release metadata"
+  "source_sha256": "2bd3b2a0fc045d19b1242042cf9616b63e3b04e9a2196d587657c6eb5b26a7d4",
+  "reviewed_at": "2026-11-11T13:09:52Z",
+  "summary": "1.32.15 final: version sync, native mapping pin derivation with live precheck, render and parity tests, OpenSpec and CHANGELOG; no service DB or API structure change"
 }
 ```
 <!-- architecture-review:end -->

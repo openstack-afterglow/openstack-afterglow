@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sys
@@ -43,6 +44,59 @@ def load_merged(paths: list[Path]) -> dict[str, Any]:
         with path.open("rb") as source:
             merged = _merge(merged, _without_legacy_key(tomllib.load(source)))
     return merged
+
+
+NATIVE_MAPPING_SCHEMA = "2.0"
+
+
+def native_mapping_digest(schema_version: Any, rules: Any) -> str:
+    """Canonical digest used by backend native_oidc.mapping_matches; any other document is rejected."""
+    if schema_version != NATIVE_MAPPING_SCHEMA or not isinstance(rules, list) or not rules:
+        raise ValueError("native mapping document is invalid")
+    document = {"schema_version": schema_version, "rules": rules}
+    return hashlib.sha256(json.dumps(document, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def pin_native_mappings(config: dict[str, Any], mappings: Any) -> dict[str, Any]:
+    """Derive each native provider's pin from the Kolla mapping source it must match.
+
+    An operator-declared sha256 is accepted only when it equals the derived value; any other value fails closed.
+    """
+    if not isinstance(mappings, list):
+        raise ValueError("native mapping sources must be a list")
+    auth = config.get("auth")
+    providers = auth.get("providers", {}) if isinstance(auth, dict) else {}
+    if not isinstance(providers, dict):
+        raise ValueError("auth providers must be a table")
+    for provider in providers.values():
+        pin = provider.get("native_mapping") if isinstance(provider, dict) else None
+        if pin is None:
+            continue
+        if not isinstance(pin, dict):
+            raise ValueError("native_mapping must be a table")
+        found = [m for m in mappings if isinstance(m, dict) and m.get("name") == pin.get("mapping_id")]
+        if len(found) != 1:
+            raise ValueError("native mapping source is missing or ambiguous")
+        with Path(str(found[0].get("file", ""))).open(encoding="utf-8") as source:
+            digest = native_mapping_digest(NATIVE_MAPPING_SCHEMA, json.load(source))
+        declared = pin.get("sha256")
+        if declared not in (None, "", digest):
+            raise ValueError("native mapping pin differs from the Kolla mapping source")
+        pin["sha256"] = digest
+    return config
+
+
+def native_mapping_pins(config: dict[str, Any]) -> list[dict[str, str]]:
+    """Pinned native providers as (mapping_id, sha256) pairs for the live Keystone precheck."""
+    auth = config.get("auth")
+    providers = auth.get("providers", {}) if isinstance(auth, dict) else {}
+    pins = []
+    for provider in providers.values() if isinstance(providers, dict) else []:
+        pin = provider.get("native_mapping") if isinstance(provider, dict) else None
+        if isinstance(pin, dict):
+            pins.append({"mapping_id": str(pin.get("mapping_id", "")), "sha256": str(pin.get("sha256", ""))})
+    return pins
+
 
 
 def _key(value: str) -> str:
@@ -97,8 +151,15 @@ def main() -> None:
         if sys.argv[1:] == ["--render"]:
             sys.stdout.write(render_toml(request))
         elif not sys.argv[1:]:
-            config = merge_config(request["base"], request.get("operator", ""))
+            config = pin_native_mappings(
+                merge_config(request["base"], request.get("operator", "")),
+                request.get("keystone_identity_mappings", []),
+            )
             print(json.dumps(config))
+        elif sys.argv[1:] == ["--mapping-digest"]:
+            print(native_mapping_digest(request.get("schema_version"), request.get("rules")))
+        elif sys.argv[1:] == ["--native-pins"]:
+            print(json.dumps(native_mapping_pins(request)))
         else:
             raise ValueError("invalid arguments")
     except (KeyError, TypeError, ValueError, OSError):

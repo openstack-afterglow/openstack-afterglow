@@ -15,6 +15,15 @@
 ### Fixed
 - GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
 
+## [1.32.15] - 2026-11-11
+
+### Changed
+- Kolla 배포의 native OIDC mapping pin(`[auth.providers.*.native_mapping].sha256`)은 운영자가 관리하는 Kolla `keystone_identity_mappings` 원본 파일에서 canonical digest(`schema_version` 2.0, `rules`)로 유도한다. 운영 TOML에 `sha256`을 두면 유도값과 같을 때만 허용하고 다르면 배포를 실패시킨다.
+- 배포 precheck는 재기동 전에 live Keystone `mapping show` 결과의 digest를 유도 pin과 대조해, 원본과 Keystone이 다르면 reconfigure를 중단한다.
+
+### Fixed
+- 운영 `sso_oidc_mapping` pin이 Keystone 매핑과 어긋나 GitLab 콜백이 `native_mapping_unsafe` 503을 반환하던 문제를 해결한다. 로컬 설정만 갱신되고 배포 pin 정렬이 보류되어 생긴 드리프트를 재발하지 않도록 pin을 원본에서 유도한다.
+
 ## [1.32.14] - 2026-11-11
 
 ### Fixed

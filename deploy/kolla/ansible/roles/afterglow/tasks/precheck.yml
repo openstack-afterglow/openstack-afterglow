@@ -160,3 +160,8 @@
     - not (afterglow_source_mode | default(false) | bool)
     - image_checks is defined
     - not (item.skipped | default(false) | bool)
+
+- name: Precheck | Require live Keystone mapping to match the derived native pin
+  ansible.builtin.include_tasks: precheck_native_mapping.yml
+  tags: precheck
+  when: enable_afterglow | bool
