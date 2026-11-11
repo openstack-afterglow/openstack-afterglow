@@ -2143,8 +2143,8 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 {
   "schema_version": 1,
   "source_sha256": "2bd3b2a0fc045d19b1242042cf9616b63e3b04e9a2196d587657c6eb5b26a7d4",
-  "reviewed_at": "2026-11-11T13:09:52Z",
-  "summary": "1.32.15 final: version sync, native mapping pin derivation with live precheck, render and parity tests, OpenSpec and CHANGELOG; no service DB or API structure change"
+  "reviewed_at": "2026-11-11T13:25:25Z",
+  "summary": "docs: align auth and deployment native pin contract with derived Kolla pin for 1.32.15; no runtime change"
 }
 ```
 <!-- architecture-review:end -->
