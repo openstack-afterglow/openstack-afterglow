@@ -1389,6 +1389,8 @@ kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,wa
 
 각 명령의 전체 recap과 대상별 이미지 digest·health를 확인하고, 공개 readiness와 실제 사용자 경로를 별도로 검증합니다. 두 명령의 inventory/tag에 포함되지 않는 별도 plugin 호스트는 성공으로 간주하지 않고 별도 확인·승인합니다. 실행 전에는 공유 DB writer, migration 및 복구 조건을 확인하고 기존 설정·키·데이터를 보존합니다. 과거 1.30.22의 `--limit` 없는 실행과 `--skip-tags haproxy`는 당시 배포 receipt이며 현재 기본 명령이 아닙니다.
 
+**Kolla toolbox 인증 (2026.1 이상):** Kolla의 `openstack_auth`는 bootstrap용 password만 제공할 수 있다. `openstack.cloud` 호출에는 `auth: "{{ openstack_auth }}"`와 `cloud: "{{ openstack_auth_cloud }}"`를 함께 전달한다. CLI용 `kolla` 항목은 각 Afterglow controller의 toolbox에서 Kolla가 만든 `openstack_auth_cloud` 항목을 복제하고 password override만 병합해야 한다. controller1에만 설정하지 않는다. Manila precheck의 `share list --limit 1`은 설정된 microversion과 native 인증·endpoint 접근을 함께 확인하며, 실패하면 자세한 오류는 `no_log` 상태로 확인 가능한 인증정보를 출력하지 말고 별도 읽기 전용 toolbox 명령으로 진단한다.
+
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
@@ -1402,8 +1404,7 @@ kolla-ansible reconfigure -i multinode --limit control --tags afterglow,lumen,wa
 `afterglow-api`와 별개인 배포 자산 distribution입니다. 검토된 source checkout
 또는 실제 wheel 경로를 지정해 같은 Kolla 가상 환경에 설치합니다. Operator
 manifest와 이 배포 자산 패키지는 Python 3.11 이상을 요구합니다.
-아래 설치 방식 중 하나만 선택합니다. 현재는 미발행 source package이며
-이 패키지를 포함한 release tag나 PyPI 게시를 주장하지 않습니다.
+아래 설치는 검증된 불변 release tag의 정확한 version을 사용한다. `afterglow-kolla`는 root package로 release tag에 포함되며 PyPI 게시를 전제하지 않는다.
 
 ```bash
 # 실제 패키지를 포함하는 검토된 불변 tag가 발행된 후 X.Y.Z를 대체

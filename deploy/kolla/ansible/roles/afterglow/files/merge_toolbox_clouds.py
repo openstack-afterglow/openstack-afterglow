@@ -4,10 +4,11 @@ The file is shared with Kolla's own clouds (for example ``kolla-admin-internal``
 Only the named cloud entry is replaced; sibling clouds are preserved. An
 unreadable or malformed existing file fails closed instead of being replaced.
 
-Input (stdin, JSON): {"name": "<cloud>", "entry": {...}}
+Input (stdin, JSON): {"name": "...", "source_cloud": "...", "auth_overrides": {...}, "region_name": "...", "interface": "..."}
 Run inside the kolla-toolbox container as root; prints "changed" or "unchanged".
 """
 
+import copy
 import json
 import os
 import pwd
@@ -21,12 +22,14 @@ CLOUDS_PATH = "/var/lib/ansible/.config/openstack/clouds.yaml"
 OWNER = "ansible"
 
 
-def merge_clouds(existing_text, cloud_name, entry):
-    """Return (document, changed) with ``clouds[cloud_name]`` set and siblings kept."""
+def merge_clouds(existing_text, cloud_name, source_cloud_name, auth_overrides, region_name, interface):
+    """Build the Afterglow CLI cloud from Kolla's configured admin cloud."""
     if not isinstance(cloud_name, str) or not cloud_name:
         raise ValueError("cloud name must be a non-empty string")
-    if not isinstance(entry, dict):
-        raise ValueError("cloud entry must be a mapping")
+    if not isinstance(source_cloud_name, str) or not source_cloud_name:
+        raise ValueError("source cloud name must be a non-empty string")
+    if not isinstance(auth_overrides, dict) or not auth_overrides:
+        raise ValueError("authentication overrides must be a non-empty mapping")
     document = yaml.safe_load(existing_text) if existing_text and existing_text.strip() else {}
     if document is None:
         document = {}
@@ -35,6 +38,23 @@ def merge_clouds(existing_text, cloud_name, entry):
     clouds = document.get("clouds") or {}
     if not isinstance(clouds, dict):
         raise ValueError("clouds.yaml 'clouds' must be a mapping")
+    source = clouds.get(source_cloud_name)
+    if not isinstance(source, dict):
+        raise ValueError("source cloud entry is missing or invalid")
+    source_auth = source.get("auth")
+    if not isinstance(source_auth, dict):
+        raise ValueError("source cloud auth must be a mapping")
+    auth = dict(source_auth)
+    auth.update(auth_overrides)
+    if not isinstance(auth.get("auth_url"), str) or not auth["auth_url"]:
+        raise ValueError("source cloud auth requires auth_url")
+    if not isinstance(auth.get("password"), str) or not auth["password"]:
+        raise ValueError("authentication overrides require password")
+    entry = copy.deepcopy(source)
+    entry["auth"] = auth
+    entry["auth_type"] = "password"
+    entry["region_name"] = region_name
+    entry["interface"] = interface
     updated = dict(document)
     updated["clouds"] = {**clouds, cloud_name: entry}
     return updated, updated != document
@@ -55,7 +75,14 @@ def main():
     request = json.loads(sys.stdin.read())
     owner = pwd.getpwnam(OWNER)
     existing, st = _read_existing(CLOUDS_PATH)
-    document, changed = merge_clouds(existing, request["name"], request["entry"])
+    document, changed = merge_clouds(
+        existing,
+        request["name"],
+        request["source_cloud"],
+        request["auth_overrides"],
+        request["region_name"],
+        request["interface"],
+    )
     up_to_date = (
         st is not None
         and not changed

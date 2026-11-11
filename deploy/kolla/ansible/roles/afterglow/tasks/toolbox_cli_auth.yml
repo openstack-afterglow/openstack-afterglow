@@ -11,8 +11,7 @@
       owner: ansible
       group: ansible
       mode: "0700"
-  run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
+  when: inventory_hostname in groups['afterglow']
 
 - name: Toolbox | Merge the authenticated kolla cloud
   become: true
@@ -23,11 +22,10 @@
       - python3
       - -c
       - "{{ lookup('ansible.builtin.file', 'merge_toolbox_clouds.py') }}"
-    stdin: "{{ {'name': 'kolla', 'entry': {'auth': openstack_auth, 'auth_type': 'password', 'region_name': openstack_region_name, 'interface': openstack_interface}} | to_json }}"
+    stdin: "{{ {'name': 'kolla', 'source_cloud': openstack_auth_cloud, 'auth_overrides': openstack_auth, 'region_name': openstack_region_name, 'interface': openstack_interface} | to_json }}"
     stdin_add_newline: false
   register: afterglow_toolbox_cloud_config
   changed_when: afterglow_toolbox_cloud_config.stdout == 'changed'
   failed_when: afterglow_toolbox_cloud_config.rc != 0
   no_log: true
-  run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
+  when: inventory_hostname in groups['afterglow']

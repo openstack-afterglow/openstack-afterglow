@@ -2,25 +2,28 @@
 
 ## 구현
 
-- [x] `files/merge_toolbox_clouds.py`: 단일 cloud 항목 병합, 파싱 실패 시 fail-closed, 동일 내용 `unchanged`
-- [x] `tasks/toolbox_cli_auth.yml`: 덮어쓰기 대신 헬퍼 호출
-- [ ] `docs/deployment.md`에 toolbox clouds.yaml 병합 계약과 태그 주의(afterglow role 재실행 금지 기간) 기록
-- [ ] ARCHITECTURE.md의 Kolla afterglow role 설명 갱신
+- [x] `files/merge_toolbox_clouds.py`: clone configured Kolla auth cloud, overlay password-only or full auth overrides, preserve sibling clouds, fail closed on missing/invalid source
+- [x] `tasks/toolbox_cli_auth.yml`: prepare each Afterglow controller toolbox, not only first controller
+- [x] Direct `openstack.cloud` calls pass both `auth` and `cloud: openstack_auth_cloud`; installed `service-ks-register` already passes both
+- [x] Update deployment and architecture documentation for Kolla 2026.1 auth/cloud contract
 
 ## 검증 (실행한 것)
 
-- [x] `pytest tests/test_kolla_toolbox_clouds_merge.py` — 8 passed (sibling 보존, 파일 없음, 동일 내용, malformed/비정상 구조 fail-closed, 잘못된 입력 거부)
-- [x] `pytest tests/test_kolla_toolbox_clouds_merge.py tests/test_kolla_effective_config.py` — 32 passed
-- [x] `main()` 임시 디렉터리 실행: 1회차 `changed`, 2회차 `unchanged`, `kolla-admin-internal` 보존 확인
-- [x] `ruff format` / `ruff check` 두 파일 통과
-- [x] `toolbox_cli_auth.yml` YAML 파싱 통과
+- [x] `npm run test:target -- backend:tests/test_kolla_toolbox_clouds_merge.py` — 12 passed
+- [x] `uv run ruff check` / `uv run ruff format --check` — helper와 test 통과
+- [x] PyYAML으로 변경한 Ansible task 3개 파싱 통과
+- [x] 임시 toolbox 파일에서 `main()` 쓰기·0600 권한·반복 실행 idempotency 통과
+- [x] Root wheel `afterglow_kolla-1.32.14-py3-none-any.whl` 빌드, 수정 role payload 포함 확인
+- [x] Disposable MariaDB 10.11.19에서 migration 110, multi-grant, duplicate guard, dump restore, 재적용 통과
+- [x] Production DB read-only preflight: MariaDB 10.11.19, InnoDB, `grant_id NOT NULL`, legacy PK, 2 rows, duplicate groups 0
+- [x] Architecture freshness: stamp, `npm run docs:check`, staged check 통과
+- [x] `PATH=/Users/pieroot/code/afterglow/backend/.venv/bin:$PATH npm run test:gate` — full gate 통과
 
 ## 검증 (아직 실행하지 않은 것)
 
-- [ ] `ansible-playbook --syntax-check` 또는 `ansible-lint`(Ansible 실행 환경 필요)
-- [ ] 실제 kolla_toolbox 컨테이너에서 헬퍼 실행(개발 환경 toolbox 없음, 운영 금지)
-- [ ] controller2·3 toolbox의 `clouds.yaml` 구성 확인(읽기 전용)
-- [ ] `npm run test:gate` — 미실행
+- [ ] `ansible-playbook --syntax-check` — local Ansible 미설치
+- [ ] 1.32.14 tag-triggered CI, images, aliases, Helm chart 발행 검증
+- [ ] Full Kolla precheck/reconfigure, schema cutover, runtime health and Manila API acceptance
 
 ## 운영 (승인 전 금지)
 

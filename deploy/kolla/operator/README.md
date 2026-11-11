@@ -40,10 +40,10 @@ pinned to `34daacfbf2d5987f543787f57535b2bebe7dee19`. The other promoted root
 packages use immutable Git tags and resolved commits; every controller installs
 the reviewed lock with `uv sync --locked`.
 
-`afterglow-kolla` is intentionally absent from this manifest/lock: this is
-unpublished source packaging, not a published release or a claim that an
-immutable release tag already contains it. Install an explicitly reviewed
-source/wheel path as shown below until an appropriate release is published.
+`afterglow-kolla` is intentionally absent from this operator manifest/lock and
+must be added explicitly. Immutable Afterglow release tags include the root
+deployment-assets package; PyPI publication is not required. Use the exact
+reviewed release tag or explicitly reviewed local source/wheel.
 The public PyPI name `afterglow` belongs to an unrelated project; never run
 `pip install afterglow` or `pip install -U afterglow` (including `uv` equivalents)
 to install or update this integration. The directory `share/afterglow/kolla`

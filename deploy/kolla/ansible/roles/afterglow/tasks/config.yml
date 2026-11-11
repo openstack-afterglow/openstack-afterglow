@@ -6,6 +6,7 @@
     module_name: openstack.cloud.project_info
     module_args:
       auth: "{{ openstack_auth }}"
+      cloud: "{{ openstack_auth_cloud }}"
       name: "{{ afterglow_effective_config.openstack.project_name }}"
   register: afterglow_service_project_lookup
   changed_when: false
@@ -30,6 +31,7 @@
     module_name: openstack.cloud.project_info
     module_args:
       auth: "{{ openstack_auth }}"
+      cloud: "{{ openstack_auth_cloud }}"
       name: "{{ afterglow_cloud_shell_project_name }}"
   register: afterglow_cloud_shell_project_lookup
   changed_when: false

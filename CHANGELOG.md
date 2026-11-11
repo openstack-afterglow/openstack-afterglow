@@ -15,6 +15,11 @@
 ### Fixed
 - GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
 
+## [1.32.14] - 2026-11-11
+
+### Fixed
+- Kolla Ansible 2026.1의 `openstack_auth` password-only 동작과 호환되도록 Kolla의 선택 cloud 프로필에서 인증 구성을 만들고 password를 병합한다. 모든 Afterglow controller의 toolbox에 CLI cloud를 준비하며, 직접 `openstack.cloud` 호출에도 `openstack_auth_cloud`를 지정한다.
+
 ## [1.32.12] - 2026-11-09
 
 ### Added

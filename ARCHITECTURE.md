@@ -1810,7 +1810,7 @@ Kolla 2025.2 환경에서 Afterglow, Drover, Waygate, Lumen, Palimpsest의 appli
 
 Kolla 기본값처럼 registry 사용자명이 null 또는 빈 문자열이면 일반 이미지와 Cloud Shell 이미지 모두 익명으로 descriptor를 해석한다. 명시적 사용자명이 있을 때만 자격증명을 전달한다.
 
-Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 공유 toolbox CLI 인증 설정을 먼저 준비한다. Cloud Shell 단독 배포도 이전 Manila 실행이나 기존 toolbox 파일에 의존하지 않으며, Manila client 설치는 Manila 활성화 시에만 수행한다.
+Kolla Afterglow precheck는 Cloud Shell 또는 Manila가 활성화되면 각 Afterglow controller의 toolbox에 Kolla `openstack_auth_cloud`를 복제한 CLI `kolla` cloud를 준비하고 password override를 병합한다. Kolla 2026.1의 `openstack_auth`는 password-only일 수 있으므로 직접 `openstack.cloud` 호출은 auth와 `openstack_auth_cloud`를 모두 지정하고, `service-ks-register`는 Kolla role이 같은 cloud selector를 적용한다. CLI precheck는 준비된 cloud로 Manila microversion/API 및 Cloud Shell native 접근을 확인한다. Manila client 설치는 Manila 활성화 시에만 수행한다.
 
 태그를 생략한 image ref도 implicit `latest`이며 registry port는 tag로 취급하지 않는다. Native Kolla globals/CLI extra-vars는 `set_fact`보다 우선하므로 해석한 digest를 덮어쓰는 mutable/bare `*_image_ref`는 역할 실행 전에 차단한다. 채널 선택은 `*_image_tag`로 하고 명시적인 version/digest rollback pin은 그대로 유지한다.
 
@@ -2140,9 +2140,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4c644ede9bb492d52271f733cbb63518af820dfeb1bca84e165b01e301ee5df0",
-  "reviewed_at": "2026-11-10T22:52:00Z",
-  "summary": "1.32.13 버전 메타데이터 bump 이후 snapshot 재스탬프(root/frontend/backend/uv.lock/Helm 버전 값만 변경)."
+  "source_sha256": "d1ad57a3950243a617bea4244bd5920add7d5e62200d85dc9a57e147cae6103a",
+  "reviewed_at": "2026-11-11T07:05:46Z",
+  "summary": "Kolla 2026.1 auth profile integration, per-controller toolbox setup, 1.32.14 release metadata"
 }
 ```
 <!-- architecture-review:end -->

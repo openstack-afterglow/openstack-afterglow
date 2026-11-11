@@ -160,8 +160,8 @@ refreshes that package's cache rather than relying on an already-installed versi
 Do not use `pip install afterglow`, `pip install -U afterglow`, or the equivalent
 `uv` commands for this integration. The distribution name is
 `afterglow-kolla`; its private asset directory intentionally remains
-`share/afterglow/kolla`. This is unpublished source packaging: no matching
-`afterglow-kolla` PyPI release or containing immutable Git tag is claimed.
+`share/afterglow/kolla`. The root package ships in immutable Afterglow release
+tags; PyPI publication is not required.
 
 `pip` can install the same explicit artifacts with the Kolla interpreter:
 
