@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.triggers.cron import CronTrigger
+from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 from openstack.exceptions import HttpException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -31,6 +32,8 @@ _PREFIX = "afterglow:auto_backup"
 _ALL_KEY = f"{_PREFIX}:all_configs"
 _POLL_SECONDS = 15
 _LEASE_SECONDS = 90
+_FAILURE_BACKOFF_SECONDS = 300
+_AUTH_ERROR = "Scheduled protection cannot authenticate to this project; operator authorization is required."
 
 
 @dataclass(frozen=True)
@@ -127,6 +130,20 @@ local raw = redis.call('get', KEYS[2])
 if not raw then return 0 end
 local cfg = cjson.decode(raw)
 if cfg.revision ~= ARGV[2] or cfg.enabled ~= true then return 0 end
+return 1
+"""
+_AUTH_FAILURE = """
+if redis.call('get', KEYS[2]) ~= ARGV[1] then return 0 end
+if (redis.call('get', KEYS[1]) or '') ~= ARGV[2] then return 0 end
+if redis.call('exists', KEYS[3]) == 1 then return 0 end
+if ARGV[3] ~= '' then redis.call('set', KEYS[1], ARGV[3]) end
+redis.call('set', KEYS[3], ARGV[4], 'EX', ARGV[5])
+return 1
+"""
+_AUTH_CLEAR = """
+if redis.call('get', KEYS[2]) ~= ARGV[1] then return 0 end
+if redis.call('get', KEYS[1]) ~= ARGV[2] then return 0 end
+redis.call('set', KEYS[1], ARGV[3])
 return 1
 """
 
@@ -437,6 +454,76 @@ async def _volume_lease(redis, project_id: str, volume_id: str, *, owner: str | 
         await redis.eval(_RELEASE, 1, lease.key, lease.owner)
 
 
+def _make_proxy(project_id):
+    """Authenticate the real target project; Cinder creates in the token's project."""
+    from app.services.instance_usage import prove_project_scope
+    from app.services.keystone import get_admin_connection_for_project
+
+    conn = get_admin_connection_for_project(project_id)
+    try:
+        # An operator target binding cannot authorize creation in another project.
+        if vars(conn).get("_afterglow_usage_operator_scope") is not None:
+            raise RuntimeError("Scheduled recovery points require exact-project credentials")
+        prove_project_scope(conn, project_id)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+async def _backed_off(redis, project_id, volume_id, clock):
+    raw = await redis.get(_key("retry", project_id, volume_id))
+    return bool(raw and _time(_text(raw)) > clock)
+
+
+async def _record_auth_failure(redis, lease, project_id, volume_id, raw, clock, exc):
+    retry_at = clock + timedelta(seconds=_FAILURE_BACKOFF_SECONDS)
+    config = json.loads(raw) if raw else None
+    if config is not None:
+        config.update(last_status="error", last_error=_AUTH_ERROR)
+    if not lease.lost and await redis.eval(
+        _AUTH_FAILURE,
+        3,
+        _key("config", project_id, volume_id),
+        lease.key,
+        _key("retry", project_id, volume_id),
+        lease.owner,
+        raw,
+        _dump(config) if config is not None else "",
+        retry_at.isoformat(),
+        _FAILURE_BACKOFF_SECONDS,
+    ):
+        _logger.warning(
+            "Scheduled %s project authentication rejected; retry deferred for %s seconds; "
+            "check whether service account has no role in project",
+            _resource(),
+            _FAILURE_BACKOFF_SECONDS,
+            extra={
+                "project_id": project_id,
+                "exception_type": type(exc).__name__,
+                "retry_after_seconds": _FAILURE_BACKOFF_SECONDS,
+            },
+        )
+
+
+async def _clear_auth_failure(redis, lease, project_id, volume_id, revision):
+    raw = _text(await redis.get(_key("config", project_id, volume_id)))
+    config = json.loads(raw) if raw else None
+    if lease.lost or not config or config["revision"] != revision or config.get("last_error") != _AUTH_ERROR:
+        return
+    # Do not invent a completed recovery point if this cycle only deferred its slot.
+    config.update(last_status="never" if config.get("last_run_at") is None else "unknown", last_error=None)
+    await redis.eval(
+        _AUTH_CLEAR,
+        2,
+        _key("config", project_id, volume_id),
+        lease.key,
+        lease.owner,
+        raw,
+        _dump(config),
+    )
+
+
 async def _sdk(fn, *args, **kwargs):
     # Do not close a connection or release its lease while a worker thread is submitting.
     work = asyncio.create_task(asyncio.to_thread(fn, *args, **kwargs))
@@ -685,8 +772,7 @@ def _peer_active_key(project_id: str, volume_id: str) -> str:
 async def _cycle(conn, redis, lease, project_id, volume_id, now):
     active = _text(await redis.get(_key("active", project_id, volume_id)))
     if active:
-        await _reconcile(conn, redis, lease, project_id, volume_id, json.loads(active))
-        return
+        return await _reconcile(conn, redis, lease, project_id, volume_id, json.loads(active))
     config = await get_auto_backup_config(project_id, volume_id, now=now)
     if not config or not config["enabled"] or _time(config["next_run_at"]) > now:
         return
@@ -778,6 +864,8 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
         )
         if not backup.get("id"):
             raise ValueError(f"Cinder did not return a {_resource()} ID")
+        if not _owned(backup, project_id, volume_id):
+            raise ValueError(f"Cinder {_resource()} ownership could not be confirmed")
         operation.update({_id_field(): backup["id"], "status": "creating", "error": None})
     except HttpException as exc:
         if exc.status_code in (400, 401, 403, 404, 405, 409, 413, 422, 429):
@@ -834,6 +922,8 @@ async def _schedule_tick(dispatcher: WorkDispatcher, clock: datetime) -> None:
             project_id, separator, volume_id = member.partition(":")
             if not separator or not project_id or not volume_id:
                 continue
+            if await _backed_off(redis, project_id, volume_id, clock):
+                continue
             try:
                 config = await get_auto_backup_config(project_id, volume_id, now=clock)
                 active = await redis.exists(_key("active", project_id, volume_id))
@@ -848,9 +938,7 @@ async def _schedule_tick(dispatcher: WorkDispatcher, clock: datetime) -> None:
 
 async def _execute_tick(dispatcher: WorkDispatcher, clock: datetime, connection_factory=None) -> None:
     if connection_factory is None:
-        from app.services.keystone import get_admin_connection_for_project
-
-        connection_factory = get_admin_connection_for_project
+        connection_factory = _make_proxy
     redis = dispatcher.redis
 
     # A later leader scan may refill queues during a slow SDK call. Bound this
@@ -865,6 +953,9 @@ async def _execute_tick(dispatcher: WorkDispatcher, clock: datetime, connection_
             async with _volume_lease(redis, project_id, volume_id, owner=owner) as lease:
                 if not lease:
                     continue
+                if await _backed_off(redis, project_id, volume_id, clock):
+                    continue
+                await redis.delete(_key("retry", project_id, volume_id))
                 config = await get_auto_backup_config(project_id, volume_id, now=clock)
                 active = await redis.exists(_key("active", project_id, volume_id))
                 if not active and (
@@ -874,11 +965,21 @@ async def _execute_tick(dispatcher: WorkDispatcher, clock: datetime, connection_
                     or _time(config["next_run_at"]) > clock
                 ):
                     continue
+                raw = _text(await redis.get(_key("config", project_id, volume_id)))
+                if config and (not raw or json.loads(raw).get("revision") != config["revision"]):
+                    continue
                 creation = asyncio.create_task(asyncio.to_thread(connection_factory, project_id))
                 conn = None
                 try:
                     conn = await asyncio.shield(creation)
                     await _cycle(conn, redis, lease, project_id, volume_id, clock)
+                    await _clear_auth_failure(
+                        redis, lease, project_id, volume_id, config["revision"] if config else None
+                    )
+                except (Unauthorized, Forbidden) as exc:
+                    if conn is not None:
+                        raise
+                    await _record_auth_failure(redis, lease, project_id, volume_id, raw, clock, exc)
                 except asyncio.CancelledError:
                     if conn is None:
                         # A cancelled shield does not cancel its factory thread.

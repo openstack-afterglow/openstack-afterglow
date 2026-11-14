@@ -1236,6 +1236,9 @@ Leader의 fenced Lua가 due/active 작업의 assignment hash와 process별 ready
 
 Renewable90초 per-volume lease와 durable slot/active journal은 중복 제출 방어의 최종 실행 경계다. 정상 종료는 소유권을 회수하고, crash 인계는45초 membership/leader 만료와 다음 heartbeat/poll을 기다리며 해당 volume의 남은90초 lease를 우회하지 않는다. 변경된 revision·일시 중지·lease 손실은 mutation 전에 fence하며 fresh exact project/source 상태를 읽고 in-use에는 저장 force를 적용한다. SDK 접수는 creating, 불확실한 제출은 unknown으로 보존하며 같은 slot을 재발행하지 않는다. ID/정확한 관리 이름으로 available/error를 관측하고, 같은 원본/프로젝트·available·full·명시적 dependency=false·유효 timestamp만 최신 tier보존 수에 포함한다. 삭제 직전 원본/백업/revision/lease를 재검사하며 수동·foreign·pending·incremental·unknown metadata를 삭제하지 않는다.
 
+자동 backup/snapshot 생성은 Cinder가 token project를 새 자원의 owner/quota로 사용하므로 `get_admin_connection_for_project`의 실제 target-project 인증을 유지한다. 기본 factory는 native exact-project scope를 증명하고 usage operator binding을 거부하며 생성 응답의 target/source 소유권도 확인한다. Fixed-admin 생성 대체·tenant role/trust 자동 부여는 없다. Factory의 Keystone Unauthorized/Forbidden만 공유 Redis `<lane>:retry:<project>:<volume>`의300초 TTL/UTC retry window를 만든다. Lua가 live volume lease와 원본 policy bytes/revision을 비교하고 기존 `last_status=error`/고정 secret-free `last_error`와 retry key를 함께 기록한다. 첫 기록만 project ID(structured field)·lane·예외 type·300초 지연과 service role 누락 가능성을 경고하며 만료 후 재실패에 새 경고1개를 허용한다. 동시 edit/disable/remove·lease 손실은 상태 갱신을 거부한다. 성공 cycle은 정상 result 또는 동일 lease/revision fence의 clear로 인증 오류를 지우며, 제출을 defer한 경우 never/unknown이지 fake success가 아니다. 기존 `VolumeBackupPolicies`의 danger Alert와 localized 상태가 이를 표시하므로 frontend 변경은 없다. Cinder 조회/reconcile/transient 오류에는300초 delay를 적용하지 않고 기존 unknown 무재제출·다른 볼륨 진행·정책/due/history를 보존한다. 인증 복구만 최대300초 늦어질 수 있고 old worker는 window를 무시한다. 새 schema/config/credential은 없으며 live project의 service role/trust 선택은 별도 운영 결정이다.
+
+
 `cinder.create_backup`는 native Proxy를 copy하고 그 POST의 transport/status retries만0으로 고정한다. Provider 접수 뒤 응답 유실을 SDK가 자동 재전송하는 두 번째 제출을 막으며 caller session·조회 retry는 바꾸지 않는다. Native failed-before(두 POST)/passed-after(한 POST→unknown→기존 ID 확인)의 consumer 회귀를 유지한다.
 
 자동 제출·완료/실패 전환·보존 삭제는 기존 `afterglow:cinder:<pid>:backups*` 무효화와 mutation-count 경로를 재사용하여 따뜻한 목록이 빈 상태/creating에 머물지 않게 한다. 목록은 원본 부재/소유권 불명/일시 장애를 response-only source observation으로 표시하고 저장 정책을 재작성하지 않는다. Policy DELETE는 fresh owned source 또는 원래 policy identity가 검증된 authoritative absent source만 허용하며 provider403/timeout/foreign owner에서는 보존한다. 이미 접수된 operation은 설정 제거 후에도 관측하지만 백업 삭제/정책 재생성은 하지 않는다.
@@ -2142,9 +2145,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2bd3b2a0fc045d19b1242042cf9616b63e3b04e9a2196d587657c6eb5b26a7d4",
-  "reviewed_at": "2026-11-11T13:25:25Z",
-  "summary": "docs: align auth and deployment native pin contract with derived Kolla pin for 1.32.15; no runtime change"
+  "source_sha256": "4f7c978da6f7526212269b92568b06a47279e0917730ccc1462147b686128747",
+  "reviewed_at": "2026-11-14T22:59:25Z",
+  "summary": "Cinder exact-target creation retained; factory Unauthorized/Forbidden only gets shared300s retry and lease/revision-fenced visible policy error/clear; lazy-auth incident and no-delay native reconciliation covered; no IAM/schema/topology change."
 }
 ```
 <!-- architecture-review:end -->

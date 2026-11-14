@@ -13,6 +13,7 @@
 - 인스턴스 생성 사용 기간의 사유 입력란은 기간을 연장했을 때(또는 기존 사유가 있을 때)만 보인다. 백엔드가 사유를 요구하는 조건과 같다.
 
 ### Fixed
+- 자동 Cinder backup/snapshot의 target 연결 인증 거부(Unauthorized/Forbidden)는 볼륨/lane별 공유 Redis300초 backoff·window당 한 번의 project 경고와 기존 정책의 error/last_error로 표시한다. 상태 기록·성공 후 해제는 lease/revision으로 fence하고 다른 볼륨·Cinder 조회/reconcile의 기존 주기는 유지한다. 실제 target-project token scope와 생성 응답 owner를 확인하며 admin-project 인증으로 대체하지 않는다. Live 프로젝트의 서비스 계정 role 누락은 자동 권한 부여로 우회하지 않으므로 별도 운영 승인이 필요하다.
 - GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
 
 ## [1.32.15] - 2026-11-11
