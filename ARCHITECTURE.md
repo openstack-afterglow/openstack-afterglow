@@ -852,9 +852,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2f96cbdbec6d1b64b26943daf81de4e75c10b896623222f99fe36252a8085222",
-  "reviewed_at": "2026-11-09T01:58:32Z",
-  "summary": "Review Waygate v0.3.8 operator manifest, lock and documented role ownership; other root role pins and topology unchanged."
+  "source_sha256": "b2ce91307813588118c52e316142db4cf5af8c9fae589d10894e6fcda8cf4103",
+  "reviewed_at": "2026-11-14T14:12:30Z",
+  "summary": "operator: promote package-owned Kolla roles to immutable sibling release tags"
 }
 ```
 <!-- architecture-review:end -->
