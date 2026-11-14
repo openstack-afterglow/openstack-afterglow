@@ -787,6 +787,10 @@ Application credential 생성은 browser 표시 역할이 아니라 대상 scope
 
 Lumen 설정의 `ChatMcpCatalogue.svelte`는 Afterglow MCP를 항상 표시하고 기본 비활성으로 시작한다. `GET /api/v1/chat/cloud-tools`와 chat admission은 위임을 생성하지 않는다. Same-site browser POST의 명시적 `read`/`manage` 승인이 현재 caller/project의 restricted credential을 만들며 `lumen-tools_user`와 실제 관리 역할 ceiling을 검사한다. `defaults.approve_lumen_grant`는 외부 준비 전 generation을 캡처하고 pending reservation·activation lock에서 다시 검사한다. DELETE/clear/다른 개인 토큰 선택이 이후에 발생하면 늦은 approval이 이를 덮어쓰지 못한다. `source="lumen"`은 현재 singleton 프로젝트와 `consented_at`를 선택·dispatch에서 검사하고 GET/chat은 명시적으로 선택된 개인 토큰의 권한·프로젝트를 교체하지 않는다.
 
+Lumen 내장 MCP의 credential 상태는 권위와 별도인 관측이다. `consumer_connection`의 application-credential 인증 요청에서만 Keystone401/404(참조 role 부재 포함)를 `McpCredentialInvalidError`로 구분하고 public message·cause를 보존한다. 실제 `/mcp/lumen/execute` 실패만 `mcp_credential_invalid` WARNING을 grant/project/user 앞8자리로 기록하고, full grant ID를 키로7일 Redis 관측을 best effort 저장한다. Forbidden·native resource404·network·timeout·5xx는 무효 credential로 단정하지 않는다. Execute의 기존 HTTP status/body와 grant 권위는 바꾸지 않는다.
+
+`GET /chat/cloud-tools`는 Keystone probe 없이 선택 grant의 Redis 관측만 `credential_state: invalid|ok`로 추가하며 기존 `enabled`와 모든 필드를 유지한다. Redis 장애/관측 부재의 `ok`는 실제 native 인증 성공을 뜻하지 않는다. 내장 row는 기존 warning Pill과9locale 복구 안내로 비활성화 후 재활성화를 설명하고 원래 명시 동의·버튼·owner fence를 유지한다. Disable은 관측을 best effort 제거하며 자동 폐기·재발급은 없다. 새 grant의 다른 ID와7일TTL로 관측 수명을 한정한다. Schema·migration·configuration·service topology에는 구조 영향이 없는 오류 분류/표시 수정이며 운영 credential 복구·배포를 수행하지 않는다.
+
 카탈로그의 승인·비활성화·OAuth-start는 시작한 token/user/project scope의 action AbortController와30초 deadline을 공유한다. 인증 준비·project switching·identity/ABA 변경과 unmount가 GET/action controller를 취소하고 scope와 두 generation을 폐기한다. 기존 HTTP recovery가 취소를 refresh/401 재전송 전에 확인하여 새 계정으로 이전 동의를 replay하지 않고, 종료한 설정이 늦게 OAuth redirect를 시작하지 않는다. `api.patch`/`delete`는 기존 `post`와 같은 optional signal을 전달하며 전역 인증 정책은 바꾸지 않는다. 기본 위임 설명은 네 locale에서 access-neutral이고 실제 접근 chip은 `read`/`manage`를 유지한다.
 
 
@@ -2142,9 +2146,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2bd3b2a0fc045d19b1242042cf9616b63e3b04e9a2196d587657c6eb5b26a7d4",
-  "reviewed_at": "2026-11-11T13:25:25Z",
-  "summary": "docs: align auth and deployment native pin contract with derived Kolla pin for 1.32.15; no runtime change"
+  "source_sha256": "f3fe825d452e7ba3eda524f23182fab694fa8bf93e71cebe05ba4361e11ff6d8",
+  "reviewed_at": "2026-11-14T13:38:08Z",
+  "summary": "Reviewed Lumen MCP auth-only 401/404 invalid-credential classification and execute-only truncated warning/advisory Redis state, catalogue and nine-locale warning UI. No schema/config/topology or authority change; generic execute HTTP responses and explicit consent preserved. Focused backend/frontend and synthetic Chromium matrix passed; full isolated gate recorded separately."
 }
 ```
 <!-- architecture-review:end -->

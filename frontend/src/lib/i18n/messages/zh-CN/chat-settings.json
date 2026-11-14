@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "内置",
 	"extensions.catalogue.approved": "管理员已批准",
 	"extensions.catalogue.cloudDescription": "查看或管理当前项目的云资源。批准前不会在聊天中使用。",
+	"extensions.catalogue.credentialInvalid": "连接凭据无效",
+	"extensions.catalogue.credentialInvalidHelp": "连接凭据已失效。请先停用，然后重新启用。",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "到期 {date}",
 	"extensions.catalogue.loading": "正在检查批准状态…",

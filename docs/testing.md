@@ -6,6 +6,19 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## Lumen 내장 MCP의 무효 credential 안내 (2026-11-14, source/local)
+
+- 변경: application-credential 인증의 Keystone401/404만 별도 오류로 분류하고 실제 execute에서 비밀 없는 `mcp_credential_invalid` WARNING과7일 Redis 관측을 기록한다. Catalogue는 native probe 없이 `credential_state`를 추가하고 기존 enabled·execute HTTP 계약·명시적 사용자 승인/비활성화 권위를 유지한다. Redis 장애 시 관측은 best effort이며 `ok`는 native 인증 성공을 증명하지 않는다.
+- 표적 회귀: 격리 detached worktree에서 `npm run test:target -- backend:tests/test_mcp_credential_state.py backend:tests/test_mcp_lumen_limits.py backend:tests/test_lumen_cloud_tools.py backend:tests/test_mcp_lumen_defaults_db.py`는127 passed/42 DB skipped. 최초 classifier-only 실행의 FakeRedis `aclose()` cleanup 오류(32 passed/1 failed)는 지원되는 `close()`로 정렬한 뒤 위 실행에서 통과했다. Catalogue·lifecycle vitest 두 파일은17 passed. `npm run test:target -- lumen`은 backend58 passed, frontend11files/254tests passed(jsdom canvas 미구현 fallback 로그 존재).
+- 현지화·표현 검사: `i18n:check`0 errors/0 warnings(56namespaces/13392messages), `i18n:scan`0 hard-coded Korean lines/1385files. `experience:catalog`로 한국어 원문 기반 backend catalog와 frontend revision을 동기화했다. 변경 component의 Impeccable detector 결과는`[]`다.
+- 전체 gate 첫 실행: Node22·Python3.12.13, private 설정 없는 detached worktree에서 `npm run test:gate` 실행. Docs·experience catalog와 JS orchestration/Kolla/CLI는 통과했지만 backend unit은14801 passed/157 skipped/3 failed였다. `test_layer_consume`의 root staging success/corrupt 두 조건은 격리 PATH에 `sha256sum`이 없었고, `test_native_vm`의 SIGINT 조건은 supervisor 종료/cleanup5초 timeout이었다. 무관한 source는 수정하지 않았다. 설치된 GNU checksum 경로를 PATH에 복원했다. SIGINT timeout 원인은 미확정이며 실패한 테스트의 exact-owned orphan3개만 명령 일치 확인 후 정리했다.
+- 최종 `npm run test:gate`는 같은 source `f3fe825d452e7ba3eda524f23182fab694fa8bf93e71cebe05ba4361e11ff6d8`/4330files에서 exit0이다. Backend unit14855 passed/106 skipped, frontend590files/7932tests passed(추가 Node log-runner9 passed), contract262 passed, functional292 passed/46 skipped/131 deselected, Ruff check 통과·898files formatted다. GNU checksum 경로 복원으로 실행 가능한 조건이 달라 두 gate의 pass/skip 수는 같지 않다. SIGINT 조건도 최종 실행에서 통과했지만 처음 timeout의 원인을 규명하거나 무관한 supervisor source를 고친 것은 아니다.
+- 격리: detached gate worktree의 `.env`·`afterglow.conf`·`clouds.yaml` 사본은 검사 전에 제거했고, `env -i`로 native/DB credential 환경 상속을 차단했다. Node22·Python3.12.13과 실제 GNU `sha256sum` 경로만 도구 전제다. Functional은 고유 Compose project `afterglow-dead-grant-ux-test`와 충돌 없는192.168.247.0/24 네트워크의 실제 MariaDB/PostgreSQL/Redis를 사용했고 종료 시 세 container와 network를 제거했다. 신규 disable flag cleanup3조건도 이 실제 DB lane에서 통과했다. Native Keystone/provider는 합성 경계다.
+- 통합 제한: 기본 공유 checkout의 기존 dirty `ARCHITECTURE.md`·`docs/testing.md`와 이번 필수 문서 경로가 겹치므로 local dev merge를 수행하지 않는다. `feat/dead-grant-ux`와 전용 worktree를 보존한다. 전체 로그는 `~/.local/share/afterglow-proofs/dead-grant-ux-20261114/gate-{initial,final}.log`에 보존했다.
+- UI: 기존 warning Pill·Card·Button을 재사용하고9locale에 비활성화 후 재활성화 안내를 추가했다. 새 번역은 초안이며 원어민 검수를 주장하지 않는다.
+- 실제 Chromium 합성 검증: 실제 `ChatMcpCatalogue`·UI primitive·현재 CSS를 Vite로 컴파일하고, 별도 임시 harness에서 store/API만 합성했다.9locale×2theme×6width(390/767/768/1023/1024/1440)의108조건에서 warning·복구 문구·버튼 노출 및 document overflow0을 확인했다. 한국어390px dark 화면을 직접 확인했다. 이 검증은 실제 인증·Keystone·Lumen 또는 production 연결 복구가 아니다.
+- 근거: `~/.local/share/afterglow-proofs/dead-grant-ux-20261114/browser-matrix.json`. OpenSpec change는 `fix-lumen-dead-grant-ux`다. DB·migration·설정·버전 변경과 production endpoint 호출·배포는 없다.
+
 ## 대기 화면 마우스 반응·생성 화면 사용 기간 수정과 운영 관측 (2026-11-09, source/local, 원인 미확정)
 
 - 범위: 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 아트를 랜딩 히어로·인증 화면과 같은 `AfterglowOrbit interactive`로 바꿨다. OpenSpec change `add-waiting-art-pointer-light`에 기록했다.

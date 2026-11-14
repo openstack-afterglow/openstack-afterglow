@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "Tích hợp sẵn",
 	"extensions.catalogue.approved": "Được quản trị viên phê duyệt",
 	"extensions.catalogue.cloudDescription": "Đọc hoặc quản lý tài nguyên đám mây trong dự án hiện tại. Không thể sử dụng trong trò chuyện cho đến khi bạn phê duyệt quyền truy cập.",
+	"extensions.catalogue.credentialInvalid": "Thông tin kết nối không hợp lệ",
+	"extensions.catalogue.credentialInvalidHelp": "Thông tin kết nối không còn hợp lệ. Hãy vô hiệu hóa rồi kích hoạt lại.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "Hết hạn {date}",
 	"extensions.catalogue.loading": "Đang kiểm tra trạng thái phê duyệt…",

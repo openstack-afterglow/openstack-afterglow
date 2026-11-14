@@ -13,6 +13,8 @@
 - 인스턴스 생성 사용 기간의 사유 입력란은 기간을 연장했을 때(또는 기존 사유가 있을 때)만 보인다. 백엔드가 사유를 요구하는 조건과 같다.
 
 ### Fixed
+- Lumen 내장 Afterglow MCP 실행 중 application credential 인증이 Keystone 401/404로 거절되면, 비밀 없는 구조화 경고와 7일 Redis 관측을 남기고 연결 목록에 경고 및 비활성화 후 재활성화 안내를 표시합니다. 기존 실행 HTTP 응답·승인 권위는 유지하며 자동 폐기·재발급은 하지 않습니다.
+- When Keystone rejects application-credential authentication with 401/404 during built-in Lumen MCP execution, record a secret-free structured warning and seven-day Redis observation, and show a connection warning with disable-then-enable guidance. Existing execute responses and consent authority remain unchanged; credentials are never automatically revoked or reissued.
 - GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
 
 ## [1.32.15] - 2026-11-11

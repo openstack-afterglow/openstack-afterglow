@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from keystoneauth1.exceptions import connection as keystone_connection
 from keystoneauth1.identity import v3
+from requests import exceptions as requests_exceptions
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -19,6 +21,37 @@ from app.services.mcp_control_plane.sdk import run_sdk
 
 class McpConsumerConnectionError(RuntimeError):
     """A grant cannot safely yield an OpenStack connection."""
+
+
+class McpCredentialInvalidError(McpConsumerConnectionError):
+    """Application-credential authentication rejected a saved credential."""
+
+
+def _credential_auth_rejected(exc: BaseException) -> bool:
+    """Classify only errors raised by the application-credential auth request."""
+    seen: set[int] = set()
+    rejected = False
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(
+            exc,
+            (
+                ConnectionError,
+                TimeoutError,
+                keystone_connection.ConnectionError,
+                requests_exceptions.ConnectionError,
+                requests_exceptions.Timeout,
+            ),
+        ):
+            return False
+        status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
+        if status is None:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status is not None and status not in {401, 404}:
+            return False
+        rejected |= status in {401, 404}
+        exc = exc.__cause__ or exc.__context__
+    return rejected
 
 
 async def _load_credential(principal: McpPrincipal) -> tuple[str, str]:
@@ -83,7 +116,12 @@ def _build_connection(application_credential_id: str, application_credential_sec
     )
     session = native_transport.create_session(auth=auth, timeout=30, verify=settings.ssl_verify)
     try:
-        access = auth.get_access(session)
+        try:
+            access = auth.get_access(session)
+        except Exception as exc:
+            if _credential_auth_rejected(exc):
+                raise McpCredentialInvalidError("MCP cloud connection is unavailable") from exc
+            raise
         if access.user_id != principal.user_id or access.project_id != principal.project_id:
             raise McpConsumerConnectionError("MCP credential owner/project mismatch")
         identity_domain_id = access.user_domain_id
@@ -199,6 +237,8 @@ async def consumer_connection(principal: McpPrincipal) -> AsyncIterator[object]:
             principal,
             cancellation_cleanup=lambda created: created.close(),
         )
+    except McpCredentialInvalidError:
+        raise
     except Exception as exc:
         raise McpConsumerConnectionError("MCP cloud connection is unavailable") from exc
     try:

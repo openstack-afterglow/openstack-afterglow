@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.database import get_session_factory
 from app.models.activity import ActivityLog
 from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection
-from app.services.mcp_control_plane import authority, lumen
+from app.services.mcp_control_plane import authority, credential_state, lumen
 
 
 def _factory():
@@ -337,6 +337,8 @@ async def disable_lumen_grant(*, token_info: dict) -> None:
                 extra={"generation": owner_lock.lumen_selection_generation, "grant_id": None},
             )
         )
+    for grant_id in cleanup_ids:
+        await credential_state.clear_invalid(grant_id)
     if not cleanup_ids:
         return
     projects = await authority.prepare_project_authority(token_info, project_scope="current", access_level="read")

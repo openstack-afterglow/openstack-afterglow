@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "기본 제공",
 	"extensions.catalogue.approved": "관리자 승인",
 	"extensions.catalogue.cloudDescription": "현재 프로젝트의 클라우드 리소스를 조회하거나 관리합니다. 승인 전에는 채팅에서 사용하지 않습니다.",
+	"extensions.catalogue.credentialInvalid": "연결 정보 무효",
+	"extensions.catalogue.credentialInvalidHelp": "연결 정보가 더 이상 유효하지 않습니다. 비활성화한 뒤 다시 활성화해 주세요.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "만료 {date}",
 	"extensions.catalogue.loading": "승인 상태 확인 중…",

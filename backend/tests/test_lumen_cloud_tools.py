@@ -12,7 +12,7 @@ from app.api.deps import get_token_info
 from app.api.identity import mcp_access
 from app.api.lumen import proxy as proxy_module
 from app.services import service_proxy
-from app.services.mcp_control_plane import authority, defaults, lumen
+from app.services.mcp_control_plane import authority, credential_state, defaults, lumen
 
 _PATH = "/api/v1/chat/cloud-tools"
 _BROWSER_HEADERS = {"Origin": "https://app.example.test", "Sec-Fetch-Site": "same-site"}
@@ -65,6 +65,7 @@ def cloud_delegation(monkeypatch):
     approve = AsyncMock(return_value={"token": "synthetic-personal-bearer"})
     disable = AsyncMock(return_value={"credential_ciphertext": "synthetic-ciphertext"})
     create_credentials = AsyncMock()
+    monkeypatch.setattr(credential_state.cache, "_get_redis", AsyncMock(side_effect=ConnectionError("Redis down")))
     monkeypatch.setattr(lumen, "selected_lumen_snapshot", selected)
     monkeypatch.setattr(defaults, "approve_lumen_grant", approve)
     monkeypatch.setattr(defaults, "disable_lumen_grant", disable)
@@ -216,6 +217,7 @@ async def test_cloud_catalogue_is_off_before_explicit_approval(cloud_app, cloud_
         "selection_name": None,
         "expires_at": None,
         "tool_count": 0,
+        "credential_state": "ok",
     }
     cloud_delegation.selected.assert_awaited_once_with(user_id="user-a", project_id="project-a")
     cloud_delegation.approve.assert_not_awaited()
@@ -240,6 +242,7 @@ async def test_cloud_catalogue_preserves_valid_selection_metadata(
         "enabled": True,
         "available": True,
         "tool_count": 2 if access_level == "manage" else 1,
+        "credential_state": "ok",
     }
     catalogue.resolve.assert_awaited_once_with(catalogue.snapshot)
     catalogue.describe.assert_awaited_once_with(catalogue.snapshot)
@@ -486,3 +489,40 @@ async def test_cloud_mutation_errors_are_safe_and_state_conflicts_are_409(
     cloud_delegation.create_credentials.assert_not_awaited()
     _assert_no_store(response)
     _assert_secret_free(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["invalid", "ok", "redis_down", "other_grant"])
+async def test_cloud_catalogue_reads_only_selected_grant_state_without_native_probe(
+    cloud_app, cloud_permission, cloud_delegation, monkeypatch, state
+):
+    import fakeredis.aioredis
+
+    from app.services.mcp_control_plane import connection
+
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    getter = AsyncMock(
+        side_effect=ConnectionError("synthetic-redis-secret") if state == "redis_down" else None,
+        return_value=redis,
+    )
+    monkeypatch.setattr(credential_state.cache, "_get_redis", getter)
+    catalogue = _selected_catalogue(monkeypatch)
+    cloud_delegation.selected.return_value = catalogue.snapshot
+    probe = AsyncMock(side_effect=AssertionError("GET must not authenticate the saved credential"))
+    monkeypatch.setattr(connection, "_load_credential", probe)
+    try:
+        if state in {"invalid", "other_grant"}:
+            await credential_state.mark_invalid("grant-a" if state == "invalid" else "grant-b")
+        async with AsyncClient(transport=ASGITransport(app=cloud_app), base_url="http://test") as client:
+            response = await client.get(_PATH)
+        assert response.status_code == 200
+        assert response.json()["credential_state"] == ("invalid" if state == "invalid" else "ok")
+        assert response.json()["enabled"] is True
+        assert response.json()["tool_count"] == 1
+        probe.assert_not_awaited()
+        cloud_delegation.approve.assert_not_awaited()
+        cloud_delegation.create_credentials.assert_not_awaited()
+        _assert_no_store(response)
+        _assert_secret_free(response)
+    finally:
+        await redis.close()

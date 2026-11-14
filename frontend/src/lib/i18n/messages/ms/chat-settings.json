@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "Terbina dalam",
 	"extensions.catalogue.approved": "Diluluskan pentadbir",
 	"extensions.catalogue.cloudDescription": "Baca atau urus sumber awan dalam projek semasa. Tidak tersedia untuk sembang sehingga anda meluluskan akses.",
+	"extensions.catalogue.credentialInvalid": "Maklumat sambungan tidak sah",
+	"extensions.catalogue.credentialInvalidHelp": "Maklumat sambungan tidak lagi sah. Nyahaktifkan, kemudian aktifkan semula.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "Tamat tempoh {date}",
 	"extensions.catalogue.loading": "Sedang menyemak kelulusan…",

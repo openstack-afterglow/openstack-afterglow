@@ -55,6 +55,7 @@
 	const canMcp = $derived($serviceCapabilities('lumen-mcp_editor'));
 	const canWrite = $derived($projectPermissions.permissions?.can_write === true && !$projectPermissions.loading && !$projectPermissions.error);
 	const cloudActive = $derived(canCloud && cloud?.enabled === true);
+	const cloudCredentialInvalid = $derived(cloudActive && cloud?.credential_state === 'invalid');
 	const accessOptions = $derived([
 		{ value: 'read', label: t('extensions.catalogue.read'), disabled: busy || !canCloud },
 		{ value: 'manage', label: t('extensions.catalogue.manage'), disabled: busy || !canCloud || !canWrite }
@@ -193,8 +194,9 @@
 	<Card surface="raised" padding="md">
 		<div class="server-row">
 			<div class="server-copy">
-				<div class="server-title"><strong>Afterglow MCP</strong><Pill tone="neutral" size="xs">{t('extensions.catalogue.builtin')}</Pill><Pill tone={cloudActive ? 'success' : 'neutral'} size="xs">{cloudActive ? t('extensions.state.active') : t('extensions.state.inactive')}</Pill></div>
+				<div class="server-title"><strong>Afterglow MCP</strong><Pill tone="neutral" size="xs">{t('extensions.catalogue.builtin')}</Pill>{#if cloudCredentialInvalid}<Pill tone="warning" size="xs">{t('extensions.catalogue.credentialInvalid')}</Pill>{:else}<Pill tone={cloudActive ? 'success' : 'neutral'} size="xs">{cloudActive ? t('extensions.state.active') : t('extensions.state.inactive')}</Pill>{/if}</div>
 				<p>{t('extensions.catalogue.cloudDescription')}</p>
+				{#if cloudCredentialInvalid}<p>{t('extensions.catalogue.credentialInvalidHelp')}</p>{/if}
 				{#if cloudActive && cloud}
 					<p>{t('extensions.catalogue.savedAccess', { access: cloud.access_level === 'manage' ? t('extensions.catalogue.manage') : t('extensions.catalogue.read'), project: cloud.allowed_projects.map((project) => project.name || project.id).join(', ') })}</p>
 					{#if cloud.expires_at}<p class="tabular-nums">{t('extensions.catalogue.expires', { date: new Date(cloud.expires_at).toLocaleDateString(intlLocale()) })}</p>{/if}

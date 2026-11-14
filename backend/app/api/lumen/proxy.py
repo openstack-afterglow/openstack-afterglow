@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from app.api.deps import get_token_info
 from app.api.identity.mcp_access import _require_browser_mutation
 from app.config import get_settings
-from app.services.mcp_control_plane import authority, defaults, lumen, registry
+from app.services.mcp_control_plane import authority, credential_state, defaults, lumen, registry
 from app.services.service_authorization import current_service_principal
 from app.services.service_permissions import require_service_permission
 from app.services.service_proxy import get_policy_capabilities, proxy
@@ -76,6 +76,7 @@ async def cloud_tools(request: Request) -> Response:
     enabled = False
     access_level = "read"
     tool_count = 0
+    state = "ok"
     metadata = {
         "project_id": info["project_id"],
         "project_name": info.get("project_name") or info["project_id"],
@@ -93,6 +94,7 @@ async def cloud_tools(request: Request) -> Response:
                 tool_count = len(registry.enabled_entries(cloud_principal))
                 metadata = await lumen.selected_lumen_metadata(selected)
                 enabled = True
+                state = "invalid" if await credential_state.is_invalid(selected.grant_id) else "ok"
         except lumen.McpLumenAuthorityError as exc:
             raise HTTPException(
                 status_code=503, detail="Lumen cloud authority is unavailable", headers=_NO_STORE
@@ -104,6 +106,7 @@ async def cloud_tools(request: Request) -> Response:
             "available": available,
             "access_level": access_level,
             "tool_count": tool_count,
+            "credential_state": state,
         },
         headers=_NO_STORE,
     )
