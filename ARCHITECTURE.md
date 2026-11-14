@@ -791,6 +791,10 @@ Lumen 내장 MCP의 credential 상태는 권위와 별도인 관측이다. `cons
 
 `GET /chat/cloud-tools`는 Keystone probe 없이 선택 grant의 Redis 관측만 `credential_state: invalid|ok`로 추가하며 기존 `enabled`와 모든 필드를 유지한다. Redis 장애/관측 부재의 `ok`는 실제 native 인증 성공을 뜻하지 않는다. 내장 row는 기존 warning Pill과9locale 복구 안내로 비활성화 후 재활성화를 설명하고 원래 명시 동의·버튼·owner fence를 유지한다. Disable은 관측을 best effort 제거하며 자동 폐기·재발급은 없다. 새 grant의 다른 ID와7일TTL로 관측 수명을 한정한다. Schema·migration·configuration·service topology에는 구조 영향이 없는 오류 분류/표시 수정이며 운영 credential 복구·배포를 수행하지 않는다.
 
+일시적인 인증 거절 관측은7일 동안 고정되지 않는다. Lumen execute의 요청별 dispatch 관측은 `consumer_connection`이 실제 연결·현재 역할 검증을 통과한 grant ID만 수집하며, 해당 grant의 read/mutation dispatch가 성공하면 Redis에 flag가 있을 때만 best effort DELETE한다. Local-only 도구·preview·mutation replay·실패한 dispatch는 인증 복구를 증명하지 않으므로 flag를 지우지 않는다. Redis 조회/삭제 장애도 execute 응답을 바꾸지 않으며 이후 진짜401/404는 다시 flag를 남긴다. 별도 인증 probe·grant 권위 변경·서비스 구조 변경은 없다.
+
+Catalogue의 기존 단일 대표 선택은 전체 선택을 grant ID순으로 정렬한 첫 grant이며 source를 `lumen`으로 한정하지 않는다. 따라서 non-first grant의 무효 관측은 row에 나타나지 않고, 첫 grant가 PAT이면 내부 Lumen grant만 폐기하는 비활성화→재활성화 안내로 PAT를 복구할 수 없다. 이 두 다중 선택/PAT UX 경로는 이번 수용 범위 밖의 잔여 위험이며 전체 grant 상태·PAT 복구 완료로 해석하지 않는다.
+
 카탈로그의 승인·비활성화·OAuth-start는 시작한 token/user/project scope의 action AbortController와30초 deadline을 공유한다. 인증 준비·project switching·identity/ABA 변경과 unmount가 GET/action controller를 취소하고 scope와 두 generation을 폐기한다. 기존 HTTP recovery가 취소를 refresh/401 재전송 전에 확인하여 새 계정으로 이전 동의를 replay하지 않고, 종료한 설정이 늦게 OAuth redirect를 시작하지 않는다. `api.patch`/`delete`는 기존 `post`와 같은 optional signal을 전달하며 전역 인증 정책은 바꾸지 않는다. 기본 위임 설명은 네 locale에서 access-neutral이고 실제 접근 chip은 `read`/`manage`를 유지한다.
 
 
@@ -2146,9 +2150,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f3fe825d452e7ba3eda524f23182fab694fa8bf93e71cebe05ba4361e11ff6d8",
-  "reviewed_at": "2026-11-14T13:38:08Z",
-  "summary": "Reviewed Lumen MCP auth-only 401/404 invalid-credential classification and execute-only truncated warning/advisory Redis state, catalogue and nine-locale warning UI. No schema/config/topology or authority change; generic execute HTTP responses and explicit consent preserved. Focused backend/frontend and synthetic Chromium matrix passed; full isolated gate recorded separately."
+  "source_sha256": "786e0d019582d658d94b55429e8a1f7de56d719be3c8327196a904963d115246",
+  "reviewed_at": "2026-11-14T14:03:22Z",
+  "summary": "Lumen credential observation recovery now requires successful native-authenticated dispatch for the same grant; EXISTS-before-DELETE keeps absent flags read-only, Redis errors preserve responses, local-only/preview/replay success cannot clear. No schema/config/topology or authority change. Focused backend141passed/frontend17passed; multi-grant representative/PAT recovery UX limitations remain explicit."
 }
 ```
 <!-- architecture-review:end -->

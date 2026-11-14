@@ -131,3 +131,32 @@ async def test_auth_transport_or_other_http_failure_overrides_incidental_rejecti
             pytest.fail("Authentication must fail")
     assert not isinstance(caught.value, connection.McpCredentialInvalidError)
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flagged", [False, True])
+async def test_clear_checks_flag_before_writing_to_redis(monkeypatch, flagged):
+    redis = SimpleNamespace(exists=AsyncMock(return_value=int(flagged)), delete=AsyncMock())
+    monkeypatch.setattr(credential_state.cache, "_get_redis", AsyncMock(return_value=redis))
+    await credential_state.clear_invalid("grant-a")
+    redis.exists.assert_awaited_once_with("afterglow:mcp:credential-invalid:grant-a")
+    if flagged:
+        redis.delete.assert_awaited_once_with("afterglow:mcp:credential-invalid:grant-a")
+    else:
+        redis.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_successful_native_authentication_observation_is_dispatch_scoped(monkeypatch):
+    conn = SimpleNamespace(close=Mock())
+    monkeypatch.setattr(connection, "_load_credential", AsyncMock(return_value=("credential", "synthetic-secret")))
+    monkeypatch.setattr(connection, "_build_connection", lambda *args: conn)
+    monkeypatch.setattr(connection, "_validate_current_roles", AsyncMock())
+    principal = SimpleNamespace(grant_id="grant-a")
+    with connection.observe_authenticated_grants() as outer:
+        with connection.observe_authenticated_grants() as inner:
+            async with connection.consumer_connection(principal):
+                assert inner == {"grant-a"}
+        assert outer == set()
+    with connection.observe_authenticated_grants() as following:
+        assert following == set()

@@ -9,7 +9,7 @@
 - [x] Update architecture/testing/changelog, stamp architecture and run staged guard.
 - [x] Archive change and preserve branch/worktree if shared dirty paths block integration.
 
-## Evidence and limits
+## Initial implementation evidence and limits (5335a4b5)
 
 - Source baseline: local `dev` commit `06a804a`; no fetch, push, tag, release or production call.
 - Focused backend: 127 passed / 42 DB skips; frontend catalogue/lifecycle: 2 files / 17 passed.
@@ -20,3 +20,22 @@
 - Localization checks passed; compiled synthetic Chromium matrix: 108 locale/theme/viewport cases, zero document overflow, warning/help/button visible. Native identity/provider boundaries remain synthetic.
 - Shared `ARCHITECTURE.md` and `docs/testing.md` are dirty and overlap this change. No merge into shared local `dev`; preserve `/Users/pieroot/code/afterglow-wt-dead-grant-ux` and `feat/dead-grant-ux`.
 - Full logs and browser evidence: `~/.local/share/afterglow-proofs/dead-grant-ux-20261114/`; detail in `docs/testing.md`.
+
+## Follow-up: Clear transient authentication failure observations
+
+- [x] Clear an existing flag after successful native-authenticated read/mutation dispatch, with an existence check before deleting.
+- [x] Preserve flags for local-only success, preview, mutation replay and failed dispatch; preserve responses on Redis failure.
+- [x] Add recovery-to-catalogue, re-marking, Redis-clear failure and no-extra-write regression tests.
+- [x] Update archived proposal/design/spec and bilingual changelog for self-clearing observations.
+- [x] Re-run focused backend/frontend tests, isolated full gate and architecture stamp/staged guard.
+- [x] Commit as a new commit on the existing feature branch and keep shared checkout untouched.
+
+### Follow-up evidence
+
+- Focused backend: 141 passed / 42 DB skips; frontend catalogue/lifecycle: 2 files / 17 passed.
+- Final isolated `npm run test:gate`: exit 0, backend 14869 passed / 106 skipped; frontend 590 files / 7932 tests plus 9 Node tests; contract 262 passed; functional 292 passed / 46 skipped / 131 deselected; Ruff clean / 898 formatted.
+- Working stamp and staged guard match source `786e0d019582d658d94b55429e8a1f7de56d719be3c8327196a904963d115246` / 4330 files.
+- First follow-up gate failed only `test_redis_failover_retry.py::test_persistent_read_failure_has_only_two_retries[direct-disconnect]`: connections 5 instead of 3, commands 3, with unexpected TLS and non-Redis HTTP traffic in the fixture. Same-source full rerun passed without changing unrelated source.
+- Both supervisor signal cases (`test_real_signal_stops_graceful_and_stubborn_children[15]` and `[2]`) passed in both follow-up gate runs. Earlier unexplained supervisor timeout did not reproduce.
+- Full logs: `~/.local/share/afterglow-proofs/dead-grant-ux-20261114/self-clear-gate-{initial,final}.log`.
+- The catalogue still projects only the first-by-grant-ID selection; a non-first invalid grant is invisible, and first-PAT disable/enable guidance does not replace the PAT. These two UI limitations remain untested and are documented, not claimed fixed.

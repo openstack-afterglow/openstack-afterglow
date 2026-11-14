@@ -28,6 +28,8 @@ async def is_invalid(grant_id: str) -> bool:
 async def clear_invalid(grant_id: str) -> None:
     try:
         redis = await cache._get_redis()
-        await redis.delete(_key(grant_id))
+        key = _key(grant_id)
+        if await redis.exists(key):
+            await redis.delete(key)
     except Exception:
         pass

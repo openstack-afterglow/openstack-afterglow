@@ -7,7 +7,7 @@ A stored Lumen MCP grant can remain enabled after Keystone rejects its applicati
 ## What changes
 
 - Distinguish application-credential authentication HTTP 401/404, including missing-role 404, from transport, server and service-resource failures.
-- During real Lumen execution, record a bounded structured warning and a best-effort seven-day Redis observation keyed by grant ID.
+- During real Lumen execution, record a bounded structured warning and a best-effort seven-day Redis observation keyed by grant ID. Clear an existing observation after a successful native-authenticated dispatch, without writing a delete for an absent flag.
 - Project that observation as `credential_state: invalid|ok` from the existing cloud-tools catalogue without probing Keystone or changing enabled authority.
 - Show a warning pill and localized disable-then-enable guidance in the built-in MCP row. Recovery remains an explicit action through the user's session.
 

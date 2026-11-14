@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 
 from keystoneauth1.exceptions import connection as keystone_connection
 from keystoneauth1.identity import v3
@@ -25,6 +26,20 @@ class McpConsumerConnectionError(RuntimeError):
 
 class McpCredentialInvalidError(McpConsumerConnectionError):
     """Application-credential authentication rejected a saved credential."""
+
+
+_authenticated_grants: ContextVar[set[str] | None] = ContextVar("mcp_authenticated_grants", default=None)
+
+
+@contextmanager
+def observe_authenticated_grants() -> Iterator[set[str]]:
+    """Observe native authentication only within one caller-owned dispatch."""
+    grants: set[str] = set()
+    token = _authenticated_grants.set(grants)
+    try:
+        yield grants
+    finally:
+        _authenticated_grants.reset(token)
 
 
 def _credential_auth_rejected(exc: BaseException) -> bool:
@@ -248,6 +263,8 @@ async def consumer_connection(principal: McpPrincipal) -> AsyncIterator[object]:
             raise
         except Exception as exc:
             raise McpConsumerConnectionError("MCP current delegation is unavailable") from exc
+        if (observed := _authenticated_grants.get()) is not None:
+            observed.add(principal.grant_id)
         yield conn
     finally:
         await run_sdk(conn.close, allow_after_cancel=True)
