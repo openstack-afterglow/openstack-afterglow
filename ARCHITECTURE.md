@@ -2193,9 +2193,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f0f0418945a3b4fa71d1363125bddd5dc5bafa320d9e854840a4b499d9cbf97d",
-  "reviewed_at": "2026-11-15T15:23:36Z",
-  "summary": "Tutorial availability test adapted to the inline invite markup after merging slop pass 2; no source change."
+  "source_sha256": "40df540d937c679c1c95813ef5b99e7f4c463855449151623fd3ac005f856be2",
+  "reviewed_at": "2026-11-15T15:29:58Z",
+  "summary": "Release 1.32.20: tutorial availability fix with dashboard slop pass 2, docs and version bump; no further source change."
 }
 ```
 <!-- architecture-review:end -->

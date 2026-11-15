@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 튜토리얼 가용성 수정과 대시보드 slop 2차 병합 (2026-11-16, source/local)
+
+- 배경: 다른 세션이 끝내고 커밋하지 않은 튜토리얼 시작 버튼 가용성 수정(`fix-tutorial-start-button-visibility`, 모든 task 완료·집중 테스트 통과)이 공유 checkout에 이틀째 남아 운영에 반영되지 않았다. 소유자 지시로 그대로 커밋 `a0549e4b`로 보존하고 slop 2차(`ux/slop-pass-2`)와 병합했다. 두 변경이 `TutorialStartButton.svelte`의 같은 마크업을 건드려 충돌했고, 가용성 gate(`{#if tutorialViewport.current && $tourAvailable}`)와 slop 쪽 inline 초대 마크업(`div.tutorial-start`)을 함께 남겨 해결했다.
+- 병합으로 깨진 기존 테스트 1건: `hides launcher and invite when a real non-admin session replaces tutorial auth`가 예전 popover 구조(시작 버튼 2개 + `role="dialog"`)를 기대했다. slop 2차는 초대를 `role="group"`의 inline 블록으로 바꾸고 시작 버튼을 초대 안의 하나로 합친다. 테스트를 새 구조(group 1개 + 버튼 1개, 전환 뒤 둘 다 없음)로 고쳤다. 가용성 동작 자체의 기대(비관리자에게 숨김)는 그대로다.
+- 전체 격리 `npm run test:gate`는 최종 `36285613`(SHA256 `f0f0418945a3b4fa71d1363125bddd5dc5bafa320d9e854840a4b499d9cbf97d`/4348files)에서 **종료0**이다. Backend **15221passed/106skipped**, frontend **592files/7992tests**, contract **262passed**, functional **292passed/46skipped/131deselected**, Ruff 912files. 원문은 `~/.local/share/afterglow-proofs/landing-tutorial-20261116/gate-full.log`.
+- 앞선 실행 기록(숨기지 않음): (1) 새 detached tree에 backend dev 의존성이 없어 pytest 모듈 부재, (2) frontend `node_modules`를 symlink/복제한 tree에서 vitest 의존성 최적화 오류(`npm ci`로 해결) — 둘 다 환경 준비 문제다. (3) `tests/test_redis_failover_retry.py::test_persistent_read_failure_has_only_two_retries[sentinel-disconnect]`가 한 번 `assert 5 == 3`으로 실패했다. 테스트 서버 포트에 이 호스트의 다른 프로세스(TLS/HTTP 클라이언트 바이트)가 연결해 연결 수가 늘어난 실제 소켓 테스트이며 같은 파일을 단독으로 3회 돌리면 63개 모두 통과하고 최종 전체 gate도 통과했다. 원인 코드는 바꾸지 않았다(재시도로 가렸다는 뜻이 아니라 호스트 소켓 경합 가능성 기록이다). 원문 `gate-run3-flake-redis-failover.log`.
+- 한계: 이 기록 시점에 운영 화면에서 튜토리얼 버튼·초대를 보지 않았다. 목업/로컬 렌더링과 vitest 기준이다.
+
 ## 예약 백업 member 세션 소유자 속성 수정 (2026-11-15, source/local + 운영 관측)
 
 - 운영 관측(1.32.18 배포 뒤): 관리 계정 reconciler가 수렴했다(읽기 전용 보고 `complete=true`, 남은 쓰기 0, DMSLAB에 `member` 1개 부여, 38개 프로젝트 `backup_gigabytes`가 규칙값으로 일치, DMSLAB `10868→32604`). 그 직후 예약 백업이 실제로 제출되어 Cinder에 500GB 백업 `creating`이 생겼고 소스 볼륨이 `backing-up`이 됐다. 그러나 Afterglow 저널은 `unknown`/`backup_id: null`(“acceptance or completion could not be confirmed; it will not be resubmitted”)으로 남아 이후 추적·정리·다음 슬롯이 진행되지 않았다.

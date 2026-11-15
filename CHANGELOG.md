@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.32.20] - 2026-11-16
+
 ### Changed
 - 개요 후속 대시보드 경로의 중첩 표·카드·알림을 구분선으로 정리하고 프로젝트 설정의 h2/h3 위계를 복원했다. 프로젝트 선택의 중첩 warm 배경을 neutral selection으로 바꾸고 사용량·활동 정보의 다크 대비를 높였다. 튜토리얼 초대가 검색/새로고침을 덮지 않도록 header 흐름에 두며 banner의 warm glow를 제거했다. Drover 설명의 외톨이 줄과 tablet 카드의 긴 상태 overflow를 수정했다. 실제 인스턴스·네트워크·Drover·사용량·프로젝트 설정·볼륨·활동 경로는 로컬 튜토리얼 데이터의 두 테마·두 화면 크기에서 detector 0건이다. `/dashboard/networks`의 404 장식과 mock IAM 권한 redirect는 별도 한계로 남긴다.
 
