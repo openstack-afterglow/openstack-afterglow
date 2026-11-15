@@ -6,6 +6,13 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 백업 계정 reconciler 실제 SDK 호환 수정 (2026-11-15, source/local + 운영 읽기 전용 확인)
+
+- 배경: 1.32.17을 운영에 배포하고 `[backup_system_account].enabled = true`를 적용하자 reconciler가 관리 계정(옵션·활성·암호화 credential 확인됨)을 만든 뒤 매 주기 `AttributeError: 'Proxy' object has no attribute 'user_groups'`로 inventory에서 멈췄다. 읽기 전용 보고도 `complete=false`/`native_inventory_unavailable`였다. 역할·쿼터 쓰기는 일어나지 않았다(fail-closed). 켜기 전 보고가 `complete=true`였던 것은 관리 계정이 아직 없어 이 경로를 지나지 않았기 때문이다.
+- 원인: 실제 openstacksdk 식별 프록시에는 `user_groups`가 없는데, 단위 테스트 fake가 같은 이름의 메서드를 만들어 통과시켰다. 수정은 `GET /users/{id}/groups`를 `admin.identity.get`으로 읽고 응답 모양(`groups` list)을 검증한다. 테스트 fake도 같은 `get`을 제공하며 새 테스트는 fake identity의 모든 메서드가 실제 `openstack.identity.v3._proxy.Proxy`에 존재하는지 확인한다.
+- 운영 읽기 전용 확인(쓰기 없음): 운영 backend 컨테이너에서 관리 계정에 대한 `GET /users/{id}/groups`는 200과 `groups`/`links`를 반환했고(그룹 0개), `role_assignments(user_id=...)`는 빈 목록이었다. 실제 `RoleAssignment` resource로 `_direct_roles`가 기대한 project/role 매핑을 만든다는 것도 로컬에서 확인했다. 수정된 코드를 운영에서 실행하지는 못했고, 그 뒤의 역할 부여·쿼터 쓰기와 실제 예약 백업은 아직 관측하지 않았다.
+- 격리 `npm run test:gate`는 source `fd15705c`(SHA256 `6e6fca52b10596c43f0f5da37c0f684eefc963f722d6eb4d756fc8a959a40ce7`/4348files)에서 **종료0**이다. Backend **15218passed/106skipped**, frontend **592files/7983tests**, contract **262passed**, functional **292passed/46skipped/131deselected**, Ruff 912files. 원문은 `~/.local/share/afterglow-proofs/release-1.32.17/gate-fix-groups.log`.
+
 ## 자동 백업 시스템 계정·3배 capacity (2026-11-15, source/local)
 
 - OpenSpec은 `openspec archive add-backup-system-account --skip-specs --yes`로 `openspec/changes/archive/2026-11-15-add-backup-system-account/`에 보존했다. 저장소의 specs 미사용 계약에 따라 delta 부재 warning은 남았고 별도 spec-validation 통과를 주장하지 않는다. 정확한 변경 파일은 `evidence/files.json`, 전체 gate 명령·숫자는 `evidence/final-gate.json`을 따른다.

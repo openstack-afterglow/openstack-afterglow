@@ -4,5 +4,5 @@
 - [x] Replace the call with the Keystone user-groups API and validate the payload.
 - [x] Align the test fake and add the real-proxy surface guard.
 - [x] Verify the replacement calls read-only against the production container and a real SDK resource.
-- [ ] Run the isolated detached-worktree `npm run test:gate` (record counts in `docs/testing.md`).
-- [ ] Update CHANGELOG and docs/testing.md; stamp architecture; archive the change; commit on `fix/backup-account-real-sdk-groups`.
+- [x] Run the isolated detached-worktree `npm run test:gate` (exit 0; counts in `docs/testing.md`).
+- [x] Update CHANGELOG and docs/testing.md; stamp architecture; archive the change; commit on `fix/backup-account-real-sdk-groups`.

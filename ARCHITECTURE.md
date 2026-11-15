@@ -2185,9 +2185,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "6e6fca52b10596c43f0f5da37c0f684eefc963f722d6eb4d756fc8a959a40ce7",
-  "reviewed_at": "2026-11-15T12:51:18Z",
-  "summary": "Backup account reconciler reads user groups through the Keystone API instead of a nonexistent SDK proxy method; test fake guarded against invented SDK surface."
+  "source_sha256": "102c4638fbe9190537247c6b8af8059ed111a25376643ed458a7f89fb04324ec",
+  "reviewed_at": "2026-11-15T12:57:22Z",
+  "summary": "Release 1.32.18: backup account user-group read fix, archive and version bump; no further source change."
 }
 ```
 <!-- architecture-review:end -->

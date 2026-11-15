@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.32.18] - 2026-11-15
+
 ### Fixed
 - 자동 백업 시스템 계정 reconciler가 실제 openstacksdk 식별 프록시에 없는 `user_groups`를 호출해 운영에서 `AttributeError`로 inventory가 중단되던 문제를 고쳤다. 사용자 그룹을 Keystone `GET /users/{id}/groups`로 읽고 응답 형식을 검증한다. 테스트 fake가 실제 SDK에 없는 메서드를 만들 수 없도록 실제 프록시 표면 검사 테스트를 추가했다. 실패는 fail-closed였으며 역할·쿼터 쓰기는 일어나지 않았다.
 
