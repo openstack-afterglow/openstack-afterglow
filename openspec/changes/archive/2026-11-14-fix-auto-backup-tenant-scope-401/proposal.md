@@ -38,3 +38,10 @@ Compared with the reported 232 warnings/hour, persistent failure is bounded to a
 ## Residual risks
 
 No role/trust, deployment, native Cinder backup repository, guest consistency or restore acceptance is proven. Read-only fixed-admin target filters depend on native policy honoring list scope: filtered/foreign-only lists do not prove absence, as documented for `layer_build._layer_resource`. This change introduces no admin list executor. Redis primary/DB sharing and TTL continuity remain prerequisites. Only target-authentication recovery can be delayed up to 300 seconds; native Cinder reconciliation keeps its existing cadence and unknown-write fences. There is no schema migration or new secret/configuration key.
+
+
+### Unimplemented Trove database-backup authentication risk
+
+This change covers only Cinder `auto_backup`/`auto_snapshot`. `backend/app/services/db_auto_backup.py:_execute_tick` (lines390–394) still selects the lazy `get_admin_connection_for_project`; `_execute_target` opens it before native work and the execution loop polls every15 seconds. It has no equivalent shared authentication backoff or policy `last_error` update. A database-backup policy targeting a project without a service-account role could therefore repeat the same401 failure and leave the tenant without a visible policy error. This is a latent risk, not implemented here; `db_auto_backup.py` is unchanged.
+
+Coordinator production evidence,2026-11-15, read-only controller1: Redis `afterglow:db_auto_backup:*` contained one `cron_next` key and four `dispatch` keys, zero `config:*` keys (no DB backup policies); there were no `db_auto_backup` log lines in the preceding30 minutes. This does not establish a current database-backup failure or recovery. If needed for DB policies, use the same principles: eager proof of a genuine target-project-scoped token, shared300-second authentication backoff and lease/revision-fenced `last_error` with clearing after success. Do not replace target ownership with a fixed-admin executor or silently grant roles/trusts.
