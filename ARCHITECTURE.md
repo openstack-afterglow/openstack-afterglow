@@ -2196,9 +2196,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "64f0c73dcc36e01db923f7ffcd7b7b6facd498882624d0791e9ef58680fb14a0",
-  "reviewed_at": "2026-11-15T18:40:08Z",
-  "summary": "Final third visual refinement over local dev 2d7c823b: paired-theme contrast including light warm CTA hover, embedded resource/account/admin composition, heading/dialog naming and auth branding/type; full isolated gate green; no API, authority, tutorial, data or deployment contract change."
+  "source_sha256": "e85d68a1b77bff658835774d5d1b503926a610977925f49eb87701fcb5e66a11",
+  "reviewed_at": "2026-11-15T18:42:49Z",
+  "summary": "Release 1.32.21: dashboard slop pass 3 version bump and changelog; no further source change."
 }
 ```
 <!-- architecture-review:end -->
