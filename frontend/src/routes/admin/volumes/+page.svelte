@@ -129,6 +129,7 @@
 	let statusSummaryGeneration = 0;
 	let timeseriesGeneration = 0;
 	let bulkDeleting = $state(false);
+	let creationDeleteFailures = $state<Pick<AdminVolume, 'id' | 'name'>[]>([]);
 	let projectEffectReady = $state(false);
 	let lastProjectId = $state<string | undefined>(undefined);
 	const selection = createResourceSelection();
@@ -209,6 +210,7 @@
 
 	function resetResultBoundary() {
 		resultBoundary += 1;
+		creationDeleteFailures = [];
 		loadGeneration += 1;
 		nextPrefetch.cancel();
 		markerStack = [];
@@ -316,6 +318,7 @@
 		const requestUserId = $auth.userId;
 		bulkDeleting = true;
 		try {
+			creationDeleteFailures = [];
 			if (!await confirmDialog(t('volumeList.bulkDelete.confirm', { count: ids.length }))) return;
 			if (!api.isCurrent() || boundary !== resultBoundary || requestProjectId !== ($auth.projectId ?? undefined)
 				|| requestUserId !== $auth.userId || ids.some(id => !selection.ids.has(id))) return;
@@ -329,6 +332,9 @@
 			if (!api.isCurrent() || boundary !== resultBoundary || requestUserId !== $auth.userId
 				|| requestProjectId !== ($auth.projectId ?? undefined)) return;
 			const successfulIds = response.results.filter((result) => result.ok).map((result) => result.id);
+			const failedIds = new Set(response.results.filter(result => !result.ok).map(result => result.id));
+			creationDeleteFailures = allVolumes.filter(volume => failedIds.has(volume.id)
+				&& (volume.status === 'creating' || volume.status === 'downloading')).map(({ id, name }) => ({ id, name }));
 			const failed = response.results.length - successfulIds.length;
 			if (successfulIds.length > 0) toast.success(t('volumeList.bulkDelete.success', { count: successfulIds.length }));
 			if (failed > 0) toast.error(t('volumeList.bulkDelete.partialFailure', { count: failed }));
@@ -426,6 +432,16 @@
 
 	<p class="text-xs text-ink-2">{commonT('table.mixedScope')}</p>
 	<TableViewControls view={tableView} class={loading || inventoryError ? '' : 'lg:hidden'} />
+	{#if creationDeleteFailures.length}
+		<Alert tone="warning">
+			<p>{t('volumeList.bulkDelete.creationFailure', { count: creationDeleteFailures.length })}</p>
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each creationDeleteFailures as volume (volume.id)}
+					<Button variant="outline" onclick={() => { selectedVolumeId = volume.id; }}>{t('volumeDelete.openDiagnostic')}: {volume.name || volume.id}</Button>
+				{/each}
+			</div>
+		</Alert>
+	{/if}
 	<div data-tour="admin-storage-list">
 	{#if inventoryError}<Alert tone="danger">{inventoryError}</Alert>
 	{:else if loading}
@@ -519,7 +535,7 @@
 {/if}
 
 <AdminVolumeEditModal volume={editVolume} onClose={() => (editVolume = null)} onSuccess={refreshCurrentVolumeState} />
-<AdminVolumeDeleteModal volume={deleteVolume} onClose={() => (deleteVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeDeleteModal volume={deleteVolume} onClose={() => (deleteVolume = null)} onSuccess={refreshCurrentVolumeState} onDiagnose={(id) => { selectedVolumeId = id; }} />
 <AdminVolumeExtendModal volume={extendVolume} onClose={() => (extendVolume = null)} onSuccess={refreshCurrentVolumeState} />
 <AdminVolumeResetStatusModal volume={resetVolume} onClose={() => (resetVolume = null)} onSuccess={refreshCurrentVolumeState} />
 <AdminVolumeForceDeleteModal volume={forceDeleteVolume} onClose={() => (forceDeleteVolume = null)} onSuccess={refreshCurrentVolumeState} />

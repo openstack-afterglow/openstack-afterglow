@@ -59,4 +59,14 @@ describe('AdminVolumeTable selection', () => {
 		expect(screen.getByRole('button', { name: 'first-volume' })).toBeTruthy();
 		view.unmount();
 	});
+
+	it.each(['creating', 'downloading'])('routes %s rows to diagnostics without offering legacy force delete', async (status) => {
+		const row = { ...volumes[0], status };
+		const callbacks = props(new Set());
+		render(AdminVolumeTable, { ...callbacks, volumes: [row], openActionMenu: row.id });
+		await fireEvent.click(screen.getByRole('button', { name: '복구 진단' }));
+		expect(callbacks.onSelect).toHaveBeenCalledWith(row.id);
+		expect(callbacks.onForceDelete).not.toHaveBeenCalled();
+		expect(screen.queryByRole('button', { name: '강제삭제' })).toBeNull();
+	});
 });

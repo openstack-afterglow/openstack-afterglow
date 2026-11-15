@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
 	error: vi.fn(),
 }));
 
-vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, post: mocks.post, prefetch: mocks.prefetch } }));
+vi.mock('$lib/api/client', () => ({
+	api: { get: mocks.get, post: mocks.post, prefetch: mocks.prefetch },
+	ApiError: class ApiError extends Error {},
+}));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
 vi.mock('$lib/stores/projectNames', async () => {
 	const names = writable(new Map<string, string>());
@@ -110,5 +113,34 @@ describe('admin volume bulk deletion', () => {
 		confirmation.resolve(true);
 		await tick();
 		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('keeps native bulk failure semantics and offers detail diagnostics for failed creation-stage volumes', async () => {
+		const creating = { ...secondVolume, status: 'creating' };
+		setupGet(
+			[{ items: [firstVolume, creating], next_marker: null }, { items: [creating], next_marker: null }],
+			[{ total: 2, statuses: [{ status: 'available', count: 1 }, { status: 'creating', count: 1 }] }, { total: 1, statuses: [{ status: 'creating', count: 1 }] }],
+		);
+		const get = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/admin/volumes/vol-2') return Promise.resolve({
+				...creating, attachments: [], metadata: {}, description: '', bootable: false, encrypted: false, multiattach: false,
+			});
+			if (path === '/api/v1/admin/volumes/vol-2/delete-diagnostics') return Promise.reject(new Error('unavailable'));
+			return get(path);
+		});
+		mocks.post.mockResolvedValue({ results: [
+			{ id: firstVolume.id, ok: true, error: null },
+			{ id: creating.id, ok: false, error: 'Volume status must be available or error' },
+		] });
+		render(Page);
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'first-volume 선택' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'second-volume 선택' }));
+		await fireEvent.click(within(screen.getByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' })).getByRole('button', { name: '삭제' }));
+		const diagnose = await screen.findByRole('button', { name: '상세 진단 열기: second-volume' });
+		expect((await screen.findByRole('checkbox', { name: 'second-volume 선택' }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(diagnose);
+		await vi.waitFor(() => expect(mocks.get.mock.calls.some(([path]) => path === '/api/v1/admin/volumes/vol-2/delete-diagnostics')).toBe(true), { timeout: 5000 });
+		expect(mocks.post).toHaveBeenCalledOnce();
 	});
 });

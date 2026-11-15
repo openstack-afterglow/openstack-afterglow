@@ -256,11 +256,22 @@ The project API extends detached `available` volumes, or `in-use` volumes only w
 
 ### GET /api/v1/admin/volumes/{volume_id}/delete-diagnostics
 
-An admin-only endpoint. For a volume in a delete-failure state such as `error_deleting`, it checks the Cinder status, attachments, snapshot/backup dependencies, and Cinder messages, and returns whether automatic recovery is possible. Retrieving Cinder messages is best-effort, and the diagnosis continues even if it fails.
+Admin-only diagnosis covers error states and `creating`/`downloading`. Volume/Cinder/Nova attachments, snapshots, backups, clones, group/migration and unknown dependency/backend queries remain blocking. Creation-stage RBD watchers block both recovery modes (`creation_active_watcher`); client addresses are not exposed. Messages (including none), host presence, age and an allowlisted owning-service hint are evidence only, not proof that its job stopped.
+
+Age uses `updated_at`, falling back to `created_at` when absent. `creating` requires at least 30 minutes and `downloading` at least 6 hours; missing/invalid age is `creation_in_progress`. Safe stale creation is `creation_stalled`. Time alone does not prove inactivity: review the owning service first. Completely unconfigured Ceph is explicitly backend-unverified, never proof of physical deletion.
 
 ### POST /api/v1/admin/volumes/{volume_id}/recover-delete
 
-An admin-only endpoint. The server re-runs the diagnosis and then, only when there are no attachment and snapshot/backup dependencies, executes in the order `reset_status(error, detached)` → normal deletion → deletion verification → force-delete if necessary → deletion verification. Snapshot/backup dependencies are not deleted automatically; if present, a `blocked` result is returned, so the admin must decide separately whether to preserve or delete them via an explicit action.
+Admin-only pipeline under the existing per-volume Redis lock. Optional JSON body accepts `mode: recover|force_delete` (default force-delete), `confirm_volume_id`, and `expected_status`. **Both modes** require the exact ID and observed live status for creation-stage writes. Missing/invalid explicit force-delete fields return422; well-formed mismatches and missing recover creation confirmation return a safe409 with zero native writes. Legacy no-body error-state calls remain supported.
+
+- `recover`: diagnose, repeat all safety checks and live status, Cinder `os-reset_status(status=error)`, verify error and safety, then stop with `state_reset` and refreshed diagnosis. Already `error` is idempotent with no writes. No deletion, Ceph mapping mutation or owner-service cancellation occurs.
+- `force_delete`: creation first uses the same confirmed reset, then reuses optional RBD name-mapping restore/verification, fresh dependency/backend/watcher checks, Cinder `os-force_delete`, Cinder absence/all-project listing, Ceph backend and quota verification. Creation-origin recovery never falsifies attachment state to detached. This is not a normal DELETE-first pipeline.
+
+If reset succeeds but deletion fails, `failed` preserves the successful reset and failure timeline; the volume normally remains `error` for explicit retry. Independent owner/c-vol changes are not transactional. Only `deleted`/`already_deleted` mean verified deletion. Pending, residue and unverified results keep detail open. The pipeline never directly removes image/header/data/trash or dependent resources. Normal single/bulk list-delete semantics are unchanged; use the detail pipeline for creation-stage volumes.
+
+If creation-origin force-delete returns a present non-deleting state such as `available`, the result is `failed`, with `creation_delete_state_changed:<status>` and refreshed diagnosis—not success or pending deletion. Data may be incomplete. No further reset occurs. Check the owning service, wait for watchers to disappear, and re-diagnose; ordinary admin deletion is possible when `available`.
+
+A failed Cinder lookup, missing status, or unknown/contradictory all-project listing after GET404 is not evidence of a provider state change. These cases retain `delete_submitted` (verification incomplete), without a state-change danger warning or a claim of completed deletion.
 
 ---
 

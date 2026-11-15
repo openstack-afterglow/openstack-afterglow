@@ -17,6 +17,9 @@
 	import AdminVolumeExtendModal from '$lib/components/admin/volumes/id/AdminVolumeExtendModal.svelte';
 	import AdminVolumeResetStatusModal from '$lib/components/admin/volumes/id/AdminVolumeResetStatusModal.svelte';
 	import { toast } from '$lib/stores/toast';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import AdminVolumeDetailSlide from '$lib/components/admin/volumes/AdminVolumeDetailSlide.svelte';
 
 	const volumeId = $derived($page.params.id);
 	const token = $derived($auth.token ?? undefined);
@@ -30,6 +33,7 @@
 	let resetting = $state(false);
 	let showExtend = $state(false);
 	let extending = $state(false);
+	let showDiagnostic = $state(false);
 
 	async function fetchVolume() {
 		if (!volumeId) return;
@@ -106,6 +110,12 @@
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if volume}
 		<AdminVolumeDetailHeader {volume} {deleting} onExtend={() => { showExtend = true; }} onResetStatus={() => { showReset = true; }} onDelete={deleteVolume} />
+		{#if /^(error|deleting|creating|downloading)/i.test(volume.status)}
+			<div class="my-4 space-y-2">
+				{#if volume.status === 'creating' || volume.status === 'downloading'}<Alert tone="info">{t('volumeDelete.creationHelp')}</Alert>{/if}
+				<Button variant="outline" onclick={() => { showDiagnostic = true; }}>{t('volumeDelete.openDiagnostic')}</Button>
+			</div>
+		{/if}
 		<AdminVolumeInfoCards {volume} />
 		<AdminVolumeAttachmentTable attachments={volume.attachments} />
 		<AdminVolumeMetadataCard metadata={volume.metadata} />
@@ -114,3 +124,6 @@
 
 <AdminVolumeExtendModal bind:open={showExtend} currentSize={volume?.size ?? 0} {extending} onExtend={extendVolume} />
 <AdminVolumeResetStatusModal bind:open={showReset} {resetting} onReset={resetVolumeStatus} />
+{#if showDiagnostic && volumeId}
+	<AdminVolumeDetailSlide {volumeId} {token} {projectId} onClose={() => { showDiagnostic = false; }} onRefresh={() => { void fetchVolume(); }} />
+{/if}

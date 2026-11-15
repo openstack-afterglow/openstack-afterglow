@@ -26,8 +26,9 @@ python3 scripts/check_architecture.py --staged
 - `app/services/volume_delete_recovery.py`가 system-admin Cinder/Nova 조회, tri-state dependency 판정, mutation 순서와 삭제 후 검증을 소유합니다. Project-scoped connection으로 재인증하지 않으며 Cinder message는 evidence로만 사용합니다.
 - `app/services/ceph_rbd.py`는 opt-in backend adapter입니다. Validated argv로만 `ceph`/`rbd`/`rados`를 실행하고, 정확한 rc=2/ENOENT만 `absent`로 인정합니다. FSID와 backend→pool map을 먼저 확인하며 timeout·권한·parse 오류는 `unknown`입니다.
 - Backend write 범위는 엄격히 `rbd_id.volume-<uuid>`입니다. 누락 mapping은 directory/id/geometry/parent/dependency 불변성이 맞을 때 복원하고, stale mapping은 Cinder 및 RBD artifacts 부재와 기존 payload 일치를 모두 증명한 뒤 정리합니다. Image/header/data/trash는 삭제하지 않습니다.
-- API는 Redis의 10분 per-volume lock으로 recovery를 직렬화하고 lock storage 장애 시 503으로 거부합니다. Cinder force-delete가 attached 400을 반환한 경우에만 attach status를 한 번 reset하고 한 번 재시도합니다.
-- `deleted`/`already_deleted`만 terminal success입니다. `delete_submitted`, `backend_residue`, `backend_unverified`는 관리자 상세 화면을 유지하며 backend/quota verification을 별도 필드로 노출합니다. Ceph 설정이 없는 기존 배포는 계속 동작하지만 backend 삭제 완료를 주장하지 않습니다.
+- API는 Redis의 10분 per-volume lock으로 recovery를 직렬화하고 lock storage 장애 시503으로 거부합니다. `recover`/`force_delete` 두 모드와 mode/이전 상태 감사, 부분 mutation cache 무효화를 공유합니다. 기존 오류 상태에서만 attached400의 한 번 attach-status reset/재시도를 유지하며 생성 유래 경로에는 적용하지 않습니다.
+- `creating`30분/`downloading`6시간 age gate(`updated_at`, 없으면 `created_at`)와 생성 단계 watcher liveness 차단을 기존 종속성/backend classification 앞뒤에 합성합니다. 두 모드의 생성 쓰기는 정확한 ID/관측 상태 확인과 전체 재진단, reset 직전 live 재조회가 필요합니다. `recover`는 `os-reset_status(error)`와 상태 검증 후 `state_reset`으로 멈추고, `force_delete`는 기존 mapping/force-delete/backend/quota 파이프라인을 재사용하며 destructive call 직전 watcher를 다시 확인합니다.
+- `deleted`/`already_deleted`만 검증된 삭제입니다. `state_reset`은 상태 복구 성공이며 삭제가 아닙니다. `delete_submitted`, `backend_residue`, `backend_unverified`와 부분 실패는 상세 화면을 유지합니다. Ceph 미설정 경로는 명시적으로 미검증이며 owner-service/c-vol 작업 취소나 원자적 동기화를 제공하지 않습니다. RBD 이미지 잔여물을 직접 제거하지 않습니다.
 
 ## 콘솔 전역·서비스 탐색
 

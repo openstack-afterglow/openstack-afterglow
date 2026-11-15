@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Changed
+- 관리자 전체 볼륨 상세에서 오래된 `creating`/`downloading` 볼륨의 진단, `error` 상태 복구와 명시 강제 제거를 분리한다. 생성30분·이미지 복사6시간 gate, RBD watcher 차단, 정확한 ID/관측 상태 확인과 native 쓰기 전 재검사를 적용한다. 소유 서비스 작업이나 Ceph 잔여 이미지를 직접 제거하지 않는다.
 - 로그인·회원가입·계정 찾기 등 인증 화면, 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 좌측·대기 아트가 마우스 위치에 반응한다. 랜딩 히어로와 같은 `AfterglowOrbit interactive`를 쓴다.
 - 로컬 Compose 설정은 루트 `.env`(비밀)와 `afterglow.conf`(비밀이 아닌 설정, `[local]` 허용 키)를 직접 사용한다. `.local-services/` 복사본, 생성 키 파일(`secrets.json`), `lumen.env`, `compose.env`, 정책 디렉터리 mount를 제거했다. `services:config`는 값 대신 출처만 출력하며, 기존 생성 키는 `.env`의 `AFTERGLOW_LOCAL_*`로 옮겼다.
 - 인스턴스 생성 사용 기간의 사유 입력란은 기간을 연장했을 때(또는 기존 사유가 있을 때)만 보인다. 백엔드가 사유를 요구하는 조건과 같다.
@@ -19,6 +20,7 @@
   - 범위는 Cinder뿐이다. Trove `db_auto_backup._execute_tick`의 lazy target 인증에는 여전히15초401 반복·정책 오류 비표시의 잠재 위험이 있고 미구현이다.2026-11-15 운영 읽기 전용 관측은 DB 백업 정책0개(`cron_next`1/`dispatch`4), 최근30분 관련 로그0건이었다. 향후 필요하면 eager target-scoped 인증·공유300초 backoff·fenced `last_error`를 적용해야 한다.
 - Lumen 내장 Afterglow MCP 실행 중 application credential 인증이 Keystone 401/404로 거절되면, 비밀 없는 구조화 경고와 최대 7일 Redis 관측을 남기고 연결 목록에 경고 및 비활성화 후 재활성화 안내를 표시합니다. 같은 grant의 실제 native 인증과 도구 실행이 성공하면 관측을 best effort 제거하며, flag가 없으면 Redis 삭제를 쓰지 않습니다. 기존 실행 HTTP 응답·승인 권위는 유지하며 자동 폐기·재발급은 하지 않습니다.
 - When Keystone rejects application-credential authentication with 401/404 during built-in Lumen MCP execution, record a secret-free warning and Redis observation lasting up to seven days, and show connection recovery guidance. A successful native-authenticated tool dispatch clears the observation best effort, without a Redis delete when no flag exists. Execute responses and consent authority remain unchanged; credentials are never automatically revoked or reissued.
+- 생성 유래 강제 제거 뒤 Cinder 조회 실패·상태 미확인·전체 목록 불일치를 실제 상태 변경으로 오인하지 않는다. 관측된 non-deleting 상태만 별도 실패 경고로 처리하고 미확인 검증은 기존 `delete_submitted` 경로를 유지한다.
 - GitHub 최근 사용자 목록은 첫 조회가 실패해도 세션 내내 숨겨지지 않는다. 사용자 ID 입력란에 포커스하면 다시 조회한다.
 
 ## [1.32.15] - 2026-11-11

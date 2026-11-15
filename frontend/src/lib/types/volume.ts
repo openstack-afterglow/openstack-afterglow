@@ -116,6 +116,9 @@ export type VolumeDeleteRootCause =
   | 'authorization_denied'
   | 'dependency_unknown'
   | 'deleting_in_progress'
+  | 'creation_in_progress'
+  | 'creation_stalled'
+  | 'creation_active_watcher'
   | 'backend_lookup_unknown'
   | 'backend_inconsistent'
   | 'backend_present_consistent'
@@ -126,6 +129,7 @@ export type VolumeDeleteRootCause =
   | 'not_recoverable_status';
 
 export type VolumeDeleteRecoveryStatus =
+  | 'state_reset'
   | 'deleted'
   | 'already_deleted'
   | 'delete_submitted'
@@ -136,6 +140,7 @@ export type VolumeDeleteRecoveryStatus =
 
 export type VolumeDeleteRecoveryAction =
   | 'diagnose'
+  | 'reset_state'
   | 'restore_name_mapping'
   | 'verify_name_mapping'
   | 'recheck_state'
@@ -220,6 +225,8 @@ export interface VolumeDeleteDiagnostic {
   size_gb: number | null;
   backend_host: string | null;
   updated_at: string | null;
+  creation_age_seconds?: number | null;
+  owner_service_hint?: 'palimpsest' | 'afterglow' | null;
   attachments: Record<string, unknown>[];
   dependencies: VolumeDeleteDependency[];
   messages: VolumeDeleteMessage[];
@@ -244,8 +251,11 @@ export interface VolumeDeleteRecoveryResult {
   status: VolumeDeleteRecoveryStatus;
   verified_deleted: boolean;
   final_status: string | null;
+  previous_status?: string | null;
   backend_verification: 'verified' | 'unavailable' | 'residue' | 'unknown';
   quota_verification: 'verified' | 'mismatch' | 'unavailable';
   diagnostic: VolumeDeleteDiagnostic;
   steps: VolumeDeleteRecoveryStep[];
 }
+
+export type VolumeDeleteRecoveryMode = 'recover' | 'force_delete';

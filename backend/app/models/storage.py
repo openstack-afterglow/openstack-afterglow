@@ -99,6 +99,9 @@ VolumeDeleteRootCause = Literal[
     "authorization_denied",
     "dependency_unknown",
     "deleting_in_progress",
+    "creation_in_progress",
+    "creation_stalled",
+    "creation_active_watcher",
     "backend_lookup_unknown",
     "backend_inconsistent",
     "backend_present_consistent",
@@ -116,6 +119,7 @@ VolumeDeleteRecoveryStatus = Literal[
     "backend_residue",
     "backend_unverified",
     "blocked",
+    "state_reset",
     "failed",
 ]
 
@@ -124,6 +128,7 @@ VolumeDeleteRecoveryAction = Literal[
     "restore_name_mapping",
     "verify_name_mapping",
     "recheck_state",
+    "reset_state",
     "force_delete",
     "reset_attach_status",
     "verify_after_force_delete",
@@ -209,6 +214,8 @@ class VolumeDeleteDiagnostic(BaseModel):
     size_gb: int | None = None
     backend_host: str | None = None
     updated_at: str | None = None
+    creation_age_seconds: float | None = None
+    owner_service_hint: str | None = None
     attachments: list[dict] = []
     dependencies: list[VolumeDeleteDependency] = []
     messages: list[VolumeDeleteMessage] = []
@@ -233,6 +240,7 @@ class VolumeDeleteRecoveryResult(BaseModel):
     status: VolumeDeleteRecoveryStatus
     verified_deleted: bool
     final_status: str | None = None
+    previous_status: str | None = None
     backend_verification: Literal["verified", "unavailable", "residue", "unknown"] = "unavailable"
     quota_verification: Literal["verified", "mismatch", "unavailable"] = "unavailable"
     diagnostic: VolumeDeleteDiagnostic
