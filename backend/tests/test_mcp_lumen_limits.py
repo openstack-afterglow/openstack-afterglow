@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fakeredis.aioredis
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
+from keystoneauth1.exceptions import http
 
 from app.api import mcp_lumen
-from app.services.mcp_control_plane import limits, registry
+from app.api.lumen import proxy as cloud_proxy
+from app.services.mcp_control_plane import connection, credential_state, limits, registry
 from app.services.mcp_control_plane.authentication import McpPrincipal
 from app.services.mcp_control_plane.sdk import run_sdk
 
@@ -83,6 +86,7 @@ async def bridge(monkeypatch):
     monkeypatch.setattr(mcp_lumen, "get_settings", lambda: settings)
     monkeypatch.setattr(limits, "get_settings", lambda: settings)
     monkeypatch.setattr(limits, "_get_redis", redis_client)
+    monkeypatch.setattr(credential_state.cache, "_get_redis", redis_client)
     monkeypatch.setattr(limits, "time", SimpleNamespace(time=lambda: 1234500))
     monkeypatch.setattr(mcp_lumen.lumen, "resolve_lumen_principal", AsyncMock(return_value=principal))
     monkeypatch.setattr(registry, "resolve_principal_target", resolve_target)
@@ -94,6 +98,7 @@ async def bridge(monkeypatch):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield SimpleNamespace(
             client=client,
+            app=app,
             redis=redis,
             settings=settings,
             principal=principal,
@@ -195,3 +200,247 @@ async def test_bridge_holds_slot_until_cancelled_sdk_worker_drains(bridge):
     assert bridge.events == ["provider-finished"]
     assert await bridge.redis.exists(f"{_BASE}:concurrency") == 0
     assert (await _call(bridge, "read")).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["read", "mutation_preview", "mutation_dispatch", "preview"])
+@pytest.mark.parametrize("failure_kind", ["invalid", "403", "502", "timeout", "resource404"])
+async def test_lumen_execute_observes_only_invalid_credentials_and_preserves_failure_response(
+    bridge, monkeypatch, caplog, path, failure_kind
+):
+    bridge.principal = replace(
+        bridge.principal,
+        grant_id="a1234567-1234-1234-1234-123456789abc",
+        project_id="b1234567-1234-1234-1234-123456789abc",
+        user_id="c1234567-1234-1234-1234-123456789abc",
+    )
+    mcp_lumen.lumen.resolve_lumen_principal.return_value = bridge.principal
+    if failure_kind == "invalid":
+        failure = ValueError("MCP provider data is unavailable")
+        invalid = connection.McpCredentialInvalidError("MCP cloud connection is unavailable")
+        invalid.__cause__ = http.NotFound("synthetic-credential-secret")
+        failure.__cause__ = invalid
+    else:
+        failure = {
+            "403": http.Forbidden,
+            "502": http.BadGateway,
+            "timeout": TimeoutError,
+            "resource404": http.NotFound,
+        }[failure_kind]("synthetic-provider-secret")
+
+    async def reject(*args, **kwargs):
+        raise failure
+
+    actual_path = "mutation" if path.startswith("mutation") else path
+    if path == "read":
+        entry = bridge.entries["afterglow_cloud_overview_get"]
+        bridge.entries[entry.name] = replace(entry, handler=reject)
+    else:
+        entry = bridge.entries["afterglow_vm_action"]
+        bridge.entries[entry.name] = replace(
+            entry, **({"handler": reject} if path == "mutation_dispatch" else {"preview_builder": reject})
+        )
+    bridge.claim.side_effect = None
+    bridge.claim.return_value = SimpleNamespace(state="claimed", invocation_id="invocation-a")
+    failed = AsyncMock()
+    complete = AsyncMock()
+    monkeypatch.setattr(mcp_lumen.ledger, "fail_pre_dispatch", failed)
+    monkeypatch.setattr(mcp_lumen.ledger, "authorize_mutation_dispatch", AsyncMock(return_value=bridge.principal))
+    monkeypatch.setattr(mcp_lumen.ledger, "complete_mutation", complete)
+    with caplog.at_level(logging.WARNING, logger=mcp_lumen.__name__):
+        response = await _call(bridge, actual_path)
+    assert response.status_code == (422 if path == "preview" else 502)
+    assert response.json() == {
+        "detail": "MCP mutation preview is unavailable" if path == "preview" else "MCP tool execution failed"
+    }
+    observed = failure_kind == "invalid" and path != "preview"
+    assert await credential_state.is_invalid(bridge.principal.grant_id) is observed
+    assert not await credential_state.is_invalid(bridge.principal.grant_id[:8])
+    records = [record for record in caplog.records if getattr(record, "event", None) == "mcp_credential_invalid"]
+    assert len(records) == int(observed)
+    if observed:
+        record = records[0]
+        assert record.levelno == logging.WARNING
+        assert record.getMessage() == "mcp_credential_invalid"
+        assert (record.grant_id, record.project_id, record.user_id) == ("a1234567", "b1234567", "c1234567")
+        assert bridge.principal.grant_id not in repr(record.__dict__)
+        assert bridge.principal.project_id not in repr(record.__dict__)
+        assert bridge.principal.user_id not in repr(record.__dict__)
+        assert record.exc_info is None
+        assert "secret" not in repr(record.__dict__)
+    if path == "mutation_preview":
+        failed.assert_awaited_once()
+        complete.assert_not_awaited()
+    elif path == "mutation_dispatch":
+        complete.assert_awaited_once()
+        assert complete.call_args.kwargs["error"] == "MCP mutation outcome is unknown after dispatch authorization"
+
+
+@pytest.mark.asyncio
+async def test_lumen_invalid_execute_keeps_response_and_warning_when_state_redis_is_down(bridge, monkeypatch, caplog):
+    failure = connection.McpCredentialInvalidError("MCP cloud connection is unavailable")
+
+    async def reject(*args, **kwargs):
+        raise failure
+
+    entry = bridge.entries["afterglow_cloud_overview_get"]
+    bridge.entries[entry.name] = replace(entry, handler=reject)
+    monkeypatch.setattr(
+        credential_state.cache, "_get_redis", AsyncMock(side_effect=ConnectionError("synthetic-redis-secret"))
+    )
+    with caplog.at_level(logging.WARNING, logger=mcp_lumen.__name__):
+        response = await _call(bridge, "read")
+    assert response.status_code == 502
+    assert response.json() == {"detail": "MCP tool execution failed"}
+    records = [record for record in caplog.records if getattr(record, "event", None) == "mcp_credential_invalid"]
+    assert len(records) == 1
+    assert "secret" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["read", "mutation_replay", "mutation_failed"])
+async def test_lumen_success_and_ledger_failure_responses_do_not_observe_credentials(bridge, caplog, path):
+    if path != "read":
+        bridge.claim.side_effect = None
+        bridge.claim.return_value = SimpleNamespace(
+            state="replay" if path == "mutation_replay" else "failed",
+            result={"accepted": True},
+            error="Previously failed",
+        )
+    with caplog.at_level(logging.WARNING, logger=mcp_lumen.__name__):
+        response = await _call(bridge, "read" if path == "read" else "mutation")
+    assert response.status_code == (409 if path == "mutation_failed" else 200)
+    if path == "read":
+        assert response.json() == {
+            "total_instances": 1,
+            "active_instances": 1,
+            "shutoff_instances": 0,
+            "error_instances": 0,
+        }
+    elif path == "mutation_replay":
+        assert response.json() == {"accepted": True}
+    else:
+        assert response.json() == {"detail": "MCP mutation is unavailable"}
+    assert not await credential_state.is_invalid(bridge.principal.grant_id)
+    assert not any(getattr(record, "event", None) == "mcp_credential_invalid" for record in caplog.records)
+
+
+def _native_success(bridge, monkeypatch, path):
+    conn = SimpleNamespace(close=Mock())
+    monkeypatch.setattr(connection, "_load_credential", AsyncMock(return_value=("credential", "synthetic-secret")))
+    monkeypatch.setattr(connection, "_build_connection", lambda *args: conn)
+    monkeypatch.setattr(connection, "_validate_current_roles", AsyncMock())
+    if path == "read":
+        entry = bridge.entries["afterglow_cloud_overview_get"]
+        result = registry.CloudOverviewOutput(
+            total_instances=1, active_instances=1, shutoff_instances=0, error_instances=0
+        )
+    else:
+        entry = bridge.entries["afterglow_vm_action"]
+        result = registry.VmActionOutput(
+            id=_SERVER,
+            name="Synthetic server",
+            status="ACTIVE",
+            created_at=None,
+            updated_at=None,
+            requested_action="stop",
+        )
+        bridge.claim.side_effect = None
+        bridge.claim.return_value = SimpleNamespace(state="claimed", invocation_id="invocation-a")
+        monkeypatch.setattr(mcp_lumen.ledger, "authorize_mutation_dispatch", AsyncMock(return_value=bridge.principal))
+        monkeypatch.setattr(mcp_lumen.ledger, "complete_mutation", AsyncMock())
+
+    async def succeed(context, arguments):
+        async with context.openstack_connection():
+            return result
+
+    bridge.entries[entry.name] = replace(entry, handler=succeed)
+    return result.model_dump(mode="json")
+
+
+def _catalogue_for_bridge(bridge, monkeypatch):
+    monkeypatch.setattr(cloud_proxy, "get_settings", lambda: bridge.settings)
+    monkeypatch.setattr(cloud_proxy, "_require_cloud_tools_permission", AsyncMock())
+    monkeypatch.setattr(
+        mcp_lumen.lumen, "selected_lumen_snapshot", AsyncMock(return_value=SimpleNamespace(grant_id="grant-a"))
+    )
+    monkeypatch.setattr(
+        mcp_lumen.lumen,
+        "selected_lumen_metadata",
+        AsyncMock(
+            return_value={
+                "project_id": "project-a",
+                "project_name": "Project A",
+                "source": "lumen",
+                "allowed_projects": [{"id": "project-a", "name": "Project A"}],
+                "selection_name": None,
+                "expires_at": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(registry, "enabled_entries", lambda principal: tuple(bridge.entries.values()))
+
+    @bridge.app.get("/api/v1/chat/cloud-tools")
+    async def catalogue(request: Request):
+        request.state.token_info = {"user_id": "user-a", "project_id": "project-a"}
+        return await cloud_proxy.cloud_tools(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["read", "mutation"])
+async def test_successful_native_dispatch_clears_prior_invalid_state_and_next_rejection_remarks_it(
+    bridge, monkeypatch, path
+):
+    payload = _native_success(bridge, monkeypatch, path)
+    _catalogue_for_bridge(bridge, monkeypatch)
+    await credential_state.mark_invalid(bridge.principal.grant_id)
+    before = await bridge.client.get("/api/v1/chat/cloud-tools")
+    assert before.json()["credential_state"] == "invalid"
+    response = await _call(bridge, path)
+    assert response.status_code == 200
+    assert response.json() == payload
+    after = await bridge.client.get("/api/v1/chat/cloud-tools")
+    assert after.status_code == 200
+    assert after.json()["credential_state"] == "ok"
+    assert after.json()["enabled"] is True
+
+    async def rejected(*args, **kwargs):
+        raise connection.McpCredentialInvalidError("MCP cloud connection is unavailable") from http.Unauthorized()
+
+    entry = bridge.entries[_body(path)["name"]]
+    bridge.entries[entry.name] = replace(entry, handler=rejected)
+    failure = await _call(bridge, path)
+    assert failure.status_code == 502
+    assert failure.json() == {"detail": "MCP tool execution failed"}
+    repeated = await bridge.client.get("/api/v1/chat/cloud-tools")
+    assert repeated.json()["credential_state"] == "invalid"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["read", "mutation"])
+@pytest.mark.parametrize("boundary", ["connect", "exists", "delete"])
+async def test_successful_native_execute_preserves_response_when_flag_clear_redis_fails(
+    bridge, monkeypatch, path, boundary
+):
+    payload = _native_success(bridge, monkeypatch, path)
+    await credential_state.mark_invalid(bridge.principal.grant_id)
+    if boundary == "connect":
+        monkeypatch.setattr(credential_state.cache, "_get_redis", AsyncMock(side_effect=ConnectionError("Redis down")))
+    else:
+        monkeypatch.setattr(bridge.redis, boundary, AsyncMock(side_effect=ConnectionError("Redis down")))
+    response = await _call(bridge, path)
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert await bridge.redis.get("afterglow:mcp:credential-invalid:grant-a") == "invalid"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["read", "preview", "mutation_replay"])
+async def test_local_success_preview_and_mutation_replay_do_not_clear_native_failure(bridge, path):
+    await credential_state.mark_invalid(bridge.principal.grant_id)
+    if path == "mutation_replay":
+        bridge.claim.side_effect = None
+        bridge.claim.return_value = SimpleNamespace(state="replay", result={"accepted": True})
+    response = await _call(bridge, "mutation" if path == "mutation_replay" else path)
+    assert response.status_code == 200
+    assert await credential_state.is_invalid(bridge.principal.grant_id)

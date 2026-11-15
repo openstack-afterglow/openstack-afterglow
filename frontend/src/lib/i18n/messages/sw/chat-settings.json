@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "Imejengewa ndani",
 	"extensions.catalogue.approved": "Imeidhinishwa na msimamizi",
 	"extensions.catalogue.cloudDescription": "Soma au simamia rasilimali za wingu katika mradi wa sasa. Haipatikani kwenye mazungumzo hadi uidhinishe ufikiaji.",
+	"extensions.catalogue.credentialInvalid": "Taarifa za muunganisho si halali",
+	"extensions.catalogue.credentialInvalidHelp": "Taarifa za muunganisho si halali tena. Sitisha uamilishaji, kisha amilisha tena.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "Muda wa matumizi unaisha {date}",
 	"extensions.catalogue.loading": "Inakagua idhini…",

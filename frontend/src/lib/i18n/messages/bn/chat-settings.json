@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "অন্তর্নির্মিত",
 	"extensions.catalogue.approved": "প্রশাসক অনুমোদিত",
 	"extensions.catalogue.cloudDescription": "বর্তমান প্রকল্পের ক্লাউড রিসোর্স দেখুন বা পরিচালনা করুন। প্রবেশাধিকার অনুমোদন না করা পর্যন্ত চ্যাটে ব্যবহার করা যাবে না।",
+	"extensions.catalogue.credentialInvalid": "সংযোগের তথ্য অবৈধ",
+	"extensions.catalogue.credentialInvalidHelp": "সংযোগের তথ্য আর বৈধ নয়। নিষ্ক্রিয় করে আবার সক্রিয় করুন।",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "মেয়াদ শেষ {date}",
 	"extensions.catalogue.loading": "অনুমোদনের অবস্থা যাচাই করা হচ্ছে…",

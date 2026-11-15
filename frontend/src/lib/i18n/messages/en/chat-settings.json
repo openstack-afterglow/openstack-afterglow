@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "Built in",
 	"extensions.catalogue.approved": "Admin approved",
 	"extensions.catalogue.cloudDescription": "Read or manage cloud resources in the current project. Unavailable to chat until you approve access.",
+	"extensions.catalogue.credentialInvalid": "Invalid credentials",
+	"extensions.catalogue.credentialInvalidHelp": "The connection credentials are no longer valid. Deactivate, then activate again.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "Expires {date}",
 	"extensions.catalogue.loading": "Checking approval…",

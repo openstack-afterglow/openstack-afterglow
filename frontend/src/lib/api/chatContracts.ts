@@ -37,6 +37,8 @@ export interface ModelCapabilities {
 export interface CloudToolsCatalogue {
 	enabled: boolean;
 	available?: boolean;
+	/** Missing on older catalogue responses; only explicit invalid reports a known failure. */
+	credential_state?: 'ok' | 'invalid';
 	expires_at?: string | null;
 	access_level: 'read' | 'manage';
 	project_id: string;

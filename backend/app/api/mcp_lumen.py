@@ -9,16 +9,40 @@ a tool.
 from __future__ import annotations
 
 import hmac
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
-from app.services.mcp_control_plane import ledger, limits, lumen, registry
+from app.services.mcp_control_plane import credential_state, ledger, limits, lumen, registry
 from app.services.mcp_control_plane.authentication import McpPrincipal
+from app.services.mcp_control_plane.connection import McpCredentialInvalidError, observe_authenticated_grants
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
+
+
+async def _record_invalid_credential(principal: McpPrincipal, exc: BaseException) -> None:
+    seen: set[int] = set()
+    while not isinstance(exc, McpCredentialInvalidError):
+        if id(exc) in seen:
+            return
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+        if exc is None:
+            return
+    _logger.warning(
+        "mcp_credential_invalid",
+        extra={
+            "event": "mcp_credential_invalid",
+            "grant_id": principal.grant_id[:8],
+            "project_id": principal.project_id[:8],
+            "user_id": principal.user_id[:8],
+        },
+    )
+    await credential_state.mark_invalid(principal.grant_id)
 
 
 class _SnapshotRequest(BaseModel):
@@ -151,6 +175,16 @@ async def execute(body: _ExecuteRequest, _: None = Depends(_require_lumen_servic
         raise HTTPException(status_code=429, detail="MCP request limit exceeded") from exc
 
 
+async def _dispatch_tool(
+    context: registry.ConsumerCloudContext, *, entry: registry.RegistryEntry, arguments: registry.McpDomainArguments
+) -> registry.McpDomainOutput:
+    with observe_authenticated_grants() as authenticated:
+        result = await registry.dispatch(context, entry=entry, arguments=arguments)
+    if context.principal.grant_id in authenticated:
+        await credential_state.clear_invalid(context.principal.grant_id)
+    return result
+
+
 async def _execute_tool(
     principal: McpPrincipal, *, entry: registry.RegistryEntry, body: _ExecuteRequest
 ) -> dict[str, Any]:
@@ -164,8 +198,9 @@ async def _execute_tool(
 
     if entry.effect == "read":
         try:
-            result = await registry.dispatch(context, entry=entry, arguments=parsed)
+            result = await _dispatch_tool(context, entry=entry, arguments=parsed)
         except Exception as exc:
+            await _record_invalid_credential(principal, exc)
             await ledger.record_read_invocation(
                 principal, entry=entry, arguments=normalized, status="failed", error=str(exc), source="lumen"
             )
@@ -209,7 +244,7 @@ async def _execute_tool(
             raise
         context = registry.ConsumerCloudContext(principal=principal)
         try:
-            payload = registry.output_payload(entry, await registry.dispatch(context, entry=entry, arguments=parsed))
+            payload = registry.output_payload(entry, await _dispatch_tool(context, entry=entry, arguments=parsed))
             await ledger.complete_mutation(principal, invocation_id=claim.invocation_id, result=payload, source="lumen")
             return payload
         except Exception as exc:
@@ -228,4 +263,5 @@ async def _execute_tool(
     except HTTPException:
         raise
     except Exception as exc:
+        await _record_invalid_credential(principal, exc)
         raise HTTPException(status_code=502, detail="MCP tool execution failed") from exc

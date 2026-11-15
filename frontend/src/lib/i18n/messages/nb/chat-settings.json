@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "Innebygd",
 	"extensions.catalogue.approved": "Godkjent av administrator",
 	"extensions.catalogue.cloudDescription": "Les eller administrer skyressurser i det gjeldende prosjektet. Utilgjengelig i chat til du godkjenner tilgang.",
+	"extensions.catalogue.credentialInvalid": "Ugyldig påloggingsinformasjon",
+	"extensions.catalogue.credentialInvalidHelp": "Påloggingsinformasjonen for tilkoblingen er ikke lenger gyldig. Deaktiver, og aktiver deretter på nytt.",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "Utløper {date}",
 	"extensions.catalogue.loading": "Kontrollerer godkjenning…",

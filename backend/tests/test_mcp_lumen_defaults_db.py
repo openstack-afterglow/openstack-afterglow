@@ -7,6 +7,7 @@ import os
 import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import Base
 from app.models.activity import ActivityLog
 from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection, McpOwnerLock, McpPersonalToken
-from app.services.mcp_control_plane import authority, defaults, lumen, registry
+from app.services.mcp_control_plane import authority, credential_state, defaults, lumen, registry
 from app.services.mcp_control_plane.crypto import encrypt_application_credential
 
 pytestmark = [pytest.mark.db, pytest.mark.asyncio]
@@ -53,6 +54,7 @@ async def owner(db_tables, monkeypatch):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(defaults, "get_session_factory", lambda: factory)
     monkeypatch.setattr(lumen, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(credential_state.cache, "_get_redis", AsyncMock(side_effect=ConnectionError("Redis down")))
     user_id, project_id = str(uuid4()), str(uuid4())
     state = SimpleNamespace(
         factory=factory,
@@ -823,3 +825,53 @@ async def test_clearing_all_removes_every_enabled_grant(owner):
     assert (
         await lumen.selected_lumen_snapshots(user_id=owner.info["user_id"], project_id=owner.info["project_id"]) == []
     )
+
+
+@pytest.mark.parametrize("redis_down", [False, True])
+async def test_disable_clears_only_retired_lumen_credential_flags(owner, monkeypatch, redis_down):
+    import fakeredis.aioredis
+
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    getter = AsyncMock(return_value=redis)
+    monkeypatch.setattr(credential_state.cache, "_get_redis", getter)
+    old = await approve(owner)
+    manual_id = await personal_selection(owner)
+    try:
+        await credential_state.mark_invalid(old.grant_id)
+        await credential_state.mark_invalid(manual_id)
+        await credential_state.mark_invalid("foreign-grant")
+        if redis_down:
+            getter.side_effect = ConnectionError("synthetic-redis-secret")
+        await defaults.disable_lumen_grant(token_info=owner.info)
+        getter.side_effect = None
+        assert await credential_state.is_invalid(old.grant_id) is redis_down
+        assert await credential_state.is_invalid(manual_id)
+        assert await credential_state.is_invalid("foreign-grant")
+        async with owner.factory() as session:
+            grant = await session.get(McpDelegatedGrant, old.grant_id)
+            assert grant.status == "revoked" and not grant.cleanup_pending
+            manual = await session.get(McpDelegatedGrant, manual_id)
+            assert manual.status == "active"
+    finally:
+        await redis.close()
+
+
+async def test_disable_clears_credential_flag_before_native_cleanup_can_fail(owner, monkeypatch):
+    import fakeredis.aioredis
+
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(credential_state.cache, "_get_redis", AsyncMock(return_value=redis))
+    old = await approve(owner)
+    try:
+        await credential_state.mark_invalid(old.grant_id)
+        monkeypatch.setattr(
+            authority, "prepare_project_authority", AsyncMock(side_effect=authority.McpAuthorityError("Unavailable"))
+        )
+        with pytest.raises(authority.McpAuthorityError):
+            await defaults.disable_lumen_grant(token_info=owner.info)
+        assert not await credential_state.is_invalid(old.grant_id)
+        async with owner.factory() as session:
+            grant = await session.get(McpDelegatedGrant, old.grant_id)
+            assert grant.status == "revoked" and grant.cleanup_pending
+    finally:
+        await redis.close()

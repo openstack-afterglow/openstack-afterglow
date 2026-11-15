@@ -798,6 +798,14 @@ Application credential 생성은 browser 표시 역할이 아니라 대상 scope
 
 Lumen 설정의 `ChatMcpCatalogue.svelte`는 Afterglow MCP를 항상 표시하고 기본 비활성으로 시작한다. `GET /api/v1/chat/cloud-tools`와 chat admission은 위임을 생성하지 않는다. Same-site browser POST의 명시적 `read`/`manage` 승인이 현재 caller/project의 restricted credential을 만들며 `lumen-tools_user`와 실제 관리 역할 ceiling을 검사한다. `defaults.approve_lumen_grant`는 외부 준비 전 generation을 캡처하고 pending reservation·activation lock에서 다시 검사한다. DELETE/clear/다른 개인 토큰 선택이 이후에 발생하면 늦은 approval이 이를 덮어쓰지 못한다. `source="lumen"`은 현재 singleton 프로젝트와 `consented_at`를 선택·dispatch에서 검사하고 GET/chat은 명시적으로 선택된 개인 토큰의 권한·프로젝트를 교체하지 않는다.
 
+Lumen 내장 MCP의 credential 상태는 권위와 별도인 관측이다. `consumer_connection`의 application-credential 인증 요청에서만 Keystone401/404(참조 role 부재 포함)를 `McpCredentialInvalidError`로 구분하고 public message·cause를 보존한다. 실제 `/mcp/lumen/execute` 실패만 `mcp_credential_invalid` WARNING을 grant/project/user 앞8자리로 기록하고, full grant ID를 키로7일 Redis 관측을 best effort 저장한다. Forbidden·native resource404·network·timeout·5xx는 무효 credential로 단정하지 않는다. Execute의 기존 HTTP status/body와 grant 권위는 바꾸지 않는다.
+
+`GET /chat/cloud-tools`는 Keystone probe 없이 선택 grant의 Redis 관측만 `credential_state: invalid|ok`로 추가하며 기존 `enabled`와 모든 필드를 유지한다. Redis 장애/관측 부재의 `ok`는 실제 native 인증 성공을 뜻하지 않는다. 내장 row는 기존 warning Pill과9locale 복구 안내로 비활성화 후 재활성화를 설명하고 원래 명시 동의·버튼·owner fence를 유지한다. Disable은 관측을 best effort 제거하며 자동 폐기·재발급은 없다. 새 grant의 다른 ID와7일TTL로 관측 수명을 한정한다. Schema·migration·configuration·service topology에는 구조 영향이 없는 오류 분류/표시 수정이며 운영 credential 복구·배포를 수행하지 않는다.
+
+일시적인 인증 거절 관측은7일 동안 고정되지 않는다. Lumen execute의 요청별 dispatch 관측은 `consumer_connection`이 실제 연결·현재 역할 검증을 통과한 grant ID만 수집하며, 해당 grant의 read/mutation dispatch가 성공하면 Redis에 flag가 있을 때만 best effort DELETE한다. Local-only 도구·preview·mutation replay·실패한 dispatch는 인증 복구를 증명하지 않으므로 flag를 지우지 않는다. Redis 조회/삭제 장애도 execute 응답을 바꾸지 않으며 이후 진짜401/404는 다시 flag를 남긴다. 별도 인증 probe·grant 권위 변경·서비스 구조 변경은 없다.
+
+Catalogue의 기존 단일 대표 선택은 전체 선택을 grant ID순으로 정렬한 첫 grant이며 source를 `lumen`으로 한정하지 않는다. 따라서 non-first grant의 무효 관측은 row에 나타나지 않고, 첫 grant가 PAT이면 내부 Lumen grant만 폐기하는 비활성화→재활성화 안내로 PAT를 복구할 수 없다. 이 두 다중 선택/PAT UX 경로는 이번 수용 범위 밖의 잔여 위험이며 전체 grant 상태·PAT 복구 완료로 해석하지 않는다.
+
 카탈로그의 승인·비활성화·OAuth-start는 시작한 token/user/project scope의 action AbortController와30초 deadline을 공유한다. 인증 준비·project switching·identity/ABA 변경과 unmount가 GET/action controller를 취소하고 scope와 두 generation을 폐기한다. 기존 HTTP recovery가 취소를 refresh/401 재전송 전에 확인하여 새 계정으로 이전 동의를 replay하지 않고, 종료한 설정이 늦게 OAuth redirect를 시작하지 않는다. `api.patch`/`delete`는 기존 `post`와 같은 optional signal을 전달하며 전역 인증 정책은 바꾸지 않는다. 기본 위임 설명은 네 locale에서 access-neutral이고 실제 접근 chip은 `read`/`manage`를 유지한다.
 
 
@@ -2159,9 +2167,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "e493c1cfd1cb07bef029a63494c7db561700793864a1e6ce8017659dcb3c13d8",
-  "reviewed_at": "2026-11-15T04:32:01Z",
-  "summary": "Integrate authority request-local NativeOperation and bounded directory warm-up with exact-target Cinder auth backoff and fenced policy errors; retain fresh admin guard, cleanup safety, and Trove risk note; no schema/IAM/topology change."
+  "source_sha256": "3a63c45f2c1cb5f975fa55ba31c4ad2bdb689ea7910c3081b52d485ef9c3d75d",
+  "reviewed_at": "2026-11-15T04:32:24Z",
+  "summary": "Integrate request-local authority reuse and independent fresh admin guard, exact-target backup auth backoff, and Lumen MCP invalid-credential observations/self-clear after native dispatch; preserve existing grant/multi-grant limits, Redis namespaces, and no schema/IAM/topology changes."
 }
 ```
 <!-- architecture-review:end -->

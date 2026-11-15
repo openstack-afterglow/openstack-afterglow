@@ -47,6 +47,8 @@
 	"extensions.catalogue.builtin": "標準搭載",
 	"extensions.catalogue.approved": "管理者承認済み",
 	"extensions.catalogue.cloudDescription": "現在のプロジェクトのクラウドリソースを参照・管理します。承認するまでチャットでは使用しません。",
+	"extensions.catalogue.credentialInvalid": "接続情報が無効",
+	"extensions.catalogue.credentialInvalidHelp": "接続情報が無効になりました。無効化してから、再度有効化してください。",
 	"extensions.catalogue.savedAccess": "{access} · {project}",
 	"extensions.catalogue.expires": "有効期限 {date}",
 	"extensions.catalogue.loading": "承認状態を確認中…",
