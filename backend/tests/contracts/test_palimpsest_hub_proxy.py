@@ -123,7 +123,7 @@ async def test_hub_identity_read_survives_native_panel_denial_but_not_membership
         request.state.token_info = validated_identity
         return validated_identity
 
-    monkeypatch.setattr("app.api.palimpsest.hub.get_token_info", identity)
+    monkeypatch.setattr("app.api.palimpsest.hub.resolve_token_info", identity)
     native_actor = {
         "user_id": "caller-user",
         "project_id": "caller-project",
@@ -180,7 +180,7 @@ async def test_palimpsest_token_download_native_authority(api_client, monkeypatc
         AsyncMock(side_effect=AssertionError("Tickets must not resolve browser membership")),
     )
     monkeypatch.setattr(
-        "app.api.palimpsest.hub.get_token_info",
+        "app.api.palimpsest.hub.resolve_token_info",
         AsyncMock(side_effect=AssertionError("Tickets must not validate browser credentials")),
     )
     stream = _UnreadStream(body[:6], body[6:])

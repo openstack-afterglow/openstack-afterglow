@@ -283,11 +283,17 @@ def _access(rows, catalog, user_id):
     }
 
 
-async def get_project_access(project_id: str, user_id: str, *, ks=None, catalog=None) -> dict:
+async def get_project_access(project_id: str, user_id: str, *, ks=None, catalog=None, operation=None) -> dict:
     """Uncached trusted effective assignments are the sole management authority.
 
     Provider/graph failures are errors, never stale DB or token-role fallbacks.
     """
+    if operation is not None:
+        from app.services import domain_projects
+
+        catalog = await operation.run(operation.catalog)
+        rows = await operation.run(domain_projects._effective, operation.ks, project_id, catalog, operation=operation)
+        return _access(rows, catalog, user_id)
     if ks is None:
         ks = await _provider_call(keystone._get_admin_ks_client)
     if catalog is None:

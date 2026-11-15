@@ -122,41 +122,89 @@ async def _check_session_timeout(
         raise HTTPException(status_code=503, detail="세션 유효성을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.")
 
 
-async def _resolve_jwt_token_info(
-    request, bearer_token: str, x_project_id: str | None, *, preserve_original: bool = False
-) -> dict:
+async def get_native_operation(request: Request):
+    """Own one native client/read phase through the dependency call chain."""
     from app.services.native_operation import NativeOperation
 
-    async with NativeOperation() as operation:
-        principal = await _resolve_jwt_session(
-            request, bearer_token, x_project_id, preserve_original=preserve_original, operation=operation
-        )
-        subject = operation.subjects.get(principal.get("token"))
-        if subject is not None:
-            request.state._afterglow_native_access = subject[0]
-        if request.method == "GET" and getattr(getattr(request, "url", None), "path", "") == "/api/v1/auth/me":
-            from app.api.identity.auth import (
-                _AuthenticatedDomainMetadata,
-                _domain_metadata,
-                _domain_metadata_owner,
+    operation = NativeOperation()
+    # Only these consumers reuse authentication observations. Identity
+    # mutation handlers retain their separate fresh guard operations.
+    path = request.url.path
+    share = (
+        (request.method == "GET" and path == "/api/v1/projects/capabilities")
+        or path == "/api/v1/chat"
+        or path.startswith("/api/v1/chat/")
+    )
+    if share:
+        request.state._authority_operation = operation
+    try:
+        yield operation
+    finally:
+        request.state._authority_operation = None
+        request.state._authority_owner = None
+        try:
+            await operation.run(operation.close)
+        except Exception as exc:
+            # Provider close errors can include credentials and endpoint URLs.
+            # Preserve the traceback without logging the provider's exception text.
+            safe_error = RuntimeError("Native request operation cleanup failed")
+            _logger.warning(
+                "Native request operation cleanup failed", exc_info=(RuntimeError, safe_error, exc.__traceback__)
             )
 
-            # Materialize only /me's directory while its validated native reads
-            # are still owned here. No operation/client escapes to the handler.
-            if principal.get("_live_system_admin") is True:
-                # require_admin owns a separate fresh guard; do not reuse reads
-                # from before that boundary for its returned principal.
-                operation.invalidate()
-            metadata = await _domain_metadata(
-                principal["user_id"],
-                principal["identity_domain_id"],
-                principal.get("is_system_admin") is True,
-                operation=operation,
+
+def request_native_operation(request: Request, token_info: dict):
+    """Reuse only the exact principal bound by this request's authentication."""
+    from app.api.identity.auth import _domain_metadata_owner
+
+    operation = getattr(request.state, "_authority_operation", None)
+    owner = getattr(request.state, "_authority_owner", None)
+    return operation if operation is not None and owner == _domain_metadata_owner(token_info) else None
+
+
+async def _resolve_jwt_token_info(
+    request, bearer_token: str, x_project_id: str | None, *, preserve_original: bool = False, operation=None
+) -> dict:
+    if operation is None:
+        from app.services.native_operation import NativeOperation
+
+        async with NativeOperation() as operation:
+            return await _resolve_jwt_token_info(
+                request, bearer_token, x_project_id, preserve_original=preserve_original, operation=operation
             )
-            principal["_authenticated_domain_metadata"] = _AuthenticatedDomainMetadata(
-                _domain_metadata_owner(principal), metadata
-            )
-        return principal
+    return await _resolve_jwt_with_operation(request, bearer_token, x_project_id, preserve_original, operation)
+
+
+async def _resolve_jwt_with_operation(request, bearer_token, x_project_id, preserve_original, operation):
+    principal = await _resolve_jwt_session(
+        request, bearer_token, x_project_id, preserve_original=preserve_original, operation=operation
+    )
+    subject = operation.subjects.get(principal.get("token"))
+    if subject is not None:
+        request.state._afterglow_native_access = subject[0]
+    if request.method == "GET" and getattr(getattr(request, "url", None), "path", "") == "/api/v1/auth/me":
+        from app.api.identity.auth import (
+            _AuthenticatedDomainMetadata,
+            _domain_metadata,
+            _domain_metadata_owner,
+        )
+
+        # Materialize only /me's directory while its validated native reads
+        # are still owned here. No operation/client escapes to the handler.
+        if principal.get("_live_system_admin") is True:
+            # require_admin owns a separate fresh guard; do not reuse reads
+            # from before that boundary for its returned principal.
+            operation.invalidate()
+        metadata = await _domain_metadata(
+            principal["user_id"],
+            principal["identity_domain_id"],
+            principal.get("is_system_admin") is True,
+            operation=operation,
+        )
+        principal["_authenticated_domain_metadata"] = _AuthenticatedDomainMetadata(
+            _domain_metadata_owner(principal), metadata
+        )
+    return principal
 
 
 async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_original, operation) -> dict:
@@ -511,8 +559,20 @@ async def get_token_info(
     request: Request,
     authorization: str | None = Header(None),
     x_project_id: str | None = Header(None),
+    operation=Depends(get_native_operation, scope="function"),
 ) -> dict:
-    """모든 인증 필요 엔드포인트에서 사용하는 Depends 함수.
+    """FastAPI dependency owning the request's native read phase."""
+    return await resolve_token_info(request, authorization, x_project_id, operation=operation)
+
+
+async def resolve_token_info(
+    request: Request,
+    authorization: str | None,
+    x_project_id: str | None = None,
+    *,
+    operation=None,
+) -> dict:
+    """인증 dependency와 명시적 endpoint 호출이 공유하는 일반 함수.
 
     Authorization: Bearer <access_jwt> — JWT 경로만 지원.
 
@@ -523,7 +583,13 @@ async def get_token_info(
         bearer = authorization[7:]
         started = time.perf_counter()
         try:
-            info = await _resolve_jwt_token_info(request, bearer, x_project_id)
+            info = await _resolve_jwt_token_info(request, bearer, x_project_id, operation=operation)
+            if operation is not None and getattr(request.state, "_authority_operation", None) is operation:
+                from app.api.identity.auth import _domain_metadata_owner
+
+                if info.get("_live_system_admin") is True:
+                    operation.invalidate()
+                request.state._authority_owner = _domain_metadata_owner(info)
             request.state.token_info = info
             return info
         except HTTPException:

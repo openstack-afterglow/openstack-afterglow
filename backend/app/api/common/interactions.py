@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import get_token_info
+from app.api.deps import resolve_token_info
 from app.rate_limit import limiter
 from app.services import activity
 from app.services.interaction_policy import canonical_page, interaction_id, public_page
@@ -86,7 +86,7 @@ async def ingest_interactions(request: Request) -> dict:
     if authorization is not None:
         # A supplied invalid or unavailable credential must never be downgraded
         # into anonymous ingestion. Actor and project come only from live auth.
-        actor = await get_token_info(request, authorization, request.headers.get("x-project-id"))
+        actor = await resolve_token_info(request, authorization, request.headers.get("x-project-id"))
     elif any(not public_page(event.page) for event in batch.events):
         raise HTTPException(401, "Authentication is required for this page")
     try:

@@ -5,7 +5,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from app.api.deps import get_token_info
+from app.api.deps import resolve_token_info
 from app.api.palimpsest.package_protocol import PackageRoute, native_error
 from app.config import get_settings
 from app.services.service_proxy import package_key_proxy, proxy, proxy_unauthenticated
@@ -60,7 +60,7 @@ async def proxy_palimpsest_hub(path: str = "", *, request: Request) -> Response:
     segments = path.split("/")
     if path and (segments[0] not in _LEGACY_ROUTE_ROOTS or any(segment in {".", ".."} for segment in segments)):
         return native_error(403, "ACTION_DENIED", "Native Hub routes require dedicated package credentials")
-    await get_token_info(request, authorization=authorization, x_project_id=request.headers.get("x-project-id"))
+    await resolve_token_info(request, authorization=authorization, x_project_id=request.headers.get("x-project-id"))
     upstream_path = "/v1/" if not path else f"/v1/{path}"
     response = await proxy("palimpsest", request, upstream_path)
     if path == "me":

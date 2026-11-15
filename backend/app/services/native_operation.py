@@ -12,12 +12,39 @@ import asyncio
 from fastapi import HTTPException
 
 
+class NativeReads(dict):
+    """Keep identity-keyed memo owners alive until this read phase ends."""
+
+    def __init__(self):
+        super().__init__()
+        self._owners = {}
+
+    def retain(self, owner):
+        self._owners[id(owner)] = owner
+        return owner
+
+    def clear(self):
+        super().clear()
+        self._owners.clear()
+
+
+def memo_identity(reads, owner):
+    """Return an identity key only while its memo keeps the owner alive."""
+    if reads is not None:
+        if isinstance(reads, NativeReads):
+            reads.retain(owner)
+        else:
+            reads.setdefault(("native_operation", "identity_owners"), {})[id(owner)] = owner
+    return id(owner)
+
+
 class NativeOperation:
     def __init__(self):
         self._ks = None
-        self.reads = {}
+        self.reads = NativeReads()
         self.subjects = {}
         self._sessions = []
+        self.generation = 0
 
     @property
     def ks(self):
@@ -44,7 +71,7 @@ class NativeOperation:
         from app.services.identity_roles import _field
 
         manager = getattr(self.ks, kind)
-        key = (id(manager), object_id)
+        key = (memo_identity(self.reads, manager), object_id)
         if key not in self.reads:
             row = manager.get(object_id)
             if _field(row, "id") != object_id:
@@ -60,9 +87,10 @@ class NativeOperation:
                 list(self.ks.roles.list()), list(self.ks.inference_rules.list_inference_roles())
             )
 
-        return self.read(("catalog",), load)
+        return self.reads.retain(self.read(("catalog",), load))
 
     def invalidate(self):
+        self.generation += 1
         self.reads.clear()
         self.subjects.clear()
 

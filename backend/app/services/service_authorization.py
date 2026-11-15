@@ -22,7 +22,18 @@ async def current_service_principal(request: Request) -> dict:
     user_id, project_id = token_info.get("user_id"), token_info.get("project_id")
     if not isinstance(user_id, str) or not user_id or not isinstance(project_id, str) or not project_id:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
-    identity = (user_id, project_id, token_info.get("is_system_admin") is True)
+    from app.api.deps import request_native_operation
+
+    operation = request_native_operation(request, token_info)
+    identity = (
+        user_id,
+        project_id,
+        token_info.get("is_system_admin") is True,
+        token_info.get("token"),
+        token_info.get("domain_id"),
+        operation,
+        operation.generation if operation is not None else None,
+    )
     cached = getattr(request.state, "current_service_principal", None)
     if cached is not None and cached[0] == identity:
         return cached[1]
@@ -35,7 +46,8 @@ async def current_service_principal(request: Request) -> dict:
         # policy, native credential ceilings and resource ownership.
         principal = {**token_info, "user_id": user_id, "project_id": project_id, "is_system_admin": True}
     else:
-        access = await project_service.get_project_access(project_id, user_id)
+        options = {"operation": operation} if operation is not None else {}
+        access = await project_service.get_project_access(project_id, user_id, **options)
         if not access["roles"]:
             raise HTTPException(status_code=403, detail="Current project membership is required")
         principal = {**token_info, "roles": access["roles"], "is_system_admin": False}
