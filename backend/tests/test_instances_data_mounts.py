@@ -377,13 +377,18 @@ def test_storage_mutations_declare_project_write_dependency(endpoint):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["POST", "DELETE"])
-async def test_reader_cannot_mutate_storage_even_with_owned_resources(client, mock_conn, grants, monkeypatch, method):
-    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: make_token_info(roles=["reader"]))
-    response = await client.request(
-        method,
-        BASE_URL if method == "POST" else f"{BASE_URL}/{SHARE_ID}",
-        json={"file_storage_id": SHARE_ID},
-    )
+async def test_reader_cannot_mutate_storage_even_with_owned_resources(client, mock_conn, grants, method):
+    previous = app.dependency_overrides.copy()
+    try:
+        app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
+        response = await client.request(
+            method,
+            BASE_URL if method == "POST" else f"{BASE_URL}/{SHARE_ID}",
+            json={"file_storage_id": SHARE_ID},
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
     assert response.status_code == 403
     grants.get_server.assert_not_called()
@@ -428,7 +433,6 @@ async def test_get_reports_provider_rule_state_not_guest_mount_state_and_no_secr
     client,
     mock_conn,
     grants,
-    monkeypatch,
     state,
 ):
     grants.share.share_proto = "CEPHFS"
@@ -436,8 +440,13 @@ async def test_get_reports_provider_rule_state_not_guest_mount_state_and_no_secr
     grants.rules[0]["state"] = state
     grants.rules[0]["provider_secret"] = "DO_NOT_SERIALIZE_PROVIDER_DICT"
     _reset_mutations(grants, mock_conn)
-    monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: make_token_info(roles=["reader"]))
-    response = await client.get(BASE_URL)
+    previous = app.dependency_overrides.copy()
+    try:
+        app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
+        response = await client.get(BASE_URL)
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
     assert response.status_code == 200
     item = response.json()[0]
@@ -863,19 +872,24 @@ async def test_connection_secret_rejects_unassociated_or_nonexact_rule(client, m
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("condition", ["reader", "foreign-instance", "foreign-public-share"])
-async def test_connection_secret_rechecks_project_write_and_owners(client, mock_conn, grants, monkeypatch, condition):
+async def test_connection_secret_rechecks_project_write_and_owners(client, mock_conn, grants, condition):
     grants.share.share_proto = "CEPHFS"
     assert (await client.post(BASE_URL, json={"file_storage_id": SHARE_ID})).status_code == 200
     grants.rules[0]["state"] = "active"
-    if condition == "reader":
-        monkeypatch.setitem(app.dependency_overrides, get_token_info, lambda: make_token_info(roles=["reader"]))
-    elif condition == "foreign-instance":
-        grants.server.project_id = "foreign-project"
-    else:
-        grants.share.project_id = "foreign-project"
-        grants.share.is_public = True
-    _reset_mutations(grants, mock_conn)
-    response = await client.post(f"{BASE_URL}/{SHARE_ID}/connection-info")
+    previous = app.dependency_overrides.copy()
+    try:
+        if condition == "reader":
+            app.dependency_overrides[get_token_info] = lambda: make_token_info(roles=["reader"])
+        elif condition == "foreign-instance":
+            grants.server.project_id = "foreign-project"
+        else:
+            grants.share.project_id = "foreign-project"
+            grants.share.is_public = True
+        _reset_mutations(grants, mock_conn)
+        response = await client.post(f"{BASE_URL}/{SHARE_ID}/connection-info")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
     assert response.status_code == (403 if condition == "reader" else 404)
     assert "CEPH_SECRET_MUST_NOT_LEAK" not in response.text

@@ -8,8 +8,12 @@
 ## [Unreleased]
 
 ### Changed
+- 개요 후속 대시보드 경로의 중첩 표·카드·알림을 구분선으로 정리하고 프로젝트 설정의 h2/h3 위계를 복원했다. 프로젝트 선택의 중첩 warm 배경을 neutral selection으로 바꾸고 사용량·활동 정보의 다크 대비를 높였다. 튜토리얼 초대가 검색/새로고침을 덮지 않도록 header 흐름에 두며 banner의 warm glow를 제거했다. Drover 설명의 외톨이 줄과 tablet 카드의 긴 상태 overflow를 수정했다. 실제 인스턴스·네트워크·Drover·사용량·프로젝트 설정·볼륨·활동 경로는 로컬 튜토리얼 데이터의 두 테마·두 화면 크기에서 detector 0건이다. `/dashboard/networks`의 404 장식과 mock IAM 권한 redirect는 별도 한계로 남기며 운영에는 배포하지 않았다.
 - 프로젝트 개요의 시각 결함을 같은 로컬 환경(dev `bf81601f`, 튜토리얼 모드)의 전후 렌더링 스캔으로 줄였다(데스크톱 4→0, 모바일 11→0). 14d/7d/24h 선택 토글의 비선택 글자 대비를 라이트 4.1:1에서 5.92:1로 올리고(다크 5.58:1), 카드 안 표·압축 카드·알림이 두 번째 테두리 상자를 만들지 않도록 `ResponsiveTable embedded`와 `Alert flat`를 추가해 최근 인스턴스·차트 데이터 표·사용 기간 알림에 적용했다. 최근 인스턴스 표와 검색 안내 사이 여백을 넓혔다.
 - 탄성(overshoot) 이징을 제거했다. `--motion-ease-overshoot`, `MOTION_CSS_VAR.easeOvershoot`, `MOTION_EASING.overshoot`를 삭제하고 `.motion-pop`과 `pop()`이 단일 감속 곡선 `--motion-ease-emphasized`를 쓴다. 제어점이 0..1을 벗어나는 `cubic-bezier`를 거부하는 디자인 규칙 테스트를 추가했다. 운영(1.32.15) 화면에는 별도 배포 전까지 반영되지 않는다.
+
+### Fixed
+- 데이터 마운트 테스트의 reader token override3곳을 `try/finally`의 명시 복원으로 격리했다. `client` fixture가 global override를 지운 뒤 `monkeypatch` teardown이 오래된 인증 함수를 되살리던 순서 누수를 고쳤다. 동일 프로세스의 data-mount polluter→익명 인증 victim은 수정 전1passed/1failed, 수정 후2passed이며 제품 인증·API 동작은 바꾸지 않았다.
 
 ## [1.32.16] - 2026-11-15
 

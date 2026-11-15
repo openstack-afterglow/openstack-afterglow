@@ -16,10 +16,10 @@ beforeEach(() => {
 describe('TutorialStartButton', () => {
 	it('waits for status loading before inviting a pending administrator tour', async () => {
 		render(TutorialStartButton, { tour: 'admin-compute' });
-		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.queryByRole('group')).toBeNull();
 
 		tutorialStatusesLoaded.set(true);
-		expect(await screen.findByRole('dialog')).toBeTruthy();
+		expect(await screen.findByRole('group', { name: '튜토리얼을 시작하시겠습니까?' })).toBeTruthy();
 		expect(screen.getByText('튜토리얼을 시작하시겠습니까?')).toBeTruthy();
 	});
 
@@ -28,7 +28,7 @@ describe('TutorialStartButton', () => {
 		tutorialStatusesLoaded.set(true);
 		render(TutorialStartButton, { tour: 'admin-storage' });
 
-		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.queryByRole('group')).toBeNull();
 		expect(screen.getByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
 	});
 
@@ -55,10 +55,21 @@ describe('TutorialStartButton', () => {
 		render(TutorialStartButton, { tour: 'admin-identity', invite: false });
 		render(TutorialStartButton, { tour: 'admin-users', label: '사용자 만들고 삭제하기' });
 
-		expect(await screen.findAllByRole('dialog')).toHaveLength(1);
+		expect(await screen.findAllByRole('group')).toHaveLength(1);
 		expect(document.getElementById('ts-invite-title-admin-users')).not.toBeNull();
 		expect(document.getElementById('ts-invite-title-admin-identity')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '사용자 만들고 삭제하기' }));
 		expect(startTour).toHaveBeenCalledWith('admin-users');
+	});
+
+	it('keeps the invitation in normal flow and never presents it as a dialog', async () => {
+		tutorialStatusesLoaded.set(true);
+		const { container } = render(TutorialStartButton, { tour: 'vm-create' });
+		const invitation = await screen.findByRole('group', { name: '튜토리얼을 시작하시겠습니까?' });
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(invitation.parentElement?.classList.contains('tutorial-start')).toBe(true);
+		expect(container.querySelector('.ts-invite__arrow')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '튜토리얼 시작' }));
+		expect(startTour).toHaveBeenCalledWith('vm-create');
 	});
 });

@@ -113,14 +113,14 @@
 
 {#if $auth.projectId}
 	<Card class="p-5 space-y-4 min-w-0">
-		<h3 class="text-sm font-semibold text-ink-0">{t('personalLabel.title')}</h3>
+		<h2 class="text-sm font-semibold text-ink-0">{t('personalLabel.title')}</h2>
 		<p class="text-sm text-ink-2">{t('personalLabel.help')}</p>
 		{#if busy}<LoadingState variant={metadata ? 'inline' : 'section'} label={t('personalLabel.loading')}  />{/if}
 		{#if error}
-			<Alert tone="danger">{error}</Alert>
+			<Alert flat tone="danger">{error}</Alert>
 			{#if !metadata}<Button variant="secondary" disabled={busy || !$authReady || $logoutInProgress || $projectSwitching} onclick={load}>{t('personalLabel.reload')}</Button>{/if}
 		{/if}
-		{#if saved}<Alert tone="success">{t('personalLabel.saved')}</Alert>{/if}
+		{#if saved}<Alert flat tone="success">{t('personalLabel.saved')}</Alert>{/if}
 		{#if metadata?.can_edit}
 			<form class="space-y-4" onsubmit={save}>
 				<Field label={t('personalLabel.name')} for={`${uid}-name`} help={t('personalLabel.nameHelp')}>

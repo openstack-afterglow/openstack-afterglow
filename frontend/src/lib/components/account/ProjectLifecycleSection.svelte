@@ -84,15 +84,15 @@
 	onDestroy(() => { live = false; revision++; ownership = null; users = []; deleting = false; });
 </script>
 
-<section class="space-y-3 rounded-lg border border-line p-4" aria-label={t('ownership')}>
-	<div class="flex flex-wrap items-center justify-between gap-3"><h4 class="text-sm font-semibold text-ink-0">{t('ownership')}</h4><Button variant="secondary" size="sm" disabled={loading || busy} onclick={load}>{t('refresh')}</Button></div>
+<section class="space-y-3 border-y border-line py-4" aria-label={t('ownership')}>
+	<div class="flex flex-wrap items-center justify-between gap-3"><h3 class="text-sm font-semibold text-ink-0">{t('ownership')}</h3><Button variant="secondary" size="sm" disabled={loading || busy} onclick={load}>{t('refresh')}</Button></div>
 	{#if loading}<LoadingState variant={ownership ? 'inline' : 'section'} label={t('loading')}  />{/if}
-	{#if error}<Alert tone="danger">{error}</Alert>{/if}
-	{#if needsRefresh}<Alert tone="warning">{t('mutationUncertain')}</Alert>{/if}
+	{#if error}<Alert flat tone="danger">{error}</Alert>{/if}
+	{#if needsRefresh}<Alert flat tone="warning">{t('mutationUncertain')}</Alert>{/if}
 	{#if ownership}
-		<Alert tone={ownership.status === 'unique' ? 'info' : 'warning'}>{t(ownership.status === 'unique' ? 'ownershipUnique' : ownership.status === 'conflict' ? 'ownershipConflict' : 'ownershipMissing')}</Alert>
+		<Alert flat tone={ownership.status === 'unique' ? 'info' : 'warning'}>{t(ownership.status === 'unique' ? 'ownershipUnique' : ownership.status === 'conflict' ? 'ownershipConflict' : 'ownershipMissing')}</Alert>
 		{#if pendingTransfer}
-			<Alert tone="warning">{t(pendingTransfer.status === 'settled' ? 'transferSettled' : 'transferUnresolved')}</Alert>
+			<Alert flat tone="warning">{t(pendingTransfer.status === 'settled' ? 'transferSettled' : 'transferUnresolved')}</Alert>
 			<p class="text-xs text-ink-2 [overflow-wrap:anywhere]">{t('transferOperationDetails', { id: pendingTransfer.id, from: pendingTransfer.from_user_id, to: pendingTransfer.to_user_id, stage: pendingTransfer.stage })}</p>
 		{/if}
 		{#if ownership.owners.length}<ul class="space-y-1 text-sm text-ink-1">{#each ownership.owners as owner (`${owner.user_id}-${owner.source}`)}<li class="[overflow-wrap:anywhere]">{owner.name || owner.user_id} · <code>{owner.user_id}</code> · {t(owner.source === 'direct' ? 'direct' : 'groupOrInherited')}</li>{/each}</ul>{/if}

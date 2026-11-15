@@ -9,6 +9,7 @@ const designSource = readFileSync(resolve(repoRoot, '../DESIGN.md'), 'utf8');
 const alertSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/Alert.svelte'), 'utf8');
 const uiIndexSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/index.ts'), 'utf8');
 const tokenSource = readFileSync(resolve(repoRoot, 'src/lib/design/tokens.ts'), 'utf8');
+const source = (path: string) => readFileSync(resolve(repoRoot, 'src', path), 'utf8');
 
 
 
@@ -329,6 +330,50 @@ describe('design system source contracts', () => {
 			expect(y2).toBeGreaterThanOrEqual(0);
 			expect(y2).toBeLessThanOrEqual(1);
 		}
+	});
+
+	it('keeps tutorial invitations and hints in header flow instead of covering controls', () => {
+		const tutorial = source('lib/tutorial/TutorialStartButton.svelte');
+		expect(tutorial).not.toContain('position: absolute');
+		expect(tutorial).not.toContain('position: fixed');
+		expect(tutorial).not.toContain('role="dialog"');
+		expect(tutorial).not.toContain('keyframes');
+	});
+
+	it('uses embedded lists and flat feedback within dashboard sections', () => {
+		expect(source('routes/dashboard/usage/+page.svelte')).toContain('<ResponsiveTable embedded');
+		expect(source('lib/components/account/ProjectSettingsSection.svelte')).toContain('<ResponsiveTable embedded');
+		const lifecycle = source('lib/components/account/ProjectLifecycleSection.svelte');
+		expect(lifecycle).not.toContain('rounded-lg');
+		for (const alert of lifecycle.matchAll(/<Alert\b([^>]*)>/g)) expect(alert[1]).toMatch(/\bflat\b/);
+		const personal = source('lib/components/account/PersonalProjectLabelSection.svelte');
+		for (const alert of personal.matchAll(/<Alert\b([^>]*)>/g)) expect(alert[1]).toMatch(/\bflat\b/);
+		expect(source('lib/components/dashboard/network/networks/FloatingIpCard.svelte')).toContain('motion-stagger divide-y divide-line');
+	});
+
+	it('preserves project section heading size while restoring the h1-h2-h3 outline', () => {
+		for (const name of ['PersonalProjectLabelSection', 'ProjectsSection', 'ProjectSettingsSection']) {
+			expect(source(`lib/components/account/${name}.svelte`)).toMatch(/<h2 class="text-sm font-semibold text-ink-0">/);
+		}
+		expect(source('lib/components/account/ProjectLifecycleSection.svelte')).toMatch(/<h3 class="text-sm font-semibold text-ink-0">/);
+		const projects = source('lib/components/account/ProjectsSection.svelte');
+		expect(projects).toContain('bg-surface-selected');
+		expect(projects).not.toContain('bg-action-warm/');
+	});
+
+	it('keeps usage and activity annotations readable and tutorial elevation neutral in dark mode', () => {
+		expect(source('routes/dashboard/usage/+page.svelte')).not.toContain('--color-ink-3');
+		expect(source('routes/dashboard/activity/+page.svelte')).not.toContain('--color-ink-3');
+		const banner = source('lib/components/mockup/MockupBanner.svelte');
+		expect(banner).toContain('box-shadow: var(--shadow-restraint)');
+		expect(banner).not.toContain('--glow-warm');
+	});
+
+	it('lets long cluster states and translated actions wrap inside narrow cards', () => {
+		const cluster = source('lib/components/dashboard/drover/K3sClusterCard.svelte');
+		expect(cluster).toContain('flex flex-wrap items-center gap-2.5');
+		expect(cluster).toContain('flex-1 basis-24 min-w-0');
+		expect(cluster).toContain('flex flex-wrap gap-1.5');
 	});
 
 });

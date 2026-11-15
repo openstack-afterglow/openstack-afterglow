@@ -318,6 +318,10 @@ Application-owned table/div-grid 목록과 진단·chart 원본은 `ResponsiveTa
 
 목록 헤더는 `ResourceToolbar`의 regex 검색과 새로고침 label/action 하단 정렬·mobile wrapping을 공유한다. 상태·호스트·유형·수량·정렬의 표시 조건은 해당 table/div-grid 열 제목으로 이동하고 compact 카드는 동일 view control을 노출한다. 실제 authority domain/project·source·기간 경계는 유지하지만 old literal search나 데이터 열 필터를 disclosure로 검색 옆에 남기지 않는다. `controlsHidden`·footer 이전/다음 `Pagination`·기존 no-match/error와 native cursor continuation은 유지한다. 기존 튜토리얼과 새 이미지 튜토리얼은 페이지 최상단 생성·편집 작업 옆에 위치하며 read-only 이미지 안내는 upload를 실행하지 않는다. 운영 배포/실제 native inventory acceptance는 source·합성 browser 검증과 별개다.
 
+개요 후속 route refinement는 `ResponsiveTable embedded`·`Alert flat`을 사용량·프로젝트 멤버/소유권에 재사용하고 프로젝트/Floating IP 행을 divider로 평탄화한다. 프로젝트 설정 heading은 h2/h3 의미와 기존14px 크기를 함께 유지하며 선택은 neutral surface, usage/activity 정보는 ink-2를 사용한다. `TutorialStartButton`의 미시작 안내와 나중에 hint는 dialog/absolute overlay 대신 페이지 header의 normal flow에 남아 새로고침을 가리지 않는다. 기존 시작·상태 기록·mobile gating은 유지하고 banner glow만 neutral elevation으로 교체한다. Drover 설명의 whole-word 균형과 card header/action wrapping은 tablet overflow를 막는다. Source/local 시각·접근성 수정이며 API·권위·schema·서비스 topology에는 구조 영향이 없다.
+
+같은 작업의 별도 test-only 보완은 `test_instances_data_mounts.py`의 reader override3곳을 요청 전 dictionary snapshot/direct assignment와 요청 후 finally 복원으로 격리한다. Client fixture teardown보다 늦은 monkeypatch teardown이 인증 함수를 재삽입하지 않으며, 익명 요청401의 기존 제품 계약은 그대로다. 결정적 단일 pytest 프로세스의 polluter→victim과 fixture 순서로 검증한다. Runtime API·권위·schema·서비스 구조 영향은 없다.
+
 상단 바의 반응형 배치는 root `+layout.svelte`의 일반 flex 흐름이 소유한다. 검색창은 좌측 브랜드/프로젝트와 우측 Cloud Shell/모드/언어/유틸리티의 실제 폭을 제외한 공간을 사용하며 최대24rem이다. Absolute viewport 중앙 배치는 사용하지 않는다. 모바일 프로젝트 선택과 compact Docs는 기존 전역 drawer에서 제공한다. CSS/표시 위치만 바뀌므로 인증·API·schema·서비스 topology에는 구조 영향이 없다. 합성 브라우저 검증과 배포 경계는 `docs/testing.md`를 따른다.
 
 채팅 full-bleed 검토는 외부 workspace와 내부 readable content의 CSS/markup 소유권만 정정한다. 기존 history projection·권한·API·DB·서비스/배포 topology는 그대로다. HEAD+chat source5파일의 격리 index에서 architecture stamp와 staged guard를 통과했으며 실제 공유 index/review marker는 보존했다. 현재 source·compiled Chromium 증거와 이전 전체 gate/운영 검증의 분리 경계는 [`docs/testing.md`](docs/testing.md#lumen-채팅-전체-작업-영역-복원-검증-2026-10-12-local-only)를 따른다.
@@ -2171,9 +2175,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "530352e1fb7cd5d5735243d704582a1b572d7092e8d11e73778b285c15a0aa70",
-  "reviewed_at": "2026-11-15T09:12:58Z",
-  "summary": "Dashboard overview slop pass: embedded table/alert variants, range toggle contrast, overshoot easing removed; no runtime, schema or permission change."
+  "source_sha256": "a801f86938ea3ec9b09a445b16f07d61ee408428fe6c75b54f6e0abb54f76209",
+  "reviewed_at": "2026-11-15T14:43:40Z",
+  "summary": "Dashboard route visual refinement reuses existing embedded/flat surfaces, neutral selection/elevation, readable ink, semantic headings, in-flow tutorial guidance and wrapping cluster cards; no API, authority, schema or topology change. Separately approved test-only fix restores three data-mount token overrides before client fixture teardown; deterministic same-process polluter/victim fails before and passes after, 140 related tests pass. Browser acceptance is limited to documented tutorial routes; shared MCP/Waygate/admin/IamProjectEdit hosts were not rendered."
 }
 ```
 <!-- architecture-review:end -->

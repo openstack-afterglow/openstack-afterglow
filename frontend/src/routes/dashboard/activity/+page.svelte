@@ -185,7 +185,7 @@
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<SectionHeader title={t('activity.audit')} meta={t('activity.recent')} />
 			{#if recentActions.length === 0}
-				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">{t('activity.empty')}</div>
+				<div class="mt-6 text-center text-sm text-[var(--color-ink-2)] py-6">{t('activity.empty')}</div>
 			{:else}
 				<ObservationTable model={observationView0} loaded>
 {#snippet children(tableView)}
@@ -196,7 +196,7 @@
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
+							<tr class="text-xs uppercase tracking-wide text-[var(--color-ink-2)] border-b border-line">
 								<TableColumnHeader view={tableView} columnKey="time" />
 								<TableColumnHeader view={tableView} columnKey="action" />
 								<TableColumnHeader view={tableView} columnKey="resource" />
@@ -208,7 +208,7 @@
 							{#each tableView.rows as action (action.id)}
 								{@const badge = actionBadgeStyle(action.action)}
 								<tr class="hover:bg-surface-sunken/30 transition-colors">
-									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs tabular-nums whitespace-nowrap">
+									<td class="py-2.5 pr-4 text-[var(--color-ink-2)] text-xs tabular-nums whitespace-nowrap">
 										{formatHour(action.created_at)}
 									</td>
 									<td class="py-2.5 pr-4">
@@ -217,7 +217,7 @@
 											style="background: {badge.bg}; color: {badge.text};"
 										>{action.action}</span>
 									</td>
-									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs">{action.resource_type}</td>
+									<td class="py-2.5 pr-4 text-[var(--color-ink-2)] text-xs">{action.resource_type}</td>
 									<td class="py-2.5 pr-4 text-[var(--color-ink-0)] text-xs">{action.resource_name}</td>
 									<td class="py-2.5">
 										<StatusChip status={action.status} label={resultLabel(action.status)} />
