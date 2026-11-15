@@ -2185,9 +2185,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "eb4ec82ca3c96515cb4554e1a8950c78fcd981d39811f31ae035922ee8a08494",
-  "reviewed_at": "2026-11-15T12:15:17Z",
-  "summary": "Integrated automatic backup system account (derived backup quota, IAM protection) with dashboard overview slop pass; no new runtime surface beyond the two reviewed branches."
+  "source_sha256": "34831abc159743373e36c10d06a3930d2c524f82defe8caffb14f5ea5c6c78a6",
+  "reviewed_at": "2026-11-15T12:17:05Z",
+  "summary": "Release 1.32.17 version bump over reviewed backup system account and dashboard slop branches; no further source change."
 }
 ```
 <!-- architecture-review:end -->
