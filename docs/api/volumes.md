@@ -262,11 +262,20 @@ Cinder 블록 스토리지 볼륨, 백업, 스냅샷을 관리합니다.
 
 ### GET /api/v1/admin/volumes/{volume_id}/delete-diagnostics
 
-관리자 전용 엔드포인트입니다. `error_deleting` 등 삭제 실패 상태의 볼륨에 대해 Cinder 상태, attachment, snapshot/backup 종속성, Cinder messages를 확인하고 자동 복구 가능 여부를 반환합니다. Cinder messages 조회는 best-effort이며 실패해도 진단은 계속됩니다.
+관리자 전용 엔드포인트입니다. 삭제 오류와 `creating`/`downloading` 상태의 Cinder/Nova attachment, snapshot/backup/clone, group/migration과 선택적 Ceph metadata를 확인합니다. 알 수 없는 종속성·backend 조회와 일관성 오류는 차단합니다. 생성 단계의 RBD watcher가 있으면 `creation_active_watcher`로 복구와 강제 제거를 모두 차단합니다. watcher 상세는 주소 대신 안전한 상태만 표시합니다. Cinder messages(없음 포함), host 유무, 경과 시간과 Palimpsest 등 소유 서비스 표시는 참고 증거이며 서비스 작업 중단을 뜻하지 않습니다.
+
+`updated_at`(없으면 `created_at`) 기준 `creating` 30분, `downloading` 6시간 미만 또는 시각 미확인은 `creation_in_progress`입니다. 오래된 생성은 안전 조건이 맞으면 `creation_stalled`입니다. 시간만으로 작업 종료를 증명하지 않으므로 소유 서비스 작업을 먼저 확인하세요. Ceph 미설정은 backend 미검증으로 명시하며 물리 삭제 완료를 주장하지 않습니다.
 
 ### POST /api/v1/admin/volumes/{volume_id}/recover-delete
 
-관리자 전용 엔드포인트입니다. 서버가 진단을 다시 수행한 뒤 attachment와 snapshot/backup 종속성이 없는 경우에만 `reset_status(error, detached)` → 일반 삭제 → 삭제 검증 → 필요 시 force-delete → 삭제 검증 순서로 실행합니다. 스냅샷/백업 종속성은 자동 삭제하지 않으며, 존재하면 `blocked` 결과로 반환하므로 관리자가 별도 명시 작업으로 보존 또는 삭제를 결정해야 합니다.
+관리자 전용 단일 Redis 잠금 파이프라인입니다. 선택적 JSON body의 `mode`는 `recover|force_delete`이며 기본값은 기존 force-delete 동작입니다. 생성 단계에서는 **두 모드 모두** `confirm_volume_id`(정확한 볼륨 UUID), `expected_status`(진단에서 확인한 현재 상태)가 필요합니다. 명시 force-delete의 누락/잘못된 필드는422, 유효한 확인값 불일치와 recover 생성 확인 누락은 안전한409이며 native 쓰기는 없습니다. 기존 오류 상태의 body 없는 호출은 유지됩니다.
+
+- `recover`: 진단 → 전체 안전 재진단/실시간 상태 확인 → Cinder `os-reset_status(status=error)` → 상태/안전 재확인 후 `state_reset`으로 종료합니다. 이미 `error`면 쓰기 없는 멱등 결과입니다. 삭제·Ceph mapping 변경·소유 서비스 취소는 하지 않습니다.
+- `force_delete`: 생성 단계는 위 상태 복구를 먼저 실행하고, 기존 선택적 RBD 이름 mapping 복원/검증 → 종속성/backend/watcher 재확인 → Cinder `os-force_delete` → Cinder 부재/전체 목록 → Ceph backend/쿼터 검증을 재사용합니다. 생성 유래 경로는 attachment 상태를 거짓으로 detached로 바꾸지 않습니다. 일반 Cinder DELETE를 먼저 시도하는 경로가 아닙니다.
+
+reset 성공 후 제거가 실패하면 `failed`와 수행한 steps를 반환하고 보통 볼륨은 `error`에 남아 명시 재시도가 가능합니다. 소유 서비스/c-vol의 독립 갱신은 원자적으로 막지 못합니다. `deleted`/`already_deleted`만 검증된 삭제이며 `delete_submitted`, `backend_residue`, `backend_unverified`는 상세를 유지합니다. 잔여 RBD image/header/data/trash와 종속 리소스는 자동 제거하지 않습니다. 관리자 전체 볼륨의 단일/일괄 일반 삭제는 의미를 바꾸지 않으며 생성 단계는 상세의 진단·복구 파이프라인을 이용하세요.
+
+생성 유래 강제 제거 후 Cinder가 `available` 등 `deleting`이 아닌 상태를 반환하면 성공/대기가 아니라 `failed`와 `creation_delete_state_changed:<status>` 단계, 최신 진단을 반환합니다. 불완전한 이미지일 수 있으며 추가 reset은 하지 않습니다. 소유 서비스와 watcher 해제를 확인하고 재진단하세요. `available`이면 일반 관리자 삭제를 선택할 수 있습니다.
 
 ---
 

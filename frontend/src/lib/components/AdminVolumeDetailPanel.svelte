@@ -41,7 +41,7 @@
 <div class="flex flex-col h-full">
 	<AdminVolumeDetailHeader {onClose} />
 
-	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto {s.loading && !s.volume ? '' : 'p-5 space-y-4'}">
+	<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto {s.loading && !s.volume ? '' : 'p-4 sm:p-5 space-y-4'}">
 		{#if s.loading && !s.volume}
 			<LoadingState variant="surface" label={t('volumeDetail.loading')} />
 		{:else if s.error}

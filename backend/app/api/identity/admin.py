@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import httpx
 from anyio import CancelScope
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.api.common.activity_recorder import rec
 from app.api.common.admin_resource_scope import (
@@ -2131,6 +2131,13 @@ async def update_volume(
 
 
 _ERROR_STATUSES = {"error", "deleting", "error_deleting", "error_extending", "error_restoring", "error_managing"}
+_VOLUME_RECOVERY_MUTATION_ACTIONS = {
+    "reset_state",
+    "restore_name_mapping",
+    "cleanup_stale_name_mapping",
+    "reset_attach_status",
+    "force_delete",
+}
 
 
 async def _invalidate_volume_recovery_caches(project_id: str | None) -> None:
@@ -2166,6 +2173,20 @@ async def get_volume_delete_diagnostics(
         raise HTTPException(status_code=500, detail="볼륨 삭제 진단 실패")
 
 
+class VolumeRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mode: Literal["recover", "force_delete"]
+    confirm_volume_id: str | None = Field(default=None, min_length=1, max_length=255)
+    expected_status: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def require_delete_confirmation(self) -> VolumeRecoveryRequest:
+        if self.mode == "force_delete" and (self.confirm_volume_id is None or self.expected_status is None):
+            raise ValueError("Explicit force-delete requires volume ID and status confirmation")
+        return self
+
+
 @router.post(
     "/volumes/{volume_id}/recover-delete",
     response_model=VolumeDeleteRecoveryResult,
@@ -2173,11 +2194,13 @@ async def get_volume_delete_diagnostics(
 )
 async def recover_delete_volume(
     volume_id: str,
+    req: VolumeRecoveryRequest | None = None,
     verify_timeout_seconds: int = Query(default=30, ge=0, le=120),
     conn: openstack.connection.Connection = Depends(get_admin_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    """관리자 force-delete 단일 경로를 실행하고 설정된 Ceph backend까지 검증한다."""
+    """관리자 복구 또는 명시적 force-delete를 잠금과 최신 상태 검증 아래 실행한다."""
+    mode = req.mode if req is not None else "force_delete"
     lock_key = f"afterglow:volume-recovery:lock:{volume_id}"
     try:
         redis = await _get_redis()
@@ -2188,11 +2211,14 @@ async def recover_delete_volume(
         raise HTTPException(status_code=409, detail="볼륨 삭제 복구가 이미 진행 중입니다")
 
     try:
+        kwargs = {"verify_timeout_seconds": verify_timeout_seconds}
+        if req is not None:
+            kwargs.update(req.model_dump())
         result = await asyncio.to_thread(
             volume_delete_recovery.recover_delete_volume,
             conn,
             volume_id,
-            verify_timeout_seconds=verify_timeout_seconds,
+            **kwargs,
         )
         if result.status in {
             "deleted",
@@ -2200,7 +2226,10 @@ async def recover_delete_volume(
             "delete_submitted",
             "backend_residue",
             "backend_unverified",
-        }:
+            "state_reset",
+        } or any(
+            step.status == "success" and step.action in _VOLUME_RECOVERY_MUTATION_ACTIONS for step in result.steps
+        ):
             await _invalidate_volume_recovery_caches(result.diagnostic.project_id)
         try:
             await rec(
@@ -2208,7 +2237,7 @@ async def recover_delete_volume(
                 conn,
                 resource_type="volume",
                 action="volume.recover_delete",
-                status="success" if result.status in {"deleted", "already_deleted"} else "failed",
+                status="success" if result.status in {"deleted", "already_deleted", "state_reset"} else "failed",
                 resource_id=volume_id,
                 error_message=(
                     result.status
@@ -2216,6 +2245,9 @@ async def recover_delete_volume(
                     else None
                 ),
                 extra={
+                    "mode": mode,
+                    "previous_status": result.previous_status,
+                    "final_status": result.final_status,
                     "result": result.status,
                     "verified_deleted": result.verified_deleted,
                     "root_cause": result.diagnostic.root_cause_code,
@@ -2228,6 +2260,21 @@ async def recover_delete_volume(
         except Exception:
             pass
         return result
+    except volume_delete_recovery.VolumeRecoveryConflict:
+        try:
+            await rec(
+                token_info,
+                conn,
+                resource_type="volume",
+                action="volume.recover_delete",
+                status="failed",
+                resource_id=volume_id,
+                error_message="volume_recovery_conflict",
+                extra={"mode": mode, "previous_status": None},
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=409, detail="볼륨 상태 또는 확인 정보가 변경되었습니다. 다시 진단하세요.")
     except HTTPException:
         raise
     except Exception:
@@ -2239,6 +2286,7 @@ async def recover_delete_volume(
                 action="volume.recover_delete",
                 status="failed",
                 resource_id=volume_id,
+                extra={"mode": mode, "previous_status": None},
             )
         except Exception:
             pass

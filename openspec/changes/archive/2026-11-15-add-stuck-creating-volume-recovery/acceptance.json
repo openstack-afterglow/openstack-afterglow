@@ -1,0 +1,52 @@
+{
+  "change": "add-stuck-creating-volume-recovery",
+  "date": "2026-11-15",
+  "branch": "feat/stuck-creating-volume-recovery",
+  "source_sha256": "756cad64558532ad70967aa0545baa2a4a6184e72ca18aa334f4a5ddc0679e61",
+  "source_files": 4329,
+  "creation_threshold_seconds": { "creating": 1800, "downloading": 21600 },
+  "creation_liveness": "Present RBD watchers block both modes; unknown inspection blocks; completely unconfigured Ceph permits explicitly backend-unverified age-gated recovery. Age and absent watchers are not proof that an owner job stopped.",
+  "cinder_calls": {
+    "common_reads": ["get_volume", "list_volume_attachments", "list_snapshots(all_projects=True, volume_id)", "list_backups(all_projects=True, volume_id)", "volumes(details=True, all_projects=True) for clones", "list_volume_messages"],
+    "recover_creation": ["diagnose", "full safety re-diagnosis", "get_volume live confirmation", "os-reset_status(status=error)", "full re-diagnosis verifying error", "STOP without delete or RBD mapping mutation"],
+    "recover_error": "Idempotent no-write result after diagnosis and recheck",
+    "force_delete_creation": ["same confirmed reset and verification", "get_volume_quota before delete", "optional existing RBD name-mapping restore/verify", "full safety/watcher re-diagnosis", "get_volume and attachment recheck", "os-force_delete once", "get_volume absence polling", "volumes(details=False, all_projects=True) absence verification", "existing Ceph backend verification", "get_volume_quota after delete"],
+    "normal_delete_called": false,
+    "creation_attachment_reset_retry": false,
+    "legacy_error_no_body": "Preserved, including existing narrow attached-400 reset(error,detached)/force-delete retry"
+  },
+  "confirmation": {
+    "creation_writes": "Both modes require exact confirm_volume_id and live expected_status in the service, including the final pre-reset live read",
+    "explicit_force_delete_missing_or_invalid_fields": 422,
+    "creation_recover_missing_or_well_formed_mismatches": 409,
+    "initial_live_available_stale_creation_confirmation": 409,
+    "native_auth_unknown": "Preserves authentication_scope_failed/authorization_denied rather than asserting state drift"
+  },
+  "checks": {
+    "targeted_backend_order": { "command": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/test_volume_delete_recovery.py tests/test_admin_volume_delete.py tests/test_auth_domain_boundaries.py -q", "passed": 335, "warnings": 287, "seconds": 3.93, "same_process_auth_victim": true },
+    "targeted_frontend": { "files": 4, "passed": 32 },
+    "svelte_check": { "files": 3120, "errors": 0, "existing_warnings": 15 },
+    "i18n_check": { "errors": 0, "warnings": 0, "namespaces": 56, "source_messages": 13409, "locales": 9, "human_review": "draft" },
+    "i18n_scan": { "files": 1385, "hard_coded_korean_lines": 0 },
+    "ui_detector_findings": [],
+    "isolated_gate": {
+      "command": "PATH=\"/Users/pieroot/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin:/Users/pieroot/.local/bin:/Users/pieroot/.nvm/versions/node/v24.14.1/bin:/usr/local/bin:$PATH\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-stuck-volume-gate-20261115 npm run test:gate",
+      "cwd": "/private/tmp/afterglow-stuck-volume-gate-20261115",
+      "exit_code": 0,
+      "seconds": 288.06,
+      "backend": { "passed": 14906, "skipped": 106, "xdist_workers": 4 },
+      "frontend": { "files": 591, "passed": 7948, "runner_passed": 9 },
+      "contract": { "passed": 262 },
+      "functional": { "passed": 289, "skipped": 46, "deselected": 131, "real_local_datastores": ["MariaDB", "PostgreSQL", "Redis"] },
+      "ruff_formatted_files": 896,
+      "orchestration": { "passed": 274, "existing_todo": 1 },
+      "kolla": { "node_passed": 29, "python_passed": 16 },
+      "cli": { "passed": 20, "powershell_skipped": 36 },
+      "prior_attempts": ["Python3.9.6 PATH lacked tomllib", "isolated venv lacked locked dev extras; installed with uv sync --frozen --extra dev", "superseded source gate cancelled before adding stale-initial-state confirmation regression"]
+    }
+  },
+  "browser": { "section_cases": 46, "confirmation_cases": 2, "widths": [390, 1440], "themes": ["light", "dark"], "locales": ["ko", "en", "ja", "zh-CN", "sw", "nb", "ms", "vi", "bn"], "finite_animations_settled": true, "horizontal_overflow": 0, "scope": "Real compiled section/ConfirmDialog with synthetic context; not production route/provider acceptance", "proof_directory": "~/.local/share/afterglow-proofs/stuck-volume-20261115/" },
+  "production": { "writes": false, "deploy_or_release": false, "merge_or_push": false, "provided_read_observation": { "observer": "coordinator Main", "image": "quay.io/openstack.kolla/cinder-volume:2026.1-ubuntu-noble", "build_date": "20261110", "cinder_package": "28.0.1.dev16", "installed_manager_busy_handler_line": 1014 }, "busy_to_available": "Upstream stable/2026.1 source-read only; not an observed production transition" },
+  "cleanup": { "scratch_ui_files_removed": true, "owned_browsers_and_ui_servers_stopped": true, "owned_datastores_and_network_removed_by_gate": true, "user_containers_preserved": true, "detached_gate_tree": "Retained as isolated reproducible verification snapshot" },
+  "residual_risks": ["Palimpsest or c-vol may still hold or resume the build; this pipeline does not cancel owner-service work", "A genuine image copy can exceed age thresholds; absent watchers are only a point-in-time observation", "Backend-unconfigured deployments cannot verify physical deletion", "RBD image/header/data/trash residue is reported, never directly removed", "Creation-origin force-delete returning available is failed with refreshed diagnostic and no automatic re-reset", "Existing error-state consistent-backend watcher policy remains unchanged/out of scope", "Existing Lumen dotenv isolation TODO and unavailable PowerShell checks remain"]
+}

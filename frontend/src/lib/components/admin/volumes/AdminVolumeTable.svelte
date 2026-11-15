@@ -86,7 +86,8 @@
 						{#if v.status === 'available' && v.bootable}<Button variant="link" onclick={() => { onActionMenuClose(); onBootFromVolume(v); }}>{t('volumeList.action.bootFromVolume')}</Button>{/if}
 						{#if v.status === 'available' || v.status === 'awaiting-transfer'}<Button variant="link" onclick={() => { onActionMenuClose(); onTransfer(v); }}>{t('volumeList.action.transfer')}</Button>{/if}
 						<Button variant="link" onclick={() => { onActionMenuClose(); onReset(v); }}>{t('volumeList.action.resetStatus')}</Button>
-						{#if /^(error|deleting)/i.test(v.status ?? '')}<Button variant="link" onclick={() => { onActionMenuClose(); onSelect(v.id); }}>{t('volumeList.action.recovery')}</Button><Button variant="link" onclick={() => { onActionMenuClose(); onForceDelete(v); }}>{t('volumeList.action.forceDelete')}</Button>{/if}
+						{#if /^(error|deleting|creating|downloading)/i.test(v.status ?? '')}<Button variant="link" onclick={() => { onActionMenuClose(); onSelect(v.id); }}>{t('volumeList.action.recovery')}</Button>{/if}
+						{#if /^(error|deleting)/i.test(v.status ?? '')}<Button variant="link" onclick={() => { onActionMenuClose(); onForceDelete(v); }}>{t('volumeList.action.forceDelete')}</Button>{/if}
 						<Button variant="link" onclick={() => { onActionMenuClose(); onDelete(v); }}>{t('volumeList.action.delete')}</Button>
 					</ActionMenu>
 				{/snippet}
@@ -171,11 +172,13 @@
 									onclick={() => { onActionMenuClose(); onReset(v); }}
 									class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
 								>{t('volumeList.action.resetStatus')}</button>
-								{#if /^(error|deleting)/i.test(v.status ?? '')}
+								{#if /^(error|deleting|creating|downloading)/i.test(v.status ?? '')}
 									<button
 										onclick={() => { onActionMenuClose(); onSelect(v.id); }}
 										class="volume-recovery-action w-full text-left px-3 py-1.5 text-[13px] transition-colors"
 									>{t('volumeList.action.recovery')}</button>
+								{/if}
+								{#if /^(error|deleting)/i.test(v.status ?? '')}
 									<button
 										onclick={() => { onActionMenuClose(); onForceDelete(v); }}
 										class="w-full text-left px-3 py-1.5 text-[13px] text-state-danger-text hover:bg-surface-sunken transition-colors"

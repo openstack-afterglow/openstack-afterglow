@@ -4,7 +4,7 @@ import re
 import struct
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from openstack.exceptions import ResourceNotFound
 
@@ -28,6 +28,10 @@ _RECOVERABLE_DELETE_STATUSES = {
     "error_restoring",
     "error_managing",
 }
+_CREATION_STATUSES = {"creating", "downloading"}
+# An inactivity threshold, not proof that the provider or owning service stopped.
+_CREATION_STALE_AFTER_SECONDS = 30 * 60
+_DOWNLOADING_STALE_AFTER_SECONDS = 6 * 60 * 60
 _DEPENDENCY_TERMINAL_STATUSES = {"deleted"}
 _DEPENDENCY_CHECK_NAMES = {
     "volume_attachments",
@@ -39,6 +43,10 @@ _DEPENDENCY_CHECK_NAMES = {
     "group_or_migration",
 }
 _IMAGE_ID_RE = re.compile(r"^[0-9a-f]{6,32}$")
+
+
+class VolumeRecoveryConflict(ValueError):
+    """The confirmed resource or its observed state no longer matches."""
 
 
 def _as_str(value: Any, limit: int = 200) -> str | None:
@@ -207,6 +215,8 @@ def _diagnostic(
     size_gb: int | None = None,
     backend_host: str | None = None,
     updated_at: str | None = None,
+    creation_age_seconds: float | None = None,
+    owner_service_hint: str | None = None,
     attachments: list[dict] | None = None,
     dependencies: list[VolumeDeleteDependency] | None = None,
     messages: list[VolumeDeleteMessage] | None = None,
@@ -214,6 +224,9 @@ def _diagnostic(
     backend: VolumeDeleteBackendInspection | None = None,
     evidence: list[str] | None = None,
 ) -> VolumeDeleteDiagnostic:
+    if status in _CREATION_STATUSES and recovery_available:
+        root_cause_code = "creation_stalled"
+        summary = "생성 단계가 오랫동안 갱신되지 않았습니다. " + summary
     return VolumeDeleteDiagnostic(
         volume_id=volume_id,
         status=status,
@@ -222,6 +235,8 @@ def _diagnostic(
         size_gb=size_gb,
         backend_host=backend_host,
         updated_at=updated_at,
+        creation_age_seconds=creation_age_seconds,
+        owner_service_hint=owner_service_hint,
         attachments=attachments or [],
         dependencies=dependencies or [],
         messages=messages or [],
@@ -266,6 +281,19 @@ def _fresh_deleting(updated_at: str | None) -> bool:
         return (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() <= 900
     except (TypeError, ValueError, OverflowError):
         return False
+
+
+def _creation_age(volume: Any) -> float | None:
+    timestamp = getattr(volume, "updated_at", None) or getattr(volume, "created_at", None)
+    if not isinstance(timestamp, str) or not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return max(0.0, (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds())
+    except (ValueError, OverflowError):
+        return None
 
 
 def _backend_from_info(
@@ -764,10 +792,34 @@ def diagnose_volume_delete_issue(conn: Any, volume_id: str) -> VolumeDeleteDiagn
     try:
         messages = _message_models(cinder.list_volume_messages(conn, volume_id), volume_id)
         message_evidence.extend(_message_evidence(messages))
+        if not messages:
+            message_evidence.append("cinder_messages=absent")
     except Exception as exc:
         detail = f"http_{_http_status(exc)}" if _http_status(exc) is not None else _safe_detail(exc)
         message_evidence.append(f"cinder_messages_unavailable:{detail}")
         messages = []
+
+    creation_age = _creation_age(volume) if status in _CREATION_STATUSES else None
+    metadata = getattr(volume, "metadata", None)
+    owner_service = None
+    if isinstance(metadata, dict):
+        if metadata.get("palimpsest_instance_id"):
+            owner_service = "palimpsest"
+        elif (
+            metadata.get("afterglow_managed_by") == "afterglow"
+            or any(metadata.get(key) for key in ("afterglow_build_id", "afterglow_consume_id", "afterglow_import_id"))
+            or any(key.startswith("afterglow_layer_") and value for key, value in metadata.items())
+        ):
+            owner_service = "afterglow"
+    if status in _CREATION_STATUSES:
+        message_evidence.extend(
+            [
+                f"creation_age_seconds={int(creation_age) if creation_age is not None else 'unknown'}",
+                f"backend_host={'present' if backend_host else 'absent'}",
+            ]
+        )
+        if owner_service:
+            message_evidence.append(f"owner_service={owner_service}")
 
     common = {
         "volume_id": volume_id,
@@ -777,6 +829,8 @@ def diagnose_volume_delete_issue(conn: Any, volume_id: str) -> VolumeDeleteDiagn
         "size_gb": size_gb,
         "backend_host": backend_host,
         "updated_at": updated_at,
+        "creation_age_seconds": creation_age,
+        "owner_service_hint": owner_service,
         "attachments": attachments,
         "dependencies": dependencies,
         "messages": messages,
@@ -848,10 +902,14 @@ def diagnose_volume_delete_issue(conn: Any, volume_id: str) -> VolumeDeleteDiagn
         _add_check(checks, "backend_fsid", "unknown", _safe_detail(exc))
         backend = VolumeDeleteBackendInspection(mode="unknown", classification="unknown")
 
+    if status in _CREATION_STATUSES:
+        for check in checks:
+            if check.name == "rbd_watchers":
+                check.detail = f"watchers_{check.state}"
     evidence = [*_check_evidence(status, checks), f"backend={backend.classification}", *message_evidence]
     common["backend"] = backend
 
-    if status not in _RECOVERABLE_DELETE_STATUSES:
+    if status not in _RECOVERABLE_DELETE_STATUSES | _CREATION_STATUSES:
         if status == "available":
             return _diagnostic(
                 **common,
@@ -871,6 +929,58 @@ def diagnose_volume_delete_issue(conn: Any, volume_id: str) -> VolumeDeleteDiagn
             recovery_available=False,
             evidence=evidence,
         )
+
+    if status in _CREATION_STATUSES:
+        watcher = next((check for check in checks if check.name == "rbd_watchers"), None)
+        if watcher is not None and watcher.state == "present":
+            return _diagnostic(
+                **common,
+                root_cause_code="creation_active_watcher",
+                confidence="high",
+                summary="생성 중인 RBD 이미지를 클라이언트가 사용 중이므로 복구와 강제 제거를 중단했습니다.",
+                recommended_action="Cinder 볼륨 서비스 또는 이미지 복사 작업의 종료를 확인하고 재진단하세요.",
+                recovery_available=False,
+                evidence=evidence,
+            )
+        if (
+            backend.mode == "unknown"
+            or backend.classification == "unknown"
+            or (
+                backend.mode == "inspected"
+                and backend.classification != "absent"
+                and (watcher is None or watcher.state != "absent")
+            )
+        ):
+            return _diagnostic(
+                **common,
+                root_cause_code="backend_lookup_unknown",
+                confidence="low",
+                summary="생성 단계 RBD 이미지의 사용 여부를 확인할 수 없습니다.",
+                recommended_action="Ceph 조회를 복구한 뒤 재진단하세요. 미확인을 사용하지 않음으로 간주하지 않습니다.",
+                recovery_available=False,
+                evidence=evidence,
+            )
+        if backend.classification not in {"consistent", "absent", "name_mapping_missing", "not_inspected"}:
+            return _diagnostic(
+                **common,
+                root_cause_code="backend_inconsistent",
+                confidence="high",
+                summary="Ceph RBD metadata가 자동 복구의 안전 조건과 일치하지 않습니다.",
+                recommended_action="운영자의 Ceph 점검 후 재진단하세요.",
+                recovery_available=False,
+                evidence=evidence,
+            )
+        stale_after = _DOWNLOADING_STALE_AFTER_SECONDS if status == "downloading" else _CREATION_STALE_AFTER_SECONDS
+        if creation_age is None or creation_age < stale_after:
+            return _diagnostic(
+                **common,
+                root_cause_code="creation_in_progress",
+                confidence="medium",
+                summary="생성 또는 이미지 복사가 진행 중이거나 경과 시간을 확인할 수 없습니다.",
+                recommended_action="creating은 30분, downloading은 6시간 이후 재진단하세요. 소유 서비스 작업도 확인하세요.",
+                recovery_available=False,
+                evidence=evidence,
+            )
 
     if backend.mode == "unavailable":
         return _diagnostic(
@@ -965,14 +1075,25 @@ def _result(
     diagnostic: VolumeDeleteDiagnostic,
     steps: list[VolumeDeleteRecoveryStep],
     final_status: str | None = None,
+    previous_status: str | None = None,
     backend_verification: str = "unavailable",
     quota_verification: str = "unavailable",
 ) -> VolumeDeleteRecoveryResult:
+    if previous_status is None:
+        previous_status = next(
+            (
+                step.detail
+                for step in steps
+                if step.action == "recheck_state" and step.status == "success" and step.detail in _CREATION_STATUSES
+            ),
+            diagnostic.status,
+        )
     return VolumeDeleteRecoveryResult(
         volume_id=volume_id,
         status=status,  # type: ignore[arg-type]
         verified_deleted=verified_deleted,
         final_status=final_status,
+        previous_status=previous_status if previous_status is not None else diagnostic.status,
         backend_verification=backend_verification,  # type: ignore[arg-type]
         quota_verification=quota_verification,  # type: ignore[arg-type]
         diagnostic=diagnostic,
@@ -1116,16 +1237,43 @@ def _verify_backend_after_delete(
         return "residue"
 
 
+def _creation_backend_quiet(diagnostic: VolumeDeleteDiagnostic) -> bool:
+    if diagnostic.backend.mode == "unavailable":
+        return True  # Explicitly reported unverified, never inferred watcher absence.
+    if diagnostic.backend.mode != "inspected":
+        return False
+    if diagnostic.backend.classification == "absent":
+        return True
+    watchers = [check for check in diagnostic.checks if check.name == "rbd_watchers"]
+    return bool(watchers) and all(check.state == "absent" for check in watchers)
+
+
 def recover_delete_volume(
     conn: Any,
     volume_id: str,
     verify_timeout_seconds: int = 30,
     poll_interval_seconds: float = 2.0,
+    *,
+    mode: Literal["recover", "force_delete"] = "force_delete",
+    confirm_volume_id: str | None = None,
+    expected_status: str | None = None,
 ) -> VolumeDeleteRecoveryResult:
     diagnostic = diagnose_volume_delete_issue(conn, volume_id)
     steps: list[VolumeDeleteRecoveryStep] = [
         VolumeDeleteRecoveryStep(action="diagnose", status="success", detail=diagnostic.root_cause_code)
     ]
+    creation_stage = diagnostic.status in _CREATION_STATUSES
+    if mode not in {"recover", "force_delete"}:
+        raise ValueError("invalid recovery mode")
+    needs_confirmation = diagnostic.status is not None and (
+        creation_stage
+        or (
+            (confirm_volume_id is not None or expected_status is not None)
+            and not (mode == "recover" and diagnostic.status == "error")
+        )
+    )
+    if needs_confirmation and (confirm_volume_id != volume_id or expected_status != diagnostic.status):
+        raise VolumeRecoveryConflict("볼륨 ID 또는 확인한 상태가 현재 볼륨과 다릅니다. 재진단하세요.")
 
     if diagnostic.root_cause_code == "already_deleted":
         backend_verification = {
@@ -1162,7 +1310,7 @@ def recover_delete_volume(
     if not diagnostic.recovery_available:
         steps.append(
             VolumeDeleteRecoveryStep(
-                action="force_delete",
+                action="reset_state" if mode == "recover" else "force_delete",
                 status="skipped",
                 detail=diagnostic.recommended_action,
             )
@@ -1177,6 +1325,89 @@ def recover_delete_volume(
             backend_verification="unknown" if diagnostic.backend.mode == "unknown" else "unavailable",
         )
 
+    if mode == "recover" and not creation_stage and diagnostic.status != "error":
+        steps.append(VolumeDeleteRecoveryStep(action="reset_state", status="skipped", detail="not_creation_or_error"))
+        return _result(
+            volume_id=volume_id,
+            status="blocked",
+            verified_deleted=False,
+            final_status=diagnostic.status,
+            diagnostic=diagnostic,
+            steps=steps,
+        )
+
+    if creation_stage or mode == "recover":
+        current = diagnostic
+        try:
+            current = diagnose_volume_delete_issue(conn, volume_id)
+            if creation_stage and current.status is not None and current.status != expected_status:
+                raise VolumeRecoveryConflict("볼륨 상태가 변경되었습니다. 재진단하고 다시 확인하세요.")
+            if (
+                current.status != diagnostic.status
+                or not current.recovery_available
+                or (creation_stage and not _creation_backend_quiet(current))
+            ):
+                raise RuntimeError("creation_recheck_blocked")
+            if creation_stage:
+                live = conn.block_storage.get_volume(volume_id)
+                if confirm_volume_id != volume_id or _volume_status(live) != expected_status:
+                    raise VolumeRecoveryConflict("볼륨 ID 또는 확인한 상태가 현재 볼륨과 다릅니다. 재진단하세요.")
+                age = _creation_age(live)
+                threshold = (
+                    _DOWNLOADING_STALE_AFTER_SECONDS
+                    if expected_status == "downloading"
+                    else _CREATION_STALE_AFTER_SECONDS
+                )
+                if _volume_attachments(live) or age is None or age < threshold:
+                    raise RuntimeError("creation_live_state_changed")
+            steps.append(VolumeDeleteRecoveryStep(action="recheck_state", status="success", detail=current.status))
+        except VolumeRecoveryConflict:
+            raise
+        except Exception as exc:
+            steps.append(VolumeDeleteRecoveryStep(action="recheck_state", status="failed", detail=_safe_detail(exc)))
+            return _result(
+                volume_id=volume_id,
+                status="failed",
+                verified_deleted=False,
+                final_status=current.status,
+                diagnostic=current,
+                previous_status=diagnostic.status,
+                steps=steps,
+            )
+        if creation_stage:
+            try:
+                cinder.reset_volume_status(conn, volume_id, "error")
+                steps.append(VolumeDeleteRecoveryStep(action="reset_state", status="success", detail="error"))
+                current = diagnose_volume_delete_issue(conn, volume_id)
+                if current.status != "error":
+                    raise RuntimeError("reset_state_not_verified")
+                if not current.recovery_available or not _creation_backend_quiet(current):
+                    raise RuntimeError("post_reset_safety_blocked")
+            except Exception as exc:
+                steps.append(VolumeDeleteRecoveryStep(action="reset_state", status="failed", detail=_safe_detail(exc)))
+                return _result(
+                    volume_id=volume_id,
+                    status="failed",
+                    verified_deleted=False,
+                    final_status=current.status,
+                    diagnostic=current,
+                    previous_status=diagnostic.status,
+                    steps=steps,
+                )
+        else:
+            steps.append(VolumeDeleteRecoveryStep(action="reset_state", status="skipped", detail="already_error"))
+        if mode == "recover":
+            return _result(
+                volume_id=volume_id,
+                status="state_reset",
+                verified_deleted=False,
+                final_status="error",
+                diagnostic=current,
+                previous_status=diagnostic.status,
+                steps=steps,
+            )
+        diagnostic = current
+
     quota_before: tuple[int, int] | None = None
     try:
         quota_before = _quota_snapshot(conn, diagnostic.project_id)
@@ -1185,7 +1416,7 @@ def recover_delete_volume(
 
     settings = get_settings()
     client = ceph_rbd.from_settings(settings)
-    if diagnostic.root_cause_code == "rbd_name_mapping_missing":
+    if diagnostic.backend.classification == "name_mapping_missing":
         if (
             client is None
             or not diagnostic.backend.pool
@@ -1250,10 +1481,19 @@ def recover_delete_volume(
         steps.append(VolumeDeleteRecoveryStep(action="verify_name_mapping", status="success", detail=verify_info.id))
 
     try:
+        if creation_stage:
+            current = diagnose_volume_delete_issue(conn, volume_id)
+            if current.status != "error" or not current.recovery_available or not _creation_backend_quiet(current):
+                raise RuntimeError("pre_delete_safety_blocked")
         rechecked = conn.block_storage.get_volume(volume_id)
         current_status = _volume_status(rechecked)
         current_attachments = _volume_attachments(rechecked)
-        if current_status not in _RECOVERABLE_DELETE_STATUSES or current_attachments:
+        status_changed = (
+            current_status != ("error" if creation_stage else expected_status)
+            if creation_stage or expected_status is not None
+            else current_status not in _RECOVERABLE_DELETE_STATUSES
+        )
+        if status_changed or current_attachments:
             steps.append(
                 VolumeDeleteRecoveryStep(
                     action="recheck_state",
@@ -1300,7 +1540,7 @@ def recover_delete_volume(
     except Exception as exc:
         status_code = _http_status(exc)
         error_text = str(exc)
-        if status_code == 400 and "attached" in error_text.lower():
+        if not creation_stage and status_code == 400 and "attached" in error_text.lower():
             try:
                 cinder.reset_volume_status(conn, volume_id, "error", "detached")
                 steps.append(
@@ -1357,14 +1597,40 @@ def recover_delete_volume(
         except Exception as exc:
             verified = False
             last_status = f"list_all_projects_unknown:{_safe_detail(exc)}"
+    creation_state_changed = creation_stage and not verified and last_status != "deleting"
     steps.append(
         VolumeDeleteRecoveryStep(
             action="verify_after_force_delete",
             status="success" if verified else "failed",
-            detail="deleted" if verified else f"still_present:{last_status or 'unknown'}",
+            detail=(
+                "deleted"
+                if verified
+                else f"creation_delete_state_changed:{last_status or 'unknown'}"
+                if creation_state_changed
+                else f"still_present:{last_status or 'unknown'}"
+            ),
         )
     )
     if not verified:
+        if creation_state_changed:
+            refreshed = diagnose_volume_delete_issue(conn, volume_id)
+            return _result(
+                volume_id=volume_id,
+                status="failed",
+                verified_deleted=False,
+                diagnostic=refreshed,
+                steps=steps,
+                final_status=last_status,
+                previous_status=next(
+                    (
+                        step.detail
+                        for step in steps
+                        if step.action == "recheck_state" and step.detail in _CREATION_STATUSES
+                    ),
+                    diagnostic.status,
+                ),
+                backend_verification="unknown" if diagnostic.backend.mode == "inspected" else "unavailable",
+            )
         return _result(
             volume_id=volume_id,
             status="delete_submitted",

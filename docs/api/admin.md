@@ -640,7 +640,7 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 | `GET` | `/api/v1/admin/volumes/{volume_id}/transfers` | 정확한 볼륨의 대기 ID 복구(키 없음) | native all_tenants 목록과 볼륨 상태 대조 |
 | `DELETE` | `/api/v1/admin/volumes/transfer/{transfer_id}` | 관리자 명시 취소 | 자동 취소/재전송 없음 |
 | `GET` | `/api/v1/admin/volumes/{volume_id}/delete-diagnostics` | 삭제 실패 원인 진단 | - |
-| `POST` | `/api/v1/admin/volumes/{volume_id}/recover-delete` | 삭제 실패 복구 시도 | - |
+| `POST` | `/api/v1/admin/volumes/{volume_id}/recover-delete` | 진단 기반 상태 복구/강제 제거 | 선택적 `{mode,confirm_volume_id,expected_status}`; 생성 쓰기는 두 모드 모두 정확한 확인 필수 |
 
 **제한**: `force-delete` / `reset-status`는 Cinder의 정상 상태 전이를 우회하므로 데이터 정합성 위험이 있습니다. 오류 상태 복구 용도로만 사용하고, `extend`는 축소가 불가능합니다.
 
@@ -654,9 +654,12 @@ Manila의 `/v2/{project}` URL prefix도 논리 Personal이 아닌 실제 인증 
 
 RBD 검사가 활성화되면 `backend`에 `mode`, `classification`, pool, image name/id, size/order, parent를 반환합니다. Cinder의 404만으로 `already_deleted`를 확정하지 않습니다. RBD image/header/data/trash가 남아 있으면 `api_absent_backend_present`, 조회가 불완전하면 `backend_lookup_unknown`입니다. `rbd_id.volume-<uuid>`만 빠지고 directory·image id·size/order·parent·watcher/snapshot/child 상태가 일치할 때만 mapping을 복원합니다. 반대로 stale mapping 제거는 Cinder와 모든 backend artifact의 부재가 확인되고 mapping payload가 예상 image id와 정확히 같을 때만 실행합니다. Image data/header/trash 자체는 이 API가 삭제하지 않습니다.
 
+생성 단계는 `updated_at`(없으면 `created_at`) 기준 `creating`30분·`downloading`6시간 이후에만 복구 후보입니다. 나이가 작업 종료를 보장하지 않으며 활성 RBD watcher는 두 모드 모두 차단하고 미확인은 부재로 간주하지 않습니다. `recover`는 재진단·live 확인 뒤 `os-reset_status(error)`를 검증하고 멈추며, `force_delete`는 같은 생성 상태 복구 후 기존 mapping/Cinder force-delete/backend/quota 검증으로 이어집니다. exact ID/관측 상태 확인이 다르면409, 명시 force-delete 확인 필드가 누락/잘못되면422이며 쓰기는 없습니다. 소유 서비스의 빌드 취소나 direct Ceph 이미지 삭제는 제공하지 않습니다. 자세한 호출·부분 실패 계약은 [볼륨 API](volumes.md#post-apiv1adminvolumesvolume_idrecover-delete)를 참고하세요.
+
 복구 결과 `status` 계약:
 
 - `deleted`, `already_deleted`: Cinder 부재와 활성화된 RBD backend 부재가 검증된 terminal success
+- `state_reset`: Cinder 상태가 `error`임을 검증한 복구 성공; 삭제하지 않음
 - `delete_submitted`: Cinder 삭제 요청은 수락됐지만 아직 Cinder record가 남아 있음
 - `backend_residue`: Cinder record는 사라졌지만 RBD residue가 확인됨
 - `backend_unverified`: Cinder record는 사라졌지만 RBD 검사가 비활성 또는 `unknown`
@@ -665,7 +668,7 @@ RBD 검사가 활성화되면 `backend`에 `mode`, `classification`, pool, image
 
 `verified_deleted`는 `deleted`/`already_deleted`에서만 `true`입니다. `backend_verification`은 `verified | unavailable | residue | unknown`, `quota_verification`은 `verified | mismatch | unavailable`을 별도로 반환합니다. UI는 terminal success에서만 상세 패널을 닫고 `delete_submitted`, residue, unverified 결과에서는 check·backend evidence를 유지한 채 상세를 새로고침합니다.
 
-Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 동시 요청은 HTTP 409, Redis 장애는 fail-closed HTTP 503이며 lock은 `finally`에서 소유 token과 일치할 때만 해제합니다. 모든 결과와 단계, backend/quota 검증은 감사 로그에 기록됩니다.
+Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 동시 요청은 HTTP409, Redis 장애는 fail-closed HTTP503이며 기존 `finally` 해제 경로를 유지합니다. 모드·이전 상태·결과와 단계, backend/quota 검증을 감사에 기록하고 성공한 상태 reset 등 부분 쓰기에도 cache를 무효화합니다.
 
 ---
 
