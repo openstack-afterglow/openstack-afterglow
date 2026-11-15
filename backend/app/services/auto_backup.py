@@ -468,6 +468,7 @@ def _make_proxy(project_id):
         if vars(conn).get("_afterglow_usage_operator_scope") is not None:
             raise RuntimeError("Scheduled recovery points require exact-project credentials")
         prove_project_scope(conn, project_id)
+        conn._afterglow_exact_project_scope = True
     except BaseException:
         conn.close()
         raise
@@ -660,6 +661,22 @@ def _matches_operation(point, project_id, volume_id, operation):
     )
 
 
+def _scoped(conn, project_id, value):
+    """Fill Cinder's admin-only backup project attribute from a proven exact-project, non-admin session.
+
+    `backup:backup_project_attribute` defaults to `rule:admin_api`, so a project-scoped member sees
+    `project_id=None` on its own backups. Such a session can only list or read its own project's backups,
+    so the proven scope supplies the owner. A visible foreign owner is never overwritten, and sessions
+    without the proof keep the strict rule (None stays unowned).
+    """
+    if _resource() != "backup" or vars(conn).get("_afterglow_exact_project_scope") is not True:
+        return value
+    for row in value if isinstance(value, list) else [value]:
+        if isinstance(row, dict) and row.get("project_id") is None:
+            row["project_id"] = project_id
+    return value
+
+
 def _source_owned(source, project_id):
     if _resource() == "snapshot":
         return cinder._extension_owned(source, project_id)
@@ -682,7 +699,7 @@ async def _invalidate_backups(project_id):
 
 
 async def _prune(conn, redis, lease, project_id, volume_id, config):
-    backups = await _sdk(_provider("list"), conn, volume_id=volume_id)
+    backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
     for tier in ("monthly", "weekly", "daily"):
         count = config[f"max_{tier}"]
         if count == 0:
@@ -690,7 +707,7 @@ async def _prune(conn, redis, lease, project_id, volume_id, config):
         completed = [b for b in backups if _tier(b, project_id, volume_id) == tier and _safe_completed(b)]
         completed.sort(key=_created_time, reverse=True)
         for old in completed[count:]:
-            fresh = await _sdk(_provider("get"), conn, old["id"])
+            fresh = _scoped(conn, project_id, await _sdk(_provider("get"), conn, old["id"]))
             if _tier(fresh, project_id, volume_id) != tier or not _safe_completed(fresh):
                 continue
             source = await _sdk(conn.block_storage.get_volume, volume_id)
@@ -722,9 +739,9 @@ async def _prune(conn, redis, lease, project_id, volume_id, config):
 async def _reconcile(conn, redis, lease, project_id, volume_id, operation):
     try:
         if operation.get(_id_field()):
-            backup = await _sdk(_provider("get"), conn, operation[_id_field()])
+            backup = _scoped(conn, project_id, await _sdk(_provider("get"), conn, operation[_id_field()]))
         else:
-            backups = await _sdk(_provider("list"), conn, volume_id=volume_id)
+            backups = _scoped(conn, project_id, await _sdk(_provider("list"), conn, volume_id=volume_id))
             matches = [b for b in backups if _matches_operation(b, project_id, volume_id, operation)]
             backup = matches[0] if len(matches) == 1 else None
         if not backup or not _matches_operation(backup, project_id, volume_id, operation):
@@ -865,6 +882,7 @@ async def _cycle(conn, redis, lease, project_id, volume_id, now):
             force=config["force"],
             **options,
         )
+        backup = _scoped(conn, project_id, backup)
         if not backup.get("id"):
             raise ValueError(f"Cinder did not return a {_resource()} ID")
         if not _owned(backup, project_id, volume_id):

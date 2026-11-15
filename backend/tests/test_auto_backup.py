@@ -633,3 +633,46 @@ async def test_dispatcher_cancel_during_blocked_factory_closes_returned_connecti
     assert cloud.submissions == []
     assert not await policy_redis.exists(ab._key("lease", PROJECT, VOLUME))
     assert (await current())["last_status"] == "never"
+
+
+class MemberCloud(BackupCloud):
+    """Project-scoped member session: Cinder hides the admin-only `os-backup-project-attr:project_id`."""
+
+    def __init__(self, *, proven=True):
+        super().__init__()
+        if proven:
+            self._afterglow_exact_project_scope = True
+
+    def add(self, backup_id, name, **fields):
+        fields.setdefault("project_id", None)
+        return super().add(backup_id, name, **fields)
+
+
+@pytest.mark.asyncio
+async def test_member_session_with_hidden_owner_attribute_tracks_and_prunes_only_its_own_backups(policy_redis):
+    cloud = MemberCloud()
+    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    managed = f"auto_{VOLUME[:8]}_daily_20260501"
+    cloud.add("old-full", managed)
+    cloud.add("foreign", managed, project_id="other")
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    current_state = await current()
+    assert current_state["last_status"] == "creating"
+    assert current_state["last_backup_id"] == "new-backup"
+    cloud.records["new-backup"].status = "available"
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert cloud.deleted == ["old-full"]
+    assert "foreign" in cloud.records
+    assert (await current())["last_status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_hidden_owner_attribute_without_proven_scope_is_never_adopted(policy_redis):
+    cloud = MemberCloud(proven=False)
+    cloud.add("old-full", f"auto_{VOLUME[:8]}_daily_20260501")
+    config = await save(max_daily=1, max_weekly=0, max_monthly=0)
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert (await current())["last_status"] == "unknown"
+    cloud.records["new-backup"].status = "available"
+    await ab.run_backup_cycle(cloud, PROJECT, VOLUME, now=due(config))
+    assert cloud.deleted == []

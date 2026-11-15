@@ -113,6 +113,14 @@ def test_default_factory_rejects_admin_or_bound_operator_token(monkeypatch, bind
     with pytest.raises(RuntimeError):
         ab._make_proxy(PROJECT)
     assert cloud.closed == 1
+    assert "_afterglow_exact_project_scope" not in vars(cloud)
+
+
+def test_default_factory_marks_the_proven_exact_project_scope(monkeypatch):
+    cloud = TokenOwnedCloud(PROJECT)
+    monkeypatch.setattr(backup_system_account, "get_connection_for_project", lambda _: cloud)
+    assert ab._make_proxy(PROJECT) is cloud
+    assert vars(cloud)["_afterglow_exact_project_scope"] is True
 
 
 @pytest.mark.asyncio
