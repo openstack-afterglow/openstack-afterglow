@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import HTTPException
 
 from app.services import account_spaces, cache, domain_display, identity_roles, keystone
+from app.services.native_operation import memo_identity
 from app.services.parallel import run_parallel
 
 _field = identity_roles._field
@@ -58,7 +59,7 @@ def _read_context(ks, reads=None, operation=None):
 
 def _raw(ks, catalog, *, reads=None, operation=None):
     ks, reads = _read_context(ks, reads, operation)
-    key = ("domain_projects", "raw", id(catalog))
+    key = ("domain_projects", "raw", memo_identity(reads, catalog))
     if key not in reads:
         # Keep the complete graph: a filtered login-user query cannot prove
         # provenance for every legitimate/effective manager.
@@ -109,7 +110,7 @@ def _roles(catalog):
 
 def _exact(manager, object_id, *, reads=None, operation=None):
     reads = operation.reads if operation is not None else reads
-    key = (id(manager), object_id)
+    key = (memo_identity(reads, manager), object_id)
     if reads is not None and key in reads:
         return reads[key]
     row = _call(manager.get, object_id)
@@ -135,7 +136,8 @@ def _warm_exact(manager, object_ids, *, reads):
     order and fail-closed behaviour are unchanged; nothing is shared across
     operations.
     """
-    pending = [object_id for object_id in dict.fromkeys(object_ids) if (id(manager), object_id) not in reads]
+    manager_id = memo_identity(reads, manager)
+    pending = [object_id for object_id in dict.fromkeys(object_ids) if (manager_id, object_id) not in reads]
     if len(pending) < 2:
         return
 
@@ -251,7 +253,7 @@ def _assignment(row, catalog, *, effective=False):
 
 def _effective(ks, project_id, catalog, *, reads=None, operation=None):
     ks, reads = _read_context(ks, reads, operation)
-    key = ("domain_projects", "effective_project", project_id, id(catalog))
+    key = ("domain_projects", "effective_project", project_id, memo_identity(reads, catalog))
     if key not in reads:
         rows = list(_call(ks.role_assignments.list, project=project_id, effective=True))
         for row in rows:
@@ -282,7 +284,7 @@ def _manager_users(ks, project, catalog, *, reads=None, raw=None, operation=None
     from app.services.project_service import _expanded_role_ids
 
     ks, reads = _read_context(ks, reads, operation)
-    key = ("domain_projects", "managers", project["id"], id(catalog))
+    key = ("domain_projects", "managers", project["id"], memo_identity(reads, catalog))
     if key in reads:
         return reads[key]
     manager = _canonical(catalog, "manager")["id"]
@@ -393,25 +395,51 @@ def _ancestors(ks, project, *, reads=None, operation=None):
     return result
 
 
+def _applies(meta, project, ancestors):
+    return (
+        meta["kind"] == "project"
+        and (
+            (meta["scope_id"] == _field(project, "id") and not meta["inherited"])
+            or (meta["scope_id"] in ancestors and meta["inherited"])
+        )
+    ) or (meta["kind"] == "domain" and meta["scope_id"] == _field(project, "domain_id") and meta["inherited"])
+
+
+def _warm_sources(ks, assignments, *, reads):
+    """Warm independent group/member reads, never cache failed observations."""
+    pending = {}
+    for meta, exclude_projection in assignments:
+        gid = meta["group_id"]
+        if gid and ("group_users", gid) not in reads:
+            # If any consumer includes projections, its member read is needed.
+            pending[gid] = pending.get(gid, True) and exclude_projection
+    if len(pending) < 2:
+        return
+
+    def fetch(gid, exclude_projection):
+        def run():
+            with suppress(Exception):  # ordered source pass owns errors
+                group = _exact(ks.groups, gid, reads=reads)
+                if not exclude_projection or not _is_projection_group(group):
+                    _group_users(ks, gid, reads=reads)
+
+        return run
+
+    run_parallel(*(fetch(gid, exclude) for gid, exclude in pending.items()), max_workers=_WARM_FANOUT)
+
+
 def _sources(ks, project, catalog, raw=None, *, exclude_projection=False, reads=None, operation=None):
     """Reconstruct native provenance; reuse reads only within this operation."""
     ks, reads = _read_context(ks, reads, operation)
-    key = ("domain_projects", "sources", _field(project, "id"), exclude_projection, id(catalog))
+    key = ("domain_projects", "sources", _field(project, "id"), exclude_projection, memo_identity(reads, catalog))
     if key in reads:
         return reads[key]
     graph = _raw(ks, catalog, reads=reads) if raw is None else [_assignment(row, catalog) for row in raw]
     ancestors = _ancestors(ks, project, reads=reads)
+    applicable = [meta for meta in graph if _applies(meta, project, ancestors)]
+    _warm_sources(ks, ((meta, exclude_projection) for meta in applicable), reads=reads)
     result = []
-    for meta in graph:
-        applies = (
-            meta["kind"] == "project"
-            and (
-                (meta["scope_id"] == _field(project, "id") and not meta["inherited"])
-                or (meta["scope_id"] in ancestors and meta["inherited"])
-            )
-        ) or (meta["kind"] == "domain" and meta["scope_id"] == _field(project, "domain_id") and meta["inherited"])
-        if not applies:
-            continue
+    for meta in applicable:
         if meta["group_id"]:
             group = _exact(ks.groups, meta["group_id"], reads=reads)
             if exclude_projection and _is_projection_group(group):
@@ -470,7 +498,7 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
     if home_kind not in {"account", "personal"}:
         domains[home_id] = {"id": home_id, "name": domain_display.display_name(home), "kind": home_kind}
     _raw(ks, catalog, reads=reads)
-    effective_key = ("domain_projects", "effective_user", user_id, id(catalog))
+    effective_key = ("domain_projects", "effective_user", user_id, memo_identity(reads, catalog))
     if effective_key not in reads:
         rows = list(_call(ks.role_assignments.list, user=user_id, effective=True))
         parsed = [_assignment(row, catalog, effective=True) for row in rows]
@@ -486,10 +514,36 @@ def _accessible_domains(ks, user_id, user, reads, *, operation=None):
         [
             domain_id
             for project_id in sorted(project_ids)
-            if isinstance(domain_id := _field(reads.get((id(ks.projects), project_id)), "domain_id"), str) and domain_id
+            if isinstance(
+                domain_id := _field(reads.get((memo_identity(reads, ks.projects), project_id)), "domain_id"), str
+            )
+            and domain_id
         ],
         reads=reads,
     )
+    # Groups may belong to different projects, so warming only within _sources
+    # would still serialize one-group-per-project workspaces. Speculation here
+    # never reports an error or changes the ordered project/source checks below.
+    pending_sources = []
+    for project_id in sorted(project_ids):
+        with suppress(Exception):
+            project = reads.get((memo_identity(reads, ks.projects), project_id))
+            domain_id = _field(project, "domain_id")
+            if not isinstance(domain_id, str) or not domain_id:
+                continue
+            domain = _exact(ks.domains, domain_id, reads=reads)
+            if not _enabled(project) or not _enabled(domain):
+                continue
+            kind = account_spaces.domain_kind(domain)
+            if kind == "account" or (kind == "personal" and _field(project, "afterglow_personal_user_id") != user_id):
+                continue
+            ancestors = _ancestors(ks, project, reads=reads)
+            pending_sources.extend(
+                (meta, kind != "personal")
+                for meta in _raw(ks, catalog, reads=reads)
+                if _applies(meta, project, ancestors)
+            )
+    _warm_sources(ks, pending_sources, reads=reads)
     for project_id in sorted(project_ids):
         project = _exact(ks.projects, project_id, reads=reads)
         domain_id = _field(project, "domain_id")
@@ -924,7 +978,7 @@ def _login_access_current(user_id, domain_id, project, *, operation):
         "user_id": None,
         "group_id": gid,
     }
-    key = ("domain_projects", "projection_grants", gid, id(catalog))
+    key = ("domain_projects", "projection_grants", gid, memo_identity(reads, catalog))
     if key not in reads:
         grants = [_assignment(row, catalog) for row in _call(ks.role_assignments.list, group=gid)]
         if any(row != wanted_projection for row in grants):

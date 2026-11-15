@@ -2,7 +2,7 @@
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,15 +109,18 @@ async def management_projects(
 
 @router.get("/capabilities")
 async def project_capabilities(
+    request: Request,
     domain_id: str | None = Query(None, min_length=1),
     token_info: dict = Depends(get_token_info),
 ):
+    from app.api.deps import request_native_operation
     from app.services.domain_scope import domain_context
     from app.services.native_operation import NativeOperation
     from app.services.project_service import can_create_project
 
     target = domain_id or token_info["domain_id"]
-    async with NativeOperation() as operation:
+    async with NativeOperation() as fallback:
+        operation = request_native_operation(request, token_info) or fallback
         context = await operation.run(domain_context, token_info["user_id"], target, operation=operation)
         return {
             "domain_id": target,

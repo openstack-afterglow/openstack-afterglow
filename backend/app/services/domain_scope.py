@@ -9,11 +9,14 @@ operations keep sensitive guards request-fresh, outside every global read cache.
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 from fastapi import HTTPException
 from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneclient.exceptions import NotFound as ClientNotFound
 
 from app.services import domain_display, identity_roles, keystone
+from app.services.native_operation import memo_identity
 
 
 def _id(value) -> str:
@@ -21,7 +24,7 @@ def _id(value) -> str:
 
 
 def _domain_row(ks, name_or_id, operation):
-    if operation is not None and (id(ks.domains), name_or_id) in operation.reads:
+    if operation is not None and (memo_identity(operation.reads, ks.domains), name_or_id) in operation.reads:
         return operation.get("domains", name_or_id)
     try:
         return ks.domains.get(name_or_id)
@@ -62,7 +65,7 @@ def resolve_domain(name_or_id: str, *, operation=None) -> dict:
         raise HTTPException(status_code=403, detail="Domain is disabled")
     if operation is not None:
         # Aliases have their own resolution key; only canonical IDs seed exact reads.
-        operation.read((id(ks.domains), did), lambda: domain)
+        operation.read((memo_identity(operation.reads, ks.domains), did), lambda: domain)
     from app.services.account_spaces import domain_kind
 
     return {"id": did, "name": name, "enabled": True, "kind": domain_kind(domain)}
@@ -97,6 +100,35 @@ def assert_project_domain(domain_id: str, project_id: str, *, operation=None) ->
     assert_domain_resource(domain_id, identity_roles._field(project, "domain_id"))
     if identity_roles._field(project, "enabled") is not True:
         raise HTTPException(status_code=403, detail="Project is disabled")
+
+
+def _system_group_grants(ks, group_id, *, operation):
+    def load():
+        return list(ks.role_assignments.list(group=group_id, system="all"))
+
+    if operation is None:
+        return load()
+    return operation.read(("domain_scope", "system_group_grants", group_id), load)
+
+
+def _warm_system_groups(ks, group_ids, *, operation):
+    if operation is None:
+        return
+    from app.services.domain_projects import _WARM_FANOUT
+    from app.services.parallel import run_parallel
+
+    pending = [gid for gid in sorted(group_ids) if ("domain_scope", "system_group_grants", gid) not in operation.reads]
+    if len(pending) < 2:
+        return
+
+    def fetch(gid):
+        def run():
+            with suppress(Exception):  # ordered grant loop rereads failures
+                _system_group_grants(ks, gid, operation=operation)
+
+        return run
+
+    run_parallel(*(fetch(gid) for gid in pending), max_workers=_WARM_FANOUT)
 
 
 def has_scope_authority(user_id: str, *, domain_id: str | None = None, operation=None) -> bool:
@@ -134,15 +166,9 @@ def has_scope_authority(user_id: str, *, domain_id: str | None = None, operation
             if not isinstance(gid, str) or not gid:
                 raise ValueError("System grant group membership is unresolved")
             group_ids.add(gid)
+        _warm_system_groups(ks, group_ids, operation=operation)
         for gid in sorted(group_ids):
-            grants = (
-                operation.read(
-                    ("domain_scope", "system_group_grants", gid),
-                    lambda gid=gid: list(ks.role_assignments.list(group=gid, system="all")),
-                )
-                if operation is not None
-                else ks.role_assignments.list(group=gid, system="all")
-            )
+            grants = _system_group_grants(ks, gid, operation=operation)
             rows.extend((row, "group", gid) for row in grants)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Role assignments are unavailable") from exc

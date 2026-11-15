@@ -341,7 +341,7 @@ async def test_api_boundaries_disabled_invalid_credential_and_limits(sql_store, 
     async def reject(*args, **kwargs):
         raise HTTPException(401, "Invalid credential")
 
-    monkeypatch.setattr(ingest_api, "get_token_info", reject)
+    monkeypatch.setattr(ingest_api, "resolve_token_info", reject)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         settings.experience_enabled = False
         assert (await client.get("/api/v1/activity/experience-contract")).status_code == 404

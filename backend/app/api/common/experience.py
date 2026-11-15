@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import get_token_info
+from app.api.deps import resolve_token_info
 from app.models.experience import ExperienceBatch
 from app.rate_limit import limiter
 from app.services import experience
@@ -70,7 +70,7 @@ async def ingest_events(request: Request, response: Response) -> dict:
     actor = {}
     authorization = request.headers.get("authorization")
     if authorization is not None:
-        actor = await get_token_info(request, authorization, request.headers.get("x-project-id"))
+        actor = await resolve_token_info(request, authorization, request.headers.get("x-project-id"))
     elif any(not public_page(event.route) for event in batch.events):
         raise HTTPException(401, "Authentication is required for this page")
     # Diagnostic routes are excluded from recursive activity middleware. Reuse

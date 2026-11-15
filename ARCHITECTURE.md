@@ -183,6 +183,14 @@ Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `
 
 로그인 I/O 축소는 현재 보안 판정을 삭제하지 않는다. `GET /auth/me`는 JWT dependency의 살아 있는 `NativeOperation`에서 domain metadata를 materialize하고 exact user/home/working domain/project/JTI/native token/admin owner에 묶인 private snapshot만 handler로 전달한다. Client/operation은 요청 밖으로 넘기지 않으며 live-admin 별도 guard 뒤에는 invalidate한다. Refresh/JWT의 native exchange 전후 provider·password·조직·이메일 정책 검사는 중간 폐기를 막으므로 양쪽 fresh fence를 유지한다. 정상 Personal 준비는 graph lease 안의 catalog·검증된 도메인·같은 단계 assignment sources만 재사용하고 provisioning 뒤에는 fresh 해석한다. Intent/enrollment·deferred receipt·native-OIDC 삭제-primary 정리가 쓰기를 할 수 있어 잠금을 없애지 않는다. 비밀번호의 일반 username만 완전한 raw native core-name/home inventory에서 exact 후보 전체를 hydrate하며 SDK/불완전 projection·이메일 alias와 계정 생성 유일성 검사는 전체 상세 검증을 유지한다. 새 schema/config·권위 cache·서비스 topology 변경은 없다.
 
+**권위 해석 요청 내 재사용 (2026-11-15, source/local):** `domain_projects._sources`와 `_accessible_domains`는 적용되는 모든 프로젝트의 독립 group exact/member 조회를 최대4개씩 같은 작업 안에서 선읽기한다. Disabled/account/foreign-personal project와 manager projection 제외 규칙을 먼저 반영하고 planner·fetch 실패는 기존 정렬 project/source 판정이 같은 순서로 다시 읽어 보고한다. 시스템 권위의 독립 group assignment 조회도 같은4개 상한을 사용하며 parent chain은 의존 관계 때문에 직렬이다. 권위·오류 우선순위·다음 요청의 철회 관측은 유지한다.
+
+`get_token_info`의 function-scoped yield dependency가 소유한 **전체** `NativeOperation`(client/catalog/reads)을 capabilities GET과 chat principal 해석에만 명시적으로 재사용한다. Bare read dictionary는 다른 client에 넘기지 않으며 identity-keyed manager/catalog 객체를 무효화·close까지 강하게 보존한다. Request state의 exact user/home/working domain/project/JTI/token/admin owner가 다른 principal의 재사용을 막고, service principal memo는 token/domain과 operation generation을 함께 검사한다. Identity mutation·workspace/provisioning·`require_admin`의 별도 fresh guard는 유지하고 operation close/drain은 streaming 전에 끝낸다. `get_policy_capabilities`는 현재 source에서 별도 principal 해석을 하지 않으며 원래 native policy HTTP 조회·deny·freshness를 유지한다. 요청 간 cache/TTL·schema·config·frontend·배포 topology 변경은 없다. 합성 endpoint call map·baseline/current 수치와 운영 미검증 범위는 `docs/testing.md`와 OpenSpec `reduce-authority-resolution-latency` 완료 기록에 둔다.
+
+`get_token_info`는 FastAPI dependency wrapper이고 일반 호출용 `resolve_token_info(..., operation=None)`가 인증 본체다. Experience·interaction ingestion과 Palimpsest legacy Hub의 명시 호출은 후자를 사용하여 `Depends` marker가 native operation으로 오인되지 않게 한다. 유효한 JWT를 실제 ingestion route로 통과시키는 회귀가 이 경계를 고정한다. 모든 manager/catalog identity key는 `memo_identity`에서 소유 객체를 보존한 뒤 생성한다.
+
+
+
 `services/native_transport.py`는 Keystone·SDK·MCP·background inventory factory에 process-owned HTTP socket pool을 제공한다. 매 작업의 requests/Keystoneauth Session·auth plugin·cookie/header·SDK Connection은 분리한다. 서비스 reader AccessInfo만 위 cache로 재사용하며 사용자 token/권위는 요청 간 공유하지 않는다. 설치 Requests의 scheme/host/port·CA/verify/client certificate·proxy별 pool key와 Keystoneauth TCP keepalive 및 timeout/retry를 보존한다. 개별 session close는 빌린 pool을 닫지 않고 API/Notion worker drain과 process exit에서 정리한다. SDK3.3 `Connection.close()`는 HTTP session을 직접 닫지 않으므로 pool 소유권을 맡기지 않는다.
 
 `GET /api/v1/dashboard/snapshot`은 summary·quota overview 두 section을 한 fresh caller proof로 읽고 `{data,error}`를 독립 반환한다. K3s·실측 telemetry·announcements는 별도 요청을 유지한다. Redis의 같은 key 동시 force refresh는 진행 중 일반 read 뒤 한 번의 fresh pass를 공유하며 mutation invalidation은 이전 flight를 분리한다. JSON cache는 compact UTF-8을 사용한다. 브라우저 GET도 기존 family registry에서 AbortSignal별 취소를 분리하고 force queue를 공유한다. Scope/mutation/ABA 뒤 pending snapshot을 폐기하고 정상 bearer rotation은 기존 logical view를 유지한다. 목록 polling은 완료 후 간격·visibility/offline pause·한 후행 manual round를 공통 helper로 적용하며 표시용 SWR은 mounted scope-owned controller의30초 snapshot만 남긴다.
@@ -2142,9 +2150,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2bd3b2a0fc045d19b1242042cf9616b63e3b04e9a2196d587657c6eb5b26a7d4",
-  "reviewed_at": "2026-11-11T13:25:25Z",
-  "summary": "docs: align auth and deployment native pin contract with derived Kolla pin for 1.32.15; no runtime change"
+  "source_sha256": "23a7eda16c03a9eb2ee3d0421a30bc6ceafead945e9435484fdc098d7d7b7a38",
+  "reviewed_at": "2026-11-15T01:20:14Z",
+  "summary": "권위 해석4-way 선읽기와 capabilities/chat exact-owner NativeOperation 공유 및 모든 identity key의 강한 참조를 검토했다. 직접 인증 core 및 관리자 chat 별도 fresh guard와 요청 도중 철회 거부를 유지한다. Schema/config/frontend/topology 변화는 없다."
 }
 ```
 <!-- architecture-review:end -->

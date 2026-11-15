@@ -119,7 +119,7 @@ async def test_actor_comes_only_from_verified_auth_and_dynamic_paths_are_erased(
         assert authorization == "Bearer supplied" and project == "requested-project"
         return ACTOR.copy()
 
-    monkeypatch.setattr(interactions, "get_token_info", verified)
+    monkeypatch.setattr(interactions, "resolve_token_info", verified)
     event = observation(
         page="/dashboard/compute/instances/private-resource", destination="/admin/projects/[id]/resources"
     )
@@ -172,7 +172,7 @@ async def test_invalid_bearer_never_downgrades_to_anonymous(interaction_client, 
     async def denied(*_args):
         raise HTTPException(status, "Authentication unavailable")
 
-    monkeypatch.setattr(interactions, "get_token_info", denied)
+    monkeypatch.setattr(interactions, "resolve_token_info", denied)
     response = await interaction_client.post(
         "/api/v1/activity/interactions", json={"events": [observation()]}, headers={"Authorization": "Bearer invalid"}
     )

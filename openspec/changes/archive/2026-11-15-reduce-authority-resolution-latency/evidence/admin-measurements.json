@@ -1,0 +1,1532 @@
+{
+  "scope": "Synthetic Keystone/Redis and 10ms per directory call; FastAPI auth and separate require_admin; upstream mocked after authorization. One sample each, concurrent benchmark processes, no production claim.",
+  "baseline": "06a804a9",
+  "before": [
+    {
+      "admin_source": "direct",
+      "calls": 82,
+      "delay_ms": 10.0,
+      "elapsed_ms": 747.72,
+      "map": [
+        {
+          "args": [
+            "accounts"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-a"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-b"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "groups.list",
+          "query": {
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "inference_rules.list_inference_roles",
+          "query": {}
+        },
+        {
+          "args": [
+            "foreign"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "own"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal-user"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "second"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.list",
+          "query": {
+            "domain": "tenant-a"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "project": "own"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "system": "all",
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "roles.list",
+          "query": {}
+        },
+        {
+          "args": [
+            "user"
+          ],
+          "caller": "app.services.native_operation.get",
+          "count": 2,
+          "method": "users.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-0"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-1"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-2"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-3"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-4"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-5"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-6"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-7"
+          }
+        }
+      ],
+      "path": "/api/v1/chat/conversations",
+      "peak": 4
+    },
+    {
+      "admin_source": "group",
+      "calls": 84,
+      "delay_ms": 10.0,
+      "elapsed_ms": 784.32,
+      "map": [
+        {
+          "args": [
+            "accounts"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-a"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-b"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "groups.list",
+          "query": {
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "inference_rules.list_inference_roles",
+          "query": {}
+        },
+        {
+          "args": [
+            "foreign"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "own"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal-user"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "second"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.list",
+          "query": {
+            "domain": "tenant-a"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "project": "own"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "group": "team-0",
+            "system": "all"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "system": "all",
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "roles.list",
+          "query": {}
+        },
+        {
+          "args": [
+            "user"
+          ],
+          "caller": "app.services.native_operation.get",
+          "count": 2,
+          "method": "users.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-0"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-1"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-2"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-3"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-4"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-5"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-6"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-7"
+          }
+        }
+      ],
+      "path": "/api/v1/chat/conversations",
+      "peak": 4
+    }
+  ],
+  "after": [
+    {
+      "admin_source": "direct",
+      "calls": 82,
+      "delay_ms": 10.0,
+      "elapsed_ms": 477.21,
+      "map": [
+        {
+          "args": [
+            "accounts"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-a"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-b"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "groups.list",
+          "query": {
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "inference_rules.list_inference_roles",
+          "query": {}
+        },
+        {
+          "args": [
+            "foreign"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "own"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal-user"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "second"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.list",
+          "query": {
+            "domain": "tenant-a"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "project": "own"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "system": "all",
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "roles.list",
+          "query": {}
+        },
+        {
+          "args": [
+            "user"
+          ],
+          "caller": "app.services.native_operation.get",
+          "count": 2,
+          "method": "users.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-0"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-1"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-2"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-3"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-4"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-5"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-6"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-7"
+          }
+        }
+      ],
+      "path": "/api/v1/chat/conversations",
+      "peak": 4
+    },
+    {
+      "admin_source": "group",
+      "calls": 84,
+      "delay_ms": 10.0,
+      "elapsed_ms": 510.83,
+      "map": [
+        {
+          "args": [
+            "accounts"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-a"
+          ],
+          "caller": "app.services.domain_scope._domain_row",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "tenant-b"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "domains.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "team-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "groups.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "groups.list",
+          "query": {
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "inference_rules.list_inference_roles",
+          "query": {}
+        },
+        {
+          "args": [
+            "foreign"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "own"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "personal-user"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "second"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-0"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-1"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-2"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-3"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-4"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-5"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-6"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [
+            "work-7"
+          ],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "projects.list",
+          "query": {
+            "domain": "tenant-a"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "project": "own"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "effective": true,
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.load",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "group": "team-0",
+            "system": "all"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_scope.<lambda>",
+          "count": 2,
+          "method": "role_assignments.list",
+          "query": {
+            "system": "all",
+            "user": "user"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.native_operation.load",
+          "count": 2,
+          "method": "roles.list",
+          "query": {}
+        },
+        {
+          "args": [
+            "user"
+          ],
+          "caller": "app.services.native_operation.get",
+          "count": 2,
+          "method": "users.get",
+          "query": {}
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-0"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-1"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-2"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-3"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-4"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-5"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-6"
+          }
+        },
+        {
+          "args": [],
+          "caller": "app.services.domain_projects._call",
+          "count": 2,
+          "method": "users.list",
+          "query": {
+            "group": "team-7"
+          }
+        }
+      ],
+      "path": "/api/v1/chat/conversations",
+      "peak": 4
+    }
+  ]
+}
