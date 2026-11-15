@@ -56,10 +56,10 @@
   {#if floatingIps.length === 0}
     <div class="text-center py-8 text-ink-2 text-sm">{emptyLabel}</div>
   {:else}
-    <div class="motion-stagger grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+    <div class="motion-stagger divide-y divide-line">
       {#each floatingIps as fip (fip.id)}
         <div
-          class="resource-selection-surface bg-surface-base border border-line rounded-lg p-3 flex items-center gap-3"
+          class="resource-selection-surface px-3 py-3 flex flex-wrap items-center gap-3"
           data-selected={selectedIds.has(fip.id)}
         >
           <SelectionCheckbox

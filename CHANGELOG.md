@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### Changed
+- 개요 후속 대시보드 경로의 중첩 표·카드·알림을 구분선으로 정리하고 프로젝트 설정의 h2/h3 위계를 복원했다. 프로젝트 선택의 중첩 warm 배경을 neutral selection으로 바꾸고 사용량·활동 정보의 다크 대비를 높였다. 튜토리얼 초대가 검색/새로고침을 덮지 않도록 header 흐름에 두며 banner의 warm glow를 제거했다. Drover 설명의 외톨이 줄과 tablet 카드의 긴 상태 overflow를 수정했다. 실제 인스턴스·네트워크·Drover·사용량·프로젝트 설정·볼륨·활동 경로는 로컬 튜토리얼 데이터의 두 테마·두 화면 크기에서 detector 0건이다. `/dashboard/networks`의 404 장식과 mock IAM 권한 redirect는 별도 한계로 남긴다.
+
+### Fixed
+- 튜토리얼 시작 버튼과 초대 말풍선이 실제 투어 가용성(`tourAvailability`)을 따르도록 했다. mock에서 실계정으로 전환한 비관리자나 인증·프로젝트 전환 중인 관리자에게 버튼이 보이거나 눌러도 동작하지 않던 문제를 줄이고, 인스턴스 상세 route도 같은 gate를 쓴다.
+- 데이터 마운트 테스트의 reader token override3곳을 `try/finally`의 명시 복원으로 격리했다. `client` fixture가 global override를 지운 뒤 `monkeypatch` teardown이 오래된 인증 함수를 되살리던 순서 누수를 고쳤다. 동일 프로세스의 data-mount polluter→익명 인증 victim은 수정 전1passed/1failed, 수정 후2passed이며 제품 인증·API 동작은 바꾸지 않았다.
+
 ## [1.32.19] - 2026-11-15
 
 ### Fixed

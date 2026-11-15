@@ -91,7 +91,7 @@
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
 
-	<p class="text-sm text-ink-2 mb-6">{t('dashboard.description')}</p>
+	<p class="text-sm text-ink-2 mb-6 text-balance break-keep">{t('dashboard.description')}</p>
 
 	<RegexSearch id="drover-cluster-search" bind:value={search} />
 	<TableViewControls {view} class="" />

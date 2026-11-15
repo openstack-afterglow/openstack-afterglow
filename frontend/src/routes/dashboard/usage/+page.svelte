@@ -280,10 +280,10 @@
 				{@const max     = hasData ? Math.max(...seriesData) : null}
 				<div role="group" aria-label={card.label} class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
 					<div class="flex items-baseline justify-between">
-						<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{card.label}</p>
+						<p class="text-xs uppercase tracking-wide text-[var(--color-ink-2)]">{card.label}</p>
 						{#if current !== null}
 							<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-								<AnimatedNumber value={current} format={(n) => n.toFixed(1)} /><span class="text-xs text-[var(--color-ink-3)] ml-0.5">{displayUnit}</span>
+								<AnimatedNumber value={current} format={(n) => n.toFixed(1)} /><span class="text-xs text-[var(--color-ink-2)] ml-0.5">{displayUnit}</span>
 							</span>
 						{/if}
 					</div>
@@ -312,7 +312,7 @@
 						<p class="text-xs text-ink-2">{t('telemetry.nativeState', { status: telemetryStatus(rawSeries.native_status) })}</p>
 					{/if}
 					{#if hasData}
-						<p class="text-xs tabular-nums text-[var(--color-ink-3)]">
+						<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
 							{t('usage.minMax', { min: min!.toFixed(1), max: max!.toFixed(1), unit: displayUnit })}
 						</p>
 					{/if}
@@ -328,7 +328,7 @@
 			{:else}
 				<ObservationTable model={observationView0} loaded>
 {#snippet children(tableView)}
-<ResponsiveTable class="mt-4">{#snippet cards()}{#each tableView.rows as inst, i (inst.id)}
+<ResponsiveTable embedded class="mt-4">{#snippet cards()}{#each tableView.rows as inst, i (inst.id)}
 					{@const cpuPct = usageValue(inst.cpu_pct, inst.cpu_status)}{@const ramPct = usageValue(inst.ram_pct, inst.ram_status)}
 					<CompactResourceCard><div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{instanceRanks.get(inst.id) ?? i + 1}. {inst.name}</h3><StatusChip status={inst.status} /></div>
 						<p class="text-xs tabular-nums">vCPU: {inst.vcpus} · {cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}</p><p class="text-xs tabular-nums">RAM: {Math.round(inst.ram_mb / 1024)} GB · {ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}</p>
@@ -365,7 +365,7 @@
 									<td class="py-2.5 pr-4">
 										<div class="flex items-center gap-2">
 											<span class="tabular-nums text-ink-0 font-medium whitespace-nowrap">{inst.vcpus} vCPU</span>
-											<span class="tabular-nums text-[var(--color-ink-3)] w-8 text-right shrink-0">
+											<span class="tabular-nums text-[var(--color-ink-2)] w-8 text-right shrink-0">
 												{cpuPct !== null ? `${cpuPct.toFixed(0)}%` : '—'}
 											</span>
 											{#if cpuPct !== null}
@@ -379,7 +379,7 @@
 									<td class="py-2.5 pr-4">
 										<div class="flex items-center gap-2">
 											<span class="tabular-nums text-ink-0 font-medium whitespace-nowrap">{Math.round(inst.ram_mb / 1024)} GB</span>
-											<span class="tabular-nums text-[var(--color-ink-3)] w-8 text-right shrink-0">
+											<span class="tabular-nums text-[var(--color-ink-2)] w-8 text-right shrink-0">
 												{ramPct !== null ? `${ramPct.toFixed(0)}%` : '—'}
 											</span>
 											{#if ramPct !== null}

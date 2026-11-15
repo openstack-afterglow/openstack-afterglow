@@ -103,7 +103,7 @@
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-    <h3 class="text-sm font-semibold text-ink-0">{t('projects.title')}</h3>
+    <h2 class="text-sm font-semibold text-ink-0">{t('projects.title')}</h2>
     <div class="w-48"><ProjectSelector /></div>
   </div>
   {#if settingDefault}<LoadingState variant="inline" label={tc('state.processing')}  />{/if}
@@ -124,16 +124,15 @@
   {:else if view.rows.length === 0}
     <p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>
   {:else}
-    <div class="space-y-2">
+    <div class="divide-y divide-line">
       {#each view.rows as proj (proj.id)}
         {@const isActive = $auth.projectId === proj.id}
         {@const isDefault = defaultProjectId === proj.id}
         <div
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-            {isActive ? 'bg-action-warm/10 border border-action-warm/30' : 'bg-surface-sunken/50 border border-transparent'}"
+          class="w-full flex flex-wrap items-center gap-3 px-3 py-3 {isActive ? 'bg-surface-selected' : ''}"
         >
           <div class="flex-1 min-w-0 text-left">
-            <div class="text-sm font-medium truncate {isActive ? 'text-warm-text' : 'text-ink-0'}">{proj.name}</div>
+            <div class="text-sm font-medium truncate text-ink-0">{proj.name}</div>
             <div class="break-all font-mono text-xs text-ink-2">{proj.id}</div>
             {#if proj.description}
               <div class="text-xs text-ink-2 truncate">{proj.description}</div>
@@ -142,10 +141,10 @@
 
           <div class="flex items-center gap-1.5 shrink-0">
             {#if isDefault}
-              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">{t('projects.default')}</span>
+              <span class="text-xs text-ink-2 font-medium">{t('projects.default')}</span>
             {/if}
             {#if isActive}
-              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">{t('projects.active')}</span>
+              <span class="text-xs text-ink-0 font-medium">{t('projects.active')}</span>
             {/if}
             {#if isDefault}
               <button

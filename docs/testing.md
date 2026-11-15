@@ -40,6 +40,43 @@ nav_order: 8
 - 실제 현재 SvelteKit `/admin/users?domain_id=default`를 별도 Vite와 읽기 전용 loopback API fixture로 실행했다. Synthetic browser identity에서9locale×light/dark×390/1280px **36조건** 모두 시스템 badge·열린 설명과 disabled 삭제를 확인했다. 문서 overflow0, 활성 시스템 계정 action0, admin identity mutation request0이다. 실제 DOM·스크린샷은 `~/.local/share/afterglow-proofs/backup-system-account-20261115/ui/{ui-matrix.json,receipt.json,<locale>-<theme>-<width>.png}`에 보존했다. 다른 IAM/member/group/credential 표면은 unit proof이며 운영 identity/provider proof가 아니다. Browser·fixture·Vite를 종료했다.
 - Representative fake dry-run은 DMSLAB 형태의 `gigabytes=10868`, `backup_gigabytes=1000`, policy1개·시스템 계정 부재에서 account/options 생성, exact project member 부여, capacity **1000→32604**를 보고했다. Redis writes0/native writes0이며 `~/.local/share/afterglow-proofs/backup-system-account-20261115/dry-run.json`에 저장했다. `backups` COUNT20과 typed quota는 유지한다. 실제 운영 전체 프로젝트 보고서를 실행한 것은 아니다.
 - 운영 활성화는 기본false flag와 별도 owner 승인·원래 key/authoritative Redis 복구·완전 native inventory·권한/retention count 검토 뒤에만 수행한다. Scoped401은 password reset 근거가 아니며 native 장애·unsupported group/domain/system/inherited drift·900초 password backoff는 자동 복구를 지연/차단할 수 있다. 실제 backup 완료·guest/volume restore와 production recovery는 미검증이다. 구체적인 순서는 `docs/deployment.md`의 자동 백업 활성화 계획을 따른다.
+## Data-mount 테스트 override 순서 누수 (2026-11-15, source/local, test-only)
+
+- UI pass의 pristine gate에서 기존 backend15023passed/106skipped와 익명 인증 테스트1실패(401 대신503)를 관측했다. Parent 승인으로 `backend/tests/test_instances_data_mounts.py`만 수정했으며 제품 인증 코드·fixture 공통 소유권·schema·native 정책은 바꾸지 않았다. UI 수정과 구분하는 별도 OpenSpec은 `fix-data-mount-test-override-isolation`이다.
+- 결정적 명령(같은 pytest 프로세스, xdist 없음): `cd backend && uv run python -m pytest 'tests/test_instances_data_mounts.py::test_get_reports_provider_rule_state_not_guest_mount_state_and_no_secret[active]' tests/test_auth_security.py::test_protected_endpoints_without_token -q --setup-show`. 변경 전1passed/1failed, victim 단독1passed. Setup에서 monkeypatch가 client보다 앞서고 teardown에서 client가 먼저 clear한 뒤 monkeypatch가 이전 token 함수를 재삽입함을 기록했다.
+- 세 reader override를 `previous = app.dependency_overrides.copy()` 뒤 direct assignment/`try/finally`의 `clear(); update(previous)`로 복원하고 assertion을 finally 뒤에 둔다. 불필요한 명시 monkeypatch parameter만 제거했다. 같은 명령은 수정 후2passed이며 `uv run python -m pytest tests/test_instances_data_mounts.py tests/test_auth_security.py -q`는140passed. `uv run ruff check tests/test_instances_data_mounts.py`와 `uv run ruff format --check tests/test_instances_data_mounts.py`도 통과했다. Lucky worksteal 재시도나 victim 약화로 처리하지 않았다.
+- 증거는 같은 외부 proof 디렉터리의 `override-before-setup.log`, `override-victim-alone.log`, `override-after-setup-and-target.log`, `override-regression.json`에 보존했다. 수정 전 canonical 실패는 `gate-override-leak.log`, 수정 후 전체 통과는 `gate-full.log`다. 최종 source snapshot은 `a801f86938ea3ec9b09a445b16f07d61ee408428fe6c75b54f6e0abb54f76209`다.
+
+
+## 개요 외 대시보드 시각 결함 정리 (2026-11-15, source/local)
+
+- 기준은 `ux/dashboard-slop-pass`의 `1b902c1d`다. 신규 `ux/slop-pass-2`와 전용 worktree에서만 수정했으며 공유 checkout·dev·다른 세션의 파일은 건드리지 않았다. 로컬 Vite의 `?tutorial=on`, 1440×900/390×844를 같은 조건으로 비교했다. 기준 source의 별도 detached worktree(5198)와 수정 source(5199)로 native 시나리오도 다시 맞췄다. 실제 API base는 사용하지 않는 loopback59999이며 데이터·권한은 기존 tutorial fixture다.
+- 첫 라이트 스캔과 최종 결과:
+
+| 실제 경로 | 전 desktop/mobile | 후 light·dark desktop/mobile | 조치 |
+| --- | --- | --- | --- |
+| `/dashboard/compute/instances` | 1 / 0 | 0 / 0 | shared tutorial 초대를 header normal flow로 옮겨 refresh label 가림 제거 |
+| `/dashboard/network/networks` | 3 / 2 | 0 / 0 | 동일 초대 수정, Floating IP 안쪽 카드들을 divider 행으로 평탄화 |
+| `/dashboard/drover` | 0 / 1 | 0 / 0 | 설명 whole-word 균형, tablet의 긴 상태/작업 wrap |
+| `/dashboard/usage` | 0 / 5 | 0 / 0 | embedded compact 행, 정보 ink-2 |
+| `/dashboard/project-settings` | 5 / 4 | 0 / 0 | flat alert·ownership, embedded member 표, neutral selection, h2/h3 |
+| `/dashboard/volumes` | 0 / 0 | 0 / 0 | 변경 없이 확인 |
+| `/dashboard/activity` | 0 / 0 | 0 / 0 | dark에서 읽기 어려운 empty/metadata ink-3를 ink-2로 수정 |
+
+- 추가 다크 기준 스캔은 위 앞5경로에서 각각 desktop/mobile `3/1`, `5/3`, `2/2`, `10/14`, `5/5`였다. 공유 mock banner와 tutorial 초대의 warm glow, 사용량의 낮은 대비가 추가로 드러났다. Banner는 기존 neutral restraint shadow로, 초대/hint는 그림자·화살표·countdown animation 없는 normal flow로 바꿨다. 새 motion은 추가하지 않았다. 상태의 `[ + ]`, `[ · ]` 등은 디자인 시스템의 실제 signal이므로 유지했다.
+- 오탐/한계: 요청에 적힌 `/dashboard/networks`는 목록이 아닌404다. 라이트 두 크기의 `AssetGlyph` cramped-padding1건은 aria-hidden 장식 art라 고치지 않았다(다크는0). 실제 목록 경로를 별도로 확인했다. `/dashboard/iam`은 mock authority에서 `/dashboard`로 redirect되므로 IAM 자체를 수용했다고 주장하지 않는다. Redirect된 개요의 기존 다크 neutral chip 대비4.4:1은 이번 route 범위 밖이며 남겨 두었다.
+- 공유 컴포넌트의 수용 범위도 위 실제 route로 한정한다. `TutorialStartButton`의 MCP `.heading-actions`, Waygate toolbar, ProjectIamConsole, 관리자 화면 등 다른 host와 `ProjectLifecycleSection`을 재사용하는 `IamProjectEdit` slide-over는 이번에 렌더링하지 않았다. 해당 host의 geometry/occlusion까지 검증했다고 주장하지 않으며 component/unit coverage와 실제 route 시각 수용을 구분한다.
+- `agent-desktop` AX ref로 전후 같은 native 시나리오를 실행했다: 인스턴스 정렬·정규식 정상/오류/해제·새로고침·튜토리얼 나중에, 네트워크 검색·정렬·refresh, Drover 삭제 이력 toggle·검색·정렬, 사용량24h/30d/7d·자동 갱신 toggle·정렬, 설정 label 재조회·검색·정렬, 볼륨 검색·정렬·refresh, 활동 기간·차트 데이터 disclosure. 생성·제거·비밀번호·form submit은 실행하지 않았다. Native 주소창 submit의 focus 확인 실패 후 페이지 이동은 CDP로 수행했고, 실제 상호작용은 AX ref로 수행했다. 이후 `focus-window`로 정확한 창을 활성화해 stale 주소창을 닫고 실제 native200% zoom을 확인했다(1440→720 CSS px, DPR1.25→2.5).
+- 반응형: 변경5경로×390/767/768/1023/1024/1440×light/dark의60조건에서 document/main 가로 overflow0. 최초768px Drover의 긴 `CREATE_IN_PROGRESS` chip이 main을9px 넘는 실제 결함을 확인해 card header·action wrapping으로 수정했다. Native200%에서도5경로의 가로 overflow0과 retained controls를 관측했다. 이 native zoom 캡처는 마지막 Drover card-wrap 보완 전이며 최종 source의 cutover 검증은60조건 matrix다. 최종 zoom 재촬영 시도는 native focus 확인 실패로 키가 전달되지 않아 별도 성공으로 세지 않았다. 프로젝트 h2/h3는 전후 모두14px다.
+- 계산된 스타일과 실제 ancestor 배경 합성으로 측정: 활성 프로젝트 label은 라이트 `#c2410c`/`#fad7c6`3.85:1→`#19191c`/`#f2f2f2`15.67:1, 다크 `#f4976c`/`#49342b`5.24:1→`#f4f4f5`/`#212224`14.49:1. 사용량 label·활동 empty copy는 라이트4.70→6.81:1, 다크3.29→6.60:1이다. 선택 단어·정보·경고 의미는 유지했다.
+- `impeccable context`와 렌더링 `detect --json --cdp 61778 --target <local-origin>`을 실행했다. layout/distill/polish reference 지침을 적용했으며 독립 `critique`/`audit` 세션이나 colorize/animate 커맨드를 정식 실행했다고 주장하지 않는다. 신규 애니메이션은 없다.
+- 표적 검증: tutorial·designSystemRules·PersonalProjectLabelSection·ProjectLifecycleSection4파일83테스트 통과(이후 추가한 cluster source guard는 최종 gate에 포함). `npm run check`는3118파일0errors/기존15warnings였다.
+- Gate 환경 복구 기록: 최초 실행은 pytest 미설치로 수집 전에 중단했다. `uv sync --frozen --extra dev --python 3.12`로 CPython3.12.13의 test extras를 설치했다. 다음 실행은 backend15021passed/106skipped와3failed였다(설정된 host ID와 branding public API prefix가 fixture 기대와 다름). APFS worktree 생성이 ignored `.env`·`afterglow.conf`까지 복사했음을 발견했다. 두 gate 사본이 유지한 branch-worktree 원본과 byte-identical이고 git-ignored임을 `cmp -s`/`git check-ignore`로 확인한 뒤 disposable gate 사본만 제거했다. 원본·공유 checkout·제품 source는 변경하지 않았고 내용을 출력하지 않았다. 초기 로그는 `gate-initial.log`, `gate-config-contaminated.log`로 보존한다.
+- 산출물: `~/.local/share/afterglow-proofs/slop-audit-2-20261115/`의 `baseline-summary.json`, `baseline-dark-summary.json`, `accepted-matrix.json`, `responsive-geometry.json`, `contrast.json`, `annotation-contrast.json`, `zoom200.json`, 전후 PNG, `before-matched-scenario-log.json`/`after-final-scenario-log.json`, `before-matched-busy-instances.mp4`/`after-final-busy-instances.mp4`. 녹화는 모두H.264/1440×900이고 각각97.73초/97.80초다. 최종 native 시나리오는8개 요청 경로와34개 AX 작업이며 IAM은 redirect 관측만 포함한다. 초기 실패·추가 발견도 보존했다. Tutorial 목업의 미지원 개인 label·ownership 조회 오류는 실패로 남으며 실제 Keystone·provider·인증·운영 데이터·배포 검증이 아니다.
+
+- 최종 canonical gate: 구성 사본을 제거하고 test-only 누수를 수정한 detached worktree에서 `env PATH="/Users/pieroot/.local/share/uv/python/cpython-3.12-macos-aarch64-none/bin:$PATH" AFTERGLOW_TEST_PROJECT_NAME=afterglow-slop2-gate-20261115-2401 npm run test:gate`가 exit0(279.85초). Backend15024passed/106skipped, frontend591files/7962tests, contract262passed, functional292passed/46skipped/131deselected, Ruff901files 통과. Architecture4334files/source`a801f86938ea3ec9b09a445b16f07d61ee408428fe6c75b54f6e0abb54f76209`, experience catalog 검사도 통과했다. Orchestration274passed/1todo, Kolla JS29passed, CLI20passed/PowerShell36skipped, frontend log-runner9passed다. Native MariaDB/PostgreSQL/Redis test profile은 고유 project만 생성·종료했으며 network까지 제거했다. 최종 full frontend suite에 AccountPending·K3sClusterCard·NetworkBulkSelection 등 공유 host의 unit 회귀도 포함하지만 렌더링 수용으로 대체하지 않는다.
+
+- 정리: 소유 browser tab을 닫고 세 named Vite service(초기 서비스 포함)를 모두 중지했다. Detached gate worktree `/Users/pieroot/code/afterglow-wt-slop-pass-2-gate`만 제거했으며 결과 branch worktree는 보존했다. 공유 checkout·다른 worktree·기존 Compose 서비스/volume·원본 ignored 설정은 그대로 두었다.
 
 ## 프로젝트 개요 시각 결함 정리 (2026-11-15, source/local)
 

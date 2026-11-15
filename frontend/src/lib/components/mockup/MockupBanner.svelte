@@ -44,7 +44,7 @@
 		border: 1px solid var(--warm-ring);
 		border-radius: 999px;
 		background: color-mix(in oklab, var(--color-surface-raised) 94%, var(--color-warm));
-		box-shadow: var(--glow-warm);
+		box-shadow: var(--shadow-restraint);
 		padding: 0.625rem 0.75rem 0.625rem 0.875rem;
 		color: var(--color-ink-0);
 	}

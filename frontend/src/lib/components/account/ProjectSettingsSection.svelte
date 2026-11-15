@@ -166,7 +166,7 @@
 
 <div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
 	<div class="mb-4">
-		<h3 class="text-sm font-semibold text-ink-0">{t('projectSettings.title')}</h3>
+		<h2 class="text-sm font-semibold text-ink-0">{t('projectSettings.title')}</h2>
 		{#if projectId}
 			<p class="text-xs text-ink-2 mt-0.5">{projectId}</p>
 		{/if}
@@ -196,7 +196,7 @@
 			{:else}
 				{#if members.length === 0}<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
 				{:else if view.rows.length === 0}<p role="status" class="py-4 text-sm text-ink-2">{tc('table.noMatches')}</p>{/if}
-				<ResponsiveTable>{#snippet cards()}
+				<ResponsiveTable embedded class="mt-3">{#snippet cards()}
 					{#each view.rows as m (m.user_id)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{m.username || m.user_id}</h3><span class="text-xs">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span></div><p class="text-sm break-all">{m.email || '—'}</p>{#if m.group_name}<p class="text-xs text-ink-2">{m.group_name}</p>{/if}
 						<SystemAccountNotice identity={m} />

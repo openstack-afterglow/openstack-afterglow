@@ -35,13 +35,13 @@
 	onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !cluster.deleted_at) { e.preventDefault(); onSelect(cluster.id); } }}
 >
 	<!-- Header -->
-	<div class="flex items-center gap-2.5 mb-3">
+	<div class="flex flex-wrap items-center gap-2.5 mb-3">
 		<div class="cluster-badge w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0">
 			<svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
 				<path stroke-linejoin="round" stroke-width="1.8" d="M12 2.4 19.8 6.1 21.7 14.3 16.3 20.8H7.7l-5.4-6.5 1.9-8.2L12 2.4Z"/><circle cx="12" cy="12" r="4.1" stroke-width="1.8"/><circle cx="12" cy="12" r="0.85" fill="currentColor" stroke="none"/><path stroke-linecap="round" stroke-width="1.8" d="M12 9.8V6.2M13.72 10.63l2.81-2.25M14.14 12.49l3.51.8M12.95 13.98l1.57 3.25M11.05 13.98l-1.57 3.25M9.86 12.49l-3.51.8M10.28 10.63 7.47 8.38"/>
 			</svg>
 		</div>
-		<div class="flex-1 min-w-0">
+		<div class="flex-1 basis-24 min-w-0">
 			<div class="text-ink-0 font-semibold text-sm truncate {cluster.deleted_at ? 'line-through text-ink-2' : ''}">
 				{cluster.name}
 			</div>
@@ -75,7 +75,7 @@
 	</div>
 
 	<!-- Actions -->
-	<div class="flex gap-1.5" role="none" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+	<div class="flex flex-wrap gap-1.5" role="none" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 		<Button variant="secondary" size="sm" class="flex-1" onclick={() => canDownload && onDownloadKubeconfig(cluster.id, cluster.name)} disabled={!canDownload}>kubeconfig</Button>
 		<Button variant="secondary" size="sm" onclick={() => !cluster.deleted_at && onSelect(cluster.id)} disabled={!!cluster.deleted_at}>{t('actions.details')}</Button>
 		{#if !cluster.deleted_at}
