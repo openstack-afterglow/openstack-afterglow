@@ -64,7 +64,7 @@
 		{#if emptyContent}{@render emptyContent()}{:else}<p class="py-2 text-sm text-ink-2">{t('recentInstances.empty')}</p>{/if}
 	{/if}
 	{#if !pending || loaded || instances.length > 0}
-		<ResponsiveTable>
+		<ResponsiveTable embedded class="mt-3">
 			{#snippet cards()}
 				{#each view.rows as instance (instance.id)}
 					<CompactResourceCard>

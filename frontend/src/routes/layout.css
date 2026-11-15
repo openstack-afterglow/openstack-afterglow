@@ -250,7 +250,6 @@
   --motion-duration-shimmer: 1600ms;
   --motion-duration-stagger: 40ms;
   --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
-  --motion-ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
   /* Highlight swept across an in-flight fill; light on both themes because fills are saturated. */
   --motion-sheen: rgb(255 255 255 / 32%);
   /* Authored glyph artwork follows the selected console palette and appearance.
@@ -1050,7 +1049,7 @@ body {
   animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
 }
 .motion-pop {
-  animation: motion-pop var(--motion-duration-panel) var(--motion-ease-overshoot) backwards;
+  animation: motion-pop var(--motion-duration-panel) var(--motion-ease-emphasized) backwards;
   animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
 }
 .motion-slide-left {

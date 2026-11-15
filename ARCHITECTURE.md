@@ -2171,9 +2171,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "66f5ec2a40afa4dcd53fa58045275e9fc58e7533336314f83b55ff2317bc18ff",
-  "reviewed_at": "2026-11-15T06:56:31Z",
-  "summary": "Release 1.32.16 metadata bump over the four integrated branches (authority latency, backup target-auth backoff, dead-grant UX, stuck creating volume recovery); no runtime change in this commit."
+  "source_sha256": "530352e1fb7cd5d5735243d704582a1b572d7092e8d11e73778b285c15a0aa70",
+  "reviewed_at": "2026-11-15T09:12:58Z",
+  "summary": "Dashboard overview slop pass: embedded table/alert variants, range toggle contrast, overshoot easing removed; no runtime, schema or permission change."
 }
 ```
 <!-- architecture-review:end -->

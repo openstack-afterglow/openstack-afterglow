@@ -13,15 +13,17 @@
 		tone?: AlertTone;
 		title?: string;
 		class?: string;
+		/** Inside a Card: tone-colored text without a second bordered box. */
+		flat?: boolean;
 		children: Snippet;
 		actions?: Snippet;
 	}
 
-	let { tone = 'danger', title, class: className = '', children, actions, experience, experienceMessage }: Props = $props();
+	let { tone = 'danger', title, class: className = '', flat = false, children, actions, experience, experienceMessage }: Props = $props();
 	const renderedMessage = $derived(experienceMessage ? { ...experienceMessage, tone } : undefined);
 </script>
 
-<div use:experiencePresentation={{ context: experience, message: renderedMessage }} class="alert motion-enter alert-{tone} {className}" role={tone === 'danger' ? 'alert' : 'status'}>
+<div use:experiencePresentation={{ context: experience, message: renderedMessage }} class="alert motion-enter alert-{tone} {className}" class:alert-flat={flat} role={tone === 'danger' ? 'alert' : 'status'}>
 	<div class="alert-body">
 		{#if title}
 			<p class="alert-title">{title}</p>
@@ -61,6 +63,7 @@
 		line-height: 1.5;
 		color: color-mix(in oklab, var(--alert-text) 88%, var(--color-ink-0));
 	}
+	.alert-flat { padding: 0; border: 0; border-radius: 0; background: transparent; }
 	.alert-actions {
 		display: flex;
 		flex-shrink: 0;

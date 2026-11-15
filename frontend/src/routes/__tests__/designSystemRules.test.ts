@@ -79,7 +79,6 @@ const motionTokenNames = [
 	'--motion-duration-shimmer',
 	'--motion-duration-stagger',
 	'--motion-ease-emphasized',
-	'--motion-ease-overshoot',
 	'--motion-sheen',
 ];
 
@@ -145,7 +144,6 @@ const motionCssVars = [
 	"durationShimmer: 'var(--motion-duration-shimmer)'",
 	"durationStagger: 'var(--motion-duration-stagger)'",
 	"easeEmphasized: 'var(--motion-ease-emphasized)'",
-	"easeOvershoot: 'var(--motion-ease-overshoot)'",
 	"sheen: 'var(--motion-sheen)'",
 ];
 
@@ -318,6 +316,19 @@ describe('design system source contracts', () => {
 		expect(layoutSource).toContain('transition-delay: 0ms !important');
 		const reducedBlock = layoutSource.slice(layoutSource.indexOf('@media (prefers-reduced-motion: reduce)'));
 		for (const declaration of reducedMotionDurationDeclarations) expect(reducedBlock).toContain(declaration);
+	});
+
+	it('never defines a motion curve that overshoots its resting value', () => {
+		// A cubic-bezier control point with y outside 0..1 springs past the target (bounce/elastic).
+		const curves = [...layoutSource.matchAll(/cubic-bezier\(([^)]+)\)/g), ...tokenSource.matchAll(/cubic-bezier\(([^)]+)\)/g)];
+		expect(curves.length).toBeGreaterThan(0);
+		for (const [, args] of curves) {
+			const [, y1, , y2] = args.split(',').map((value) => Number.parseFloat(value));
+			expect(y1).toBeGreaterThanOrEqual(0);
+			expect(y1).toBeLessThanOrEqual(1);
+			expect(y2).toBeGreaterThanOrEqual(0);
+			expect(y2).toBeLessThanOrEqual(1);
+		}
 	});
 
 });
