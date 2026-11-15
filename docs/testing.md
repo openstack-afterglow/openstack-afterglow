@@ -6,6 +6,15 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 예약 백업 member 세션 소유자 속성 수정 (2026-11-15, source/local + 운영 관측)
+
+- 운영 관측(1.32.18 배포 뒤): 관리 계정 reconciler가 수렴했다(읽기 전용 보고 `complete=true`, 남은 쓰기 0, DMSLAB에 `member` 1개 부여, 38개 프로젝트 `backup_gigabytes`가 규칙값으로 일치, DMSLAB `10868→32604`). 그 직후 예약 백업이 실제로 제출되어 Cinder에 500GB 백업 `creating`이 생겼고 소스 볼륨이 `backing-up`이 됐다. 그러나 Afterglow 저널은 `unknown`/`backup_id: null`(“acceptance or completion could not be confirmed; it will not be resubmitted”)으로 남아 이후 추적·정리·다음 슬롯이 진행되지 않았다.
+- 원인(운영 컨테이너에서 확인): Cinder 2026.1의 `backup:backup_project_attribute` 기본값은 `rule:admin_api`라 member 세션은 자기 백업의 `project_id`를 `None`으로 본다. `_owned()`가 `project_id == 대상 프로젝트`를 요구해 member가 만들고 읽는 백업이 모두 소유 불명이 됐다. 이전 릴리스는 admin 역할 프로젝트 연결이라 속성이 보여 드러나지 않았고 fake 테스트는 항상 `project_id`를 채웠다.
+- 수정: `_make_proxy`가 기존 정확한 프로젝트 증명(`prove_project_scope`) 통과 뒤에만 연결에 `_afterglow_exact_project_scope`를 표시하고, `_scoped()`가 이 표시가 있는 연결의 backup 행에서 `project_id`가 `None`일 때만 증명된 프로젝트를 채운다(prune list/get, reconcile list/get, create 응답). 보이는 다른 소유자는 덮어쓰지 않고 증명 없는 연결과 snapshot 경로는 기존 엄격 규칙을 유지한다.
+- 새 테스트: member 세션 fake(숨은 소유자 속성)가 제출한 백업을 추적하고 자기 소유의 오래된 백업만 정리하며 다른 소유자 백업은 남긴다. 증명 없는 같은 fake는 `unknown`이며 아무것도 지우지 않는다. 증명 표시는 정확한 프로젝트 factory만 설정한다. 첫 테스트는 채움을 끄면 운영 증상(`unknown`)으로 실패함을 확인했다.
+- 격리 `npm run test:gate`는 source `eed25e56`(SHA256 `2f4170873d1073c7161407c8dbae4502bde5c147bb13c6bf9d4f2b2f96809f59`/4348files)에서 **종료0**이다. Backend **15221passed/106skipped**, frontend **592files/7983tests**, contract **262passed**, functional **292passed/46skipped/131deselected**, Ruff 912files. 원문은 `~/.local/share/afterglow-proofs/release-1.32.18/gate-member-ownership.log`.
+- 한계: 수정된 이미지에서 운영 저널이 이름·볼륨으로 다시 맞춰지는지, 백업이 `available`에 도달하는지, 복원이 되는지는 이 기록 시점에 관측하지 않았다.
+
 ## 백업 계정 reconciler 실제 SDK 호환 수정 (2026-11-15, source/local + 운영 읽기 전용 확인)
 
 - 배경: 1.32.17을 운영에 배포하고 `[backup_system_account].enabled = true`를 적용하자 reconciler가 관리 계정(옵션·활성·암호화 credential 확인됨)을 만든 뒤 매 주기 `AttributeError: 'Proxy' object has no attribute 'user_groups'`로 inventory에서 멈췄다. 읽기 전용 보고도 `complete=false`/`native_inventory_unavailable`였다. 역할·쿼터 쓰기는 일어나지 않았다(fail-closed). 켜기 전 보고가 `complete=true`였던 것은 관리 계정이 아직 없어 이 경로를 지나지 않았기 때문이다.

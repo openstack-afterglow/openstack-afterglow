@@ -2185,9 +2185,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2f4170873d1073c7161407c8dbae4502bde5c147bb13c6bf9d4f2b2f96809f59",
-  "reviewed_at": "2026-11-15T13:26:08Z",
-  "summary": "Scheduled backup ownership accepts a proven exact-project member session whose Cinder hides the admin-only backup project attribute; strict rule kept otherwise."
+  "source_sha256": "256c26c76c2b7f7a2e27c6c3e14c246a5a9631468af73bd7aed70f5dac8d4cd9",
+  "reviewed_at": "2026-11-15T13:31:41Z",
+  "summary": "Release 1.32.19: member-session backup ownership fix, archive and version bump; no further source change."
 }
 ```
 <!-- architecture-review:end -->
