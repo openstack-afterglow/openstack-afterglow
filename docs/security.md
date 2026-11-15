@@ -6,6 +6,21 @@
 
 ---
 
+## 자동 백업 전용 시스템 계정
+
+`afterglow-auto-backup`은 configured `openstack.user_domain_name`에 속하는 비대화형 machine principal이다. Cinder backup과 snapshot 생성은 token의 project를 소유자로 사용하므로, 해당 계정의 진짜 target-project token만 사용한다. `afterglow_admin`의 tenant 역할을 늘리거나 admin-project token으로 생성하지 않는다. Trove와 다른 operator caller의 인증은 변경하지 않는다.
+
+기존 application encryption master key에서 별도 HKDF domain으로 만든 AES-GCM key가 Redis의 계정 ID·domain·password envelope를 보호한다. Cloud auth URL·configured domain·예약 이름을 AAD로 묶는다. 원래 키와 authoritative Redis persistence/backup을 함께 보존해야 하며, ciphertext를 잃거나 키를 바꾸는 것은 정상 password rotation이 아니다. API·진단·로그에는 평문 password나 ciphertext를 노출하지 않는다.
+
+계정 생성·활성 복구·machine 옵션 복구·password reset은 elected leader의 renewable execution lease 아래에서만 수행한다. Project-scoped401은 password reset 근거가 아니다. 실패한 **unscoped** password proof만900초 최소 간격의 reset을 허용하며, Keystone write와 fresh unscoped proof가 모두 성공한 뒤 암호문을 저장한다. Native write 뒤 Redis 저장 전 crash는 기존/누락 password의 다음 unscoped 실패로 감지하며 최소 interval 뒤 복구한다. 무한 재시도·provider exception text 노출은 금지한다.
+
+계정 옵션은 lockout·expiry·first-use password change를 무시하고 MFA rules를 비운다. 사용자·관리자 API는 이 principal의 membership·role·group·credential·enabled·password·삭제를 고정 `system_account_protected` 코드로 거부한다. Login·refresh·token issuance도 차단한다. 목록에는 `system_account: {"kind": "auto_backup"}`를 표시하거나 선택 후보에서 제외한다. 이 차단은 Afterglow API 경계이며 직접 Keystone 편집을 막지는 못한다.
+
+Role은 백업/스냅샷 정책 레코드(일시 중지도 포함)나 active operation journal이 있는 프로젝트의 stock `member`만 허용한다. 마지막 필요가 사라지면300초 grace 뒤 authoritative registry를 다시 확인하고 exact assignment를 회수한다. Keystone/Cinder/Redis 관측 실패는 삭제 근거가 아니다. Personal 권위 검사는 암호화된 계정 기록의 exact ID가 받은 같은 프로젝트의 직접·비상속·비그룹 `member`만 제외하며, 다른 역할·사용자·scope는 기존 unexpected-authority 오류를 유지한다.
+
+자동 복구는 건강한 주기와 bounded backlog 안에서 삭제·비활성·옵션·직접 역할 drift를 고친다. 외부 native 장애나900초 password backoff가 있으면 고정 복구 시간을 보장하지 않는다. `member`는 Cinder만의 제한 역할이 아니므로 native 기본 정책상 해당 프로젝트의 다른 resource mutation 권한도 가진다. Password가 외부에 노출되지 않도록 보관·transport를 제한하고, 이 계정을 다른 작업에 재사용하지 않는다.
+
+
 ## 표준 프로젝트 역할과 서비스 권한
 
 Lumen·Drover·Waygate·Palimpsest는 fresh native core `member`/`manager`/`admin`에 프로젝트 생성·관리 권한을, `reader`에 허용된 비밀 없는 조회·콘텐츠 읽기를 제공한다. 서비스별 grade/leaf IAM 역할은 기본 인가나 새 배정의 조건이 아니다. Existing group/domain/custom implication으로 얻은 실제 core 권한은 유지하며 role 이름 substring·브라우저 flag·personal metadata만으로 승격하지 않는다. Native 정책은 이 core floor를 더 좁힐 수 있지만 `@`로 reader에게 mutation/유료 inference/접속 credential 발급을 열 수 없다.

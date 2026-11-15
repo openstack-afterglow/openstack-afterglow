@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "Systemkonto for automatisk sikkerhetskopiering",
+	"systemAccount.managedHelp": "Systemet administrerer denne kontoen for automatisk sikkerhetskopiering. Brukere kan ikke redigere eller fjerne den, endre aktiveringsstatus, medlemskap, roller eller grupper, eller endre påloggingsopplysninger. Kontoer eller nødvendige roller som fjernes direkte i OpenStack, gjenopprettes automatisk.",
 	"table.lastSuccessfulRead": "Viser data fra siste vellykkede innlasting.",
 	"table.search": "Regex-søk",
 	"table.regexPlaceholder": "f.eks. ^web|db$",

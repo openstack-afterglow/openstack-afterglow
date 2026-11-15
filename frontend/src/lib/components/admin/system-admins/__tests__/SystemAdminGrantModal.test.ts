@@ -149,3 +149,15 @@ describe('system administrator grants across explicit domains', () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 });
+
+it('excludes marked users from system-role grant candidates without excluding same-name human users', async () => {
+  mocks.get.mockImplementation(async (path: string) => path === '/api/v1/admin/domains'
+    ? { items: domains }
+    : { items: [{ ...alice, system_account: { kind: 'auto_backup' } }, { ...bob, name: alice.name }], next_marker: null });
+  render(SystemAdminGrantModal, { onGranted: vi.fn(), onClose: vi.fn() });
+  await selectDomain('Tenant A');
+  await screen.findByText(alice.name);
+  expect(screen.getAllByRole('button', { name: t('systemGrant.grant') })).toHaveLength(1);
+  await fireEvent.click(screen.getByRole('button', { name: t('systemGrant.grant') }));
+  expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/identity/system-roles/grant', { user_id: bob.id }, 'system-token', 'operator-project');
+});

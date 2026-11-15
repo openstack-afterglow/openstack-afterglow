@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { isSystemAccount } from '$lib/utils/systemAccount';
+  import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
   import { onDestroy } from 'svelte';
   import FormModal from '$lib/components/ui/FormModal.svelte';
@@ -41,7 +43,7 @@
   });
 
   async function submit() {
-    if (!alive || !open || submitting || rereadRequired || !domainId || user.domain_id !== domainId || confirmation !== user.id) return;
+    if (!alive || !open || submitting || isSystemAccount(user) || rereadRequired || !domainId || user.domain_id !== domainId || confirmation !== user.id) return;
     const request = ++generation;
     const target = identity;
     submitting = true;
@@ -63,6 +65,7 @@
 
 <FormModal bind:open title={t('userDelete.title')} {submitting} {onClose}>
   <div class="space-y-4">
+    <SystemAccountNotice identity={user} />
     <Alert tone="warning">{t('userDelete.warning')}</Alert>
     <div class="space-y-4" data-tour="admin-users-delete-fields">
     <dl class="space-y-3 text-sm">
@@ -81,6 +84,6 @@
   </div>
   {#snippet actions()}
     <Button variant="secondary" disabled={submitting} onclick={() => { open = false; onClose(); }}>{tc(rereadRequired ? 'actions.close' : 'actions.cancel')}</Button>
-    {#if !rereadRequired}<span bind:this={confirmHost} class="contents"><Button variant="danger" disabled={submitting || !domainId || user.domain_id !== domainId || confirmation !== user.id} ariaBusy={submitting} dataTour="admin-users-delete-confirm" onclick={submit}>{#if submitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{submitting ? t('state.deleting') : t('actions.delete')}</Button></span>{/if}
+    {#if !rereadRequired && !isSystemAccount(user)}<span bind:this={confirmHost} class="contents"><Button variant="danger" disabled={submitting || !domainId || user.domain_id !== domainId || confirmation !== user.id} ariaBusy={submitting} dataTour="admin-users-delete-confirm" onclick={submit}>{#if submitting}<LoadingState variant="control" label="" aria-hidden="true" />{/if}{submitting ? t('state.deleting') : t('actions.delete')}</Button></span>{/if}
   {/snippet}
 </FormModal>

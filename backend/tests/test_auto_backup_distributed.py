@@ -584,12 +584,15 @@ async def test_redis_coordination_fault_never_opens_provider_or_scans_policies(d
 
 
 def production_clock(monkeypatch, clock, provider):
-    from app.services import keystone
+    from unittest.mock import AsyncMock
+
+    from app.services import backup_system_account
 
     original = ab._now
     monkeypatch.setattr(ab, "_now", lambda value: clock if value is None else original(value))
     monkeypatch.setattr(ab, "_POLL_SECONDS", 0.05)
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", provider.factory("loop-leader"))
+    monkeypatch.setattr(backup_system_account, "get_connection_for_project", provider.factory("loop-leader"))
+    monkeypatch.setattr(backup_system_account, "ensure_project", AsyncMock())
 
 
 async def live_members(group):

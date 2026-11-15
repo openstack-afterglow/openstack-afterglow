@@ -473,11 +473,26 @@ def _personal_owner(sources, catalog, user_id):
 
 
 def _personal_member(sources, catalog, user_id, project_id):
+    from app.services import backup_system_account
+
     member = account_spaces._personal_member_role(catalog)
-    if any(source["role_id"] == member["id"] for source in sources):
+    managed_id = backup_system_account.cached_managed_user_id()
+    human_sources = [
+        source
+        for source in sources
+        if not backup_system_account.is_managed_member_source(
+            source, project_id, managed_id, member_role_id=member["id"]
+        )
+    ]
+    if account_spaces.has_personal_member_source(human_sources, catalog, project_id):
         return account_spaces._member_sources(sources, catalog, user_id, project_id)
-    # Established owner-based projects keep their original grants and boundary.
-    return _personal_owner(sources, catalog, user_id)
+    # Preserve established owner-based projects without changing their grants.
+    # Reject malformed managed grants, including group-expanded membership.
+    if managed_id and any(
+        source["user_id"] == managed_id or managed_id in source.get("users", ()) for source in human_sources
+    ):
+        return False
+    return _personal_owner(human_sources, catalog, user_id)
 
 
 def accessible_domains(user_id, *, ks=None, operation=None):
@@ -868,6 +883,9 @@ async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_pr
         return
     manager, reader = _roles(catalog)
     managers = await asyncio.to_thread(_manager_users, ks, project, catalog)
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_no_system_accounts(managers, conn=ks)
     group = await asyncio.to_thread(_projection, domain_id, ks)
     if group is None:
         existing_groups = {_field(g, "id") for g in await asyncio.to_thread(ks.groups.list, domain=domain_id)}
@@ -896,6 +914,8 @@ async def _sync(domain_id, lease, ks, catalog, *, created_groups=None, staged_pr
         if not isinstance(uid, str) or not uid:
             raise _unavailable()
         members.add(uid)
+        if backup_system_account.system_account_marker(user):
+            await backup_system_account.assert_not_system_account(uid, conn=ks, user=user)
     grants = list(await asyncio.to_thread(ks.role_assignments.list, group=gid))
     wanted = {
         "role_id": manager["id"],
@@ -1028,8 +1048,10 @@ async def ensure_login_access(user_id, domain_id, *, operation=None):
 
 
 async def _ensure_reader(lease, ks, catalog, project_id, user_id):
+    from app.services import backup_system_account
     from app.services.project_service import _assignment_rows, _direct_ids
 
+    await backup_system_account.assert_not_system_account(user_id, conn=ks)
     _, reader = _roles(catalog)
     rows = await asyncio.to_thread(_assignment_rows, ks, project_id)
     if reader["id"] not in _direct_ids(rows, user_id):
@@ -1052,6 +1074,7 @@ async def apply_default_quotas(domain_id, project_id, lease):
 
 
 async def _bootstrap(domain_id, creator_id, lease, ks, catalog, *, grant_manager):
+    from app.services import backup_system_account
     from app.services import project_ownership_journal as journal
     from app.services.project_service import (
         _assignment_rows,
@@ -1062,6 +1085,7 @@ async def _bootstrap(domain_id, creator_id, lease, ks, catalog, *, grant_manager
         _write_initial_owner,
     )
 
+    await backup_system_account.assert_not_system_account(creator_id, conn=ks)
     if await asyncio.to_thread(_active_user, ks, creator_id) is None:
         raise HTTPException(403, "domain_creator_disabled")
     manager, _ = _roles(catalog)
@@ -1271,6 +1295,8 @@ async def create_domain(*, name, description, enabled, creator_id, mutation=None
 
 
 def managers(domain_id, *, ks=None, catalog=None):
+    from app.services import backup_system_account
+
     ks = _client(ks)
     catalog = catalog if catalog is not None else _catalog(ks)
     role = _canonical(catalog, "manager")
@@ -1290,6 +1316,7 @@ def managers(domain_id, *, ks=None, catalog=None):
                     "role_id": role["id"],
                     "role_name": "manager",
                     "direct": role["id"] in _direct_ids(direct, uid),
+                    "system_account": backup_system_account.system_account_marker(user),
                 }
             )
     return {
@@ -1304,6 +1331,9 @@ async def change_manager(domain_id, user_id, role_id, *, remove, actor):
     from app.services.project_service import _assignment_rows, _direct_ids
 
     async with _mutation() as (lease, ks, catalog):
+        from app.services import backup_system_account
+
+        await backup_system_account.assert_not_system_account(user_id, conn=ks)
         manager, _ = _roles(catalog)
         if role_id != manager["id"]:
             raise HTTPException(422, "domain_manager_role_invalid")

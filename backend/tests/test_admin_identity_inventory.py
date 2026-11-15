@@ -84,7 +84,7 @@ async def group_authority(mock_conn, monkeypatch):
     mock_conn.identity.get.side_effect = graph
     mock_conn.identity.role_assignments.side_effect = group_assignments
     mock_conn.identity.group_users.side_effect = lambda group_id: iter(
-        [SimpleNamespace(id="group-member", domain_id="default")]
+        [SimpleNamespace(id="group-member", name="group-member", domain_id="default", enabled=True)]
     )
     mock_conn.identity.get_group.side_effect = lambda gid: resource(gid)
     # These are legacy domains without a Default project. Keep the native
@@ -423,6 +423,7 @@ async def test_project_mutation_detaches_overlapping_get_and_preserves_current_c
     # Both SDKs describe the same complete domain, including its real Default
     # authority. Creation must establish ownership and pass durable quota guards.
     policy_native.domain_rows["default"] = SimpleNamespace(id="default", name="Default", enabled=True)
+    policy_native.domain_rows["home"].name = "Accounts"
     for item in rows:
         item.enabled = item.is_enabled
         item.parent_id = "default"
@@ -507,6 +508,8 @@ async def test_project_mutation_detaches_overlapping_get_and_preserves_current_c
     try:
         await asyncio.wait_for(started.wait(), 2)
         if mutation == "create":
+            mock_conn.block_storage = policy_native.conn.block_storage
+            mock_conn.session = policy_native.conn.session
             response = await admin_client.post(url, json={"name": "Created Lab", "domain_id": "default"})
             assert response.status_code == 201
             assert response.json()["enabled"] is True

@@ -33,6 +33,13 @@ scheduler_enabled = false
 # Example: "2026-11-05T00:00:00Z"; environment: INSTANCE_USAGE_ADOPTION_REFERENCE_AT.
 adoption_reference_at = ""
 
+[backup_system_account]
+# Native IAM and backup quota writer. Enable only for one verified shared Redis cohort.
+# Creates/repairs the managed noninteractive user; policies (including paused) keep member grants.
+# CLI backend/scripts/backup_system_account.py --report is always read-only.
+# Environment override: BACKUP_SYSTEM_ACCOUNT_ENABLED.
+enabled = false
+
 [openstack]
 auth_url = "http://keystone.example.com:5000/v3"
 project_name = "admin"

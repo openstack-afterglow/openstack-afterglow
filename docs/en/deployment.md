@@ -11,6 +11,17 @@ nav_order: 1
 
 Afterglow supports three deployment modes: Docker Compose (development / small scale), Kubernetes (production), and ArgoCD (GitOps).
 
+### Automatic-backup system account activation
+
+`[backup_system_account].enabled` defaults to `false`. This source change does not activate native account, role or quota writes in production. Cinder backup/snapshot schedulers now require the dedicated target-scoped machine identity; they never fall back to the fixed operator.
+
+Before separate owner-approved activation, preserve and restore-test the authoritative Redis policy/journal/identity store and existing application encryption master key. Review complete native project/assignment/quota inventory and fixed-operator permissions to manage the exact reserved user and stock project `member` role. Run `cd backend && uv run python scripts/backup_system_account.py --report`; it reads Redis/native state only and lists intended writes without generating passwords or writing status. Human system administrators can also read `/api/v1/admin/backup-system-account/report` and `/api/v1/admin/backup-system-account`.
+
+Review every project's intended quota change before enabling the same effective flag on all matching API writers through a separately approved deployment. The elected, leased reconciler runs every15 seconds with at most20 native writes per cycle. It repairs user existence/enabled/machine options and eligible exact direct roles, verifies readback, and derives global `backup_gigabytes = 3 * gigabytes` (`-1` remains unlimited). Manual native backup-capacity edits are overwritten. Typed capacity and backup COUNT quotas remain unchanged; retention may still hit the count limit.
+
+Paused policy records and active journals retain membership. After all needs disappear, revocation waits300 seconds and fresh complete observations. Scoped401 never resets the password; only failed unscoped proof permits a leader-only reset, at least900 seconds apart, followed by fresh proof before encrypted persistence. Native outages, unsupported authority drift and bounded backlog can delay recovery. Disabling reconciliation does not delete the account, grants, encrypted record or recovery points. Actual target-token ownership, backup completion and restore acceptance require separate live verification. See the [Korean activation procedure](../deployment.md#자동-백업-시스템-계정-활성화-계획) for prerequisites and ordered operations.
+
+
 ### Existing native ephemeral OIDC mappings
 
 Keep the operator's deployed Keystone mapping and handler authoritative. An operator-owned OIDC registry entry can opt into the existing native provisioning flow with `[auth.providers.<key>.native_mapping]`: `mode="ephemeral"`, exact `mapping_id`, `sha256`, `account_domain_id`, and `personal_domain_id`. Pin the SHA-256 of the complete canonical JSON object containing `schema_version` and `rules` (sorted keys, separators `,` and `:`), not only a rules-file byte hash. The registry still pins issuer/client/IdP/protocol and ID-token transport; tenant SQL providers cannot opt in. Existing password/account-entry defaults remain unchanged for providers without this explicit trust.

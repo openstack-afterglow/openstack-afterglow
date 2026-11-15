@@ -95,6 +95,9 @@ class GroupDirectory(IdentityProvider):
             rows = [row for row in rows if row["scope"] == {"system": {"all": True}}]
         return iter(rows)
 
+    def group_users(self, gid):
+        return iter(self.users[uid] for uid in self.groups[gid])
+
     def add_user_to_group(self, uid, gid):
         self.writes.append(("add", uid, gid))
         self.groups[gid].add(uid)

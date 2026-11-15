@@ -491,3 +491,18 @@ describe('account controls follow real pending work', () => {
 		expect(api.put).toHaveBeenCalledWith('/api/v1/projects/project/members/joined-user/roles', { role_ids: ['reader-id'] }, 'token', 'project', { replayOnUnauthorized: false });
 	});
 });
+
+it('shows a marked backup member without role/removal controls or an assignment candidate', async () => {
+	const marker = { kind: 'auto_backup' as const };
+	const member = { user_id: 'backup', username: 'Backup worker', email: '', source: 'direct', is_manager: false, is_owner: false, roles: ['member'], direct_role_ids: ['member'], direct_roles: [{ id: 'member', name: 'member', inherited_role_ids: [] }], effective_role_ids: ['member'], external_role_ids: [], system_account: marker };
+	api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/eligible-users')
+		? [{ id: member.user_id, name: member.username, email: '', enabled: true, domain_id: 'accounts', system_account: marker }]
+		: authorityFixture(path) ?? (path.endsWith('/assignable-roles') ? { is_owner: true, can_manage_owners: true, roles: [] } : { items: [member] })));
+	render(ProjectSettingsSection);
+	await screen.findByText('자동 백업용 시스템 계정');
+	expect(screen.queryByRole('button', { name: '역할 편집' })).toBeNull();
+	expect(screen.queryByRole('button', { name: '멤버 제거' })).toBeNull();
+	expect(screen.queryByRole('option', { name: /Backup worker/ })).toBeNull();
+	expect(api.put).not.toHaveBeenCalled();
+	expect(api.delete).not.toHaveBeenCalled();
+});

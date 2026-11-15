@@ -411,3 +411,31 @@ describe('user credential tutorial anchor', () => {
     ctrl.dispose();
   });
 });
+
+it('excludes marked credential targets and blocks create, reveal, edit and delete for their credentials', async () => {
+  const system = { id: 'backup-user', name: 'Backup worker', domain_id: domainId, system_account: { kind: 'auto_backup' as const } };
+  const retained = { ...credential, user_id: system.id };
+  request.mockImplementation((path: string, domain: string, actor: CredentialAuthority, method?: string, body?: Record<string, unknown>) => {
+    if (path.includes('/users?')) return Promise.resolve({ items: [...users, system], next_marker: null });
+    if (path.includes('/cred-a')) return Promise.resolve(retained);
+    return respond(path, domain, actor, method, body);
+  });
+  const ctrl = await ready('user');
+  expect(ctrl.users.some(user => user.id === system.id)).toBe(false);
+  expect(ctrl.systemUsers).toEqual([system]);
+  await ctrl.selectUser(system.id);
+  expect(ctrl.selectedUser).toBe('');
+  await ctrl.open('create'); ctrl.draft.user_id = system.id; ctrl.draft.type = 'cert'; ctrl.draft.blob = 'private';
+  await ctrl.submit();
+  expect(request.mock.calls.some(([, , , method]) => method === 'POST')).toBe(false);
+  ctrl.close();
+  expect(ctrl.canManageCredential(retained)).toBe(false);
+  await ctrl.open('delete', retained); expect(ctrl.mode).toBeNull();
+  await ctrl.open('detail', retained);
+  const reads = request.mock.calls.length;
+  await ctrl.reveal(true);
+  expect(request.mock.calls).toHaveLength(reads);
+  expect(ctrl.mode).toBe('detail');
+  expect(request.mock.calls.some(([, , , method]) => method === 'PATCH' || method === 'DELETE')).toBe(false);
+  ctrl.dispose();
+});

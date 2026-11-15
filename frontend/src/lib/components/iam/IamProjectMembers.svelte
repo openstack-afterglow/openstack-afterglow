@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -48,14 +50,15 @@
 		loading = true; error = ''; catalog = null; editing = null; members = []; users = []; user = '';
 		try {
 			const [rows, roles, eligible] = await Promise.all([client.members(project.id), client.roles(project.id), authority.eligibleUsers(project.id)]);
-			if (live && session.isCurrent() && pending === revision) { members = rows.items; catalog = roles; users = eligible.filter(row => row.enabled); }
+			if (live && session.isCurrent() && pending === revision) { members = rows.items; catalog = roles; users = eligible.filter(row => row.enabled && !isSystemAccount(row)); }
 		} catch (cause) { if (pending === revision) fail(cause); }
 		finally { if (live && pending === revision) loading = false; }
 	}
 	// Group/inherited grants stay read-only in the editor; adding direct roles matches assign().
-	function editable(member: ProjectAccessMember) { return !loading && !!catalog && (catalog.can_manage_owners || !member.is_owner); }
+	function editable(member: ProjectAccessMember) { return !isSystemAccount(member) && !loading && !!catalog && (catalog.can_manage_owners || !member.is_owner); }
 	function removable(member: ProjectAccessMember) { return editable(member) && member.direct_role_ids.length > 0 && !member.is_owner && (!member.is_manager || catalog?.can_manage_owners); }
 	function startEdit(member: ProjectAccessMember) {
+		if (!editable(member) || blocked || busy || !session.canSubmit()) return;
 		editing = { ...member, source: member.direct_role_ids.length ? member.source : 'mixed' };
 		error = '';
 	}
@@ -63,13 +66,13 @@
 		if (!live || !session.isCurrent() || blocked || !session.canSubmit() || busy || loading || !catalog || !user) return;
 		const selected = users.find(row => row.id === user); if (!selected) return;
 		const current = members.find(row => row.user_id === user);
-		if (current?.is_owner && !catalog.can_manage_owners) return;
+		if (isSystemAccount(selected) || isSystemAccount(current) || (current?.is_owner && !catalog.can_manage_owners)) return;
 		editing = current ? { ...current, source: current.direct_role_ids.length ? current.source : 'mixed' } : { user_id: selected.id, username: selected.name, email: selected.email, is_owner: false, is_manager: false, source: 'direct', roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: [] };
 		error = '';
 	}
 	async function save(roleIds: string[]) {
 		const member = editing; const pending = revision;
-		if (!live || !session.canSubmit() || blocked || !member || busy || loading || !catalog || (member.is_owner && !catalog.can_manage_owners)) return;
+		if (!live || !session.canSubmit() || blocked || !member || isSystemAccount(member) || busy || loading || !catalog || (member.is_owner && !catalog.can_manage_owners)) return;
 		busy = true; error = '';
 		try { await client.assignRoles(project.id, member.user_id, roleIds); if (live && session.isCurrent() && pending === revision) { editing = null; await load(); } }
 		catch (cause) { if (pending === revision) fail(cause); }
@@ -109,6 +112,7 @@
 		{#snippet cards()}
 			{#each tableView.rows as member (`${member.user_id}-${member.source ?? ''}`)}<CompactResourceCard>
 				<h3 class="text-sm font-medium">{member.username || member.user_id}</h3><p class="text-xs">{member.source ? t(member.source) : '—'} · {t('roleCount', { count: member.roles.length })}</p>{#if member.is_owner && ownerCount <= 1}<p class="text-xs text-ink-2">{t('lastOwner')}</p>{/if}
+				<SystemAccountNotice identity={member} />
 				{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p>{/snippet}
 				{#snippet actions()}<Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => startEdit(member)}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
@@ -118,7 +122,7 @@
 			<thead><tr><TableColumnHeader view={tableView} columnKey="user" /><TableColumnHeader view={tableView} columnKey="roles" /><TableColumnHeader view={tableView} columnKey="source" /><th>{t('actions')}</th></tr></thead>
 			<tbody>
 				{#each tableView.rows as member (`${member.user_id}-${member.source ?? ''}`)}<tr>
-					<td>{member.username || member.user_id}</td>
+					<td>{member.username || member.user_id}<SystemAccountNotice identity={member} /></td>
 					<td><details><summary class="min-h-11 cursor-pointer">{t('roleCount', { count: member.roles.length })}</summary><p class="max-w-80 whitespace-normal text-xs [overflow-wrap:anywhere]">{member.roles.join(', ') || '—'}</p></details>{#if member.is_owner && ownerCount <= 1}<span class="text-xs text-ink-2">{t('lastOwner')}</span>{/if}</td>
 					<td>{member.source ? t(member.source) : '—'}</td>
 					<td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={busy || !editable(member)} onclick={() => startEdit(member)}>{t('editRoles')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || !session.canSubmit() || busy || !removable(member)} onclick={() => remove(member)}>{t('removeMember')}</Button></div></td>

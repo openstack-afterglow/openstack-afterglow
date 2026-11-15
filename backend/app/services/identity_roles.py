@@ -821,6 +821,44 @@ def _created_id(role):
     return rid
 
 
+async def _assert_mutable_users(users, *, conn):
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_no_system_accounts(users, conn=conn)
+
+
+async def assert_group_mutable(conn, group_id, *, members=None):
+    """Protect every current recipient, not just the requested membership target."""
+    from app.services import backup_system_account
+
+    try:
+        if members is None:
+            identity = conn.identity if hasattr(conn, "identity") else conn
+            if callable(getattr(identity, "group_users", None)):
+                members = await asyncio.to_thread(lambda: list(identity.group_users(group_id)))
+            else:
+                members = await asyncio.to_thread(lambda: list(identity.users.list(group=group_id)))
+        users = {_field(member, "id") for member in members}
+        if any(not isinstance(uid, str) or not uid for uid in users):
+            raise _unavailable("Group mutation recipients are unavailable")
+    except Exception as exc:
+        raise _provider_error(exc) from exc
+    unknown = set()
+    for member in members:
+        name = _field(member, "name")
+        if isinstance(name, str) and name:
+            await backup_system_account.assert_not_system_account(_field(member, "id"), conn=conn, user=member)
+        else:
+            unknown.add(_field(member, "id"))
+    if unknown:
+        await _assert_mutable_users(unknown, conn=conn)
+
+
+async def _assert_role_mutable(conn, catalog, role_id):
+    users = await asyncio.to_thread(_holders, conn, catalog, role_id)
+    await _assert_mutable_users(users, conn=conn)
+
+
 @_complete_mutation
 async def create_role(conn, token_info, attrs):
     attrs = {**attrs, "name": _canonical_name(attrs["name"])}
@@ -837,6 +875,7 @@ async def update_role(conn, token_info, role_id, attrs):
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
         row = _role(catalog, role_id)
+        await _assert_role_mutable(conn, catalog, role_id)
         if row["retired"]:
             raise HTTPException(status_code=409, detail="Retired service role identities are read-only")
         renamed = "name" in attrs and attrs["name"] != row["name"]
@@ -860,6 +899,7 @@ async def delete_role(conn, token_info, role_id):
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
         row = _role(catalog, role_id)
+        await _assert_role_mutable(conn, catalog, role_id)
         if row["protected"] or row["implied_role_ids"] or row["parent_role_ids"]:
             raise HTTPException(status_code=409, detail="Protected or connected roles cannot be deleted")
         try:
@@ -885,6 +925,7 @@ async def change_edge(conn, token_info, prior_id, implied_id, *, remove=False):
     async with _graph_lock(conn) as lease:
         catalog = await asyncio.to_thread(load_catalog, conn)
         prior = _role(catalog, prior_id)
+        await _assert_role_mutable(conn, catalog, prior_id)
         if _owner_bearing_role(catalog, implied_id):
             raise HTTPException(status_code=409, detail="Use the project ownership workflow to change owner grants")
         if remove:
@@ -998,6 +1039,7 @@ async def apply_role_presets(conn, token_info):
                     if child["id"] not in _role(catalog, prior["id"])["implied_role_ids"]:
                         continue
                     path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
+                    await _assert_role_mutable(conn, catalog, prior["id"])
                     attempted = True
                     await _write(lease, _native_edge, conn, "delete", path)
                     catalog = await asyncio.to_thread(load_catalog, conn)
@@ -1026,6 +1068,7 @@ async def apply_role_presets(conn, token_info):
                         continue
                     _validate_edge(catalog, prior["id"], child["id"])
                     path = f"/roles/{quote(prior['id'], safe='')}/implies/{quote(child['id'], safe='')}"
+                    await _assert_role_mutable(conn, catalog, prior["id"])
                     attempted = True
                     await _write(lease, _native_edge, conn, "put", path)
                     created_edges.append({"prior": prior_name, "implied": implied_name})
@@ -1141,7 +1184,13 @@ async def change_project_assignment(
     conn, token_info, project_id, role_id, *, user_id=None, group_id=None, remove=False
 ):
     """Generic system-admin assignment cannot circumvent scoped owner protection."""
+    from app.services import backup_system_account
+
     async with _graph_lock(conn) as lease:
+        if user_id is not None:
+            await backup_system_account.assert_not_system_account(user_id, conn=conn)
+        if group_id is not None:
+            await assert_group_mutable(conn, group_id)
         catalog = await asyncio.to_thread(load_catalog, conn)
         if not remove and _role(catalog, role_id)["name"].casefold() == "admin":
             raise HTTPException(status_code=422, detail="Native admin project grants are removal-only")
@@ -1289,12 +1338,14 @@ async def change_group_membership(
                 raise HTTPException(422, "Explicit group admission requires a selected domain")
             await require_admin(token_info)
         catalog = await asyncio.to_thread(load_catalog, conn)
-        from app.services import domain_projects, keystone
+        from app.services import backup_system_account, domain_projects, keystone
 
         ks = await asyncio.to_thread(keystone._get_admin_ks_client)
         if authorize is not None:
             await authorize(ks, catalog)
         await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id, ks=ks)
+        if user_id is not None:
+            await backup_system_account.assert_not_system_account(user_id, conn=ks)
         if not remove and not delete:
             if user_domain_id is not None:
                 reads = await asyncio.to_thread(_group_identity_home, ks, group_id, domain_id, user_domain_id)
@@ -1310,14 +1361,6 @@ async def change_group_membership(
                 group = await asyncio.to_thread(domain_projects._exact, ks.groups, group_id)
                 group_domain = _field(group, "domain_id")
                 await asyncio.to_thread(domain_projects.assert_membership, user_id, group_domain, ks=ks)
-        affected = await asyncio.to_thread(
-            domain_projects.assert_managers_remain,
-            ks=ks,
-            catalog=catalog,
-            group_id=group_id,
-            remove_group_user_id=user_id if remove else None,
-            delete_group=delete,
-        )
         assignments = await asyncio.to_thread(lambda: list(conn.identity.role_assignments(group_id=group_id)))
         if not remove and not delete:
             for assignment in assignments:
@@ -1352,11 +1395,21 @@ async def change_group_membership(
             users = {_field(member, "id") for member in members}
             if any(not isinstance(uid, str) or not uid for uid in users):
                 raise _unavailable("Group mutation recipients are unavailable")
+            await assert_group_mutable(conn, group_id, members=members)
             method, args, kwargs = conn.identity.delete_group, (group_id,), {"ignore_missing": False}
         else:
+            await assert_group_mutable(conn, group_id)
             users = {user_id}
             method = conn.identity.remove_user_from_group if remove else conn.identity.add_user_to_group
             args, kwargs = (user_id, group_id), {}
+        affected = await asyncio.to_thread(
+            domain_projects.assert_managers_remain,
+            ks=ks,
+            catalog=catalog,
+            group_id=group_id,
+            remove_group_user_id=user_id if remove else None,
+            delete_group=delete,
+        )
         await _session_ready(users)
         if (remove or delete) and _carries_system_scope(assignments):
             # Losing this group's system-scope grant can remove system authority.

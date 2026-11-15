@@ -11,6 +11,10 @@ scheduler_enabled = false
 # Empty keeps per-enrollment grace; explicit operator TOML may set a common aware instant.
 adoption_reference_at = ""
 
+# Machine identity/IAM/quota writes require explicit operator TOML opt-in.
+[backup_system_account]
+enabled = false
+
 [openstack]
 auth_url = {{ afterglow_keystone_auth_url | to_json }}
 project_name = {{ afterglow_service_project_name | to_json }}

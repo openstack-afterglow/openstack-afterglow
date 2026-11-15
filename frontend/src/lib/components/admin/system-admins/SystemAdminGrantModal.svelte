@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { SystemAccountIdentity } from '$lib/types/common';
+	import { isSystemAccount } from '$lib/utils/systemAccount';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -28,7 +30,7 @@
 		onGranted: () => void;
 	} = $props();
 
-	interface User {
+	interface User extends SystemAccountIdentity {
 		id: string;
 		name: string;
 		email: string;
@@ -59,7 +61,7 @@
 	let previousOwner = '';
 	const domainsReady = $derived(loadedAuthority === authority && !loadingDomains && !domainsError);
 	const selectedDomain = $derived(domainsReady ? domains.find(domain => domain.id === domainId) : undefined);
-	const tableView = createTableView<User>({ rows: () => allUsers, locale: () => intlLocale(), search: () => query, columns: () => [
+	const tableView = createTableView<User>({ rows: () => allUsers.filter(user => !isSystemAccount(user)), locale: () => intlLocale(), search: () => query, columns: () => [
 		{ key: 'name', label: t('systemTable.name'), value: row => row.name },
 		{ key: 'email', label: t('systemTable.email'), value: row => row.email },
 		{ key: 'id', label: t('systemTable.userId'), value: row => row.id }
@@ -138,7 +140,7 @@
 	}
 
 	async function grant(user: User) {
-		if (!selectedDomain || loadingUsers || usersError || granting || !allUsers.some(item => item.id === user.id)) return;
+		if (!selectedDomain || loadingUsers || usersError || granting || isSystemAccount(user) || !allUsers.some(item => item.id === user.id && !isSystemAccount(item))) return;
 		const requestAuthority = authority;
 		const requestDomainId = domainId;
 		const generation = ++grantGeneration;

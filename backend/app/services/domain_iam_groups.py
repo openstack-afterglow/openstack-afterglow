@@ -133,8 +133,11 @@ def _dto(group, domain_id, *, member_count, protected, sso_mapped):
     }
 
 
-async def _assert_unprotected(user, domain_id, token_info):
+async def _assert_unprotected(user, domain_id, token_info, *, ks):
     # Mirrors domain project membership: another privileged account is read-only.
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_not_system_account(_field(user, "id"), conn=ks, user=user)
     if _field(user, "id") != token_info["user_id"] and await domain_iam.protected_user(
         user, domain_id, credentials=False
     ):
@@ -228,6 +231,7 @@ async def update_group(group_id, attrs, token_info):
         ctx = await domain_iam.context(token_info)
         did = ctx["domain_id"]
         group = await _provider_call(_editable, ks, catalog, group_id, did)
+        await identity_roles.assert_group_mutable(ks, group_id)
         mapped = await _provider_call(_mapped_names, ks, did)
         if "name" in attrs and attrs["name"] != _field(group, "name"):
             await _provider_call(_assert_unique_name, ks, did, attrs["name"], group_id)
@@ -255,7 +259,9 @@ def _authorize(token_info, group_id, *, user_id=None, add=False, delete=False):
         if delete:
             _assert_unmapped(await _provider_call(_mapped_names, ks, did), group)
             for uid in members:
-                await _assert_unprotected(await _provider_call(domain_projects._exact, ks.users, uid), did, token_info)
+                await _assert_unprotected(
+                    await _provider_call(domain_projects._exact, ks.users, uid), did, token_info, ks=ks
+                )
             return
         if add:
             if user_id in members:
@@ -265,7 +271,7 @@ def _authorize(token_info, group_id, *, user_id=None, add=False, delete=False):
             if user_id not in members:
                 raise HTTPException(404, "domain_group_member_not_found")
             user = await _provider_call(domain_projects._exact, ks.users, user_id)
-        await _assert_unprotected(user, did, token_info)
+        await _assert_unprotected(user, did, token_info, ks=ks)
 
     return authorize
 

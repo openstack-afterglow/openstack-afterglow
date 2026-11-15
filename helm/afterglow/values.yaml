@@ -15,6 +15,10 @@ instanceUsage:
   # New adoption fails closed once that common expiry is reached; existing schedules stay native.
   adoptionReferenceAt: ""
 
+# Machine identity/IAM/quota writer; explicitly enable only for one shared Redis cohort.
+backupSystemAccount:
+  enabled: false
+
 # -----------------------------------------------------------------------------
 # 이미지
 # -----------------------------------------------------------------------------

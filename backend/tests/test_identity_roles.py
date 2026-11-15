@@ -147,6 +147,25 @@ class IdentityProvider:
     def get_user(self, uid):
         return SimpleNamespace(id=uid, name=uid, domain_id="default", enabled=True)
 
+    def domains(self, name=None):
+        domain = self.get_domain("default")
+        return iter([domain] if name is None or domain.name == name else [])
+
+    def users(self, domain_id=None, name=None, group=None, domain=None):
+        ids = (
+            set(self.groups.get(group, []))
+            if group is not None
+            else {"operator"}
+            | {row["user"]["id"] for row in self.assignments if "user" in row}
+            | {uid for members in self.groups.values() for uid in members}
+        )
+        target_domain = domain_id if domain_id is not None else domain
+        return iter(
+            user
+            for user in (self.get_user(uid) for uid in ids)
+            if (target_domain is None or user.domain_id == target_domain) and (name is None or user.name == name)
+        )
+
     def get_project(self, pid):
         return self.projects[pid]
 
@@ -186,13 +205,16 @@ class IdentityProvider:
 @pytest.fixture
 async def role_env(monkeypatch):
     provider = IdentityProvider()
+    monkeypatch.setattr(
+        "app.services.backup_system_account.get_settings", lambda: SimpleNamespace(os_user_domain_name="default")
+    )
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     # The graph lifecycle suite represents legacy native domains without
     # Default projects. Default-manager source simulations live in its own suite.
     native = SimpleNamespace(
         domains=SimpleNamespace(
             get=provider.get_domain,
-            list=lambda: [provider.get_domain("default")],
+            list=provider.domains,
         ),
         projects=SimpleNamespace(
             get=provider.get_project,
@@ -204,7 +226,7 @@ async def role_env(monkeypatch):
                 )
             ],
         ),
-        users=SimpleNamespace(get=provider.get_user, list=lambda group=None: list(provider.group_users(group))),
+        users=SimpleNamespace(get=provider.get_user, list=provider.users),
         groups=SimpleNamespace(get=provider.get_group),
         roles=SimpleNamespace(list=provider.roles),
         inference_rules=SimpleNamespace(
@@ -583,16 +605,19 @@ async def test_edge_removal_drops_current_permissions_but_preserves_holder_login
 
 
 @pytest.mark.asyncio
-async def test_adding_lower_edge_refreshes_cached_permissions_without_holder_lookup(role_env):
+async def test_adding_lower_edge_requires_holder_proof_and_refreshes_cached_permissions(role_env):
     p, client = role_env.provider, role_env.client
     _holder_fixture(p)
     add_chat_permission(p)
     stored = {uid: await session(role_env, uid) for uid in ("direct", "group-user", "unaffected")}
     before = {uid: await cached_access(uid) for uid in stored}
     assert all(not has_chat_role(access) for access in before.values())
-    p.assignments_error = True  # A write with any holder lookup would fail.
-    assert (await client.put("/api/v1/admin/roles/custom/implies/custom-feature_user")).status_code == 200
+    p.assignments_error = True
+    denied = await client.put("/api/v1/admin/roles/custom/implies/custom-feature_user")
+    assert denied.status_code == 503
+    assert ("custom", "custom-feature_user") not in p.edges
     p.assignments_error = False
+    assert (await client.put("/api/v1/admin/roles/custom/implies/custom-feature_user")).status_code == 200
     for uid in ("direct", "group-user"):
         current = await cached_access(uid)
         assert "custom-feature_user" in current["roles"]
@@ -1310,8 +1335,8 @@ async def test_generic_identity_assignment_and_edge_api_cannot_bypass_owner_work
     existing_project_hierarchy(p)
     p.rows["owner-alias"] = {"id": "owner-alias", "name": "owner-alias_admin", "domain_id": None, "description": ""}
     p.edges.add(("owner-alias", "project_owner"))
-    p.get_domain = lambda did: SimpleNamespace(id=did, name="Default")
-    p.get_user = lambda uid: SimpleNamespace(id=uid, domain_id="default")
+    p.get_domain = lambda did: SimpleNamespace(id=did, name=did, enabled=True)
+    p.get_user = lambda uid: SimpleNamespace(id=uid, name=uid, domain_id="default", enabled=True)
     p.get_project = lambda pid: SimpleNamespace(id=pid, domain_id="default")
     p.get_role = lambda rid: SimpleNamespace(**p.rows[rid])
     for role_id in ("project_owner", "owner-alias"):

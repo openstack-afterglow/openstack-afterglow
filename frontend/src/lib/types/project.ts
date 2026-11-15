@@ -1,3 +1,5 @@
+import type { SystemAccountIdentity } from './common';
+
 export interface Project {
 	id: string;
 	name: string;
@@ -7,7 +9,7 @@ export interface Project {
 	created_at: string | null;
 }
 
-export interface ProjectMember {
+export interface ProjectMember extends SystemAccountIdentity {
 	user_id: string;
 	user_name: string;
 	role_id: string;
@@ -16,7 +18,7 @@ export interface ProjectMember {
 	group_id?: string;
 }
 
-export interface ProjectAccessMember {
+export interface ProjectAccessMember extends SystemAccountIdentity {
 	user_id: string;
 	username: string;
 	email: string;
@@ -49,7 +51,7 @@ export interface AssignableProjectRoles {
 	can_manage_owners: boolean;
 }
 
-export interface EligibleProjectUser {
+export interface EligibleProjectUser extends SystemAccountIdentity {
 	id: string;
 	name: string;
 	email: string;

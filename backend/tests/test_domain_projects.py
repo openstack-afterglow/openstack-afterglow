@@ -7,6 +7,7 @@ Role mutations exercise real cache invalidation and session-store Lua on fake Re
 
 import asyncio
 import hashlib
+import os
 import threading
 import time
 from collections import Counter
@@ -39,6 +40,7 @@ class Directory:
         self.domain_rows = {
             d: row(id=d, name=d, enabled=True, description="") for d in ("home", "tenant-a", "tenant-b")
         }
+        self.domain_rows["home"].name = os.environ.get("OS_USER_DOMAIN_NAME", "Default")
         self.user_rows = {
             u: row(id=u, name=u, enabled=True, domain_id=d)
             for u, d in (
@@ -88,7 +90,7 @@ class Directory:
         self.inference_rules = row(list_inference_roles=lambda: self.edges)
         self.domains = row(
             get=lambda id: self.get_row("domain", self.domain_rows, id),
-            list=lambda: list(self.domain_rows.values()),
+            list=lambda name=None: [d for d in self.domain_rows.values() if name is None or d.name == name],
             create=self.create_domain,
             update=self.update_domain,
             delete=self.delete_domain,
@@ -277,6 +279,55 @@ class Directory:
 def domain_native(monkeypatch):
     native = Directory()
     conn = row(close=lambda: None)
+    native.quota_limits = {}
+    native.quota_writes = []
+    quota_endpoint = "https://cinder.test/v3/operator"
+
+    def quota_response(pid):
+        assert pid in native.project_rows
+        limits = native.quota_limits.setdefault(
+            pid, {"gigabytes": 100, "backup_gigabytes": 100, "backups": 10, "gigabytes_fast": 40}
+        )
+        return row(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "quota_set": {key: {"limit": limit, "in_use": 0, "reserved": 0} for key, limit in limits.items()}
+            },
+        )
+
+    def quota_get(url, *, params):
+        assert params == {"usage": "true"}
+        prefix = f"{quota_endpoint}/os-quota-sets/"
+        assert url.startswith(prefix)
+        return quota_response(url.removeprefix(prefix))
+
+    def quota_put(url, *, json, connect_retries, status_code_retries):
+        assert connect_retries == status_code_retries == 0
+        prefix = f"{quota_endpoint}/os-quota-sets/"
+        assert url.startswith(prefix)
+        pid = url.removeprefix(prefix)
+        assert native.project_rows[pid].enabled is False
+        assert json == {"quota_set": {"backup_gigabytes": 300}}
+        native.quota_writes.append((pid, dict(json["quota_set"])))
+        native.quota_limits[pid].update(json["quota_set"])
+        return quota_response(pid)
+
+    conn.block_storage = row(get_endpoint=lambda: quota_endpoint)
+    conn.session = row(get=quota_get, put=quota_put)
+    conn.identity = row(
+        domains=native.domains,
+        users=native.users,
+        get_user=native.users.get,
+        get_domain=native.domains.get,
+        get_project=native.projects.get,
+        projects=lambda domain_id: native.projects.list(domain=domain_id),
+        role_assignments=lambda role_id=None, effective=False: [
+            assignment
+            for assignment in native.assignments(effective=effective)
+            if role_id is None or assignment.role["id"] == role_id
+        ],
+        group_users=lambda group_id: native.users_list(group=group_id),
+    )
     native.conn = conn
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: native)
     monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: conn)
@@ -819,7 +870,7 @@ def retired_preset_graph(domain_native, monkeypatch):
         inference["implies"] = [entry for entry in inference["implies"] if entry["id"] != child]
         return row(raise_for_status=lambda: None)
 
-    n.conn.identity = row(delete=delete)
+    n.conn.identity.delete = delete
     monkeypatch.setattr(identity_roles.activity, "record", AsyncMock())
     return n
 

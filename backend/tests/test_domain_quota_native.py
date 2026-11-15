@@ -208,6 +208,9 @@ def test_update_section_writes_every_provider_field_without_readback(conn, enabl
     values = {
         key: -1 if index == 0 else index - 1 for index, key in enumerate(quota_native.QUOTA_FIELDS[section].values())
     }
+    expected = dict(values)
+    if section == "volume":
+        expected["backup_gigabytes"] = 3 * values["gigabytes"]
     client = MagicMock()
     with patch.object(quota_native.manila, "get_client", return_value=client):
         assert quota_native.update_section(conn, TARGET, section, values) is None
@@ -219,7 +222,7 @@ def test_update_section_writes_every_provider_field_without_readback(conn, enabl
         envelope = "quota" if section == "network" else "quota_set"
         conn.session.put.assert_called_once_with(
             f"{ENDPOINTS[section]}/{path}/{TARGET}",
-            json={envelope: values},
+            json={envelope: expected},
             connect_retries=0,
             status_code_retries=0,
         )
@@ -387,3 +390,116 @@ async def test_admin_get_guard_prevents_shared_provider_reads(non_admin_client, 
     response = await non_admin_client.get(f"/api/v1/admin/quotas/{TARGET}?domain_id=default")
     assert response.status_code == 403
     read.assert_not_awaited()
+
+
+@pytest.mark.parametrize("limit,expected", [(0, 0), (73, 219), (-1, -1)])
+def test_volume_writer_derives_global_backup_capacity_and_overrides_explicit_value(conn, limit, expected):
+    values = {"gigabytes": limit, "backup_gigabytes": 999}
+    quota_native.update_section(conn, TARGET, "volume", values)
+    conn.session.put.assert_called_once_with(
+        f"{ENDPOINTS['volume']}/os-quota-sets/{TARGET}",
+        json={"quota_set": {"gigabytes": limit, "backup_gigabytes": expected}},
+        connect_retries=0,
+        status_code_retries=0,
+    )
+    conn.session.get.assert_not_called()
+    assert values == {"gigabytes": limit, "backup_gigabytes": 999}
+
+
+@pytest.mark.parametrize("limit,expected", [(0, 0), (73, 219), (-1, -1)])
+def test_backup_only_native_writer_derives_fresh_global_capacity(conn, limit, expected):
+    conn.session.get.return_value.json.return_value = {
+        "quota_set": {
+            "gigabytes": {"limit": limit, "in_use": 0},
+            "gigabytes_fast": {"limit": 1000, "in_use": 0},
+            "backup_gigabytes": {"limit": 999, "in_use": 0},
+        }
+    }
+    quota_native.update_section(conn, TARGET, "volume", {"backup_gigabytes": 999})
+    conn.session.get.assert_called_once_with(f"{ENDPOINTS['volume']}/os-quota-sets/{TARGET}", params={"usage": "true"})
+    conn.session.put.assert_called_once_with(
+        f"{ENDPOINTS['volume']}/os-quota-sets/{TARGET}",
+        json={"quota_set": {"backup_gigabytes": expected}},
+        connect_retries=0,
+        status_code_retries=0,
+    )
+
+
+def test_backup_only_native_writer_refuses_missing_global_capacity(conn):
+    conn.session.get.return_value.json.return_value = {
+        "quota_set": {
+            "volumes": {"limit": 10, "in_use": 0},
+            "gigabytes_fast": {"limit": 1000, "in_use": 0},
+        }
+    }
+    with pytest.raises(KeyError, match="gigabytes"):
+        quota_native.update_section(conn, TARGET, "volume", {"backup_gigabytes": 999})
+    conn.session.put.assert_not_called()
+
+
+def test_volume_write_preserves_backup_count_and_all_typed_limits(conn):
+    native = {"gigabytes": 10, "backup_gigabytes": 30, "backups": 4, "gigabytes_fast": 7, "gigabytes_slow": -1}
+    original = dict(native)
+
+    def write(url, *, json, **kwargs):
+        assert url == f"{ENDPOINTS['volume']}/os-quota-sets/{TARGET}"
+        native.update(json["quota_set"])
+        return MagicMock()
+
+    conn.session.put.side_effect = write
+    quota_native.update_section(conn, TARGET, "volume", {"gigabytes": 20})
+    assert native == {**original, "gigabytes": 20, "backup_gigabytes": 60}
+    quota_native.update_section(conn, TARGET, "volume", {"volumes": 2, "snapshots": 3})
+    assert native == {**original, "gigabytes": 20, "backup_gigabytes": 60, "volumes": 2, "snapshots": 3}
+
+
+def test_volume_read_exposes_actual_backup_capacity_without_deriving_or_typed_projection(conn):
+    conn.session.get.return_value.json.return_value = {
+        "quota_set": {
+            "gigabytes": {"limit": 10, "in_use": 2},
+            "backup_gigabytes": {"limit": 999, "in_use": 9, "reserved": 1},
+            "backups": {"limit": 4, "in_use": 1},
+            "gigabytes_fast": {"limit": 7, "in_use": 1},
+        }
+    }
+    assert quota_native.get_section(conn, TARGET, "volume") == {
+        "gigabytes": {"limit": 10, "in_use": 2},
+        "backup_gigabytes": {"limit": 999, "in_use": 9, "reserved": 1},
+    }
+
+
+@pytest.mark.parametrize("limit,expected", [(0, 0), (73, 219), (-1, -1)])
+@pytest.mark.parametrize("drift", [False, True])
+def test_creation_backup_quota_helper_only_changes_derived_capacity(conn, limit, expected, drift):
+    native = {
+        "gigabytes": limit,
+        "backup_gigabytes": 999 if drift else expected,
+        "backups": 4,
+        "gigabytes_fast": 7,
+    }
+    original = dict(native)
+    conn.session.get.return_value.json.side_effect = lambda: {
+        "quota_set": {key: {"limit": value, "in_use": 0} for key, value in native.items()}
+    }
+
+    def write(url, *, json, **kwargs):
+        assert json == {"quota_set": {"backup_gigabytes": expected}}
+        native.update(json["quota_set"])
+        return MagicMock()
+
+    conn.session.put.side_effect = write
+    assert quota_native.ensure_project_backup_quota(conn, TARGET) is drift
+    assert native == {**original, "backup_gigabytes": expected}
+    assert conn.session.put.call_count == int(drift)
+
+
+def test_creation_backup_quota_helper_requires_fresh_readback_without_replay(conn):
+    conn.session.get.return_value.json.return_value = {
+        "quota_set": {
+            "gigabytes": {"limit": 10, "in_use": 0},
+            "backup_gigabytes": {"limit": 999, "in_use": 0},
+        }
+    }
+    with pytest.raises(ValueError, match="project backup quota readback mismatch"):
+        quota_native.ensure_project_backup_quota(conn, TARGET)
+    assert conn.session.put.call_count == 1

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_os_conn, get_token_info
 from app.rate_limit import limiter
-from app.services import keystone, profile_images
+from app.services import backup_system_account, keystone, profile_images
 
 _logger = logging.getLogger(__name__)
 
@@ -165,6 +165,11 @@ async def update_profile(
 ):
     """Update profile metadata; email ownership changes require a verified link."""
     user_id = token_info["user_id"]
+    await backup_system_account.assert_login_allowed(
+        user_id=user_id, username=token_info["username"], domain_id=token_info["identity_domain_id"]
+    )
+    if req.name is not None:
+        await backup_system_account.assert_login_allowed(username=req.name, domain_id=token_info["identity_domain_id"])
 
     def _update():
         kwargs: dict = {}
@@ -210,6 +215,9 @@ async def change_password(
     token_info: dict = Depends(get_token_info),
 ):
     """Change an existing credential using Keystone's self-service policy."""
+    await backup_system_account.assert_login_allowed(
+        user_id=token_info["user_id"], username=token_info["username"], domain_id=token_info["identity_domain_id"]
+    )
     from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 
     from app.services.native_operation import NativeOperation

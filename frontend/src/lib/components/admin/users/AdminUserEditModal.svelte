@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { isSystemAccount } from '$lib/utils/systemAccount';
+  import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -94,7 +96,7 @@
   let resetSucceeded = $state(false);
   let emailBusy = $state(false);
   const writeBusy = $derived(updating || revoking || resettingPassword || emailBusy);
-  const resetAvailable = $derived(!!scope && !!user?.email && !!user?.enabled && !writeBusy && !resetAttempted && !!token && $authReady && !$logoutInProgress && !$projectSwitching);
+  const resetAvailable = $derived(!isSystemAccount(user) && !!scope && !!user?.email && !!user?.enabled && !writeBusy && !resetAttempted && !!token && $authReady && !$logoutInProgress && !$projectSwitching);
 
   onMount(() => {
     const snapshot = () => JSON.stringify([sessionScopeKey(get(auth)), !!get(auth).token, get(logoutInProgress), get(projectSwitching)]);
@@ -209,7 +211,7 @@
   });
 
   async function submit() {
-    if (!scope || !current(scope) || writeBusy || resetAttempted) return;
+    if (!scope || !current(scope) || isSystemAccount(user) || writeBusy || resetAttempted) return;
     const requestScope = scope;
     updating = true;
     error = '';
@@ -224,7 +226,7 @@
   }
 
   async function revokeAllSessions() {
-    if (!scope || !current(scope) || writeBusy || resetAttempted) return;
+    if (!scope || !current(scope) || isSystemAccount(user) || writeBusy || resetAttempted) return;
     const requestScope = scope;
     showRevokeConfirm = false;
     revoking = true;
@@ -301,9 +303,10 @@
   >
     <div data-testid="admin-user-edit-panel" class="bg-surface-base border border-line-2 rounded-xl p-4 md:p-6 w-full min-w-0 max-w-xl lg:max-w-5xl max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]">
       <h2 id="admin-user-edit-title" class="text-lg font-semibold text-ink-0 mb-5">{t('userEdit.title')}</h2>
+      <SystemAccountNotice identity={user} />
       {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
       {#if revokeSuccess}<div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{revokeSuccess}</div>{/if}
-      <fieldset disabled={writeBusy || resetAttempted} class="space-y-4 min-w-0">
+      <fieldset disabled={isSystemAccount(user) || writeBusy || resetAttempted} class="space-y-4 min-w-0">
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-132">{t('userEdit.name')}</label><input id="field-adminusereditmodal-132" bind:value={name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-133">{t('userEdit.email')}</label><input id="field-adminusereditmodal-133" bind:value={email} type="email" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-134"><RichText segments={t.rich('userEdit.passwordLabel')} tags={{ hint: passwordHint }} /></label><input id="field-adminusereditmodal-134" bind:value={password} type="password" placeholder={t('userEdit.passwordPlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
@@ -316,7 +319,7 @@
         <div class="text-xs text-ink-2 [overflow-wrap:anywhere]">{t('userEdit.userId', { id: user.id })}</div>
       </fieldset>
 
-      <AdminUserEmailComposer {user} {domainId} disabled={updating || revoking || resettingPassword || resetAttempted} onbusy={(value) => { emailBusy = value; }} />
+      {#if !isSystemAccount(user)}<AdminUserEmailComposer {user} {domainId} disabled={updating || revoking || resettingPassword || resetAttempted} onbusy={(value) => { emailBusy = value; }} />{/if}
 
       <section class="mt-5 pt-4 border-t border-line space-y-3" aria-labelledby="admin-user-reset-title" aria-busy={resettingPassword}>
         <h3 id="admin-user-reset-title" class="text-sm font-medium text-ink-0">{t('userEdit.resetEmailTitle')}</h3>
@@ -426,7 +429,7 @@
         </section>
       </div>
 
-      {#if user.domain_id === domainId && $auth.isSystemAdmin}
+      {#if !isSystemAccount(user) && user.domain_id === domainId && $auth.isSystemAdmin}
         {#key `${domainId}:${user.id}`}
           <UserDomainManagers userId={user.id} {domainId} onChanged={() => { if (scope) { void loadUserPermissions(scope); void loadUserSessions(scope); } }} />
         {/key}
@@ -440,7 +443,7 @@
             <div class="flex gap-2">
               <button
                 onclick={revokeAllSessions}
-                disabled={writeBusy || resetAttempted}
+                disabled={isSystemAccount(user) || writeBusy || resetAttempted}
                 class="px-3 py-1.5 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 disabled:opacity-50 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors"
               >{revoking ? t('userEdit.revoking') : t('userEdit.confirm')}</button>
               <button
@@ -452,7 +455,7 @@
         {:else}
           <button aria-busy={revoking}
             onclick={() => { showRevokeConfirm = true; }}
-            disabled={writeBusy || resetAttempted}
+            disabled={isSystemAccount(user) || writeBusy || resetAttempted}
             class="w-full px-3 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 border border-[var(--color-state-danger)]/30 text-[var(--color-state-danger-text)] text-xs rounded-lg transition-colors disabled:opacity-50"
           >{#if revoking}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('userEdit.revoking')}</span>{:else}{t('userEdit.revokeAll')}{/if}</button>
         {/if}
@@ -460,7 +463,7 @@
 
       <div class="flex justify-end gap-3 mt-4">
         <button onclick={close} disabled={resettingPassword} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{t('userEdit.cancel')}</button>
-        <button aria-busy={updating} onclick={submit} disabled={writeBusy || resetAttempted} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('userEdit.updating')}</span>{:else}{t('userEdit.update')}{/if}</button>
+        <button aria-busy={updating} onclick={submit} disabled={isSystemAccount(user) || writeBusy || resetAttempted} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if updating}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('userEdit.updating')}</span>{:else}{t('userEdit.update')}{/if}</button>
       </div>
     </div>
   </div>

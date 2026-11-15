@@ -72,6 +72,10 @@ async def _address_allowed(email):
 
 async def _eligible(user, ks, catalog, *, allow_absent=False):
     uid, home = _field(user, "id"), _field(user, "domain_id")
+    from app.services import backup_system_account
+
+    if backup_system_account.system_account_marker(user):
+        return False
     if not uid or not home or _field(user, "enabled") is not True:
         return False
     if _field(user, "name") == get_settings().os_username:
@@ -244,6 +248,9 @@ async def _bound(row, ks, catalog, session):
         if exc.status_code == 404:
             raise _error(410, "recovery_invalid") from None
         raise
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_not_system_account(row.user_id, conn=ks, user=user)
     if (
         _field(user, "id") != row.user_id
         or _field(user, "domain_id") != row.identity_domain_id
@@ -295,6 +302,8 @@ async def inspect(token, session):
 
 @identity_roles._complete_mutation
 async def request_email_change(email, current_password, token_info, session):
+    from app.services import backup_system_account
+
     email = _email(email)
     if not current_password or len(current_password) > 1024:
         raise _error(422, "invalid_password")
@@ -306,6 +315,7 @@ async def request_email_change(email, current_password, token_info, session):
         if not uid or not home:
             raise _error(403, "recovery_ineligible")
         user = await _provider_call(ks.users.get, uid)
+        await backup_system_account.assert_not_system_account(uid, conn=ks, user=user)
         if _field(user, "id") != uid or _field(user, "domain_id") != home or not await _eligible(user, ks, catalog):
             raise _error(403, "recovery_ineligible")
         # Reauthenticate the native exact home user, never a working-domain alias.
@@ -442,7 +452,10 @@ _CREATION_UNSETTLED = {"dispatching", "outcome_unknown", "sessions_failed"}
 async def _creation_subject(user_id, home, ks, catalog, *, proof_eligible=True):
     if not isinstance(user_id, str) or not user_id or not isinstance(home, str) or not home:
         raise _error(403, "password_create_ineligible")
+    from app.services import backup_system_account
+
     user = await _provider_call(ks.users.get, user_id)
+    await backup_system_account.assert_not_system_account(user_id, conn=ks, user=user)
     domain = await _provider_call(ks.domains.get, home)
     if (
         _field(user, "id") != user_id

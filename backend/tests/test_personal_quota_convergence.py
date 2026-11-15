@@ -205,6 +205,7 @@ async def test_verified_legacy_owner_primary_can_converge_without_inventing_enro
     directory.ks.roles.grant(rid("project_owner"), user="member", project=legacy.id)
     for section, fields in quota_native.QUOTA_FIELDS.items():
         directory.quota_limits[legacy.id, section] = {key: 100 for key in fields.values()}
+    directory.quota_limits[legacy.id, "volume"]["backup_gigabytes"] = 300
     preview = await enrollment_policy.preview_personal_quotas(q.conn, legacy.id, q.actor)
     assert preview["can_apply"] and preview["provenance"]["kind"] == "native_owner_primary"
     result = await enrollment_policy.converge_personal_quotas(q.conn, legacy.id, q.actor, preview["preview_id"])
@@ -234,3 +235,33 @@ async def test_native_member_only_catalog_converges_without_project_owner_preset
     assert preview["can_apply"] and preview["owner_user_id"] == "foreign"
     result = await enrollment_policy.converge_personal_quotas(q.conn, q.project["id"], q.actor, preview["preview_id"])
     assert result["status"] == "updated" and q.writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, 1])
+@pytest.mark.parametrize("used,reserved", [(4, 0), (0, 4), (2, 2)])
+async def test_derived_backup_usage_blocks_volume_reduction_without_native_writes(
+    directory, quota_target, limit, used, reserved
+):
+    q = quota_target
+    await enrollment_policy.update_policy(
+        q.conn,
+        {
+            "revision": 0,
+            "public_signup_enabled": True,
+            "public_signup_button_visible": True,
+            "approval_mode": "auto",
+            "personal_quotas": {"gigabytes": limit},
+        },
+        token_info=q.actor,
+    )
+    q.usage["backup_gigabytes"] = used
+    q.usage["backup_gigabytes:reserved"] = reserved
+    preview = await enrollment_policy.preview_personal_quotas(q.conn, q.project["id"], q.actor)
+    assert preview["limits"] == {"gigabytes": limit}
+    assert preview["blocked_fields"] == ["backup_gigabytes"]
+    assert not preview["can_apply"]
+    with pytest.raises(HTTPException) as denied:
+        await enrollment_policy.converge_personal_quotas(q.conn, q.project["id"], q.actor, preview["preview_id"])
+    assert denied.value.detail == "personal_quota_usage_exceeds_policy"
+    assert not q.writes

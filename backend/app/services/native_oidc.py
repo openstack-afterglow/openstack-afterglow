@@ -474,7 +474,8 @@ def _federation_identity_reason(native, descriptor):
 
 
 async def federate(row, identity, domain, *, ks, lease, catalog, descriptor):
-    from app.services import account_spaces, organization_provisioning
+    from app.api.deps import _load_backup_system_identity
+    from app.services import account_spaces, backup_system_account, organization_provisioning
     from app.services import domain_auth as svc
 
     username = identity.username
@@ -487,12 +488,16 @@ async def federate(row, identity, domain, *, ks, lease, catalog, descriptor):
     )
     await lease.assert_owned()
     await svc.require_provider(domain["id"], row.id, int(row.revision), identity.email)
+    await _load_backup_system_identity()
     token, native = await svc.keystone_federate(row, identity.bearer)
     # Keystone returns a local account (no OS-FEDERATION block) when the pinned mapping's local rule matched.
     local_identity = "OS-FEDERATION" not in native
     try:
         from app.services.domain_auth import DomainAuthUnavailable
 
+        await backup_system_account.assert_login_allowed(
+            user_id=native.get("id"), username=native.get("name"), domain_id=_field(native.get("domain"), "id")
+        )
         if local_identity:
             reason = await asyncio.to_thread(_local_identity_reason, native, identity, descriptor, ks)
         else:

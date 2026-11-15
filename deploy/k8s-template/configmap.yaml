@@ -26,6 +26,10 @@ data:
     # Empty keeps per-enrollment grace; otherwise use one UTC month after this aware instant.
     adoption_reference_at = ""
 
+    # Machine identity/IAM/quota writer requires explicit operator opt-in.
+    [backup_system_account]
+    enabled = false
+
     [openstack]
     auth_url = "https://keystone.example.com/v3"
     project_name = "admin"

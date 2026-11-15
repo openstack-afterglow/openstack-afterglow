@@ -138,3 +138,20 @@ describe('domain manager group table', () => {
 		await waitFor(() => expect(screen.queryByText('Team', { selector: 'span' })).toBeNull());
 	});
 });
+
+it('blocks marked group membership removal and excludes marked add candidates', async () => {
+  members = [{ ...alice, system_account: { kind: 'auto_backup' } }];
+  api.get.mockImplementation((path: string) => Promise.resolve(path === '/api/v1/iam/users'
+    ? { items: [{ ...bob, system_account: { kind: 'auto_backup' } }] } : fixture(path)));
+  render(IamGroups, { session, onDenied: vi.fn() });
+  await screen.findByText('Team', { selector: 'span' });
+  await fireEvent.click(within(row('Team')).getByRole('button', { name: t('members') }));
+  const panel = slideOver();
+  await within(panel).findByText('자동 백업용 시스템 계정');
+  expect(within(panel).queryByRole('option', { name: /Bob/ })).toBeNull();
+  const remove = within(panel).getByRole('button', { name: t('remove') });
+  expect(remove).toMatchObject({ disabled: true });
+  await fireEvent.click(remove);
+  expect(confirmDialog).not.toHaveBeenCalled();
+  expect(api.delete).not.toHaveBeenCalled();
+});

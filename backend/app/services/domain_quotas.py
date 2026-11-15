@@ -20,6 +20,7 @@ from app.api.common.errors import public_service_error
 from app.database import get_session_factory
 from app.models.domain_quotas import DomainQuotaOperation, DomainQuotaPolicy
 from app.services import domain_iam, identity_roles, keystone, quota_native
+from app.services.backup_quota import derive_backup_gigabytes
 from app.services.cache import invalidate
 
 
@@ -118,7 +119,10 @@ async def _commit(session, lease):
 
 
 def _section_values(section, values):
-    return {native: values[key] for key, native in quota_native.QUOTA_FIELDS[section].items() if key in values}
+    selected = {native: values[key] for key, native in quota_native.QUOTA_FIELDS[section].items() if key in values}
+    if section == "volume" and "gigabytes" in selected:
+        selected["backup_gigabytes"] = derive_backup_gigabytes(selected["gigabytes"])
+    return selected
 
 
 async def _measure(conn, projects, keys):
@@ -387,6 +391,17 @@ async def apply_project_defaults(conn, domain_id: str, project_id: str, *, lease
     result = await _apply(conn, domain_id, project_id, defaults, lease=lease, require_disabled=True)
     if result["status"] != "updated":
         raise public_service_error(503, "quota_defaults_not_verified")
+    if "gigabytes" not in defaults:
+        await lease.assert_owned()
+        try:
+            changed = await _call(quota_native.ensure_project_backup_quota, conn, project_id)
+        except Exception as exc:
+            raise public_service_error(503, "quota_defaults_not_verified") from exc
+        await lease.assert_owned()
+        if changed:
+            if "volume" not in result["updated"]:
+                result["updated"].append("volume")
+            await _invalidate(project_id)
     return result
 
 

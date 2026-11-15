@@ -26,6 +26,9 @@ data:
     scheduler_enabled = {{ .Values.instanceUsage.schedulerEnabled | default false }}
     adoption_reference_at = {{ .Values.instanceUsage.adoptionReferenceAt | default "" | quote }}
 
+    [backup_system_account]
+    enabled = {{ .Values.backupSystemAccount.enabled | default false }}
+
     [logging]
     log_directory = {{ .Values.logging.logDirectory | default "logs" | quote }}
     log_level = {{ .Values.logging.logLevel | default "INFO" | quote }}

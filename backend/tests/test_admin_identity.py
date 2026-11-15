@@ -532,7 +532,7 @@ class _SystemKeystone:
             list=lambda user=None, **kwargs: [SimpleNamespace(id="operators")] if user in self.via_group else [],
         )
         self.users = SimpleNamespace(
-            get=lambda uid: SimpleNamespace(id=uid, domain_id="default", enabled=uid not in self.disabled),
+            get=lambda uid: SimpleNamespace(id=uid, name=uid, domain_id="default", enabled=uid not in self.disabled),
             list=lambda group: (
                 [SimpleNamespace(id=uid) for uid in sorted(self.via_group)] if group == "operators" else []
             ),
@@ -798,7 +798,9 @@ def _system_group(mock_conn, group_id, members):
     mock_conn.identity.role_assignments.side_effect = lambda **_: [
         SimpleNamespace(group={"id": group_id}, role={"id": _ADMIN_ROLE_ID}, scope={"system": {"all": True}})
     ]
-    mock_conn.identity.group_users.side_effect = lambda gid: iter(SimpleNamespace(id=uid) for uid in members)
+    mock_conn.identity.group_users.side_effect = lambda gid: iter(
+        SimpleNamespace(id=uid, name=uid, domain_id="default", enabled=True) for uid in members
+    )
 
 
 @pytest.mark.asyncio

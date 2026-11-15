@@ -24,6 +24,7 @@ from app.models.account_recovery import AccountRecovery
 from app.models.activity import ActivityLog
 from app.services import (
     account_recovery,
+    backup_system_account,
     domain_auth,
     domain_iam,
     domain_projects,
@@ -61,6 +62,7 @@ async def _subject(user_id, ks, catalog):
     home = _field(user, "domain_id")
     if _field(user, "id") != user_id or not isinstance(home, str) or not home:
         raise _error(503, "identity_unavailable")
+    await backup_system_account.assert_not_system_account(user_id, conn=ks, user=user)
     if _field(user, "enabled") is not True or _field(user, "name") == get_settings().os_username:
         raise _error(403, "subject_ineligible")
     domain = await _provider_call(ks.domains.get, home)
@@ -403,6 +405,8 @@ async def reset_password_email(user_id, actor, conn, session):
                 raise _error(503, "email_failed", changed=True, delivered=False)
             return {"status": "changed", "delivered": True}
     except HTTPException as exc:
+        if exc.status_code == 403 and exc.detail == "system_account_protected":
+            raise
         if isinstance(exc.detail, dict) and str(exc.detail.get("code", "")).startswith("admin_password_reset_"):
             raise
         raise _error(503, "unavailable") from None

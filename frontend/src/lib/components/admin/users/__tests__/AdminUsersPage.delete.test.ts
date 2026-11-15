@@ -215,3 +215,16 @@ describe('AdminUsersPage deletion ownership and failure fences', () => {
     expect(screen.queryByRole('button', { name: t('userDelete.actionLabel', { name: 'Z-last' }) })).toBeNull();
   });
 });
+
+it.each([true, false])('protects marked user edit and deletion in desktop=%s without protecting an unrelated same-name user', async desktop => {
+  viewport.desktop = desktop;
+  inventory = [{ ...alice, system_account: { kind: 'auto_backup' } }, { ...bob, name: alice.name }];
+  renderPage();
+  await screen.findByText('Automatic backup system account');
+  expect(screen.getAllByRole('button', { name: t('userDelete.actionLabel', { name: alice.name }) }).map(button => (button as HTMLButtonElement).disabled)).toEqual([true, false]);
+  expect(screen.getAllByRole('button', { name: alice.name })).toHaveLength(1);
+  const actions = screen.getAllByRole('button', { name: t('userDelete.actionLabel', { name: alice.name }) });
+  await fireEvent.click(actions[0]);
+  expect(modal()).toBeNull();
+  expect(mocks.delete).not.toHaveBeenCalled();
+});

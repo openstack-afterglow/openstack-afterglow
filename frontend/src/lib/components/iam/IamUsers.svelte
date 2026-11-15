@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -51,11 +53,11 @@
 	}
 	function close() { open = false; editing = null; name = ''; email = ''; password = ''; enabled = true; }
 	function edit(user: IamUser) {
-		if (busy || blocked || loading || user.protected || user.domain_id !== session.domainId) return;
+		if (busy || blocked || loading || isSystemAccount(user) || user.protected || user.domain_id !== session.domainId) return;
 		editing = user; name = user.name; email = user.email; enabled = user.enabled; password = ''; error = ''; open = true;
 	}
 	async function save() {
-		if (!live || !session.canSubmit() || blocked || busy || loading || !editing || editing.protected || editing.domain_id !== session.domainId || !form?.reportValidity()) return;
+		if (!live || !session.canSubmit() || blocked || busy || loading || !editing || isSystemAccount(editing) || editing.protected || editing.domain_id !== session.domainId || !form?.reportValidity()) return;
 		const body = { name: name.trim(), email: email.trim(), enabled, ...(password ? { password } : {}) };
 		password = ''; busy = true; error = ''; notice = '';
 		try {
@@ -65,10 +67,10 @@
 		finally { if (live) busy = false; }
 	}
 	async function remove(user: IamUser) {
-		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId) return;
+		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || isSystemAccount(user) || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId) return;
 		const pending = sequence;
 		if (!await confirmDialog(`${t('evictionConfirm', { user: user.name, id: user.id })}\n\n${t('evictionReadmission')}`, { confirmLabel: t('evictionAction') })) return;
-		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || sequence !== pending || !users.includes(user)) return;
+		if (!live || !session.isCurrent() || !session.canSubmit() || blocked || busy || loading || isSystemAccount(user) || sequence !== pending || !users.includes(user)) return;
 		busy = true; error = ''; notice = '';
 		try { await client.removeUser(user.id); if (live && session.isCurrent()) { notice = t('evictionRemoved'); await load(); } }
 		catch (cause) {
@@ -100,16 +102,17 @@
 			{#each tableView.rows as user (user.id)}<CompactResourceCard>
 				<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{user.name}</h3><span class="text-xs">{user.enabled ? t('enabled') : t('disabled')}</span></div>
 				<p class="text-sm break-all">{user.email || '—'}</p>
+				<SystemAccountNotice identity={user} />
 				{#if user.protected}<p class="text-xs text-ink-2">{t('protected')}</p>{/if}
 				{#snippet details()}{#if user.domain_id !== session.domainId}<p class="text-xs text-ink-2">{t('foreignIdentity')}</p>{/if}{/snippet}
-				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button>{/snippet}
+				{#snippet actions()}<Button variant="secondary" size="sm" disabled={blocked || loading || busy || isSystemAccount(user) || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || isSystemAccount(user) || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button>{/snippet}
 			</CompactResourceCard>{/each}
 			{#if !loading && !error && !users.length}<p class="text-sm text-ink-2">{t('emptyUsers')}</p>{/if}
 		{/snippet}
 	<TableShell><table>
 		<thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="email" /><TableColumnHeader view={tableView} columnKey="status" /><th>{t('actions')}</th></tr></thead>
 		<tbody>
-			{#each tableView.rows as user (user.id)}<tr><td>{user.name}</td><td>{user.email || '—'}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={blocked || loading || busy || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button></div></td></tr>{/each}
+			{#each tableView.rows as user (user.id)}<tr><td>{user.name}<SystemAccountNotice identity={user} /></td><td>{user.email || '—'}</td><td>{user.enabled ? t('enabled') : t('disabled')}{#if user.protected}<span class="block text-xs text-ink-2">{t('protected')}</span>{/if}{#if user.domain_id !== session.domainId}<span class="block text-xs text-ink-2">{t('foreignIdentity')}</span>{/if}</td><td><div class="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={blocked || loading || busy || isSystemAccount(user) || user.protected || user.domain_id !== session.domainId} onclick={() => edit(user)}>{t('editUser')}</Button><Button variant="danger-outline" size="sm" disabled={blocked || loading || busy || isSystemAccount(user) || evictionUncertain || user.id === session.userId || user.domain_id === session.domainId} onclick={() => remove(user)}>{t('evictionAction')}</Button></div></td></tr>{/each}
 			{#if !loading && !error && !users.length}<tr><td colspan="4">{t('emptyUsers')}</td></tr>{/if}
 		</tbody>
 	</table></TableShell>

@@ -94,6 +94,26 @@ def make_mock_conn(project_id: str = "test-project-123") -> MagicMock:
     conn.session.auth.get_access.return_value.project_domain_id = "default"
     conn.close = MagicMock()
     conn.endpoint_for.return_value = "http://synthetic-native.test/identity/v3"
+    native_user = SimpleNamespace(
+        id=None,
+        name="test-native-user",
+        domain_id="default",
+        enabled=True,
+        is_enabled=True,
+        email="user@example.test",
+    )
+    user_lookup = MagicMock(return_value=native_user)
+
+    def _native_identity_user(user_id):
+        value = user_lookup.return_value
+        if value is native_user and value.id is None:
+            return SimpleNamespace(**(vars(value) | {"id": user_id}))
+        return value
+
+    user_lookup.side_effect = _native_identity_user
+    conn.identity.get_user = user_lookup
+    conn.identity.domains = MagicMock(return_value=[SimpleNamespace(id="default", name="Default", is_enabled=True)])
+    conn.identity.users = MagicMock(return_value=[])
 
     def _owned():
         m = MagicMock()
@@ -655,3 +675,12 @@ async def non_admin_client(mock_conn):
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_backup_system_identity_cache(monkeypatch):
+    """Canonical machine identity caches belong to one test's native cloud."""
+    from app.services import backup_system_account
+
+    monkeypatch.setattr(backup_system_account, "_cached_record", None)
+    monkeypatch.setattr(backup_system_account, "_cached_domain", None)

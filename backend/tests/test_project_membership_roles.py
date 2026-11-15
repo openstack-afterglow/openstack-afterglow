@@ -81,7 +81,7 @@ class Membership:
                 get=lambda uid: SimpleNamespace(
                     id=uid, name=uid, email=f"{uid}@test.invalid", domain_id="domain", enabled=True
                 ),
-                list=lambda group=None, **kwargs: [self.ks.users.get(uid) for uid in self.groups.get(group, [])],
+                list=self.user_inventory,
             ),
             groups=SimpleNamespace(
                 get=lambda gid: SimpleNamespace(id=gid, name=f"group-{gid}", description="", domain_id="domain"),
@@ -102,8 +102,56 @@ class Membership:
                 get=lambda pid: SimpleNamespace(id=pid, name="Tenant", domain_id="domain", enabled=True),
                 list=lambda **kwargs: [SimpleNamespace(id=PROJECT, name="Tenant", domain_id="domain", enabled=True)],
             ),
-            domains=SimpleNamespace(get=lambda did: SimpleNamespace(id=did, name=did, enabled=True)),
+            domains=SimpleNamespace(
+                get=lambda did: SimpleNamespace(id=did, name=did, enabled=True),
+                list=lambda name=None: [
+                    SimpleNamespace(id=did, name=did, enabled=True)
+                    for did in ("domain", "other")
+                    if name is None or did == name
+                ],
+            ),
         )
+
+    def user_inventory(self, *, group=None, domain=None, name=None):
+        ids = (
+            set(self.groups.get(group, []))
+            if group is not None
+            else {row["user"]["id"] for row in self.direct + self.inherited if "user" in row}
+            | {uid for members in self.groups.values() for uid in members}
+        )
+        return [
+            user
+            for user in (self.ks.users.get(uid) for uid in sorted(ids))
+            if (domain is None or user.domain_id == domain) and (name is None or user.name == name)
+        ]
+
+    def sdk_identity(self, **overrides):
+        """Expose the same fresh native directory through SDK-shaped reads."""
+
+        def role_assignments(role_id=None, effective=False, include_names=False, **query):
+            translated = {
+                {"scope_project_id": "project", "user_id": "user", "group_id": "group"}.get(key, key): value
+                for key, value in query.items()
+            }
+            rows = self.ks.role_assignments.list(effective=effective, **translated)
+            group_id = translated.get("group")
+            return [
+                row
+                for row in rows
+                if (role_id is None or row["role"]["id"] == role_id)
+                and (group_id is None or row.get("group", {}).get("id") == group_id)
+            ]
+
+        fields = {
+            "domains": lambda name=None: self.ks.domains.list(name=name),
+            "users": lambda domain_id=None, name=None: self.ks.users.list(domain=domain_id, name=name),
+            "get_domain": self.ks.domains.get,
+            "get_user": self.ks.users.get,
+            "group_users": lambda gid: self.ks.users.list(group=gid),
+            "role_assignments": role_assignments,
+        }
+        fields.update(overrides)
+        return SimpleNamespace(**fields)
 
     def add_roles(self, *names, implications=()):
         edges = [
@@ -171,6 +219,9 @@ class Membership:
 @pytest.fixture
 def membership(monkeypatch, ownership_journal):
     state = Membership()
+    monkeypatch.setattr(
+        "app.services.backup_system_account.get_settings", lambda: SimpleNamespace(os_user_domain_name="domain")
+    )
     monkeypatch.setattr(service.keystone, "_get_admin_ks_client", lambda: state.ks)
     monkeypatch.setattr(identity_roles, "_trusted_catalog", lambda: state.catalog)
     monkeypatch.setattr(service, "_membership_write", state.write)

@@ -48,8 +48,8 @@ async def budget(tmp_path, monkeypatch):
         )
     )
     limits = {
-        "a": {"instances": 4, "cores": 2, "ram": 4096, "volumes": 1},
-        "b": {"instances": 2, "cores": 2, "ram": 4096, "volumes": 1},
+        "a": {"instances": 4, "cores": 2, "ram": 4096, "volumes": 1, "gigabytes": 10, "backup_gigabytes": 30},
+        "b": {"instances": 2, "cores": 2, "ram": 4096, "volumes": 1, "gigabytes": 10, "backup_gigabytes": 30},
     }
     writes, commits = [], []
     lease = SimpleNamespace(assert_owned=AsyncMock())
@@ -72,7 +72,8 @@ async def budget(tmp_path, monkeypatch):
         return {key: {"limit": value, "in_use": 0, "reserved": 0} for key, value in limits[pid].items()}
 
     def write(_, pid, section, kwargs):
-        assert commits and commits[-1]["sections"][section]["status"] == "writing"
+        if set(kwargs) != {"backup_gigabytes"}:
+            assert commits and commits[-1]["sections"][section]["status"] == "writing"
         writes.append((pid, section, dict(kwargs)))
         limits[pid].update(kwargs)
 
@@ -254,10 +255,14 @@ async def test_defaults_are_future_only_revision_fenced_and_before_enable(budget
 
 
 @pytest.mark.asyncio
-async def test_creation_without_policy_preserves_native_defaults(budget):
+async def test_creation_without_policy_changes_only_derived_backup_capacity(budget):
+    original = dict(budget.limits["b"])
+    budget.limits["b"]["backup_gigabytes"] = 999
     result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
-    assert result["updated"] == []
-    assert not budget.writes
+    assert result["updated"] == ["volume"]
+    assert budget.writes == [("b", "volume", {"backup_gigabytes": 30})]
+    assert budget.limits["b"] == original
+    assert budget.projects["b"].is_enabled is False
 
 
 @pytest.mark.asyncio
@@ -850,3 +855,145 @@ async def test_gpu_only_pool_native_adjustment_changes_eligibility_without_polic
     assert candidate.model_dump() == original_flavor
     assert snapshot == original_snapshot
     assert _unmanaged_compute_pool_native[DOMAIN] == original_document
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (120, 360), (-1, -1)])
+async def test_project_volume_quota_derives_and_verifies_backup_capacity(budget, limit, expected):
+    budget.limits["a"].update({"gigabytes": 10, "backup_gigabytes": 999, "backups": 4, "gigabytes_fast": 7})
+    result = await service.update_project(budget.conn, "a", {"gigabytes": limit})
+    assert result["status"] == "updated"
+    assert budget.writes == [("a", "volume", {"gigabytes": limit, "backup_gigabytes": expected})]
+    assert budget.limits["a"]["backups"] == 4
+    assert budget.limits["a"]["gigabytes_fast"] == 7
+    async with budget.factory() as session:
+        operation = await session.get(DomainQuotaOperation, result["operation_id"])
+        assert operation.sections["volume"] == {
+            "status": "verified",
+            "observed": {"gigabytes": limit, "backup_gigabytes": expected},
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (120, 360), (-1, -1)])
+async def test_project_defaults_derive_backup_capacity_before_enable(budget, limit, expected):
+    budget.limits["b"].update({"gigabytes": 10, "backup_gigabytes": 999})
+    await policy(budget, defaults={"gigabytes": limit})
+    result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert result["status"] == "updated"
+    assert budget.writes == [("b", "volume", {"gigabytes": limit, "backup_gigabytes": expected})]
+    assert budget.projects["b"].is_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_backup_capacity_readback_mismatch_cannot_verify_volume_update(budget, monkeypatch):
+    budget.limits["a"].update({"gigabytes": 10, "backup_gigabytes": 999})
+    original = service.quota_native.update_section
+
+    def write(conn, pid, section, values):
+        original(conn, pid, section, values)
+        budget.limits[pid]["backup_gigabytes"] = 999
+
+    monkeypatch.setattr(service.quota_native, "update_section", write)
+    result = await service.update_project(budget.conn, "a", {"gigabytes": 120})
+    assert result["status"] == "partial"
+    assert result["errors"] == {"volume": "native_readback_mismatch"}
+    assert len(budget.writes) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (120, 360), (-1, -1)])
+async def test_admin_volume_quota_endpoint_uses_derived_journaled_writer(budget, limit, expected):
+    from app.api.identity import admin_identity
+
+    budget.limits["a"].update({"gigabytes": 10, "backup_gigabytes": 999})
+    app = FastAPI()
+    app.include_router(admin_identity.router, prefix="/admin")
+    # Authentication and directory admission are synthetic; quota orchestration
+    # and its isolated SQL journal run through the actual endpoint.
+    app.dependency_overrides[require_admin] = lambda: {}
+    app.dependency_overrides[admin_identity._selected_objects] = lambda: None
+    app.dependency_overrides[get_admin_os_conn] = lambda: budget.conn
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.put("/admin/quotas/a", json={"gigabytes": limit})
+    assert response.status_code == 200
+    assert response.json()["status"] == "updated"
+    assert budget.writes == [("a", "volume", {"gigabytes": limit, "backup_gigabytes": expected})]
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"backup_gigabytes": 123},
+        {"gigabytes": 20, "backup_gigabytes": 123},
+        {"gigabytes_fast": 7},
+        {"gigabytes": 20, "gigabytes_fast": 7},
+        {"backups": 4},
+    ],
+)
+def test_quota_models_do_not_allow_independent_backup_capacity_count_or_typed_overrides(values):
+    from app.api.identity.admin_identity import QuotaUpdateRequest
+    from app.models.domain_quotas import DefaultsUpdate
+    from app.models.enrollment_policy import EnrollmentPolicyUpdate
+
+    with pytest.raises(ValidationError):
+        QuotaUpdateRequest.model_validate(values)
+    with pytest.raises(ValidationError):
+        ProjectQuotaUpdate.model_validate(values)
+    with pytest.raises(ValidationError):
+        DefaultsUpdate.model_validate({"revision": 0, "defaults": values})
+    with pytest.raises(ValidationError):
+        EnrollmentPolicyUpdate.model_validate(
+            {
+                "revision": 0,
+                "public_signup_enabled": True,
+                "public_signup_button_visible": True,
+                "approval_mode": "auto",
+                "personal_quotas": values,
+            }
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (120, 360), (-1, -1)])
+async def test_custom_project_defaults_without_volume_capacity_derive_fresh_native_backup(budget, limit, expected):
+    budget.limits["b"].update({"gigabytes": limit, "backup_gigabytes": 999, "backups": 4, "gigabytes_fast": 7})
+    await policy(budget, defaults={"instances": 3})
+    result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert result["updated"] == ["compute", "volume"]
+    assert budget.writes == [
+        ("b", "compute", {"instances": 3}),
+        ("b", "volume", {"backup_gigabytes": expected}),
+    ]
+    assert budget.limits["b"]["gigabytes"] == limit
+    assert budget.limits["b"]["backups"] == 4
+    assert budget.limits["b"]["gigabytes_fast"] == 7
+    assert budget.projects["b"].is_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_absent_project_defaults_cannot_ignore_unverified_backup_capacity(budget, monkeypatch):
+    budget.limits["b"]["backup_gigabytes"] = 999
+    writes = []
+
+    def write(conn, pid, section, values):
+        writes.append(dict(values))
+
+    monkeypatch.setattr(service.quota_native, "update_section", write)
+    with pytest.raises(HTTPException) as error:
+        await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert error.value.status_code == 503
+    assert writes == [{"backup_gigabytes": 30}]
+    assert budget.projects["b"].is_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_volume_count_defaults_and_backup_repair_report_volume_once(budget):
+    budget.limits["b"]["backup_gigabytes"] = 999
+    await policy(budget, defaults={"volumes": 5})
+    result = await service.apply_project_defaults(budget.conn, DOMAIN, "b", lease=budget.lease)
+    assert result["updated"] == ["volume"]
+    assert budget.writes == [
+        ("b", "volume", {"volumes": 5}),
+        ("b", "volume", {"backup_gigabytes": 30}),
+    ]

@@ -15,7 +15,7 @@ from keystoneauth1.exceptions.http import Unauthorized
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.services import domain_projects, identity_roles, keystone
+from app.services import backup_system_account, domain_projects, identity_roles, keystone
 
 _field = identity_roles._field
 
@@ -78,6 +78,7 @@ async def authenticate_password(account, password, *, operation, username=None):
     from app.utils.auth_diagnostics import authentication_step
 
     canonical_name, home = account["name"], account["domain_id"]
+    await backup_system_account.assert_login_allowed(user_id=account["id"], username=canonical_name, domain_id=home)
     with authentication_step("login_guard"):
         await login_guard.check_locked(canonical_name, home)
     if username is not None and username != canonical_name:
@@ -257,6 +258,7 @@ async def require_admission(user_id, domain_id, row, email, *, lease, ks, catalo
         provider_auto_join_allowed,
     )
 
+    await backup_system_account.assert_not_system_account(user_id, conn=ks)
     native_domain = await asyncio.to_thread(domain_projects._exact, ks.domains, domain_id)
     if domain_kind(native_domain) in {"account", "personal"}:
         raise DomainAuthDenied("Organization admission requires an organization", code="organization_domain_required")
@@ -293,6 +295,7 @@ async def attach(user, row, identity, *, lease, ks, password_proven=False, expli
     uid = _field(user, "id")
     home = _field(user, "domain_id")
     full = await asyncio.to_thread(ks.users.get, uid)
+    await backup_system_account.assert_not_system_account(uid, conn=ks, user=full)
     if _field(full, "id") != uid or _field(full, "enabled") is not True or _field(full, "domain_id") != home:
         raise DomainAuthConflict("Canonical account changed", code="account_changed")
     if _email(full) != identity.email.casefold():
@@ -531,6 +534,8 @@ async def _save_transfer(journal, *, lease):
 async def _write_identity_snapshot(snapshot, *, lease, ks):
     from app.services.domain_auth import DomainAuthUnavailable
 
+    await backup_system_account.assert_not_system_account(snapshot["id"], conn=ks)
+
     if not snapshot["federated"]:
         current = await asyncio.to_thread(ks.users.get, snapshot["id"])
         if _field(current, "federated", []):
@@ -568,6 +573,10 @@ def require_supported_identity_transfer(source, row, identity):
 
 async def begin_identity_transfer(source, target, row, identity, *, lease, ks):
     from app.models.account_spaces import AccountIdentityTransfer
+
+    await backup_system_account.assert_not_system_account(_field(source, "id"), conn=ks, user=source)
+    if target is not None:
+        await backup_system_account.assert_not_system_account(_field(target, "id"), conn=ks, user=target)
 
     detached = require_supported_identity_transfer(source, row, identity)
 

@@ -1,0 +1,104 @@
+[
+  {
+    "command": "env PATH=\"/Users/pieroot/code/afterglow-wt-backup-system-account-gate/backend/.venv/bin:$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/bin:/bin\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-backup-system-account-20261115 npm run test:gate",
+    "source_sha256": "4d5eabbcf01ae77a038874ebb250b1461a59843b56f2d864e0002497a41b1520",
+    "exit": 1,
+    "failure": "stale generated experience catalog; regenerated before next attempt"
+  },
+  {
+    "command": "env PATH=\"/Users/pieroot/code/afterglow-wt-backup-system-account-gate/backend/.venv/bin:$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/bin:/bin\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-backup-system-account-20261115 npm run test:gate",
+    "source_sha256": "f208ac2380b90e3df211735d7329f39714058000aa1a669ca39b059965a44776",
+    "exit": 1,
+    "backend": {
+      "passed": 14842,
+      "skipped": 106,
+      "failed": 352,
+      "errors": 19
+    },
+    "failure_families": {
+      "tests/test_password_email_recipient.py": 4,
+      "tests/test_personal_login_defaults.py": 16,
+      "tests/test_personal_member_authority.py": 6,
+      "tests/test_default_domain_policy.py": 21,
+      "tests/test_profile.py": 5,
+      "tests/test_domain_iam_groups.py": 3,
+      "tests/test_domain_projects.py": 67,
+      "tests/test_admin_domains.py": 7,
+      "tests/test_admin_group_identity_home.py": 21,
+      "tests/test_admin_identity.py": 11,
+      "tests/test_admin_identity_domain_scope.py": 1,
+      "tests/test_admin_identity_inventory.py": 7,
+      "tests/test_admin_password_reset.py": 121,
+      "tests/test_login_graph_contention.py": 2,
+      "tests/test_login_native_operation.py": 15,
+      "tests/test_admin_user_deletion.py": 1,
+      "tests/test_admin_user_permissions.py": 2,
+      "tests/test_auth_login_proof.py": 40,
+      "tests/test_auto_backup_distributed.py": 2
+    },
+    "limits": "Stopped during backend units; frontend/contracts/functional/lint not exercised by this attempt. Native identity metadata reuse and fake inventory updates are being fixed; no successful full gate claimed."
+  },
+  {
+    "command": "env PATH=\"/Users/pieroot/code/afterglow-wt-backup-system-account-gate/backend/.venv/bin:$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/bin:/bin\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-backup-system-account-20261115 npm run test:gate",
+    "source_sha256": "5630c29bf46421e2aa2c92ceea7c127eb2f1a4b035e7a2f8d6f8ec924c442978",
+    "exit": 1,
+    "backend": {
+      "passed": 15165,
+      "skipped": 106,
+      "failed": 52
+    },
+    "failure": "Installed-SDK credential loopback fixture omitted native user names required by strict subject proof; added actual synthetic native names without changing production guards.",
+    "limits": "Stopped during backend units; subsequent focused installed-SDK/identity/victim check passed358."
+  },
+  {
+    "command": "env PATH=\"/Users/pieroot/code/afterglow-wt-backup-system-account-gate/backend/.venv/bin:$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/bin:/bin\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-backup-system-account-20261115 npm run test:gate",
+    "cwd": "/Users/pieroot/code/afterglow-wt-backup-system-account-gate",
+    "exit": 0,
+    "seconds": 295.32,
+    "source_sha256": "e4659f465d0ad3cbdfdb8c2715f36b1f234aefe92bf00f2314c23600ba507084",
+    "source_files": 4348,
+    "backend": {
+      "passed": 15217,
+      "skipped": 106,
+      "warnings": 1101,
+      "workers": 4,
+      "distribution": "worksteal"
+    },
+    "frontend": {
+      "files": 592,
+      "tests": 7982,
+      "script_tests": 9
+    },
+    "contracts": {
+      "passed": 262
+    },
+    "functional": {
+      "passed": 292,
+      "skipped": 46,
+      "deselected": 131,
+      "project": "afterglow-backup-system-account-20261115",
+      "ports": [
+        3307,
+        5434,
+        6380
+      ],
+      "cleanup": "runner removed its three datastore containers and network"
+    },
+    "ruff": {
+      "check": "passed",
+      "formatted_files": 912
+    },
+    "orchestration": {
+      "passed": 274,
+      "todo": 1,
+      "limits": "Pre-existing Lumen env-file exposure TODO remains, not a passed assertion."
+    },
+    "kolla_node_tests": 29,
+    "cli": {
+      "passed": 20,
+      "skipped": 36
+    },
+    "raw_log": "~/.local/share/afterglow-proofs/backup-system-account-20261115/full-gate.log",
+    "limits": "Source/local acceptance only. No production IAM/quota write, real scheduled recovery/restore, app image multi-architecture build or deployment."
+  }
+]
