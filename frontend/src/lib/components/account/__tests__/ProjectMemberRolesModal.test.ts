@@ -236,3 +236,12 @@ it('projects the returned standard project-to-native role graph without assignin
 	await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
 	expect(onSave).toHaveBeenCalledWith(['project-member']);
 });
+
+it('keeps a marked automatic-backup member read-only even when opened directly', async () => {
+	const onSave = vi.fn();
+	render(ProjectMemberRolesModal, { member: { ...member, system_account: { kind: 'auto_backup' } }, roles, busy: false, error: '', onSave, onClose: vi.fn() });
+	expect(screen.getByText('자동 백업용 시스템 계정')).toBeTruthy();
+	expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
+	await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+	expect(onSave).not.toHaveBeenCalled();
+});

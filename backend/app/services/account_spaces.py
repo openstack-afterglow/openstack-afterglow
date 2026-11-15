@@ -121,21 +121,43 @@ def _personal_member_role(catalog):
     return member
 
 
+def has_personal_member_source(sources, catalog, project_id):
+    from app.services import backup_system_account
+
+    member_id = _personal_member_role(catalog)["id"]
+    managed_id = backup_system_account.cached_managed_user_id()
+    return any(
+        source["role_id"] == member_id
+        and not backup_system_account.is_managed_member_source(source, project_id, managed_id, member_role_id=member_id)
+        for source in sources
+    )
+
+
 def _member_sources(sources, catalog, user_id, project_id):
+    from app.services import backup_system_account
+
     member = _personal_member_role(catalog)
-    return bool(sources) and all(
+    managed_id = backup_system_account.cached_managed_user_id()
+    owner_sources = [
+        source
+        for source in sources
+        if not backup_system_account.is_managed_member_source(
+            source, project_id, managed_id, member_role_id=member["id"]
+        )
+    ]
+    return bool(owner_sources) and all(
         source["role_id"] == member["id"]
         and source["user_id"] == user_id
         and not source["group_id"]
         and not source["inherited"]
         and source["kind"] == "project"
         and source["scope_id"] == project_id
-        for source in sources
+        for source in owner_sources
     )
 
 
 def _verify_personal_member(ks, catalog, project, user_id, *, operation=None, sources=None):
-    from app.services import domain_projects, identity_roles, project_service
+    from app.services import backup_system_account, domain_projects, identity_roles, project_service
 
     pid = _field(project, "id")
     if sources is None:
@@ -149,8 +171,15 @@ def _verify_personal_member(ks, catalog, project, user_id, *, operation=None, so
         else project_service._assignment_rows(ks, pid, effective=True)
     )
     expected = {member["id"], *identity_roles._descendant_ids(catalog, member["id"])}
-    if any(project_service._principal(row, "user") != user_id for row in rows) or (
-        project_service._expanded_role_ids(rows, catalog, user_id) != expected
+    managed_id = backup_system_account.cached_managed_user_id()
+    managed_sources = [
+        source
+        for source in sources
+        if backup_system_account.is_managed_member_source(source, pid, managed_id, member_role_id=member["id"])
+    ]
+    allowed = {user_id} | ({managed_id} if managed_sources else set())
+    if any(project_service._principal(row, "user") not in allowed for row in rows) or any(
+        project_service._expanded_role_ids(rows, catalog, uid) != expected for uid in allowed
     ):
         raise HTTPException(503, "Personal project native member could not be verified")
 
@@ -200,7 +229,7 @@ def personal_project(
         sources = domain_projects._sources(ks, full, catalog, operation=operation)
         if not domain_projects._personal_member(sources, catalog, user_id, pid):
             raise HTTPException(503, "Personal primary membership could not be verified")
-        if any(source["role_id"] == _personal_member_role(catalog)["id"] for source in sources):
+        if has_personal_member_source(sources, catalog, pid):
             _verify_personal_member(ks, catalog, full, user_id, operation=operation, sources=sources)
         else:
             # Preserve established owner-based projects without regranting or migrating them.
@@ -417,11 +446,12 @@ async def provision_primary(row, session, mutation):
 
 
 async def _human(user_id, mutation):
-    from app.services import domain_projects, identity_roles, project_service
+    from app.services import backup_system_account, domain_projects, identity_roles, project_service
     from app.services.project_service import _provider_call
 
     _, ks, catalog = mutation
     user = await _provider_call(ks.users.get, user_id)
+    await backup_system_account.assert_not_system_account(user_id, conn=ks, user=user)
     if _field(user, "id") != user_id or _field(user, "enabled") is not True:
         raise HTTPException(403, "An enabled human identity is required")
     home_id = _field(user, "domain_id")
@@ -782,7 +812,7 @@ async def settle_personal_project(operation_id, actor, *, native_calls_settled):
     Never replay creates/grants, mutate an existing user, or delete shared domains.
     Every cleanup write is preceded by a durable recovery state and fresh scope.
     """
-    from app.services import domain_iam, domain_projects, identity_roles, project_service
+    from app.services import backup_system_account, domain_iam, domain_projects, identity_roles, project_service
     from app.services.project_service import _provider_call
 
     if native_calls_settled is not True:
@@ -850,6 +880,10 @@ async def settle_personal_project(operation_id, actor, *, native_calls_settled):
             raw = await _provider_call(lambda: list(ks.role_assignments.list(project=pid)))
             for assignment in raw:
                 meta = domain_projects._assignment(assignment, catalog)
+                if _field(checked, "enabled") is True and backup_system_account.is_managed_member_source(
+                    meta, pid, backup_system_account.cached_managed_user_id(), member_role_id=member["id"]
+                ):
+                    continue
                 if (
                     meta["user_id"] != row.user_id
                     or meta["group_id"]

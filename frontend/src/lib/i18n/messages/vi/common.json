@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "Tài khoản hệ thống sao lưu tự động",
+	"systemAccount.managedHelp": "Hệ thống quản lý tài khoản này để sao lưu tự động. Người dùng không thể sửa hoặc xóa tài khoản, thay đổi trạng thái kích hoạt, tư cách thành viên, vai trò, nhóm hoặc thông tin xác thực. Tài khoản hoặc vai trò cần thiết bị xóa trực tiếp trong OpenStack sẽ được tự động khôi phục.",
 	"table.lastSuccessfulRead": "Đang hiển thị dữ liệu được tải thành công gần nhất.",
 	"table.search": "Tìm kiếm regex",
 	"table.regexPlaceholder": "VD: ^web|db$",

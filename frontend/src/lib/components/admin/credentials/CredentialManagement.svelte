@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -103,11 +104,12 @@
         {#each filtered as item (item.id)}
           <CompactResourceCard>
             <strong class="break-words text-sm">{'name' in item ? item.name : item.type}</strong>
+            <SystemAccountNotice identity={ctrl.systemUsers.find(user => user.id === item.user_id)} />
             <dl class="space-y-1 text-xs">
               <div><dt class="text-ink-2">{t('credentials.project')}</dt><dd class="break-all">{item.project_id ?? t('credentials.none')}</dd></div>
               {#if 'expires_at' in item}<div><dt class="text-ink-2">{t('credentials.expiry')}</dt><dd>{#if item.expires_at}<time datetime={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</dd></div>{/if}
             </dl>
-            {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button>{/snippet}
+            {#snippet actions()}<Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" disabled={!ctrl.canManageCredential(item)} onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button>{/snippet}
             {#snippet details()}<dl class="space-y-2 text-xs"><div><dt class="text-ink-2">{t('credentials.id')}</dt><dd class="break-all font-mono">{item.id}</dd></div><div><dt class="text-ink-2">{t('credentials.user')}</dt><dd class="break-all">{item.user_id}</dd></div></dl>{/snippet}
           </CompactResourceCard>
         {:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<p class="text-sm text-ink-2">{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</p>{/if}{/each}
@@ -115,9 +117,9 @@
     <TableShell><table>
       <thead><tr><TableColumnHeader view={tableView} columnKey="name" /><TableColumnHeader view={tableView} columnKey="id" /><TableColumnHeader view={tableView} columnKey="project" /><TableColumnHeader view={tableView} columnKey="user" />{#if kind === 'application'}<TableColumnHeader view={tableView} columnKey="expiry" />{/if}<th>{t('credentials.actions')}</th></tr></thead>
       <tbody>{#each filtered as item (item.id)}<tr>
-        <td>{'name' in item ? item.name : item.type}</td><td class="font-mono">{item.id}</td><td>{item.project_id ?? t('credentials.none')}</td><td>{item.user_id}</td>
+        <td>{'name' in item ? item.name : item.type}<SystemAccountNotice identity={ctrl.systemUsers.find(user => user.id === item.user_id)} /></td><td class="font-mono">{item.id}</td><td>{item.project_id ?? t('credentials.none')}</td><td>{item.user_id}</td>
         {#if 'expires_at' in item}<td>{#if item.expires_at}<time datetime={item.expires_at} title={item.expires_at}>{expiryLabel(item.expires_at)}</time>{:else}{dt('credentials.neverExpires')}{/if}</td>{/if}
-        <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button></div></td>
+        <td><div class="flex gap-2"><Button variant="ghost" size="sm" onclick={() => ctrl.open('detail', item)}>{t('credentials.details')}</Button><Button variant="danger" size="sm" disabled={!ctrl.canManageCredential(item)} onclick={() => ctrl.open('delete', item)} dataTour={application ? (item.id === lastIssuedId ? 'admin-app-credentials-delete' : undefined) : (item.id === lastCreatedId ? 'admin-user-credentials-delete' : undefined)}>{t('actions.delete')}</Button></div></td>
       </tr>{:else}{#if !ctrl.error && !ctrl.directoryError && !ctrl.directoryLoading}<tr><td colspan={kind === 'application' ? 6 : 5}>{hasFilters ? t('credentials.noMatches') : t('credentials.empty')}</td></tr>{/if}{/each}</tbody>
     </table></TableShell>
     </ResponsiveTable>
@@ -129,6 +131,7 @@
   <Card surface="modal" padding="lg" class="w-[28rem] max-w-full">
   <div data-tour={dialogAnchor}>
   <h2 id={modalTitleId} class="text-lg font-semibold text-ink-0 mb-5">{modalTitle}</h2>
+  <SystemAccountNotice identity={ctrl.systemUsers.find(user => user.id === ctrl.detail?.user_id)} />
   <div class="space-y-4">
     {#if ctrl.busy}<LoadingState variant="inline" label={t('state.loading')} />{/if}
     {#if ctrl.modalError}<Alert>{ctrl.modalError}</Alert>{/if}
@@ -176,10 +179,10 @@
   <div class="flex flex-wrap justify-end gap-3 mt-6">
     <Button variant="secondary" onclick={ctrl.close} dataTour={application && ctrl.mode === 'issued' ? 'admin-app-credentials-close' : undefined}>{t('credentials.close')}</Button>
     {#if ctrl.mode === 'create' || ctrl.mode === 'edit' || ctrl.mode === 'delete'}
-      <Button variant={ctrl.mode === 'delete' ? 'danger' : 'primary'} disabled={ctrl.busy || (kind === 'application' && ctrl.mode === 'create' && !ctrl.context)} onclick={ctrl.submit} dataTour={application ? (ctrl.mode === 'delete' ? 'admin-app-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-app-credentials-submit' : undefined) : (ctrl.mode === 'delete' ? 'admin-user-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-user-credentials-submit' : undefined)}>{ctrl.mode === 'delete' ? t('actions.delete') : t('actions.save')}</Button>
+      <Button variant={ctrl.mode === 'delete' ? 'danger' : 'primary'} disabled={ctrl.busy || (ctrl.mode === 'create' ? !ctrl.canCreate : !ctrl.detail || !ctrl.canManageCredential(ctrl.detail)) || (kind === 'application' && ctrl.mode === 'create' && !ctrl.context)} onclick={ctrl.submit} dataTour={application ? (ctrl.mode === 'delete' ? 'admin-app-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-app-credentials-submit' : undefined) : (ctrl.mode === 'delete' ? 'admin-user-credentials-delete-confirm' : ctrl.mode === 'create' ? 'admin-user-credentials-submit' : undefined)}>{ctrl.mode === 'delete' ? t('actions.delete') : t('actions.save')}</Button>
     {:else if ctrl.mode === 'detail' && kind === 'user'}
-      <Button variant="secondary" disabled={ctrl.busy} onclick={() => ctrl.reveal()}>{t('credentials.reveal')}</Button>
-      <Button variant="primary" disabled={ctrl.busy} onclick={() => ctrl.reveal(true)}>{t('credentials.editSensitive')}</Button>
+      <Button variant="secondary" disabled={ctrl.busy || !ctrl.detail || !ctrl.canManageCredential(ctrl.detail)} onclick={() => ctrl.reveal()}>{t('credentials.reveal')}</Button>
+      <Button variant="primary" disabled={ctrl.busy || !ctrl.detail || !ctrl.canManageCredential(ctrl.detail)} onclick={() => ctrl.reveal(true)}>{t('credentials.editSensitive')}</Button>
     {/if}
   </div>
   </div>

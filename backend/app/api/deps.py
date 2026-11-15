@@ -207,6 +207,35 @@ async def _resolve_jwt_with_operation(request, bearer_token, x_project_id, prese
     return principal
 
 
+async def _load_backup_system_identity():
+    from app.services import backup_system_account
+
+    if getattr(get_settings(), "backup_system_account_enabled", False):
+        try:
+            # Each worker must observe newly provisioned/recreated canonical IDs
+            # before synchronous Personal authority checks consume their cache.
+            await backup_system_account.load_account()
+        except Exception:
+            # Keep only the last verified ID; never infer an exemption from a
+            # failed read. Cold Personal checks stay strict, while unrelated
+            # native human authority remains available for operator recovery.
+            return
+
+
+async def _assert_interactive_subject(info):
+    from app.services import backup_system_account
+
+    # Native validation has already established username and immutable home.
+    # Ordinary humans need no additional fixed-admin directory lookup.
+    if (
+        info.get("user_id") == backup_system_account.cached_managed_user_id()
+        or info.get("username") == backup_system_account.ACCOUNT_NAME
+    ):
+        await backup_system_account.assert_login_allowed(
+            user_id=info.get("user_id"), username=info.get("username"), domain_id=info.get("identity_domain_id")
+        )
+
+
 async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_original, operation) -> dict:
     """Bearer access JWT 검증 → Redis 세션 조회 → token_info dict 반환.
 
@@ -260,6 +289,7 @@ async def _resolve_jwt_session(request, bearer_token, x_project_id, *, preserve_
         raise HTTPException(503, "Native login verification is unavailable") from exc
     if root.get("user_id") != payload["sub"] or root.get("identity_domain_id") != identity_domain_id:
         raise HTTPException(403, "Native login identity does not match the session")
+    await _assert_interactive_subject(root)
     from app.services.session_store import update_session_token
 
     try:
@@ -583,7 +613,9 @@ async def resolve_token_info(
         bearer = authorization[7:]
         started = time.perf_counter()
         try:
+            await _load_backup_system_identity()
             info = await _resolve_jwt_token_info(request, bearer, x_project_id, operation=operation)
+            await _assert_interactive_subject(info)
             if operation is not None and getattr(request.state, "_authority_operation", None) is operation:
                 from app.api.identity.auth import _domain_metadata_owner
 

@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "自動バックアップ用システムアカウント",
+	"systemAccount.managedHelp": "自動バックアップのためにシステムが管理するアカウントです。ユーザーは編集・削除、有効状態・メンバーシップ・ロール・グループ・認証情報の変更を行えません。OpenStack で直接削除されたアカウントや必要なロールは自動的に復元されます。",
 	"table.lastSuccessfulRead": "最後に正常に取得したデータを表示しています。",
 	"table.search": "正規表現検索",
 	"table.regexPlaceholder": "例: ^web|db$",

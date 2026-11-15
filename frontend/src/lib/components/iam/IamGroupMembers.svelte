@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { domainIam, type IamGroup, type IamGroupMember, type IamSession, type IamUser } from '$lib/api/domainIam';
 	import { t } from '$lib/i18n/ns/domain-iam-groups';
@@ -24,7 +26,7 @@
 	let busy = $state(false);
 	let error = $state('');
 	// Candidates are the fresh domain directory; the server rechecks joined/enabled/privileged state.
-	const candidates = $derived(users.filter(user => user.enabled && !members.some(member => member.id === user.id)));
+	const candidates = $derived(users.filter(user => user.enabled && !isSystemAccount(user) && !members.some(member => member.id === user.id)));
 	const disabled = $derived(blocked || busy || loading || group.protected || !session.canSubmit());
 
 	function fail(cause: unknown, fallback: string) {
@@ -56,11 +58,12 @@
 	}
 	async function add() {
 		const user = selected;
-		if (user) await change(() => client.addGroupMember(group.id, user));
+		if (!disabled && candidates.some(candidate => candidate.id === user)) await change(() => client.addGroupMember(group.id, user));
 	}
 	async function remove(member: IamGroupMember) {
+		if (disabled || isSystemAccount(member) || member.protected) return;
 		if (!await confirmDialog(t('removeConfirm', { user: member.name, group: group.name }), { confirmLabel: t('remove') })) return;
-		if (live && session.isCurrent()) await change(() => client.removeGroupMember(group.id, member.id));
+		if (live && session.isCurrent() && !disabled && !isSystemAccount(member) && members.includes(member)) await change(() => client.removeGroupMember(group.id, member.id));
 	}
 	onMount(() => { void load(); });
 	onDestroy(() => { live = false; revision++; members = []; users = []; });
@@ -87,11 +90,12 @@
 		<tbody>
 			{#each members as member (member.id)}<tr>
 				<td><span class="font-medium">{member.name}</span>
+					<SystemAccountNotice identity={member} />
 					{#if member.protected}<span class="ml-2"><Pill tone="warning" size="xs">{t('memberProtected')}</Pill></span>{/if}
 					{#if member.identity_read_only}<span class="ml-2"><Pill tone="neutral" size="xs">{t('memberJoined')}</Pill></span>{/if}
 				</td>
 				<td class="[overflow-wrap:anywhere]">{member.email || '—'}</td>
-				<td><Button variant="danger-outline" size="sm" disabled={disabled || member.protected} onclick={() => remove(member)}>{t('remove')}</Button></td>
+				<td><Button variant="danger-outline" size="sm" disabled={disabled || member.protected || isSystemAccount(member)} onclick={() => remove(member)}>{t('remove')}</Button></td>
 			</tr>{/each}
 			{#if !loading && !error && !members.length}<tr><td colspan="3">{t('noMembers')}</td></tr>{/if}
 		</tbody>

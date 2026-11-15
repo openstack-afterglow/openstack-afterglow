@@ -1,3 +1,7 @@
+export interface SystemAccountIdentity {
+  system_account?: { kind: 'auto_backup' } | null;
+}
+
 export interface PagedResponse<T> {
   items: T[];
   next_marker: string | null;
@@ -21,7 +25,7 @@ export interface SwiftContainer {
   deleted_at?: number;
 }
 
-export interface User {
+export interface User extends SystemAccountIdentity {
   id: string;
   name: string;
   email: string;

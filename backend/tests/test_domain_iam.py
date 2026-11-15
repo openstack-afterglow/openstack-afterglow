@@ -62,6 +62,7 @@ def directory(monkeypatch):
     state.policy = domain_auth.LoginPolicy(domain_id="domain")
     state.settings = SimpleNamespace(
         os_username="operator",
+        os_user_domain_name="domain",
         auth=SimpleNamespace(public_signup_enabled=False, public_signup_button_visible=True, signup_email_domains=[]),
         service_manila_enabled=False,
         smtp_enabled=True,
@@ -136,10 +137,12 @@ def directory(monkeypatch):
 
     state.ks.users = SimpleNamespace(
         get=get_user,
-        list=lambda domain=None, group=None: [
+        list=lambda domain=None, group=None, name=None: [
             u
             for u in state.users.values()
-            if (domain is None or u.domain_id == domain) and (group is None or u.id in state.groups.get(group, []))
+            if (domain is None or u.domain_id == domain)
+            and (group is None or u.id in state.groups.get(group, []))
+            and (name is None or u.name == name)
         ],
         create=create_user,
         update=update_user,
@@ -311,7 +314,7 @@ def directory(monkeypatch):
 
     state.ks.roles.grant = grant
     state.ks.roles.revoke = revoke
-    conn = SimpleNamespace(close=lambda: None)
+    conn = SimpleNamespace(close=lambda: None, identity=state.sdk_identity())
 
     @asynccontextmanager
     async def graph_lock(connection, *, wait=False):
@@ -362,6 +365,7 @@ def directory(monkeypatch):
     monkeypatch.setattr(keystone, "get_admin_project_connection", lambda: conn)
     monkeypatch.setattr(keystone, "get_settings", lambda: state.settings)
     monkeypatch.setattr(domain_iam, "get_settings", lambda: state.settings)
+    monkeypatch.setattr("app.services.backup_system_account.get_settings", lambda: state.settings)
     monkeypatch.setattr("app.services.enrollment_policy.get_settings", lambda: state.settings)
     monkeypatch.setattr("app.services.account_recovery.get_settings", lambda: state.settings)
     monkeypatch.setattr("app.config.get_settings", lambda: state.settings)
@@ -1755,7 +1759,7 @@ async def test_manager_bearing_user_and_group_grants_rejected_outside_default(di
         directory.catalog = identity_roles._catalog(roles, edges)
     writes = []
     conn = SimpleNamespace(
-        identity=SimpleNamespace(
+        identity=directory.sdk_identity(
             assign_project_role_to_user=lambda *args: writes.append(args),
             assign_project_role_to_group=lambda *args: writes.append(args),
         )
@@ -1778,7 +1782,7 @@ async def test_manager_bearing_user_and_group_grants_rejected_outside_default(di
 async def test_generic_native_default_manager_revoke_refuses_last_before_write(directory):
     writes = []
     conn = SimpleNamespace(
-        identity=SimpleNamespace(
+        identity=directory.sdk_identity(
             unassign_project_role_from_user=lambda *args: writes.append(args),
         )
     )
@@ -1817,7 +1821,7 @@ async def test_role_graph_cannot_remove_last_indirect_default_manager(directory)
     directory.ks.role_assignments.list = assignments
     assert domain_projects.has_manager("domain-manager", "domain", ks=directory.ks, catalog=directory.catalog)
     writes = []
-    conn = SimpleNamespace(identity=SimpleNamespace(delete=lambda path: writes.append(path)))
+    conn = SimpleNamespace(identity=directory.sdk_identity(delete=lambda path: writes.append(path)))
     with pytest.raises(HTTPException) as denied:
         await identity_roles.change_edge(conn, manager("system-admin"), "indirect-manager", rid("manager"), remove=True)
     assert denied.value.status_code == 409 and not writes
@@ -1859,7 +1863,7 @@ async def test_last_group_default_manager_membership_and_group_delete_are_guarde
     assert domain_projects.has_manager("domain-manager", "domain", ks=directory.ks, catalog=directory.catalog)
     writes = []
     conn = SimpleNamespace(
-        identity=SimpleNamespace(
+        identity=directory.sdk_identity(
             remove_user_from_group=lambda *args: writes.append(args),
             delete_group=lambda *args, **kwargs: writes.append(args),
         )
@@ -1889,7 +1893,7 @@ async def test_managed_projection_group_cannot_be_tampered_with(directory, actio
     )
     writes = []
     conn = SimpleNamespace(
-        identity=SimpleNamespace(
+        identity=directory.sdk_identity(
             add_user_to_group=lambda *args: writes.append(args),
             remove_user_from_group=lambda *args: writes.append(args),
             delete_group=lambda *args, **kwargs: writes.append(args),
@@ -1928,7 +1932,7 @@ async def test_manager_revoke_with_another_enabled_manager_removes_actual_author
         assert (project_id, role_id) == ("default-project", rid("manager"))
         directory.managers.remove(user_id)
 
-    conn = SimpleNamespace(identity=SimpleNamespace(unassign_project_role_from_user=revoke))
+    conn = SimpleNamespace(identity=directory.sdk_identity(unassign_project_role_from_user=revoke))
     result = await identity_roles.change_project_assignment(
         conn,
         manager("system-admin"),
@@ -1948,7 +1952,7 @@ async def test_manager_revoke_with_another_enabled_manager_removes_actual_author
 @pytest.mark.asyncio
 async def test_role_graph_cannot_remove_required_default_native_reader_entitlement(directory):
     writes = []
-    conn = SimpleNamespace(identity=SimpleNamespace(delete=lambda path: writes.append(path)))
+    conn = SimpleNamespace(identity=directory.sdk_identity(delete=lambda path: writes.append(path)))
     with pytest.raises(HTTPException) as denied:
         await identity_roles.change_edge(
             conn, manager("system-admin"), rid("project_reader"), rid("reader"), remove=True
@@ -1987,7 +1991,7 @@ async def test_admin_project_assignment_cannot_admit_outsiders(directory, group)
     identity_before = dict(vars(directory.users["foreign"]))
     writes = []
     conn = SimpleNamespace(
-        identity=SimpleNamespace(
+        identity=directory.sdk_identity(
             assign_project_role_to_user=lambda *args: writes.append(args),
             assign_project_role_to_group=lambda *args: writes.append(args),
             group_users=lambda gid: [directory.ks.users.get(uid) for uid in directory.groups[gid]],
@@ -2032,7 +2036,7 @@ async def test_admin_project_assignment_accepts_external_principal_without_ident
         assert project_id == PROJECT and role_id == rid("project_reader")
         directory.direct.append(assignment(None, "project_reader", group=group_id))
 
-    identity = SimpleNamespace(
+    identity = directory.sdk_identity(
         get_domain=directory.ks.domains.get,
         get_project=directory.ks.projects.get,
         get_user=directory.ks.users.get,

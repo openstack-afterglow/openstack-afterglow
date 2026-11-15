@@ -79,6 +79,8 @@ async def policy_native(domain_native, ownership_journal, monkeypatch):
         raise AssertionError("Unexpected SDK transport request")
 
     identity = SimpleNamespace(
+        domains=native.domains,
+        users=native.users,
         get_domain=native.domains.get,
         projects=lambda domain_id: native.projects.list(domain=domain_id),
         get_user=native.users.get,
@@ -88,7 +90,11 @@ async def policy_native(domain_native, ownership_journal, monkeypatch):
         delete_project=delete_project,
         role_assignments=assignments,
     )
-    native.sdk = SimpleNamespace(identity=identity)
+    native.sdk = SimpleNamespace(
+        identity=identity,
+        block_storage=native.conn.block_storage,
+        session=native.conn.session,
+    )
     return native
 
 

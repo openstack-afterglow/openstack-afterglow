@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "Akaun sistem sandaran automatik",
+	"systemAccount.managedHelp": "Sistem mengurus akaun ini untuk sandaran automatik. Pengguna tidak boleh mengedit atau memadamnya, menukar status aktif, keahlian, peranan atau kumpulan, atau menukar kelayakannya. Akaun atau peranan yang diperlukan yang dibuang terus dalam OpenStack akan dipulihkan secara automatik.",
 	"table.lastSuccessfulRead": "Memaparkan data yang terakhir berjaya dimuatkan.",
 	"table.search": "Carian regex",
 	"table.regexPlaceholder": "cth. ^web|db$",

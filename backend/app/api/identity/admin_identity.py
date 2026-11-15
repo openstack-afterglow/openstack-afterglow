@@ -24,6 +24,7 @@ from app.services import (
     account_identity,
     account_spaces,
     activity,
+    backup_system_account,
     domain_iam,
     domain_projects,
     domain_quotas,
@@ -207,6 +208,7 @@ async def list_users(
                     "enabled": u.is_enabled,
                     "domain_id": getattr(u, "domain_id", None),
                     "default_project_id": getattr(u, "default_project_id", None),
+                    "system_account": backup_system_account.system_account_marker(u),
                 }
             )
         users.sort(key=lambda u: u["id"])
@@ -310,6 +312,10 @@ async def update_user(
     token_info: dict = Depends(get_token_info),
 ):
     """사용자 수정."""
+    target = await asyncio.to_thread(_native_object, conn, "user", user_id)
+    await backup_system_account.assert_not_system_account(user_id, conn=conn, user=target)
+    if req.name is not None:
+        await backup_system_account.assert_login_allowed(username=req.name, domain_id=target.domain_id)
     email = req.email
     if email is not None:
         from app.services.domain_auth import DomainAuthError, normalize_email
@@ -417,6 +423,7 @@ async def delete_user(
             # Keep exact-home proof inside the mutation lease for deletion.
             await asyncio.to_thread(_selected_domain, conn, domain_id)
             target = await asyncio.to_thread(_domain_object, conn, domain_id, "user", user_id)
+            await backup_system_account.assert_not_system_account(user_id, conn=conn, user=target)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)
             catalog = await asyncio.to_thread(identity_roles.load_catalog, conn)
             await asyncio.to_thread(_assert_user_deletion_identity, conn, user_id, token_info["user_id"])
@@ -524,6 +531,9 @@ async def get_user_permissions_admin(
 
     def fetch():
         result = identity_roles.user_permissions(conn, user_id)
+        marker = backup_system_account.system_account_marker({"id": user_id})
+        if marker:
+            result["system_account"] = marker
         if domain_id is None:
             return result
         projects = {
@@ -555,6 +565,7 @@ async def admin_unlock_account(
 ):
     """계정 로그인 잠금 강제 해제 (관리자 전용)."""
     domain = await asyncio.to_thread(_selected_domain, conn, req.domain_id)
+    await backup_system_account.assert_login_allowed(username=req.username, domain_id=domain.id)
     await _login_guard.admin_unlock(req.username, domain.id)
     await activity.record(
         project_id=token_info["project_id"],
@@ -1184,6 +1195,7 @@ async def list_project_members(
                             "type": "user",
                             "domain_id": principal.domain_id,
                             "identity_read_only": domain_id is not None and principal.domain_id != domain_id,
+                            "system_account": backup_system_account.system_account_marker(principal),
                         }
                     )
                 elif group.get("id"):
@@ -1467,6 +1479,7 @@ async def update_group(
     try:
         async with identity_roles._graph_lock(conn) as lease:
             await asyncio.to_thread(domain_projects.assert_not_projection_group, group_id)
+            await identity_roles.assert_group_mutable(conn, group_id)
             await lease.assert_owned()
             result = await asyncio.to_thread(_update)
         await invalidate("afterglow:admin:groups:*")
@@ -1497,6 +1510,7 @@ async def list_group_users(
         users = []
         try:
             for u in conn.identity.group_users(group_id):
+                marker = backup_system_account.system_account_marker(u)
                 users.append(
                     {
                         "id": u.id,
@@ -1505,6 +1519,7 @@ async def list_group_users(
                         "domain_id": getattr(u, "domain_id", None),
                         "identity_read_only": domain_id is not None and getattr(u, "domain_id", None) != domain_id,
                         "enabled": getattr(u, "is_enabled", True),
+                        **({"system_account": marker} if marker else {}),
                     }
                 )
         except Exception as e:
@@ -1543,6 +1558,8 @@ async def list_group_candidates(
                 raise public_service_error(503, "identity_object_unverified")
             ids.add(uid)
             if not domain_projects._enabled(user):
+                continue
+            if backup_system_account.system_account_marker(user):
                 continue
             name, email = identity_roles._field(user, "name"), identity_roles._field(user, "email", "")
             if not isinstance(name, str) or (email is not None and not isinstance(email, str)):
@@ -1787,6 +1804,7 @@ async def list_system_roles():
                             "name": getattr(u, "name", ""),
                             "email": getattr(u, "email", ""),
                             "enabled": getattr(u, "enabled", False),
+                            "system_account": backup_system_account.system_account_marker(u),
                         }
                     )
                 except Exception:
@@ -1805,6 +1823,7 @@ async def _system_admin_change(conn, user_id: str, *, revoke: bool) -> dict:
     # The shared native role-graph lease serializes this with every other grant,
     # role and implication mutation, so two concurrent revokes cannot both pass.
     async with identity_roles._graph_lock(conn) as lease:
+        await backup_system_account.assert_not_system_account(user_id, conn=conn)
         try:
             admin_role_id = await asyncio.to_thread(keystone._resolve_admin_role_id)
             ks = await asyncio.to_thread(keystone._get_admin_ks_client)

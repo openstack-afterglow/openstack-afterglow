@@ -15,6 +15,7 @@ from anyio import CancelScope
 
 from app.config import get_settings
 from app.services import manila
+from app.services.backup_quota import derive_backup_gigabytes
 
 _logger = logging.getLogger(__name__)
 
@@ -127,7 +128,10 @@ def get_section(conn, project_id: str, section: str) -> dict:
         # get_client performs catalog/override discovery and refuses missing endpoints.
         payload = manila.get_client(conn).get(f"quota-sets/{project_id}/detail")
         raw = payload.get("quota_set") if isinstance(payload, dict) else None
-    return _quota_entries(raw, QUOTA_FIELDS[section].values())
+    keys = tuple(QUOTA_FIELDS[section].values())
+    if section == "volume":
+        keys += ("backup_gigabytes",)
+    return _quota_entries(raw, keys)
 
 
 def update_section(conn, project_id: str, section: str, values: dict[str, int]) -> None:
@@ -138,11 +142,18 @@ def update_section(conn, project_id: str, section: str, values: dict[str, int]) 
     after errors because the service may already have committed the mutation.
     """
     _check_section(section)
-    if not values or any(
-        key not in QUOTA_FIELDS[section].values() or type(value) is not int or value < -1
-        for key, value in values.items()
-    ):
+    allowed = set(QUOTA_FIELDS[section].values())
+    if section == "volume":
+        allowed.add("backup_gigabytes")
+    if not values or any(key not in allowed or type(value) is not int or value < -1 for key, value in values.items()):
         raise ValueError("invalid native quota update")
+    if section == "volume" and ("gigabytes" in values or "backup_gigabytes" in values):
+        limit = values.get("gigabytes")
+        if limit is None:
+            # Independent backup-capacity writes cannot choose a separate limit.
+            # Read the exact project's current global quota, never a typed limit.
+            limit = get_section(conn, project_id, section)["gigabytes"]["limit"]
+        values = {**values, "backup_gigabytes": derive_backup_gigabytes(limit)}
     if section == "file_storage":
         # ManilaClient uses httpx's default non-retrying transport and checks status.
         manila.get_client(conn).put(f"quota-sets/{project_id}", {"quota_set": values})
@@ -159,6 +170,28 @@ def update_section(conn, project_id: str, section: str, values: dict[str, int]) 
         status_code_retries=0,
     )
     response.raise_for_status()
+
+
+def ensure_project_backup_quota(conn, project_id: str) -> bool:
+    """Converge only global backup capacity, preserving all native defaults.
+
+    Callers own authorization and the graph lease. A failed write is not retried;
+    project creation must remain disabled if this boundary cannot verify state.
+    Return whether a verified backup-capacity write was needed.
+    """
+    current = get_section(conn, project_id, "volume")
+    limit = current["gigabytes"]["limit"]
+    desired = derive_backup_gigabytes(limit)
+    if current.get("backup_gigabytes", {}).get("limit") == desired:
+        return False
+    update_section(conn, project_id, "volume", {"backup_gigabytes": desired})
+    checked = get_section(conn, project_id, "volume")
+    if (
+        checked.get("gigabytes", {}).get("limit") != limit
+        or checked.get("backup_gigabytes", {}).get("limit") != desired
+    ):
+        raise ValueError("project backup quota readback mismatch")
+    return True
 
 
 async def read_project(conn, project_id: str) -> dict:

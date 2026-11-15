@@ -192,7 +192,10 @@ async def test_external_account_home_and_personal_project_preserve_reader_only_o
     }
     assert domain_projects.default_project(personal["domain_id"], ks=env.keystone) is None
     assert not domain_projects.has_manager(user.id, "dom-a", ks=env.keystone)
-    assert env.quota_applications == [(personal["id"], "compute", {"instances": 0})]
+    assert env.quota_applications == [
+        (personal["id"], "compute", {"instances": 0}),
+        (personal["id"], "volume", {"backup_gigabytes": 300}),
+    ]
 
     # Approval and admission changes cannot reapprove or move an existing link.
     await set_approval_mode(env, "admin")

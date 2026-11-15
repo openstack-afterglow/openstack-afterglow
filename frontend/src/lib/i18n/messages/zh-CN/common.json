@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "自动备份系统账户",
+	"systemAccount.managedHelp": "此账户由系统管理，用于自动备份。用户不能编辑或删除此账户，也不能更改其启用状态、成员关系、角色、群组或凭据。在 OpenStack 中直接删除的账户或必要角色会自动恢复。",
 	"table.lastSuccessfulRead": "正在显示上次成功加载的数据。",
 	"table.search": "正则表达式搜索",
 	"table.regexPlaceholder": "例如：^web|db$",

@@ -725,9 +725,11 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
         project = directory.personal_projects[project_id]
         assert project.enabled is False
         assert directory.users[project.afterglow_personal_user_id].enabled is False
-        assert values == quotas and section == "compute"
+        assert (section == "compute" and values == quotas) or (
+            section == "volume" and values == {"backup_gigabytes": 300}
+        )
         native_update(conn, project_id, section, values)
-        quota_observations.append((project.domain_id, project_id))
+        quota_observations.append((project.domain_id, project_id, section, dict(values)))
 
     monkeypatch.setattr(quota_native, "update_section", verify_disabled_project)
     async with AsyncClient(transport=ASGITransport(app=enrollment_app), base_url="http://test") as client:
@@ -768,7 +770,15 @@ async def test_reviewed_email_provisions_personal_home_only_after_approval_with_
         uid, home = result.json()["user_id"], result.json()["identity_domain_id"]
         assert home != result.json()["domain_id"] and result.json()["domain_name"] == "Personal"
         assert directory.users[uid].enabled is True
-        assert quota_observations == [(result.json()["personal_domain_id"], result.json()["personal_project_id"])]
+        assert quota_observations == [
+            (result.json()["personal_domain_id"], result.json()["personal_project_id"], "compute", quotas),
+            (
+                result.json()["personal_domain_id"],
+                result.json()["personal_project_id"],
+                "volume",
+                {"backup_gigabytes": 300},
+            ),
+        ]
         assert project_service._direct_ids(directory.personal_direct, uid) == {rid("member")}
         assert not project_service._direct_ids(directory.default_direct, uid)
         assert (await client.post("/api/v1/auth/registrations/accept", json=account_body(token))).status_code == 409

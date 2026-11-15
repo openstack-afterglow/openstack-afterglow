@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### Added
+- 자동 Cinder 백업·스냅샷 전용 `afterglow-auto-backup` 시스템 계정을 추가한다. 암호화된 Redis credential, leader/lease 기반 계정·역할 복구, 읽기 전용 변경 보고와 기본 비활성 activation 설정을 제공한다. 다른 operator 작업과 Trove는 기존 계정을 유지한다.
+- 사용자·관리자 IAM에서 자동 백업용 시스템 계정을9개 언어로 표시하고 변경·제거·자격 증명 발급·로그인을 차단한다. Personal 프로젝트는 검증된 시스템 계정의 정확한 직접 `member` 할당만 예외로 허용한다.
+
+### Changed
+- 프로젝트 전역 볼륨 용량 쿼터의3배를 `backup_gigabytes` 한도로 적용한다(`-1`은 무제한). 새 프로젝트·기존 Afterglow quota writer와 opt-in reconciler가 같은 규칙을 사용하며 typed quota와 백업 개수 제한은 변경하지 않는다. 운영 적용·native 쓰기는 별도 승인이 필요하다.
+
+
 ## [1.32.16] - 2026-11-15
 
 ### Changed

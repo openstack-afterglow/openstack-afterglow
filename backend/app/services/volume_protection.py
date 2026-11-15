@@ -89,6 +89,9 @@ async def register_volume_protection(
     redis = await backup_service._get_redis()
     if not await redis.eval(_REGISTER, len(keys), *keys, f"{project_id}:{volume_id}", *policies):
         raise ValueError("A selected protection policy or active operation already exists")
+    from app.services.backup_system_account import ensure_project
+
+    await ensure_project(project_id)
 
 
 async def rollback_volume_protection(project_id: str, volume_id: str, registration_id: str) -> None:

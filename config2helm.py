@@ -98,6 +98,9 @@ def convert(cfg: dict, include_secrets: bool) -> dict:
         ),
         "adoptionReferenceAt": adoption_reference,
     }
+    out["backupSystemAccount"] = {
+        "enabled": cfg.get("backup_system_account", {}).get("enabled", False)
+    }
 
     os_cfg = cfg.get("openstack", {})
     app = cfg.get("app", {})

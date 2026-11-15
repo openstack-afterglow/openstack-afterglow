@@ -173,6 +173,9 @@ async def _build_token_response(
     operation=None,
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_login_allowed(user_id=user_id, username=username, domain_id=identity_domain_id)
     with authentication_step("session_publication"):
         if not project_id:
             roles = []
@@ -275,8 +278,12 @@ async def _build_token_response(
 
 
 async def _enforce_session_policy(session: dict, identity: dict) -> None:
+    from app.services import backup_system_account
     from app.services.domain_auth import enforce_email, get_policy, require_password, require_provider
 
+    await backup_system_account.assert_login_allowed(
+        user_id=identity.get("user_id"), username=identity.get("username"), domain_id=identity["identity_domain_id"]
+    )
     identity_domain_id = identity["identity_domain_id"]
     expected = session.get("identity_domain_id") or session.get("domain_id")
     if expected:
@@ -323,6 +330,14 @@ async def _exchange_native_scope(token: str, project_id: str, *, operation=None)
 
 async def _prepare_initial_session(data: dict, *, operation=None) -> dict:
     """Choose a human's project-only personal landing without changing native identity."""
+    from app.api.deps import _load_backup_system_identity
+    from app.services import backup_system_account
+
+    await _load_backup_system_identity()
+
+    await backup_system_account.assert_login_allowed(
+        user_id=data["user_id"], username=data.get("username"), domain_id=data.get("identity_domain_id")
+    )
     if operation is None:
         async with NativeOperation() as operation:
             return await _prepare_initial_session(data, operation=operation)
@@ -537,12 +552,16 @@ async def recover_personal_project(request: Request, req: LoginRequest, backgrou
 
 
 async def _login(request: Request, req: LoginRequest, background_tasks: BackgroundTasks, operation: NativeOperation):
+    from app.services import backup_system_account
     from app.services.account_identity import authenticate_password, password_account
     from app.services.domain_auth import DomainAuthDenied, get_policy, require_password
 
     try:
         with authentication_step("resolve"):
             account = await operation.run(password_account, req.username, operation=operation)
+        await backup_system_account.assert_login_allowed(
+            user_id=account["id"], username=account["name"], domain_id=account["domain_id"]
+        )
         with authentication_step("password_method_policy"):
             if not (await get_policy(account["domain_id"])).password_enabled:
                 raise DomainAuthDenied("Password login is disabled for this account", code="password_disabled")
@@ -774,6 +793,11 @@ async def _refresh_token(
         raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
     if sess.get("user_id") != r_payload.get("sub"):
         raise HTTPException(status_code=401, detail="refresh 토큰의 세션 소유권이 일치하지 않습니다.")
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_login_allowed(
+        user_id=sess["user_id"], username=sess.get("username"), domain_id=sess.get("identity_domain_id")
+    )
     if not isinstance(sess.get("domain_id"), str) or not sess["domain_id"]:
         raise HTTPException(status_code=401, detail="세션의 도메인을 확인할 수 없습니다. 다시 로그인해 주세요.")
 
@@ -976,6 +1000,13 @@ async def scope_project(req: ProjectScopeRequest, token_info: dict = Depends(get
 
 async def _scope_project(req: ProjectScopeRequest, token_info: dict, *, operation: NativeOperation):
     """접근 가능한 프로젝트로 새 토큰 쌍 발급 (rescope)."""
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_login_allowed(
+        user_id=token_info["user_id"],
+        username=token_info.get("username"),
+        domain_id=token_info.get("identity_domain_id"),
+    )
     keystone_token = token_info["session_token"]
     await operation.run(assert_project_domain, token_info["domain_id"], req.project_id, operation=operation)
 
@@ -1258,6 +1289,11 @@ async def _switch_working_domain(
 ):
     """Explicitly switch only working scope; identity, login policy and lifetime persist."""
     user_id = token_info["user_id"]
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_login_allowed(
+        user_id=user_id, username=token_info.get("username"), domain_id=token_info.get("identity_domain_id")
+    )
     context = await operation.run(_workspace_context, user_id, domain_id, operation=operation)
     assert_domain_resource(token_info["identity_domain_id"], context["identity_domain_id"])
     system_admin = await operation.run(keystone._is_system_admin, user_id, operation=operation)

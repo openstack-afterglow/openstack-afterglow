@@ -100,6 +100,7 @@ from app.api.identity import admin_router, auth_router, mcp_access_router
 from app.api.identity.account_recovery import router as account_recovery_router
 from app.api.identity.admin_activity import router as admin_activity_router
 from app.api.identity.admin_announcements import router as admin_announcements_router
+from app.api.identity.admin_backup_account import router as admin_backup_account_router
 from app.api.identity.admin_credentials import router as admin_credentials_router
 from app.api.identity.admin_dashboard import router as admin_dashboard_router
 from app.api.identity.admin_experience import router as admin_experience_router
@@ -788,6 +789,7 @@ app.include_router(compute_pools_router, prefix="/api/v1", tags=["compute-pools"
 app.include_router(gpu_quota_requests_router, prefix="/api/v1", tags=["gpu-quota-requests"])
 app.include_router(managed_flavors_router, prefix="/api/v1", tags=["flavor-automation"])
 app.include_router(admin_identity_router, prefix="/api/v1/admin", tags=["admin-identity"])
+app.include_router(admin_backup_account_router, prefix="/api/v1/admin", tags=["admin-backup-system-account"])
 app.include_router(admin_password_reset_router, prefix="/api/v1/admin", tags=["admin-identity"])
 app.include_router(admin_mail_settings_router, prefix="/api/v1/admin", tags=["admin-email"])
 app.include_router(admin_mail_delivery_router, prefix="/api/v1/admin", tags=["admin-email"])
@@ -1422,6 +1424,15 @@ async def start_background_workers():
         await r.ping()
     except Exception:
         pass
+    from app.services.backup_system_account import load_account
+
+    try:
+        await load_account()
+    except Exception:
+        _logger.warning("Backup system account identity unavailable during startup")
+    from app.services.backup_account_reconciler import scheduler_loop as backup_account_reconciliation_loop
+
+    _start_background(backup_account_reconciliation_loop(), name="backup-system-account-reconciliation")
 
     # DB 초기화 (database.url 설정 시)
     from app.database import init_db

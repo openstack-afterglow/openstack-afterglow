@@ -1,4 +1,5 @@
 import { credentialRequest } from '$lib/api/adminCredentials';
+import { isSystemAccount } from '$lib/utils/systemAccount';
 import { ApiError } from '$lib/api/errors';
 import { t } from '$lib/i18n/ns/admin-identity';
 import { t as dt } from '$lib/i18n/ns/domain-admin';
@@ -31,7 +32,9 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   const allowed = () => !disposed && !!domainId.trim() && authority.admin && authority.ready && !!authority.token && !!authority.userId && !!authority.projectId;
   const query = (userId = selectedUser) => userId ? `?user_id=${encodeURIComponent(userId)}` : '';
   const capture = () => { const e = epoch, a = { ...authority }, d = domainId; return { a, d, owns: () => allowed() && e === epoch && d === domainId }; };
-  const canCreate = () => allowed() && !directoryLoading && !directoryError && (kind === 'user' || (selectedUser === authority.userId && users.some(user => user.id === authority.userId)));
+  const protectedUser = (id: string) => isSystemAccount(users.find(user => user.id === id));
+  const canManageCredential = (item: ApplicationCredential | UserCredential) => allowed() && !directoryLoading && !directoryError && !protectedUser(item.user_id);
+  const canCreate = () => allowed() && !directoryLoading && !directoryError && !protectedUser(selectedUser) && (kind === 'user' || (selectedUser === authority.userId && users.some(user => user.id === authority.userId)));
   function assertScope(resource: { domain_id: string }) {
     if (resource.domain_id !== domainId) throw new ApiError(403, 'credential_scope_denied', 'credential_scope_denied');
   }
@@ -102,11 +105,11 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
       users = all;
       experienceState(experience, users.length ? 'ready' : 'empty');
       void experienceApplied(experience, {}, current);
-      if (selectedUser && !all.some(user => user.id === selectedUser)) {
+      if (selectedUser && !all.some(user => user.id === selectedUser && !isSystemAccount(user))) {
         ++listTicket; selectedUser = ''; close(); items = []; loading = false; error = '';
         if (kind === 'user') void loadAttempt();
       }
-      if (kind === 'application' && !selectedUser && all.some(user => user.id === a.userId)) {
+      if (kind === 'application' && !selectedUser && all.some(user => user.id === a.userId && !isSystemAccount(user))) {
         selectedUser = a.userId!;
         void loadAttempt();
       }
@@ -117,7 +120,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     finally { if (owns() && ticket === directoryTicket) directoryLoading = false; }
   }
   async function selectUser(id: string) {
-    if (id && !users.some(user => user.id === id)) return;
+    if (id && !users.some(user => user.id === id && !isSystemAccount(user))) return;
     const experience = beginExperienceAction('admin', 'select', 'resource.list');
     ++listTicket; selectedUser = id; close(); items = []; loading = false; error = '';
     if (kind === 'application' && !id) { experienceState(experience, 'disabled'); void experienceApplied(experience); return; }
@@ -151,6 +154,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   }
   async function open(next: 'create' | 'detail' | 'delete', item?: ApplicationCredential | UserCredential) {
     if (!allowed() || (next === 'create' && !canCreate()) || (next !== 'create' && !item)) return;
+    if (next === 'delete' && item && !canManageCredential(item)) return;
     if (item && item.domain_id !== domainId) { error = t('credentials.scopeDenied'); return; }
     close(); mode = next; detail = item ?? null;
     if (kind === 'user' && next === 'create') created = null;
@@ -185,7 +189,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     finally { if (owns() && ticket === modalTicket) busy = false; }
   }
   async function reveal(edit = false) {
-    if (!allowed() || kind !== 'user' || !detail || busy) return;
+    if (!allowed() || kind !== 'user' || !detail || busy || !canManageCredential(detail)) return;
     const { a, d, owns } = capture(), ticket = ++modalTicket, id = detail.id, userId = detail.user_id, projectId = detail.project_id;
     const experience = beginExperienceAction('admin', 'inspect', 'resource.detail');
     const current = () => owns() && ticket === modalTicket;
@@ -216,6 +220,7 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
     if (kind === 'application' && mode === 'edit') return;
     if ((mode === 'edit' || mode === 'delete') && !detail) return;
     if (mode === 'create' && !canCreate()) return;
+    if (directoryLoading || directoryError || protectedUser(mode === 'create' ? draft.user_id : detail?.user_id ?? '') || protectedUser(draft.user_id)) return;
     const { a, d, owns } = capture(), ticket = modalTicket, action = mode, id = detail?.id;
     if (kind === 'application' && action === 'create' && (!context || !draft.role_ids.length || draft.role_ids.some(id => !context!.roles.some(role => role.id === id)))) { modalError = t('credentials.chooseRoles'); return; }
     busy = true; modalError = '';
@@ -257,11 +262,11 @@ export function createAdminCredentialsController(kind: 'application' | 'user', i
   }
   function dispose() { disposed = true; ++epoch; ++directoryTicket; close(); items = []; users = []; created = null; }
   return {
-    get items() { return items; }, get users() { return users; }, get selectedUser() { return selectedUser; },
+    get items() { return items; }, get users() { return users.filter(user => !isSystemAccount(user)); }, get systemUsers() { return users.filter(isSystemAccount); }, get selectedUser() { return selectedUser; },
     get loading() { return loading; }, get error() { return error; }, get directoryLoading() { return directoryLoading; }, get directoryError() { return directoryError; },
     get busy() { return busy; }, get modalError() { return modalError; }, get mode() { return mode; }, get detail() { return detail; },
     get issued() { return issued; }, get created() { return created; }, get context() { return context; }, get draft() { return draft; }, get allowed() { return allowed(); }, get canCreate() { return canCreate(); },
-    close, setScope, setAuthority, load, loadUsers, selectUser, open, reveal, submit, dispose,
+    canManageCredential, close, setScope, setAuthority, load, loadUsers, selectUser, open, reveal, submit, dispose,
   };
 }
 

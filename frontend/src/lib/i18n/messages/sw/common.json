@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "Akaunti ya mfumo ya nakala rudufu otomatiki",
+	"systemAccount.managedHelp": "Mfumo husimamia akaunti hii kwa nakala rudufu otomatiki. Watumiaji hawawezi kuihariri au kuifuta, kubadilisha hali ya kuwezeshwa, uanachama, majukumu au vikundi, wala kubadilisha vitambulisho vyake. Akaunti au majukumu yanayohitajika yakiondolewa moja kwa moja katika OpenStack hurejeshwa kiotomatiki.",
 	"table.lastSuccessfulRead": "Inaonyesha data iliyopakiwa kwa mafanikio mara ya mwisho.",
 	"table.search": "Tafuta kwa regex",
 	"table.regexPlaceholder": "mf. ^web|db$",

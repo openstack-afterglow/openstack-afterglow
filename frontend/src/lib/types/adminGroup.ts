@@ -1,3 +1,5 @@
+import type { SystemAccountIdentity } from './common';
+
 export interface Group {
 	id: string;
 	name: string;
@@ -6,7 +8,7 @@ export interface Group {
 	created_at: string | null;
 }
 
-export interface User {
+export interface User extends SystemAccountIdentity {
 	id: string;
 	name: string;
 	email: string;

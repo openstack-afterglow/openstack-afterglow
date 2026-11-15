@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { isSystemAccount } from '$lib/utils/systemAccount';
 import { api, ApiError } from '$lib/api/client';
 import type { Group, GroupCandidates, GroupMember, User } from '$lib/types/adminGroup';
 import { domainsApi, type AdminDomain } from '$lib/api/domains';
@@ -322,7 +323,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
     const owns = () => scope.owns() && source === sourceGeneration && userDomainId === sourceId && expandedGroup === groupId;
     if (!owns() || !ownsGroup(groupId) || !usersOwns?.() || usersLoading || usersError
       || membersLoading[groupId] || membersError[groupId]
-      || !allUsers.some((user) => user.id === userId && user.enabled)
+      || !allUsers.some((user) => user.id === userId && user.enabled && !isSystemAccount(user))
       || groupMembers[groupId]?.some((user) => user.id === userId) || addMemberSaving[groupId]) return false;
     const experience = beginExperienceAction('iam', 'attach', 'resource.detail');
     const request = experience ? api.withExperience(experience) : api;
@@ -345,7 +346,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
 
   async function removeMember(groupId: string, userId: string) {
     const scope = capture();
-    if (!scope.owns() || !ownsGroup(groupId) || !groupMembers[groupId]?.some((user) => user.id === userId)) return;
+    if (!scope.owns() || !ownsGroup(groupId) || !groupMembers[groupId]?.some((user) => user.id === userId && !isSystemAccount(user))) return;
     const experience = beginExperienceAction('iam', 'detach', 'resource.detail');
     const request = experience ? api.withExperience(experience) : api;
     experienceState(experience, 'loading');

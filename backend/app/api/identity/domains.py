@@ -16,6 +16,7 @@ from app.database import get_session
 from app.services import (
     account_spaces,
     activity,
+    backup_system_account,
     domain_display,
     domain_iam,
     domain_monitoring,
@@ -208,6 +209,12 @@ async def update_domain(
                 uid = identity_roles._field(user, "id")
                 if not isinstance(uid, str) or not uid or identity_roles._field(user, "domain_id") != domain_id:
                     raise public_service_error(503, "domain_unavailable")
+            for user in users:
+                await backup_system_account.assert_not_system_account(
+                    identity_roles._field(user, "id"), conn=ks, user=user
+                )
+            for user in users:
+                uid = identity_roles._field(user, "id")
                 await project_ownership_journal.assert_user_resolved(uid)
                 await _native(lambda uid=uid: project_service.assert_user_ownership_mutation_safe(uid, ks=ks))
             affected = await _native(

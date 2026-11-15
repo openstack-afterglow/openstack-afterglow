@@ -1,4 +1,7 @@
 <script lang="ts">
+	import type { SystemAccountIdentity } from '$lib/types/common';
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableColumnHeader from '$lib/components/ui/TableColumnHeader.svelte';
@@ -14,7 +17,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Pill from '$lib/components/ui/Pill.svelte';
 
-	interface SystemAdmin {
+	interface SystemAdmin extends SystemAccountIdentity {
 		user_id: string;
 		name: string;
 		email: string;
@@ -37,10 +40,12 @@
 	const currentUserId = $derived($auth.userId ?? '');
 
 	async function revoke(admin: SystemAdmin) {
+		if (isSystemAccount(admin)) return;
 		const isSelf = admin.user_id === currentUserId;
 		if (isSelf) {
 			if (!(await confirmDialog(t('systemTable.revokeSelfConfirm')))) return;
 		}
+		if (isSystemAccount(admin)) return;
 		revoking = admin.user_id;
 		revokeError = '';
 		try {
@@ -68,8 +73,9 @@
       <CompactResourceCard>
         <div class="flex flex-wrap items-center justify-between gap-2"><strong class="break-words text-sm">{admin.name || '-'}</strong><Pill tone={admin.enabled ? 'success' : 'danger'}>{admin.enabled ? t('systemTable.enabled') : t('systemTable.disabled')}</Pill></div>
         <p class="break-all text-sm text-ink-2">{admin.email || '-'}</p>
+        <SystemAccountNotice identity={admin} />
         {#snippet actions()}
-          <Button variant="danger" size="sm" disabled={admins.length <= 1 || revoking === admin.user_id} title={admins.length <= 1 ? t('systemTable.lastAdminHelp') : undefined} onclick={() => revoke(admin)}>
+          <Button variant="danger" size="sm" disabled={isSystemAccount(admin) || admins.length <= 1 || revoking === admin.user_id} title={admins.length <= 1 ? t('systemTable.lastAdminHelp') : undefined} onclick={() => revoke(admin)}>
             {#if revoking === admin.user_id}<LoadingState variant="control" label="" aria-hidden="true" />{t('systemTable.revoking')}{:else}{t('systemTable.revoke')}{/if}
           </Button>
         {/snippet}
@@ -91,7 +97,7 @@
 		<tbody>
 			{#each tableView.rows as admin (admin.user_id)}
 				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
-					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span></td>
+					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span><SystemAccountNotice identity={admin} /></td>
 					<td class="py-2 pr-4 text-ink-2">{admin.email || '-'}</td>
 					<td class="py-2 pr-4">
 						<span class="px-1.5 py-0.5 rounded text-xs font-medium {admin.enabled ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">
@@ -105,7 +111,7 @@
 						{:else}
 							<button aria-busy={revoking === admin.user_id}
 								onclick={() => revoke(admin)}
-								disabled={revoking === admin.user_id}
+								disabled={isSystemAccount(admin) || revoking === admin.user_id}
 								class="px-3 py-1 text-xs rounded bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] disabled:opacity-30"
 							>
 								{#if revoking === admin.user_id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('systemTable.revoking')}</span>{:else}{t('systemTable.revoke')}{/if}

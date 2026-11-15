@@ -7,9 +7,16 @@ import pytest
 from keystoneauth1.exceptions.http import Forbidden, Unauthorized
 
 from app.services import auto_backup as ab
-from app.services import auto_snapshot, keystone
+from app.services import auto_snapshot, backup_system_account
 from tests.test_auto_backup import PROJECT, START, VOLUME, BackupCloud, due, save
 from tests.test_auto_backup import policy_redis as policy_redis
+
+
+@pytest.fixture(autouse=True)
+def prepared_system_account(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(backup_system_account, "ensure_project", AsyncMock())
 
 
 class TokenOwnedCloud(BackupCloud):
@@ -53,7 +60,7 @@ async def test_default_factory_keeps_token_in_target_and_reconciles(policy_redis
         calls.append(project_id)
         return cloud
 
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", connect)
+    monkeypatch.setattr(backup_system_account, "get_connection_for_project", connect)
     if kind == "snapshot":
         monkeypatch.setattr(auto_snapshot, "_PREFIX", ab._PREFIX + ":snapshot")
         monkeypatch.setattr(auto_snapshot, "_ALL_KEY", auto_snapshot._PREFIX + ":all_configs")
@@ -102,7 +109,7 @@ def test_default_factory_rejects_admin_or_bound_operator_token(monkeypatch, bind
     cloud = TokenOwnedCloud("admin-project")
     if binding:
         cloud._afterglow_usage_operator_scope = object()
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", lambda _: cloud)
+    monkeypatch.setattr(backup_system_account, "get_connection_for_project", lambda _: cloud)
     with pytest.raises(RuntimeError):
         ab._make_proxy(PROJECT)
     assert cloud.closed == 1
@@ -282,7 +289,7 @@ async def test_default_factory_eager_auth_denial_writes_status_and_closes_lazy_c
         calls.append(project_id)
         return cloud
 
-    monkeypatch.setattr(keystone, "get_admin_connection_for_project", lazy_connection)
+    monkeypatch.setattr(backup_system_account, "get_connection_for_project", lazy_connection)
     await ab.scheduler_tick(now=due(config))
     await ab.scheduler_tick(now=due(config) + timedelta(seconds=15))
     result = await ab.get_auto_backup_config(PROJECT, VOLUME)

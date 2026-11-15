@@ -1,3 +1,5 @@
+import type { SystemAccountIdentity } from './common';
+
 export interface CredentialRole { id: string; name: string; retired?: boolean; assignable?: boolean }
 export interface ApplicationCredential {
   id: string; domain_id: string; user_id: string; name: string; description: string;
@@ -8,7 +10,7 @@ export interface ApplicationCredentialIssued extends ApplicationCredential { sec
 export interface UserCredential { id: string; domain_id: string; user_id: string; project_id: string | null; type: string }
 export interface UserCredentialDetail extends UserCredential { blob?: string }
 export interface CredentialCreationContext { domain_id: string; user_id: string; project_id: string; roles: CredentialRole[] }
-export interface CredentialUser { id: string; domain_id: string; name: string }
+export interface CredentialUser extends SystemAccountIdentity { id: string; domain_id: string; name: string }
 export interface CredentialAuthority { sessionId?: string; token?: string; userId?: string; projectId?: string; admin: boolean; ready: boolean }
 export interface ApplicationCredentialInput { name: string; description: string; role_ids: string[]; expires_at?: string }
 export interface UserCredentialInput { user_id: string; project_id: string | null; type: string; blob: string }

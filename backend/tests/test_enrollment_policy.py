@@ -399,7 +399,9 @@ async def test_personal_quota_updates_native_projects_without_shared_budget(poli
     native, writes = {}, []
 
     def read(conn, pid, section):
-        values = native.setdefault(pid, {"instances": 20, "cores": 40, "key_pairs": 10})
+        values = native.setdefault(
+            pid, {"instances": 20, "cores": 40, "key_pairs": 10, "gigabytes": 10, "backup_gigabytes": 30}
+        )
         return {key: {"limit": value, "in_use": 0} for key, value in values.items()}
 
     def update(conn, pid, section, values):
@@ -412,7 +414,7 @@ async def test_personal_quota_updates_native_projects_without_shared_budget(poli
     first = await service.apply_personal_project_quotas(None, "first", values, lease=policy_db.lease)
     second = await service.apply_personal_project_quotas(None, "second", {"instances": 5}, lease=policy_db.lease)
     assert first["omitted_fields"] == ["shares"] and second["limits"] == {"instances": 5}
-    assert native["first"] == {"instances": 0, "cores": -1, "key_pairs": 3}
+    assert native["first"] == {"instances": 0, "cores": -1, "key_pairs": 3, "gigabytes": 10, "backup_gigabytes": 30}
     assert native["second"]["instances"] == 5 and len(writes) == 2
     async with policy_db.factory() as session:
         assert not (await session.execute(select(DomainQuotaPolicy))).scalars().all()
@@ -597,7 +599,7 @@ async def test_enrollment_quota_snapshot_is_durable_and_not_rewritten_by_policy(
     async with policy_db.factory() as session:
         row = await session.get(DomainEnrollment, enrollment_id)
         assert row.personal_quotas == {"instances": 0, "cores": 0}
-        native = {"instances": 99, "cores": 99}
+        native = {"instances": 99, "cores": 99, "gigabytes": 10, "backup_gigabytes": 30}
 
         def read(conn, pid, section):
             return {key: {"limit": value, "in_use": 0} for key, value in native.items()}
@@ -610,7 +612,8 @@ async def test_enrollment_quota_snapshot_is_durable_and_not_rewritten_by_policy(
         seeded = await service.apply_personal_project_quotas(
             None, "project", row.personal_quotas, lease=policy_db.lease
         )
-        assert seeded["limits"] == native == row.personal_quotas
+        assert seeded["limits"] == row.personal_quotas
+        assert native == {**row.personal_quotas, "gigabytes": 10, "backup_gigabytes": 30}
 
 
 @pytest.mark.asyncio
@@ -673,3 +676,76 @@ async def test_invitation_approval_notification_failure_stays_approved_without_r
     policy_db.send.assert_awaited_once()
     async with policy_db.factory() as session:
         assert (await session.execute(select(DomainEnrollment))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (1024, 3072), (-1, -1)])
+async def test_enrollment_creation_derives_global_backup_capacity(policy_db, monkeypatch, limit, expected):
+    native = {"gigabytes": 10, "backup_gigabytes": 999, "backups": 4, "gigabytes_fast": 7}
+    writes = []
+
+    def read(conn, pid, section):
+        assert pid == "new-personal" and section == "volume"
+        return {key: {"limit": value, "in_use": 0} for key, value in native.items()}
+
+    def write(conn, pid, section, values):
+        writes.append((pid, section, dict(values)))
+        native.update(values)
+
+    monkeypatch.setattr(service.quota_native, "get_section", read)
+    monkeypatch.setattr(service.quota_native, "update_section", write)
+    frozen = {"gigabytes": limit}
+    result = await service.apply_personal_project_quotas(None, "new-personal", frozen, lease=policy_db.lease)
+    assert writes == [("new-personal", "volume", {"gigabytes": limit, "backup_gigabytes": expected})]
+    assert result["limits"] == frozen == {"gigabytes": limit}
+    assert native == {"gigabytes": limit, "backup_gigabytes": expected, "backups": 4, "gigabytes_fast": 7}
+
+
+@pytest.mark.asyncio
+async def test_enrollment_creation_requires_derived_backup_capacity_readback(policy_db, monkeypatch):
+    native = {"gigabytes": 10, "backup_gigabytes": 999}
+    writes = []
+
+    def read(conn, pid, section):
+        return {key: {"limit": value, "in_use": 0} for key, value in native.items()}
+
+    def write(conn, pid, section, values):
+        writes.append(dict(values))
+        native["gigabytes"] = values["gigabytes"]
+
+    monkeypatch.setattr(service.quota_native, "get_section", read)
+    monkeypatch.setattr(service.quota_native, "update_section", write)
+    with pytest.raises(HTTPException) as error:
+        await service.apply_personal_project_quotas(None, "new-personal", {"gigabytes": 1024}, lease=policy_db.lease)
+    assert error.value.detail == "personal_project_quota_readback_failed"
+    assert writes == [{"gigabytes": 1024, "backup_gigabytes": 3072}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit,expected", [(0, 0), (1024, 3072), (-1, -1)])
+@pytest.mark.parametrize("frozen", [{}, {"instances": 2}])
+async def test_enrollment_without_volume_limits_derives_fresh_native_backup(
+    policy_db, monkeypatch, limit, expected, frozen
+):
+    native = {"instances": 10, "gigabytes": limit, "backup_gigabytes": 999, "backups": 4, "gigabytes_fast": 7}
+    writes = []
+
+    def read(conn, pid, section):
+        return {key: {"limit": value, "in_use": 0} for key, value in native.items()}
+
+    def write(conn, pid, section, values):
+        writes.append((section, dict(values)))
+        native.update(values)
+
+    monkeypatch.setattr(service.quota_native, "get_section", read)
+    monkeypatch.setattr(service.quota_native, "update_section", write)
+    result = await service.apply_personal_project_quotas(None, "new-personal", frozen, lease=policy_db.lease)
+    assert result["limits"] == frozen
+    assert writes == ([("compute", frozen)] if frozen else []) + [("volume", {"backup_gigabytes": expected})]
+    assert native == {
+        "instances": frozen.get("instances", 10),
+        "gigabytes": limit,
+        "backup_gigabytes": expected,
+        "backups": 4,
+        "gigabytes_fast": 7,
+    }

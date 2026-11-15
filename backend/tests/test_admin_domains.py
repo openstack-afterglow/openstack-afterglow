@@ -588,7 +588,7 @@ async def test_disabling_domain_of_last_system_admins_is_refused(
 
     if admins is not None:
         for uid, did in admins.items():
-            domain_native.user_rows[uid] = SimpleNamespace(id=uid, enabled=True, domain_id=did)
+            domain_native.user_rows[uid] = SimpleNamespace(id=uid, name=uid, enabled=True, domain_id=did)
             domain_native.raw.append(
                 SimpleNamespace(user={"id": uid}, role={"id": "admin"}, scope={"system": {"all": True}})
             )

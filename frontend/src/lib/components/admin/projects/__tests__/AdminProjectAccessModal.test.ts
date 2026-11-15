@@ -295,4 +295,28 @@ describe('AdminProjectAccessModal', () => {
 		expect(mocks.get).toHaveBeenCalledTimes(4);
 	});
 
+	it('renders marked role assignments read-only and excludes marked user candidates', async () => {
+		members = [{ user_id: 'backup', user_name: 'backup worker', role_id: 'r-member', role_name: 'member', type: 'user', system_account: { kind: 'auto_backup' } }];
+		const original = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string) => path === '/api/v1/admin/domains/domain-a/members'
+			? Promise.resolve({ domain_id: 'domain-a', items: [
+				{ id: 'backup', name: 'backup worker', domain_id: 'accounts', system_account: { kind: 'auto_backup' } },
+				{ id: 'marked-non-member', name: 'unassigned backup worker', domain_id: 'accounts', system_account: { kind: 'auto_backup' } },
+			] })
+			: original(path));
+		renderModal();
+		await screen.findByText('자동 백업용 시스템 계정');
+		expect(screen.queryByRole('button', { name: 'backup worker reader로 추가' })).toBeNull();
+		expect(screen.queryByText('unassigned backup worker')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'unassigned backup worker reader로 추가' })).toBeNull();
+		const remove = screen.getByRole('button', { name: 'backup worker 제거' });
+		expect(remove).toMatchObject({ disabled: true });
+		await fireEvent.click(remove);
+		await fireEvent.click(screen.getByRole('button', { name: 'backup worker 권한' }));
+		const dialog = screen.getByRole('dialog', { name: 'backup worker — 세부 권한' });
+		expect(within(dialog).getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
+		await fireEvent.click(within(dialog).getByRole('checkbox', { name: 'member' }));
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
 });

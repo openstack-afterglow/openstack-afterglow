@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.database import get_session_factory
 from app.models.enrollment_policy import EnrollmentPolicy, EnrollmentPolicyUpdate, SignupRequest
 from app.services import activity, identity_roles, quota_native
+from app.services.backup_quota import derive_backup_gigabytes
 
 _CORE_FIELDS = {
     "compute": ("instances", "cores", "ram"),
@@ -378,6 +379,8 @@ async def apply_personal_project_quotas(conn, project_id, quotas, *, lease):
         current = await _provider_call(quota_native.get_section, conn, project_id, section)
         if any(key not in current for key in selected):
             raise HTTPException(503, "personal_project_quota_field_unavailable")
+        if section == "volume" and "gigabytes" in selected:
+            selected["backup_gigabytes"] = derive_backup_gigabytes(selected["gigabytes"])
         sections[section] = selected
     for section, selected in sections.items():
         await lease.assert_owned()
@@ -385,6 +388,13 @@ async def apply_personal_project_quotas(conn, project_id, quotas, *, lease):
         checked = await _provider_call(quota_native.get_section, conn, project_id, section)
         if any(checked.get(key, {}).get("limit") != value for key, value in selected.items()):
             raise HTTPException(503, "personal_project_quota_readback_failed")
+    if "gigabytes" not in active:
+        try:
+            await identity_roles._write(lease, quota_native.ensure_project_backup_quota, conn, project_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "personal_project_quota_readback_failed") from exc
     await lease.assert_owned()
     return {"project_id": project_id, "limits": active, "omitted_fields": omitted}
 
@@ -511,6 +521,8 @@ async def _personal_quota_preview(conn, project_id, actor, mutation):
     measured, blocked = {}, []
     for section, fields in quota_native.QUOTA_FIELDS.items():
         selected = {key: native for key, native in fields.items() if key in limits}
+        if section == "volume" and "gigabytes" in limits:
+            selected["backup_gigabytes"] = "backup_gigabytes"
         if not selected:
             continue
         current = await domain_quotas._call(quota_native.get_section, conn, project_id, section)
@@ -521,7 +533,8 @@ async def _personal_quota_preview(conn, project_id, actor, mutation):
             ):
                 raise HTTPException(503, "personal_project_usage_unavailable")
             measured[key] = entry
-            if limits[key] != -1 and limits[key] < entry["in_use"] + entry["reserved"]:
+            limit = derive_backup_gigabytes(limits["gigabytes"]) if key == "backup_gigabytes" else limits[key]
+            if limit != -1 and limit < entry["in_use"] + entry["reserved"]:
                 blocked.append(key)
     result = {
         "project_id": project_id,

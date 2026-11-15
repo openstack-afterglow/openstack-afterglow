@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { untrack } from 'svelte';
 	import { t } from '$lib/i18n/ns/account';
 	import { t as tc } from '$lib/i18n/ns/common';
@@ -24,7 +26,7 @@
 	const roleById = $derived(new Map([...member.direct_roles, ...roles].map(role => [role.id, role])));
 	const implied = $derived(impliedRoleIds(selected));
 	const externalInherited = $derived(new Set(member.external_role_ids));
-	const directEditable = $derived(!['group', 'inherited'].includes(member.source ?? ''));
+	const directEditable = $derived(!isSystemAccount(member) && !['group', 'inherited'].includes(member.source ?? ''));
 	const query = $derived(compileRegexSearch(search));
 	const visibleRoles = $derived(selectableRoles.filter(role => matchesRegexSearch(query, [role.name, role.id, role.description ?? ''])));
 	function editable(role: AssignableProjectRole) {
@@ -64,6 +66,7 @@
 	<Card surface="modal" padding="none" class="flex h-[min(48rem,calc(100dvh-2rem))] w-[min(56rem,calc(100vw-2rem))] min-h-0 flex-col">
 		<header class="shrink-0 space-y-3 border-b border-line p-4">
 			<h2 id={titleId} class="truncate text-lg font-semibold text-ink-0" title={t('projectMemberRoles.title', { user: member.username || member.user_id })}>{t('projectMemberRoles.title', { user: member.username || member.user_id })}</h2>
+			<SystemAccountNotice identity={member} />
 			<RegexSearch id={searchId} bind:value={search} disabled={busy} label={t('projectMemberRoles.searchLabel')} placeholder={t('projectMemberRoles.searchPlaceholder')} />
 		</header>
 		<div class="min-w-0 min-h-0 flex-1 overflow-y-auto p-4 space-y-4">

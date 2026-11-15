@@ -107,7 +107,7 @@ def native(directory, monkeypatch):
 
     conn = SimpleNamespace(
         close=lambda: None,
-        identity=SimpleNamespace(
+        identity=state.sdk_identity(
             role_assignments=lambda group_id: assignments(group=group_id),
             group_users=lambda gid: [state.users[uid] for uid in state.groups.get(gid, [])],
             add_user_to_group=add_user,

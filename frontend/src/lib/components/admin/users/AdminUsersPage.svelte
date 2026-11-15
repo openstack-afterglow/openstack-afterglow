@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import RegexSearch from '$lib/components/ui/RegexSearch.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -225,7 +226,7 @@
 		id: string,
 		form: { name: string; email: string; password: string; enabled: boolean }
 	): Promise<string | true> {
-		if (!alive || !allUsers.some(user => user.id === id && user.domain_id === domainId)) return td('scope.invalid');
+		if (!alive || !allUsers.some(user => user.id === id && user.domain_id === domainId && !isSystemAccount(user))) return td('scope.invalid');
 		try {
 			await api.patch(
 				domainPath(`/api/v1/admin/users/${encodeURIComponent(id)}`, domainId),
@@ -245,7 +246,7 @@
 		}
 	}
 	async function openDelete(user: User) {
-		if (!alive || !creationAllowed || deleting || preparingDelete || user.id === $auth.userId || user.domain_id !== domainId) return;
+		if (!alive || !creationAllowed || deleting || preparingDelete || isSystemAccount(user) || user.id === $auth.userId || user.domain_id !== domainId) return;
 		const boundary = creationRevision;
 		const targetDomain = domainId;
 		const request = ++deletePreparation;
@@ -256,13 +257,13 @@
 		preparingDelete = false;
 		if (!loaded || !creationAllowed || boundary !== creationRevision || targetDomain !== domainId) return;
 		const target = allUsers.find(item => item.id === user.id && item.domain_id === targetDomain);
-		if (target) deleteSelection = { user: { ...target }, revision: boundary, domain: targetDomain };
+		if (target && !isSystemAccount(target)) deleteSelection = { user: { ...target }, revision: boundary, domain: targetDomain };
 	}
 
 	async function deleteUser(id: string, confirmation: string): Promise<true | { error: string; rereadRequired: boolean }> {
 		const selected = deleteSelection;
 		const owns = () => alive && creationAllowed && selected !== null && deleteSelection === selected && selected.revision === creationRevision && selected.domain === domainId;
-		if (!owns() || !selected || deleting || confirmation !== id || selected.user.id !== id || selected.user.domain_id !== domainId || id === $auth.userId || !allUsers.some(user => user.id === id && user.domain_id === selected.domain)) {
+		if (!owns() || !selected || deleting || isSystemAccount(selected.user) || confirmation !== id || selected.user.id !== id || selected.user.domain_id !== domainId || id === $auth.userId || !allUsers.some(user => user.id === id && user.domain_id === selected.domain && !isSystemAccount(user))) {
 			return { error: td('scope.invalid'), rereadRequired: true };
 		}
 		deleting = true;
@@ -417,7 +418,7 @@
 					tourDeleteId={tourCreatedId}
 					onDelete={openDelete}
 					onEdit={(u) => {
-						editUser = u;
+						if (!isSystemAccount(u)) editUser = u;
 					}}
 					onPrev={() => {
 						currentPage = Math.max(1, currentPage - 1);

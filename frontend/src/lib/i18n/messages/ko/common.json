@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "자동 백업용 시스템 계정",
+	"systemAccount.managedHelp": "자동 백업을 위해 시스템이 관리하는 계정입니다. 사용자는 계정 정보·활성 상태·멤버십·역할·그룹·자격 증명을 변경하거나 계정을 제거할 수 없습니다. OpenStack에서 직접 제거한 계정이나 필요한 역할은 자동으로 복구됩니다.",
 	"table.lastSuccessfulRead": "마지막으로 정상 조회한 데이터를 표시하고 있습니다.",
 	"table.search": "정규식 검색",
 	"table.regexPlaceholder": "예: ^web|db$",

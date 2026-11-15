@@ -1982,6 +1982,11 @@ async def _canonical_federation(row, identity, user, domain, *, ks) -> Federated
 
     canonical_email = normalize_email(_field(user, "email")).casefold()
     canonical_id, canonical_home = _field(user, "id"), _field(user, "domain_id")
+    from app.services import backup_system_account
+
+    await backup_system_account.assert_login_allowed(
+        user_id=canonical_id, username=_field(user, "name"), domain_id=canonical_home
+    )
     unscoped, native = await keystone_federate(row, identity.bearer)
     raw_federation = native.get("OS-FEDERATION")
     mismatch = False
@@ -2101,7 +2106,10 @@ async def complete_authorization(code: str, state: str, browser_binding: str) ->
 async def _login_verified_identity(
     row, identity, bound, domain, *, lease, ks, catalog, confirmed_entry=False, transfer_journal=None
 ):
-    from app.services import account_identity
+    from app.services import account_identity, backup_system_account
+
+    if bound is not None:
+        await backup_system_account.assert_not_system_account(account_identity._field(bound, "id"))
 
     if bound is None:
         if getattr(row, "_organization", None) is not None:

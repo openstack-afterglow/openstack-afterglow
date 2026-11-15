@@ -29,6 +29,12 @@ async def test_personal_member_can_enter_only_own_workspace_and_cannot_lose_prim
     assert access == {"is_owner": False, "is_manager": False, "roles": ["member"]}
     assert await project_service.can_create_project("foreign", project["domain_id"])
     connection = keystone.get_admin_project_connection()
+    connection.identity = SimpleNamespace(
+        domains=directory.ks.domains,
+        users=directory.ks.users,
+        get_user=directory.ks.users.get,
+        get_project=directory.ks.projects.get,
+    )
     app = FastAPI()
     app.include_router(admin_identity.router, prefix="/api/v1/admin")
     app.dependency_overrides[get_admin_os_conn] = lambda: connection
@@ -54,6 +60,8 @@ async def test_system_assignment_cannot_add_other_roles_to_personal_member(direc
     before = list(directory.calls)
     connection = keystone.get_admin_project_connection()
     connection.identity = SimpleNamespace(
+        domains=directory.ks.domains,
+        users=directory.ks.users,
         get_project=directory.ks.projects.get,
         get_user=directory.ks.users.get,
         get_role=lambda role_id: SimpleNamespace(**next(row for row in directory.catalog if row["id"] == role_id)),
@@ -85,6 +93,8 @@ async def test_extra_personal_project_keeps_required_member_grant(directory, enr
     project = await account_spaces.create_personal_project("foreign")
     connection = keystone.get_admin_project_connection()
     connection.identity = SimpleNamespace(
+        domains=directory.ks.domains,
+        users=directory.ks.users,
         unassign_project_role_from_user=lambda pid, uid, role_id: directory.ks.roles.revoke(
             role_id, user=uid, project=pid
         ),

@@ -185,3 +185,27 @@ it('clears selected candidates when the source changes', async () => {
 	expect((within(candidate(firstUser.id)).getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
 });
 
+
+it('excludes marked candidates and blocks marked member removal without matching by name', async () => {
+	const marked = { ...firstUser, system_account: { kind: 'auto_backup' as const } };
+	const nonMember = { ...marked, id: 'marked-non-member', name: 'Unassigned backup worker', email: 'unassigned@example.test' };
+	const onAddMember = vi.fn().mockResolvedValue(true);
+	const onRemoveMember = vi.fn();
+	render(GroupCard, props({
+		allUsers: [marked, nonMember, { ...secondUser, name: marked.name }],
+		members: [{ ...marked, identity_read_only: false }],
+		onAddMember, onRemoveMember,
+	}));
+	expect(screen.getByText('자동 백업용 시스템 계정')).toBeTruthy();
+	expect(screen.queryByText(nonMember.id)).toBeNull();
+	expect(screen.queryByText(nonMember.name)).toBeNull();
+	expect(screen.queryByText(nonMember.email)).toBeNull();
+	expect(screen.getAllByRole('button', { name: '추가' })).toHaveLength(1);
+	const memberRow = screen.getByText(marked.id).closest('li')!;
+	const remove = within(memberRow).getByRole('button', { name: '제거' });
+	expect(remove).toMatchObject({ disabled: true });
+	await fireEvent.click(remove);
+	await fireEvent.click(within(candidate(secondUser.id)).getByRole('button', { name: '추가' }));
+	expect(onRemoveMember).not.toHaveBeenCalled();
+	expect(onAddMember).toHaveBeenCalledExactlyOnceWith(secondUser.id);
+});

@@ -1,4 +1,6 @@
 {
+	"systemAccount.autoBackup": "Automatic backup system account",
+	"systemAccount.managedHelp": "The system manages this account for automatic backups. Users cannot edit or remove it, change its enabled state, membership, roles or groups, or change its credentials. Accounts or required roles removed directly in OpenStack are repaired automatically.",
 	"table.lastSuccessfulRead": "Showing the last successfully loaded data.",
 	"table.search": "Regex search",
 	"table.regexPlaceholder": "e.g. ^web|db$",

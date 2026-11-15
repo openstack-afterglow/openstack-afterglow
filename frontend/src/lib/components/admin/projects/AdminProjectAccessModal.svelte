@@ -1,4 +1,7 @@
 <script lang="ts">
+	import type { SystemAccountIdentity } from '$lib/types/common';
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { untrack } from 'svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
 	import TableViewControls from '$lib/components/ui/TableViewControls.svelte';
@@ -24,7 +27,7 @@
 		domain_id: string | null;
 		created_at: string | null;
 	}
-	interface Member {
+	interface Member extends SystemAccountIdentity {
 		user_id: string;
 		user_name: string;
 		role_id: string;
@@ -32,10 +35,10 @@
 		type?: 'user' | 'group';
 		group_id?: string;
 	}
-	interface User { id: string; name: string; domain_id: string; }
+	interface User extends SystemAccountIdentity { id: string; name: string; domain_id: string; }
 	interface Group { id: string; name: string; description: string; domain_id: string; }
 	interface Role { id: string; name: string; retired?: boolean; assignable?: boolean; }
-	interface Principal {
+	interface Principal extends SystemAccountIdentity {
 		key: string;
 		id: string;
 		name: string;
@@ -91,8 +94,10 @@
 				name: member.user_name,
 				type,
 				roles: [],
+				system_account: member.system_account,
 			};
 			principal.roles.push({ role_id: member.role_id, role_name: member.role_name });
+			if (member.system_account) principal.system_account = member.system_account;
 			map.set(member.user_id, principal);
 		}
 		return [...map.values()];
@@ -100,7 +105,7 @@
 	let detailRoleIds = $derived(new Set(principals.find((principal) => principal.key === detailPrincipal?.key)?.roles.map((role) => role.role_id) ?? []));
 	let memberUserIds = $derived(new Set(members.filter((member) => member.type !== 'group').map((member) => member.user_id)));
 	let memberGroupIds = $derived(new Set(members.filter((member) => member.type === 'group').map((member) => member.group_id)));
-	const userView = createTableView<User>({ rows: () => allUsers, locale: () => intlLocale(), search: () => userSearchFilter, searchable: row => [row.name, row.id, row.domain_id], columns: () => [
+	const userView = createTableView<User>({ rows: () => allUsers.filter(user => !isSystemAccount(user)), locale: () => intlLocale(), search: () => userSearchFilter, searchable: row => [row.name, row.id, row.domain_id], columns: () => [
 		{ key: 'name', label: tc('table.name'), value: row => row.name },
 		{ key: 'id', label: tc('table.key'), value: row => row.id },
 		{ key: 'domain', label: td('scope.domain'), value: row => row.domain_id }
@@ -178,6 +183,7 @@
 	async function addAsReader(target: { id: string; type: 'user' | 'group' }) {
 		const request = scope;
 		if (!request || !current(request) || !readerRole || addSaving) return;
+		if (target.type === 'user' && (isSystemAccount(allUsers.find(user => user.id === target.id)) || isSystemAccount(principals.find(user => user.id === target.id && user.type === 'user')))) return;
 		const catalog = target.type === 'group' ? allGroups : allUsers;
 		if (!catalog.some((item) => item.id === target.id)) return;
 		addSaving = true; addError = '';
@@ -191,6 +197,7 @@
 	async function toggleRole(role: Role, checked: boolean) {
 		const request = scope;
 		if (!request || !current(request) || !detailPrincipal || roleBusy) return;
+		if (isSystemAccount(detailPrincipal) || isSystemAccount(principals.find(principal => principal.key === detailPrincipal?.key))) return;
 		if (!isAssignableRole(role)) return;
 		if (!checked && role.id === readerRole?.id) return;
 		const principal = detailPrincipal;
@@ -205,7 +212,7 @@
 	}
 	async function removePrincipal(principal: Principal) {
 		const request = scope;
-		if (!request || !current(request) || removingKey) return;
+		if (!request || !current(request) || removingKey || isSystemAccount(principal) || isSystemAccount(principals.find(item => item.key === principal.key))) return;
 		removingKey = principal.key; addError = '';
 		try {
 			for (const role of principal.roles) {
@@ -312,6 +319,7 @@
 									<div class="flex items-start justify-between gap-3 px-4 py-2 border-b border-line/30">
 										<div class="min-w-0">
 											<div class="text-sm text-ink-1 truncate">{principal.name}</div>
+											<SystemAccountNotice identity={principal} />
 											<div class="mt-1 flex flex-wrap gap-1">
 												{#each principal.roles as role (role.role_id)}
 													<Pill tone={role.role_name.toLowerCase() === 'admin' ? 'admin-tone' : 'neutral'} size="xs">{role.role_name}</Pill>
@@ -320,7 +328,7 @@
 										</div>
 										<div class="flex shrink-0 items-center gap-1">
 											<Button variant="subtle" size="xs" ariaLabel={t('projectAccess.permissionsLabel', { name: principal.name })} onclick={() => { detailPrincipal = principal; detailError = ''; }}>{t('projectAccess.permissions')}</Button>
-											<Button ariaBusy={removingKey === principal.key} variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{#if removingKey === principal.key}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
+											<Button ariaBusy={removingKey === principal.key} variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={isSystemAccount(principal) || removingKey !== null} onclick={() => removePrincipal(principal)}>{#if removingKey === principal.key}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 										</div>
 									</div>
 								{/each}
@@ -352,6 +360,7 @@
 		<div class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 max-h-[85vh] flex flex-col shadow-[var(--shadow-restraint)]" onclick={(event) => event.stopPropagation()} role="none">
 			<h3 id="project-access-detail-title" class="text-base font-semibold text-ink-0 mb-1">{t('projectAccess.detailTitle', { name: detailPrincipal.name })}</h3>
 			<p class="text-xs text-ink-2 mb-3">{t('projectAccess.detailHelp')}</p>
+			<SystemAccountNotice identity={principals.find(principal => principal.key === detailPrincipal?.key) ?? detailPrincipal} />
 			{#if detailError}<Alert tone="danger" class="mb-3">{detailError}</Alert>{/if}
 			{#each (principals.find(principal => principal.key === detailPrincipal?.key)?.roles ?? []).filter(role => !isAssignableRole(allRoles.find(row => row.id === role.role_id) ?? { name: role.role_name })) as role (role.role_id)}
 				<p class="mb-3 text-xs text-ink-2 [overflow-wrap:anywhere]"><code>{role.role_name}</code> · {t('projectAccess.readOnlyRole')}</p>
@@ -362,7 +371,7 @@
 					{@const locked = assigned && role.id === readerRole?.id}
 					<li class="flex items-center justify-between py-2">
 						<label class="flex items-center gap-2 text-sm text-ink-1 cursor-pointer">
-							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
+							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={isSystemAccount(detailPrincipal) || isSystemAccount(principals.find(principal => principal.key === detailPrincipal?.key)) || locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
 							<span>{role.name}</span>
 						</label>
 						{#if roleBusy === role.id}<LoadingState variant="inline" label={t('state.saving')} />{:else if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{/if}

@@ -1,0 +1,51 @@
+{
+  "command": "env PATH=\"/Users/pieroot/code/afterglow-wt-backup-system-account-gate/backend/.venv/bin:$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/bin:/bin\" AFTERGLOW_TEST_PROJECT_NAME=afterglow-backup-system-account-20261115 npm run test:gate",
+  "cwd": "/Users/pieroot/code/afterglow-wt-backup-system-account-gate",
+  "exit": 0,
+  "seconds": 295.32,
+  "source_sha256": "e4659f465d0ad3cbdfdb8c2715f36b1f234aefe92bf00f2314c23600ba507084",
+  "source_files": 4348,
+  "backend": {
+    "passed": 15217,
+    "skipped": 106,
+    "warnings": 1101,
+    "workers": 4,
+    "distribution": "worksteal"
+  },
+  "frontend": {
+    "files": 592,
+    "tests": 7982,
+    "script_tests": 9
+  },
+  "contracts": {
+    "passed": 262
+  },
+  "functional": {
+    "passed": 292,
+    "skipped": 46,
+    "deselected": 131,
+    "project": "afterglow-backup-system-account-20261115",
+    "ports": [
+      3307,
+      5434,
+      6380
+    ],
+    "cleanup": "runner removed its three datastore containers and network"
+  },
+  "ruff": {
+    "check": "passed",
+    "formatted_files": 912
+  },
+  "orchestration": {
+    "passed": 274,
+    "todo": 1,
+    "limits": "Pre-existing Lumen env-file exposure TODO remains, not a passed assertion."
+  },
+  "kolla_node_tests": 29,
+  "cli": {
+    "passed": 20,
+    "skipped": 36
+  },
+  "raw_log": "~/.local/share/afterglow-proofs/backup-system-account-20261115/full-gate.log",
+  "limits": "Source/local acceptance only. No production IAM/quota write, real scheduled recovery/restore, app image multi-architecture build or deployment."
+}

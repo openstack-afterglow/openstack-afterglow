@@ -410,3 +410,35 @@ describe('domain eviction boundary', () => {
 		expect(api.delete).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('automatic-backup identity protection', () => {
+	it.each(['domain-a', 'foreign-home'])('disables edit and domain removal for a marked user from %s', async domain => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/users')
+			? { items: [{ ...user, domain_id: domain, system_account: { kind: 'auto_backup' } }] } : fixture(path)));
+		render(IamUsers, { session, onDenied: vi.fn() });
+		await screen.findByText('자동 백업용 시스템 계정');
+		for (const label of [ti('editUser'), ti('evictionAction')]) {
+			const button = screen.getByRole('button', { name: label });
+			expect(button).toMatchObject({ disabled: true });
+			await fireEvent.click(button);
+		}
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+		expect(confirmDialog).not.toHaveBeenCalled();
+	});
+
+	it('keeps marked project roles read-only and removes the principal from add candidates', async () => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/members')
+			? { items: [{ ...member, system_account: { kind: 'auto_backup' } }] }
+			: path.endsWith('/eligible-users') ? [{ ...user, system_account: { kind: 'auto_backup' } }] : fixture(path)));
+		render(IamProjects, { session, onDenied: vi.fn() });
+		await screen.findByText('Project A');
+		await fireEvent.click(screen.getByRole('button', { name: ti('projectMembers') }));
+		await screen.findByText('자동 백업용 시스템 계정');
+		expect(screen.getByRole('button', { name: ti('editRoles') })).toMatchObject({ disabled: true });
+		expect(screen.getByRole('button', { name: ti('removeMember') })).toMatchObject({ disabled: true });
+		expect(screen.queryByRole('option', { name: /Alice/ })).toBeNull();
+		expect(api.put).not.toHaveBeenCalled();
+		expect(api.delete).not.toHaveBeenCalled();
+	});
+});

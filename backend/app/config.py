@@ -134,6 +134,7 @@ def _load_toml() -> dict:
     instance_usage = data.get("instance_usage", {})
     flat["instance_usage_scheduler_enabled"] = instance_usage.get("scheduler_enabled", False)
     flat["instance_usage_adoption_reference_at"] = instance_usage.get("adoption_reference_at", "")
+    flat["backup_system_account_enabled"] = data.get("backup_system_account", {}).get("enabled", False)
 
     ceph = data.get("ceph", {})
     flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
@@ -501,6 +502,9 @@ class Settings(BaseSettings):
     os_interface: str = "internal"
     os_insecure: bool = False
     os_cacert: str = ""
+
+    # Elected machine-user, direct-member and Cinder backup-capacity reconciliation.
+    backup_system_account_enabled: bool = False
 
     # Global native census/expiry writer: opt in only for the shared cloud Redis cohort.
     instance_usage_scheduler_enabled: bool = False

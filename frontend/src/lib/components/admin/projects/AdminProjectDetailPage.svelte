@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import { untrack } from 'svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createTableView } from '$lib/utils/tableView.svelte';
@@ -168,6 +169,7 @@
               {#each tableView.rows as m (m.user_id + m.role_id)}
                 <CompactResourceCard>
                   <strong class="break-words text-sm">{m.user_name}</strong>
+                  <SystemAccountNotice identity={m} />
                   <dl class="space-y-1 text-xs"><div><dt class="text-ink-2">{t('projectDetail.role')}</dt><dd>{m.role_name}</dd></div><div><dt class="text-ink-2">{t('projectDetail.type')}</dt><dd>{m.type === 'group' ? t('projectDetail.groupType') : m.type == null || m.type === 'user' ? t('projectDetail.userType') : m.type}</dd></div></dl>
                 </CompactResourceCard>
               {/each}
@@ -183,7 +185,7 @@
 						<tbody class="divide-y divide-line">
 							{#each tableView.rows as m (m.user_id + m.role_id)}
 								<tr class="hover:bg-surface-sunken/40">
-									<td class="px-4 py-3 text-ink-0">{m.user_name}</td>
+									<td class="px-4 py-3 text-ink-0">{m.user_name}<SystemAccountNotice identity={m} /></td>
 									<td class="px-4 py-3 text-ink-2">{m.role_name}</td>
 									<td class="px-4 py-3 text-ink-2">{m.type === 'group' ? t('projectDetail.groupType') : m.type == null || m.type === 'user' ? t('projectDetail.userType') : m.type}</td>
 								</tr>

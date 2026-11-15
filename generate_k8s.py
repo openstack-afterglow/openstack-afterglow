@@ -651,6 +651,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         adoption_reference = adoption_reference.isoformat()
     lines.append(f"adoption_reference_at = {_toml_str(adoption_reference)}")
     lines.append("")
+    lines.append("[backup_system_account]")
+    lines.append(f"enabled = {_toml_bool(cfg.get('backup_system_account', {}).get('enabled', False))}")
+    lines.append("")
 
     # [openstack]
     lines.append("[openstack]")

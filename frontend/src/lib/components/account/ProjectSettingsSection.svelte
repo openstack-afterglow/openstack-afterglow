@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import ResponsiveTable from '$lib/components/ui/ResponsiveTable.svelte';
 	import CompactResourceCard from '$lib/components/ui/CompactResourceCard.svelte';
 	import { t } from '$lib/i18n/ns/account';
@@ -78,7 +80,7 @@
 				api.get<AssignableProjectRoles>(`/api/v1/projects/${context.projectId}/assignable-roles`, context.token, context.projectId, { refresh: true }),
 				projectAuthority(context.session, context.projectId).eligibleUsers(context.projectId)
 			]);
-			if (scope === context && request === membersRequest) { members = data.items; assignable = catalog; eligible = users.filter(row => row.enabled); membersFresh = true; if (!eligible.some(row => row.id === selectedUser)) selectedUser = ''; }
+			if (scope === context && request === membersRequest) { members = data.items; assignable = catalog; eligible = users.filter(row => row.enabled && !isSystemAccount(row)); membersFresh = true; if (!eligible.some(row => row.id === selectedUser)) selectedUser = ''; }
 		} catch (e) {
 			if (scope === context && request === membersRequest) {
 				membersError = e instanceof ApiError ? e.message : t('projectSettings.membersFailed');
@@ -89,13 +91,13 @@
 	}
 
 	function canEdit(member: ProjectAccessMember): boolean {
-		return $canManageProject && assignable !== null && !['group', 'inherited'].includes(member.source ?? '') && ((actorOwner) || !member.is_owner);
+		return !isSystemAccount(member) && $canManageProject && assignable !== null && !['group', 'inherited'].includes(member.source ?? '') && ((actorOwner) || !member.is_owner);
 	}
 	function addMember() {
 		if (!scope?.session.canSubmit() || managingUserId || !membersFresh || !assignable) return;
 		const user = eligible.find(row => row.id === selectedUser); if (!user) return;
 		const existing = members.find(row => row.user_id === user.id);
-		if (existing?.is_owner && !actorOwner) return;
+		if (isSystemAccount(user) || isSystemAccount(existing) || (existing?.is_owner && !actorOwner)) return;
 		editMember = existing ? { ...existing, source: existing.direct_role_ids.length ? existing.source : 'mixed' } : {
 			user_id: user.id, username: user.name, email: user.email, source: 'direct', is_owner: false, is_manager: false,
 			roles: [], direct_role_ids: [], direct_roles: [], effective_role_ids: [], external_role_ids: []
@@ -197,6 +199,7 @@
 				<ResponsiveTable>{#snippet cards()}
 					{#each view.rows as m (m.user_id)}<CompactResourceCard>
 						<div class="flex flex-wrap justify-between gap-2"><h3 class="text-sm font-medium">{m.username || m.user_id}</h3><span class="text-xs">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span></div><p class="text-sm break-all">{m.email || '—'}</p>{#if m.group_name}<p class="text-xs text-ink-2">{m.group_name}</p>{/if}
+						<SystemAccountNotice identity={m} />
 						{#snippet details()}<p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.directRoles', { roles: m.direct_roles.map(role => role.name).join(', ') || '—' })}</p><p class="text-xs [overflow-wrap:anywhere]">{t('projectSettings.effectiveRoles', { roles: (m.roles ?? []).join(', ') || '—' })}</p>{/snippet}
 						{#snippet actions()}{#if canEdit(m)}<Button variant="secondary" size="sm" disabled={managingUserId !== null || !membersFresh} onclick={() => { editMember = m; membersError = ''; }}>{t('projectSettings.editRoles')}</Button>{#if !m.is_owner && (actorOwner || !m.is_manager)}<Button variant="danger" size="sm" disabled={managingUserId !== null || !membersFresh || !(m.direct_role_ids?.length)} onclick={() => removeMember(m)}>{t('projectSettings.removeMember')}</Button>{/if}{:else if ['group', 'inherited'].includes(m.source ?? '')}<span class="text-xs text-ink-2">{t('projectSettings.inheritedReadOnly')}</span>{/if}{/snippet}
 					</CompactResourceCard>{/each}
@@ -215,7 +218,7 @@
 						<tbody class="divide-y divide-line">
 							{#each view.rows as m (m.user_id)}
 								<tr class="hover:bg-surface-selected/40 transition-colors">
-									<td class="px-4 py-3 font-medium text-ink-0">{m.username || m.user_id}</td>
+									<td class="px-4 py-3 font-medium text-ink-0">{m.username || m.user_id}<SystemAccountNotice identity={m} /></td>
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">
 										<span class="text-xs text-ink-2">{m.is_owner ? 'owner' : m.is_manager ? 'admin' : 'member'}</span>

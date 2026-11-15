@@ -11,6 +11,7 @@ from keystoneauth1 import exceptions as auth_exc
 from openstack import exceptions as sdk_exc
 
 from app.models.admin_credentials import ApplicationCredentialCreate
+from app.services import backup_system_account
 from app.services.service_permissions import RETIRED_SERVICE_ROLE_NAMES
 
 
@@ -86,6 +87,7 @@ def owner_in_domain(conn, domain_id, user_id, project_id=None, *, project_requir
 def require_owner(conn, domain_id, user_id, project_id=None, *, project_required=False):
     if not owner_in_domain(conn, domain_id, user_id, project_id, project_required=project_required):
         raise ScopeDenied
+    backup_system_account.assert_not_system_account_sync(user_id, conn=conn)
 
 
 def application_in_domain(conn, domain_id, resource, user_id):
@@ -104,6 +106,8 @@ def _domain_ids(conn, domain_id, kind):
         resource_id = value(row, "id")
         if not resource_id or value(row, "domain_id") != domain_id:
             raise ScopeDenied
+        if kind == "user" and backup_system_account.system_account_marker(row):
+            continue
         ids.add(resource_id)
     return ids
 

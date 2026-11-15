@@ -1,0 +1,94 @@
+{
+  "scope": "source/local only; no production writes or deployment",
+  "base": "bf81601f",
+  "branch": "feat/backup-system-account",
+  "backend": {
+    "command": "uv run python -m pytest tests/test_backup_system_account.py tests/test_backup_account_reconciler.py tests/test_backup_account_admin.py tests/test_backup_quota.py tests/test_backup_system_account_identity_guards.py tests/test_backup_system_account_personal_access.py tests/test_auto_backup_auth.py tests/test_domain_quota_native.py tests/test_domain_quotas.py tests/test_enrollment_policy.py tests/test_domain_iam.py tests/test_identity_roles.py tests/test_canonical_federation.py tests/test_personal_quota_convergence.py tests/test_public_signup.py tests/test_auto_backup.py tests/test_auto_snapshot.py tests/test_instance_volume_protection.py tests/test_project_membership_roles.py tests/test_auth_domain_boundaries.py -q -p no:randomly --log-cli-level=CRITICAL",
+    "passed": 1219,
+    "warnings": 289,
+    "process_order": "single pytest process; new files and domain/membership regressions precede test_auth_domain_boundaries.py; random ordering disabled",
+    "initial_failures": "Missing selector corrected; 20 integration failures fixed (SDK test envelope, identity fixture inventories, password-reset 403 preservation); two policy-only missing-user-id regressions then fixed.",
+    "final_order_check": {
+      "command": "uv run python -m pytest tests/test_backup_system_account.py tests/test_backup_account_reconciler.py tests/test_backup_account_admin.py tests/test_backup_quota.py tests/test_backup_system_account_identity_guards.py tests/test_backup_system_account_personal_access.py tests/test_auto_backup_auth.py tests/test_domain_iam.py::test_last_group_default_manager_membership_and_group_delete_are_guarded tests/test_admin_identity_inventory.py::test_project_mutation_detaches_overlapping_get_and_preserves_current_cache tests/test_auth_domain_boundaries.py -q -p no:randomly --log-cli-level=CRITICAL",
+      "passed": 342,
+      "warnings": 287,
+      "seconds": 10.76,
+      "limits": "Fresh final helpers, exact regression selectors, and new files precede victim test_auth_domain_boundaries.py in one process."
+    },
+    "expanded_repair_checks": [
+      {
+        "passed": 2125,
+        "failed": 10,
+        "note": "Remaining issues were shared fixture completeness, early cached settings initialization, and guard ordering."
+      },
+      {
+        "passed": 2132,
+        "failed": 3,
+        "note": "Fixed SDK group filter completeness and create-only Cinder quota transport; final 342-selector proof then passed."
+      }
+    ],
+    "native_credential_wire_check": {
+      "command": "uv run python -m pytest tests/test_admin_credentials.py tests/test_backup_system_account_identity_guards.py tests/test_auth_domain_boundaries.py -q -p no:randomly --log-cli-level=CRITICAL",
+      "passed": 358,
+      "warnings": 287,
+      "seconds": 77.52,
+      "boundary": "Real installed SDK and deterministic loopback Keystone; no production native credentials."
+    }
+  },
+  "frontend": {
+    "command": "npm run check && npx vitest run src/lib/components/account/__tests__/AccountPending.test.ts src/lib/components/account/__tests__/ProjectMemberRolesModal.test.ts src/lib/components/admin/groups/__tests__/GroupCard.test.ts src/lib/components/admin/projects/__tests__/AdminProjectAccessModal.test.ts src/lib/components/admin/system-admins/__tests__/SystemAdminGrantModal.test.ts src/lib/components/admin/users/__tests__/AdminUserEditModal.test.ts src/lib/components/admin/users/__tests__/AdminUsersPage.delete.test.ts src/lib/components/iam/__tests__/DomainIam.test.ts src/lib/components/iam/__tests__/IamGroups.test.ts src/lib/components/identity/SystemAccountNotice.test.ts src/lib/stores/__tests__/adminCredentialsController.test.ts && npm run i18n:check && npm run i18n:scan",
+    "files": 11,
+    "tests": 307,
+    "typecheck_files": 3121,
+    "typecheck_errors": 0,
+    "existing_warnings": 15,
+    "i18n_errors": 0,
+    "i18n_warnings": 0,
+    "source_messages": 13413,
+    "namespaces": 56,
+    "hardcoded_korean_lines": 0,
+    "scanned_files": 1387,
+    "limits": "jsdom canvas not-implemented diagnostics remain non-failing; translations are drafts, not native-reviewed."
+  },
+  "browser": {
+    "route": "/admin/users?domain_id=default",
+    "conditions": 36,
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "widths": [
+      390,
+      1280
+    ],
+    "locales": [
+      "ko",
+      "en",
+      "ja",
+      "zh-CN",
+      "sw",
+      "nb",
+      "ms",
+      "vi",
+      "bn"
+    ],
+    "overflow": 0,
+    "enabled_system_actions": 0,
+    "provider": "read-only loopback fixture; synthetic authenticated subject",
+    "proof": "~/.local/share/afterglow-proofs/backup-system-account-20261115/ui/receipt.json"
+  },
+  "dry_run": {
+    "proof": "~/.local/share/afterglow-proofs/backup-system-account-20261115/dry-run.json",
+    "intended": [
+      "create managed account/options",
+      "grant exact project member",
+      "backup_gigabytes 1000 -> 32604 from gigabytes 10868"
+    ],
+    "native_writes": 0,
+    "redis_writes": 0
+  },
+  "unchanged_factories": {
+    "command": "git diff --quiet bf81601f -- backend/app/services/keystone.py backend/app/services/db_auto_backup.py",
+    "exit": 0
+  }
+}

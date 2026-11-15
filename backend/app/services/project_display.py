@@ -83,7 +83,7 @@ def _snapshot(project_id, actor, operation):
             raise HTTPException(503, "personal_project_provenance_unavailable")
         catalog = operation.catalog()
         sources = domain_projects._sources(operation.ks, project, catalog)
-        if any(source["role_id"] == account_spaces._personal_member_role(catalog)["id"] for source in sources):
+        if account_spaces.has_personal_member_source(sources, catalog, project_id):
             account_spaces._verify_personal_member(operation.ks, catalog, project, uid)
         else:
             ownership = project_service._ownership_state_sync(operation.ks, catalog, project_id)

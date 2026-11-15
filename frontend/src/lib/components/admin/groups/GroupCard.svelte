@@ -18,6 +18,8 @@
 </script>
 
 <script lang="ts">
+	import { isSystemAccount } from '$lib/utils/systemAccount';
+	import SystemAccountNotice from '$lib/components/identity/SystemAccountNotice.svelte';
 	import LoadingState from '$lib/components/ui/LoadingState.svelte';
 	import { untrack } from 'svelte';
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
@@ -103,7 +105,7 @@
 	const candidateView = createTableView<User>({
 		rows: () => {
 			const existingIds = new Set(members.map((member) => member.id));
-			return allUsers.filter((user) => user.enabled && !existingIds.has(user.id));
+			return allUsers.filter((user) => user.enabled && !isSystemAccount(user) && !existingIds.has(user.id));
 		},
 		columns: () => identityColumns<User>(),
 		search: () => viewState.candidateSearch,
@@ -154,7 +156,7 @@
 		if (batchSaving || addSaving || usersLoading || usersError) return;
 		const generation = sourceGeneration;
 		const source = userDomainId;
-		const eligible = new Set(allUsers.filter((user) => user.enabled && !members.some((member) => member.id === user.id)).map((user) => user.id));
+		const eligible = new Set(allUsers.filter((user) => user.enabled && !isSystemAccount(user) && !members.some((member) => member.id === user.id)).map((user) => user.id));
 		const pending = selectedIds.filter((id) => eligible.has(id));
 		batchSaving = true;
 		try {
@@ -170,7 +172,7 @@
 	}
 
 	async function handleRemoveMember(userId: string) {
-		if (removingMemberId) return;
+		if (removingMemberId || isSystemAccount(members.find(member => member.id === userId))) return;
 		removingMemberId = userId;
 		try {
 			await onRemoveMember(userId);
@@ -180,6 +182,7 @@
 	}
 
 	async function handleAddMember(userId: string) {
+		if (isSystemAccount(allUsers.find(user => user.id === userId))) return;
 		const generation = sourceGeneration;
 		const source = userDomainId;
 		const ok = await onAddMember(userId);
@@ -192,6 +195,7 @@
 {#snippet userIdentity(user: User | GroupMember)}
 	<div class="min-w-0 flex-1 space-y-1">
 		<div class="break-all text-sm text-ink-0">{user.name || '-'}</div>
+		<SystemAccountNotice identity={user} />
 		<dl class="space-y-1 text-xs text-ink-2">
 			<div><dt>{t('groupCard.email')}</dt><dd class="break-all">{user.email || t('groupCard.noEmail')}</dd></div>
 			<div><dt>{t('groupCard.userId')}</dt><dd class="break-all font-mono">{user.id}</dd></div>
@@ -239,7 +243,7 @@
 						{#each memberView.rows as m (m.id)}
 							<li data-group-member-id={m.id} class="flex flex-wrap items-start justify-between gap-2 bg-surface-sunken/50 rounded px-3 py-2">
 								{@render userIdentity(m)}
-								<Button variant="danger-outline" size="xs" class="min-h-11 shrink-0 lg:min-h-0" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null || batchSaving || addSaving} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
+								<Button variant="danger-outline" size="xs" class="min-h-11 shrink-0 lg:min-h-0" ariaBusy={removingMemberId === m.id} disabled={isSystemAccount(m) || removingMemberId !== null || batchSaving || addSaving} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><LoadingState variant="control" label="" aria-hidden="true" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 							</li>
 						{/each}
 					</ul>

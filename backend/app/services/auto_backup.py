@@ -383,6 +383,9 @@ async def enable_auto_backup(
             config.setdefault(field, default)
         config["next_run_at"], config["next_tier"] = next_event(config, clock)
         if await redis.eval(_SAVE, 2, key, _all_key(), raw, _dump(config), f"{project_id}:{volume_id}"):
+            from app.services.backup_system_account import ensure_project
+
+            await ensure_project(project_id)
             return config
 
 
@@ -456,10 +459,10 @@ async def _volume_lease(redis, project_id: str, volume_id: str, *, owner: str | 
 
 def _make_proxy(project_id):
     """Authenticate the real target project; Cinder creates in the token's project."""
+    from app.services.backup_system_account import get_connection_for_project
     from app.services.instance_usage import prove_project_scope
-    from app.services.keystone import get_admin_connection_for_project
 
-    conn = get_admin_connection_for_project(project_id)
+    conn = get_connection_for_project(project_id)
     try:
         # An operator target binding cannot authorize creation in another project.
         if vars(conn).get("_afterglow_usage_operator_scope") is not None:
@@ -968,6 +971,14 @@ async def _execute_tick(dispatcher: WorkDispatcher, clock: datetime, connection_
                 raw = _text(await redis.get(_key("config", project_id, volume_id)))
                 if config and (not raw or json.loads(raw).get("revision") != config["revision"]):
                     continue
+                if connection_factory is _make_proxy:
+                    from app.services.backup_system_account import ensure_project
+
+                    try:
+                        await ensure_project(project_id, require_ready=True)
+                    except (Unauthorized, Forbidden) as exc:
+                        await _record_auth_failure(redis, lease, project_id, volume_id, raw, clock, exc)
+                        continue
                 creation = asyncio.create_task(asyncio.to_thread(connection_factory, project_id))
                 conn = None
                 try:

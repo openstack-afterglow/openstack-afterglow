@@ -1,4 +1,5 @@
 import { api } from './client';
+import { isSystemAccount } from '$lib/utils/systemAccount';
 import type { IamSession } from './domainIam';
 import type { EligibleProjectUser, ProjectOwnership, Project, ProjectAccessMember, AssignableProjectRoles } from '$lib/types/project';
 
@@ -32,7 +33,7 @@ export function projectAuthority(session: IamSession, callerProject?: string) {
 			if (!session.canSubmit()) return Promise.reject<{ id: string; name: string }>(new DOMException('', 'AbortError'));
 			return dispatch(() => api.post<{ id: string; name: string }>('/api/v1/projects', { name, description, domain_id: session.domainId }, session.token(), callerProject, { replayOnUnauthorized: false, suppressAuthRedirect: true, cache: 'no-store' }));
 		},
-		eligibleUsers: (project: string) => dispatch(() => api.get<EligibleProjectUser[]>(`${root(project)}/eligible-users`, session.token(), callerProject, { refresh: true })),
+		eligibleUsers: (project: string) => dispatch(async () => (await api.get<EligibleProjectUser[]>(`${root(project)}/eligible-users`, session.token(), callerProject, { refresh: true })).filter(user => !isSystemAccount(user))),
 		ownership: (project: string) => dispatch(() => api.get<ProjectOwnership>(`${root(project)}/ownership`, session.token(), callerProject, { refresh: true })),
 		transfer: (project: string, user: string) => {
 			if (!session.canSubmit()) return Promise.reject<ProjectOwnership>(new DOMException('', 'AbortError'));

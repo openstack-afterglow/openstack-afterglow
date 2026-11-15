@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.models.domain_iam import DomainEnrollment
 from app.services import (
     account_spaces,
+    backup_system_account,
     domain_projects,
     domain_scope,
     enrollment_policy,
@@ -80,6 +81,8 @@ async def protected_user(user, domain_id, *, credentials=True, system_services=F
     user = await _provider_call(ks.users.get, uid)
     if _field(user, "id") != uid:
         raise HTTPException(503, "Identity protection readback is unavailable")
+    if backup_system_account.system_account_marker(user):
+        return True
     if credentials and _field(user, "domain_id") != domain_id:
         return True
     if (credentials and _field(user, "federated")) or _field(user, "name") == get_settings().os_username:
@@ -150,6 +153,7 @@ async def protected_user(user, domain_id, *, credentials=True, system_services=F
 
 
 def user_dto(user, protected=False):
+    marker = backup_system_account.system_account_marker(user)
     return {
         "id": _field(user, "id"),
         "name": _field(user, "name", ""),
@@ -157,6 +161,7 @@ def user_dto(user, protected=False):
         "enabled": _field(user, "enabled") is True,
         "domain_id": _field(user, "domain_id"),
         "protected": protected,
+        **({"system_account": marker} if marker else {}),
     }
 
 
@@ -364,6 +369,7 @@ async def _iam_write():
 @identity_roles._complete_mutation
 async def create_account(domain_id, name, email, password, *, enabled=True, marker=None, _mutation=None):
     await domain(domain_id)
+    await backup_system_account.assert_login_allowed(username=name, domain_id=domain_id)
     email = await password_policy(domain_id, email)
     if name == get_settings().os_username:
         raise HTTPException(403, "Operational account name is reserved")
@@ -457,6 +463,9 @@ async def update_user(user_id, attrs, token_info):
             # Joined foreign identities are membership-only; even enabled is an
             # identity credential control and must remain home-bound.
             user = await resource("users", user_id, ctx["domain_id"])
+            await backup_system_account.assert_not_system_account(user_id, conn=conn, user=user)
+            if "name" in attrs:
+                await backup_system_account.assert_login_allowed(username=attrs["name"], domain_id=ctx["domain_id"])
             if await protected_user(user, ctx["domain_id"], credentials=any(key != "enabled" for key in attrs)):
                 raise HTTPException(403, "Privileged or service account is read-only in domain IAM")
             attrs = dict(attrs)
@@ -1184,6 +1193,7 @@ async def _grant_enrollment_role(row, session, snapshot, mutation, project_id, d
     if _field(project, "id") != project_id:
         raise HTTPException(503, "Enrollment project identity is unavailable")
     domain_scope.assert_domain_resource(domain_id, _field(project, "domain_id"))
+    await backup_system_account.assert_not_system_account(row.user_id, conn=ks)
     direct = await _provider_call(project_service._assignment_rows, ks, project_id)
     if role_id in project_service._direct_ids(direct, row.user_id):
         return
@@ -1311,6 +1321,7 @@ async def _compensate(snapshot, mutation, actor):
             elif snapshot["creation_uncertain"]:
                 return False
         uid = snapshot["user_id"]
+        await backup_system_account.assert_not_system_account(uid, conn=ks)
         user = await _native_user(ks, uid) if uid else None
         grants = list(snapshot.get("added_grants") or [])
         grants.extend(
@@ -1485,6 +1496,8 @@ async def _enroll(
     if enrollment_status(row) != "pending":
         raise HTTPException(410, "Enrollment link is expired, revoked, or already used")
     lease, ks, catalog = mutation
+    if token_info is not None:
+        await backup_system_account.assert_not_system_account(token_info["user_id"], conn=ks)
     public_signup = row.kind == "registration"
     external = row.kind == "external"
     if external != (external_provider is not None and external_identity is not None):
@@ -1533,6 +1546,8 @@ async def _enroll(
         if await protected_user(user, row.domain_id, credentials=False):
             raise HTTPException(403, "Privileged accounts cannot receive domain IAM grants")
     else:
+        if name is not None and account_home is not None:
+            await backup_system_account.assert_login_allowed(username=name, domain_id=account_home)
         if name == get_settings().os_username:
             raise HTTPException(403, "Operational account name is reserved")
         if await _find_accounts(account_home, email=row.email, name=row.email):
@@ -1671,6 +1686,7 @@ async def _enroll(
                     row, session, snapshot, mutation, selected["project_id"], row.domain_id, rid
                 )
         if row.new_user:
+            await backup_system_account.assert_not_system_account(uid, conn=ks)
             await _save(row, session, snapshot, _lease=lease, status="activating")
             await identity_roles._write(lease, ks.users.update, uid, enabled=row.requested_enabled)
             checked = await _native_user(ks, uid)

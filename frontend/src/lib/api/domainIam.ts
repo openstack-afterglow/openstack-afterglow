@@ -1,10 +1,12 @@
+import type { SystemAccountIdentity } from '$lib/types/common';
+
 import { api } from './client';
 import type { Project, ProjectAccessMember, AssignableProjectRoles } from '$lib/types/project';
 
 export interface IamContext { domain_id: string; domain_name: string; is_domain_manager: boolean; is_system_admin: boolean }
 export interface IamSession { token: () => string; domainId: string; userId: string; isCurrent: () => boolean; canSubmit: () => boolean }
 export type IamAssignableRoles = AssignableProjectRoles;
-export interface IamUser { id: string; name: string; email: string; enabled: boolean; domain_id: string; protected: boolean }
+export interface IamUser extends SystemAccountIdentity { id: string; name: string; email: string; enabled: boolean; domain_id: string; protected: boolean }
 export interface IamUserWrite { name: string; email: string; enabled: boolean; password?: string }
 export type IamEnrollmentStatus = 'delivery_pending' | 'pending' | 'accepted' | 'revoked' | 'expired' | 'delivery_failed' | 'account_creating' | 'granting' | 'activating' | 'recovery_required' | 'failed';
 export interface IamInvitationProject { project_id: string; role_ids: string[]; project_name?: string }

@@ -5,7 +5,14 @@ from urllib.parse import quote
 
 from fastapi import HTTPException
 
-from app.services import domain_iam, domain_projects, identity_roles, keystone, project_ownership_journal
+from app.services import (
+    backup_system_account,
+    domain_iam,
+    domain_projects,
+    identity_roles,
+    keystone,
+    project_ownership_journal,
+)
 from app.services.project_service import _provider_call
 
 _field = identity_roles._field
@@ -143,6 +150,7 @@ async def remove_user(user_id, token_info):
             ks = await _provider_call(keystone._get_admin_ks_client)
             catalog = await _provider_call(identity_roles.load_catalog, conn)
             user = await _provider_call(domain_projects._exact, ks.users, user_id)
+            await backup_system_account.assert_not_system_account(user_id, conn=ks, user=user)
             if await domain_iam.protected_user(user, domain_id, credentials=False, system_services=True):
                 raise HTTPException(403, "domain_eviction_protected")
             await project_ownership_journal.assert_user_resolved(user_id)

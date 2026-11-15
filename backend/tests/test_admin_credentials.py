@@ -59,10 +59,10 @@ def native_identity():
             "tenant-2": {"id": "tenant-2", "name": "Tenant", "enabled": True},
         },
         "users": {
-            "user-1": {"id": "user-1", "domain_id": "default"},
-            "other-user": {"id": "other-user", "domain_id": "default"},
-            "foreign-user": {"id": "foreign-user", "domain_id": "tenant-2"},
-            "unknown-user": {"id": "unknown-user"},
+            "user-1": {"id": "user-1", "name": "caller", "domain_id": "default"},
+            "other-user": {"id": "other-user", "name": "other", "domain_id": "default"},
+            "foreign-user": {"id": "foreign-user", "name": "foreign", "domain_id": "tenant-2"},
+            "unknown-user": {"id": "unknown-user", "name": "unknown"},
         },
         "projects": {
             "project-1": {"id": "project-1", "domain_id": "default"},

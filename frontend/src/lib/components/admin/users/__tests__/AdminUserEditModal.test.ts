@@ -457,3 +457,15 @@ describe('explicit administrator randomized password email', () => {
 		expect(mocks.post).toHaveBeenCalledOnce();
 	});
 });
+
+it('disables identity, enabled, password, session and domain-role mutations for a marked system account', async () => {
+	const { onUpdate } = renderModal({ ...alice, system_account: { kind: 'auto_backup' } });
+	await screen.findByText(longRole);
+	expect(screen.getByText('자동 백업용 시스템 계정')).toBeTruthy();
+	expect(screen.getByLabelText('이름').closest('fieldset')).toMatchObject({ disabled: true });
+	expect(screen.getByRole('button', { name: '수정' })).toMatchObject({ disabled: true });
+	expect(screen.getByRole('button', { name: '난수 비밀번호 재설정 및 메일 전송' })).toMatchObject({ disabled: true });
+	await fireEvent.click(screen.getByRole('button', { name: '수정' }));
+	expect(onUpdate).not.toHaveBeenCalled();
+	expect(mocks.post).not.toHaveBeenCalled();
+});

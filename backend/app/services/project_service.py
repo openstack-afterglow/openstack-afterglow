@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.models.db import ProjectRole
-from app.services import activity, cache, identity_roles, keystone
+from app.services import activity, backup_system_account, cache, identity_roles, keystone
 from app.services.cache import keys
 from app.services.service_permissions import ROLE_PRESETS
 
@@ -35,6 +35,7 @@ async def create_project_for_user(
     domain_id: str,
 ) -> dict:
     """Create a project and explicitly grant its creator the existing owner role."""
+    await backup_system_account.assert_not_system_account(user_id)
     from app.config import get_settings
     from app.services import domain_projects
 
@@ -356,6 +357,7 @@ async def _domain_access(
         user = await _provider_call(ks.users.get, user_id)
         if not isinstance(identity_roles._field(user, "domain_id"), str):
             raise identity_roles._unavailable("Identity domain is unavailable")
+        await backup_system_account.assert_not_system_account(user_id, conn=ks, user=user)
     context = await _provider_call(domain_context, token_info["user_id"], domain_id)
     if context.get("domain_kind") == "personal":
         if identity_roles._field(project, "afterglow_personal_user_id") != token_info["user_id"]:
@@ -436,6 +438,7 @@ async def _member(ks, user_id, catalog, effective, direct, domain_id):
     if not direct_ids <= {row["id"] for row in catalog}:
         raise identity_roles._unavailable("Direct assignment role is absent from the current catalog")
     user = await _provider_call(ks.users.get, user_id)
+    marker = backup_system_account.system_account_marker(user)
     groups = set()
     inherited = False
     external = []
@@ -466,7 +469,8 @@ async def _member(ks, user_id, catalog, effective, direct, domain_id):
         "username": identity_roles._field(user, "name") or "",
         "email": identity_roles._field(user, "email") or "",
         "domain_id": identity_roles._field(user, "domain_id"),
-        "identity_read_only": identity_roles._field(user, "domain_id") != domain_id,
+        "identity_read_only": bool(marker) or identity_roles._field(user, "domain_id") != domain_id,
+        "system_account": marker,
         "source": source,
         **access,
         "direct_role_ids": sorted(direct_ids),
@@ -607,6 +611,7 @@ async def replace_member_roles(
     authority = await _domain_access(project_id, token_info, domain_management, None if domain_management else user_id)
     mutation = _using_snapshot(_mutation) if _mutation is not None else _membership_write(project_id)
     async with mutation as (lease, ks, catalog, effective, direct):
+        await backup_system_account.assert_not_system_account(user_id, conn=ks)
         authority = await _domain_access(
             project_id, token_info, domain_management, None if domain_management else user_id
         )
@@ -783,6 +788,7 @@ async def migrate_legacy_managers(project_id, owner_user_id, token_info, session
         users = {row.user_id for row in rows} | {owner_user_id}
         for uid in sorted(users):
             user = await _provider_call(ks.users.get, uid)
+            await backup_system_account.assert_not_system_account(uid, conn=ks, user=user)
             from app.services.domain_scope import assert_domain_resource
 
             assert_domain_resource(token_info["domain_id"], identity_roles._field(user, "domain_id"))
@@ -889,6 +895,7 @@ async def can_create_project(user_id: str, domain_id: str, *, operation=None) ->
 
 
 async def _eligible_user(ks, domain_id, user_id):
+    await backup_system_account.assert_not_system_account(user_id, conn=ks)
     from app.services.domain_projects import assert_membership
 
     await _provider_call(assert_membership, user_id, domain_id, ks=ks)
@@ -921,7 +928,7 @@ async def eligible_project_users(project_id, token_info):
             "enabled": True,
         }
         for user in users
-        if identity_roles._field(user, "enabled") is True
+        if identity_roles._field(user, "enabled") is True and not backup_system_account.system_account_marker(user)
     ]
 
 
@@ -1056,6 +1063,7 @@ async def transfer_project_ownership(project_id, user_id, token_info):
                 raise HTTPException(403, "Only the current sole owner or domain manager may transfer ownership")
             if old == user_id:
                 raise HTTPException(409, "The selected user already owns this project")
+        await backup_system_account.assert_not_system_account(old, conn=ks)
         role = _required_project_role(catalog, "project_owner", require_hierarchy=True)
         await identity_roles._session_ready({old, user_id})
         operation = await journal.begin(project_id, token_info["domain_id"], old, user_id, lease=lease)
@@ -1266,6 +1274,8 @@ async def reconcile_project_ownership(project_id, operation_id, domain_id, token
 
 async def _write_initial_owner(ks, catalog, lease, project_id, user_id, role):
     from app.services import project_ownership_journal as journal
+
+    await backup_system_account.assert_not_system_account(user_id, conn=ks)
 
     project = await _provider_call(ks.projects.get, project_id)
     operation = await journal.begin(

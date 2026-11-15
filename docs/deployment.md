@@ -8,6 +8,43 @@ Kolla 표준 `reconfigure`는 Cloud Shell 또는 Manila 활성 시 toolbox CLI�
 Kolla의 `afterglow_backend_workers`는 backend **호스트당** Uvicorn 프로세스 수이며 기본값은 기존과 같은 `1`이다. 양의 정수만 허용한다. 증설 전 프로세스별 DB 연결 풀·메모리·백그라운드 작업과 스트림 재연결을 검증하고, 별도 승인된 reconfigure에서 적용한다. 설정 변경만으로 운영에 반영되지 않는다. 자세한 내용은 `deploy/kolla/README.md`를 참조한다.
 현재 `/api/v1/metrics`의 counter·histogram은 프로세스별이며 multiprocess collector가 없다. 워커가 여러 개면 scrape마다 다른 registry에 도달할 수 있으므로 이 지표만으로 전체 처리량이나 p95/p99를 판단하지 않는다. 워커 수 비교에는 외부 부하 생성기 또는 ingress의 요청 시간과 스트림 첫 이벤트·완료 시간을 사용한다.
 
+## 자동 백업 시스템 계정 활성화 계획
+
+이 기능은 source에 추가되었으며 운영에 자동 활성화하지 않는다. `[backup_system_account].enabled = false`가 기본값이다. 별도 owner 승인 전에는 계정·role·quota native 쓰기를 수행하지 않는다. 백업/스냅샷 scheduler는 더 이상 `afterglow_admin`의 tenant password scope로 대체하지 않으므로, 새 버전의 실제 예약 실행에는 아래 활성화가 필요하다. 비활성·미준비·역할 누락은 기존300초 fenced 오류/backoff로 표시한다.
+
+### 활성화 전제
+
+1. 모든 같은-cloud API writer를 검증된 동일 버전으로 전환할 계획과 복구 지점을 준비한다. 공유 Redis primary/logical DB·persistence·failover·정책/journal 백업과 기존 `K3S_KUBECONFIG_ENCRYPTION_KEY`의 안전한 보관·복원을 확인한다. 새 operator password secret이나 SQL migration은 없다.
+2. 고정 operator identity가 configured user domain에서 전용 user 생성·옵션/활성/password 복구와 exact project `member` assignment의 조회/부여/회수를 수행할 수 있는지 검토한다. Cinder quota 조회/갱신 권한과 전체 프로젝트/assignment inventory 완전성도 필요하다. 운영 자격 증명이나 raw password를 출력하지 않는다.
+3. 백업 COUNT quota·각 볼륨의 보존 tier 합계·Ceph backup driver/가용 공간·실제 restore 경로를 따로 검토한다. `backup_gigabytes`3배 규칙은 count나 저장소 가용성·복구 성공을 보장하지 않는다.
+
+### 읽기 전용 검토
+
+설정과 암호화 키가 있는 backend 실행 환경에서 다음 명령만 실행한다.
+
+```sh
+uv run python scripts/backup_system_account.py --report
+```
+
+명령은 Redis/native 조회만 하고 dispatcher 참여·status 저장·password 생성·Keystone/Cinder 쓰기를 하지 않는다. 같은 보고서는 human system-admin 전용 `GET /api/v1/admin/backup-system-account/report`, 현재 safe 상태는 `GET /api/v1/admin/backup-system-account`에서 읽는다. `complete=false`는 inventory/authority 관측 실패이며 빈 변경 목록을 승인 근거로 삼지 않는다.
+
+DMSLAB와 같은 fake에서 `gigabytes=10868`, `backup_gigabytes=1000`, 정책1개·시스템 계정 부재를 입력하면 전용 account/options 생성, 해당 프로젝트 `member` 부여, backup capacity `1000→32604`가 의도한 변경으로 나온다. 전체 실제 보고서를 검토해야 하며 이 예시는 운영 실행 결과가 아니다.
+
+### 승인 뒤 적용 순서
+
+1. Owner가 읽기 전용 전체 보고서의 account·role·**모든 프로젝트 quota** 변경을 명시 승인한다. 수동 native `backup_gigabytes` 값은 활성 reconciler가 다시 덮어쓴다.
+2. 별도 승인된 배포 절차로 모든 API의 같은 effective 설정에서 `[backup_system_account].enabled = true`를 적용하고 재시작한다. K8s/Kolla/Helm 생성 경로는 같은 flag를 전달하며 추가 secret은 만들지 않는다. 이 문서의 계획은 Kolla 실행 승인이 아니다.
+3.15초 주기 leader가 실행 lease 아래 최대20개 native writes/cycle을 처리한다. 계정의 lockout/expiry/first-use 예외·MFA rules 제거, exact `member` readback, quota readback, 관리자 status와 기존 policy `last_error`를 확인한다. Password reset은 unscoped proof 실패 때만900초 최소 간격으로 수행하며 scoped401에는 reset하지 않는다.
+4. 실제 target token의 project/user와 backup/snapshot owner·source·최종 상태를 확인한다. Guest/volume restore는 별도 승인된 실제 복구 시험으로 검증한다. Source/local fake 성공을 운영 예약 복구로 보고하지 않는다.
+
+전역 `gigabytes=-1`이면 backup capacity도 `-1`이다. `gigabytes_<type>`는 전역 한도에 더하지 않고 변경하지 않는다. `backups` 개수 기본20은 유지하므로 여러 볼륨·tier 보존 합계가 이를 넘으면 native quota가 생성을 막을 수 있다.
+
+정책이 일시 중지되어도 레코드가 남으면 role을 유지한다. 마지막 정책과 active journal이 모두 사라진 뒤300초 grace와 fresh 완전 관측을 거쳐 회수한다. 직접 Keystone 삭제·비활성·옵션/직접 역할 drift는 건강한15초 주기+bounded backlog 내에서 복구하지만 native 장애와 password backoff는 지연시킨다. Group/domain/system/inherited 등 지원하지 않는 authority drift는 fail-closed 보고하며 운영자가 exact native 원인을 검토해야 한다. 비활성화는 새 native 복구를 중지할 뿐, 이미 만든 계정·암호문·역할·backup·journal을 삭제하지 않는다.
+
+Leader 인계에는 unique-worker work lease 외에 모든 incarnation이 공유하는90초 stable mutation lease를 사용한다.10초 token 갱신을 이전 SDK/connection drain이 끝날 때까지 유지하므로 새 leader는 이전 lease를 우회하지 않는다. Process crash/Redis partition 뒤 expiry는 in-flight native I/O 취소의 증거가 아니며 password-reset 최소 interval과 exact idempotent role/quota readback 경계를 함께 유지해야 한다.
+
+구버전 Personal 권위 코드는 이 machine member를 허용하지 않으므로 grant를 남긴 image-only rollback은 호환되지 않는다. 활성화 전에 matching reader cohort 유지 또는 writer 정지·active journal drain·exact machine grant의 승인된 disposition을 포함한 rollback 계획을 준비한다. Flag 비활성화만으로 이전 버전의 Personal 접근 호환성이 복구되는 것은 아니다.
+
 
 ## 정식 release/tag 버전 규칙
 
