@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.32.16] - 2026-11-15
+
 ### Changed
 - 관리자 전체 볼륨 상세에서 오래된 `creating`/`downloading` 볼륨의 진단, `error` 상태 복구와 명시 강제 제거를 분리한다. 생성30분·이미지 복사6시간 gate, RBD watcher 차단, 정확한 ID/관측 상태 확인과 native 쓰기 전 재검사를 적용한다. 소유 서비스 작업이나 Ceph 잔여 이미지를 직접 제거하지 않는다.
 - 로그인·회원가입·계정 찾기 등 인증 화면, 로딩 대기 화면(`LoadingState` surface)과 VM 준비 화면(`VmResourcePreparation`)의 좌측·대기 아트가 마우스 위치에 반응한다. 랜딩 히어로와 같은 `AfterglowOrbit interactive`를 쓴다.

@@ -2171,9 +2171,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "12f19c00f7805c33efba193d8ce221af1d7d9462d45ccdc0eaeaa347ad0d2047",
-  "reviewed_at": "2026-11-15T04:38:00Z",
-  "summary": "Integrate four completed branches: request-local authority reuse with independent fresh admin guard; exact-target Cinder auth backoff/fenced state; best-effort Lumen MCP invalid-credential observation/self-clear; guarded creating/downloading volume recovery with unknown-state preservation. Both feature documentation sets and separate archives retained; combined nine-locale experience catalog regenerated. No schema/IAM/topology change or production action."
+  "source_sha256": "66f5ec2a40afa4dcd53fa58045275e9fc58e7533336314f83b55ff2317bc18ff",
+  "reviewed_at": "2026-11-15T06:56:31Z",
+  "summary": "Release 1.32.16 metadata bump over the four integrated branches (authority latency, backup target-auth backoff, dead-grant UX, stuck creating volume recovery); no runtime change in this commit."
 }
 ```
 <!-- architecture-review:end -->
