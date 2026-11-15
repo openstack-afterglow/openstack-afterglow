@@ -2193,9 +2193,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8279ab53da63a9a41bf25c70c72c67deb5afd307932ae6c02033f08dca7ca324",
-  "reviewed_at": "2026-11-15T15:03:46Z",
-  "summary": "Merged tutorial start-button availability fix with the second dashboard slop pass; TutorialStartButton keeps the availability gate and the invite-in-flow markup."
+  "source_sha256": "f0f0418945a3b4fa71d1363125bddd5dc5bafa320d9e854840a4b499d9cbf97d",
+  "reviewed_at": "2026-11-15T15:23:36Z",
+  "summary": "Tutorial availability test adapted to the inline invite markup after merging slop pass 2; no source change."
 }
 ```
 <!-- architecture-review:end -->

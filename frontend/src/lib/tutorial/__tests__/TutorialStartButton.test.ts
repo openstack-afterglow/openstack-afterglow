@@ -39,8 +39,8 @@ describe('TutorialStartButton', () => {
 		tutorialStatusesLoaded.set(true);
 		render(TutorialStartButton, { tour: 'vm-create' });
 
-		expect(await screen.findAllByRole('button', { name: '튜토리얼 시작' })).toHaveLength(2);
-		expect(await screen.findByRole('dialog')).toBeTruthy();
+		expect(await screen.findByRole('group', { name: '튜토리얼을 시작하시겠습니까?' })).toBeTruthy();
+		expect(await screen.findByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
 
 		exitMockAuth();
 		setLoginAuth({ token: 'real-token', userId: 'u1', username: 'real', isSystemAdmin: false });
@@ -48,7 +48,7 @@ describe('TutorialStartButton', () => {
 
 		await waitFor(() => {
 			expect(screen.queryByRole('button', { name: '튜토리얼 시작' })).toBeNull();
-			expect(screen.queryByRole('dialog')).toBeNull();
+			expect(screen.queryByRole('group')).toBeNull();
 		});
 	});
 
