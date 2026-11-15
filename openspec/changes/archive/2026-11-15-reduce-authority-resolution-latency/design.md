@@ -48,6 +48,9 @@ Additional topology-dependent calls remain live: Default projects require `_effe
 
 The dependency wrapper delegates to the plain `resolve_token_info(..., operation=None)` core. Explicit callers in experience ingestion, interaction ingestion and legacy Palimpsest Hub use that core, not a raw FastAPI `Depends` default. A valid-JWT route test covers direct ingestion. `memo_identity` now retains every manager/catalog before creating its identity key, including canonical domain memo insertion and projection-grant keys.
 
+Follow-up: request-owned dependency teardown drains and closes the operation unconditionally. It clears state and memo, logs failures with a fixed message and sanitized exception traceback, and does not replace an already-committed endpoint response with a cleanup error. Explicit `NativeOperation` context owners retain strict close-error propagation. This changes neither permission checks nor mutation semantics.
+
+
 
 ## Local measurements
 

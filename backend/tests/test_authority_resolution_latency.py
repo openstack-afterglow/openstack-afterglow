@@ -18,7 +18,7 @@ from collections import Counter
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from app.api import deps
 from app.services import domain_projects, identity_roles, keystone, service_authorization
@@ -410,3 +410,56 @@ async def test_direct_authenticated_ingestion_uses_plain_core(domain_client, mon
     assert response.status_code == 201, response.text
     assert response.json() == {"accepted": 1}
     assert persist.await_args.kwargs["actor"]["user_id"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_committed_mutation_survives_request_operation_close_failure(domain_client, monkeypatch, caplog):
+    import logging
+
+    from fastapi import Depends, FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    client, _ = domain_client
+    tokens = await login(client)
+    resolved = deps._resolve_jwt_session
+    operations, requests, writes = [], [], []
+    secret = "secret-token-and-private-url-should-never-appear"
+
+    def failed_close():
+        raise RuntimeError(secret)
+
+    async def resolve(*args, operation, **kwargs):
+        principal = await resolved(*args, operation=operation, **kwargs)
+        operation.own_session(SimpleNamespace(session=SimpleNamespace(close=failed_close)))
+        operations.append(operation)
+        return principal
+
+    monkeypatch.setattr(deps, "_resolve_jwt_session", resolve)
+    app = FastAPI()
+
+    @app.post("/mutate", status_code=201)
+    async def mutate(request: Request, token_info=Depends(deps.get_token_info)):
+        requests.append(request)
+        writes.append(token_info["user_id"])
+        return {"saved": True}
+
+    with caplog.at_level(logging.WARNING, logger="app.api.deps"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+            response = await http.post("/mutate", headers={"Authorization": "Bearer " + tokens["token"]})
+    assert response.status_code == 201 and response.json() == {"saved": True}
+    assert writes == ["user"]
+    assert requests[0].state._authority_operation is None and requests[0].state._authority_owner is None
+    assert operations[0]._ks is None and not operations[0].reads and not operations[0].subjects
+    messages = [record for record in caplog.records if record.message == "Native request operation cleanup failed"]
+    assert len(messages) == 1 and messages[0].exc_info
+    assert secret not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_explicit_native_operation_close_failure_remains_strict():
+    def failed_close():
+        raise RuntimeError("close failed")
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        async with NativeOperation() as operation:
+            operation.own_session(SimpleNamespace(session=SimpleNamespace(close=failed_close)))

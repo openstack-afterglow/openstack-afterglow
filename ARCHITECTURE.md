@@ -189,6 +189,9 @@ Notion worker도 공유 work-runtime의 Trove backup scheduler를 실행하며 `
 
 `get_token_info`는 FastAPI dependency wrapper이고 일반 호출용 `resolve_token_info(..., operation=None)`가 인증 본체다. Experience·interaction ingestion과 Palimpsest legacy Hub의 명시 호출은 후자를 사용하여 `Depends` marker가 native operation으로 오인되지 않게 한다. 유효한 JWT를 실제 ingestion route로 통과시키는 회귀가 이 경계를 고정한다. 모든 manager/catalog identity key는 `memo_identity`에서 소유 객체를 보존한 뒤 생성한다.
 
+요청 공통 operation dependency의 teardown은 모든 세션을 drain·close하고 memo와 request state를 폐기한다. Close 실패는 provider 예외 원문을 제외한 고정 메시지와 정제된 traceback으로 기록하되 이미 완료된 endpoint 결과를500으로 바꾸지 않는다. 명시적으로 operation을 소유한 다른 handler의 엄격한 close 실패 전파는 유지한다.
+
+
 
 
 `services/native_transport.py`는 Keystone·SDK·MCP·background inventory factory에 process-owned HTTP socket pool을 제공한다. 매 작업의 requests/Keystoneauth Session·auth plugin·cookie/header·SDK Connection은 분리한다. 서비스 reader AccessInfo만 위 cache로 재사용하며 사용자 token/권위는 요청 간 공유하지 않는다. 설치 Requests의 scheme/host/port·CA/verify/client certificate·proxy별 pool key와 Keystoneauth TCP keepalive 및 timeout/retry를 보존한다. 개별 session close는 빌린 pool을 닫지 않고 API/Notion worker drain과 process exit에서 정리한다. SDK3.3 `Connection.close()`는 HTTP session을 직접 닫지 않으므로 pool 소유권을 맡기지 않는다.
@@ -2150,9 +2153,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "23a7eda16c03a9eb2ee3d0421a30bc6ceafead945e9435484fdc098d7d7b7a38",
-  "reviewed_at": "2026-11-15T01:20:14Z",
-  "summary": "권위 해석4-way 선읽기와 capabilities/chat exact-owner NativeOperation 공유 및 모든 identity key의 강한 참조를 검토했다. 직접 인증 core 및 관리자 chat 별도 fresh guard와 요청 도중 철회 거부를 유지한다. Schema/config/frontend/topology 변화는 없다."
+  "source_sha256": "88e803f9499ac3ffb3215836ac4996e035ad27b9c8ce8d277999063b6850f20b",
+  "reviewed_at": "2026-11-15T01:29:56Z",
+  "summary": "요청 operation teardown의 세션 close 오류를 secret-free traceback으로 기록하고 이미 완료된 응답을 보존한다. 요청 state·메모는 폐기하고 명시 소유 NativeOperation의 엄격한 종료는 유지한다. 권위 및 배포 topology 변화 없음."
 }
 ```
 <!-- architecture-review:end -->

@@ -126,22 +126,31 @@ async def get_native_operation(request: Request):
     """Own one native client/read phase through the dependency call chain."""
     from app.services.native_operation import NativeOperation
 
-    async with NativeOperation() as operation:
-        # Only these consumers reuse authentication observations. Identity
-        # mutation handlers retain their separate fresh guard operations.
-        path = request.url.path
-        share = (
-            (request.method == "GET" and path == "/api/v1/projects/capabilities")
-            or path == "/api/v1/chat"
-            or path.startswith("/api/v1/chat/")
-        )
-        if share:
-            request.state._authority_operation = operation
+    operation = NativeOperation()
+    # Only these consumers reuse authentication observations. Identity
+    # mutation handlers retain their separate fresh guard operations.
+    path = request.url.path
+    share = (
+        (request.method == "GET" and path == "/api/v1/projects/capabilities")
+        or path == "/api/v1/chat"
+        or path.startswith("/api/v1/chat/")
+    )
+    if share:
+        request.state._authority_operation = operation
+    try:
+        yield operation
+    finally:
+        request.state._authority_operation = None
+        request.state._authority_owner = None
         try:
-            yield operation
-        finally:
-            request.state._authority_operation = None
-            request.state._authority_owner = None
+            await operation.run(operation.close)
+        except Exception as exc:
+            # Provider close errors can include credentials and endpoint URLs.
+            # Preserve the traceback without logging the provider's exception text.
+            safe_error = RuntimeError("Native request operation cleanup failed")
+            _logger.warning(
+                "Native request operation cleanup failed", exc_info=(RuntimeError, safe_error, exc.__traceback__)
+            )
 
 
 def request_native_operation(request: Request, token_info: dict):
